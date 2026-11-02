@@ -24,13 +24,15 @@ import org.junit.Test;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.util.Map;
 
 /**
- * Unit tests for {@link Llama2Weights} helper methods.
+ * Unit tests for {@link Llama2Weights}.
  *
  * <p>Validates the {@code take} and {@code stage} helpers that move
  * checkpoint regions into {@link PackedCollection} tensors buffer to
- * buffer, without host arrays.</p>
+ * buffer, without host arrays, and the {@code toPdslArguments()} binding of
+ * each weight tensor to the PDSL parameter name the model reads it as.</p>
  *
  * @author Michael Murray
  */
@@ -121,5 +123,50 @@ public class Llama2WeightsTest extends TestSuiteBase {
 
 		Llama2Weights.stage(badShape,
 				Llama2Weights.take(buffer, 3), Llama2Weights.take(buffer, 3));
+	}
+
+	/**
+	 * Verifies that {@link Llama2Weights#toPdslArguments()} binds every weight tensor to the PDSL
+	 * parameter name the {@code llama2} model reads it as, and binds nothing else: the token
+	 * embedding table is looked up per token outside the model graph, so it is deliberately absent.
+	 * Reading the tensors back by key must return the very tensors the fields hold, so a future
+	 * mix-up of two parameter names is caught here rather than silently mis-binding the model.
+	 */
+	@Test(timeout = 60000)
+	public void testToPdslArgumentsBindsEachTensorByName() {
+		int dim = 4;
+		int hiddenDim = 8;
+		int heads = 2;
+		int vocab = 3;
+		int seqLen = 2;
+
+		int layerWeights = dim + 4 * dim * dim + dim + 3 * hiddenDim * dim;
+		int freqs = 2 * seqLen * (dim / heads / 2);
+		int floats = vocab * dim + layerWeights + dim + freqs;
+
+		ByteBuffer buffer = ByteBuffer.allocate(7 * 4 + floats * 4).order(ByteOrder.LITTLE_ENDIAN);
+		buffer.putInt(dim).putInt(hiddenDim).putInt(1).putInt(heads).putInt(heads)
+				.putInt(vocab).putInt(seqLen);
+		for (int i = 0; i < floats; i++) {
+			buffer.putFloat((float) (0.1 * Math.sin(0.7 * i + 0.3)));
+		}
+		buffer.flip();
+
+		Llama2Weights weights = new Llama2Weights(new Llama2Config(buffer), buffer);
+		Map<String, Object> args = weights.toPdslArguments();
+
+		Assert.assertEquals(12, args.size());
+		Assert.assertSame(weights.rmsAttWeights, args.get("rms_att"));
+		Assert.assertSame(weights.wq, args.get("wq"));
+		Assert.assertSame(weights.wk, args.get("wk"));
+		Assert.assertSame(weights.wv, args.get("wv"));
+		Assert.assertSame(weights.wo, args.get("wo"));
+		Assert.assertSame(weights.rmsFfn, args.get("rms_ffn"));
+		Assert.assertSame(weights.w1, args.get("w1"));
+		Assert.assertSame(weights.w2, args.get("w2"));
+		Assert.assertSame(weights.w3, args.get("w3"));
+		Assert.assertSame(weights.rmsFinalWeight, args.get("rms_final"));
+		Assert.assertSame(weights.freqCis, args.get("freq_cis"));
+		Assert.assertSame(weights.wcls, args.get("wcls"));
 	}
 }

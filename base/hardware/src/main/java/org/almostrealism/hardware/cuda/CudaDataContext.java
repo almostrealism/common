@@ -114,6 +114,23 @@ public class CudaDataContext extends AcceleratorDataContext<CudaMemoryProvider> 
 	}
 
 	/**
+	 * Returns true if the CUDA bridge loads and the configured device exists, probing the driver
+	 * without creating a context. Because {@link #init()} defers the device start to first use, a
+	 * context offered by automatic backend selection is created only when this holds, so that a
+	 * host without CUDA never ends up with a CUDA context that fails on first use.
+	 *
+	 * @return whether the configured device is available
+	 */
+	public static boolean isDeviceAvailable() {
+		try {
+			CUDevice.get(DEVICE_ORDINAL);
+			return true;
+		} catch (RuntimeException | LinkageError e) {
+			return false;
+		}
+	}
+
+	/**
 	 * Returns true if a context for the configured device would allocate memory that host code can
 	 * address directly (see {@link #getHostAccessibleMemoryProvider()}), probing the device without
 	 * creating a context. This is what decides, before any context exists, whether memory can be

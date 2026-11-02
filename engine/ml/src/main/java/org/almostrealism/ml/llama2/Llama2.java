@@ -20,6 +20,7 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfile;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.ml.AttentionFeatures;
@@ -35,7 +36,9 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -57,6 +60,9 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures, Destroyable {
 		System.setProperty("AR_EXPRESSION_WARNINGS", "disabled");
 		System.setProperty("AR_GRAPH_PROPAGATION_WARNINGS", "disabled");
 	}
+
+	/** Classpath location of the model asset defining the Llama 2 forward pass. */
+	private static final String LLAMA2_ASSET = "/pdsl/llama2.pdsl";
 
 	/** Configuration hyperparameters read from the checkpoint header. */
 	private Llama2Config config;
@@ -182,6 +188,11 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures, Destroyable {
 	/**
 	 * Constructs the autoregressive model from the loaded weights.
 	 *
+	 * <p>The forward-pass structure — the stack of pre-norm transformer layers, the final
+	 * RMSNorm and the vocabulary projection — is defined by the {@value #LLAMA2_ASSET} model
+	 * asset; this method binds the flat checkpoint tensors and the position, builds the model and
+	 * compiles it, then looks up each token's embedding row as the model's input.</p>
+	 *
 	 * <p>The position and compiled transformer created here belong to this instance, which
 	 * releases them in {@link #destroy()}.</p>
 	 *
@@ -190,29 +201,16 @@ public class Llama2 implements AttentionFeatures, ConsoleFeatures, Destroyable {
 	 * @return the compiled autoregressive model
 	 */
 	protected AutoregressiveModel<Integer> model(OperationProfile profile, ComputeRequirement... requirements) {
-		Model transformer = new Model(shape(1, config.dim));
-
 		position = new PackedCollection(1);
 
-		int dim = config.dim;
+		Map<String, Object> args = new HashMap<>();
+		args.put("settings", config.toPdslSettings());
+		args.putAll(weights.toPdslArguments());
+		args.put("position", p(position));
 
-		for (int i = 0; i < config.layerCount; i++) {
-			transformer.add(transformer(config.headCount,
-					weights.rmsAttWeights.range(shape(config.dim), i * dim),
-					weights.wk.range(shape(dim, dim), dim * dim * i),
-					weights.wv.range(shape(dim, dim), dim * dim * i),
-					weights.wq.range(shape(dim, dim), dim * dim * i),
-					weights.wo.range(shape(dim, dim), dim * dim * i),
-					cp(weights.freqCis),
-					weights.rmsFfn.range(shape(config.dim), i * config.dim),
-					weights.w1.range(shape(config.hiddenDim, dim), dim * config.hiddenDim * i),
-					weights.w2.range(shape(dim, config.hiddenDim), dim * config.hiddenDim * i),
-					weights.w3.range(shape(config.hiddenDim, dim), dim * config.hiddenDim * i),
-					p(position), requirements));
-		}
-
-		transformer.add(rmsnorm(shape(1, dim), weights.rmsFinalWeight));
-		transformer.add(dense(weights.wcls));
+		PdslLoader loader = new PdslLoader();
+		Model transformer = loader.buildModel(loader.parseResource(LLAMA2_ASSET), "llama2",
+				shape(1, config.dim), args, requirements);
 
 		compiled = transformer.compile(false, profile);
 		return AutoregressiveModel.of(compiled, position,

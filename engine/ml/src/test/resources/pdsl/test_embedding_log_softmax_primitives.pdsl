@@ -1,0 +1,25 @@
+/**
+ * Fixtures for EmbeddingLogSoftmaxPrimitivesTest: each layer applies the embedding or the
+ * log_softmax built-in once, so each primitive is pinned on its own, independently of the language
+ * model that uses them.
+ */
+
+/** One lookup: every token id replaced by its row of the table. */
+layer lookup(table: weight) {
+    embedding(table)
+}
+
+/** embedding given no table, which the built-in rejects. */
+layer lookup_without_table() {
+    embedding()
+}
+
+/** Each row of a [rows, size] input replaced by its log-probabilities. */
+layer log_probabilities() {
+    log_softmax()
+}
+
+/** log_softmax given an argument, which the built-in rejects. */
+layer log_probabilities_with_argument(temperature: float) {
+    log_softmax(temperature)
+}

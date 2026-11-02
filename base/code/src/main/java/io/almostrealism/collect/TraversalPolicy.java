@@ -1039,6 +1039,8 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 
 	/**
 	 * Returns a copy of this policy with trailing dimensions of size {@code 1} removed.
+	 * A policy traversed past the removed dimension (a fully traversed policy) remains
+	 * fully traversed after it is removed.
 	 *
 	 * @return the trimmed policy, or this policy if no trailing unit dimensions exist
 	 */
@@ -1046,7 +1048,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		if (getDimensions() > 1 && length(getDimensions() - 1) == 1) {
 			return traverse(getDimensions() - 1)
 					.replace(new TraversalPolicy(true))
-					.traverse(getTraversalAxis())
+					.traverse(Math.min(getTraversalAxis(), getDimensions() - 1))
 					.trim();
 		}
 

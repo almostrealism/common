@@ -38,7 +38,6 @@ import java.util.List;
  * the annotation table. Unlike {@link CellTypeConnectomeTest}, it needs no external data, so it
  * runs everywhere.
  */
-// TODO(review): analysis.yaml has no test step for studio/bioscience, so this data-free test no longer runs in CI after the move from engine/ml
 public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 	/** The type names of the synthetic connectome. */
 	private static final List<String> NAMES = List.of("LB3a", "MN9", "Kenyon");

@@ -19,7 +19,6 @@ package io.flowtree.workstream;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobFactory;
-import io.flowtree.jobs.GitOperations;
 import io.flowtree.jobs.ShellCommandJob;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
@@ -67,8 +66,8 @@ public class Workstream {
     private boolean pushToOrigin;
     /** Absolute path to the local repository working directory. */
     private String workingDirectory;
-    /** Git remote URL; when set the job clones the repo before starting work. */
-    private String repoUrl;
+    /** The repositories this workstream is bound to; see {@link RepositoryBinding}. */
+    private final RepositoryBinding repositories = new RepositoryBinding();
 
     /** Comma-separated list of Claude Code tool names the agent is permitted to use. */
     private String allowedTools;
@@ -134,8 +133,6 @@ public class Workstream {
     /** GitHub organization name; selects the org-specific token for GitHub API calls. */
     private String githubOrg;
 
-    /** Additional repository URLs to clone alongside the primary repo. */
-    private List<String> dependentRepos;
 
     /**
      * Workstream IDs that should be woken up automatically when a job on this
@@ -479,32 +476,34 @@ public class Workstream {
     }
 
     /**
-     * Returns the git repository URL for automatic checkout.
-     *
-     * <p>When set (and {@code workingDirectory} is not), the job will
-     * clone this repo into a resolved workspace path before starting work.</p>
+     * Returns the git repository URL for automatic checkout. When set (and
+     * {@code workingDirectory} is not), the job clones this repo before
+     * starting work. See {@link RepositoryBinding#getRepoUrl()}.
      */
     public String getRepoUrl() {
-        return repoUrl;
+        return repositories.getRepoUrl();
     }
 
     /**
      * Determines whether this workstream tracks the repository named by
-     * {@code repoUrl}.
-     *
-     * <p>The comparison is by repository identity rather than by string
-     * equality: a workstream configured with
-     * {@code https://github.com/owner/repo.git} matches a caller that names
-     * the same repository as {@code git@github.com:owner/repo} or as the
-     * browser URL a CI system reports. See
-     * {@link GitOperations#isSameRepository(String, String)}.</p>
+     * {@code repoUrl}. See {@link RepositoryBinding#matchesRepo(String)}.
      *
      * @param repoUrl the repository URL to test; may be {@code null}
-     * @return {@code true} when both name the same repository; {@code false}
-     *         when either side is absent
+     * @return {@code true} when both name the same repository
      */
     public boolean matchesRepo(String repoUrl) {
-        return GitOperations.isSameRepository(this.repoUrl, repoUrl);
+        return repositories.matchesRepo(repoUrl);
+    }
+
+    /**
+     * Determines whether this workstream lists {@code repoUrl} among its
+     * dependent repositories. See {@link RepositoryBinding#dependsOnRepo(String)}.
+     *
+     * @param repoUrl the repository URL to test; may be {@code null}
+     * @return {@code true} when a dependent repository names the same repository
+     */
+    public boolean dependsOnRepo(String repoUrl) {
+        return repositories.dependsOnRepo(repoUrl);
     }
 
     /**
@@ -513,7 +512,7 @@ public class Workstream {
      * @param repoUrl the git clone URL (e.g., "https://github.com/owner/repo.git")
      */
     public void setRepoUrl(String repoUrl) {
-        this.repoUrl = repoUrl;
+        repositories.setRepoUrl(repoUrl);
     }
 
     /** Returns the comma-separated list of Claude Code tool names the agent may use. */
@@ -679,7 +678,7 @@ public class Workstream {
      * and commit lifecycle as the primary repo.
      */
     public List<String> getDependentRepos() {
-        return dependentRepos;
+        return repositories.getDependentRepos();
     }
 
     /**
@@ -688,7 +687,7 @@ public class Workstream {
      * @param dependentRepos list of git clone URLs for dependent repos
      */
     public void setDependentRepos(List<String> dependentRepos) {
-        this.dependentRepos = dependentRepos;
+        repositories.setDependentRepos(dependentRepos);
     }
 
     /**
@@ -892,11 +891,11 @@ public class Workstream {
         }
         if (baseBranch != null) factory.setBaseBranch(baseBranch);
         if (workingDirectory != null) factory.setWorkingDirectory(workingDirectory);
-        if (repoUrl != null) factory.setRepoUrl(repoUrl);
+        if (getRepoUrl() != null) factory.setRepoUrl(getRepoUrl());
         if (gitUserName != null) factory.setGitUserName(gitUserName);
         if (gitUserEmail != null) factory.setGitUserEmail(gitUserEmail);
         if (planningDocument != null) factory.setPlanningDocument(planningDocument);
-        if (dependentRepos != null && !dependentRepos.isEmpty()) factory.setDependentRepos(dependentRepos);
+        if (getDependentRepos() != null && !getDependentRepos().isEmpty()) factory.setDependentRepos(getDependentRepos());
         factory.setUseTmux(useTmux);
         if (maxWallClockHours != null) factory.setMaxWallClockHours(maxWallClockHours);
         return factory;
@@ -919,7 +918,7 @@ public class Workstream {
         String branch = targetBranch != null ? targetBranch : defaultBranch;
         if (branch != null) factory.setTargetBranch(branch);
         if (workingDirectory != null) factory.setWorkingDirectory(workingDirectory);
-        if (repoUrl != null) factory.setRepoUrl(repoUrl);
+        if (getRepoUrl() != null) factory.setRepoUrl(getRepoUrl());
         return factory;
     }
 
@@ -1398,8 +1397,8 @@ public class Workstream {
         if (baseBranch != null) {
             json.append(",\"baseBranch\":\"").append(JsonFieldExtractor.escapeJson(baseBranch)).append("\"");
         }
-        if (repoUrl != null) {
-            json.append(",\"repoUrl\":\"").append(JsonFieldExtractor.escapeJson(repoUrl)).append("\"");
+        if (getRepoUrl() != null) {
+            json.append(",\"repoUrl\":\"").append(JsonFieldExtractor.escapeJson(getRepoUrl())).append("\"");
         }
         if (githubOrg != null) {
             json.append(",\"githubOrg\":\"").append(JsonFieldExtractor.escapeJson(githubOrg)).append("\"");
@@ -1414,7 +1413,7 @@ public class Workstream {
             json.append(",\"planInstructions\":\"").append(JsonFieldExtractor.escapeJson(planInstructions)).append("\"");
         }
 
-        boolean pipelineCapable = repoUrl != null && !repoUrl.isEmpty();
+        boolean pipelineCapable = getRepoUrl() != null && !getRepoUrl().isEmpty();
         json.append(",\"hasPlanningDocument\":").append(planningDocument != null && !planningDocument.isEmpty());
         json.append(",\"pipelineCapable\":").append(pipelineCapable);
         if (archived) {
@@ -1441,7 +1440,7 @@ public class Workstream {
             json.append(",\"kind\":\"").append(JsonFieldExtractor.escapeJson(getKind())).append("\"");
         }
 
-        appendStringArray(json, "dependentRepos", dependentRepos);
+        appendStringArray(json, "dependentRepos", getDependentRepos());
 
         if (requiredLabels != null && !requiredLabels.isEmpty()) {
             json.append(",\"requiredLabels\":{");

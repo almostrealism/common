@@ -17,7 +17,7 @@ This file contains concatenated documentation for AI agents. For navigation, see
 ```bash
 # AR_HARDWARE_LIBS is auto-detected — do not set it manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
-# Override options: native|cl|mtl|cuda|cpu|gpu|*  (cuda is opt-in, never chosen by auto-detect)
+# Override options: native|cl|mtl|cuda|cpu|gpu|*
 ```
 
 ---
@@ -424,7 +424,7 @@ See [training-loop-examples.md](internals/training-loop-examples.md) for detaile
 | `native` | CPU with JNI acceleration |
 | `cl` | GPU via OpenCL |
 | `mtl` | Apple Silicon GPU via Metal |
-| `cuda` | NVIDIA GPU via CUDA (opt-in; not chosen by `*` auto-detect; Linux/aarch64 bridge only) |
+| `cuda` | NVIDIA GPU via CUDA (Linux) |
 | `gpu` | Abstract GPU (auto-selects MTL on macOS, CL elsewhere) |
 | `cpu` | Abstract CPU requirement |
 | `*` | Wildcard — whatever the platform supports |
@@ -753,7 +753,8 @@ common/
 │   ├── graph/                     #   ar-graph: Neural network layers, computation graphs, autodiff
 │   ├── physics/                   #   ar-physics: Atomic structures, photon fields, rigid body dynamics
 │   ├── space/                     #   ar-space: 3D scenes, meshes, CSG, spatial acceleration
-│   └── chemistry/                 #   ar-chemistry: Periodic table, elements, electron configurations
+│   ├── chemistry/                 #   ar-chemistry: Periodic table, elements, electron configurations
+│   └── biology/                   #   ar-biology: Neurons, synapses, connectomes; biological dynamics
 │
 ├── engine/                        # Layer 4 — Applications & Training
 │   ├── optimize/                  #   ar-optimize: Adam, evolutionary algorithms, training loops
@@ -771,7 +772,8 @@ common/
 ├── studio/                        # Layer 6 — Multimedia Composition
 │   ├── music/                     #   ar-music: Pattern-based music composition
 │   ├── spatial/                   #   ar-spatial: Spatial audio visualization
-│   └── compose/                   #   ar-compose: Audio scene orchestration, arrangement
+│   ├── compose/                   #   ar-compose: Audio scene orchestration, arrangement
+│   └── bioscience/                #   ar-bioscience: Biological models combined with the ML engine
 │
 ├── flowtree/                      # Standalone (above engine) — Workflow Orchestration
 │   ├── api/                       #   ar-flowtreeapi: protocol & API abstractions

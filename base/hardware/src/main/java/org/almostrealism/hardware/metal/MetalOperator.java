@@ -134,6 +134,25 @@ public class MetalOperator extends HardwareOperator {
 	protected int getArgCount() { return argCount; }
 
 	/**
+	 * Refuses every offset but zero. A Metal grid always starts at the first thread, and the
+	 * kernel indexes its work by {@code thread_position_in_grid} alone, so a range that starts
+	 * anywhere else cannot be dispatched; it is refused here rather than dispatched from zero
+	 * (see {@link io.almostrealism.kernel.KernelWork}).
+	 *
+	 * @param globalWorkOffset the starting index of the work range
+	 * @throws UnsupportedOperationException if {@code globalWorkOffset} is not zero
+	 */
+	@Override
+	public void setGlobalWorkOffset(long globalWorkOffset) {
+		if (globalWorkOffset != 0) {
+			throw new UnsupportedOperationException(
+					"A Metal grid starts at the first work item, not item " + globalWorkOffset);
+		}
+
+		super.setGlobalWorkOffset(globalWorkOffset);
+	}
+
+	/**
 	 * Computes optimal workgroup (threadgroup) size for the kernel.
 	 *
 	 * <p>Finds the largest power-of-2 divisor of global work size that doesn't
@@ -224,25 +243,43 @@ public class MetalOperator extends HardwareOperator {
 	}
 
 	/**
-	 * Executes the Metal kernel with the specified arguments.
+	 * Encodes this kernel into the {@link MetalCommandRunner} of its {@link MetalComputeContext}
+	 * and returns the dispatch's completion without waiting for the kernel to run.
 	 *
-	 * <p>Encodes kernel arguments as Metal buffers, computes threadgroup configuration,
-	 * dispatches the compute command, and blocks until completion.</p>
+	 * <p>The runner orders the dispatch after {@code dependsOn}: after a completion of the same
+	 * runner on the GPU, and after any other completion through a bridge that does not block the
+	 * calling thread (see {@link MetalCommandRunner#submit}). The memory the arguments refer to is
+	 * reserved until the command buffer the dispatch is encoded into has completed.</p>
 	 *
-	 * <p><strong>Thread-safety:</strong> Synchronized to ensure only one kernel
-	 * executes at a time per operator instance.</p>
+	 * <p>{@link #prepareArguments} moves every argument into {@link #getSupportedMemory()}, which
+	 * for a {@link MetalDataContext} is its {@link MetalMemoryProvider} alone, so every argument's
+	 * memory is a {@link MetalMemory}. The buffer of each argument is bound at the argument's index,
+	 * and the offsets and sizes of the arguments are bound inline at the two indices after the
+	 * last argument, the layout the generated kernel declares. Metal's buffer argument table has
+	 * 31 entries, so a kernel takes at most 29 arguments; one that declares more fails when its
+	 * {@link MetalProgram} is compiled, before an operator exists for it.</p>
 	 *
-	 * @param args Kernel arguments (must be {@link MemoryData})
-	 * @param dependsOn Optional {@link Semaphore} this dispatch is ordered after (same-runner
-	 *                  dependencies order on the GPU; foreign dependencies are bridged by the
-	 *                  {@link MetalCommandRunner} without blocking)
-	 * @return Currently always returns null (TODO: return proper Semaphore)
-	 * @throws UnsupportedOperationException if argument count exceeds {@link MetalCommandRunner#MAX_ARGS}
-	 * @throws UnsupportedOperationException if global work size exceeds {@link Integer#MAX_VALUE}
-	 * @throws RuntimeException if kernel execution fails
+	 * <p>A global work size this operator cannot dispatch is refused before anything is reserved
+	 * or encoded, so the runner's open command buffer is left as it was. A range that does not
+	 * start at the first work item never reaches a dispatch: it is refused when it is set (see
+	 * {@link #setGlobalWorkOffset(long)}).</p>
+	 *
+	 * <p><strong>Thread-safety:</strong> synchronized, so dispatches through one operator are
+	 * encoded one at a time; the kernels themselves run on the GPU after this returns.</p>
+	 *
+	 * @param args      the kernel arguments, each a {@link MemoryData}
+	 * @param dependsOn the completion this dispatch must be ordered after, or {@code null}
+	 * @return the dispatch's completion
+	 * @throws UnsupportedOperationException if the global work size exceeds the largest grid a
+	 *         Metal dispatch can describe
 	 */
 	@Override
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
+		if (getGlobalWorkSize() > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException("Global work size " + getGlobalWorkSize() +
+					" for " + getName() + " exceeds the largest grid a Metal dispatch can describe");
+		}
+
 		if (kernel == null) {
 			kernel = prog.newComputePipelineState();
 		}
@@ -250,10 +287,6 @@ public class MetalOperator extends HardwareOperator {
 		long id = totalInvocations++;
 
 		MemoryData data[] = prepareArguments(argCount, args);
-		if (data.length > MetalCommandRunner.MAX_ARGS) {
-			throw new UnsupportedOperationException();
-		}
-
 		MetalCommandRunner runner = context.getCommandRunner();
 
 		KernelMemoryGuard.Reservation guard = Hardware.getLocalHardware().getKernelMemoryGuard().acquire(data);
@@ -299,10 +332,6 @@ public class MetalOperator extends HardwareOperator {
 				// encode time) so batched commands do not share mutable argument buffers.
 				encoder.setBytes(index++, offsetValues);
 				encoder.setBytes(index, sizeValues);
-
-				if (getGlobalWorkSize() > Integer.MAX_VALUE) {
-					throw new UnsupportedOperationException();
-				}
 
 				int groupDims[] = getWorkgroupDimensions();
 

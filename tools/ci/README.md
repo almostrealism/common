@@ -31,7 +31,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `register-workstream.sh` | Register a workstream with the FlowTree controller (emits `workstream_id`, also to `$GITHUB_OUTPUT`), optionally granting tracker roles (`TRACKER_CAPABILITIES`) and checking out other repositories beside it (`DEPENDENT_REPOS`) |
 | `resolve-release-scope.sh` | Goal decomposition: read the next version from a repository (`pom.xml` or a plain version file), the framework version it pins, and whether `<plans dir>/<version>/PLAN.md` exists (`in_scope`) |
 | `remediation-required-labels.sh` | Pin an auto-resolve submission to a macOS Node (`REQUIRED_LABELS`) when a Metal lane (`test-mac`, `test-media-mac`) failed in the attempt |
-| `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests failed |
+| `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests or python-evals failed |
 | `stage-submit-request.sh` | Write a built prompt and its submission parameters to a request directory for a remediation job to upload |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"false"`: it turns on the harness's per-job test lock (see `flowtree/runtime/docs/file-staging.md`), which only the jobs sent to make failing tests pass, and a few QA rounds, request — everything else is held to `test-integrity-check`. `ENFORCE_CHANGES` (default `"false"`) requires the job to produce a change. A run that leaves none is re-run up to `MAX_ENFORCE_CHANGES_RETRIES` times over the whole job (omitted: the controller default; `"0"`: never re-run), and a job that still commits nothing once that cap is spent is reported DEGRADED rather than SUCCESS |
 | `submit-staged-request.sh` | Submit a staged request directory from a trusted (default-branch) checkout, exporting only the documented `submit.env` keys |
@@ -75,7 +75,7 @@ Each attempt of a "Build and Test" run submits at most one coding-agent job, fro
 one of three jobs (see "Remediation Jobs" in `analysis.yaml` and
 `.github/CLAUDE.md`):
 
-- `auto-resolve-python` — python-tests failed; submits at once.
+- `auto-resolve-python` — python-tests or python-evals failed; submits at once.
 - `auto-review` — attempt 1 only; always submits one of build failure, code
   policy, quality gates, docs-only review, or the general review, as soon as the
   gates report. A gate that failed without recording a cause
@@ -153,7 +153,7 @@ it knowingly does not cover are in
 | `build-planning-prompt.sh` | Build prompt for planning workflow |
 | `build-task-planning-prompt.sh` | Build prompt for the task-planning round: plan the tracker task CI claimed for the round (`TASK_ID`, `TASK_TITLE`, `TASK_DESCRIPTION`) |
 | `build-policy-violation-prompt.sh` | Build prompt for agent when code policy enforcement fails |
-| `build-python-failure-prompt.sh` | Build prompt for agent when the python-tests job fails |
+| `build-python-failure-prompt.sh` | Build prompt for agent when the python-tests or python-evals job fails |
 | `build-quality-gate-prompt.sh` | Build prompt for agent when quality gates fail |
 | `build-resolve-prompt.sh` | Build prompt for agent when tests fail |
 | `build-review-prompt.sh` | Build prompt for general code review |

@@ -29,6 +29,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.Optional;
+import java.util.stream.IntStream;
 
 /**
  * Provides convenient factory methods for creating matrix computations and operations.
@@ -231,8 +232,22 @@ public interface MatrixFeatures extends AlgebraFeatures {
 	 *       which visits only the stored entries</li>
 	 *   <li>Identity matrix detection -> returns input</li>
 	 *   <li>Diagonal matrix detection -> optimized scalar multiplication</li>
-	 *   <li>Vector-specific path -> uses element-wise multiply + sum instead of full matmul</li>
+	 *   <li>Vector-specific path for a batch of vectors -> uses element-wise multiply + sum
+	 *       instead of full matmul</li>
+	 *   <li>A single vector times a matrix of several rows -> weighted sum, one kernel in which
+	 *       each output sums its row</li>
 	 * </ul>
+	 * </p>
+	 *
+	 * <p>
+	 * A single vector times a matrix of several rows takes the weighted sum rather than the
+	 * multiply + sum. The elementwise product of a single vector has as many elements as the
+	 * matrix, a multiple of the result, so it is computed as a kernel of its own and summed by a
+	 * second; the weighted sum computes each output directly, which halves the kernels of a
+	 * product that runs once per step of a single-position decode. The weighted sum is built in
+	 * the {@code (m, 1)} shape the multiply + sum gives, so the result is the computation itself
+	 * rather than a reshaped view of it. A matrix of one row is a dot product, which the multiply
+	 * + sum already reduces in one step, and keeps that form.
 	 * </p>
 	 *
 	 * <p>
@@ -272,10 +287,28 @@ public interface MatrixFeatures extends AlgebraFeatures {
 		// A matrix whose ordering enumerates its rows (a sparse matrix) is multiplied by visiting
 		// only the entries it stores, never forming a logical index of the matrix
 		TraversalOrdering mOrder = mShape.getOrder();
-		if (mOrder != null && mShape.getDimensions() == 2 && mOrder.segments(mShape.length(1)).isPresent()
-				&& vShape.getDimensions() <= 2 && vShape.length(0) == mShape.length(1)) {
+		boolean rowsEnumerated = mOrder != null && mShape.getDimensions() == 2
+				&& mOrder.segments(mShape.length(1)).isPresent();
+		// A batch of row vectors traversed along its rows is enumerated as columns below, even when
+		// its batch size happens to equal the column count; only a vector or a column-oriented
+		// matrix (traversed along axis 0) takes this branch, which contracts over axis 0
+		if (rowsEnumerated && vShape.getDimensions() <= 2 && vShape.length(0) == mShape.length(1)
+				&& (vShape.getDimensions() == 1 || vShape.getTraversalAxis() < 1)) {
 			return new SegmentedWeightedSumComputation("matmul",
 					vShape.getDimensions() == 1 ? 1 : vShape.length(1), matrix, vector);
+		} else if (rowsEnumerated && vShape.getDimensions() == 2 && vShape.getTraversalAxis() >= 1
+				&& vShape.length(1) == mShape.length(1)) {
+			// A batch of row vectors, as a dense layer passes its input, is the same product
+			// over the batch as columns, transposed back into rows, in the shape of the dense product
+			int batch = vShape.length(0);
+			int rows = mShape.length(0);
+			if (batch == 1) {
+				return new SegmentedWeightedSumComputation("matmul", 1, matrix,
+						reshape(shape(vShape.length(1)), vector)).reshape(shape(rows, 1));
+			}
+
+			return new SegmentedWeightedSumComputation("matmul", batch, matrix,
+					c(vector).traverse(0).transpose()).traverse(0).transpose().reshape(shape(batch, rows, 1));
 		} else if (mShape.getTotalSizeLong() == 1 || vShape.getTotalSizeLong() == 1) {
 			return multiply(c(matrix), c(vector));
 		} else if (mShape.getDimensions() != 2) {
@@ -298,7 +331,24 @@ public interface MatrixFeatures extends AlgebraFeatures {
 			// In that case, fall through to the weightedSum path below WITHOUT preprocessing.
 			// Empirically: 1000 outputs ~3s, 5000 outputs ~106s, 10000 outputs ~10+ minutes.
 			int outputSize = mShape.length(0);
-			if (outputSize <= 1000) {
+
+			// Exactly one vector: one axis spans the matrix width and every other axis is a unit,
+			// so a batch whose total size merely equals the width is not mistaken for one
+			int width = mShape.length(1);
+			TraversalPolicy layout = vShape;
+			boolean singleVector = layout.getTotalSizeLong() == width
+					&& IntStream.range(0, layout.getDimensions()).anyMatch(i -> layout.length(i) == width);
+			if (outputSize > 1 && outputSize <= 1000 && singleVector) {
+				// A single vector: each output sums one row of the matrix against a (1, n)
+				// row holding the vector, computed directly in the (m, 1) shape multiply + sum
+				// gives so that the result is itself the computation rather than a view of it
+				TraversalPolicy resultShape = shape(outputSize, 1);
+				TraversalPolicy groupShape = shape(1, mShape.length(1));
+				return weightedSum("matmul", resultShape,
+						resultShape, resultShape.withRate(0, 1, outputSize),
+						groupShape, groupShape,
+						c(matrix), reshape(groupShape, vector));
+			} else if (outputSize <= 1000) {
 				// Only do preprocessing for the repeat+multiply+sum path
 				if (onlyColumns) {
 					vShape = vShape.trim();

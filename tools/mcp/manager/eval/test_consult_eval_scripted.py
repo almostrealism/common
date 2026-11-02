@@ -128,13 +128,43 @@ class TestScriptedModel(unittest.TestCase):
         return ev
 
     def test_placeholders_resolve_to_presented_ids(self):
-        model = ScriptedModel("A [D:.github/CLAUDE.md]. B [D:.github/CLAUDE.md@915]. "
+        model = ScriptedModel('A [D:.github/CLAUDE.md]. B [D:.github/CLAUDE.md@"b"]. '
                               "C [N:mem-1]. D [I:x.sh].")
         self.assertEqual(model.resolve(self._evidence()), "A [D1]. B [D2]. C [N1]. D [I1].")
 
     def test_unretrieved_evidence_becomes_an_unpresented_id(self):
         model = ScriptedModel("A [D:other.md]. B [N:missing].")
         self.assertEqual(model.resolve(self._evidence()), "A [D99]. B [N99].")
+
+    def test_a_phrase_missing_from_every_item_becomes_an_unpresented_id(self):
+        model = ScriptedModel('A [D:.github/CLAUDE.md@"not in any chunk"].')
+        self.assertEqual(model.resolve(self._evidence()), "A [D99].")
+
+    def test_a_line_anchor_is_rejected(self):
+        # Line anchors drift whenever the live doc is edited above them.
+        model = ScriptedModel("A [D:.github/CLAUDE.md@915].")
+        with self.assertRaises(ValueError):
+            model.resolve(self._evidence())
+
+    def test_no_committed_scripted_fixture_pins_a_line_anchor(self):
+        # The end-to-end run only rejects a line anchor in a fixture that a case
+        # actually exercises; this guards every committed fixture as data, so a
+        # drifted or orphan fixture is caught before the pipeline runs at all.
+        fixtures = os.path.join(_EVAL_DIR, "fixtures", "scripted")
+        offenders = {}
+        for name in os.listdir(fixtures):
+            if not name.endswith(".txt"):
+                continue
+            with open(os.path.join(fixtures, name), encoding="utf-8") as handle:
+                text = handle.read()
+            line_anchors = [match.group(0)
+                            for match in ScriptedModel._PLACEHOLDER.finditer(text)
+                            if match.group(4)]
+            if line_anchors:
+                offenders[name] = line_anchors
+        self.assertEqual(offenders, {},
+                         'scripted fixtures must cite by content (@"<phrase>"), '
+                         "not by line number")
 
     def test_consult_records_the_prompt(self):
         model = ScriptedModel("x")
@@ -221,8 +251,11 @@ class TestScriptedRun(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.cases = load_cases()
-        cls.summary = build_report(cls.cases, run_consult_eval._run_scripted(cls.cases),
-                                   "step12")
+        # One scripted run of the whole set, shared by every test here: each
+        # repetition stages the corpus and runs the consult pipeline for every
+        # case, so the required python-evals job must not evaluate the set twice.
+        cls.responses = run_consult_eval._run_scripted(cls.cases)
+        cls.summary = build_report(cls.cases, cls.responses, "step12")
 
     def test_every_case_but_the_paraphrase_gap_passes(self):
         # The paraphrase gap is closed: E12's "one class per job" and E13's
@@ -233,16 +266,31 @@ class TestScriptedRun(unittest.TestCase):
         self.assertEqual(failing, {})
 
     def test_the_claim_level_cases_are_flagged_for_polarity(self):
-        responses = run_consult_eval._run_scripted(
-            [c for c in self.cases if c["id"] in ("E12", "E13")])
+        # Reuse the cached full-set run rather than evaluating E12/E13 a second
+        # time: setUpClass already ran the whole set once, so re-staging the
+        # corpus for these two here would make the required python-evals job
+        # evaluate them twice.
         for cid in ("E12", "E13"):
-            response = responses[cid]
+            response = self.responses[cid]
             response = response[0] if isinstance(response, list) else response
             reasons = [w["reason"] for w in response["citation_warnings"]]
             self.assertIn("polarity", reasons, cid)
 
     def test_no_false_abstentions(self):
         self.assertEqual(self.summary["false_abstention"], 0)
+
+    def test_every_scripted_citation_names_retrieved_evidence(self):
+        # A placeholder whose phrase no longer appears in any retrieved item
+        # resolves to [D99] and would pass a case that expects warnings for
+        # the wrong reason; re-pick the phrase from the cited text instead.
+        unresolved = {}
+        for cid, response in self.responses.items():
+            for turn in response if isinstance(response, list) else [response]:
+                sentences = [w["sentence"] for w in turn.get("citation_warnings", [])
+                             if w["reason"] == "unknown citation"]
+                if sentences:
+                    unresolved.setdefault(cid, []).extend(sentences)
+        self.assertEqual(unresolved, {})
 
 
 if __name__ == "__main__":

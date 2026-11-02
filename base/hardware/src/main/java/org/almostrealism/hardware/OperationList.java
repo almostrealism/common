@@ -757,6 +757,19 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public OperationList(String description) { this(description, true); }
 
 	/**
+	 * Creates an empty operation list with a description, compilation enabled, and the
+	 * {@link ComputeRequirement}s its operations are compiled and run under.
+	 *
+	 * @param description Human-readable description of this operation list
+	 * @param requirements The compute requirements, or null to let each operation choose its own context
+	 * @see #setComputeRequirements(List)
+	 */
+	public OperationList(String description, List<ComputeRequirement> requirements) {
+		this(description);
+		setComputeRequirements(requirements);
+	}
+
+	/**
 	 * Creates an empty operation list with explicit compilation control.
 	 *
 	 * @param description Human-readable description of this operation list

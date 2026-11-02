@@ -439,11 +439,12 @@ class TestGraderTeeth(unittest.TestCase):
         good = {
             "ok": True,
             "answer": ("Master Agent Dispatch runs doc-qa, defect-hunt, "
-                       "coverage-qa, consolidation-qa, performance-qa, pdsl-qa "
-                       "and qa-retrospective, with branch prefixes qa/docs-, "
-                       "qa/defect-, qa/coverage-, qa/consolidate-, "
-                       "qa/performance-, qa/pdsl- and qa/retro-. The open-PR "
-                       "limit MAX_OPEN_PRS is 7."),
+                       "flaky-qa, coverage-qa, consolidation-qa, "
+                       "performance-qa, pdsl-qa and qa-retrospective, with "
+                       "branch prefixes qa/docs-, qa/defect-, qa/flaky-, "
+                       "qa/coverage-, qa/consolidate-, qa/performance-, "
+                       "qa/pdsl- and qa/retro-. The open-PR limit "
+                       "MAX_OPEN_PRS is 7."),
             "sources": [".github/CLAUDE.md"],
         }
         result = grade(good, resolve_expect(case, "step2"))
@@ -467,14 +468,157 @@ class TestGraderTeeth(unittest.TestCase):
         no_limit_name = {
             "ok": True,
             "answer": ("Master Agent Dispatch runs rounds with prefixes "
-                       "qa/docs-, qa/defect-, qa/coverage-, qa/consolidate-, "
-                       "qa/performance-, qa/pdsl- and qa/retro-. It uses 7 "
-                       "workers."),
+                       "qa/docs-, qa/defect-, qa/flaky-, qa/coverage-, "
+                       "qa/consolidate-, qa/performance-, qa/pdsl- and "
+                       "qa/retro-. It uses 7 workers."),
             "sources": [".github/CLAUDE.md"],
         }
         result = grade(no_limit_name, resolve_expect(case, "step2"))
         self.assertFalse(result.passed)
         self.assertIn("MAX_OPEN_PRS", " ".join(result.failures))
+
+    def test_e1_step2_rejects_an_answer_that_omits_the_flaky_pilot_prefix(self):
+        # The question asks for every QA round. flaky-qa is the pilot round, so
+        # an answer that lists only the seven full-cadence prefixes and omits
+        # qa/flaky- has not named all of them and must fail must_include.
+        case = self._case("E1")
+        no_flaky = {
+            "ok": True,
+            "answer": ("Master Agent Dispatch uses branch prefixes qa/docs-, "
+                       "qa/defect-, qa/coverage-, qa/consolidate-, "
+                       "qa/performance-, qa/pdsl- and qa/retro-; the open-PR "
+                       "limit is MAX_OPEN_PRS = 7."),
+            "sources": [".github/CLAUDE.md"],
+        }
+        result = grade(no_flaky, resolve_expect(case, "step2"))
+        self.assertFalse(result.passed)
+        self.assertIn("qa/flaky-", " ".join(result.failures))
+
+    def test_e1_step2_rejects_a_seven_that_is_not_the_limit(self):
+        # Naming MAX_OPEN_PRS and mentioning "seven" somewhere is not an
+        # answer: the value has to be stated as the limit, in the sentence
+        # that names it, or "seven of them" (a count of rounds) would pass.
+        case = self._case("E1")
+        unrelated_seven = {
+            "ok": True,
+            "answer": ("Master Agent Dispatch runs eight QA jobs, seven of them "
+                       "full-cadence rounds, with branch prefixes qa/docs-, "
+                       "qa/defect-, qa/flaky-, qa/coverage-, qa/consolidate-, "
+                       "qa/performance-, qa/pdsl- and qa/retro-. Each caller "
+                       "forwards MAX_OPEN_PRS as its max-open-prs input."),
+            "sources": [".github/CLAUDE.md"],
+        }
+        result = grade(unrelated_seven, resolve_expect(case, "step2"))
+        self.assertFalse(result.passed)
+        self.assertIn("must_include_any", " ".join(result.failures))
+
+    def test_e1_step2_rejects_a_negated_limit(self):
+        # "MAX_OPEN_PRS is not 7" names the constant and the number but denies
+        # the value; the limit guard must not accept a negated assertion.
+        case = self._case("E1")
+        negated = {
+            "ok": True,
+            "answer": ("Master Agent Dispatch runs rounds with prefixes "
+                       "qa/docs-, qa/defect-, qa/flaky-, qa/coverage-, "
+                       "qa/consolidate-, qa/performance-, qa/pdsl- and "
+                       "qa/retro-; MAX_OPEN_PRS is not 7."),
+            "sources": [".github/CLAUDE.md"],
+        }
+        result = grade(negated, resolve_expect(case, "step2"))
+        self.assertFalse(result.passed)
+        self.assertIn("must_include_any", " ".join(result.failures))
+
+    def test_e1_step2_rejects_a_forwarded_only_limit(self):
+        # The value appears but is attached to the number of rounds, and
+        # MAX_OPEN_PRS is only described as "forwarded as input" — nothing
+        # asserts the value is the limit, so the guard must reject it.
+        case = self._case("E1")
+        forwarded_only = {
+            "ok": True,
+            "answer": ("Master Agent Dispatch runs rounds with prefixes "
+                       "qa/docs-, qa/defect-, qa/flaky-, qa/coverage-, "
+                       "qa/consolidate-, qa/performance-, qa/pdsl- and "
+                       "qa/retro-; there are seven rounds and MAX_OPEN_PRS is "
+                       "merely forwarded as input."),
+            "sources": [".github/CLAUDE.md"],
+        }
+        result = grade(forwarded_only, resolve_expect(case, "step2"))
+        self.assertFalse(result.passed)
+        self.assertIn("must_include_any", " ".join(result.failures))
+
+    def test_e1_step2_accepts_the_limit_stated_before_its_name(self):
+        case = self._case("E1")
+        value_first = {
+            "ok": True,
+            "answer": ("Master Agent Dispatch uses branch prefixes qa/docs-, "
+                       "qa/defect-, qa/flaky-, qa/coverage-, qa/consolidate-, "
+                       "qa/performance-, qa/pdsl- and qa/retro-, and starts no "
+                       "round while more than 7 PRs are open (MAX_OPEN_PRS)."),
+            "sources": [".github/CLAUDE.md"],
+        }
+        result = grade(value_first, resolve_expect(case, "step2"))
+        self.assertTrue(result.passed, result.failures)
+
+    def test_e1_step2_rejects_a_current_count_that_is_not_the_limit(self):
+        # The value-first form must assert a bound, not merely count how many
+        # PRs happen to be open: "There are 7 open PRs; MAX_OPEN_PRS is merely
+        # forwarded as input." mentions 7, PRs and MAX_OPEN_PRS but states no
+        # limit, so the guard must reject it.
+        case = self._case("E1")
+        current_count = {
+            "ok": True,
+            "answer": ("Master Agent Dispatch runs rounds with prefixes "
+                       "qa/docs-, qa/defect-, qa/flaky-, qa/coverage-, "
+                       "qa/consolidate-, qa/performance-, qa/pdsl- and "
+                       "qa/retro-. There are 7 open PRs; MAX_OPEN_PRS is "
+                       "merely forwarded as input."),
+            "sources": [".github/CLAUDE.md"],
+        }
+        result = grade(current_count, resolve_expect(case, "step2"))
+        self.assertFalse(result.passed)
+        self.assertIn("must_include_any", " ".join(result.failures))
+
+    def test_e1_step2_accepts_value_first_bound_phrasings(self):
+        # A live model may state the limit value-first with any of the usual
+        # bound words; each must satisfy the guard.
+        case = self._case("E1")
+        prefixes = ("Master Agent Dispatch uses branch prefixes qa/docs-, "
+                    "qa/defect-, qa/flaky-, qa/coverage-, qa/consolidate-, "
+                    "qa/performance-, qa/pdsl- and qa/retro-; ")
+        accepted = [
+            "no round starts while more than 7 PRs are open (MAX_OPEN_PRS).",
+            "no more than 7 PRs may be open (MAX_OPEN_PRS).",
+            "at most 7 open PRs at a time, enforced by MAX_OPEN_PRS.",
+            "up to 7 open pull requests are allowed (MAX_OPEN_PRS).",
+        ]
+        for limit in accepted:
+            with self.subTest(limit=limit):
+                response = {"ok": True, "answer": prefixes + limit,
+                            "sources": [".github/CLAUDE.md"]}
+                result = grade(response, resolve_expect(case, "step2"))
+                self.assertTrue(result.passed, result.failures)
+
+    def test_e1_step2_limit_guard_accepts_common_assertions_and_rejects_negations(self):
+        # A live model states the limit in many equivalent ways; the guard
+        # must accept each of them, and still reject a negation even when the
+        # negating word is code-formatted.
+        case = self._case("E1")
+        prefixes = ("Master Agent Dispatch uses branch prefixes qa/docs-, "
+                    "qa/defect-, qa/flaky-, qa/coverage-, qa/consolidate-, "
+                    "qa/performance-, qa/pdsl- and qa/retro-; ")
+        accepted = ["MAX_OPEN_PRS is set to 7.",
+                    "MAX_OPEN_PRS is `7`.",
+                    "MAX_OPEN_PRS defaults to seven.",
+                    "MAX_OPEN_PRS: 7."]
+        rejected = ["MAX_OPEN_PRS is `not` 7.",
+                    "MAX_OPEN_PRS is never set to 7."]
+        for limit in accepted + rejected:
+            with self.subTest(limit=limit):
+                response = {"ok": True, "answer": prefixes + limit,
+                            "sources": [".github/CLAUDE.md"]}
+                result = grade(response, resolve_expect(case, "step2"))
+                self.assertEqual(result.passed, limit in accepted,
+                                 result.failures)
 
 
 class TestMustFlagStale(unittest.TestCase):

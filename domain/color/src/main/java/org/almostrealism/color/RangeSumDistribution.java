@@ -16,7 +16,6 @@
 
 package org.almostrealism.color;
 
-import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -36,15 +35,12 @@ import java.util.List;
  * @see OverlayDistribution
  * @author Mike Murray
  */
-public class RangeSumDistribution extends ProbabilityDistribution {
-	/** The child distributions whose ranges are merged by this distribution. */
-	private ProbabilityDistribution children[];
-
+public class RangeSumDistribution extends CompositeDistribution {
 	/**
 	 * Constructs a {@link RangeSumDistribution} with no children.
 	 */
 	public RangeSumDistribution() {
-		this(new ProbabilityDistribution[0]);
+		super();
 	}
 
 	/**
@@ -53,24 +49,9 @@ public class RangeSumDistribution extends ProbabilityDistribution {
 	 * @param children the child distributions whose ranges will be merged
 	 */
 	public RangeSumDistribution(ProbabilityDistribution children[]) {
-		this.children = children;
+		super(children);
 	}
 
-	/**
-	 * Adds a range to the first child distribution.
-	 *
-	 * <p>Has no effect if there are no children.</p>
-	 *
-	 * @param start the start of the range
-	 * @param end   the end of the range
-	 * @param p     the probability density for the range
-	 */
-	@Override
-	public void addRange(double start, double end, double p) {
-		if (this.children.length <= 0) return;
-		this.children[0].addRange(start, end, p);
-	}
-	
 	/**
 	 * Computes a merged set of ranges from all child distributions.
 	 *
@@ -82,16 +63,16 @@ public class RangeSumDistribution extends ProbabilityDistribution {
 	 */
 	@Override
 	protected double[][] getRanges() {
-		if (this.children.length <= 0) return new double[0][0];
-		if (this.children.length == 1) return this.children[0].getRanges();
+		if (getChildren().length <= 0) return new double[0][0];
+		if (getChildren().length == 1) return getChildren()[0].getRanges();
 		
 		List l = new ArrayList();
 		
-		double ranges[][] = this.children[0].getRanges();
+		double ranges[][] = getChildren()[0].getRanges();
 		for (int i = 0; i < ranges.length; i++) l.add(ranges[i]);
 		
-		for (int i = 1; i < this.children.length; i++) {
-			ranges = this.children[i].getRanges();
+		for (int i = 1; i < getChildren().length; i++) {
+			ranges = getChildren()[i].getRanges();
 			
 			for (int j = 0; j < ranges.length; j++) {
 				Iterator itr = l.iterator();
@@ -149,52 +130,6 @@ public class RangeSumDistribution extends ProbabilityDistribution {
 		return null;
 	}
 
-	/**
-	 * Returns the total probability density at {@code x} by summing the densities
-	 * of all child distributions.
-	 *
-	 * @param x the domain value at which to evaluate the probability density
-	 * @return the sum of probability densities across all children at {@code x}
-	 */
-	@Override
-	public double getProbability(double x) {
-		double p = 0.0;
-		
-		for (int i = 0; i < this.children.length; i++)
-			p += this.children[i].getProbability(x);
-		
-		return p;
-	}
-	
-	/**
-	 * Returns {@code true} if any child distribution contains the specified range.
-	 *
-	 * @param start the start of the range to test
-	 * @param end   the end of the range to test
-	 * @return {@code true} if at least one child contains the range
-	 */
-	@Override
-	public boolean contains(double start, double end) {
-		for (int i = 0; i < this.children.length; i++)
-			if (this.children[i].contains(start, end)) return true;
-		return false;
-	}
-	
-	/**
-	 * Loads the distribution from a file, replacing all children with a single child
-	 * populated from the file contents.
-	 *
-	 * @param file the path to the input file
-	 * @param div  the delimiter used between columns in the file
-	 * @throws IOException if the file cannot be read
-	 */
-	@Override
-	public void loadFromFile(String file, String div) throws IOException {
-		this.children = new ProbabilityDistribution[1];
-		this.children[0] = new ProbabilityDistribution();
-		this.children[0].loadFromFile(file, div);
-	}
-	
 	/**
 	 * Returns the {@link Method} object for {@link #createRangeSumDistribution(ProbabilityDistribution[])},
 	 * useful for reflective invocation.

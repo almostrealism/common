@@ -101,6 +101,8 @@ Lightweight HTTP server (NanoHTTPD, default port 7780) that receives status even
 | GET | `/api/tracker/claimable` | -- | How many tasks of a tracker release an agent could claim (query params: `project`, `release` — names). Returns the tracker's own `{"ok", "release_id", "count"}`; used by CI to decide whether to start a task-planning round. 503 when the tracker is unreachable |
 | POST | `/api/tracker/claim` | `{"project", "release", "workstreamId"}` | Claims the next ready task of a tracker release (names) for a registered workstream, linking the task to it. Returns `{"ok": true, "task": {...}}`, or `"task": null` when nothing is claimable. Used by CI after registering the workstream, to hand the claimed task to the agent. 400 when a field is missing or blank, 404 when `workstreamId` is not registered, 503 when no tracker is configured, 502 when the tracker call fails |
 | GET | `/api/tools/{name}` | -- | Download a pushed tool's Python source file |
+| POST | `/api/alerts` | `{"text":"...","recipients":["..."],"severity":"INFO"}` | Deliver free-form text to the named SMS recipients configured via `setSmsCompliance`, subject to a per-caller rate limit and recipient opt-out. The response reports the `delivered`, `unknown`, `optedOut`, and `known` recipient names — see `AlertRequestHandler` |
+| POST | `/api/sms/inbound` | SignalWire form-encoded `From`, `To`, `Body` | Inbound-SMS webhook for carrier compliance keywords (STOP/START/HELP): records or clears the sender's opt-out in the `SmsOptOutRegistry` and replies with cXML — see `InboundSmsHandler` |
 
 #### Workstream listing filters
 

@@ -30,6 +30,25 @@ This module exists to:
 - General sparse or tensor operations. Those belong in `compute/` or `base/`, where every
   domain can use them.
 
+## Contents
+
+- `org.almostrealism.biology.neuron.ExponentialSynapseNeurons`: leaky integrate-and-fire neurons
+  whose synaptic potential decays exponentially, stepped by the exact solution of the coupled
+  membrane and synapse equations, with a per-neuron refractory period during which the neuron is
+  held and its input discarded. It follows the order of a Brian2 time step and is the neuron of the
+  Shiu et al. (2024) whole-brain model. It is a `Block`: membrane kicks and synaptic input
+  (`[2 * N]`) flow in, spikes (`[N]`) flow out.
+- `org.almostrealism.biology.neuron.PoissonInput`: independent Poisson spike trains to a selected
+  set of neurons, each spike a fixed membrane kick. It is a `Block` that adds its kicks to the drive
+  flowing through it, and draws from a counter-based generator indexed by the simulation's step
+  counter, so runs are reproducible on every backend.
+
+Both are Java types because their dynamics need comparisons and persistent state that PDSL cannot
+express yet. As `Block`s they can still be placed in a PDSL layer by naming them, so the network
+around them is composed in PDSL: `studio/bioscience` does this for a connectome
+(`/pdsl/connectome.pdsl`). Their tests live in `studio/bioscience`, the module with test sources
+that depends on this one.
+
 ## How biological dynamics are expressed and stepped today
 
 The population models this module builds on are in `ar-graph`
@@ -37,6 +56,12 @@ The population models this module builds on are in `ar-graph`
 them. [Simulating a Spiking Neural Population](../../docs/internals/neural-population-simulation.md)
 walks through a tested example from state to recorded spikes: the step, synaptic delay,
 connectivity, reproducible Poisson drive, the loop owner, and the known limits.
+
+The `ExponentialSynapseNeurons` and `PoissonInput` blocks above are the neuron and drive of the
+finer, neuron-level path. `studio/bioscience` composes them, by name, into a PDSL step over a
+measured brain circuit;
+[Simulating a Neuron-Level Connectome](../../docs/internals/neuron-level-connectome-simulation.md)
+walks that pipeline from a connectome dataset to a raster cross-validated against Brian2.
 
 ## Dependencies
 

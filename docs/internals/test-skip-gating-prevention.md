@@ -97,7 +97,8 @@ Facts the table depends on:
 - **CI test jobs run under one of two profiles — not uniformly `pipeline`.**
   In every lane (CPU, Metal, OpenCL, CUDA) the `engine/ml`, `base/io` and
   `engine/utils-http` invocations, the `test-media` modules `engine/audio`,
-  `studio/compose`, `studio/spatial`, `extern/ml-onnx` and `studio/experiments`,
+  `studio/compose`, `studio/spatial`, `extern/ml-onnx`, `studio/experiments` and
+  `studio/bioscience`,
   and every `test-flowtree` module pass `-DAR_TEST_PROFILE=pipeline`. The
   `base/hardware`, `engine/utils` and `engine/render` invocations pass **no**
   `-DAR_TEST_PROFILE` and so run under the **default** profile, as does

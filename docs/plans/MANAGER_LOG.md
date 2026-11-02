@@ -28,87 +28,122 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
-### 2026-10-28 (later) — Give the attention key/value caches an owner the caller can clear and release
+### 2026-11-02 — Document the neuron-level connectome simulation pipeline
 
-**Category:** Code Quality (correctness)
-**Branch:** `project/plan-20261028-165007`
-**Plan:** [`PLAN-20261028-attention-cache-ownership.md`](PLAN-20261028-attention-cache-ownership.md)
+**Category:** Documentation
+**Branch:** `project/plan-20261102-014251`
+**Plan:** [`PLAN-20261102-neuron-level-connectome-simulation-docs.md`](PLAN-20261102-neuron-level-connectome-simulation-docs.md)
 
 #### What changed since last cycle
 
-The decode-throughput measurement landed (PR #768, merged): `CausalLanguageModelDecodeThroughputTest`
-now measures both decode paths on the documentation-run configuration, the Generation section of
-`training-a-language-model.md` states the measured figures, and `OperationProfileNode.getRunCount()`
-and `ByteTokenizer.isValidUtf8()` are new. The measurement cashed the arc — but with an honest and
-unexpected result: the key/value-cache decode is **~4× slower** than the sliding window on Metal
-(~50 vs ~190 bytes/second), dispatch- and host-wait-bound on ~30 host-blocking `mtlCopy` waits per
-byte. That overturned the premise the whole KV-cache cycle rode on (that the cache is cheaper per
-byte), so the benchmark asserts only path agreement and reports the rest. Two follow-ups were filed:
-`d8ad5001` (remove the host-blocking copies so the cache is actually faster — Performance, Metal) and
-`9825196c` (the decode model's caches have no owner — Code Quality).
+Two large things landed in the last two days. The decode-faster-than-sliding-window work
+merged (PR #783): the KV-cache decode's host-blocking aggregate copy-back is now read off the
+compiled scope instead of a declared shortcut (`AssignmentSupport.containsAssignment` inferred
+from the `Scope`, after the owner rejected a `getWrittenDestination()` declaration — recorded in
+`INVESTIGATION-20261031-declared-property-shortcut.md`), and `training-a-language-model.md` carries
+the measured figures. CUDA joined automatic backend selection (PR #810). Larger for this cycle: the
+**neuron-level connectome** subsystem merged (PRs #806, #809) — `NeuronConnectome` (a signed
+synapse-count matrix in CSR, read through `StateDictionary`, whose weights carry a
+`CompressedRowTraversalOrdering` so synaptic input is one sparse `matmul`), `ConnectomeNetwork` (the
+Shiu et al. (2024) whole-brain model composed in `/pdsl/connectome.pdsl`, stepped by
+`SimulationRunner`, with replicas and `meanRates`), the `ExponentialSynapseNeurons`/`PoissonInput`
+`Block`s in `domain/biology`, and the `connectome_csr.py`/`brian2_reference.py` ingest-and-oracle
+scripts in `studio/bioscience` — with the synthetic connectome and the FlyWire "sugar circuit" plus
+their Brian2 reference spikes committed as test resources. The platform now reproduces a published
+whole-brain experiment's spikes, spike for spike.
 
 #### Category assessment (priority order)
 
-- **Documentation — excellent and current.** I verified the newest surface rather than taking it on
-  faith: the Generation section was just rewritten from measurement, `ml-inference-pipeline.md` has
-  the single-position KV-cache decode section, and `consult` finds no flagship gap. The 2026-09 doc
-  caveat about cache zero-initialization is long resolved (caches are `calloc`-backed). Moved on.
-- **Code quality — a real correctness defect, and it decided the cycle.** `9825196c`:
-  `CausalLanguageModel.decodeModel` allocates per-layer key/value caches and hands them back, but the
-  `attention(...)` overload it builds takes no cache arguments — the caches the compiled decode model
-  reads and writes are the ones `AttentionFeatures.attentionArguments` allocates internally. So the
-  generator's `reset()` clears orphan buffers (the real caches are never cleared; it passes its guard
-  only because the causal mask hides unwritten rows and decode overwrites in order), `destroy()`
-  leaks the real caches, and the javadoc/training-doc describe a mechanism that does not exist. The
-  root cause is general — `attentionArguments` allocates caches with no owner, so every caller of the
-  Java `attention(...)`/`transformer(...)` builders (`Llama2`, `MoonbeamMidi`) is in the same position
-  — which is what lifts it above a one-line patch. (`Qwen3` and `SkyTntMidi` build through PDSL and do
-  not reach `attentionArguments`; `SkyTntMidi` already binds caches it owns.)
-- **Performance — live, deliberately deferred.** `d8ad5001` (the ~4× slowdown) is the sharpest
-  performance lever on the board, but it is Metal-gated and ranks below an open correctness defect
-  under the priority order. It is next cycle's work, and fixing ownership first hands it a decode
-  graph whose cache buffers have a clear owner.
-- **Proof of value — not reachable this cycle.** The connectome proof-of-value steps still wait on
-  the sparse product merging and the owner's MaleCNS tables; conditional diffusion training is heavy.
+- **Documentation — a real, fresh gap, and it decided the cycle.** The neuron-level connectome is
+  the most distinctive capability the platform added this month, and the only prose explaining it is
+  two module READMEs and the classes' Javadoc. No internals page walks the pipeline (CSR ingest →
+  `NeuronConnectome` → `ConnectomeNetwork` step in PDSL → `SimulationRunner` run → Brian2 match). The
+  one existing simulation page, `neural-population-simulation.md`, is about the *aggregate* LIF/rate
+  **population** path — a different, coarser model — and `llms.txt` still names only the older
+  `CellTypeConnectome` loader, so a reader following the index never discovers the neuron-level
+  subsystem. This is the reference-exists/connective-tissue-missing situation again, on the newest
+  high-fidelity layer.
+- **Code quality — strong and owned.** The KV-decode shortcut was caught and repaired in review, with
+  its own investigation document; the attention-correctness and cache-ownership arcs are closed. No
+  reachable flagship defect.
+- **Performance — no PM-level blocker.** The decode cache now beats the sliding window; the standing
+  levers (weighted-sum `matmul` reduced form, convolution input gradient) are real but non-blocking.
+- **Proof of value — live, deliberately deferred.** The MaleCNS whole-brain reproduction and its
+  benchmark are open for Common 0.77 and build directly on the pipeline this page documents, so
+  documenting it first is the cheaper ordering; conditional diffusion is heavy; the sliding KV cache
+  waits on confirming the decode cap binds.
 
 #### Why this task
 
-It is the disciplined pick: the earliest category (after documentation, which is covered) with
-genuine, reachable, high-leverage work. The defect sits directly beneath the flagship LM generation
-path — a `reset()` that is a no-op by accident and a `destroy()` that leaks — and its fix is a
-general improvement to `AttentionFeatures`, not a local patch: give the caller a way to own the
-caches the attention block actually uses, the honest form of "own your collaborators." It is
-additive and backward compatible (every self-allocating caller is untouched), and its drift guard
-asserts the ownership invariant structurally so it cannot be satisfied by the causal-mask accident
-that masks the bug today — the test is written to **fail on `master`** first. Small–Medium, and it
-**runs on any backend** (no Metal, no workstream settings file), unlike the performance follow-up.
+It is the disciplined pick: the earliest category with genuine, reachable, high-leverage work. It is
+the 2026-10-27 move (which documented the aggregate population path) applied to the newer
+neuron-level path that reproduces a published result. It is reachable today **on any backend** — the
+synthetic connectome (40 neurons) and its Brian2 reference ship as committed test resources, so the
+page's worked example and its drift-guard (`NeuronLevelConnectomeSimulationExamplesTest`, modeled on
+`NeuralPopulationSimulationExamplesTest`) need no curated download and no macOS node. Every complete
+excerpt the page shows is exercised by the test, asserting robust backend-independent properties
+without reducing dimensions, loosening tolerances or gating skips. For the self-understanding aim it
+is the page that lets a model trained on the corpus reason about the platform simulating a living
+brain at single-neuron resolution — the most distinctive thing it can now do on the science side.
 
 #### Balance across categories
 
-The last cycle was proof of value (the throughput measurement); the two before it documentation. This
-returns to the foundation for one cycle to close the correctness defect that same measurement exposed
-before building the performance work on top of it. That is sequencing, not drift: fix what the
-benchmark found is wrong, then make the path fast. The next cycle should take `d8ad5001` on a Metal
-node.
+The last cycle was performance (the KV-decode copy-back). Returning to documentation now is not drift
+toward the exciting category: a whole subsystem arrived in two days with only READMEs, the index does
+not mention it, and the proof-of-value step that builds on it is next. It is a medium task touching no
+production code and running on any node, so no workstream settings file accompanies it.
 
 #### What comes next
 
-1. This plan: the caller-supplied-cache `attentionArguments`/`attention` overload, its use from
-   `decodeModel`, the orphan-allocation deletion, the javadoc/doc correction, and the fail-on-master
-   ownership guard.
-2. **Performance, Metal (`d8ad5001`):** remove the ~30 host-blocking `mtlCopy` waits per byte from the
-   decode graph so the cache path is actually faster, then add the strictly-fewer-kernels-per-byte
-   assertion to `CausalLanguageModelDecodeThroughputTest` and update the Generation-section figures.
-3. **Proof of value, if the cache then beats the sliding window but the `seqLen` cap binds long-form
-   speed:** a sliding (rolling, position-remapped) key/value cache — filed from `d8ad5001`'s numbers,
-   not before.
-4. **Proof of value, connectome:** once the CSR sparse product merges and the owner provides the
-   MaleCNS tables and a Brian2 reference, the ingest into CSR form and the Shiu et al. reproduction.
-5. **Proof of value:** conditional diffusion training.
-6. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
-7. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2; the `io.almostrealism.collect`
+1. This plan: `docs/internals/neuron-level-connectome-simulation.md`, the
+   `NeuronLevelConnectomeSimulationExamplesTest` drift-guard, and the `llms.txt` /
+   `neural-population-simulation.md` / README cross-links.
+2. **Proof of value, connectome:** the MaleCNS whole-brain ingest and the Shiu et al. reproduction
+   gate (open for Common 0.77), now with its substrate documented.
+3. **Proof of value, self-hosted LM:** a sliding (rolling) key/value cache for long-form generation
+   past `seqLen`, if the decode cap binds now that the cache path is faster than the sliding window.
+4. **Proof of value:** conditional diffusion training.
+5. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000)
+   and a reduced form for the convolution input gradient.
+6. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2; the `io.almostrealism.collect`
    package split; the unbuilt PDSL research/education features; letting a trained model read the
    platform's own *source*, the deepest self-understanding aim.
+
+### 2026-10-29 — Make the key/value-cache decode faster than the sliding window (condensed)
+
+**Category:** Performance (self-hosted LM generation arc) · **Branch:** `project/plan-20261029-151904` ·
+**Plan:** [`PLAN-20261029-kv-cache-decode-host-copies.md`](PLAN-20261029-kv-cache-decode-host-copies.md)
+
+The decode-throughput measurement (PR #768) had found the cache path ~4× slower than the sliding
+window on Metal: the single-position decode issued ~30 host-blocking aggregate copy-backs per byte
+where the sliding path issued one, so it was dispatch/host-wait bound. The fix makes the copy-back a
+property read off the compiled `Scope` rather than something copied back unconditionally —
+`AssignmentSupport.containsAssignment` asks each assignment whether it may write an element of an
+aggregated argument, so arguments a kernel does not write are not copied back. An initial version
+declared this through a new `Computation.getWrittenDestination()`; the owner rejected it (it
+duplicated `OutputSupport.getOutputVariable()` and let an implementor contradict the scope) and it was
+replaced by the scope-inferred form, with the episode recorded in
+`INVESTIGATION-20261031-declared-property-shortcut.md`. Landed as PR #783 with the measured figures in
+`training-a-language-model.md`; the decode now issues strictly fewer kernels per byte than the sliding
+window. Needed a Metal node for the measurement.
+
+### 2026-10-28 (later) — Give the attention key/value caches an owner the caller can clear and release (condensed)
+
+**Category:** Code Quality (correctness) · **Branch:** `project/plan-20261028-165007` ·
+**Plan:** [`PLAN-20261028-attention-cache-ownership.md`](PLAN-20261028-attention-cache-ownership.md)
+
+The decode-throughput measurement (PR #768) had cashed the KV-cache arc with an unexpected result
+and exposed a correctness defect beneath the flagship LM generation path: `CausalLanguageModel.decodeModel`
+allocated per-layer caches and handed them back, but the `attention(...)` overload it built took no
+cache arguments, so the compiled decode read and wrote the caches `AttentionFeatures.attentionArguments`
+allocated internally. The generator's `reset()` therefore cleared orphan buffers (passing its guard
+only because the causal mask hides unwritten rows and decode overwrites in order) and `destroy()`
+leaked the real caches. The root cause was general — `attentionArguments` allocated caches with no
+owner, so every Java `attention(...)`/`transformer(...)` caller (`Llama2`, `MoonbeamMidi`) was in the
+same position. The plan added a caller-supplied-cache `attentionArguments`/`attention` overload, used
+it from `decodeModel`, deleted the orphan allocation, corrected the javadoc/doc, and added a
+fail-on-`master` ownership guard (PR #773, merged). It runs on any backend and hands the performance
+follow-up (`d8ad5001`) a decode graph whose cache buffers have a clear owner.
 
 ### 2026-10-28 — Measure the self-hosted LM's key/value-cache decode speed, and generate prose about the platform at that speed
 

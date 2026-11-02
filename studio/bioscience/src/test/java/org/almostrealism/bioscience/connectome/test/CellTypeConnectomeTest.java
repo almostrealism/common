@@ -20,12 +20,13 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.io.SystemUtils;
 import org.almostrealism.bioscience.connectome.CellTypeConnectome;
 import org.almostrealism.util.TestDepth;
+import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
-import org.junit.Assume;
+import org.almostrealism.util.TestUtils;
 import org.junit.Test;
 
 import java.io.File;
@@ -41,9 +42,10 @@ import java.nio.file.Files;
  * whole matrix against its host columns.
  *
  * <p>The data lives outside the repository. Its directory is the {@value #DIRECTORY_PROPERTY}
- * system property or environment variable, by default {@value #DEFAULT_DIRECTORY}. These are new
- * tests that need that directory, so each one is skipped where it is absent and runs on the
- * nodes that provide it.</p>
+ * system property or environment variable, by default {@value #DEFAULT_DIRECTORY}. No runner
+ * carries it, so these tests are long-running and excluded from the pipeline profile: they run
+ * when asked for, and then a missing directory fails the test. The loader itself is covered in
+ * the pipeline by {@link CellTypeConnectomeLoadTest}.</p>
  */
 public class CellTypeConnectomeTest extends TestSuiteBase {
 	/** The property or environment variable naming the data directory. */
@@ -56,15 +58,15 @@ public class CellTypeConnectomeTest extends TestSuiteBase {
 	private static final String SPOT_CHECKS_FILE = "spot-checks.json";
 
 	/**
-	 * Returns the data directory, skipping the calling test when it does not hold the derived
-	 * matrix.
+	 * Returns the data directory, failing the calling test on every host when it does not hold the
+	 * derived matrix: these tests run only when asked for, so its absence is an error, never a
+	 * skip.
 	 *
 	 * @return the data directory
 	 */
-	public static File requireDirectory() {
-		File directory = new File(SystemUtils.getProperty(DIRECTORY_PROPERTY, DEFAULT_DIRECTORY));
-		Assume.assumeTrue(new File(directory, CellTypeConnectome.WEIGHTS_FILE).exists());
-		return directory;
+	protected File requireDirectory() {
+		return requireResourceIn(DIRECTORY_PROPERTY, DEFAULT_DIRECTORY, CellTypeConnectome.WEIGHTS_FILE,
+				ComputeRequirement.GPU, ComputeRequirement.CPU);
 	}
 
 	/**
@@ -74,6 +76,7 @@ public class CellTypeConnectomeTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 600000)
 	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void spotChecks() throws IOException {
 		File directory = requireDirectory();
 
@@ -110,6 +113,7 @@ public class CellTypeConnectomeTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 1800000)
 	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void deviceColumns() throws IOException {
 		File directory = requireDirectory();
 
@@ -146,6 +150,7 @@ public class CellTypeConnectomeTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 600000)
 	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void typeTables() throws IOException {
 		File directory = requireDirectory();
 

@@ -344,13 +344,20 @@ class ScriptedModel:
     The script names evidence by what it is rather than by ID, since IDs are
     assigned at retrieval time: ``[D:<path>]`` is the first documentation
     chunk from that file, ``[I:<path>]`` the first index fact about it,
-    ``[N:<memory id>]`` that note; ``[D:<path>@<line>]`` narrows to the item
-    covering that line. A placeholder naming evidence that was not
-    retrieved becomes an ID that was never presented (``[D99]``) — what a
-    model inventing a citation produces — so the verifier sees it as such.
+    ``[N:<memory id>]`` that note; ``[D:<path>@"<phrase>"]`` narrows to the
+    first item from that file whose text contains the phrase. A placeholder
+    naming evidence that was not retrieved becomes an ID that was never
+    presented (``[D99]``) — what a model inventing a citation produces — so
+    the verifier sees it as such.
+
+    Items are narrowed by content, never by line number: the corpus is the
+    live checkout, so a line anchor silently moves to a different chunk (or
+    none) whenever anything above it in the file is edited, while a phrase
+    stays put until the cited text itself changes. A line anchor is
+    rejected outright.
     """
 
-    _PLACEHOLDER = re.compile(r"\[([DIN]):([^\]@]+)(?:@(\d+))?\]")
+    _PLACEHOLDER = re.compile(r'\[([DIN]):([^\]@]+)(?:@(?:"([^"\]]+)"|(\d+)))?\]')
 
     def __init__(self, text):
         """``text`` is one canned answer, or a list of them — one per turn of a
@@ -369,14 +376,17 @@ class ScriptedModel:
     def resolve(self, evidence) -> str:
         """The script with its placeholders replaced by evidence IDs."""
         def _id(match: re.Match) -> str:
-            kind, ref = match.group(1), match.group(2).strip()
-            line = int(match.group(3)) if match.group(3) else 0
+            kind, ref, phrase = match.group(1), match.group(2).strip(), match.group(3)
+            if match.group(4):
+                raise ValueError(
+                    f"line anchor {match.group(0)} in a scripted answer: cite by "
+                    f'content instead, [{kind}:{ref}@"<phrase in the cited text>"]')
             for item in evidence.items():
                 if kind == "N" and item.kind == "note" and item.memory_id == ref:
                     return f"[{item.id}]"
                 if kind in "DI" and item.kind == ("doc" if kind == "D" else "index") \
                         and (item.file == ref or item.file.endswith("/" + ref)) \
-                        and (not line or item.start <= line <= item.end):
+                        and (not phrase or phrase in item.text):
                     return f"[{item.id}]"
             return f"[{kind}99]"
         return self._PLACEHOLDER.sub(_id, self.text)

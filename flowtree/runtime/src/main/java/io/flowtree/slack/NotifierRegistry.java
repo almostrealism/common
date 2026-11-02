@@ -387,6 +387,34 @@ public final class NotifierRegistry {
     }
 
     /**
+     * Searches every workspace for a non-archived workstream whose default
+     * branch matches {@code branch} and that lists {@code repoUrl} among its
+     * dependent repositories; returns the first match or {@code null}.
+     *
+     * <p>Registration uses this after an exact {@code (branch, repo)} match
+     * misses, to recognise that the branch is already covered by a workstream
+     * whose primary repo is a downstream repository depending on
+     * {@code repoUrl}. A duplicate workstream is then not created. Archived
+     * candidates are excluded here, in the lookup, so the existing
+     * {@link #findByBranchAndRepo(String, String)} contract is unchanged.</p>
+     *
+     * @param branch  the branch name to match
+     * @param repoUrl the repository URL to find among dependent repos
+     * @return the matching workstream, or {@code null} if none matches
+     */
+    public Workstream findByBranchAndDependentRepo(String branch, String repoUrl) {
+        if (!byWorkspace.isEmpty()) {
+            for (SlackNotifier n : byWorkspace.values()) {
+                Workstream w = n.findWorkstreamByBranchAndDependentRepo(branch, repoUrl);
+                if (w != null) return w;
+            }
+            return null;
+        }
+        return primary != null
+                ? primary.findWorkstreamByBranchAndDependentRepo(branch, repoUrl) : null;
+    }
+
+    /**
      * Notifies a workstream's notifier and then every workspace-independent
      * listener, isolating each from the others' failures.
      */

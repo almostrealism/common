@@ -1,0 +1,242 @@
+[
+ {
+  "index": 23,
+  "body_id": "1161",
+  "in_degree": 4,
+  "in_synapses": 51,
+  "out_degree": 7,
+  "out_synapses": 48,
+  "strongest_inputs": [
+   {
+    "body_id": "1119",
+    "weight": -16
+   },
+   {
+    "body_id": "1021",
+    "weight": 13
+   },
+   {
+    "body_id": "1266",
+    "weight": -13
+   }
+  ]
+ },
+ {
+  "index": 6,
+  "body_id": "1042",
+  "in_degree": 4,
+  "in_synapses": 12,
+  "out_degree": 4,
+  "out_synapses": 41,
+  "strongest_inputs": [
+   {
+    "body_id": "1119",
+    "weight": -5
+   },
+   {
+    "body_id": "1021",
+    "weight": 4
+   },
+   {
+    "body_id": "1042",
+    "weight": 2
+   }
+  ]
+ },
+ {
+  "index": 10,
+  "body_id": "1070",
+  "in_degree": 3,
+  "in_synapses": 20,
+  "out_degree": 3,
+  "out_synapses": 18,
+  "strongest_inputs": [
+   {
+    "body_id": "1217",
+    "weight": 10
+   },
+   {
+    "body_id": "1000",
+    "weight": 7
+   },
+   {
+    "body_id": "1245",
+    "weight": -3
+   }
+  ]
+ },
+ {
+  "index": 3,
+  "body_id": "1021",
+  "in_degree": 2,
+  "in_synapses": 35,
+  "out_degree": 5,
+  "out_synapses": 32,
+  "strongest_inputs": [
+   {
+    "body_id": "1084",
+    "weight": 20
+   },
+   {
+    "body_id": "1266",
+    "weight": -15
+   }
+  ]
+ },
+ {
+  "index": 17,
+  "body_id": "1119",
+  "in_degree": 3,
+  "in_synapses": 29,
+  "out_degree": 3,
+  "out_synapses": 38,
+  "strongest_inputs": [
+   {
+    "body_id": "1014",
+    "weight": -17
+   },
+   {
+    "body_id": "1259",
+    "weight": 7
+   },
+   {
+    "body_id": "1196",
+    "weight": 5
+   }
+  ]
+ },
+ {
+  "index": 1,
+  "body_id": "1007",
+  "in_degree": 3,
+  "in_synapses": 26,
+  "out_degree": 4,
+  "out_synapses": 38,
+  "strongest_inputs": [
+   {
+    "body_id": "1259",
+    "weight": 18
+   },
+   {
+    "body_id": "1070",
+    "weight": 7
+   },
+   {
+    "body_id": "1021",
+    "weight": 1
+   }
+  ]
+ },
+ {
+  "index": 13,
+  "body_id": "1091",
+  "in_degree": 4,
+  "in_synapses": 44,
+  "out_degree": 2,
+  "out_synapses": 28,
+  "strongest_inputs": [
+   {
+    "body_id": "1007",
+    "weight": 17
+   },
+   {
+    "body_id": "1091",
+    "weight": 17
+   },
+   {
+    "body_id": "1049",
+    "weight": 8
+   }
+  ]
+ },
+ {
+  "index": 9,
+  "body_id": "1063",
+  "in_degree": 1,
+  "in_synapses": 17,
+  "out_degree": 1,
+  "out_synapses": 17,
+  "strongest_inputs": [
+   {
+    "body_id": "1077",
+    "weight": -17
+   }
+  ]
+ },
+ {
+  "index": 33,
+  "body_id": "1231",
+  "in_degree": 1,
+  "in_synapses": 6,
+  "out_degree": 2,
+  "out_synapses": 10,
+  "strongest_inputs": [
+   {
+    "body_id": "1056",
+    "weight": -6
+   }
+  ]
+ },
+ {
+  "index": 19,
+  "body_id": "1133",
+  "in_degree": 4,
+  "in_synapses": 50,
+  "out_degree": 1,
+  "out_synapses": 7,
+  "strongest_inputs": [
+   {
+    "body_id": "1266",
+    "weight": -19
+   },
+   {
+    "body_id": "1147",
+    "weight": 14
+   },
+   {
+    "body_id": "1217",
+    "weight": 10
+   }
+  ]
+ },
+ {
+  "index": 37,
+  "body_id": "1259",
+  "in_degree": 2,
+  "in_synapses": 29,
+  "out_degree": 2,
+  "out_synapses": 25,
+  "strongest_inputs": [
+   {
+    "body_id": "1168",
+    "weight": 16
+   },
+   {
+    "body_id": "1217",
+    "weight": 13
+   }
+  ]
+ },
+ {
+  "index": 22,
+  "body_id": "1154",
+  "in_degree": 4,
+  "in_synapses": 49,
+  "out_degree": 4,
+  "out_synapses": 33,
+  "strongest_inputs": [
+   {
+    "body_id": "1063",
+    "weight": 17
+   },
+   {
+    "body_id": "1175",
+    "weight": 12
+   },
+   {
+    "body_id": "1182",
+    "weight": -12
+   }
+  ]
+ }
+]

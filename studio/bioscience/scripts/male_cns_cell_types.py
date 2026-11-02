@@ -28,7 +28,6 @@ The output directory receives:
 """
 
 import argparse
-import hashlib
 import json
 import os
 import sys
@@ -188,15 +187,6 @@ def recompute(pairs, names, body_ids, body_types, transmitters, weights):
     return checks
 
 
-def sha256(path):
-    """Returns the hex SHA-256 digest of a file."""
-    digest = hashlib.sha256()
-    with open(path, "rb") as source:
-        for block in iter(lambda: source.read(1 << 24), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
 def write_readme(path, source, names, sizes, kept, source_sums, command):
     """Writes the output README recording provenance, filter and sign rule."""
     lines = [
@@ -246,14 +236,7 @@ def main(argv=None):
     parser.add_argument("--output", required=True, help="the directory to write")
     args = parser.parse_args(argv)
 
-    source_sums = {name: sha256(os.path.join(args.source, name)) for name in male_cns.SOURCE_FILES}
-    published = os.path.join(args.source, "SHA256SUMS")
-    if os.path.exists(published):
-        with open(published) as sums:
-            expected = dict(reversed(line.split()) for line in sums if line.strip())
-        for name, digest in source_sums.items():
-            if expected.get(name) not in (None, digest):
-                raise SystemExit("checksum mismatch for " + name)
+    source_sums = male_cns.source_checksums(args.source, male_cns.SOURCE_FILES)
 
     body_ids, body_types, superclasses, classes = male_cns.read_typed_bodies(args.source)
     transmitters = male_cns.read_transmitters(args.source)
@@ -291,7 +274,7 @@ def main(argv=None):
 
     outputs = [WEIGHTS_OUTPUT, TYPES_OUTPUT, ANNOTATIONS_OUTPUT, SPOT_CHECKS_OUTPUT, "README.md"]
     with open(os.path.join(args.output, "SHA256SUMS"), "w") as out:
-        out.write("".join("%s  %s\n" % (sha256(os.path.join(args.output, n)), n) for n in outputs))
+        out.write("".join("%s  %s\n" % (male_cns.sha256(os.path.join(args.output, n)), n) for n in outputs))
 
     print("types=%d typedBodies=%d keptEdges=%d maxAbs=%d spotChecks=%d"
           % (len(names), int(sizes.sum()), kept, int(np.abs(matrix).max()), len(checks)))

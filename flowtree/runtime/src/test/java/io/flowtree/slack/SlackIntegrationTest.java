@@ -160,7 +160,7 @@ public class SlackIntegrationTest extends TestSuiteBase {
         String successMsg = messages.get(1);
         assertTrue(successMsg.contains("Work complete"));
         assertTrue(successDetails.contains("abc1234")); // Shortened commit hash
-        assertTrue(successMsg.contains("feature/test"));
+        assertFalse(successMsg.contains("feature/test"));
 
         messages.clear();
 

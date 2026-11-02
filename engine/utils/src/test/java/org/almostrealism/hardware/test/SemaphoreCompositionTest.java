@@ -18,6 +18,7 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.OperationSemaphore;
+import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -48,6 +49,87 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 
 		DefaultLatchSemaphore only = new DefaultLatchSemaphore((Semaphore) null, 1);
 		assertTrue(Semaphore.all(Arrays.asList(null, only, null)) == only);
+	}
+
+	/**
+	 * A semaphore given more than once is a single member, even when it cannot merge: a
+	 * selection repeating one completion yields that completion itself, which a dependent
+	 * dispatch can chain on directly, rather than a host-side composite waiting for it again
+	 * and again. Distinct members are still composed.
+	 */
+	@Test(timeout = 30000)
+	public void repeatedMemberIsOneMember() {
+		DefaultLatchSemaphore a = new DefaultLatchSemaphore((Semaphore) null, 1);
+		DefaultLatchSemaphore b = new DefaultLatchSemaphore((Semaphore) null, 1);
+
+		assertTrue(a.merge(a) == null);
+		assertTrue(Semaphore.all(Arrays.asList(a, null, a, a)) == a);
+
+		Semaphore combined = Semaphore.all(Arrays.asList(a, b, a, b));
+		assertTrue(combined != a && combined != b);
+
+		a.countDown();
+		b.countDown();
+		combined.waitFor();
+	}
+
+	/**
+	 * A repeated semaphore is recognised as already covered even after its first appearance has
+	 * been folded into a new merged completion that it cannot itself merge with: the selection
+	 * yields the merged completion alone rather than a composite over it and the repeat.
+	 */
+	@Test(timeout = 30000)
+	public void repeatedMemberStaysCoveredAfterMerge() {
+		DefaultLatchSemaphore partner = new DefaultLatchSemaphore((Semaphore) null, 1);
+		DefaultLatchSemaphore merged = new DefaultLatchSemaphore((Semaphore) null, 1);
+		Semaphore pairing = new PairingCompletion(partner, merged);
+
+		assertTrue(pairing.merge(partner) == merged);
+		assertTrue(merged.merge(pairing) == null && pairing.merge(merged) == null);
+
+		assertTrue(Semaphore.all(Arrays.asList(pairing, partner, pairing)) == merged);
+		assertTrue(Semaphore.all(Arrays.asList(pairing, partner, null, pairing, partner)) == merged);
+
+		// A distinct member is still composed with the merged completion
+		DefaultLatchSemaphore other = new DefaultLatchSemaphore((Semaphore) null, 1);
+		LatchSemaphore combined = (LatchSemaphore) Semaphore.all(Arrays.asList(pairing, partner, other, pairing));
+		assertFalse(combined.isSettled());
+
+		merged.countDown();
+		other.countDown();
+		combined.waitFor();
+	}
+
+	/**
+	 * A completion that an earlier merge produced is covered by that merge when it is also given
+	 * as an input, even though it cannot merge with itself; and two merges that produce the same
+	 * completion leave it as a single member. Either way the selection yields that completion
+	 * alone rather than a composite holding it twice.
+	 */
+	@Test(timeout = 30000)
+	public void mergedCompletionIsOneMember() {
+		DefaultLatchSemaphore partner = new DefaultLatchSemaphore((Semaphore) null, 1);
+		DefaultLatchSemaphore merged = new DefaultLatchSemaphore((Semaphore) null, 1);
+		Semaphore pairing = new PairingCompletion(partner, merged);
+
+		assertTrue(merged.merge(merged) == null);
+		assertTrue(Semaphore.all(Arrays.asList(pairing, partner, merged)) == merged);
+		assertTrue(Semaphore.all(Arrays.asList(pairing, partner, merged, pairing, merged)) == merged);
+
+		DefaultLatchSemaphore secondPartner = new DefaultLatchSemaphore((Semaphore) null, 1);
+		Semaphore secondPairing = new PairingCompletion(secondPartner, merged);
+		assertTrue(partner.merge(secondPartner) == null && secondPartner.merge(merged) == null);
+		assertTrue(Semaphore.all(Arrays.asList(pairing, partner, secondPairing, secondPartner)) == merged);
+
+		// A distinct member is still composed with the shared merged completion
+		DefaultLatchSemaphore other = new DefaultLatchSemaphore((Semaphore) null, 1);
+		LatchSemaphore combined = (LatchSemaphore) Semaphore.all(
+				Arrays.asList(pairing, partner, other, secondPairing, secondPartner, merged));
+		assertFalse(combined.isSettled());
+
+		merged.countDown();
+		other.countDown();
+		combined.waitFor();
 	}
 
 	/**
@@ -604,6 +686,38 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 			TimelineCompletion completion = (TimelineCompletion) other;
 			if (completion.timeline != timeline) return null;
 			return completion.point > point ? completion : this;
+		}
+	}
+
+	/**
+	 * A completion that merges with one particular partner into a new completion, distinct from
+	 * both, and with nothing else; it completes when that merged completion does.
+	 */
+	private static class PairingCompletion implements Semaphore {
+		/** The completion this one merges with. */
+		private final Semaphore partner;
+		/** The completion covering both this one and {@link #partner}. */
+		private final Semaphore merged;
+
+		/**
+		 * Creates a completion that merges with {@code partner} into {@code merged}.
+		 *
+		 * @param partner the completion this one merges with
+		 * @param merged  the completion covering both
+		 */
+		PairingCompletion(Semaphore partner, Semaphore merged) {
+			this.partner = partner;
+			this.merged = merged;
+		}
+
+		@Override
+		public void waitFor() {
+			merged.waitFor();
+		}
+
+		@Override
+		public Semaphore merge(Semaphore other) {
+			return other == partner ? merged : null;
 		}
 	}
 }

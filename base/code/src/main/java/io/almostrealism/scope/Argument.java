@@ -20,7 +20,10 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Named;
 
+import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -142,5 +145,47 @@ public class Argument<T> implements Named, Delegated<Argument<T>> {
 		if (getVariable() == null) return null;
 		if (((Delegated) getVariable()).getDelegate() == null) return null;
 		return new Argument((Variable) ((Delegated) getVariable()).getDelegate(), Expectation.EVALUATE_AHEAD);
+	}
+
+	/**
+	 * Sorts a list of arguments by their sort hints, then by name.
+	 * <p>Arguments without sort hints are placed at the end. Arguments with
+	 * null or empty names are sorted before named arguments when hints are equal.</p>
+	 *
+	 * @param <T>       the type of argument
+	 * @param arguments the list of arguments to sort (modified in place)
+	 * @return true if the list was sorted, false if the list was null
+	 */
+	public static <T extends Argument<?>> boolean sort(List<T> arguments) {
+		if (arguments != null) {
+			Comparator<T> c = Comparator.comparing(v -> Optional.ofNullable(v)
+					.map(Argument::getSortHint).orElse(Integer.MAX_VALUE));
+			c = c.thenComparing(v -> v == null || v.getName() == null ? "" : v.getName());
+			arguments.sort(c);
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Removes duplicate arguments from a list, preferring arguments with {@code WILL_EVALUATE} expectation.
+	 * <p>When duplicates are found (by name), the argument with {@code WILL_EVALUATE} expectation
+	 * is preferred if present; otherwise, the first argument is kept.</p>
+	 *
+	 * @param <T>  the type of value held by the arguments
+	 * @param args the list of arguments potentially containing duplicates
+	 * @return a new list with duplicates removed
+	 */
+	public static <T> List<Argument<? extends T>> removeDuplicates(List<Argument<? extends T>> args) {
+		return Named.removeDuplicates(args, (a, b) -> {
+			if (a.getExpectation() == Expectation.WILL_EVALUATE) {
+				return a;
+			} else if (b.getExpectation() == Expectation.WILL_EVALUATE) {
+				return b;
+			}
+
+			return a;
+		});
 	}
 }

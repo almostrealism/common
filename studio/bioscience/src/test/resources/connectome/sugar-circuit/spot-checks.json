@@ -1,0 +1,310 @@
+[
+ {
+  "index": 446,
+  "body_id": "720575940660219265",
+  "in_degree": 60,
+  "in_synapses": 2445,
+  "out_degree": 39,
+  "out_synapses": 57,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940619853515",
+    "weight": 561
+   },
+   {
+    "body_id": "720575940636809646",
+    "weight": -448
+   },
+   {
+    "body_id": "720575940623211725",
+    "weight": 424
+   }
+  ]
+ },
+ {
+  "index": 210,
+  "body_id": "720575940624963786",
+  "in_degree": 23,
+  "in_synapses": 156,
+  "out_degree": 52,
+  "out_synapses": 331,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940606866377",
+    "weight": -33
+   },
+   {
+    "body_id": "720575940635179871",
+    "weight": -32
+   },
+   {
+    "body_id": "720575940630664556",
+    "weight": -12
+   }
+  ]
+ },
+ {
+  "index": 289,
+  "body_id": "720575940629664768",
+  "in_degree": 10,
+  "in_synapses": 197,
+  "out_degree": 11,
+  "out_synapses": 60,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940633316563",
+    "weight": 168
+   },
+   {
+    "body_id": "720575940621057702",
+    "weight": -7
+   },
+   {
+    "body_id": "720575940645866292",
+    "weight": 7
+   }
+  ]
+ },
+ {
+  "index": 92,
+  "body_id": "720575940615811670",
+  "in_degree": 51,
+  "in_synapses": 546,
+  "out_degree": 78,
+  "out_synapses": 1800,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940648864633",
+    "weight": -76
+   },
+   {
+    "body_id": "720575940620170887",
+    "weight": 71
+   },
+   {
+    "body_id": "720575940620780272",
+    "weight": 70
+   }
+  ]
+ },
+ {
+  "index": 113,
+  "body_id": "720575940617937543",
+  "in_degree": 14,
+  "in_synapses": 146,
+  "out_degree": 47,
+  "out_synapses": 303,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940627383685",
+    "weight": -53
+   },
+   {
+    "body_id": "720575940622695448",
+    "weight": -38
+   },
+   {
+    "body_id": "720575940606866377",
+    "weight": -14
+   }
+  ]
+ },
+ {
+  "index": 44,
+  "body_id": "720575940611548878",
+  "in_degree": 44,
+  "in_synapses": 1033,
+  "out_degree": 29,
+  "out_synapses": 567,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940643867296",
+    "weight": -263
+   },
+   {
+    "body_id": "720575940625874992",
+    "weight": 96
+   },
+   {
+    "body_id": "720575940627107271",
+    "weight": 95
+   }
+  ]
+ },
+ {
+  "index": 212,
+  "body_id": "720575940625045180",
+  "in_degree": 64,
+  "in_synapses": 2649,
+  "out_degree": 53,
+  "out_synapses": 2805,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940643867296",
+    "weight": -408
+   },
+   {
+    "body_id": "720575940620301588",
+    "weight": -301
+   },
+   {
+    "body_id": "720575940625874992",
+    "weight": 168
+   }
+  ]
+ },
+ {
+  "index": 25,
+  "body_id": "720575940609993284",
+  "in_degree": 48,
+  "in_synapses": 552,
+  "out_degree": 39,
+  "out_synapses": 538,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940611549902",
+    "weight": -157
+   },
+   {
+    "body_id": "720575940612692633",
+    "weight": 103
+   },
+   {
+    "body_id": "720575940630771449",
+    "weight": 61
+   }
+  ]
+ },
+ {
+  "index": 205,
+  "body_id": "720575940624600840",
+  "in_degree": 55,
+  "in_synapses": 541,
+  "out_degree": 126,
+  "out_synapses": 1835,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940624906483",
+    "weight": 128
+   },
+   {
+    "body_id": "720575940616103218",
+    "weight": -66
+   },
+   {
+    "body_id": "720575940642335373",
+    "weight": -50
+   }
+  ]
+ },
+ {
+  "index": 114,
+  "body_id": "720575940618153105",
+  "in_degree": 8,
+  "in_synapses": 532,
+  "out_degree": 4,
+  "out_synapses": 5,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940626159306",
+    "weight": 425
+   },
+   {
+    "body_id": "720575940617672920",
+    "weight": -73
+   },
+   {
+    "body_id": "720575940620873793",
+    "weight": 21
+   }
+  ]
+ },
+ {
+  "index": 87,
+  "body_id": "720575940615564959",
+  "in_degree": 23,
+  "in_synapses": 184,
+  "out_degree": 36,
+  "out_synapses": 568,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940619853515",
+    "weight": 63
+   },
+   {
+    "body_id": "720575940611164770",
+    "weight": 21
+   },
+   {
+    "body_id": "720575940610058052",
+    "weight": 19
+   }
+  ]
+ },
+ {
+  "index": 271,
+  "body_id": "720575940628695043",
+  "in_degree": 14,
+  "in_synapses": 445,
+  "out_degree": 14,
+  "out_synapses": 3180,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940637902938",
+    "weight": 355
+   },
+   {
+    "body_id": "720575940620474278",
+    "weight": -35
+   },
+   {
+    "body_id": "720575940655011489",
+    "weight": 17
+   }
+  ]
+ },
+ {
+  "index": 439,
+  "body_id": "720575940647518340",
+  "in_degree": 40,
+  "in_synapses": 288,
+  "out_degree": 44,
+  "out_synapses": 916,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940607272649",
+    "weight": 115
+   },
+   {
+    "body_id": "720575940620254087",
+    "weight": 62
+   },
+   {
+    "body_id": "720575940623211725",
+    "weight": 20
+   }
+  ]
+ },
+ {
+  "index": 335,
+  "body_id": "720575940631662648",
+  "in_degree": 47,
+  "in_synapses": 577,
+  "out_degree": 12,
+  "out_synapses": 20,
+  "strongest_inputs": [
+   {
+    "body_id": "720575940615041430",
+    "weight": -105
+   },
+   {
+    "body_id": "720575940619877396",
+    "weight": 93
+   },
+   {
+    "body_id": "720575940619173534",
+    "weight": 49
+   }
+  ]
+ }
+]

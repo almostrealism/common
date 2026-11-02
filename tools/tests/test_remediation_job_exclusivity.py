@@ -36,6 +36,8 @@ _SUBMIT_AGENT_JOB = os.path.join(_REPO_ROOT, "tools", "ci", "submit-agent-job.sh
 _SECRET = "secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET"
 _PYTHON_FAILED = "needs.python-tests.result == 'failure'"
 _PYTHON_NOT_FAILED = "needs.python-tests.result != 'failure'"
+_EVALS_FAILED = "needs.python-evals.result == 'failure'"
+_EVALS_NOT_FAILED = "needs.python-evals.result != 'failure'"
 
 # Each early producer and the job that submits what it staged.
 _EARLY_PRODUCERS = {
@@ -94,6 +96,15 @@ class RemediationJobConditionTests(unittest.TestCase):
             with self.subTest(job=name):
                 self.assertIn("python-tests", jobs[name]["needs"])
                 self.assertIn(_PYTHON_NOT_FAILED, _condition(jobs[name]))
+
+    def test_an_eval_failure_belongs_to_auto_resolve_python_alone(self):
+        jobs = _jobs()
+        self.assertIn("python-evals", jobs["auto-resolve-python"]["needs"])
+        self.assertIn(_EVALS_FAILED, _condition(jobs["auto-resolve-python"]))
+        for name in ("auto-review", "auto-resolve"):
+            with self.subTest(job=name):
+                self.assertIn("python-evals", jobs[name]["needs"])
+                self.assertIn(_EVALS_NOT_FAILED, _condition(jobs[name]))
 
     def test_test_flowtree_cannot_run_after_a_python_failure(self):
         """test-flowtree is retry-eligible slow-path work: it must not overlap the fast path."""
@@ -403,6 +414,13 @@ esac
         """auto-resolve-python already submitted: another attempt could only add a second job."""
         outputs, posted = self._run([("failure", "python-tests"), ("failure", "test (0)"),
                                      ("failure", "test-media (1)")])
+        self.assertEqual("false", outputs["retried"])
+        self.assertFalse(posted)
+
+    def test_a_run_whose_python_evals_failed_is_never_retried(self):
+        """auto-resolve-python submits for an eval failure too."""
+        outputs, posted = self._run([("failure", "python-evals"), ("success", "python-tests"),
+                                     ("failure", "test (0)")])
         self.assertEqual("false", outputs["retried"])
         self.assertFalse(posted)
 

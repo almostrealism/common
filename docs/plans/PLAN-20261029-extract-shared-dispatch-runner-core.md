@@ -1,7 +1,7 @@
 ---
-status: in-progress
+status: completed
 created: 2026-10-29
-closed:
+closed: 2026-10-31
 tracker: [b3b032a7-3081-4001-a692-1dad640e4ffa]
 ---
 

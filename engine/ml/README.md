@@ -262,7 +262,7 @@ public interface AttentionFeatures extends SequenceAttentionFeatures {  // -> Ro
 
     // The same attention over caller-owned (seqLen, dim) key/value caches: the caller can
     // clear them at a sequence boundary and release them, instead of the block allocating
-    // its own sealed pair (used by CausalLanguageModel.decodeModel)
+    // its own sealed pair
     default Block attention(int heads, int kvHeads,
                            PackedCollection rmsAttWeight,
                            PackedCollection wk, PackedCollection wv,
@@ -301,7 +301,7 @@ public interface AttentionFeatures extends SequenceAttentionFeatures {  // -> Ro
 `TransformerBlockFeatures` (extends `AttentionFeatures`) assembles complete pre-norm
 transformer blocks — self-attention, optional cross-attention, and a gated feed-forward,
 each in a residual branch — for the sequence-based (non-KV-cached) models such as
-`DiffusionTransformer` and `CausalLanguageModel`. Every overload delegates to one fully
+`DiffusionTransformer`. Every overload delegates to one fully
 specified `transformerBlock(...)` that accepts an `AttentionVariant`, optional adaLN
 modulation, optional per-position additive conditioning, and a `NormalizationType`, so
 all callers share one block assembly:

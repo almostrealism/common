@@ -112,6 +112,13 @@ protected members of the stream, so they are reachable only from the runner itse
   A runner never waits for room on its own thread: Metal refuses submission from its executor
   thread outright, and CUDA holds a submission made from a completion callback beyond the bound,
   since the dependency that frees room may need the completion thread to observe earlier work.
+  It also owns the idle-commit policy (`closeEarlyIfIdle`, `minIdleCommit`,
+  `getIdleCommitCount`): a runner that holds submissions back in a batch the device does not see
+  until it is committed closes that batch early, once it holds the threshold, when the device has
+  run out of work. The runner supplies only whether its device is idle (`canCommitToIdleDevice`)
+  and how a batch is closed (`closeOpenBatch`), as overrides of those protected hooks;
+  Metal uses it for its open command buffer, while CUDA launches every submission as it is
+  admitted and so never holds work back from an idle device.
   Completions of a stream implement `StreamCompletion`, which records a failure at its own
   ordinal (`recordFailure`) and reports the recorded failure that covers it
   (`getRecordedFailure`).

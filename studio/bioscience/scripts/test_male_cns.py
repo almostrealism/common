@@ -13,6 +13,7 @@ import json
 import os
 import struct
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -79,6 +80,24 @@ class SafetensorsHeaderTest(unittest.TestCase):
     def test_unsupported_dtype(self):
         with self.assertRaises(ValueError):
             male_cns.safetensors_header([("x", "U8", (1,))])
+
+
+class SourceChecksumsTest(unittest.TestCase):
+    """A source file must match a published checksum when one is listed."""
+
+    def test_binary_marker_and_mismatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with open(os.path.join(directory, "a.bin"), "wb") as out:
+                out.write(b"abc")
+            digest = male_cns.sha256(os.path.join(directory, "a.bin"))
+            with open(os.path.join(directory, "SHA256SUMS"), "w") as out:
+                out.write("%s *a.bin\n" % digest)
+            self.assertEqual({"a.bin": digest}, male_cns.source_checksums(directory, ["a.bin"]))
+
+            with open(os.path.join(directory, "SHA256SUMS"), "w") as out:
+                out.write("%s  a.bin\n" % ("0" * 64))
+            with self.assertRaises(SystemExit):
+                male_cns.source_checksums(directory, ["a.bin"])
 
 
 if __name__ == "__main__":

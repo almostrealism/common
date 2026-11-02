@@ -51,7 +51,9 @@ operation.get().run();  // Execute the computation
 
 **Block** - Composable neural network unit with forward/backward propagation
 **SequentialBlock** - Container for multiple blocks in sequence
+**ParallelBlock** - Abstract base that applies several blocks to the same input in parallel and combines their outputs; the parallel dual of `SequentialBlock`, extended by `AccumulationBlock` and `ConcatenationBlock`
 **AccumulationBlock** - Applies several blocks to the same input and sums their outputs (built by `LayerRoutingFeatures.accumBlocks`); the backward pass reaches every child
+**ConcatenationBlock** - Applies several blocks to the same input and concatenates their outputs (built by `LayerRoutingFeatures.concatBlocks`); the backward pass gives each child the slice of the output gradient for its segment and sums their input gradients
 **Model** - Top-level neural network container
 
 ## What It Provides
@@ -197,7 +199,9 @@ Block combined = block1.product(block2);  // Element-wise multiply
 ### Model Classes
 - **Block** - `org.almostrealism.model.Block`
 - **SequentialBlock** - `org.almostrealism.model.SequentialBlock`
+- **ParallelBlock** - `org.almostrealism.model.ParallelBlock`
 - **AccumulationBlock** - `org.almostrealism.model.AccumulationBlock`
+- **ConcatenationBlock** - `org.almostrealism.model.ConcatenationBlock`
 - **Model** - `org.almostrealism.model.Model`
 - **CompiledModel** - `org.almostrealism.model.CompiledModel`
 

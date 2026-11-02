@@ -1,0 +1,18 @@
+{
+ "dataset": "flywire-630-sugar-circuit",
+ "source": "FlyWire snapshot 630 as distributed with Shiu et al. (2024), github.com/philshiu/Drosophila_brain_model",
+ "neurons_rule": "the neurons that fire in sugarR_630_200Hz (30 trials), of the rows of 2023_03_23_completeness_630_final.csv, in order (the index of the authors' Brian2 model)",
+ "sign": "the 'Excitatory' column of 2023_03_23_connectivity_630_final.parquet",
+ "min_count": 1,
+ "neurons": 451,
+ "edges": 21785,
+ "synapses": 256557,
+ "excitatory_edges": 12579,
+ "inhibitory_edges": 9206,
+ "inhibitory_neurons": 224,
+ "max_in_degree": 144,
+ "source_sha256": {
+  "2023_03_23_completeness_630_final.csv": "e6b71e17671a9bdb05f55e4bc6774640a1418cb7a05125e0fc994ad40f9bfdfb",
+  "2023_03_23_connectivity_630_final.parquet": "94db8c650533bc36ffa3223f2e62325d5648b8d6bd31c3a4e1c804628c7557b3"
+ }
+}

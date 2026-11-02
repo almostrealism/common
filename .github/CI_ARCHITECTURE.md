@@ -64,6 +64,7 @@ Layer 3 — Domain:
     domain/color
     domain/chemistry
     domain/heredity
+    domain/biology
 
 Layer 4 — Engine:
     engine/optimize
@@ -83,6 +84,7 @@ Layer 6 — Studio:
     studio/spatial
     studio/compose
     studio/experiments
+    studio/bioscience
 
 Standalone (above engine layer, not part of any named layer):
     flowtree/api         → engine/utils
@@ -142,6 +144,7 @@ domain/physics    → compute/time, domain/color
 domain/color      → compute/geometry, compute/stats
 domain/chemistry  → domain/physics, domain/heredity
 domain/heredity   → compute/time
+domain/biology    → domain/chemistry, domain/graph
 
 # Layer 4 — Engine
 engine/optimize   → domain/graph
@@ -161,6 +164,7 @@ studio/compose    → engine/audio, engine/ml
 studio/music      → engine/audio
 studio/spatial    → studio/compose
 studio/experiments→ studio/compose, extern/ml-onnx, extern/ml-djl, extern/ml-script, engine/utils
+studio/bioscience → domain/biology, engine/ml
 
 # Standalone
 flowtree/api         → engine/utils

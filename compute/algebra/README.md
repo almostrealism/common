@@ -584,9 +584,13 @@ promotes the element to a register accumulator and hoists loop-invariant index a
 must agree.
 
 `WeightedSumComputation` uses this for any group of at least `WeightedSumComputation.loopThreshold`
-(256) members, summing the trailing group dimensions (at most `maxUnrolledMembers`, 16) in each
-iteration. A convolution over 1024 channels with a kernel of 7 compiles to a loop of 1024
-iterations of 7 products instead of a single sum of 7168 products.
+(256) members. Each iteration of the loop sums one or more *steps*, where a step spans the trailing
+group dimensions (at most `maxUnrolledMembers`, 16 members). A group that extends along a single
+dimension — such as the dot product a matrix-vector product computes for each row — has one member
+per step, so each iteration sums `MAX_ITERATION_MEMBERS` (32) consecutive steps, enough for a row of
+single-precision members to fill a 128-byte cache line per iteration. A group whose steps already
+span several members keeps one step per iteration: a convolution over 1024 channels with a kernel of
+7 compiles to a loop of 1024 iterations of 7 products instead of a single sum of 7168 products.
 
 See [relation/README.md](../../base/relation/README.md) for comprehensive Process optimization documentation.
 

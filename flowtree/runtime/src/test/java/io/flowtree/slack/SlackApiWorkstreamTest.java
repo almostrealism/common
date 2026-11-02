@@ -30,6 +30,7 @@ import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.List;
 
 import io.flowtree.api.FlowTreeApiEndpoint;
 
@@ -519,6 +520,202 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
             Workstream second = notifier.findWorkstreamByBranch("bugfix/foo");
             assertNotNull(second);
             assertEquals("w-foo-2", second.getChannelName());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * Registering Common branch {@code B} (repo = Common) when a non-archived
+     * downstream workstream has default branch {@code B} and lists Common among
+     * its {@code dependentRepos} reuses that workstream — reporting
+     * {@code existing:true}, {@code matchedAsDependentRepo:true} and its id —
+     * and creates nothing new. The repository-identity comparison holds across
+     * spellings: the downstream workstream lists the HTTPS/{@code .git} form and
+     * the registration names the SSH form.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterReusesDependentRepoWorkstream() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream wsRings = new Workstream("C_RINGS", "#w-shared");
+        wsRings.setDefaultBranch("feature/shared");
+        wsRings.setRepoUrl("git@github.com:almostrealism/ringsdesktop.git");
+        wsRings.setDependentRepos(List.of(
+                "https://github.com/almostrealism/common.git"));
+        notifier.registerWorkstream(wsRings);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"defaultBranch\":\"feature/shared\","
+                    + "\"baseBranch\":\"master\","
+                    + "\"repoUrl\":\"git@github.com:almostrealism/common.git\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(200, conn.getResponseCode());
+            String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("response: " + response, response.contains("\"existing\":true"));
+            assertTrue("dependent-repo match must be flagged; response: " + response,
+                    response.contains("\"matchedAsDependentRepo\":true"));
+            assertTrue("must return the owning workstream id; response: " + response,
+                    response.contains("\"workstreamId\":\"" + wsRings.getWorkstreamId() + "\""));
+
+            assertEquals("no new workstream must be created",
+                    1, notifier.getWorkstreams().size());
+            assertNull("nothing must now track (branch, Common)",
+                    notifier.findWorkstreamByBranchAndRepo("feature/shared",
+                            "git@github.com:almostrealism/common.git"));
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * An exact {@code (branch, repo)} match is returned as an ordinary existing
+     * match, never a dependent-repo match: a workstream that genuinely tracks
+     * Common on the branch wins over any dependent-of relationship, so the flag
+     * is absent. This is what keeps the dependent lookup from shadowing a real
+     * registration.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterExactMatchIsNotADependentMatch() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream wsCommon = new Workstream("C_COMMON", "#w-shared");
+        wsCommon.setDefaultBranch("feature/shared");
+        wsCommon.setRepoUrl("git@github.com:almostrealism/common.git");
+        notifier.registerWorkstream(wsCommon);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"defaultBranch\":\"feature/shared\","
+                    + "\"repoUrl\":\"https://github.com/almostrealism/common.git\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(200, conn.getResponseCode());
+            String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue("response: " + response, response.contains("\"existing\":true"));
+            assertFalse("an exact (branch, repo) match must not be flagged as dependent; response: "
+                    + response, response.contains("\"matchedAsDependentRepo\":true"));
+            assertTrue("must return the tracking workstream id; response: " + response,
+                    response.contains("\"workstreamId\":\"" + wsCommon.getWorkstreamId() + "\""));
+            assertEquals("no new workstream must be created",
+                    1, notifier.getWorkstreams().size());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * An archived downstream workstream must not suppress creation: registering
+     * Common branch {@code B} when the only dependent-of candidate is archived
+     * still creates a fresh workstream that tracks Common on that branch.
+     */
+    @Test(timeout = 10000)
+    public void testApiRegisterArchivedDependentRepoStillCreates() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream wsRings = new Workstream("C_RINGS", "#w-shared");
+        wsRings.setDefaultBranch("feature/shared");
+        wsRings.setRepoUrl("git@github.com:almostrealism/ringsdesktop.git");
+        wsRings.setDependentRepos(List.of(
+                "git@github.com:almostrealism/common.git"));
+        wsRings.setArchived(true);
+        notifier.registerWorkstream(wsRings);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            int port = endpoint.getListeningPort();
+            String body = "{\"defaultBranch\":\"feature/shared\","
+                    + "\"baseBranch\":\"master\","
+                    + "\"repoUrl\":\"git@github.com:almostrealism/common.git\"}";
+
+            HttpURLConnection conn = (HttpURLConnection) new URL(
+                    "http://localhost:" + port + "/api/workstreams").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/json");
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+
+            assertEquals(200, conn.getResponseCode());
+            String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertFalse("an archived candidate must not be a dependent-repo match; response: "
+                    + response, response.contains("\"matchedAsDependentRepo\":true"));
+
+            Workstream created = notifier.findWorkstreamByBranchAndRepo("feature/shared",
+                    "git@github.com:almostrealism/common.git");
+            assertNotNull("a fresh workstream tracking Common must be created", created);
+            assertNotSame("the new workstream is not the archived one", wsRings, created);
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
+     * Success criterion 6: a {@code POST /api/submit} with
+     * {@code createWorkstreamIfMissing:true}, {@code targetBranch:B} and
+     * {@code repoUrl}=Common, against a controller holding only the downstream
+     * workstream that lists Common as a dependent, declines to queue the job.
+     * It returns {@code skipped:true}, {@code matchedAsDependentRepo:true} and
+     * the downstream {@code workstreamId}, and creates no workstream — the
+     * companion-PR job must not review or commit to the wrong checkout.
+     */
+    @Test(timeout = 10000)
+    public void testApiSubmitDependentRepoMatchSkipsJob() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        Workstream wsRings = new Workstream("C_RINGS", "#w-shared");
+        wsRings.setDefaultBranch("feature/shared");
+        wsRings.setRepoUrl("git@github.com:almostrealism/ringsdesktop.git");
+        wsRings.setDependentRepos(List.of(
+                "git@github.com:almostrealism/common.git"));
+        notifier.registerWorkstream(wsRings);
+
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            String response = postSubmit(endpoint.getListeningPort(),
+                    "{\"prompt\":\"Review the companion PR\","
+                    + "\"targetBranch\":\"feature/shared\","
+                    + "\"repoUrl\":\"git@github.com:almostrealism/common.git\","
+                    + "\"automated\":true,"
+                    + "\"createWorkstreamIfMissing\":true}");
+
+            assertTrue("the job must be skipped, not queued; response: " + response,
+                    response.contains("\"skipped\":true"));
+            assertTrue("the skip must flag the dependent-repo match; response: " + response,
+                    response.contains("\"matchedAsDependentRepo\":true"));
+            assertTrue("the skip must name the owning workstream; response: " + response,
+                    response.contains("\"workstreamId\":\"" + wsRings.getWorkstreamId() + "\""));
+
+            assertEquals("no workstream must be created for Common",
+                    1, notifier.getWorkstreams().size());
+            assertNull("nothing must now track (branch, Common)",
+                    notifier.findWorkstreamByBranchAndRepo("feature/shared",
+                            "git@github.com:almostrealism/common.git"));
         } finally {
             endpoint.stop();
         }

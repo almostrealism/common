@@ -36,8 +36,9 @@ import java.util.concurrent.atomic.AtomicReference;
  * rather than being lost.</p>
  *
  * <p>When this latch is the composite {@link Semaphore#all(List, java.util.function.IntFunction)}
- * builds, it also knows the completions it stands for (see {@link #compose(List)}), and a wait
- * settles them directly rather than waiting for the latch to be counted down.</p>
+ * builds, it is counted down by the completions it stands for and knows them (see
+ * {@link #compose(List)}), so a wait settles them directly rather than waiting for the latch to
+ * be counted down.</p>
  *
  * <p>A latch is counted down by whoever performs the guarded work, never by a waiter, so it
  * reaches zero whether or not anything waits for it. {@link #onSettled(Runnable)} (and the
@@ -69,38 +70,27 @@ public class LatchSemaphore implements Semaphore {
 	 *              {@link #waitFor()} returns
 	 */
 	public LatchSemaphore(int count) {
-		this(new SettlingLatch(count));
+		this(new SettlingLatch(count), new AtomicReference<>());
 	}
 
 	/**
-	 * Constructs a semaphore sharing an existing latch, allowing a subclass to reuse the
-	 * synchronization state under a different attribution. A fresh failure reference is
-	 * created; use {@link #LatchSemaphore(CountDownLatch, AtomicReference)} to share the
-	 * recorded failure as well.
+	 * Constructs a semaphore over a latch created elsewhere, whose {@link #waitFor()} returns
+	 * once that latch reaches zero, whoever counts it down. Such a latch cannot report its own
+	 * settlement, so {@link #onSettled(Runnable)} waits for it on a callback thread instead.
+	 * A re-attributed view of an existing semaphore is made with
+	 * {@link #LatchSemaphore(LatchSemaphore)}, which shares all of its settlement state.
 	 *
-	 * @param latch the existing {@link CountDownLatch} to reuse
+	 * @param latch the latch whose count-down to zero settles this semaphore
 	 */
 	protected LatchSemaphore(CountDownLatch latch) {
 		this(latch, new AtomicReference<>());
 	}
 
 	/**
-	 * Constructs a semaphore sharing both an existing latch and the failure reference that
-	 * {@link #waitFor()} rethrows, so a re-attributed view of a merged completion still
-	 * reports a member failure recorded through the original.
-	 *
-	 * @param latch   the existing {@link CountDownLatch} to reuse
-	 * @param failure the existing failure reference to reuse
-	 */
-	protected LatchSemaphore(CountDownLatch latch, AtomicReference<Throwable> failure) {
-		this.latch = latch;
-		this.failure = failure;
-	}
-
-	/**
 	 * Constructs a view sharing all of another semaphore's settlement state: its latch, its
 	 * failure reference and, when it is a composite, its members (see {@link #compose(List)}),
-	 * so a re-attributed view of a composite still settles the members directly when waited.
+	 * so a re-attributed view still reports a failure recorded through the original and, for a
+	 * composite, still settles the members directly when waited.
 	 *
 	 * @param shared the semaphore whose settlement state is reused
 	 */
@@ -110,21 +100,16 @@ public class LatchSemaphore implements Semaphore {
 	}
 
 	/**
-	 * Returns the underlying latch, so a subclass sharing this synchronization state can
-	 * pass it to {@link #LatchSemaphore(CountDownLatch, AtomicReference)}.
+	 * Constructs a semaphore over the given latch, rethrowing the failure recorded in the given
+	 * reference from {@link #waitFor()}.
 	 *
-	 * @return the underlying latch
+	 * @param latch   the latch whose count-down to zero settles this semaphore
+	 * @param failure the reference holding the first recorded failure
 	 */
-	protected CountDownLatch getLatch() { return latch; }
-
-	/**
-	 * Returns the shared failure reference, so a subclass sharing this synchronization
-	 * state can pass it to {@link #LatchSemaphore(CountDownLatch, AtomicReference)} and
-	 * preserve the rethrow-on-failure contract across a re-attribution.
-	 *
-	 * @return the failure reference rethrown by {@link #waitFor()}
-	 */
-	protected AtomicReference<Throwable> getFailure() { return failure; }
+	private LatchSemaphore(CountDownLatch latch, AtomicReference<Throwable> failure) {
+		this.latch = latch;
+		this.failure = failure;
+	}
 
 	/**
 	 * Returns true once the latch has been counted down to zero, that is, once the guarded work
@@ -152,22 +137,48 @@ public class LatchSemaphore implements Semaphore {
 	}
 
 	/**
-	 * Records the completions this latch is counted down for, as the composite that
-	 * {@link Semaphore#all(List, java.util.function.IntFunction)} builds over them.
+	 * Makes this latch the composite of {@code members}, as
+	 * {@link Semaphore#all(List, java.util.function.IntFunction)} builds it: the latch is counted
+	 * down once for each member, when that member settles.
 	 *
-	 * <p>{@code all} still counts this latch down from each member's
-	 * {@link Semaphore#onSettled(Runnable)} callback: that registration is what drives a member
-	 * whose completion has to be requested (a Metal dispatch whose command buffer is still open,
-	 * for example) as soon as the composite exists, and the latch it counts down remains a valid
-	 * completion for anything that observes it. Knowing the members only changes how {@link #waitFor()} waits: it
-	 * settles each member itself, so the waiter is released by the last member's completion
-	 * directly, instead of by the thread that observed that completion counting the latch
-	 * down &mdash; one thread hand-off fewer on the path of every wait for a composite.</p>
+	 * <p>Each member counts this latch down from its {@link Semaphore#onSettled(Runnable)}
+	 * callback, registered here as soon as the composite exists: that registration is what drives
+	 * a member whose completion has to be requested (a Metal dispatch whose command buffer is still
+	 * open, for example), and a member that is told of its own settlement holds no thread
+	 * meanwhile. A member is settled rather than merely awaited, so one that fails still counts
+	 * the latch down, after its failure is recorded with {@link #fail(Throwable)}; a single failure
+	 * can therefore never pin the latch.</p>
 	 *
-	 * @param members the completions this composite stands for
+	 * <p>Knowing the members also changes how {@link #waitFor()} waits: it settles each member
+	 * itself, so the waiter is released by the last member's completion directly, instead of by
+	 * the thread that observed that completion counting the latch down &mdash; one thread hand-off
+	 * fewer on the path of every wait for a composite. The latch counted down by the members
+	 * remains a valid completion for anything that observes it.</p>
+	 *
+	 * @param members the completions this composite stands for, one for each count of this latch
 	 */
 	void compose(List<Semaphore> members) {
 		this.members = members;
+
+		for (Semaphore member : members) {
+			member.onSettled(() -> countDownFor(member));
+		}
+	}
+
+	/**
+	 * Counts this composite down for a member that has settled, first recording the member's
+	 * failure if it failed.
+	 *
+	 * @param member a member of this composite that has completed or failed
+	 */
+	private void countDownFor(Semaphore member) {
+		try {
+			member.waitFor();
+		} catch (Throwable t) {
+			fail(t);
+		} finally {
+			countDown();
+		}
 	}
 
 	/**
@@ -247,9 +258,9 @@ public class LatchSemaphore implements Semaphore {
 	 * Registers {@code r} to run on {@link Semaphore#CALLBACK_EXECUTOR} once the latch reaches
 	 * zero, whether the guarded work completed or failed, without holding a thread meanwhile.
 	 * The callback runs promptly, because the latch is counted down by the work itself. A latch
-	 * that was not created by this class (one handed to
-	 * {@link #LatchSemaphore(CountDownLatch, AtomicReference)}) cannot be observed this way, and
-	 * is waited for on a callback thread instead, as the default does.
+	 * that was not created by this class (one handed to {@link #LatchSemaphore(CountDownLatch)})
+	 * cannot be observed this way, and is waited for on a callback thread instead, as the
+	 * default does.
 	 *
 	 * @param r the callback to invoke once the guarded work has settled
 	 */

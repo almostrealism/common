@@ -703,7 +703,10 @@ public class SequentialBlock implements Block, Learning, Tracking, LayerRoutingF
 	 * {@inheritDoc}
 	 *
 	 * <p>Returns a lazily constructed backward cell that delegates pushes to the last child block
-	 * and exposes receptor set operations on the first child block.</p>
+	 * and exposes receptor set operations on the first child block. A child with no backward cell
+	 * (one that {@link #add(Block)} skipped) ends the gradient path: a gradient pushed into a chain
+	 * whose last child has no backward cell produces no operations, and a receptor set on a chain
+	 * whose first child has none is never reached, so the chain contributes no input gradient.</p>
 	 */
 	@Override
 	public Cell<PackedCollection> getBackward() {
@@ -715,6 +718,8 @@ public class SequentialBlock implements Block, Learning, Tracking, LayerRoutingF
 
 					if (last == null) {
 						return SequentialBlock.this.upstream.push(in);
+					} else if (last.getBackward() == null) {
+						return new OperationList();
 					} else {
 						return last.getBackward().push(in);
 					}
@@ -727,10 +732,10 @@ public class SequentialBlock implements Block, Learning, Tracking, LayerRoutingF
 					}
 
 					Block first = firstBlock();
-					if (first != null) {
-						first.getBackward().setReceptor(r);
-					} else {
+					if (first == null) {
 						SequentialBlock.this.upstream = r;
+					} else if (first.getBackward() != null) {
+						first.getBackward().setReceptor(r);
 					}
 				}
 			};

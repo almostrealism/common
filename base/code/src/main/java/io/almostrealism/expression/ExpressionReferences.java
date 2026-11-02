@@ -17,6 +17,8 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.AssignmentSupport;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.sequence.Index;
 
@@ -44,7 +46,7 @@ import java.util.Set;
  * over trees of millions of nodes with only a few children each, so the children are walked
  * with plain loops that stop at the first decisive child.</p>
  */
-public interface ExpressionReferences {
+public interface ExpressionReferences extends AssignmentSupport {
 
 	/**
 	 * Returns the operands of this expression, the subtrees each query descends into.
@@ -116,6 +118,22 @@ public interface ExpressionReferences {
 		}
 
 		return false;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>For an expression, the assignment in question is one with this expression as its
+	 * destination: the answer is whether assigning a value to this expression may write an
+	 * element of {@code array} in the range. This base implementation cannot tell which
+	 * element, if any, an assignment to an expression of its kind writes, so it answers
+	 * {@code true} whenever {@code array} is {@link #containsReference(Variable) referenced}
+	 * anywhere in the tree. A destination that names the element it writes
+	 * ({@link InstanceReference}) overrides it to bound the position.</p>
+	 */
+	@Override
+	default boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
+		return containsReference(array);
 	}
 
 	/**

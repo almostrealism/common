@@ -120,6 +120,16 @@ public class MTLCommandBuffer extends MTLObject {
 	}
 
 	/**
+	 * Returns true once this buffer has finished on the GPU, whether it completed or ended with
+	 * an error (see {@link #isError()}). Unlike {@link #waitUntilCompleted()}, this never blocks.
+	 *
+	 * @return true when the buffer's status is completed or error
+	 */
+	public boolean isFinished() {
+		return MTL.commandBufferStatus(getNativePointer()) >= 4;
+	}
+
+	/**
 	 * Returns the localized error description when {@link #isError()} is true.
 	 *
 	 * @return the error description, or {@code null} when there is no error
