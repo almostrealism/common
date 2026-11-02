@@ -45,6 +45,13 @@ import java.util.function.Predicate;
  * {@link java.util.ConcurrentModificationException}; its iterator is weakly
  * consistent, which only ever omits an identifier a worker is adding because it
  * is complete for the current model — exactly the identifier a scan would keep.</p>
+ *
+ * <p>A {@code null} identifier is never contained and is never stored: callers
+ * resolve identifiers from providers (a {@link org.almostrealism.audio.data.FileWaveDataProvider}
+ * yields {@code null} for a missing or unreadable file), and such an item can
+ * never be complete. The backing concurrent set would throw on a {@code null}
+ * query, so the membership methods tolerate it the way the plain {@code HashSet}
+ * this type replaced did — returning {@code false} rather than failing.</p>
  */
 final class CompleteIdentifierSet extends AbstractSet<String> {
 	/** The complete identifiers, held in a thread-safe set with a weakly consistent iterator. */
@@ -60,13 +67,13 @@ final class CompleteIdentifierSet extends AbstractSet<String> {
 	public int size() { return identifiers.size(); }
 
 	@Override
-	public boolean contains(Object o) { return identifiers.contains(o); }
+	public boolean contains(Object o) { return o != null && identifiers.contains(o); }
 
 	@Override
-	public boolean add(String identifier) { return identifiers.add(identifier); }
+	public boolean add(String identifier) { return identifier != null && identifiers.add(identifier); }
 
 	@Override
-	public boolean remove(Object o) { return identifiers.remove(o); }
+	public boolean remove(Object o) { return o != null && identifiers.remove(o); }
 
 	/**
 	 * Removes every identifier that fails {@code complete}, unless this set was

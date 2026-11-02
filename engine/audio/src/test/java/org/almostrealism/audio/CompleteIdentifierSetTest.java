@@ -213,4 +213,22 @@ public class CompleteIdentifierSetTest extends TestSuiteBase {
 		Assert.assertFalse(set.contains("a"));
 		Assert.assertTrue(set.isEmpty());
 	}
+
+	/**
+	 * A {@code null} identifier is tolerated, never stored, and never reported as
+	 * contained. The backing {@link java.util.concurrent.ConcurrentHashMap} key
+	 * set rejects {@code null}, so without this guard the membership methods would
+	 * throw {@link NullPointerException} when a provider yields {@code null} for a
+	 * missing or unreadable file — the regression the original failing
+	 * {@code AudioLibraryCacheTest} cases exposed.
+	 */
+	@Test(timeout = 60000)
+	public void nullIdentifierIsToleratedNotStored() {
+		CompleteIdentifierSet set = new CompleteIdentifierSet();
+
+		Assert.assertFalse("add(null) stores nothing", set.add(null));
+		Assert.assertFalse("null is never contained", set.contains(null));
+		Assert.assertFalse("remove(null) removes nothing", set.remove(null));
+		Assert.assertTrue("the set is unchanged by null operations", set.isEmpty());
+	}
 }
