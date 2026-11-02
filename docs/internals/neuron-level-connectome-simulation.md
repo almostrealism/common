@@ -231,10 +231,14 @@ The network is also a `Setup`: `setup()` returns every neuron to rest, empties t
 writes each replica's Poisson targets, so each run after a reset is a fresh trial.
 
 The worked example loads the committed synthetic connectome and drives it with the membrane-kick
-schedule of its committed Brian2 reference. The drive is a `[steps, N]` collection whose rows are
-stored sparsely — one compressed row of kicks per step — and read through a
-`CompressedRowTraversalOrdering` exactly like the connectome matrix, so a schedule that touches a
-handful of neurons each step costs only its stored entries:
+schedule of its committed Brian2 reference. The drive is a `[steps, N]` collection stored sparsely
+through a `CompressedRowTraversalOrdering` — one compressed row of kicks per step — so a schedule
+that touches a handful of neurons each step occupies only those entries in memory rather than a
+dense `steps * N` grid of mostly zeros. Its storage is sparse, but its per-step read is not the
+stored-entry enumeration the connectome's sparse product performs: `scheduled` reads the current
+step's row at every one of the `replicas * N` logical positions, each resolved through the
+ordering's bounded per-row search (an absent kick reads as zero), so each step still expands the
+row to one drive value per neuron per replica. The ordering saves storage, not per-step reads:
 
 ```java
 connectome = NeuronConnectome.load(synthetic());
