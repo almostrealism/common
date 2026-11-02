@@ -86,6 +86,7 @@ jobs:
       extern_changed: ${{ steps.filter.outputs.extern_changed }}
       studio_changed: ${{ steps.filter.outputs.studio_changed }}
       python_changed: ${{ steps.filter.outputs.python_changed }}
+      evals_changed: ${{ steps.filter.outputs.evals_changed }}
       exfil_guard_changed: ${{ steps.filter.outputs.exfil_guard_changed }}
       agent_protection_changed: ${{ steps.filter.outputs.agent_protection_changed }}
       agent_isolation_changed: ${{ steps.filter.outputs.agent_isolation_changed }}
@@ -115,6 +116,7 @@ jobs:
               echo "${layer}_changed=true" >> "$GITHUB_OUTPUT"
             done
             echo "python_changed=true" >> "$GITHUB_OUTPUT"
+            echo "evals_changed=true" >> "$GITHUB_OUTPUT"
             echo "exfil_guard_changed=true" >> "$GITHUB_OUTPUT"
             echo "agent_protection_changed=true" >> "$GITHUB_OUTPUT"
             echo "agent_isolation_changed=true" >> "$GITHUB_OUTPUT"
@@ -205,6 +207,30 @@ jobs:
             echo "::notice::Python sources changed — running python-tests"
           else
             echo "python_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Eval change detection. The python-evals job runs the consult
+          # evaluation set (tools/mcp/manager/eval), whose inputs are the
+          # documentation corpus and a snapshot index, both built from the
+          # trees the ar-manager Dockerfile's `docs` stage stages. The index
+          # records *every* file under those trees in its `paths` set — not
+          # only the doc and source suffixes it reads for content — and the
+          # consult pipeline validates path-shaped mentions against that set,
+          # so an added, renamed or deleted file of any type can change the
+          # eval's grading. The gate therefore covers every one of those trees
+          # (the Dockerfile's docs-stage COPY roots). The ar-manager Dockerfile
+          # itself, whose COPY directives define which trees those are, and the
+          # eval data both live under tools/ and are covered with it. Keep this
+          # list and that stage in sync; tools/tests/test_python_evals_job.py
+          # pins the agreement.
+          EVAL_FILES=$(git diff --name-only "$BASE" HEAD -- \
+            docs/ CLAUDE.md base/ compute/ domain/ engine/ extern/ studio/ \
+            flowtree/ tools/ .github/ .claude/ scripts/ || true)
+          if [ -n "$EVAL_FILES" ]; then
+            echo "evals_changed=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Eval inputs changed — running python-evals"
+          else
+            echo "evals_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # Exfiltration guard control-surface detection. The guard's
@@ -1647,6 +1673,53 @@ jobs:
           overwrite: true
           name: python-tests-output
           path: ${{ runner.temp }}/python-tests.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ─── Python Evals ──────────────────────────────────────────────────
+  # The consult evaluation set (tools/mcp/manager/eval) runs the real consult
+  # pipeline over the documentation corpus and snapshot index staged from
+  # this checkout, so it depends on the repository's docs and sources, not
+  # only on Python code. It is kept out of python-tests (eval/ is not a
+  # package, so that job's discovery does not reach it) and gated on its own
+  # inputs (evals_changed) — and, like docker-build, NOT on code_changed: a
+  # docs-only change is exactly the change most likely to break it.
+  python-evals:
+    needs: changes
+    if: needs.changes.outputs.evals_changed == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+          cache-dependency-path: tools/mcp/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r tools/mcp/requirements.txt pyyaml
+
+      - name: Run consult evals
+        run: python3 -m unittest discover -v -s tools/mcp/manager/eval -p "test_*.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-evals.log"
+
+      # auto-resolve-python quotes this output in the prompt it submits.
+      - name: Upload eval output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: python-evals-output
+          path: ${{ runner.temp }}/python-evals.log
           retention-days: 7
           if-no-files-found: ignore
 
@@ -3528,8 +3601,9 @@ jobs:
   # two agents working the same branch at once make conflicting edits, and at
   # least one of them fails.
   #
-  #   auto-resolve-python  python-tests failed. Submits at once, from inside
-  #                        this run, without waiting for anything else.
+  #   auto-resolve-python  python-tests or python-evals failed. Submits at
+  #                        once, from inside this run, without waiting for
+  #                        anything else.
   #   auto-review          Every other case, on attempt 1 only: a build
   #                        failure, code policy violations, other quality gate
   #                        failures, a docs-only review, or — when every gate
@@ -3558,9 +3632,10 @@ jobs:
   #     one of its inputs failed (checkstyle, say) — and its agent, submitted
   #     minutes into attempt 1, is very likely still working when a test
   #     failure brings attempt 2 around.
-  #   - A python-tests failure skips both of them (and test-flowtree, which
-  #     gates on python-tests), and rerun-flaky-tests.sh never retries such a
-  #     run, so auto-resolve-python is the only submission it gets.
+  #   - A python-tests or python-evals failure skips both of them (a
+  #     python-tests failure also skips test-flowtree, which gates on it), and
+  #     rerun-flaky-tests.sh never retries such a run, so auto-resolve-python
+  #     is the only submission it gets.
   #
   # auto-review and auto-resolve-python run the pull request's own scripts
   # (the prompt builders), so they hold no controller credentials: each only
@@ -3575,11 +3650,12 @@ jobs:
   # shows as a spurious "had a problem deploying" red X.
 
   auto-resolve-python:
-    needs: [changes, python-tests]
+    needs: [changes, python-tests, python-evals]
     if: >-
       !cancelled() &&
       github.ref != 'refs/heads/master' &&
-      needs.python-tests.result == 'failure'
+      (needs.python-tests.result == 'failure' ||
+       needs.python-evals.result == 'failure')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -3598,6 +3674,13 @@ jobs:
           name: python-tests-output
           path: python-tests-output
 
+      - name: Download eval output
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: python-evals-output
+          path: python-evals-output
+
       - name: Build prompt (python test failures)
         id: prompt
         env:
@@ -3610,7 +3693,10 @@ jobs:
             echo "::warning::This branch predates build-python-failure-prompt.sh — no python-tests remediation is staged. Merge master to enable it."
             exit 0
           fi
-          bash ./tools/ci/prompts/build-python-failure-prompt.sh python-tests-output/python-tests.log "${{ runner.temp }}/agent-prompt.txt"
+          # Either job (or both) may have failed; quote every log that exists.
+          cat python-tests-output/python-tests.log python-evals-output/python-evals.log \
+            > "${{ runner.temp }}/python-failures.log" 2>/dev/null || true
+          bash ./tools/ci/prompts/build-python-failure-prompt.sh "${{ runner.temp }}/python-failures.log" "${{ runner.temp }}/agent-prompt.txt"
           echo "built=true" >> "$GITHUB_OUTPUT"
 
       - name: Stage submit request (python test failures)
@@ -3689,15 +3775,16 @@ jobs:
           bash ./tools/ci/submit-staged-request.sh staged-request
 
   auto-review:
-    needs: [changes, build, python-tests, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle]
-    # Attempt 1 only — see "Remediation Jobs" above. A python-tests failure
-    # belongs to auto-resolve-python.
+    needs: [changes, build, python-tests, python-evals, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle]
+    # Attempt 1 only — see "Remediation Jobs" above. A python-tests or
+    # python-evals failure belongs to auto-resolve-python.
     if: >-
       !cancelled() &&
       github.ref != 'refs/heads/master' &&
       fromJSON(github.run_attempt) == 1 &&
       needs.changes.result == 'success' &&
-      needs.python-tests.result != 'failure'
+      needs.python-tests.result != 'failure' &&
+      needs.python-evals.result != 'failure'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -4034,13 +4121,14 @@ jobs:
   # from starting until it completes.
 
   auto-resolve:
-    needs: [changes, build, python-tests, test, test-flowtree, test-media, test-mac, test-media-mac, test-cl, test-media-cl, test-cuda, test-media-cuda, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, analysis]
+    needs: [changes, build, python-tests, python-evals, test, test-flowtree, test-media, test-mac, test-media-mac, test-cl, test-media-cl, test-cuda, test-media-cuda, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, analysis]
     if: >-
       !cancelled() &&
       github.ref != 'refs/heads/master' &&
       fromJSON(github.run_attempt) >= 3 &&
       needs.build.result == 'success' &&
-      needs.python-tests.result != 'failure'
+      needs.python-tests.result != 'failure' &&
+      needs.python-evals.result != 'failure'
     runs-on: ubuntu-latest
     concurrency:
       group: auto-resolve-${{ github.ref }}
@@ -4478,6 +4566,7 @@ jobs:
       - duplicate-code-check
       - checkstyle
       - python-tests
+      - python-evals
       - agent-volume-isolation
       - docker-build
       - test-flowtree
@@ -4508,6 +4597,7 @@ jobs:
           CHECKSTYLE_RESULT: ${{ needs.checkstyle.result }}
           CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
           PYTHON_TESTS_RESULT: ${{ needs.python-tests.result }}
+          PYTHON_EVALS_RESULT: ${{ needs.python-evals.result }}
           AGENT_VOLUME_ISOLATION_RESULT: ${{ needs.agent-volume-isolation.result }}
           DOCKER_BUILD_RESULT: ${{ needs.docker-build.result }}
           TEST_FLOWTREE_RESULT: ${{ needs.test-flowtree.result }}
@@ -4550,6 +4640,7 @@ jobs:
           check_job "test-timeout-check"      "$TEST_TIMEOUT_RESULT"
           check_job "duplicate-code-check"    "$DUPLICATE_CODE_RESULT"
           check_job "python-tests"            "$PYTHON_TESTS_RESULT"
+          check_job "python-evals"            "$PYTHON_EVALS_RESULT"
           check_job "agent-volume-isolation"  "$AGENT_VOLUME_ISOLATION_RESULT"
           check_job "docker-build"            "$DOCKER_BUILD_RESULT"
           check_job "test-flowtree"           "$TEST_FLOWTREE_RESULT"
@@ -4592,6 +4683,7 @@ jobs:
           echo "| duplicate-code-check | ${{ needs.duplicate-code-check.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| checkstyle | ${{ needs.checkstyle.result }} (passed=${{ needs.checkstyle.outputs.passed }}) |" >> "$GITHUB_STEP_SUMMARY"
           echo "| python-tests | ${{ needs.python-tests.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| python-evals | ${{ needs.python-evals.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| agent-volume-isolation | ${{ needs.agent-volume-isolation.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| docker-build | ${{ needs.docker-build.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-flowtree | ${{ needs.test-flowtree.result }} |" >> "$GITHUB_STEP_SUMMARY"

@@ -329,6 +329,11 @@ case set (`eval/consult_cases.json`): `replay` grades frozen deployed
 responses, `scripted` runs the live pipeline with canned model answers, and
 `local` runs it against a real backend.
 
+CI runs the eval tests (`eval/test_*.py`) in their own `python-evals` job, on
+any change to the docs or sources they read; `eval/` is not a package, so the
+manager's own `unittest discover` does not reach them. A scripted answer cites
+evidence by content (`[D:<path>@"<phrase>"]`), never by line number.
+
 ## Per-Repository Configuration
 
 One ar-manager process serves every repository, so settings that differ by

@@ -18,15 +18,16 @@
 #
 # Retries are for the slow path only. The early remediation jobs in "Build and
 # Test" submit from inside the pipeline, without waiting for this script:
-# `auto-resolve-python` when python-tests fails, and `auto-review` (build
-# failure, code policy, quality gates, docs-only review, or the general
-# review) on attempt 1 only. `auto-resolve` stages its request
+# `auto-resolve-python` when python-tests or python-evals fails, and
+# `auto-review` (build failure, code policy, quality gates, docs-only review,
+# or the general review) on attempt 1 only. `auto-resolve` stages its request
 # only on attempt MAX_ATTEMPTS or later, so the only thing a retry can lead to
 # is that slow-path request. Retrying therefore requires that the pipeline got
 # as far as the long-running test jobs (a failed flaky-eligible job, below),
-# and is refused outright when python-tests failed: that run's remediation has
-# already been submitted by auto-resolve-python, and auto-resolve is skipped
-# for it, so another attempt would only spend test capacity.
+# and is refused outright when python-tests or python-evals failed: that run's
+# remediation has already been submitted by auto-resolve-python, and
+# auto-resolve is skipped for it, so another attempt would only spend test
+# capacity.
 #
 # A run whose head commit is no longer the tip of its branch is superseded: a
 # newer commit has been pushed and its own pipeline is authoritative. Retrying
@@ -113,13 +114,16 @@ JOBS=$(gh api --paginate \
     "/repos/$REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
     --jq '.jobs[] | "\(.conclusion)\t\(.name)"')
 
-# A python-tests failure is handled by auto-resolve-python: see the header.
-PYTHON_TESTS_CONCLUSION=$(printf '%s\n' "$JOBS" | awk -F '\t' '$2 == "python-tests" { print $1 }')
-if [ "$PYTHON_TESTS_CONCLUSION" = "failure" ]; then
-    echo "::notice::python-tests failed in run $RUN_ID attempt $RUN_ATTEMPT — auto-resolve-python already submitted a remediation, so the run is not retried"
-    emit false
-    exit 0
-fi
+# A python-tests or python-evals failure is handled by auto-resolve-python:
+# see the header.
+for python_job in python-tests python-evals; do
+    CONCLUSION=$(printf '%s\n' "$JOBS" | awk -F '\t' -v job="$python_job" '$2 == job { print $1 }')
+    if [ "$CONCLUSION" = "failure" ]; then
+        echo "::notice::${python_job} failed in run $RUN_ID attempt $RUN_ATTEMPT — auto-resolve-python already submitted a remediation, so the run is not retried"
+        emit false
+        exit 0
+    fi
+done
 
 # Failed jobs for the attempt. Cancelled/skipped jobs are not "failures"
 # here — only a job that ran and failed counts.
