@@ -30,7 +30,7 @@ the committed synthetic connectome, so the page cannot silently drift from the c
 
 ## 1. What the model is and where each part lives
 
-The subsystem spans three modules, each holding the part that matches its layer:
+The subsystem spans four modules, each holding the part that matches its place in the stack:
 
 | Part | Module | Classes / files |
 |---|---|---|
