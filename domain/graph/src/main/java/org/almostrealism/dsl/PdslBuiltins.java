@@ -854,6 +854,8 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 	 *       {@code [size]} vector without reading the stage input, which is how a recurrent
 	 *       layer reads back the hidden state an earlier forward pass wrote.</li>
 	 * </ul>
+	 * Both address row {@code position mod rows}: the rows form a ring, so a key/value cache
+	 * written at positions past its row count keeps the most recent {@code rows} entries.
 	 *
 	 * @param name      the built-in name, for error messages
 	 * @param args      two arguments: the cache collection and the row position

@@ -40,10 +40,12 @@ import java.util.Random;
  * because the cached attention scores the same keys and values and applies the same rotary rotation
  * at each position as the trained full-window path.</p>
  *
- * <p>The per-layer caches are fixed {@code (seqLen, dim)} buffers, so this generator decodes the
- * first {@code seqLen} positions of a sequence; {@link #load(Integer)} refuses a step at or beyond
- * {@code seqLen} rather than index past the cache. Generating more than {@code seqLen} tokens is the
- * {@link SlidingWindowAutoregressiveModel sliding-window generator}'s role.</p>
+ * <p>The per-layer caches are {@code (seqLen, dim)} buffers, so this generator decodes the first
+ * {@code seqLen} positions of a sequence; {@link #load(Integer)} refuses a step at or beyond
+ * {@code seqLen} rather than overwrite the oldest cached position. Generating more than
+ * {@code seqLen} tokens at cache cost is the
+ * {@link SlidingKeyValueCacheAutoregressiveModel rolling-cache generator}'s role, which decodes
+ * through the same decode model and lets the caches roll.</p>
  *
  * <p>The sequence position is kept on the device, as in the base class: {@link #reset()} returns it
  * to zero and {@link #advance()} adds one, both as compiled operations, so no position value is
@@ -70,6 +72,7 @@ import java.util.Random;
  *
  * @see CausalLanguageModel
  * @see SlidingWindowAutoregressiveModel
+ * @see SlidingKeyValueCacheAutoregressiveModel
  */
 public class KeyValueCacheAutoregressiveModel extends AutoregressiveModel<Integer> {
 	/** The inference compilation of the single-position decode model, owned by this generator. */
@@ -184,26 +187,40 @@ public class KeyValueCacheAutoregressiveModel extends AutoregressiveModel<Intege
 	}
 
 	/**
-	 * Copies the given token's embedding into the model input for the current step.
-	 *
-	 * <p>The decode caches hold {@code seqLen} positions, so this generator can decode positions
-	 * {@code 0} through {@code seqLen - 1}; decoding at {@code seqLen} or beyond would index past each
-	 * layer's fixed {@code (seqLen, dim)} key and value cache. Such a step is refused here rather than
-	 * left to corrupt memory or read a stale cache entry: a caller that needs to generate more than
-	 * {@code seqLen} tokens uses the sliding-window generator instead.</p>
+	 * Copies the given token's embedding into the model input for the current step, provided this
+	 * generator {@link #decodes(int) decodes} the current position.
 	 *
 	 * @param id the token id
-	 * @throws IllegalStateException if the current step is at or beyond {@code seqLen}
+	 * @throws IllegalStateException if this generator does not decode the current position
 	 */
 	@Override
 	protected void load(Integer id) {
-		if (getCurrentStep() >= seqLen) {
+		if (!decodes(getCurrentStep())) {
 			throw new IllegalStateException("cannot decode position " + getCurrentStep()
 					+ "; the key/value cache holds " + seqLen
-					+ " positions (use the sliding-window generator for longer sequences)");
+					+ " positions (use the rolling key/value-cache generator for longer sequences)");
 		}
 
 		input.setFrom(0, embedding.range(new TraversalPolicy(dim), id * dim), 0, dim);
+	}
+
+	/**
+	 * Returns whether this generator decodes the given sequence position; {@link #load(Integer)}
+	 * refuses a step at any position for which this returns false.
+	 *
+	 * <p>The decode caches hold {@code seqLen} positions, so this generator decodes positions
+	 * {@code 0} through {@code seqLen - 1}, over which the decode agrees with the full-window forward
+	 * pass. At {@code seqLen} the caches are full and a further step would overwrite the oldest
+	 * position, which this generator does not do; a caller that needs to generate more than
+	 * {@code seqLen} tokens uses the
+	 * {@link SlidingKeyValueCacheAutoregressiveModel rolling-cache generator}, which decodes every
+	 * position.</p>
+	 *
+	 * @param position the sequence position
+	 * @return true if the position is below {@code seqLen}
+	 */
+	protected boolean decodes(int position) {
+		return position < seqLen;
 	}
 
 	/**

@@ -129,12 +129,28 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * computation (see {@link #computeRopeFreqs(int, CollectionProducer)}), only the row the
 	 * rotation reads is computed.</p>
 	 *
+	 * <p><b>Rotation at an arbitrary position.</b> A precomputed table holds the angles of a fixed number of positions, so a position at or
+	 * beyond its row count has no row to read. When {@code weights} is instead the one-dimensional
+	 * {@code (headSize/2)} vector of inverse frequencies (see {@link #computeInvFreq(int, double)}),
+	 * the angle of pair {@code f} is computed in the kernel as {@code position * invFreq[f]} and its
+	 * cosine and sine taken there, so any non-negative position is rotated, with no table and no
+	 * bound. At a position a table covers, the two forms apply the same rotation: the table built by
+	 * {@link #computeRopeFreqs(int, CollectionProducer)} from the same inverse frequencies holds
+	 * exactly {@code cos} and {@code sin} of the same product at that row. This is what lets a
+	 * key/value-cache decode run past the length of any table: rotary attention scores depend only on
+	 * the distance between query and key positions, so keys rotated once at their absolute positions
+	 * remain correct however far the sequence runs.</p>
+	 *
 	 * @param shape Input shape (heads, headSize/2, 2) - last dimension is [x1, x2] pair
-	 * @param weights Precomputed frequency tensor (seqLen, headSize/2, 2) containing [cos, sin]
+	 * @param weights Either the precomputed frequency tensor (seqLen, headSize/2, 2) containing
+	 *                [cos, sin], indexed by position, or the inverse frequencies (headSize/2), from
+	 *                which the angle at any position is computed
 	 * @param position Producer that provides the current sequence position
 	 * @param requirements Compute requirements for hardware acceleration
 	 * @return CellularLayer that applies RoPE rotation
-	 * @throws IllegalArgumentException if shape is not 3D or doesn't end with dimension 2
+	 * @throws IllegalArgumentException if shape is not 3D or doesn't end with dimension 2, or if
+	 *                                  {@code weights} is neither a table nor inverse frequencies
+	 *                                  for {@code headSize/2} pairs
 	 */
 	default CellularLayer ropeRotation(TraversalPolicy shape, CollectionProducer weights,
 									   Producer<PackedCollection> position,
@@ -142,13 +158,17 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 		if (shape.getDimensions() != 3 || shape.length(2) != 2)
 			throw new IllegalArgumentException();
 
-		if (weights.getShape().getDimensions() != 3 || weights.getShape().length(2) != 2)
-			throw new IllegalArgumentException();
-
-		if (shape.length(1) != weights.getShape().length(1))
-			throw new IllegalArgumentException();
-
 		int freqDim = shape.length(1);
+		TraversalPolicy weightsShape = weights.getShape();
+		boolean tabulated = weightsShape.getDimensions() == 3;
+		if (tabulated && (weightsShape.length(2) != 2 || weightsShape.length(1) != freqDim)) {
+			throw new IllegalArgumentException("Expected a (seqLen, " + freqDim + ", 2) frequency table, got "
+					+ weightsShape);
+		} else if (!tabulated && (weightsShape.getDimensions() != 1 || weightsShape.getTotalSize() != freqDim)) {
+			throw new IllegalArgumentException("Expected a (seqLen, " + freqDim + ", 2) frequency table or ("
+					+ freqDim + ") inverse frequencies, got " + weightsShape);
+		}
+
 		int weightsFreqSize = freqDim * 2;
 		TraversalPolicy outputShape = shape.traverseEach();
 
@@ -157,14 +177,24 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 						args -> CollectionExpression.create(outputShape, idx -> {
 							Expression<?> k = idx.imod(2);
 							Expression<?> f = idx.divide(2).imod(freqDim);
-							Expression<?> row = args[3].getValueAt(e(0)).toInt().multiply(weightsFreqSize);
-							Expression<?> cosIdx = row.add(f.multiply(2));
 
-							Expression<? extends Number> xCos =
-									args[1].getValueAt(idx).multiply(args[2].getValueAt(cosIdx));
+							Expression<? extends Number> cos;
+							Expression<? extends Number> sin;
+							if (tabulated) {
+								Expression<?> row = args[3].getValueAt(e(0)).toInt().multiply(weightsFreqSize);
+								Expression<?> cosIdx = row.add(f.multiply(2));
+								cos = args[2].getValueAt(cosIdx);
+								sin = args[2].getValueAt(cosIdx.add(1));
+							} else {
+								Expression<? extends Number> angle =
+										args[3].getValueAt(e(0)).multiply(args[2].getValueAt(f));
+								cos = angle.cos();
+								sin = angle.sin();
+							}
+
+							Expression<? extends Number> xCos = args[1].getValueAt(idx).multiply(cos);
 							Expression<? extends Number> partnerSin =
-									args[1].getValueAt(idx.add(1).subtract(k.multiply(2)))
-											.multiply(args[2].getValueAt(cosIdx.add(1)));
+									args[1].getValueAt(idx.add(1).subtract(k.multiply(2))).multiply(sin);
 							return Conditional.of(k.eq(0), xCos.subtract(partnerSin), xCos.add(partnerSin));
 						}),
 						input, weights, position),

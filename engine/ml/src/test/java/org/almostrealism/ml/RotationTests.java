@@ -476,6 +476,72 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 	}
 
 	/**
+	 * {@link RotationFeatures#ropeRotation} given the inverse frequencies rotates at any position:
+	 * at every position a {@link RotationFeatures#computeRopeFreqs(int, PackedCollection) table}
+	 * built from the same inverse frequencies covers, it applies the rotation the table-driven
+	 * rotation applies, and at positions beyond the table — where the table has no row — it applies
+	 * the split-pair rotation by {@code position * invFreq[f]} computed independently here. Inverse
+	 * frequencies of the wrong length are rejected.
+	 */
+	@Test(timeout = 120000)
+	public void ropeRotationFromInverseFrequenciesReachesAnyPosition() {
+		int heads = 2;
+		int headSize = 8;
+		int freqDim = headSize / 2;
+		int seqLen = 6;
+		TraversalPolicy shape = shape(heads, freqDim, 2);
+
+		PackedCollection invFreq = computeInvFreq(headSize, 10000.0).evaluate();
+		PackedCollection input = new PackedCollection(shape).randFill();
+		PackedCollection position = new PackedCollection(1);
+
+		Model tabulated = new Model(shape);
+		tabulated.add(ropeRotation(shape, computeRopeFreqs(seqLen, invFreq), p(position)));
+		Model computed = new Model(shape);
+		computed.add(ropeRotation(shape, cp(invFreq), p(position)));
+		CompiledModel fromTable = tabulated.compile(false);
+		CompiledModel fromInverse = computed.compile(false);
+
+		try {
+			for (int p = 0; p < seqLen; p++) {
+				position.fill((double) p);
+				double[] expected = fromTable.forward(input).toArray(0, shape.getTotalSize());
+				double[] actual = fromInverse.forward(input).toArray(0, shape.getTotalSize());
+				Assert.assertArrayEquals("position " + p + " within the table", expected, actual, 1e-6);
+			}
+
+			for (int p : new int[] { seqLen, 37, 300 }) {
+				position.fill((double) p);
+				PackedCollection out = fromInverse.forward(input);
+				for (int h = 0; h < heads; h++) {
+					for (int f = 0; f < freqDim; f++) {
+						double angle = p * invFreq.toDouble(f);
+						double x0 = input.valueAt(h, f, 0);
+						double x1 = input.valueAt(h, f, 1);
+						assertEquals("position " + p + " head " + h + " pair " + f + " first",
+								x0 * Math.cos(angle) - x1 * Math.sin(angle), out.valueAt(h, f, 0), 1e-4);
+						assertEquals("position " + p + " head " + h + " pair " + f + " second",
+								x1 * Math.cos(angle) + x0 * Math.sin(angle), out.valueAt(h, f, 1), 1e-4);
+					}
+				}
+			}
+
+			try {
+				ropeRotation(shape, cp(new PackedCollection(freqDim + 1)), p(position));
+				Assert.fail("inverse frequencies of the wrong length must be rejected");
+			} catch (IllegalArgumentException expected) {
+				assertTrue(expected.getMessage().contains(String.valueOf(freqDim)));
+			}
+		} finally {
+			fromTable.destroy();
+			fromInverse.destroy();
+			position.destroy();
+			input.destroy();
+			invFreq.destroy();
+		}
+	}
+
+	/**
 	 * Verify that {@link RotationFeatures#computeRopeFreqs} produces a frequency tensor
 	 * with the correct shape and numerically correct cos/sin values.
 	 *
