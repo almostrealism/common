@@ -430,7 +430,8 @@ which stays the caller's, exactly as a second training compilation would be.
 
 The same decode model runs past `seqLen`, and `SlidingKeyValueCacheAutoregressiveModel` — a
 subclass of the bounded generator whose `load()` does not refuse — decodes through it for
-sequences of any length. Three properties make that correct: each cache is a ring (`cache_write`
+sequences longer than `seqLen`, up to the precision bound on the device-resident position that
+its Javadoc states. Three properties make that correct: each cache is a ring (`cache_write`
 writes row `position mod seqLen`, so it holds the most recent `seqLen` positions); the rotation
 has no table to run off the end of; and `causal_mask(position)` masks the columns after
 `position`, which past `seqLen` is none of them, so every slot of a full ring is attended. A key

@@ -14,6 +14,31 @@ tracker: []
 claim rests on were measured on the Metal reference and the decode-throughput harness this plan
 reuses reports Metal dispatch and command-buffer commit counts.
 
+## Corrections found during implementation
+
+Three claims below did not survive implementation and review. They are corrected here rather than
+silently rewritten so the reasoning stays traceable.
+
+- **Byte-for-byte equivalence holds only for a single block.** The relative-position argument makes
+  the *rotations* equivalent, not the cached vectors. The sliding window re-encodes its whole window
+  on every step, so in a model of two or more blocks the deeper blocks' keys and values of each
+  retained token change as tokens leave the window, while the ring keeps the vectors each token was
+  decoded with. The rolling cache is therefore per-layer window attention (Mistral style), not the
+  sliding window. `SlidingKeyValueCacheAutoregressiveModelTest` asserts token-for-token agreement
+  only for a single-block model, and for a two-block model asserts the eviction property instead: a
+  token stops affecting the output exactly when every block's window has moved past it. The
+  throughput benchmark asserts agreement only within the context and reports it past `seqLen`.
+- **The rotation needed no new method or primitive.** Rather than a separate method that the
+  `rope_rotation` primitive would not call, `RotationFeatures.ropeRotation` itself accepts either the
+  `(seqLen, headSize/2, 2)` table or the `(headSize/2)` inverse frequencies, and
+  `causal_lm_decode_block` binds `inv_freq` where it bound `freq_cis`. The existing
+  `rope_rotation` primitive and `attention.pdsl` then reach the position-computed rotation
+  unchanged.
+- **The position is not unbounded.** It is a device-resident number advanced by adding one, so on
+  the single-precision Metal backend it, the ring row and the rotary angle are exact only below
+  `2^24`, and the angle `position * invFreq` loses accuracy well before that. The generator's
+  Javadoc and the Generation section of `training-a-language-model.md` state this bound.
+
 ## Motivation
 
 For two months the self-hosted language-model track has built toward one thing: the platform

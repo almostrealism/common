@@ -19,8 +19,8 @@ package org.almostrealism.ml;
 import java.util.Random;
 
 /**
- * A key/value-cache generator whose caches roll, so that it decodes sequences of any length at the
- * cost of one position per token.
+ * A key/value-cache generator whose caches roll, so that it decodes sequences longer than its
+ * caches at the cost of one position per token.
  *
  * <p>It decodes through the same {@link CausalLanguageModel#decodeModel single-position decode
  * model} as the {@link KeyValueCacheAutoregressiveModel bounded generator} it extends, and owns the
@@ -49,6 +49,15 @@ import java.util.Random;
  * the {@code seqLen} positions before it. Each block attends to a window of {@code seqLen} positions
  * (the sliding-window attention of Mistral-style models), and a block's output reaches back
  * {@code seqLen - 1} positions further than the block below it.</p>
+ *
+ * <p>The length a sequence can reach is bounded by the precision of the device, not by the caches.
+ * The position is a device-resident number that {@link #advance()} increments, and the ring row and
+ * the rotary angle are computed from it in the kernel, so all three are exact only while the
+ * position is an integer the device's floating-point type represents exactly: below {@code 2^24}
+ * at single precision, the precision of the Metal backend. Well before that the rotary angles lose
+ * accuracy too, since {@code position * invFreq} is rounded to the precision of the product, so the
+ * rotation of a key very far into a sequence departs from the rotation the sliding window would
+ * apply to it at its window-relative position.</p>
  *
  * @see KeyValueCacheAutoregressiveModel
  * @see SlidingWindowAutoregressiveModel

@@ -83,6 +83,13 @@ test. Crucially the oracle already exists and is itself verified against a full 
 cannot be gamed. The two primitive changes touch kernels every attention model shares, so the plan
 requires proving them inert for the bounded path (`position mod seqLen == position` within `seqLen`).
 
+*Correction (implementation and review):* the byte-for-byte claim holds only for a single block. The
+sliding window recomputes the retained tokens through every block each step, so in a deeper model their
+deeper keys and values change as tokens leave the window, while the ring keeps the vectors each token was
+decoded with. The rolling cache is per-layer window attention, and its test pins exact agreement for one
+block and the eviction property for two. The plan's "Corrections found during implementation" section
+has the details.
+
 #### Balance across categories
 
 The last three cycles were performance (KV-decode copies) then two documentation cycles (PDSL tutorial,

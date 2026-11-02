@@ -408,8 +408,10 @@ reproducible after a reset; `keyValueCacheResetClearsCacheAcrossSequences` and
 sequences and that a later position reads an earlier position's cached entry.
 
 **Generating past the context: the rolling cache.** `SlidingKeyValueCacheAutoregressiveModel`
-decodes text of any length at cache cost, one position per byte. It is the bounded generator with its
-`decodes(position)` hook answering true for every position, so `load` never refuses, decoding through the same model, which needs no bound: `cache_write` writes
+decodes text longer than the context at cache cost, one position per byte, up to the length at
+which the device can still represent the position exactly (below `2^24` at the single precision of the
+Metal backend; the rotary angle `position * inv_freq` loses accuracy well before that). It is the bounded generator with its
+`decodes(position)` hook answering true for every position, so `load` never refuses, decoding through the same model, which needs no table bound: `cache_write` writes
 row `position mod seqLen`, so each cache is a ring holding the most recent `seqLen` keys and values;
 the cached attention rotates queries and keys by angles computed from `rope_inv_freq` at the position
 itself rather than read from a `seqLen`-row table; and the causal mask, which hides the columns after
