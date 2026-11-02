@@ -154,6 +154,23 @@ def _require_string_length(description, content):
             % (description, length, MAX_STRING_BYTES))
 
 
+def _unreachable_byte(value, vocab):
+    """Whether no character outside ``vocab`` can fall back to the byte token for ``value``.
+
+    Fallback emits the UTF-8 bytes of a character missing from the vocabulary. An ASCII byte is the
+    whole encoding of exactly one character, so its token is unreachable when that character is
+    itself a vocabulary token. Bytes 0xC0, 0xC1 and 0xF5-0xFF never occur in UTF-8 at all. Any other
+    byte is part of the encoding of many characters, so it is treated as reachable.
+
+    :param value: the byte, 0 to 255.
+    :param vocab: the vocabulary, mapping token content to id.
+    :return: ``True`` if no fallback can emit the byte token.
+    """
+    if value < 0x80:
+        return chr(value) in vocab
+    return value in (0xC0, 0xC1) or value >= 0xF5
+
+
 def validate_pipeline(spec):
     """Reject a tokenizer whose pipeline the Java ``SentencePieceBPETokenizer`` does not reproduce.
 
@@ -179,20 +196,21 @@ def validate_pipeline(spec):
             "model.byte_fallback, so the Java reader's <0xNN> handling of characters outside the "
             "vocabulary would not match the source tokenizer")
 
-    # HuggingFace BPE enables byte fallback only when the vocabulary contains all 256 <0xNN> atoms.
-    # With an incomplete set the source tokenizer falls back to one unknown token per unknown
-    # character, which neither the exported binary (it carries no unknown-fallback rule) nor the
-    # Java reader reproduces -- the reader rejects a character whose byte token is missing. So an
-    # incomplete byte-fallback vocabulary cannot match the source and is rejected here, where the
-    # whole vocabulary is available, rather than surfacing later as an encode-time failure.
+    # Byte fallback applies per character: HuggingFace BPE expands a character outside the
+    # vocabulary into one <0xNN> token per UTF-8 byte when every one of those byte tokens exists,
+    # and otherwise emits a single unknown token for that character. The Java reader reproduces the
+    # first case and rejects the second, and the binary carries no unknown-fallback rule, so every
+    # byte token that a fallback can reach must be present. A missing byte token is harmless when no
+    # fallback can reach it -- Gemma, for one, stores the tab as the literal token "\t" in place of
+    # <0x09> -- so only reachable byte tokens are required (see _unreachable_byte).
     vocab = model.get("vocab") or {}
     missing = ["<0x%02X>" % value for value in range(256)
-               if ("<0x%02X>" % value) not in vocab]
+               if ("<0x%02X>" % value) not in vocab and not _unreachable_byte(value, vocab)]
     if missing:
         raise ValueError(
-            "incomplete byte-fallback vocabulary; %d of 256 <0xNN> byte tokens are missing "
-            "(e.g. %s). HuggingFace enables byte fallback only with all 256 present, so an "
-            "incomplete vocabulary cannot reproduce the source tokenizer"
+            "incomplete byte-fallback vocabulary; %d <0xNN> byte tokens that a character outside "
+            "the vocabulary can fall back to are missing (e.g. %s), so the source tokenizer emits "
+            "an unknown token where the Java reader cannot reproduce it"
             % (len(missing), ", ".join(missing[:8])))
 
     # write_tokenizer sizes and indexes the token table by id, so a negative id would silently
@@ -213,10 +231,9 @@ def validate_pipeline(spec):
         raise ValueError(
             "unsupported BPE ignore_merges; the Java reader always applies the merges rather than "
             "first matching a whole segment against the vocabulary")
-    if model.get("fuse_unk"):
-        raise ValueError(
-            "unsupported BPE fuse_unk; it collapses a run of unknown characters into one token, "
-            "while the Java reader emits one fallback token per symbol")
+    # fuse_unk only merges consecutive unknown tokens. With byte fallback the source emits an unknown
+    # token only for a character whose byte tokens are missing, and the check above has required
+    # every reachable byte token, so no unknown token is ever produced and fuse_unk has no effect.
     for option in ("continuing_subword_prefix", "end_of_word_suffix"):
         if model.get(option):
             raise ValueError(

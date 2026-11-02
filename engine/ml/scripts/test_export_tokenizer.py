@@ -26,8 +26,8 @@ BOUNDARY = "▁"
 
 
 def _byte_tokens(start):
-    """The 256 ``<0xNN>`` atoms a byte-fallback vocabulary must contain, mapped to consecutive ids
-    from ``start``. A byte-fallback tokenizer is only exportable with the complete set present."""
+    """All 256 ``<0xNN>`` atoms, mapped to consecutive ids from ``start``. A byte-fallback tokenizer
+    is only exportable when every byte token that a fallback can reach is present."""
     return {"<0x%02X>" % value: start + value for value in range(256)}
 
 
@@ -93,13 +93,39 @@ def test_missing_byte_fallback_is_rejected():
 
 
 def test_incomplete_byte_fallback_vocabulary_is_rejected():
-    # HuggingFace enables byte fallback only when all 256 <0xNN> atoms are present; with one missing
-    # the source falls back to an unknown token neither the binary nor the Java reader reproduces, so
-    # the export must be rejected rather than silently diverging from the source tokenizer.
+    # "A" is not a vocabulary token, so it falls back to <0x41>; with that byte token missing the
+    # source emits an unknown token neither the binary nor the Java reader reproduces, so the export
+    # must be rejected rather than silently diverging from the source tokenizer.
     spec = _supported_spec()
     del spec["model"]["vocab"]["<0x41>"]
     with pytest.raises(ValueError, match="incomplete byte-fallback"):
         exporter.validate_pipeline(spec)
+
+
+def test_missing_byte_token_for_vocabulary_character_is_accepted():
+    # Gemma stores the tab as the literal token "\t" in place of <0x09>. A tab is then always its own
+    # symbol and never falls back, so the missing byte token is unreachable and the export proceeds.
+    spec = _supported_spec()
+    del spec["model"]["vocab"]["<0x09>"]
+    spec["model"]["vocab"]["\t"] = 260
+    exporter.validate_pipeline(spec)
+
+
+def test_missing_multibyte_byte_token_is_rejected():
+    # A continuation byte such as 0xA9 is part of many characters ("é" is C3 A9), so some character
+    # outside the vocabulary can always reach it, and the export is rejected.
+    spec = _supported_spec()
+    del spec["model"]["vocab"]["<0xA9>"]
+    with pytest.raises(ValueError, match="incomplete byte-fallback"):
+        exporter.validate_pipeline(spec)
+
+
+@pytest.mark.parametrize("value", [0xC0, 0xC1, 0xF5, 0xFF])
+def test_missing_byte_token_outside_utf8_is_accepted(value):
+    # These bytes never occur in UTF-8, so no fallback can emit their tokens.
+    spec = _supported_spec()
+    del spec["model"]["vocab"]["<0x%02X>" % value]
+    exporter.validate_pipeline(spec)
 
 
 def test_complete_byte_fallback_vocabulary_is_accepted():
@@ -113,7 +139,6 @@ def test_complete_byte_fallback_vocabulary_is_accepted():
 @pytest.mark.parametrize("option, value", [
     ("dropout", 0.1),
     ("ignore_merges", True),
-    ("fuse_unk", True),
     ("continuing_subword_prefix", "##"),
     ("end_of_word_suffix", "</w>"),
 ])
@@ -132,6 +157,9 @@ def test_non_default_bpe_option_is_rejected(option, value):
     ("ignore_merges", False),
     ("fuse_unk", None),
     ("fuse_unk", False),
+    # Byte fallback with every reachable byte token present never emits an unknown token, so
+    # fuse_unk (as Gemma sets it) has nothing to fuse.
+    ("fuse_unk", True),
     ("continuing_subword_prefix", None),
     ("continuing_subword_prefix", ""),
     ("end_of_word_suffix", None),

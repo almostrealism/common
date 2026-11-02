@@ -191,13 +191,13 @@ public class SentencePieceBPETokenizerTest extends TestSuiteBase {
 	 * An incomplete byte-fallback vocabulary is rejected during encoding even when the tokenizer has
 	 * an unknown token.
 	 *
-	 * <p>HuggingFace BPE enables byte fallback only when all 256 {@code <0xNN>} atoms are present; with
-	 * one missing it substitutes a single unknown token for the whole unknown character. The reader
+	 * <p>HuggingFace BPE falls back per character: when one of a character's byte tokens is missing it
+	 * substitutes a single unknown token for the whole character. The reader
 	 * does not reproduce that -- substituting the unknown token once per byte, as an earlier revision
 	 * did, is a different id sequence than the source -- so a missing byte token is rejected rather
 	 * than papered over with a fallback the source tokenizer never uses. {@code export_tokenizer.py}
-	 * rejects an incomplete byte-fallback vocabulary before it is written, so this only guards a
-	 * corrupt or hand-crafted binary.</p>
+	 * rejects a vocabulary missing any reachable byte token before it is written, so this only guards
+	 * a corrupt or hand-crafted binary.</p>
 	 *
 	 * @throws IOException if the fixture cannot be written or read
 	 */
