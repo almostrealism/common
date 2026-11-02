@@ -132,9 +132,10 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * <p><b>Rotation at an arbitrary position.</b> A precomputed table holds the angles of a fixed
 	 * number of positions, so a position at or beyond its row count has no row to read. When
 	 * {@code weights} is instead the one-dimensional {@code (headSize/2)} vector of inverse
-	 * frequencies (see {@link #computeInvFreq(int, double)}), the angle of pair {@code f} is computed in the kernel as {@code position * invFreq[f]} and its
-	 * cosine and sine taken there, so any non-negative position is rotated, with no table and no
-	 * bound. At a position a table covers, the two forms apply the same rotation: the table built by
+	 * frequencies (see {@link #computeInvFreq(int, double)}), the angle of pair {@code f} is
+	 * computed in the kernel as {@code position * invFreq[f]} and its cosine and sine taken there,
+	 * so any non-negative position is rotated, with no table and no bound. At a position a table
+	 * covers, the two forms apply the same rotation: the table built by
 	 * {@link #computeRopeFreqs(int, CollectionProducer)} from the same inverse frequencies holds
 	 * exactly {@code cos} and {@code sin} of the same product at that row. This is what lets a
 	 * key/value-cache decode run past the length of any table: rotary attention scores depend only on
