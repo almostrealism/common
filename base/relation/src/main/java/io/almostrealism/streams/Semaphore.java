@@ -339,7 +339,7 @@ public interface Semaphore {
 	 * Returns the non-null members of {@code semaphores}, each appearing once, with every member
 	 * that {@link #merge(Semaphore) merges} with an earlier one folded into it, in either
 	 * direction. A semaphore given again is already covered by its first appearance, whether or
-	 * not its provider can merge it.
+	 * not its provider can merge it, and whatever that appearance has since been folded into.
 	 *
 	 * @param semaphores the completions to merge; may contain nulls
 	 * @param count      the number of non-null entries, used to size the result
@@ -350,12 +350,12 @@ public interface Semaphore {
 
 		for (int i = 0; i < semaphores.size(); i++) {
 			Semaphore s = semaphores.get(i);
-			if (s == null) continue;
+			if (s == null || givenEarlier(semaphores, i)) continue;
 
 			boolean folded = false;
 			for (int j = 0; j < members.size() && !folded; j++) {
 				Semaphore member = members.get(j);
-				Semaphore m = member == s ? member : member.merge(s);
+				Semaphore m = member.merge(s);
 				if (m == null) m = s.merge(member);
 
 				if (m != null) {
@@ -368,5 +368,24 @@ public interface Semaphore {
 		}
 
 		return members;
+	}
+
+	/**
+	 * Returns whether the semaphore at {@code index} of {@code semaphores} also appears, as the
+	 * same instance, at an earlier position. The comparison is with the inputs rather than with
+	 * the members they have been folded into, because a merge may replace a member with a new
+	 * completion that the repeated input cannot itself merge with.
+	 *
+	 * @param semaphores the completions being merged
+	 * @param index      the position of the semaphore to look for
+	 * @return true if the same semaphore was given before {@code index}
+	 */
+	private static boolean givenEarlier(List<Semaphore> semaphores, int index) {
+		Semaphore s = semaphores.get(index);
+		for (int i = 0; i < index; i++) {
+			if (semaphores.get(i) == s) return true;
+		}
+
+		return false;
 	}
 }

@@ -18,6 +18,7 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.concurrent.OperationSemaphore;
+import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -69,6 +70,33 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 
 		a.countDown();
 		b.countDown();
+		combined.waitFor();
+	}
+
+	/**
+	 * A repeated semaphore is recognised as already covered even after its first appearance has
+	 * been folded into a new merged completion that it cannot itself merge with: the selection
+	 * yields the merged completion alone rather than a composite over it and the repeat.
+	 */
+	@Test(timeout = 30000)
+	public void repeatedMemberStaysCoveredAfterMerge() {
+		DefaultLatchSemaphore partner = new DefaultLatchSemaphore((Semaphore) null, 1);
+		DefaultLatchSemaphore merged = new DefaultLatchSemaphore((Semaphore) null, 1);
+		Semaphore pairing = new PairingCompletion(partner, merged);
+
+		assertTrue(pairing.merge(partner) == merged);
+		assertTrue(merged.merge(pairing) == null && pairing.merge(merged) == null);
+
+		assertTrue(Semaphore.all(Arrays.asList(pairing, partner, pairing)) == merged);
+		assertTrue(Semaphore.all(Arrays.asList(pairing, partner, null, pairing, partner)) == merged);
+
+		// A distinct member is still composed with the merged completion
+		DefaultLatchSemaphore other = new DefaultLatchSemaphore((Semaphore) null, 1);
+		LatchSemaphore combined = (LatchSemaphore) Semaphore.all(Arrays.asList(pairing, partner, other, pairing));
+		assertFalse(combined.isSettled());
+
+		merged.countDown();
+		other.countDown();
 		combined.waitFor();
 	}
 
@@ -626,6 +654,38 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 			TimelineCompletion completion = (TimelineCompletion) other;
 			if (completion.timeline != timeline) return null;
 			return completion.point > point ? completion : this;
+		}
+	}
+
+	/**
+	 * A completion that merges with one particular partner into a new completion, distinct from
+	 * both, and with nothing else; it completes when that merged completion does.
+	 */
+	private static class PairingCompletion implements Semaphore {
+		/** The completion this one merges with. */
+		private final Semaphore partner;
+		/** The completion covering both this one and {@link #partner}. */
+		private final Semaphore merged;
+
+		/**
+		 * Creates a completion that merges with {@code partner} into {@code merged}.
+		 *
+		 * @param partner the completion this one merges with
+		 * @param merged  the completion covering both
+		 */
+		PairingCompletion(Semaphore partner, Semaphore merged) {
+			this.partner = partner;
+			this.merged = merged;
+		}
+
+		@Override
+		public void waitFor() {
+			merged.waitFor();
+		}
+
+		@Override
+		public Semaphore merge(Semaphore other) {
+			return other == partner ? merged : null;
 		}
 	}
 }
