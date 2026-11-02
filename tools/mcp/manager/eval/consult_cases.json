@@ -40,7 +40,7 @@
           "must_include_any": [
             [
               "MAX_OPEN_PRS[\\s`]*(?:\\bis\\s+)?(?:=|:|\\bis\\b|\\bof\\b|\\bequals\\b|\\bset to\\b|\\bdefaults? to\\b|\\blimit(?:ed)? to\\b|\\bcaps? (?:at|to)\\b)(?![\\s`]*(?:not|never|no)\\b)[\\s`]*(?:to\\s+)?(?:a\\s+)?`?(?:7|seven)\\b",
-              "\\b(?:7|seven)\\b\\s+(?:open\\s+)?(?:PRs?|pull requests?)\\b[^.\\n]*MAX_OPEN_PRS"
+              "\\b(?:more than|no more than|at most|up to|maximum(?: of)?|max(?: of)?|limit(?:ed)?(?: (?:to|of))?|caps? (?:at|to)|exceeds?|beyond)\\s+(?:a\\s+)?(?:7|seven)\\b\\s+(?:open\\s+)?(?:PRs?|pull requests?)\\b[^.\\n]*MAX_OPEN_PRS"
             ]
           ]
         },

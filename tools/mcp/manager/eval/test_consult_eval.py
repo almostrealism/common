@@ -559,6 +559,45 @@ class TestGraderTeeth(unittest.TestCase):
         result = grade(value_first, resolve_expect(case, "step2"))
         self.assertTrue(result.passed, result.failures)
 
+    def test_e1_step2_rejects_a_current_count_that_is_not_the_limit(self):
+        # The value-first form must assert a bound, not merely count how many
+        # PRs happen to be open: "There are 7 open PRs; MAX_OPEN_PRS is merely
+        # forwarded as input." mentions 7, PRs and MAX_OPEN_PRS but states no
+        # limit, so the guard must reject it.
+        case = self._case("E1")
+        current_count = {
+            "ok": True,
+            "answer": ("Master Agent Dispatch runs rounds with prefixes "
+                       "qa/docs-, qa/defect-, qa/flaky-, qa/coverage-, "
+                       "qa/consolidate-, qa/performance-, qa/pdsl- and "
+                       "qa/retro-. There are 7 open PRs; MAX_OPEN_PRS is "
+                       "merely forwarded as input."),
+            "sources": [".github/CLAUDE.md"],
+        }
+        result = grade(current_count, resolve_expect(case, "step2"))
+        self.assertFalse(result.passed)
+        self.assertIn("must_include_any", " ".join(result.failures))
+
+    def test_e1_step2_accepts_value_first_bound_phrasings(self):
+        # A live model may state the limit value-first with any of the usual
+        # bound words; each must satisfy the guard.
+        case = self._case("E1")
+        prefixes = ("Master Agent Dispatch uses branch prefixes qa/docs-, "
+                    "qa/defect-, qa/flaky-, qa/coverage-, qa/consolidate-, "
+                    "qa/performance-, qa/pdsl- and qa/retro-; ")
+        accepted = [
+            "no round starts while more than 7 PRs are open (MAX_OPEN_PRS).",
+            "no more than 7 PRs may be open (MAX_OPEN_PRS).",
+            "at most 7 open PRs at a time, enforced by MAX_OPEN_PRS.",
+            "up to 7 open pull requests are allowed (MAX_OPEN_PRS).",
+        ]
+        for limit in accepted:
+            with self.subTest(limit=limit):
+                response = {"ok": True, "answer": prefixes + limit,
+                            "sources": [".github/CLAUDE.md"]}
+                result = grade(response, resolve_expect(case, "step2"))
+                self.assertTrue(result.passed, result.failures)
+
     def test_e1_step2_limit_guard_accepts_common_assertions_and_rejects_negations(self):
         # A live model states the limit in many equivalent ways; the guard
         # must accept each of them, and still reject a negation even when the
