@@ -619,7 +619,7 @@ explicit prerequisite for the 2026-10-18 correctness cycle.
 The current self-hosted LM arc was set up by a run of cycles now fully cashed (plans since removed;
 see git history):
 
-- **2026-09-26 (log restart), native-runtime-lifecycle docs** (`project/plan-20260926-172935`, PR #565)
+- **2026-09-26 (log restart), native-runtime-lifecycle docs** (`project/plan-20260926-172935`, PR #562)
   closed the back half of the execution story — what happens to a compiled kernel and its memory after
   compilation — completing the internals corpus from Producer to released memory. It restarted this log
   (the prior one was deleted 2026-04-06) and named performance then a self-hosted LM run as the next

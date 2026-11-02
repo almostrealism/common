@@ -108,23 +108,40 @@ test against the existing table rows (the same stance `decodeRopeFrequenciesMatc
 already takes for the stored-inverse-frequency bridge). This is the enabling change and must land
 with its own unit coverage independent of the end-to-end generation test.
 
-### 2. Ring-buffer cache writes (`attention.pdsl` and the `cache_write` primitive, `engine/ml`)
+### 2. Ring-buffer cache writes (`attention.pdsl` in `engine/ml`, the `cache_write` primitive in `domain/graph`)
 
-Make the cache write address row `position mod seqLen`. Prefer expressing this where the cache's
-own size is known (the write primitive knows the cache shape), so the ring modulus is the cache's
-row count rather than a separately passed constant — the caller declares intent by the buffer it
-supplies, not by a magic number. This change must be **opt-in or inert for the bounded decode**:
-every existing caller (`Llama2`, Qwen, Moonbeam, and the bounded `KeyValueCacheAutoregressiveModel`)
-decodes within `seqLen`, where `position mod seqLen == position`, so a correct modulus is a no-op
-for them and cannot regress their behaviour. Verify that equivalence explicitly rather than assume
-it. If the write primitive cannot take the modulus without disturbing the bounded path, introduce a
-sibling rolling `cache_write` used only by the rolling decode block, keeping the bounded layers
-byte-identical.
+`cache_write` is **not** an `engine/ml` primitive: it is a core PDSL builtin registered by
+`PdslBuiltins` and backed by `LayerFeatures.cacheWrite` (both in `domain/graph`), which computes the
+row offset as `position × rowSize` into a `[rows, rowSize]` cache and already knows `rows` from the
+cache shape. Only the `attention.pdsl` layers that *call* `cache_write(key_cache, position)` /
+`cache_write(value_cache, position)` live in `engine/ml`. The change therefore has two homes: the
+`attention.pdsl` call sites (`engine/ml`) and the primitive itself (`domain/graph`).
+
+Make the cache write address row `position mod rows`. Prefer expressing this in the primitive, where
+the cache's own size is known, so the ring modulus is the cache's row count rather than a separately
+passed constant — the caller declares intent by the buffer it supplies, not by a magic number.
+
+Because the primitive is shared, this change must be **opt-in or inert for every existing consumer of
+`cache_write`, not only the attention models.** The consumers are: the attention layers of
+`attention.pdsl` (Llama 2, Qwen, Moonbeam, and the bounded `KeyValueCacheAutoregressiveModel`), which
+all decode within `seqLen` so `position mod rows == position`; the MIDI GRU decoder
+(`gru_decoder.pdsl`), which writes `cache_write(hidden, l)` at a layer index `l < rows` so the modulus
+is likewise a no-op; and the connectome delay lines (`ConnectomeNetwork`, `studio/bioscience`), whose
+`cache_write`/`cache_read` address `row × rowSize + i` in FP32 and are already bounded (`DELAY_LINE_LIMIT`,
+the `2^24` FP32-exact ceiling). Prove the `position mod rows == position` equivalence explicitly for
+each of these — the connectome especially, since its indexing is the one not obviously bounded by a
+small `rows` — rather than assume it from the attention case. If the primitive cannot take the modulus
+without disturbing any bounded path, introduce a sibling rolling cache-write builtin (also in
+`domain/graph`, where the cache-row primitives belong) used only by the rolling decode block, keeping
+every existing consumer byte-identical.
 
 ### 3. The rolling decode model and generator
 
-A rolling decode variant that composes the `attention.pdsl` layers with the arbitrary-position
-rotary and the ring-buffer write, and a generator that drives it:
+A rolling decode variant assembled exactly as the bounded decode is — `CausalLanguageModel.decodeModel`
+builds it from the `causal_lm_decode_block` and `causal_lm_head` layers of `causal_lm.pdsl`, which
+bridge the trained weights to the cached `attention` layer of `attention.pdsl` — but with the
+arbitrary-position rotary and the ring-buffer write in place of the bounded ones, and a generator that
+drives it:
 
 - A rolling decode `Model` (the natural home is a `CausalLanguageModel.decodeModel` variant or an
   argument to it that selects rolling vs bounded rotary/write, reusing the existing fused-QKV split,
@@ -185,8 +202,9 @@ the simplest decode within `seqLen`) accurately described.
    the design above assumes all three.
 2. **Land the arbitrary-position rotary first, with its own numeric test** against the existing
    table rows. Nothing else can be correct until this is.
-3. **Land the ring-buffer write**, proving the `position mod seqLen == position` equivalence for the
-   bounded path so no existing model regresses.
+3. **Land the ring-buffer write** in `domain/graph`, proving the `position mod rows == position`
+   equivalence for every current consumer of the shared `cache_write` builtin — the bounded attention
+   models, the MIDI GRU decoder and the connectome delay lines — so nothing that uses it regresses.
 4. **Assemble the rolling decode model and generator**, then make
    `slidingKeyValueCacheMatchesSlidingWindowPastSeqLen` pass on any backend — this is the gate.
 5. **Measure on the Metal node**: run the long-run throughput comparison, use `ar-profile-analyzer`
@@ -205,8 +223,9 @@ the simplest decode within `seqLen`) accurately described.
 - The arbitrary-position rotary reproduces the existing `computeRopeFreqs` table rows numerically
   for `position < seqLen`, pinned by its own unit test.
 - Every existing bounded-cache test and every other attention model's tests still pass; the bounded
-  `KeyValueCacheAutoregressiveModel` still refuses a step at or beyond `seqLen`, and the
-  ring-buffer write is proven inert for the bounded path.
+  `KeyValueCacheAutoregressiveModel` still refuses a step at or beyond `seqLen`, and the ring-buffer
+  write is proven inert for every current `cache_write` consumer (the bounded attention models, the
+  MIDI GRU decoder, the connectome delay lines).
 - A long-run throughput measurement shows the rolling cache decoding past `seqLen` at a materially
   higher bytes/second than the sliding window, with a committed benchmark that asserts only the
   robust per-byte dispatch-count property and reports the rest.
@@ -240,10 +259,14 @@ and the rewrite rather than decide them silently.
    Greedy argmax is expected to be robust to this (that is why the test asserts byte match, not
    logit equality), but if a byte mismatch appears it is evidence the angle reduction needs care
    (reduce the angle mod 2π before `cos`/`sin`), not evidence to loosen the test.
-3. **Scope boundary of the `cache_write` change.** The cleanest design makes the ring modulus the
-   cache's own row count so every caller is correct automatically; if that cannot be done without
-   touching the bounded path's generated kernel, a sibling rolling write keeps the bounded layers
-   byte-identical. Decide which, and prove the bounded path unchanged either way.
+3. **Scope boundary of the `cache_write` change, which is a shared `domain/graph` builtin.** The
+   cleanest design makes the ring modulus the cache's own row count so every caller is correct
+   automatically; because `cache_write` is used outside attention (the MIDI GRU decoder and the
+   connectome delay lines), "every caller" means those too, not just the attention models. If the
+   modulus cannot be added without touching any of their generated kernels, a sibling rolling write —
+   also a `domain/graph` builtin — keeps every existing consumer byte-identical. Decide which, and
+   prove every current consumer unchanged either way. The connectome's `row × rowSize + i` FP32
+   addressing (bounded by `DELAY_LINE_LIMIT`) is the one to check with the most care.
 4. **Attention-sink degradation is out of scope.** Published rolling-cache work (StreamingLLM) notes
    that evicting the very first tokens can degrade quality because early tokens act as attention
    sinks. This plan's correctness bar is *matching the sliding window*, which evicts them too, so
@@ -253,9 +276,11 @@ and the rewrite rather than decide them silently.
 ## Estimated Complexity
 
 **Medium–Large.** The generator and the test mirror an existing, approved pattern and are
-straightforward. The real work is the two shared-primitive changes — the arbitrary-position rotary
-and the ring-buffer write — which touch primitives used by every attention model and so must be
-proven inert for the bounded path, and the empirical step of a stable long-run throughput
-measurement on Metal. The design risk is low because the relative-position property makes the
+straightforward. The real work is the two shared-primitive changes — the arbitrary-position rotary on
+`RotationFeatures` (`engine/ml`) and the ring-buffer write on the `cache_write` builtin
+(`domain/graph`) — which touch primitives used well beyond the self-hosted LM (the rotary by every
+RoPE attention model, `cache_write` by every attention model plus the MIDI GRU decoder and the
+connectome delay lines) and so must be proven inert for every current consumer, and the empirical step
+of a stable long-run throughput measurement on Metal. The design risk is low because the relative-position property makes the
 correctness oracle an existing, already-verified test; the cost is in doing the primitive changes
 carefully and confirming the three attention-kernel facts the argument rests on.
