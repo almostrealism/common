@@ -112,8 +112,12 @@ Concrete deliverables:
    - A **Related files** table (module-relative paths, no line numbers).
 
 2. **A drift-guard examples test**, `NeuronLevelConnectomeSimulationExamplesTest` (in
-   `engine/utils`, extending `TestSuiteBase`, modeled on
-   `NeuralPopulationSimulationExamplesTest`), that runs the page's worked example on the
+   `studio/bioscience` — the module that owns `NeuronConnectome`/`ConnectomeNetwork` and
+   their existing tests (`ConnectomeNetworkTest`, `NeuronConnectomeTest`); `engine/utils`,
+   where the sibling `NeuralPopulationSimulationExamplesTest` lives, is a lower layer and
+   cannot depend on `studio/bioscience`, so this test cannot live beside its sibling — it
+   extends `TestSuiteBase` and is modeled on `NeuralPopulationSimulationExamplesTest`), that
+   runs the page's worked example on the
    **committed synthetic connectome** (40 neurons, 111 edges) through `SimulationRunner` and
    asserts the quantitative claims the page makes (e.g. a driven neuron fires, the synthetic
    connectome's spikes match its committed Brian2 reference, a reset run reproduces, replicas

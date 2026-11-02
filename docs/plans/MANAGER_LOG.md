@@ -46,7 +46,7 @@ the measured figures. CUDA joined automatic backend selection (PR #810). Larger 
 synapse-count matrix in CSR, read through `StateDictionary`, whose weights carry a
 `CompressedRowTraversalOrdering` so synaptic input is one sparse `matmul`), `ConnectomeNetwork` (the
 Shiu et al. (2024) whole-brain model composed in `/pdsl/connectome.pdsl`, stepped by
-`SimulationRunner`, with replicas and `meanRates`), the `ExponentialSynapseNeurons` /`PoissonInput`
+`SimulationRunner`, with replicas and `meanRates`), the `ExponentialSynapseNeurons`/`PoissonInput`
 `Block`s in `domain/biology`, and the `connectome_csr.py`/`brian2_reference.py` ingest-and-oracle
 scripts in `studio/bioscience` — with the synthetic connectome and the FlyWire "sugar circuit" plus
 their Brian2 reference spikes committed as test resources. The platform now reproduces a published
