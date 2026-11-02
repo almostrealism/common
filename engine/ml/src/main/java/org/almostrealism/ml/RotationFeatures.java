@@ -129,9 +129,9 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * computation (see {@link #computeRopeFreqs(int, CollectionProducer)}), only the row the
 	 * rotation reads is computed.</p>
 	 *
-	 * <p><b>Rotation at an arbitrary position.</b> A precomputed table holds the angles of a fixed number of positions, so a position at or
-	 * beyond its row count has no row to read. When {@code weights} is instead the one-dimensional
-	 * {@code (headSize/2)} vector of inverse frequencies (see {@link #computeInvFreq(int, double)}),
+	 * <p><b>Rotation at an arbitrary position.</b> A precomputed table holds the angles of a fixed
+	 * number of positions, so a position at or beyond its row count has no row to read. When
+	 * {@code weights} is instead the one-dimensional {@code (headSize/2)} vector of inverse frequencies (see {@link #computeInvFreq(int, double)}),
 	 * the angle of pair {@code f} is computed in the kernel as {@code position * invFreq[f]} and its
 	 * cosine and sine taken there, so any non-negative position is rotated, with no table and no
 	 * bound. At a position a table covers, the two forms apply the same rotation: the table built by

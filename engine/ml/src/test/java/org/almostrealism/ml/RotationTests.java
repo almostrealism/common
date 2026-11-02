@@ -542,6 +542,42 @@ public class RotationTests extends TestSuiteBase implements RotationFeatures {
 	}
 
 	/**
+	 * {@link RotationFeatures#ropeRotation} rejects frequency weights that are neither a
+	 * {@code (seqLen, headSize/2, 2)} table nor {@code (headSize/2)} inverse frequencies: a table
+	 * holding the wrong number of pairs, a table whose last dimension is not a {@code [cos, sin]}
+	 * pair, and a two-dimensional weight. A well-formed table and inverse-frequency vector of the
+	 * same pair count are both accepted.
+	 */
+	@Test(timeout = 60000)
+	public void ropeRotationRejectsMalformedFrequencies() {
+		int freqDim = 4;
+		TraversalPolicy shape = shape(2, freqDim, 2);
+		PackedCollection position = new PackedCollection(1);
+
+		try {
+			Assert.assertNotNull(ropeRotation(shape, cp(new PackedCollection(shape(6, freqDim, 2))), p(position)));
+			Assert.assertNotNull(ropeRotation(shape, cp(new PackedCollection(freqDim)), p(position)));
+
+			TraversalPolicy[] malformed = {
+					shape(6, freqDim + 1, 2),
+					shape(6, freqDim, 3),
+					shape(freqDim, 2)
+			};
+
+			for (TraversalPolicy weights : malformed) {
+				try {
+					ropeRotation(shape, cp(new PackedCollection(weights)), p(position));
+					Assert.fail("frequency weights " + weights + " must be rejected");
+				} catch (IllegalArgumentException expected) {
+					assertTrue(expected.getMessage().contains("(seqLen, " + freqDim + ", 2)"));
+				}
+			}
+		} finally {
+			position.destroy();
+		}
+	}
+
+	/**
 	 * Verify that {@link RotationFeatures#computeRopeFreqs} produces a frequency tensor
 	 * with the correct shape and numerically correct cos/sin values.
 	 *
