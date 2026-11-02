@@ -210,17 +210,22 @@ jobs:
           fi
 
           # Eval change detection. The python-evals job runs the consult
-          # evaluation set (tools/mcp/manager/eval), whose inputs are not
-          # only Python: it retrieves over the documentation corpus (*.md,
-          # *.html) and a snapshot index of the source trees (*.java, *.py,
-          # *.sh), both staged from the checkout as the ar-manager Dockerfile
-          # stages them. A docs-only edit can therefore break it, so the flag
-          # covers every corpus and index file type, the eval data, and the
-          # Dockerfile whose COPY directives define the corpus.
+          # evaluation set (tools/mcp/manager/eval), whose inputs are the
+          # documentation corpus and a snapshot index, both built from the
+          # trees the ar-manager Dockerfile's `docs` stage stages. The index
+          # records *every* file under those trees in its `paths` set — not
+          # only the doc and source suffixes it reads for content — and the
+          # consult pipeline validates path-shaped mentions against that set,
+          # so an added, renamed or deleted file of any type can change the
+          # eval's grading. The gate therefore covers every one of those trees
+          # (the Dockerfile's docs-stage COPY roots). The ar-manager Dockerfile
+          # itself, whose COPY directives define which trees those are, and the
+          # eval data both live under tools/ and are covered with it. Keep this
+          # list and that stage in sync; tools/tests/test_python_evals_job.py
+          # pins the agreement.
           EVAL_FILES=$(git diff --name-only "$BASE" HEAD -- \
-            '*.md' '*.html' '*.java' '*.py' '*.sh' \
-            'tools/mcp/manager/eval/' 'tools/mcp/manager/Dockerfile' \
-            'tools/mcp/requirements.txt' || true)
+            docs/ CLAUDE.md base/ compute/ domain/ engine/ extern/ studio/ \
+            flowtree/ tools/ .github/ .claude/ scripts/ || true)
           if [ -n "$EVAL_FILES" ]; then
             echo "evals_changed=true" >> "$GITHUB_OUTPUT"
             echo "::notice::Eval inputs changed — running python-evals"

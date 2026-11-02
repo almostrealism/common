@@ -231,8 +231,11 @@ class TestScriptedRun(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.cases = load_cases()
-        cls.summary = build_report(cls.cases, run_consult_eval._run_scripted(cls.cases),
-                                   "step12")
+        # One scripted run of the whole set, shared by every test here: each
+        # repetition stages the corpus and runs the consult pipeline for every
+        # case, so the required python-evals job must not evaluate the set twice.
+        cls.responses = run_consult_eval._run_scripted(cls.cases)
+        cls.summary = build_report(cls.cases, cls.responses, "step12")
 
     def test_every_case_but_the_paraphrase_gap_passes(self):
         # The paraphrase gap is closed: E12's "one class per job" and E13's
@@ -259,7 +262,7 @@ class TestScriptedRun(unittest.TestCase):
         # resolves to [D99] and would pass a case that expects warnings for
         # the wrong reason; re-pick the phrase from the cited text instead.
         unresolved = {}
-        for cid, response in run_consult_eval._run_scripted(self.cases).items():
+        for cid, response in self.responses.items():
             for turn in response if isinstance(response, list) else [response]:
                 sentences = [w["sentence"] for w in turn.get("citation_warnings", [])
                              if w["reason"] == "unknown citation"]

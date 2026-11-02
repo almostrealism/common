@@ -8,14 +8,15 @@ inside ``python-tests``: a docs-only change broke them, nothing ran them on
 that pull request, and the breakage surfaced only after merge, in coverage-qa.
 
 These tests pin the split: ``python-tests`` cannot reach the evals, the evals
-run in ``python-evals``, which is gated on every file type the evals read (and
-not on ``code_changed``, which a docs-only change leaves false), and an eval
-failure is gated into ``all-checks`` like any other required job.
+run in ``python-evals``, which is gated on every tree the evals read — the
+Dockerfile's docs-stage COPY roots, since the snapshot index records every file
+under them, not only the suffixes it reads for content — and not on
+``code_changed``, which a docs-only change leaves false, and an eval failure is
+gated into ``all-checks`` like any other required job.
 """
 
 import os
 import re
-import sys
 import unittest
 
 import yaml
@@ -23,18 +24,38 @@ import yaml
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _ANALYSIS = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
 _EVAL_DIR = os.path.join(_REPO_ROOT, "tools", "mcp", "manager", "eval")
-_COMMON_DIR = os.path.join(_REPO_ROOT, "tools", "mcp", "common")
-
-if _COMMON_DIR not in sys.path:
-    sys.path.insert(0, _COMMON_DIR)
-
-import docs_retriever  # noqa: E402
-import snapshot_index  # noqa: E402
+_DOCKERFILE = os.path.join(_REPO_ROOT, "tools", "mcp", "manager", "Dockerfile")
 
 
 def _jobs():
     with open(_ANALYSIS) as f:
         return yaml.safe_load(f)["jobs"]
+
+
+def _docs_stage_copy_roots():
+    """The repo-relative sources the Dockerfile's ``docs`` stage copies.
+
+    Mirrors ``run_consult_eval._docs_stage_copies``: the trees the eval's
+    corpus and snapshot index are built from, so the gate must fire on a
+    change to any of them. Only plain (non-``--from``) copies in the ``AS
+    docs`` stage count, since a later stage's copies are not corpus inputs.
+    """
+    roots = []
+    in_docs_stage = False
+    with open(_DOCKERFILE, encoding="utf-8") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if re.match(r"(?i)^FROM\s", stripped):
+                alias = re.search(r"(?i)\bAS\s+(\S+)\s*$", stripped)
+                in_docs_stage = (alias is not None
+                                 and alias.group(1).lower() == "docs")
+                continue
+            if not in_docs_stage:
+                continue
+            copy_match = re.match(r"(?i)^COPY\s+(\S+)\s+(\S+)", stripped)
+            if copy_match and not stripped.lower().startswith("copy --from"):
+                roots.append(copy_match.group(1).rstrip("/"))
+    return roots
 
 
 def _filter_script():
@@ -48,7 +69,8 @@ def _eval_pathspec():
                       _filter_script(), re.S)
     if not match:
         raise AssertionError("no EVAL_FILES detection in the changes job's filter step")
-    return re.findall(r"'([^']+)'", match.group(1))
+    # The pathspecs are whitespace-separated, across backslash-continued lines.
+    return [token for token in match.group(1).replace("\\", " ").split() if token]
 
 
 def _run_lines(job):
@@ -70,19 +92,24 @@ class EvalsChangedFlagTests(unittest.TestCase):
         self.assertIn('echo "evals_changed=true"', script.split("EVAL_FILES=", 1)[1])
         self.assertIn('echo "evals_changed=false"', script.split("EVAL_FILES=", 1)[1])
 
-    def test_the_flag_covers_every_file_type_the_evals_read(self):
-        """The corpus is every doc suffix; the snapshot index reads Java and scripts."""
-        pathspec = _eval_pathspec()
-        suffixes = set(docs_retriever._DOC_SUFFIXES) | set(snapshot_index._SCRIPT_SUFFIXES) | {".java"}
-        for suffix in sorted(suffixes):
-            with self.subTest(suffix=suffix):
-                self.assertIn("*" + suffix, pathspec)
+    def test_the_flag_covers_every_tree_the_evals_read(self):
+        """The eval builds its corpus and snapshot index from the Dockerfile's
+        docs-stage COPY roots, and the index records *every* file under them
+        (its ``paths`` set, which the pipeline checks path-shaped mentions
+        against), so a change to any file type can alter the eval. The gate
+        must therefore cover each staged root, not a suffix list."""
+        normalized = {p.rstrip("/") for p in _eval_pathspec()}
+        roots = _docs_stage_copy_roots()
+        self.assertTrue(roots, "no docs-stage COPY roots parsed from the Dockerfile")
+        for root in roots:
+            with self.subTest(root=root):
+                self.assertIn(root, normalized)
 
     def test_the_flag_covers_the_eval_data_and_the_corpus_definition(self):
-        pathspec = _eval_pathspec()
-        self.assertIn("tools/mcp/manager/eval/", pathspec)
-        # The Dockerfile's COPY directives define the staged corpus.
-        self.assertIn("tools/mcp/manager/Dockerfile", pathspec)
+        # The eval data (tools/mcp/manager/eval/) and the Dockerfile whose COPY
+        # directives define the corpus both live under tools/, a staged root.
+        normalized = {p.rstrip("/") for p in _eval_pathspec()}
+        self.assertIn("tools", normalized)
 
 
 class PythonEvalsJobTests(unittest.TestCase):

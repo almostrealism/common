@@ -99,7 +99,7 @@ The `changes` job detects which top-level directories changed and sets flags:
 | `extern_changed`   | `extern/`                  | `test-media`                     |
 | `studio_changed`   | `studio/`                  | `test-media`                     |
 | `python_changed`   | any `*.py` + `tools/mcp/requirements.txt` | `python-tests`    |
-| `evals_changed`    | any `*.md`/`*.html`/`*.java`/`*.py`/`*.sh` + `tools/mcp/manager/eval/` + the ar-manager Dockerfile | `python-evals` |
+| `evals_changed`    | any file under the ar-manager Dockerfile's docs-stage COPY roots (`docs/`, `CLAUDE.md`, `base/`, `compute/`, `domain/`, `engine/`, `extern/`, `studio/`, `flowtree/`, `tools/`, `.github/`, `.claude/`, `scripts/`) | `python-evals` |
 | `agent_protection_changed` | `tools/ci/agent-protection/` | `python-tests` (the branch-check shell suites) |
 | `agent_isolation_changed` | agent compose/entrypoint + isolation validator (+ `analysis.yaml`) | `agent-volume-isolation` |
 | `images_changed`   | Dockerfiles, `.dockerignore`, compose, `tools/mcp/`, `tools/tracker/`, `docs/`, `CLAUDE.md` | `docker-build` |
@@ -137,10 +137,17 @@ merge, in `coverage-qa` (which runs the same discovery as `python-tests`).
 `eval/` is deliberately **not a package** (no `__init__.py`), so the
 `tools/mcp/manager` discovery in `python-tests`, and in
 `fetch-latest-coverage.sh`, does not reach it. Gated on `evals_changed`, which
-covers every file type the evals read — doc suffixes for the corpus, `*.java`,
-`*.py` and `*.sh` for the index — plus the eval data and the ar-manager
-Dockerfile, and **not** on `code_changed` (see the sanctioned exception under
-"Changing layer flags"). Depends only on `changes`. Uploads `python-evals-output`
+fires on a change to any file under the trees the Dockerfile's `docs` stage
+stages: the corpus and the snapshot index are built from those trees, and the
+index records *every* file under them in its `paths` set — not only the doc and
+source suffixes it reads for content — which the consult pipeline checks
+path-shaped mentions against, so a file of any type being added, renamed or
+deleted can change the eval's grading. That root set is exactly what
+`run_consult_eval._docs_stage_copies()` parses from the Dockerfile;
+`tools/mcp/manager/Dockerfile` (whose COPY directives define it) and the eval
+data both live under `tools/` and are covered with it. It is **not** gated on
+`code_changed` (see the sanctioned exception under "Changing layer flags").
+Depends only on `changes`. Uploads `python-evals-output`
 on failure, which `auto-resolve-python` quotes alongside `python-tests-output`.
 Part of `all-checks` (skipped → treated as passing).
 `tools/tests/test_python_evals_job.py` pins all of this.
