@@ -1,7 +1,8 @@
 # Simulating a Neuron-Level Connectome
 
 This page follows one capability end to end: loading a real brain circuit as a signed
-compressed-sparse-row connectome, and running a conductance-based spiking simulation over it that
+compressed-sparse-row connectome, and running a spiking simulation of leaky integrate-and-fire
+neurons with exponentially decaying synaptic potentials (in millivolts, not conductances) over it that
 reproduces, spike for spike, a Brian2 reference run of the same circuit under the same inputs. With
 its default constants the network's equations are those of the whole-brain model of Shiu et al.
 (2024), "A Drosophila computational brain model reveals sensorimotor processing", which its authors
@@ -59,7 +60,8 @@ are Java.
 
 `connectome_csr.py` reduces every supported dataset — MaleCNS, the FlyWire snapshots distributed
 with Shiu et al. (2024), and a small synthetic connectome drawn from a fixed seed — to one form, so
-one Java loader reads them all. For `N` neurons and `E` stored edges it writes a directory of two
+one Java loader reads them all. For `N` neurons and `E` stored edges it writes a directory holding
+a tensor file and a neuron table, which together are the connectome, plus metadata and provenance
 files:
 
 - `connectome.safetensors`, read through `StateDictionary`, holding
@@ -69,7 +71,16 @@ files:
   - `signs` (`[N]`): +1 or -1 per neuron (inhibitory neurons carry -1);
 - `neurons.tsv`: a header line, then the body id, type, superclass, class and predicted
   transmitter of every neuron, tab-separated, in index order. Body ids are kept out of the tensors
-  because FlyWire root ids exceed the `2^53` a tensor value holds exactly.
+  because FlyWire root ids exceed the `2^53` a tensor value holds exactly;
+- `connectome.json`: the dataset, the filters, the sign rule and the totals (neurons, edges,
+  synapses);
+- `spot-checks.json`: the degrees, synapse totals and strongest partners of selected neurons,
+  recomputed from the source table by body id;
+- `README.md` and `SHA256SUMS`: the provenance and construction of the directory, and the checksum
+  of every file in it.
+
+`NeuronConnectome` reads only the first two; the loader tests read the metadata and spot checks
+(see the end of this section).
 
 Rows are **postsynaptic** neurons. The matrix is therefore `W[post, pre] = sign(pre) * count`, and
 the summed signed synaptic input arriving at every neuron is the product `W s` of the matrix and

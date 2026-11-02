@@ -102,6 +102,9 @@ public class NeuronLevelConnectomeSimulationExamplesTest extends NeuronConnectom
 		/** The number of replicas stepped together. */
 		final int replicas;
 
+		/** The neurons the reference drives, the only ones its kick schedule may kick. */
+		final int[] driven;
+
 		/** The reference spike count of every neuron, from the reference manifest. */
 		final int[] counts;
 
@@ -127,7 +130,7 @@ public class NeuronLevelConnectomeSimulationExamplesTest extends NeuronConnectom
 					"manifest.json").getAsJsonObject();
 			steps = manifest.get("steps").getAsInt();
 			double synapseWeight = manifest.get("synapse_mv").getAsDouble();
-			int[] driven = StreamSupport.stream(manifest.getAsJsonArray("driven").spliterator(), false)
+			driven = StreamSupport.stream(manifest.getAsJsonArray("driven").spliterator(), false)
 					.mapToInt(e -> e.getAsInt()).toArray();
 			counts = StreamSupport.stream(manifest.getAsJsonArray("spikes_per_neuron").spliterator(), false)
 					.mapToInt(e -> e.getAsInt()).toArray();
@@ -216,7 +219,7 @@ public class NeuronLevelConnectomeSimulationExamplesTest extends NeuronConnectom
 	/**
 	 * A driven neuron fires, and the signed sparse product carries its activity to at least one
 	 * neuron the schedule never kicks, so the connectome is doing work rather than the drive alone
-	 * being observed.
+	 * being observed. The spikes are those the network records over the run, not the reference's.
 	 *
 	 * @throws IOException if the connectome or the reference cannot be read
 	 */
@@ -224,19 +227,29 @@ public class NeuronLevelConnectomeSimulationExamplesTest extends NeuronConnectom
 	public void drivenActivityReachesDownstreamNeurons() throws IOException {
 		Simulation simulation = new Simulation(1);
 		try {
-			int[] driven = StreamSupport.stream(json(resourceDirectory(BRIAN2_RESOURCE + "manifest.json"),
-					"manifest.json").getAsJsonObject().getAsJsonArray("driven").spliterator(), false)
-					.mapToInt(e -> e.getAsInt()).toArray();
+			int[] driven = simulation.driven;
+			for (int kicked : simulation.reference.require("kick_neurons").toIntArray()) {
+				Assert.assertTrue("the schedule kicks undriven neuron " + kicked,
+						IntStream.of(driven).anyMatch(d -> d == kicked));
+			}
 
-			Assert.assertTrue("a driven neuron is silent in the reference",
-					simulation.counts[driven[0]] > 0);
+			simulation.runner.run(simulation.steps);
+			double[] raster = simulation.replicaRaster(0);
+			int n = simulation.n;
+			double[] emitted = new double[n];
+			for (int i = 0; i < raster.length; i++) emitted[i % n] += raster[i];
 
-			int downstream = IntStream.range(0, simulation.n)
+			Assert.assertTrue("the driven neuron " + driven[0] + " is silent",
+					emitted[driven[0]] > 0);
+
+			int downstream = IntStream.range(0, n)
 					.filter(i -> IntStream.of(driven).noneMatch(d -> d == i))
-					.filter(i -> simulation.counts[i] > 0).findFirst().orElse(-1);
+					.filter(i -> emitted[i] > 0).findFirst().orElse(-1);
 			log("firstDownstreamNeuron=" + downstream);
 			Assert.assertTrue("no undriven neuron fires, so the connectome carries no activity",
 					downstream >= 0);
+			Assert.assertEquals("spikes of downstream neuron " + downstream,
+					simulation.counts[downstream], emitted[downstream], 0.0);
 		} finally {
 			simulation.destroy();
 		}
