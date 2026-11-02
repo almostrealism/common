@@ -1001,8 +1001,8 @@ public interface AttentionFeatures extends SequenceAttentionFeatures {
 	/**
 	 * Caller-supplied-cache sibling of the QK-Norm/bias {@link #attentionArguments} overload above: it
 	 * binds the same arguments, but over the caller-owned {@code keyCache} and {@code valueCache}
-	 * rather than a freshly allocated pair, so a caller such as {@link CausalLanguageModel#decodeModel}
-	 * owns the caches the compiled attention layer reads and writes. The caches are validated against
+	 * rather than a freshly allocated pair, so the caller owns the caches the compiled attention layer
+	 * reads and writes, and can clear them at a sequence boundary. The caches are validated against
 	 * the rotary table's row count. Parameters are as in {@link #attention}.
 	 *
 	 * @param keyCache caller-owned key cache of shape {@code (freqCis rows, dim)}

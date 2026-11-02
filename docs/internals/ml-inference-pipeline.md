@@ -93,7 +93,9 @@ overloads instead: `attention(..., epsilon, keyCache, valueCache, requirements)`
 `attentionArguments` overloads ending in `keyCache, valueCache`. Those overloads allocate
 nothing; they reject a null cache or one whose shape is not `(seqLen, dim)` (with `seqLen`
 the rotary table's row count) with an `IllegalArgumentException` before compilation.
-`CausalLanguageModel.decodeModel` is such a caller (see
+`CausalLanguageModel.decodeModel` owns its decode state the same way: it binds the caches it allocates
+as the `key_cache` and `value_cache` of each block's `causal_lm_decode_block` layer of
+`causal_lm.pdsl`, which passes them to the `attention` layer (see
 [Single-Position KV-Cache Decode](#single-position-kv-cache-decode-for-the-self-hosted-lm)).
 
 For a Qwen3-4B model (32 query heads, 8 KV heads, headSize=112, seqLen=131072):
@@ -400,22 +402,24 @@ and writes, and `reset()` must clear them so a new sequence does not read a prev
 cached entries — a handle the `of()` factory, which owns only its input buffer, position,
 temperature and sampling, does not have. The caches are not allocated inside the attention
 layers: `CausalLanguageModel.decodeModel(position, keyCaches, valueCaches)` allocates one
-cleared `(seqLen, dim)` key cache and value cache per block, binds them through the
-caller-supplied-cache `attention` overload, and appends them in block order to the two lists
-it is given (which must be empty). The generator passes its own lists, so it can clear the
-caches in `reset()` and release them in `destroy()`. `load()` refuses a step at or beyond
+cleared `(seqLen, dim)` key cache and value cache per block, binds them as the `key_cache` and
+`value_cache` of that block's `causal_lm_decode_block` layer of `causal_lm.pdsl`, and appends them
+in block order to the two lists it is given (which must be empty). The generator passes its own
+lists, so it can clear the caches in `reset()` and release them in `destroy()`. `load()` refuses a step at or beyond
 `seqLen` with an `IllegalStateException` rather than index past the caches.
 
 The decode model is built by `CausalLanguageModel.decodeModel`, which the generator compiles
-and owns. It bridges the trained weight layout to the cached `AttentionFeatures.attention`
-overloads without copying a weight: the fused QKV `(3·dim, dim)` weight of each block is
-exposed as three contiguous `(dim, dim)` query, key and value views (sections 0, 1 and 2, as
-the full-sequence `sequence_attention` slices them), and the position-indexed rotary
-`freqCis` the cached overload expects is derived from the stored `rope_inv_freq` with
-`RotationFeatures.computeRopeFreqs(seqLen, invFreq)`. That rotation equals the one the
-full-sequence `sequence_rope` applies at the same row (both use the split-half convention
-with angle `position · invFreq[i]`), so greedy decoding agrees with the full forward. The
-feed-forward, final normalization, output projection and log-softmax are the trained ones.
+and owns, from the `causal_lm_decode_block` layer of `causal_lm.pdsl` (once per block) and its
+`causal_lm_head` layer. The decode block bridges the trained weight layout to the cached
+`attention` layer of `attention.pdsl` without copying a weight: it reads the fused QKV
+`(3·dim, dim)` weight of its block as three contiguous `(dim, dim)` query, key and value views
+(sections 0, 1 and 2, as the full-sequence `sequence_attention` slices them), and the
+position-indexed rotary `freqCis` the cached attention expects is derived from the stored
+`rope_inv_freq` with `RotationFeatures.computeRopeFreqs(seqLen, invFreq)`. That rotation equals
+the one the full-sequence `sequence_rope` applies at the same row (both use the split-half
+convention with angle `position · invFreq[i]`), so greedy decoding agrees with the full forward.
+The feed-forward is the asset layer the full window uses, and the head shares the full window's
+final normalization and output projection (`causal_lm_logits`) and its log-softmax.
 No weights are copied: the decode variant is built over the model's own `StateDictionary`,
 which stays the caller's, exactly as a second training compilation would be. Because each
 layer's cache is a fixed `(seqLen, dim)` that does not slide, the decode is bounded to

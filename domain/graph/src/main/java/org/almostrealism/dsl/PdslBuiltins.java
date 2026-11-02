@@ -48,8 +48,8 @@ import java.util.function.Supplier;
 /**
  * The PDSL language's BUILT-IN FUNCTION LIBRARY: the standard, domain-agnostic
  * layer constructors every PDSL program can call without registering a primitive
- * (dense, conv1d, conv_transpose1d, rmsnorm, layernorm, dynamic_tanh, softmax, the activations
- * including snake, slice, lerp, reshape, permute, identity,
+ * (dense, conv1d, conv_transpose1d, rmsnorm, layernorm, dynamic_tanh, softmax, log_softmax,
+ * embedding, the activations including snake, slice, lerp, reshape, permute, identity,
  * scale, repeat, repeat_each, sum_channels, capture, cache_write, cache_read,
  * scaled_dot_product, sqrt, shape, range, zeros). {@link PdslInterpreter} evaluates a call's
  * arguments and routes the call here via {@link #call(String, List, Set)}; domain
@@ -105,6 +105,8 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 			case "layernorm": return callLayernorm(args);
 			case "dynamic_tanh": return callDynamicTanh(args);
 			case "softmax": return callSoftmax(args);
+			case "log_softmax": return callLogSoftmax(args);
+			case "embedding": return callEmbedding(args);
 			case "silu": return callActivation("silu");
 			case "relu": return callActivation("relu");
 			case "gelu": return callActivation("gelu");
@@ -491,7 +493,7 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 			conv.checkInput(inputShape, inChannels);
 			return convolution1d(inputShape.length(0), inChannels, outChannels,
 					inputShape.length(2), kernelSize, conv.setting(0), conv.setting(1),
-					conv.weights, conv.bias);
+					conv.weights(), conv.bias());
 		};
 	}
 
@@ -524,7 +526,7 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 			conv.checkInput(inputShape, inChannels);
 			return convTranspose1d(inputShape.length(0), inChannels, outChannels,
 					inputShape.length(2), kernelSize, conv.setting(0), conv.setting(1),
-					conv.setting(2), conv.weights, conv.bias);
+					conv.setting(2), conv.weights(), conv.bias());
 		};
 	}
 
@@ -578,6 +580,24 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 				throw new PdslParseException(name + "() weight must be " + weightLayout
 						+ ", got " + weights.getShape());
 			}
+		}
+
+		/**
+		 * Returns the weight, whose three axes give the channel counts and the kernel size.
+		 *
+		 * @return the weight
+		 */
+		private PackedCollection weights() {
+			return weights;
+		}
+
+		/**
+		 * Returns the bias.
+		 *
+		 * @return the bias, or {@code null} for a convolution without one
+		 */
+		private PackedCollection bias() {
+			return bias;
 		}
 
 		/**
@@ -732,6 +752,66 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 			}
 			return softmax(shape, true);
 		};
+	}
+
+	/**
+	 * Builds a log-softmax activation block: the log of the softmax of each row of a
+	 * {@code [rows, size]} input, {@code x - log(sum(exp(x)))} over the last axis, so that the
+	 * exponentials of every output row sum to one. A classifier or language model ends in this stage
+	 * when its loss is the negative log-likelihood of the target class at each row.
+	 *
+	 * <p>The input must have exactly two axes, because the layer normalizes over everything after the
+	 * first axis: a {@code [batch, positions, classes]} tensor is laid out as
+	 * {@code [batch * positions, classes]} rows with {@code reshape} first. The layer does not subtract
+	 * the row maximum before the exponential, so a row whose largest value is beyond the exponential's
+	 * single-precision range (about 88) has no finite log-probabilities.</p>
+	 *
+	 * @param args must be empty
+	 * @return a factory that creates the row-wise log-softmax layer for a {@code [rows, size]} input
+	 * @see org.almostrealism.layers.ActivationFeatures#logSoftmax(TraversalPolicy,
+	 *      io.almostrealism.compute.ComputeRequirement...)
+	 */
+	private Function<TraversalPolicy, CellularLayer> callLogSoftmax(List<Object> args) {
+		if (!args.isEmpty()) {
+			throw new PdslParseException(
+					"log_softmax() expects 0 arguments, got " + args.size());
+		}
+		return shape -> {
+			if (shape.getDimensions() != 2) {
+				throw new PdslParseException(
+						"log_softmax() expects a [rows, size] input shape, got " + shape);
+			}
+			return logSoftmax(shape);
+		};
+	}
+
+	/**
+	 * Builds a token-embedding block factory: every input value is a row index into a
+	 * {@code [vocab, dim]} table and is replaced by that row, so an input of shape {@code s} becomes
+	 * {@code s} with a trailing {@code dim} axis — {@code [seq_len]} token ids become
+	 * {@code [seq_len, dim]} vectors. The table is a registered weight of the layer, so the backward
+	 * pass accumulates the output gradient of every position into the row that position selected;
+	 * the ids are indices and receive no gradient.
+	 *
+	 * <p>The table is checked by the layer itself when the stage is placed, as it is for a Java
+	 * caller: a table that is not two-dimensional is an {@link IllegalArgumentException}.</p>
+	 *
+	 * @param args one argument: the {@code [vocab, dim]} table, a bound tensor
+	 * @return a factory that creates the embedding for any input shape of token ids
+	 * @see org.almostrealism.layers.LayerFeatures#embedding(TraversalPolicy, PackedCollection,
+	 *      io.almostrealism.compute.ComputeRequirement...)
+	 */
+	private Function<TraversalPolicy, CellularLayer> callEmbedding(List<Object> args) {
+		if (args.size() != 1) {
+			throw new PdslParseException(
+					"embedding() expects 1 argument (table), got " + args.size());
+		}
+		if (!(args.get(0) instanceof PackedCollection)) {
+			throw new PdslParseException("embedding() table must be a bound tensor, got "
+					+ (args.get(0) == null ? "null" : args.get(0).getClass().getSimpleName()));
+		}
+		PackedCollection table = (PackedCollection) args.get(0);
+		return inputShape -> embedding(inputShape, table);
 	}
 
 	/**
