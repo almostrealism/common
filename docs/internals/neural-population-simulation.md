@@ -493,7 +493,8 @@ matrix. Use the spiking population when spike timing, refractoriness or delays m
 
 - [Simulating a Neuron-Level Connectome](neuron-level-connectome-simulation.md): the finer,
   neuron-level path — a signed compressed-sparse-row connectome and a spiking network of
-  leaky integrate-and-fire neurons with exponentially decaying synaptic potentials over it, cross-validated against Brian2
+  leaky integrate-and-fire neurons with exponentially decaying synaptic potentials over it,
+  cross-validated against Brian2
 - [Simulation Loop Examples](simulation-loop-examples.md): the loop-owner rules, the step
   contract, and the measured overhead
 - [Shape and Traversal](shape-and-traversal.md#indexset-and-traversalordering): ordered collections

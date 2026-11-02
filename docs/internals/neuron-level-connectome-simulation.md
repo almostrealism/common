@@ -338,8 +338,9 @@ validation on the curated datasets (section 7), still open tracker work.
   `SimulationRunner` step counter, and a `Recording`'s `capacity * width`, exactly as the population
   page describes. The delay line is bounded the same way: `DELAY_LINE_LIMIT` (`2^24`) caps
   `(DELAY/DT + 1) * replicas * N`, because `cache_read`/`cache_write` address a ring element as
-  `row * rowSize + i` in the backend's floating point, exact only below `2^24`. Six replicas of the
-  127,400-neuron FlyWire 630 fit; ten do not.
+  `row * rowSize + i` in the backend's floating point, exact only below `2^24`. With a 19-row delay
+  line, six replicas of the 127,400-neuron FlyWire 630 fit (14,523,600 elements) and seven do not
+  (16,944,200), so six is the most one network of that connectome can hold.
 - **The whole-brain reproduction is larger work.** The MaleCNS whole-brain ingest and the full Shiu
   et al. reproduction, with its performance benchmark, are open tracker tasks for a later release
   and build on this pipeline. The dataset tests
