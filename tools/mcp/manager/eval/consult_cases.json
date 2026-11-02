@@ -38,8 +38,8 @@
           ],
           "must_include_any": [
             [
-              "\\b7\\b",
-              "seven"
+              "MAX_OPEN_PRS[^.\\n]*\\b(?:7|seven)\\b",
+              "\\b(?:7|seven)\\b[^.\\n]*MAX_OPEN_PRS"
             ]
           ]
         },

@@ -476,6 +476,37 @@ class TestGraderTeeth(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertIn("MAX_OPEN_PRS", " ".join(result.failures))
 
+    def test_e1_step2_rejects_a_seven_that_is_not_the_limit(self):
+        # Naming MAX_OPEN_PRS and mentioning "seven" somewhere is not an
+        # answer: the value has to be stated as the limit, in the sentence
+        # that names it, or "seven of them" (a count of rounds) would pass.
+        case = self._case("E1")
+        unrelated_seven = {
+            "ok": True,
+            "answer": ("Master Agent Dispatch runs eight QA jobs, seven of them "
+                       "full-cadence rounds, with branch prefixes qa/docs-, "
+                       "qa/defect-, qa/coverage-, qa/consolidate-, "
+                       "qa/performance-, qa/pdsl- and qa/retro-. Each caller "
+                       "forwards MAX_OPEN_PRS as its max-open-prs input."),
+            "sources": [".github/CLAUDE.md"],
+        }
+        result = grade(unrelated_seven, resolve_expect(case, "step2"))
+        self.assertFalse(result.passed)
+        self.assertIn("must_include_any", " ".join(result.failures))
+
+    def test_e1_step2_accepts_the_limit_stated_before_its_name(self):
+        case = self._case("E1")
+        value_first = {
+            "ok": True,
+            "answer": ("Master Agent Dispatch uses branch prefixes qa/docs-, "
+                       "qa/defect-, qa/coverage-, qa/consolidate-, "
+                       "qa/performance-, qa/pdsl- and qa/retro-, and starts no "
+                       "round while more than 7 PRs are open (MAX_OPEN_PRS)."),
+            "sources": [".github/CLAUDE.md"],
+        }
+        result = grade(value_first, resolve_expect(case, "step2"))
+        self.assertTrue(result.passed, result.failures)
+
 
 class TestMustFlagStale(unittest.TestCase):
     """must_flag_stale needs the evidence field and the named-absent list."""
