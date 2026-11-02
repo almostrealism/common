@@ -28,87 +28,104 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
-### 2026-10-29 — Make the key/value-cache decode faster than the sliding window
+### 2026-11-02 — Document the neuron-level connectome simulation pipeline
 
-**Category:** Performance (serving the self-hosted LM generation arc)
-**Branch:** `project/plan-20261029-151904`
-**Plan:** [`PLAN-20261029-kv-cache-decode-host-copies.md`](PLAN-20261029-kv-cache-decode-host-copies.md)
+**Category:** Documentation
+**Branch:** `project/plan-20261102-014251`
+**Plan:** [`PLAN-20261102-neuron-level-connectome-simulation-docs.md`](PLAN-20261102-neuron-level-connectome-simulation-docs.md)
 
 #### What changed since last cycle
 
-The attention-cache-ownership fix landed (PR #773, merged): `CausalLanguageModel.decodeModel`
-now hands the caches it owns to a caller-supplied-cache `attention(...)`/`attentionArguments`
-overload, so the decode graph reads and writes the same buffers the generator's `reset()` clears
-and `destroy()` releases — the orphan-allocation no-op/leak is gone, pinned by the ownership guard.
-That closes the correctness defect the throughput measurement exposed and, as that plan intended,
-hands this cycle a decode graph whose cache buffers have a clear owner.
+Two large things landed in the last two days. The decode-faster-than-sliding-window work
+merged (PR #783): the KV-cache decode's host-blocking aggregate copy-back is now read off the
+compiled scope instead of a declared shortcut (`AssignmentSupport.containsAssignment` inferred
+from the `Scope`, after the owner rejected a `getWrittenDestination()` declaration — recorded in
+`INVESTIGATION-20261031-declared-property-shortcut.md`), and `training-a-language-model.md` carries
+the measured figures. CUDA joined automatic backend selection (PR #810). Larger for this cycle: the
+**neuron-level connectome** subsystem merged (PRs #806, #809) — `NeuronConnectome` (a signed
+synapse-count matrix in CSR, read through `StateDictionary`, whose weights carry a
+`CompressedRowTraversalOrdering` so synaptic input is one sparse `matmul`), `ConnectomeNetwork` (the
+Shiu et al. (2024) whole-brain model composed in `/pdsl/connectome.pdsl`, stepped by
+`SimulationRunner`, with replicas and `meanRates`), the `ExponentialSynapseNeurons` /`PoissonInput`
+`Block`s in `domain/biology`, and the `connectome_csr.py`/`brian2_reference.py` ingest-and-oracle
+scripts in `studio/bioscience` — with the synthetic connectome and the FlyWire "sugar circuit" plus
+their Brian2 reference spikes committed as test resources. The platform now reproduces a published
+whole-brain experiment's spikes, spike for spike.
 
 #### Category assessment (priority order)
 
-- **Documentation — excellent and current.** I re-checked rather than taking it on faith: `consult`
-  finds no flagship internals gap; every recently-landed capability (the Metal command-buffer
-  batching rewrite, automatic-differentiation verification, the PDSL builtin catalog, the
-  neural-population simulation page) has internals or tutorial coverage, and a docs-QA round merged
-  this week (PR #778). Moved on.
-- **Code quality — strong, and the backlog lags it.** The gradient-correctness arc is closed. I
-  verified two standing backlog code-quality tasks are already resolved in the tree: the convolution
-  filter gradient that was identically zero is fixed (`631386849`, provider matching now recognizes
-  views of the same memory via `MemoryData.hasSameElements`, and `ConvolutionJacobianGradientTest.filterGradient`
-  asserts it), and `PdslBuiltins` is already an instance type that `implements LayerRoutingFeatures,
-  TemporalFeatures` with `PdslInterpreter` holding an instance (the `PdslFeatures` singleton is gone)
-  after the PDSL core moved to `domain/graph`. The remaining code-quality items are either mechanical
-  OOP static-holder refactors drained by the per-class `ObjectOrientedDesignRule` review, or
-  hardware-specific defects not reachable here (the CUDA `Loop`-over-cell silence bug `b0186c98` was
-  found only under CUDA). No reachable flagship defect. Moved on.
-- **Performance — the category, and a sharp, well-evidenced instance.** PR #768's
-  `CausalLanguageModelDecodeThroughputTest` measured the premise the whole key/value-cache cycle rode
-  on and found it false: the cache decode, which does 1/64th of the arithmetic per byte, is ~4× slower
-  than the sliding window on Metal (~50 vs ~190 bytes/s), because it issues ~30 host-blocking `mtlCopy`
-  waits per byte (plus a `concat` batch) where the sliding path issues one. Each host
-  wait drains the open command buffer and forces a commit, so the decode is dispatch/host-wait bound.
-- **Proof of value — live, deliberately deferred.** The sliding (rolling) key/value cache only
-  matters once the cache path beats the sliding window at every length, which is what this task
-  establishes; the connectome proof-of-value steps still wait on the owner's MaleCNS tables and a
-  Brian2 reference; conditional diffusion is heavy.
+- **Documentation — a real, fresh gap, and it decided the cycle.** The neuron-level connectome is
+  the most distinctive capability the platform added this month, and the only prose explaining it is
+  two module READMEs and the classes' Javadoc. No internals page walks the pipeline (CSR ingest →
+  `NeuronConnectome` → `ConnectomeNetwork` step in PDSL → `SimulationRunner` run → Brian2 match). The
+  one existing simulation page, `neural-population-simulation.md`, is about the *aggregate* LIF/rate
+  **population** path — a different, coarser model — and `llms.txt` still names only the older
+  `CellTypeConnectome` loader, so a reader following the index never discovers the neuron-level
+  subsystem. This is the reference-exists/connective-tissue-missing situation again, on the newest
+  high-fidelity layer.
+- **Code quality — strong and owned.** The KV-decode shortcut was caught and repaired in review, with
+  its own investigation document; the attention-correctness and cache-ownership arcs are closed. No
+  reachable flagship defect.
+- **Performance — no PM-level blocker.** The decode cache now beats the sliding window; the standing
+  levers (weighted-sum `matmul` reduced form, convolution input gradient) are real but non-blocking.
+- **Proof of value — live, deliberately deferred.** The MaleCNS whole-brain reproduction and its
+  benchmark are open for Common 0.77 and build directly on the pipeline this page documents, so
+  documenting it first is the cheaper ordering; conditional diffusion is heavy; the sliding KV cache
+  waits on confirming the decode cap binds.
 
 #### Why this task
 
-It is the disciplined pick and the log's own earmarked next step: the earliest category (after
-documentation and code quality, both covered) with genuine, reachable, high-leverage work, and the
-sharpest lever for the central self-understanding aim — making the self-hosted LM generate about
-itself at a usable rate rather than ~4× slower than the path it was built to beat. The work is
-grounded, not speculative: the benchmark already localizes the cost to ~30 `mtlCopy` host waits per
-byte and the generated decode graph's cache-write path (`branch keys`/`branch values` →
-`repeat_each` → `cache_write`), so the plan is evidence-first (`ar-profile-analyzer` on the recorded
-profile before any hand-instrumentation, per Rule 3b) and fixes at the shared PDSL construct so every
-attention-based model benefits. It is guarded by a backend-independent `runsPerByte` assertion
-(strictly fewer kernels per byte than the sliding window), not a flaky wall-clock threshold, and the
-byte-identical-to-full-forward guard keeps the decode numerically unchanged.
+It is the disciplined pick: the earliest category with genuine, reachable, high-leverage work. It is
+the 2026-10-27 move (which documented the aggregate population path) applied to the newer
+neuron-level path that reproduces a published result. It is reachable today **on any backend** — the
+synthetic connectome (40 neurons) and its Brian2 reference ship as committed test resources, so the
+page's worked example and its drift-guard (`NeuronLevelConnectomeSimulationExamplesTest`, modeled on
+`NeuralPopulationSimulationExamplesTest`) need no curated download and no macOS node. Every complete
+excerpt the page shows is exercised by the test, asserting robust backend-independent properties
+without reducing dimensions, loosening tolerances or gating skips. For the self-understanding aim it
+is the page that lets a model trained on the corpus reason about the platform simulating a living
+brain at single-neuron resolution — the most distinctive thing it can now do on the science side.
 
 #### Balance across categories
 
-The last cycle returned to the foundation to fix the ownership defect the throughput measurement
-exposed; this cycle builds the performance work on top of it, exactly the sequence that entry set
-out. That is not drift toward the exciting category — documentation and code quality were both
-genuinely re-checked and found covered, and performance is the first category with reachable
-high-leverage work. It is a medium–large task that needs a macOS/Metal node for the measurement
-(workstream settings file present), as the throughput measurement before it did.
+The last cycle was performance (the KV-decode copy-back). Returning to documentation now is not drift
+toward the exciting category: a whole subsystem arrived in two days with only READMEs, the index does
+not mention it, and the proof-of-value step that builds on it is next. It is a medium task touching no
+production code and running on any node, so no workstream settings file accompanies it.
 
 #### What comes next
 
-1. This plan: trace the ~30 host-blocking copies to their PDSL construct, make them batch (or remove
-   them), add the strictly-fewer-`runsPerByte` assertion, and rewrite the Generation-section figures.
-2. **Proof of value, if the `seqLen` cap then binds:** a sliding (rolling, position-remapped)
-   key/value cache so long-form generation runs at cache speed past `seqLen` — reachable only once
-   the cache path is faster than the sliding window at every length.
-3. **Proof of value, connectome:** the MaleCNS ingest into CSR form and the Shiu et al. reproduction,
-   once the owner provides the MaleCNS tables and a Brian2 reference.
+1. This plan: `docs/internals/neuron-level-connectome-simulation.md`, the
+   `NeuronLevelConnectomeSimulationExamplesTest` drift-guard, and the `llms.txt` /
+   `neural-population-simulation.md` / README cross-links.
+2. **Proof of value, connectome:** the MaleCNS whole-brain ingest and the Shiu et al. reproduction
+   gate (open for Common 0.77), now with its substrate documented.
+3. **Proof of value, self-hosted LM:** a sliding (rolling) key/value cache for long-form generation
+   past `seqLen`, if the decode cap binds now that the cache path is faster than the sliding window.
 4. **Proof of value:** conditional diffusion training.
-5. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000),
-   and a reduced form for the convolution input gradient, which still contracts the full Jacobian.
+5. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000)
+   and a reduced form for the convolution input gradient.
 6. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2; the `io.almostrealism.collect`
    package split; the unbuilt PDSL research/education features; letting a trained model read the
    platform's own *source*, the deepest self-understanding aim.
+
+### 2026-10-29 — Make the key/value-cache decode faster than the sliding window (condensed)
+
+**Category:** Performance (self-hosted LM generation arc) · **Branch:** `project/plan-20261029-151904` ·
+**Plan:** [`PLAN-20261029-kv-cache-decode-host-copies.md`](PLAN-20261029-kv-cache-decode-host-copies.md)
+
+The decode-throughput measurement (PR #768) had found the cache path ~4× slower than the sliding
+window on Metal: the single-position decode issued ~30 host-blocking aggregate copy-backs per byte
+where the sliding path issued one, so it was dispatch/host-wait bound. The fix makes the copy-back a
+property read off the compiled `Scope` rather than something copied back unconditionally —
+`AssignmentSupport.containsAssignment` asks each assignment whether it may write an element of an
+aggregated argument, so arguments a kernel does not write are not copied back. An initial version
+declared this through a new `Computation.getWrittenDestination()`; the owner rejected it (it
+duplicated `OutputSupport.getOutputVariable()` and let an implementor contradict the scope) and it was
+replaced by the scope-inferred form, with the episode recorded in
+`INVESTIGATION-20261031-declared-property-shortcut.md`. Landed as PR #783 with the measured figures in
+`training-a-language-model.md`; the decode now issues strictly fewer kernels per byte than the sliding
+window. Needed a Metal node for the measurement.
 
 ### 2026-10-28 (later) — Give the attention key/value caches an owner the caller can clear and release (condensed)
 
