@@ -57,6 +57,12 @@ them. [Simulating a Spiking Neural Population](../../docs/internals/neural-popul
 walks through a tested example from state to recorded spikes: the step, synaptic delay,
 connectivity, reproducible Poisson drive, the loop owner, and the known limits.
 
+The `ExponentialSynapseNeurons` and `PoissonInput` blocks above are the neuron and drive of the
+finer, neuron-level path. `studio/bioscience` composes them, by name, into a PDSL step over a
+measured brain circuit;
+[Simulating a Neuron-Level Connectome](../../docs/internals/neuron-level-connectome-simulation.md)
+walks that pipeline from a connectome dataset to a raster cross-validated against Brian2.
+
 ## Dependencies
 
 - `ar-chemistry` (and through it `ar-physics`)

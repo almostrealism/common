@@ -5,6 +5,13 @@ This page follows one example from start to finish: a small network of leaky int
 by the simulation loop owner, with its spikes recorded on the device and read back once the run
 is over. Each piece has thorough Javadoc. This page shows how the pieces fit together.
 
+This page is the **aggregate** path: a single collection stands for a whole population's state, and
+connectivity is a dense matrix at the level of populations or cell types. For the finer
+**neuron-level** path — every neuron of a named brain circuit as one unit, connectivity as a signed
+compressed-sparse-row matrix, stepped to reproduce a Brian2 reference spike for spike — see
+[Simulating a Neuron-Level Connectome](neuron-level-connectome-simulation.md), which builds on the
+shared machinery described here.
+
 The worked example is `NeuralPopulationSimulationExamplesTest` in `engine/utils`
 (`org.almostrealism.graph.test`). Code blocks on this page are taken from that test unless they
 are marked as fragments. The test also asserts every behavioral claim the page makes about the
@@ -484,6 +491,9 @@ matrix. Use the spiking population when spike timing, refractoriness or delays m
 
 ## See also
 
+- [Simulating a Neuron-Level Connectome](neuron-level-connectome-simulation.md): the finer,
+  neuron-level path — a signed compressed-sparse-row connectome and a conductance-based spiking
+  network over it, cross-validated against Brian2
 - [Simulation Loop Examples](simulation-loop-examples.md): the loop-owner rules, the step
   contract, and the measured overhead
 - [Shape and Traversal](shape-and-traversal.md#indexset-and-traversalordering): ordered collections

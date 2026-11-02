@@ -35,6 +35,10 @@ This module exists to:
   `dense`) to the synapse, the `ExponentialSynapseNeurons` of `ar-biology` emit the step's spikes,
   and those enter a delay line (`cache_read`/`cache_write`). It is stepped by a `SimulationRunner`,
   and `meanRates` runs the trials of an experiment.
+  [Simulating a Neuron-Level Connectome](../../docs/internals/neuron-level-connectome-simulation.md)
+  walks the whole pipeline — from a dataset through `connectome_csr.py` to a `NeuronConnectome`, the
+  sparse synaptic product, the `connectome_step` PDSL layer, and a `SimulationRunner` run
+  cross-validated against Brian2.
 - `scripts/`: Python scripts that convert third-party biological datasets into the formats the
   Java loaders read. `male_cns.py` reads and filters the MaleCNS tables and holds the shared
   safetensors and checksum helpers; `flywire.py` reads the FlyWire tables distributed with the
