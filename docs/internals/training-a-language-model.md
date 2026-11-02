@@ -376,7 +376,7 @@ reproducible after a reset.
 The cost of this sliding-window decode is one full forward pass per byte. In steady state it decodes
 about 190 bytes per second for this configuration (Mac Studio, Apple silicon, Metal, FP32, measured
 by `CausalLanguageModelDecodeThroughputTest` with an operation profile attached), issuing 86 kernel
-invocations, 135 Metal dispatches and 7 command-buffer commits per byte. The single-position
+invocations, 122 Metal dispatches and 7 command-buffer commits per byte. The single-position
 key/value-cache decode was added to avoid recomputing the window.
 `KeyValueCacheAutoregressiveModel` decodes the same weights one token at a time, scoring the new
 position against each layer's cached keys and values instead of recomputing the whole window, so the
@@ -402,23 +402,57 @@ reproducible after a reset; `keyValueCacheResetClearsCacheAcrossSequences` and
 `keyValueCacheLaterPositionsReadEarlierEntries` check that a cleared cache does not leak across
 sequences and that a later position reads an earlier position's cached entry.
 
-**Measured decode throughput.** The cache does not yet make decoding faster.
+**Measured decode throughput.** The cache is now the faster decode, by a small margin.
 `CausalLanguageModelDecodeThroughputTest.keyValueCacheDecodeThroughput` decodes the same
 documentation prompt to the full 64-position context with both generators, over one model of the
 configuration above (random weights, which do not change the cost), warming each up once and then
-timing three decodes. On the machine above the key/value-cache decode runs at about 50 bytes per
-second, about a quarter of the sliding window's 190, and issues 109 kernel invocations, 181 Metal
-dispatches and 45 command-buffer commits per byte against the sliding window's 86, 135 and 7. Its
-arithmetic per byte is one position instead of 64, but a model this small is bound by the cost of each
-dispatch and host wait rather than by arithmetic, and the decode graph forces about 30 host-blocking
-buffer copies per byte; the test logs, for each path, the operations whose waits forced its commits.
-Until those are removed the sliding window is the faster decode at every length, so the cache's
-`seqLen` cap is not yet what limits long-form generation. The test asserts that both generators decode
-the same greedy continuation and that the profile recorded each path's kernels; it reports the
-throughput, the speedup and the per-byte counts rather than asserting them, and is the drift guard for
-the figures in this section. Its `greedyAndNucleusDecodeThroughCache` continues the prompt through the
-cache greedily and with top-p sampling (temperature 0.8, `setTopP(0.9)`), showing that nucleus
-sampling composes with the cache; over random weights neither continuation is text.
+timing three decodes. On the machine above the key/value-cache decode runs at about 220 bytes per
+second against the sliding window's 170–200 (wall-clock figures vary by a few tens of bytes per second
+from run to run), a speedup of about 1.1, and issues 84 kernel invocations, 249 Metal dispatches and
+2 command-buffer commits per byte against the sliding window's 86, 122 and 7.
+
+It was about four times slower, at 50 bytes per second with 109 kernel invocations, 181 dispatches and
+45 commits per byte. Its arithmetic per byte is one position instead of 64, but a model this small is
+bound by the cost of each kernel, dispatch and host wait rather than by arithmetic. Four changes
+closed the gap:
+
+- *One compute context per pass.* A single position makes nearly every operation of the decode
+  small. `DefaultComputer` places an operation of at most 128 elements on a CPU context and a larger
+  one (each cache read, each matrix product's elementwise term, the output projection) on the
+  accelerator, so the pass alternated between the two. Each CPU operation that read an accelerator
+  result waited on the host for it, forcing a command-buffer commit: the about 30 waits per byte
+  the test attributed to `mtlCopy`, the copy that ends each accelerator operation. The benchmark
+  sets `Model.setComputeRequirements(ComputeRequirement.GPU)` on the language model when an
+  accelerator is available; `decodeModel` compiles its variant under the requirements of the model
+  it is built from, and `CompiledModel` compiles and runs the whole pass under them. The model does
+  not make this choice itself: a caller that wants it sets it.
+- *One kernel per rotation.* `RotationFeatures.ropeRotation` is a single element-wise computation
+  reading the input, the frequency table and the position directly; it was a chain of gathers from
+  intermediate computations that compiled to five kernels per call. `computeRopeFreqs` builds its
+  `[cos, sin]` table as one element-wise computation instead of concatenating a cosine and a sine
+  table.
+- *One kernel per single-vector product.* `MatrixFeatures.matmul` multiplies one vector by a matrix
+  with the weighted sum, which computes each output directly; the elementwise product followed by a
+  sum it used before ran as two kernels, because the product has as many elements as the matrix.
+- *Copy-back of written arguments only.* Small kernel arguments are staged in one aggregate buffer
+  around each dispatch, and after a dispatch with no explicit output every staged argument was copied
+  back, including those the kernel only read. The copy-back is now limited to the staged arguments the
+  kernel's compiled `Scope` may write (`MemoryDataArgumentMap.getWrittenSlices`, which asks
+  `Scope.containsAssignment` about each staged slice). Nothing is declared by the computation: every write in a
+  scope is an assignment to an element of the aggregate at a bounded position, so the slices written
+  are read off the scope itself, and a scope whose writes cannot be enumerated (one with methods,
+  required scopes or explicit code) copies every slice back.
+
+The cache path's remaining dispatches are mostly those staging copies: every argument of at most 1024
+elements is copied into the aggregate before each kernel, and at a single position that is nearly every
+argument, while the sliding window's are mostly larger. The test asserts, independently of the
+backend, that the cache path invokes strictly fewer kernels per byte than the sliding window, that both
+generators decode the same greedy continuation, and that the profile recorded each path's kernels. It
+reports the throughput, the speedup, the dispatches and commits per byte, and the operations whose
+waits forced each path's commits rather than asserting them, and is the drift guard for the figures in
+this section. Its `greedyAndNucleusDecodeThroughCache` continues the prompt through the cache greedily
+and with top-p sampling (temperature 0.8, `setTopP(0.9)`), showing that nucleus sampling composes with
+the cache; over random weights neither continuation is text.
 
 `trainOnDocumentation` generates from the reloaded checkpoint, greedily continuing the prompt
 `"The computation graph is compiled to "` for 96 bytes, and logs the result together with whether
@@ -450,5 +484,6 @@ generator (`setTopP`), which cuts off the unreliable tail that full-distribution
 sampling can draw from; measuring whether it reads better than greedy decoding on this model is a
 separate run. The next levers are those this round left untried: more steps at the lower rate (the
 held-out curve was still falling in the last epochs) and batch sizes above 1. The top-p-versus-greedy
-comparison over long samples does not wait on the key/value-cache decode: as measured above, the
-sliding window is currently the faster path, and it is not bounded by `seqLen`.
+comparison over long samples need not wait on a longer cache either: the key/value-cache decode is
+now slightly faster but stops at `seqLen`, and the sliding window, at a similar rate, is not bounded
+by it.

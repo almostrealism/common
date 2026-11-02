@@ -153,7 +153,7 @@ public class Cases<T> extends Scope<T> {
 		args.addAll(extractArgumentDependencies(getConditions().stream()
 				.flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
 		args.addAll(super.arguments(Function.identity()));
-		return Scope.removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
+		return Argument.removeDuplicates(args).stream().map(mapper).collect(Collectors.toList());
 	}
 
 	/**

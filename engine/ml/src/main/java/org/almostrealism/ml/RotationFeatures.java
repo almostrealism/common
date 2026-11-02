@@ -17,12 +17,16 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.code.Precision;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.expression.Conditional;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerRoutingFeatures;
 import org.almostrealism.ml.midi.HeadGroupConfig;
@@ -116,6 +120,15 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * {@code reshape(shape(kvDim), shape(kvHeads, 2, headSize/2))} followed by
 	 * permutation to get (kvHeads, headSize/2, 2).</p>
 	 *
+	 * <p>The rotation is a single element-wise computation: element {@code idx} is component
+	 * {@code k = idx % 2} of pair {@code f = (idx / 2) % freqDim}, combined with the other
+	 * component of the same pair and the {@code [cos, sin]} entries of {@code f} in the row of
+	 * {@code weights} selected by {@code position}. Every operand is read from the layer input,
+	 * the frequency table or the position directly, never from an intermediate gather, so the
+	 * layer compiles to one kernel per call; when {@code weights} is itself an element-wise
+	 * computation (see {@link #computeRopeFreqs(int, CollectionProducer)}), only the row the
+	 * rotation reads is computed.</p>
+	 *
 	 * @param shape Input shape (heads, headSize/2, 2) - last dimension is [x1, x2] pair
 	 * @param weights Precomputed frequency tensor (seqLen, headSize/2, 2) containing [cos, sin]
 	 * @param position Producer that provides the current sequence position
@@ -135,40 +148,27 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 		if (shape.length(1) != weights.getShape().length(1))
 			throw new IllegalArgumentException();
 
-		int heads = shape.length(0);
 		int freqDim = shape.length(1);
 		int weightsFreqSize = freqDim * 2;
-		int totalHeadFreq = heads * freqDim;
-		int outputSize = heads * freqDim * 2;
+		TraversalPolicy outputShape = shape.traverseEach();
 
-		return layer("ropeRotation", shape, shape, input -> {
-			CollectionProducer cosRelativeIndexMap =
-					mod(integers(0, totalHeadFreq), c((double) freqDim)).multiply(c(2.0));
-			CollectionProducer sinRelativeIndexMap = cosRelativeIndexMap.add(c(1.0));
-			CollectionProducer x1IndexMap = integers(0, totalHeadFreq).multiply(c(2.0));
-			CollectionProducer x2IndexMap = x1IndexMap.add(c(1.0));
-			CollectionProducer outputSourceMap = floor(divide(integers(0, outputSize), c(2.0)));
-			CollectionProducer componentMap = mod(integers(0, outputSize), c(2.0));
+		return layer("ropeRotation", shape, shape, input ->
+				new DefaultTraversableExpressionComputation("ropeRotation", outputShape, true,
+						args -> CollectionExpression.create(outputShape, idx -> {
+							Expression<?> k = idx.imod(2);
+							Expression<?> f = idx.divide(2).imod(freqDim);
+							Expression<?> row = args[3].getValueAt(e(0)).toInt().multiply(weightsFreqSize);
+							Expression<?> cosIdx = row.add(f.multiply(2));
 
-			CollectionProducer posOffset = c(position).multiply(c((double) weightsFreqSize));
-			CollectionProducer cosIdx = cosRelativeIndexMap.add(posOffset);
-			CollectionProducer sinIdx = sinRelativeIndexMap.add(posOffset);
-
-			CollectionProducer cos = c(shape(totalHeadFreq), weights, cosIdx);
-			CollectionProducer sin = c(shape(totalHeadFreq), weights, sinIdx);
-
-			CollectionProducer x1 = c(shape(totalHeadFreq), input, x1IndexMap);
-			CollectionProducer x2 = c(shape(totalHeadFreq), input, x2IndexMap);
-
-			CollectionProducer out1 = x1.multiply(cos).subtract(x2.multiply(sin));
-			CollectionProducer out2 = x2.multiply(cos).add(x1.multiply(sin));
-
-			CollectionProducer out1Vals = c(shape(outputSize), out1, outputSourceMap);
-			CollectionProducer out2Vals = c(shape(outputSize), out2, outputSourceMap);
-			CollectionProducer result = greaterThan(componentMap, c(0.5), out2Vals, out1Vals, true);
-
-			return result.reshape(shape(heads, freqDim, 2));
-		}, List.of(), requirements);
+							Expression<? extends Number> xCos =
+									args[1].getValueAt(idx).multiply(args[2].getValueAt(cosIdx));
+							Expression<? extends Number> partnerSin =
+									args[1].getValueAt(idx.add(1).subtract(k.multiply(2)))
+											.multiply(args[2].getValueAt(cosIdx.add(1)));
+							return Conditional.of(k.eq(0), xCos.subtract(partnerSin), xCos.add(partnerSin));
+						}),
+						input, weights, position),
+				List.of(), requirements);
 	}
 
 	/**
@@ -235,19 +235,26 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * through {@code setMem}). It has been reverted to Java math before; the graph below is the only
 	 * acceptable implementation.</p>
 	 *
+	 * <p>Each element is one function of its own angle, {@code pos * invFreq[f]}, so the table is a
+	 * single element-wise computation rather than a concatenation of a cosine and a sine table. A
+	 * consumer that reads one row, as the single-position {@link #ropeRotation} does, embeds it and
+	 * computes that row inline instead of evaluating the whole table on every call.</p>
+	 *
 	 * @param seqLen  maximum sequence length to precompute
 	 * @param invFreq producer of the inverse frequencies, shape {@code (headDim / 2)}
 	 * @return frequency tensor of shape {@code (seqLen, headDim / 2, 2)} with {@code [cos, sin]} pairs
 	 */
 	default CollectionProducer computeRopeFreqs(int seqLen, CollectionProducer invFreq) {
 		int freqDim = invFreq.getShape().getTotalSize();
-		// angles[pos, f] = pos * invFreq[f]  — outer product via matmul
-		CollectionProducer positions = integers(0, seqLen).reshape(shape(seqLen, 1));
-		CollectionProducer angles = matmul(positions, invFreq.reshape(shape(1, freqDim)));
-		// freqCis[pos, f, 0] = cos(angle), freqCis[pos, f, 1] = sin(angle)
-		CollectionProducer cosVals = cos(angles).reshape(shape(seqLen, freqDim, 1));
-		CollectionProducer sinVals = sin(angles).reshape(shape(seqLen, freqDim, 1));
-		return concat(2, cosVals, sinVals);
+		TraversalPolicy shape = shape(seqLen, freqDim, 2);
+
+		return new DefaultTraversableExpressionComputation("ropeFrequencies", shape, true,
+				args -> CollectionExpression.create(shape, idx -> {
+					Expression<? extends Number> angle = idx.divide(2 * freqDim)
+							.multiply(args[1].getValueAt(idx.divide(2).imod(freqDim)));
+					return Conditional.of(idx.imod(2).eq(0), angle.cos(), angle.sin());
+				}),
+				invFreq.reshape(shape(freqDim)));
 	}
 
 	/**

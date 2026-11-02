@@ -34,6 +34,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -204,6 +205,12 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	private String aggregatePositions;
 
 	/**
+	 * The aggregated slices the compiled kernel may write, read off the compiled scope by the
+	 * operation that compiled it (see {@code MemoryDataArgumentMap#getWrittenSlices}).
+	 */
+	private BitSet writtenAggregateSlices;
+
+	/**
 	 * The structure context of this manager's compiled instructions, owning the kernel
 	 * structure resources the compiled code references. Created on first request and
 	 * destroyed with the instructions.
@@ -278,6 +285,14 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	/** {@inheritDoc} */
 	@Override
 	public String getAggregatePositions() { return aggregatePositions; }
+
+	/** {@inheritDoc} */
+	@Override
+	public void setWrittenAggregateSlices(BitSet written) { this.writtenAggregateSlices = written; }
+
+	/** {@inheritDoc} */
+	@Override
+	public BitSet getWrittenAggregateSlices() { return writtenAggregateSlices; }
 
 	/** {@inheritDoc} */
 	@Override

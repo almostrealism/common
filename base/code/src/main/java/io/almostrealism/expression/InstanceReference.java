@@ -21,12 +21,14 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalLong;
 import java.util.Set;
 
 /**
@@ -110,16 +112,36 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Variables are compared by the name of their {@link Variable#getRootDelegate() root
-	 * delegate}, because a reference to a variable that delegates to another is created as a
-	 * reference to the delegate. A view of {@code var} and {@code var} itself, or two views of
-	 * the same storage, are therefore treated as the same variable.</p>
+	 * <p>Variables are compared by {@link Variable#hasSameRoot(Variable) their root}, because a
+	 * reference to a variable that delegates to another is created as a reference to the
+	 * delegate. A view of {@code var} and {@code var} itself, or two views of the same storage,
+	 * are therefore treated as the same variable.</p>
 	 */
 	@Override
 	public boolean containsReference(Variable var) {
-		Variable<?, ?> referent = (Variable<?, ?>) getReferent().getRootDelegate();
-		Variable<?, ?> target = (Variable<?, ?>) var.getRootDelegate();
-		return Objects.equals(referent.getName(), target.getName()) || super.containsReference(var);
+		return getReferent().hasSameRoot(var) || super.containsReference(var);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An assignment to a reference writes exactly one element of its referent, which is
+	 * {@code array} when they {@link Variable#hasSameRoot(Variable) share a root}, as for
+	 * {@link #containsReference(Variable)}. The element is at this reference's
+	 * position, before the referent's own offset is applied when it is rendered, so the
+	 * written position lies between the {@link #lowerBound lower} and {@link #upperBound upper}
+	 * bounds of the position; a bound that cannot be determined leaves that side of the range
+	 * open, and a reference to the whole referent may write any of it.</p>
+	 */
+	@Override
+	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
+		if (!getReferent().hasSameRoot(array)) return false;
+		if (pos == null) return true;
+
+		OptionalLong lower = pos.lowerBound(null);
+		OptionalLong upper = pos.upperBound(null);
+		return (upper.isEmpty() || upper.getAsLong() >= start)
+				&& (lower.isEmpty() || lower.getAsLong() < end);
 	}
 
 	@Override

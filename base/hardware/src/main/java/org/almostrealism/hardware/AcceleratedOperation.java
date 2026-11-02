@@ -657,9 +657,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 *   where the hardware cannot do better.</li>
 	 *   <li><strong>Compile-time argument aggregation</strong> (active when the argument map has
 	 *   replacements; managed by {@link MemoryDataArgumentMap}). Small inputs are folded into one
-	 *   aggregate kernel buffer; their data is copied in before the kernel. Whether each slice is
-	 *   copied back afterward follows the side-effect policy: {@code output == null} copies every
-	 *   slice back; {@code output != null} (default) copies none (the caller's explicit output is
+	 *   aggregate kernel buffer; their data is copied in before the kernel. Only a slice the
+	 *   compiled kernel's scope may write is ever copied back (see
+	 *   {@link MemoryDataArgumentMap#getWrittenSlices}); the staged copy of a slice it only reads
+	 *   is unchanged. Whether each such slice is copied back afterward follows the side-effect
+	 *   policy: {@code output == null} copies every one back; {@code output != null} (default) copies none (the caller's explicit output is
 	 *   taken to be the only result of interest); {@code output != null} with
 	 *   {@link MemoryDataArgumentMap#enableStrictSideEffects strict side-effects} copies back every
 	 *   slice except the one aliasing {@code output} (so an in-place {@code x = x + y} is not

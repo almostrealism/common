@@ -23,6 +23,7 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.AssignmentSupport;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 
@@ -46,7 +47,7 @@ import java.util.function.Supplier;
  * @see Statement
  * @see io.almostrealism.scope.Scope
  */
-public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T>> {
+public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T>>, AssignmentSupport {
 	/** Whether this assignment also declares the destination variable. */
 	private final boolean declaration;
 	/** The destination expression that receives the assigned value. */
@@ -156,6 +157,17 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 		if (destination != null) deps.addAll(destination.getDependencies());
 		if (expression != null) deps.addAll(expression.getDependencies());
 		return deps;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Whatever this assignment writes, it writes through its destination, so the destination
+	 * {@link Expression#containsAssignment(ArrayVariable, long, long) answers}.</p>
+	 */
+	@Override
+	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
+		return destination != null && destination.containsAssignment(array, start, end);
 	}
 
 	@Override
