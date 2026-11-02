@@ -246,10 +246,12 @@ class TestScriptedRun(unittest.TestCase):
         self.assertEqual(failing, {})
 
     def test_the_claim_level_cases_are_flagged_for_polarity(self):
-        responses = run_consult_eval._run_scripted(
-            [c for c in self.cases if c["id"] in ("E12", "E13")])
+        # Reuse the cached full-set run rather than evaluating E12/E13 a second
+        # time: setUpClass already ran the whole set once, so re-staging the
+        # corpus for these two here would make the required python-evals job
+        # evaluate them twice.
         for cid in ("E12", "E13"):
-            response = responses[cid]
+            response = self.responses[cid]
             response = response[0] if isinstance(response, list) else response
             reasons = [w["reason"] for w in response["citation_warnings"]]
             self.assertIn("polarity", reasons, cid)
