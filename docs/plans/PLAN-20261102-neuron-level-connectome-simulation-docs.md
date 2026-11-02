@@ -138,7 +138,11 @@ Concrete deliverables:
      path and linking the new page.
    - `domain/biology/README.md` and `studio/bioscience/README.md`: link the new page from
      their "how dynamics are expressed and stepped" / contents sections.
-   - The internals index (`docs/index.html` internals listing, if it enumerates pages).
+   - `docs/index.html` (the documentation portal) links the module READMEs and the generated
+     `apidocs/` — it does **not** enumerate individual `docs/internals/` pages — so adding the
+     new page to the internals listing is the `llms.txt` edit above, and the portal needs no
+     change. (Surfacing internals pages in the portal would be a portal-structure change, out of
+     scope for this plan.)
 
 Out of scope (recorded as follow-ups, not done here): any change to the connectome code, the
 PDSL step, the neuron model, or the ingest scripts; the MaleCNS whole-brain reproduction and
