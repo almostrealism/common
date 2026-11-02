@@ -20,9 +20,6 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
-
 /**
  * A {@link LatchSemaphore} that additionally carries the {@link OperationMetadata} of the
  * operation waiting on it, making it an {@link OperationSemaphore}.
@@ -58,23 +55,8 @@ public class DefaultLatchSemaphore extends LatchSemaphore implements OperationSe
 	}
 
 	/**
-	 * Constructs a semaphore sharing an existing latch and failure reference with a new
-	 * requester, used by {@link #withRequester(OperationMetadata)}. Sharing the failure
-	 * reference keeps the rethrow-on-failure contract intact for the re-attributed view.
-	 *
-	 * @param requester the new requester metadata
-	 * @param latch     the existing {@link CountDownLatch} to reuse
-	 * @param failure   the existing failure reference to reuse
-	 */
-	protected DefaultLatchSemaphore(OperationMetadata requester, CountDownLatch latch,
-									AtomicReference<Throwable> failure) {
-		super(latch, failure);
-		this.requester = requester;
-	}
-
-	/**
-	 * Constructs a view sharing all of another semaphore's settlement state (including the
-	 * members of a composite) under a new requester, used by
+	 * Constructs a view sharing all of another semaphore's settlement state (its latch, its
+	 * recorded failure and the members of a composite) under a new requester, used by
 	 * {@link #withRequester(OperationMetadata)}.
 	 *
 	 * @param requester the new requester metadata

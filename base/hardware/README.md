@@ -661,22 +661,29 @@ export AR_HARDWARE_AGGREGATE_MAX=1048576       # 1MB default
 
 ```java
 MemoryReplacementManager mgr = new MemoryReplacementManager(
-    gpuProvider,
+    context,
+    context.getDataContext().getKernelMemoryProvider(),
     (size, atomic) -> new Bytes(size, atomic)
 );
 
-// Process arguments: identifies CPU memory to aggregate
+// Process arguments: stages memory from other providers in temporaries on the kernel's provider
 Object[] kernelArgs = mgr.processArguments(originalArgs);
 
-// Phase 1: Prepare - Copy to temp aggregate
-mgr.getPrepare().get().run();
+// Phase 1: Prepare - copy into the temporaries, chained on the prior work
+Semaphore prepared = Submittable.submit(mgr.getPrepareOperations(), dependsOn);
 
-// Phase 2: Execute kernel with aggregated args
-kernel.execute(kernelArgs);
+// Phase 2: Execute the kernel with the replaced arguments, chained on the copies
+Semaphore done = kernel.execute(kernelArgs, prepared);
 
-// Phase 3: Postprocess - Copy results back
-mgr.getPostprocess().get().run();
+// Phase 3: Postprocess - copy results back, chained on the kernel
+Submittable.submit(mgr.getPostprocessOperations(), done);
 ```
+
+Every copy runs through the context's `copy`, so the context chooses how it is performed and
+ordered. Read-only memory is copied in but never back out, and its copy is issued at once
+(`Submittable.unordered()`): nothing writes it and its temporary belongs to this invocation alone,
+so the copy cannot conflict with the work the kernel depends on, while its completion still covers
+that work.
 
 **Root Delegate Grouping:**
 

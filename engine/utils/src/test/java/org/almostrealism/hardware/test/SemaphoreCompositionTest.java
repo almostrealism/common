@@ -51,6 +51,28 @@ public class SemaphoreCompositionTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A semaphore given more than once is a single member, even when it cannot merge: a
+	 * selection repeating one completion yields that completion itself, which a dependent
+	 * dispatch can chain on directly, rather than a host-side composite waiting for it again
+	 * and again. Distinct members are still composed.
+	 */
+	@Test(timeout = 30000)
+	public void repeatedMemberIsOneMember() {
+		DefaultLatchSemaphore a = new DefaultLatchSemaphore((Semaphore) null, 1);
+		DefaultLatchSemaphore b = new DefaultLatchSemaphore((Semaphore) null, 1);
+
+		assertTrue(a.merge(a) == null);
+		assertTrue(Semaphore.all(Arrays.asList(a, null, a, a)) == a);
+
+		Semaphore combined = Semaphore.all(Arrays.asList(a, b, a, b));
+		assertTrue(combined != a && combined != b);
+
+		a.countDown();
+		b.countDown();
+		combined.waitFor();
+	}
+
+	/**
 	 * A composite over several pending semaphores completes only once every member has
 	 * completed, regardless of completion order.
 	 */

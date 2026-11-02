@@ -16,8 +16,23 @@
 
 package org.almostrealism.persist.assets.test;
 
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.DataContext;
+import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Precision;
+import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.lifecycle.Destroyable;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.streams.LatchSemaphore;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.ctx.AbstractComputeContext;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.MemoryReplacementManager;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.persist.assets.CollectionEncoder;
 import org.almostrealism.protobuf.Collections;
@@ -32,12 +47,15 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Tests for the protobuf-backed memory provider: collections produced by
  * {@link CollectionEncoder#decode(Collections.CollectionData, boolean)} read from the message on the host,
  * migrate to the compute device at first kernel use, and reject writes while
- * still message-backed.
+ * still message-backed. A collection too large to aggregate but too small to
+ * migrate is staged in a temporary of its own for each dispatch, and since nothing
+ * writes it, that staging is not ordered after the work the kernel depends on.
  */
 public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 
@@ -237,6 +255,174 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Creates a replacement manager with no target provider, so that every argument small enough
+	 * to stage is replaced by a temporary of its own, with every copy made through {@code context}.
+	 *
+	 * @param context the context whose copies move the staged data
+	 * @return a manager replacing every eligible argument
+	 */
+	private MemoryReplacementManager replacementManager(ComputeContext<MemoryData> context) {
+		return new MemoryReplacementManager(context, null, (length, atomic) -> new Bytes(length, atomic));
+	}
+
+	/**
+	 * The replacement copy of a read-only argument depends on no prior work: nothing writes a
+	 * read-only source, and the temporary it is copied into exists only for this invocation.
+	 * Submitted behind work that has not completed, the copy is therefore made at once, and the
+	 * completion it returns is that work's own, so a kernel chained on it is ordered after that
+	 * work exactly as it would be without a replacement, and not also after a host copy, which a
+	 * batching backend could not chain on the device.
+	 */
+	@Test(timeout = 60000)
+	public void readOnlyReplacementDoesNotWaitForPendingWork() {
+		PackedCollection source = testValues();
+		PackedCollection deferred = CollectionEncoder.decode(
+				CollectionEncoder.encode(source, Precision.FP64), false);
+		LatchSemaphore pending = new LatchSemaphore(1);
+		MemoryReplacementManager manager = replacementManager(Hardware.getLocalHardware().getComputeContext());
+
+		try {
+			MemoryData temporary = (MemoryData) manager.processArguments(new Object[] { deferred })[0];
+			Assert.assertNotSame("The read-only argument is staged in a temporary", deferred, temporary);
+			Assert.assertSame("The copy must add nothing to wait for beyond the pending work",
+					pending, Submittable.submit(manager.getPrepareOperations(), pending));
+			Assert.assertTrue("A read-only source is never copied back",
+					manager.getPostprocessOperations().isEmpty());
+
+			for (int i = 0; i < SIZE; i++) {
+				Assert.assertEquals("element " + i, source.toDouble(i), temporary.toDouble(i), 1e-9);
+			}
+		} finally {
+			pending.countDown();
+			manager.releaseTemporaries();
+			source.destroy();
+		}
+	}
+
+	/**
+	 * The completion of a read-only replacement covers the work the operation depends on as well
+	 * as the copy, whatever the context reports for the copy. A context that queues copies reports
+	 * one made without a dependency as still running; the prepared completion must not settle when
+	 * that copy does, because a kernel chained on it would then run before the work it depends on.
+	 */
+	@Test(timeout = 60000)
+	public void readOnlyReplacementCompletionCoversPendingWork() throws InterruptedException {
+		PackedCollection source = testValues();
+		PackedCollection deferred = CollectionEncoder.decode(
+				CollectionEncoder.encode(source, Precision.FP64), false);
+		LatchSemaphore pending = new LatchSemaphore(1);
+		LatchSemaphore copying = new LatchSemaphore(1);
+		QueuingComputeContext context = new QueuingComputeContext(
+				Hardware.getLocalHardware().getComputeContext().getDataContext(), copying);
+		MemoryReplacementManager manager = replacementManager(context);
+
+		try {
+			MemoryData temporary = (MemoryData) manager.processArguments(new Object[] { deferred })[0];
+			Semaphore prepared = Submittable.submit(manager.getPrepareOperations(), pending);
+			Assert.assertNotNull("The copy and the pending work are both outstanding", prepared);
+
+			for (int i = 0; i < SIZE; i++) {
+				Assert.assertEquals("element " + i, source.toDouble(i), temporary.toDouble(i), 1e-9);
+			}
+
+			AtomicBoolean released = new AtomicBoolean();
+			Thread waiter = new Thread(() -> {
+				prepared.waitFor();
+				released.set(true);
+			}, "CollectionDataMemoryProviderTest prepared waiter");
+			waiter.setDaemon(true);
+			waiter.start();
+
+			copying.countDown();
+			waiter.join(250);
+			Assert.assertFalse("The prepared completion must wait for the pending work", released.get());
+
+			pending.countDown();
+			waiter.join(10000);
+			Assert.assertTrue("The prepared completion settles once the copy and the pending work have",
+					released.get());
+		} finally {
+			copying.countDown();
+			pending.countDown();
+			manager.releaseTemporaries();
+			context.destroy();
+			source.destroy();
+		}
+	}
+
+	/**
+	 * The replacement copy of writable memory, by contrast, remains ordered after the work it
+	 * follows, since that work may still be writing the source: behind work that has not
+	 * completed it is left outstanding, and it delivers the source once that work completes.
+	 */
+	@Test(timeout = 60000)
+	public void writableReplacementWaitsForPendingWork() {
+		PackedCollection source = testValues();
+		LatchSemaphore pending = new LatchSemaphore(1);
+		MemoryReplacementManager manager = replacementManager(Hardware.getLocalHardware().getComputeContext());
+
+		try {
+			MemoryData temporary = (MemoryData) manager.processArguments(new Object[] { source })[0];
+			Semaphore copied = Submittable.submit(manager.getPrepareOperations(), pending);
+			Assert.assertNotNull("The copy must be ordered after the pending work", copied);
+
+			pending.countDown();
+			copied.waitFor();
+
+			for (int i = 0; i < SIZE; i++) {
+				Assert.assertEquals("element " + i, source.toDouble(i), temporary.toDouble(i), 1e-9);
+			}
+		} finally {
+			pending.countDown();
+			manager.releaseTemporaries();
+			source.destroy();
+		}
+	}
+
+	/**
+	 * A kernel that reads a read-only collection too large to aggregate, yet below the size at
+	 * which it would migrate, computes correctly on every dispatch when it is chained after work
+	 * it depends on: the collection is staged for each dispatch without waiting for that work,
+	 * the work is still complete before the kernel reads what it wrote, and the collection
+	 * remains message-backed afterwards.
+	 */
+	@Test(timeout = 120000)
+	public void chainedKernelReadsStagedDeferredValues() {
+		int size = 4096;
+		PackedCollection source = new PackedCollection(shape(size));
+		integers(0, size).multiply(0.5).into(source.traverseEach()).evaluate();
+		PackedCollection deferred = CollectionEncoder.decode(
+				CollectionEncoder.encode(source, Precision.FP64), false);
+		PackedCollection counter = new PackedCollection(shape(size));
+		PackedCollection result = new PackedCollection(shape(size));
+
+		OperationList step = new OperationList("Deferred Step", false);
+		step.add(a(cp(counter).each(), cp(counter).add(1.0)));
+		step.add(a(cp(result).each(), cp(counter).add(cp(deferred))));
+		Runnable run = step.get();
+
+		try {
+			for (int i = 0; i < DISPATCHES; i++) {
+				run.run();
+			}
+
+			double[] expected = source.toArray();
+			double[] actual = result.toArray();
+			for (int i = 0; i < size; i++) {
+				Assert.assertEquals("element " + i, DISPATCHES + expected[i], actual[i], 1e-9);
+			}
+
+			Assert.assertEquals("staged arguments are not migrated",
+					"PROTOBUF", deferred.getRootDelegate().getMem().getProvider().getName());
+		} finally {
+			Destroyable.destroy(run);
+			source.destroy();
+			counter.destroy();
+			result.destroy();
+		}
+	}
+
+	/**
 	 * Message-backed memory is a read-only source: writes are rejected rather
 	 * than silently lost, since migration is one-way.
 	 */
@@ -296,6 +482,43 @@ public class CollectionDataMemoryProviderTest extends TestSuiteBase {
 			loaded.destroy();
 		} finally {
 			StateDictionary.enableMaterializeWeights = previous;
+		}
+	}
+
+	/**
+	 * A context that makes a copy it is not asked to order at once but reports it as still
+	 * running until a given completion fires, as a backend that queues its copies behind its own
+	 * work would. Only its copies are used.
+	 */
+	private static class QueuingComputeContext extends AbstractComputeContext<DataContext<MemoryData>> {
+		/** The completion reported for every copy made without a dependency. */
+		private final Semaphore queued;
+
+		/**
+		 * Creates a context over the given data context.
+		 *
+		 * @param dataContext the data context this context reports
+		 * @param queued      the completion reported for every copy made without a dependency
+		 */
+		QueuingComputeContext(DataContext<MemoryData> dataContext, Semaphore queued) {
+			super(dataContext);
+			this.queued = queued;
+		}
+
+		@Override
+		public LanguageOperations getLanguage() { throw new UnsupportedOperationException(); }
+
+		@Override
+		public InstructionSet deliver(Scope scope) { throw new UnsupportedOperationException(); }
+
+		@Override
+		public boolean isCPU() { return true; }
+
+		/** Makes the copy as the host fallback does, reporting one made without a dependency as queued. */
+		@Override
+		public Semaphore copy(MemoryData source, MemoryData destination, Semaphore dependsOn) {
+			Semaphore copied = super.copy(source, destination, dependsOn);
+			return dependsOn == null ? queued : copied;
 		}
 	}
 }

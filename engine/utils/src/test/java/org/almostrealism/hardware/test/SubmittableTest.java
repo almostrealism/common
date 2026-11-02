@@ -17,20 +17,24 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Validates how an operation is submitted after the work it depends on: an operation that can be
- * submitted receives its dependency unchanged and decides itself how to order after it, and
+ * submitted receives its dependency unchanged and decides itself how to order after it,
  * {@link Submittable#of(Runnable)} lets an operation that cannot be submitted take part by running
- * on the host. The operations and completions are recording stand-ins, so every wait and every
- * dependency handed on is observed directly, with no device involved.
+ * on the host, and {@link Submittable#unordered()} issues an operation at once while its completion
+ * still covers the dependency. The operations and completions are recording stand-ins, so every
+ * wait and every dependency handed on is observed directly, with no device involved.
  */
 public class SubmittableTest extends TestSuiteBase {
 
@@ -96,6 +100,50 @@ public class SubmittableTest extends TestSuiteBase {
 		Assert.assertSame(operation.completion, Submittable.of(operation).submit(dependsOn));
 		Assert.assertEquals(List.of(dependsOn), operation.received);
 		Assert.assertEquals(0, dependsOn.waits);
+	}
+
+	/**
+	 * An unordered operation is always submitted with no dependency, and the completion it returns
+	 * covers the dependency it was given as well as the operation: an operation finished on
+	 * submission yields the dependency itself, and one still running yields a completion that
+	 * settles only once both it and the dependency have.
+	 */
+	@Test(timeout = 30000)
+	public void unorderedSubmissionCoversItsDependency() throws InterruptedException {
+		LatchSemaphore dependsOn = new LatchSemaphore(1);
+		LatchSemaphore running = new LatchSemaphore(1);
+		List<Semaphore> received = new ArrayList<>();
+		Submittable finished = d -> {
+			received.add(d);
+			return null;
+		};
+		Submittable queued = d -> {
+			received.add(d);
+			return running;
+		};
+
+		Assert.assertSame(dependsOn, finished.unordered().submit(dependsOn));
+		Assert.assertNull(finished.unordered().submit(null));
+		Assert.assertSame(running, queued.unordered().submit(null));
+
+		Semaphore both = queued.unordered().submit(dependsOn);
+		Assert.assertEquals(Arrays.asList(null, null, null, null), received);
+
+		AtomicBoolean released = new AtomicBoolean();
+		Thread waiter = new Thread(() -> {
+			both.waitFor();
+			released.set(true);
+		}, "SubmittableTest unordered waiter");
+		waiter.setDaemon(true);
+		waiter.start();
+
+		running.countDown();
+		waiter.join(250);
+		Assert.assertFalse("The completion must wait for the dependency", released.get());
+
+		dependsOn.countDown();
+		waiter.join(10000);
+		Assert.assertTrue("The completion settles once the operation and the dependency have", released.get());
 	}
 
 	/**
