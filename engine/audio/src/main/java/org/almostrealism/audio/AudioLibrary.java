@@ -179,13 +179,8 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	private final FrequencyCache<String, WaveDetails> detailsCache;
 
-	/**
-	 * Set of content identifiers whose {@link WaveDetails} are known to have
-	 * both freqData and featureData populated. This set is the authoritative
-	 * record of completeness and is checked by {@link #refresh()} to avoid
-	 * loading evicted entries from disk just to check their status.
-	 */
-	private final Set<String> completeIdentifiers;
+	/** The authoritative record of which items are complete for the current model. */
+	private final CompleteIdentifierSet completeIdentifiers;
 
 	/**
 	 * Set of content identifiers known to be persistent. Tracked separately
@@ -275,7 +270,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		this.store = store;
 		this.identifiers = new HashMap<>();
 		this.detailsCache = new FrequencyCache<>(DEFAULT_DETAIL_CACHE_CAPACITY, 0.4);
-		this.completeIdentifiers = new HashSet<>();
+		this.completeIdentifiers = new CompleteIdentifierSet();
 		this.persistentIdentifiers = new HashSet<>();
 		this.factory = new WaveDetailsFactory(sampleRate);
 		this.queue = new PriorityBlockingQueue<>(100,
@@ -1447,8 +1442,9 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
-	 * Scans the file tree for audio files that have not yet been analyzed and submits
-	 * background jobs to compute their WaveDetails.
+	 * Scans the file tree for audio files that have not yet been analyzed (including
+	 * any whose features belong only to another model) and submits background jobs
+	 * to compute their WaveDetails.
 	 *
 	 * <p>Returns a CompletableFuture that completes when all queued analysis jobs
 	 * have finished. Callers should use {@link #awaitRefresh()} to wait for the
@@ -1458,6 +1454,10 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	public CompletableFuture<Void> refresh() {
 		try {
+			String modelId = currentModelId();
+			int stale = completeIdentifiers.revalidate(modelId, id -> isComplete(resolveDetails(id)));
+			if (stale > 0) log(stale + " item(s) have no " + modelId + " features and will be recomputed");
+
 			CompletableFuture<Void> future = new CompletableFuture<>();
 			AtomicBoolean submitted = new AtomicBoolean(false);
 
