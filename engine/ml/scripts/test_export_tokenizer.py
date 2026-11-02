@@ -111,6 +111,26 @@ def test_missing_byte_token_for_vocabulary_character_is_accepted():
     exporter.validate_pipeline(spec)
 
 
+def test_missing_byte_token_for_added_token_character_is_accepted():
+    # An added token "\t" is matched atomically before the BPE model runs, so a tab never reaches
+    # byte fallback. Its <0x09> byte token is then unreachable even though the model vocabulary omits
+    # it, so the export proceeds.
+    spec = _supported_spec()
+    del spec["model"]["vocab"]["<0x09>"]
+    spec["added_tokens"] = [{"id": 300, "content": "\t"}]
+    exporter.validate_pipeline(spec)
+
+
+def test_missing_space_byte_token_is_accepted():
+    # The normalizer replaces a literal space with the boundary marker before fallback, so a space
+    # never reaches byte fallback. Its <0x20> byte token is unreachable even when neither the space
+    # nor <0x20> is a vocabulary token, because the boundary marker carries the space instead.
+    spec = _supported_spec()
+    del spec["model"]["vocab"]["<0x20>"]
+    assert " " not in spec["model"]["vocab"]
+    exporter.validate_pipeline(spec)
+
+
 def test_missing_multibyte_byte_token_is_rejected():
     # A continuation byte such as 0xA9 is part of many characters ("é" is C3 A9), so some character
     # outside the vocabulary can always reach it, and the export is rejected.

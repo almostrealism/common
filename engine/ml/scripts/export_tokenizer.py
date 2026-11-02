@@ -154,20 +154,23 @@ def _require_string_length(description, content):
             % (description, length, MAX_STRING_BYTES))
 
 
-def _unreachable_byte(value, vocab):
-    """Whether no character outside ``vocab`` can fall back to the byte token for ``value``.
+def _unreachable_byte(value, present_characters):
+    """Whether no character that reaches byte fallback can emit the byte token for ``value``.
 
-    Fallback emits the UTF-8 bytes of a character missing from the vocabulary. An ASCII byte is the
-    whole encoding of exactly one character, so its token is unreachable when that character is
-    itself a vocabulary token. Bytes 0xC0, 0xC1 and 0xF5-0xFF never occur in UTF-8 at all. Any other
-    byte is part of the encoding of many characters, so it is treated as reachable.
+    Fallback emits the UTF-8 bytes of a character that reaches the BPE model and is missing from the
+    vocabulary. An ASCII byte is the whole encoding of exactly one character, so its token is
+    unreachable when that character never reaches fallback -- it is listed in ``present_characters``
+    because it is its own symbol: a vocabulary token, an added token matched before the model, or the
+    literal space the normalizer replaces with the boundary marker. Bytes 0xC0, 0xC1 and 0xF5-0xFF
+    never occur in UTF-8 at all. Any other byte is part of the encoding of many characters, so it is
+    treated as reachable.
 
     :param value: the byte, 0 to 255.
-    :param vocab: the vocabulary, mapping token content to id.
+    :param present_characters: the characters that never reach byte fallback as a standalone symbol.
     :return: ``True`` if no fallback can emit the byte token.
     """
     if value < 0x80:
-        return chr(value) in vocab
+        return chr(value) in present_characters
     return value in (0xC0, 0xC1) or value >= 0xF5
 
 
@@ -204,8 +207,19 @@ def validate_pipeline(spec):
     # fallback can reach it -- Gemma, for one, stores the tab as the literal token "\t" in place of
     # <0x09> -- so only reachable byte tokens are required (see _unreachable_byte).
     vocab = model.get("vocab") or {}
+    # A character never reaches byte fallback -- so its ASCII byte token is unreachable -- when it is
+    # its own symbol: a vocabulary token, an added token the reader matches before the BPE model
+    # runs, or the literal space the normalizer has already replaced with the boundary marker. Gemma
+    # stores the tab this way, as the literal token "\t" in place of <0x09>. An added token's whole
+    # content is matched atomically, so only a single-character one keeps that character out of
+    # fallback; a longer one is harmless here because it never equals the single character tested.
+    present_characters = set(vocab)
+    present_characters.update(added.get("content") for added in (spec.get("added_tokens") or [])
+                              if added.get("content"))
+    present_characters.add(" ")
     missing = ["<0x%02X>" % value for value in range(256)
-               if ("<0x%02X>" % value) not in vocab and not _unreachable_byte(value, vocab)]
+               if ("<0x%02X>" % value) not in vocab
+               and not _unreachable_byte(value, present_characters)]
     if missing:
         raise ValueError(
             "incomplete byte-fallback vocabulary; %d <0xNN> byte tokens that a character outside "
