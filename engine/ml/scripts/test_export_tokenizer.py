@@ -140,6 +140,26 @@ def test_missing_multibyte_byte_token_is_rejected():
         exporter.validate_pipeline(spec)
 
 
+@pytest.mark.parametrize("value", [0x80, 0xBF, 0xC2, 0xF4])
+def test_missing_byte_token_at_utf8_boundary_is_rejected(value):
+    # The first and last continuation bytes (0x80, 0xBF) and the first and last valid lead bytes
+    # (0xC2, 0xF4) each occur in the encoding of some character, so their tokens stay reachable.
+    spec = _supported_spec()
+    del spec["model"]["vocab"]["<0x%02X>" % value]
+    with pytest.raises(ValueError, match="incomplete byte-fallback"):
+        exporter.validate_pipeline(spec)
+
+
+def test_missing_byte_token_for_multi_character_added_token_is_rejected():
+    # An added token "\t\t" is matched only as a whole, so a lone tab still reaches byte fallback
+    # and its missing <0x09> token must be reported.
+    spec = _supported_spec()
+    del spec["model"]["vocab"]["<0x09>"]
+    spec["added_tokens"] = [{"id": 300, "content": "\t\t"}]
+    with pytest.raises(ValueError, match="incomplete byte-fallback"):
+        exporter.validate_pipeline(spec)
+
+
 @pytest.mark.parametrize("value", [0xC0, 0xC1, 0xF5, 0xFF])
 def test_missing_byte_token_outside_utf8_is_accepted(value):
     # These bytes never occur in UTF-8, so no fallback can emit their tokens.
