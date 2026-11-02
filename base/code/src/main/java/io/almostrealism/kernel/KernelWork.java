@@ -59,7 +59,8 @@ package io.almostrealism.kernel;
  *       implementation that does not override the range methods refuses any other range</li>
  *   <li><strong>Default workgroup size:</strong> 1 (no workgroup parallelism)</li>
  *   <li><strong>OpenCL:</strong> Maps to global_work_size, local_work_size, global_work_offset</li>
- *   <li><strong>Metal:</strong> Maps to grid size and threadgroup size</li>
+ *   <li><strong>Metal:</strong> Maps to grid size and threadgroup size; a grid always starts
+ *       at the first work item</li>
  *   <li><strong>JNI:</strong> Used for loop parallelization bounds</li>
  *   <li><strong>External process:</strong> A single work item, since the executable is
  *       given no work-item index</li>
@@ -67,9 +68,9 @@ package io.almostrealism.kernel;
  *
  * <p>An implementation never dispatches over a range other than the one it was given. A range
  * it cannot dispatch over is refused, either by the setter, when the range it can perform is
- * fixed (an external process performs one work item), or when it is dispatched, when the limit
- * depends on the dispatch (the JNI backend's parallelism, or the size a Metal grid can
- * describe).</p>
+ * fixed (an external process performs one work item, and a Metal grid starts at the first), or
+ * when it is dispatched, when the limit depends on the dispatch (the JNI backend's parallelism,
+ * or the size a Metal grid can describe).</p>
  *
  * @see io.almostrealism.code.Execution
  */

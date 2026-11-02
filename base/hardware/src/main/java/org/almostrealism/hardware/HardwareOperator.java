@@ -305,7 +305,13 @@ public abstract class HardwareOperator implements Execution, OperationInfo, Name
 	 * kernel.accept(args, null);
 	 * }</pre>
 	 *
+	 * <p>An operator whose dispatch can only start at the first work item refuses any other
+	 * offset here, rather than dispatching a different range (see
+	 * {@link io.almostrealism.kernel.KernelWork}).</p>
+	 *
 	 * @param globalWorkOffset The starting offset for work item IDs
+	 * @throws UnsupportedOperationException if this operator cannot dispatch a range that starts
+	 *         at {@code globalWorkOffset}
 	 */
 	@Override
 	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }

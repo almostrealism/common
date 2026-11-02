@@ -409,8 +409,17 @@ Scope
 `maxTotalThreadsPerThreadgroup`. SIMD-width-aware workgroup dimension selection.
 
 **Dispatch modes:**
-- `dispatchThreadgroups` — Grid of threadgroups (standard)
-- `dispatchThreads` — Direct thread count (when hardware supports it)
+- `dispatchThreads` — Grid of the global work size in threads (the default)
+- `dispatchThreadgroups` — Grid of whole threadgroups (when `enableDispatchThreadgroups` is set)
+
+**Work range:** A Metal grid always starts at the first work item, so `MetalOperator` refuses
+a non-zero global work offset when it is set, and refuses a grid of more than
+`Integer.MAX_VALUE` threads when it is dispatched, before anything is encoded.
+
+**Argument binding:** Each argument's buffer is bound at its own index, followed by the
+arguments' offsets and sizes, bound inline at the next two indices. Metal's buffer argument
+table has 31 entries, so a kernel takes at most 29 arguments; the Metal compiler refuses one
+that declares more.
 
 ## InstructionSet and Execution — The Runtime Interface
 
