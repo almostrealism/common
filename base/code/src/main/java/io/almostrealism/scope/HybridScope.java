@@ -169,6 +169,6 @@ public class HybridScope<T> extends Scope<T> {
 		List<Argument<?>> args = new ArrayList<>();
 		args.addAll(explicit.arguments(Function.identity()));
 		args.addAll(super.arguments(Function.identity()));
-		return Scope.removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
+		return Argument.removeDuplicates(args).stream().map(mapper).collect(Collectors.toList());
 	}
 }

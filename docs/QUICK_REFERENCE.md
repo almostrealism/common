@@ -7,7 +7,7 @@
 ```bash
 # AR_HARDWARE_LIBS is auto-detected — do not set it manually
 # AR_HARDWARE_DRIVER is best left unset to auto-detect the best available backend
-# Override options: native|cl|mtl|cuda|cpu|gpu|*  (cuda is opt-in, never chosen by auto-detect)
+# Override options: native|cl|mtl|cuda|cpu|gpu|*
 ```
 
 ---
@@ -414,7 +414,7 @@ See [training-loop-examples.md](internals/training-loop-examples.md) for detaile
 | `native` | CPU with JNI acceleration |
 | `cl` | GPU via OpenCL |
 | `mtl` | Apple Silicon GPU via Metal |
-| `cuda` | NVIDIA GPU via CUDA (opt-in; not chosen by `*` auto-detect; Linux/aarch64 bridge only) |
+| `cuda` | NVIDIA GPU via CUDA (Linux) |
 | `gpu` | Abstract GPU (auto-selects MTL on macOS, CL elsewhere) |
 | `cpu` | Abstract CPU requirement |
 | `*` | Wildcard — whatever the platform supports |

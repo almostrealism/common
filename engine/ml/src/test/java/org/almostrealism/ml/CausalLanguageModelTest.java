@@ -17,6 +17,7 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -25,6 +26,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.ml.tokenization.ByteTokenizer;
 import org.almostrealism.model.CompiledModel;
+import org.almostrealism.model.Model;
 import org.almostrealism.optimize.AdamOptimizer;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.LossProvider;
@@ -898,6 +900,39 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 					maxDifference > 1e-4);
 		} finally {
 			Destroyable.destroy(decode);
+			position.destroy();
+			keyCaches.forEach(PackedCollection::destroy);
+			valueCaches.forEach(PackedCollection::destroy);
+			lm.getWeights().destroy();
+		}
+	}
+
+	/**
+	 * The single-position decode model is compiled under the compute requirements the caller set on
+	 * the language model, and under none when none were set: the model does not choose a compute
+	 * context on the caller's behalf.
+	 */
+	@Test(timeout = 60000)
+	public void decodeModelInheritsComputeRequirements() {
+		CausalLanguageModel lm = new CausalLanguageModel(VOCAB, 8, 8, 2, 1, 8, ROPE_BASE, new Random(5));
+		PackedCollection position = new PackedCollection(1);
+		List<PackedCollection> keyCaches = new ArrayList<>();
+		List<PackedCollection> valueCaches = new ArrayList<>();
+
+		try {
+			Model unrequired = lm.decodeModel(position, keyCaches, valueCaches);
+			Assert.assertNull("no requirements were set, so each operation places itself",
+					unrequired.getComputeRequirements());
+
+			keyCaches.forEach(PackedCollection::destroy);
+			valueCaches.forEach(PackedCollection::destroy);
+			keyCaches.clear();
+			valueCaches.clear();
+
+			lm.setComputeRequirements(ComputeRequirement.GPU);
+			Model required = lm.decodeModel(position, keyCaches, valueCaches);
+			Assert.assertEquals(List.of(ComputeRequirement.GPU), required.getComputeRequirements());
+		} finally {
 			position.destroy();
 			keyCaches.forEach(PackedCollection::destroy);
 			valueCaches.forEach(PackedCollection::destroy);

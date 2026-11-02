@@ -17,6 +17,7 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.dsl.PdslLoader;
@@ -317,6 +318,11 @@ public final class CausalLanguageModel extends Model implements SequenceAttentio
 	 * caller can clear them when a new sequence starts and release them when the decode model is
 	 * destroyed — they are decode state, not model state.</p>
 	 *
+	 * <p>The variant is compiled and run under this model's own
+	 * {@link #getComputeRequirements() compute requirements}, if any were
+	 * {@link Model#setComputeRequirements set}; without them each of its operations chooses its
+	 * own compute context, exactly as the full-window forward's do.</p>
+	 *
 	 * @param position   the device-resident single-element sequence position the attention reads;
 	 *                   the caller advances and resets it per step and per sequence
 	 * @param keyCaches   an empty, mutable list that receives the per-block key caches in block order
@@ -358,6 +364,11 @@ public final class CausalLanguageModel extends Model implements SequenceAttentio
 		}
 
 		model.add(buildLayer("causal_lm_head", tokenShape, headArguments()));
+
+		if (getComputeRequirements() != null) {
+			model.setComputeRequirements(getComputeRequirements().toArray(new ComputeRequirement[0]));
+		}
+
 		return model;
 	}
 }

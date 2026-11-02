@@ -57,7 +57,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * <h2>Closed and committed buffers</h2>
  *
  * <p>A buffer stops accepting dispatches when it is <em>closed</em> (a host wait, the
- * {@link #MAX_OPEN} bound, or a bridged dispatch that must start a fresh buffer), and is
+ * {@link #MAX_OPEN} bound, the GPU running out of work once the buffer holds
+ * {@link SubmissionStream#minIdleCommit} dispatches, or a bridged dispatch that must start a fresh buffer), and is
  * <em>committed</em> to the GPU only once every host-signaled bridge encoded into it has been
  * signaled, in the order the buffers were closed. The GPU therefore never holds a buffer that waits
  * for the host: a caller may submit dispatches ahead of the foreign work they depend on, and the
@@ -71,7 +72,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>A command buffer signals the timeline once, encoded when it is closed: the signal carries the value
  * of the last dispatch encoded into it and fires when all of the buffer's work has completed (see
- * {@link #commitOpenOnExecutor()}). The timeline is only ever waited on from a later command buffer,
+ * {@link #closeOpenBatch()}). The timeline is only ever waited on from a later command buffer,
  * for a dispatch in a buffer that has already been committed, so that one signal releases every
  * such wait — later than a signal after the dispatch itself would, by the rest of that buffer's
  * work. Signaling after every dispatch instead would end each dispatch with a command-buffer-level
@@ -113,9 +114,6 @@ import java.util.concurrent.atomic.AtomicReference;
  * completed.</p>
  */
 public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> implements ConsoleFeatures {
-	/** Maximum number of kernel arguments a single command may bind. */
-	public static final int MAX_ARGS = 512;
-
 	/**
 	 * Maximum dispatches encoded into one open command buffer before it is committed. This is a
 	 * memory bound (it caps how much encoded-but-uncompleted work and how large an autorelease pool
@@ -447,7 +445,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 			// buffer that contains both those dispatches and the bridge wait can never complete.
 			// The GPU watchdog then kills the stalled buffer and the gated work silently never
 			// runs. Closing first makes the cycle impossible.
-			if (foreign != null && openCount > 0 && commitOpenOnExecutor()) {
+			if (foreign != null && openCount > 0 && closeOpenBatch()) {
 				bridgeCommits++;
 			}
 
@@ -488,7 +486,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 
 			command.encode(openBuffer);
 
-			// The buffer signals this value when it is committed (see commitOpenOnExecutor)
+			// The buffer signals this value when it is committed (see closeOpenBatch)
 			long value = nextOrdinal();
 			openCount++;
 			totalDispatchCount.incrementAndGet();
@@ -496,8 +494,10 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 
 			result.add(new MetalSemaphore(requester, this, openBuffer, event, value));
 
-			if (openCount >= MAX_OPEN && commitOpenOnExecutor()) {
+			if (openCount >= MAX_OPEN && closeOpenBatch()) {
 				maxOpenCommits++;
+			} else {
+				closeEarlyIfIdle(openCount);
 			}
 		});
 
@@ -634,7 +634,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	/**
 	 * Returns the error a completed command buffer finished with, or {@code null} if it
 	 * executed. A failed buffer ran none of its dispatches (see the class documentation). This
-	 * is the single point at which the runner reads a buffer's Metal status, so a subclass can
+	 * is the single point at which the runner reads whether a buffer failed, so a subclass can
 	 * report a failure the GPU did not produce and exercise the failure path deterministically.
 	 *
 	 * @param buffer a command buffer that has completed
@@ -649,7 +649,8 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * without committing the buffer or waiting for it. The callback joins the buffer's
 	 * released-memory callbacks — the same list a dispatch's own {@code onComplete}
 	 * argument joins (see {@link #submit}) — so it runs when the buffer completes on its
-	 * own schedule ({@link #MAX_OPEN} cadence or a genuine host wait). A buffer that has
+	 * own schedule ({@link #MAX_OPEN} cadence, an early commit to an idle GPU, see
+	 * {@link SubmissionStream#minIdleCommit}, or a genuine host wait). A buffer that has
 	 * already completed and been drained runs the callback immediately. Invoked by
 	 * {@link MetalSemaphore#whenComplete(Runnable)}.
 	 *
@@ -702,10 +703,11 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 
 	/**
 	 * Returns the number of commits forced by a host-side completion wait ({@link #complete}).
-	 * Together with {@link #getMaxOpenCommitCount()}, {@link #getBridgeCommitCount()} and
-	 * {@link #getDestroyCommitCount()} this partitions {@link #getCommitCount()} by cause:
-	 * host waits are the commits that break batching on demand, while {@link #MAX_OPEN}
-	 * commits are the expected steady-state cadence. The causes are counted when a buffer is
+	 * Together with {@link #getMaxOpenCommitCount()}, {@link #getIdleCommitCount()},
+	 * {@link #getBridgeCommitCount()} and {@link #getDestroyCommitCount()} this partitions
+	 * {@link #getCommitCount()} by cause: host waits are the commits that break batching on
+	 * demand, while {@link #MAX_OPEN} commits are the expected steady-state cadence while the GPU
+	 * is busy, and idle commits the cadence while it keeps up. The causes are counted when a buffer is
 	 * closed, and {@link #getCommitCount()} when a closed buffer is committed, so while closed
 	 * buffers are held for a host-signaled bridge the causes sum to more than the total.
 	 *
@@ -747,6 +749,41 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	public long getLateBridgeSignalCount() { return lateBridgeSignals.get(); }
 
 	/**
+	 * Returns whether committing the open buffer now would hand the GPU work while it has none:
+	 * the open buffer waits for no host-signaled bridge, no closed buffer is held back for one
+	 * (so the open buffer would be committed at once, see {@link #commitReadyOnExecutor()}), and
+	 * every committed buffer has finished on the GPU. The queue is serial, so the most recently
+	 * committed buffer finishing means every one before it has. This is the Metal-native half of
+	 * the stream's idle-commit policy ({@link SubmissionStream#closeEarlyIfIdle(int)}): the stream
+	 * decides when an idle device warrants closing the open batch, and this reports whether the
+	 * device is idle.
+	 *
+	 * <p>A buffer that finished with an error is not an idle GPU: it never signaled its timeline
+	 * value, so an open buffer that waits for one of its dispatches would stall on the GPU until
+	 * the watchdog killed it. Neither is a runner with a recorded failure (see the class
+	 * documentation). In both cases the open buffer is left to the ordinary commit causes, and the
+	 * host wait that commits it reports the failure.</p>
+	 *
+	 * <p>Only the last committed buffer needs to be inspected. It signals the highest timeline
+	 * value of any committed dispatch, and the timeline is shared, so once it has finished without
+	 * an error every value the open buffer can wait for has been reached, including that of an
+	 * earlier buffer that failed. The open buffer is then not stalled; a dispatch of it that
+	 * depends on the failed buffer runs on unwritten inputs exactly as it would after any other
+	 * commit, and the failure record, not this check, reports that when the failed buffer is
+	 * drained. Must run on the executor thread.</p>
+	 *
+	 * @return true if the GPU is idle and the open buffer could be committed to it immediately
+	 */
+	@Override
+	protected boolean canCommitToIdleDevice() {
+		if (!openBridges.isSignaled() || !held.isEmpty() || getFailures().isFailed()) return false;
+		if (committed.isEmpty()) return true;
+
+		MTLCommandBuffer last = committed.get(committed.size() - 1).getBuffer();
+		return last.isFinished() && errorOf(last) == null;
+	}
+
+	/**
 	 * Closes the open buffer (if any), moves it to the committed list, and commits it at once
 	 * unless it, or a buffer closed before it, still waits for a host-signaled bridge (see
 	 * {@link #commitReadyOnExecutor()}). Does not wait for completion. Must run on the executor
@@ -758,9 +795,13 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * class documentation). The value never decreases from one buffer to the next, and a buffer
 	 * closed without a dispatch of its own signals the previous buffer's value again.</p>
 	 *
+	 * <p>This is how the runner closes its batch for every cause, including an early commit to an
+	 * idle GPU ({@link SubmissionStream#closeEarlyIfIdle(int)}).</p>
+	 *
 	 * @return true if a buffer was closed, false if no buffer was open
 	 */
-	private boolean commitOpenOnExecutor() {
+	@Override
+	protected boolean closeOpenBatch() {
 		if (openBuffer == null) return false;
 
 		openBuffer.encodeSignalEvent(event, lastOrdinal());
@@ -816,7 +857,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 *         been drained by an earlier wait
 	 */
 	private List<Waiter> commitForWait(MTLCommandBuffer target, OperationMetadata requester) {
-		if (target == openBuffer && commitOpenOnExecutor()) {
+		if (target == openBuffer && closeOpenBatch()) {
 			hostCompleteCommits++;
 			hostCompleteRequesters.addEntry(
 					requester == null ? "unknown" : requester.getDisplayName(), 1);
@@ -986,7 +1027,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 		boolean closed = closeIf(() -> {
 			last.set(null);
 			executor.runOrElseUninterruptibly(() -> {
-				if (commitOpenOnExecutor()) destroyCommits++;
+				if (closeOpenBatch()) destroyCommits++;
 				if (!committed.isEmpty()) {
 					last.set(new Waiter(committed.get(committed.size() - 1)));
 				}
@@ -1016,7 +1057,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 */
 	private void destroyExecutor() {
 		executor.destroy(() -> {
-			if (commitOpenOnExecutor()) destroyCommits++;
+			if (closeOpenBatch()) destroyCommits++;
 
 			while (!held.isEmpty()) submitOldestHeld();
 

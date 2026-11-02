@@ -19,6 +19,8 @@ package org.almostrealism.hardware.instructions;
 import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.kernel.CompiledKernelStructureContext;
 
+import java.util.BitSet;
+
 /**
  * Extended {@link InstructionSetManager} that tracks output argument location for each operation.
  *
@@ -145,6 +147,27 @@ public interface ComputableInstructionSetManager<K extends ExecutionKey> extends
 	 * @return the recorded position sequence, or null
 	 */
 	String getAggregatePositions();
+
+	/**
+	 * Records which aggregated slices the compiled kernel may write, as the compiling operation
+	 * read them off the compiled scope (see {@code MemoryDataArgumentMap#getWrittenSlices}).
+	 *
+	 * <p>Like the {@link #setAggregatePositions(String) positions}, this is a property of the
+	 * compiled kernel rather than of any one operation using it: an operation reusing these
+	 * instructions reproduces the positions exactly, so the same replacements are the ones the
+	 * kernel writes, and their copy-back is limited the same way.</p>
+	 *
+	 * @param written the indices of the replacements whose slice the compiled kernel may write
+	 */
+	void setWrittenAggregateSlices(BitSet written);
+
+	/**
+	 * Returns which aggregated slices the compiled kernel may write, or null if no compilation
+	 * has recorded them yet.
+	 *
+	 * @return the indices of the replacements whose slice the compiled kernel may write, or null
+	 */
+	BitSet getWrittenAggregateSlices();
 
 	/**
 	 * Returns the {@link CompiledKernelStructureContext} of this manager's compiled

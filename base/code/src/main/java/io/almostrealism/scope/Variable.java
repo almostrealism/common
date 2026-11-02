@@ -321,6 +321,19 @@ public class Variable<T, V extends Variable<T, ?>>
 		return a instanceof Computable && b instanceof Computable && ((Computable) a).matches((Computable) b);
 	}
 
+	/**
+	 * Determines whether this variable and {@code other} have {@link Delegated#getRootDelegate()
+	 * root delegates} of the same name, and therefore refer to the same storage. A reference to
+	 * a variable that delegates to another is created as a reference to the delegate, so a view
+	 * of a variable and the variable itself, or two views of the same storage, share a root.
+	 *
+	 * @param other the variable to compare with
+	 * @return {@code true} if both variables resolve to a root of the same name
+	 */
+	public boolean hasSameRoot(Variable<?, ?> other) {
+		return Objects.equals(getRootDelegate().getName(), other.getRootDelegate().getName());
+	}
+
 	@Override
 	public boolean equals(Object obj) {
 		if (!(obj instanceof Variable)) return false;

@@ -17,6 +17,7 @@
 package org.almostrealism.model;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lifecycle.Setup;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationProfile;
@@ -108,6 +109,9 @@ public class Model implements Setup, Destroyable, Tracking, CodeFeatures {
 	/** The number of times this model has been compiled; used to warn on repeated compilation. */
 	private int compilations;
 
+	/** The compute requirements every pass of a compilation is compiled and run under; may be {@code null}. */
+	private List<ComputeRequirement> requirements;
+
 	/**
 	 * Creates a new model with no initial shape.
 	 */
@@ -174,6 +178,35 @@ public class Model implements Setup, Destroyable, Tracking, CodeFeatures {
 	public void setInputTracking(boolean inputTracking) {
 		blocks.setInputTracking(inputTracking);
 		Tracking.propagate(inputs, inputTracking);
+	}
+
+	/**
+	 * Sets the {@link ComputeRequirement}s that the setup, forward and backward passes of every
+	 * compilation of this model are compiled and run under, so that the whole pass is placed on
+	 * the compute contexts they select rather than each operation being placed on its own.
+	 *
+	 * <p>Without requirements, each operation goes to the context its own size favors: a small
+	 * operation to a CPU context and a large one to an accelerator. A model whose pass interleaves
+	 * the two then waits on the host at every switch, for the accelerator's work to complete before
+	 * the CPU operation that reads it may start. A model made of many small operations over
+	 * accelerator-resident memory &mdash; a single-position decode step, for example &mdash; runs
+	 * faster with the whole pass on the accelerator.</p>
+	 *
+	 * @param requirements the requirements, or none to let each operation choose its own context
+	 */
+	public void setComputeRequirements(ComputeRequirement... requirements) {
+		this.requirements = requirements.length == 0 ? null : List.of(requirements);
+	}
+
+	/**
+	 * Returns the {@link ComputeRequirement}s every pass of a compilation of this model is
+	 * compiled and run under.
+	 *
+	 * @return the requirements, or {@code null} when each operation chooses its own context
+	 * @see #setComputeRequirements(ComputeRequirement...)
+	 */
+	public List<ComputeRequirement> getComputeRequirements() {
+		return requirements;
 	}
 
 	/**

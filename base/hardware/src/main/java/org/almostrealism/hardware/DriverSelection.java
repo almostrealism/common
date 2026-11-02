@@ -211,6 +211,7 @@ public class DriverSelection {
 					if (aarch64) requirements.add(ComputeRequirement.MTL);
 					requirements.add(ComputeRequirement.CL);
 				} else {
+					requirements.add(ComputeRequirement.CUDA);
 					requirements.add(ComputeRequirement.CL);
 					requirements.add(ComputeRequirement.JNI);
 				}

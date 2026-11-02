@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.streams.Semaphore;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -53,6 +54,10 @@ import java.util.function.Supplier;
  *   <li><b>The hold bound</b> &mdash; how many units of work (command buffers, submissions) may
  *       wait for a foreign dependency before a further submission that would add one waits, on
  *       its submitting thread, for room ({@link #awaitHoldCapacityUninterruptibly()}).</li>
+ *   <li><b>The idle-commit policy</b> &mdash; when a stream that batches submissions into a unit
+ *       the device does not see until it is committed (a command buffer) closes that unit early
+ *       because the device has run out of work ({@link #closeEarlyIfIdle}, {@link #minIdleCommit}),
+ *       and how many units were closed for that reason ({@link #getIdleCommitCount()}).</li>
  * </ul>
  *
  * <p>Foreign dependencies are bridged by the runner through {@link Semaphore#onSettled(Runnable)}
@@ -62,6 +67,24 @@ import java.util.function.Supplier;
  * @param <C> the type of completion the stream's submissions return
  */
 public abstract class SubmissionStream<C extends StreamCompletion> {
+	/**
+	 * Fewest submissions an open batch must hold before it is closed early because the device has
+	 * finished everything committed before it (see {@link #closeEarlyIfIdle}). A batch runs only
+	 * once it is committed, so while the device is idle every submission held in the open batch is
+	 * work it could already be doing: committing then lets the device run that work while the host
+	 * prepares what follows, instead of starting only once the batch is full or the host waits.
+	 * Each commit also has a fixed cost, so a smaller batch is left open: on Metal, for a forward
+	 * pass of several hundred small kernels, closing every buffer at 32 dispatches cost more than it
+	 * recovered, while closing at 64 recovered close to a tenth of the pass. While the device is
+	 * busy nothing changes. Zero disables early commits. Read on every submission. Controlled by
+	 * {@code AR_HARDWARE_IDLE_COMMIT}.
+	 *
+	 * <p>Only a stream that holds submissions back in a batch has anything to close early. A
+	 * stream that launches every submission as it is admitted (such as the CUDA runner) never
+	 * leaves the device idle while it holds work it could run, so it has no use for this policy.</p>
+	 */
+	public static int minIdleCommit = SystemUtils.getInt("AR_HARDWARE_IDLE_COMMIT").orElse(64);
+
 	/** A human-readable name for the stream, used in refusal messages. */
 	private final String name;
 
@@ -105,6 +128,9 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 	 * that finds no waiter is one every later waiter's check observes.
 	 */
 	private final AtomicInteger waiting = new AtomicInteger();
+
+	/** The number of batches closed early by {@link #closeEarlyIfIdle}. */
+	private final AtomicLong idleCommits = new AtomicLong();
 
 	/**
 	 * Creates a stream.
@@ -242,6 +268,59 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 			return closed;
 		}
 	}
+
+	/**
+	 * Returns whether the device has finished everything committed before the open batch, and
+	 * the open batch could be committed to it at once. Consulted by {@link #closeEarlyIfIdle(int)}
+	 * only once the open batch has reached {@link #minIdleCommit}, on whatever thread owns the
+	 * open batch.
+	 *
+	 * <p>A stream that launches every submission as it is admitted holds no batch back from its
+	 * device, so it is never idle with work it could hand over; that is what this returns unless a
+	 * batching stream overrides it.</p>
+	 *
+	 * @return true if the device is idle and the open batch could be committed to it immediately
+	 */
+	protected boolean canCommitToIdleDevice() { return false; }
+
+	/**
+	 * Closes the open batch, if any, so that the device can run it. Called by
+	 * {@link #closeEarlyIfIdle(int)} on whatever thread owns the open batch. A stream that launches
+	 * every submission as it is admitted has no open batch, so unless a batching stream overrides
+	 * this it closes nothing.
+	 *
+	 * @return true if a batch was closed, false if no batch was open
+	 */
+	protected boolean closeOpenBatch() { return false; }
+
+	/**
+	 * Closes the open batch early if it holds at least {@link #minIdleCommit} submissions and the
+	 * device has run out of work, so the device starts on the batch while the host prepares what
+	 * follows. The stream supplies what is native to it by overriding
+	 * {@link #canCommitToIdleDevice()} (whether its device is idle) and {@link #closeOpenBatch()}
+	 * (how a batch is closed). Every batch closed here is counted by {@link #getIdleCommitCount()}.
+	 * Must be called on whatever thread owns the open batch.
+	 *
+	 * @param pending the number of submissions in the open batch
+	 * @return true if the open batch was closed
+	 */
+	protected boolean closeEarlyIfIdle(int pending) {
+		int threshold = minIdleCommit;
+		if (threshold <= 0 || pending < threshold || !canCommitToIdleDevice() || !closeOpenBatch()) {
+			return false;
+		}
+
+		idleCommits.incrementAndGet();
+		return true;
+	}
+
+	/**
+	 * Returns the number of batches closed early because the device had run out of work (see
+	 * {@link #closeEarlyIfIdle}).
+	 *
+	 * @return the number of idle commits
+	 */
+	public long getIdleCommitCount() { return idleCommits.get(); }
 
 	/**
 	 * Returns the maximum number of units of work that may be held at once.
