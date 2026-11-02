@@ -58,8 +58,9 @@ import java.util.function.Function;
  *       convolutions over a {@code [batch, channels, length]} signal</li>
  *   <li>{@code rmsnorm(weights, epsilon)}, {@code rmsnorm(weights, biases, epsilon)},
  *       {@code layernorm(weights, biases, epsilon)}</li>
- *   <li>{@code softmax()}, {@code silu()}, {@code relu()}, {@code gelu()},
+ *   <li>{@code softmax()}, {@code log_softmax()}, {@code silu()}, {@code relu()}, {@code gelu()},
  *       {@code sigmoid()}, {@code tanh_act()}, {@code snake(alpha, beta)}</li>
+ *   <li>{@code embedding(table)} - replace each token id with its row of the table</li>
  *   <li>{@code slice(offset, size)} - extract a 1-D sub-range;
  *       {@code slice([shape], position...)} - extract the sub-tensor of {@code shape} at a position</li>
  *   <li>{@code lerp(hidden_size)} - linear interpolation from [from|weight|to] input</li>

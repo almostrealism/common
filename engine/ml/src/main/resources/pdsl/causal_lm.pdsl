@@ -1,0 +1,199 @@
+/**
+ * Decoder-only causal language model — the small transformer the platform trains from scratch on
+ * its own documentation (CausalLanguageModel) — in its two forward passes: the full-window pass it
+ * trains with, which scores every position of a window of token ids at once, and the
+ * single-position pass a key/value-cache generator decodes with, which scores one new token
+ * against the keys and values cached for the tokens before it.
+ *
+ * This file replaces the Java assembly that used to live in CausalLanguageModel. Its addLayers()
+ * added the token embedding, one TransformerBlockFeatures.transformerBlock(...) per block — a call
+ * of forty arguments that switched off cross-attention, adaLN modulation, local conditioning,
+ * padding and query/key normalization by passing null — and the final RMSNorm, output projection
+ * and log-softmax. Its decodeModel() added, per block, a residual cached-attention stage and a
+ * residual gated feed-forward between two reshapes, and then the same head. CausalLanguageModel
+ * now only binds its configuration and each block's weights and builds the layers below in order,
+ * one block layer per block, so the structure of both passes is defined once, here. The two passes
+ * share the feed-forward sub-layer and the head's logits and log-softmax; they differ in their
+ * attention stage, and the full window lays its positions out as rows before the log-softmax.
+ *
+ * The stages are layers of three other assets, which this file imports:
+ *
+ *   sequence_attention_causal    /pdsl/sequence_attention.pdsl   (full window)
+ *   attention                    /pdsl/attention.pdsl            (single position, cached)
+ *   glu_feed_forward             /pdsl/feed_forward.pdsl
+ *
+ * Full-window forward, with dim = heads * head_dim:
+ *
+ *   [seq_len] token ids
+ *   causal_lm_embedding         each id replaced by its row of the table     [1, seq_len, dim]
+ *   causal_lm_block  × depth    x + causal attention(rmsnorm(x)),
+ *                               x + gated feed-forward(rmsnorm(x))           [1, seq_len, dim]
+ *   causal_lm_window_head       rmsnorm, output projection, one row per
+ *                               position, log-softmax                        [seq_len, vocab_size]
+ *
+ * Single-position forward (the generator looks the new token's embedding up itself):
+ *
+ *   [1, dim] one token's embedding
+ *   causal_lm_decode_block × depth   x + cached attention(rmsnorm(x)),
+ *                                    x + gated feed-forward(rmsnorm(x))      [1, dim]
+ *   causal_lm_head                   rmsnorm, output projection, log-softmax [1, vocab_size]
+ *
+ * The sizes are read from settings, the model's configuration as TransformerConfig.toPdslSettings()
+ * lays it out: dim, hidden_dim (the width of the gated feed-forward), heads, seq_len and
+ * vocab_size; head_dim is dim / heads.
+ *
+ * The weights, as CausalLanguageModelConfig names them: the token table [vocab_size, dim]; per
+ * block the attention and feed-forward RMSNorm scales [dim], the fused query/key/value projection
+ * qkv [3 * dim, dim] (rows 0..dim the queries, dim..2 dim the keys, 2 dim..3 dim the values), the
+ * attention output projection wo [dim, dim], the fused gate+linear projection w1
+ * [2 * hidden_dim, dim] (its first hidden_dim rows the linear half, the next hidden_dim the gate
+ * half) and the down projection w2 [dim, hidden_dim]; and the final RMSNorm scale [dim] and output
+ * projection [vocab_size, dim]. Every RMSNorm uses an epsilon of 1e-5. Both passes rotate queries
+ * and keys with the same rotary embedding: the full window from the stored inverse frequencies
+ * (inv_freq), the single position from the table of their angles at every position (freq_cis),
+ * which the caller computes from them.
+ */
+
+import "/pdsl/sequence_attention.pdsl"
+import "/pdsl/attention.pdsl"
+import "/pdsl/feed_forward.pdsl"
+
+/**
+ * The full-window input: [seq_len] token ids -> [1, seq_len, dim].
+ *
+ *   embedding(token_embedding)   each id replaced by its row of the table   [seq_len, dim]
+ *   reshape                      one sequence of seq_len positions          [1, seq_len, dim]
+ *
+ * The table is a weight of the stage, so training accumulates each position's gradient into the
+ * row that position selected.
+ */
+layer causal_lm_embedding(token_embedding: weight, settings: model_settings) {
+    embedding(token_embedding)
+    reshape([1, settings.seq_len, settings.dim])
+}
+
+/**
+ * The pre-norm gated feed-forward sub-layer both passes use: [batch, seq_len, dim] -> same.
+ *
+ *   rmsnorm(ffn_norm, 1e-5)      each position divided by its root mean square, then scaled
+ *   glu_feed_forward             dense(w1) → linear half ⊙ silu(gate half)  [batch, seq_len, ff_dim]
+ *                                → dense(w2)                                [batch, seq_len, dim]
+ *
+ * The residual connection around it belongs to the block that calls it.
+ */
+layer causal_lm_feed_forward(ffn_norm: weight, w1: weight, w2: weight,
+                             batch: int, seq_len: int, ff_dim: int) {
+    rmsnorm(ffn_norm, 1e-5)
+    glu_feed_forward(dense(w1), dense(w2), silu(), batch, seq_len, ff_dim)
+}
+
+/**
+ * One block of the full-window forward: [1, seq_len, dim] -> same.
+ *
+ *   accum   x + attention over the normalized window                    [1, seq_len, dim]
+ *             rmsnorm(attention_norm, 1e-5)
+ *             sequence_attention_causal: dense(qkv) → queries, keys and values, one row per head
+ *             → rotary embedding → softmax of the causally masked Q Kᵀ / sqrt(head_dim)
+ *             → weights · values → heads joined → dense(wo)
+ *   accum   x + causal_lm_feed_forward(x)                               [1, seq_len, dim]
+ *
+ * Each position attends to itself and the positions before it. The model attends to every
+ * position of its window, so the caller binds all-ones padding_mask and key_mask [1, seq_len],
+ * which leave every value and every score unchanged.
+ */
+layer causal_lm_block(settings: model_settings,
+                      attention_norm: weight, qkv: weight, wo: weight, inv_freq: weight,
+                      ffn_norm: weight, w1: weight, w2: weight,
+                      padding_mask: weight, key_mask: weight) {
+    let seq_len = settings.seq_len
+
+    // Residual causal self-attention over the normalized window.
+    accum {
+        rmsnorm(attention_norm, 1e-5)
+        sequence_attention_causal(1, seq_len, settings.heads, settings.dim / settings.heads,
+                                  dense(qkv), dense(wo), inv_freq, padding_mask, key_mask)
+    }
+
+    // Residual gated feed-forward.
+    accum {
+        causal_lm_feed_forward(ffn_norm, w1, w2, 1, seq_len, settings.hidden_dim)
+    }
+}
+
+/**
+ * One block of the single-position forward: [1, dim] -> same, writing this token's key and value
+ * into row `position` of the block's caches and attending over rows 0..position.
+ *
+ *   wq, wk, wv   views of the three sections of the fused qkv projection — the queries, keys and
+ *                values — the same sections causal_lm_block's attention reads, without a copy
+ *   accum   x + attention(x)            rmsnorm(attention_norm, 1e-5) → keys and values rotated
+ *                                       into the caches → query rotated → softmax of its scores
+ *                                       over the cache → weighted values → dense(wo)   [1, dim]
+ *   reshape                             the token as a one-position sequence           [1, 1, dim]
+ *   accum   x + causal_lm_feed_forward(x)                                              [1, 1, dim]
+ *   reshape                                                                            [1, dim]
+ *
+ * The caches [seq_len, dim] are the caller's: they persist across forward passes, and clearing
+ * them starts a new sequence.
+ */
+layer causal_lm_decode_block(settings: model_settings,
+                             attention_norm: weight, qkv: weight, wo: weight,
+                             freq_cis: weight, position: scalar,
+                             ffn_norm: weight, w1: weight, w2: weight,
+                             key_cache: weight, value_cache: weight) {
+    let dim = settings.dim
+    let heads = settings.heads
+    let wq = range(qkv, [dim, dim], 0)
+    let wk = range(qkv, [dim, dim], dim * dim)
+    let wv = range(qkv, [dim, dim], 2 * dim * dim)
+
+    // Residual cached self-attention over the normalized token.
+    accum {
+        attention(heads, heads, dim / heads, attention_norm, wq, wk, wv, wo,
+                  null, null, null, freq_cis, position, 1e-5, key_cache, value_cache)
+    }
+
+    // Residual gated feed-forward over the token as a one-position sequence.
+    reshape([1, 1, dim])
+    accum {
+        causal_lm_feed_forward(ffn_norm, w1, w2, 1, 1, settings.hidden_dim)
+    }
+    reshape([1, dim])
+}
+
+/**
+ * The logits both heads start from: [..., dim] -> [..., vocab_size].
+ *
+ *   rmsnorm(final_norm, 1e-5)    each position divided by its root mean square, then scaled
+ *   dense(output)                one logit per vocabulary entry              [..., vocab_size]
+ */
+layer causal_lm_logits(final_norm: weight, output: weight) {
+    rmsnorm(final_norm, 1e-5)
+    dense(output)
+}
+
+/**
+ * The single-position head: [1, dim] -> [1, vocab_size], the token's next-token log-probabilities.
+ *
+ *   causal_lm_logits             final norm and output projection           [1, vocab_size]
+ *   log_softmax()                the row's log-probabilities                [1, vocab_size]
+ */
+layer causal_lm_head(final_norm: weight, output: weight) {
+    causal_lm_logits(final_norm, output)
+    log_softmax()
+}
+
+/**
+ * The full-window head: [1, seq_len, dim] -> [seq_len, vocab_size], the next-token
+ * log-probabilities at every position, one row each, which is the layout the negative
+ * log-likelihood averages over.
+ *
+ *   causal_lm_logits             final norm and output projection           [1, seq_len, vocab_size]
+ *   reshape                      one row per position                       [seq_len, vocab_size]
+ *   log_softmax()                each row's log-probabilities               [seq_len, vocab_size]
+ */
+layer causal_lm_window_head(final_norm: weight, output: weight, settings: model_settings) {
+    causal_lm_logits(final_norm, output)
+    reshape([settings.seq_len, settings.vocab_size])
+    log_softmax()
+}
