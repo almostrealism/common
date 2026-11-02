@@ -126,11 +126,19 @@ Because the primitive is shared, this change must be **opt-in or inert for every
 `attention.pdsl` (Llama 2, Qwen, Moonbeam, and the bounded `KeyValueCacheAutoregressiveModel`), which
 all decode within `seqLen` so `position mod rows == position`; the MIDI GRU decoder
 (`gru_decoder.pdsl`), which writes `cache_write(hidden, l)` at a layer index `l < rows` so the modulus
-is likewise a no-op; and the connectome delay lines (`ConnectomeNetwork`, `studio/bioscience`), whose
-`cache_write`/`cache_read` address `row × rowSize + i` in FP32 and are already bounded (`DELAY_LINE_LIMIT`,
-the `2^24` FP32-exact ceiling). Prove the `position mod rows == position` equivalence explicitly for
-each of these — the connectome especially, since its indexing is the one not obviously bounded by a
-small `rows` — rather than assume it from the attention case. If the primitive cannot take the modulus
+is likewise a no-op; and the connectome delay lines (`ConnectomeNetwork`, `studio/bioscience`), which
+are themselves a ring — `ConnectomeNetwork` already computes the written row as `mod(step, rows)` (and
+reads at `mod(step + 1, rows)`) over the same `rows = delaySteps + 1` before it calls
+`cache_write(ring, write_row)`, so the row argument it passes is *already* in `[0, rows)`. Prove the
+inertness explicitly for each consumer rather than assume it from the attention case, and note that it
+takes a different form in each: for the attention models and the GRU decoder the argument is a
+position or layer index already below `rows`, so `position mod rows == position`; for the connectome
+the argument is already `mod(step, rows)` against the same `rows`, so a primitive-side `position mod
+rows` is *idempotent* (`(step mod rows) mod rows == step mod rows`), not an identity on an unreduced
+position. The connectome is the one to check with the most care — not because its row argument is
+unbounded (it is not), but because its equivalence rests on idempotence rather than identity, and
+because its element index `row × rowSize + i` must stay FP32-exact under `DELAY_LINE_LIMIT` (the
+`2^24` ceiling), a separate property the row modulus must not disturb. If the primitive cannot take the modulus
 without disturbing any bounded path, introduce a sibling rolling cache-write builtin (also in
 `domain/graph`, where the cache-row primitives belong) used only by the rolling decode block, keeping
 every existing consumer byte-identical.
@@ -272,8 +280,11 @@ and the rewrite rather than decide them silently.
    connectome delay lines), "every caller" means those too, not just the attention models. If the
    modulus cannot be added without touching any of their generated kernels, a sibling rolling write —
    also a `domain/graph` builtin — keeps every existing consumer byte-identical. Decide which, and
-   prove every current consumer unchanged either way. The connectome's `row × rowSize + i` FP32
-   addressing (bounded by `DELAY_LINE_LIMIT`) is the one to check with the most care.
+   prove every current consumer unchanged either way. The connectome is the one to check with the most
+   care, but note *why*: `ConnectomeNetwork` already passes `mod(step, rows)` as the written row, so a
+   primitive-side `position mod rows` against the same `rows` is idempotent rather than an identity on
+   an unreduced position; separately, its `row × rowSize + i` element index must stay FP32-exact under
+   `DELAY_LINE_LIMIT` — a property the row modulus leaves untouched.
 4. **Attention-sink degradation is out of scope.** Published rolling-cache work (StreamingLLM) notes
    that evicting the very first tokens can degrade quality because early tokens act as attention
    sinks. This plan's correctness bar is *matching the sliding window*, which evicts them too, so
