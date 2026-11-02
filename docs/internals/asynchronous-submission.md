@@ -106,6 +106,18 @@ pending = step.submit(pending);
 Work that a listener would do on the device belongs in a compiled operation submitted next to it,
 not inside the listener, so that only the code that truly runs on the host makes the host wait.
 
+## Operations with no data dependency
+
+`Submittable.unordered()` returns an operation that is issued at once, with no dependency, and
+whose completion covers both that operation and the `dependsOn` it was given. Anything chained on
+that completion is still ordered after `dependsOn`; only the operation itself does not wait for it.
+It is still submitted through `submit`, so it is not a second submission method, and its meaning
+does not depend on the backend. It is for an operation that neither reads memory the prior work may
+still be writing nor writes memory that work may still be reading — the copy of read-only kernel
+arguments into per-invocation temporaries that `MemoryReplacementManager` makes is the example
+(see the hardware module README). Never use it to make an operation that does depend on prior work
+run sooner.
+
 ## Writing a receiver
 
 A `Submittable` or backend dispatch that receives `dependsOn`:
