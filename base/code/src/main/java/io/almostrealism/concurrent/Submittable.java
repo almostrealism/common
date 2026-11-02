@@ -23,6 +23,7 @@ import io.almostrealism.profile.OperationWithInfo;
 import io.almostrealism.streams.Semaphore;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -85,6 +86,26 @@ public interface Submittable {
 		timing.recordDuration(requester,
 				metadata == null ? submission : OperationWithInfo.RunnableWithInfo.of(metadata, submission));
 		return completion[0];
+	}
+
+	/**
+	 * Returns this operation as one that is not ordered after the work it is submitted behind.
+	 *
+	 * <p>The returned operation submits this one at once, with no dependency, and returns a
+	 * completion covering both this operation and the dependency it was given. Whatever is chained
+	 * on that completion is therefore still ordered after the dependency, as it is after any
+	 * submission, while this operation itself does not wait for it: a provider that cannot order
+	 * the operation after the dependency on its own, and would otherwise complete it on the host
+	 * once the dependency has completed, issues it immediately instead.</p>
+	 *
+	 * <p>Only an operation with no data dependency on that work may be submitted this way: one that
+	 * neither reads memory the work may still be writing nor writes memory the work may still be
+	 * reading, such as a copy of memory that nothing writes into a buffer that nothing else uses.</p>
+	 *
+	 * @return this operation, issued without waiting for the work it is submitted behind
+	 */
+	default Submittable unordered() {
+		return dependsOn -> Semaphore.all(Arrays.asList(dependsOn, submit(null)));
 	}
 
 	/**

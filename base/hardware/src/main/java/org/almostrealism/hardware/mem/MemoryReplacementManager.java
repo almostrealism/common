@@ -28,7 +28,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BiConsumer;
 
 /**
  * Manages memory substitution for kernel arguments to optimize cross-provider transfers.
@@ -131,7 +130,8 @@ import java.util.function.BiConsumer;
  * <pre>{@code
  * // Setup for GPU kernel execution
  * MemoryReplacementManager mgr = new MemoryReplacementManager(
- *     Hardware.getLocalHardware().getGPUMemory(),
+ *     context,
+ *     context.getDataContext().getKernelMemoryProvider(),
  *     (size, atomic) -> allocateTempMemory(size)
  * );
  *
@@ -151,7 +151,11 @@ import java.util.function.BiConsumer;
  * {@link ComputeContext#copy(Object, Object, io.almostrealism.streams.Semaphore) copy},
  * so the context chooses the mechanism and the sequencing: a batching context queues the
  * copy onto its command buffer ordered after {@code dependsOn}; any other context waits
- * for {@code dependsOn} and copies directly.</p>
+ * for {@code dependsOn} and copies directly. The one exception is the copy of a read-only
+ * source into its temporary, which depends on no prior work: it is
+ * {@link Submittable#unordered() made at once}, and its completion still covers
+ * {@code dependsOn}, so the kernel chained on it is ordered exactly as it would be without
+ * a replacement.</p>
  *
  * @see AcceleratedProcessDetails
  * @see ComputeContext
@@ -270,51 +274,25 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 	 */
 	public Object[] processArguments(Object[] args) {
 		Map<MemoryData, Replacement> replacements = new HashMap<>();
+		Replacement[] replacedBy = new Replacement[args.length];
 
-		Object[] result = new Object[args.length];
+		for (int i = 0; i < args.length; i++) {
+			if (!(args[i] instanceof MemoryData data) || !requiresReplacement(data)) continue;
 
-		i: for (int i = 0; i < args.length; i++) {
-			Object arg = args[i];
+			Replacement replacement = replacements.get(data.getRootDelegate());
 
-			if (!(arg instanceof MemoryData data)) {
-				result[i] = arg;
-				continue i;
+			if (replacement == null) {
+				replacement = new Replacement(data.getRootDelegate());
+				replacements.put(data.getRootDelegate(), replacement);
 			}
 
-			if (data.getMem() == null) {
-				throw new IllegalArgumentException();
-			} else if (data.getMemOrdering() != null) {
-				warn("Reordered memory cannot be aggregated");
-				result[i] = arg;
-				continue i;
-			} else if (data.getMem().getProvider() == target || data.getMemLength() > aggregationThreshold) {
-				result[i] = arg;
-				continue i;
-			}
-
-			Replacement replacement;
-
-			if (replacements.containsKey(data.getRootDelegate())) {
-				replacement = replacements.get(data.getRootDelegate());
-			} else {
-				replacement = new Replacement();
-				replacement.root = data.getRootDelegate();
-				replacement.children = new ArrayList<>();
-				replacements.put(replacement.root, replacement);
-			}
-
-			replacement.children.add(data);
+			replacement.add(data);
+			replacedBy[i] = replacement;
 		}
 
 		try {
 			for (Replacement replacement : replacements.values()) {
-				replacement.processChildren(tempFactory, (child, temp) -> {
-					for (int i = 0; i < args.length; i++) {
-						if (child == args[i]) {
-							result[i] = temp;
-						}
-					}
-				});
+				replacement.stage();
 			}
 		} catch (RuntimeException | Error e) {
 			// No completion chain will ever release what was created before the failure (most
@@ -332,20 +310,75 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 			throw e;
 		}
 
+		Object[] result = args.clone();
+
+		for (int i = 0; i < args.length; i++) {
+			if (replacedBy[i] != null && args[i] instanceof MemoryData data) {
+				result[i] = replacedBy[i].replacementFor(data);
+			}
+		}
+
 		return result;
 	}
 
 	/**
-	 * Represents a group of memory data blocks sharing a common root delegate, eligible for aggregation.
+	 * Returns whether a kernel argument must be staged in a temporary on the {@link #target}
+	 * provider: it lives on another provider and is no larger than the
+	 * {@link #aggregationThreshold}. Memory with a custom ordering is left where it is, because
+	 * it cannot be aggregated.
+	 *
+	 * @param data a kernel argument
+	 * @return true if the argument is replaced by a slice of a temporary
+	 * @throws IllegalArgumentException if {@code data} has no memory
 	 */
-	protected class Replacement {
-		/** The common root delegate for all children in this replacement group. */
-		private MemoryData root;
-		/** Memory data blocks within this group that need to be replaced. */
-		private List<MemoryData> children;
+	private boolean requiresReplacement(MemoryData data) {
+		if (data.getMem() == null) {
+			throw new IllegalArgumentException();
+		} else if (data.getMemOrdering() != null) {
+			warn("Reordered memory cannot be aggregated");
+			return false;
+		}
+
+		return data.getMem().getProvider() != target && data.getMemLength() <= aggregationThreshold;
+	}
+
+	/**
+	 * The arguments that view one root delegate, which are staged together in a single
+	 * temporary on the {@link #target} provider spanning all of them.
+	 */
+	private class Replacement {
+		/** The root delegate that every argument in this group views. */
+		private final MemoryData root;
+		/** The arguments in this group. */
+		private final List<MemoryData> children;
+		/** The offset into {@link #root} at which the staged range begins; set by {@link #stage()}. */
+		private int start;
+		/** The temporary holding the staged range of {@link #root}; set by {@link #stage()}. */
+		private Bytes temporary;
 
 		/**
-		 * Processes this replacement group by creating a temporary buffer and registering copy operations.
+		 * Creates an empty group for the arguments that view {@code root}.
+		 *
+		 * @param root the root delegate of the arguments in the group
+		 */
+		Replacement(MemoryData root) {
+			this.root = root;
+			this.children = new ArrayList<>();
+		}
+
+		/**
+		 * Adds an argument that views this group's root delegate.
+		 *
+		 * @param child the argument
+		 */
+		void add(MemoryData child) {
+			children.add(child);
+		}
+
+		/**
+		 * Creates this group's temporary, spanning every argument in the group, and registers
+		 * the copy that moves the staged range of the root into it before the kernel runs and,
+		 * when the root can be written, the copy that moves it back afterward.
 		 *
 		 * <p>A group whose root is read-only is copied in and not back out.
 		 * Nothing can have written to it, so there is no result to carry back,
@@ -354,33 +387,53 @@ public class MemoryReplacementManager implements ConsoleFeatures {
 		 * completed on, once for every operation reading the same asset. Model
 		 * weights are read this way, so that is per layer, per token.</p>
 		 *
-		 * @param tempFactory Factory for creating the temporary buffer
-		 * @param tempChildren Callback that maps each child to its temporary slice
+		 * <p>For the same reason the copy in of a read-only group is
+		 * {@link Submittable#unordered() not ordered} after the work the operation depends on. A
+		 * copy is ordered after that work so that it neither reads a source the work is still
+		 * producing nor overwrites a destination the work is still reading. No work produces a
+		 * read-only source, and the destination is the temporary created here for this invocation
+		 * alone, so neither can happen: the copy is made at once, while its completion still covers
+		 * the dependency, so the kernel is ordered after that dependency exactly as it would be
+		 * without a replacement, whatever completion the context reports for the copy. Ordering
+		 * the copy itself after the dependency would gain nothing and cost a great deal on a
+		 * batching backend, since a context that cannot move this memory itself (a Metal context
+		 * reading a file-backed asset, for example) completes the copy on the host once the
+		 * dependency has completed, and the kernel ordered after that host work cannot be
+		 * batched with the device work before it.</p>
 		 */
-		protected void processChildren(TempMemoryFactory tempFactory, BiConsumer<MemoryData, MemoryData> tempChildren) {
-			int start = children.stream().mapToInt(MemoryData::getOffset).min().getAsInt();
+		void stage() {
+			start = children.stream().mapToInt(MemoryData::getOffset).min().getAsInt();
 			int end = children.stream().mapToInt(md -> md.getOffset() + md.getMemLength()).max().getAsInt();
 			int length = end - start;
 
-			MemoryData data = new Bytes(length, root, start);
+			MemoryData source = new Bytes(length, root, start);
 			MemoryData tmp = tempFactory.apply(length, length);
 
 			synchronized (temporaries) {
 				temporaries.add(tmp);
 			}
 
-			prepare.add(dependsOn -> context.copy(data, tmp, dependsOn));
+			Submittable copyIn = dependsOn -> context.copy(source, tmp, dependsOn);
 
-			// Read-only memory is copied in but never back out
-			if (!root.isReadOnly()) {
-				postprocess.add(dependsOn -> context.copy(tmp, data, dependsOn));
+			if (root.isReadOnly()) {
+				prepare.add(copyIn.unordered());
+			} else {
+				prepare.add(copyIn);
+				postprocess.add(dependsOn -> context.copy(tmp, source, dependsOn));
 			}
 
-			Bytes tempBytes = new Bytes(length, tmp, 0);
+			temporary = new Bytes(length, tmp, 0);
+		}
 
-			for (MemoryData child : children) {
-				tempChildren.accept(child, tempBytes.range(child.getOffset() - start, child.getMemLength(), child.getAtomicMemLength()));
-			}
+		/**
+		 * Returns the slice of this group's temporary that stands in for an argument of the
+		 * group once it has been {@link #stage() staged}.
+		 *
+		 * @param child an argument added to this group
+		 * @return the view of the temporary at the argument's position within the root
+		 */
+		MemoryData replacementFor(MemoryData child) {
+			return temporary.range(child.getOffset() - start, child.getMemLength(), child.getAtomicMemLength());
 		}
 	}
 

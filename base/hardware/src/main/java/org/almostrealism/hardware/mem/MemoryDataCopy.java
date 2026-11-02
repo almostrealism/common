@@ -86,28 +86,14 @@ import java.util.function.Supplier;
  * copy.get().run();  // Calls suppliers to get current source/target
  * }</pre>
  *
- * <h2>Integration with MemoryReplacementManager</h2>
+ * <h2>Relation to MemoryReplacementManager</h2>
  *
- * <p>Used extensively for prepare/postprocess phases:</p>
- * <pre>{@code
- * // Prepare: Copy original -> temp
- * MemoryDataCopy prepare = new MemoryDataCopy(
- *     "Temp Prep",
- *     originalData,
- *     tempData
- * );
- * prepare.get().run();
- *
- * // ... kernel execution with temp data ...
- *
- * // Postprocess: Copy temp -> original
- * MemoryDataCopy postprocess = new MemoryDataCopy(
- *     "Temp Post",
- *     tempData,
- *     originalData
- * );
- * postprocess.get().run();
- * }</pre>
+ * <p>The copies {@link MemoryReplacementManager} arranges around a kernel are not
+ * {@link MemoryDataCopy} operations. They are part of that kernel's argument preparation, so they
+ * run through the
+ * {@link io.almostrealism.code.ComputeContext#copy(Object, Object, io.almostrealism.streams.Semaphore) copy}
+ * of the context the kernel runs on, whereas a {@link MemoryDataCopy} is an operation in its own
+ * right, performed by the context that manages its target.</p>
  *
  * <h2>Operation Metadata and Profiling</h2>
  *
