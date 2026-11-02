@@ -182,13 +182,18 @@ per-byte kernel/dispatch/commit counts, and the speedup, writing the profile XML
 the robust structural property (the rolling path issues strictly fewer kernels per byte than the
 sliding window over the long run) — wall-clock figures reported, not asserted, exactly as the
 existing throughput test does, so it stays a stable CI citizen and cannot be gamed by a tolerance.
-Then rewrite the one sentence in the Generation section of `training-a-language-model.md` that
-currently says "longer generation still uses the sliding window" to state that long-form generation
-now runs at cache cost through the rolling cache, with the measured long-run speedup, and cite the
-new generator and the benchmark by class name (never line numbers) as the drift guards. State the
-relative-position property as the reason the rolling cache matches the sliding window without
-re-rotating. Keep every other claim in the section intact, and keep the bounded cache's role (it is
-the simplest decode within `seqLen`) accurately described.
+Then rewrite the Generation section of `training-a-language-model.md` to state that long-form
+generation now runs at cache cost through the rolling cache, with the measured long-run speedup, and
+cite the new generator and the benchmark by class name (never line numbers) as the drift guards. The
+section asserts the current "longer generation uses the sliding window" limit in **two** places that
+must be reconciled together, or the rewrite leaves the section self-contradictory: the sentence that
+says the bounded cache decode "runs for sequences up to `seqLen` positions; longer generation still
+uses the sliding window", and the later passage noting the top-p-versus-greedy comparison "need not
+wait on a longer cache" because "the key/value-cache decode … stops at `seqLen`, and the sliding
+window … is not bounded by it." Update both. State the relative-position property as the reason the
+rolling cache matches the sliding window without re-rotating. Keep every other claim in the section
+intact, and keep the bounded cache's role (it is the simplest decode within `seqLen`) accurately
+described.
 
 ## Approach
 
@@ -231,7 +236,9 @@ the simplest decode within `seqLen`) accurately described.
   robust per-byte dispatch-count property and reports the rest.
 - The Generation section of `training-a-language-model.md` states that long-form generation now runs
   at cache cost through the rolling cache, with the measured speedup, citing the new generator and
-  benchmark as drift guards and explaining the relative-position property; no other claim altered.
+  benchmark as drift guards and explaining the relative-position property; both of the section's
+  "longer generation uses the sliding window" statements (the bounded-cache sentence and the later
+  top-p-comparison passage) are reconciled, and no unrelated claim is altered.
 - Build validator clean. No new Maven module, no pom edit.
 
 ## Dependencies
