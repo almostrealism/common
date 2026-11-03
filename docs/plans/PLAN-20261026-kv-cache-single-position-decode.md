@@ -1,7 +1,7 @@
 ---
-status: approved
+status: completed
 created: 2026-10-26
-closed:
+closed: 2026-11-02
 tracker: []
 ---
 
