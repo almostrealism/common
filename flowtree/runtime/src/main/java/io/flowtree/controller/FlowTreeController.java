@@ -190,6 +190,8 @@ public class FlowTreeController implements ConsoleFeatures {
     private int apiPort = FlowTreeApiEndpoint.DEFAULT_PORT;
     /** Persistent store for per-workstream job statistics. */
     private JobStatsStore statsStore;
+    /** Persistent per-PR remediation record store; opened with the API endpoint, closed in {@link #stop()}. */
+    private RemediationStateStore remediationStore;
     /** Persistent store for workstream metadata kept out of the YAML; {@code null} until a file is loaded. */
     private WorkstreamMetadataStore metadataStore;
 
@@ -1118,7 +1120,7 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
             // One per-PR remediation record beside the stats store (RETRO P3).
-            RemediationStateStore remediationStore = new RemediationStateStore(
+            remediationStore = new RemediationStateStore(
                     new File(dataDir, "remediation").getPath());
             remediationStore.initialize();
             apiEndpoint.setRemediationStore(remediationStore);
@@ -1239,6 +1241,11 @@ public class FlowTreeController implements ConsoleFeatures {
         if (statsStore != null) {
             statsStore.close();
             statsStore = null;
+        }
+
+        if (remediationStore != null) {
+            remediationStore.close();
+            remediationStore = null;
         }
 
         if (metadataStore != null) {

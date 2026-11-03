@@ -382,6 +382,70 @@ class AutoResolveSubmitStepTests(unittest.TestCase):
         self.assertFalse(os.path.exists(self.captured))
 
 
+def _classify_step_script(runner_temp, failure_count):
+    """The auto-resolve "Classify test failures" run script, with its
+    expressions substituted the way the runner would."""
+    step = [s for s in _jobs()["auto-resolve"]["steps"]
+            if s.get("name") == "Classify test failures"][0]
+    return (step["run"]
+            .replace("${{ runner.temp }}", runner_temp)
+            .replace("${{ steps.failures.outputs.failure_count }}", str(failure_count)))
+
+
+class ClassifyFailuresStepTests(unittest.TestCase):
+    """RETRO P2: a classifier that crashes must not silently drop a real
+    failure; the step falls back to treating every failure as a regression."""
+
+    def _run(self, classifier):
+        work = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, work)
+        temp = os.path.join(work, "temp")
+        os.makedirs(temp)
+        with open(os.path.join(temp, "test-failures.txt"), "w") as f:
+            f.write("- FooTest.bar\n- FooTest.baz\n")
+        os.makedirs(os.path.join(work, "tools", "ci"))
+        if classifier is not None:
+            with open(os.path.join(work, "tools", "ci", "classify-failures.py"), "w") as f:
+                f.write(classifier)
+        output = os.path.join(work, "github_output")
+        env = dict(os.environ, GITHUB_OUTPUT=output)
+        proc = subprocess.run(
+            ["bash", "-e", "-c", _classify_step_script(temp, 2)],
+            cwd=work, env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        with open(output) as f:
+            outputs = dict(line.strip().split("=", 1) for line in f if "=" in line)
+        with open(os.path.join(temp, "regressions.txt")) as f:
+            regressions = f.read()
+        return outputs, regressions, proc.stdout
+
+    def test_a_crashing_classifier_falls_back_to_all_regressions(self):
+        outputs, regressions, stdout = self._run("import sys\nsys.exit(3)\n")
+        self.assertEqual("2", outputs["regression_count"])
+        self.assertEqual("0", outputs["preexisting_count"])
+        self.assertEqual("0", outputs["environmental_count"])
+        self.assertIn("FooTest.bar", regressions)
+        self.assertIn("treating every failure as a regression", stdout)
+
+    def test_an_absent_classifier_falls_back_to_all_regressions(self):
+        outputs, regressions, _ = self._run(None)
+        self.assertEqual("2", outputs["regression_count"])
+        self.assertIn("FooTest.baz", regressions)
+
+    def test_a_working_classifier_is_used(self):
+        classifier = (
+            "import os, sys\n"
+            "out = sys.argv[2]\n"
+            "open(os.path.join(out, 'regressions.txt'), 'w').write('- FooTest.bar\\n')\n"
+            "print('regression_count=1')\n"
+            "print('preexisting_count=1')\n"
+            "print('environmental_count=0')\n")
+        outputs, regressions, _ = self._run(classifier)
+        self.assertEqual("1", outputs["regression_count"])
+        self.assertEqual("1", outputs["preexisting_count"])
+        self.assertNotIn("FooTest.baz", regressions)
+
+
 def _write_executable(path, text):
     with open(path, "w") as f:
         f.write(text)

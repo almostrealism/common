@@ -985,7 +985,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Per-PR remediation budget / own-commit skip for automated jobs (RETRO P3).
         String remediationSkip = remediationGuard.skipReason(workstreamId, automated, JsonFieldExtractor.extractString(body, "triggerCommit"));
         if (remediationSkip != null) {
-            log("Skipping job submission — " + remediationSkip + " (workstream " + workstreamId + ")");
             return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true,"
                 + "\"skipped\":true,\"reason\":\"" + JsonFieldExtractor.escapeJson(remediationSkip) + "\"}");
         }
@@ -1209,6 +1208,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 factory.getDisplaySummary(),
                 JsonFieldExtractor.extractString(body, "submittedBy"),
                 requiredLabels, Instant.now());
+        remediationGuard.dispatched(factory.getTaskId(), workstreamId, automated);
         // Persist for restart recovery; cleared at the terminal choke point.
         if (pendingJobRecovery != null) {
             pendingJobRecovery.persist(factory.getTaskId(), factory.encode());

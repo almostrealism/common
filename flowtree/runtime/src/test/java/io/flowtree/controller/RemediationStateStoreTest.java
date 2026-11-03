@@ -16,13 +16,19 @@
 
 package io.flowtree.controller;
 
+import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.BiConsumer;
 
 import static org.junit.Assert.assertEquals;
@@ -213,6 +219,202 @@ public class RemediationStateStoreTest extends TestSuiteBase {
 
             store.recordPass("ws", "r", "b", "sha-x");
             assertNull(guard.skipReason("ws", true, null));
+        } finally {
+            store.close();
+        }
+    }
+
+    /** markNotified claims the flag exactly once until a commit clears it. */
+    @Test(timeout = 30000)
+    public void markNotifiedClaimsTheFlagOnce() throws Exception {
+        File dir = Files.createTempDirectory("rem-claim").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            assertFalse("an empty workstream key claims nothing", store.markNotified(""));
+            assertTrue(store.markNotified("ws"));
+            assertFalse(store.markNotified("ws"));
+            store.recordPass("ws", "r", "b", "sha-1");
+            assertTrue("a commit re-arms the notification", store.markNotified("ws"));
+        } finally {
+            store.close();
+        }
+    }
+
+    /** Concurrent refusals at an exhausted budget ping a person exactly once. */
+    @Test(timeout = 30000)
+    public void concurrentRefusalsPingOnce() throws Exception {
+        File dir = Files.createTempDirectory("rem-concurrent").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        List<String> pings = Collections.synchronizedList(new ArrayList<>());
+        try {
+            for (int i = 0; i < 3; i++) store.recordPass("ws", "r", "b", null);
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 3,
+                    (ws, message) -> pings.add(ws));
+            int threads = 8;
+            CountDownLatch start = new CountDownLatch(1);
+            ExecutorService pool =
+                    Executors.newFixedThreadPool(threads);
+            List<Future<String>> results = new ArrayList<>();
+            for (int i = 0; i < threads; i++) {
+                results.add(pool.submit(() -> {
+                    start.await();
+                    return guard.skipReason("ws", true, null);
+                }));
+            }
+            start.countDown();
+            for (Future<String> result : results) {
+                assertTrue("every concurrent submission is refused", result.get() != null);
+            }
+            pool.shutdown();
+            assertEquals("the person is pinged exactly once", 1, pings.size());
+        } finally {
+            store.close();
+        }
+    }
+
+    /** Only a registered (automated) job's no-commit completion counts as a pass. */
+    @Test(timeout = 30000)
+    public void onlyRegisteredJobsCountAsPasses() throws Exception {
+        File dir = Files.createTempDirectory("rem-jobs").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            assertNull("an unregistered no-commit job records nothing",
+                    store.completeJob("human-1", "ws", "b", null, true));
+            assertEquals(0, store.get("ws").getConsecutiveNoProgress());
+
+            store.registerJob("auto-1", "ws");
+            RemediationState afterAuto = store.completeJob("auto-1", "ws", "b", null, true);
+            assertEquals(1, afterAuto.getConsecutiveNoProgress());
+
+            assertNull("a job is counted once; a repeated terminal event is ignored",
+                    store.completeJob("auto-1", "ws", "b", null, true));
+            assertEquals(1, store.get("ws").getConsecutiveNoProgress());
+        } finally {
+            store.close();
+        }
+    }
+
+    /** A registered job is counted against the workstream it was registered for. */
+    @Test(timeout = 30000)
+    public void aRegisteredJobCountsAgainstItsRegisteredWorkstream() throws Exception {
+        File dir = Files.createTempDirectory("rem-jobs-ws").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            store.registerJob("auto-1", "ws-a");
+            store.completeJob("auto-1", "ws-b", "b", null, true);
+            assertEquals(1, store.get("ws-a").getConsecutiveNoProgress());
+            assertEquals(0, store.get("ws-b").getConsecutiveNoProgress());
+        } finally {
+            store.close();
+        }
+    }
+
+    /** A cancelled registered job is forgotten without changing the count. */
+    @Test(timeout = 30000)
+    public void aCancelledRegisteredJobIsForgottenUncounted() throws Exception {
+        File dir = Files.createTempDirectory("rem-jobs-cancel").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            store.registerJob("auto-1", "ws");
+            assertNull(store.completeJob("auto-1", "ws", "b", "sha", false));
+            assertEquals(0, store.get("ws").getConsecutiveNoProgress());
+            assertNull(store.get("ws").getLastProducedCommit());
+            assertNull("the cancelled job was forgotten",
+                    store.completeJob("auto-1", "ws", "b", null, true));
+            assertEquals(0, store.get("ws").getConsecutiveNoProgress());
+        } finally {
+            store.close();
+        }
+    }
+
+    /** Another job's commit resets the count but is not taken as a pass's own commit. */
+    @Test(timeout = 30000)
+    public void anUnregisteredJobsCommitResetsButIsNotTheOwnCommit() throws Exception {
+        File dir = Files.createTempDirectory("rem-jobs-human").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            store.recordPass("ws", "r", "b", "review-sha");
+            store.recordPass("ws", "r", "b", null);
+            store.recordPass("ws", "r", "b", null);
+            store.markNotified("ws");
+
+            RemediationState next = store.completeJob("human-1", "ws", "b", "human-sha", true);
+            assertEquals(0, next.getConsecutiveNoProgress());
+            assertFalse(next.isNotified());
+            assertEquals("review-sha", next.getLastProducedCommit());
+
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 5, new RecordingNotifier());
+            assertNull("a review of the person's commit still runs",
+                    guard.skipReason("ws", true, "human-sha"));
+        } finally {
+            store.close();
+        }
+    }
+
+    /** The guard registers automated dispatches only. */
+    @Test(timeout = 30000)
+    public void dispatchedRegistersOnlyAutomatedSubmissions() throws Exception {
+        File dir = Files.createTempDirectory("rem-dispatched").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 5, new RecordingNotifier());
+            guard.dispatched("auto-1", "ws", true);
+            guard.dispatched("human-1", "ws", false);
+            assertEquals(1, store.completeJob("auto-1", "ws", "b", null, true)
+                    .getConsecutiveNoProgress());
+            assertNull(store.completeJob("human-1", "ws", "b", null, true));
+            assertEquals(1, store.get("ws").getConsecutiveNoProgress());
+        } finally {
+            store.close();
+        }
+    }
+
+    /** Registered jobs survive a reopen, so a job finishing after a restart still counts. */
+    @Test(timeout = 30000)
+    public void registeredJobsPersistAcrossReopen() throws Exception {
+        File dir = Files.createTempDirectory("rem-jobs-persist").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            store.registerJob("auto-1", "ws");
+        } finally {
+            store.close();
+        }
+        RemediationStateStore reopened = newStore(dir);
+        try {
+            assertEquals(1, reopened.completeJob("auto-1", "ws", "b", null, true)
+                    .getConsecutiveNoProgress());
+        } finally {
+            reopened.close();
+        }
+    }
+
+    /** The lifecycle recorder counts only registered jobs' terminal events. */
+    @Test(timeout = 30000)
+    public void lifecycleRecorderCountsOnlyRemediationJobs() throws Exception {
+        File dir = Files.createTempDirectory("rem-recorder").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            JobLifecycleRecorder recorder = new JobLifecycleRecorder(null, store);
+            store.registerJob("auto-1", "ws");
+            recorder.recordTerminal("ws", JobCompletionEvent.success("auto-1", "review"));
+            recorder.recordTerminal("ws", JobCompletionEvent.success("human-1", "chat"));
+            recorder.recordTerminal("ws", JobCompletionEvent.failed("shell-1", "sh", "x", null));
+            assertEquals(1, store.get("ws").getConsecutiveNoProgress());
+
+            store.registerJob("auto-2", "ws");
+            recorder.recordTerminal("ws", JobCompletionEvent.success("auto-2", "resolve")
+                    .withGitInfo("b", "fix-sha", null, null, true));
+            assertEquals(0, store.get("ws").getConsecutiveNoProgress());
+            assertEquals("fix-sha", store.get("ws").getLastProducedCommit());
         } finally {
             store.close();
         }

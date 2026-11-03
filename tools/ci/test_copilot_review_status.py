@@ -72,6 +72,32 @@ class TestCopilotReviewStatus(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(out, "copilot_available=true")
 
+    def test_quota_notice_on_a_later_page_reports_unavailable(self):
+        # gh api --paginate (no --slurp) writes one array per page, back to back.
+        first_page = [{"user": {"login": "copilot-pull-request-reviewer[bot]"},
+                       "submitted_at": "2026-10-20T00:00:00Z", "body": "Looks fine."}]
+        second_page = [{"user": {"login": "copilot-pull-request-reviewer[bot]"},
+                        "submitted_at": "2026-10-26T00:00:00Z", "body": _QUOTA_BODY}]
+        out, code = _run(json.dumps(first_page) + "\n" + json.dumps(second_page))
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "copilot_available=false")
+
+    def test_real_review_on_a_later_page_reports_available(self):
+        first_page = [{"user": {"login": "copilot-pull-request-reviewer[bot]"},
+                       "submitted_at": "2026-10-20T00:00:00Z", "body": _QUOTA_BODY}]
+        second_page = [{"user": {"login": "copilot-pull-request-reviewer[bot]"},
+                        "submitted_at": "2026-10-26T00:00:00Z", "body": "Changes recommended."}]
+        out, code = _run(json.dumps(first_page) + json.dumps(second_page))
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "copilot_available=true")
+
+    def test_truncated_later_page_reports_available(self):
+        page = [{"user": {"login": "copilot-pull-request-reviewer[bot]"},
+                 "submitted_at": "2026-10-26T00:00:00Z", "body": _QUOTA_BODY}]
+        out, code = _run(json.dumps(page) + '[{"user": ')
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "copilot_available=true")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -137,6 +137,20 @@ public final class RemediationState {
     }
 
     /**
+     * Returns the record left by a commit that a job other than a remediation
+     * pass produced on the branch — a person's own job, for example. That
+     * commit is progress, so the consecutive-no-progress count resets and the
+     * notified flag clears; it is not a remediation pass's own commit, so the
+     * last-produced commit is unchanged and a review of the new commit still
+     * runs.
+     *
+     * @return the updated record
+     */
+    public RemediationState afterExternalCommit() {
+        return new RemediationState(workstreamId, 0, lastProducedCommit, false);
+    }
+
+    /**
      * Returns the record with its budget-spent notification marked sent, so a
      * person is pinged once per exhaustion rather than on every refused
      * submission. The count and last-produced commit are unchanged.

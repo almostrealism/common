@@ -55,16 +55,41 @@ def copilot_available(reviews):
         reviews, _is_copilot_login) is None
 
 
+def parse_review_pages(raw):
+    """Parse the reviews from ``gh api --paginate`` output.
+
+    Without ``--slurp``, ``gh api --paginate`` writes one JSON array per page,
+    back to back, so a PR with more reviews than one page holds is not a single
+    JSON document. Every page is decoded and the arrays are concatenated, so a
+    quota notice on a later page is still seen.
+
+    Args:
+        raw: The text read from stdin.
+
+    Returns:
+        The reviews from every page, or an empty list when the text is empty,
+        malformed, or not a sequence of arrays — a malformed or error response
+        must not be read as a dark Copilot, so it defaults to available.
+    """
+    decoder = json.JSONDecoder()
+    reviews = []
+    index = 0
+    while True:
+        while index < len(raw) and raw[index].isspace():
+            index += 1
+        if index >= len(raw):
+            return reviews
+        try:
+            page, index = decoder.raw_decode(raw, index)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(page, list):
+            return []
+        reviews.extend(page)
+
+
 def main():
-    raw = sys.stdin.read()
-    try:
-        reviews = json.loads(raw) if raw.strip() else []
-    except json.JSONDecodeError:
-        # A malformed or error response must not be read as a dark Copilot:
-        # default to available (wait, as before) so a transient API error does
-        # not suppress a real review that is on its way.
-        reviews = []
-    available = copilot_available(reviews)
+    available = copilot_available(parse_review_pages(sys.stdin.read()))
     print("copilot_available=" + ("true" if available else "false"))
 
 

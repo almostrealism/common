@@ -279,6 +279,43 @@ class TestCopilotReviewReportsQuotaRefusal(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertNotIn("quota_exceeded", result)
 
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_request_reviews_via_rest")
+    @patch.object(server, "_github_graphql_request")
+    def test_quota_refusal_on_a_later_page_is_reported(
+            self, mock_gql, mock_rest, mock_request):
+        mock_gql.return_value = _lookup_response()
+        mock_rest.return_value = _rest_pr_response(
+            ["copilot-pull-request-reviewer"])
+        # A full first page of older real reviews; the refusal is on page 2.
+        page1 = [_review("copilot-pull-request-reviewer[bot]", "Looks fine.",
+                         "2026-10-01T00:00:%02dZ" % (i % 60)) for i in range(100)]
+        page2 = [_review("copilot-pull-request-reviewer[bot]",
+                         _QUOTA_BODY, "2026-10-26T02:29:00Z")]
+        mock_request.side_effect = [page1, page2]
+
+        result = server._request_copilot_review("owner", "repo", 42)
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result.get("quota_exceeded"))
+        self.assertEqual(mock_request.call_count, 2)
+        self.assertIn("page=2", mock_request.call_args_list[1][0][1])
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_request_reviews_via_rest")
+    @patch.object(server, "_github_graphql_request")
+    def test_review_listing_error_is_not_a_quota_refusal(
+            self, mock_gql, mock_rest, mock_request):
+        mock_gql.return_value = _lookup_response()
+        mock_rest.return_value = _rest_pr_response(
+            ["copilot-pull-request-reviewer"])
+        mock_request.return_value = {"ok": False, "error": "boom"}
+
+        result = server._request_copilot_review("owner", "repo", 42)
+
+        self.assertTrue(result["ok"])
+        self.assertNotIn("quota_exceeded", result)
+
 
 if __name__ == "__main__":
     unittest.main()

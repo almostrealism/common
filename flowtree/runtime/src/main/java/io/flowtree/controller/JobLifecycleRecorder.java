@@ -123,11 +123,13 @@ public final class JobLifecycleRecorder {
      * scanner-failed job and an ordinary completion both update the row with or
      * without a notifier present.
      *
-     * <p>It also records the pass against the per-PR remediation budget: a
-     * commit is progress (resets the consecutive-no-progress count), no commit
-     * changed nothing (increments it). A {@code CANCELLED} event is a
+     * <p>It also updates the per-PR remediation record. Only a job registered
+     * as an automated remediation pass counts as a pass: a commit is progress
+     * (resets the consecutive-no-progress count), no commit changed nothing
+     * (increments it). Any other job's commit still resets the count, and its
+     * no-commit completion changes nothing. A {@code CANCELLED} event is a
      * superseded run, not a completed pass, so it is not counted. See
-     * {@link RemediationStateStore#recordPass}.</p>
+     * {@link RemediationStateStore#completeJob}.</p>
      *
      * @param workstreamId the workstream the job belongs to
      * @param event        the terminal event
@@ -137,10 +139,9 @@ public final class JobLifecycleRecorder {
         if (statsStore != null) {
             statsStore.recordJobCompleted(workstreamId, event);
         }
-        if (remediationStore != null
-                && event.getStatus() != JobCompletionEvent.Status.CANCELLED) {
-            remediationStore.recordPass(workstreamId, null,
-                    event.getTargetBranch(), event.getCommitHash());
+        if (remediationStore != null) {
+            remediationStore.completeJob(event.getJobId(), workstreamId, event.getTargetBranch(),
+                    event.getCommitHash(), event.getStatus() != JobCompletionEvent.Status.CANCELLED);
         }
     }
 }

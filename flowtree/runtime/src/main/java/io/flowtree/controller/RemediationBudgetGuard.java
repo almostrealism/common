@@ -19,6 +19,7 @@ package io.flowtree.controller;
 import io.flowtree.slack.NotifierRegistry;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.workstream.Workstream;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.function.BiConsumer;
 
@@ -48,7 +49,7 @@ import java.util.function.BiConsumer;
  * @see RemediationState
  * @see RemediationStateStore
  */
-public final class RemediationBudgetGuard {
+public final class RemediationBudgetGuard implements ConsoleFeatures {
 
     /** Environment variable that overrides the default per-PR budget. */
     public static final String BUDGET_ENV = "FLOWTREE_REMEDIATION_BUDGET";
@@ -133,7 +134,7 @@ public final class RemediationBudgetGuard {
      *
      * <p>Pings a person — once — when it first finds the budget spent, and
      * marks the record so a later refused submission on the same PR is silent
-     * until a commit resets the count.</p>
+     * until a commit resets the count. Every skip is logged with its reason.</p>
      *
      * @param workstreamId  the workstream (branch / PR) key
      * @param automated     whether this is an automated remediation submission
@@ -145,16 +146,32 @@ public final class RemediationBudgetGuard {
         if (store == null || !automated || workstreamId == null || workstreamId.isEmpty()) {
             return null;
         }
+        String reason = evaluate(workstreamId, triggerCommit);
+        if (reason != null) {
+            log("Skipping job submission for workstream " + workstreamId + ": " + reason);
+        }
+        return reason;
+    }
+
+    /**
+     * Decides the skip for an automated submission on a known workstream,
+     * sending the one budget-spent ping when this call claims it.
+     *
+     * @param workstreamId  the workstream (branch / PR) key
+     * @param triggerCommit the commit that triggered the submission, or {@code null}
+     * @return a skip reason, or {@code null} to dispatch
+     */
+    private String evaluate(String workstreamId, String triggerCommit) {
         RemediationState state = store.get(workstreamId);
-        // TODO(review): exhaustion only resets on a job's own commit, not a human's direct push.
+        // TODO(review): a direct push the controller never sees does not reset exhaustion (task e23fd294).
         if (state.budgetExhausted(budget)) {
-            if (!state.isNotified() && notifier != null) {
+            // markNotified claims the ping atomically, so concurrent refusals send it once.
+            if (store.markNotified(workstreamId) && notifier != null) {
                 notifier.accept(workstreamId, "Per-PR remediation budget reached on this branch: "
                     + budget + " consecutive auto-review/auto-resolve passes changed nothing. "
                     + "Auto-dispatch is paused for this PR until a commit lands — someone should "
                     + "look at why it is not converging.");
             }
-            store.markNotified(workstreamId);
             return "Per-PR remediation budget of " + budget
                 + " consecutive no-progress passes reached; auto-dispatch paused pending a person";
         }
@@ -163,5 +180,21 @@ public final class RemediationBudgetGuard {
                 + triggerCommit + "); not re-reviewing it";
         }
         return null;
+    }
+
+    /**
+     * Records that a submission this guard let through was dispatched as job
+     * {@code jobId}. An automated submission is registered as a remediation
+     * job, so its terminal event counts against the per-PR budget
+     * ({@link RemediationStateStore#completeJob}); any other submission — a
+     * person's work — is not registered and never moves the budget.
+     *
+     * @param jobId        the dispatched job's id
+     * @param workstreamId the workstream (branch / PR) key
+     * @param automated    whether the submission was an automated remediation
+     */
+    public void dispatched(String jobId, String workstreamId, boolean automated) {
+        if (store == null || !automated) return;
+        store.registerJob(jobId, workstreamId);
     }
 }

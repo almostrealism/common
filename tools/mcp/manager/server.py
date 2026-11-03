@@ -1301,6 +1301,39 @@ def _copilot_in_rest_response(rest_response: dict) -> bool:
     return False
 
 
+def _list_pr_reviews(owner: str, repo: str, pr_number: int):
+    """List every review on a pull request, following pagination.
+
+    The reviews endpoint returns at most 100 reviews per page, so a long-lived
+    PR's newest reviews can sit beyond the first page; reading every page is
+    what lets a caller reason about the latest review.
+
+    Args:
+        owner: The repository owner.
+        repo: The repository name.
+        pr_number: The pull request number.
+
+    Returns:
+        The list of raw review objects from every page, or the error dict from
+        the first request that failed or returned something other than a list.
+    """
+    all_reviews = []
+    page = 1
+    while True:
+        result = _github_request(
+            "GET",
+            f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews?per_page=100&page={page}",
+        )
+        if isinstance(result, dict) and result.get("ok") is False:
+            return result
+        if not isinstance(result, list):
+            return {"ok": False, "error": "Unexpected response listing PR reviews"}
+        all_reviews.extend(result)
+        if len(result) < 100:
+            return all_reviews
+        page += 1
+
+
 def _copilot_quota_block(owner: str, repo: str, pr_number: int) -> Optional[dict]:
     """Return a quota-refusal dict when Copilot's latest review is out-of-quota.
 
@@ -1309,10 +1342,10 @@ def _copilot_quota_block(owner: str, repo: str, pr_number: int) -> Optional[dict
     will run. This reads the PR's reviews and, when the most recent Copilot
     review is that refusal, returns a refusal dict so the caller reports the
     gap instead of claiming success. Returns ``None`` when Copilot has no
-    review on the PR or its latest review is a real one.
+    review on the PR, its latest review is a real one, or the reviews could
+    not be listed.
     """
-    reviews = _github_request(
-        "GET", f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews?per_page=100")
+    reviews = _list_pr_reviews(owner, repo, pr_number)
     if not isinstance(reviews, list):
         return None
     notice = github_api.latest_copilot_quota_notice(reviews, _is_copilot_login)

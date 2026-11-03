@@ -4307,14 +4307,22 @@ jobs:
         if: steps.failures.outputs.has_failures == 'true'
         id: classify
         run: |
+          CLASSIFIED=""
           if [ -f ./tools/ci/classify-failures.py ]; then
             BASELINE="${{ runner.temp }}/master-failures.txt"
             [ -f "$BASELINE" ] || BASELINE=""
-            # TODO(review): a crash of a present classifier leaves the counts empty (no dispatch); only the file-absent case has a fallback.
-            eval "$(python3 ./tools/ci/classify-failures.py "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}" "$BASELINE")"
-          else
-            # Older checkout without the classifier: every failure is a
-            # regression, the pre-classification behaviour.
+            if CLASSIFICATION=$(python3 ./tools/ci/classify-failures.py "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}" "$BASELINE"); then
+              eval "$CLASSIFICATION"
+              CLASSIFIED=true
+            else
+              # A classifier crash must not drop a real failure: fall back to
+              # treating every failure as a regression, as below.
+              echo "::warning::classify-failures.py failed — treating every failure as a regression"
+            fi
+          fi
+          if [ -z "$CLASSIFIED" ] || [ -z "${regression_count:-}" ]; then
+            # No classifier (older checkout) or a classifier that failed:
+            # every failure is a regression, the pre-classification behaviour.
             cp "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}/regressions.txt"
             : > "${{ runner.temp }}/preexisting.txt"
             : > "${{ runner.temp }}/environmental.txt"
