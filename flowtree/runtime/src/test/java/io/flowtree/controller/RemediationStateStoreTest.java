@@ -564,4 +564,31 @@ public class RemediationStateStoreTest extends TestSuiteBase {
             store.close();
         }
     }
+
+    /**
+     * A record that reads fine but whose flag cannot be persisted claims nothing,
+     * so the one-time ping is not sent on a write that did not stick: a later
+     * submission re-reads the flag still unset and can claim it once the store can
+     * write again, rather than every refused submission pinging during the outage.
+     */
+    @Test(timeout = 30000)
+    public void markNotifiedClaimsNothingWhenTheFlagCannotBePersisted() throws Exception {
+        File dir = Files.createTempDirectory("rem-notify-unwritable").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            store.recordPass("ws", "r", "b", null);
+            // The row still reads (notified=false), but a write that sets the
+            // flag now violates this constraint, so claimNotification's write fails.
+            try (Statement stmt = store.connection().createStatement()) {
+                stmt.execute("ALTER TABLE pr_remediation ADD CONSTRAINT no_notify CHECK (notified = FALSE)");
+            }
+            assertFalse("a flag that cannot be persisted is not claimed",
+                    store.markNotified("ws"));
+            assertFalse("the flag is left unset so a later claim can still ping once",
+                    store.get("ws").isNotified());
+        } finally {
+            store.close();
+        }
+    }
 }

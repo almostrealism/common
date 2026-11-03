@@ -332,9 +332,10 @@ public class RemediationStateStore extends ControllerDatabase {
      * silently refund the spent budget.</p>
      *
      * @param workstreamId the workstream (branch / PR) key
-     * @return {@code true} when this call flipped the flag from unset to set,
-     *         {@code false} when it was already set, the record could not be
-     *         read, or the store is closed
+     * @return {@code true} when this call flipped the flag from unset to set and
+     *         persisted it, {@code false} when it was already set, the record
+     *         could not be read, the set flag could not be persisted, or the
+     *         store is closed
      */
     public synchronized boolean markNotified(String workstreamId) {
         if (!isOpen() || workstreamId == null || workstreamId.isEmpty()) {
@@ -355,14 +356,19 @@ public class RemediationStateStore extends ControllerDatabase {
      * Sets the notification flag on a record the caller has just read under the
      * store's lock, so the claim acts on that record rather than on a second read.
      *
+     * <p>The claim succeeds only when the flag is durably persisted. A write that
+     * fails is not a claim: reporting one would send the one-time ping without
+     * recording {@code notified=true}, so every later refused submission would
+     * read the flag still unset and ping again. Returning {@code false} instead
+     * keeps the ping suppressed while the store cannot persist the flag; once it
+     * can, the next refused submission claims it and pings exactly once.</p>
+     *
      * @param current the record as read
-     * @return {@code true} when the flag was unset and is now set
+     * @return {@code true} when the flag was unset and the set flag was persisted
      */
     private boolean claimNotification(RemediationState current) {
         if (current.isNotified()) return false;
-        // TODO(review): write() swallows SQLException, so a failed flag write still claims and the ping repeats.
-        write(current.afterNotified(), null, null);
-        return true;
+        return write(current.afterNotified(), null, null);
     }
 
     /**
@@ -374,8 +380,10 @@ public class RemediationStateStore extends ControllerDatabase {
      * @param repoUrl the repository URL to record, or {@code null} to keep the
      *                stored value
      * @param branch  the branch to record, or {@code null} to keep the stored value
+     * @return {@code true} when the row was written, {@code false} when the write
+     *         failed (a transient DB error, already logged)
      */
-    private void write(RemediationState state, String repoUrl, String branch) {
+    private boolean write(RemediationState state, String repoUrl, String branch) {
         String sql = "MERGE INTO pr_remediation USING (VALUES(?, ?, ?, ?, ?, ?, ?)) "
             + "AS vals(wid, ru, br, cnp, lpc, nt, ua) ON pr_remediation.workstream_id = vals.wid "
             + "WHEN MATCHED THEN UPDATE SET consecutive_no_progress = vals.cnp, "
@@ -394,9 +402,11 @@ public class RemediationStateStore extends ControllerDatabase {
             ps.setBoolean(6, state.isNotified());
             ps.setTimestamp(7, Timestamp.from(Instant.now()));
             ps.executeUpdate();
+            return true;
         } catch (SQLException e) {
             warn("Failed to write remediation state for " + state.getWorkstreamId()
                 + ": " + e.getMessage());
+            return false;
         }
     }
 }
