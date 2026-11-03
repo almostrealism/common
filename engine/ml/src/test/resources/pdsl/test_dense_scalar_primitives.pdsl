@@ -1,0 +1,9 @@
+/**
+ * Fixture for DenseScalarProjectionTest: a dense projection of a scalar feature (a [nodes, 1] weight),
+ * so the size-one dense path is pinned on its own, independently of the Fourier feature projection
+ * that relies on it. The projection of a [batch, 1] input is the outer product input · weightᵀ, of
+ * shape [batch, nodes].
+ */
+layer project(w: weight) {
+    dense(w)
+}
