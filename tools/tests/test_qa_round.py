@@ -216,7 +216,7 @@ class QaRoundWorkflowShapeTests(unittest.TestCase):
         self.assertEqual("true", submit["env"]["AUTO_CREATE_PR"])
         self.assertNotIn("PR_DRAFT", submit["env"])
 
-    def test_an_application_callers_workstream_gets_the_framework_and_its_tracker_role(self):
+    def test_an_application_caller_workstream_gets_the_framework_and_its_tracker_role(self):
         """An application caller (one whose repository is not the framework) has
         its round registered with the framework as a dependent repository, so
         its agent can build against it, and with the tracker role the caller
