@@ -33,8 +33,10 @@ The output directory receives:
   ``presynaptic`` (I32, [E], the column of each entry), ``weights`` (I32, [E],
   the signed synapse count of each entry) and ``signs`` (I32, [N]);
 - ``neurons.tsv``, a header line then ``body_id``, ``type``, ``superclass``,
-  ``class`` and ``transmitter`` per neuron in index order (empty when the
-  dataset does not annotate it). Body ids are kept out of the tensors because
+  ``class``, ``transmitter`` and ``side`` per neuron in index order (empty when
+  the dataset does not annotate it). The side is "L", "R" or "M": for MaleCNS
+  the soma side, or for a sensory neuron, whose soma is outside the nervous
+  system, the side its axon enters on. Body ids are kept out of the tensors because
   FlyWire root ids exceed the 2^53 a tensor value can carry exactly;
 - ``connectome.json``, the dataset, filters, sign rule and totals;
 - ``spot-checks.json``, the degrees, synapse totals and strongest partners of
@@ -56,7 +58,7 @@ TENSORS_OUTPUT = "connectome.safetensors"
 NEURONS_OUTPUT = "neurons.tsv"
 METADATA_OUTPUT = "connectome.json"
 SPOT_CHECKS_OUTPUT = "spot-checks.json"
-NEURON_COLUMNS = ("body_id", "type", "superclass", "class", "transmitter")
+NEURON_COLUMNS = ("body_id", "type", "superclass", "class", "transmitter", "side")
 
 SEED = 20261030
 SAMPLED_CHECKS = 12
@@ -79,8 +81,8 @@ class Dataset:
     Attributes:
         name: the dataset name.
         body_ids: int64 numpy array, the body id of each neuron.
-        annotations: a list of ``(type, superclass, class, transmitter)`` per
-            neuron, each "" when unknown.
+        annotations: a list of ``(type, superclass, class, transmitter, side)``
+            per neuron, each "" when unknown.
         signs: int64 numpy array of +1/-1 per neuron.
         pre, post, count: int64 numpy arrays, one entry per edge.
         sources: the source file names, relative to the source directory.
@@ -135,12 +137,14 @@ def read_male_cns(source):
 
     body_ids, types, superclasses, classes = male_cns.read_typed_bodies(source)
     transmitters = male_cns.read_transmitters(source)
+    sides = male_cns.read_sides(source)
     weights = male_cns.read_weights(source)
 
     order = np.argsort(body_ids)
     body_ids = body_ids[order]
     annotations = [(types[i] or "", superclasses[i] or "", classes[i] or "",
-                    transmitters.get(int(body_ids[k])) or "") for k, i in enumerate(order)]
+                    transmitters.get(int(body_ids[k])) or "", sides.get(int(body_ids[k]), ""))
+                   for k, i in enumerate(order)]
     signs = np.array([male_cns.transmitter_sign(a[3] or None) for a in annotations], dtype=np.int64)
 
     def locate(column):
@@ -214,7 +218,7 @@ def read_flywire(source, snapshot):
                    % flywire.SNAPSHOTS[snapshot][0],
         "sign": "the '%s' column of %s" % (flywire.EXCITATORY, flywire.SNAPSHOTS[snapshot][1]),
     }
-    annotations = [("", "", "", "")] * len(body_ids)
+    annotations = [("", "", "", "", "")] * len(body_ids)
     return Dataset("flywire-" + snapshot, body_ids, annotations, signs, pre, post, counts,
                    list(flywire.SNAPSHOTS[snapshot]), description, edges_by_body)
 
@@ -222,8 +226,8 @@ def read_flywire(source, snapshot):
 def synthetic(neurons):
     """Draws a small random connectome with a fixed seed.
 
-    Neuron ``i`` has body id ``1000 + 7 * i`` and type ``T<i mod 5>``; every
-    third neuron is inhibitory. Each neuron receives between 0 and 5 edges
+    Neuron ``i`` has body id ``1000 + 7 * i``, type ``T<i mod 5>`` and side
+    ``L`` for even ``i``, ``R`` for odd; every third neuron is inhibitory. Each neuron receives between 0 and 5 edges
     from distinct presynaptic neurons, with 1 to 20 synapses each.
     """
     import numpy as np
@@ -231,8 +235,8 @@ def synthetic(neurons):
     rng = np.random.default_rng(SEED)
     body_ids = 1000 + 7 * np.arange(neurons, dtype=np.int64)
     signs = np.where(np.arange(neurons) % 3 == 2, -1, 1).astype(np.int64)
-    annotations = [("T%d" % (i % 5), "synthetic", "", "gaba" if signs[i] < 0 else "acetylcholine")
-                   for i in range(neurons)]
+    annotations = [("T%d" % (i % 5), "synthetic", "", "gaba" if signs[i] < 0 else "acetylcholine",
+                    "LR"[i % 2]) for i in range(neurons)]
 
     pres, posts = [], []
     for post in range(neurons):
@@ -250,7 +254,8 @@ def synthetic(neurons):
 
     description = {
         "source": "synthetic, seed %d" % SEED,
-        "neurons": "%d neurons; body id 1000 + 7 i, type T(i mod 5)" % neurons,
+        "neurons": "%d neurons; body id 1000 + 7 i, type T(i mod 5), side L for even i and R for odd"
+                   % neurons,
         "sign": "-1 for every third neuron (i mod 3 == 2), +1 otherwise",
     }
     return Dataset("synthetic", body_ids, annotations, signs, pre, post, count, [],
@@ -448,7 +453,7 @@ def read_neurons(directory):
     Returns:
         ``(body_ids, annotations)``: an int64 numpy array of the body id of
         each neuron in index order, and a list of ``(type, superclass, class,
-        transmitter)`` per neuron, as ``Dataset`` holds them.
+        transmitter, side)`` per neuron, as ``Dataset`` holds them.
     """
     import numpy as np
 

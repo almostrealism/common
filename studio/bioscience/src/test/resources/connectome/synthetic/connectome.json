@@ -1,7 +1,7 @@
 {
  "dataset": "synthetic",
  "source": "synthetic, seed 20261030",
- "neurons_rule": "40 neurons; body id 1000 + 7 i, type T(i mod 5)",
+ "neurons_rule": "40 neurons; body id 1000 + 7 i, type T(i mod 5), side L for even i and R for odd",
  "sign": "-1 for every third neuron (i mod 3 == 2), +1 otherwise",
  "min_count": 1,
  "neurons": 40,

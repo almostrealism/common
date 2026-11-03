@@ -198,14 +198,26 @@ class ModelInputsTest(unittest.TestCase):
 
     def test_stimulated_by_id_and_type(self):
         body_ids = np.array([10, 20, 30, 40])
-        annotations = [("A", "", "", ""), ("B", "", "", ""), ("A", "", "", ""), ("", "", "", "")]
+        annotations = [("A", "", "", "", "L"), ("B", "", "", "", "R"), ("A", "", "", "", "R"),
+                       ("", "", "", "", "")]
         self.assertEqual([0, 2], brian2_reference.stimulated_indices(body_ids, annotations, types=["A"]))
         self.assertEqual([1, 3], brian2_reference.stimulated_indices(body_ids, annotations, ids=[40, 20]))
         self.assertEqual([0, 1, 2], brian2_reference.stimulated_indices(body_ids, annotations, [20], ["A"]))
 
+    def test_stimulated_by_type_on_a_side(self):
+        body_ids = np.array([10, 20, 30, 40])
+        annotations = [("A", "", "", "", "L"), ("A", "", "", "", "R"), ("A", "", "", "", "R"),
+                       ("B", "", "", "", "L")]
+        self.assertEqual([1, 2], brian2_reference.stimulated_indices(
+            body_ids, annotations, types=["A"], sides=["R"]))
+        self.assertEqual([0, 1, 2], brian2_reference.stimulated_indices(
+            body_ids, annotations, types=["A"], sides=["L", "R"]))
+        self.assertEqual([0, 3], brian2_reference.stimulated_indices(
+            body_ids, annotations, ids=[40], types=["A"], sides=["L"]))
+
     def test_stimulated_rejects_unknown_names(self):
         body_ids = np.array([10, 20])
-        annotations = [("A", "", "", ""), ("B", "", "", "")]
+        annotations = [("A", "", "", "", ""), ("B", "", "", "", "")]
         with self.assertRaises(SystemExit):
             brian2_reference.stimulated_indices(body_ids, annotations, ids=[99])
         with self.assertRaises(SystemExit):

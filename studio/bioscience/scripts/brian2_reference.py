@@ -31,12 +31,14 @@ checked against Brian2, the simulator the model was written for:
     example MaleCNS): writes the connectome as the two tables the authors'
     model reads, a neuron table indexed by body id and a connectivity table of
     presynaptic index, postsynaptic index and signed synapse count, then drives
-    the neurons named by body id or by cell type with Poisson input. Writes
+    the neurons named by body id or by cell type (optionally on one side)
+    with Poisson input. Writes
     the same outputs as ``sugar``, rates in the connectome's index order.
 
 Brian2 (and, for ``circuit``, ``sugar`` and ``experiment``, pandas and
-pyarrow, and for ``sugar`` and ``experiment`` joblib) must be installed;
-they are not in requirements.txt because only these reference runs need them.
+pyarrow, and for ``sugar`` and ``experiment`` joblib) must be installed; all
+are listed in requirements.txt. They are imported only inside the functions
+that run a reference, so the script's tests need only numpy.
 
 Usage:
     brian2_reference.py synthetic --connectome <csr dir> --output <dir>
@@ -134,15 +136,17 @@ def connectivity(connectome):
     return connectome["presynaptic"].astype(np.int64), post, connectome["weights"].astype(np.int64)
 
 
-def stimulated_indices(body_ids, annotations, ids=(), types=()):
+def stimulated_indices(body_ids, annotations, ids=(), types=(), sides=()):
     """Returns the sorted indices of the neurons named by body id or by cell
     type.
 
     Args:
         body_ids: the body id of each neuron, in index order.
-        annotations: ``(type, superclass, class, transmitter)`` per neuron.
+        annotations: ``(type, superclass, class, transmitter, side)`` per neuron.
         ids: body ids of neurons to include.
-        types: cell types whose every neuron is included.
+        types: cell types whose neurons are included.
+        sides: when not empty, only the neurons of ``types`` on one of these
+            sides are included; ``ids`` are included whatever their side.
 
     Raises:
         SystemExit: if a body id or a type names no neuron, or nothing is named.
@@ -155,7 +159,8 @@ def stimulated_indices(body_ids, annotations, ids=(), types=()):
     unknown = [t for t in types if t not in present]
     if unknown:
         raise SystemExit("cell types not in the connectome: %s" % unknown)
-    chosen = {index[int(b)] for b in ids} | {i for i, a in enumerate(annotations) if a[0] in types}
+    chosen = {index[int(b)] for b in ids} | {i for i, a in enumerate(annotations)
+                                             if a[0] in types and (not sides or a[4] in sides)}
     if not chosen:
         raise SystemExit("no neuron is stimulated: name body ids or cell types")
     return sorted(chosen)
@@ -325,7 +330,8 @@ def run_model(args, name, stimulated, path_comp, path_con, manifest):
 
     Args:
         args: the parsed arguments: ``repo``, ``rate``, ``trials``,
-            ``processes``, ``output`` and an optional ``synapse_weight``.
+            ``processes``, ``output`` and an optional ``synapse_weight`` and
+            ``duration_ms`` (the length of a trial; the model's own when absent).
         name: the experiment name, which names the spike table.
         stimulated: the body ids of the neurons driven by Poisson input.
         path_comp: the neuron table, indexed by body id.
@@ -333,7 +339,7 @@ def run_model(args, name, stimulated, path_comp, path_con, manifest):
         manifest: entries the manifest records besides the run's own.
     """
     import pandas as pd
-    from brian2 import Hz, mV
+    from brian2 import Hz, mV, ms
 
     sys.path.insert(0, args.repo)
     import model
@@ -343,6 +349,8 @@ def run_model(args, name, stimulated, path_comp, path_con, manifest):
     params["n_run"] = args.trials
     if getattr(args, "synapse_weight", None) is not None:
         params["w_syn"] = args.synapse_weight * mV
+    if getattr(args, "duration_ms", None) is not None:
+        params["t_run"] = args.duration_ms * ms
     os.makedirs(args.output, exist_ok=True)
     model.run_exp(exp_name=name, neu_exc=list(stimulated), path_res=args.output,
                   path_comp=path_comp, path_con=path_con,
@@ -383,7 +391,8 @@ def experiment_command(args):
     body_ids, annotations = connectome_csr.read_neurons(args.connectome)
     ids = [int(i) for i in args.stimulate_ids.split(",")] if args.stimulate_ids else []
     types = args.stimulate_types.split(",") if args.stimulate_types else []
-    indices = stimulated_indices(body_ids, annotations, ids, types)
+    sides = args.stimulate_sides.split(",") if args.stimulate_sides else []
+    indices = stimulated_indices(body_ids, annotations, ids, types, sides)
     connectome = male_cns.read_safetensors(os.path.join(args.connectome, connectome_csr.TENSORS_OUTPUT))
     with open(os.path.join(args.connectome, connectome_csr.METADATA_OUTPUT)) as source:
         dataset = json.load(source)["dataset"]
@@ -393,6 +402,7 @@ def experiment_command(args):
         run_model(args, args.name, [int(body_ids[i]) for i in indices], path_comp, path_con, {
             "connectome": dataset,
             "stimulated_types": types,
+            "stimulated_sides": sides,
             "source_sha256": {
                 connectome_csr.TENSORS_OUTPUT: male_cns.sha256(
                     os.path.join(args.connectome, connectome_csr.TENSORS_OUTPUT)),
@@ -438,10 +448,13 @@ def main(argv=None):
     experiment.add_argument("--name", required=True, help="the experiment name")
     experiment.add_argument("--stimulate-ids", help="comma-separated body ids to drive")
     experiment.add_argument("--stimulate-types", help="comma-separated cell types whose neurons to drive")
+    experiment.add_argument("--stimulate-sides",
+                            help="comma-separated sides (L, R, M) the neurons of --stimulate-types must be on")
     experiment.add_argument("--rate", type=float, default=150.0, help="Poisson rate in Hz")
     experiment.add_argument("--trials", type=int, default=30)
     experiment.add_argument("--synapse-weight", type=float,
                             help="synaptic potential of one synapse in mV (default: the model's)")
+    experiment.add_argument("--duration-ms", type=float, help="length of a trial in ms (default: the model's)")
     experiment.add_argument("--processes", type=int, default=1)
     experiment.add_argument("--output", required=True)
     experiment.set_defaults(run=experiment_command)

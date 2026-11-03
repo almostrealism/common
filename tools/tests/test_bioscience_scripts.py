@@ -29,6 +29,7 @@ from test_connectome_csr import (  # noqa: E402,F401
 )
 from test_male_cns import (  # noqa: E402,F401
     MajorityAnnotationsTest,
+    NeuronSideTest,
     SafetensorsHeaderTest,
     SourceChecksumsTest,
     TransmitterSignTest,

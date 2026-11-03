@@ -69,8 +69,10 @@ files:
   - `presynaptic` (`[E]`): the presynaptic neuron of each stored edge,
   - `weights` (`[E]`): the presynaptic neuron's sign times the synapse count, and
   - `signs` (`[N]`): +1 or -1 per neuron (inhibitory neurons carry -1);
-- `neurons.tsv`: a header line, then the body id, type, superclass, class and predicted
-  transmitter of every neuron, tab-separated, in index order. Body ids are kept out of the tensors
+- `neurons.tsv`: a header line, then the body id, type, superclass, class, predicted
+  transmitter and side of every neuron, tab-separated, in index order. The side is `L`, `R` or `M`
+  (midline): the soma side, or for a sensory neuron, whose soma lies outside the nervous system,
+  the side its axon enters on; FlyWire's tables carry no side, so it is empty there. Body ids are kept out of the tensors
   because FlyWire root ids exceed the `2^53` a tensor value holds exactly;
 - `connectome.json`: the dataset, the filters, the sign rule and the totals (neurons, edges,
   synapses);
@@ -103,7 +105,7 @@ relies on them rather than re-deriving them.
 
 `NeuronConnectome` knows the file layout and nothing about dynamics. It owns the loaded tensors and
 the index collections of the ordering, exposes the body id and annotations of every neuron
-(`getBodyId`, `getType`, `indexOf`, `indicesOfType`), builds an input-set `mask(...)` over a chosen
+(`getBodyId`, `getType`, `getSide`, `indexOf`, `indicesOfType`), builds an input-set `mask(...)` over a chosen
 handful of neurons, and releases its native state in `destroy()`. `NeuronConnectomeTest` and
 `NeuronConnectomeChecks` validate a loaded connectome against the totals and spot checks the script
 records beside it.
@@ -169,7 +171,7 @@ Shiu et al. (2024), in milliseconds and millivolts:
 | `REFRACTORY_PERIOD` | 2.2 ms | refractory period |
 | `DELAY` | 1.8 ms | synaptic delay |
 | `SYNAPSE_WEIGHT` | 0.275 mV | the synaptic potential of one synapse |
-| `POISSON_KICK` | 250 × `SYNAPSE_WEIGHT` mV | the membrane kick of one Poisson spike |
+| `POISSON_SYNAPSES` | 250 | one Poisson spike kicks the membrane by this times the synapse weight (68.75 mV at `SYNAPSE_WEIGHT`) |
 
 ---
 

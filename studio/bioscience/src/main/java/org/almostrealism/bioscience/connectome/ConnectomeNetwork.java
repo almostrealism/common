@@ -109,8 +109,12 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 	/** The synaptic potential contributed by one synapse. */
 	public static final double SYNAPSE_WEIGHT = 0.275;
 
-	/** The membrane kick of one Poisson spike: 250 synapses' worth. */
-	public static final double POISSON_KICK = 250 * SYNAPSE_WEIGHT;
+	/**
+	 * The number of synapses' worth of potential one Poisson spike kicks the membrane by: the
+	 * kick is this times the network's synapse weight, as in the model, so a different weight per
+	 * synapse scales the Poisson input with it.
+	 */
+	public static final int POISSON_SYNAPSES = 250;
 
 	/** The connectome, which belongs to the caller. */
 	private final NeuronConnectome connectome;
@@ -187,7 +191,8 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 	 *                    {@code null} for none. Every replica receives the same drive. It belongs
 	 *                    to the caller
 	 * @param synapseWeight the synaptic potential contributed by one synapse, {@link #SYNAPSE_WEIGHT}
-	 *                    in the model
+	 *                    in the model; a Poisson spike kicks the membrane by
+	 *                    {@link #POISSON_SYNAPSES} times this
 	 * @param replicas    the number of independent replicas stepped together
 	 * @param poissonRate the rate of the Poisson input to each stimulated neuron, in hertz
 	 * @param seed        the Poisson seed of the first trial
@@ -219,7 +224,8 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 		this.neurons.exemptFromRefractoryPeriod(targets);
 
 		try {
-			this.poisson = new PoissonInput(poissonRate * 1e-3, DT, POISSON_KICK, targets, step, seed);
+			this.poisson = new PoissonInput(poissonRate * 1e-3, DT, POISSON_SYNAPSES * synapseWeight,
+					targets, step, seed);
 		} catch (RuntimeException e) {
 			// release the state already allocated so an invalid Poisson argument does not leak it
 			step.destroy();
