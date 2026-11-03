@@ -117,6 +117,15 @@ Concrete, actionable deliverables:
 - Model the drift-guard on `HnswSearchTest` (standalone index ops, store integration,
   persistence across restart, deletion). Keep examples small enough to run on any backend
   quickly, but never trivially small — assert meaningful recall/persistence/rebuild properties.
+- **Divide labor with the existing README, do not restate it.** `engine/ml/README.md`'s
+  "HnswIndex — Vector Search" section already describes the computation-graph mechanism (the
+  contiguous `[capacity, dimension]` store, the single-dispatch normalize-on-insert and
+  whole-store `matmul` scoring, exact scoring at current scale, and the layered graph persisted
+  from exact neighbors for a future graph-walk path). The new internals page should *link* that
+  section for the mechanism and add the connective material the README lacks — the end-to-end
+  persistence layout, save/load format, and the model-keyed rebuild contract — rather than
+  copying the overlapping prose. Two drift-guarded descriptions of the same mechanism would drift
+  apart; keep the README the API-reference home and the internals page the pipeline walkthrough.
 - Any rough edge the writing surfaces in the API (e.g. a confusing name, a gap in the rebuild
   contract) is recorded as a **follow-up tracker task**, not fixed on this branch — this is a
   documentation cycle, not an API change.
