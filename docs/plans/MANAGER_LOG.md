@@ -37,12 +37,14 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 #### What changed since last cycle
 
 The rolling (sliding) key/value cache merged (PR #818): the self-hosted LM now decodes past
-`seqLen` and matches the sliding window byte-for-byte past the trained context. But the cycle's
+`seqLen` with sliding-window semantics — token-for-token identical to the sliding window for a
+single-block model, and for a deeper model per-layer window (Mistral-style) attention matched on
+the eviction property, as that cycle's own corrections record. But the cycle's
 own measurement recorded that its throughput success criterion was **not met** — on Metal both
 paths run ~200–260 B/s, and the rolling decode issues ~245 dispatches/byte against the sliding
 window's ~123. The cache is correct but dispatch-bound, and the implementation memory named the
 binding lever explicitly: argument-aggregation copy dispatches, tracker task `38f78778`. Alongside
-it, the tokenizer byte-fallback / added-token-reachability work merged (PRs #819, #820) and a docs
+it, the tokenizer byte-fallback / added-token-reachability work merged (PR #820) and a docs
 QA round (PR #821). The rolling-cache docs (`training-a-language-model.md`, `ml-inference-pipeline.md`)
 were corrected as the feature landed.
 

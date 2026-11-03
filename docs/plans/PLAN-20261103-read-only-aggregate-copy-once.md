@@ -15,8 +15,12 @@ Performance.
 
 The self-hosted language model now decodes past its trained context with a rolling
 key/value cache (PR #818, merged 2026-11-03). The cache is correct — it matches the
-sliding window byte-for-byte past `seqLen` — but the throughput win it was meant to
-deliver did not materialize: on Metal both paths run at ~200–260 bytes/second, and the
+sliding window byte-for-byte within the trained context, and past `seqLen` implements
+per-layer window (Mistral-style) attention: token-for-token identical to the sliding
+window for a single-block model, and for a deeper model equivalent only in its eviction
+property (a token stops affecting the output once every block's window has moved past
+it), as `SlidingKeyValueCacheAutoregressiveModelTest` pins. But the throughput win it was
+meant to deliver did not materialize: on Metal both paths run at ~200–260 bytes/second, and the
 per-byte decode issues roughly **245 Metal dispatches against the sliding window's 123**.
 The decode is dispatch-bound, not compute-bound, and the dispatches that dominate are
 argument-aggregation copies.
