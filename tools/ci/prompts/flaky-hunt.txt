@@ -32,13 +32,15 @@ than pick a module blind, so before choosing anything:
 
 2. **Search the tracker for known flaky or timing-out tests.** Call
    `tracker_search_tasks` for "flaky", "intermittently", "times out" and
-   "nondeterministic", and read the open tasks. Known leads at the time of
-   writing include `fcaf8950` (`AudioSceneMultiGenomeTest#multiGenomePatternRender`,
-   GPU media lane), `96f03d35` and `ad2da648` (`SimilarityOverheadTest`, CUDA
-   lane), and `0891319b` (`studio/compose` pattern tests at the edge of their
-   timeouts). A task that already describes a test is a lead to reproduce and
-   diagnose, not a reason to file a duplicate. If you confirm or refute it,
-   say so in your summary with the task id.
+   "nondeterministic", and read the open tasks — that is how you learn the
+   current task ids, which are not pinned here because they go stale. Lanes
+   where determinism has failed before, and where open tasks tend to
+   accumulate, include GPU media tests such as
+   `AudioSceneMultiGenomeTest#multiGenomePatternRender`, the CUDA-lane
+   `SimilarityOverheadTest`, and `studio/compose` pattern tests at the edge of
+   their timeouts. A task that already describes a test is a lead to reproduce
+   and diagnose, not a reason to file a duplicate. If you confirm or refute
+   one, say so in your summary with its task id.
 
 ## Scope: one module, a small slice, held fixed
 
