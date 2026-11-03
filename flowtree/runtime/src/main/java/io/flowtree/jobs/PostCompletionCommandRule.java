@@ -283,7 +283,9 @@ class PostCompletionCommandRule implements EnforcementRule {
      *
      * <p>The command runs in the job's managed environment
      * ({@link EnvironmentManagedJob#applyEnvironmentTo}), so a Maven build it
-     * starts resolves what the agent installed for this job.</p>
+     * starts resolves what the agent installed for this job. On a timeout the
+     * whole process tree is killed, so nothing the command started keeps
+     * running into that space after the job releases it.</p>
      *
      * @param job the job providing the fallback working directory and the
      *            managed environment
@@ -307,6 +309,7 @@ class PostCompletionCommandRule implements EnforcementRule {
 
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
                 process.destroyForcibly();
                 lastTimedOut = true;
                 lastExitCode = 1;

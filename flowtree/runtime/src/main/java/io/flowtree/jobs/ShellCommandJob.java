@@ -212,7 +212,10 @@ public class ShellCommandJob extends GitManagedJob {
 	 * <p>The command is launched with this job's managed environment
 	 * ({@link #applyEnvironmentTo(java.util.Map)}), so a {@code mvn} run by the
 	 * command installs into and resolves from this job's own
-	 * {@link MavenInstallSpace} rather than the node's shared repository.</p>
+	 * {@link MavenInstallSpace} rather than the node's shared repository. On a
+	 * timeout the whole process tree is killed, not only the {@code sh} wrapper,
+	 * so no {@code mvn} it started outlives the job and keeps writing into that
+	 * space after {@link #releaseEnvironment()} has deleted it.</p>
 	 */
 	@Override
 	protected void doWork() {
@@ -251,6 +254,7 @@ public class ShellCommandJob extends GitManagedJob {
 				stderr = readCapped(errFile);
 				log("Command completed with exit code " + exitCode);
 			} else {
+				process.descendants().forEach(ProcessHandle::destroyForcibly);
 				process.destroyForcibly();
 				exitCode = -1;
 				stderr = "Command timed out after " + DEFAULT_TIMEOUT_SECONDS
