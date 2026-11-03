@@ -16,7 +16,7 @@
 
 package io.flowtree.workstream;
 
-import io.flowtree.jobs.GitOperations;
+import io.flowtree.jobs.RepositoryUrl;
 
 import java.util.List;
 
@@ -28,7 +28,7 @@ import java.util.List;
  * <p>This is a cohesive collaborator extracted from {@link Workstream} so the
  * repository-identity predicates live with the state they read. Every
  * comparison is by repository <em>identity</em> rather than string equality
- * (see {@link GitOperations#isSameRepository(String, String)}), so a caller
+ * (see {@link RepositoryUrl#isSameRepository(RepositoryUrl)}), so a caller
  * naming a repository in a different but equivalent form — SSH instead of
  * HTTPS, or without the {@code .git} suffix — still matches the binding that
  * tracks it. {@link Workstream} holds one of these and delegates its
@@ -73,7 +73,7 @@ final class RepositoryBinding {
      *         when either side is absent
      */
     boolean matchesRepo(String repoUrl) {
-        return GitOperations.isSameRepository(this.repoUrl, repoUrl);
+        return new RepositoryUrl(this.repoUrl).isSameRepository(new RepositoryUrl(repoUrl));
     }
 
     /**
@@ -113,7 +113,7 @@ final class RepositoryBinding {
         if (dependentRepos == null || dependentRepos.isEmpty()) return false;
         if (repoUrl == null || repoUrl.isEmpty()) return false;
         for (String dependent : dependentRepos) {
-            if (GitOperations.isSameRepository(dependent, repoUrl)) return true;
+            if (new RepositoryUrl(dependent).isSameRepository(new RepositoryUrl(repoUrl))) return true;
         }
         return false;
     }

@@ -209,6 +209,65 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * Every GitHub URL form a workstream or CI system supplies reduces to the
+     * same {@code owner/repo} slug: SSH, HTTPS, {@code ssh://}, credentialed,
+     * suffix-less, trailing-slash, uppercase-host and explicit-port forms.
+     */
+    @Test(timeout = 10000)
+    public void extractOwnerRepoParsesGitHubUrlForms() {
+        String[] urls = {
+                "git@github.com:almostrealism/common.git",
+                "git@github.com:almostrealism/common",
+                "https://github.com/almostrealism/common.git",
+                "https://github.com/almostrealism/common/",
+                "ssh://git@github.com/almostrealism/common.git",
+                "https://x-access-token:secret@github.com/almostrealism/common.git",
+                "https://GITHUB.COM/almostrealism/common.git",
+                "https://github.com:443/almostrealism/common.git"
+        };
+
+        for (String url : urls) {
+            assertEquals("almostrealism/common", GitHubProxyHandler.extractOwnerRepo(url));
+        }
+
+        assertNull(GitHubProxyHandler.extractOwnerRepo(null));
+        assertNull(GitHubProxyHandler.extractOwnerRepo(""));
+        assertNull(GitHubProxyHandler.extractOwnerRepo("not-a-url"));
+    }
+
+    /**
+     * A repository hosted anywhere but {@code github.com} has no GitHub slug.
+     * The slug is used to query and write to the GitHub API — listing pull
+     * requests for a workstream, opening a companion pull request — so a
+     * {@code gitlab.com} repository, or a look-alike host such as
+     * {@code github.com.evil.example}, must not be mapped onto whichever GitHub
+     * repository happens to share its {@code owner/repo} path.
+     */
+    @Test(timeout = 10000)
+    public void extractOwnerRepoRejectsNonGitHubHost() {
+        assertNull(GitHubProxyHandler.extractOwnerRepo("https://gitlab.com/almostrealism/common.git"));
+        assertNull(GitHubProxyHandler.extractOwnerRepo("git@gitlab.com:almostrealism/common.git"));
+        assertNull(GitHubProxyHandler.extractOwnerRepo("https://github.com.evil.example/almostrealism/common.git"));
+        assertNull(GitHubProxyHandler.extractOwnerRepo("git@github.com.evil.example:almostrealism/common.git"));
+    }
+
+    /**
+     * The GitHub organisation is the owner of a GitHub repository URL, and a
+     * repository hosted elsewhere has none, so it never selects a GitHub token
+     * or a workspace by organisation.
+     */
+    @Test(timeout = 10000)
+    public void extractOrgFromRepoUrlRequiresGitHubHost() {
+        assertEquals("almostrealism",
+                GitHubProxyHandler.extractOrgFromRepoUrl("git@github.com:almostrealism/common.git"));
+        assertEquals("almostrealism",
+                GitHubProxyHandler.extractOrgFromRepoUrl("https://github.com/almostrealism/common"));
+        assertNull(GitHubProxyHandler.extractOrgFromRepoUrl("https://gitlab.com/almostrealism/common.git"));
+        assertNull(GitHubProxyHandler.extractOrgFromRepoUrl("https://github.com.evil.example/almostrealism/common"));
+        assertNull(GitHubProxyHandler.extractOrgFromRepoUrl("not-a-url"));
+    }
+
     /** Writes a JSON body, filtering an empty {@code head=} match to an empty listing. */
     private static void respond(HttpExchange exchange, String listing) throws IOException {
         // getQuery() returns the decoded query, so the branch reads as "no/such".

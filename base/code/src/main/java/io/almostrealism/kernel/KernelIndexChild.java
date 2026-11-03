@@ -136,7 +136,8 @@ public class KernelIndexChild extends IndexChild {
 	/** {@inheritDoc} */
 	@Override
 	public boolean compare(Expression o) {
+		// TODO(review): asymmetric with IndexChild.compare, which accepts a KernelIndexChild
 		if (!(o instanceof KernelIndexChild)) return false;
-		return ((KernelIndexChild) o).getChildIndex().equals(getChildIndex());
+		return hasSameChild((KernelIndexChild) o);
 	}
 }

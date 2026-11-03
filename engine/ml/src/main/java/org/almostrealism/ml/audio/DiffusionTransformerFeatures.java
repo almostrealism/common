@@ -19,13 +19,15 @@ package org.almostrealism.ml.audio;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.ml.TransformerBlockFeatures;
 import org.almostrealism.ml.DiffusionFeatures;
 import org.almostrealism.ml.LearnedTokenFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Mixin interface providing Fourier feature and timestep embedding building blocks
@@ -45,12 +47,23 @@ import java.util.List;
  */
 public interface DiffusionTransformerFeatures extends TransformerBlockFeatures, DiffusionFeatures, LearnedTokenFeatures {
 
+	/** Classpath location of the Fourier feature projection asset. */
+	String FOURIER_FEATURES_ASSET = "/pdsl/fourier_features.pdsl";
+
 	/**
-	 * Builds a Fourier feature projection layer.
+	 * Builds a Fourier feature projection layer from the {@link #FOURIER_FEATURES_ASSET} asset, bound
+	 * to a learned frequency matrix.
 	 * <p>
-	 * Projects input values through learned weights and applies cosine and sine transforms,
-	 * producing {@code outFeatures / 2} cosine components followed by {@code outFeatures / 2}
-	 * sine components concatenated into a single output tensor.
+	 * Projects input values through the weights and applies cosine and sine transforms, producing
+	 * {@code outFeatures / 2} cosine components followed by {@code outFeatures / 2} sine components.
+	 * The structure is defined in {@code fourier_features.pdsl}; this method only binds the weights
+	 * and loads it.
+	 * </p>
+	 * <p>
+	 * The matrix is bound through the asset's {@code dense} stage, which registers it as a trainable
+	 * weight of the layer, exactly as the pre-migration block form did. The deterministic (expo)
+	 * projection must stay fixed, so {@link #expoFourierFeatures} does not share this path; it keeps
+	 * its weightless producer form rather than registering its frequency ladder as a trainable weight.
 	 * </p>
 	 *
 	 * @param batchSize      batch dimension
@@ -60,16 +73,18 @@ public interface DiffusionTransformerFeatures extends TransformerBlockFeatures, 
 	 * @return a block that performs the Fourier feature projection
 	 */
 	default Block fourierFeatures(int batchSize, int inFeatures, int outFeatures, PackedCollection learnedWeights) {
-		// Output dim should be even for sin/cos pairs
 		if (outFeatures % 2 != 0) {
 			throw new IllegalArgumentException("Output features must be even for Fourier features");
 		}
 
-		return layer("fourierFeatures",
-				shape(batchSize, inFeatures),
-				shape(batchSize, outFeatures),
-				in -> fourierFeatures(batchSize, outFeatures, in, learnedWeights),
-				List.of(learnedWeights));
+		Map<String, Object> args = new HashMap<>();
+		args.put("batch", batchSize);
+		args.put("half", outFeatures / 2);
+		args.put("frequencies", learnedWeights);
+
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(FOURIER_FEATURES_ASSET), "fourier_features",
+				shape(batchSize, inFeatures), args);
 	}
 
 	/**
@@ -215,6 +230,8 @@ public interface DiffusionTransformerFeatures extends TransformerBlockFeatures, 
 	 * @return a block mapping {@code [batch, 1]} to {@code [batch, outFeatures]}
 	 */
 	default Block expoFourierFeatures(int batchSize, int outFeatures, double minFreq, double maxFreq) {
+		// The geometric frequency ladder is deterministic, so it stays a producer operand and is not
+		// registered as a trainable weight (unlike the learned fourierFeatures asset path).
 		CollectionProducer frequencies = expoFourierFrequencies(outFeatures, minFreq, maxFreq);
 		return layer("expoFourierFeatures",
 				shape(batchSize, 1),

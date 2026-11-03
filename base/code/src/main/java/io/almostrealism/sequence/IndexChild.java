@@ -249,14 +249,54 @@ public class IndexChild extends Sum<Integer> implements Index {
 		return this;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A child index is equal to a child index of any class with an equal parent and an
+	 * equal child of the same limit, as together they determine its value. Indices that share
+	 * a child but differ in their parent take different values, and are not equal.</p>
+	 */
 	@Override
 	public boolean compare(Expression o) {
 		if (!(o instanceof IndexChild)) return false;
-		return ((IndexChild) o).childIndex.equals(childIndex);
+
+		IndexChild other = (IndexChild) o;
+		return other.parent.equals(parent) && hasSameChild(other);
 	}
 
+	/**
+	 * Returns whether the given child index has a child equal to this one's, with the same
+	 * limit. An index compares equal to another of the same name whatever its limit, but the
+	 * limit is the stride of the parent, part of this expression's structure and its hash.
+	 *
+	 * @param other the child index to compare with
+	 * @return {@code true} if the children are equal and have the same limit
+	 */
+	protected boolean hasSameChild(IndexChild other) {
+		return other.childIndex.equals(childIndex)
+				&& other.childIndex.getLimit().equals(childIndex.getLimit());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A child index is equal to a child index of any class with an equal parent and
+	 * child, which are its children, so every child index has the same node hash.</p>
+	 */
+	@Override
+	protected int nodeHash() {
+		return IndexChild.class.getName().hashCode();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Combines the hashes of the parent, the child and the child's limit, which equal
+	 * child indices share. The limit is included because an index hashes by name alone,
+	 * while child indices whose children differ only in their limit are not equal.</p>
+	 */
 	@Override
 	public int hashCode() {
-		return childIndex.hashCode();
+		return Objects.hash(parent, childIndex, childIndex.getLimit());
 	}
 }
