@@ -67,6 +67,6 @@ fi
     >/dev/null 2>&1 || : > "$OUTPUT_FILE"
 rm -rf "$WORKDIR"
 
-COUNT=$(grep -c '^- ' "$OUTPUT_FILE" 2>/dev/null || echo 0)
-echo "::notice::master test baseline: ${COUNT} failing test(s) from ${BRANCH} run ${RUN_ID}"
+COUNT=$(grep -c '^- ' "$OUTPUT_FILE" 2>/dev/null || true)
+echo "::notice::master test baseline: ${COUNT:-0} failing test(s) from ${BRANCH} run ${RUN_ID}"
 exit 0

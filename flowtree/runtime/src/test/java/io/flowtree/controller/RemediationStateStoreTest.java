@@ -422,6 +422,44 @@ public class RemediationStateStoreTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * A cancelled remediation job is a superseded run, not a completed pass:
+     * the recorder forgets it without counting it, even when it carries a
+     * commit, so it neither increments nor resets the count.
+     */
+    @Test(timeout = 30000)
+    public void lifecycleRecorderDoesNotCountCancelledJobs() throws Exception {
+        File dir = Files.createTempDirectory("rem-recorder-cancel").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            JobLifecycleRecorder recorder = new JobLifecycleRecorder(null, store);
+            store.registerJob("auto-1", "ws");
+            recorder.recordTerminal("ws", JobCompletionEvent.success("auto-1", "review"));
+            assertEquals(1, store.get("ws").getConsecutiveNoProgress());
+
+            store.registerJob("auto-2", "ws");
+            recorder.recordTerminal("ws", new JobCompletionEvent("auto-2",
+                    JobCompletionEvent.Status.CANCELLED, "review"));
+            assertEquals("a cancelled pass does not increment the count",
+                    1, store.get("ws").getConsecutiveNoProgress());
+
+            store.registerJob("auto-3", "ws");
+            recorder.recordTerminal("ws", new JobCompletionEvent("auto-3",
+                    JobCompletionEvent.Status.CANCELLED, "resolve")
+                    .withGitInfo("b", "cancelled-sha", null, null, true));
+            assertEquals("a cancelled pass does not reset the count",
+                    1, store.get("ws").getConsecutiveNoProgress());
+            assertNull(store.get("ws").getLastProducedCommit());
+
+            recorder.recordTerminal("ws", JobCompletionEvent.success("auto-2", "review"));
+            assertEquals("the cancelled job was forgotten, so a late event does not count",
+                    1, store.get("ws").getConsecutiveNoProgress());
+        } finally {
+            store.close();
+        }
+    }
+
     /** The own-commit skip fires only for the pass's own commit. */
     @Test(timeout = 30000)
     public void ownCommitIsSkippedButAnyOtherCommitDispatches() throws Exception {
