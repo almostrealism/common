@@ -28,6 +28,94 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-11-02 (later) — Decode the self-hosted LM past its trained context with a rolling key/value cache
+
+**Category:** Proof of Value (self-hosted LM generation)
+**Branch:** `project/plan-20261102-174749`
+**Plan:** [`PLAN-20261102-sliding-kv-cache.md`](PLAN-20261102-sliding-kv-cache.md)
+
+#### What changed since last cycle
+
+The neuron-level connectome documentation landed (PR #814, merged today), with its drift-guard test
+and the `llms.txt`/README cross-links, so the platform's most distinctive new science capability is
+now covered connectively, not just by Javadoc. The two QA rounds that merged alongside it
+(`qa/performance`, `qa/pdsl`) and the earlier `qa/defect` round keep the foundation current. Nothing
+foundational broke.
+
+#### Category assessment (priority order)
+
+- **Documentation — strong and current, checked not assumed.** Two documentation cycles just landed
+  (the connectome pipeline today, the PDSL authoring tutorial before it), and `consult` surfaced only
+  weak or stale gaps (a `SimulationRunner` internals page — already covered by `compute/time/README.md`;
+  the September SA3-prep classes — a staleness item owned by docs QA). The self-hosted LM's generation
+  docs are detailed and current. No fresh flagship gap. Moved on.
+- **Code quality — closed arc, owned by continuous QA.** The whole attention backward-pass correctness
+  arc (cross-attention K/V, differential lambda, the full-Jacobian output-projection gradient) is
+  closed, and the KV-cache ownership defect was repaired with its own guard. The standing items
+  (`io.almostrealism.collect` split; `TransformerResamplingFeatures` buffered K/V, deferred until that
+  autoencoder is first fine-tuned) are real but not reachable flagships this cycle. Moved on.
+- **Performance — no PM-level blocker.** The decode cache now beats the sliding window; the standing
+  levers (weighted-sum `matmul` reduced form for outputs > 1000, convolution input-gradient reduced
+  form) are real but non-blocking. Moved on.
+- **Proof of value — the category, with a sharp reachable instance whose gate is now met.** The
+  KV-cache decode is now the *faster* path (PR #783), but it is capped at `seqLen` by design — fixed
+  `(seqLen, dim)` caches, and `KeyValueCacheAutoregressiveModel.load` throws at a step past `seqLen` —
+  so the moment the model writes more than its 64-byte trained context about itself, it falls back to
+  the slower sliding window. The Manager Log has named a rolling (sliding) key/value cache as the next
+  proof-of-value step for three cycles, each time conditioned on the cache first being faster than the
+  sliding window. That condition is now met, and no tracker task exists for it yet.
+
+#### Why this task
+
+It cashes the arc the whole self-hosted LM track points at: making self-description *usable at length*,
+not just for 64 bytes. The investigation established the capability is tractable without a kernel
+redesign, from one property of RoPE: attention scores depend only on the *relative* position of query
+and key (`R(m)ᵀR(n) = R(n − m)`), so a ring-buffer cache that stores each key rotated **once** at its
+absolute position reproduces sliding-window attention for the newest token exactly — no re-rotation,
+ever — because the relative distance between the newest query and each retained key is identical under
+both schemes, and the newest row is the only one the generator samples from. That reduces the work to
+two mechanical, shared-primitive changes (ring-buffer `cache_write` indexing by `position mod seqLen`;
+rotary rotation for positions beyond the fixed `(seqLen, …)` frequency table, computed from the stored
+inverse frequencies), plus a sibling `SlidingKeyValueCacheAutoregressiveModel` and one correctness
+test. Crucially the oracle already exists and is itself verified against a full forward pass —
+`slidingWindowGenerationMatchesFullForward` — so the new generator must match the sliding window
+**byte-for-byte past `seqLen`**, a robust greedy-argmax assertion that needs no loosened tolerance and
+cannot be gamed. The two primitive changes touch kernels every attention model shares, so the plan
+requires proving them inert for the bounded path (`position mod seqLen == position` within `seqLen`).
+
+*Correction (implementation and review):* the byte-for-byte claim holds only for a single block. The
+sliding window recomputes the retained tokens through every block each step, so in a deeper model their
+deeper keys and values change as tokens leave the window, while the ring keeps the vectors each token was
+decoded with. The rolling cache is per-layer window attention, and its test pins exact agreement for one
+block and the eviction property for two. The plan's "Corrections found during implementation" section
+has the details.
+
+#### Balance across categories
+
+The last three cycles were performance (KV-decode copies) then two documentation cycles (PDSL tutorial,
+connectome pipeline). Returning to proof of value now is the disciplined move the log has telegraphed,
+not a jump to the exciting category: the foundation is covered and current, the gate this step waited on
+is met, and the connectome proof-of-value step (the MaleCNS whole-brain reproduction) is still blocked on
+owner-provided data, so it is not the reachable one this cycle. It is a medium–large task that needs a
+Metal node for the throughput comparison (workstream settings file present), as the readable-generation
+and decode-throughput cycles did.
+
+#### What comes next
+
+1. This plan: the arbitrary-position rotary on `RotationFeatures`, the ring-buffer `cache_write`, the
+   `SlidingKeyValueCacheAutoregressiveModel` generator, `slidingKeyValueCacheMatchesSlidingWindowPastSeqLen`,
+   the long-run throughput measurement, and the Generation-section rewrite.
+2. **Proof of value, quality:** attention sinks (pin the first `k` tokens) if the rolling cache's
+   match-the-sliding-window quality proves to degrade on long generations — a follow-up, not this cycle.
+3. **Proof of value, connectome:** the MaleCNS whole-brain ingest and the Shiu et al. reproduction, once
+   the owner provides the ~2 GB tables and a Brian2 reference.
+4. **Proof of value:** conditional diffusion training.
+5. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs > 1000) and a
+   reduced form for the convolution input gradient.
+6. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2; the `io.almostrealism.collect`
+   package split; the unbuilt PDSL research/education features; letting a trained model read the
+   platform's own *source*, the deepest self-understanding aim.
+
 ### 2026-11-02 — Document the neuron-level connectome simulation pipeline
 
 **Category:** Documentation
@@ -485,89 +573,22 @@ the resampling site's SAME kernel-bound concern were documented as evidenced fol
 over. This began the "make the whole attention family's backward pass honest" arc the 10-22 cycle
 finished.
 
-### 2026-10-19 — Make the self-hosted LM write a readable sentence about itself
+### 2026-10-19 — Make the self-hosted LM write a readable sentence about itself (condensed)
 
-**Category:** Proof of Value
-**Branch:** `project/plan-20261019-194959`
+**Category:** Proof of Value · **Branch:** `project/plan-20261019-194959` ·
 **Plan:** `PLAN-20261019-self-hosted-lm-nontrivial-generation.md` (since removed; see git history)
 
-#### What changed since last cycle
-
-The gradient-correctness plan landed (PR #675): the nondeterministic full-Jacobian weight gradient
-for the 256×64 output projection is fixed — the kernel hoisted parts of the flattened position into
-32-bit variables, so a hoisted row times a 1,048,512 stride overflowed where the inline 64-bit
-kernel index did not, and hoisted variables that refer to the kernel index now take a 64-bit type
-(`Expression.getDeclarationType`). `DenseVectorJacobianProductTest.outputProjection` now asserts the
-full-Jacobian gradient against the definition over several evaluations, and a new
-`ConvolutionJacobianGradientTest` checks the same class of path for convolution. The reference
-gradient the whole reduced-delta suite trusts is trustworthy again. That was the explicit
-prerequisite the 2026-10-18 entry set for the generation push.
-
-#### Category assessment (priority order)
-
-- **Documentation — excellent, and complete where it matters.** The internals corpus (38+ pages)
-  tells the whole story; `automatic-differentiation.md` and `training-a-language-model.md` are both
-  current, and the latter documents the failing generation honestly. `consult` finds no flagship
-  gap. The one standing low-priority item (the ONNX-pressure note) is owned by continuous QA. Moved
-  on.
-- **Code quality — strong and owned.** The continuous QA pipeline merges fixes daily and enforcement
-  is mechanical. The one standing minor item (`io.almostrealism.collect` split) is unchanged and not
-  a flagship. Moved on.
-- **Performance — no blocker.** The named lever two cycles spent (the matmul vector-Jacobian product)
-  landed and made a training step about ten times cheaper. The remaining perf item (a reduced form
-  for the weighted-sum `matmul` lowering, outputs wider than 1000) is real but blocks nothing and
-  ranks below cashing the proof-of-value milestone. Moved on.
-- **Proof of value — the category.** A known-failing generation assertion and a model that repeats a
-  single byte are precisely the concrete, falsifiable gaps this category exists to close.
-
-#### Why this task
-
-It is the honest completion of the milestone the LM track has been one step short of since
-September, now unblocked. The model beats its unigram baseline (4.194 vs 4.912 bits/byte over all 83
-held-out windows) but `CausalLanguageModelTest.trainOnDocumentation` still fails: greedy decoding of
-`"The computation graph is compiled to "` produces 96 spaces, and `assertNonTrivialGeneration` (which
-runs before the baseline assertion) rejects a single repeated byte.
-
-The investigation established, from source and the existing tests, that the collapse is the *model*,
-not the decoder: `slidingWindowGenerationMatchesFullForward` already proves the generator decodes
-exactly the full forward pass, and the run reaches a training loss near the bigram rate (~3.5) but a
-held-out loss of 4.19 — a weakly generalizing model asked to continue an unseen prompt collapses its
-argmax to the unconditional most-frequent byte (a space). So the honest fix is a better-generalizing
-model via recipe and scale, decoded exactly as the generator already decodes — not a change to what
-the test decodes with or asserts. The headroom is evidenced: a count-based bigram scores 3.78 and a
-trigram 3.07 on the held-out targets, so the corpus has a great deal left to model.
-
-Because this sits on a known-failing acceptance test, the plan is explicit that the only acceptable
-way to turn it green is a genuinely better model measured apples-to-apples. Weakening
-`assertNonTrivialGeneration` (greedy→sampled, lowering the distinct-byte bar), the baseline, the
-dimensions, `@TestDepth` or the timeout is out of bounds and would fail `test-integrity-check`. If
-honest effort within the memory/time budget cannot clear the greedy bar, the correct outcome is an
-evidenced finding for a revised plan, not a green test.
-
-#### Balance across categories
-
-The last two cycles went to the foundation (the autodiff page, then the reference-gradient fix),
-which is what made this milestone safe to attempt. This cycle cashes it: the first readable artifact
-of the self-understanding goal — the software writing a sentence about its own architecture. The
-foundation categories stay covered by continuous QA. It is a medium task bounded by the ~21-minute
-training run and runs on a macOS/Metal node.
-
-#### What comes next
-
-1. This plan, if approved: re-measure the documented run with the corrected reference gradient,
-   diagnose the greedy collapse with `ar-profile-analyzer`, sweep recipe then capacity (and batch > 1
-   only if it is a narrow change), turn the generation assertion green honestly or stop at an
-   evidenced finding, and rewrite the training doc's generation section from measurement.
-2. **Sampling quality and longer generation**: expose top-p (nucleus) through the sliding-window
-   generator — `sampleToken` already takes a top-p argument the generator hardcodes to 1.0 — and a
-   proper single-position KV-cache decode (needs the fused `qkv` split into Q/K/V views and the
-   rotary inputs derived from `rope_inv_freq`).
-3. **Scale**: batch > 1 in `scaledDotProductAttention` if deferred here, larger context/depth, and
-   the K/V gradient wiring still missing in `sequenceCrossAttention`, `TransformerResamplingFeatures`
-   and `DifferentialAttentionFeatures`.
-4. **Performance**: the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
-5. Still open: the ONNX-pressure doc note; the `io.almostrealism.collect` package split; letting a
-   trained model read the platform's own *source*, the deeper self-understanding aim.
+With the reference gradient trustworthy again (PR #675, below), this cycle cashed the milestone the LM
+track had been one step short of since September: the first readable artifact of the self-understanding
+goal. `trainOnDocumentation` beat its unigram baseline but failed `assertNonTrivialGeneration` —
+greedy decoding of a documentation prompt produced 96 spaces. The investigation established (from
+`slidingWindowGenerationMatchesFullForward` and the loss numbers) that the collapse was the *model*, not
+the decoder: a weakly generalizing model (held-out 4.19 vs training ~3.5) collapses its argmax to the
+most-frequent byte. The plan was explicit that the only acceptable fix was a genuinely
+better-generalizing model (recipe then scale), decoded exactly as the generator already does — weakening
+the assertion, baseline, dimensions, `@TestDepth` or timeout would fail `test-integrity-check`. It landed
+readable generation (PR #685) and rewrote the training doc's generation section from measurement. Its
+"what comes next" set the sampling-quality and KV-cache-decode steps the 10-25 → 10-29 cycles cashed.
 
 ### 2026-10-18 — Fix the nondeterministic full-Jacobian weight gradient for the output projection (condensed)
 
@@ -600,79 +621,33 @@ extension points and their order, `ExpressionMatrix`, `DefaultGradientPropagatio
 cells, and a "known limits" section naming the silent full-Jacobian fallback. That page was the
 explicit prerequisite for the 2026-10-18 correctness cycle.
 
-### 2026-10-09 — Compute matrix-multiply weight gradients without materializing the Jacobian (condensed)
+### Earlier (Sep–Oct 2026, condensed) — the self-hosted LM track from feasibility to readable generation
 
-**Category:** Performance (unblocking Proof of Value) · **Branch:** `project/plan-20261009-171224` ·
-**Plan:** `PLAN-20261009-matmul-weight-gradient-vjp.md` (since removed; see git history)
+The current self-hosted LM arc was set up by a run of cycles now fully cashed (plans since removed;
+see git history):
 
-The training doc itself named the lever: the generic backward pass formed each weight gradient from
-the operator's full Jacobian (~17 billion terms for the 256×64 output projection). The plan replaced
-that with a structure-aware vector-Jacobian product for the matrix-multiply family only, behind a
-capability check with a byte-identical fallback (the `feature/lora-gradients` history made a narrow
-scope mandatory). It landed as PR #628: a training step went from 3.6 s to 0.35 s and
-`trainOnDocumentation` beat its unigram baseline for the first time (4.194 vs 4.912 bits/byte). It
-also surfaced the full-Jacobian output-projection defect fixed on 2026-10-18.
-
-### 2026-10-05 — Make the self-hosted LM beat its unigram baseline and generate text (condensed)
-
-**Category:** Proof of Value · **Branch:** `project/plan-20261005-185050` ·
-**Plan:** `PLAN-20261005-self-hosted-lm-beat-baseline-and-generate.md` (since removed; see git history)
-
-After the from-scratch LM merged (PR #596) it still scored above its unigram baseline and had never
-produced a byte of text. This cycle built the generation path (`SlidingWindowAutoregressiveModel`,
-verified against a full forward pass) and all-window held-out scoring, and established that per-step
-backward cost — not the model or recipe — was what held the run at the unigram rate. That finding
-became the 2026-10-09 performance plan; the baseline and readable-generation milestones were cashed
-by PRs #628 and #685.
-
-### 2026-09-30 — Train a tiny byte-level causal transformer on the platform's own docs (condensed)
-
-**Category:** Proof of Value · **Branch:** `project/plan-20260930-180401` ·
-**Plan:** `PLAN-20260930-self-hosted-tiny-lm.md` (since removed; see git history)
-
-With the fine-tuning re-baseline done (PR #582) proving training feasible, this cycle turned "training is
-feasible" into "the platform trained a language model on itself" — the first concrete artifact of the
-self-understanding goal. The survey found performance no longer blocked a self-hosted LM; missing
-capability did. The platform had never trained a transformer from scratch, and the pieces next-token
-training needs were missing or unverified: full-sequence attention had no causal mask; `sequenceAttention`
-routed K/V through fixed buffers read as constants, so gradients reached only the Q slice (the defect the
-2026-10-21 cycle later finished for cross-attention, and the 2026-10-22 cycle for the differential lambda);
-there was no trainable embedding, no byte tokenizer, no text dataset; and `NegativeLogLikelihood.gradient`
-was unnormalized where `loss` averaged over rows (64× the gradient at context 64). The plan put the risky
-gradient checks first and added the missing primitives (causal sequence attention, trainable embedding,
-byte tokenizer, text dataset, the `1/rows` NLL normalization), all general and reused by every later
-LM-training step. It landed as PR #596; the baseline-beating and generation milestones it set up were
-cashed by the 2026-10-09 → 2026-10-19 cycles.
-
-### 2026-09-29 — Re-baseline LoRA fine-tuning backward-pass compile scaling (condensed)
-
-**Category:** Performance · **Branch:** `project/plan-20260929-043714` ·
-**Plan:** `PLAN-20260929-finetune-compile-scaling-rebaseline.md` (since removed; see git history)
-
-`FINE_TUNE_FAIL.md` (February 2026) declared production-scale LoRA fine-tuning **infeasible** on
-super-linear backward-pass compile time. By September two separate compile-time fronts had moved —
-the `ExplicitExpressionMatrix` cache work against `expressionCacheMatch` and the
-`feature/cl-profile-perf` kernel-series rebuild against `kernelSeries` (`convDeltaSmall`
-172 s → 1.15 s) — so the gating verdict was very likely stale in the pessimistic direction. The task
-re-measured the transformer backward pass with the existing `AggressiveFineTuningTest` harness
-against `master`, scoped tightly to measure → profile → re-baseline → name the next lever, staying
-clear of the in-flight `feature/lora-gradients` autodiff work to avoid the add/revert collision that
-has bitten this area. This re-baseline is what let the next cycle scope the first self-hosted
-training run against reality.
-
-### 2026-09-26 — Native Runtime Lifecycle Documentation (condensed; log restart)
-
-**Category:** Documentation · **Branch:** `project/plan-20260926-172935` ·
-**Plan:** `PLAN-20260926-native-runtime-lifecycle-docs.md` (since removed; see git history)
-
-This entry restarted the log (the prior log was deleted 2026-04-06 with a batch of resolved plans).
-Carried over, condensed: in **March 2026** the compilation-pipeline and ML-inference internals docs
-were planned and landed, TODO/FIXME work pivoted to individual fixes, and `docs/MODULE_REVIEW.md`
-deferred the `io.almostrealism.collect` split; from **April–September 2026** the project invested
-heavily in agent infrastructure (FlowTree, ar-manager, enforcement hooks, test-integrity), kernel
-correctness journals, audio/PDSL work, and the Stable Audio 3 / Qwen tracks. The task itself
-documented the back half of the execution story — what happens to a compiled kernel and the memory
-it reads after compilation — closing the most consequential remaining conceptual gap and completing
-the internals corpus from Producer to released memory. It named the next priorities as performance
-(compile-time/kernel reuse) and then a small self-hosted LM training run — the trajectory the
-cycles since have followed.
+- **2026-09-26 (log restart), native-runtime-lifecycle docs** (`project/plan-20260926-172935`, PR #562)
+  closed the back half of the execution story — what happens to a compiled kernel and its memory after
+  compilation — completing the internals corpus from Producer to released memory. It restarted this log
+  (the prior one was deleted 2026-04-06) and named performance then a self-hosted LM run as the next
+  priorities. (Context: March 2026 landed the compilation-pipeline and ML-inference internals docs and
+  deferred the `io.almostrealism.collect` split; April–September 2026 was heavy agent-infrastructure
+  investment — FlowTree, ar-manager, enforcement/test-integrity — plus the SA3 / Qwen tracks.)
+- **2026-09-29, LoRA fine-tune compile re-baseline** (`project/plan-20260929-043714`) overturned
+  `FINE_TUNE_FAIL.md`'s February "infeasible" verdict, which two compile-time fronts had made stale, and
+  measured the transformer backward pass against reality so the next cycle could scope a training run.
+- **2026-09-30, train a tiny byte-level causal transformer from scratch** (`project/plan-20260930-180401`,
+  PR #596) turned "training is feasible" into the first self-understanding artifact. The blocker was
+  missing capability, not performance: it added causal sequence attention, a trainable embedding, a byte
+  tokenizer, a text dataset and the `1/rows` NLL normalization — all general and reused since — and
+  surfaced the K/V-gradient-through-fixed-buffers defect the 10-21/10-22 cycles later finished.
+- **2026-10-05, beat the unigram baseline and generate** (`project/plan-20261005-185050`) built the
+  generation path (`SlidingWindowAutoregressiveModel`, verified against a full forward pass) and
+  established that per-step backward cost — not the model — held the run at the unigram rate, which
+  became the 2026-10-09 performance plan.
+- **2026-10-09, matmul weight-gradient VJP** (`project/plan-20261009-171224`, PR #628) replaced the
+  full-Jacobian weight gradient (~17 billion terms for the 256×64 output projection) with a
+  structure-aware vector-Jacobian product behind a capability check with a byte-identical fallback: a
+  training step went 3.6 s → 0.35 s and `trainOnDocumentation` beat its unigram baseline for the first
+  time (4.194 vs 4.912 bits/byte). It also surfaced the full-Jacobian output-projection defect the
+  2026-10-18 cycle fixed.

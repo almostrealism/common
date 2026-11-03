@@ -18,7 +18,6 @@ package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.layers.ParameterUpdate;
@@ -230,7 +229,6 @@ public final class CausalLanguageModel extends Model implements SequenceAttentio
 
 		for (int i = 0; i < config.layerCount; i++) {
 			Map<String, Object> block = blockArguments(i);
-			block.put("inv_freq", weights.get(INV_FREQ_KEY));
 			block.put("padding_mask", everyPositionValid(1, config.seqLen));
 			block.put("key_mask", everyPositionValid(1, config.seqLen));
 			add(buildLayer("causal_lm_block", blockShape, block));
@@ -258,13 +256,15 @@ public final class CausalLanguageModel extends Model implements SequenceAttentio
 
 	/**
 	 * Binds the weights of one block, which both block layers of {@link #CAUSAL_LM_ASSET} take: the
-	 * full-window {@code causal_lm_block} and the single-position {@code causal_lm_decode_block}.
+	 * full-window {@code causal_lm_block} and the single-position {@code causal_lm_decode_block}. Both
+	 * rotate from the shared {@link #INV_FREQ_KEY rotary inverse frequencies}.
 	 *
 	 * @param layer the block index
 	 * @return the bindings, to be completed with the arguments of one of the two block layers
 	 */
 	private Map<String, Object> blockArguments(int layer) {
 		Map<String, Object> args = new HashMap<>();
+		args.put("inv_freq", weights.get(INV_FREQ_KEY));
 		args.put("attention_norm", weights.get(config.layerKey(layer, "attention_norm")));
 		args.put("qkv", weights.get(config.layerKey(layer, "qkv")));
 		args.put("wo", weights.get(config.layerKey(layer, "wo")));
@@ -304,10 +304,20 @@ public final class CausalLanguageModel extends Model implements SequenceAttentio
 	 * attention. The attention weights are the same: the decode block reads the fused {@code qkv}
 	 * {@code (3 * dim, dim)} weight as three contiguous {@code (dim, dim)} query, key and value views
 	 * without a copy (section 0 is the query, 1 the key, 2 the value, as the full-window attention
-	 * slices it), and the position-indexed rotary frequencies are derived from the stored
-	 * {@link #INV_FREQ_KEY rotary inverse frequencies} with
-	 * {@link #computeRopeFreqs(int, PackedCollection)}, which produces exactly the rotation the
-	 * full-sequence path applies at the same row, so greedy decoding agrees with the full forward.</p>
+	 * slices it), and queries and keys are rotated at their position by angles computed from the
+	 * stored {@link #INV_FREQ_KEY rotary inverse frequencies} (see {@link #ropeRotation}), exactly the
+	 * rotation the full-sequence path applies at the same row, so greedy decoding agrees with the full
+	 * forward.</p>
+	 *
+	 * <p>The variant decodes any position, not only the first {@code seqLen}. Each cache holds
+	 * {@code seqLen} rows written as a ring, at row {@code position mod seqLen}, so past
+	 * {@code seqLen} each block attends to the keys and values of the most recent {@code seqLen}
+	 * positions; the rotation is computed from the position rather than read from a table, so it has
+	 * no bound; and the causal mask masks nothing once every row is filled. Keys stay rotated at the
+	 * absolute position they were written at, which is correct because rotary attention scores depend
+	 * only on the distance between the query and key positions. Whether a generator decodes past
+	 * {@code seqLen} is the generator's choice: {@link KeyValueCacheAutoregressiveModel} stops there,
+	 * {@link SlidingKeyValueCacheAutoregressiveModel} rolls on.</p>
 	 *
 	 * <p>The returned model is <em>not</em> compiled; the caller compiles and owns it. No weights are
 	 * copied: the variant is built over this model's {@link StateDictionary}, which stays the caller's,
@@ -342,7 +352,6 @@ public final class CausalLanguageModel extends Model implements SequenceAttentio
 			throw new IllegalArgumentException("cache lists must be empty");
 		}
 
-		CollectionProducer freqCis = computeRopeFreqs(config.seqLen, weights.get(INV_FREQ_KEY));
 		TraversalPolicy tokenShape = shape(1, config.dim);
 
 		Model model = new Model(tokenShape);
@@ -356,7 +365,6 @@ public final class CausalLanguageModel extends Model implements SequenceAttentio
 			valueCaches.add(valueCache);
 
 			Map<String, Object> block = blockArguments(i);
-			block.put("freq_cis", freqCis);
 			block.put("position", p(position));
 			block.put("key_cache", keyCache);
 			block.put("value_cache", valueCache);

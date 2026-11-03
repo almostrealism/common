@@ -26,9 +26,11 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -64,7 +66,12 @@ import java.util.stream.IntStream;
  * required} for its whole pass when one is available (see {@link #requireAccelerator}); the sliding
  * window is compiled without requirements.</p>
  *
- * <p>A second test continues the same prompt through the cache path greedily and with nucleus (top-p)
+ * <p>A second measurement runs the same comparison three times past the context length against the
+ * {@link SlidingKeyValueCacheAutoregressiveModel rolling key/value cache}, which decodes past
+ * {@code seqLen} where the bounded cache stops, and writes its profile to
+ * {@code results/causal_lm_long_decode_throughput.xml}.</p>
+ *
+ * <p>Another test continues the same prompt through the cache path greedily and with nucleus (top-p)
  * sampling, showing that the two sampling modes compose with the cache. Over random weights the
  * continuations are not prose; generation quality is owned by {@code trainOnDocumentation}.</p>
  */
@@ -81,6 +88,9 @@ public class CausalLanguageModelDecodeThroughputTest extends TestSuiteBase {
 	/** Number of commit-forcing operations logged per generator. */
 	private static final int LOGGED_COMMIT_CAUSES = 8;
 
+	/** Length of the long-run decode, in context lengths: long enough for the rolling caches to wrap twice. */
+	private static final int LONG_RUN_CONTEXTS = 3;
+
 	/** Wall-clock and work counts of one generator's measured decoding. */
 	private record Measurement(int[] continuation, double bytesPerSecond, double runsPerByte,
 							   double dispatchesPerByte, double commitsPerByte) { }
@@ -95,37 +105,98 @@ public class CausalLanguageModelDecodeThroughputTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 20 * 60000)
 	public void keyValueCacheDecodeThroughput() throws IOException {
-		int repeats = Integer.parseInt(System.getProperty("AR_PROFILE_DECODES", "3"));
 		int[] prompt = new ByteTokenizer().encodeAsInt(CausalLanguageModelTest.GENERATION_PROMPT);
-		int length = CausalLanguageModelTest.SEQ_LEN - prompt.length;
+		Measurement[] measured = assertFewerKernelsThanSlidingWindow("causal_lm_decode_throughput",
+				"keyValueCache", prompt, CausalLanguageModelTest.SEQ_LEN - prompt.length,
+				lm -> new KeyValueCacheAutoregressiveModel(lm, null));
+
+		Assert.assertArrayEquals("the two decode paths disagree on the greedy continuation",
+				measured[0].continuation(), measured[1].continuation());
+	}
+
+	/**
+	 * Decodes the same prompt to {@link #LONG_RUN_CONTEXTS} times the context length with the sliding
+	 * window and the {@link SlidingKeyValueCacheAutoregressiveModel rolling key/value cache}, the
+	 * long-form generation the bounded cache cannot reach: past {@code seqLen} the sliding window pays a
+	 * full {@code (seqLen, vocabSize)} forward pass per byte and the rolling cache one position. It
+	 * reports throughput and work per byte for each and the rolling cache's speedup, and requires the
+	 * kernels of each to have been profiled and the rolling cache to invoke fewer kernels per byte.
+	 *
+	 * <p>Within the context both paths decode the full forward pass, so their continuations must agree
+	 * there. Whether they agree past {@code seqLen} is reported, not asserted. This model has two
+	 * blocks, and past {@code seqLen} the rolling cache keeps the second block's keys and values of each
+	 * retained token as that token was decoded, while the sliding window recomputes them over its
+	 * current window only; the two are the same decode only for a single block, which
+	 * {@code SlidingKeyValueCacheAutoregressiveModelTest} pins.</p>
+	 *
+	 * @throws IOException if the profile cannot be written
+	 */
+	@Test(timeout = 20 * 60000)
+	public void slidingKeyValueCacheLongDecodeThroughput() throws IOException {
+		int[] prompt = new ByteTokenizer().encodeAsInt(CausalLanguageModelTest.GENERATION_PROMPT);
+		Measurement[] measured = assertFewerKernelsThanSlidingWindow("causal_lm_long_decode_throughput",
+				"slidingKeyValueCache", prompt,
+				LONG_RUN_CONTEXTS * CausalLanguageModelTest.SEQ_LEN - prompt.length,
+				lm -> new SlidingKeyValueCacheAutoregressiveModel(lm, null));
+
+		int[] window = measured[0].continuation();
+		int[] rolling = measured[1].continuation();
+		int withinContext = CausalLanguageModelTest.SEQ_LEN - prompt.length;
+		Assert.assertArrayEquals("within the context both paths decode the full forward pass",
+				Arrays.copyOf(window, withinContext), Arrays.copyOf(rolling, withinContext));
+
+		int agreeing = (int) IntStream.range(0, window.length).filter(i -> window[i] == rolling[i]).count();
+		int firstDisagreement = IntStream.range(0, window.length)
+				.filter(i -> window[i] != rolling[i]).findFirst().orElse(-1);
+		log("agreeingTokens=" + agreeing + " of " + window.length
+				+ " firstDisagreement=" + firstDisagreement);
+	}
+
+	/**
+	 * Measures the sliding window and a key/value-cache generator decoding the same prompt over one model
+	 * of the documentation-trained configuration, logs the cache's speedup and its kernel-invocation
+	 * and dispatch ratios, writes the profile to {@code results/<profileName>.xml}, and requires both
+	 * paths' kernels to have been profiled and the cache path to invoke strictly fewer kernels per byte.
+	 *
+	 * @param profileName the name of the profile and of the file it is written to
+	 * @param cacheName   the label of the cache generator in the log
+	 * @param prompt      the prompt tokens
+	 * @param length      the number of tokens to generate after the prompt
+	 * @param cache       creates the cache generator over a model that requires the accelerator when
+	 *                    one is available
+	 * @return the sliding window's measurement followed by the cache generator's
+	 * @throws IOException if the profile cannot be written
+	 */
+	private Measurement[] assertFewerKernelsThanSlidingWindow(
+			String profileName, String cacheName, int[] prompt, int length,
+			Function<CausalLanguageModel, AutoregressiveModel<Integer>> cache) throws IOException {
+		int repeats = Integer.parseInt(System.getProperty("AR_PROFILE_DECODES", "3"));
 		CausalLanguageModel lm = newModel();
 
-		OperationProfileNode profile = new OperationProfileNode("causalLanguageModelDecode");
+		OperationProfileNode profile = new OperationProfileNode(profileName);
 		Hardware.getLocalHardware().assignProfile(profile);
 
 		try {
 			Measurement sliding = measure("slidingWindow", profile, prompt, length, repeats,
 					() -> new SlidingWindowAutoregressiveModel(
 							new CausalLanguageModel(lm.getConfig(), lm.getWeights()), null));
-			Measurement cache = measure("keyValueCache", profile, prompt, length, repeats,
-					() -> new KeyValueCacheAutoregressiveModel(
-							requireAccelerator(new CausalLanguageModel(lm.getConfig(), lm.getWeights())), null));
+			Measurement cached = measure(cacheName, profile, prompt, length, repeats,
+					() -> cache.apply(requireAccelerator(new CausalLanguageModel(lm.getConfig(), lm.getWeights()))));
 
-			log("speedup=" + cache.bytesPerSecond() / sliding.bytesPerSecond()
-					+ " runsPerByteRatio=" + sliding.runsPerByte() / cache.runsPerByte()
-					+ " dispatchesPerByteRatio=" + sliding.dispatchesPerByte() / cache.dispatchesPerByte());
+			log("speedup=" + cached.bytesPerSecond() / sliding.bytesPerSecond()
+					+ " runsPerByteRatio=" + sliding.runsPerByte() / cached.runsPerByte()
+					+ " dispatchesPerByteRatio=" + sliding.dispatchesPerByte() / cached.dispatchesPerByte());
 
-			Assert.assertArrayEquals("the two decode paths disagree on the greedy continuation",
-					sliding.continuation(), cache.continuation());
 			Assert.assertTrue("no sliding-window kernel invocations were profiled", sliding.runsPerByte() > 0);
-			Assert.assertTrue("no key/value-cache kernel invocations were profiled", cache.runsPerByte() > 0);
-			Assert.assertTrue("the key/value-cache decode invokes " + cache.runsPerByte()
+			Assert.assertTrue("no " + cacheName + " kernel invocations were profiled", cached.runsPerByte() > 0);
+			Assert.assertTrue("the " + cacheName + " decode invokes " + cached.runsPerByte()
 							+ " kernels per byte, not fewer than the sliding window's " + sliding.runsPerByte(),
-					cache.runsPerByte() < sliding.runsPerByte());
+					cached.runsPerByte() < sliding.runsPerByte());
+			return new Measurement[] { sliding, cached };
 		} finally {
 			Hardware.getLocalHardware().clearProfile();
 			lm.getWeights().destroy();
-			profile.save("results/causal_lm_decode_throughput.xml");
+			profile.save("results/" + profileName + ".xml");
 		}
 	}
 
