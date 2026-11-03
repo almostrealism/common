@@ -439,6 +439,28 @@ def convert(dataset, output, min_count, source_sums, command):
     return metadata
 
 
+def read_neurons(directory):
+    """Reads the neuron table of a converted connectome.
+
+    Args:
+        directory: a directory written by ``convert``.
+
+    Returns:
+        ``(body_ids, annotations)``: an int64 numpy array of the body id of
+        each neuron in index order, and a list of ``(type, superclass, class,
+        transmitter)`` per neuron, as ``Dataset`` holds them.
+    """
+    import numpy as np
+
+    with open(os.path.join(directory, NEURONS_OUTPUT)) as table:
+        header = table.readline().rstrip("\n").split("\t")
+        if tuple(header) != NEURON_COLUMNS:
+            raise ValueError("%s has columns %s, expected %s" % (NEURONS_OUTPUT, header, NEURON_COLUMNS))
+        rows = [line.rstrip("\n").split("\t") for line in table if line.strip()]
+    return (np.array([int(row[0]) for row in rows], dtype=np.int64),
+            [tuple(row[1:]) for row in rows])
+
+
 def main(argv=None):
     """Runs the conversion."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])

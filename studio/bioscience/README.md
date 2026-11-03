@@ -49,8 +49,10 @@ This module exists to:
   references the network is checked against: `synthetic` runs the model's equations on a converted
   connectome under a seeded kick schedule (the committed fixture under
   `src/test/resources/connectome/synthetic-brian2`), `circuit` cuts the sugar circuit out of
-  FlyWire 630 and runs it the same way (both fixtures below), and `sugar` runs the authors' own
-  model for the sugar experiment and writes the mean rate of every neuron. A kick-schedule
+  FlyWire 630 and runs it the same way (both fixtures below), `sugar` runs the authors' own
+  model for the sugar experiment and writes the mean rate of every neuron, and `experiment` runs
+  the same unchanged model on any converted connectome (MaleCNS, for example), driving the neurons
+  named by body id or cell type, and writes the same outputs. A kick-schedule
   reference stores the kicks and the spikes as `(step, neuron)` events. Brian2 is needed only for
   these runs. Their dependencies are listed in `scripts/requirements.txt`. They are tested by
   `scripts/test_male_cns.py` (standard library only) and `scripts/test_connectome_csr.py` (needs
@@ -116,8 +118,8 @@ reference with:
         --connectome-output src/test/resources/connectome/sugar-circuit \
         --output src/test/resources/connectome/sugar-circuit-brian2
 
-`ConnectomeNetworkDatasetTest` runs the sugar experiment (30 trials of 1 s) on FlyWire 630 and
-requires agreement with the Brian2 rates within the spread of two independent Brian2 runs: MN9
+`ConnectomeNetworkDatasetTest` runs the sugar experiment (30 trials of 1 s, as 30 replicas in one
+pass) on FlyWire 630 and requires agreement with the Brian2 rates within the spread of two independent Brian2 runs: MN9
 within 5%, a median relative difference of at most 3% and a 90th percentile of at most 8% over
 neurons above 10 Hz, and at least 48 of the 50 fastest neurons in common.
 

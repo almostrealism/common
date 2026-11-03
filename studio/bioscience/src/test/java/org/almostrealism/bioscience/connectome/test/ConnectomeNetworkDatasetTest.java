@@ -37,7 +37,7 @@ import java.util.stream.IntStream;
 /**
  * The sugar-sensing experiment of Shiu et al. (2024) on the FlyWire 630 connectome, compared with
  * the authors' Brian2 model. Poisson input drives the 21 sugar gustatory receptor neurons for
- * 1 s, 30 trials (five passes of six replicas); the mean rate of every neuron must agree with the reference written by
+ * 1 s, 30 trials (one pass of 30 replicas); the mean rate of every neuron must agree with the reference written by
  * {@code brian2_reference.py sugar} within the spread of two independent Brian2 runs:
  * <ul>
  *   <li>MN9, the proboscis motor neuron the experiment is known for, within 5%;</li>
@@ -75,11 +75,11 @@ public class ConnectomeNetworkDatasetTest extends NeuronConnectomeChecks {
 	/** The number of trials of the experiment. */
 	public static final int TRIALS = 30;
 
-	/**
-	 * The number of trials simulated at once: the most replicas of FlyWire 630 whose delay line
-	 * fits {@link ConnectomeNetwork#DELAY_LINE_LIMIT}, and a divisor of {@link #TRIALS}.
-	 */
-	public static final int REPLICAS = 6;
+	/** The number of trials simulated at once: every trial of the experiment in one pass. */
+	public static final int REPLICAS = TRIALS;
+
+	/** The number of steps of the replica comparison. */
+	public static final int REPLICA_STEPS = 400;
 
 	/** The number of steps of one trial: 1 s. */
 	public static final int STEPS = 10000;
@@ -118,6 +118,51 @@ public class ConnectomeNetworkDatasetTest extends NeuronConnectomeChecks {
 	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
 	public void sugar200Hz() throws IOException {
 		assertSugarMatchesBrian2(200);
+	}
+
+	/**
+	 * Replica 0 of a network of {@link #REPLICAS} replicas of FlyWire 630 under sugar input emits
+	 * exactly the spikes of a network of one replica. The two draw the same Poisson kicks for
+	 * replica 0, so any difference is replicas leaking into one another. The delay line of the
+	 * larger network holds 72.6M elements (logged), past the {@code 2^24} below which a single-precision
+	 * backend represents every integer, so this also requires the delay line to be addressed
+	 * exactly.
+	 */
+	@Test(timeout = 2400000)
+	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
+	public void replicasMatchOneReplica() throws IOException {
+		try (NeuronConnectome connectome = NeuronConnectome.load(flywire630())) {
+			int n = connectome.getNeuronCount();
+			double[] single = spikeCounts(connectome, 1);
+			double[] batch = spikeCounts(connectome, REPLICAS);
+
+			int active = (int) IntStream.range(0, n).filter(i -> single[i] > 0).count();
+			int[] differing = IntStream.range(0, n).filter(i -> single[i] != batch[i]).toArray();
+			log("activeNeurons=" + active + " differingNeurons=" + differing.length);
+			Assert.assertTrue("only " + active + " neurons fired", active > 100);
+			Assert.assertEquals("neurons whose replica-0 spike count differs from one replica's, first "
+					+ Arrays.toString(Arrays.copyOf(differing, Math.min(10, differing.length))), 0, differing.length);
+		}
+	}
+
+	/**
+	 * Runs {@link #REPLICA_STEPS} steps of sugar input at 200 Hz on a network of a number of
+	 * replicas and returns the spike counts of the neurons of replica 0.
+	 *
+	 * @param connectome the connectome
+	 * @param replicas   the number of replicas
+	 * @return the spike count of each neuron of replica 0
+	 */
+	private double[] spikeCounts(NeuronConnectome connectome, int replicas) {
+		int n = connectome.getNeuronCount();
+		ConnectomeNetwork network = new ConnectomeNetwork(connectome, replicas, 200.0, 0,
+				connectome.indicesOf(SUGAR));
+		log("replicas=" + replicas + " delayLineElements=" + network.getRing().getShape().getTotalSizeLong());
+		network.getRunner().run(REPLICA_STEPS);
+		double[] counts = Arrays.copyOf(network.getNeurons().getSpikeCounts().toArray(), n);
+		network.destroy();
+		return counts;
 	}
 
 	/** The same input to 21 neurons spread evenly over the connectome leaves MN9 silent. */

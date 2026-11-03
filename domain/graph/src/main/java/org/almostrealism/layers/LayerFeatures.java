@@ -729,14 +729,13 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 					+ " does not fill one row of " + cacheShape);
 		}
 
-		CollectionProducer offset = c(position).multiply(c((double) rowSize));
 		String name = "cacheWrite-" + rows + "x" + rowSize;
 		return new DefaultBlock(inputShape, inputShape,
 				Cell.of((in, next) -> {
 					OperationList ops = new OperationList(name);
 					ops.add(into(name,
-							new CollectionSlotUpdateComputation(cacheShape, 1, rows * rowSize, rowSize,
-									cache, c(in).reshape(shape(rowSize)), offset),
+							new CollectionSlotUpdateComputation(cacheShape, 1, rows * rowSize, rowSize, rowSize,
+									cache, c(in).reshape(shape(rowSize)), position),
 							cache, false));
 					ops.add(next.push(in));
 					return ops;
@@ -769,9 +768,8 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 
 		int rows = cacheShape.length(0);
 		int rowSize = cacheShape.length(1);
-		CollectionProducer index = integers(0, rowSize).add(c(position).multiply(c((double) rowSize)));
 		return layer("cacheRead-" + rows + "x" + rowSize, inputShape, shape(rowSize),
-				input -> c(shape(rowSize), cache.reshape(shape(rows * rowSize)), index));
+				input -> rows(shape(rowSize), cache, position));
 	}
 
 	/**

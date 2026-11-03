@@ -21,6 +21,8 @@ from test_connectome_csr import (  # noqa: E402,F401
     CompressedRowsTest,
     EventsTest,
     KickScheduleTest,
+    ModelInputsTest,
+    NeuronTableTest,
     SafetensorsRoundTripTest,
     SubsetTest,
     SyntheticConversionTest,

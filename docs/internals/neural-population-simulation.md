@@ -411,15 +411,13 @@ A `Recording` write is a slot update over the whole buffer, so each write costs 
 to `capacity * width` (`SimulationRunner.Recording` Javadoc). Recording a `width`-element vector
 every step for `n` steps needs `capacity = n`, so the total cost is `O(n^2 * width)`. The example's
 raster is 2,000 x 8 = 16,000 elements per write: harmless. Recording 166,000 spikes every step
-for 10,000 steps would be 1.66 x 10^9 elements per write, and that also breaks a second limit.
-On FP32 backends a recording computes its write position `index * width` exactly only while
-`capacity * width` stays within 2^24 (16,777,216). A larger recording writes to the wrong rows
-**without an error**.
+for 10,000 steps would be 1.66 x 10^9 elements per write, and a buffer of that size. (The write
+position `index * width` is formed on integers in the kernel, so a recording larger than 2^24
+elements is still written to the right rows.)
 
 For long runs, record at an interval (`record(selected, interval, capacity)` with
 `capacity = n / interval`) or record a reduced quantity, for example a per-step spike count
-(`cp(pop.getSpikes()).sum()`, width 1) or a subset of the neurons, and keep
-`capacity * width` below 2^24.
+(`cp(pop.getSpikes()).sum()`, width 1) or a subset of the neurons.
 
 ---
 
@@ -462,8 +460,8 @@ matrix. Use the spiking population when spike timing, refractoriness or delays m
 - **2^24 bounds on FP32 backends.** These are the bound on the `CounterRandom` seed
   (`CounterRandom.SEED_LIMIT`) and counter (the `CounterRandom` class Javadoc), the bound on the
   `SimulationRunner` step counter (the `SimulationRunner` class Javadoc, "Step counter
-  precision"), and the bound on a `Recording`'s `capacity * width`. At `dt = 0.1 ms`, 2^24 steps
-  are about 28 simulated minutes.
+  precision"). At `dt = 0.1 ms`, 2^24 steps are about 28 simulated minutes. The ring buffer and
+  a `Recording` are addressed by row on integers in the kernel, so neither is bounded this way.
 - **No Brian2 parity yet.** Spike-for-spike parity against a Brian2 reference raster has not been
   established. The `LeakyIntegrateAndFirePopulationTest` class Javadoc says so.
 - **The population is not a `Temporal`, `Setup` or `Lifecycle`.** `SimulationRunner.reset()` resets

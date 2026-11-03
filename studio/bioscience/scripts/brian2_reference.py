@@ -26,8 +26,16 @@ checked against Brian2, the simulator the model was written for:
     mean rate of every neuron in the order of the converted FlyWire connectome
     (the authors' completeness order), and a manifest.
 
-Brian2 (and, for ``circuit`` and ``sugar``, pandas and pyarrow, and for
-``sugar`` joblib) must be installed;
+``experiment``
+    Runs the same ``model.run_exp`` unchanged on any converted connectome (for
+    example MaleCNS): writes the connectome as the two tables the authors'
+    model reads, a neuron table indexed by body id and a connectivity table of
+    presynaptic index, postsynaptic index and signed synapse count, then drives
+    the neurons named by body id or by cell type with Poisson input. Writes
+    the same outputs as ``sugar``, rates in the connectome's index order.
+
+Brian2 (and, for ``circuit``, ``sugar`` and ``experiment``, pandas and
+pyarrow, and for ``sugar`` and ``experiment`` joblib) must be installed;
 they are not in requirements.txt because only these reference runs need them.
 
 Usage:
@@ -36,12 +44,16 @@ Usage:
         --connectome-output <dir> --output <dir>
     brian2_reference.py sugar --repo <model repo> --snapshot 630 --rate 150 \\
         --trials 30 --processes 8 --output <dir>
+    brian2_reference.py experiment --repo <model repo> --connectome <csr dir> \\
+        --name <name> --stimulate-types LB3a,LB3b --rate 150 --trials 30 \\
+        --processes 8 --output <dir>
 """
 
 import argparse
 import json
 import os
 import sys
+import tempfile
 
 import numpy as np
 
@@ -77,6 +89,8 @@ KICKS_OUTPUT = "kicks.safetensors"
 SPIKES_OUTPUT = "spikes.safetensors"
 RATES_OUTPUT = "rates.safetensors"
 MANIFEST_OUTPUT = "manifest.json"
+NEURONS_INPUT = "neurons.csv"
+CONNECTIVITY_INPUT = "connectivity.parquet"
 
 
 def kick_schedule(neurons, driven, steps, rate_hz, seed):
@@ -109,6 +123,63 @@ def compressed_steps(array):
     offsets = np.zeros(array.shape[0] + 1, dtype=np.int64)
     np.cumsum(np.bincount(steps, minlength=array.shape[0]), out=offsets[1:])
     return offsets, neurons.astype(np.int64), array[steps, neurons]
+
+
+def connectivity(connectome):
+    """Returns the edges of a converted connectome as three int64 arrays: the
+    presynaptic index, the postsynaptic index and the signed synapse count of
+    each edge, in the order of its compressed rows."""
+    offsets = connectome["row_offsets"].astype(np.int64)
+    post = np.repeat(np.arange(len(offsets) - 1), np.diff(offsets))
+    return connectome["presynaptic"].astype(np.int64), post, connectome["weights"].astype(np.int64)
+
+
+def stimulated_indices(body_ids, annotations, ids=(), types=()):
+    """Returns the sorted indices of the neurons named by body id or by cell
+    type.
+
+    Args:
+        body_ids: the body id of each neuron, in index order.
+        annotations: ``(type, superclass, class, transmitter)`` per neuron.
+        ids: body ids of neurons to include.
+        types: cell types whose every neuron is included.
+
+    Raises:
+        SystemExit: if a body id or a type names no neuron, or nothing is named.
+    """
+    index = {int(b): i for i, b in enumerate(body_ids)}
+    missing = [b for b in ids if int(b) not in index]
+    if missing:
+        raise SystemExit("body ids not in the connectome: %s" % missing)
+    present = {a[0] for a in annotations}
+    unknown = [t for t in types if t not in present]
+    if unknown:
+        raise SystemExit("cell types not in the connectome: %s" % unknown)
+    chosen = {index[int(b)] for b in ids} | {i for i, a in enumerate(annotations) if a[0] in types}
+    if not chosen:
+        raise SystemExit("no neuron is stimulated: name body ids or cell types")
+    return sorted(chosen)
+
+
+def write_model_inputs(directory, body_ids, connectome):
+    """Writes a converted connectome as the two tables the authors' model
+    reads: ``neurons.csv``, indexed by body id in index order (the model's
+    neuron index), and ``connectivity.parquet`` with the presynaptic index,
+    postsynaptic index and signed synapse count of every edge.
+
+    Returns:
+        The paths of the neuron table and of the connectivity table.
+    """
+    import pandas as pd
+
+    neurons_path = os.path.join(directory, NEURONS_INPUT)
+    connectivity_path = os.path.join(directory, CONNECTIVITY_INPUT)
+    pd.DataFrame({"Completed": True}, index=pd.Index(body_ids, name="")).to_csv(neurons_path)
+    pre, post, signed = connectivity(connectome)
+    pd.DataFrame({flywire.PRE_INDEX: pre, flywire.POST_INDEX: post,
+                  flywire.COUNT: np.abs(signed), flywire.EXCITATORY + " x " + flywire.COUNT: signed}
+                 ).to_parquet(connectivity_path)
+    return neurons_path, connectivity_path
 
 
 def run_kicks(connectome, drive, driven, synapse_mv):
@@ -145,11 +216,10 @@ def run_kicks(connectome, drive, driven, synapse_mv):
     neurons.rfc = 2.2 * ms
     neurons.rfc[list(driven)] = 0 * ms
 
-    offsets = connectome["row_offsets"].astype(np.int64)
-    post = np.repeat(np.arange(n), np.diff(offsets))
+    pre, post, signed = connectivity(connectome)
     synapses = Synapses(neurons, neurons, "w : volt", on_pre="g += w", delay=1.8 * ms)
-    synapses.connect(i=connectome["presynaptic"].astype(np.int64), j=post)
-    synapses.w = connectome["weights"].astype(np.float64) * synapse_mv * mV
+    synapses.connect(i=pre, j=post)
+    synapses.w = signed.astype(np.float64) * synapse_mv * mV
 
     kick_steps, kick_neurons = np.nonzero(drive)
     generator = SpikeGeneratorGroup(n, kick_neurons, kick_steps * DT_MS * ms)
@@ -248,43 +318,89 @@ def circuit_command(args):
     print("%d neurons, %d spikes over %d steps" % (len(circuit.body_ids), spikes.sum(), args.steps))
 
 
-def sugar_command(args):
+def run_model(args, name, stimulated, path_comp, path_con, manifest):
+    """Runs the authors' ``model.run_exp`` unchanged with Poisson input to some
+    neurons, then writes the mean rate of every neuron in the order of the
+    neuron table and a manifest.
+
+    Args:
+        args: the parsed arguments: ``repo``, ``rate``, ``trials``,
+            ``processes``, ``output`` and an optional ``synapse_weight``.
+        name: the experiment name, which names the spike table.
+        stimulated: the body ids of the neurons driven by Poisson input.
+        path_comp: the neuron table, indexed by body id.
+        path_con: the connectivity table.
+        manifest: entries the manifest records besides the run's own.
+    """
     import pandas as pd
-    from brian2 import Hz
+    from brian2 import Hz, mV
 
     sys.path.insert(0, args.repo)
     import model
 
-    neurons_file, connectivity_file = flywire.SNAPSHOTS[args.snapshot]
-    name = "sugarR_%s_%gHz" % (args.snapshot, args.rate)
     params = dict(model.default_params)
     params["r_poi"] = args.rate * Hz
     params["n_run"] = args.trials
+    if getattr(args, "synapse_weight", None) is not None:
+        params["w_syn"] = args.synapse_weight * mV
     os.makedirs(args.output, exist_ok=True)
-    model.run_exp(exp_name=name, neu_exc=list(SUGAR_NEURONS), path_res=args.output,
-                  path_comp=os.path.join(args.repo, neurons_file),
-                  path_con=os.path.join(args.repo, connectivity_file),
+    model.run_exp(exp_name=name, neu_exc=list(stimulated), path_res=args.output,
+                  path_comp=path_comp, path_con=path_con,
                   params=params, n_proc=args.processes, force_overwrite=True)
 
-    order = pd.read_csv(os.path.join(args.repo, neurons_file), index_col=0).index
+    order = pd.read_csv(path_comp, index_col=0).index
     spikes = pd.read_parquet(os.path.join(args.output, name + ".parquet"))
     duration_s = float(params["t_run"] / model.ms) * 1e-3
     counts = spikes.groupby("flywire_id").size().reindex(order, fill_value=0)
     rates = counts.to_numpy(dtype=np.float64) / args.trials / duration_s
+    synapse_mv = float(params["w_syn"] / mV)
     male_cns.write_safetensors(os.path.join(args.output, RATES_OUTPUT), [("rates", "F32", rates)])
-    write_manifest(args.output, {
+    write_manifest(args.output, dict(manifest, **{
         "experiment": name,
-        "snapshot": args.snapshot,
         "rate_hz": args.rate,
         "trials": args.trials,
         "duration_s": duration_s,
-        "stimulated": [str(i) for i in SUGAR_NEURONS],
-        "stimulated_indices": [int(order.get_loc(i)) for i in SUGAR_NEURONS],
+        "synapse_mv": synapse_mv,
+        "poisson_kick_mv": synapse_mv * params["f_poi"],
+        "stimulated": [str(i) for i in stimulated],
+        "stimulated_indices": [int(order.get_loc(i)) for i in stimulated],
         "neurons": len(order),
-        "source_sha256": {f: male_cns.sha256(os.path.join(args.repo, f))
-                          for f in (neurons_file, connectivity_file, "model.py")},
-    })
+    }))
     print("%s: %d neurons active, mean active rate %.2f Hz" % (name, (rates > 0).sum(), rates[rates > 0].mean()))
+
+
+def sugar_command(args):
+    neurons_file, connectivity_file = flywire.SNAPSHOTS[args.snapshot]
+    run_model(args, "sugarR_%s_%gHz" % (args.snapshot, args.rate), SUGAR_NEURONS,
+              os.path.join(args.repo, neurons_file), os.path.join(args.repo, connectivity_file), {
+                  "snapshot": args.snapshot,
+                  "source_sha256": {f: male_cns.sha256(os.path.join(args.repo, f))
+                                    for f in (neurons_file, connectivity_file, "model.py")},
+              })
+
+
+def experiment_command(args):
+    body_ids, annotations = connectome_csr.read_neurons(args.connectome)
+    ids = [int(i) for i in args.stimulate_ids.split(",")] if args.stimulate_ids else []
+    types = args.stimulate_types.split(",") if args.stimulate_types else []
+    indices = stimulated_indices(body_ids, annotations, ids, types)
+    connectome = male_cns.read_safetensors(os.path.join(args.connectome, connectome_csr.TENSORS_OUTPUT))
+    with open(os.path.join(args.connectome, connectome_csr.METADATA_OUTPUT)) as source:
+        dataset = json.load(source)["dataset"]
+
+    with tempfile.TemporaryDirectory() as inputs:
+        path_comp, path_con = write_model_inputs(inputs, body_ids, connectome)
+        run_model(args, args.name, [int(body_ids[i]) for i in indices], path_comp, path_con, {
+            "connectome": dataset,
+            "stimulated_types": types,
+            "source_sha256": {
+                connectome_csr.TENSORS_OUTPUT: male_cns.sha256(
+                    os.path.join(args.connectome, connectome_csr.TENSORS_OUTPUT)),
+                connectome_csr.NEURONS_OUTPUT: male_cns.sha256(
+                    os.path.join(args.connectome, connectome_csr.NEURONS_OUTPUT)),
+                "model.py": male_cns.sha256(os.path.join(args.repo, "model.py")),
+            },
+        })
 
 
 def main(argv=None):
@@ -315,6 +431,20 @@ def main(argv=None):
     sugar.add_argument("--processes", type=int, default=1)
     sugar.add_argument("--output", required=True)
     sugar.set_defaults(run=sugar_command)
+
+    experiment = commands.add_parser("experiment", help="the authors' model on a converted connectome")
+    experiment.add_argument("--repo", required=True, help="checkout of the authors' model repository")
+    experiment.add_argument("--connectome", required=True, help="a connectome_csr.py output directory")
+    experiment.add_argument("--name", required=True, help="the experiment name")
+    experiment.add_argument("--stimulate-ids", help="comma-separated body ids to drive")
+    experiment.add_argument("--stimulate-types", help="comma-separated cell types whose neurons to drive")
+    experiment.add_argument("--rate", type=float, default=150.0, help="Poisson rate in Hz")
+    experiment.add_argument("--trials", type=int, default=30)
+    experiment.add_argument("--synapse-weight", type=float,
+                            help="synaptic potential of one synapse in mV (default: the model's)")
+    experiment.add_argument("--processes", type=int, default=1)
+    experiment.add_argument("--output", required=True)
+    experiment.set_defaults(run=experiment_command)
 
     args = parser.parse_args(argv)
     args.run(args)

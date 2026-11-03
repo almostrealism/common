@@ -112,15 +112,6 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 	/** The membrane kick of one Poisson spike: 250 synapses' worth. */
 	public static final double POISSON_KICK = 250 * SYNAPSE_WEIGHT;
 
-	/**
-	 * The largest delay line, in elements, this network accepts. {@code cache_read} and
-	 * {@code cache_write} compute the element they address as {@code row * rowSize + i} in the
-	 * backend's floating point, which on an FP32 backend is exact only below 2^24; past it, spikes
-	 * are silently read from and written to neighbouring elements. This bounds the number of
-	 * replicas: six replicas of the 127,400 neurons of FlyWire 630 fit, ten do not.
-	 */
-	public static final long DELAY_LINE_LIMIT = 1L << 24;
-
 	/** The connectome, which belongs to the caller. */
 	private final NeuronConnectome connectome;
 
@@ -201,8 +192,7 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 	 * @param poissonRate the rate of the Poisson input to each stimulated neuron, in hertz
 	 * @param seed        the Poisson seed of the first trial
 	 * @param stimulated  the indices of the neurons driven by the Poisson input, possibly none
-	 * @throws IllegalArgumentException if there is no replica, or the delay line of the replicas
-	 *                                  would exceed {@link #DELAY_LINE_LIMIT}
+	 * @throws IllegalArgumentException if there is no replica
 	 */
 	public ConnectomeNetwork(NeuronConnectome connectome, PackedCollection drive,
 							 double synapseWeight, int replicas, double poissonRate, int seed,
@@ -214,12 +204,6 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 		int n = connectome.getNeuronCount();
 		int count = replicas * n;
 		int delaySteps = (int) ((DELAY + 1e-3 * DT) / DT);
-		if ((long) (delaySteps + 1) * count > DELAY_LINE_LIMIT) {
-			throw new IllegalArgumentException(replicas + " replicas of " + n + " neurons need a delay line of "
-					+ (long) (delaySteps + 1) * count + " elements, more than " + DELAY_LINE_LIMIT
-					+ " that can be addressed exactly");
-		}
-
 		this.connectome = connectome;
 		this.stimulated = stimulated.clone();
 		this.replicas = replicas;
@@ -268,7 +252,9 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 	 * Returns the row of a drive schedule that applies to the current step, row
 	 * {@code step mod rows}, for every replica. The schedule is read at logical positions, so a
 	 * schedule stored sparsely (a collection carrying a compressed-row ordering, one row per step)
-	 * is read through its ordering like a dense one.
+	 * is read through its ordering like a dense one. Each position is formed from the row and the
+	 * neuron on integers inside the kernel, so a schedule of more than {@code 2^24} positions (a
+	 * second of steps for a whole brain) is read exactly on a single-precision backend.
 	 *
 	 * @param schedule the {@code [rows, N]} drive schedule
 	 * @return a producer of the {@code [replicas * N]} drive of the current step
@@ -283,8 +269,7 @@ public class ConnectomeNetwork implements Temporal, Setup, Destroyable, Collecti
 		}
 
 		CollectionProducer row = mod(cp(step), c((double) shape.length(0)));
-		return c(shape(replicas * n), cp(schedule),
-				integers(0, replicas * n).mod(c((double) n)).add(row.multiply(c((double) n))));
+		return rows(shape(replicas, n), cp(schedule), row.repeat(replicas)).reshape(shape(replicas * n));
 	}
 
 	/**
