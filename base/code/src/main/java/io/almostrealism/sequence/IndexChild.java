@@ -291,10 +291,12 @@ public class IndexChild extends Sum<Integer> implements Index {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Combines the hashes of the parent and child, which equal child indices share.</p>
+	 * <p>Combines the hashes of the parent, the child and the child's limit, which equal
+	 * child indices share. The limit is included because an index hashes by name alone,
+	 * while child indices whose children differ only in their limit are not equal.</p>
 	 */
 	@Override
 	public int hashCode() {
-		return Objects.hash(parent, childIndex);
+		return Objects.hash(parent, childIndex, childIndex.getLimit());
 	}
 }

@@ -60,8 +60,10 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
@@ -1009,6 +1011,27 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 
 		IndexChild otherRow = Index.child(new DefaultIndex("other", 3), new DefaultIndex("col", 4));
 		Assert.assertNotEquals(four.hashCode(), otherRow.hashCode());
+	}
+
+	/**
+	 * Child indices whose children differ only in their limit are not equal, and their
+	 * {@link Object#hashCode()} tells them apart too, so they do not collide as map keys.
+	 */
+	@Test(timeout = 30000)
+	public void indexChildHashIncludesChildLimit() {
+		DefaultIndex row = new DefaultIndex("row", 3);
+		IndexChild four = Index.child(row, new DefaultIndex("col", 4));
+		IndexChild eight = Index.child(row, new DefaultIndex("col", 8));
+
+		Assert.assertEquals(new DefaultIndex("col", 4).hashCode(), new DefaultIndex("col", 8).hashCode());
+		Assert.assertNotEquals(four.hashCode(), eight.hashCode());
+
+		Map<Expression<?>, String> keys = new HashMap<>();
+		keys.put(four, "four");
+		keys.put(eight, "eight");
+		Assert.assertEquals(2, keys.size());
+		Assert.assertEquals("four", keys.get(Index.child(new DefaultIndex("row", 3), new DefaultIndex("col", 4))));
+		Assert.assertEquals("eight", keys.get(Index.child(new DefaultIndex("row", 3), new DefaultIndex("col", 8))));
 	}
 
 	/**
