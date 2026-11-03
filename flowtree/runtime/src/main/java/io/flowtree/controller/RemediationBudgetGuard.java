@@ -162,24 +162,29 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
      * @return a skip reason, or {@code null} to dispatch
      */
     private String evaluate(String workstreamId, String triggerCommit) {
-        RemediationState state = store.get(workstreamId);
         // TODO(review): a direct push the controller never sees does not reset exhaustion (task e23fd294).
-        if (state.budgetExhausted(budget)) {
-            // markNotified claims the ping atomically, so concurrent refusals send it once.
-            if (store.markNotified(workstreamId) && notifier != null) {
-                notifier.accept(workstreamId, "Per-PR remediation budget reached on this branch: "
-                    + budget + " consecutive auto-review/auto-resolve passes changed nothing. "
-                    + "Auto-dispatch is paused for this PR until a commit lands — someone should "
-                    + "look at why it is not converging.");
-            }
-            return "Per-PR remediation budget of " + budget
-                + " consecutive no-progress passes reached; auto-dispatch paused pending a person";
+        RemediationStateStore.Decision decision =
+                store.evaluateSubmission(workstreamId, budget, triggerCommit);
+        if (decision == RemediationStateStore.Decision.BUDGET_SPENT_NOTIFY && notifier != null) {
+            notifier.accept(workstreamId, "Per-PR remediation budget reached on this branch: "
+                + budget + " consecutive auto-review/auto-resolve passes changed nothing. "
+                + "Auto-dispatch is paused for this PR until a commit lands — someone should "
+                + "look at why it is not converging.");
         }
-        if (state.isLastProducedCommit(triggerCommit)) {
-            return "The only new commit is the previous remediation pass's own ("
-                + triggerCommit + "); not re-reviewing it";
+        switch (decision) {
+            case BUDGET_SPENT_NOTIFY:
+            case BUDGET_SPENT_SILENT:
+                return "Per-PR remediation budget of " + budget
+                    + " consecutive no-progress passes reached; auto-dispatch paused pending a person";
+            case OWN_COMMIT:
+                return "The only new commit is the previous remediation pass's own ("
+                    + triggerCommit + "); not re-reviewing it";
+            case UNAVAILABLE:
+                return "Remediation state could not be read; refusing automated submission "
+                    + "until it can be read again";
+            default:
+                return null;
         }
-        return null;
     }
 
     /**

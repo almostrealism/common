@@ -33,11 +33,14 @@ Usage:
 
 Writes ``<out-dir>/regressions.txt``, ``<out-dir>/preexisting.txt`` and
 ``<out-dir>/environmental.txt`` (each in the input's block format), and prints
-to stdout, for a CI step to ``eval``:
+the three counts to stdout, one per line:
 
     regression_count=<N>
     preexisting_count=<M>
     environmental_count=<K>
+
+The CI step reads only these numeric ``*_count=<N>`` lines (it parses them, it
+does not ``eval`` this output, which is branch-controlled).
 """
 import os
 import sys

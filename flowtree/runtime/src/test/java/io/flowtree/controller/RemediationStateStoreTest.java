@@ -22,6 +22,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.nio.file.Files;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -34,6 +35,7 @@ import java.util.function.BiConsumer;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -433,6 +435,71 @@ public class RemediationStateStoreTest extends TestSuiteBase {
             assertTrue(guard.skipReason("ws", true, "review-sha") != null);
             assertNull(guard.skipReason("ws", true, "someone-elses-sha"));
             assertNull(guard.skipReason("ws", true, null));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * The atomic submit decision: dispatch with no history, skip the own
+     * commit, and at budget claim the one-time ping before falling silent, with
+     * a commit re-arming the ping for the next exhaustion.
+     */
+    @Test(timeout = 30000)
+    public void evaluateSubmissionDecidesTheSkipAndClaimsThePingOnce() throws Exception {
+        File dir = Files.createTempDirectory("rem-evaluate").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            assertSame(RemediationStateStore.Decision.DISPATCH,
+                    store.evaluateSubmission("ws", 3, null));
+
+            store.recordPass("ws", "r", "b", "review-sha");
+            assertSame(RemediationStateStore.Decision.OWN_COMMIT,
+                    store.evaluateSubmission("ws", 3, "review-sha"));
+            assertSame(RemediationStateStore.Decision.DISPATCH,
+                    store.evaluateSubmission("ws", 3, "someone-elses-sha"));
+
+            for (int i = 0; i < 3; i++) store.recordPass("ws", "r", "b", null);
+            assertSame(RemediationStateStore.Decision.BUDGET_SPENT_NOTIFY,
+                    store.evaluateSubmission("ws", 3, null));
+            assertSame("the ping is claimed only once while the budget stays spent",
+                    RemediationStateStore.Decision.BUDGET_SPENT_SILENT,
+                    store.evaluateSubmission("ws", 3, null));
+
+            store.recordPass("ws", "r", "b", "fix-sha");
+            for (int i = 0; i < 3; i++) store.recordPass("ws", "r", "b", null);
+            assertSame("a commit reset re-arms the one-time ping",
+                    RemediationStateStore.Decision.BUDGET_SPENT_NOTIFY,
+                    store.evaluateSubmission("ws", 3, null));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * A read error fails closed: the decision is {@code UNAVAILABLE} and the
+     * guard refuses the automated submission rather than dispatching without
+     * the cap.
+     */
+    @Test(timeout = 30000)
+    public void evaluateSubmissionFailsClosedWhenTheRecordCannotBeRead() throws Exception {
+        File dir = Files.createTempDirectory("rem-unreadable").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            store.recordPass("ws", "r", "b", null);
+            try (Statement stmt = store.connection().createStatement()) {
+                stmt.execute("DROP TABLE pr_remediation");
+            }
+            assertSame("a read error fails closed",
+                    RemediationStateStore.Decision.UNAVAILABLE,
+                    store.evaluateSubmission("ws", 5, null));
+
+            RemediationBudgetGuard guard =
+                    new RemediationBudgetGuard(store, 5, new RecordingNotifier());
+            assertTrue("the guard refuses a submission it cannot evaluate",
+                    guard.skipReason("ws", true, null) != null);
         } finally {
             store.close();
         }

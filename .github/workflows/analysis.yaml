@@ -4312,8 +4312,19 @@ jobs:
             BASELINE="${{ runner.temp }}/master-failures.txt"
             [ -f "$BASELINE" ] || BASELINE=""
             if CLASSIFICATION=$(python3 ./tools/ci/classify-failures.py "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}" "$BASELINE"); then
-              eval "$CLASSIFICATION"
-              CLASSIFIED=true
+              # The classifier runs from the pull request's checkout, so its
+              # stdout is branch-controlled and must never be eval'd as shell.
+              # Read only the expected numeric *_count assignments.
+              regression_count=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^regression_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
+              preexisting_count=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^preexisting_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
+              environmental_count=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^environmental_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
+              if [ -n "$regression_count" ]; then
+                preexisting_count="${preexisting_count:-0}"
+                environmental_count="${environmental_count:-0}"
+                CLASSIFIED=true
+              else
+                echo "::warning::classify-failures.py produced no regression_count — treating every failure as a regression"
+              fi
             else
               # A classifier crash must not drop a real failure: fall back to
               # treating every failure as a regression, as below.

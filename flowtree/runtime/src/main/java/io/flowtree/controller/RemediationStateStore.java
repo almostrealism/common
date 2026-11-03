@@ -185,7 +185,10 @@ public class RemediationStateStore extends ControllerDatabase {
 
     /**
      * Returns the current record for a workstream, or the empty record when the
-     * store is closed or has no row for it yet.
+     * store is closed, has no row for it yet, or could not be read. This lenient
+     * reading suits the write paths, where a read error is already logged and a
+     * fresh pass is still recorded; the submit gate must instead distinguish a
+     * read error from an absent row, so it uses {@link #evaluateSubmission}.
      *
      * @param workstreamId the workstream (branch / PR) key
      * @return the record; never {@code null}
@@ -194,6 +197,25 @@ public class RemediationStateStore extends ControllerDatabase {
         if (!isOpen() || workstreamId == null || workstreamId.isEmpty()) {
             return RemediationState.empty(workstreamId);
         }
+        try {
+            RemediationState state = read(workstreamId);
+            return state != null ? state : RemediationState.empty(workstreamId);
+        } catch (SQLException e) {
+            warn("Failed to read remediation state for " + workstreamId + ": " + e.getMessage());
+            return RemediationState.empty(workstreamId);
+        }
+    }
+
+    /**
+     * Reads the stored record for a workstream, propagating a read failure so a
+     * caller that must fail closed can tell a missing row from an unreadable
+     * store.
+     *
+     * @param workstreamId the workstream (branch / PR) key
+     * @return the record, or {@code null} when the table has no row for it
+     * @throws SQLException when the read itself fails (a transient DB error)
+     */
+    private RemediationState read(String workstreamId) throws SQLException {
         String sql = "SELECT consecutive_no_progress, last_produced_commit, notified "
             + "FROM pr_remediation WHERE workstream_id = ?";
         try (PreparedStatement ps = connection().prepareStatement(sql)) {
@@ -204,10 +226,69 @@ public class RemediationStateStore extends ControllerDatabase {
                             rs.getString(2), rs.getBoolean(3));
                 }
             }
-        } catch (SQLException e) {
-            warn("Failed to read remediation state for " + workstreamId + ": " + e.getMessage());
         }
-        return RemediationState.empty(workstreamId);
+        return null;
+    }
+
+    /**
+     * The outcome of {@link #evaluateSubmission}: whether an automated
+     * remediation submission should be dispatched, and if not, why it is skipped.
+     */
+    public enum Decision {
+        /** Dispatch the submission; nothing bars it. */
+        DISPATCH,
+        /** Skip: the budget is spent and this call claimed the one-time ping. */
+        BUDGET_SPENT_NOTIFY,
+        /** Skip: the budget is spent and the ping was already claimed. */
+        BUDGET_SPENT_SILENT,
+        /** Skip: the only new commit is the previous pass's own. */
+        OWN_COMMIT,
+        /** Skip: the record could not be read, so dispatch fails closed. */
+        UNAVAILABLE
+    }
+
+    /**
+     * Decides, atomically, whether an automated remediation submission should be
+     * dispatched, claiming the one-time budget-spent ping in the same locked
+     * step. Reading the record, testing the budget and claiming the notification
+     * all happen under the store's lock, so a concurrent {@link #completeJob}
+     * cannot reset the record between the budget test and the claim (which would
+     * otherwise mark a freshly reset record notified and silence the next real
+     * exhaustion).
+     *
+     * <p>Fails closed: when the record cannot be read (a transient DB error) the
+     * decision is {@link Decision#UNAVAILABLE}, so the caller refuses the
+     * automated submission rather than dispatching without the cap. A disabled
+     * (closed) store leaves the gate inactive, exactly as a caller with no store
+     * does, so it dispatches.</p>
+     *
+     * @param workstreamId  the workstream (branch / PR) key
+     * @param budget        the per-PR budget; non-positive disables the budget skip
+     * @param triggerCommit the commit that triggered the submission, or {@code null}
+     * @return the submit-time decision; never {@code null}
+     */
+    public synchronized Decision evaluateSubmission(String workstreamId, int budget,
+                                                    String triggerCommit) {
+        if (!isOpen() || workstreamId == null || workstreamId.isEmpty()) {
+            return Decision.DISPATCH;
+        }
+        RemediationState state;
+        try {
+            state = read(workstreamId);
+        } catch (SQLException e) {
+            warn("Failed to read remediation state for " + workstreamId
+                + "; refusing automated submission until it can be read: " + e.getMessage());
+            return Decision.UNAVAILABLE;
+        }
+        if (state == null) state = RemediationState.empty(workstreamId);
+        if (state.budgetExhausted(budget)) {
+            return markNotified(workstreamId) ? Decision.BUDGET_SPENT_NOTIFY
+                    : Decision.BUDGET_SPENT_SILENT;
+        }
+        if (state.isLastProducedCommit(triggerCommit)) {
+            return Decision.OWN_COMMIT;
+        }
+        return Decision.DISPATCH;
     }
 
     /**
