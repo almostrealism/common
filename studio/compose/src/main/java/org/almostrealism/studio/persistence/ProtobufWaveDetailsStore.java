@@ -111,6 +111,8 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 
 	@Override
 	public void put(String identifier, WaveDetails details, PackedCollection embeddingVector) {
+		// The embedding is pooled from the active model's features
+		setEmbeddingModel(details.getActiveModelIdentifier());
 		Audio.WaveDetailData data = AudioLibraryPersistence.encode(details, false);
 		diskStore.put(identifier, data, embeddingVector);
 	}
@@ -153,6 +155,35 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 	@Override
 	public void insertEmbedding(String identifier, PackedCollection embeddingVector) {
 		diskStore.insertEmbedding(identifier, embeddingVector);
+	}
+
+	@Override
+	public void setEmbeddingModel(String modelIdentifier) {
+		if (diskStore.setIndexModel(modelIdentifier) && modelIdentifier != null) {
+			rebuildIndex(modelIdentifier);
+		}
+	}
+
+	/**
+	 * Rebuilds the nearest-neighbor index from the stored records after a model
+	 * change has discarded it. Every record that already holds features for the
+	 * declared model is re-embedded from those features and re-inserted, so
+	 * records complete for the model are searchable immediately rather than only
+	 * after a recomputation that will never be triggered for them. Records
+	 * without the declared model's features are left out; they are indexed when
+	 * their embeddings are computed and stored.
+	 *
+	 * @param modelIdentifier the model whose embeddings the index now holds
+	 */
+	private void rebuildIndex(String modelIdentifier) {
+		for (String identifier : diskStore.allIds()) {
+			WaveDetails details = get(identifier);
+			if (details == null || details.getFeatures(modelIdentifier) == null) continue;
+
+			details.setActiveModelIdentifier(modelIdentifier);
+			PackedCollection embedding = details.meanPooledEmbedding();
+			if (embedding != null) diskStore.insertEmbedding(identifier, embedding);
+		}
 	}
 
 	@Override
