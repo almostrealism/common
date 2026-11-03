@@ -28,7 +28,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Tests the no-change review skip (RETRO P3 / task 4f393925): a primary phase
+ * Tests the no-change review skip (RETRO P3): a primary phase
  * that left the working tree unchanged produces nothing for the second-pass
  * review to read, so {@link EnforcementRunner} skips the {@code review} rule
  * rather than run a full review session against an untouched tree.

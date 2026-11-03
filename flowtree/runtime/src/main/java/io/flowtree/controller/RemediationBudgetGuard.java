@@ -162,7 +162,7 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
      * @return a skip reason, or {@code null} to dispatch
      */
     private String evaluate(String workstreamId, String triggerCommit) {
-        // TODO(review): a direct push the controller never sees does not reset exhaustion (task e23fd294).
+        // TODO(review): a direct push the controller never sees does not reset exhaustion.
         RemediationStateStore.Decision decision =
                 store.evaluateSubmission(workstreamId, budget, triggerCommit);
         if (decision == RemediationStateStore.Decision.BUDGET_SPENT_NOTIFY && notifier != null) {
