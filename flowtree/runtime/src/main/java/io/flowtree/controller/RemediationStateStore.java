@@ -282,7 +282,7 @@ public class RemediationStateStore extends ControllerDatabase {
         }
         if (state == null) state = RemediationState.empty(workstreamId);
         if (state.budgetExhausted(budget)) {
-            return markNotified(workstreamId) ? Decision.BUDGET_SPENT_NOTIFY
+            return claimNotification(state) ? Decision.BUDGET_SPENT_NOTIFY
                     : Decision.BUDGET_SPENT_SILENT;
         }
         if (state.isLastProducedCommit(triggerCommit)) {
@@ -327,16 +327,40 @@ public class RemediationStateStore extends ControllerDatabase {
      * concurrent callers exactly one observes the flag unset and is told it
      * claimed the notification; that caller sends the ping.</p>
      *
+     * <p>A record that cannot be read claims nothing: writing the flag onto a
+     * substitute empty record would overwrite the stored count with zero and
+     * silently refund the spent budget.</p>
+     *
      * @param workstreamId the workstream (branch / PR) key
      * @return {@code true} when this call flipped the flag from unset to set,
-     *         {@code false} when it was already set or the store is closed
+     *         {@code false} when it was already set, the record could not be
+     *         read, or the store is closed
      */
     public synchronized boolean markNotified(String workstreamId) {
         if (!isOpen() || workstreamId == null || workstreamId.isEmpty()) {
             return false;
         }
-        RemediationState current = get(workstreamId);
+        RemediationState current;
+        try {
+            current = read(workstreamId);
+        } catch (SQLException e) {
+            warn("Failed to read remediation state for " + workstreamId
+                + "; not claiming the notification: " + e.getMessage());
+            return false;
+        }
+        return claimNotification(current != null ? current : RemediationState.empty(workstreamId));
+    }
+
+    /**
+     * Sets the notification flag on a record the caller has just read under the
+     * store's lock, so the claim acts on that record rather than on a second read.
+     *
+     * @param current the record as read
+     * @return {@code true} when the flag was unset and is now set
+     */
+    private boolean claimNotification(RemediationState current) {
         if (current.isNotified()) return false;
+        // TODO(review): write() swallows SQLException, so a failed flag write still claims and the ping repeats.
         write(current.afterNotified(), null, null);
         return true;
     }

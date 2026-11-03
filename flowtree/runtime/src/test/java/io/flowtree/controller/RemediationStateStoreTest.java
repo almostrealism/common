@@ -542,4 +542,26 @@ public class RemediationStateStoreTest extends TestSuiteBase {
             store.close();
         }
     }
+
+    /**
+     * A record that cannot be read claims no notification, rather than claiming
+     * it on a substitute empty record whose write would zero the stored count.
+     */
+    @Test(timeout = 30000)
+    public void markNotifiedClaimsNothingWhenTheRecordCannotBeRead() throws Exception {
+        File dir = Files.createTempDirectory("rem-notify-unreadable").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            store.recordPass("ws", "r", "b", null);
+            try (Statement stmt = store.connection().createStatement()) {
+                stmt.execute("DROP TABLE pr_remediation");
+            }
+            assertFalse("an unreadable record claims nothing", store.markNotified("ws"));
+            assertFalse("an unreadable record still claims nothing on retry",
+                    store.markNotified("ws"));
+        } finally {
+            store.close();
+        }
+    }
 }
