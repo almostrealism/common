@@ -74,10 +74,11 @@ import java.util.function.Function;
  *       by summing along axis 0</li>
  *   <li>{@code repeat_each(n)} - duplicate every row of a {@code [rows, size]} input
  *       {@code n} consecutive times</li>
- *   <li>{@code cache_write(cache, position)} - record the input as row {@code position}
- *       of a caller-owned {@code [rows, size]} cache and pass it through</li>
- *   <li>{@code cache_read(cache, position)} - output row {@code position} of a caller-owned
- *       {@code [rows, size]} cache as a {@code [size]} vector, without reading the input</li>
+ *   <li>{@code cache_write(cache, position)} - record the input as row {@code position mod rows}
+ *       of a caller-owned {@code [rows, size]} cache (a ring) and pass it through</li>
+ *   <li>{@code cache_read(cache, position)} - output row {@code position mod rows} of a
+ *       caller-owned {@code [rows, size]} cache as a {@code [size]} vector, without reading the
+ *       input</li>
  *   <li>{@code scaled_dot_product(other, transpose)} - a batched matrix product with a tensor or
  *       with a branch the layer has split off</li>
  *   <li>{@code sqrt(x)} - numeric square root in configuration arithmetic</li>

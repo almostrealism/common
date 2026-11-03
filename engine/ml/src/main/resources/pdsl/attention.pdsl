@@ -28,6 +28,15 @@
  * every pass and every row up to `position` is read. Each attention layer of a model needs
  * caches of its own, which a model allocates with zeros([seq_len, dim]).
  *
+ * Decoding past seq_len: cache_write addresses row `position mod seq_len`, so the caches are
+ * rings that hold the most recent seq_len keys and values, and causal_mask(position) masks no
+ * column once `position >= seq_len`. A key and its value share a slot and softmax does not
+ * depend on the order of the slots, so a full ring is attended exactly as a window of the last
+ * seq_len tokens. Rotary scores depend only on the distance between query and key positions, so
+ * keys rotated once at their absolute positions stay correct as the ring rolls — provided the
+ * rotation can reach any position, which it can when freq_cis is bound to the inverse
+ * frequencies rather than a seq_len-row table (see rotate_heads).
+ *
  * Grouped-query attention: the caches hold one key and one value per QUERY head, so a
  * model with kv_heads < heads duplicates each KV head for the heads / kv_heads query heads
  * it serves before the cache write (repeat_each). With kv_heads == heads that stage passes
@@ -41,8 +50,11 @@
  * Rotary position embedding, one rotation per head: [1, heads * head_size] -> [heads, head_size].
  *
  * The split-half layout pairs element i of a head with element i + head_size / 2 (the
- * PyTorch Llama/Qwen convention), rope_rotation rotates each pair by the angle the frequency
- * table holds for `position`, and merge_half_rope restores the per-head layout.
+ * PyTorch Llama/Qwen convention), rope_rotation rotates each pair by its angle at `position`,
+ * and merge_half_rope restores the per-head layout. freq_cis is either a precomputed
+ * [seq_len, head_size / 2, 2] table of [cos, sin] pairs, read at row `position` (so only
+ * positions below seq_len can be rotated), or the [head_size / 2] inverse frequencies, from which
+ * the angle position * inv_freq is computed for any position.
  *
  *   split_half_rope   [heads, head_size / 2, 2]
  *   rope_rotation     [heads, head_size / 2, 2]
