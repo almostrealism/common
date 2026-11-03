@@ -185,6 +185,43 @@ public class TaskCloseOutReconcilerTest extends TestSuiteBase {
         assertEquals(List.of(), closeOuts);
     }
 
+    /**
+     * A workstream whose repository host merely starts with {@code github.com}
+     * is not a GitHub workstream and is never looked up: the host must match
+     * exactly, not as a prefix or substring.
+     */
+    @Test(timeout = 30000)
+    public void lookAlikeGitHubHostIsSkipped() throws IOException {
+        Workstream ws = new Workstream("ws-lookalike", "C_ws-lookalike", "#ws-lookalike");
+        ws.setRepoUrl("https://github.com.evil.example/almostrealism/common.git");
+        ws.setDefaultBranch("project/task-1");
+        ws.setBaseBranch("master");
+        workstreams.put("ws-lookalike", ws);
+        awaiting.add("ws-lookalike");
+        pullRequests.put("project/task-1", List.of(pr(8, "closed", "2026-10-12T05:00:00Z")));
+
+        reconciler().reconcileOnce();
+
+        assertEquals(List.of(), lookedUp);
+        assertEquals(List.of(), closeOuts);
+    }
+
+    /**
+     * A GitHub workstream written in a URL form other than HTTPS — an SSH
+     * remote with an uppercase host — is still looked up under its
+     * {@code owner/repo} slug.
+     */
+    @Test(timeout = 30000)
+    public void sshGitHubWorkstreamIsLookedUp() throws IOException {
+        workstream("ws-ssh", "project/task-ssh").setRepoUrl("git@GitHub.com:almostrealism/common.git");
+        pullRequests.put("project/task-ssh", List.of(pr(8, "closed", "2026-10-12T05:00:00Z")));
+
+        reconciler().reconcileOnce();
+
+        assertEquals(List.of("project/task-ssh"), lookedUp);
+        assertEquals(List.of("ws-ssh=merged"), closeOuts);
+    }
+
     /** Builds a reconciler over the stub tracker, the known workstreams and the pull-request map. */
     private TaskCloseOutReconciler reconciler() {
         TrackerService service = new TrackerService(
