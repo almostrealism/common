@@ -216,6 +216,20 @@ class QaRoundWorkflowShapeTests(unittest.TestCase):
         self.assertEqual("true", submit["env"]["AUTO_CREATE_PR"])
         self.assertNotIn("PR_DRAFT", submit["env"])
 
+    def test_a_callers_workstream_gets_the_framework_and_its_tracker_role(self):
+        """An application's round is registered with the framework as a
+        dependent repository, so its agent can build against it, and with the
+        tracker role the caller asks for."""
+        register = next(s for s in self.job["steps"]
+                        if "register-workstream.sh" in s.get("run", ""))
+        dependent = register["env"]["DEPENDENT_REPOS"]
+        self.assertIn("inputs.framework-repository != github.repository", dependent)
+        self.assertIn("git@github.com:{0}.git", dependent)
+        self.assertEqual("${{ inputs.tracker-capabilities }}",
+                         register["env"]["TRACKER_CAPABILITIES"])
+        self.assertEqual("", self.workflow[True]["workflow_call"]["inputs"]
+                         ["tracker-capabilities"]["default"])
+
 
 if __name__ == "__main__":
     unittest.main()
