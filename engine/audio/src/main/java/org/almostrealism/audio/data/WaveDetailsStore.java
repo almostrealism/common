@@ -134,9 +134,13 @@ public interface WaveDetailsStore extends Closeable {
 	 * Embeddings from different models cannot share an index, so when the
 	 * declared model differs from the one the index was built from, the index
 	 * is discarded and rebuilt as embeddings for the declared model arrive.
-	 * Declaring the same model again is a no-op, and so is {@code null}.
-	 * Implementations that do not maintain a vector index may ignore this;
-	 * the default implementation does nothing.
+	 * Declaring the same model again is normally a no-op, but it may still
+	 * rebuild the index when the model was recorded yet its index is missing
+	 * (for example after a run was interrupted between recording the model and
+	 * writing the index), so callers should not rely on an unconditional no-op.
+	 * Declaring {@code null} is always a no-op. Implementations that do not
+	 * maintain a vector index may ignore this; the default implementation does
+	 * nothing.
 	 *
 	 * @param modelIdentifier the model producing the embeddings, or {@code null}
 	 */
