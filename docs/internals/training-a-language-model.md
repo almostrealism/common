@@ -386,10 +386,10 @@ trained weight layout to the cached `attention` layer of `attention.pdsl` withou
 model passes each block a caller-owned `(seqLen, dim)` key and value cache it appends to the
 generator's lists, so the generator — not the block — owns them. The decode block reads the fused QKV
 `(3·dim, dim)` weight of its block as three contiguous `(dim, dim)` query, key and value views — the
-same sections the full-sequence path slices — and the position-indexed rotary `freqCis` the cached
-attention expects is derived from the stored `rope_inv_freq` with
-`RotationFeatures.computeRopeFreqs(seqLen, invFreq)`, which produces exactly the rotation the
-full-sequence path applies at each row, so greedy output matches. The feed-forward
+same sections the full-sequence path slices — and the cached attention rotates queries and keys from
+the stored `rope_inv_freq` directly (`RotationFeatures.ropeRotation` given the inverse frequencies
+computes the angle `position · invFreq[i]`), which is exactly the rotation the full-sequence path
+applies at each row, so greedy output matches. The feed-forward
 (`causal_lm_feed_forward`) is the layer the full window uses, and the head (`causal_lm_head`) shares
 the full window's final normalization and output projection (`causal_lm_logits`) and its log-softmax.
 `CausalLanguageModelAssetTest` pins both passes
@@ -398,14 +398,61 @@ row at every position to equal the full window's row there. The generator mirror
 `SlidingWindowAutoregressiveModel`: it owns the decode compilation, its input buffer, the per-layer
 caches, the position and the temperature, and `reset()` clears the caches and position so a new sequence
 starts clean; it routes the same tempered logits through `sampleToken`, so greedy, temperature and
-top-p decoding behave as above. Because each layer's cache is a fixed `(seqLen, dim)` and does not
-slide, this decode runs for sequences up to `seqLen` positions; longer generation still uses the
-sliding window. `CausalLanguageModelTest.keyValueCacheDecodeMatchesFullForward` checks that every
+top-p decoding behave as above. Each layer's cache holds `seqLen` positions, and this generator
+decodes the first `seqLen` of them, refusing the step after; longer generation runs through the rolling
+cache described below. `CausalLanguageModelTest.keyValueCacheDecodeMatchesFullForward` checks that every
 greedily decoded byte, including those after the first where the cache alone carries the past, is the
 most probable byte of the corresponding row of a separate full forward pass, and that decoding is
 reproducible after a reset; `keyValueCacheResetClearsCacheAcrossSequences` and
 `keyValueCacheLaterPositionsReadEarlierEntries` check that a cleared cache does not leak across
 sequences and that a later position reads an earlier position's cached entry.
+
+**Generating past the context: the rolling cache.** `SlidingKeyValueCacheAutoregressiveModel`
+decodes text longer than the context at cache cost, one position per byte, up to the length at
+which the device can still represent the position exactly (below `2^24` at the single precision of the
+Metal backend; the rotary angle `position * inv_freq` loses accuracy well before that). It is the bounded generator with its
+`decodes(position)` hook answering true for every position, so `load` never refuses, decoding through the same model, which needs no table bound: `cache_write` writes
+row `position mod seqLen`, so each cache is a ring holding the most recent `seqLen` keys and values;
+the cached attention rotates queries and keys by angles computed from `rope_inv_freq` at the position
+itself rather than read from a `seqLen`-row table; and the causal mask, which hides the columns after
+the position, hides none once the position reaches `seqLen`. No cached key is re-rotated as the ring
+rolls, although the sliding window re-places its tokens at `0..seqLen-1` on every pass. That is
+correct because of a property of rotary embeddings: the score of a query rotated at position `m`
+against a key rotated at position `n` depends only on `n − m`, and the distance between the newest
+token and each retained one is the same whether the keys sit at their absolute positions or at the
+window's. A key and its value share a slot and softmax does not depend on slot order, so the ring's
+order does not matter either.
+
+For a single block this makes the rolling cache decode exactly what the sliding window decodes,
+past `seqLen` as before it; `SlidingKeyValueCacheAutoregressiveModelTest` checks that over three
+context lengths, greedily and sampling at a positive temperature from the same seed. In a deeper model,
+such as the two-block model above, they are different decodes once the sequence outgrows the context.
+The sliding window re-encodes its window from scratch on every step, so the second block's keys and
+values of the oldest tokens it keeps are computed without the tokens that have already left it. The
+rolling cache keeps each token's second-block keys and values as they were when it was decoded, and
+those saw the `seqLen` positions before it. So each block attends to `seqLen` positions of the block
+below — the sliding-window attention of Mistral-style models — and a `depth`-block model reads
+`depth · (seqLen − 1) + 1` positions back. Neither decode reproduces the model's training past
+`seqLen`, since it never trained on a longer context. The test also checks the eviction directly: a
+two-block model's output stops depending on a token exactly when both blocks' windows have passed it.
+On the configuration above, with random weights, the two generators' greedy continuations agree on
+every byte decoded within the context and diverge at the first byte decoded past it.
+
+The rolling cache makes long generation possible at the cache's per-byte cost, but at this model size
+that cost is no lower than the sliding window's. `CausalLanguageModelDecodeThroughputTest.slidingKeyValueCacheLongDecodeThroughput`
+decodes the documentation prompt to three context lengths (192 positions) with both generators,
+writing its profile to `results/causal_lm_long_decode_throughput.xml`. Past `seqLen` the sliding window
+costs what it does before: a full window per byte, 85 kernel invocations, 123 Metal dispatches and
+7 commits. The rolling cache costs what the bounded cache does: one position per byte, 80 invocations,
+245 dispatches and 5 commits. On the Mac Studio, wall-clock throughput is the same to within run-to-run
+noise: 200–240 bytes per second for both, across profiled runs and unprofiled step timings. That is
+somewhat below the bounded cache's 1.2× edge over 64 positions, and it rests on the same work count
+as that edge (80 against 85 kernels). The test asserts that the rolling cache invokes fewer kernels per byte
+and that both paths decode the same bytes while the sequence fits the context. It reports the
+throughput and the agreement past the context without asserting them. At 64 positions and 64
+dimensions the arithmetic the cache saves is small next to the cost of each kernel and dispatch, so
+the throughput advantage the cache was built for waits on cheaper dispatches — mostly the per-kernel
+staging copies described below — or a larger context.
 
 **Measured decode throughput.** The cache is now the faster decode, by a small margin.
 `CausalLanguageModelDecodeThroughputTest.keyValueCacheDecodeThroughput` decodes the same
@@ -432,7 +479,8 @@ closed the gap:
   it is built from, and `CompiledModel` compiles and runs the whole pass under them. The model does
   not make this choice itself: a caller that wants it sets it.
 - *One kernel per rotation.* `RotationFeatures.ropeRotation` is a single element-wise computation
-  reading the input, the frequency table and the position directly; it was a chain of gathers from
+  reading the input, the frequency table (or, for the decode now, the inverse frequencies) and the
+  position directly; it was a chain of gathers from
   intermediate computations that compiled to five kernels per call. `computeRopeFreqs` builds its
   `[cos, sin]` table as one element-wise computation instead of concatenating a cosine and a sine
   table.
@@ -489,6 +537,6 @@ generator (`setTopP`), which cuts off the unreliable tail that full-distribution
 sampling can draw from; measuring whether it reads better than greedy decoding on this model is a
 separate run. The next levers are those this round left untried: more steps at the lower rate (the
 held-out curve was still falling in the last epochs) and batch sizes above 1. The top-p-versus-greedy
-comparison over long samples need not wait on a longer cache either: the key/value-cache decode is
-now slightly faster but stops at `seqLen`, and the sliding window, at a similar rate, is not bounded
-by it.
+comparison over long samples is not held back by decode length: the rolling key/value cache and the
+sliding window both generate past `seqLen` at a similar rate (they decode the same text only for a
+single-block model, so the comparison should name the generator it used).

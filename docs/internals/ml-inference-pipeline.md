@@ -186,7 +186,12 @@ branch values {
 row replacement is part of the compiled operation order rather than a host-side copy.
 The stage passes its input through unchanged. A branch runs before the path that
 follows it, so both caches already hold the current token when the scores are
-computed.
+computed. The row written is `position mod rows` (the cache's own row count, so no
+caller passes it): below `seqLen` that is row `position`, and past it the caches are
+rings that keep the most recent `seqLen` keys and values, which is what lets a decode
+continue past `seqLen` (see
+[Single-Position KV-Cache Decode](#single-position-kv-cache-decode-for-the-self-hosted-lm)).
+`cache_read` addresses its row the same way.
 
 ```
 Cache state at position=3:
@@ -406,24 +411,44 @@ cleared `(seqLen, dim)` key cache and value cache per block, binds them as the `
 `value_cache` of that block's `causal_lm_decode_block` layer of `causal_lm.pdsl`, and appends them
 in block order to the two lists it is given (which must be empty). The generator passes its own
 lists, so it can clear the caches in `reset()` and release them in `destroy()`. `load()` refuses a step at or beyond
-`seqLen` with an `IllegalStateException` rather than index past the caches.
+`seqLen` with an `IllegalStateException` rather than overwrite the oldest cached position.
 
 The decode model is built by `CausalLanguageModel.decodeModel`, which the generator compiles
 and owns, from the `causal_lm_decode_block` layer of `causal_lm.pdsl` (once per block) and its
 `causal_lm_head` layer. The decode block bridges the trained weight layout to the cached
 `attention` layer of `attention.pdsl` without copying a weight: it reads the fused QKV
 `(3·dim, dim)` weight of its block as three contiguous `(dim, dim)` query, key and value views
-(sections 0, 1 and 2, as the full-sequence `sequence_attention` slices them), and the
-position-indexed rotary `freqCis` the cached attention expects is derived from the stored
-`rope_inv_freq` with `RotationFeatures.computeRopeFreqs(seqLen, invFreq)`. That rotation equals
-the one the full-sequence `sequence_rope` applies at the same row (both use the split-half
-convention with angle `position · invFreq[i]`), so greedy decoding agrees with the full forward.
+(sections 0, 1 and 2, as the full-sequence `sequence_attention` slices them), and the cached
+attention rotates queries and keys from the stored `rope_inv_freq` directly, computing the angle
+`position · invFreq[i]` at whatever the position is. That rotation equals the one the
+full-sequence `sequence_rope` applies at the same row (both use the split-half convention with
+that angle), so greedy decoding agrees with the full forward.
 The feed-forward is the asset layer the full window uses, and the head shares the full window's
 final normalization and output projection (`causal_lm_logits`) and its log-softmax.
 No weights are copied: the decode variant is built over the model's own `StateDictionary`,
-which stays the caller's, exactly as a second training compilation would be. Because each
-layer's cache is a fixed `(seqLen, dim)` that does not slide, the decode is bounded to
-`seqLen` positions; longer generation uses the sliding window.
+which stays the caller's, exactly as a second training compilation would be.
+
+The same decode model runs past `seqLen`, and `SlidingKeyValueCacheAutoregressiveModel` — a
+subclass of the bounded generator whose `load()` does not refuse — decodes through it for
+sequences longer than `seqLen`, up to the precision bound on the device-resident position that
+its Javadoc states. Three properties make that correct: each cache is a ring (`cache_write`
+writes row `position mod seqLen`, so it holds the most recent `seqLen` positions); the rotation
+has no table to run off the end of; and `causal_mask(position)` masks the columns after
+`position`, which past `seqLen` is none of them, so every slot of a full ring is attended. A key
+keeps the rotation of the absolute position it was written at and is never re-rotated: rotary
+attention scores depend only on the difference between the query and key positions, so the
+scores are those of the same keys re-placed at `0..seqLen-1`, and since a key and its value share
+a slot and softmax does not depend on slot order, the ring's order does not matter. For a
+single-block model this decodes exactly what the sliding window decodes. In a deeper model the
+two differ by design: the sliding window re-encodes its window on every step, so the deeper
+blocks' keys and values of its oldest tokens are recomputed without the tokens that have left
+it, while the ring keeps the keys and values each token was decoded with. Each block attends to
+`seqLen` positions of the block below it (the sliding-window attention of Mistral-style models),
+so the receptive field of a `depth`-block model is `depth · (seqLen − 1) + 1` positions.
+`SlidingKeyValueCacheAutoregressiveModelTest` pins both: a single-block model decodes the sliding
+window's tokens for three context lengths, greedily and sampling from the same seed, and a
+two-block model's output stops depending on a token exactly when both blocks' windows have moved
+past it.
 
 ### Two-Phase Operation
 
@@ -706,7 +731,11 @@ The three-step process:
 
 The frequency tensor `freq_cis` has shape `(seqLen, headSize/2, 2)` where position
 `p` and frequency index `i` store `[cos(p * theta_i), sin(p * theta_i)]`.
-The rotation indexes into this tensor using the current position. The
+The rotation indexes into this tensor using the current position, so it can rotate
+only positions below `seqLen`. `freq_cis` may instead be bound to the
+`(headSize/2)` inverse frequencies `theta_i`, in which case `ropeRotation` computes
+the angle `p * theta_i` in its kernel and rotates any position; the self-hosted
+model's decode does this so that it can run past `seqLen`. The
 `attention_mra` layer uses `rotate_head_groups` instead, which rotates each head
 group by its own table at its own position (`mra_rope_rotation`).
 

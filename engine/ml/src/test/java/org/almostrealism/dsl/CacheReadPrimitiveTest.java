@@ -33,8 +33,8 @@ import java.util.Map;
  * Pins the {@code cache_read} built-in, and {@link LayerFeatures#cacheRead} behind it, through the
  * layers of {@code test_cache_primitives.pdsl}: the row it outputs follows the position from one
  * forward pass to the next, the stage input is not read, it composes with {@code concat_blocks}
- * into the {@code [x | h]} a recurrent cell consumes, and it reads a row before a later
- * {@code cache_write} of the same pass replaces it.
+ * into the {@code [x | h]} a recurrent cell consumes, it reads a row before a later
+ * {@code cache_write} of the same pass replaces it, and both address the rows as a ring.
  *
  * <p>Every expectation is a value written into the cache by the test or by an earlier pass, so
  * the primitive is checked against its definition. Copies are exact, so the comparisons are too.</p>
@@ -114,6 +114,39 @@ public class CacheReadPrimitiveTest extends TestSuiteBase implements LayerFeatur
 				model.forward(pack(5.0, 6.0)).toArray(), 0.0);
 		Assert.assertArrayEquals("cache", new double[] { 5.0, 6.0, 0.0, 0.0, 3.0, 4.0 },
 				cache.toArray(), 0.0);
+	}
+
+	/**
+	 * The rows of the cache form a ring: {@code cache_write} and {@code cache_read} at a position at
+	 * or beyond the row count address row {@code position mod rows}, so a write past the end
+	 * replaces the row written {@code rows} positions earlier and a read there returns it, and the
+	 * rows of the other positions are untouched. This is the wrap a key/value cache relies on to keep
+	 * decoding past its length; without it the position would address memory past the cache.
+	 */
+	@Test(timeout = 120000)
+	public void cacheRowsFormARingPastTheRowCount() {
+		PackedCollection cache = new PackedCollection(shape(3, 2));
+		PackedCollection position = new PackedCollection(shape(1));
+		Map<String, Object> args = new HashMap<>();
+		args.put("row_cache", cache);
+		args.put("size", 2);
+		args.put("position", p(position));
+		CompiledModel model = compile("exchange_row", shape(2), args);
+
+		position.fill(1);
+		Assert.assertArrayEquals("first write to row 1", new double[] { 0.0, 0.0 },
+				model.forward(pack(1.0, 2.0)).toArray(), 0.0);
+
+		position.fill(4);
+		Assert.assertArrayEquals("position 4 reads the row position 1 wrote", new double[] { 1.0, 2.0 },
+				model.forward(pack(3.0, 4.0)).toArray(), 0.0);
+
+		position.fill(8);
+		Assert.assertArrayEquals("position 8 reads row 2, never written", new double[] { 0.0, 0.0 },
+				model.forward(pack(5.0, 6.0)).toArray(), 0.0);
+
+		Assert.assertArrayEquals("positions 4 and 8 wrote rows 1 and 2",
+				new double[] { 0.0, 0.0, 3.0, 4.0, 5.0, 6.0 }, cache.toArray(), 0.0);
 	}
 
 	/**

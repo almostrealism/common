@@ -706,12 +706,21 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	 * behind a key/value cache: the row written here is read by later stages of the same
 	 * forward pass and by every following pass.</p>
 	 *
+	 * <p>The rows form a ring: the row written is {@code position mod rows}, so a position at or
+	 * beyond the cache's row count replaces the row written {@code rows} positions earlier, and
+	 * the cache holds the most recent {@code rows} inputs. This is how a key/value cache rolls
+	 * past its length. The modulus is the cache's own row count, so no caller passes it; a
+	 * position already in {@code [0, rows)} addresses the same row it always did, as
+	 * {@code position mod rows == position} there, and a position the caller already reduced by
+	 * the same row count is unchanged by reducing it again.</p>
+	 *
 	 * <p>The backward cell passes gradients through unchanged, as the block is the identity
 	 * on its signal path; nothing propagates into the cache.</p>
 	 *
 	 * @param inputShape the input (and output) shape, with {@code rowSize} elements in total
 	 * @param cache      the {@code [rows, rowSize]} cache to write
-	 * @param position   producer of the row index, shape {@code [1]}
+	 * @param position   producer of the non-negative position, shape {@code [1]}; the row written
+	 *                   is this position modulo the cache's row count
 	 * @return a pass-through block that records its input in the cache
 	 * @throws IllegalArgumentException if the cache is not 2-D or its rows do not hold one input
 	 */
@@ -729,13 +738,14 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 					+ " does not fill one row of " + cacheShape);
 		}
 
+		CollectionProducer row = c(position).mod((double) rows);
 		String name = "cacheWrite-" + rows + "x" + rowSize;
 		return new DefaultBlock(inputShape, inputShape,
 				Cell.of((in, next) -> {
 					OperationList ops = new OperationList(name);
 					ops.add(into(name,
 							new CollectionSlotUpdateComputation(cacheShape, 1, rows * rowSize, rowSize, rowSize,
-									cache, c(in).reshape(shape(rowSize)), position),
+									cache, c(in).reshape(shape(rowSize)), row),
 							cache, false));
 					ops.add(next.push(in));
 					return ops;
@@ -751,11 +761,14 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	 * pass is read back by a later pass, which is how a recurrent layer carries its hidden
 	 * state from one step to the next. The row selected by {@code position} is gathered into
 	 * the layer's output at this layer's place in the compiled operation order, so a write to
-	 * the same row by a later stage of the same pass does not change what this layer read.</p>
+	 * the same row by a later stage of the same pass does not change what this layer read. Like
+	 * the write, the read addresses row {@code position mod rows}, so it reads back the row a
+	 * {@link #cacheWrite} at the same position wrote.</p>
 	 *
 	 * @param inputShape the shape of the input, which is not read
 	 * @param cache      the {@code [rows, rowSize]} cache to read
-	 * @param position   producer of the row index, shape {@code [1]}
+	 * @param position   producer of the non-negative position, shape {@code [1]}; the row read
+	 *                   is this position modulo the cache's row count
 	 * @return a layer producing the {@code [rowSize]} row
 	 * @throws IllegalArgumentException if the cache is not 2-D
 	 */
@@ -768,8 +781,9 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 
 		int rows = cacheShape.length(0);
 		int rowSize = cacheShape.length(1);
+		CollectionProducer row = c(position).mod((double) rows);
 		return layer("cacheRead-" + rows + "x" + rowSize, inputShape, shape(rowSize),
-				input -> rows(shape(rowSize), cache, position));
+				input -> rows(shape(rowSize), cache, row));
 	}
 
 	/**

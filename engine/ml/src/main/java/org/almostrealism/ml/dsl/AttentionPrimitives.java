@@ -206,9 +206,12 @@ public class AttentionPrimitives implements PdslExtension, AttentionFeatures {
 
 	/**
 	 * {@code rope_rotation(shape, freq_cis, position)}: the rotary position embedding of the single
-	 * token at {@code position}.
+	 * token at {@code position}. {@code freq_cis} is either a {@code [seq_len, head_size / 2, 2]}
+	 * table of {@code [cos, sin]} pairs, which rotates only positions below {@code seq_len}, or the
+	 * {@code [head_size / 2]} inverse frequencies, from which the angle at any position is computed.
 	 *
-	 * @param args the {@code [heads, head_size / 2, 2]} shape, the frequency table and the position
+	 * @param args the {@code [heads, head_size / 2, 2]} shape, the frequency table or inverse
+	 *             frequencies, and the position
 	 * @param ctx  the call context
 	 * @return the rotation {@link Block}
 	 * @see RotationFeatures#ropeRotation

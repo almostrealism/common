@@ -49,9 +49,8 @@
  * [2 * hidden_dim, dim] (its first hidden_dim rows the linear half, the next hidden_dim the gate
  * half) and the down projection w2 [dim, hidden_dim]; and the final RMSNorm scale [dim] and output
  * projection [vocab_size, dim]. Every RMSNorm uses an epsilon of 1e-5. Both passes rotate queries
- * and keys with the same rotary embedding: the full window from the stored inverse frequencies
- * (inv_freq), the single position from the table of their angles at every position (freq_cis),
- * which the caller computes from them.
+ * and keys with the same rotary embedding, from the stored inverse frequencies (inv_freq): the full
+ * window at every position of the window, the single position at its own position, whatever it is.
  */
 
 import "/pdsl/sequence_attention.pdsl"
@@ -122,7 +121,11 @@ layer causal_lm_block(settings: model_settings,
 
 /**
  * One block of the single-position forward: [1, dim] -> same, writing this token's key and value
- * into row `position` of the block's caches and attending over rows 0..position.
+ * into row `position mod seq_len` of the block's caches and attending over the rows written so
+ * far — rows 0..position until the caches fill, then all seq_len of them, the most recent seq_len
+ * tokens. The keys and the query are rotated at their absolute position, computed from the
+ * stored inverse frequencies, so the decode runs at any position: before seq_len it agrees with
+ * the full-window pass, and beyond it each block attends to a rolling window of seq_len positions.
  *
  *   wq, wk, wv   views of the three sections of the fused qkv projection — the queries, keys and
  *                values — the same sections causal_lm_block's attention reads, without a copy
@@ -138,7 +141,7 @@ layer causal_lm_block(settings: model_settings,
  */
 layer causal_lm_decode_block(settings: model_settings,
                              attention_norm: weight, qkv: weight, wo: weight,
-                             freq_cis: weight, position: scalar,
+                             inv_freq: weight, position: scalar,
                              ffn_norm: weight, w1: weight, w2: weight,
                              key_cache: weight, value_cache: weight) {
     let dim = settings.dim
@@ -150,7 +153,7 @@ layer causal_lm_decode_block(settings: model_settings,
     // Residual cached self-attention over the normalized token.
     accum {
         attention(heads, heads, dim / heads, attention_norm, wq, wk, wv, wo,
-                  null, null, null, freq_cis, position, 1e-5, key_cache, value_cache)
+                  null, null, null, inv_freq, position, 1e-5, key_cache, value_cache)
     }
 
     // Residual gated feed-forward over the token as a one-position sequence.

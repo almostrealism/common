@@ -299,13 +299,15 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	/**
 	 * Marks word boundaries and expands anything outside the vocabulary into byte tokens.
 	 *
-	 * <p>Byte fallback is only valid when every {@code <0xNN>} token it emits exists in the
-	 * vocabulary. HuggingFace BPE enables byte fallback only when all 256 byte atoms are present, so
-	 * a complete vocabulary never reaches a missing one, and {@code export_tokenizer.py} rejects an
-	 * incomplete byte-fallback vocabulary before it is written. A missing byte token therefore means
-	 * a corrupt or incomplete binary; rather than substitute the unknown token per byte -- a
-	 * different fallback than the source tokenizer's one unknown token per unknown character -- this
-	 * rejects the byte, since reproducing the source ids is impossible either way.</p>
+	 * <p>Byte fallback applies per character: HuggingFace BPE expands a character outside the
+	 * vocabulary into its byte tokens when all of them exist, and otherwise emits one unknown token
+	 * for that character. A vocabulary need not hold all 256 {@code <0xNN>} tokens -- Gemma stores the
+	 * tab as the literal token {@code "\t"} in place of {@code <0x09>}, which no fallback can reach --
+	 * but {@code export_tokenizer.py} rejects a vocabulary missing any byte token that a fallback
+	 * can reach. A missing byte token here therefore means a corrupt or hand-crafted binary; rather
+	 * than substitute the unknown token per byte -- a different fallback than the source tokenizer's
+	 * one unknown token per unknown character -- this rejects the byte, since reproducing the source
+	 * ids is impossible either way.</p>
 	 *
 	 * @param segment one segment produced by the pre-tokenizer
 	 * @return the initial symbols, in order
@@ -331,8 +333,8 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 					if (!vocabMap.containsKey(token)) {
 						throw new IllegalArgumentException(String.format(
 								"Cannot encode U+%04X: byte token %s is not in the vocabulary; "
-										+ "a byte-fallback tokenizer must contain all 256 <0xNN> "
-										+ "tokens to reproduce the source tokenizer",
+										+ "the source tokenizer emits an unknown token for this "
+										+ "character, which this reader does not reproduce",
 								codePoint, token));
 					}
 					symbols.add(token);

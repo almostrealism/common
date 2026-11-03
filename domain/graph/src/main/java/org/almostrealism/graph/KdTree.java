@@ -296,10 +296,10 @@ public abstract class KdTree<T> {
                 cursor.locations[cursor.locationCount-1] = null;
                 System.arraycopy(cursor.data, i + 1, cursor.data, i, cursor.locationCount - i - 1);
                 cursor.data[cursor.locationCount-1] = null;
-                do {
+                while (cursor != null) {
                     cursor.locationCount--;
                     cursor = cursor.parent;
-                } while (cursor.parent != null);
+                }
                 return;
             }
         }

@@ -1028,11 +1028,14 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	}
 
 	/**
-	 * The rotary frequency table the decode path indexes by position is built from the model's stored
-	 * inverse frequencies and holds exactly {@code cos(position * invFreq[i])} and
-	 * {@code sin(position * invFreq[i])}, the same angles the full-sequence rotation applies at that
-	 * row. This pins the {@code rope_inv_freq}-to-{@code freqCis} half of the bridge numerically,
-	 * independently of the end-to-end decode match.
+	 * The rotary frequency table {@link RotationFeatures#computeRopeFreqs(int, PackedCollection)}
+	 * builds from the model's stored inverse frequencies holds exactly
+	 * {@code cos(position * invFreq[i])} and {@code sin(position * invFreq[i])}, the same angles the
+	 * full-sequence rotation applies at that row. This pins the {@code rope_inv_freq}-to-table bridge
+	 * numerically, independently of the end-to-end decode match. The self-hosted decode itself no
+	 * longer reads such a table: it rotates from the inverse frequencies directly, which
+	 * {@code RotationTests.ropeRotationFromInverseFrequenciesReachesAnyPosition} checks against this
+	 * table.
 	 */
 	@Test(timeout = 60000)
 	public void decodeRopeFrequenciesMatchStoredInverseFrequencies() {
