@@ -131,6 +131,8 @@ public class CompiledModelAutoEncoder implements AutoEncoder, CodeFeatures {
 	 * @param sampleRate  the audio sample rate in Hz
 	 * @param maxDuration the clip duration in seconds the encoder and decoder are compiled for
 	 * @return the compiled autoencoder
+	 * @throws IllegalArgumentException if {@code maxDuration * sampleRate} is not a positive, finite
+	 *                                  sample count no larger than {@link Integer#MAX_VALUE}
 	 * @see #of(SAMEAutoEncoder, int, int, double, double)
 	 */
 	public static CompiledModelAutoEncoder of(SAMEAutoEncoder autoencoder, int batchSize,
