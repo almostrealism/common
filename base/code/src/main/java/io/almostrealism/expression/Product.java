@@ -221,6 +221,29 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		return Optional.empty();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A product is a multiple of the product of its constant factors. They are multiplied
+	 * together with overflow checking; an overflowing accumulation, or one whose magnitude
+	 * does not fit in a {@code long}, reports 1 (no known factor) rather than a silently
+	 * wrapped, incorrect value that a caller would otherwise trust.</p>
+	 */
+	@Override
+	public long constantIntegerFactor() {
+		long factor = 1;
+
+		try {
+			for (Expression<?> child : getChildren()) {
+				factor = Math.multiplyExact(factor, child.longValue().orElse(1));
+			}
+
+			return Math.absExact(factor);
+		} catch (ArithmeticException e) {
+			return 1;
+		}
+	}
+
 	@Override
 	public Number computeValue(IndexValues indexValues) {
 		List<Number> values = getChildren().stream()

@@ -317,6 +317,12 @@ row-duplicate map, is populated only when `getRowDuplicates()` is requested.
 - **Depth-organized**: Expressions grouped by tree depth for efficient lookup
 - **Frequency-based eviction**: `FrequencyCache` tracks usage for cache management
 - **Configurable**: `ScopeSettings.isExpressionCacheTarget()` controls which expressions are cached
+- **Structural hashing**: lookups rely on `Expression.hashCode()`, which each node computes once
+  from its `nodeHash()` (the hash of its class, or of its value for a constant) combined in order
+  with the hashes of its children. Expressions that differ only in their operation, the order of
+  their operands or a constant therefore rarely collide, and a lookup compares few candidates. A
+  class whose `compare()` accepts nodes of other classes overrides `nodeHash()` so that equal
+  expressions always hash alike.
 
 ### Analysis
 
