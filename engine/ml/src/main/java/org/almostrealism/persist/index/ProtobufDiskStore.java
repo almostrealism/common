@@ -205,15 +205,23 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * recorded), the index is discarded, in memory and on disk, and the next
 	 * vector insertion starts a new one. Declaring the recorded model is a no-op.
 	 *
+	 * <p>Because the discarded index is only repopulated as vectors for the
+	 * declared model arrive, records already complete for that model would never
+	 * re-enter the index on their own. The returned flag lets the caller detect a
+	 * reset and backfill those records (this store keeps only opaque records and
+	 * cannot re-embed them itself).</p>
+	 *
 	 * @param model the model identifier, or {@code null} to leave the index as it is
+	 * @return {@code true} if the index was discarded and must be rebuilt for the
+	 *         declared model, {@code false} if the call was a no-op
 	 */
-	public void setIndexModel(String model) {
+	public boolean setIndexModel(String model) {
 		synchronized (hnswLock) {
 			if (closed) {
 				throw new IllegalStateException("Cannot change the index model of a closed store");
 			}
 
-			if (model == null || model.equals(indexModel)) return;
+			if (model == null || model.equals(indexModel)) return false;
 
 			if (hnswIndex != null) {
 				log.info("Discarding HNSW index of " + hnswIndex.size() + " vectors from model "
@@ -230,6 +238,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 			}
 
 			indexModel = model;
+			return true;
 		}
 	}
 
