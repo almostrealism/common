@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-11-03
 closed:
 tracker: [faca1b4d-dee7-4428-bc8b-1333973312b7]
@@ -175,3 +175,35 @@ site (`AcceleratedOperation.apply`), guided by an invariant already used for cop
 already used, in the sibling `MemoryReplacementManager`, for unordered read-only copies. The
 breadth is in verification: the existing aggregation tests on any backend, plus the Metal
 measurements, plus the new structural regression test.
+
+## Implementation Status (2026-11-03)
+
+Implemented in `MemoryDataArgumentMap`: `ensureCopyOperations()` partitions the copy-ins by
+`isCopiedOnce(int)` (read-only source **and** known `writtenSlices` excluding the slice).
+`getPrepareOperations()` returns one list, built once: the per-dispatch copy-ins plus a single
+`unordered()` `OnceSubmittable` (`io.almostrealism.concurrent`, in `ar-code`) that submits the
+copy-once group on its first submission. That claim is made under the `OnceSubmittable`'s lock,
+and every later submission, on any thread,
+returns a completion covering the stored copy-once completion until it is known complete — this
+closes the race raised in review (PR #825): `AcceleratedOperation.apply` is `synchronized`, but
+the dispatch runs in a `whenReady` listener that may execute later on an executor thread. The
+`apply` call site is unchanged apart from Javadoc. Regression test:
+`ReadOnlyAggregateCopyTest` (engine/ml), including concurrent preparation and ordering of a
+later dispatch after an outstanding single copy.
+
+Metal measurements (`-DAR_HARDWARE_DRIVER=mtl`, same node, baseline = `origin/master`
+`MemoryDataArgumentMap`):
+
+| Measurement | Baseline | With copy-once |
+|---|---|---|
+| `ConnectomeNetworkTest#matchesBrian2Spikes` | 10.28–10.37 s (3 runs, CV 0.4%) | 4.22 / 4.27 / 4.39 s (one outlier at 12.3 s) |
+| `ConnectomeNetworkTest#silentWithoutInput` | 2.80–2.94 s | 2.73–2.84 s |
+| `keyValueCacheDecodeThroughput` cache `dispatchesPerByte` | 247.08 | 247.08 |
+
+Success criterion 2 is **not met**: the decode benchmark builds its model from in-memory random
+weights, which are writable (`isReadOnly()` is false), so the copy-once invariant never applies
+to them. Extending copy-once to writable sources the kernel does not write would be incorrect
+(the host may change them between dispatches). Meeting criterion 2 needs either file-backed
+(`StateDictionary`) weights in the benchmark or the per-dispatch copy reduction of `38f78778`.
+`MetalCommandRunner.getBridgeCommitCount()` was not instrumented in the connectome tests; the
+timing change is the evidence for criterion 1.
