@@ -4318,12 +4318,24 @@ jobs:
               regression_count=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^regression_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
               preexisting_count=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^preexisting_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
               environmental_count=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^environmental_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
-              if [ -n "$regression_count" ]; then
-                preexisting_count="${preexisting_count:-0}"
-                environmental_count="${environmental_count:-0}"
-                CLASSIFIED=true
+              # Accept the classification only when all three counts are
+              # present and partition the failures exactly: the classifier
+              # sorts every failure into one of the three buckets, so the sum
+              # must equal the raw failure count. A classifier (which runs from
+              # the branch checkout) that under-reports — e.g. regression_count=0
+              # with the others missing or a sum below the real total — is
+              # rejected here and falls through to the conservative
+              # all-regressions path, so a real regression is never dropped.
+              if [ -n "$regression_count" ] && [ -n "$preexisting_count" ] \
+                  && [ -n "$environmental_count" ]; then
+                classified_total=$((regression_count + preexisting_count + environmental_count))
+                if [ "$classified_total" = "${{ steps.failures.outputs.failure_count }}" ]; then
+                  CLASSIFIED=true
+                else
+                  echo "::warning::classify-failures.py counts (${regression_count}+${preexisting_count}+${environmental_count}=${classified_total}) do not match ${{ steps.failures.outputs.failure_count }} failure(s) — treating every failure as a regression"
+                fi
               else
-                echo "::warning::classify-failures.py produced no regression_count — treating every failure as a regression"
+                echo "::warning::classify-failures.py did not report all three counts — treating every failure as a regression"
               fi
             else
               # A classifier crash must not drop a real failure: fall back to

@@ -445,6 +445,31 @@ class ClassifyFailuresStepTests(unittest.TestCase):
         self.assertEqual("1", outputs["preexisting_count"])
         self.assertNotIn("FooTest.baz", regressions)
 
+    def test_counts_that_do_not_sum_to_the_failure_count_fall_back(self):
+        # The classifier partitions every failure into exactly one bucket, so a
+        # classification whose three counts do not sum to the raw failure count
+        # (here it under-reports regressions as 0 while the run had 2 failures)
+        # is rejected and every failure is treated as a regression.
+        classifier = (
+            "print('regression_count=0')\n"
+            "print('preexisting_count=1')\n"
+            "print('environmental_count=0')\n")
+        outputs, regressions, stdout = self._run(classifier)
+        self.assertEqual("2", outputs["regression_count"])
+        self.assertEqual("0", outputs["preexisting_count"])
+        self.assertEqual("0", outputs["environmental_count"])
+        self.assertIn("FooTest.bar", regressions)
+        self.assertIn("do not match", stdout)
+
+    def test_missing_counts_fall_back_to_all_regressions(self):
+        # A classifier that prints only regression_count=0 (the other counts
+        # absent) must not be accepted: without all three it cannot be checked
+        # against the failure count, so the conservative path is taken.
+        outputs, regressions, stdout = self._run("print('regression_count=0')\n")
+        self.assertEqual("2", outputs["regression_count"])
+        self.assertIn("FooTest.baz", regressions)
+        self.assertIn("did not report all three counts", stdout)
+
 
 def _write_executable(path, text):
     with open(path, "w") as f:
