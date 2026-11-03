@@ -35,9 +35,10 @@ import java.util.Random;
 import java.util.function.DoubleSupplier;
 
 /**
- * Pins the Fourier feature projection built from the {@code fourier_features.pdsl} asset (see
- * {@link DiffusionTransformerFeatures#fourierFeatures} / {@link DiffusionTransformerFeatures#expoFourierFeatures})
- * against two references that do not depend on the asset's implementation:
+ * Pins the Fourier feature projection of the learned {@link DiffusionTransformerFeatures#fourierFeatures}
+ * (built from the {@code fourier_features.pdsl} asset) and the deterministic
+ * {@link DiffusionTransformerFeatures#expoFourierFeatures} (which keeps a weightless producer form and
+ * does not load the asset) against two references that do not depend on the implementation:
  * <ul>
  *   <li>{@link #hostReference}, the {@code [cos(2π · x · Wᵀ) | sin(2π · x · Wᵀ)]} arithmetic written out
  *       in plain double precision on the host, so the value, the {@code 2π} factor and the cosine-then-sine
@@ -86,11 +87,13 @@ public class FourierFeaturesAssetTest extends TestSuiteBase implements Diffusion
 
 	/**
 	 * The deterministic (expo) variant reproduces the host reference over its geometric frequency ladder at
-	 * a batch size the locked {@link ExpoFourierFeaturesTest} does not cover, so the asset is exercised with
-	 * a computed rather than a drawn frequency matrix.
+	 * a batch size the locked {@link ExpoFourierFeaturesTest} does not cover. Unlike the learned path, this
+	 * variant keeps its weightless Java producer form and does not load {@code fourier_features.pdsl}, so
+	 * this pins the deterministic projection against the host reference with a computed, rather than a
+	 * drawn, frequency ladder.
 	 */
 	@Test(timeout = 300000)
-	public void expoFourierAssetMatchesHostReference() {
+	public void expoFourierFeaturesMatchHostReference() {
 		int batch = 2;
 		int outFeatures = 8;
 		double minFreq = 0.5;

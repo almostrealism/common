@@ -7,14 +7,17 @@
  *   fourier_features(t) = [ cos(2π · t · f_0) ... cos(2π · t · f_{half-1}),
  *                           sin(2π · t · f_0) ... sin(2π · t · f_{half-1}) ]
  *
- * This file replaces the Java producer assembly that used to back the block form of
- * DiffusionTransformerFeatures.fourierFeatures / expoFourierFeatures (a single layer wrapping
- * concat(cos(2π · x · frequenciesᵀ), sin(...))). Those methods now only bind the frequency matrix
- * and load this asset, so there is one block-level definition of the structure and it is here. The
- * learned variant binds a trained [half, in] weight; the deterministic (expo) variant binds a fixed
- * geometric frequency ladder. The producer-level overloads that compose into a larger producer graph
- * (NumberConditioner) legitimately stay in Java, exactly as siluMlp keeps a producer form alongside
- * silu_mlp.pdsl.
+ * This file backs the block form of the learned DiffusionTransformerFeatures.fourierFeatures: it
+ * replaces the Java producer assembly that method used to wrap in a single layer
+ * (concat(cos(2π · x · frequenciesᵀ), sin(...))). That method now only binds the learned [half, in]
+ * weight and loads this asset, so there is one block-level definition of the structure and it is
+ * here; the matrix flows through the `dense` stage, which registers it as a trainable weight.
+ *
+ * The deterministic DiffusionTransformerFeatures.expoFourierFeatures does NOT load this asset. Its
+ * geometric frequency ladder must stay fixed, so it keeps the weightless Java producer form and
+ * never registers the ladder as a trainable weight. The producer-level overloads that compose into
+ * a larger producer graph (NumberConditioner) likewise stay in Java, exactly as siluMlp keeps a
+ * producer form alongside silu_mlp.pdsl.
  *
  * Data flow of one forward pass over a conditioning vector [batch, in]:
  *
