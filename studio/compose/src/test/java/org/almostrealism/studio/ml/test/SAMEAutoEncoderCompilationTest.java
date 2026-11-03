@@ -104,6 +104,37 @@ public class SAMEAutoEncoderCompilationTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The duration-based {@link CompiledModelAutoEncoder#of(SAMEAutoEncoder, int, double, double) of}
+	 * overload rejects a clip length that is not a positive, finite, in-range sample count — zero,
+	 * negative, non-finite, or larger than {@link Integer#MAX_VALUE} — with an
+	 * {@link IllegalArgumentException} rather than compiling a zero-sized or invalid encoder. A
+	 * non-finite duration or sample rate must not slip through the range check and be truncated to
+	 * zero samples.
+	 */
+	@Test(timeout = 240000)
+	public void compiledForDurationRejectsInvalidClipLength() {
+		SAMEAutoEncoder autoencoder = smallAutoEncoder(LATENT);
+		double[] invalidDurations = {0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY,
+				Double.NEGATIVE_INFINITY, (double) Integer.MAX_VALUE};
+		for (double duration : invalidDurations) {
+			try {
+				CompiledModelAutoEncoder.of(autoencoder, 1, SAMPLE_RATE, duration);
+				throw new AssertionError("expected rejection of maxDuration " + duration);
+			} catch (IllegalArgumentException expected) {
+				// the clip length is not a valid sample count
+			}
+		}
+
+		// A non-finite sample rate must be rejected for the same reason.
+		try {
+			CompiledModelAutoEncoder.of(autoencoder, 1, Double.NaN, 10.0);
+			throw new AssertionError("expected rejection of a non-finite sample rate");
+		} catch (IllegalArgumentException expected) {
+			// the clip length is not a valid sample count
+		}
+	}
+
+	/**
 	 * {@link AudioComposer} composes latents of a SAME-S-shaped autoencoder — 256 latent channels —
 	 * compiled through {@link CompiledModelAutoEncoder#of}. Each clip is encoded to the batched
 	 * {@code [1, 256, latentLen]} latent, the batch axis is dropped so the composer sees the
