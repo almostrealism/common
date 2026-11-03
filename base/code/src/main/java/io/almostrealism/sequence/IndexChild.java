@@ -253,15 +253,28 @@ public class IndexChild extends Sum<Integer> implements Index {
 	 * {@inheritDoc}
 	 *
 	 * <p>A child index is equal to a child index of any class with an equal parent and an
-	 * equal child, as together they determine its value. Indices that share a child but
-	 * differ in their parent take different values, and are not equal.</p>
+	 * equal child of the same limit, as together they determine its value. Indices that share
+	 * a child but differ in their parent take different values, and are not equal.</p>
 	 */
 	@Override
 	public boolean compare(Expression o) {
 		if (!(o instanceof IndexChild)) return false;
 
 		IndexChild other = (IndexChild) o;
-		return other.parent.equals(parent) && other.childIndex.equals(childIndex);
+		return other.parent.equals(parent) && hasSameChild(other);
+	}
+
+	/**
+	 * Returns whether the given child index has a child equal to this one's, with the same
+	 * limit. An index compares equal to another of the same name whatever its limit, but the
+	 * limit is the stride of the parent, part of this expression's structure and its hash.
+	 *
+	 * @param other the child index to compare with
+	 * @return {@code true} if the children are equal and have the same limit
+	 */
+	protected boolean hasSameChild(IndexChild other) {
+		return other.childIndex.equals(childIndex)
+				&& other.childIndex.getLimit().equals(childIndex.getLimit());
 	}
 
 	/**
@@ -275,8 +288,13 @@ public class IndexChild extends Sum<Integer> implements Index {
 		return IndexChild.class.getName().hashCode();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Combines the hashes of the parent and child, which equal child indices share.</p>
+	 */
 	@Override
 	public int hashCode() {
-		return childIndex.hashCode();
+		return Objects.hash(parent, childIndex);
 	}
 }

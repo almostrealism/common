@@ -986,6 +986,32 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 	}
 
 	/**
+	 * The limit of a child index is the stride of its parent, so child indices whose children
+	 * share a name but not a limit take different values and are unequal, alone and nested,
+	 * even though the children themselves compare equal. The hash of a child index includes
+	 * its parent, so indices sharing a child but not a parent do not share a hash.
+	 */
+	@Test(timeout = 30000)
+	public void indexChildEqualityIncludesChildLimit() {
+		DefaultIndex row = new DefaultIndex("row", 3);
+		IndexChild four = Index.child(row, new DefaultIndex("col", 4));
+		IndexChild eight = Index.child(row, new DefaultIndex("col", 8));
+
+		Assert.assertEquals(new DefaultIndex("col", 4), new DefaultIndex("col", 8));
+		Assert.assertNotEquals(four, eight);
+		Assert.assertNotEquals(eight, four);
+		Assert.assertNotEquals(Sum.of(ref("y"), four), Sum.of(ref("y"), eight));
+
+		IndexChild alsoFour = Index.child(new DefaultIndex("row", 3), new DefaultIndex("col", 4));
+		Assert.assertEquals(four, alsoFour);
+		Assert.assertEquals(four.hashCode(), alsoFour.hashCode());
+		Assert.assertEquals(Sum.of(ref("y"), four), Sum.of(ref("y"), alsoFour));
+
+		IndexChild otherRow = Index.child(new DefaultIndex("other", 3), new DefaultIndex("col", 4));
+		Assert.assertNotEquals(four.hashCode(), otherRow.hashCode());
+	}
+
+	/**
 	 * Iterated simplification ends when an expression returns to a form it already took, so
 	 * a simplification that alternates between two forms cannot loop forever.
 	 */
