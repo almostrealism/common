@@ -43,9 +43,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 /**
- * Upgrades a library store written the way the previous release wrote it to a
- * feature model with a different feature width, as the Rings 0.40 to 0.41 upgrade
- * does (64-bin ONNX autoencoder features to 256-bin Stable Audio 3 features).
+ * Upgrades a library store written the way a previous release wrote it to a
+ * feature model with a different feature width, as happens when the configured
+ * feature provider is replaced by one whose embeddings have a wider feature vector.
  *
  * <p>The previous release recorded features in the legacy unkeyed slot, with no
  * model identifier, and indexed every item in the store's HNSW index with the

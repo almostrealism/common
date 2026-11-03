@@ -20,7 +20,7 @@ import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsFactory;
 import org.almostrealism.audio.data.WaveFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -34,7 +34,7 @@ import java.util.Random;
  * itself, and unrelated features score near zero. The pairwise and the batched
  * paths must agree.
  */
-public class WaveDetailsSimilarityTest implements TestFeatures {
+public class WaveDetailsSimilarityTest extends TestSuiteBase {
 
 	/** Audio sample rate of the test items. */
 	private static final int SAMPLE_RATE = 44100;

@@ -135,7 +135,13 @@ public class CompiledModelAutoEncoder implements AutoEncoder, CodeFeatures {
 	 */
 	public static CompiledModelAutoEncoder of(SAMEAutoEncoder autoencoder, int batchSize,
 											  double sampleRate, double maxDuration) {
-		int samples = autoencoder.alignedAudioLength((int) Math.round(maxDuration * sampleRate));
+		double exact = maxDuration * sampleRate;
+		if (exact <= 0.0 || exact > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("maxDuration " + maxDuration + " at sampleRate "
+					+ sampleRate + " is not a valid clip length");
+		}
+
+		int samples = autoencoder.alignedAudioLength((int) Math.ceil(exact));
 		return of(autoencoder, batchSize, samples, sampleRate, maxDuration);
 	}
 
