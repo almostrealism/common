@@ -38,6 +38,9 @@ def fake_env(tmp_path, monkeypatch):
     monkeypatch.setattr(heap_analyzer, "_TOOLS_TARGET", tools_target)
     monkeypatch.setattr(heap_analyzer.Path, "home",
                         classmethod(lambda cls: tmp_path / "home"))
+    # A FlowTree job exports these; the fake repository is unsplit at ~/.m2.
+    monkeypatch.delenv("FLOWTREE_MAVEN_LOCAL_REPOSITORY", raising=False)
+    monkeypatch.delenv("MAVEN_ARGS", raising=False)
     return tmp_path
 
 
@@ -66,6 +69,7 @@ class TestBuildClasspath:
         monkeypatch.setattr(heap_analyzer, "_TOOLS_TARGET", tools_target)
         monkeypatch.setattr(heap_analyzer.Path, "home",
                             classmethod(lambda cls: tmp_path / "home"))
+        monkeypatch.delenv("FLOWTREE_MAVEN_LOCAL_REPOSITORY", raising=False)
         monkeypatch.setenv("MAVEN_ARGS",
                            "-Daether.enhancedLocalRepository.split=true "
                            "-Daether.enhancedLocalRepository.localPrefix=flowtree-jobs/task-1")

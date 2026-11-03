@@ -279,7 +279,7 @@ installed last. That may be a different branch's source, so a test can
 silently pass or fail against the wrong code.
 
 The harness therefore gives each job its own space for **installed** artifacts
-(`MavenInstallSpace`), using Maven 3.9's split local repository. The agent
+(`MavenInstallSpace`), using Maven's split local repository. The agent
 process is launched with:
 
 ```bash
@@ -287,7 +287,7 @@ MAVEN_ARGS="-Daether.enhancedLocalRepository.split=true \
             -Daether.enhancedLocalRepository.localPrefix=flowtree-jobs/<task id>"
 ```
 
-Maven 3.9 reads `MAVEN_ARGS` before its command-line arguments, so the setting
+Maven reads `MAVEN_ARGS` before its command-line arguments, so the setting
 applies to every Maven run the job makes:
 
 - the agent's own shell;
@@ -323,12 +323,14 @@ that died mid-job. Two system properties on the worker JVM tune this:
 | `flowtree.mavenInstallSpaceMaxAgeHours` | `48` | age past which another job's space is deleted |
 | `flowtree.mavenLocalRepository` | `~/.m2/repository` | set it when `settings.xml` relocates the local repository, so cleanup looks where Maven writes. The resolved base is exported to the job's child processes (`FLOWTREE_MAVEN_LOCAL_REPOSITORY`), so the preflight and heap analyzer resolve artifacts there too |
 
-**Requirements.** The node's `mvn` must be Maven 3.9 or later; older versions
-ignore `MAVEN_ARGS` and the split properties. The worker probes `mvn --version`
-once and logs a warning on every job when isolation is not in effect. The
-Docker agent image takes Maven from the official Maven 3 image for this
-reason (Ubuntu's apt package is 3.6), and `agent/macos/install.sh` warns when
-the native agent's `mvn` is too old. On the first job after the switch, each
+**Requirements.** The node's `mvn` must be a release that supports both
+`MAVEN_ARGS` and the split local repository; older releases silently ignore
+them. The minimum is defined once, by
+`MavenInstallation.supportsSplitRepository()`. The worker probes
+`mvn --version` once and logs a warning on every job when isolation is not in
+effect. The Docker agent image takes Maven from the official Maven image for
+this reason (the Ubuntu apt package predates the split repository), and
+`agent/macos/install.sh` warns when the native agent's `mvn` is too old. On the first job after the switch, each
 node downloads its dependencies into `cached/` once.
 
 A workstream's own `MAVEN_ARGS` (from `agentEnv`, or inherited by the worker)
