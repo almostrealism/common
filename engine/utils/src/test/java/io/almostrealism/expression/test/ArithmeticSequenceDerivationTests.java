@@ -20,6 +20,7 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.ArithmeticGenerator;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.ExpressionProperties;
+import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
@@ -406,6 +407,21 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 		Assert.assertEquals(6L, generator.constantIntegerFactor());
 
 		Assert.assertEquals(1L, Sum.of(kernel().imod(5), e(6)).constantIntegerFactor());
+	}
+
+	/**
+	 * A factor whose magnitude does not fit in a {@code long}, a constant or a product whose
+	 * constant factors multiply to {@link Long#MIN_VALUE}, is reported as {@code 1} (no known
+	 * factor) rather than as the negative value {@link Math#abs(long)} would wrap it to.
+	 */
+	@Test(timeout = 30000)
+	public void constantIntegerFactorIsPositiveAtTheLongMinimum() {
+		Assert.assertEquals(1L, new LongConstant(Long.MIN_VALUE).constantIntegerFactor());
+		Assert.assertEquals(Long.MAX_VALUE, new LongConstant(-Long.MAX_VALUE).constantIntegerFactor());
+
+		Expression<?> product = Product.of(kernel().imod(5), new LongConstant(Long.MIN_VALUE));
+		Assert.assertTrue(product instanceof Product);
+		Assert.assertEquals(1L, product.constantIntegerFactor());
 	}
 
 	/**

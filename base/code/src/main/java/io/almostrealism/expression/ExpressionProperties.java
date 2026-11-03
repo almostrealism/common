@@ -214,7 +214,8 @@ public interface ExpressionProperties<T> {
 
 	/**
 	 * Returns a value every evaluation of this integer expression is structurally known
-	 * to be a multiple of: its own value for a constant, and 1 otherwise. An expression
+	 * to be a multiple of: the magnitude of its value for a constant whose magnitude fits in
+	 * a {@code long}, and 1 otherwise. An expression
 	 * whose structure establishes a factor, such as a {@link Product} of constant factors,
 	 * overrides this to report it; a caller such as
 	 * {@link Quotient#tryBoundedRemainderSimplify(Sum, long)} trusts the answer to decide
@@ -224,7 +225,8 @@ public interface ExpressionProperties<T> {
 	 */
 	public default long constantIntegerFactor() {
 		OptionalLong constant = longValue();
-		return constant.isPresent() ? Math.abs(constant.getAsLong()) : 1;
+		return constant.isPresent() && constant.getAsLong() != Long.MIN_VALUE
+				? Math.abs(constant.getAsLong()) : 1;
 	}
 
 	/**

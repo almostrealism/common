@@ -959,6 +959,33 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 	}
 
 	/**
+	 * A child index is equal to another only when both its parent and its child are, since
+	 * together they determine its value, and the equality of child indices is the same alone
+	 * as it is inside an enclosing expression, whose structural hash includes the hash of
+	 * each parent. Child indices that share a child but whose parents are themselves child
+	 * indices of different children and limits are therefore unequal both alone and nested.
+	 */
+	@Test(timeout = 30000)
+	public void indexChildEqualityIncludesParent() {
+		DefaultIndex col = new DefaultIndex("col", 4);
+		IndexChild cell = Index.child(new DefaultIndex("row", 3), col);
+		IndexChild same = Index.child(new DefaultIndex("row", 3), col);
+		IndexChild otherRow = Index.child(new DefaultIndex("other", 3), col);
+
+		Assert.assertEquals(cell, same);
+		Assert.assertEquals(cell.hashCode(), same.hashCode());
+		Assert.assertEquals(Sum.of(ref("y"), cell), Sum.of(ref("y"), same));
+		Assert.assertEquals(Sum.of(ref("y"), cell).hashCode(), Sum.of(ref("y"), same).hashCode());
+		Assert.assertNotEquals(cell, otherRow);
+
+		DefaultIndex outer = new DefaultIndex("outer", 2);
+		IndexChild narrow = Index.child(Index.child(outer, new DefaultIndex("p", 2)), col);
+		IndexChild wide = Index.child(Index.child(outer, new DefaultIndex("q", 5)), col);
+		Assert.assertNotEquals(narrow, wide);
+		Assert.assertNotEquals(Sum.of(ref("y"), narrow), Sum.of(ref("y"), wide));
+	}
+
+	/**
 	 * Iterated simplification ends when an expression returns to a form it already took, so
 	 * a simplification that alternates between two forms cannot loop forever.
 	 */

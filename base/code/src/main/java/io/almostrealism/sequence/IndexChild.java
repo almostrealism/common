@@ -249,17 +249,26 @@ public class IndexChild extends Sum<Integer> implements Index {
 		return this;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A child index is equal to a child index of any class with an equal parent and an
+	 * equal child, as together they determine its value. Indices that share a child but
+	 * differ in their parent take different values, and are not equal.</p>
+	 */
 	@Override
 	public boolean compare(Expression o) {
 		if (!(o instanceof IndexChild)) return false;
-		return ((IndexChild) o).childIndex.equals(childIndex);
+
+		IndexChild other = (IndexChild) o;
+		return other.parent.equals(parent) && other.childIndex.equals(childIndex);
 	}
 
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>A child index is equal to a child index of any class with an equal child, so every
-	 * child index has the same node hash.</p>
+	 * <p>A child index is equal to a child index of any class with an equal parent and
+	 * child, which are its children, so every child index has the same node hash.</p>
 	 */
 	@Override
 	protected int nodeHash() {
