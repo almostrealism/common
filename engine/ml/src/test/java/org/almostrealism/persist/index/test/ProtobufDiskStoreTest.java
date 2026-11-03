@@ -719,6 +719,39 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * The model marker is persisted the moment it is declared, while the index
+	 * itself is only written on flush or close. A run interrupted after the marker
+	 * is written reopens with the model recorded but no index loaded; re-declaring
+	 * the same model must then report a rebuild rather than a no-op, so the caller
+	 * repopulates the index instead of leaving it stranded empty. Once an index is
+	 * present again, re-declaring the model is a no-op.
+	 */
+	@Test(timeout = 30000)
+	public void sameModelRebuildsWhenIndexMissing() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.setIndexModel("m1");
+			store.put("a", makeRecord("a", "alpha", 1), new PackedCollection(3).fill(1.0, 0.0, 0.0));
+			Assert.assertEquals(1, store.indexedEmbeddingCount());
+		}
+
+		// Simulate an interrupted flush: the model marker survives, the index file does not.
+		Assert.assertTrue("model marker persisted", new File(tempDir, "hnsw.model").exists());
+		Assert.assertTrue("index file removed", new File(tempDir, "hnsw.bin").delete());
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			Assert.assertEquals("index did not load", 0, store.indexedEmbeddingCount());
+			Assert.assertTrue("same model with no index signals a rebuild",
+					store.setIndexModel("m1"));
+
+			store.put("a", makeRecord("a", "alpha", 1), new PackedCollection(3).fill(1.0, 0.0, 0.0));
+			Assert.assertFalse("same model with a present index is a no-op",
+					store.setIndexModel("m1"));
+		}
+	}
+
 	/** Verify that the constructor creates the root directory if it does not exist. */
 	@Test(timeout = 30000)
 	public void constructorCreatesDirectory() {

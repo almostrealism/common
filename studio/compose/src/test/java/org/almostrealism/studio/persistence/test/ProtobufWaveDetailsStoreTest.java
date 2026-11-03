@@ -137,4 +137,41 @@ public class ProtobufWaveDetailsStoreTest extends TestSuiteBase {
 			store.close();
 		}
 	}
+
+	/**
+	 * The model marker is persisted the moment it is declared, while the index is
+	 * only written on flush or close, so a run interrupted after the marker is
+	 * written reopens with the model recorded but no index loaded. Re-declaring
+	 * that same model must rebuild the index from the stored records rather than
+	 * leaving it empty, since nothing else would ever repopulate it.
+	 */
+	@Test(timeout = 60000)
+	public void sameModelRebuildsIndexWhenIndexMissing() throws IOException {
+		Path tempDir = Files.createTempDirectory("protobuf-wave-store-missing");
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(tempDir.toFile());
+
+		try {
+			putWithEmbedding(store, detailsFor("a", "m1", 1.0));
+			putWithEmbedding(store, detailsFor("b", "m1", 2.0));
+			Assert.assertEquals("both m1 records indexed", 2, store.indexedEmbeddingCount());
+		} finally {
+			store.close();
+		}
+
+		// Simulate an interrupted flush: the model marker survives, the index does not.
+		Assert.assertTrue("index file removed", new File(tempDir.toFile(), "hnsw.bin").delete());
+
+		ProtobufWaveDetailsStore reopened = new ProtobufWaveDetailsStore(tempDir.toFile());
+		try {
+			Assert.assertEquals("index did not load", 0, reopened.indexedEmbeddingCount());
+
+			reopened.setEmbeddingModel("m1");
+			Assert.assertEquals("same model rebuilds the index from stored features",
+					2, reopened.indexedEmbeddingCount());
+			Assert.assertTrue("rebuilt index holds an m1 record", reopened.hasEmbedding("a"));
+			Assert.assertTrue("rebuilt index holds an m1 record", reopened.hasEmbedding("b"));
+		} finally {
+			reopened.close();
+		}
+	}
 }

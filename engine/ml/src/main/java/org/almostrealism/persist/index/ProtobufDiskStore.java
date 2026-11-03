@@ -203,17 +203,25 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * and even when they match, similarity between them means nothing. So when
 	 * the declared model is not the one recorded beside the index (or none is
 	 * recorded), the index is discarded, in memory and on disk, and the next
-	 * vector insertion starts a new one. Declaring the recorded model is a no-op.
+	 * vector insertion starts a new one. Declaring the recorded model while its
+	 * index is present is a no-op.
 	 *
-	 * <p>Because the discarded index is only repopulated as vectors for the
-	 * declared model arrive, records already complete for that model would never
-	 * re-enter the index on their own. The returned flag lets the caller detect a
-	 * reset and backfill those records (this store keeps only opaque records and
-	 * cannot re-embed them itself).</p>
+	 * <p>The model marker is persisted the moment it is declared, while the index
+	 * itself is only written on flush or close, so an interrupted run can reopen
+	 * with the marker recorded and no index loaded. A declaration of the recorded
+	 * model is therefore reported as a rebuild when no index is present, rather
+	 * than left as a no-op that would strand an empty index.</p>
+	 *
+	 * <p>Because a discarded index is only repopulated as vectors for the declared
+	 * model arrive, records already complete for that model would never re-enter
+	 * the index on their own. The returned flag lets the caller detect a reset and
+	 * backfill those records (this store keeps only opaque records and cannot
+	 * re-embed them itself).</p>
 	 *
 	 * @param model the model identifier, or {@code null} to leave the index as it is
-	 * @return {@code true} if the index was discarded and must be rebuilt for the
-	 *         declared model, {@code false} if the call was a no-op
+	 * @return {@code true} if the index must be rebuilt for the declared model
+	 *         (because it was discarded, or because the recorded model has no index
+	 *         loaded), {@code false} if the call was a no-op
 	 */
 	public boolean setIndexModel(String model) {
 		synchronized (hnswLock) {
@@ -221,7 +229,14 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 				throw new IllegalStateException("Cannot change the index model of a closed store");
 			}
 
-			if (model == null || model.equals(indexModel)) return false;
+			if (model == null) return false;
+
+			if (model.equals(indexModel)) {
+				// The recorded model is unchanged, but the marker outlives the index
+				// across an interrupted flush, so signal a rebuild when no index is
+				// loaded; there is nothing to discard or rewrite in that case.
+				return hnswIndex == null;
+			}
 
 			if (hnswIndex != null) {
 				log.info("Discarding HNSW index of " + hnswIndex.size() + " vectors from model "
