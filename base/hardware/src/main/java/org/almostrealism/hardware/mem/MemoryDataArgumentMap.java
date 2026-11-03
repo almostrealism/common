@@ -22,6 +22,7 @@ import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.concurrent.OnceSubmittable;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.relation.Delegated;
@@ -30,6 +31,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.streams.Semaphore;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PassThroughProducer;
@@ -57,6 +59,20 @@ import java.util.function.Supplier;
  *       that provides the same value instance.</li>
  *   <li><b>Root delegate handling</b> &mdash; views into the same underlying memory resolve to a
  *       single kernel argument that delegates to the appropriate offset.</li>
+ * </ul>
+ *
+ * <p>Small arguments may also be folded into a single aggregate buffer (see
+ * {@link #enableArgumentAggregation}). Their data then moves around each dispatch, and both
+ * directions are limited to what the compiled kernel requires:</p>
+ * <ul>
+ *   <li><b>Copy-back</b> &mdash; only a slice whose source can be written and that the kernel may
+ *       write is copied back (see {@link #getPostprocessOperations(MemoryData)}).</li>
+ *   <li><b>Copy-in</b> &mdash; a slice whose source is {@link MemoryData#isReadOnly() read-only}
+ *       and that the kernel is known not to write (see {@link #setWrittenSlices(BitSet)}) is copied
+ *       in by the first dispatch only: the source cannot change, the aggregate buffer belongs to
+ *       this map for as long as it lives, and nothing writes that slice of it, so it still holds the
+ *       copied value at every later dispatch. Every other slice is copied in before each dispatch
+ *       (see {@link #getPrepareOperations()}).</li>
  * </ul>
  */
 public class MemoryDataArgumentMap extends SupplierArgumentMap {
@@ -128,6 +144,14 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * recompiled per dispatch. Null until {@link #ensureCopyOperations()} runs.
 	 */
 	private List<Submittable> copyInOperations;
+	/**
+	 * What {@link #getPrepareOperations()} returns: the copy-in of every replacement that must be
+	 * copied before each dispatch, followed, when any replacement is {@link #isCopiedOnce(int)
+	 * copied once}, by a single {@link OnceSubmittable} holding those copy-ins, submitted
+	 * {@link Submittable#unordered() unordered}. Built once, so no dispatch filters a list. Null
+	 * until {@link #ensureCopyOperations()} runs.
+	 */
+	private List<Submittable> prepareOperations;
 	/**
 	 * Compiled copy-out kernels (aggregate &rarr; originals), one per replacement, in replacement
 	 * order (aligned with {@link #copyInOperations} and {@link #replacements}). Reused across every
@@ -382,7 +406,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * @param written the indices of the replacements whose slice the kernel may write
 	 * @throws IllegalStateException if the copy-back has already been built
 	 */
-	public void setWrittenSlices(BitSet written) {
+	public synchronized void setWrittenSlices(BitSet written) {
 		if (copyOutOperations != null) {
 			throw new IllegalStateException("The copy-back has already been built without the written slices");
 		}
@@ -401,6 +425,22 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	private boolean isCopiedBack(int index) {
 		return !replacements.get(index).getRoot().isReadOnly()
 				&& (writtenSlices == null || writtenSlices.get(index));
+	}
+
+	/**
+	 * Returns whether the slice of the replacement at {@code index} is copied in by the first
+	 * dispatch only, rather than before every dispatch: its source is read-only, so its contents
+	 * cannot change between dispatches, and the kernel is known not to write its slice (see
+	 * {@link #setWrittenSlices(BitSet)}), so the aggregate keeps the copied value. While the written
+	 * slices are unknown every slice is copied in before every dispatch, as every slice that can be
+	 * written is then copied back.
+	 *
+	 * @param index the index of the replacement
+	 * @return true if the replacement's slice is copied in once
+	 */
+	private boolean isCopiedOnce(int index) {
+		return replacements.get(index).getRoot().isReadOnly()
+				&& writtenSlices != null && !writtenSlices.get(index);
 	}
 
 	/** Returns the total number of elements folded into the aggregate buffer. */
@@ -441,20 +481,38 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	}
 
 	/**
-	 * Returns the copy operations that move each aggregated root into the aggregate buffer before
-	 * kernel execution, in replacement order.
+	 * Returns the copy operations to submit before each dispatch, which move the aggregated roots
+	 * into the aggregate buffer. The same list is returned for every dispatch, and submitting it
+	 * with {@link Submittable#submit(List, Semaphore)} yields the completion the kernel is chained
+	 * on.
 	 *
-	 * <p>Each runs through the serving {@link io.almostrealism.code.ComputeContext}'s
+	 * <p>Each copy runs through the serving {@link io.almostrealism.code.ComputeContext}'s
 	 * {@link io.almostrealism.code.ComputeContext#copy(io.almostrealism.code.Memory, int, io.almostrealism.code.Memory, int, int) copy}
 	 * (see {@link #copyOperation}), so the context chooses how to move the memory it owns (a direct
 	 * {@code setMem} by default). The operations are built once and reused (see
 	 * {@link #ensureCopyOperations()}).</p>
 	 *
-	 * @return the pre-execution copy operations, in replacement order
+	 * <p>A slice that is {@link #isCopiedOnce(int) copied once} is not copied by every submission.
+	 * Those copies are represented in the list by a single {@link OnceSubmittable}, which issues all
+	 * of them the first time it is submitted and nothing on every later submission, while each
+	 * submission, whichever dispatch makes it and on whichever thread, still returns a completion
+	 * covering both its dependency and those copies until they are known to have completed. No
+	 * kernel can therefore read the aggregate before the copied-once slices hold their values, even
+	 * when dispatches are prepared concurrently.</p>
+	 *
+	 * <p>The group is submitted {@link Submittable#unordered() unordered}, with no dependency. That
+	 * is what lets a context that cannot move a read-only source itself (a Metal context reading a
+	 * file-backed asset, for example) make the copy at once rather than complete it on the host
+	 * after the work ahead of the dispatch, and it is safe for the reasons
+	 * {@link MemoryReplacementManager} stages a read-only argument the same way: no work produces a
+	 * read-only source, and no kernel uses the aggregate before the first dispatch, which is ordered
+	 * after these copies.</p>
+	 *
+	 * @return the pre-execution copy operations
 	 */
 	public List<Submittable> getPrepareOperations() {
 		ensureCopyOperations();
-		return copyInOperations;
+		return prepareOperations;
 	}
 
 	/**
@@ -512,12 +570,22 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * all of them is given. Neither whether a source is read-only nor which slices the kernel writes
 	 * can change while this map lives, so it is decided here rather than on each dispatch.</p>
 	 *
+	 * <p>The copy-ins are partitioned the same way. Every replacement's copy-in is kept in
+	 * {@link #copyInOperations}, aligned with {@link #replacements}; one that is
+	 * {@link #isCopiedOnce(int) copied once} is collected into a single {@link OnceSubmittable}, and
+	 * every other into {@link #prepareOperations}, which ends with that group (see
+	 * {@link #getPrepareOperations()}).</p>
+	 *
 	 * <p>A copy moves a root's backing memory, its {@link MemoryData#getDelegatedLength() delegated
 	 * length}; a root whose logical length differs from it (smaller for a gather ordering,
 	 * larger for a compact or sparse one) is copied through a view of exactly that memory,
 	 * because a copy transfers the logical length of its source.</p>
+	 *
+	 * <p>A dispatch may be prepared on any thread (see
+	 * {@link org.almostrealism.hardware.AcceleratedOperation#apply}), so the lists are built under
+	 * this map's lock.</p>
 	 */
-	private void ensureCopyOperations() {
+	private synchronized void ensureCopyOperations() {
 		if (copyInOperations != null) {
 			return;
 		}
@@ -525,6 +593,8 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		copyInOperations = new ArrayList<>(replacements.size());
 		copyOutOperations = new ArrayList<>(replacements.size());
 		writableCopyOutOperations = new ArrayList<>(replacements.size());
+		List<Submittable> copyOnceOperations = new ArrayList<>();
+		prepareOperations = new ArrayList<>(replacements.size());
 
 		for (int i = 0; i < replacements.size(); i++) {
 			Replacement r = replacements.get(i);
@@ -532,14 +602,25 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			int len = root.getDelegatedLength();
 			MemoryData backing = len == root.getMemLength() ? root : new Bytes(len, root, 0);
 			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
+			Submittable copyIn = copyOperation(backing, slice);
 			Submittable copyOut = copyOperation(slice, backing);
 
-			copyInOperations.add(copyOperation(backing, slice));
+			copyInOperations.add(copyIn);
 			copyOutOperations.add(copyOut);
+
+			if (isCopiedOnce(i)) {
+				copyOnceOperations.add(copyIn);
+			} else {
+				prepareOperations.add(copyIn);
+			}
 
 			if (isCopiedBack(i)) {
 				writableCopyOutOperations.add(copyOut);
 			}
+		}
+
+		if (!copyOnceOperations.isEmpty()) {
+			prepareOperations.add(new OnceSubmittable(copyOnceOperations).unordered());
 		}
 	}
 
@@ -573,8 +654,9 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		destroyCopyOperations(copyOutOperations);
 		copyInOperations = null;
 		copyOutOperations = null;
-		// Holds the same operations copyOutOperations does, already destroyed above
+		// These hold the same operations as the lists above, already destroyed
 		writableCopyOutOperations = null;
+		prepareOperations = null;
 		rootDelegateSuppliers.forEach(RootDelegateProviderSupplier::destroy);
 		mems.forEach((k, v) -> v.destroy());
 		mems.clear();
