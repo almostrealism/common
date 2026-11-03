@@ -1,0 +1,48 @@
+/**
+ * Fourier feature projection of a scalar — the continuous-value embedding a diffusion model uses
+ * to turn a timestep (or any scalar conditioner) into a bank of sinusoids the transformer can read.
+ * Each input value is projected onto a frequency ladder and emitted as the cosine of every
+ * frequency followed by the sine of every frequency:
+ *
+ *   fourier_features(t) = [ cos(2π · t · f_0) ... cos(2π · t · f_{half-1}),
+ *                           sin(2π · t · f_0) ... sin(2π · t · f_{half-1}) ]
+ *
+ * This file replaces the Java producer assembly that used to back the block form of
+ * DiffusionTransformerFeatures.fourierFeatures / expoFourierFeatures (a single layer wrapping
+ * concat(cos(2π · x · frequenciesᵀ), sin(...))). Those methods now only bind the frequency matrix
+ * and load this asset, so there is one block-level definition of the structure and it is here. The
+ * learned variant binds a trained [half, in] weight; the deterministic (expo) variant binds a fixed
+ * geometric frequency ladder. The producer-level overloads that compose into a larger producer graph
+ * (NumberConditioner) legitimately stay in Java, exactly as siluMlp keeps a producer form alongside
+ * silu_mlp.pdsl.
+ *
+ * Data flow of one forward pass over a conditioning vector [batch, in]:
+ *
+ *   [batch, in] conditioning values
+ *     dense(frequencies)                                 f_0 = values · frequenciesᵀ   [batch, half]
+ *     scale(2π)                                          f = 2π · f_0                   [batch, half]
+ *     concat_blocks( cos, sin )                          [cos-plane | sin-plane]        [2·batch·half]
+ *     reshape([2, batch, half])                          recover the two planes         [2, batch, half]
+ *     permute(1, 0, 2)                                   interleave per row             [batch, 2, half]
+ *     reshape([batch, 2·half])                           [cos_b | sin_b] per row        [batch, 2·half]
+ *
+ * `frequencies` is the projection matrix of shape [half, in]; `half` is the number of frequencies
+ * (the output width is 2·half) and `batch` the batch dimension.
+ *
+ * Stage 1 dense(frequencies) is the bias-less projection onto the frequency ladder. Stage 2 scales
+ * by 2π so the projection is a phase in radians. Stage 3 takes the cosine and the sine of that phase:
+ * concat_blocks lays them out flat as [all cosines | all sines] (a [2, batch, half] block in
+ * row-major order), so the transpose of stages 4–6 interleaves the two planes into the [batch, 2·half]
+ * layout where each row carries its own [cos | sin] pair — the cosines first, then the sines.
+ */
+layer fourier_features(batch: int, half: int, frequencies: weight) {
+    dense(frequencies)
+    scale(2 * 3.141592653589793)
+    concat_blocks(
+        { cos() },
+        { sin() }
+    )
+    reshape([2, batch, half])
+    permute(1, 0, 2)
+    reshape([batch, 2 * half])
+}
