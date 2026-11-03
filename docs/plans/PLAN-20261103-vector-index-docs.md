@@ -140,6 +140,33 @@ Concrete, actionable deliverables:
 None. The subsystem is merged to `master` (PR #827 and related). The drift-guard needs no
 curated download and no macOS/Metal node — it runs on any backend, like `HnswSearchTest`.
 
+## Open questions
+
+These are for the person approving the plan; none is a change for this cycle. The subsystem
+carries three already-tracked code-level fragilities. This is a documentation cycle, so the page
+documents behavior as it ships and does **not** fix them (consistent with the Approach note that
+rough edges become follow-up tasks, not branch changes) — but the "Known limits" section should be
+grounded in them rather than omit them, and the implementer should read the tasks before writing it:
+
+- **`insertEmbedding` after `close()` silently rebuilds an empty index.** `ProtobufDiskStore.close()`
+  nulls the index, and `insertEmbedding` does not re-check the closed flag, so a call after close
+  creates a fresh, empty index via `ensureHnswIndex` instead of failing (there is a `TODO(review)`
+  on the method). Tracked as `9829c7af-1ba2-4ab1-83e0-75ce52a9b8d2`.
+- **The index structure is created keyed on vector dimension, not model identity.**
+  `ProtobufDiskStore` does record the owning model — `setIndexModel` persists the `hnsw.model`
+  marker and discards the index on a model change — but the index itself is built by
+  `ensureHnswIndex`, which keys only on the first vector's dimension. The re-embedding half of the
+  rebuild contract lives a layer above, in `ProtobufWaveDetailsStore.setEmbeddingModel` →
+  `rebuildIndex`. The "Model-keyed rebuild" section should keep the marker, the dimension-keyed
+  structure, and the re-embedding step distinct. Task `0ca7f34b-ade1-45ca-9699-65eb370a9851`
+  proposes tracking model identity more robustly at the disk-store layer.
+- **A reopened index is not rebuilt after a feature-width change during backfill.** Tracked as
+  `d46ca647-1844-41cc-982b-bef06c7c1c41`.
+
+These task ids are context for the implementer and the approver; they should inform how the page
+describes known limits, but the durable page itself describes behavior in prose rather than citing
+opaque task ids.
+
 ## Estimated Complexity
 
 Medium. One new internals page, one new drift-guard test, and index/README cross-links; no
