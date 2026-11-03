@@ -255,6 +255,17 @@ public class IndexChild extends Sum<Integer> implements Index {
 		return ((IndexChild) o).childIndex.equals(childIndex);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A child index is equal to a child index of any class with an equal child, so every
+	 * child index has the same node hash.</p>
+	 */
+	@Override
+	protected int nodeHash() {
+		return IndexChild.class.getName().hashCode();
+	}
+
 	@Override
 	public int hashCode() {
 		return childIndex.hashCode();
