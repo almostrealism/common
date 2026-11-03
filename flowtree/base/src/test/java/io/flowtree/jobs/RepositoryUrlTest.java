@@ -75,6 +75,32 @@ public class RepositoryUrlTest extends TestSuiteBase {
     }
 
     /**
+     * Only git remote schemes are recognised: a {@code file://} or
+     * {@code ftp://} URL naming {@code github.com} has no slug, no host, and
+     * so no GitHub slug, while every supported scheme is accepted in any case.
+     */
+    @Test(timeout = 10000)
+    public void onlyGitRemoteSchemesAreRecognised() {
+        for (String scheme : new String[] { "http", "https", "HTTPS", "ssh", "git", "git+ssh", "ssh+git" }) {
+            RepositoryUrl url = new RepositoryUrl(scheme + "://github.com/almostrealism/common.git");
+            Assert.assertEquals(scheme, "almostrealism/common", url.getGitHubSlug());
+        }
+
+        for (String unsupported : new String[] {
+                "file://github.com/almostrealism/common.git",
+                "ftp://github.com/almostrealism/common.git",
+                "ftps://github.com/almostrealism/common.git",
+                "svn+ssh://github.com/almostrealism/common.git",
+                "xhttps://github.com/almostrealism/common.git" }) {
+            RepositoryUrl url = new RepositoryUrl(unsupported);
+            Assert.assertNull(unsupported, url.getSlug());
+            Assert.assertNull(unsupported, url.getHost());
+            Assert.assertNull(unsupported, url.getGitHubSlug());
+            Assert.assertFalse(unsupported, url.isGitHub());
+        }
+    }
+
+    /**
      * Forms of one repository are the same repository ignoring case; an
      * unrecognised URL matches only itself, and an absent URL matches nothing.
      */

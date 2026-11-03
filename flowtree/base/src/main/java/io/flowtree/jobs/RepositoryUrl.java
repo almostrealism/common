@@ -33,8 +33,10 @@ import java.util.regex.Pattern;
  * ({@link #isSameRepository(RepositoryUrl)}).</p>
  *
  * <p>Any string may be wrapped, including {@code null}; a string that is not
- * a recognised SSH, HTTP(S), or {@code git://} repository URL simply has no
- * slug and no host.</p>
+ * a recognised SSH ({@code user@host:owner/repo} or {@code ssh://}), HTTP(S),
+ * or {@code git://} repository URL — including one with any other scheme,
+ * such as {@code file://} or {@code ftp://} — simply has no slug and no
+ * host.</p>
  *
  * @author Michael Murray
  */
@@ -52,15 +54,19 @@ public final class RepositoryUrl {
             Pattern.compile("^[^/@]+@([^:/]+):([^/]+/[^/]+?)(?:\\.git)?/?$");
 
     /**
-     * Pattern matching an HTTP(S)-form or {@code git://} repository URL. The
-     * authority (after the scheme and optional credentials) is captured as the
+     * Pattern matching an HTTP(S)-form, {@code ssh://} or {@code git://}
+     * repository URL (scheme compared ignoring case, {@code git+ssh://} and
+     * {@code ssh+git://} included). Any other scheme — {@code file://},
+     * {@code ftp://} — is not a remote this class recognises, so a
+     * {@code file://github.com/owner/repo} never passes for a GitHub
+     * repository. The authority (after the scheme and optional credentials) is captured as the
      * host (group 1), excluding an optional {@code :port} so a URL with an
      * explicit port reports the same host as one without; a bracketed IPv6
      * literal ({@code [2001:db8::1]}) is captured whole. The {@code owner/repo}
      * path (group 2) is captured with the optional {@code .git} suffix excluded.
      */
     private static final Pattern HTTP_PATTERN =
-            Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^@/]+@)?(\\[[^\\]]+\\]|[^:/]+)(?::[0-9]+)?/([^/]+/[^/]+?)(?:\\.git)?/?$");
+            Pattern.compile("^(?i:https?|ssh|git|git\\+ssh|ssh\\+git)://(?:[^@/]+@)?(\\[[^\\]]+\\]|[^:/]+)(?::[0-9]+)?/([^/]+/[^/]+?)(?:\\.git)?/?$");
 
     /** The URL as given; may be {@code null}. */
     private final String url;
