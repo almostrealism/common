@@ -123,8 +123,9 @@ public class CompiledModelAutoEncoder implements AutoEncoder, CodeFeatures {
 
 	/**
 	 * Compiles a {@link SAMEAutoEncoder} into an {@link AutoEncoder} for clips of {@code maxDuration}
-	 * seconds: the clip length is that duration at {@code sampleRate}, rounded up to the autoencoder's
-	 * {@link SAMEAutoEncoder#alignedAudioLength(int) aligned length}.
+	 * seconds: the clip length is the autoencoder's
+	 * {@link SAMEAutoEncoder#alignedAudioLength(double, double) aligned length} for that duration at
+	 * {@code sampleRate}.
 	 *
 	 * @param autoencoder the autoencoder definition
 	 * @param batchSize   the number of clips processed together
@@ -139,22 +140,8 @@ public class CompiledModelAutoEncoder implements AutoEncoder, CodeFeatures {
 	 */
 	public static CompiledModelAutoEncoder of(SAMEAutoEncoder autoencoder, int batchSize,
 											  double sampleRate, double maxDuration) {
-		double exact = maxDuration * sampleRate;
-		if (!Double.isFinite(maxDuration) || !Double.isFinite(sampleRate)
-				|| maxDuration <= 0.0 || sampleRate <= 0.0
-				|| exact <= 0.0 || exact > Integer.MAX_VALUE) {
-			throw new IllegalArgumentException("maxDuration " + maxDuration + " at sampleRate "
-					+ sampleRate + " is not a valid clip length");
-		}
-
-		int requested = (int) Math.ceil(exact);
-		int samples = autoencoder.alignedAudioLength(requested);
-		if (samples < requested) {
-			throw new IllegalArgumentException("maxDuration " + maxDuration + " at sampleRate "
-					+ sampleRate + " aligns to a clip length that overflows the sample count");
-		}
-
-		return of(autoencoder, batchSize, samples, sampleRate, maxDuration);
+		return of(autoencoder, batchSize, autoencoder.alignedAudioLength(sampleRate, maxDuration),
+				sampleRate, maxDuration);
 	}
 
 	/**

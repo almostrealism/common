@@ -356,7 +356,11 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	public List<SearchResult<T>> search(PackedCollection queryVector, int topK) {
 		List<HnswIndex.IdScore> candidates;
 		synchronized (hnswLock) {
-			if (hnswIndex == null || hnswIndex.size() == 0) {
+			// A query of another dimensionality comes from another model than the
+			// indexed vectors, so nothing in the index is comparable to it.
+			// TODO(review): document this empty-result-on-width-mismatch contract in DiskStore.search javadoc; it silently hides caller bugs that HnswIndex.search would reject.
+			if (hnswIndex == null || hnswIndex.size() == 0
+					|| hnswIndex.getDimension() != queryVector.getMemLength()) {
 				return new ArrayList<>();
 			}
 
@@ -537,28 +541,11 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	/**
-	 * Lazily initialize the HNSW index on first vector insertion, and replace
-	 * it when the vectors being inserted have a different dimensionality than
-	 * the index holds.
-	 *
-	 * <p>A dimensionality change means the embeddings now come from a different
-	 * model (for example a library analysed by an earlier feature model, whose
-	 * saved index was reloaded from disk). Vectors from two models are never
-	 * comparable, so the old index is discarded rather than mixed with, or
-	 * allowed to reject, the new model's vectors; it is rebuilt as items are
-	 * re-indexed.</p>
+	 * Lazily initialize the HNSW index on first vector insertion.
 	 *
 	 * @param dimension the vector dimensionality
 	 */
 	private void ensureHnswIndex(int dimension) {
-		// TODO(review): one stray put of another width (e.g. AudioLibraryMigration's legacy-slot embedding) discards the whole index; consider keying replacement on the model, not the width.
-		if (hnswIndex != null && hnswIndex.getDimension() != dimension) {
-			log.warning("Replacing the " + hnswIndex.getDimension() + "-dimension vector index ("
-					+ hnswIndex.size() + " entries) with a " + dimension + "-dimension index");
-			hnswIndex.destroy();
-			hnswIndex = null;
-		}
-
 		if (hnswIndex == null) {
 			hnswIndex = new HnswIndex(dimension);
 		}

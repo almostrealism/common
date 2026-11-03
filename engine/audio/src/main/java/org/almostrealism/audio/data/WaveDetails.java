@@ -21,7 +21,6 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Node;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 
@@ -796,7 +795,12 @@ public class WaveDetails implements CodeFeatures, Node {
 	 * @return the mean-pooled embedding vector, or {@code null}
 	 */
 	public PackedCollection meanPooledEmbedding() {
-		return meanPooled(getFeatureData());
+		WaveFeatures f = view();
+		if (f != null) return f.meanPooledEmbedding();
+		if (featureData == null) return null;
+
+		return new WaveFeatures(null, featureSampleRate, featureChannelCount,
+				featureBinCount, featureFrameCount, featureData, similarities).meanPooledEmbedding();
 	}
 
 	/**
@@ -810,40 +814,13 @@ public class WaveDetails implements CodeFeatures, Node {
 	 *
 	 * @param modelIdentifier the model whose features to pool, or {@code null}
 	 * @return the mean-pooled embedding vector, or {@code null}
+	 * @see WaveFeatures#meanPooledEmbedding()
 	 */
 	public PackedCollection meanPooledEmbedding(String modelIdentifier) {
 		if (modelIdentifier == null) return meanPooledEmbedding();
 
 		WaveFeatures features = getFeatures(modelIdentifier);
-		return features == null ? null : meanPooled(features.getFeatureData());
-	}
-
-	/**
-	 * Averages a {@code [frames, bins]} feature tensor across its frames.
-	 *
-	 * @param featureData the feature tensor, or {@code null}
-	 * @return the {@code [bins]} mean, or {@code null} when there is nothing to pool
-	 */
-	private static PackedCollection meanPooled(PackedCollection featureData) {
-		if (featureData == null) return null;
-
-		int frames = featureData.getShape().length(0);
-		int bins = featureData.getShape().length(1);
-		if (frames == 0 || bins == 0) return null;
-
-		CollectionProducer sum = null;
-
-		for (int f = 0; f < frames; f++) {
-			if ((f + 1) * bins > featureData.getMemLength()) break;
-
-			CollectionProducer row = Ops.o().cp(
-					featureData.range(Ops.o().shape(bins), f * bins));
-			sum = sum == null ? row : sum.add(row);
-		}
-
-		if (sum == null) return null;
-
-		return sum.multiply(1.0 / frames).evaluate();
+		return features == null ? null : features.meanPooledEmbedding();
 	}
 
 	/**
