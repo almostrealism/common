@@ -660,7 +660,8 @@ def is_copilot_quota_notice(body: str) -> bool:
     return any(marker in lowered for marker in COPILOT_QUOTA_MARKERS)
 
 
-def latest_copilot_quota_notice(reviews, is_copilot_login) -> Optional[dict]:
+def latest_copilot_quota_notice(reviews, is_copilot_login,
+                                exclude_ids=()) -> Optional[dict]:
     """Return the most recent Copilot review when it is an out-of-quota refusal.
 
     Scans ``reviews`` for those authored by Copilot (per ``is_copilot_login``),
@@ -674,6 +675,10 @@ def latest_copilot_quota_notice(reviews, is_copilot_login) -> Optional[dict]:
             endpoint (each with ``user``, ``submitted_at``, ``body``).
         is_copilot_login: Predicate taking a login string and returning True
             when it identifies the Copilot reviewer bot.
+        exclude_ids: Review ids to ignore. A caller that has just requested a
+            review passes the ids that existed before its request, so a quota
+            notice left by an earlier attempt is not mistaken for a refusal of
+            the new one.
 
     Returns:
         The quota-notice review dict, or ``None``.
@@ -692,6 +697,7 @@ def latest_copilot_quota_notice(reviews, is_copilot_login) -> Optional[dict]:
     copilot_reviews = [
         r for r in reviews
         if isinstance(r, dict) and is_copilot_login(_login(r))
+        and r.get("id") not in exclude_ids
     ]
     if not copilot_reviews:
         return None

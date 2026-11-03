@@ -11,6 +11,7 @@ The tests below are written against realistic mock responses that match
 what the GitHub API actually returns.
 """
 
+import itertools
 import os
 import sys
 import unittest
@@ -33,10 +34,14 @@ _QUOTA_BODY = (
 )
 
 
+# Review ids are unique on GitHub; a counter keeps them unique here too.
+_REVIEW_IDS = itertools.count(1)
+
+
 def _review(login, body, submitted_at, state="COMMENTED"):
     """Build a review object in the shape github_pr_reviews returns."""
     return {
-        "id": hash((login, submitted_at)) & 0xFFFF,
+        "id": next(_REVIEW_IDS),
         "user": login,
         "state": state,
         "submitted_at": submitted_at,
@@ -251,11 +256,12 @@ class TestCopilotReviewReportsQuotaRefusal(unittest.TestCase):
         # GitHub accepts the request: Copilot is in requested_reviewers.
         mock_rest.return_value = _rest_pr_response(
             ["copilot-pull-request-reviewer"])
-        # But the PR's latest Copilot review is the out-of-quota refusal.
-        mock_request.return_value = [
+        # No reviews before the request; afterwards Copilot's latest review
+        # is the out-of-quota refusal of this request.
+        mock_request.side_effect = [[], [
             _review("copilot-pull-request-reviewer[bot]",
                     _QUOTA_BODY, "2026-10-26T02:29:00Z"),
-        ]
+        ]]
 
         result = server._request_copilot_review("owner", "repo", 42)
 
@@ -292,14 +298,15 @@ class TestCopilotReviewReportsQuotaRefusal(unittest.TestCase):
                          "2026-10-01T00:00:%02dZ" % (i % 60)) for i in range(100)]
         page2 = [_review("copilot-pull-request-reviewer[bot]",
                          _QUOTA_BODY, "2026-10-26T02:29:00Z")]
-        mock_request.side_effect = [page1, page2]
+        # Before the request: page 1 and an empty page 2. After: the refusal.
+        mock_request.side_effect = [page1, [], page1, page2]
 
         result = server._request_copilot_review("owner", "repo", 42)
 
         self.assertFalse(result["ok"])
         self.assertTrue(result.get("quota_exceeded"))
-        self.assertEqual(mock_request.call_count, 2)
-        self.assertIn("page=2", mock_request.call_args_list[1][0][1])
+        self.assertEqual(mock_request.call_count, 4)
+        self.assertIn("page=2", mock_request.call_args_list[3][0][1])
 
     @patch.object(server, "_github_request")
     @patch.object(server, "_request_reviews_via_rest")
@@ -315,6 +322,73 @@ class TestCopilotReviewReportsQuotaRefusal(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertNotIn("quota_exceeded", result)
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_request_reviews_via_rest")
+    @patch.object(server, "_github_graphql_request")
+    def test_quota_notice_from_an_earlier_attempt_is_not_a_refusal(
+            self, mock_gql, mock_rest, mock_request):
+        # An earlier request was refused for lack of quota. Quota has since
+        # been restored: the new request is accepted and its real review is
+        # still pending, so the old notice is still Copilot's latest review.
+        mock_gql.return_value = _lookup_response()
+        mock_rest.return_value = _rest_pr_response(
+            ["copilot-pull-request-reviewer"])
+        stale = [_review("copilot-pull-request-reviewer[bot]",
+                         _QUOTA_BODY, "2026-10-20T00:00:00Z")]
+        mock_request.side_effect = [stale, stale]
+
+        result = server._request_copilot_review("owner", "repo", 42)
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(mock_request.call_count, 2)
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_request_reviews_via_rest")
+    @patch.object(server, "_github_graphql_request")
+    def test_new_refusal_reported_beside_an_earlier_notice(
+            self, mock_gql, mock_rest, mock_request):
+        mock_gql.return_value = _lookup_response()
+        mock_rest.return_value = _rest_pr_response(
+            ["copilot-pull-request-reviewer"])
+        stale = _review("copilot-pull-request-reviewer[bot]",
+                        _QUOTA_BODY, "2026-10-20T00:00:00Z")
+        fresh = _review("copilot-pull-request-reviewer[bot]",
+                        _QUOTA_BODY, "2026-10-26T02:29:00Z")
+        mock_request.side_effect = [[stale], [stale, fresh]]
+
+        result = server._request_copilot_review("owner", "repo", 42)
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result.get("quota_exceeded"))
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_request_reviews_via_rest")
+    @patch.object(server, "_github_graphql_request")
+    def test_failed_pre_request_listing_is_not_a_quota_refusal(
+            self, mock_gql, mock_rest, mock_request):
+        # Without the pre-request listing, an old notice and a new one cannot
+        # be told apart, so the request is reported as accepted.
+        mock_gql.return_value = _lookup_response()
+        mock_rest.return_value = _rest_pr_response(
+            ["copilot-pull-request-reviewer"])
+        mock_request.side_effect = [
+            {"ok": False, "error": "boom"},
+            [_review("copilot-pull-request-reviewer[bot]",
+                     _QUOTA_BODY, "2026-10-26T02:29:00Z")],
+        ]
+
+        result = server._request_copilot_review("owner", "repo", 42)
+
+        self.assertEqual(result, {"ok": True})
+
+    def test_latest_copilot_quota_notice_ignores_excluded_ids(self):
+        old = _review("copilot-pull-request-reviewer[bot]",
+                      _QUOTA_BODY, "2026-10-20T00:00:00Z")
+        self.assertIsNone(github_api.latest_copilot_quota_notice(
+            [old], server._is_copilot_login, exclude_ids={old["id"]}))
+        self.assertIs(github_api.latest_copilot_quota_notice(
+            [old], server._is_copilot_login, exclude_ids={old["id"] + 1}), old)
 
 
 if __name__ == "__main__":
