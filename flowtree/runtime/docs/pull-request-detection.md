@@ -83,7 +83,7 @@ Detects an open pull request for the specified branch on a GitHub repository.
 static String extractOwnerRepo(String remoteUrl)
 ```
 
-Extracts the `owner/repo` string from a GitHub remote URL. Supports the SSH, HTTP(S), and `git://` forms recognised by `GitOperations.repositorySlug(String)`, and requires the URL's host to be exactly `github.com` (see [Owner/Repo Extraction](#ownerrepo-extraction)).
+Extracts the `owner/repo` string from a GitHub remote URL. The parsing is `RepositoryUrl#getGitHubSlug()` (in `flowtree/base`), which recognises the SSH, HTTP(S), and `git://` forms and returns a slug only when the URL's host is exactly `github.com` (see [Owner/Repo Extraction](#ownerrepo-extraction)).
 
 **Parameters:**
 
@@ -232,11 +232,11 @@ This is not an error condition. The job proceeds normally without a PR URL in th
 
 ## Owner/Repo Extraction
 
-The `extractOwnerRepo()` method converts a git remote URL into the `owner/repo` format required by the GitHub API. The parsing itself is delegated to `GitOperations.repositorySlug(String)` (in `flowtree/base`), the shared canonical parser also used by `GitHubProxyHandler`; `extractOwnerRepo()` adds the GitHub-host guard described below.
+The `extractOwnerRepo()` method converts a git remote URL into the `owner/repo` format required by the GitHub API. The parsing is delegated to `RepositoryUrl#getGitHubSlug()` (in `flowtree/base`), the shared value type also used by `GitHubProxyHandler`; a single call both reduces the URL to its slug and applies the GitHub-host guard described below.
 
 ### Supported URL Forms
 
-`repositorySlug` recognises the SSH, HTTP(S), and `git://` forms of a repository URL and reduces each to the `owner/repo` slug:
+`RepositoryUrl` recognises the SSH, HTTP(S), and `git://` forms of a repository URL and reduces each to the `owner/repo` slug:
 
 ```
 Input:  git@github.com:owner/repo.git
@@ -251,7 +251,7 @@ Embedded credentials, the optional `.git` suffix, and a trailing slash are all t
 
 ### GitHub-Host Guard
 
-Because `repositorySlug` deliberately drops the host, `extractOwnerRepo()` first checks that the URL's host — obtained from `GitOperations.repositoryHost(String)` — is exactly `github.com` before returning the slug. An exact host match is required rather than a substring check: a substring check would accept a look-alike host such as `github.com.evil.example`, which would then be queried against the GitHub API. The comparison is case-insensitive (hostnames are), so `https://GITHUB.COM/owner/repo.git` is accepted, and an explicit port is not part of the host, so `https://github.com:443/owner/repo.git` is accepted too. URLs whose host is not `github.com` return `null`, and `detect()` — which relies on this same guard rather than any separate substring precheck — returns `Optional.empty()` without attempting any API calls.
+`RepositoryUrl#getGitHubSlug()` returns the slug only when the URL's host is exactly `github.com`; a repository parsed from any other host has a slug but no GitHub slug, so `extractOwnerRepo()` returns `null` for it. An exact host match is required rather than a substring check: a substring check would accept a look-alike host such as `github.com.evil.example`, which would then be queried against the GitHub API. The comparison is case-insensitive (hostnames are), so `https://GITHUB.COM/owner/repo.git` is accepted, and an explicit port is not part of the host, so `https://github.com:443/owner/repo.git` is accepted too. URLs whose host is not `github.com` return `null`, and `detect()` — which relies on this same guard rather than any separate substring precheck — returns `Optional.empty()` without attempting any API calls.
 
 ---
 

@@ -1,0 +1,20 @@
+/**
+ * Fixtures for TrigonometricPrimitivesTest: each layer applies one of the cos / sin built-ins once,
+ * so the element-wise function and its derivative are pinned on their own, independently of the
+ * Fourier feature projection that uses them.
+ */
+
+/** cos(x), element-wise. */
+layer cosine() {
+    cos()
+}
+
+/** sin(x), element-wise. */
+layer sine() {
+    sin()
+}
+
+/** cos given an argument, which the built-in rejects. */
+layer cosine_with_arg() {
+    cos(1)
+}

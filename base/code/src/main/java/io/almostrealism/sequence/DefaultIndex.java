@@ -237,6 +237,18 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 		return e instanceof DefaultIndex && Objects.equals(((DefaultIndex) e).getName(), getName());
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An index is equal to any index of the same name, whatever its class, and a
+	 * {@link io.almostrealism.kernel.KernelIndex} has no name until it is constructed, so
+	 * every index has the same node hash.</p>
+	 */
+	@Override
+	protected int nodeHash() {
+		return DefaultIndex.class.getName().hashCode();
+	}
+
 	@Override
 	public int hashCode() {
 		return Objects.hash(getName());

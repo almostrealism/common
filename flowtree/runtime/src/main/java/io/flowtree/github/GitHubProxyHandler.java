@@ -23,7 +23,7 @@ import fi.iki.elonen.NanoHTTPD.Response;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
-import io.flowtree.jobs.GitOperations;
+import io.flowtree.jobs.RepositoryUrl;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
@@ -810,14 +810,16 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      *
      * <p>Supports both HTTPS ({@code https://github.com/owner/repo.git})
      * and SSH ({@code git@github.com:owner/repo.git}) formats; the parsing
-     * itself is {@link GitOperations#repositorySlug(String)}, shared with
-     * repository-identity comparison elsewhere.</p>
+     * is {@link RepositoryUrl#getGitHubSlug()}, so a repository
+     * hosted anywhere but {@code github.com} yields {@code null} rather than
+     * a slug that would address an unrelated GitHub repository.</p>
      *
      * @param repoUrl the repository URL
-     * @return the {@code owner/repo} string, or {@code null} if not recognised
+     * @return the {@code owner/repo} string, or {@code null} if it is not a
+     *         GitHub repository URL
      */
     public static String extractOwnerRepo(String repoUrl) {
-        return GitOperations.repositorySlug(repoUrl);
+        return new RepositoryUrl(repoUrl).getGitHubSlug();
     }
 
     /**

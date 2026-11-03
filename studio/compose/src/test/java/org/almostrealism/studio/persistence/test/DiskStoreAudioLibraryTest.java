@@ -230,6 +230,11 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 	 * only features came from the previous model, and they would never gain
 	 * features for the new one. The previous model's features are kept beside the
 	 * new ones for the cleanup to offer.
+	 *
+	 * <p>The new model's features are wider than the old model's, so its
+	 * embeddings cannot go into the nearest-neighbor index built from the old
+	 * ones: the index must be rebuilt from the new model alone, and kept once it
+	 * has been.</p>
 	 */
 	@Test(timeout = 300000)
 	public void modelChangeRecomputesOnRefresh() throws Exception {
@@ -251,7 +256,7 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 				new FileWaveDataProviderNode(samplesDir.toFile()),
 				SAMPLE_RATE, store2);
 		library2.getWaveDetailsFactory().setFeatureProvider(new LogSpectrumFeatureProvider(
-				FEATURE_FRAMES, FEATURE_BINS, SAMPLE_RATE, SAMPLE_DURATION, "new-model"));
+				FEATURE_FRAMES, 2 * FEATURE_BINS, SAMPLE_RATE, SAMPLE_DURATION, "new-model"));
 		library2.refresh().get();
 
 		List<WaveDetails> reloaded = library2.allDetails().toList();
@@ -264,8 +269,25 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 					d.getFeatures("old-model"));
 		}
 
+		Assert.assertEquals("index rebuilt from new-model embeddings",
+				count, store2.indexedEmbeddingCount());
+
 		library2.stop();
 		store2.close();
+
+		ProtobufWaveDetailsStore store3 = new ProtobufWaveDetailsStore(storeDir.toFile());
+		AudioLibrary library3 = new AudioLibrary(
+				new FileWaveDataProviderNode(samplesDir.toFile()),
+				SAMPLE_RATE, store3);
+		library3.getWaveDetailsFactory().setFeatureProvider(new LogSpectrumFeatureProvider(
+				FEATURE_FRAMES, 2 * FEATURE_BINS, SAMPLE_RATE, SAMPLE_DURATION, "new-model"));
+		library3.refresh().get();
+
+		Assert.assertEquals("index kept when the model is unchanged",
+				count, store3.indexedEmbeddingCount());
+
+		library3.stop();
+		store3.close();
 	}
 
 	/**

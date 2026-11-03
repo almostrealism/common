@@ -26,6 +26,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.OptionalLong;
 import java.util.Set;
 
@@ -137,6 +138,17 @@ public abstract class Constant<T> extends Expression<T> {
 	 */
 	@Override
 	public abstract boolean compare(Expression e);
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A constant is equal to another constant holding an equal value, so it is hashed
+	 * by its value.</p>
+	 */
+	@Override
+	protected int nodeHash() {
+		return Objects.hashCode(getValue());
+	}
 
 	@Override
 	public int hashCode() {
