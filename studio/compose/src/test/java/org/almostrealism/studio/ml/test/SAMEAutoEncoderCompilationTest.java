@@ -85,6 +85,25 @@ public class SAMEAutoEncoderCompilationTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Compiling for a duration aligns the clip length the duration covers at the sample rate, and the
+	 * compiled autoencoder reports that {@code [batch, channels, samples]} shape as its audio shape.
+	 */
+	@Test(timeout = 240000)
+	public void compiledForDurationReportsAlignedAudioShape() {
+		SAMEAutoEncoder autoencoder = smallAutoEncoder(LATENT);
+		double duration = 30.0 / SAMPLE_RATE;
+		int samples = autoencoder.alignedAudioLength(30);
+
+		CompiledModelAutoEncoder compiled = CompiledModelAutoEncoder.of(autoencoder, 1, SAMPLE_RATE, duration);
+		try {
+			assertEquals(shape(1, CHANNELS, samples), compiled.getAudioShape());
+			assertEquals(duration, compiled.getMaximumDuration(), 0.0);
+		} finally {
+			compiled.destroy();
+		}
+	}
+
+	/**
 	 * {@link AudioComposer} composes latents of a SAME-S-shaped autoencoder — 256 latent channels —
 	 * compiled through {@link CompiledModelAutoEncoder#of}. Each clip is encoded to the batched
 	 * {@code [1, 256, latentLen]} latent, the batch axis is dropped so the composer sees the

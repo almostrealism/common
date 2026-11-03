@@ -538,7 +538,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 				continue;
 			}
 
-			PackedCollection embedding = AudioLibrary.computeEmbeddingVector(details);
+			PackedCollection embedding = details.meanPooledEmbedding(library.currentModelId());
 			if (embedding == null) {
 				skippedNoEmbedding++;
 				continue;
@@ -592,7 +592,7 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 		double simSum = 0.0;
 
 		for (WaveDetails details : allDetails) {
-			PackedCollection embedding = AudioLibrary.computeEmbeddingVector(details);
+			PackedCollection embedding = details.meanPooledEmbedding(library.currentModelId());
 			if (embedding == null) {
 				if (DIAGNOSTICS_ENABLED) samplesNoEmbedding++;
 				continue;

@@ -256,7 +256,10 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 	@Override
 	public List<SearchResult<T>> search(PackedCollection queryVector, int topK) {
-		if (hnswIndex == null || hnswIndex.size() == 0) {
+		// A query of another dimensionality comes from another model than the
+		// indexed vectors, so nothing in the index is comparable to it.
+		if (hnswIndex == null || hnswIndex.size() == 0
+				|| hnswIndex.getDimension() != queryVector.getMemLength()) {
 			return new ArrayList<>();
 		}
 
@@ -431,11 +434,27 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	/**
-	 * Lazily initialize the HNSW index on first vector insertion.
+	 * Lazily initialize the HNSW index on first vector insertion, and replace
+	 * it when the vectors being inserted have a different dimensionality than
+	 * the index holds.
+	 *
+	 * <p>A dimensionality change means the embeddings now come from a different
+	 * model (for example a library analysed by an earlier feature model, whose
+	 * saved index was reloaded from disk). Vectors from two models are never
+	 * comparable, so the old index is discarded rather than mixed with, or
+	 * allowed to reject, the new model's vectors; it is rebuilt as items are
+	 * re-indexed.</p>
 	 *
 	 * @param dimension the vector dimensionality
 	 */
 	private void ensureHnswIndex(int dimension) {
+		if (hnswIndex != null && hnswIndex.getDimension() != dimension) {
+			log.warning("Replacing the " + hnswIndex.getDimension() + "-dimension vector index ("
+					+ hnswIndex.size() + " entries) with a " + dimension + "-dimension index");
+			hnswIndex.destroy();
+			hnswIndex = null;
+		}
+
 		if (hnswIndex == null) {
 			hnswIndex = new HnswIndex(dimension);
 		}

@@ -17,7 +17,6 @@
 package org.almostrealism.studio.persistence.test;
 
 import org.almostrealism.audio.AudioLibrary;
-import org.almostrealism.audio.WavFile;
 import org.almostrealism.audio.data.FileWaveDataProvider;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.WaveData;
@@ -30,6 +29,7 @@ import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.studio.persistence.test.support.LogSpectrumFeatureProvider;
+import org.almostrealism.studio.persistence.test.support.SineWaveFiles;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
@@ -471,32 +471,7 @@ public class DiskStoreAudioLibraryTest extends TestSuiteBase {
 	 * from 55 Hz to 8000 Hz.
 	 */
 	private List<File> generateSineWaves(int count) throws IOException {
-		List<File> files = new ArrayList<>(count);
-		double minFreq = 55.0;
-		double maxFreq = 8000.0;
-		double logMin = Math.log(minFreq);
-		double logMax = Math.log(maxFreq);
-		int frames = (int) (SAMPLE_RATE * SAMPLE_DURATION);
-
-		for (int n = 0; n < count; n++) {
-			double t = count > 1 ? (double) n / (count - 1) : 0.0;
-			double frequency = Math.exp(logMin + t * (logMax - logMin));
-
-			File wavFile = samplesDir.resolve(
-					String.format("sine_%04d_%.0fHz.wav", n, frequency)).toFile();
-
-			try (WavFile wav = WavFile.newWavFile(wavFile, 1, frames, 16, SAMPLE_RATE)) {
-				double[][] buffer = new double[1][frames];
-				for (int i = 0; i < frames; i++) {
-					buffer[0][i] = 0.8 * Math.sin(2.0 * Math.PI * frequency * i / SAMPLE_RATE);
-				}
-				wav.writeFrames(buffer, frames);
-			}
-
-			files.add(wavFile);
-		}
-
-		return files;
+		return SineWaveFiles.generate(samplesDir, count, SAMPLE_RATE, SAMPLE_DURATION);
 	}
 
 	/**

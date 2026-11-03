@@ -796,7 +796,35 @@ public class WaveDetails implements CodeFeatures, Node {
 	 * @return the mean-pooled embedding vector, or {@code null}
 	 */
 	public PackedCollection meanPooledEmbedding() {
-		PackedCollection featureData = getFeatureData();
+		return meanPooled(getFeatureData());
+	}
+
+	/**
+	 * Computes a mean-pooled embedding vector from the features the given model
+	 * produced for this item, ignoring any other model's features and the legacy
+	 * unkeyed slot. Returns {@code null} when this item holds no features for
+	 * that model, so an item that has not yet been analysed by the model never
+	 * contributes another model's embedding (possibly of another width) to that
+	 * model's index. With a {@code null} model this is
+	 * {@link #meanPooledEmbedding()}.
+	 *
+	 * @param modelIdentifier the model whose features to pool, or {@code null}
+	 * @return the mean-pooled embedding vector, or {@code null}
+	 */
+	public PackedCollection meanPooledEmbedding(String modelIdentifier) {
+		if (modelIdentifier == null) return meanPooledEmbedding();
+
+		WaveFeatures features = getFeatures(modelIdentifier);
+		return features == null ? null : meanPooled(features.getFeatureData());
+	}
+
+	/**
+	 * Averages a {@code [frames, bins]} feature tensor across its frames.
+	 *
+	 * @param featureData the feature tensor, or {@code null}
+	 * @return the {@code [bins]} mean, or {@code null} when there is nothing to pool
+	 */
+	private static PackedCollection meanPooled(PackedCollection featureData) {
 		if (featureData == null) return null;
 
 		int frames = featureData.getShape().length(0);
