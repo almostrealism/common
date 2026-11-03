@@ -131,14 +131,15 @@ public class CompiledModelAutoEncoder implements AutoEncoder, CodeFeatures {
 	 * @param sampleRate  the audio sample rate in Hz
 	 * @param maxDuration the clip duration in seconds the encoder and decoder are compiled for
 	 * @return the compiled autoencoder
-	 * @throws IllegalArgumentException if {@code maxDuration * sampleRate} is not a positive, finite
-	 *                                  sample count no larger than {@link Integer#MAX_VALUE}
+	 * @throws IllegalArgumentException if {@code maxDuration} or {@code sampleRate} is not positive and
+	 *                                  finite, or their product exceeds {@link Integer#MAX_VALUE} samples
 	 * @see #of(SAMEAutoEncoder, int, int, double, double)
 	 */
 	public static CompiledModelAutoEncoder of(SAMEAutoEncoder autoencoder, int batchSize,
 											  double sampleRate, double maxDuration) {
 		double exact = maxDuration * sampleRate;
-		if (!Double.isFinite(exact) || exact <= 0.0 || exact > Integer.MAX_VALUE) {
+		if (!Double.isFinite(maxDuration) || !Double.isFinite(sampleRate)
+				|| maxDuration <= 0.0 || sampleRate <= 0.0 || exact > Integer.MAX_VALUE) {
 			throw new IllegalArgumentException("maxDuration " + maxDuration + " at sampleRate "
 					+ sampleRate + " is not a valid clip length");
 		}
