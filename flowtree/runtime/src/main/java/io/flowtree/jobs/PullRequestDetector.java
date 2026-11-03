@@ -219,7 +219,7 @@ public class PullRequestDetector implements ConsoleFeatures {
      *
      * <p>Supports both SSH ({@code git@github.com:owner/repo.git}) and
      * HTTPS ({@code https://github.com/owner/repo.git}) formats; the
-     * parsing is {@link GitOperations#repositorySlug(String)}. URLs whose
+     * parsing is {@link RepositoryUrl#getGitHubSlug()}. URLs whose
      * host is not exactly {@code github.com} are rejected, since the slug is
      * used to query the GitHub API — a substring check would let a look-alike
      * host such as {@code github.com.evil.example} through.</p>
@@ -229,7 +229,6 @@ public class PullRequestDetector implements ConsoleFeatures {
      *         URL is not a GitHub repository URL
      */
     static String extractOwnerRepo(String remoteUrl) {
-        if (!"github.com".equalsIgnoreCase(GitOperations.repositoryHost(remoteUrl))) return null;
-        return GitOperations.repositorySlug(remoteUrl);
+        return new RepositoryUrl(remoteUrl).getGitHubSlug();
     }
 }

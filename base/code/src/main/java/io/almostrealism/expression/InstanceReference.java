@@ -183,6 +183,18 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>A reference is equal to any reference with an equal referent, position and index,
+	 * whatever its class. The referent is not part of the hash, because a variable can be
+	 * renamed after a reference to it is created.</p>
+	 */
+	@Override
+	protected int nodeHash() {
+		return InstanceReference.class.getName().hashCode();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p>A reference matches another reference whose referent {@link Variable#isSameAs is the
 	 * same} as its own, wherever their supplementary indices are equal. When neither reference
 	 * has a supplementary index, their positions are compared instead, and two references to

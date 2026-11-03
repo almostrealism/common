@@ -49,9 +49,9 @@ import java.util.function.Supplier;
  * The PDSL language's BUILT-IN FUNCTION LIBRARY: the standard, domain-agnostic
  * layer constructors every PDSL program can call without registering a primitive
  * (dense, conv1d, conv_transpose1d, rmsnorm, layernorm, dynamic_tanh, softmax, log_softmax,
- * embedding, the activations including snake, slice, lerp, reshape, permute, identity,
- * scale, repeat, repeat_each, sum_channels, capture, cache_write, cache_read,
- * scaled_dot_product, sqrt, shape, range, zeros). {@link PdslInterpreter} evaluates a call's
+ * embedding, the activations including snake, the trigonometric cos and sin, slice, lerp,
+ * reshape, permute, identity, scale, repeat, repeat_each, sum_channels, capture, cache_write,
+ * cache_read, scaled_dot_product, sqrt, shape, range, zeros). {@link PdslInterpreter} evaluates a call's
  * arguments and routes the call here via {@link #call(String, List, Set)}; domain
  * libraries register additional primitives through {@link PdslInterpreter#registerPrimitive},
  * as a {@link PdslExtension} (the machine-learning engine's attention and rotary position
@@ -113,6 +113,8 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 			case "sigmoid": return callActivation("sigmoid");
 			case "tanh_act": return callActivation("tanh_act");
 			case "snake": return callSnake(args);
+			case "cos": return callTrigonometric("cos", args);
+			case "sin": return callTrigonometric("sin", args);
 			case "slice": return callSlice(args);
 			case "lerp": return callLerp(args);
 			case "reshape": return callReshape(args);
@@ -1025,6 +1027,26 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 			default:
 				throw new PdslParseException("Unknown activation: " + type);
 		}
+	}
+
+	/**
+	 * Builds an element-wise trigonometric block factory ({@code cos} or {@code sin}), applying the
+	 * function to every element of the input and preserving its shape. The sine and cosine
+	 * computations each define their own producer-level derivative, so a block built from one
+	 * differentiates through its activation in a backward pass. These are the building blocks of a
+	 * Fourier feature projection, where a frequency-scaled projection is split into its cosine and
+	 * sine components.
+	 *
+	 * @param name the function, {@code "cos"} or {@code "sin"}
+	 * @param args the call arguments, which must be empty
+	 * @return a factory that creates the trigonometric layer for any input shape
+	 */
+	private Function<TraversalPolicy, Block> callTrigonometric(String name, List<Object> args) {
+		if (!args.isEmpty()) {
+			throw new PdslParseException(name + "() expects no arguments, got " + args.size());
+		}
+		return inputShape -> layer(name, inputShape, inputShape,
+				input -> "cos".equals(name) ? cos(c(input)) : sin(c(input)));
 	}
 
 	/**

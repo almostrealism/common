@@ -17,8 +17,10 @@
 package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.expression.ArithmeticGenerator;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.ExpressionProperties;
+import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
@@ -387,6 +389,39 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 		} finally {
 			Product.enableConstantExtraction = previous;
 		}
+	}
+
+	/**
+	 * Each expression reports the factor its own structure establishes through
+	 * {@link ExpressionProperties#constantIntegerFactor()}: a constant its magnitude, a
+	 * product, including the {@link ArithmeticGenerator} a product can be, the product of
+	 * its constant factors, and any other expression {@code 1}.
+	 */
+	@Test(timeout = 30000)
+	public void constantIntegerFactorIsReportedByEachExpression() {
+		Assert.assertEquals(4L, e(-4).constantIntegerFactor());
+		Assert.assertEquals(6L, Product.of(kernel().imod(5), e(6)).constantIntegerFactor());
+
+		Expression<?> generator = ArithmeticGenerator.create(kernel(), 6, 4, 16);
+		Assert.assertTrue(generator instanceof ArithmeticGenerator);
+		Assert.assertEquals(6L, generator.constantIntegerFactor());
+
+		Assert.assertEquals(1L, Sum.of(kernel().imod(5), e(6)).constantIntegerFactor());
+	}
+
+	/**
+	 * A factor whose magnitude does not fit in a {@code long}, a constant or a product whose
+	 * constant factors multiply to {@link Long#MIN_VALUE}, is reported as {@code 1} (no known
+	 * factor) rather than as the negative value {@link Math#abs(long)} would wrap it to.
+	 */
+	@Test(timeout = 30000)
+	public void constantIntegerFactorIsPositiveAtTheLongMinimum() {
+		Assert.assertEquals(1L, new LongConstant(Long.MIN_VALUE).constantIntegerFactor());
+		Assert.assertEquals(Long.MAX_VALUE, new LongConstant(-Long.MAX_VALUE).constantIntegerFactor());
+
+		Expression<?> product = Product.of(kernel().imod(5), new LongConstant(Long.MIN_VALUE));
+		Assert.assertTrue(product instanceof Product);
+		Assert.assertEquals(1L, product.constantIntegerFactor());
 	}
 
 	/**

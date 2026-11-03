@@ -175,7 +175,7 @@ public abstract class Expression<T> implements
 	/** Total runtime compute cost of this expression subtree. */
 	private long computeCost;
 
-	/** Compact hash value computed from children for efficient equality checks. */
+	/** Compact hash of {@link #nodeHash()} and the children's hashes, for efficient equality checks. */
 	private short hash;
 
 	/** Cached set of all {@link Index} instances referenced in this expression subtree. */
@@ -281,7 +281,7 @@ public abstract class Expression<T> implements
 		long c = 0;
 		long childCost = 0;
 		boolean childLong = false;
-		int childHash = 1;
+		int childHash = nodeHash();
 
 		for (int i = 0; i < children.size(); i++) {
 			Expression<?> child = children.get(i);
@@ -289,7 +289,7 @@ public abstract class Expression<T> implements
 			c += child.countNodes();
 			childCost += child.totalComputeCost();
 			childLong = childLong || child.containsLong();
-			childHash = (childHash % 2713) * (child.hash % 2713);
+			childHash = 31 * childHash + child.hash;
 		}
 
 		this.depth = childDepth + 1;
@@ -304,16 +304,26 @@ public abstract class Expression<T> implements
 
 		this.computeCost = childCost + getComputeCost();
 		this.containsLong = (getType() == Long.class || childLong) && intValue().isEmpty();
-
-		if (children.isEmpty()) {
-			hash = (short) (Math.abs(longValue().orElse(1)) % Short.MAX_VALUE);
-		} else {
-			hash = (short) childHash;
-		}
+		this.hash = (short) (childHash ^ (childHash >>> 16));
 
 		if (depth > ScopeSettings.maxDepth) {
 			throw new ExpressionException("Expression too deep", depth, nodeCount);
 		}
+	}
+
+	/**
+	 * Returns the hash of this node apart from its children, which {@link #init()} combines,
+	 * in order, with the hashes of the children. It must be the same for any two nodes that
+	 * {@link #compare(Expression) compare} equal when their children are equal, so it is
+	 * the hash of the class for a node that only equals nodes of its own class. A node that
+	 * equals nodes of other classes, or that is distinguished by a value rather than by its
+	 * children, overrides it, reading only state assigned before {@link #init()}, which runs
+	 * while the node is constructed.
+	 *
+	 * @return the hash of this node, excluding its children
+	 */
+	protected int nodeHash() {
+		return getClass().getName().hashCode();
 	}
 
 	/**
@@ -1005,8 +1015,9 @@ public abstract class Expression<T> implements
 	 * Returns a simplified version of this expression, iteratively applying simplification rules.
 	 *
 	 * <p>This method repeatedly applies {@link #simplify(KernelStructureContext)} until
-	 * the expression stabilizes (no further changes) or is marked as simple. The depth
-	 * parameter tracks recursion depth for optimization decisions.</p>
+	 * the expression stabilizes (no further changes), returns to a form it already took,
+	 * or is marked as simple. The depth parameter tracks recursion depth for optimization
+	 * decisions.</p>
 	 *
 	 * <p>Simplification includes:</p>
 	 * <ul>
@@ -1026,20 +1037,15 @@ public abstract class Expression<T> implements
 		Expression<?> simplified = simplify(context, depth);
 		if (simplified.isSimple(context)) return simplified;
 
-		int hashCode = simplified.hashCode();
+		Set<Expression<?>> forms = new HashSet<>();
+		forms.add(simplified);
 
-		w: while (true) {
+		while (true) {
 			Expression<?> next = simplified.simplify(context);
 			if (next.isSimple(context)) return next;
-
-			int nextExp = next.hashCode();
-
-			if (nextExp == hashCode) {
-				break w;
-			}
+			if (!forms.add(next)) break;
 
 			simplified = next;
-			hashCode = nextExp;
 		}
 
 		if (context == null || context.getKernelMaximum().isEmpty())
@@ -1363,10 +1369,10 @@ public abstract class Expression<T> implements
 	public boolean compare(Expression e) {
 		if (this == e) return true;
 
+		if (hash != e.hash) return false;
 		if (!isSameOperation(e)) return false;
-		if (!Objects.equals(treeDepth(), e.treeDepth())) return false;
-		if (!Objects.equals(countNodes(), e.countNodes())) return false;
-		if (!Objects.equals(hash, e.hash)) return false;
+		if (treeDepth() != e.treeDepth()) return false;
+		if (countNodes() != e.countNodes()) return false;
 
 		List<Expression<?>> children = getChildren();
 		List<Expression<?>> other = e.getChildren();

@@ -1046,6 +1046,13 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	 * operator's Jacobian. A wider layer is lowered to a weighted sum, which has no reduced
 	 * delta yet, so its gradients still contract the full Jacobian.
 	 *
+	 * <p>A scalar feature (a weight of size one) projects as an outer product. Written as
+	 * {@code matmul(weights, input)}, a {@code [rows, 1]} column input is indistinguishable from a
+	 * single column vector, and the matrix multiply's single-vector path collapses the batch to one
+	 * row; the size-one case is therefore written as {@code input @ weightsᵀ} — the
+	 * {@code [rows, 1] × [1, nodes]} product that yields {@code [rows, nodes]} for any number of
+	 * rows — while a wider feature keeps the {@code weights @ input} product unchanged.</p>
+	 *
 	 * @param inputShape the expected input shape, whose last dimension is the input size
 	 * @param weights    the weight matrix of shape {@code [nodes, size]}
 	 * @param biases     the bias vector of shape {@code [nodes]}, or {@code null} for no bias
@@ -1075,8 +1082,11 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 				.replaceDimension(inputShape.getDimensions() - 1, nodes);
 		int rows = flat.length(0);
 		return input -> {
-			input = reshape(flat, input);
-			CollectionProducer result = matmul(p(weights), input);
+			// A size-one feature projects as the outer product input @ weightsᵀ (see javadoc).
+			// The weight is a [nodes, 1] column, so reshaping it to [1, nodes] is its transpose.
+			CollectionProducer result = size == 1
+					? matmul(reshape(shape(rows, 1), input), reshape(shape(1, nodes), p(weights)))
+					: matmul(p(weights), reshape(flat, input));
 			if (biases != null) {
 				result = result.add(repeat(rows, p(biases)).reshape(result.getShape()));
 			}

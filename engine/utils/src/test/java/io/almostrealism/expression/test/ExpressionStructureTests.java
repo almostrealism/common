@@ -24,9 +24,11 @@ import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.ConstantValue;
 import io.almostrealism.expression.Difference;
+import io.almostrealism.expression.Equals;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Less;
 import io.almostrealism.expression.LongConstant;
 import io.almostrealism.expression.Mask;
@@ -38,6 +40,8 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.expression.Tangent;
 import io.almostrealism.expression.UnaryExpression;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.scope.ArrayVariable;
@@ -56,8 +60,10 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
@@ -906,5 +912,203 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 				.scaledRemainder().isEmpty());
 		Assert.assertTrue(sum(Product.of(e(3), x), ref("y"))
 				.scaledRemainder().isEmpty());
+	}
+
+	/**
+	 * Expressions that differ only in their operation, in the order of their operands, or in
+	 * a constant compared against zero hash differently, so that the hash tables of
+	 * compilation, such as the {@link io.almostrealism.scope.ExpressionCache}, do not gather
+	 * them in one bucket and compare them one by one. A hash built as a product of the hashes
+	 * of the children, with every reference hashing alike, gives each group a single hash.
+	 */
+	@Test(timeout = 30000)
+	public void structurallyDifferentExpressionsHashApart() {
+		Expression<?> x = ref("x");
+		List<Expression<?>> operations = List.of(Sum.of(x, kernel()), Product.of(x, kernel()),
+				Quotient.of(x, kernel()), Mod.of(x, kernel(), false));
+		Set<Integer> hashes = new HashSet<>();
+		operations.forEach(op -> hashes.add(op.hashCode()));
+		Assert.assertEquals(operations.size(), hashes.size());
+
+		Expression<?> forward = Quotient.of(x, e(3));
+		Expression<?> reversed = Quotient.of(e(3), x);
+		Assert.assertNotEquals(forward, reversed);
+		Assert.assertNotEquals(forward.hashCode(), reversed.hashCode());
+
+		Expression<?> four = Equals.of(Mod.of(x, e(4), false), e(0));
+		Expression<?> eight = Equals.of(Mod.of(x, e(8), false), e(0));
+		Assert.assertNotEquals(four, eight);
+		Assert.assertNotEquals(four.hashCode(), eight.hashCode());
+	}
+
+	/**
+	 * An index equals any index of the same name, whatever its class, so a
+	 * {@link KernelIndex} and a {@link DefaultIndex} with the kernel index's name hash alike,
+	 * and so do expressions built from them.
+	 */
+	@Test(timeout = 30000)
+	public void indicesOfEveryClassHashAlike() {
+		DefaultIndex named = new DefaultIndex(kernel().getName());
+		KernelIndex index = kernel();
+		Assert.assertEquals(named, index);
+		Assert.assertEquals(index, named);
+		Assert.assertEquals(named.hashCode(), index.hashCode());
+
+		Expression<?> a = Sum.of(ref("x"), named);
+		Expression<?> b = Sum.of(ref("x"), index);
+		Assert.assertEquals(a, b);
+		Assert.assertEquals(a.hashCode(), b.hashCode());
+	}
+
+	/**
+	 * A child index is equal to another only when both its parent and its child are, since
+	 * together they determine its value, and the equality of child indices is the same alone
+	 * as it is inside an enclosing expression, whose structural hash includes the hash of
+	 * each parent. Child indices that share a child but whose parents are themselves child
+	 * indices of different children and limits are therefore unequal both alone and nested.
+	 */
+	@Test(timeout = 30000)
+	public void indexChildEqualityIncludesParent() {
+		DefaultIndex col = new DefaultIndex("col", 4);
+		IndexChild cell = Index.child(new DefaultIndex("row", 3), col);
+		IndexChild same = Index.child(new DefaultIndex("row", 3), col);
+		IndexChild otherRow = Index.child(new DefaultIndex("other", 3), col);
+
+		Assert.assertEquals(cell, same);
+		Assert.assertEquals(cell.hashCode(), same.hashCode());
+		Assert.assertEquals(Sum.of(ref("y"), cell), Sum.of(ref("y"), same));
+		Assert.assertEquals(Sum.of(ref("y"), cell).hashCode(), Sum.of(ref("y"), same).hashCode());
+		Assert.assertNotEquals(cell, otherRow);
+
+		DefaultIndex outer = new DefaultIndex("outer", 2);
+		IndexChild narrow = Index.child(Index.child(outer, new DefaultIndex("p", 2)), col);
+		IndexChild wide = Index.child(Index.child(outer, new DefaultIndex("q", 5)), col);
+		Assert.assertNotEquals(narrow, wide);
+		Assert.assertNotEquals(Sum.of(ref("y"), narrow), Sum.of(ref("y"), wide));
+	}
+
+	/**
+	 * The limit of a child index is the stride of its parent, so child indices whose children
+	 * share a name but not a limit take different values and are unequal, alone and nested,
+	 * even though the children themselves compare equal. The hash of a child index includes
+	 * its parent, so indices sharing a child but not a parent do not share a hash.
+	 */
+	@Test(timeout = 30000)
+	public void indexChildEqualityIncludesChildLimit() {
+		DefaultIndex row = new DefaultIndex("row", 3);
+		IndexChild four = Index.child(row, new DefaultIndex("col", 4));
+		IndexChild eight = Index.child(row, new DefaultIndex("col", 8));
+
+		Assert.assertEquals(new DefaultIndex("col", 4), new DefaultIndex("col", 8));
+		Assert.assertNotEquals(four, eight);
+		Assert.assertNotEquals(eight, four);
+		Assert.assertNotEquals(Sum.of(ref("y"), four), Sum.of(ref("y"), eight));
+
+		IndexChild alsoFour = Index.child(new DefaultIndex("row", 3), new DefaultIndex("col", 4));
+		Assert.assertEquals(four, alsoFour);
+		Assert.assertEquals(four.hashCode(), alsoFour.hashCode());
+		Assert.assertEquals(Sum.of(ref("y"), four), Sum.of(ref("y"), alsoFour));
+
+		IndexChild otherRow = Index.child(new DefaultIndex("other", 3), new DefaultIndex("col", 4));
+		Assert.assertNotEquals(four.hashCode(), otherRow.hashCode());
+	}
+
+	/**
+	 * Child indices whose children differ only in their limit are not equal, and their
+	 * {@link Object#hashCode()} tells them apart too, so they do not collide as map keys.
+	 */
+	@Test(timeout = 30000)
+	public void indexChildHashIncludesChildLimit() {
+		DefaultIndex row = new DefaultIndex("row", 3);
+		IndexChild four = Index.child(row, new DefaultIndex("col", 4));
+		IndexChild eight = Index.child(row, new DefaultIndex("col", 8));
+
+		Assert.assertEquals(new DefaultIndex("col", 4).hashCode(), new DefaultIndex("col", 8).hashCode());
+		Assert.assertNotEquals(four.hashCode(), eight.hashCode());
+
+		Map<Expression<?>, String> keys = new HashMap<>();
+		keys.put(four, "four");
+		keys.put(eight, "eight");
+		Assert.assertEquals(2, keys.size());
+		Assert.assertEquals("four", keys.get(Index.child(new DefaultIndex("row", 3), new DefaultIndex("col", 4))));
+		Assert.assertEquals("eight", keys.get(Index.child(new DefaultIndex("row", 3), new DefaultIndex("col", 8))));
+	}
+
+	/**
+	 * Iterated simplification ends when an expression returns to a form it already took, so
+	 * a simplification that alternates between two forms cannot loop forever.
+	 */
+	@Test(timeout = 30000)
+	public void simplificationStopsWhenAFormRepeats() {
+		Expression<?> simplified = new Alternating(0).getSimplified();
+		Assert.assertTrue(simplified instanceof Alternating);
+	}
+
+	/** An expression whose simplification alternates between two forms forever. */
+	private static final class Alternating extends Expression<Integer> {
+		/** Which of the two forms this is, {@code 0} or {@code 1}. */
+		private final int phase;
+
+		/**
+		 * @param phase which of the two forms to create, {@code 0} or {@code 1}
+		 */
+		Alternating(int phase) {
+			super(Integer.class, new IntegerConstant(phase));
+			this.phase = phase;
+		}
+
+		/** Returns the other form, however often it is called. */
+		@Override
+		public Expression<Integer> simplify(KernelStructureContext context, int depth) {
+			return new Alternating(1 - phase);
+		}
+
+		@Override
+		public String getExpression(LanguageOperations lang) {
+			return "alternating" + phase;
+		}
+	}
+
+	/**
+	 * Iterated simplification ends only when an expression returns to a form that is
+	 * {@link Expression#equals(Object) equal} to one it already took. Distinct expressions
+	 * may share a hash code, so a form that merely hashes like an earlier one does not end
+	 * it, and it carries on to the last form.
+	 */
+	@Test(timeout = 30000)
+	public void simplificationContinuesThroughHashCollisions() {
+		Expression<?> simplified = new Countdown(3).getSimplified();
+		Assert.assertEquals("countdown0", simplified.getExpression(new LanguageOperationsStub()));
+	}
+
+	/** An expression whose every form has the same hash code, simplifying one step towards zero. */
+	private static final class Countdown extends Expression<Integer> {
+		/** The number of simplification steps left before the last form. */
+		private final int remaining;
+
+		/**
+		 * @param remaining the number of simplification steps left before the last form
+		 */
+		Countdown(int remaining) {
+			super(Integer.class, new IntegerConstant(remaining));
+			this.remaining = remaining;
+		}
+
+		/** Returns the next form, or this one once no steps are left. */
+		@Override
+		public Expression<Integer> simplify(KernelStructureContext context, int depth) {
+			return remaining == 0 ? this : new Countdown(remaining - 1);
+		}
+
+		/** Returns the same hash code for every form, as distinct expressions may. */
+		@Override
+		public int hashCode() {
+			return 0;
+		}
+
+		@Override
+		public String getExpression(LanguageOperations lang) {
+			return "countdown" + remaining;
+		}
 	}
 }
