@@ -22,6 +22,7 @@ import org.junit.Test;
 
 import java.io.File;
 import java.nio.file.Files;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -589,6 +590,54 @@ public class RemediationStateStoreTest extends TestSuiteBase {
                     store.get("ws").isNotified());
         } finally {
             store.close();
+        }
+    }
+
+    /**
+     * A no-progress pass on a record that cannot be read is not recorded, rather
+     * than incrementing a substitute empty record whose write would overwrite a
+     * spent count with one and refund the budget. A pass that produced a commit
+     * is still recorded, since its reset does not depend on the stored count.
+     */
+    @Test(timeout = 30000)
+    public void recordPassDoesNotRefundTheBudgetWhenTheRecordCannotBeRead() throws Exception {
+        File dir = Files.createTempDirectory("rem-pass-unreadable").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            for (int i = 0; i < 5; i++) {
+                store.recordPass("ws", "r", "b", null);
+            }
+            assertTrue(store.get("ws").budgetExhausted(5));
+            // The row is still writable, but its count no longer reads as an integer.
+            try (Statement stmt = store.connection().createStatement()) {
+                stmt.execute("ALTER TABLE pr_remediation ALTER COLUMN consecutive_no_progress "
+                        + "SET DATA TYPE VARCHAR(16)");
+                stmt.execute("UPDATE pr_remediation SET consecutive_no_progress = 'unreadable'");
+            }
+
+            assertNull("an unreadable no-progress pass is not recorded",
+                    store.recordPass("ws", "r", "b", null));
+            // The stored count is left untouched, not reset to one.
+            assertEquals("unreadable", rawCount(store));
+
+            RemediationState committed = store.recordPass("ws", "r", "b", "new-sha");
+            assertEquals(0, committed.getConsecutiveNoProgress());
+            assertEquals("new-sha", committed.getLastProducedCommit());
+            // A commit still resets an unreadable record.
+            assertEquals("0", rawCount(store));
+        } finally {
+            store.close();
+        }
+    }
+
+    /** Reads the stored count for {@code ws} as text, bypassing the store's parsing. */
+    private String rawCount(RemediationStateStore store) throws Exception {
+        try (Statement stmt = store.connection().createStatement();
+             ResultSet rs = stmt.executeQuery(
+                     "SELECT consecutive_no_progress FROM pr_remediation WHERE workstream_id = 'ws'")) {
+            assertTrue(rs.next());
+            return rs.getString(1);
         }
     }
 }

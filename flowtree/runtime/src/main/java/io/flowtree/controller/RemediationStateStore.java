@@ -186,9 +186,10 @@ public class RemediationStateStore extends ControllerDatabase {
     /**
      * Returns the current record for a workstream, or the empty record when the
      * store is closed, has no row for it yet, or could not be read. This lenient
-     * reading suits the write paths, where a read error is already logged and a
-     * fresh pass is still recorded; the submit gate must instead distinguish a
-     * read error from an absent row, so it uses {@link #evaluateSubmission}.
+     * reading suits only a caller whose outcome does not depend on the stored
+     * count, such as the reset an external commit records; the submit gate and a
+     * no-progress pass must distinguish a read error from an absent row, so they
+     * read strictly ({@link #evaluateSubmission}, {@link #recordPass}).
      *
      * @param workstreamId the workstream (branch / PR) key
      * @return the record; never {@code null}
@@ -302,19 +303,39 @@ public class RemediationStateStore extends ControllerDatabase {
      * increments the count and leaves the last-produced commit and the flag as
      * they were.</p>
      *
+     * <p>A no-progress pass on a record that cannot be read is not recorded:
+     * incrementing a substitute empty record would overwrite the stored count
+     * with one and clear the notification flag, silently refunding a spent
+     * budget. A pass that produced a commit is still recorded, because its
+     * outcome does not depend on the prior record.</p>
+     *
      * @param workstreamId   the workstream (branch / PR) key
      * @param repoUrl        the repository URL, for the record; may be {@code null}
      * @param branch         the branch, for the record; may be {@code null}
      * @param producedCommit the commit SHA this pass produced, or {@code null}
      *                       when it changed nothing
-     * @return the updated record (the empty record when the store is closed)
+     * @return the updated record (the empty record when the store is closed), or
+     *         {@code null} when a no-progress pass was not recorded because the
+     *         record could not be read
      */
     public synchronized RemediationState recordPass(String workstreamId, String repoUrl,
                                                     String branch, String producedCommit) {
         if (!isOpen() || workstreamId == null || workstreamId.isEmpty()) {
             return RemediationState.empty(workstreamId);
         }
-        RemediationState next = get(workstreamId).afterPass(producedCommit);
+        boolean progress = producedCommit != null && !producedCommit.isEmpty();
+        RemediationState current;
+        try {
+            current = read(workstreamId);
+        } catch (SQLException e) {
+            warn("Failed to read remediation state for " + workstreamId
+                + (progress ? "; recording the commit reset anyway: "
+                            : "; not recording this no-progress pass: ") + e.getMessage());
+            if (!progress) return null;
+            current = null;
+        }
+        if (current == null) current = RemediationState.empty(workstreamId);
+        RemediationState next = current.afterPass(producedCommit);
         write(next, repoUrl, branch);
         return next;
     }
