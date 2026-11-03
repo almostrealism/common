@@ -135,11 +135,13 @@ public interface WaveDetailsStore extends Closeable {
 	 * declared model differs from the one the index was built from, the index
 	 * is discarded and rebuilt as embeddings for the declared model arrive.
 	 * Declaring the same model again is a no-op, and so is {@code null}.
-	 * Implementations that do not maintain a vector index may ignore this.
+	 * Implementations that do not maintain a vector index may ignore this;
+	 * the default implementation does nothing.
 	 *
 	 * @param modelIdentifier the model producing the embeddings, or {@code null}
 	 */
-	void setEmbeddingModel(String modelIdentifier);
+	default void setEmbeddingModel(String modelIdentifier) {
+	}
 
 	/**
 	 * Return the number of indexed vectors in the nearest-neighbor index.
