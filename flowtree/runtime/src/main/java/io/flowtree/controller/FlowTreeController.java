@@ -1117,6 +1117,11 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setServer(flowtreeServer);
             apiEndpoint.setListener(listener);
             apiEndpoint.setStatsStore(statsStore);
+            // One per-PR remediation record beside the stats store (RETRO P3).
+            RemediationStateStore remediationStore = new RemediationStateStore(
+                    new File(dataDir, "remediation").getPath());
+            remediationStore.initialize();
+            apiEndpoint.setRemediationStore(remediationStore);
             apiEndpoint.setDataDirectory(dataDir);
             apiEndpoint.setAlertRecipients(AlertRecipientEntry.directory(
                     loadedConfig == null ? null : loadedConfig.getAlertRecipients()));

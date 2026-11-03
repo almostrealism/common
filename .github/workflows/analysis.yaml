@@ -3788,8 +3788,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       staged: ${{ steps.upload.outcome == 'success' }}
+      # 'false' when the latest Copilot review on this PR is an out-of-quota
+      # notice; auto-review-submit drops its Copilot-wait delay in that case.
+      copilot_available: ${{ steps.copilot.outputs.copilot_available }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -3868,6 +3872,41 @@ jobs:
           fi
           echo "route=${ROUTE}" >> "$GITHUB_OUTPUT"
           echo "::notice::auto-review prompt: ${ROUTE}"
+
+      # GitHub Copilot has been dark for long stretches, posting only an
+      # "insufficient remaining quota" notice in place of a review (RETRO
+      # P1, copilot-review-dark). When that is the latest Copilot review on
+      # this PR, record the gap here and let auto-review-submit skip the
+      # delay it otherwise holds so the agent "starts with" Copilot's review.
+      # Best-effort: any lookup failure leaves copilot_available=true (wait as
+      # before), so a transient API error never suppresses a real review.
+      - name: Check Copilot review availability
+        id: copilot
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          STATUS="copilot_available=true"
+          if [ -f ./tools/ci/copilot-review-status.py ]; then
+            PR="$PR_NUMBER"
+            if [ -z "$PR" ]; then
+              PR=$(gh pr list --repo "${{ github.repository }}" --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || true)
+            fi
+            if [ -n "$PR" ]; then
+              DETECTED=$(gh api "repos/${{ github.repository }}/pulls/${PR}/reviews" --paginate 2>/dev/null | python3 ./tools/ci/copilot-review-status.py 2>/dev/null || true)
+              case "$DETECTED" in
+                copilot_available=*) STATUS="$DETECTED" ;;
+              esac
+              echo "::notice::Copilot review availability for PR #${PR}: ${STATUS}"
+            else
+              echo "::notice::No open PR for ${BRANCH} — skipping Copilot availability check"
+            fi
+          else
+            echo "::notice::copilot-review-status.py absent from this checkout — skipping Copilot availability check"
+          fi
+          echo "$STATUS" >> "$GITHUB_OUTPUT"
 
       # ── Build failure path ──────────────────────────────────────
       - name: Build prompt (build failure)
@@ -3966,6 +4005,9 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # The controller skips a review re-triggered only by the previous
+          # review's own commit (RETRO P3); a commit by anyone else still triggers.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Review docs changes"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
@@ -4005,6 +4047,9 @@ jobs:
           # test-integrity-check is what stops it weakening one.
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # The controller skips a review re-triggered only by the previous
+          # review's own commit (RETRO P3); a commit by anyone else still triggers.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Review branch changes"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
@@ -4024,10 +4069,15 @@ jobs:
         env:
           ROUTE: ${{ steps.route.outputs.route }}
           QUALITY_FAILURE_COUNT: ${{ steps.quality.outputs.failure_count }}
+          COPILOT_AVAILABLE: ${{ steps.copilot.outputs.copilot_available }}
         run: |
           {
             echo "## Auto-Review"
             echo ""
+            if [ "$COPILOT_AVAILABLE" = "false" ]; then
+              echo "> **Copilot unavailable** — the latest Copilot review on this PR is an \"insufficient remaining quota\" notice, so no Copilot review ran. The review agent is the only automated reviewer, and it will not wait for a Copilot review that is not coming."
+              echo ""
+            fi
             case "$ROUTE" in
               docs-review)    echo "**Docs-only change** — submitted a job to review the docs changes (it does not implement a plan)." ;;
               build-failure)  echo "**Build failed** — submitted a job to fix the build." ;;
@@ -4083,7 +4133,12 @@ jobs:
           # before GitHub Copilot's review of the same push (about eight
           # minutes) has posted. The controller holds the job this long before
           # dispatching it, so the agent starts with that review to act on.
+          # This is the default hold; the run step below drops it to 0 when
+          # Copilot is out of quota, since then no review is coming (RETRO P1,
+          # copilot-review-dark).
           DELAY_SECONDS: "300"
+          # 'false' when the latest Copilot review on this PR is a quota notice.
+          COPILOT_AVAILABLE: ${{ needs.auto-review.outputs.copilot_available }}
           # No auto-review prompt is sent to make a failing test pass, so the
           # harness's per-job test lock stays off; test-integrity-check holds.
           PROTECT_TEST_FILES: "false"
@@ -4099,6 +4154,14 @@ jobs:
           if [ ! -f ./tools/ci/submit-staged-request.sh ]; then
             echo "::warning::The default branch has no tools/ci/submit-staged-request.sh yet — the staged request is not submitted"
             exit 0
+          fi
+          # Copilot has been dark for long stretches, posting only a quota
+          # notice. When its latest review on this PR is that notice there is
+          # no review to wait for, so drop the hold rather than make the agent
+          # wait five minutes for nothing (RETRO P1, copilot-review-dark).
+          if [ "${COPILOT_AVAILABLE}" = "false" ]; then
+            echo "::notice::Copilot unavailable (quota) — dropping the ${DELAY_SECONDS}s review-wait to 0"
+            export DELAY_SECONDS=0
           fi
           bash ./tools/ci/submit-staged-request.sh staged-request
 
@@ -4221,6 +4284,50 @@ jobs:
           else
             echo "::notice::No test failures found"
           fi
+
+      # Classify failures so the branch is only charged for what it broke
+      # (RETRO P2, autoresolve-attribution). The baseline fetch is best-effort:
+      # without it, every non-environmental failure is a regression (today's
+      # behaviour), which over-assigns rather than dropping a failure.
+      - name: Fetch master test baseline
+        if: steps.failures.outputs.has_failures == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ -f ./tools/ci/fetch-master-test-baseline.sh ]; then
+            ./tools/ci/fetch-master-test-baseline.sh "${{ runner.temp }}/master-failures.txt" || true
+          else
+            : > "${{ runner.temp }}/master-failures.txt"
+            echo "::notice::fetch-master-test-baseline.sh absent from this checkout — baseline empty"
+          fi
+
+      - name: Classify test failures
+        if: steps.failures.outputs.has_failures == 'true'
+        id: classify
+        run: |
+          if [ -f ./tools/ci/classify-failures.py ]; then
+            BASELINE="${{ runner.temp }}/master-failures.txt"
+            [ -f "$BASELINE" ] || BASELINE=""
+            # TODO(review): a crash of a present classifier leaves the counts empty (no dispatch); only the file-absent case has a fallback.
+            eval "$(python3 ./tools/ci/classify-failures.py "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}" "$BASELINE")"
+          else
+            # Older checkout without the classifier: every failure is a
+            # regression, the pre-classification behaviour.
+            cp "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}/regressions.txt"
+            : > "${{ runner.temp }}/preexisting.txt"
+            : > "${{ runner.temp }}/environmental.txt"
+            regression_count="${{ steps.failures.outputs.failure_count }}"
+            preexisting_count=0
+            environmental_count=0
+          fi
+          {
+            echo "regression_count=${regression_count}"
+            echo "preexisting_count=${preexisting_count}"
+            echo "environmental_count=${environmental_count}"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::classified failures: ${regression_count} regression(s), ${preexisting_count} pre-existing, ${environmental_count} environmental"
 
       - name: Check for incomplete test execution
         if: steps.failures.outputs.has_failures != 'true'
@@ -4439,23 +4546,33 @@ jobs:
           path: ${{ runner.temp }}/test-failures.txt
           retention-days: 7
 
+      # Dispatch only when there is at least one regression — a failure this
+      # branch introduced. When every failure is pre-existing or environmental,
+      # nothing is staged (see the Summary step), so auto-resolve is not
+      # dispatched at all (RETRO P2). The prompt names only the regressions as
+      # "you broke these", and lists the pre-existing and environmental
+      # failures in their own non-blaming sections.
       - name: Build prompt (test failures)
-        if: steps.failures.outputs.has_failures == 'true'
+        if: steps.failures.outputs.has_failures == 'true' && steps.classify.outputs.regression_count != '0' && steps.classify.outputs.regression_count != ''
         env:
-          FAILURE_COUNT: ${{ steps.failures.outputs.failure_count }}
+          FAILURE_COUNT: ${{ steps.classify.outputs.regression_count }}
           BRANCH: ${{ needs.changes.outputs.branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
-          ./tools/ci/prompts/build-resolve-prompt.sh "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
+          ./tools/ci/prompts/build-resolve-prompt.sh \
+            "${{ runner.temp }}/regressions.txt" \
+            "${{ runner.temp }}/agent-prompt.txt" \
+            "${{ runner.temp }}/preexisting.txt" \
+            "${{ runner.temp }}/environmental.txt"
 
       - name: Stage submit request (test failures)
-        if: steps.failures.outputs.has_failures == 'true'
+        if: steps.failures.outputs.has_failures == 'true' && steps.classify.outputs.regression_count != '0' && steps.classify.outputs.regression_count != ''
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
-          DESCRIPTION: "Resolve ${{ steps.failures.outputs.failure_count }} test failure(s)"
+          DESCRIPTION: "Resolve ${{ steps.classify.outputs.regression_count }} regression test failure(s)"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
 
@@ -4518,19 +4635,46 @@ jobs:
 
       - name: Summary
         if: ${{ !cancelled() }}
+        env:
+          REGRESSION_COUNT: ${{ steps.classify.outputs.regression_count }}
+          PREEXISTING_COUNT: ${{ steps.classify.outputs.preexisting_count }}
+          ENVIRONMENTAL_COUNT: ${{ steps.classify.outputs.environmental_count }}
         run: |
           echo "## Auto-Resolve" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "_Any request below is staged as an artifact; the \`Auto-Resolve Submit\` workflow submits it once this run completes and no flaky-test retry is left._" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ steps.failures.outputs.has_failures }}" = "true" ]; then
-            echo "Found **${{ steps.failures.outputs.failure_count }}** test failure(s)." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was staged to attempt automatic resolution." >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "### Failing tests" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
-            cat "${{ runner.temp }}/test-failures.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no failure file)" >> "$GITHUB_STEP_SUMMARY"
-            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo "Found **${{ steps.failures.outputs.failure_count }}** test failure(s): **${REGRESSION_COUNT:-?}** regression(s), **${PREEXISTING_COUNT:-0}** pre-existing (fail on master too), **${ENVIRONMENTAL_COUNT:-0}** environmental (hardware/native)."
+              echo ""
+              if [ -n "$REGRESSION_COUNT" ] && [ "$REGRESSION_COUNT" != "0" ]; then
+                echo "A FlowTree coding agent job was staged to resolve the **${REGRESSION_COUNT}** regression(s) this branch introduced."
+                echo ""
+                echo "### Regressions (this branch's to fix)"
+                echo '```'
+                cat "${{ runner.temp }}/regressions.txt" 2>/dev/null || echo "(none)"
+                echo '```'
+              else
+                echo "**No regressions** — every failure fails on master too or is a hardware/native fault, so **auto-resolve was not dispatched** for this branch."
+              fi
+              if [ -n "$PREEXISTING_COUNT" ] && [ "$PREEXISTING_COUNT" != "0" ]; then
+                echo ""
+                echo "### Pre-existing failures (master defects — not charged to this branch)"
+                echo "These fail on \`origin/master\` too and belong in a tracker task / the defect round, not this branch."
+                echo '```'
+                cat "${{ runner.temp }}/preexisting.txt" 2>/dev/null || echo "(none)"
+                echo '```'
+              fi
+              if [ -n "$ENVIRONMENTAL_COUNT" ] && [ "$ENVIRONMENTAL_COUNT" != "0" ]; then
+                echo ""
+                echo "### Environmental failures (infrastructure / hardware — reported, not assigned)"
+                echo "Hardware or native faults (e.g. a CUDA allocation hang). Not agent-fixable; reported for a person to look at the runner fleet."
+                echo '```'
+                cat "${{ runner.temp }}/environmental.txt" 2>/dev/null || echo "(none)"
+                echo '```'
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.test-completeness.outputs.build_failed_in_tests }}" = "true" ]; then
             echo "**Test job failed** without producing surefire results (JVM crash, OOM, or build error within test step)." >> "$GITHUB_STEP_SUMMARY"
             echo "A FlowTree coding agent job was staged to resolve the failure." >> "$GITHUB_STEP_SUMMARY"

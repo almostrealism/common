@@ -73,6 +73,25 @@ class EnforcementRunner implements ConsoleFeatures {
     }
 
     /**
+     * Returns whether the primary phase left the working tree exactly as it
+     * found it — no agent commit, no new files, no uncommitted changes.
+     *
+     * <p>A second-pass review of such a tree reviews nothing: the no-op review
+     * passes a clean branch kept drawing were each a full review session run
+     * against a tree the primary had not touched (RETRO P3 / task 4f393925).
+     * {@link #run()} skips the {@code review} rule and records the skip in the
+     * job's phase messages when this holds. The review of a tree the primary
+     * <em>did</em> change is unaffected.</p>
+     *
+     * @return {@code true} when the primary produced nothing to review
+     */
+    boolean primaryLeftTreeUnchanged() {
+        return !job.hasAgentCommitted()
+                && job.extractNewFilePaths().isEmpty()
+                && !job.hasUncommittedChanges();
+    }
+
+    /**
      * Builds the ordered list of enforcement rules active for the job, based on
      * its configuration flags.
      *
@@ -155,6 +174,7 @@ class EnforcementRunner implements ConsoleFeatures {
         List<EnforcementRule> rules = buildActiveRules();
         int totalAttempts = 0;
         boolean anyRuleCorrectionRan;
+        boolean reviewSkipNoted = false;
         Set<String> exhaustedRules = new HashSet<>();
         Map<String, String> stalledRules = new HashMap<>();
         do {
@@ -173,6 +193,16 @@ class EnforcementRunner implements ConsoleFeatures {
                 }
                 if (stalledRules.containsKey(ruleName)
                         && stalledRules.get(ruleName).equals(workingTreeFingerprint(rule))) {
+                    continue;
+                }
+                // Nothing to review when the primary changed nothing; see primaryLeftTreeUnchanged.
+                if ("review".equals(ruleName) && primaryLeftTreeUnchanged()) {
+                    if (!reviewSkipNoted) {
+                        log("Enforcement rule 'review': skipped — primary phase made no changes");
+                        job.harnessStatus().unusual("Review phase skipped: the primary phase made "
+                                + "no changes, so there is nothing new to review");
+                        reviewSkipNoted = true;
+                    }
                     continue;
                 }
                 if (!rule.isViolated(job)) {

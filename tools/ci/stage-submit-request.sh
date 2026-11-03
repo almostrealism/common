@@ -23,7 +23,11 @@
 #
 # Optional environment variables (forwarded verbatim to submit-agent-job.sh):
 #   STARTED_AFTER, DESCRIPTION, PROTECT_TEST_FILES, ENFORCE_CHANGES,
-#   REPO_URL, CREATE_WORKSTREAM
+#   REPO_URL, CREATE_WORKSTREAM, TRIGGER_COMMIT
+#
+# TRIGGER_COMMIT is the commit that triggered this run; the controller skips a
+# review re-triggered only by the previous remediation pass's own commit (RETRO
+# P3). It is staged only by the review routes, so other routes never carry it.
 #
 # REPO_URL and CREATE_WORKSTREAM are only worth staging to override the
 # defaults submit-agent-job.sh applies: it derives the repository from
@@ -58,6 +62,7 @@ cp "$PROMPT_FILE" "$OUT_DIR/agent-prompt.txt"
     [ -n "${ENFORCE_CHANGES:-}" ] && printf 'ENFORCE_CHANGES=%s\n' "$ENFORCE_CHANGES"
     [ -n "${REPO_URL:-}" ] && printf 'REPO_URL=%s\n' "$REPO_URL"
     [ -n "${CREATE_WORKSTREAM:-}" ] && printf 'CREATE_WORKSTREAM=%s\n' "$CREATE_WORKSTREAM"
+    [ -n "${TRIGGER_COMMIT:-}" ] && printf 'TRIGGER_COMMIT=%s\n' "$TRIGGER_COMMIT"
 } > "$OUT_DIR/submit.env"
 
 echo "::notice::Staged auto-resolve request: ${DESCRIPTION:-(no description)}"

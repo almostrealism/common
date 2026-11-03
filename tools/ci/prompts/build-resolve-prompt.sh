@@ -7,8 +7,19 @@
 # Usage:
 #   build-resolve-prompt.sh <failures-file> <output-file>
 #
+# A third and fourth positional argument are optional: a pre-existing-failures
+# file and an environmental-failures file. <failures-file> is the list the
+# agent is told it broke — only the REGRESSIONS once classify-failures.sh has
+# run (RETRO P2, autoresolve-attribution), so the "YOU BROKE THESE TESTS"
+# directive is accurate. The optional extra files carry the failures that are
+# NOT the branch's to fix: tests that fail on master too (pre-existing) and
+# hardware/native faults (environmental). When supplied and non-empty they are
+# listed in their own sections with instructions NOT to patch unrelated code to
+# make them pass. Both are optional so a caller that has not classified still
+# works, naming every failure as a regression.
+#
 # Required environment variables:
-#   FAILURE_COUNT   - number of failures (for the prompt text)
+#   FAILURE_COUNT   - number of regression failures (for the prompt text)
 #   BRANCH          - branch name where failures occurred
 #   COMMIT_SHA      - commit SHA where failures occurred
 #
@@ -20,9 +31,11 @@ set -euo pipefail
 
 FAILURES_FILE="${1:-}"
 OUTPUT_FILE="${2:-}"
+PREEXISTING_FILE="${3:-}"
+ENVIRONMENTAL_FILE="${4:-}"
 
 if [ -z "$FAILURES_FILE" ] || [ -z "$OUTPUT_FILE" ]; then
-    echo "Usage: $0 <failures-file> <output-file>" >&2
+    echo "Usage: $0 <failures-file> <output-file> [preexisting-file] [environmental-file]" >&2
     exit 1
 fi
 
@@ -264,3 +277,58 @@ yourself; broad verification is CI's job.
 **Remember: if a test exists on the base branch, the test is the specification — fix
 the production code. Modifications to base-branch test files or CI files will be rejected.**
 EOF
+
+# ── Failures that are NOT the branch's to fix ───────────────────────
+# Only appended when classify-failures.sh produced a non-empty list. These
+# were deliberately kept out of the "you broke these" set above so the agent
+# does not patch unrelated modules to make them pass — the exact failure mode
+# RETRO P2 (autoresolve-attribution) was raised to stop.
+
+if [ -n "$PREEXISTING_FILE" ] && [ -s "$PREEXISTING_FILE" ]; then
+    PREEXISTING_LIST=$(cat "$PREEXISTING_FILE")
+    cat >> "$OUTPUT_FILE" <<EOF
+
+---
+
+## Pre-existing failures — these are NOT yours, do not fix them here
+
+The tests below fail on **origin/master too**, not only on this branch. They are
+master defects that your branch merely surfaced; they are not caused by your
+changes. Do **not** patch unrelated modules to make them pass, and do not count
+them against your branch.
+
+${PREEXISTING_LIST}
+
+Instead, record each one so it is fixed once, in its own place:
+
+1. For each failing test above, first search for an existing task with
+   \`mcp__ar-manager__tracker_search_tasks\` (query the test's class and method
+   name) so you do not file a duplicate.
+2. If none exists, file one with \`mcp__ar-manager__tracker_create_task\`: title
+   it with the failing \`Class#method\`, and in the description note that it
+   fails on master, paste the exception, and reference PR for branch "${BRANCH}".
+   One task per failing test.
+3. Do not change production or test code to address these.
+EOF
+fi
+
+if [ -n "$ENVIRONMENTAL_FILE" ] && [ -s "$ENVIRONMENTAL_FILE" ]; then
+    ENVIRONMENTAL_LIST=$(cat "$ENVIRONMENTAL_FILE")
+    cat >> "$OUTPUT_FILE" <<EOF
+
+---
+
+## Infrastructure / hardware failures — not agent-fixable
+
+The failures below are hardware or native faults — a native allocation timeout,
+a driver hang, or a crash in native code (for example a CUDA \`CU.memAllocManaged\`
+timeout). They are the infrastructure's, not your branch's, and nothing you can
+change in Java will fix them. Do **not** attempt to fix them and do **not**
+disable, skip, or weaken the tests that hit them.
+
+${ENVIRONMENTAL_LIST}
+
+These are reported for a person to look at (the runner fleet / hardware), not
+assigned to you. Mention them in your summary and move on.
+EOF
+fi

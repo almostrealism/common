@@ -286,6 +286,28 @@ class CredentialIsolationTests(unittest.TestCase):
         env = [step.get("env", {}) for step in job["steps"] if "run" in step][0]
         self.assertGreaterEqual(int(env["DELAY_SECONDS"]), 300)
 
+    def test_auto_review_submit_drops_the_delay_when_copilot_is_dark(self):
+        """RETRO P1 (copilot-review-dark): when Copilot's latest review on the
+        PR is an out-of-quota notice there is no review to wait for, so the
+        submit step drops its default hold to 0. The 300s default is unchanged;
+        the run step overrides it only when COPILOT_AVAILABLE is false."""
+        job = _jobs()["auto-review-submit"]
+        step = [s for s in job["steps"] if "run" in s][0]
+        env = step.get("env", {})
+        self.assertEqual("300", env["DELAY_SECONDS"])
+        self.assertIn("copilot_available", env["COPILOT_AVAILABLE"])
+        run = step["run"]
+        self.assertIn("COPILOT_AVAILABLE", run)
+        self.assertIn("DELAY_SECONDS=0", run)
+
+    def test_auto_review_exposes_copilot_availability(self):
+        """auto-review detects a dark Copilot and exposes it as an output the
+        submit job reads (RETRO P1)."""
+        job = _jobs()["auto-review"]
+        self.assertIn("copilot_available", job.get("outputs", {}))
+        names = [s.get("name") for s in job["steps"]]
+        self.assertIn("Check Copilot review availability", names)
+
     def test_submit_jobs_survive_a_skipped_or_failed_upstream_job(self):
         """Without a status function the implicit success() covers every job
         upstream, not only `needs`. The producers run exactly when python-tests

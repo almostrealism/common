@@ -53,13 +53,31 @@ public final class JobLifecycleRecorder {
     /** The backing store; {@code null} disables every record call. */
     private final JobStatsStore statsStore;
 
+    /** The per-PR remediation record store; {@code null} disables the update. */
+    private final RemediationStateStore remediationStore;
+
     /**
-     * Creates a recorder writing through {@code statsStore}.
+     * Creates a recorder writing through {@code statsStore}, with no remediation
+     * record store.
      *
      * @param statsStore the store to write to, or {@code null} to disable
      */
     public JobLifecycleRecorder(JobStatsStore statsStore) {
+        this(statsStore, null);
+    }
+
+    /**
+     * Creates a recorder writing through {@code statsStore} and updating the
+     * per-PR remediation record in {@code remediationStore} at each terminal
+     * event.
+     *
+     * @param statsStore       the stats store, or {@code null} to disable
+     * @param remediationStore the remediation record store, or {@code null} to
+     *                         disable the per-PR remediation update
+     */
+    public JobLifecycleRecorder(JobStatsStore statsStore, RemediationStateStore remediationStore) {
         this.statsStore = statsStore;
+        this.remediationStore = remediationStore;
     }
 
     /**
@@ -105,11 +123,24 @@ public final class JobLifecycleRecorder {
      * scanner-failed job and an ordinary completion both update the row with or
      * without a notifier present.
      *
+     * <p>It also records the pass against the per-PR remediation budget: a
+     * commit is progress (resets the consecutive-no-progress count), no commit
+     * changed nothing (increments it). A {@code CANCELLED} event is a
+     * superseded run, not a completed pass, so it is not counted. See
+     * {@link RemediationStateStore#recordPass}.</p>
+     *
      * @param workstreamId the workstream the job belongs to
      * @param event        the terminal event
      */
     public void recordTerminal(String workstreamId, JobCompletionEvent event) {
-        if (statsStore == null || event == null) return;
-        statsStore.recordJobCompleted(workstreamId, event);
+        if (event == null) return;
+        if (statsStore != null) {
+            statsStore.recordJobCompleted(workstreamId, event);
+        }
+        if (remediationStore != null
+                && event.getStatus() != JobCompletionEvent.Status.CANCELLED) {
+            remediationStore.recordPass(workstreamId, null,
+                    event.getTargetBranch(), event.getCommitHash());
+        }
     }
 }

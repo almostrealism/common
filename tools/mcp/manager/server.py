@@ -1301,6 +1301,33 @@ def _copilot_in_rest_response(rest_response: dict) -> bool:
     return False
 
 
+def _copilot_quota_block(owner: str, repo: str, pr_number: int) -> Optional[dict]:
+    """Return a quota-refusal dict when Copilot's latest review is out-of-quota.
+
+    Copilot posts an out-of-quota refusal as a review body rather than failing
+    the review request, so a request GitHub accepted can still mean no review
+    will run. This reads the PR's reviews and, when the most recent Copilot
+    review is that refusal, returns a refusal dict so the caller reports the
+    gap instead of claiming success. Returns ``None`` when Copilot has no
+    review on the PR or its latest review is a real one.
+    """
+    reviews = _github_request(
+        "GET", f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews?per_page=100")
+    if not isinstance(reviews, list):
+        return None
+    notice = github_api.latest_copilot_quota_notice(reviews, _is_copilot_login)
+    if notice is None:
+        return None
+    return {
+        "ok": False,
+        "quota_exceeded": True,
+        "error": (
+            "Copilot declined the review: the account that requested it has "
+            "insufficient remaining quota. No Copilot review will run until "
+            "the quota is restored."),
+    }
+
+
 def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     """Request a GitHub Copilot review on a pull request.
 
@@ -1341,6 +1368,9 @@ def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
     result = _request_reviews_via_rest(owner, repo, pr_number, bot_login)
 
     if _copilot_in_rest_response(result):
+        quota = _copilot_quota_block(owner, repo, pr_number)
+        if quota is not None:
+            return quota
         return {"ok": True}
 
     error_message = result.get("error", "") if isinstance(result, dict) else ""
@@ -1354,6 +1384,9 @@ def _request_copilot_review(owner: str, repo: str, pr_number: int) -> dict:
                     "error": f"Review request failed: {error_message}"}
         retry = _request_reviews_via_rest(owner, repo, pr_number, bot_login)
         if _copilot_in_rest_response(retry):
+            quota = _copilot_quota_block(owner, repo, pr_number)
+            if quota is not None:
+                return quota
             return {"ok": True}
         retry_error = retry.get("error", "") if isinstance(retry, dict) else ""
         if retry_error:

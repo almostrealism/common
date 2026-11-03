@@ -23,6 +23,26 @@ if _MANAGER_DIR not in sys.path:
 
 with patch.dict(os.environ, {"AR_CONTROLLER_URL": "http://test:7780"}):
     import server
+    import github_api
+
+
+# The verbatim body GitHub posts as a "review" when Copilot is out of quota.
+_QUOTA_BODY = (
+    "Copilot was unable to review this pull request because the user who "
+    "requested the review has insufficient remaining quota."
+)
+
+
+def _review(login, body, submitted_at, state="COMMENTED"):
+    """Build a review object in the shape github_pr_reviews returns."""
+    return {
+        "id": hash((login, submitted_at)) & 0xFFFF,
+        "user": login,
+        "state": state,
+        "submitted_at": submitted_at,
+        "commit_id": "deadbeef",
+        "body": body,
+    }
 
 
 def _grant_github_scope():
@@ -152,6 +172,112 @@ class TestCopilotReviewApiShape(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         mock_dismiss.assert_called_once()
+
+
+class TestCopilotQuotaNoticeDetection(unittest.TestCase):
+    """The out-of-quota refusal Copilot posts as a review is detected as such."""
+
+    def test_is_copilot_quota_notice_matches_the_verbatim_body(self):
+        self.assertTrue(github_api.is_copilot_quota_notice(_QUOTA_BODY))
+
+    def test_is_copilot_quota_notice_matches_phrasing_variants(self):
+        self.assertTrue(github_api.is_copilot_quota_notice(
+            "Copilot was unable to review this pull request because the user "
+            "who requested the review has reached their quota limit."))
+
+    def test_is_copilot_quota_notice_rejects_a_real_review_body(self):
+        self.assertFalse(github_api.is_copilot_quota_notice(
+            "Changes recommended. Previously missed: a null check in Foo."))
+
+    def test_is_copilot_quota_notice_rejects_unrelated_quota_text(self):
+        # "quota" alone, without the refusal wording, is not a quota notice.
+        self.assertFalse(github_api.is_copilot_quota_notice(
+            "This change adds a per-PR quota limit to the controller."))
+
+    def test_is_copilot_quota_notice_rejects_empty_and_non_string(self):
+        self.assertFalse(github_api.is_copilot_quota_notice(""))
+        self.assertFalse(github_api.is_copilot_quota_notice(None))
+
+    def test_latest_copilot_quota_notice_returns_notice_when_latest(self):
+        reviews = [
+            _review("alice", "Looks good", "2026-10-26T00:00:00Z"),
+            _review("copilot-pull-request-reviewer[bot]",
+                    _QUOTA_BODY, "2026-10-26T02:29:00Z"),
+        ]
+        notice = github_api.latest_copilot_quota_notice(
+            reviews, server._is_copilot_login)
+        self.assertIsNotNone(notice)
+        self.assertEqual(notice["submitted_at"], "2026-10-26T02:29:00Z")
+
+    def test_latest_copilot_quota_notice_none_when_latest_is_real(self):
+        # Copilot refused once, then a later real review ran: available again.
+        reviews = [
+            _review("copilot-pull-request-reviewer[bot]",
+                    _QUOTA_BODY, "2026-10-20T00:00:00Z"),
+            _review("copilot-pull-request-reviewer[bot]",
+                    "Changes recommended.", "2026-10-26T00:00:00Z"),
+        ]
+        self.assertIsNone(github_api.latest_copilot_quota_notice(
+            reviews, server._is_copilot_login))
+
+    def test_latest_copilot_quota_notice_none_when_no_copilot_review(self):
+        reviews = [_review("alice", _QUOTA_BODY, "2026-10-26T00:00:00Z")]
+        self.assertIsNone(github_api.latest_copilot_quota_notice(
+            reviews, server._is_copilot_login))
+
+    def test_latest_copilot_quota_notice_accepts_nested_user_object(self):
+        # The raw REST review object nests the login under user.login.
+        reviews = [{
+            "user": {"login": "copilot-pull-request-reviewer[bot]"},
+            "submitted_at": "2026-10-26T02:29:00Z",
+            "body": _QUOTA_BODY,
+        }]
+        self.assertIsNotNone(github_api.latest_copilot_quota_notice(
+            reviews, server._is_copilot_login))
+
+
+class TestCopilotReviewReportsQuotaRefusal(unittest.TestCase):
+    """_request_copilot_review reports a quota refusal instead of success."""
+
+    def setUp(self):
+        _grant_github_scope()
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_request_reviews_via_rest")
+    @patch.object(server, "_github_graphql_request")
+    def test_quota_refusal_reported_after_request_accepted(
+            self, mock_gql, mock_rest, mock_request):
+        mock_gql.return_value = _lookup_response()
+        # GitHub accepts the request: Copilot is in requested_reviewers.
+        mock_rest.return_value = _rest_pr_response(
+            ["copilot-pull-request-reviewer"])
+        # But the PR's latest Copilot review is the out-of-quota refusal.
+        mock_request.return_value = [
+            _review("copilot-pull-request-reviewer[bot]",
+                    _QUOTA_BODY, "2026-10-26T02:29:00Z"),
+        ]
+
+        result = server._request_copilot_review("owner", "repo", 42)
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result.get("quota_exceeded"))
+        self.assertIn("quota", result["error"].lower())
+
+    @patch.object(server, "_github_request")
+    @patch.object(server, "_request_reviews_via_rest")
+    @patch.object(server, "_github_graphql_request")
+    def test_success_when_no_quota_notice_present(
+            self, mock_gql, mock_rest, mock_request):
+        mock_gql.return_value = _lookup_response()
+        mock_rest.return_value = _rest_pr_response(
+            ["copilot-pull-request-reviewer"])
+        # No reviews yet (Copilot will post a real one shortly).
+        mock_request.return_value = []
+
+        result = server._request_copilot_review("owner", "repo", 42)
+
+        self.assertTrue(result["ok"])
+        self.assertNotIn("quota_exceeded", result)
 
 
 if __name__ == "__main__":

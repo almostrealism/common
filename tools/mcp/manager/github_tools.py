@@ -618,6 +618,13 @@ def github_request_copilot_review(
     and its node ID (``BOT_kgDOC9w8XQ``) is rejected with "Could not
     resolve to User node with the global id of 'BOT_...'.".
 
+    When the requesting account is out of Copilot quota, GitHub accepts the
+    request but posts a refusal ("insufficient remaining quota") as the review
+    body instead of running a review. This tool detects that and returns
+    ``ok=False`` with ``quota_exceeded=True`` rather than claiming success, so
+    a caller does not treat the PR as reviewed or wait for a review that will
+    not come.
+
     Args:
         pr_number: Pull request number. If omitted, the open PR for the
             workstream/branch is looked up automatically.
@@ -629,7 +636,9 @@ def github_request_copilot_review(
         repo: GitHub repository name. Must be passed together with ``org``.
 
     Returns:
-        dict with ok=True on success or ok=False with error details.
+        dict with ok=True on success; ok=False with error details on failure,
+        and additionally ``quota_exceeded=True`` when Copilot declined the
+        review for lack of quota.
     """
     server._require_scope("github")
     if org and repo:

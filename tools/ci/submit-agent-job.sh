@@ -82,6 +82,9 @@
 #                       false). No effect unless AUTO_CREATE_PR is true.
 #   STARTED_AFTER     - epoch millis; skip if a newer job exists (default: unset)
 #   DELAY_SECONDS     - delay execution by this many seconds (default: unset → run immediately)
+#   TRIGGER_COMMIT    - commit that triggered this run; the controller skips a
+#                       review re-triggered only by the previous pass's own
+#                       commit (default: unset → no own-commit skip)
 #   DESCRIPTION       - short label for notifications (e.g., "Resolve test failures")
 #   DEFAULT_PHASE_CONFIG - JSON object applied to every phase that has no
 #                       dedicated entry, e.g. '{"model":"opus"}'. Omitted →
@@ -267,6 +270,10 @@ fi
 
 if [ -n "${DELAY_SECONDS:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson d "$DELAY_SECONDS" '. + {delaySeconds: $d}')
+fi
+
+if [ -n "${TRIGGER_COMMIT:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --arg c "$TRIGGER_COMMIT" '. + {triggerCommit: $c}')
 fi
 
 # Send Cloudflare Access service-token headers when provided so the request

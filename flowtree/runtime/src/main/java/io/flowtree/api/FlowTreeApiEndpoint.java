@@ -56,6 +56,8 @@ import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.tracker.TaskCloseOutReconciler;
 import io.flowtree.tracker.TrackerService;
 import io.flowtree.controller.JobStatsStore;
+import io.flowtree.controller.RemediationBudgetGuard;
+import io.flowtree.controller.RemediationStateStore;
 import io.flowtree.controller.PendingJob;
 import io.flowtree.submission.SubmissionConfigResolver;
 import io.flowtree.workstream.MailboxRegistry;
@@ -222,6 +224,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * notifier still gets a complete job row at submit, start, and terminal.
      */
     private JobLifecycleRecorder jobLifecycleRecorder = new JobLifecycleRecorder(null);
+
+    /** Submit-time per-PR remediation gate (RETRO P3); a no-op until {@link #setRemediationStore}. */
+    private RemediationBudgetGuard remediationGuard = new RemediationBudgetGuard(null, 0, null);
 
     /** Handles {@code GET /api/agents} metadata requests. */
     private final AgentsQueryHandler agentsQueryHandler = new AgentsQueryHandler();
@@ -560,6 +565,18 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     public void setStatsStore(JobStatsStore statsStore) {
         this.statsQueryHandler = new StatsQueryHandler(statsStore);
         this.jobLifecycleRecorder = new JobLifecycleRecorder(statsStore);
+    }
+
+    /**
+     * Installs the per-PR remediation record store (RETRO P3): wires the
+     * submit-time budget gate and extends the lifecycle recorder to record each
+     * pass. Call after {@link #setStatsStore}.
+     *
+     * @param store the remediation record store, or null to leave it disabled
+     */
+    public void setRemediationStore(RemediationStateStore store) {
+        this.remediationGuard = RemediationBudgetGuard.forChannel(store, notifiers);
+        this.jobLifecycleRecorder = new JobLifecycleRecorder(statsQueryHandler.store(), store);
     }
 
     /**
@@ -964,6 +981,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             } catch (NumberFormatException e) {
                 log("Invalid startedAfter value: " + startedAfterStr);
             }
+        }
+        // Per-PR remediation budget / own-commit skip for automated jobs (RETRO P3).
+        String remediationSkip = remediationGuard.skipReason(workstreamId, automated, JsonFieldExtractor.extractString(body, "triggerCommit"));
+        if (remediationSkip != null) {
+            log("Skipping job submission — " + remediationSkip + " (workstream " + workstreamId + ")");
+            return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true,"
+                + "\"skipped\":true,\"reason\":\"" + JsonFieldExtractor.escapeJson(remediationSkip) + "\"}");
         }
 
         if (server == null) {
