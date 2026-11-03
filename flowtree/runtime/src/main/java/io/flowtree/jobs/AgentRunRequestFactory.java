@@ -26,9 +26,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Assembles what one agent session launches with: the MCP server
- * configuration, the composed tool allowlist, the subprocess environment, and
- * the {@link AgentRunRequest} that carries all of it to an {@link AgentRunner}.
+ * Builds the {@link AgentRunRequest} each agent session is launched with,
+ * together with what goes into it: the MCP server configuration, the composed
+ * tool allowlist and the subprocess environment. The request carries all of
+ * it to an {@link AgentRunner}.
  *
  * <p>This is the boundary between a job's durable configuration and a single
  * session's launch. {@link CodingAgentJob} holds the former — what the
@@ -44,7 +45,7 @@ import java.util.Map;
  *
  * @author Michael Murray
  */
-class AgentLaunchConfig {
+class AgentRunRequestFactory {
 
     /** The job whose configuration each launch is assembled from. */
     private final CodingAgentJob job;
@@ -56,26 +57,25 @@ class AgentLaunchConfig {
     private final ManagedToolsDownloader toolsDownloader;
 
     /**
-     * Creates a launch assembler bound to {@code job}.
+     * Creates a request factory bound to {@code job}.
      *
      * @param job              the job to read configuration from
      * @param mcpConfigBuilder the builder the job exposes to its MCP plumbing
      */
-    AgentLaunchConfig(CodingAgentJob job, McpConfigBuilder mcpConfigBuilder) {
+    AgentRunRequestFactory(CodingAgentJob job, McpConfigBuilder mcpConfigBuilder) {
         this.job = job;
         this.mcpConfigBuilder = mcpConfigBuilder;
         this.toolsDownloader = new ManagedToolsDownloader(mcpConfigBuilder);
     }
 
     /**
-     * Downloads the pushed MCP tool sources named by {@code pushedToolsConfig},
+     * Downloads the pushed MCP tool sources named by the job's
+     * {@link CodingAgentJob#getPushedToolsConfig() pushed-tools configuration},
      * so the stdio servers the configuration refers to exist before a session
      * tries to start them.
-     *
-     * @param pushedToolsConfig the pushed-tools configuration JSON, or {@code null}
      */
-    void ensurePushedTools(String pushedToolsConfig) {
-        toolsDownloader.ensurePushedTools(pushedToolsConfig);
+    void ensurePushedTools() {
+        toolsDownloader.ensurePushedTools(job.getPushedToolsConfig());
     }
 
     /**
@@ -142,6 +142,10 @@ class AgentLaunchConfig {
         if (agentEnv != null && !agentEnv.isEmpty()) {
             env.putAll(agentEnv);
         }
+        // Every Maven run under the agent — its shell, the test-runner and
+        // build-validator MCP servers, a dependent repo it installs — writes
+        // installed artifacts to this job's own space.
+        job.applyEnvironmentTo(env);
         String wsUrl = job.resolveWorkstreamUrl();
         if (wsUrl != null && !wsUrl.isEmpty()) {
             job.log("AR_WORKSTREAM_URL: " + wsUrl);

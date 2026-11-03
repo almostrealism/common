@@ -564,6 +564,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             warn("Error: " + e.getMessage(), e);
             error = e;
         } finally {
+            releaseEnvironment();
             workspaceLock.release();
             fireJobCompleted(error);
             heartbeat.stop();

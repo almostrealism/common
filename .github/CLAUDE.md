@@ -963,10 +963,28 @@ The eight QA-style jobs (`doc-qa`, `defect-hunt`, `flaky-qa`, `coverage-qa`,
 `tools/ci/qa-cadence.sh` decides whether to run from the job's own
 `BRANCH_PREFIX` (`qa/docs-`, `qa/defect-`, `qa/flaky-`, `qa/coverage-`, `qa/consolidate-`,
 `qa/performance-`, `qa/pdsl-`, `qa/retro-`), `tools/ci/archive-stale-workstreams.sh` retires
-the previous rounds, then a branch is created, a workstream registered, a prompt
-built from `tools/ci/prompts/`, and a coding-agent job submitted with
+the previous rounds, then a branch is created, a prompt built from
+`tools/ci/prompts/`, a workstream registered, and a coding-agent job submitted with
 `AUTO_CREATE_PR`. A new QA job follows that sequence; it does not need new
 cadence logic.
+
+**A workstream exists only for a round that got its job** (RETRO-20261026 F6,
+`jobless-roundup`). Every round, the QA rounds and `plan-next-task` alike,
+registers its workstream only after the gate has said the round runs, and
+directly before the submission, once everything else in the round has
+succeeded. If the submission then fails (intake closed since the check, the
+controller refused the job, a transient error), the step
+`Retire the workstream of a round that did not start` archives exactly that
+round's workstream. It runs `archive-stale-workstreams.sh` with the round's
+full timestamped branch name as `BRANCH_PREFIX`. A skipped round therefore
+registers nothing, and a failed one leaves no jobless workstream for the next
+round's archiver or the retrospective to filter. The pushed branch is kept:
+the retire step does not know whether a submission that reported failure was
+in fact accepted, and archiving is reversible where deleting a branch is not.
+`test_a_round_registers_its_workstream_only_as_it_submits` in
+`tools/tests/test_master_agent_dispatch.py` pins the order and the retire
+step. `plan-release-task` is the exception: it must register before it claims
+its task, so its prompt follows the claim.
 
 That shared shape now lives once, in the reusable `qa-round.yaml`
 (`workflow_call`, see "The other reusable workflows" below). Every QA job here

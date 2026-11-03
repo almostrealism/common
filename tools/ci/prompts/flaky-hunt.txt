@@ -16,14 +16,57 @@ You work on the commit this branch already points at. Do not change the code
 under test to make a test pass or fail; you are measuring, not editing, until
 you have found something real.
 
+## Start from what earlier rounds learned
+
+This round recurs. Each one should continue the last one's search rather
+than pick a module blind, so before choosing anything:
+
+1. **Recall earlier flaky rounds.** Call `memory_recall` with `scope="repo"`
+   and a query such as "flaky round next target", then again with "flaky
+   test nondeterminism". The rounds run on `qa/flaky-*` branches. Read what
+   each one ran, how many times, what it found, and above all the **next
+   target it named**. If the previous round named a next target, start there
+   unless you can say why it is no longer a lead, for example because a later
+   commit already fixed it. Do not re-run a slice an earlier round already
+   reported clean on an unchanged commit.
+
+2. **Search the tracker for known flaky or timing-out tests.** Call
+   `tracker_search_tasks` for "flaky", "intermittently", "times out" and
+   "nondeterministic", and read the open tasks. Known leads at the time of
+   writing include `fcaf8950` (`AudioSceneMultiGenomeTest#multiGenomePatternRender`,
+   GPU media lane), `96f03d35` and `ad2da648` (`SimilarityOverheadTest`, CUDA
+   lane), and `0891319b` (`studio/compose` pattern tests at the edge of their
+   timeouts). A task that already describes a test is a lead to reproduce and
+   diagnose, not a reason to file a duplicate. If you confirm or refute it,
+   say so in your summary with the task id.
+
 ## Scope: one module, a small slice, held fixed
 
-Pick ONE module (for example `engine/ml`, `domain/graph`, or `engine/audio`)
-and, within it, a SMALL named set of tests to put under repeated execution.
-Say which module and which tests you picked, and why — a module whose tests
-touch concurrency, time, random seeds, floating-point reductions, shared
-caches, GPU kernels, ordering of a `Set`/`Map`, or external resources is where
-nondeterminism concentrates.
+Pick ONE module and, within it, a SMALL named set of tests to put under
+repeated execution. Bias the choice toward where determinism has actually
+failed before, in this order of preference:
+
+- **the previous round's named next target**, from step 1 above;
+- **hardware-backed tests**: GPU/CUDA kernels and the tests named in the
+  tracker leads above, where outcomes have varied across hosts and runs;
+- **`studio/compose` rendering**, e.g. `BatchedRealSceneRenderTest`. An
+  earlier round flagged an unseeded genome there (`realGenome()`). Check the
+  current source first: the test now draws an arrangement at random and
+  searches genome seeds, so look for any remaining unseeded randomness
+  rather than assuming the old note still holds;
+- **`flowtree/runtime` relay and mailbox tests**: `NodeRelaySimulationTest`,
+  `WorkstreamMailboxTest` and `MailboxEndpointTest`, which depend on threads,
+  timing and message ordering.
+
+Only when none of those is a live lead, pick another module whose tests touch
+concurrency, time, random seeds, floating-point reductions, shared caches, GPU
+kernels, ordering of a `Set`/`Map`, or external resources, since that is where
+nondeterminism concentrates. Say which module and which tests you picked and
+why, citing the memory or tracker task that pointed you there.
+
+Your hardware may not be able to run a lead. A CUDA-only lane, for example,
+cannot be reproduced on a host without CUDA. Say so and move to the next lead.
+Do not report it as clean.
 
 This is a pilot, so keep the slice narrow and do not let it grow. Creating a
 new Maven module is out of scope.
@@ -114,3 +157,17 @@ In descending order:
 - Keep the change focused on the one source of nondeterminism you found. If
   you find several, fix or file the most serious and note the others in your
   summary.
+
+## Leave the next round a target
+
+Before you finish, store one memory with `memory_store` (namespace
+`progress`, tags `flaky-hunt` and `flaky-target`) recording:
+
+- the module and exact selection you ran;
+- how many runs you made and their outcomes;
+- what you found, with any task ids you filed or confirmed;
+- **the next target**: the single most promising slice the next round should
+  run, and why.
+
+The next round starts from that memory. A round that leaves no next target
+makes the following round start blind again.

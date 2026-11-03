@@ -410,6 +410,31 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("must not edit", lowered)
         self.assertIn("do not widen", lowered)
 
+    def test_flaky_hunt_continues_from_prior_rounds_and_evidence(self):
+        """The flaky round must not pick its hunting ground blind.
+
+        RETRO-20261026 F5 (`flaky-target-memory`): the round recalls earlier
+        flaky-round memories and continues from the previous round's named
+        next target, consults the tracker for known flaky/timing-out tests,
+        biases its module choice toward where determinism has failed
+        (hardware/CUDA, studio/compose render, flowtree relay/mailbox), and
+        leaves a next target for the round after it. The recall and tracker
+        steps must come before the module choice.
+        """
+        text = _read(os.path.join(_PROMPT_DIR, "flaky-hunt.txt"))
+        self.assertIn("memory_recall", text)
+        self.assertIn("tracker_search_tasks", text)
+        self.assertIn("memory_store", text)
+        for lead in ("fcaf8950", "96f03d35", "ad2da648", "0891319b",
+                     "BatchedRealSceneRenderTest", "NodeRelaySimulationTest",
+                     "WorkstreamMailboxTest", "studio/compose", "CUDA"):
+            self.assertIn(lead, text)
+        self.assertIn("next target", text.lower())
+        self.assertLess(text.index("memory_recall"), text.index("## Scope"),
+                        "recall must precede the module choice")
+        self.assertLess(text.index("tracker_search_tasks"), text.index("## Scope"),
+                        "the tracker search must precede the module choice")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,8 +4,9 @@ name: "QA Round"
 # runs the same ordered steps — ask the controller whether it accepts automated
 # jobs, decide from the shared cadence gate whether a round may start, archive
 # the rounds that are over, create a "<branch-prefix><UTC timestamp>" branch,
-# register its workstream, build a prompt, and submit a coding-agent job that
-# opens a pull request with whatever it finds. The only per-round differences —
+# build a prompt, register its workstream, and submit a coding-agent job that
+# opens a pull request with whatever it finds (retiring the workstream again if
+# that submission fails). The only per-round differences —
 # the branch prefix, the interval, the prompt and its variables, and the
 # submission settings — are inputs, so this one workflow carries the plumbing
 # once instead of a copy per round.
@@ -258,19 +259,6 @@ jobs:
           echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
           echo "::notice::Created branch $BRANCH_NAME"
 
-      - name: Register workstream
-        id: register
-        if: steps.decide.outputs.run == 'true'
-        env:
-          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
-          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
-          BRANCH: ${{ steps.qa_branch.outputs.branch }}
-          BASE_BRANCH: ${{ github.event.repository.default_branch }}
-          REPO_URL: git@github.com:${{ github.repository }}.git
-          REQUIRED_LABELS_JSON: ${{ inputs.required-labels-json }}
-        run: bash "$FRAMEWORK/tools/ci/register-workstream.sh"
-
       # The caller's checkout is the caller-root: a built-in selector names a
       # framework template, a caller path names one in that checkout, read as
       # data. Variables reach the builder only through the environment.
@@ -286,6 +274,23 @@ jobs:
         run: |
           bash "$FRAMEWORK/tools/ci/prompts/build-qa-round-prompt.sh" \
             "$GITHUB_WORKSPACE" "${{ runner.temp }}/agent-prompt.txt"
+
+      # Registered only once the gate has said the round runs and everything
+      # but the submission has succeeded, directly before it: a workstream
+      # exists only for a round that is about to get its job. See
+      # "Retire the workstream of a round that did not start" below.
+      - name: Register workstream
+        id: register
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          REQUIRED_LABELS_JSON: ${{ inputs.required-labels-json }}
+        run: bash "$FRAMEWORK/tools/ci/register-workstream.sh"
 
       - name: Submit the round's agent job
         if: steps.decide.outputs.run == 'true'
@@ -304,6 +309,22 @@ jobs:
           PHASE_CONFIGS: ${{ inputs.phase-configs }}
           REQUIRED_LABELS: ${{ inputs.required-labels }}
         run: bash "$FRAMEWORK/tools/ci/submit-agent-job.sh" "${{ runner.temp }}/agent-prompt.txt"
+
+      # A round whose submission failed after its workstream was registered
+      # (intake closed in the meantime, the controller refused the job, a
+      # transient error) would otherwise leave a jobless workstream for the
+      # archiver and the retrospective to filter. Archive exactly this
+      # round's workstream: the prefix is the full, timestamped branch name.
+      # Archiving is reversible.
+      - name: Retire the workstream of a round that did not start
+        if: failure() && steps.decide.outputs.run == 'true' && steps.register.outcome == 'success'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH_PREFIX: ${{ steps.qa_branch.outputs.branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: bash "$FRAMEWORK/tools/ci/archive-stale-workstreams.sh"
 
       - name: Summary
         if: always()

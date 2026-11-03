@@ -40,6 +40,7 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -47,6 +48,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 from xml.etree import ElementTree
+
+# Shared MCP helpers (tools/mcp/common), imported as a top-level module the
+# same way server.py imports them.
+_COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+import maven_repository  # noqa: E402
 
 # All ``ar-*`` modules in this project live under this group id.
 AR_GROUP_ID = "org.almostrealism"
@@ -226,14 +234,23 @@ def read_ar_dependencies(pom_path: Path,
 
 
 def _resolve_repository(repository: Optional[Path]) -> Path:
-    """Resolve a repository path, honoring the module-level default.
+    """Resolve the directory installed artifacts are looked up in.
+
+    An explicit ``repository`` is used as given. Otherwise the installed
+    root of :data:`DEFAULT_M2_REPOSITORY` is used: inside a FlowTree job,
+    ``MAVEN_ARGS`` enables Maven's split local repository and installs go
+    to the job's own space (``<repository>/flowtree-jobs/<task id>``), so a
+    jar installed by another job -- which Maven will not resolve -- is not
+    mistaken for a seeded dependency. See ``maven_repository``.
 
     Looking up :data:`DEFAULT_M2_REPOSITORY` at call time (rather than
     using it as a default argument) lets tests replace the module
     attribute without having to thread the override through every
     caller.
     """
-    return DEFAULT_M2_REPOSITORY if repository is None else repository
+    if repository is not None:
+        return repository
+    return maven_repository.installed_root(DEFAULT_M2_REPOSITORY)
 
 
 def artifact_jar_path(repository: Path, group_id: str, artifact_id: str,

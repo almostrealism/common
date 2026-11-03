@@ -10,8 +10,16 @@ The analyzer runs with generous heap settings (-Xmx8g) to handle large dumps.
 
 import glob
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
+
+# Shared MCP helpers (tools/mcp/common), imported as a top-level module.
+_COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "common")
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
+import maven_repository  # noqa: E402
 
 
 # Root of the common repo, relative to this module (tools/mcp/jmx/)
@@ -53,8 +61,12 @@ def _build_classpath() -> str:
         )
     tools_jar = tools_jars[0]
 
-    # Resolve dependencies from Maven local repo
+    # Resolve dependencies from the Maven local repository. Inside a FlowTree
+    # job the repository is split: this job's installs (ar-io, ar-meta) live
+    # in its own space and downloads in the shared cache, so search both.
     m2 = Path.home() / ".m2" / "repository"
+    roots = list(dict.fromkeys([maven_repository.installed_root(m2),
+                                maven_repository.downloaded_root(m2)]))
     dep_patterns = [
         "org/netbeans/modules/org-netbeans-lib-profiler/*/org-netbeans-lib-profiler-*.jar",
         "com/fasterxml/jackson/core/jackson-databind/*/jackson-databind-*.jar",
@@ -66,7 +78,7 @@ def _build_classpath() -> str:
 
     classpath_entries = [str(tools_jar)]
     for pattern in dep_patterns:
-        matches = sorted(glob.glob(str(m2 / pattern)))
+        matches = sorted(m for root in roots for m in glob.glob(str(root / pattern)))
         # Filter out sources/javadoc jars
         matches = [m for m in matches if not any(s in m for s in ["-sources", "-javadoc"])]
         if not matches:

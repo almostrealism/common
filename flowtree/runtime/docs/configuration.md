@@ -270,6 +270,70 @@ These tokens are used by:
 - `GitManagedJob.detectPullRequestUrl()` for the same purpose
 - The GitHub proxy endpoint on the controller as a fallback when no local token is available
 
+### MAVEN_ARGS — per-job Maven install space
+
+Every job on a node shares one local Maven repository. Without isolation, the
+jar a build resolves for `org.almostrealism:ar-*` (or for a dependent repo such
+as Common under a downstream project) is whatever *any* job on the node
+installed last. That may be a different branch's source, so a test can
+silently pass or fail against the wrong code.
+
+The harness therefore gives each job its own space for **installed** artifacts
+(`MavenInstallSpace`), using Maven 3.9's split local repository. The agent
+process is launched with:
+
+```bash
+MAVEN_ARGS="-Daether.enhancedLocalRepository.split=true \
+            -Daether.enhancedLocalRepository.localPrefix=flowtree-jobs/<task id>"
+```
+
+Maven 3.9 reads `MAVEN_ARGS` before its command-line arguments, so the setting
+applies to every Maven run the job makes:
+
+- the agent's own shell;
+- the `ar-test-runner` and `ar-build-validator` MCP servers, which inherit the
+  agent's environment and pass it to their `mvn` subprocesses;
+- a dependent repo the agent builds with `mvn install` (it lands in the same
+  space, so the primary repo's build resolves the dependent checkout, not a
+  stale copy);
+- post-completion commands (`PostCompletionCommandRule`).
+
+The resulting layout of `~/.m2/repository`:
+
+| Path | Contents | Shared? |
+|------|----------|---------|
+| `cached/` | artifacts downloaded from remote repositories | yes, every job on the node |
+| `flowtree-jobs/<task id>/` | artifacts this job installed | no, this job only |
+| everything else | the pre-split layout | no longer read by job builds |
+
+Within a job, an artifact that is not in the job's space and not downloadable
+fails to resolve rather than falling back to another job's copy. Install what
+you need first (`mvn install -DskipTests`, or let the `ar-test-runner`
+preflight seed it). The preflight and the `ar-jmx` heap analyzer read the same
+layout through `tools/mcp/common/maven_repository.py`.
+
+**Lifecycle.** `EnvironmentManagedJob.prepareEnvironment()` creates the space
+for a job with a task id. `GitManagedJob.run()` deletes it when the job ends,
+whether or not the job succeeded. When a job starts, it also deletes any other
+job's space older than 48 hours, which covers spaces left behind by a worker
+that died mid-job. Two system properties on the worker JVM tune this:
+
+| Property | Default | Meaning |
+|----------|---------|---------|
+| `flowtree.mavenInstallSpaceMaxAgeHours` | `48` | age past which another job's space is deleted |
+| `flowtree.mavenLocalRepository` | `~/.m2/repository` | set it when `settings.xml` relocates the local repository, so cleanup looks where Maven writes |
+
+**Requirements.** The node's `mvn` must be Maven 3.9 or later; older versions
+ignore `MAVEN_ARGS` and the split properties. The worker probes `mvn --version`
+once and logs a warning on every job when isolation is not in effect. The
+Docker agent image takes Maven from the official Maven 3 image for this
+reason (Ubuntu's apt package is 3.6), and `agent/macos/install.sh` warns when
+the native agent's `mvn` is too old. On the first job after the switch, each
+node downloads its dependencies into `cached/` once.
+
+A workstream's own `MAVEN_ARGS` (from `agentEnv`, or inherited by the worker)
+is kept, and the space's arguments are appended after it.
+
 ---
 
 ## WorkspaceResolver
