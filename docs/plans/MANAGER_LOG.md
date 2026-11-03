@@ -28,6 +28,90 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-11-03 — Copy read-only aggregate slices once per argument map instead of before every dispatch
+
+**Category:** Performance
+**Branch:** `project/plan-20261103-041617`
+**Plan:** [`PLAN-20261103-read-only-aggregate-copy-once.md`](PLAN-20261103-read-only-aggregate-copy-once.md)
+
+#### What changed since last cycle
+
+The rolling (sliding) key/value cache merged (PR #818): the self-hosted LM now decodes past
+`seqLen` and matches the sliding window byte-for-byte past the trained context. But the cycle's
+own measurement recorded that its throughput success criterion was **not met** — on Metal both
+paths run ~200–260 B/s, and the rolling decode issues ~245 dispatches/byte against the sliding
+window's ~123. The cache is correct but dispatch-bound, and the implementation memory named the
+binding lever explicitly: argument-aggregation copy dispatches, tracker task `38f78778`. Alongside
+it, the tokenizer byte-fallback / added-token-reachability work merged (PRs #819, #820) and a docs
+QA round (PR #821). The rolling-cache docs (`training-a-language-model.md`, `ml-inference-pipeline.md`)
+were corrected as the feature landed.
+
+#### Category assessment (priority order)
+
+- **Documentation — strong and current, checked not assumed.** The newest capability (the rolling
+  cache) was documented as it merged, with a dedicated correction commit for ring addressing,
+  rotation input and the length bound; the tokenizer byte-fallback work was correctness/QA work that
+  landed with its own tests. `consult` surfaced no fresh flagship prose gap. 50 internals pages, 11
+  tutorials, PDSL reference + tutorial, two simulation pages. Moved on.
+- **Code quality — strong and owned by continuous QA.** The attention-correctness and cache-ownership
+  arcs are closed; the standing items (`io.almostrealism.collect` split; `TransformerResamplingFeatures`
+  buffered K/V, deferred to that autoencoder's first fine-tune) are real but not reachable flagships.
+  Moved on.
+- **Performance — a sharp, freshly-evidenced, high-leverage lever, and it decided the cycle.** The
+  proof-of-value feature that *just landed* is dispatch-bound on exactly one mechanism: the
+  argument-aggregation copy-in runs before every dispatch, including for read-only arguments (model
+  weights, file-backed tensors) whose contents cannot change and whose aggregate slice the kernel
+  never writes. Two tracker tasks cover it — `38f78778` (cut the device-copy *count*) and the newer,
+  more self-contained `faca1b4d` (copy read-only slices *once*, from the 2026-11-02 performance QA
+  round). The copy-back path is already minimized this way (`writtenSlices`, `isCopiedBack`); the
+  copy-in is not. This is the category's definition: a known, measured bottleneck on the critical path.
+- **Proof of value — the category these two tracks serve, but gated here.** Long-form self-description
+  at usable speed and connectome-scale simulation are both capped by this copy path; the connectome
+  MaleCNS reproduction still waits on owner-provided data; conditional diffusion is heavy. The highest-
+  leverage move toward proof of value this cycle is removing the gate, not adding a feature behind it.
+
+#### Why this task
+
+I chose `faca1b4d` (copy read-only aggregate slices once) over the broader `38f78778`: it has the
+strongest correctness invariant — a read-only source cannot change, and a slice the compiled scope
+does not write is never overwritten, so after the first copy the aggregate slice stays correct — read
+off the same compiled-scope evidence (`getWrittenSlices`) that already governs copy-back, never a
+declared property. The first copy is made `unordered()`, mirroring the proven
+`MemoryReplacementManager` read-only pattern, which is what removes the Metal bridged command buffer
+(the host round trip), not merely the device copy. It is localized to `MemoryDataArgumentMap` plus one
+`AcceleratedOperation.apply` call site, with existing aggregation tests pinning correctness on any
+backend and a new structural regression test pinning the copy-once/per-dispatch split so it cannot be
+gamed by a timing threshold. It unblocks **both** proof-of-value tracks at once — the LM decode and the
+synthetic-connectome simulation — and shrinks the set `38f78778` must still address.
+
+#### Balance across categories
+
+The last cycle was proof of value (rolling KV cache). Returning to performance now is the disciplined
+move the measurement forced, not a detour: the foundation is covered and current, the proof-of-value
+feature is already landed and correct, and its promised win is blocked precisely here. It is a
+small–medium task needing a Metal node for the throughput and bridged-commit measurements (workstream
+settings file present), as the decode-throughput and rolling-cache cycles did; correctness is
+verifiable on any backend.
+
+#### What comes next
+
+1. This plan: the copy-once partition in `MemoryDataArgumentMap`, the once/per-dispatch submit in
+   `AcceleratedOperation.apply`, the structural regression test, and the Metal measurements.
+2. **Performance, complementary:** `38f78778` — cut the *count* of per-dispatch device copies for
+   slices that must still be copied every dispatch (aggregate-only-when-over-limit; skip copy-in of a
+   fully-overwritten destination; one multi-region copy dispatch on Metal), so the cache beats the
+   sliding window on dispatches/byte outright.
+3. **Proof of value, self-hosted LM:** attention sinks (pin the first `k` tokens) if the rolling
+   cache's long-generation quality degrades.
+4. **Proof of value, connectome:** the MaleCNS whole-brain ingest and the Shiu et al. reproduction,
+   once the owner provides the ~2 GB tables and a Brian2 reference.
+5. **Proof of value:** conditional diffusion training.
+6. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs > 1000) and a
+   reduced form for the convolution input gradient.
+7. Still open: `TransformerResamplingFeatures`' buffered K/V; the `io.almostrealism.collect` package
+   split; the unbuilt PDSL research/education features; letting a trained model read the platform's
+   own *source*, the deepest self-understanding aim.
+
 ### 2026-11-02 (later) — Decode the self-hosted LM past its trained context with a rolling key/value cache
 
 **Category:** Proof of Value (self-hosted LM generation)
@@ -540,86 +624,38 @@ per-operand gradient column) with `PdslLanguageReferenceExamplesTest` parsing ev
 completed the package Javadoc (merged 2026-10-24). Its teaching companion, Tutorial 10, followed on
 2026-10-26.
 
-### 2026-10-22 — Train the learned lambda of differential attention (condensed)
+### 2026-10-21 → 10-22 — Make the attention family's backward pass honest (condensed)
 
-**Category:** Code Quality (correctness) · **Branch:** `project/plan-20261022-134809` ·
-**Plan:** [`PLAN-20261022-differential-lambda-gradients.md`](PLAN-20261022-differential-lambda-gradients.md)
-
-The three `differential_attention*` layers applied the learned per-head λ with `scale(lambda, 1)`,
-reading it as a constant, so the four `differentialLambda` vectors (`λ = exp(λq1·λk1) − exp(λq2·λk2) +
-λinit`) were frozen at initialization — the one parameter that makes differential attention
-*differential* never trained. The plan diagnosed where the gradient was lost by finite difference,
-made the vectors trainable on the PR #697 trainable-operand template, and pinned them with a
-per-vector finite-difference test; the three `TODO(review)` markers in `differential_attention.pdsl`
-are gone and `DifferentialAttentionAssetTest` checks them (PR #716, merged). With PR #697 before it,
-every learnable operand of every attention variant the platform ships now receives its gradient —
-closing the correctness arc, apart from the SAME resampling site deferred to the cycle that first
-fine-tunes that autoencoder.
-
-### 2026-10-21 — Train the K/V projections of cross-attention and transformer resampling (condensed)
-
-**Category:** Code Quality (correctness) · **Branch:** `project/plan-20261021-012939` ·
-**Plan:** `PLAN-20261021-cross-attention-kv-gradients.md` (since removed; see git history)
-
+Two Code-Quality (correctness) cycles that closed the attention-gradient arc. **10-21** (PR #697):
 `sequenceCrossAttention` (the `DiffusionTransformer` conditioning mechanism) and
 `TransformerResamplingFeatures.resamplingLayerBlock` buffered their K/V operands through fixed tensors
-read back as constants, so their key/value projection weights received exactly zero gradient — a
-conditional model could not learn what in its context is relevant. The plan fed K and V to the score
-and context products as graph operands, made the auxiliary-input path trainable (`BranchBlock
-implements Learning`; `Model.setParameterUpdate` propagates to `Learning` auxiliary inputs), and
-proved it with a per-slice `SequenceCrossAttentionGradientTest` (PR #697, merged). The one residual
-(the branch aggregator not forwarding gradient upstream to `condEmbed`, which nothing consumes) and
-the resampling site's SAME kernel-bound concern were documented as evidenced follow-ups, not papered
-over. This began the "make the whole attention family's backward pass honest" arc the 10-22 cycle
-finished.
+read back as constants, so their key/value projection weights received zero gradient — a conditional
+model could not learn what in its context is relevant. The plan fed K and V as graph operands and made
+the auxiliary-input path trainable (`BranchBlock implements Learning`; `Model.setParameterUpdate`
+propagates to `Learning` auxiliary inputs), proved by `SequenceCrossAttentionGradientTest`. **10-22**
+(PR #716): the three `differential_attention*` layers applied the learned per-head λ with
+`scale(lambda, 1)`, freezing the `differentialLambda` vectors at initialization — the one parameter
+that makes differential attention *differential* never trained; made trainable on the PR #697 template
+and pinned per-vector by finite difference (`DifferentialAttentionAssetTest`). With both, every
+learnable operand of every attention variant the platform ships now receives its gradient — closing the
+arc, apart from the SAME resampling site deferred to the cycle that first fine-tunes that autoencoder.
 
-### 2026-10-19 — Make the self-hosted LM write a readable sentence about itself (condensed)
+### 2026-10-17 → 10-19 — Autodiff docs, the reference-gradient fix, and readable generation (condensed)
 
-**Category:** Proof of Value · **Branch:** `project/plan-20261019-194959` ·
-**Plan:** `PLAN-20261019-self-hosted-lm-nontrivial-generation.md` (since removed; see git history)
-
-With the reference gradient trustworthy again (PR #675, below), this cycle cashed the milestone the LM
-track had been one step short of since September: the first readable artifact of the self-understanding
-goal. `trainOnDocumentation` beat its unigram baseline but failed `assertNonTrivialGeneration` —
-greedy decoding of a documentation prompt produced 96 spaces. The investigation established (from
-`slidingWindowGenerationMatchesFullForward` and the loss numbers) that the collapse was the *model*, not
-the decoder: a weakly generalizing model (held-out 4.19 vs training ~3.5) collapses its argmax to the
-most-frequent byte. The plan was explicit that the only acceptable fix was a genuinely
-better-generalizing model (recipe then scale), decoded exactly as the generator already does — weakening
-the assertion, baseline, dimensions, `@TestDepth` or timeout would fail `test-integrity-check`. It landed
-readable generation (PR #685) and rewrote the training doc's generation section from measurement. Its
-"what comes next" set the sampling-quality and KV-cache-decode steps the 10-25 → 10-29 cycles cashed.
-
-### 2026-10-18 — Fix the nondeterministic full-Jacobian weight gradient for the output projection (condensed)
-
-**Category:** Code Quality (correctness) · **Branch:** `project/plan-20261018-174738` ·
-**Plan:** `PLAN-20261018-full-jacobian-gradient-correctness.md` (since removed; see git history)
-
-Once the autodiff internals page landed (the prerequisite the prior entry set), this cycle fixed the
-most consequential foundation defect of its moment: `GradientFeatures.jacobianGradient` — the
-full-Jacobian fallback that is the *reference every reduced-delta test is checked against* — produced
-a nondeterministically wrong weight gradient for the 256×64 output projection from row 64 onward
-(~1/10 of entries, varying run to run). The plan refused the `TODO(review)`'s 32-bit-overflow guess
-(a deterministic overflow would miscompute the same entries every run; this did not) and followed
-evidence with single-variable experiments and `ar-profile-analyzer` on the generated kernel. The fix
-landed as PR #675 (hoisted kernel-index variables now take a 64-bit type via
-`Expression.getDeclarationType`), and `DenseVectorJacobianProductTest.outputProjection` now asserts
-agreement over repeated evaluations, with a new `ConvolutionJacobianGradientTest` for the same class
-of path. That made the reference gradient trustworthy — the explicit gate for the readable-generation
-push that followed.
-
-### 2026-10-17 — Document automatic differentiation from `delta` to the backward pass (condensed)
-
-**Category:** Documentation · **Branch:** `project/plan-20261018-013621` ·
-**Plan:** `PLAN-20261018-automatic-differentiation-internals.md` (since removed; see git history)
-
-After the derivative API was consolidated (PRs #661, #666 — `CollectionProducer.delta(target, axis,
-weight)` as the only public derivative method, customized through `deltaDependent`, `deltaElement`,
-`deltaPartial` and `deltaMatrix`), `consult` confirmed there was no internals page for the backward
-half of the execution story. The cycle wrote `docs/internals/automatic-differentiation.md` (PR #670):
-extension points and their order, `ExpressionMatrix`, `DefaultGradientPropagation` and the backward
-cells, and a "known limits" section naming the silent full-Jacobian fallback. That page was the
-explicit prerequisite for the 2026-10-18 correctness cycle.
+Three cycles that made the reference gradient trustworthy and cashed the first readable
+self-description. **10-17 (Documentation,** PR #670**)** wrote `docs/internals/automatic-differentiation.md`
+after the derivative API consolidated onto `CollectionProducer.delta(target, axis, weight)`, naming the
+silent full-Jacobian fallback as a known limit — the explicit prerequisite for the next cycle.
+**10-18 (Code Quality,** PR #675**)** fixed that fallback: `GradientFeatures.jacobianGradient`, the
+reference every reduced-delta test checks against, produced a nondeterministically wrong weight gradient
+for the 256×64 output projection (hoisted kernel-index variables now take a 64-bit type via
+`Expression.getDeclarationType`); `DenseVectorJacobianProductTest.outputProjection` and a new
+`ConvolutionJacobianGradientTest` guard it. **10-19 (Proof of Value,** PR #685**)** then landed the first
+readable artifact of the self-understanding goal: `trainOnDocumentation` had beaten its unigram baseline
+but greedy-decoded 96 spaces, and the investigation established the collapse was the *model*, not the
+decoder, so the only acceptable fix was a better-generalizing model decoded exactly as the generator
+already does — not a weakened assertion. Its "what comes next" set the sampling-quality and KV-cache-decode
+steps the 10-25 → 10-29 cycles cashed.
 
 ### Earlier (Sep–Oct 2026, condensed) — the self-hosted LM track from feasibility to readable generation
 
