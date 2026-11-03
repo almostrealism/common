@@ -497,9 +497,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	private WaveDetails activate(WaveDetails details) {
 		String modelId = currentModelId();
-		if (details != null && modelId != null) {
-			details.setActiveModelIdentifier(modelId);
-		}
+		if (details != null && modelId != null) details.setActiveModelIdentifier(modelId);
 		return details;
 	}
 
@@ -1456,6 +1454,7 @@ public class AudioLibrary implements ConsoleFeatures {
 	public CompletableFuture<Void> refresh() {
 		try {
 			String modelId = currentModelId();
+			if (store != null) store.setEmbeddingModel(modelId);
 			List<String> stale = completeIdentifiers.revalidate(modelId, id -> isComplete(resolveDetails(id)));
 			if (!stale.isEmpty()) log(stale.size() + " item(s) have no " + modelId + " features and will be recomputed");
 

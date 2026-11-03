@@ -29,6 +29,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -84,6 +85,9 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	/** Filename of the persisted HNSW vector index within the root directory. */
 	private static final String HNSW_FILE_NAME = "hnsw.bin";
 
+	/** File beside the HNSW index recording the model whose vectors it holds. */
+	private static final String HNSW_MODEL_FILE_NAME = "hnsw.model";
+
 	/** Maps each record ID to its location (batch ID + byte offset) on disk. */
 	private final Map<String, RecordPointer> index;
 
@@ -107,6 +111,23 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 	/** Optional HNSW vector index for approximate nearest-neighbor search over stored vectors. */
 	private HnswIndex hnswIndex;
+
+	/**
+	 * Guards every access to {@link #hnswIndex}. The index wraps native memory
+	 * that {@link #setIndexModel} and {@link #close} release with
+	 * {@link HnswIndex#destroy()}; serializing all reads, writes and the
+	 * destruction on this single monitor keeps a model change (which can run on
+	 * a different thread than the one inserting or searching) from racing an
+	 * in-flight operation into a use-after-destroy or a lost update.
+	 */
+	private final Object hnswLock = new Object();
+
+	/**
+	 * The model whose vectors {@link #hnswIndex} holds, as recorded beside it on
+	 * disk, or {@code null} if none is recorded (including an index written
+	 * before models were recorded).
+	 */
+	private String indexModel;
 
 	/** Optional callback invoked each time a batch file is loaded from disk, receiving the batch ID. */
 	private Consumer<Integer> loadListener;
@@ -167,6 +188,73 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		if (loaded != null) {
 			this.hnswIndex = loaded;
 		}
+
+		Path modelFile = new File(rootDir, HNSW_MODEL_FILE_NAME).toPath();
+		try {
+			this.indexModel = Files.exists(modelFile) ? Files.readString(modelFile).trim() : null;
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	/**
+	 * Declares the model whose vectors the HNSW index holds. Vectors from
+	 * different models cannot share an index: their dimensions usually differ,
+	 * and even when they match, similarity between them means nothing. So when
+	 * the declared model is not the one recorded beside the index (or none is
+	 * recorded), the index is discarded, in memory and on disk, and the next
+	 * vector insertion starts a new one. Declaring the recorded model while its
+	 * index is present is a no-op.
+	 *
+	 * <p>The model marker is persisted the moment it is declared, while the index
+	 * itself is only written on flush or close, so an interrupted run can reopen
+	 * with the marker recorded and no index loaded. A declaration of the recorded
+	 * model is therefore reported as a rebuild when no index is present, rather
+	 * than left as a no-op that would strand an empty index.</p>
+	 *
+	 * <p>Because a discarded index is only repopulated as vectors for the declared
+	 * model arrive, records already complete for that model would never re-enter
+	 * the index on their own. The returned flag lets the caller detect a reset and
+	 * backfill those records (this store keeps only opaque records and cannot
+	 * re-embed them itself).</p>
+	 *
+	 * @param model the model identifier, or {@code null} to leave the index as it is
+	 * @return {@code true} if the index must be rebuilt for the declared model
+	 *         (because it was discarded, or because the recorded model has no index
+	 *         loaded), {@code false} if the call was a no-op
+	 */
+	public boolean setIndexModel(String model) {
+		synchronized (hnswLock) {
+			if (closed) {
+				throw new IllegalStateException("Cannot change the index model of a closed store");
+			}
+
+			if (model == null) return false;
+
+			if (model.equals(indexModel)) {
+				// The recorded model is unchanged, but the marker outlives the index
+				// across an interrupted flush, so signal a rebuild when no index is
+				// loaded; there is nothing to discard or rewrite in that case.
+				return hnswIndex == null;
+			}
+
+			if (hnswIndex != null) {
+				log.info("Discarding HNSW index of " + hnswIndex.size() + " vectors from model "
+						+ indexModel + "; it will be rebuilt from " + model + " vectors");
+				hnswIndex.destroy();
+				hnswIndex = null;
+			}
+
+			try {
+				Files.deleteIfExists(new File(rootDir, HNSW_FILE_NAME).toPath());
+				Files.writeString(new File(rootDir, HNSW_MODEL_FILE_NAME).toPath(), model);
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
+
+			indexModel = model;
+			return true;
+		}
 	}
 
 	/**
@@ -197,8 +285,10 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		pendingBatchBytes += record.getSerializedSize() + computeVarintSize(record.getSerializedSize());
 		index.put(id, new RecordPointer(pendingBatchId, -1));
 
-		if (hnswIndex != null && hnswIndex.contains(id)) {
-			hnswIndex.remove(id);
+		synchronized (hnswLock) {
+			if (hnswIndex != null && hnswIndex.contains(id)) {
+				hnswIndex.remove(id);
+			}
 		}
 
 		if (pendingBatchBytes >= targetBatchSize) {
@@ -209,8 +299,10 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	@Override
 	public void put(String id, T record, PackedCollection vector) {
 		put(id, record);
-		ensureHnswIndex(vector.getMemLength());
-		hnswIndex.insert(id, vector);
+		synchronized (hnswLock) {
+			ensureHnswIndex(vector.getMemLength());
+			hnswIndex.insert(id, vector);
+		}
 	}
 
 	/**
@@ -226,11 +318,13 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		// TODO(review): unlike put(), this does not check `closed`; since close() now
 		// nulls hnswIndex, calling this after close() silently creates a fresh, empty
 		// index via ensureHnswIndex() instead of failing, discarding prior data.
-		ensureHnswIndex(vector.getMemLength());
-		if (hnswIndex.contains(id)) {
-			hnswIndex.remove(id);
+		synchronized (hnswLock) {
+			ensureHnswIndex(vector.getMemLength());
+			if (hnswIndex.contains(id)) {
+				hnswIndex.remove(id);
+			}
+			hnswIndex.insert(id, vector);
 		}
-		hnswIndex.insert(id, vector);
 	}
 
 	/**
@@ -241,7 +335,9 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * @return {@code true} if a vector entry is indexed for this identifier
 	 */
 	public boolean hasIndexedEmbedding(String id) {
-		return hnswIndex != null && hnswIndex.contains(id);
+		synchronized (hnswLock) {
+			return hnswIndex != null && hnswIndex.contains(id);
+		}
 	}
 
 	/**
@@ -251,19 +347,22 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * @return the number of indexed embeddings
 	 */
 	public int indexedEmbeddingCount() {
-		return hnswIndex == null ? 0 : hnswIndex.size();
+		synchronized (hnswLock) {
+			return hnswIndex == null ? 0 : hnswIndex.size();
+		}
 	}
 
 	@Override
 	public List<SearchResult<T>> search(PackedCollection queryVector, int topK) {
-		// A query of another dimensionality comes from another model than the
-		// indexed vectors, so nothing in the index is comparable to it.
-		if (hnswIndex == null || hnswIndex.size() == 0
-				|| hnswIndex.getDimension() != queryVector.getMemLength()) {
-			return new ArrayList<>();
+		List<HnswIndex.IdScore> candidates;
+		synchronized (hnswLock) {
+			if (hnswIndex == null || hnswIndex.size() == 0) {
+				return new ArrayList<>();
+			}
+
+			candidates = hnswIndex.search(queryVector, topK);
 		}
 
-		List<HnswIndex.IdScore> candidates = hnswIndex.search(queryVector, topK);
 		List<SearchResult<T>> results = new ArrayList<>(candidates.size());
 
 		for (HnswIndex.IdScore candidate : candidates) {
@@ -313,8 +412,10 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 			removePendingRecord(id);
 		}
 
-		if (hnswIndex != null) {
-			hnswIndex.remove(id);
+		synchronized (hnswLock) {
+			if (hnswIndex != null) {
+				hnswIndex.remove(id);
+			}
 		}
 	}
 
@@ -397,9 +498,11 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		}
 		index.clear();
 
-		if (hnswIndex != null) {
-			hnswIndex.destroy();
-			hnswIndex = null;
+		synchronized (hnswLock) {
+			if (hnswIndex != null) {
+				hnswIndex.destroy();
+				hnswIndex = null;
+			}
 		}
 	}
 
@@ -465,8 +568,10 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * Save the HNSW index to disk if it exists.
 	 */
 	private void saveHnswIndex() {
-		if (hnswIndex != null) {
-			hnswIndex.save(new File(rootDir, HNSW_FILE_NAME).toPath());
+		synchronized (hnswLock) {
+			if (hnswIndex != null) {
+				hnswIndex.save(new File(rootDir, HNSW_FILE_NAME).toPath());
+			}
 		}
 	}
 
