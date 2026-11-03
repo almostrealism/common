@@ -18,7 +18,6 @@ package io.flowtree.tracker;
 
 import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.github.PullRequest;
-import io.flowtree.jobs.GitOperations;
 import io.flowtree.workstream.Workstream;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -126,12 +125,12 @@ public class TaskCloseOutReconciler implements ConsoleFeatures {
             String base = ws.getBaseBranch() != null ? ws.getBaseBranch() : "master";
             if (branch == null || branch.equals(base)) continue;
 
-            // Exact host, not a substring: a look-alike such as github.com.evil.example
-            // must not be treated as GitHub.
-            if (!"github.com".equalsIgnoreCase(GitOperations.repositoryHost(ws.getRepoUrl()))) continue;
+            // No slug for a repository hosted anywhere but github.com: its branch
+            // must not be queried against a same-named GitHub repository.
+            String ownerRepo = GitHubProxyHandler.extractOwnerRepo(ws.getRepoUrl());
+            if (ownerRepo == null) continue;
 
-            List<PullRequest> prs = pullRequests.apply(
-                    GitHubProxyHandler.extractOwnerRepo(ws.getRepoUrl()), branch);
+            List<PullRequest> prs = pullRequests.apply(ownerRepo, branch);
             TrackerService.CloseOutOutcome outcome = TrackerService.CloseOutOutcome.of(prs);
             if (outcome == null) continue;
 
