@@ -159,10 +159,6 @@ class EventsTest(unittest.TestCase):
         np.testing.assert_array_equal(array, rebuilt)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class NeuronTableTest(unittest.TestCase):
     """read_neurons reads back the body ids and annotations convert wrote, in index order."""
 
@@ -224,3 +220,7 @@ class ModelInputsTest(unittest.TestCase):
             brian2_reference.stimulated_indices(body_ids, annotations, types=["C"])
         with self.assertRaises(SystemExit):
             brian2_reference.stimulated_indices(body_ids, annotations)
+
+
+if __name__ == "__main__":
+    unittest.main()

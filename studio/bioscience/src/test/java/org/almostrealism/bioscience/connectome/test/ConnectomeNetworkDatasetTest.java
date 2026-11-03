@@ -158,6 +158,17 @@ public class ConnectomeNetworkDatasetTest extends NeuronConnectomeChecks {
 		assertMatchesBrian2(flywire630(), reference(200), MN9);
 	}
 
+	/** The same input to 21 neurons spread evenly over FlyWire 630 leaves MN9 silent. */
+	@Test(timeout = 2400000)
+	@TestDepth(2)
+	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
+	public void nonGustatoryInputLeavesMn9Silent() throws IOException {
+		try (NeuronConnectome connectome = NeuronConnectome.load(flywire630())) {
+			assertControlLeavesMn9Silent(connectome, SUGAR.length, ConnectomeNetwork.SYNAPSE_WEIGHT,
+					connectome.indicesOf(SUGAR), MN9);
+		}
+	}
+
 	/** MaleCNS under the input of its 100 Hz reference agrees with Brian2. */
 	@Test(timeout = 2400000)
 	@TestDepth(2)
@@ -225,17 +236,6 @@ public class ConnectomeNetworkDatasetTest extends NeuronConnectomeChecks {
 		double[] counts = Arrays.copyOf(network.getNeurons().getSpikeCounts().toArray(), n);
 		network.destroy();
 		return counts;
-	}
-
-	/** The same input to 21 neurons spread evenly over FlyWire 630 leaves MN9 silent. */
-	@Test(timeout = 2400000)
-	@TestDepth(2)
-	@TestProperties(longRunning = true, excludeProfiles = TestUtils.PIPELINE)
-	public void nonGustatoryInputLeavesMn9Silent() throws IOException {
-		try (NeuronConnectome connectome = NeuronConnectome.load(flywire630())) {
-			assertControlLeavesMn9Silent(connectome, SUGAR.length, ConnectomeNetwork.SYNAPSE_WEIGHT,
-					connectome.indicesOf(SUGAR), MN9);
-		}
 	}
 
 	/**
