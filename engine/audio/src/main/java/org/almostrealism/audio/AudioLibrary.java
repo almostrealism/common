@@ -1053,8 +1053,11 @@ public class AudioLibrary implements ConsoleFeatures {
 			return;
 		}
 
-		PackedCollection embedding = details.meanPooledEmbedding(currentModelId());
+		String modelId = currentModelId();
+		PackedCollection embedding = details.meanPooledEmbedding(modelId);
 		if (embedding != null) {
+			// The store indexes the vector under the active model; make it the model the vector was pooled from
+			if (modelId != null) details.setActiveModelIdentifier(modelId);
 			store.put(id, details, embedding);
 		} else {
 			store.put(id, details);

@@ -249,6 +249,46 @@ public class FeatureModelUpgradeTest extends TestSuiteBase {
 		store.close();
 	}
 
+	/**
+	 * Persisting an item whose active model identifier is stale indexes its
+	 * current-model vector under the current model: the store's index model is not
+	 * switched back to the stale model, so the index built for the current model
+	 * keeps every item.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void persistIndexesUnderTheCurrentModelDespiteAStaleActiveModel() throws Exception {
+		int count = 4;
+		generateSineWaves(count);
+
+		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		AudioLibrary library = openLibrary(store, new CountingProvider(), errors);
+		library.refresh().get();
+		Assert.assertEquals("analysis must not fail: " + errors, 0, errors.size());
+		Assert.assertEquals(count, store.indexedEmbeddingCount());
+
+		WaveDetails details = store.get(store.allIdentifiers().iterator().next());
+		Assert.assertNotNull(details.getFeatures(NEW_MODEL));
+		details.setActiveModelIdentifier("stale-model");
+		library.persist(details);
+
+		Assert.assertEquals("the current model's index keeps every item",
+				count, store.indexedEmbeddingCount());
+		Assert.assertEquals("the persisted item is indexed for the current model",
+				NEW_MODEL, details.getActiveModelIdentifier());
+
+		details.setActiveModelIdentifier(null);
+		library.persist(details);
+		Assert.assertEquals(NEW_MODEL, details.getActiveModelIdentifier());
+		Assert.assertEquals("a null active model also leaves the index intact",
+				count, store.indexedEmbeddingCount());
+
+		library.stop();
+		store.close();
+	}
+
 	/** Generates the library's sample files. */
 	private List<File> generateSineWaves(int count) throws IOException {
 		return SineWaveFiles.generate(samplesDir, count, SAMPLE_RATE, SAMPLE_DURATION);
