@@ -65,8 +65,8 @@ public class CacheRowAddressingTests extends TestSuiteBase implements LayerFeatu
 	public void rowsBeyondSinglePrecisionRangeRoundTrip() {
 		Assert.assertTrue(ROWS * (long) ROW_SIZE > (1L << 24));
 
-		PackedCollection position = new PackedCollection(shape(1));
-		try (PackedCollection cache = new PackedCollection(shape(ROWS, ROW_SIZE))) {
+		try (PackedCollection position = new PackedCollection(shape(1));
+				PackedCollection cache = new PackedCollection(shape(ROWS, ROW_SIZE))) {
 			Model writer = new Model(shape(ROW_SIZE));
 			writer.add(cacheWrite(shape(ROW_SIZE), cp(cache), p(position)));
 			CompiledModel write = writer.compile(false);
@@ -75,28 +75,38 @@ public class CacheRowAddressingTests extends TestSuiteBase implements LayerFeatu
 			reader.add(cacheRead(shape(ROW_SIZE), cp(cache), p(position)));
 			CompiledModel read = reader.compile(false);
 
-			for (int row = 0; row < ROWS; row++) {
-				position.fill(row);
-				write.forward(integers(0, ROW_SIZE).mod(c(1000.0)).multiply(32.0).add(row).evaluate());
-			}
-
-			double[] stored = cache.toArray();
-			double[][] rows = new double[ROWS][];
-			for (int row = 0; row < ROWS; row++) {
-				position.fill(row);
-				rows[row] = read.forward(new PackedCollection(shape(ROW_SIZE))).toArray();
-			}
-
-			for (int row = 0; row < ROWS; row++) {
-				for (int i = 0; i < ROW_SIZE; i++) {
-					assertElement("cacheWrite", row, i, stored[row * ROW_SIZE + i]);
+			try {
+				for (int row = 0; row < ROWS; row++) {
+					position.fill(row);
+					try (PackedCollection values =
+							integers(0, ROW_SIZE).mod(c(1000.0)).multiply(32.0).add(row).evaluate()) {
+						write.forward(values);
+					}
 				}
-			}
 
-			for (int row = 0; row < ROWS; row++) {
-				for (int i = 0; i < ROW_SIZE; i++) {
-					assertElement("cacheRead", row, i, rows[row][i]);
+				double[] stored = cache.toArray();
+				double[][] rows = new double[ROWS][];
+				for (int row = 0; row < ROWS; row++) {
+					position.fill(row);
+					try (PackedCollection input = new PackedCollection(shape(ROW_SIZE))) {
+						rows[row] = read.forward(input).toArray();
+					}
 				}
+
+				for (int row = 0; row < ROWS; row++) {
+					for (int i = 0; i < ROW_SIZE; i++) {
+						assertElement("cacheWrite", row, i, stored[row * ROW_SIZE + i]);
+					}
+				}
+
+				for (int row = 0; row < ROWS; row++) {
+					for (int i = 0; i < ROW_SIZE; i++) {
+						assertElement("cacheRead", row, i, rows[row][i]);
+					}
+				}
+			} finally {
+				write.destroy();
+				read.destroy();
 			}
 		}
 	}

@@ -115,7 +115,10 @@ import java.util.function.Supplier;
  * earlier, because the product has a 24-bit mantissa and its quantum grows with the step
  * count. A {@link Recording} gives its slot update the row index and the row width
  * separately, and the write position {@code index * width} is formed on integers inside the
- * kernel, so a recording of more than 2<sup>24</sup> elements is written exactly.</p>
+ * kernel, so a buffer of more than 2<sup>24</sup> elements is written to the right rows. The row
+ * index is itself the floating-point sample counter, which shares the counter's 2<sup>24</sup>
+ * limit, so it is the number of samples (the {@code capacity}), not the number of elements
+ * ({@code capacity * width}), that an FP32 backend bounds.</p>
  *
  * <h2>Example</h2>
  * <pre>{@code

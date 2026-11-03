@@ -342,10 +342,11 @@ validation on the curated datasets (section 7), still open tracker work.
   reference is below that and matches exactly.
 - **`2^24` bounds on FP32 backends.** These bound the `CounterRandom` seed and counter and the
   `SimulationRunner` step counter, exactly as the population page describes. The delay line, the
-  drive schedule and a `Recording` are not bounded this way: `cache_read`/`cache_write`, the
-  schedule read and the recording write address an element by row, forming `row * rowSize + i` on
-  integers inside the kernel, so a network of 30 replicas of FlyWire 630 (a 72.6M-element delay
-  line) runs every trial of an experiment in one pass.
+  drive schedule and a `Recording` address an element by row, forming `row * rowSize + i` on
+  integers inside the kernel, so their *element* count is not bounded this way: a network of 30
+  replicas of FlyWire 630 (a 72.6M-element delay line) runs every trial of an experiment in one
+  pass. A `Recording`'s sample count (its `capacity`) is still a floating-point counter and shares
+  the step counter's 2^24 bound, but its element count (`capacity * width`) is not.
 - **The whole-brain reproduction is larger work.** The MaleCNS whole-brain ingest and the full Shiu
   et al. reproduction, with its performance benchmark, are open tracker tasks for a later release
   and build on this pipeline. The dataset tests

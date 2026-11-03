@@ -412,8 +412,10 @@ to `capacity * width` (`SimulationRunner.Recording` Javadoc). Recording a `width
 every step for `n` steps needs `capacity = n`, so the total cost is `O(n^2 * width)`. The example's
 raster is 2,000 x 8 = 16,000 elements per write: harmless. Recording 166,000 spikes every step
 for 10,000 steps would be 1.66 x 10^9 elements per write, and a buffer of that size. (The write
-position `index * width` is formed on integers in the kernel, so a recording larger than 2^24
-elements is still written to the right rows.)
+position `index * width` is formed on integers in the kernel, so a buffer larger than 2^24
+elements is still written to the right rows. The sample index is itself a floating-point counter,
+so it is the number of samples — the `capacity`, not `capacity * width` — that stays bounded by
+2^24, exactly as the step counter is.)
 
 For long runs, record at an interval (`record(selected, interval, capacity)` with
 `capacity = n / interval`) or record a reduced quantity, for example a per-step spike count
@@ -461,7 +463,9 @@ matrix. Use the spiking population when spike timing, refractoriness or delays m
   (`CounterRandom.SEED_LIMIT`) and counter (the `CounterRandom` class Javadoc), the bound on the
   `SimulationRunner` step counter (the `SimulationRunner` class Javadoc, "Step counter
   precision"). At `dt = 0.1 ms`, 2^24 steps are about 28 simulated minutes. The ring buffer and
-  a `Recording` are addressed by row on integers in the kernel, so neither is bounded this way.
+  a `Recording` are addressed by row on integers in the kernel, so their *element* count is not
+  bounded this way; a `Recording`'s sample count (its `capacity`) is still a floating-point
+  counter and shares the step counter's 2^24 bound.
 - **No Brian2 parity yet.** Spike-for-spike parity against a Brian2 reference raster has not been
   established. The `LeakyIntegrateAndFirePopulationTest` class Javadoc says so.
 - **The population is not a `Temporal`, `Setup` or `Lifecycle`.** `SimulationRunner.reset()` resets
