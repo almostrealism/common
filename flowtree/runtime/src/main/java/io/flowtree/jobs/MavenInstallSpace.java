@@ -69,6 +69,18 @@ public class MavenInstallSpace extends ManagedDirectory implements ConsoleFeatur
     /** Environment variable Maven 3.9 prepends to its command-line arguments. */
     public static final String MAVEN_ARGS = "MAVEN_ARGS";
 
+    /**
+     * Environment variable carrying the resolved local repository base to child
+     * processes. The {@code MAVEN_ARGS} above name the split <em>prefixes</em>
+     * within the repository, but not its base; a tool that resolves installed
+     * artifacts needs both. The Python test-runner preflight and JMX heap
+     * analyzer read this (through {@code tools/mcp/common/maven_repository.py})
+     * so they look where this job's Maven writes — the same base this space
+     * cleans up — even when the node's {@code settings.xml} relocates the
+     * local repository.
+     */
+    public static final String LOCAL_REPOSITORY_ENV = "FLOWTREE_MAVEN_LOCAL_REPOSITORY";
+
     /** Resolver property enabling the split local repository. */
     public static final String SPLIT_PROPERTY = "aether.enhancedLocalRepository.split";
 
@@ -151,12 +163,17 @@ public class MavenInstallSpace extends ManagedDirectory implements ConsoleFeatur
      * kept ahead of this space's, so a workstream's own {@value #MAVEN_ARGS}
      * still applies.
      *
+     * <p>Also exports {@value #LOCAL_REPOSITORY_ENV} with the node's local
+     * repository base, so a child process resolves installed artifacts from the
+     * same base this space cleans up rather than assuming the default.</p>
+     *
      * @param env the environment a process will be launched with
      */
     public void applyTo(Map<String, String> env) {
         String existing = env.containsKey(MAVEN_ARGS) ? env.get(MAVEN_ARGS) : System.getenv(MAVEN_ARGS);
         env.put(MAVEN_ARGS, existing == null || existing.isBlank()
                 ? mavenArgs() : existing.trim() + " " + mavenArgs());
+        env.put(LOCAL_REPOSITORY_ENV, localRepository.toString());
     }
 
     /**

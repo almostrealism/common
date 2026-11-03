@@ -64,7 +64,7 @@ def _build_classpath() -> str:
     # Resolve dependencies from the Maven local repository. Inside a FlowTree
     # job the repository is split: this job's installs (ar-io, ar-meta) live
     # in its own space and downloads in the shared cache, so search both.
-    m2 = Path.home() / ".m2" / "repository"
+    m2 = maven_repository.default_repository()
     roots = list(dict.fromkeys([maven_repository.installed_root(m2),
                                 maven_repository.downloaded_root(m2)]))
     dep_patterns = [

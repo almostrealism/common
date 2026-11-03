@@ -59,8 +59,9 @@ import maven_repository  # noqa: E402
 # All ``ar-*`` modules in this project live under this group id.
 AR_GROUP_ID = "org.almostrealism"
 
-# Default location of the user's local Maven repository.
-DEFAULT_M2_REPOSITORY = Path.home() / ".m2" / "repository"
+# Base of the node's local Maven repository: the job's exported base when
+# settings.xml relocates it, else ``~/.m2/repository``. See maven_repository.
+DEFAULT_M2_REPOSITORY = maven_repository.default_repository()
 
 # Hard ceiling on the seed `mvn install` subprocess, mirroring server.py's
 # MAX_TIMEOUT_MINUTES (2400s / 40 minutes): "every test or build invocation

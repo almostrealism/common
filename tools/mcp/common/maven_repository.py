@@ -20,6 +20,12 @@ the JMX heap analyzer read it through here. The artifact-staleness hook
 (``.claude/hooks/mvn-artifact-staleness.py``) still constructs paths under the
 unsplit ``~/.m2`` layout and has yet to be routed through this module -- see
 the ``TODO`` below.
+
+The repository base is ``~/.m2/repository`` unless the job exports
+``FLOWTREE_MAVEN_LOCAL_REPOSITORY`` (``MavenInstallSpace.applyTo`` sets it to
+the resolved base, the same location the job's Java cleanup uses). Reading it
+here is what lets these tools follow the node's ``settings.xml`` when it
+relocates the local repository instead of seeding and inspecting the default.
 """
 
 from __future__ import annotations
@@ -33,6 +39,11 @@ SPLIT_PROPERTY = "aether.enhancedLocalRepository.split"
 LOCAL_PREFIX_PROPERTY = "aether.enhancedLocalRepository.localPrefix"
 REMOTE_PREFIX_PROPERTY = "aether.enhancedLocalRepository.remotePrefix"
 
+# Environment variable a FlowTree job exports with the resolved local
+# repository base (MavenInstallSpace.LOCAL_REPOSITORY_ENV). Unset outside a
+# job, where the base is the user's default ``~/.m2/repository``.
+LOCAL_REPOSITORY_ENV = "FLOWTREE_MAVEN_LOCAL_REPOSITORY"
+
 # Resolver defaults for the two prefixes when the split is on.
 DEFAULT_LOCAL_PREFIX = "installed"
 DEFAULT_REMOTE_PREFIX = "cached"
@@ -41,7 +52,17 @@ DEFAULT_REMOTE_PREFIX = "cached"
 
 
 def default_repository() -> Path:
-    """Return the default local Maven repository, ``~/.m2/repository``."""
+    """Return the local Maven repository base.
+
+    A FlowTree job exports its resolved base in
+    :data:`LOCAL_REPOSITORY_ENV`, so a job whose ``settings.xml`` relocates
+    the local repository is inspected where Maven actually writes rather than
+    at the default. Falls back to ``~/.m2/repository`` when the variable is
+    unset or empty.
+    """
+    override = os.environ.get(LOCAL_REPOSITORY_ENV)
+    if override:
+        return Path(override)
     return Path.home() / ".m2" / "repository"
 
 

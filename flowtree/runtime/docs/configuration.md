@@ -321,7 +321,7 @@ that died mid-job. Two system properties on the worker JVM tune this:
 | Property | Default | Meaning |
 |----------|---------|---------|
 | `flowtree.mavenInstallSpaceMaxAgeHours` | `48` | age past which another job's space is deleted |
-| `flowtree.mavenLocalRepository` | `~/.m2/repository` | set it when `settings.xml` relocates the local repository, so cleanup looks where Maven writes |
+| `flowtree.mavenLocalRepository` | `~/.m2/repository` | set it when `settings.xml` relocates the local repository, so cleanup looks where Maven writes. The resolved base is exported to the job's child processes (`FLOWTREE_MAVEN_LOCAL_REPOSITORY`), so the preflight and heap analyzer resolve artifacts there too |
 
 **Requirements.** The node's `mvn` must be Maven 3.9 or later; older versions
 ignore `MAVEN_ARGS` and the split properties. The worker probes `mvn --version`

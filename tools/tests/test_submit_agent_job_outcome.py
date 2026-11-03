@@ -71,6 +71,26 @@ class SubmitAgentJobOutcomeTest(unittest.TestCase):
         self.assertIn("submitted=false", self.outputs())
         self.assertNotIn("submitted=true", self.outputs())
 
+    def test_a_no_agents_response_reports_submitted_false(self):
+        # The controller answers HTTP 200 {"ok":false,"error":"No agents
+        # connected"} when no worker is connected. That is neither a skip nor an
+        # automated rejection, so the script must not mistake it for a created
+        # job: it reports submitted=false and fails the step so the caller
+        # retires the workstream it just registered.
+        result = self.submit('{"ok":false,"error":"No agents connected"}')
+        self.assertNotEqual(0, result.returncode, result.stderr)
+        self.assertIn("submitted=false", self.outputs())
+        self.assertNotIn("submitted=true", self.outputs())
+
+    def test_a_200_without_a_job_id_reports_submitted_false(self):
+        # A 200 that carries ok:true but no jobId still created nothing; the
+        # script must not emit submitted=true on the strength of the status code
+        # alone.
+        result = self.submit('{"ok":true}')
+        self.assertNotEqual(0, result.returncode, result.stderr)
+        self.assertIn("submitted=false", self.outputs())
+        self.assertNotIn("submitted=true", self.outputs())
+
 
 if __name__ == "__main__":
     unittest.main()

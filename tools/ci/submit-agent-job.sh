@@ -101,7 +101,8 @@
 # Exit codes:
 #   0 - submission succeeded, OR the controller skipped/rejected it (both leave
 #       the step green; a caller tells them apart via the `submitted` output)
-#   1 - submission failed (unreachable host, non-200 response, etc.)
+#   1 - submission failed (unreachable host, non-200 response, or a 200 that
+#       created no job — e.g. "No agents connected")
 #
 # Outputs (to stdout):
 #   job_id=<id>          (on success)
@@ -335,7 +336,23 @@ if [ "$AUTOMATED_REJECTED" = "true" ]; then
     exit 0
 fi
 
+# A 200 response is not proof a job was created. The controller answers
+# {"ok":false,"error":"No agents connected"} with HTTP 200 when no worker is
+# connected (FlowTreeApiEndpoint.handleSubmit), and that path is neither a skip
+# nor an automated rejection — so without this guard the final emit_submitted
+# below would mark a job as created when none exists, and the caller's retire
+# step would leave the newly registered workstream orphaned. A created job
+# always carries ok:true and a non-empty jobId; anything else is a failed
+# submission, reported as submitted=false and a non-zero exit so the dropped
+# request is visible.
+OK=$(echo "$BODY" | jq -r '.ok // empty')
 JOB_ID=$(echo "$BODY" | jq -r '.jobId // empty')
+if [ "$OK" != "true" ] || [ -z "$JOB_ID" ]; then
+    ERROR=$(echo "$BODY" | jq -r '.error // "controller returned no jobId"')
+    echo "::error::Agent job was not created: $ERROR"
+    emit_submitted false
+    exit 1
+fi
 echo "job_id=$JOB_ID"
 echo "workstream_id=$(echo "$BODY" | jq -r '.workstreamId // empty')"
 echo "Agent job submitted: $JOB_ID"

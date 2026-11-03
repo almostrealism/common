@@ -78,6 +78,22 @@ public class MavenInstallSpaceTest extends TestSuiteBase {
         Assert.assertEquals("-B " + space.mavenArgs(), env.get(MavenInstallSpace.MAVEN_ARGS));
     }
 
+    /**
+     * The launch environment names the repository base so child tools (the
+     * Python preflight and heap analyzer) resolve installed artifacts where
+     * this job's Maven writes, not at the default.
+     */
+    @Test(timeout = 30000)
+    public void applyToExportsTheRepositoryBase() {
+        MavenInstallSpace space = new MavenInstallSpace(Path.of("/custom/m2-repo"), "job-1");
+        Map<String, String> env = new HashMap<>();
+
+        space.applyTo(env);
+
+        Assert.assertEquals("/custom/m2-repo",
+                env.get(MavenInstallSpace.LOCAL_REPOSITORY_ENV));
+    }
+
     /** Releasing a space deletes its installed artifacts and leaves other jobs' spaces alone. */
     @Test(timeout = 30000)
     public void releaseDeletesOnlyThisJobsSpace() throws IOException {
