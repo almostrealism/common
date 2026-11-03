@@ -222,13 +222,23 @@ public class MavenInstallSpace extends ManagedDirectory implements ConsoleFeatur
      * Returns the age past which another job's space is abandoned:
      * {@value #MAX_AGE_PROPERTY} hours, or {@value #DEFAULT_MAX_AGE_HOURS}.
      *
+     * <p>Only a positive value is honoured. A zero or negative setting would put
+     * the sweep cutoff at (or after) the current moment, so the next job would
+     * delete every other space — including those of live jobs — the opposite of
+     * what this bound is for; such a value falls back to the default, as a
+     * non-numeric one does.</p>
+     *
      * @return the maximum age of a space
      */
     static Duration maxAge() {
         String hours = System.getProperty(MAX_AGE_PROPERTY);
         if (hours != null && !hours.isBlank()) {
             try {
-                return Duration.ofHours(Long.parseLong(hours.trim()));
+                long parsed = Long.parseLong(hours.trim());
+                if (parsed > 0) {
+                    return Duration.ofHours(parsed);
+                }
+                // a non-positive bound would sweep live spaces — fall through to the default
             } catch (NumberFormatException e) {
                 // fall through to the default
             }

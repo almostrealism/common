@@ -208,6 +208,11 @@ public class ShellCommandJob extends GitManagedJob {
 	 * the trailing {@link #MAX_CAPTURE_BYTES} of each stream are read back. The
 	 * result is published as a workstream message when a workstream URL is
 	 * configured, regardless of whether the command succeeds or fails.
+	 *
+	 * <p>The command is launched with this job's managed environment
+	 * ({@link #applyEnvironmentTo(java.util.Map)}), so a {@code mvn} run by the
+	 * command installs into and resolves from this job's own
+	 * {@link MavenInstallSpace} rather than the node's shared repository.</p>
 	 */
 	@Override
 	protected void doWork() {
@@ -236,6 +241,7 @@ public class ShellCommandJob extends GitManagedJob {
 			pb.redirectError(errFile);
 
 			GitOperations.augmentPath(pb);
+			applyEnvironmentTo(pb.environment());
 
 			Process process = pb.start();
 			boolean finished = process.waitFor(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);

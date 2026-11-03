@@ -126,6 +126,67 @@ public class MavenInstallSpaceTest extends TestSuiteBase {
     }
 
     /**
+     * A positive age bound is honoured; a zero, negative, or non-numeric
+     * setting falls back to the default rather than putting the sweep cutoff at
+     * or after the current moment, which would delete live jobs' spaces.
+     */
+    @Test(timeout = 30000)
+    public void maxAgeHonoursPositiveAndRejectsNonPositive() {
+        String previous = System.getProperty(MavenInstallSpace.MAX_AGE_PROPERTY);
+        Duration expectedDefault = Duration.ofHours(MavenInstallSpace.DEFAULT_MAX_AGE_HOURS);
+        try {
+            System.setProperty(MavenInstallSpace.MAX_AGE_PROPERTY, "12");
+            Assert.assertEquals(Duration.ofHours(12), MavenInstallSpace.maxAge());
+
+            System.setProperty(MavenInstallSpace.MAX_AGE_PROPERTY, "0");
+            Assert.assertEquals(expectedDefault, MavenInstallSpace.maxAge());
+
+            System.setProperty(MavenInstallSpace.MAX_AGE_PROPERTY, "-5");
+            Assert.assertEquals(expectedDefault, MavenInstallSpace.maxAge());
+
+            System.setProperty(MavenInstallSpace.MAX_AGE_PROPERTY, "not-a-number");
+            Assert.assertEquals(expectedDefault, MavenInstallSpace.maxAge());
+        } finally {
+            if (previous == null) {
+                System.clearProperty(MavenInstallSpace.MAX_AGE_PROPERTY);
+            } else {
+                System.setProperty(MavenInstallSpace.MAX_AGE_PROPERTY, previous);
+            }
+        }
+    }
+
+    /**
+     * A non-positive {@value MavenInstallSpace#MAX_AGE_PROPERTY} does not cause
+     * the sweep to delete other jobs' spaces: the fallback keeps the long
+     * default bound, so a recent sibling survives.
+     */
+    @Test(timeout = 30000)
+    public void sweepWithNonPositiveMaxAgePropertyKeepsRecentSpaces() throws IOException {
+        Path repository = Files.createTempDirectory("maven-install-space");
+        String previous = System.getProperty(MavenInstallSpace.MAX_AGE_PROPERTY);
+        System.setProperty(MavenInstallSpace.MAX_AGE_PROPERTY, "0");
+        try {
+            MavenInstallSpace mine = new MavenInstallSpace(repository, "mine");
+            Path sibling = repository.resolve("flowtree-jobs").resolve("sibling");
+            installFakeArtifact(mine.getPath());
+            installFakeArtifact(sibling);
+
+            int swept = mine.sweepExpired(Instant.now(), MavenInstallSpace.maxAge());
+
+            Assert.assertEquals(0, swept);
+            Assert.assertTrue("A recent sibling space must survive a zero max-age setting",
+                    Files.exists(sibling));
+        } finally {
+            if (previous == null) {
+                System.clearProperty(MavenInstallSpace.MAX_AGE_PROPERTY);
+            } else {
+                System.setProperty(MavenInstallSpace.MAX_AGE_PROPERTY, previous);
+            }
+            new ManagedDirectory(repository).delete();
+        }
+    }
+
+    /**
      * A prepared job launches its agent with MAVEN_ARGS naming its own space,
      * and releasing the job's environment deletes that space.
      */
