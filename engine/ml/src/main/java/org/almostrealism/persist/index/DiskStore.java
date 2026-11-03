@@ -96,10 +96,17 @@ public interface DiskStore<T> extends Closeable {
 	 * Search for the top-K most similar records to the given query vector.
 	 * Only records that were stored with a vector are included in the results.
 	 *
+	 * <p>A query whose dimensionality differs from the stored vectors comes from
+	 * a different model than the one the index was built for, so no stored vector
+	 * is comparable to it. In that case an empty list is returned rather than
+	 * raising an error, for the same reason an empty index returns one: there are
+	 * no comparable neighbours to rank.</p>
+	 *
 	 * @param queryVector the query embedding vector as a {@link PackedCollection}
 	 * @param topK        maximum number of results to return
-	 * @return results ordered by descending similarity, or an empty list
-	 *         if no vectors are stored
+	 * @return results ordered by descending similarity, or an empty list if no
+	 *         vectors are stored or the query dimensionality does not match the
+	 *         indexed vectors
 	 */
 	List<SearchResult<T>> search(PackedCollection queryVector, int topK);
 

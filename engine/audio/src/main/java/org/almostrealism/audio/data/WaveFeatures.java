@@ -17,6 +17,8 @@
 package org.almostrealism.audio.data;
 
 import io.almostrealism.lifecycle.Destroyable;
+import org.almostrealism.Ops;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.HashMap;
@@ -170,6 +172,35 @@ public class WaveFeatures implements Destroyable {
 	 */
 	public long byteLength() {
 		return featureData == null ? 0L : (long) featureData.getMemLength() * Double.BYTES;
+	}
+
+	/**
+	 * Computes a mean-pooled embedding vector from this feature set by averaging
+	 * its {@code [frames, bins]} feature data across frames.
+	 *
+	 * @return the {@code [bins]} mean, or {@code null} when there is no feature
+	 *         data to pool
+	 */
+	public PackedCollection meanPooledEmbedding() {
+		if (featureData == null) return null;
+
+		int frames = featureData.getShape().length(0);
+		int bins = featureData.getShape().length(1);
+		if (frames == 0 || bins == 0) return null;
+
+		CollectionProducer sum = null;
+
+		for (int f = 0; f < frames; f++) {
+			if ((f + 1) * bins > featureData.getMemLength()) break;
+
+			CollectionProducer row = Ops.o().cp(
+					featureData.range(Ops.o().shape(bins), f * bins));
+			sum = sum == null ? row : sum.add(row);
+		}
+
+		if (sum == null) return null;
+
+		return sum.multiply(1.0 / frames).evaluate();
 	}
 
 	/**
