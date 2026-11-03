@@ -54,7 +54,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
 import java.util.function.Function;
@@ -179,13 +178,8 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	private final FrequencyCache<String, WaveDetails> detailsCache;
 
-	/**
-	 * Set of content identifiers whose {@link WaveDetails} are known to have
-	 * both freqData and featureData populated. This set is the authoritative
-	 * record of completeness and is checked by {@link #refresh()} to avoid
-	 * loading evicted entries from disk just to check their status.
-	 */
-	private final Set<String> completeIdentifiers;
+	/** The authoritative record of which items are complete for the current model. */
+	private final CompleteIdentifierSet completeIdentifiers;
 
 	/**
 	 * Set of content identifiers known to be persistent. Tracked separately
@@ -275,7 +269,7 @@ public class AudioLibrary implements ConsoleFeatures {
 		this.store = store;
 		this.identifiers = new HashMap<>();
 		this.detailsCache = new FrequencyCache<>(DEFAULT_DETAIL_CACHE_CAPACITY, 0.4);
-		this.completeIdentifiers = new HashSet<>();
+		this.completeIdentifiers = new CompleteIdentifierSet();
 		this.persistentIdentifiers = new HashSet<>();
 		this.factory = new WaveDetailsFactory(sampleRate);
 		this.queue = new PriorityBlockingQueue<>(100,
@@ -1447,8 +1441,14 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
-	 * Scans the file tree for audio files that have not yet been analyzed and submits
-	 * background jobs to compute their WaveDetails.
+	 * Scans the file tree for audio files that have not yet been analyzed (including
+	 * any whose features belong only to another model) and submits background jobs
+	 * to compute their WaveDetails.
+	 *
+	 * <p>Store-backed items with no file in the tree (persistent entries, or
+	 * drawings carrying only frequency data) are not visited by that scan; when
+	 * revalidation finds one stale for the current model it is recomputed from
+	 * its stored data instead, rather than being dropped from {@link #allDetails()}.</p>
 	 *
 	 * <p>Returns a CompletableFuture that completes when all queued analysis jobs
 	 * have finished. Callers should use {@link #awaitRefresh()} to wait for the
@@ -1458,39 +1458,39 @@ public class AudioLibrary implements ConsoleFeatures {
 	 */
 	public CompletableFuture<Void> refresh() {
 		try {
+			String modelId = currentModelId();
+			List<String> stale = completeIdentifiers.revalidate(modelId, id -> isComplete(resolveDetails(id)));
+			if (!stale.isEmpty()) log(stale.size() + " item(s) have no " + modelId + " features and will be recomputed");
+
 			CompletableFuture<Void> future = new CompletableFuture<>();
-			AtomicBoolean submitted = new AtomicBoolean(false);
 
 			// Indexed here rather than by a walk of its own: this walk already
-			// visits every provider and asks each for its identifier, which is
-			// the whole cost of building the index.
+			// visits every provider and asks each for its identifier.
 			Map<String, File> index = new HashMap<>();
+			List<WaveDataProvider> recompute = new ArrayList<>();
 
 			root.children().forEach(f -> {
 				FileWaveDataProvider provider = f.get();
+				if (provider == null) return;
 
-				boolean skipped = true;
-
-				try {
-					if (provider == null) return;
-
-					String identifier = provider.getIdentifier();
-					record(index, identifier, provider);
-
-					if (completeIdentifiers.contains(identifier)) return;
-
-					// Similarities may no longer be valid if the library is being updated
-					skipped = false;
-					if (!submitted.get()) resetSimilarities();
-
-					submitJob(new WaveDetailsJob(this::processJob, provider, true, BACKGROUND_PRIORITY));
-				} finally {
-					// Make sure not to repeatedly reset the similarities
-					if (!skipped) submitted.set(true);
-				}
+				String identifier = provider.getIdentifier();
+				record(index, identifier, provider);
+				if (!completeIdentifiers.contains(identifier)) recompute.add(provider);
 			});
 
 			fileIndex.replace(index);
+
+			// Stale items with no file in the tree are recomputed from stored data.
+			stale.stream()
+					.filter(id -> !index.containsKey(id))
+					.map(this::resolveProvider)
+					.filter(Objects::nonNull)
+					.forEach(recompute::add);
+
+			// Similarities may no longer be valid once anything is recomputed.
+			if (!recompute.isEmpty()) resetSimilarities();
+			recompute.forEach(p -> submitJob(
+					new WaveDetailsJob(this::processJob, p, true, BACKGROUND_PRIORITY)));
 
 			WaveDetailsJob last = new WaveDetailsJob(this::processJob, null, false, -1.0);
 			last.getFuture().thenRun(() -> future.complete(null));
