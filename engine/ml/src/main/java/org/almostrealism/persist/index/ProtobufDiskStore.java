@@ -29,6 +29,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -84,6 +85,9 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	/** Filename of the persisted HNSW vector index within the root directory. */
 	private static final String HNSW_FILE_NAME = "hnsw.bin";
 
+	/** File beside the HNSW index recording the model whose vectors it holds. */
+	private static final String HNSW_MODEL_FILE_NAME = "hnsw.model";
+
 	/** Maps each record ID to its location (batch ID + byte offset) on disk. */
 	private final Map<String, RecordPointer> index;
 
@@ -107,6 +111,13 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 	/** Optional HNSW vector index for approximate nearest-neighbor search over stored vectors. */
 	private HnswIndex hnswIndex;
+
+	/**
+	 * The model whose vectors {@link #hnswIndex} holds, as recorded beside it on
+	 * disk, or {@code null} if none is recorded (including an index written
+	 * before models were recorded).
+	 */
+	private String indexModel;
 
 	/** Optional callback invoked each time a batch file is loaded from disk, receiving the batch ID. */
 	private Consumer<Integer> loadListener;
@@ -167,6 +178,47 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		if (loaded != null) {
 			this.hnswIndex = loaded;
 		}
+
+		Path modelFile = new File(rootDir, HNSW_MODEL_FILE_NAME).toPath();
+		try {
+			this.indexModel = Files.exists(modelFile) ? Files.readString(modelFile).trim() : null;
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	/**
+	 * Declares the model whose vectors the HNSW index holds. Vectors from
+	 * different models cannot share an index: their dimensions usually differ,
+	 * and even when they match, similarity between them means nothing. So when
+	 * the declared model is not the one recorded beside the index (or none is
+	 * recorded), the index is discarded, in memory and on disk, and the next
+	 * vector insertion starts a new one. Declaring the recorded model is a no-op.
+	 *
+	 * @param model the model identifier, or {@code null} to leave the index as it is
+	 */
+	public synchronized void setIndexModel(String model) {
+		if (closed) {
+			throw new IllegalStateException("Cannot change the index model of a closed store");
+		}
+
+		if (model == null || model.equals(indexModel)) return;
+
+		if (hnswIndex != null) {
+			log.info("Discarding HNSW index of " + hnswIndex.size() + " vectors from model "
+					+ indexModel + "; it will be rebuilt from " + model + " vectors");
+			hnswIndex.destroy();
+			hnswIndex = null;
+		}
+
+		try {
+			Files.deleteIfExists(new File(rootDir, HNSW_FILE_NAME).toPath());
+			Files.writeString(new File(rootDir, HNSW_MODEL_FILE_NAME).toPath(), model);
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+
+		indexModel = model;
 	}
 
 	/**

@@ -111,6 +111,8 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 
 	@Override
 	public void put(String identifier, WaveDetails details, PackedCollection embeddingVector) {
+		// The embedding is pooled from the active model's features
+		setEmbeddingModel(details.getActiveModelIdentifier());
 		Audio.WaveDetailData data = AudioLibraryPersistence.encode(details, false);
 		diskStore.put(identifier, data, embeddingVector);
 	}
@@ -153,6 +155,11 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 	@Override
 	public void insertEmbedding(String identifier, PackedCollection embeddingVector) {
 		diskStore.insertEmbedding(identifier, embeddingVector);
+	}
+
+	@Override
+	public void setEmbeddingModel(String modelIdentifier) {
+		diskStore.setIndexModel(modelIdentifier);
 	}
 
 	@Override

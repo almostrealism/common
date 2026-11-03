@@ -130,6 +130,18 @@ public interface WaveDetailsStore extends Closeable {
 	void insertEmbedding(String identifier, PackedCollection embeddingVector);
 
 	/**
+	 * Declare the model whose embeddings the nearest-neighbor index holds.
+	 * Embeddings from different models cannot share an index, so when the
+	 * declared model differs from the one the index was built from, the index
+	 * is discarded and rebuilt as embeddings for the declared model arrive.
+	 * Declaring the same model again is a no-op, and so is {@code null}.
+	 * Implementations that do not maintain a vector index may ignore this.
+	 *
+	 * @param modelIdentifier the model producing the embeddings, or {@code null}
+	 */
+	void setEmbeddingModel(String modelIdentifier);
+
+	/**
 	 * Return the number of indexed vectors in the nearest-neighbor index.
 	 * Implementations that do not maintain a vector index should return
 	 * {@code 0}.

@@ -680,6 +680,45 @@ public class ProtobufDiskStoreTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * The HNSW index holds one model's vectors. An index written without a
+	 * recorded model, or recorded for a different model, is discarded when a
+	 * model is declared, so vectors of a new dimension can be inserted; the
+	 * declared model survives a restart, after which declaring it keeps the index.
+	 */
+	@Test(timeout = 30000)
+	public void indexModelChangeDiscardsIndex() {
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.put("a", makeRecord("a", "alpha", 1), new PackedCollection(3).fill(1.0, 0.0, 0.0));
+			store.put("b", makeRecord("b", "bravo", 2), new PackedCollection(3).fill(0.0, 1.0, 0.0));
+		}
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			Assert.assertEquals("unrecorded index reloads", 2, store.indexedEmbeddingCount());
+
+			store.setIndexModel("wide");
+			Assert.assertEquals("unrecorded index discarded", 0, store.indexedEmbeddingCount());
+			Assert.assertEquals("records are kept", 2, store.size());
+
+			store.put("a", makeRecord("a", "alpha", 1),
+					new PackedCollection(5).fill(1.0, 0.0, 0.0, 0.0, 0.0));
+			Assert.assertEquals(1, store.indexedEmbeddingCount());
+		}
+
+		try (ProtobufDiskStore<TestRecordProto.TestRecord> store =
+					 new ProtobufDiskStore<>(tempDir, TestRecordProto.TestRecord.parser())) {
+			store.setIndexModel("wide");
+			Assert.assertEquals("same model keeps the index", 1, store.indexedEmbeddingCount());
+
+			store.setIndexModel("narrow");
+			Assert.assertEquals("different model discards it", 0, store.indexedEmbeddingCount());
+			store.put("b", makeRecord("b", "bravo", 2), new PackedCollection(3).fill(0.0, 1.0, 0.0));
+			Assert.assertEquals(1, store.indexedEmbeddingCount());
+		}
+	}
+
 	/** Verify that the constructor creates the root directory if it does not exist. */
 	@Test(timeout = 30000)
 	public void constructorCreatesDirectory() {
