@@ -31,8 +31,8 @@ import io.flowtree.JsonFieldExtractor;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.github.PullRequest;
-import io.flowtree.jobs.GitOperations;
 import io.flowtree.jobs.JobCompletionEvent;
+import io.flowtree.jobs.RepositoryUrl;
 import io.flowtree.workstream.Workstream;
 
 /**
@@ -157,7 +157,7 @@ final class WorkstreamListing {
                 continue;
             }
             if (workspaceId != null && !workspaceId.equals(ws.getWorkspaceId())) continue;
-            if (repoUrl != null && !GitOperations.isSameRepository(repoUrl, ws.getRepoUrl())) {
+            if (repoUrl != null && !new RepositoryUrl(repoUrl).isSameRepository(new RepositoryUrl(ws.getRepoUrl()))) {
                 continue;
             }
             if (dispatchCapable != null

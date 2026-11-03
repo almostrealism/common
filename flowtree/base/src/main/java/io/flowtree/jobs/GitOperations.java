@@ -1143,92 +1143,22 @@ public class GitOperations implements ConsoleFeatures {
     }
 
     /**
-     * Pattern matching the {@code owner/repo} path of an SSH-form repository
-     * URL ({@code git@host:owner/repo.git}), with the optional {@code .git}
-     * suffix excluded from the capture.
-     */
-    private static final Pattern SSH_REPO_PATTERN =
-            Pattern.compile("^[^/@]+@[^:/]+:([^/]+/[^/]+?)(?:\\.git)?/?$");
-
-    /**
-     * Pattern matching the {@code owner/repo} path of an HTTP(S)-form or
-     * {@code git://} repository URL, with the optional {@code .git} suffix
-     * excluded from the capture.
-     */
-    private static final Pattern HTTP_REPO_PATTERN =
-            Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^@/]+@)?[^/]+/([^/]+/[^/]+?)(?:\\.git)?/?$");
-
-    /**
-     * Pattern matching the host of an SSH-form repository URL
-     * ({@code git@host:owner/repo.git}), capturing the host between the
-     * {@code @} and the {@code :}. Requires the full {@code owner/repo} path
-     * so the host is reported only for a recognised repository URL.
-     */
-    private static final Pattern SSH_HOST_PATTERN =
-            Pattern.compile("^[^/@]+@([^:/]+):[^/]+/[^/]+?(?:\\.git)?/?$");
-
-    /**
-     * Pattern matching the host of an HTTP(S)-form or {@code git://}
-     * repository URL, capturing the host after the scheme and optional
-     * credentials while excluding an optional {@code :port} from the capture
-     * (so a URL with an explicit port reports the same host as one without).
-     * A bracketed IPv6 literal ({@code [2001:db8::1]}) is captured whole,
-     * brackets included, so the host is still reported for the same
-     * {@code [^/]+} authority {@link #HTTP_REPO_PATTERN} accepts. Requires the
-     * full {@code owner/repo} path so the host is reported only for a
-     * recognised repository URL.
-     */
-    private static final Pattern HTTP_HOST_PATTERN =
-            Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*://(?:[^@/]+@)?(\\[[^\\]]+\\]|[^:/]+)(?::[0-9]+)?/[^/]+/[^/]+?(?:\\.git)?/?$");
-
-    /**
-     * Reduces a repository URL to its canonical {@code owner/repo} slug so
-     * that URLs naming the same repository in different forms compare equal.
-     *
-     * <p>The same repository is routinely written several ways — an SSH
-     * remote ({@code git@github.com:owner/repo.git}), an HTTPS clone URL
-     * ({@code https://github.com/owner/repo.git}), and the browser URL a CI
-     * system reports ({@code https://github.com/owner/repo}) — so comparing
-     * the raw strings reports "different repository" for what is in fact one
-     * repository. Comparing slugs instead avoids that.</p>
-     *
-     * <p>Host and scheme are deliberately not part of the slug: the same
-     * repository reached over SSH and HTTPS is one repository.</p>
+     * Reduces a repository URL to its canonical {@code owner/repo} slug;
+     * equivalent to {@link RepositoryUrl#getSlug()}.
      *
      * @param repoUrl the repository URL in SSH, HTTP(S), or {@code git://}
      *                form; may be {@code null}
      * @return the {@code owner/repo} slug with its original case, or
-     *         {@code null} when
-     *         {@code repoUrl} is {@code null}, blank, or not a recognised
-     *         repository URL
+     *         {@code null} when {@code repoUrl} is {@code null}, blank, or not
+     *         a recognised repository URL
      */
     public static String repositorySlug(String repoUrl) {
-        if (repoUrl == null) return null;
-        String trimmed = repoUrl.trim();
-        if (trimmed.isEmpty()) return null;
-
-        Matcher ssh = SSH_REPO_PATTERN.matcher(trimmed);
-        if (ssh.matches()) return ssh.group(1);
-
-        Matcher http = HTTP_REPO_PATTERN.matcher(trimmed);
-        if (http.matches()) return http.group(1);
-
-        return null;
+        return new RepositoryUrl(repoUrl).getSlug();
     }
 
     /**
-     * Extracts the host of a repository URL, so that a caller which needs a
-     * particular service (for example one that will query the GitHub API with
-     * the {@link #repositorySlug(String) slug}) can reject URLs pointing
-     * elsewhere. Because {@code repositorySlug} deliberately drops the host,
-     * a substring check against the raw URL is not a host check — it accepts
-     * a look-alike host such as {@code github.com.evil.example} — whereas this
-     * method returns the exact host to compare.
-     *
-     * <p>The host is reported only for a URL that also parses as a repository
-     * (the same SSH, HTTP(S), and {@code git://} forms {@code repositorySlug}
-     * recognises); an input that is not a repository URL yields {@code null},
-     * exactly as {@code repositorySlug} does.</p>
+     * Extracts the host of a repository URL; equivalent to
+     * {@link RepositoryUrl#getHost()}.
      *
      * @param repoUrl the repository URL in SSH, HTTP(S), or {@code git://}
      *                form; may be {@code null}
@@ -1237,39 +1167,18 @@ public class GitOperations implements ConsoleFeatures {
      *         repository URL
      */
     public static String repositoryHost(String repoUrl) {
-        if (repoUrl == null) return null;
-        String trimmed = repoUrl.trim();
-        if (trimmed.isEmpty()) return null;
-
-        Matcher ssh = SSH_HOST_PATTERN.matcher(trimmed);
-        if (ssh.matches()) return ssh.group(1);
-
-        Matcher http = HTTP_HOST_PATTERN.matcher(trimmed);
-        if (http.matches()) return http.group(1);
-
-        return null;
+        return new RepositoryUrl(repoUrl).getHost();
     }
 
     /**
-     * Determines whether two repository URLs name the same repository,
-     * comparing them by {@link #repositorySlug(String) slug} so that SSH,
-     * HTTPS, and suffix-less forms of one repository match each other.
-     *
-     * <p>Slugs are compared ignoring case, since a repository is reachable
-     * under any capitalisation of its owner and name. URLs that cannot be
-     * parsed into a slug fall back to an exact (case-sensitive) string
-     * comparison rather than being reported as a match — an unrecognised URL
-     * form matches only itself.</p>
+     * Determines whether two repository URLs name the same repository;
+     * equivalent to {@link RepositoryUrl#isSameRepository(RepositoryUrl)}.
      *
      * @param repoUrl      the first repository URL; may be {@code null}
      * @param otherRepoUrl the second repository URL; may be {@code null}
      * @return {@code true} when both URLs name the same repository
      */
     public static boolean isSameRepository(String repoUrl, String otherRepoUrl) {
-        if (repoUrl == null || otherRepoUrl == null) return false;
-        String slug = repositorySlug(repoUrl);
-        String otherSlug = repositorySlug(otherRepoUrl);
-        if (slug != null && otherSlug != null) return slug.equalsIgnoreCase(otherSlug);
-        return repoUrl.equals(otherRepoUrl);
+        return new RepositoryUrl(repoUrl).isSameRepository(new RepositoryUrl(otherRepoUrl));
     }
 }
