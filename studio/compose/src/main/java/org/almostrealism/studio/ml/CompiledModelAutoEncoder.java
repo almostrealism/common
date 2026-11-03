@@ -133,7 +133,8 @@ public class CompiledModelAutoEncoder implements AutoEncoder, CodeFeatures {
 	 * @return the compiled autoencoder
 	 * @throws IllegalArgumentException if {@code maxDuration} or {@code sampleRate} is not positive and
 	 *                                  finite, or their product underflows to zero or exceeds
-	 *                                  {@link Integer#MAX_VALUE} samples
+	 *                                  {@link Integer#MAX_VALUE} samples, or rounding that product up to
+	 *                                  an aligned clip length overflows {@link Integer#MAX_VALUE}
 	 * @see #of(SAMEAutoEncoder, int, int, double, double)
 	 */
 	public static CompiledModelAutoEncoder of(SAMEAutoEncoder autoencoder, int batchSize,
@@ -146,7 +147,13 @@ public class CompiledModelAutoEncoder implements AutoEncoder, CodeFeatures {
 					+ sampleRate + " is not a valid clip length");
 		}
 
-		int samples = autoencoder.alignedAudioLength((int) Math.ceil(exact));
+		int requested = (int) Math.ceil(exact);
+		int samples = autoencoder.alignedAudioLength(requested);
+		if (samples < requested) {
+			throw new IllegalArgumentException("maxDuration " + maxDuration + " at sampleRate "
+					+ sampleRate + " aligns to a clip length that overflows the sample count");
+		}
+
 		return of(autoencoder, batchSize, samples, sampleRate, maxDuration);
 	}
 

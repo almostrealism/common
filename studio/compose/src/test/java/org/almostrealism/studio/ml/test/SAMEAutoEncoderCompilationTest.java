@@ -110,7 +110,8 @@ public class SAMEAutoEncoderCompilationTest extends TestSuiteBase {
 	 * {@link IllegalArgumentException} rather than compiling a zero-sized or invalid encoder. A
 	 * non-finite duration or sample rate must not slip through the range check and be truncated to
 	 * zero samples, and a negative duration and negative sample rate must not pass together by way of
-	 * their positive product. Positive inputs whose product underflows to zero are rejected too.
+	 * their positive product. Positive inputs whose product underflows to zero are rejected too, as is
+	 * a product within range whose alignment to a whole number of frames overflows the sample count.
 	 */
 	@Test(timeout = 240000)
 	public void compiledForDurationRejectsInvalidClipLength() {
@@ -149,6 +150,13 @@ public class SAMEAutoEncoderCompilationTest extends TestSuiteBase {
 			throw new AssertionError("expected rejection of a sample count that underflows to zero");
 		} catch (IllegalArgumentException expected) {
 			// positive inputs whose product underflows describe no samples at all
+		}
+
+		try {
+			CompiledModelAutoEncoder.of(autoencoder, 1, 1.0, (double) Integer.MAX_VALUE);
+			throw new AssertionError("expected rejection of a clip length whose alignment overflows");
+		} catch (IllegalArgumentException expected) {
+			// a sample count at the int limit cannot be padded up to an aligned clip length
 		}
 	}
 
