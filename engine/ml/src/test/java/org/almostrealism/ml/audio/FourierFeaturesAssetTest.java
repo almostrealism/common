@@ -21,6 +21,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.layers.Layer;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
@@ -137,6 +138,22 @@ public class FourierFeaturesAssetTest extends TestSuiteBase implements Diffusion
 					centralDifferences(frequencies, FINITE_DIFFERENCE_STEP, objective),
 					recorder.gradientOfSize(frequencies.getShape().getTotalSize()), GRADIENT_TOLERANCE, 0.0);
 		}
+	}
+
+	/**
+	 * The deterministic (expo) frequency ladder must stay fixed. Its projection is a weightless
+	 * producer, so the block registers no trainable weight that an optimizer could update, unlike the
+	 * learned {@link DiffusionTransformerFeatures#fourierFeatures(int, int, int, PackedCollection)}
+	 * path whose matrix the asset's {@code dense} stage registers as a trainable weight (pinned by
+	 * {@link #learnedFrequenciesReceiveGradient}). This guards the regression where routing the expo
+	 * ladder through the asset would have made the fixed frequencies trainable.
+	 */
+	@Test(timeout = 120000)
+	public void expoFourierFeaturesRegistersNoTrainableWeight() {
+		Block features = expoFourierFeatures(2, 8, 0.5, 50.0);
+		Assert.assertTrue("expo Fourier features should build a layer", features instanceof Layer);
+		Assert.assertTrue("the deterministic frequency ladder must not be a trainable weight",
+				((Layer) features).getWeights().isEmpty());
 	}
 
 	/**
