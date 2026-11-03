@@ -341,13 +341,12 @@ fi
 # connected (FlowTreeApiEndpoint.handleSubmit), and that path is neither a skip
 # nor an automated rejection — so without this guard the final emit_submitted
 # below would mark a job as created when none exists, and the caller's retire
-# step would leave the newly registered workstream orphaned. A created job
-# always carries ok:true and a non-empty jobId; anything else is a failed
-# submission, reported as submitted=false and a non-zero exit so the dropped
-# request is visible.
-OK=$(echo "$BODY" | jq -r '.ok // empty')
+# step would leave the newly registered workstream orphaned. The controller
+# issues a jobId only when it creates a job, so a response without one is a
+# failed submission, reported as submitted=false and a non-zero exit so the
+# dropped request is visible.
 JOB_ID=$(echo "$BODY" | jq -r '.jobId // empty')
-if [ "$OK" != "true" ] || [ -z "$JOB_ID" ]; then
+if [ -z "$JOB_ID" ]; then
     ERROR=$(echo "$BODY" | jq -r '.error // "controller returned no jobId"')
     echo "::error::Agent job was not created: $ERROR"
     emit_submitted false
