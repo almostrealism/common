@@ -13,10 +13,13 @@ With the split on, ``mvn install`` writes to ``<repository>/<localPrefix>/``
 (``cached`` by default, shared by every job on the node). Without it, both
 live directly under ``<repository>``.
 
-Tools that look for an installed ``ar-*`` jar -- the test-runner preflight,
-the artifact-staleness hook -- must look where Maven will resolve it from,
-or they report a jar Maven will never use as present. This module is the
-single reading of that layout.
+Tools that look for an installed ``ar-*`` jar must look where Maven will
+resolve it from, or they report a jar Maven will never use as present. This
+module is the single reading of that layout; the test-runner preflight and
+the JMX heap analyzer read it through here. The artifact-staleness hook
+(``.claude/hooks/mvn-artifact-staleness.py``) still constructs paths under the
+unsplit ``~/.m2`` layout and has yet to be routed through this module -- see
+the ``TODO`` below.
 """
 
 from __future__ import annotations

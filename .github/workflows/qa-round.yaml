@@ -293,6 +293,7 @@ jobs:
         run: bash "$FRAMEWORK/tools/ci/register-workstream.sh"
 
       - name: Submit the round's agent job
+        id: submit
         if: steps.decide.outputs.run == 'true'
         env:
           CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
@@ -310,14 +311,22 @@ jobs:
           REQUIRED_LABELS: ${{ inputs.required-labels }}
         run: bash "$FRAMEWORK/tools/ci/submit-agent-job.sh" "${{ runner.temp }}/agent-prompt.txt"
 
-      # A round whose submission failed after its workstream was registered
-      # (intake closed in the meantime, the controller refused the job, a
-      # transient error) would otherwise leave a jobless workstream for the
-      # archiver and the retrospective to filter. Archive exactly this
-      # round's workstream: the prefix is the full, timestamped branch name.
-      # Archiving is reversible.
+      # A round whose submission did not produce a job after its workstream was
+      # registered would otherwise leave a jobless workstream for the archiver
+      # and the retrospective to filter. That covers a step failure (a transient
+      # error, a non-200 response) AND the two paths submit-agent-job.sh exits 0
+      # on without creating a job — the controller skipping the submission, or
+      # rejecting it because intake closed since the check — which `failure()`
+      # alone never sees; `steps.submit.outputs.submitted` tells them apart (an
+      # exit-1 failure writes no output, which reads the same as false). Archive
+      # exactly this round's workstream: the prefix is the full, timestamped
+      # branch name. Archiving is reversible.
       - name: Retire the workstream of a round that did not start
-        if: failure() && steps.decide.outputs.run == 'true' && steps.register.outcome == 'success'
+        if: >-
+          !cancelled()
+          && steps.decide.outputs.run == 'true'
+          && steps.register.outcome == 'success'
+          && steps.submit.outputs.submitted != 'true'
         env:
           CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}

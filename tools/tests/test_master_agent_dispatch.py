@@ -284,9 +284,16 @@ class MasterAgentDispatchTests(unittest.TestCase):
         A workstream is registered only after the cadence gate has said the
         round runs and every other step of the round has succeeded: the
         register step comes after the gate and the prompt build and directly
-        precedes the submission. If the submission then fails, a retire step
-        archives exactly that round's workstream (its full branch name as the
-        prefix), so a round that never got a job leaves none behind.
+        precedes the submission. If the submission then produces no job, a
+        retire step archives exactly that round's workstream (its full branch
+        name as the prefix), so a round that never got a job leaves none behind.
+
+        A job is "not produced" by a step failure, but also by the two paths
+        submit-agent-job.sh exits 0 on without creating one — the controller
+        skipping or rejecting the submission — which `failure()` never sees. The
+        retire step therefore keys on `steps.submit.outputs.submitted != 'true'`
+        under `!cancelled()`, not on `failure()`, so it fires for a skip and a
+        rejection too (an exit-1 failure writes no output, which reads as false).
         """
         rounds = dict(self.qa_jobs)
         rounds["plan-next-task"] = self.jobs["plan-next-task"]
@@ -298,6 +305,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
             build = next(i for i, s in enumerate(steps)
                          if re.search(r"build-[a-z-]+-prompt\.sh", s.get("run", "")))
             register = steps[index["register-workstream.sh"]]
+            submit = steps[index["submit-agent-job.sh"]]
             with self.subTest(job=name):
                 self.assertLess(index["qa-cadence.sh"], index["register-workstream.sh"])
                 self.assertLess(build, index["register-workstream.sh"],
@@ -306,13 +314,18 @@ class MasterAgentDispatchTests(unittest.TestCase):
                                  index["submit-agent-job.sh"],
                                  "registration must directly precede the submission")
                 self.assertEqual("register", register.get("id"))
+                self.assertEqual("submit", submit.get("id"),
+                                 "the retire step reads the submission's outcome")
 
                 retire = [s for s in steps[index["submit-agent-job.sh"] + 1:]
                           if "archive-stale-workstreams.sh" in s.get("run", "")]
-                self.assertEqual(1, len(retire), "a failed submission must be retired")
+                self.assertEqual(1, len(retire),
+                                 "a submission that made no job must be retired")
                 condition = retire[0].get("if", "")
-                self.assertIn("failure()", condition)
+                self.assertIn("!cancelled()", condition)
                 self.assertIn("steps.register.outcome == 'success'", condition)
+                self.assertIn("steps.submit.outputs.submitted != 'true'", condition,
+                              "a skipped or rejected submission must also retire")
                 self.assertEqual(register["env"]["BRANCH"],
                                  retire[0]["env"]["BRANCH_PREFIX"],
                                  "only this round's workstream may be retired")

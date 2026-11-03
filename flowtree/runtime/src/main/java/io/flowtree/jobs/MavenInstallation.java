@@ -43,6 +43,9 @@ public class MavenInstallation {
     /** Matches the version line of {@code mvn --version}. */
     private static final Pattern VERSION = Pattern.compile("Apache Maven (\\d+)\\.(\\d+)");
 
+    /** Guards the one-time probe so concurrent jobs share a single {@code mvn --version} run. */
+    private static final Object PROBE_LOCK = new Object();
+
     /** The node's installation, probed on first use and cached for the life of the JVM. */
     private static volatile MavenInstallation node;
 
@@ -67,21 +70,26 @@ public class MavenInstallation {
 
     /**
      * Returns the installation {@code mvn} resolves to on this node, running
-     * {@code mvn --version} the first time it is asked for. A probe that is
-     * interrupted is not cached, so the next caller probes again.
+     * {@code mvn --version} the first time it is asked for. Jobs preparing
+     * concurrently on one node serialise on {@link #PROBE_LOCK}, so the probe
+     * runs once and every later caller returns the cached result rather than
+     * launching its own {@value #PROBE_TIMEOUT_SECONDS}-second {@code mvn}. A
+     * probe that is interrupted is not cached, so the next caller probes again.
      *
      * @return the node's Maven installation
      */
     public static MavenInstallation node() {
         MavenInstallation cached = node;
         if (cached != null) return cached;
-        try {
-            MavenInstallation probed = probe();
-            node = probed;
-            return probed;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return new MavenInstallation(null);
+        synchronized (PROBE_LOCK) {
+            if (node != null) return node;
+            try {
+                node = probe();
+                return node;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return new MavenInstallation(null);
+            }
         }
     }
 

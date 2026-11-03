@@ -305,6 +305,7 @@ jobs:
           ./tools/ci/register-workstream.sh
 
       - name: Submit planning agent job
+        id: submit
         if: steps.branches.outputs.needs_new_branch == 'true'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
@@ -321,10 +322,17 @@ jobs:
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
-      # A failed submission after registration would leave a jobless
-      # workstream behind; archive exactly this round's (reversible).
+      # A submission that produced no job after registration would leave a
+      # jobless workstream behind: a step failure, or one of the exit-0 paths
+      # (the controller skipped or rejected it) that `failure()` cannot see.
+      # `steps.submit.outputs.submitted` catches both; archive exactly this
+      # round's (reversible).
       - name: Retire the workstream of a round that did not start
-        if: failure() && steps.branches.outputs.needs_new_branch == 'true' && steps.register.outcome == 'success'
+        if: >-
+          !cancelled()
+          && steps.branches.outputs.needs_new_branch == 'true'
+          && steps.register.outcome == 'success'
+          && steps.submit.outputs.submitted != 'true'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
@@ -793,6 +801,7 @@ jobs:
       # this round's premise depends on existing tests staying byte-identical,
       # and test-integrity-check holds it to the same rule as every branch.
       - name: Submit coverage agent job
+        id: submit
         if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
@@ -807,10 +816,17 @@ jobs:
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
 
-      # A failed submission after registration would leave a jobless
-      # workstream behind; archive exactly this round's (reversible).
+      # A submission that produced no job after registration would leave a
+      # jobless workstream behind: a step failure, or one of the exit-0 paths
+      # (the controller skipped or rejected it) that `failure()` cannot see.
+      # `steps.submit.outputs.submitted` catches both; archive exactly this
+      # round's (reversible).
       - name: Retire the workstream of a round that did not start
-        if: failure() && steps.decide.outputs.run == 'true' && steps.register.outcome == 'success'
+        if: >-
+          !cancelled()
+          && steps.decide.outputs.run == 'true'
+          && steps.register.outcome == 'success'
+          && steps.submit.outputs.submitted != 'true'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
