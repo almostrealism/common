@@ -448,6 +448,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * @param dimension the vector dimensionality
 	 */
 	private void ensureHnswIndex(int dimension) {
+		// TODO(review): one stray put of another width (e.g. AudioLibraryMigration's legacy-slot embedding) discards the whole index; consider keying replacement on the model, not the width.
 		if (hnswIndex != null && hnswIndex.getDimension() != dimension) {
 			log.warning("Replacing the " + hnswIndex.getDimension() + "-dimension vector index ("
 					+ hnswIndex.size() + " entries) with a " + dimension + "-dimension index");
