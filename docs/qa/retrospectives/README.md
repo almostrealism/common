@@ -38,7 +38,9 @@ evidence behind a finding, just as a plan document may. `check-temporary-identif
 does not scan the plan directories for violations, so an identifier a report cites
 there is never flagged. It reads these directories only the other way round — to
 collect the handles it bans *elsewhere*: a report's own dated name (`RETRO-<date>`),
-its numbered items (`F6`, `P1`), and the proposal slugs listed in `ledger.tsv`.
+its numbered items in the family-prefixed form the checker matches (`RETRO F6`,
+`RETRO-<date> P1` — a bare `F6` or `P1` is not), and the proposal slugs listed in
+`ledger.tsv`.
 Those are a narrower set than the evidentiary ids above; the generic shapes (a bare
 hex job/run/workstream/memory id, a short SHA, a timestamped branch name) are not
 derived or enforced by this check at all.
