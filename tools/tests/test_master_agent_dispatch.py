@@ -279,7 +279,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
                         "ungated: " + step["name"])
 
     def test_a_round_registers_its_workstream_only_as_it_submits(self):
-        """RETRO-20261026 F6 (`jobless-roundup`): no jobless round workstreams.
+        """No jobless round workstreams.
 
         A workstream is registered only after the cadence gate has said the
         round runs and every other step of the round has succeeded: the
@@ -867,8 +867,8 @@ class MasterAgentDispatchTests(unittest.TestCase):
 
     def test_the_flaky_pilot_does_not_raise_the_open_pr_limit(self):
         """MAX_OPEN_PRS is sized to the full-cadence QA rounds, one open PR per
-        round for the same reviewer. The flaky hunt is a pilot (RETRO-20261022
-        F6: "not a full cadence job"), so it deliberately does NOT raise that
+        round for the same reviewer. The flaky hunt is a pilot, not a full
+        cadence job, so it deliberately does NOT raise that
         limit until it proves its yield — the eight QA jobs share a budget of
         seven. This pins that decision: a later session that promotes the pilot
         to a full round, or adds an eighth full-cadence round, must raise

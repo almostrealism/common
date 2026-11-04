@@ -249,7 +249,7 @@ public class MetalOperator extends HardwareOperator {
 	 * <p>The runner orders the dispatch after {@code dependsOn}: after a completion of the same
 	 * runner on the GPU, and after any other completion through a bridge that does not block the
 	 * calling thread (see {@link MetalCommandRunner#submit}). The memory the arguments refer to is
-	 * reserved until the command buffer the dispatch is encoded into has completed.</p>
+	 * reserved until the command buffer the dispatch is encoded into has finished on the GPU.</p>
 	 *
 	 * <p>{@link #prepareArguments} moves every argument into {@link #getSupportedMemory()}, which
 	 * for a {@link MetalDataContext} is its {@link MetalMemoryProvider} alone, so every argument's
@@ -294,7 +294,7 @@ public class MetalOperator extends HardwareOperator {
 		// Encode this kernel into the runner's command buffer, ordered after dependsOn (the
 		// runner handles both same-runner and foreign dependencies without blocking here). The
 		// runner returns this dispatch's completion semaphore; the onComplete callback releases
-		// the memory the kernel referenced only after that buffer has completed.
+		// the memory the kernel referenced only after the GPU has finished that buffer.
 		return runner.submit(getMetadata(), cmdBuf -> {
 			recordDuration(null, () -> {
 				int index = 0;

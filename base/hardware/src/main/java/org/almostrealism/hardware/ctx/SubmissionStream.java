@@ -16,9 +16,11 @@
 
 package org.almostrealism.hardware.ctx;
 
+import io.almostrealism.concurrent.HandOffWindow;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
@@ -58,6 +60,9 @@ import java.util.function.Supplier;
  *       the device does not see until it is committed (a command buffer) closes that unit early
  *       because the device has run out of work ({@link #closeEarlyIfIdle}, {@link #minIdleCommit}),
  *       and how many units were closed for that reason ({@link #getIdleCommitCount()}).</li>
+ *   <li><b>The completion-polling policy</b> &mdash; how long a host wait for a submission polls
+ *       the device's own record of its progress before it blocks on the completion notification
+ *       ({@link #pollForCompletion}, {@link #completionSpinMicros}).</li>
  * </ul>
  *
  * <p>Foreign dependencies are bridged by the runner through {@link Semaphore#onSettled(Runnable)}
@@ -84,6 +89,25 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 	 * leaves the device idle while it holds work it could run, so it has no use for this policy.</p>
 	 */
 	public static int minIdleCommit = SystemUtils.getInt("AR_HARDWARE_IDLE_COMMIT").orElse(64);
+
+	/**
+	 * How long, in microseconds, a host wait for a submission polls the device's own record of its
+	 * progress before it blocks on the completion notification instead (see
+	 * {@link #pollForCompletion}). Every accelerator API reports finished work in two ways: a
+	 * value the host can read without waiting (a Metal shared event's signaled value, a CUDA
+	 * event's {@code cuEventQuery}, an OpenCL event's {@code CL_EVENT_COMMAND_EXECUTION_STATUS}),
+	 * and a blocking wait that parks the host thread until the driver wakes it (Metal's completion
+	 * report, {@code cuEventSynchronize}, {@code clWaitForEvents}). The wake-up costs tens of
+	 * microseconds on top of the work, which for a wait issued at once, as every evaluation whose
+	 * result the host reads is, is a large share of the whole round trip. A wait whose work takes
+	 * longer than the window blocks as it would without polling, having occupied its core for the
+	 * window. Zero disables polling. Read when a stream is created. Controlled by
+	 * {@code AR_HARDWARE_COMPLETION_SPIN}.
+	 *
+	 * <p>Only a stream that can read its device's progress without waiting polls (see
+	 * {@link #canPollCompletion()}); whatever the window, any other stream blocks at once.</p>
+	 */
+	public static int completionSpinMicros = SystemUtils.getInt("AR_HARDWARE_COMPLETION_SPIN").orElse(1000);
 
 	/** A human-readable name for the stream, used in refusal messages. */
 	private final String name;
@@ -133,6 +157,12 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 	private final AtomicLong idleCommits = new AtomicLong();
 
 	/**
+	 * How long a host wait polls for its submission to finish (see {@link #completionSpinMicros}),
+	 * read when the stream is created.
+	 */
+	private final HandOffWindow completionWindow;
+
+	/**
 	 * Creates a stream.
 	 *
 	 * @param name                a human-readable name for the stream, used in refusal messages
@@ -149,6 +179,8 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 		this.completionType = completionType;
 		this.maxHeld = maxHeld;
 		this.streamThreadMessage = streamThreadMessage;
+		this.completionWindow = completionSpinMicros > 0
+				? new HandOffWindow(completionSpinMicros, TimeUnit.MICROSECONDS) : HandOffWindow.NONE;
 	}
 
 	/**
@@ -321,6 +353,58 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 	 * @return the number of idle commits
 	 */
 	public long getIdleCommitCount() { return idleCommits.get(); }
+
+	/**
+	 * Returns whether the stream can read its device's progress without waiting, which
+	 * {@link #pollForCompletion} needs. A stream that can only block on completion, which is what
+	 * this returns unless a stream overrides it, never polls.
+	 *
+	 * @return true if the stream can tell, without waiting, whether a submission has finished
+	 */
+	protected boolean canPollCompletion() { return false; }
+
+	/**
+	 * Returns, without waiting, whether the device's own record of its progress has reached the
+	 * submission with the given ordinal (see {@link #nextOrdinal()}): a Metal shared event's
+	 * signaled value, a CUDA event's {@code cuEventQuery}, and so on. Consulted by
+	 * {@link #pollForCompletion} only when {@link #canPollCompletion()} is true, so a stream that
+	 * can read its device's progress overrides both; any other stream never reaches this, which
+	 * is why it reports false unless overridden. What reaching the ordinal proves (that the
+	 * submission executed rather than failed, for instance) is for the stream to decide, since it
+	 * knows what its device reports.
+	 *
+	 * @param ordinal the ordinal of the submission a host wait waits for
+	 * @return true if the device's progress has reached {@code ordinal}
+	 */
+	protected boolean hasReached(long ordinal) { return false; }
+
+	/**
+	 * Returns whether a host wait for one of this stream's submissions polls before it blocks:
+	 * whether the stream can read its device's progress (see {@link #canPollCompletion()}) and the
+	 * polling window it was created with (see {@link #completionSpinMicros}) is not zero.
+	 *
+	 * @return true if {@link #pollForCompletion} polls
+	 */
+	public boolean isPollingForCompletion() {
+		return completionWindow != HandOffWindow.NONE && canPollCompletion();
+	}
+
+	/**
+	 * Polls the device's progress ({@link #hasReached(long)}) for the submission with the given
+	 * ordinal, for up to {@link #completionSpinMicros}. A stream calls this before it blocks on the
+	 * completion notification, and blocks only if it returns false. Polling only decides how soon
+	 * the wait notices that the work has finished; deciding whether what the device's progress
+	 * shows can be trusted (that it cannot be mistaken for a failure, for instance) stays with the
+	 * stream, which knows what its device reports. An interrupt ends polling at once and is left
+	 * pending for the blocking wait that follows.
+	 *
+	 * @param ordinal the ordinal of the submission a host wait waits for
+	 * @return true if the device's progress reached {@code ordinal} before polling stopped; always
+	 *         false when the stream does not poll (see {@link #isPollingForCompletion()})
+	 */
+	protected boolean pollForCompletion(long ordinal) {
+		return isPollingForCompletion() && completionWindow.pollUntil(() -> hasReached(ordinal));
+	}
 
 	/**
 	 * Returns the maximum number of units of work that may be held at once.

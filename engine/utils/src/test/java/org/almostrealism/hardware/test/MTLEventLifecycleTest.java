@@ -106,4 +106,45 @@ public class MTLEventLifecycleTest extends TestSuiteBase {
 			log("setSignaledValue correctly threw after release");
 		}
 	}
+
+	/**
+	 * {@link MTLEvent#isSignaled(long)}, which a host wait polls for a command buffer's signal,
+	 * reports whether the event has reached a value as signals move it forward, and reports
+	 * false once the event is released, rather than reading freed native state. The value is
+	 * read by a JNI operation compiled at runtime; on a host without the toolchain to compile it,
+	 * the fallback contract is verified instead: {@link MTLEvent#isSignaled(long)} refuses to
+	 * read, so no caller mistakes an unreadable value for an unsignaled one.
+	 */
+	@Test(timeout = 60000)
+	public void isSignaledTracksValueAndRelease() {
+		MTLEvent event = newEvent();
+		if (event == null) {
+			log("Skipping isSignaledTracksValueAndRelease - no Metal device");
+			return;
+		}
+
+		if (!event.isSignalReadable()) {
+			try {
+				event.isSignaled(0);
+				Assert.fail("isSignaled must throw on a host that cannot read event values");
+			} catch (IllegalStateException e) {
+				log("isSignaled correctly refused to read without the runtime-compiled reader");
+			} finally {
+				event.release();
+			}
+
+			return;
+		}
+
+		Assert.assertTrue("A new event is signaled to zero", event.isSignaled(0));
+		Assert.assertFalse("A new event has not reached 1", event.isSignaled(1));
+
+		Assert.assertTrue(event.signal(5));
+		Assert.assertTrue("An event signaled to 5 has reached 3", event.isSignaled(3));
+		Assert.assertTrue("An event signaled to 5 has reached 5", event.isSignaled(5));
+		Assert.assertFalse("An event signaled to 5 has not reached 6", event.isSignaled(6));
+
+		event.release();
+		Assert.assertFalse("A released event must report false", event.isSignaled(0));
+	}
 }

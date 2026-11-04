@@ -364,6 +364,23 @@ lacks the script, and fail if even `origin/master` does not have it.
 `tools/tests/test_enforcement_script_fallback.py` pins this. A new enforcement
 step follows the same pattern.
 
+**Plan-document identifiers never leave the plan directories.** Everything
+under `docs/plans/` and `docs/qa/retrospectives/` is disposable, so the handles
+those documents define — a document's dated name (`PLAN-<date>-<slug>`,
+`RETRO-<date>`), a numbered item inside it, a retrospective ledger's proposal
+slugs — must not appear in any other tracked file: code, workflows, prompts,
+tests or formal documentation. `scripts/check-temporary-identifiers.py` reads
+those identifiers from the plan documents themselves (so a new plan is covered
+the moment it lands) and scans every other tracked file; it runs as a step of
+the `checkstyle` job, publishes its own `identifiers_passed` output, and
+`check-quality-gates.sh` reports a finding to `auto-review` as
+`temporary-identifiers`, separately from Checkstyle's verdict. It is a content
+check rather than an enforcement script, so a head that predates it skips it
+with a notice. Because `checkstyle` is gated on `code_changed`, a docs-only
+pull request is not checked until the next code change (or the master run)
+scans the tree. `tools/tests/test_check_temporary_identifiers.py` covers the
+script and its wiring.
+
 **The `ci/...` carve-out covers `.claude/hooks/` too, and covers comparisons
 only.** Both the enforcement-tampering check and the exfiltration guard's
 integrity comparison treat a `ci/` branch as out of scope, for the reason the
@@ -968,8 +985,7 @@ the previous rounds, then a branch is created, a prompt built from
 `AUTO_CREATE_PR`. A new QA job follows that sequence; it does not need new
 cadence logic.
 
-**A workstream exists only for a round that got its job** (RETRO-20261026 F6,
-`jobless-roundup`). Every round, the QA rounds and `plan-next-task` alike,
+**A workstream exists only for a round that got its job.** Every round, the QA rounds and `plan-next-task` alike,
 registers its workstream only after the gate has said the round runs, and
 directly before the submission, once everything else in the round has
 succeeded. If the submission then fails (intake closed since the check, the
@@ -1053,7 +1069,7 @@ PRs only: a round whose agent has not opened its PR yet is not in it.
 seven of them (`doc-qa`, `defect-hunt`, `coverage-qa`, `consolidation-qa`,
 `performance-qa`, `pdsl-qa`, `qa-retrospective`) — so the value tracks that
 count and rose from 6 to 7 when `qa-retrospective` was added. `flaky-qa` is a
-**pilot** (RETRO-20261022 F6): it still participates in the backlog gate like
+**pilot**: it still participates in the backlog gate like
 every round (it will not start while the backlog is full, and its own PR counts
 toward the next round's check), but adding it deliberately did **not** raise
 `MAX_OPEN_PRS` — the eight QA jobs share the budget of seven until the pilot
@@ -1166,7 +1182,7 @@ SUCCESS. A run that surveyed, recorded memories and committed nothing is
 therefore visible instead of reading as a green run. The cap is 0 because a
 re-run is a fresh `opus`/`max` session that re-surveys from scratch, and with
 the report written first an empty tree means something a re-run of the same
-prompt would not fix. The prompt's other half of the same fix (RETRO-20261019 F1) has the agent write
+prompt would not fix. The prompt's other half of the same fix has the agent write
 the skeleton report and ledger row *first*, before the expensive survey, so a
 run that stalls still leaves a reviewable artifact. It pins the primary
 phase to `claude/opus` at `effort: max` for the same reason as `performance-qa`
@@ -1180,7 +1196,7 @@ follow-up a person opens from an accepted proposal; it is one of the prefixes
 the survey covers (`QA_PREFIXES`), and a person — never a job — creates it.
 
 `flaky-qa` is the pilot nondeterministic-test hunt
-(`tools/ci/prompts/flaky-hunt.txt`, RETRO-20261022 F6). It takes one module and
+(`tools/ci/prompts/flaky-hunt.txt`). It takes one module and
 a small, named slice of its tests, runs that slice repeatedly on the current
 commit, and looks for a test whose pass/fail outcome varies with no change to
 the code under test; on a finding it fixes the source of the nondeterminism in
