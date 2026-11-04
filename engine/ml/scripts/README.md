@@ -83,6 +83,24 @@ python -m pytest test_safetensors_extractor.py -v
 python -m pytest test_sa3_real_keys.py -v
 ```
 
+### export_tokenizer.py
+
+Converts a HuggingFace BPE `tokenizer.json` into the compact length-prefixed `ARTK` binary that
+`engine/ml`'s `SentencePieceBPETokenizer` reads. `engine/ml` has no JSON parser on its classpath and
+a 256k-token vocabulary is tens of megabytes of JSON, so the conversion happens once here, in
+Python, into a format a `DataInputStream` can read with nothing else.
+
+```bash
+python export_tokenizer.py --tokenizer-dir /path/to/t5gemma-b-b-ul2 \
+    --out /path/to/t5gemma-tokenizer.bin
+```
+
+`validate_pipeline` rejects any source tokenizer whose pipeline the Java reader does not reproduce
+(an unsupported normalizer, pre-tokenizer, decoder or post-processor, BPE dropout, or an incomplete
+byte-fallback vocabulary), so a mismatch fails here rather than silently producing wrong token ids
+at inference time. See [Text Tokenization](../../../docs/internals/text-tokenization.md) for the
+`ARTK` format and the full set of rules, and the module docstring for the byte-by-byte layout.
+
 ### extract_stable_audio_autoencoder.py
 
 Primary extraction script. Downloads/loads a Stable Audio checkpoint and:

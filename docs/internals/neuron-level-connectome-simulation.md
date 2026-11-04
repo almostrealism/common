@@ -69,8 +69,10 @@ files:
   - `presynaptic` (`[E]`): the presynaptic neuron of each stored edge,
   - `weights` (`[E]`): the presynaptic neuron's sign times the synapse count, and
   - `signs` (`[N]`): +1 or -1 per neuron (inhibitory neurons carry -1);
-- `neurons.tsv`: a header line, then the body id, type, superclass, class and predicted
-  transmitter of every neuron, tab-separated, in index order. Body ids are kept out of the tensors
+- `neurons.tsv`: a header line, then the body id, type, superclass, class, predicted
+  transmitter and side of every neuron, tab-separated, in index order. The side is `L`, `R` or `M`
+  (midline): the soma side, or for a sensory neuron, whose soma lies outside the nervous system,
+  the side its axon enters on; FlyWire's tables carry no side, so it is empty there. Body ids are kept out of the tensors
   because FlyWire root ids exceed the `2^53` a tensor value holds exactly;
 - `connectome.json`: the dataset, the filters, the sign rule and the totals (neurons, edges,
   synapses);
@@ -103,7 +105,7 @@ relies on them rather than re-deriving them.
 
 `NeuronConnectome` knows the file layout and nothing about dynamics. It owns the loaded tensors and
 the index collections of the ordering, exposes the body id and annotations of every neuron
-(`getBodyId`, `getType`, `indexOf`, `indicesOfType`), builds an input-set `mask(...)` over a chosen
+(`getBodyId`, `getType`, `getSide`, `indexOf`, `indicesOfType`), builds an input-set `mask(...)` over a chosen
 handful of neurons, and releases its native state in `destroy()`. `NeuronConnectomeTest` and
 `NeuronConnectomeChecks` validate a loaded connectome against the totals and spot checks the script
 records beside it.
@@ -169,7 +171,7 @@ Shiu et al. (2024), in milliseconds and millivolts:
 | `REFRACTORY_PERIOD` | 2.2 ms | refractory period |
 | `DELAY` | 1.8 ms | synaptic delay |
 | `SYNAPSE_WEIGHT` | 0.275 mV | the synaptic potential of one synapse |
-| `POISSON_KICK` | 250 × `SYNAPSE_WEIGHT` mV | the membrane kick of one Poisson spike |
+| `POISSON_SYNAPSES` | 250 | one Poisson spike kicks the membrane by this times the synapse weight (68.75 mV at `SYNAPSE_WEIGHT`) |
 
 ---
 
@@ -338,13 +340,13 @@ validation on the curated datasets (section 7), still open tracker work.
 - **FP32 timing on larger runs.** On a run of more than a thousand spikes an FP32 backend may shift
   a rare spike by one step relative to a FP64 reference (section 6). The committed synthetic
   reference is below that and matches exactly.
-- **`2^24` bounds on FP32 backends.** These bound the `CounterRandom` seed and counter, the
-  `SimulationRunner` step counter, and a `Recording`'s `capacity * width`, exactly as the population
-  page describes. The delay line is bounded the same way: `DELAY_LINE_LIMIT` (`2^24`) caps
-  `(DELAY/DT + 1) * replicas * N`, because `cache_read`/`cache_write` address a ring element as
-  `row * rowSize + i` in the backend's floating point, exact only below `2^24`. With a 19-row delay
-  line, six replicas of the 127,400-neuron FlyWire 630 fit (14,523,600 elements) and seven do not
-  (16,944,200), so six is the most one network of that connectome can hold.
+- **`2^24` bounds on FP32 backends.** These bound the `CounterRandom` seed and counter and the
+  `SimulationRunner` step counter, exactly as the population page describes. The delay line, the
+  drive schedule and a `Recording` address an element by row, forming `row * rowSize + i` on
+  integers inside the kernel, so their *element* count is not bounded this way: a network of 30
+  replicas of FlyWire 630 (a 72.6M-element delay line) runs every trial of an experiment in one
+  pass. A `Recording`'s sample count (its `capacity`) is still a floating-point counter and shares
+  the step counter's 2^24 bound, but its element count (`capacity * width`) is not.
 - **The whole-brain reproduction is larger work.** The MaleCNS whole-brain ingest and the full Shiu
   et al. reproduction, with its performance benchmark, are open tracker tasks for a later release
   and build on this pipeline. The dataset tests

@@ -182,17 +182,25 @@ import org.almostrealism.ml.qwen3.Qwen3Tokenizer;
 // Load tokenizer
 Qwen3Tokenizer tokenizer = new Qwen3Tokenizer("/path/to/tokenizer.bin");
 
-// Encode text to token IDs
+// Encode text to token IDs (addBos, addEos)
 String text = "Hello, world!";
-int[] tokens = tokenizer.encodeAsInt(text);
+int[] tokens = tokenizer.encode(text, false, false);
 
 // Decode tokens to text
-String decoded = tokenizer.decodeAsInt(tokens);
+String decoded = tokenizer.decode(tokens);
 
-// Special tokens
-int bos = tokenizer.getBOSToken();  // 151643
-int eos = tokenizer.getEOSToken();  // 151645
+// Special tokens (public constants)
+int bos = Qwen3Tokenizer.BOS_TOKEN;  // 151643
+int eos = Qwen3Tokenizer.EOS_TOKEN;  // 151645
 ```
+
+`Qwen3Tokenizer` extends `ByteLevelBPETokenizer` and exposes the `encode(String, boolean, boolean)`
+/ `decode(int[])` methods shown above; it does not implement the `org.almostrealism.ml.Tokenizer`
+interface. Two tokenizers that do implement that interface — and so offer
+`encodeAsLong`/`decodeAsLong` — are `ByteTokenizer` (a fixed 256-symbol byte vocabulary, used by the
+self-hosted language model) and `SentencePieceBPETokenizer` (the Gemma/T5Gemma scheme used by Stable
+Audio 3). See [Text Tokenization](../../docs/internals/text-tokenization.md) for the full family tree
+and the `ARTK` export format.
 
 ### 6. Rotary Position Embeddings (RoPE)
 
@@ -356,12 +364,48 @@ public abstract class ByteLevelBPETokenizer {
     public int[] encode(String text, boolean addSpecialTokens);
     public String decode(int[] tokenIds);
 
+    // Customization seams: a subclass overrides how a segment becomes symbols and back,
+    // inheriting the shared added-token splitting, merge algorithm and vocabulary lookup.
+    protected List<String> toSymbols(String segment);
+    protected String fromSymbols(List<String> tokens);
+
     protected abstract int getBOSToken();
     protected abstract int getEOSToken();
     protected abstract int getPADToken();
     protected abstract int getUNKToken();
 }
 ```
+
+### ByteTokenizer
+
+```java
+public class ByteTokenizer implements Tokenizer {
+    public static final int VOCAB_SIZE = 256;
+
+    public long[] encodeAsLong(String text);   // one id in 0..255 per UTF-8 byte
+    public String decodeAsLong(long[] tokens); // rejects any id outside 0..255
+    public boolean isValidUtf8(int[] tokens);
+}
+```
+
+A fixed 256-symbol byte vocabulary — token id = unsigned UTF-8 byte — used by the self-hosted
+language model. No external artifact, nothing to train, every byte reachable.
+
+### SentencePieceBPETokenizer
+
+```java
+public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements Tokenizer {
+    public SentencePieceBPETokenizer(String path) throws IOException;  // reads the ARTK binary
+
+    public long[] encodeAsLong(String text);   // adds no special tokens
+    public String decodeAsLong(long[] tokens);
+}
+```
+
+The Gemma/Llama/Mistral SentencePiece scheme: a word boundary is marked with `U+2581` and a
+character outside the vocabulary falls back to one `<0xNN>` token per UTF-8 byte. It reads the
+compact `ARTK` binary written by `scripts/export_tokenizer.py`, and is the tokenizer Stable Audio 3
+uses for T5Gemma text conditioning. See [Text Tokenization](../../docs/internals/text-tokenization.md).
 
 ## Qwen3 Model Architecture
 
@@ -505,8 +549,8 @@ public class MyTokenizer extends ByteLevelBPETokenizer {
 ### Pattern 5: Manual Token Loop
 
 ```java
-// Encode prompt
-int[] promptTokens = tokenizer.encodeAsInt("Hello, world!");
+// Encode prompt (addBos, addEos)
+int[] promptTokens = tokenizer.encode("Hello, world!", false, false);
 
 // Initialize model state
 PackedCollection<?> input = tokenEmbeddings.get(promptTokens[0]);
@@ -520,11 +564,11 @@ for (int step = 0; step < maxTokens; step++) {
     int nextToken = sampleFromLogits(logits, temperature);
 
     // Decode and print
-    String tokenText = tokenizer.decodeAsInt(new int[]{nextToken});
+    String tokenText = tokenizer.decode(new int[]{nextToken});
     System.out.print(tokenText);
 
     // Check for EOS
-    if (nextToken == tokenizer.getEOSToken()) break;
+    if (nextToken == Qwen3Tokenizer.EOS_TOKEN) break;
 
     // Update input for next iteration
     input = tokenEmbeddings.get(nextToken);

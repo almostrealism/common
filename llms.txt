@@ -46,7 +46,7 @@
 - [utils-http](engine/utils-http/README.md): HTTP authentication, event delivery
 
 ### extern/ — External Integrations
-- [ml-djl](extern/ml-djl/README.md): DJL SentencePiece tokenization
+- [ml-djl](extern/ml-djl/README.md): DJL-backed SentencePiece tokenization — `SentencePieceTokenizer` wraps DJL's native `SpTokenizer` and a `.model` file, and is distinct from `engine/ml`'s own `SentencePieceBPETokenizer` (see [Text Tokenization](docs/internals/text-tokenization.md))
 - [ml-onnx](extern/ml-onnx/README.md): ONNX Runtime inference
 - [ml-script](extern/ml-script/README.md): Groovy scripting for model definition
 
@@ -111,6 +111,7 @@
 - [Training Compile Performance](docs/internals/training-compile-performance.md): Measuring and attributing first-step training compile cost, with the defects that once made fine-tuning look infeasible
 - [Sampling Loop Examples](docs/internals/sampling-loop-examples.md): DiffusionSampler patterns
 - [Vector Index](docs/internals/vector-index.md): Native-accelerated vector similarity search — the `ProtobufDiskStore` layout and vector API, `HnswIndex` as a computation graph (compiled-once normalize and whole-store `matmul` scoring, host-side top-K), the `hnsw.bin` save/load format, the model-keyed rebuild contract (`hnsw.model` marker, re-embedding in `ProtobufWaveDetailsStore`), and known limits
+- [Text Tokenization](docs/internals/text-tokenization.md): From a String to the token ids a model consumes — the `org.almostrealism.ml.Tokenizer` contract, the full tokenizer family tree (`ByteTokenizer`, `ByteLevelBPETokenizer`/`Qwen3Tokenizer`, `SentencePieceBPETokenizer`, the `BPE`/Llama2 path, and `extern/ml-djl`'s DJL `SentencePieceTokenizer`), the byte tokenizer, the shared BPE pipeline and its two symbol schemes, and the `export_tokenizer.py` `ARTK` v2 format with `validate_pipeline`
 
 ### Simulation
 - [Simulation Loop Examples](docs/internals/simulation-loop-examples.md): SimulationRunner patterns — the loop owner for recurrent dynamical systems, the step contract, boundary inputs, recording, measured dispatch overhead
