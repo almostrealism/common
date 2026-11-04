@@ -145,32 +145,15 @@ public final class JobLifecycleRecorder {
      *         a job that was already cancelled
      */
     public boolean recordTerminal(String workstreamId, JobCompletionEvent event) {
-        // TODO(review): check-then-write is not atomic; a cancel landing between getJob and recordJobCompleted is still overwritten.
-        if (event == null || isAlreadyCancelled(event)) return false;
-        if (statsStore != null) {
-            statsStore.recordJobCompleted(workstreamId, event);
+        if (event == null) return false;
+        if (statsStore != null
+                && !statsStore.recordJobCompletedUnlessCancelled(workstreamId, event)) {
+            return false;
         }
         if (remediationStore != null) {
             remediationStore.completeJob(event.getJobId(), workstreamId, event.getTargetBranch(),
                     event.getCommitHash(), event.getStatus() != JobCompletionEvent.Status.CANCELLED);
         }
         return true;
-    }
-
-    /**
-     * Reports whether {@code event} is a non-cancellation terminal event for a
-     * job whose stored record is already {@code CANCELLED}. The cancellation
-     * event itself is not rejected, because the cancelling path moves the row
-     * to {@code CANCELLED} before it dispatches that event.
-     *
-     * @param event the terminal event
-     * @return {@code true} when the job was cancelled before this event arrived
-     */
-    private boolean isAlreadyCancelled(JobCompletionEvent event) {
-        if (statsStore == null || event.getStatus() == JobCompletionEvent.Status.CANCELLED) {
-            return false;
-        }
-        JobCompletionEvent recorded = statsStore.getJob(event.getJobId());
-        return recorded != null && recorded.getStatus() == JobCompletionEvent.Status.CANCELLED;
     }
 }

@@ -566,6 +566,39 @@ public class JobStatsStore extends ControllerDatabase {
     }
 
     /**
+     * Records a terminal event unless it would overwrite a job that is already
+     * {@code CANCELLED} with a non-cancellation outcome.
+     *
+     * <p>A cancelled job's agent keeps running, so the agent's own {@code SUCCESS}
+     * or {@code FAILED} completion can arrive after a
+     * {@link #cancelIfInFlight} transition. The read of the current status and
+     * the write happen inside this one synchronized call — the same monitor
+     * {@code cancelIfInFlight} holds — so no cancellation can land between the
+     * check and the write, which a separate {@link #getJob} followed by
+     * {@link #recordJobCompleted(String, JobCompletionEvent)} could not
+     * guarantee. A {@code CANCELLED} event itself is always recorded, since the
+     * cancelling path sets the row to {@code CANCELLED} before dispatching it.</p>
+     *
+     * @param workstreamId the workstream the job belongs to
+     * @param event        the terminal event
+     * @return {@code true} when the event was recorded; {@code false} when it is
+     *         a non-cancellation event for a job already recorded as
+     *         {@code CANCELLED}, or the store is unavailable
+     */
+    public synchronized boolean recordJobCompletedUnlessCancelled(String workstreamId,
+                                                                  JobCompletionEvent event) {
+        if (!isOpen() || event == null) return false;
+        if (event.getStatus() != JobCompletionEvent.Status.CANCELLED) {
+            JobCompletionEvent recorded = getJob(event.getJobId());
+            if (recorded != null && recorded.getStatus() == JobCompletionEvent.Status.CANCELLED) {
+                return false;
+            }
+        }
+        recordJobCompleted(workstreamId, event);
+        return true;
+    }
+
+    /**
      * Records the per-runner cost breakdown for a job, replacing any existing
      * rows for that job so a re-reported completion event is idempotent.
      *

@@ -417,4 +417,48 @@ public class JobStatsStoreLifecycleTest extends TestSuiteBase {
             store.close();
         }
     }
+
+    /**
+     * A non-cancellation terminal event is refused when the row is already
+     * {@code CANCELLED}, so a late completion cannot overwrite a cancellation;
+     * the cancellation event itself and a completion for any other job are
+     * recorded. A {@code null} event records nothing.
+     */
+    @Test(timeout = 30000)
+    public void recordJobCompletedUnlessCancelledRefusesLateCompletion() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-unless-cancelled").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-cancelled", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-cancelled", "ws-1", "job", "node-a", submittedAt.plusSeconds(60));
+            assertTrue(store.cancelIfInFlight("job-cancelled", submittedAt.plusSeconds(3600),
+                    "pull request #7 merged"));
+
+            Assert.assertTrue("the cancellation event itself is recorded",
+                    store.recordJobCompletedUnlessCancelled("ws-1",
+                            JobCompletionEvent.cancelled("job-cancelled", "job", "pull request #7 merged")));
+            Assert.assertFalse("a late success cannot overwrite a cancellation",
+                    store.recordJobCompletedUnlessCancelled("ws-1",
+                            JobCompletionEvent.success("job-cancelled", "job")));
+            Assert.assertEquals("the job stays CANCELLED", JobCompletionEvent.Status.CANCELLED,
+                    store.getJob("job-cancelled").getStatus());
+            Assert.assertEquals("the cancellation reason is kept", "pull request #7 merged",
+                    store.getJob("job-cancelled").getErrorMessage());
+
+            store.recordJobSubmitted("job-running", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-running", "ws-1", "job", "node-a", submittedAt.plusSeconds(60));
+            Assert.assertTrue("a completion for an uncancelled job is recorded",
+                    store.recordJobCompletedUnlessCancelled("ws-1",
+                            JobCompletionEvent.success("job-running", "job")));
+            Assert.assertEquals(JobCompletionEvent.Status.SUCCESS,
+                    store.getJob("job-running").getStatus());
+
+            Assert.assertFalse("a null event records nothing",
+                    store.recordJobCompletedUnlessCancelled("ws-1", null));
+        } finally {
+            store.close();
+        }
+    }
 }
