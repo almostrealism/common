@@ -26,6 +26,8 @@ import java.util.List;
 import io.flowtree.controller.ActiveJob;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.jobs.JobCompletionEvent;
+import io.flowtree.slack.NotifierRegistry.BranchResolution;
+import io.flowtree.workstream.Workstream;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -49,6 +51,10 @@ public class PullRequestEventHandlerTest extends TestSuiteBase {
 
 	/** The workstream the test resolver maps {@link #BRANCH} to. */
 	private static final String WORKSTREAM = "ws-1";
+
+	/** The ambiguity error the ambiguous-resolution handler reports. */
+	private static final String AMBIGUOUS = "Ambiguous workstream resolution: 2 workstreams"
+			+ " share defaultBranch '" + BRANCH + "'";
 
 	/** Records the terminal events the handler dispatches. */
 	private final List<JobCompletionEvent> dispatched = new ArrayList<>();
@@ -76,7 +82,23 @@ public class PullRequestEventHandlerTest extends TestSuiteBase {
 	 */
 	private PullRequestEventHandler newHandler(JobStatsStore store) {
 		return new PullRequestEventHandler(store,
-				(branch, repoUrl) -> BRANCH.equals(branch) ? WORKSTREAM : null,
+				(branch, repoUrl) -> BRANCH.equals(branch)
+						? BranchResolution.of(new Workstream(WORKSTREAM, "C1", "#example"))
+						: BranchResolution.none(),
+				(ws, event) -> dispatched.add(event));
+	}
+
+	/**
+	 * Creates a handler over {@code store} whose resolver reports every branch
+	 * as ambiguous, as the notifier registry does when several workstreams on
+	 * different repositories share the branch and no repository URL is given.
+	 *
+	 * @param store the store to query
+	 * @return the handler
+	 */
+	private PullRequestEventHandler newAmbiguousHandler(JobStatsStore store) {
+		return new PullRequestEventHandler(store,
+				(branch, repoUrl) -> BranchResolution.failed(AMBIGUOUS),
 				(ws, event) -> dispatched.add(event));
 	}
 
@@ -299,6 +321,58 @@ public class PullRequestEventHandlerTest extends TestSuiteBase {
 		String response = newHandler(store).handleJson("{\"merged\":true}");
 		Assert.assertTrue("a missing headBranch is rejected: " + response,
 				response.contains("\"ok\":false"));
+		store.close();
+	}
+
+	/**
+	 * An ambiguous branch resolution is a failure, not an empty success: no job
+	 * is cancelled, nothing is dispatched, and the caller receives the
+	 * resolution error so it can tell this apart from "nothing was in flight".
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void ambiguousBranchIsRejectedWithoutCancelling() throws Exception {
+		JobStatsStore store = newStore();
+		Instant event = Instant.parse("2026-11-01T17:40:00Z");
+		store.recordJobStarted("job-impl", WORKSTREAM, "Implement the plan",
+				event.minus(Duration.ofHours(1)));
+
+		try {
+			newAmbiguousHandler(store).cancelInFlightJobs(null, BRANCH, "123", true, event);
+			Assert.fail("an ambiguous branch must not be reported as a successful cancellation");
+		} catch (IllegalArgumentException e) {
+			Assert.assertEquals(AMBIGUOUS, e.getMessage());
+		}
+		assertTrue("nothing dispatched for an ambiguous branch", dispatched.isEmpty());
+		assertEquals("the running job is still in flight", 1,
+				store.getActiveJobs(WORKSTREAM).size());
+		store.close();
+	}
+
+	/**
+	 * The JSON entry point reports an ambiguous branch as {@code ok:false}
+	 * carrying the resolution error, rather than {@code ok:true} with a zero
+	 * count.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void handleJsonReportsAmbiguousBranchAsError() throws Exception {
+		JobStatsStore store = newStore();
+		store.recordJobStarted("job-impl", WORKSTREAM, "Implement the plan",
+				Instant.parse("2026-11-01T16:12:00Z"));
+
+		String response = newAmbiguousHandler(store).handleJson("{\"headBranch\":\"" + BRANCH
+				+ "\",\"merged\":true,\"eventTime\":\"2026-11-01T17:40:00Z\"}");
+
+		assertTrue("an ambiguous branch is a failure: " + response,
+				response.contains("\"ok\":false"));
+		assertTrue("the response carries the resolution error: " + response,
+				response.contains("Ambiguous workstream resolution"));
+		assertFalse("no count is reported for a failed resolution: " + response,
+				response.contains("\"count\""));
+		assertTrue("nothing dispatched", dispatched.isEmpty());
 		store.close();
 	}
 }

@@ -20,7 +20,9 @@
 #
 # The call fails soft: a controller that cannot be reached leaves the jobs
 # running (the stall watchdog remains the backstop) rather than failing the
-# workflow.
+# workflow. So does a controller that rejects the event (`ok:false`, e.g. a
+# branch that resolves to more than one workstream); its error is surfaced as
+# a workflow warning rather than reported as zero cancellations.
 #
 # Usage: cancel-pr-branch-jobs.sh
 #
@@ -73,6 +75,12 @@ RESP=$(curl "${CURL_ARGS[@]}" -X POST --data "$BODY" \
         echo "::warning::Could not reach the controller to cancel in-flight jobs for ${HEAD_BRANCH}; any are left running"
         exit 0
     }
+
+if [ "$(echo "$RESP" | jq -r '.ok' 2>/dev/null || echo false)" != "true" ]; then
+    ERROR=$(echo "$RESP" | jq -r '.error // "unrecognised response"' 2>/dev/null || echo "unrecognised response")
+    echo "::warning::Controller did not cancel in-flight jobs for ${HEAD_BRANCH}: ${ERROR}"
+    exit 0
+fi
 
 COUNT=$(echo "$RESP" | jq -r '.count // 0' 2>/dev/null || echo 0)
 echo "::notice::Reported PR #${PR_NUMBER:-?} close on ${HEAD_BRANCH}; controller cancelled ${COUNT} in-flight job(s)"

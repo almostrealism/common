@@ -138,6 +138,11 @@ public class StuckJobScanner implements ConsoleFeatures {
 	 * Job IDs already warned about; makes the warning fire exactly once per
 	 * job as its silence crosses the warning point, rather than on every scan
 	 * until the kill.
+	 *
+	 * <p>Holds only jobs that are still silent past the warning point. Each scan
+	 * drops a job that has heartbeated again, completed, or been failed, so the
+	 * set stays bounded by the jobs currently in flight, and a job that recovers
+	 * and later stalls again is warned about again.</p>
 	 */
 	private final Set<String> warned = new HashSet<>();
 
@@ -310,6 +315,7 @@ public class StuckJobScanner implements ConsoleFeatures {
 		Duration threshold = stalenessThreshold();
 		if (statsStore == null || threshold.isZero()) return failed;
 		Duration warnAt = warningThreshold();
+		Set<String> silent = new HashSet<>();
 
 		for (ActiveJob job : statsStore.getActiveJobs(null)) {
 			if (job.jobId() == null || terminated.contains(job.jobId())) continue;
@@ -332,7 +338,9 @@ public class StuckJobScanner implements ConsoleFeatures {
 
 			// Not yet dead: warn once as the silence crosses the (earlier)
 			// warning point, so a stall is visible well before the kill.
-			if (!warnAt.isZero() && job.isStale(warnAt, now) && warned.add(job.jobId())) {
+			if (warnAt.isZero() || !job.isStale(warnAt, now)) continue;
+			silent.add(job.jobId());
+			if (warned.add(job.jobId())) {
 				long silentMinutes = job.sinceHeartbeat(now).toMinutes();
 				String message = "Job silent: no heartbeat for " + silentMinutes
 						+ " minutes (jobId=" + job.jobId() + " workstreamId=" + job.workstreamId()
@@ -344,6 +352,7 @@ public class StuckJobScanner implements ConsoleFeatures {
 				}
 			}
 		}
+		warned.retainAll(silent);
 		return failed;
 	}
 

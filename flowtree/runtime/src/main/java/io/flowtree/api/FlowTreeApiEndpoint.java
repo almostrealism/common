@@ -1550,11 +1550,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     private PullRequestEventHandler pullRequestEventHandler() {
         return new PullRequestEventHandler(statsQueryHandler.store(),
-                (branch, repoUrl) -> {
-                    NotifierRegistry.BranchResolution res = notifiers.resolveBranch(branch, repoUrl);
-                    return res.match() == null ? null : res.match().getWorkstreamId();
-                },
-                this::completeJob);
+                notifiers::resolveBranch, this::completeJob);
     }
 
     /**

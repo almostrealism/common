@@ -402,4 +402,45 @@ public class StuckJobScannerTest extends TestSuiteBase {
 		assertTrue("nothing is dispatched for a healthy job", dispatched.isEmpty());
 		store.close();
 	}
+
+	/**
+	 * A warned job that heartbeats again is forgotten by the warning
+	 * bookkeeping, so the next scan does not warn about it and a later, second
+	 * stall of the same job is warned about afresh rather than suppressed by the
+	 * first warning.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void recoveredJobIsWarnedAgainWhenItStallsAgain() throws Exception {
+		JobStatsStore store = newStore();
+		Instant now = Instant.parse("2026-08-22T12:00:00Z");
+		store.recordJobStarted("job-flaky", "ws-1", "intermittent network",
+				now.minus(Duration.ofHours(5)));
+		store.recordHeartbeat("job-flaky", now.minus(Duration.ofMinutes(70)));
+
+		List<String> warnings = new ArrayList<>();
+		StuckJobScanner scanner = newScanner(store, Duration.ofHours(6));
+		scanner.setDeadThreshold(Duration.ofMinutes(120));
+		scanner.setWarningThreshold(Duration.ofMinutes(60));
+		scanner.setWarningSink((ws, message) -> warnings.add(message));
+
+		assertTrue(scanner.scanOnce(now).isEmpty());
+		assertEquals("70m of silence crosses the 60m warning point", 1, warnings.size());
+
+		Instant recovered = now.plus(Duration.ofMinutes(5));
+		store.recordHeartbeat("job-flaky", recovered);
+		assertTrue(scanner.scanOnce(recovered.plus(Duration.ofMinutes(1))).isEmpty());
+		assertEquals("a job that heartbeats again is not warned about", 1, warnings.size());
+
+		Instant stalledAgain = recovered.plus(Duration.ofMinutes(65));
+		assertTrue("65m of renewed silence is under the kill",
+				scanner.scanOnce(stalledAgain).isEmpty());
+		assertEquals("the second stall is warned about afresh", 2, warnings.size());
+		assertTrue(scanner.scanOnce(stalledAgain.plus(Duration.ofMinutes(5))).isEmpty());
+		assertEquals("the second warning is not repeated on the next scan", 2, warnings.size());
+		assertTrue("no terminal event for a job that never crossed the kill",
+				dispatched.isEmpty());
+		store.close();
+	}
 }

@@ -21,6 +21,7 @@ import io.flowtree.controller.ActiveJob;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.controller.PendingJob;
 import io.flowtree.jobs.JobCompletionEvent;
+import io.flowtree.slack.NotifierRegistry.BranchResolution;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.time.Instant;
@@ -76,11 +77,11 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
     private final JobStatsStore statsStore;
 
     /**
-     * Resolves {@code (branch, repoUrl)} to the owning workstream id, or
-     * {@code null} when no workstream tracks that branch. Bound by the endpoint
-     * to the notifier registry's branch resolution.
+     * Resolves {@code (branch, repoUrl)} to the owning workstream: a match, no
+     * match, or an ambiguity error. Bound by the endpoint to the notifier
+     * registry's branch resolution.
      */
-    private final BiFunction<String, String, String> workstreamResolver;
+    private final BiFunction<String, String, BranchResolution> workstreamResolver;
 
     /** Receives the synthesized cancellation event, keyed by workstream id. */
     private final BiConsumer<String, JobCompletionEvent> terminalEventSink;
@@ -90,13 +91,14 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
      *
      * @param statsStore         the store to query; {@code null} disables
      *                           cancellation
-     * @param workstreamResolver maps {@code (branch, repoUrl)} to a workstream
-     *                           id, or {@code null} when none matches
+     * @param workstreamResolver resolves {@code (branch, repoUrl)} to the
+     *                           owning workstream; a {@code null} resolver or
+     *                           result means no workstream matches
      * @param terminalEventSink  receives each cancellation event, keyed by
      *                           workstream id; must not be {@code null}
      */
     public PullRequestEventHandler(JobStatsStore statsStore,
-            BiFunction<String, String, String> workstreamResolver,
+            BiFunction<String, String, BranchResolution> workstreamResolver,
             BiConsumer<String, JobCompletionEvent> terminalEventSink) {
         this.statsStore = statsStore;
         this.workstreamResolver = workstreamResolver;
@@ -114,7 +116,10 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
      *
      * @param body the request body, or {@code null}
      * @return a JSON object carrying {@code ok}, the {@code cancelled} job ids
-     *         and their {@code count}
+     *         and their {@code count}; or {@code ok:false} with an
+     *         {@code error} when the branch is missing or resolves ambiguously,
+     *         so the caller can tell a failed cancellation from one that found
+     *         nothing to cancel
      */
     public String handleJson(String body) {
         if (body == null) {
@@ -129,8 +134,12 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
         boolean merged = JsonFieldExtractor.extractBoolean(body, "merged");
         Instant eventInstant = parseInstant(JsonFieldExtractor.extractString(body, "eventTime"));
 
-        List<String> cancelled = cancelInFlightJobs(repoUrl, headBranch, prNumber,
-                merged, eventInstant);
+        List<String> cancelled;
+        try {
+            cancelled = cancelInFlightJobs(repoUrl, headBranch, prNumber, merged, eventInstant);
+        } catch (IllegalArgumentException e) {
+            return "{\"ok\":false,\"error\":\"" + JsonFieldExtractor.escapeJson(e.getMessage()) + "\"}";
+        }
 
         StringBuilder json = new StringBuilder("{\"ok\":true,\"cancelled\":[");
         for (int i = 0; i < cancelled.size(); i++) {
@@ -152,7 +161,11 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
      * @param eventInstant the moment the pull request event occurred; jobs
      *                     submitted at or after it are left untouched. When
      *                     {@code null} the current instant is used.
-     * @return the ids of the jobs cancelled, in the order they were cancelled
+     * @return the ids of the jobs cancelled, in the order they were cancelled;
+     *         empty when no workstream tracks the branch
+     * @throws IllegalArgumentException when the branch resolves to more than
+     *         one workstream; nothing is cancelled, and the message says how to
+     *         disambiguate
      */
     public List<String> cancelInFlightJobs(String repoUrl, String headBranch,
             String prNumber, boolean merged, Instant eventInstant) {
@@ -161,13 +174,19 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
             return cancelled;
         }
         Instant cutoff = eventInstant != null ? eventInstant : Instant.now();
-        String workstreamId = workstreamResolver == null ? null
+        BranchResolution resolution = workstreamResolver == null ? null
                 : workstreamResolver.apply(headBranch, repoUrl);
-        if (workstreamId == null) {
+        if (resolution != null && resolution.error() != null) {
+            warn("Terminal PR event on branch=" + headBranch + " not applied: "
+                    + resolution.error());
+            throw new IllegalArgumentException(resolution.error());
+        }
+        if (resolution == null || resolution.match() == null) {
             log("No workstream resolved for terminal PR event on branch=" + headBranch
                     + " repoUrl=" + repoUrl + "; nothing to cancel");
             return cancelled;
         }
+        String workstreamId = resolution.match().getWorkstreamId();
 
         String reason = reasonFor(prNumber, merged, headBranch);
         for (ActiveJob job : statsStore.getActiveJobs(workstreamId)) {
