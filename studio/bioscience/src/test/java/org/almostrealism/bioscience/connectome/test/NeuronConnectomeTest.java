@@ -96,7 +96,7 @@ public class NeuronConnectomeTest extends NeuronConnectomeChecks {
 	}
 
 	/**
-	 * Body ids, types, transmitters and signs are looked up by index and by body id, and a mask
+	 * Body ids, types, transmitters, sides and signs are looked up by index and by body id, and a mask
 	 * selects exactly the given neurons.
 	 */
 	@Test(timeout = 120000)
@@ -109,6 +109,7 @@ public class NeuronConnectomeTest extends NeuronConnectomeChecks {
 				assertEquals(i, connectome.indexOf(1000 + 7L * i));
 				assertEquals("T" + (i % 5), connectome.getType(i));
 				assertEquals(i % 3 == 2 ? "gaba" : "acetylcholine", connectome.getTransmitter(i));
+				assertEquals(i % 2 == 0 ? "L" : "R", connectome.getSide(i));
 				assertEquals(i % 3 == 2 ? -1.0 : 1.0, connectome.getSigns().toDouble(i), 0.0);
 			}
 

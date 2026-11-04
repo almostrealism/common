@@ -283,10 +283,9 @@ public class LeakyIntegrateAndFirePopulation implements LayerFeatures, Destroyab
 						multiply(subtract(c(1.0), cp(spikes)),
 								rectify(subtract(cp(refractory), c(1.0)))))));
 
-		CollectionProducer offset = multiply(cp(writeIndex), c((double) count));
 		op.add(into("lif-ring-write",
-				new CollectionSlotUpdateComputation(shape(rows, count), 1, rows * count, count,
-						cp(ring), cp(spikes), offset),
+				new CollectionSlotUpdateComputation(shape(rows, count), 1, rows * count, count, count,
+						cp(ring), cp(spikes), cp(writeIndex)),
 				cp(ring), false));
 
 		op.add(a(cp(writeIndex), mod(add(cp(writeIndex), c(1.0)), c((double) rows))));
@@ -330,9 +329,7 @@ public class LeakyIntegrateAndFirePopulation implements LayerFeatures, Destroyab
 	public CollectionProducer delayedSpikes() {
 		CollectionProducer rowPosition = mod(
 				add(cp(writeIndex), c((double) (rows - delaySteps))), c((double) rows));
-		CollectionProducer index = integers(0, count)
-				.add(multiply(rowPosition, c((double) count)));
-		return c(shape(count), cp(ring).reshape(shape(rows * count)), index);
+		return rows(shape(count), cp(ring), rowPosition);
 	}
 
 	/**

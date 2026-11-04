@@ -25,7 +25,8 @@ This module exists to:
   from the output of the conversion script below.
 - `org.almostrealism.bioscience.connectome.NeuronConnectome`: a connectome at the level of
   individual neurons, a signed synapse-count matrix in compressed sparse rows (rows are
-  postsynaptic neurons) with the body id and annotations of every neuron. Its weight matrix is a
+  postsynaptic neurons) with the body id and annotations (type, superclass, class, transmitter and
+  side) of every neuron. Its weight matrix is a
   collection whose shape carries a `CompressedRowTraversalOrdering`, so `matmul` with it is a
   sparse product. It is loaded from the output of `connectome_csr.py`.
 - `org.almostrealism.bioscience.connectome.ConnectomeNetwork`: a spiking network over a
@@ -49,8 +50,10 @@ This module exists to:
   references the network is checked against: `synthetic` runs the model's equations on a converted
   connectome under a seeded kick schedule (the committed fixture under
   `src/test/resources/connectome/synthetic-brian2`), `circuit` cuts the sugar circuit out of
-  FlyWire 630 and runs it the same way (both fixtures below), and `sugar` runs the authors' own
-  model for the sugar experiment and writes the mean rate of every neuron. A kick-schedule
+  FlyWire 630 and runs it the same way (both fixtures below), `sugar` runs the authors' own
+  model for the sugar experiment and writes the mean rate of every neuron, and `experiment` runs
+  the same unchanged model on any converted connectome (MaleCNS, for example), driving the neurons
+  named by body id or cell type (optionally only those on one side), and writes the same outputs. A kick-schedule
   reference stores the kicks and the spikes as `(step, neuron)` events. Brian2 is needed only for
   these runs. Their dependencies are listed in `scripts/requirements.txt`. They are tested by
   `scripts/test_male_cns.py` (standard library only) and `scripts/test_connectome_csr.py` (needs
@@ -107,6 +110,7 @@ directory named by the property in parentheses):
 | FlyWire 783 | `connectome_csr.py --dataset flywire-783 --source <flywire-783 directory>` | `flywire/csr-783` (`AR_FLYWIRE_783_CSR`) |
 | Cell types | `male_cns_cell_types.py --source <male-cns release>` | `male-cns/cell-type-matrix` (`AR_MALE_CNS_CELL_TYPES`) |
 | Brian2 sugar references | `brian2_reference.py sugar --repo <model repo> --rate <100, 150 or 200>` | `flywire/brian2-reference/sugarR_630_<rate>Hz` (`AR_FLYWIRE_BRIAN2_REFERENCE`, the parent directory) |
+| MaleCNS Brian2 references | `brian2_reference.py experiment --repo <model repo> --connectome <male-cns/csr> --name male-cns_<rate>Hz --rate <100, 150 or 200> ...` | `male-cns/brian2-reference/male-cns_<rate>Hz` (`AR_MALE_CNS_BRIAN2_REFERENCE`, the parent directory) |
 
 The committed sugar circuit fixtures are regenerated from the source tables and the 200 Hz
 reference with:
@@ -116,10 +120,14 @@ reference with:
         --connectome-output src/test/resources/connectome/sugar-circuit \
         --output src/test/resources/connectome/sugar-circuit-brian2
 
-`ConnectomeNetworkDatasetTest` runs the sugar experiment (30 trials of 1 s) on FlyWire 630 and
-requires agreement with the Brian2 rates within the spread of two independent Brian2 runs: MN9
-within 5%, a median relative difference of at most 3% and a 90th percentile of at most 8% over
-neurons above 10 Hz, and at least 48 of the 50 fastest neurons in common.
+`ConnectomeNetworkDatasetTest` runs the experiment each Brian2 reference's manifest describes
+(stimulated neurons, rate, trials, trial length and synapse weight; all trials as replicas in one
+pass) on FlyWire 630 and on MaleCNS, and requires agreement with the Brian2 rates within the spread
+of two independent Brian2 runs: MN9 within 5%, a median relative difference of at most 3% and a
+90th percentile of at most 8% over neurons above 10 Hz, and at least 48 of the 50 fastest neurons in
+common. The sugar experiment on FlyWire 630 (30 trials of 1 s) takes about 8 minutes. A MaleCNS
+reference, written with `--name male-cns_<rate>Hz`, needs no change to the test: the stimulated set
+and the synapse weight come from its manifest.
 
 ## Tests
 
@@ -128,10 +136,14 @@ Unlike the `domain/` modules, this module has test sources of its own, in
 
 - `CellTypeConnectomeLoadTest` loads a small synthetic directory written in the script's layout.
   It needs no external data.
+- `NeuronConnectomeTest`, `ConnectomeNetworkTest` and `NeuronLevelConnectomeSimulationExamplesTest`
+  run on the committed fixtures described above, and `ExponentialSynapseNeuronsTest` (in
+  `org.almostrealism.biology.neuron.test`) checks the neuron model on its own. These run in CI.
 - `CellTypeConnectomeTest` and `CellTypeRateModelTest` (a `RatePopulation` with one unit per cell
-  type) run on the derived MaleCNS matrix, which is not in the repository. Its directory is the
-  `AR_MALE_CNS_CELL_TYPES` system property or environment variable; each test is skipped where the
-  directory does not hold the weights file.
+  type), `NeuronConnectomeDatasetTest` and `ConnectomeNetworkDatasetTest` run on the converted
+  datasets, which are not in the repository. They are long-running and excluded from the pipeline
+  profile, and when they run, a missing dataset fails them (see the table above for each
+  directory and the property that overrides it).
 
 ## What does not belong here
 

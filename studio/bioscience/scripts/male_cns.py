@@ -23,6 +23,8 @@ ANNOTATION_BODY = "bodyId"
 ANNOTATION_TYPE = "type"
 ANNOTATION_SUPERCLASS = "superclass"
 ANNOTATION_CLASS = "class"
+ANNOTATION_SOMA_SIDE = "somaSide"
+ANNOTATION_ROOT_SIDE = "rootSide"
 TRANSMITTER_BODY = "body"
 TRANSMITTER_COLUMN = "consensus_nt"
 WEIGHT_PRE = "body_pre"
@@ -35,6 +37,9 @@ WEIGHT_COUNT = "weight"
 # octopamine, tyramine, histamine), "unclear" and a missing prediction are
 # therefore excitatory.
 INHIBITORY_TRANSMITTERS = frozenset(("gaba", "glutamate"))
+
+# The sides a body may be annotated with: left, right, and midline.
+SIDES = frozenset(("L", "R", "M"))
 
 # FP32 represents every integer whose magnitude is below this bound exactly.
 FP32_EXACT_LIMIT = 2 ** 24
@@ -231,6 +236,47 @@ def read_typed_bodies(directory):
             table[ANNOTATION_TYPE].to_pylist(),
             table[ANNOTATION_SUPERCLASS].to_pylist(),
             table[ANNOTATION_CLASS].to_pylist())
+
+
+def neuron_side(soma_side, root_side):
+    """Returns the side of the body a neuron belongs to.
+
+    A neuron whose soma lies in the central nervous system has a soma side.
+    A sensory neuron's soma lies outside it, so only the side its axon enters
+    on (the root side) is annotated.
+
+    Args:
+        soma_side: the ``ANNOTATION_SOMA_SIDE`` value, or None.
+        root_side: the ``ANNOTATION_ROOT_SIDE`` value, or None.
+
+    Returns:
+        "L", "R" or "M": the soma side when it is one of these, else the root
+        side when it is one of these, else "".
+    """
+    for side in (soma_side, root_side):
+        if side in SIDES:
+            return side
+    return ""
+
+
+def read_sides(directory):
+    """Reads the side of each annotated body.
+
+    Args:
+        directory: the MaleCNS release directory.
+
+    Returns:
+        A dict from body id to its ``neuron_side``.
+    """
+    import os
+
+    import pyarrow.feather as feather
+
+    table = feather.read_table(os.path.join(directory, ANNOTATIONS_FILE),
+                               columns=[ANNOTATION_BODY, ANNOTATION_SOMA_SIDE, ANNOTATION_ROOT_SIDE])
+    return {body: neuron_side(soma, root) for body, soma, root in zip(
+        table[ANNOTATION_BODY].to_pylist(), table[ANNOTATION_SOMA_SIDE].to_pylist(),
+        table[ANNOTATION_ROOT_SIDE].to_pylist())}
 
 
 def read_transmitters(directory):

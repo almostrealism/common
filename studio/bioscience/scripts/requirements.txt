@@ -1,2 +1,5 @@
 pyarrow
 numpy
+brian2
+pandas
+joblib

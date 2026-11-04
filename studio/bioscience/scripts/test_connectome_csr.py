@@ -159,5 +159,68 @@ class EventsTest(unittest.TestCase):
         np.testing.assert_array_equal(array, rebuilt)
 
 
+class NeuronTableTest(unittest.TestCase):
+    """read_neurons reads back the body ids and annotations convert wrote, in index order."""
+
+    def test_round_trip(self):
+        dataset = connectome_csr.synthetic(40)
+        with tempfile.TemporaryDirectory() as output:
+            connectome_csr.convert(dataset, output, 1, {}, "test")
+            body_ids, annotations = connectome_csr.read_neurons(output)
+        self.assertEqual(dataset.body_ids.tolist(), body_ids.tolist())
+        self.assertEqual([tuple(a) for a in dataset.annotations], annotations)
+
+
+class ModelInputsTest(unittest.TestCase):
+    """The experiment command hands the authors' model the converted edges and the named neurons."""
+
+    def test_connectivity_lists_every_entry_by_row(self):
+        connectome = {"row_offsets": np.array([0, 2, 2, 3]), "presynaptic": np.array([1, 2, 0]),
+                      "weights": np.array([4, -1, 7])}
+        pre, post, signed = brian2_reference.connectivity(connectome)
+        self.assertEqual([1, 2, 0], pre.tolist())
+        self.assertEqual([0, 0, 2], post.tolist())
+        self.assertEqual([4, -1, 7], signed.tolist())
+
+    def test_connectivity_of_a_conversion_rebuilds_its_edges(self):
+        dataset = connectome_csr.synthetic(40)
+        with tempfile.TemporaryDirectory() as output:
+            connectome_csr.convert(dataset, output, 1, {}, "test")
+            connectome = male_cns.read_safetensors(os.path.join(output, connectome_csr.TENSORS_OUTPUT))
+        pre, post, signed = brian2_reference.connectivity(connectome)
+        expected = sorted(zip(dataset.pre.tolist(), dataset.post.tolist(),
+                              (dataset.signs[dataset.pre] * dataset.count).tolist()))
+        self.assertEqual(expected, sorted(zip(pre.tolist(), post.tolist(), signed.tolist())))
+
+    def test_stimulated_by_id_and_type(self):
+        body_ids = np.array([10, 20, 30, 40])
+        annotations = [("A", "", "", "", "L"), ("B", "", "", "", "R"), ("A", "", "", "", "R"),
+                       ("", "", "", "", "")]
+        self.assertEqual([0, 2], brian2_reference.stimulated_indices(body_ids, annotations, types=["A"]))
+        self.assertEqual([1, 3], brian2_reference.stimulated_indices(body_ids, annotations, ids=[40, 20]))
+        self.assertEqual([0, 1, 2], brian2_reference.stimulated_indices(body_ids, annotations, [20], ["A"]))
+
+    def test_stimulated_by_type_on_a_side(self):
+        body_ids = np.array([10, 20, 30, 40])
+        annotations = [("A", "", "", "", "L"), ("A", "", "", "", "R"), ("A", "", "", "", "R"),
+                       ("B", "", "", "", "L")]
+        self.assertEqual([1, 2], brian2_reference.stimulated_indices(
+            body_ids, annotations, types=["A"], sides=["R"]))
+        self.assertEqual([0, 1, 2], brian2_reference.stimulated_indices(
+            body_ids, annotations, types=["A"], sides=["L", "R"]))
+        self.assertEqual([0, 3], brian2_reference.stimulated_indices(
+            body_ids, annotations, ids=[40], types=["A"], sides=["L"]))
+
+    def test_stimulated_rejects_unknown_names(self):
+        body_ids = np.array([10, 20])
+        annotations = [("A", "", "", "", ""), ("B", "", "", "", "")]
+        with self.assertRaises(SystemExit):
+            brian2_reference.stimulated_indices(body_ids, annotations, ids=[99])
+        with self.assertRaises(SystemExit):
+            brian2_reference.stimulated_indices(body_ids, annotations, types=["C"])
+        with self.assertRaises(SystemExit):
+            brian2_reference.stimulated_indices(body_ids, annotations)
+
+
 if __name__ == "__main__":
     unittest.main()
