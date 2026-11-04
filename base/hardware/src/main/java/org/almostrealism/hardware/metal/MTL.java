@@ -170,7 +170,9 @@ public final class MTL {
 	 * <p>Metal returns the command buffer autoreleased; this binding retains it explicitly, so it
 	 * survives the autorelease pool of the work that created it (see {@link MTLAutoreleasePool})
 	 * and can be committed and waited for by later work. The caller owns that retain and drops it
-	 * with {@link #releaseCommandBuffer(long)} once the buffer has completed.</p>
+	 * with {@link #releaseCommandBuffer(long)} once it no longer needs the buffer, which for a
+	 * committed buffer may be before Metal reports its completion: Metal keeps a committed buffer
+	 * until it completes.</p>
 	 *
 	 * @param commandQueue Native command queue pointer
 	 * @return Native pointer to the command buffer, retained for the caller
@@ -578,7 +580,8 @@ public final class MTL {
 	/**
 	 * Releases a command buffer obtained from {@link #commandBuffer(long)}. The command buffer is
 	 * retained on creation so it survives the runner's per-task autorelease pools; this drops that
-	 * explicit retain once the buffer has completed.
+	 * explicit retain once the runner no longer needs the buffer (Metal keeps a committed buffer
+	 * until it completes).
 	 *
 	 * @param commandBuffer Native command buffer pointer
 	 */

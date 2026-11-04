@@ -109,7 +109,9 @@ public class MetalSemaphore extends StreamSemaphore<MetalCommandRunner> {
 	public long getPriorBufferValue() { return priorBufferValue; }
 
 	/**
-	 * Blocks until the dispatch's command buffer is committed and has completed on the GPU.
+	 * Blocks until the dispatch's command buffer is committed and has finished on the GPU, which
+	 * the runner observes by the buffer's timeline signal or by its completion (see
+	 * {@link MetalCommandRunner#complete}).
 	 *
 	 * @throws org.almostrealism.hardware.HardwareException if the dispatch, or one recorded as
 	 *         failed before it on the same runner, did not execute (see {@link MetalCommandRunner})

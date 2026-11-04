@@ -88,8 +88,10 @@ public class MTLCommandBuffer extends MTLObject {
 
 	/**
 	 * Releases the explicit retain taken when this command buffer was created (see
-	 * {@link MTL#commandBuffer(long)}). Call once the buffer has completed and is no longer
-	 * referenced, so it is freed rather than accumulating in the driver.
+	 * {@link MTL#commandBuffer(long)}). Call once the buffer is no longer referenced, so it is freed
+	 * rather than accumulating in the driver: after it has completed, or once it has been committed
+	 * and its work is known to have finished, since Metal keeps a committed buffer until it
+	 * completes.
 	 */
 	@Override
 	public void release() {

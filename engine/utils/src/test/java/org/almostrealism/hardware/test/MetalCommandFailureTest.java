@@ -277,11 +277,12 @@ public class MetalCommandFailureTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Returns a foreign completion that has already completed normally.
+	 * Returns a foreign completion that has already completed normally. Shared with the other
+	 * Metal runner tests of this package that need a bridged dependency which never fails.
 	 *
 	 * @return a settled completion
 	 */
-	private static Semaphore settled() {
+	static Semaphore settled() {
 		DefaultLatchSemaphore settled = new DefaultLatchSemaphore((Semaphore) null, 1);
 		settled.countDown();
 		return settled;
