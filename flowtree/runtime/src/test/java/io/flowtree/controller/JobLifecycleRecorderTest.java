@@ -89,6 +89,66 @@ public class JobLifecycleRecorderTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * A cancelled job's agent keeps running, so its own completion can arrive
+     * after the cancellation. That late event is rejected — the record stays
+     * {@code CANCELLED} with the cancellation reason — while the cancellation
+     * event itself, dispatched after the row moved to {@code CANCELLED}, is
+     * accepted.
+     */
+    @Test(timeout = 30000)
+    public void lateCompletionOfCancelledJobIsRejected() throws Exception {
+        JobStatsStore store = newStore();
+        try {
+            JobLifecycleRecorder recorder = new JobLifecycleRecorder(store);
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            recorder.recordSubmitted("job-1", "ws-1", "job", null, null, submittedAt);
+            recorder.recordStarted("job-1", "ws-1", "job", "node-a", submittedAt.plusSeconds(60));
+
+            JobCompletionEvent cancel = JobCompletionEvent.cancelled("job-1", "job", "pull request #7 merged");
+            Assert.assertTrue(store.cancelIfInFlight("job-1", cancel.getTimestamp(), "pull request #7 merged"));
+            Assert.assertTrue("the cancellation event itself is recorded",
+                    recorder.recordTerminal("ws-1", cancel));
+
+            Assert.assertFalse("a late success is rejected",
+                    recorder.recordTerminal("ws-1", JobCompletionEvent.success("job-1", "job")));
+            Assert.assertFalse("a late failure is rejected",
+                    recorder.recordTerminal("ws-1", JobCompletionEvent.failed("job-1", "job", "boom", null)));
+            JobCompletionEvent persisted = store.getJob("job-1");
+            Assert.assertEquals("the job stays CANCELLED", JobCompletionEvent.Status.CANCELLED, persisted.getStatus());
+            Assert.assertEquals("the cancellation reason is kept", "pull request #7 merged",
+                    persisted.getErrorMessage());
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * The rejection is specific to cancelled jobs: a completion for a job in
+     * any other state, or for a job with no row, is recorded; a {@code null}
+     * event is not.
+     */
+    @Test(timeout = 30000)
+    public void completionOfUncancelledJobIsAccepted() throws Exception {
+        JobStatsStore store = newStore();
+        try {
+            JobLifecycleRecorder recorder = new JobLifecycleRecorder(store);
+            recorder.recordSubmitted("job-1", "ws-1", "job", null, null,
+                    Instant.parse("2026-08-22T12:00:00Z"));
+            Assert.assertTrue("a running job's completion is recorded",
+                    recorder.recordTerminal("ws-1", JobCompletionEvent.success("job-1", "job")));
+            Assert.assertEquals(JobCompletionEvent.Status.SUCCESS, store.getJob("job-1").getStatus());
+
+            Assert.assertTrue("a job with no row is recorded",
+                    recorder.recordTerminal("ws-1", JobCompletionEvent.failed("job-2", "job", "x", null)));
+            Assert.assertEquals(JobCompletionEvent.Status.FAILED, store.getJob("job-2").getStatus());
+
+            Assert.assertFalse("a null event is not recorded", recorder.recordTerminal("ws-1", null));
+        } finally {
+            store.close();
+        }
+    }
+
     /** A null store is tolerated silently so a stats-less controller records nothing. */
     @Test(timeout = 30000)
     public void nullStoreIsSilent() {

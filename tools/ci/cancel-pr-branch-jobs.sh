@@ -32,7 +32,9 @@
 #   REPO_URL        - the head repository's clone URL; the controller cancels
 #                     only a workstream that names this same repository, so a
 #                     fork's pull request never reaches another repository's
-#                     workstream that happens to share the branch name
+#                     workstream that happens to share the branch name. When
+#                     it is empty (the head repository was deleted) the script
+#                     warns and exits successfully without calling the controller
 #
 # Optional environment:
 #   PR_NUMBER               - the pull request number, for the cancellation reason
@@ -48,8 +50,13 @@ set -euo pipefail
 
 : "${CONTROLLER_URL:?CONTROLLER_URL is required}"
 : "${HEAD_BRANCH:?HEAD_BRANCH is required}"
-# TODO(review): a PR whose head repo was deleted has an empty clone_url, so this fails the job instead of failing soft.
-: "${REPO_URL:?REPO_URL is required}"
+# A pull request whose head repository was deleted (usually a fork) arrives with
+# no clone URL. The controller would reject the event anyway, so this is
+# reported and skipped rather than failing the workflow.
+if [ -z "${REPO_URL:-}" ]; then
+    echo "::warning::No head repository for ${HEAD_BRANCH} (deleted?); not asking the controller to cancel in-flight jobs"
+    exit 0
+fi
 
 if [ "${MERGED:-false}" = "true" ]; then
     MERGED_JSON=true

@@ -72,9 +72,12 @@ import java.util.function.BiFunction;
  *
  * <p>This is controller-side cancellation only: no signal reaches the worker,
  * so a job already running keeps its agent process until that process ends on
- * its own or the worker's own watchdogs stop it. The controller never touches
- * the worker's checkout, so a cancelled job's working tree is left in place for
- * retrieval.</p>
+ * its own or the worker's own watchdogs stop it. That process's own terminal
+ * event, when it arrives, is dropped at the terminal choke point
+ * ({@link io.flowtree.controller.JobLifecycleRecorder#recordTerminal}), so the
+ * job stays {@code CANCELLED} and is not fanned out a second time. The
+ * controller never touches the worker's checkout, so a cancelled job's working
+ * tree is left in place for retrieval.</p>
  *
  * @author Michael Murray
  */
@@ -250,7 +253,6 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
                     + " workstreamId=" + workstreamId + "); leaving its record as it completed");
             return;
         }
-        // TODO(review): the still-running agent's own later completion overwrites CANCELLED and fans out a second time.
         warn("Cancelling in-flight job (jobId=" + jobId + " workstreamId=" + workstreamId
                 + "): " + reason);
         if (terminalEventSink != null) {

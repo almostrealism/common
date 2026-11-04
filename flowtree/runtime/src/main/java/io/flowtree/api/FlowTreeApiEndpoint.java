@@ -1387,8 +1387,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @param event        the terminal event to dispatch
      */
     public void completeJob(String workstreamId, JobCompletionEvent event) {
-        // Controller-owned terminal persistence, independent of any notifier.
-        jobLifecycleRecorder.recordTerminal(workstreamId, event);
+        // Controller-owned terminal persistence; a late event for a cancelled job is dropped.
+        if (!jobLifecycleRecorder.recordTerminal(workstreamId, event)) return;
         // A terminal job never needs re-dispatch.
         if (pendingJobRecovery != null && event != null) {
             pendingJobRecovery.clear(event.getJobId());

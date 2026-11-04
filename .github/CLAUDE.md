@@ -1494,8 +1494,8 @@ reached a terminal state. It POSTs to the controller's `/api/pr-events` through
 on the head branch that it accepted before the PR closed. Unlike `cancel`,
 it is **not** gated on `merged`: a close without a merge settles the branch's
 work too. It holds the `FLOWTREE_CF_ACCESS_CLIENT_SECRET` controller credential
-and fails soft. An unreachable controller or an `ok:false` answer is a workflow
-warning, and the stall watchdog stays the backstop. It is safe under
+and fails soft. An unreachable controller, an `ok:false` answer, or a PR whose
+head repository was deleted (no clone URL) is a workflow warning, and the stall watchdog stays the backstop. It is safe under
 `pull_request_target` for the same reason as `cancel`: it checks out no PR
 code, and `HEAD_BRANCH`, `REPO_URL` and the other event values reach the script
 through `env`, never interpolated into `run:`. Because a fork supplies its own

@@ -131,11 +131,22 @@ public final class JobLifecycleRecorder {
      * superseded run, not a completed pass, so it is not counted. See
      * {@link RemediationStateStore#completeJob}.</p>
      *
+     * <p>A job the controller has already cancelled keeps that record. A
+     * cancellation does not stop the agent still running the job, so the
+     * agent's own completion can arrive later; that event is rejected rather
+     * than recorded over {@code CANCELLED}, and the caller must not dispatch
+     * it, since the cancellation already released everything waiting on the
+     * job.</p>
+     *
      * @param workstreamId the workstream the job belongs to
      * @param event        the terminal event
+     * @return {@code true} when the event was recorded and should be
+     *         dispatched; {@code false} when it is {@code null} or arrived for
+     *         a job that was already cancelled
      */
-    public void recordTerminal(String workstreamId, JobCompletionEvent event) {
-        if (event == null) return;
+    public boolean recordTerminal(String workstreamId, JobCompletionEvent event) {
+        // TODO(review): check-then-write is not atomic; a cancel landing between getJob and recordJobCompleted is still overwritten.
+        if (event == null || isAlreadyCancelled(event)) return false;
         if (statsStore != null) {
             statsStore.recordJobCompleted(workstreamId, event);
         }
@@ -143,5 +154,23 @@ public final class JobLifecycleRecorder {
             remediationStore.completeJob(event.getJobId(), workstreamId, event.getTargetBranch(),
                     event.getCommitHash(), event.getStatus() != JobCompletionEvent.Status.CANCELLED);
         }
+        return true;
+    }
+
+    /**
+     * Reports whether {@code event} is a non-cancellation terminal event for a
+     * job whose stored record is already {@code CANCELLED}. The cancellation
+     * event itself is not rejected, because the cancelling path moves the row
+     * to {@code CANCELLED} before it dispatches that event.
+     *
+     * @param event the terminal event
+     * @return {@code true} when the job was cancelled before this event arrived
+     */
+    private boolean isAlreadyCancelled(JobCompletionEvent event) {
+        if (statsStore == null || event.getStatus() == JobCompletionEvent.Status.CANCELLED) {
+            return false;
+        }
+        JobCompletionEvent recorded = statsStore.getJob(event.getJobId());
+        return recorded != null && recorded.getStatus() == JobCompletionEvent.Status.CANCELLED;
     }
 }
