@@ -86,8 +86,12 @@ it learns from, and why the self-hosted LM deliberately uses a vocabulary-free b
      (stated once here; the Javadoc and docstring remain authoritative and the page links them),
      what `validate_pipeline` accepts and rejects and why (normalizer/pre-tokenizer shapes, the
      reachable-byte rule including the always-unreachable `<0x20>` and added-token characters,
-     `fuse_unk`), the reader-limit checks (`MAX_ENTRIES`, `MAX_STRING_BYTES`), and the empty
-     post-processor that is why `encodeAsLong` adds no BOS/EOS.
+     `fuse_unk`), the reader-limit checks (`MAX_ENTRIES`, `MAX_STRING_BYTES`), and the
+     post-processor rule. The causality runs from the reader to the exporter: the `ARTK` binary
+     carries no post-processor and `SentencePieceBPETokenizer.encodeAsLong` adds no BOS/EOS, so
+     `validate_pipeline` accepts a source post-processor only when it is a pass-through
+     (`TemplateProcessing` whose single-sequence template is exactly `$A`) and rejects one that
+     adds special tokens or repeats the sequence. A caller that needs BOS/EOS adds them itself.
    - **Where tokens meet the graph.** One short section on the host boundary: token ids are
      produced on the host and enter a model as a `PackedCollection` of ids (embedding lookup is a
      Producer). Cross-link `training-a-language-model.md`, `ml-inference-pipeline.md` and the
