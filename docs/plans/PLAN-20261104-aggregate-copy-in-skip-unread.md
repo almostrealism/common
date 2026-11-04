@@ -140,9 +140,14 @@ handful of arguments are not folded-then-copied at all.
 - The read decision is inferred from the compiled `Scope`, with no declared-property API and no way
   for a computation to contradict what its code does.
 - All existing aggregation and argument-binding tests pass on any backend.
-- On a Metal node, `CausalLanguageModelDecodeThroughputTest` reports a **lower dispatches/byte** for
-  the rolling-cache decode than before this change, and `ConnectomeNetworkTest` runs no slower with
-  its bridge-commit count flat or lower.
+- On a Metal node, `CausalLanguageModelDecodeThroughputTest` reports a **lower dispatches/byte** (and
+  no higher commits/byte) for the rolling-cache decode than before this change. That test is the one
+  that profiles the Metal dispatch and command-buffer commit counts and logs the per-byte figures —
+  it reports them rather than asserting them, because they vary by node and backend, so the win is
+  read by comparing the logged figures against the pre-change baseline.
+- `ConnectomeNetworkTest` still reproduces the Brian2 reference spikes exactly, confirming the
+  copy-in skip changes no simulation result. It is a correctness test and measures no copy or commit
+  count; any connectome-side copy-count win is read from a separately profiled run, not from it.
 - No test is weakened (no loosened tolerance, reduced dimension, raised `@TestDepth`, inflated
   timeout, or skip-gate) to reach any of the above.
 
@@ -157,4 +162,5 @@ surface of, the other per-dispatch-copy-count levers, which stay as follow-ups.
 Small–medium. One new read-query method on the query-owning interface and `Scope`, three symmetric
 methods on `MemoryDataArgumentMap`, a partition change in `ensureCopyOperations`, and one structural
 test — a localized change on the template of work already proven on this exact path. The throughput
-and bridge-commit measurement needs a Metal node (macOS); correctness is verifiable on any backend.
+and command-buffer commit-count measurement needs a Metal node (macOS); correctness is verifiable on
+any backend.

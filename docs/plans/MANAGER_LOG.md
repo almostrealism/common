@@ -96,9 +96,9 @@ The last two cycles were documentation; the two before that were performance (co
 of value (rolling cache). Returning to performance now is the disciplined move the measurement
 forces, not a detour to an easier category — the foundation is covered and current, the proof-of-
 value feature is landed and correct, and its promised win is blocked precisely here. Small–medium
-task needing a Metal node for the dispatches/byte and bridge-commit measurement (workstream settings
-file present), as the copy-once and rolling-cache cycles did; correctness is verifiable on any
-backend.
+task needing a Metal node for the dispatches/byte and command-buffer commit-count measurement that
+`CausalLanguageModelDecodeThroughputTest` profiles (workstream settings file present), as the
+copy-once and rolling-cache cycles did; correctness is verifiable on any backend.
 
 #### What comes next
 
