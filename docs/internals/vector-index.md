@@ -109,10 +109,11 @@ public CollectionProducer normalize(Producer<PackedCollection> vector) {
 Vectors are L2-normalized once, when they are inserted, so cosine similarity becomes a dot
 product. Scoring a query against a whole batch of candidates is then one `matmul`. The
 `MIN_NORM` floor keeps a zero vector at zero instead of dividing by zero. The batch form is a
-single computation, evaluated once at the boundary:
+single producer, evaluated once at the boundary (the example below asserts the cosine
+similarities it returns):
 
 ```java
-// VectorIndexExamplesTest.wholeBatchScoringIsOneComputation
+// VectorIndexExamplesTest.wholeBatchScoringMatchesCosineSimilarities
 SimilarityMetric metric = SimilarityMetric.COSINE;
 
 PackedCollection candidates = new PackedCollection(3, 2);
@@ -133,10 +134,15 @@ contiguous `[capacity, dimension]` `PackedCollection`. The index holds two evalu
 - `scoreAll`, compiled once per capacity. It scores one vector against every row of the store
   in one dispatch and writes into a fixed `[capacity]` score buffer.
 
-So `insert` and `search` each make a fixed number of dispatches (two), however many comparisons
-they imply. The host reads the score array once, and every decision is made on the host from
-that array: the top-K for a search, and the neighbor lists of each layer for an insert. Each
-node keeps only its row index. There is no `PackedCollection` per node, so the number of native
+So inserting a new vector into a non-empty index, and searching a non-empty index, each make a
+fixed number of dispatches — two, however many comparisons they imply: one normalizes the
+incoming vector, one scores it against the whole store. The edge cases do less and never more:
+the first vector in an empty index and the re-normalization of an id that is still live stop
+after the normalize dispatch (there is nothing yet to score against, or the row is simply
+rewritten in place), and a search of an empty index returns before dispatching at all. The host
+reads the score array once, and every decision is made on the host from that array: the top-K
+for a search, and the neighbor lists of each layer for an insert. Each node keeps only its row
+index. There is no `PackedCollection` per node, so the number of native
 allocations does not grow with the number of nodes.
 
 When the store fills up, `grow()` doubles the capacity, copies the existing rows across, and

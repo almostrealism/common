@@ -44,10 +44,10 @@ import static org.almostrealism.persist.index.test.DiskStoreTestSupport.vec;
  * Drift guard for the vector-index internals page ({@code docs/internals/vector-index.md}).
  * Every complete code example on that page is taken from a method of this class, and each
  * method asserts the behavioral claim the page makes about its example: a planted nearest
- * neighbor is recalled at top-1 across a capacity growth, the whole-store score is a single
- * {@link SimilarityMetric#similarities} computation, search results survive a store
- * save/reload unchanged, and a change of index model excludes stored vectors until they are
- * re-embedded.
+ * neighbor is recalled at top-1 across a capacity growth, a batch of candidates scored against
+ * one query through {@link SimilarityMetric#similarities} yields the expected cosine
+ * similarities, search results survive a store save/reload unchanged, and a change of index
+ * model excludes stored vectors until they are re-embedded.
  *
  * <p>The model-keyed rebuild is exercised at the {@link ProtobufDiskStore} layer — the
  * {@code hnsw.model} marker and the {@link ProtobufDiskStore#setIndexModel} /
@@ -119,11 +119,14 @@ public class VectorIndexExamplesTest extends TestSuiteBase {
 
 	/**
 	 * Page section "The index as a computation graph": scoring a batch of candidates
-	 * against one query is one {@link SimilarityMetric#similarities} producer — for
-	 * cosine, a {@code matmul} of L2-normalized rows — evaluated once at the boundary.
+	 * against one query through {@link SimilarityMetric#similarities} — for cosine, a
+	 * {@code matmul} of L2-normalized rows — evaluated once at the boundary produces the
+	 * expected cosine similarity for every candidate. This asserts the numerical result of
+	 * the batch-scoring producer; it does not observe how many native dispatches the
+	 * evaluation makes.
 	 */
 	@Test(timeout = 30000)
-	public void wholeBatchScoringIsOneComputation() {
+	public void wholeBatchScoringMatchesCosineSimilarities() {
 		SimilarityMetric metric = SimilarityMetric.COSINE;
 
 		PackedCollection candidates = new PackedCollection(3, 2);
