@@ -6,7 +6,7 @@ Written by `studio/bioscience/scripts/connectome_csr.py` in almostrealism/common
 
 - `connectome.safetensors`: `row_offsets` I32 [452], `presynaptic` I32 [21785], `weights` I32 [21785],
   `signs` I32 [451]. Rows are postsynaptic neurons; `weights` holds sign(pre) * count.
-- `neurons.tsv`: body_id, type, superclass, class, transmitter per neuron, in index order.
+- `neurons.tsv`: body_id, type, superclass, class, transmitter, side per neuron, in index order.
 - `connectome.json`: dataset, filters, sign rule and totals.
 - `spot-checks.json`: selected neurons recomputed from the source table by body id.
 

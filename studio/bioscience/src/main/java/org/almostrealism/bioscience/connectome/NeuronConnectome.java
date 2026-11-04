@@ -48,8 +48,8 @@ import java.util.stream.IntStream;
  *       {@code row_offsets} ({@code [N + 1]}), {@code presynaptic} ({@code [E]}, the presynaptic
  *       neuron of each entry), {@code weights} ({@code [E]}, the presynaptic neuron's sign times
  *       the synapse count) and {@code signs} ({@code [N]}, +1 or -1 per neuron);</li>
- *   <li>{@value #NEURONS_FILE}, a header line followed by the body id, type, superclass, class
- *       and predicted transmitter of each neuron, tab-separated, in index order.</li>
+ *   <li>{@value #NEURONS_FILE}, a header line followed by the body id, type, superclass, class,
+ *       predicted transmitter and side of each neuron, tab-separated, in index order.</li>
  * </ul>
  *
  * <p>Rows are postsynaptic neurons. {@link #getWeights()} is therefore an {@code [N, N]}
@@ -72,7 +72,7 @@ public class NeuronConnectome implements CollectionFeatures, Destroyable {
 	public static final String NEURONS_FILE = "neurons.tsv";
 
 	/** The columns of {@link #NEURONS_FILE}, in order. */
-	private static final String[] NEURON_COLUMNS = { "body_id", "type", "superclass", "class", "transmitter" };
+	private static final String[] NEURON_COLUMNS = { "body_id", "type", "superclass", "class", "transmitter", "side" };
 
 	/** The loaded tensors. */
 	private final StateDictionary tensors;
@@ -80,7 +80,7 @@ public class NeuronConnectome implements CollectionFeatures, Destroyable {
 	/** The body id of each neuron, in index order. */
 	private final long[] bodyIds;
 
-	/** The annotations of each neuron in index order: type, superclass, class and transmitter. */
+	/** The annotations of each neuron in index order: type, superclass, class, transmitter and side. */
 	private final List<String[]> annotations;
 
 	/** The index of each body id. */
@@ -100,7 +100,7 @@ public class NeuronConnectome implements CollectionFeatures, Destroyable {
 	 *
 	 * @param tensors     the loaded tensors, owned from now on
 	 * @param bodyIds     the body id of each neuron in index order
-	 * @param annotations the type, superclass, class and transmitter of each neuron in index order
+	 * @param annotations the type, superclass, class, transmitter and side of each neuron in index order
 	 * @throws IllegalArgumentException if a tensor is missing, the compressed rows are invalid, the
 	 *                                  shapes disagree with the number of neurons, or a body id is
 	 *                                  listed twice
@@ -248,6 +248,16 @@ public class NeuronConnectome implements CollectionFeatures, Destroyable {
 	 * @return the transmitter, or {@code ""} when the dataset does not predict one
 	 */
 	public String getTransmitter(int index) { return annotations.get(index)[3]; }
+
+	/**
+	 * Returns the side of the body a neuron belongs to: its soma side, or for a sensory neuron,
+	 * whose soma lies outside the nervous system, the side its axon enters on.
+	 *
+	 * @param index the neuron index
+	 * @return {@code "L"}, {@code "R"} or {@code "M"} (midline), or {@code ""} when the dataset
+	 *         does not annotate it
+	 */
+	public String getSide(int index) { return annotations.get(index)[4]; }
 
 	/**
 	 * Returns the index of the neuron with a body id.

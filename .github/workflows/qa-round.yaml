@@ -4,8 +4,9 @@ name: "QA Round"
 # runs the same ordered steps — ask the controller whether it accepts automated
 # jobs, decide from the shared cadence gate whether a round may start, archive
 # the rounds that are over, create a "<branch-prefix><UTC timestamp>" branch,
-# register its workstream, build a prompt, and submit a coding-agent job that
-# opens a pull request with whatever it finds. The only per-round differences —
+# build a prompt, register its workstream, and submit a coding-agent job that
+# opens a pull request with whatever it finds (retiring the workstream again if
+# that submission fails). The only per-round differences —
 # the branch prefix, the interval, the prompt and its variables, and the
 # submission settings — are inputs, so this one workflow carries the plumbing
 # once instead of a copy per round.
@@ -269,6 +270,26 @@ jobs:
           echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
           echo "::notice::Created branch $BRANCH_NAME"
 
+      # The caller's checkout is the caller-root: a built-in selector names a
+      # framework template, a caller path names one in that checkout, read as
+      # data. Variables reach the builder only through the environment.
+      - name: Build the round's prompt
+        if: steps.decide.outputs.run == 'true'
+        env:
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          PROMPT: ${{ inputs.prompt }}
+          TEMPLATE_VARS: ${{ inputs.template-vars }}
+          TEST_RUNNER_FRAGMENT: ${{ inputs.test-runner-fragment }}
+        run: |
+          bash "$FRAMEWORK/tools/ci/prompts/build-qa-round-prompt.sh" \
+            "$GITHUB_WORKSPACE" "${{ runner.temp }}/agent-prompt.txt"
+
+      # Registered only once the gate has said the round runs and everything
+      # but the submission has succeeded, directly before it: a workstream
+      # exists only for a round that is about to get its job. See
+      # "Retire the workstream of a round that did not start" below.
       - name: Register workstream
         id: register
         if: steps.decide.outputs.run == 'true'
@@ -287,23 +308,8 @@ jobs:
           DEPENDENT_REPOS: ${{ inputs.framework-repository != github.repository && format('git@github.com:{0}.git', inputs.framework-repository) || '' }}
         run: bash "$FRAMEWORK/tools/ci/register-workstream.sh"
 
-      # The caller's checkout is the caller-root: a built-in selector names a
-      # framework template, a caller path names one in that checkout, read as
-      # data. Variables reach the builder only through the environment.
-      - name: Build the round's prompt
-        if: steps.decide.outputs.run == 'true'
-        env:
-          BRANCH: ${{ steps.qa_branch.outputs.branch }}
-          BASE_BRANCH: ${{ github.event.repository.default_branch }}
-          REPO_URL: git@github.com:${{ github.repository }}.git
-          PROMPT: ${{ inputs.prompt }}
-          TEMPLATE_VARS: ${{ inputs.template-vars }}
-          TEST_RUNNER_FRAGMENT: ${{ inputs.test-runner-fragment }}
-        run: |
-          bash "$FRAMEWORK/tools/ci/prompts/build-qa-round-prompt.sh" \
-            "$GITHUB_WORKSPACE" "${{ runner.temp }}/agent-prompt.txt"
-
       - name: Submit the round's agent job
+        id: submit
         if: steps.decide.outputs.run == 'true'
         env:
           CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
@@ -320,6 +326,30 @@ jobs:
           PHASE_CONFIGS: ${{ inputs.phase-configs }}
           REQUIRED_LABELS: ${{ inputs.required-labels }}
         run: bash "$FRAMEWORK/tools/ci/submit-agent-job.sh" "${{ runner.temp }}/agent-prompt.txt"
+
+      # A round whose submission did not produce a job after its workstream was
+      # registered would otherwise leave a jobless workstream for the archiver
+      # and the retrospective to filter. That covers a step failure (a transient
+      # error, a non-200 response) AND the two paths submit-agent-job.sh exits 0
+      # on without creating a job — the controller skipping the submission, or
+      # rejecting it because intake closed since the check — which `failure()`
+      # alone never sees; `steps.submit.outputs.submitted` tells them apart (an
+      # exit-1 failure writes no output, which reads the same as false). Archive
+      # exactly this round's workstream: the prefix is the full, timestamped
+      # branch name. Archiving is reversible.
+      - name: Retire the workstream of a round that did not start
+        if: >-
+          !cancelled()
+          && steps.decide.outputs.run == 'true'
+          && steps.register.outcome == 'success'
+          && steps.submit.outputs.submitted != 'true'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH_PREFIX: ${{ steps.qa_branch.outputs.branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: bash "$FRAMEWORK/tools/ci/archive-stale-workstreams.sh"
 
       - name: Summary
         if: always()

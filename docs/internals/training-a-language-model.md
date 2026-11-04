@@ -10,7 +10,7 @@ general rule that `ModelOptimizer` owns the training loop.
 
 | Need | Where | Notes |
 |------|-------|-------|
-| Byte tokenizer | `ByteTokenizer` (`org.almostrealism.ml.tokenization`) | Fixed 256-symbol vocabulary; token id = unsigned UTF-8 byte. Decoding uses standard UTF-8 replacement for malformed sequences; ids outside `0..255` are rejected. |
+| Byte tokenizer | `ByteTokenizer` (`org.almostrealism.ml.tokenization`) | Fixed 256-symbol vocabulary; token id = unsigned UTF-8 byte. Decoding uses standard UTF-8 replacement for malformed sequences; ids outside `0..255` are rejected. See [text-tokenization.md](text-tokenization.md) for why the self-hosted LM uses a vocabulary-free byte tokenizer, and the rest of the tokenizer family. |
 | Next-token dataset | `NextTokenDataset` (`org.almostrealism.ml`) | Input `(seqLen)` token ids, target `(seqLen, vocab)` one-hot rows of the tokens shifted by one. `split` partitions the source tokens into contiguous regions before windowing, so no window crosses the train/held-out seam. |
 | One-hot rows | `VectorFeatures.oneHotRows` | One producer for the whole `(rows, classes)` matrix. |
 | Token embedding | `LayerFeatures.embedding`, the PDSL `embedding` built-in | Gathers table rows with `CollectionFeatures.rows`; gradients reach the table (`EmbeddingTests`, `EmbeddingLogSoftmaxPrimitivesTest`). |

@@ -21,12 +21,15 @@ from test_connectome_csr import (  # noqa: E402,F401
     CompressedRowsTest,
     EventsTest,
     KickScheduleTest,
+    ModelInputsTest,
+    NeuronTableTest,
     SafetensorsRoundTripTest,
     SubsetTest,
     SyntheticConversionTest,
 )
 from test_male_cns import (  # noqa: E402,F401
     MajorityAnnotationsTest,
+    NeuronSideTest,
     SafetensorsHeaderTest,
     SourceChecksumsTest,
     TransmitterSignTest,
