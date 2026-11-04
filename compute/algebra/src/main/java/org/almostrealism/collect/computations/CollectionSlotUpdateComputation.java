@@ -61,6 +61,13 @@ import java.util.List;
  * violate this read outside the values range for the wrapped elements rather than
  * wrapping around.</p>
  *
+ * <p>A position may be given in units of a {@code positionStride} instead of elements, so
+ * that {@code positions[n] * positionStride} is the slot's element offset. A cache that
+ * writes whole rows passes the row index with a stride of the row length: the product is
+ * then formed on integers inside the kernel, and stays exact for blocks of more than
+ * {@code 2^24} elements, where an element offset computed as a collection value would be
+ * rounded on a single-precision backend.</p>
+ *
  * @see CollectionConcatenateComputation
  * @see DynamicIndexProjectionProducerComputation
  *
@@ -75,6 +82,8 @@ public class CollectionSlotUpdateComputation extends TransitiveDeltaExpressionCo
 	private final int blockSize;
 	/** Elements replaced per block. */
 	private final int slotSize;
+	/** Elements per unit of a position. */
+	private final int positionStride;
 
 	/**
 	 * Constructs a slot update over the given base collection.
@@ -85,7 +94,7 @@ public class CollectionSlotUpdateComputation extends TransitiveDeltaExpressionCo
 	 * @param slotSize  elements replaced per block
 	 * @param base      the collection to update, total size {@code blocks * blockSize}
 	 * @param values    replacement values, total size {@code blocks * slotSize}
-	 * @param positions block-relative slot start positions, total size {@code blocks}
+	 * @param positions block-relative slot start positions, in elements, total size {@code blocks}
 	 * @throws IllegalArgumentException if any argument's total size is inconsistent
 	 *                                  with {@code blocks}/{@code blockSize}/{@code slotSize}
 	 */
@@ -94,10 +103,40 @@ public class CollectionSlotUpdateComputation extends TransitiveDeltaExpressionCo
 										   Producer<PackedCollection> base,
 										   Producer<PackedCollection> values,
 										   Producer<PackedCollection> positions) {
+		this(shape, blocks, blockSize, slotSize, 1, base, values, positions);
+	}
+
+	/**
+	 * Constructs a slot update over the given base collection whose positions are counted in
+	 * units of {@code positionStride} elements.
+	 *
+	 * @param shape          output shape; its total size must be {@code blocks * blockSize}
+	 * @param blocks         number of blocks in the base collection
+	 * @param blockSize      elements per block
+	 * @param slotSize       elements replaced per block
+	 * @param positionStride elements per unit of a position, at least 1
+	 * @param base           the collection to update, total size {@code blocks * blockSize}
+	 * @param values         replacement values, total size {@code blocks * slotSize}
+	 * @param positions      block-relative slot start positions, in units of
+	 *                       {@code positionStride}, total size {@code blocks}
+	 * @throws IllegalArgumentException if any argument's total size is inconsistent
+	 *                                  with {@code blocks}/{@code blockSize}/{@code slotSize},
+	 *                                  or {@code positionStride} is not positive
+	 */
+	public CollectionSlotUpdateComputation(TraversalPolicy shape,
+										   int blocks, int blockSize, int slotSize, int positionStride,
+										   Producer<PackedCollection> base,
+										   Producer<PackedCollection> values,
+										   Producer<PackedCollection> positions) {
 		super("slotUpdate", shape, base, values, positions);
 		this.blocks = blocks;
 		this.blockSize = blockSize;
 		this.slotSize = slotSize;
+		this.positionStride = positionStride;
+
+		if (positionStride < 1) {
+			throw new IllegalArgumentException("Position stride " + positionStride + " is not positive");
+		}
 
 		if (shape.getTotalSizeLong() != (long) blocks * blockSize) {
 			throw new IllegalArgumentException("Output shape " + shape
@@ -150,9 +189,10 @@ public class CollectionSlotUpdateComputation extends TransitiveDeltaExpressionCo
 			Expression<?> block = localIdx.divide((long) blockSize);
 			Expression<?> offset = localIdx.imod((long) blockSize);
 
-			Expression<Integer> position = args[3]
+			Expression<? extends Number> position = args[3]
 					.getValueAt(block.add(batchIdx.multiply((long) blocks)))
-					.toInt();
+					.toInt()
+					.multiply(positionStride);
 			Expression<?> relative = offset.subtract(position);
 
 			Expression<?> valueIdx = block.multiply((long) slotSize)
@@ -192,7 +232,7 @@ public class CollectionSlotUpdateComputation extends TransitiveDeltaExpressionCo
 
 		return (CollectionProducerParallelProcess)
 				new CollectionSlotUpdateComputation(getShape(), blocks, blockSize, slotSize,
-						base, values, positions)
+						positionStride, base, values, positions)
 				.setPostprocessor(getPostprocessor())
 				.setDescription(getDescription())
 				.setShortCircuit(getShortCircuit())
@@ -207,6 +247,7 @@ public class CollectionSlotUpdateComputation extends TransitiveDeltaExpressionCo
 		}
 
 		return signature + "{blocks=" + blocks
-				+ ",blockSize=" + blockSize + ",slotSize=" + slotSize + "}";
+				+ ",blockSize=" + blockSize + ",slotSize=" + slotSize
+				+ ",positionStride=" + positionStride + "}";
 	}
 }

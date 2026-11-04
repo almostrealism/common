@@ -38,6 +38,22 @@ class TransmitterSignTest(unittest.TestCase):
         self.assertEqual(1, male_cns.transmitter_sign(None))
 
 
+class NeuronSideTest(unittest.TestCase):
+    """A neuron's side is its soma side, or for a sensory neuron the side its axon enters on."""
+
+    def test_soma_side_wins(self):
+        self.assertEqual("L", male_cns.neuron_side("L", "R"))
+        self.assertEqual("M", male_cns.neuron_side("M", None))
+
+    def test_root_side_when_no_soma_side(self):
+        self.assertEqual("R", male_cns.neuron_side(None, "R"))
+        self.assertEqual("L", male_cns.neuron_side("", "L"))
+
+    def test_unknown_is_empty(self):
+        self.assertEqual("", male_cns.neuron_side(None, None))
+        self.assertEqual("", male_cns.neuron_side(None, "unknown"))
+
+
 class MajorityAnnotationsTest(unittest.TestCase):
     """Each type takes the most common non-empty annotation of its members."""
 

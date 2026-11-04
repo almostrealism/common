@@ -113,10 +113,12 @@ import java.util.function.Supplier;
  * <p>The counter is a floating-point collection. On FP32 backends it counts exactly only up to
  * 2<sup>24</sup> steps. A system that derives time as {@code step * dt} in FP32 loses resolution
  * earlier, because the product has a 24-bit mantissa and its quantum grows with the step
- * count. For the same reason, a {@link Recording} computes its write position
- * {@code index * width} exactly on FP32 backends only while {@code capacity * width} stays
- * within 2<sup>24</sup> elements; a larger recording writes to the wrong rows without an
- * error.</p>
+ * count. A {@link Recording} gives its slot update the row index and the row width
+ * separately, and the write position {@code index * width} is formed on integers inside the
+ * kernel, so a buffer of more than 2<sup>24</sup> elements is written to the right rows. The row
+ * index is itself the floating-point sample counter, which shares the counter's 2<sup>24</sup>
+ * limit, so it is the number of samples (the {@code capacity}), not the number of elements
+ * ({@code capacity * width}), that an FP32 backend bounds.</p>
  *
  * <h2>Example</h2>
  * <pre>{@code
@@ -554,7 +556,7 @@ public class SimulationRunner extends TemporalRunner {
 	 * <p>The recording owns a buffer of shape {@code (capacity, width)}, where {@code width} is
 	 * the size of the recorded producer, and a device-resident sample index. One write is a
 	 * single compiled operation list: a {@link CollectionSlotUpdateComputation} that replaces row
-	 * {@code index} of the buffer with the recorded values, assigned back over the buffer, then
+	 * {@code index} (a position with a stride of {@code width}) of the buffer with the recorded values, assigned back over the buffer, then
 	 * an advance of the index. Each output element of the slot update reads only its own element
 	 * of the buffer, so writing the buffer in the kernel that reads it is safe. The cost of a
 	 * write is proportional to {@code capacity * width}.</p>
@@ -604,8 +606,8 @@ public class SimulationRunner extends TemporalRunner {
 
 			OperationList op = new OperationList("Simulation Recording", false);
 			op.add(f.a("Record Simulation Sample", f.cp(buffer),
-					new CollectionSlotUpdateComputation(buffer.getShape(), 1, capacity * width, width,
-							f.cp(buffer), selected, f.cp(index).multiply(width))));
+					new CollectionSlotUpdateComputation(buffer.getShape(), 1, capacity * width, width, width,
+							f.cp(buffer), selected, f.cp(index))));
 			op.add(f.a("Advance Recording Index", f.cp(index), f.add(f.cp(index), f.c(1.0))));
 
 			OperationList reset = new OperationList("Reset Recording Index", false);
