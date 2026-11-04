@@ -279,7 +279,19 @@ jobs:
           echo "plan_file=$PLAN_FILE" >> "$GITHUB_OUTPUT"
           echo "::notice::Seeded $PLAN_FILE"
 
+      - name: Build planning prompt
+        if: steps.branches.outputs.needs_new_branch == 'true'
+        env:
+          BRANCH: ${{ steps.new_branch.outputs.branch }}
+          BASE_BRANCH: master
+          PLAN_DOCUMENT: ${{ steps.seed.outputs.plan_file }}
+        run: |
+          ./tools/ci/prompts/build-planning-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      # Registered directly before the submission, once every other step of
+      # the round has succeeded; see the retire step after the submission.
       - name: Register workstream
+        id: register
         if: steps.branches.outputs.needs_new_branch == 'true'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
@@ -292,16 +304,8 @@ jobs:
           chmod +x ./tools/ci/register-workstream.sh
           ./tools/ci/register-workstream.sh
 
-      - name: Build planning prompt
-        if: steps.branches.outputs.needs_new_branch == 'true'
-        env:
-          BRANCH: ${{ steps.new_branch.outputs.branch }}
-          BASE_BRANCH: master
-          PLAN_DOCUMENT: ${{ steps.seed.outputs.plan_file }}
-        run: |
-          ./tools/ci/prompts/build-planning-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
-
       - name: Submit planning agent job
+        id: submit
         if: steps.branches.outputs.needs_new_branch == 'true'
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
@@ -317,6 +321,27 @@ jobs:
           PROTECT_TEST_FILES: "false"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      # A submission that produced no job after registration would leave a
+      # jobless workstream behind: a step failure, or one of the exit-0 paths
+      # (the controller skipped or rejected it) that `failure()` cannot see.
+      # `steps.submit.outputs.submitted` catches both; archive exactly this
+      # round's (reversible).
+      - name: Retire the workstream of a round that did not start
+        if: >-
+          !cancelled()
+          && steps.branches.outputs.needs_new_branch == 'true'
+          && steps.register.outcome == 'success'
+          && steps.submit.outputs.submitted != 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH_PREFIX: ${{ steps.new_branch.outputs.branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/archive-stale-workstreams.sh
+          ./tools/ci/archive-stale-workstreams.sh
 
       - name: Summary
         if: always()
@@ -738,19 +763,6 @@ jobs:
             echo "::notice::Committed a new auto-exclusion entry on ${{ steps.branch.outputs.branch }}; it will land in this round's PR"
           fi
 
-      - name: Register workstream
-        if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
-        env:
-          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
-          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
-          BRANCH: ${{ steps.branch.outputs.branch }}
-          BASE_BRANCH: master
-          REPO_URL: git@github.com:${{ github.repository }}.git
-        run: |
-          chmod +x ./tools/ci/register-workstream.sh
-          ./tools/ci/register-workstream.sh
-
       - name: Build coverage prompt
         if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
         env:
@@ -764,6 +776,22 @@ jobs:
           chmod +x ./tools/ci/prompts/build-coverage-prompt.sh
           ./tools/ci/prompts/build-coverage-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
 
+      # Registered directly before the submission, once every other step of
+      # the round has succeeded; see the retire step after the submission.
+      - name: Register workstream
+        id: register
+        if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          BASE_BRANCH: master
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/register-workstream.sh
+          ./tools/ci/register-workstream.sh
+
       # No sensitive-file bypass is requested: a coverage round only ever
       # adds new tests, appends to tools/coverage-data/coverage-history.tsv,
       # and may already carry the workflow's own auto-exclusion commit to
@@ -773,6 +801,7 @@ jobs:
       # this round's premise depends on existing tests staying byte-identical,
       # and test-integrity-check holds it to the same rule as every branch.
       - name: Submit coverage agent job
+        id: submit
         if: steps.decide.outputs.run == 'true' && steps.select.outputs.target != ''
         env:
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
@@ -786,6 +815,27 @@ jobs:
           ENFORCE_CHANGES: "true"
         run: |
           ./tools/ci/submit-agent-job.sh "${{ runner.temp }}/agent-prompt.txt"
+
+      # A submission that produced no job after registration would leave a
+      # jobless workstream behind: a step failure, or one of the exit-0 paths
+      # (the controller skipped or rejected it) that `failure()` cannot see.
+      # `steps.submit.outputs.submitted` catches both; archive exactly this
+      # round's (reversible).
+      - name: Retire the workstream of a round that did not start
+        if: >-
+          !cancelled()
+          && steps.decide.outputs.run == 'true'
+          && steps.register.outcome == 'success'
+          && steps.submit.outputs.submitted != 'true'
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH_PREFIX: ${{ steps.branch.outputs.branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+        run: |
+          chmod +x ./tools/ci/archive-stale-workstreams.sh
+          ./tools/ci/archive-stale-workstreams.sh
 
       - name: Summary
         if: always()

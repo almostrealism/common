@@ -43,8 +43,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Maven ───────────────────────────────────────────────────────────
-RUN apt-get update && apt-get install -y --no-install-recommends maven \
-    && rm -rf /var/lib/apt/lists/*
+# Taken from the official Maven 3 image, not apt: jammy's apt package is
+# Maven 3.6, which ignores MAVEN_ARGS and the split local repository that
+# MavenInstallSpace uses to give each job its own space for installed
+# artifacts. On 3.6 every job would again resolve whatever another branch's
+# job installed last.
+COPY --from=maven:3-eclipse-temurin-17 /usr/share/maven /usr/share/maven
+RUN ln -s /usr/share/maven/bin/mvn /usr/bin/mvn
 
 # ── Node.js 20 ─────────────────────────────────────────────────────
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \

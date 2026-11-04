@@ -21,6 +21,9 @@ import io.flowtree.job.JobFactory;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -66,6 +69,40 @@ public class ShellCommandJobTest extends TestSuiteBase {
 		assertEquals(0, job.getExitCode());
 		assertTrue(job.getStdout().contains("hello-world"));
 		assertTrue(job.getStderr() == null || job.getStderr().isEmpty());
+	}
+
+	/**
+	 * Verifies a shell command runs with the job's managed Maven environment, so
+	 * a {@code mvn} launched by the command installs into this job's
+	 * {@link MavenInstallSpace} rather than the node's shared repository. The
+	 * command echoes {@code MAVEN_ARGS}, which {@code applyEnvironmentTo} sets to
+	 * the space's split-repository arguments.
+	 */
+	@Test(timeout = 120000)
+	public void testExecuteAppliesManagedMavenEnvironment() throws Exception {
+		Path repository = Files.createTempDirectory("shellcmd-m2-repo");
+		String previous = System.getProperty(MavenInstallSpace.LOCAL_REPOSITORY_PROPERTY);
+		System.setProperty(MavenInstallSpace.LOCAL_REPOSITORY_PROPERTY, repository.toString());
+		try {
+			ShellCommandJob job = new ShellCommandJob("shell-mvn-env", "echo MAVEN_ARGS=$MAVEN_ARGS");
+			job.prepareEnvironment();
+			try {
+				job.doWork();
+				assertEquals(0, job.getExitCode());
+				MavenInstallSpace space = new MavenInstallSpace(repository, "shell-mvn-env");
+				assertTrue("The shell command must run with the job's MAVEN_ARGS: " + job.getStdout(),
+						job.getStdout().contains(space.mavenArgs()));
+			} finally {
+				job.releaseEnvironment();
+			}
+		} finally {
+			if (previous == null) {
+				System.clearProperty(MavenInstallSpace.LOCAL_REPOSITORY_PROPERTY);
+			} else {
+				System.setProperty(MavenInstallSpace.LOCAL_REPOSITORY_PROPERTY, previous);
+			}
+			new ManagedDirectory(repository).delete();
+		}
 	}
 
 	/** Verifies a command's non-zero exit code is captured. */
