@@ -160,4 +160,17 @@ public final class RemediationState {
         return new RemediationState(workstreamId, consecutiveNoProgress,
                 lastProducedCommit, true);
     }
+
+    /**
+     * Returns the record with its budget-spent notification marked unsent, for
+     * a claimed ping that could not be delivered: the next refused submission
+     * claims it again, so the person is still pinged once delivery is possible.
+     * The count and last-produced commit are unchanged.
+     *
+     * @return the updated record
+     */
+    public RemediationState afterNotificationUndelivered() {
+        return new RemediationState(workstreamId, consecutiveNoProgress,
+                lastProducedCommit, false);
+    }
 }

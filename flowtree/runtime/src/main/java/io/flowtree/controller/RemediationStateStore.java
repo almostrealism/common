@@ -374,6 +374,34 @@ public class RemediationStateStore extends ControllerDatabase {
     }
 
     /**
+     * Returns a claimed budget-spent notification that could not be delivered,
+     * clearing the flag so the next refused submission claims the ping again.
+     * Without this, a claim made while no channel or notifier is configured
+     * would silence the escalation for good, even after one is configured.
+     *
+     * <p>A record that cannot be read, or whose flag is not set (a commit has
+     * already reset it), is left unchanged.</p>
+     *
+     * @param workstreamId the workstream (branch / PR) key
+     * @return {@code true} when the set flag was cleared and that was persisted
+     */
+    public synchronized boolean releaseNotification(String workstreamId) {
+        if (!isOpen() || workstreamId == null || workstreamId.isEmpty()) {
+            return false;
+        }
+        RemediationState current;
+        try {
+            current = read(workstreamId);
+        } catch (SQLException e) {
+            warn("Failed to read remediation state for " + workstreamId
+                + "; not releasing the notification: " + e.getMessage());
+            return false;
+        }
+        if (current == null || !current.isNotified()) return false;
+        return write(current.afterNotificationUndelivered(), null, null);
+    }
+
+    /**
      * Sets the notification flag on a record the caller has just read under the
      * store's lock, so the claim acts on that record rather than on a second read.
      *

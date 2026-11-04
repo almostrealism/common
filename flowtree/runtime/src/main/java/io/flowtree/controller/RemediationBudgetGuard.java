@@ -21,15 +21,15 @@ import io.flowtree.slack.SlackNotifier;
 import io.flowtree.workstream.Workstream;
 import org.almostrealism.io.ConsoleFeatures;
 
-import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
 
 /**
  * The submit-time gate for the per-PR remediation loop. It reads the one
  * {@link RemediationState} record for a workstream and decides whether an
  * automated remediation submission should be dispatched or skipped, so the
  * controller stops re-dispatching {@code auto-review}/{@code auto-resolve} on
- * every CI run once a PR has stopped making progress — the loop that charged PR
- * #593 about 80 jobs.
+ * every CI run once a PR has stopped making progress — a loop that has charged a
+ * single PR dozens of jobs.
  *
  * <p>It mirrors the shape of the other submit-time gates
  * ({@code TestExecutionLimitsSubmissionValidator}): {@link #skipReason} returns
@@ -57,8 +57,8 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
      * Default per-PR budget: after this many consecutive passes that changed
      * nothing, auto-dispatch stops and a person is pinged. Chosen so routine
      * PRs (which draw a handful of no-op passes) are never interrupted while
-     * the pathological tail — PR #593's roughly 80 jobs — is capped far below
-     * it. Override with {@link #BUDGET_ENV}.
+     * the pathological tail — dozens of jobs on a single PR — is capped far
+     * below it. Override with {@link #BUDGET_ENV}.
      */
     public static final int DEFAULT_BUDGET = 5;
 
@@ -68,8 +68,8 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
     /** Consecutive no-progress passes allowed before auto-dispatch stops. */
     private final int budget;
 
-    /** Pings a person: given (workstreamId, message). */
-    private final BiConsumer<String, String> notifier;
+    /** Pings a person: given (workstreamId, message), returns whether it was delivered. */
+    private final BiPredicate<String, String> notifier;
 
     /**
      * Creates a gate over {@code store}.
@@ -77,10 +77,11 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
      * @param store    the remediation record store, or {@code null} to disable
      * @param budget   the per-PR budget; non-positive disables the budget skip
      * @param notifier called once with (workstreamId, message) when a budget is
-     *                 first found spent, to ping a person
+     *                 first found spent, to ping a person; returns whether the
+     *                 ping was delivered, so an undelivered one is retried
      */
     public RemediationBudgetGuard(RemediationStateStore store, int budget,
-                                  BiConsumer<String, String> notifier) {
+                                  BiPredicate<String, String> notifier) {
         this.store = store;
         this.budget = budget;
         this.notifier = notifier;
@@ -90,7 +91,8 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
      * Builds a guard whose person-ping posts to the PR's workstream Slack
      * channel, with the budget from {@link #budgetFromEnv()}. This is the
      * controller's production wiring; tests use the constructor with a
-     * recording {@link BiConsumer} instead.
+     * recording {@link BiPredicate} instead. The ping counts as delivered only
+     * when the workstream has a channel and notifier and the post succeeds.
      *
      * @param store     the remediation record store
      * @param notifiers the registry resolving a workstream's channel and notifier
@@ -101,9 +103,8 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
         return new RemediationBudgetGuard(store, budgetFromEnv(), (workstreamId, message) -> {
             Workstream ws = notifiers.workstreamFor(workstreamId);
             SlackNotifier notifier = notifiers.notifierFor(workstreamId);
-            if (ws != null && ws.getChannelId() != null && notifier != null) {
-                notifier.postMessage(ws.getChannelId(), message);
-            }
+            return ws != null && ws.getChannelId() != null && notifier != null
+                    && notifier.postMessage(ws.getChannelId(), message) != null;
         });
     }
 
@@ -133,7 +134,9 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
      *
      * <p>Pings a person — once — when it first finds the budget spent, and
      * marks the record so a later refused submission on the same PR is silent
-     * until a commit resets the count. Every skip is logged with its reason.</p>
+     * until a commit resets the count. A ping that cannot be delivered (no
+     * channel or notifier yet) leaves the record unmarked, so a later refused
+     * submission tries again. Every skip is logged with its reason.</p>
      *
      * @param workstreamId  the workstream (branch / PR) key
      * @param automated     whether this is an automated remediation submission
@@ -154,7 +157,8 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
 
     /**
      * Decides the skip for an automated submission on a known workstream,
-     * sending the one budget-spent ping when this call claims it.
+     * sending the one budget-spent ping when this call claims it and releasing
+     * the claim when the ping is not delivered.
      *
      * @param workstreamId  the workstream (branch / PR) key
      * @param triggerCommit the commit that triggered the submission, or {@code null}
@@ -164,11 +168,11 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
         // TODO(review): a direct push the controller never sees does not reset exhaustion.
         RemediationStateStore.Decision decision =
                 store.evaluateSubmission(workstreamId, budget, triggerCommit);
-        if (decision == RemediationStateStore.Decision.BUDGET_SPENT_NOTIFY && notifier != null) {
-            notifier.accept(workstreamId, "Per-PR remediation budget reached on this branch: "
-                + budget + " consecutive auto-review/auto-resolve passes changed nothing. "
-                + "Auto-dispatch is paused for this PR until a commit lands — someone should "
-                + "look at why it is not converging.");
+        if (decision == RemediationStateStore.Decision.BUDGET_SPENT_NOTIFY
+                && !notifyBudgetSpent(workstreamId)) {
+            warn("Budget-spent ping for workstream " + workstreamId
+                + " was not delivered; a later refused submission will retry it");
+            store.releaseNotification(workstreamId);
         }
         switch (decision) {
             case BUDGET_SPENT_NOTIFY:
@@ -184,6 +188,20 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
             default:
                 return null;
         }
+    }
+
+    /**
+     * Pings a person that the per-PR budget is spent.
+     *
+     * @param workstreamId the workstream (branch / PR) key
+     * @return {@code true} when the ping was delivered
+     */
+    private boolean notifyBudgetSpent(String workstreamId) {
+        return notifier != null && notifier.test(workstreamId,
+            "Per-PR remediation budget reached on this branch: " + budget
+                + " consecutive auto-review/auto-resolve passes changed nothing. "
+                + "Auto-dispatch is paused for this PR until a commit lands — someone should "
+                + "look at why it is not converging.");
     }
 
     /**

@@ -31,7 +31,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -175,11 +175,91 @@ public class RemediationStateStoreTest extends TestSuiteBase {
 
     /** Records the (workstreamId, message) pairs the guard pings. */
     private static final class RecordingNotifier
-            implements BiConsumer<String, String> {
-        /** The pings the guard sent, as "workstreamId: message". */
+            implements BiPredicate<String, String> {
+        /** The pings the guard attempted, as "workstreamId: message". */
         private final List<String> pings = new ArrayList<>();
-        @Override public void accept(String workstreamId, String message) {
+        /** Whether an attempted ping reports itself delivered. */
+        private boolean delivers = true;
+        @Override public boolean test(String workstreamId, String message) {
             pings.add(workstreamId + ": " + message);
+            return delivers;
+        }
+    }
+
+    /**
+     * A ping that cannot be delivered (no channel or notifier configured) does
+     * not consume the one-time escalation: the flag stays unset and the next
+     * refused submission pings again, until one is delivered.
+     */
+    @Test(timeout = 30000)
+    public void anUndeliveredPingIsRetriedUntilDelivered() throws Exception {
+        File dir = Files.createTempDirectory("rem-undelivered").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        RecordingNotifier notifier = new RecordingNotifier();
+        notifier.delivers = false;
+        try {
+            for (int i = 0; i < 3; i++) store.recordPass("ws", "r", "b", null);
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 3, notifier);
+
+            String reason = guard.skipReason("ws", true, null);
+            assertTrue("still skipped", reason != null && reason.contains("budget"));
+            assertEquals(1, notifier.pings.size());
+            assertFalse("an undelivered ping is not recorded as sent",
+                    store.get("ws").isNotified());
+            assertEquals("the count is untouched", 3, store.get("ws").getConsecutiveNoProgress());
+
+            assertTrue(guard.skipReason("ws", true, null) != null);
+            assertEquals("the next refusal tries again", 2, notifier.pings.size());
+
+            notifier.delivers = true;
+            assertTrue(guard.skipReason("ws", true, null) != null);
+            assertEquals(3, notifier.pings.size());
+            assertTrue("a delivered ping is recorded", store.get("ws").isNotified());
+
+            assertTrue(guard.skipReason("ws", true, null) != null);
+            assertEquals("no ping after delivery", 3, notifier.pings.size());
+        } finally {
+            store.close();
+        }
+    }
+
+    /** A guard with no notifier treats every ping as undelivered. */
+    @Test(timeout = 30000)
+    public void aMissingNotifierLeavesThePingUnclaimed() throws Exception {
+        File dir = Files.createTempDirectory("rem-no-notifier").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            for (int i = 0; i < 2; i++) store.recordPass("ws", "r", "b", null);
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 2, null);
+            assertTrue(guard.skipReason("ws", true, null) != null);
+            assertFalse(store.get("ws").isNotified());
+        } finally {
+            store.close();
+        }
+    }
+
+    /** releaseNotification clears only a set flag and keeps the count. */
+    @Test(timeout = 30000)
+    public void releaseNotificationClearsOnlyASetFlag() throws Exception {
+        File dir = Files.createTempDirectory("rem-release").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            assertFalse("an empty workstream key releases nothing", store.releaseNotification(""));
+            assertFalse("a missing record releases nothing", store.releaseNotification("ws"));
+            store.recordPass("ws", "r", "b", null);
+            store.recordPass("ws", "r", "b", null);
+            assertFalse("an unset flag releases nothing", store.releaseNotification("ws"));
+            assertTrue(store.markNotified("ws"));
+            assertTrue(store.releaseNotification("ws"));
+            RemediationState state = store.get("ws");
+            assertFalse(state.isNotified());
+            assertEquals(2, state.getConsecutiveNoProgress());
+            assertTrue("a released flag can be claimed again", store.markNotified("ws"));
+        } finally {
+            store.close();
         }
     }
 
