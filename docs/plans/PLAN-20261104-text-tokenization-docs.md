@@ -1,8 +1,8 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-04
-closed:
-tracker: []
+closed: 2026-11-04
+tracker: [0b5eb918-14fa-4224-9848-151be0106c4d]
 ---
 
 # Document text tokenization: from a string to the token ids a model consumes
@@ -69,8 +69,11 @@ it learns from, and why the self-hosted LM deliberately uses a vocabulary-free b
      rather than the interface's `encodeAsLong`/`decodeAsLong`).
    - **The family tree.** A table of every text tokenizer in the platform — class, module,
      vocabulary source, boundary scheme, unknown-character handling, special-token behaviour, and
-     the models that use it (self-hosted LM, Qwen3, Stable Audio 3/T5Gemma, DJL). Disambiguate the
-     two "SentencePiece" classes explicitly. Mention `MidiTokenizer`/`SkyTntTokenizerV2` (studio,
+     the models that use it (self-hosted LM, Qwen3, Stable Audio 3/T5Gemma, Llama2, DJL). This must
+     include the Llama2 path, which is not a `Tokenizer` implementation: `Llama2.run` tokenizes
+     through the static `BPE.encode(...)` utility over its loaded vocabulary and scores (greedy
+     highest-score merge, no byte fallback) and prepends BOS itself. Disambiguate the two
+     "SentencePiece" classes explicitly. Mention `MidiTokenizer`/`SkyTntTokenizerV2` (studio,
      compound MIDI tokens) only as a pointer: they tokenize MIDI, not text.
    - **`ByteTokenizer`.** The 256-symbol bijection, the UTF-8 encode/decode contract and its
      replacement behaviour, `isValidUtf8`, and why the self-hosted LM uses it (no external
@@ -140,7 +143,9 @@ it learns from, and why the self-hosted LM deliberately uses a vocabulary-free b
    duplicate code).
 5. If reading the code shows that `Qwen3Tokenizer` *should* implement `Tokenizer` (it has every
    method the interface needs under other names), that is a production API change and **out of
-   scope**: document the class as it is and file a tracker task for the decision.
+   scope**: document the class as it is and file a tracker task for the decision. Done — tracker
+   task `0b5eb918-14fa-4224-9848-151be0106c4d` records this decision; the page documents the class
+   as it is today.
 
 ## Success Criteria
 
@@ -172,8 +177,8 @@ Raised in review of this plan, for the person deciding whether it goes ahead.
    special tokens as the public `BOS_TOKEN` / `EOS_TOKEN` constants, while the `getBOSToken()` /
    `getEOSToken()` it inherits from `ByteLevelBPETokenizer` are `protected`.) Making it implement
    `Tokenizer` is a production API change and is out
-   of scope here (Approach step 5): the page documents the class as it is and files a tracker task for
-   the decision. But that decision changes how Scope 3's README rewrite should read — whether the
+   of scope here (Approach step 5): the page documents the class as it is and the decision is tracked
+   by task `0b5eb918-14fa-4224-9848-151be0106c4d`. But that decision changes how Scope 3's README rewrite should read — whether the
    corrected example calls the methods `Qwen3Tokenizer` exposes today, or demonstrates the `Tokenizer`
    contract through a class that implements it (`ByteTokenizer` or `SentencePieceBPETokenizer`). The
    approver may prefer to sequence the API decision first and write one README example against the
