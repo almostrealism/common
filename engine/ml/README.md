@@ -939,6 +939,7 @@ store.close();
 <store-root>/
 ├── index.bin          # DiskStoreIndex: record ID → (batch_id, byte_offset)
 ├── hnsw.bin           # HnswIndex for vector search (if vectors were stored)
+├── hnsw.model         # Model whose vectors hnsw.bin holds (if one was declared via setIndexModel)
 ├── batch_0000.bin     # Length-delimited protobuf records
 ├── batch_0001.bin
 └── ...
@@ -968,6 +969,8 @@ Use `insertEmbedding(id, vector)` to add a vector for a record that is already p
 **Parameters:** `M=16` (connections per node, higher = better recall, more memory), `efConstruction=200` (build quality), `efSearch=50` (query-time candidate list, tunable via `setEfSearch`/`getEfSearch`, currently unused by the exact-scoring search path).
 
 **Memory:** Vectors are held once in the contiguous store (`capacity * dimension * 4` bytes), not duplicated per node; each node's additional cost is its per-layer neighbor lists (ID + score per edge). The index is persisted as `hnsw.bin` and reloaded on startup.
+
+For the end-to-end pipeline — the on-disk layout, the save/load format, and how the index is tied to the embedding model that produced its vectors (the `hnsw.model` marker and the model-keyed rebuild) — see [The Vector Index](../../docs/internals/vector-index.md).
 
 ### Collection Data Memory
 
