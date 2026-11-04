@@ -20,11 +20,12 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.persist.test.TestRecordProto;
 
 import java.io.File;
+import java.util.Random;
 
 /**
  * Shared utility methods for disk store tests. Consolidates helpers
- * that are used by both {@link ProtobufDiskStoreTest} and
- * {@link HnswSearchTest}.
+ * that are used by {@link ProtobufDiskStoreTest}, {@link HnswSearchTest}
+ * and {@link VectorIndexExamplesTest}.
  */
 final class DiskStoreTestSupport {
 
@@ -57,6 +58,32 @@ final class DiskStoreTestSupport {
 	 */
 	static PackedCollection vec(double... values) {
 		return new PackedCollection(values.length).fill(values);
+	}
+
+	/**
+	 * Generate the components of a vector drawn from a standard Gaussian.
+	 *
+	 * @param dimension vector dimensionality
+	 * @param random    random source
+	 * @return the components
+	 */
+	static double[] gaussianValues(int dimension, Random random) {
+		double[] values = new double[dimension];
+		for (int i = 0; i < dimension; i++) {
+			values[i] = random.nextGaussian();
+		}
+		return values;
+	}
+
+	/**
+	 * Create a {@link PackedCollection} vector drawn from a standard Gaussian.
+	 *
+	 * @param dimension vector dimensionality
+	 * @param random    random source
+	 * @return a new vector
+	 */
+	static PackedCollection gaussianVector(int dimension, Random random) {
+		return vec(gaussianValues(dimension, random));
 	}
 
 	/**

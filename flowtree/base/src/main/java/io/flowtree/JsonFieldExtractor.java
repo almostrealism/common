@@ -681,15 +681,23 @@ public final class JsonFieldExtractor {
 	/**
 	 * Extracts a numeric string from the beginning of the input.
 	 *
+	 * <p>When {@code allowDecimal} is set the fraction and exponent parts of a
+	 * JSON number are kept, so {@code 5.0E-4} — the form Jackson and
+	 * {@link Double#toString(double)} use below {@code 1e-3} — is not cut
+	 * short at the {@code E}. Exponent characters are accepted only after the
+	 * number has started.</p>
+	 *
 	 * @param rest         the string to extract from (already trimmed after the colon)
-	 * @param allowDecimal whether to include decimal point characters
+	 * @param allowDecimal whether to include decimal point and exponent characters
 	 * @return the extracted numeric string
 	 */
 	private static String extractNumericString(String rest, boolean allowDecimal) {
 		StringBuilder numStr = new StringBuilder();
 		for (int i = 0; i < rest.length(); i++) {
 			char c = rest.charAt(i);
-			if (c == '-' || (c >= '0' && c <= '9') || (allowDecimal && c == '.')) {
+			boolean exponent = allowDecimal && numStr.length() > 0
+					&& (c == 'e' || c == 'E' || c == '+');
+			if (c == '-' || (c >= '0' && c <= '9') || (allowDecimal && c == '.') || exponent) {
 				numStr.append(c);
 			} else if (numStr.length() > 0) {
 				break;
