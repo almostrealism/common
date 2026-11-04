@@ -115,7 +115,7 @@ if [ "${CHECKSTYLE_PASSED:-true}" != "true" ]; then
 fi
 
 if [ "${TEMPORARY_IDENTIFIERS_PASSED:-true}" != "true" ]; then
-    echo "- temporary-identifiers: A file outside docs/plans/ and docs/qa/retrospectives/ cites an identifier that a plan document defines (its dated name such as PLAN-<date>-<slug>, one of its numbered items, or a retrospective proposal slug). Plans are disposable, so the reference goes dead with them: describe the behavior or the reason itself instead. Run \`git ls-files -z | python3 scripts/check-temporary-identifiers.py\` locally to list each occurrence." >> "$OUTPUT_FILE"
+    echo "- temporary-identifiers: A file outside docs/plans/ and docs/qa/retrospectives/ cites a temporary identifier: one that a plan document defines (its dated name such as PLAN-<date>-<slug>, one of its numbered items, or a retrospective proposal slug), or, on a line this branch adds, a tracker task, job, run, workstream or memory id, a commit SHA, or a timestamped round branch name. The referenced object is superseded and the reference goes dead with it: describe the behavior or the reason itself, name a durable thing (a class, a module, a PR number), or look the current value up at run time. Run \`git diff --merge-base origin/master -M > /tmp/change.diff\` and then \`git ls-files -z | python3 scripts/check-temporary-identifiers.py --diff /tmp/change.diff\` locally to list each occurrence; a genuine case is suppressed on its own line with \`temporary-identifier-ok: <reason>\`." >> "$OUTPUT_FILE"
     FAILURE_COUNT=$((FAILURE_COUNT + 1))
 fi
 

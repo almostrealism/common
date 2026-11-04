@@ -1554,17 +1554,28 @@ jobs:
       # the identifiers they define -- a document's dated name, its numbered
       # items, a retrospective's proposal slugs -- must not appear in any other
       # tracked file. The script reads those identifiers from the plan documents
-      # themselves. It runs even when Checkstyle failed, so both verdicts are
-      # reported, and is skipped with a notice on a head that predates it.
-      - name: Check for plan-document identifiers in long-term files
+      # themselves. Given the change's diff against its merge base with the
+      # base branch, it also judges the lines this change adds for the
+      # generic shapes of ephemeral handles (tracker/job/run/workstream/memory
+      # ids, commit SHAs, timestamped round branch names); pre-existing lines
+      # are never judged, and on the base branch itself nothing is added. It
+      # runs even when Checkstyle failed, so both verdicts are reported, and
+      # is skipped with a notice on a head that predates it.
+      - name: Check for temporary identifiers in long-term files
         id: identifiers
         if: ${{ !cancelled() }}
+        env:
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
         run: |
           if [ ! -f scripts/check-temporary-identifiers.py ]; then
             echo "::notice::scripts/check-temporary-identifiers.py is not on this head; skipping"
             exit 0
           fi
-          git ls-files -z | python3 scripts/check-temporary-identifiers.py 2>&1 | tee "${RUNNER_TEMP}/identifier-output.txt"
+          if ! git diff --merge-base "origin/${BASE_BRANCH}" -M --unified=3 --no-color --no-ext-diff > "${RUNNER_TEMP}/change.diff"; then
+            echo "::error::Could not diff this head against its merge base with origin/${BASE_BRANCH}; the added-line check could not run."
+            exit 1
+          fi
+          git ls-files -z | python3 scripts/check-temporary-identifiers.py --diff "${RUNNER_TEMP}/change.diff" 2>&1 | tee "${RUNNER_TEMP}/identifier-output.txt"
           exit ${PIPESTATUS[1]}
 
       - name: Summary
@@ -1585,7 +1596,7 @@ jobs:
           fi
           if [ "${{ steps.identifiers.outcome }}" = "failure" ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "**Plan-document identifiers found outside the plan directories.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Temporary identifiers found outside the plan directories.**" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             cat "${RUNNER_TEMP}/identifier-output.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no output captured)" >> "$GITHUB_STEP_SUMMARY"

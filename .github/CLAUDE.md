@@ -381,6 +381,24 @@ pull request is not checked until the next code change (or the master run)
 scans the tree. `tools/tests/test_check_temporary_identifiers.py` covers the
 script and its wiring.
 
+The same step also passes `--diff` with the change's diff against its merge
+base with `origin/<base branch>` (`git diff --merge-base`), which adds a
+second, diff-scoped rule for the generic shapes of ephemeral handles that no
+plan document defines: tracker task, job, run, workstream and memory ids (bare
+hexadecimal prefixes or full UUIDs), commit SHAs, and timestamped round branch
+or workstream names (`<prefix>/<name>-YYYYMMDD-HHMMSS`). Only lines added
+relative to the merge base are judged, so pre-existing code never blocks an
+unrelated pull request, and on the base branch itself nothing is judged.
+Hexadecimal strings are legitimate data (hashes, test vectors, colours), so a
+hex token is flagged only near an identifying word — task, job, run,
+workstream, memory, commit, SHA, tracker, id — while a timestamped branch name
+is flagged anywhere. Plainly made-up fixture values (`0000`, `1234`, `abcd`,
+`cafe`) are not flagged, generated and vendored files are skipped, and a
+genuine case is suppressed on its own line with
+`temporary-identifier-ok: <reason>` (the reason is required). The script runs
+no commands itself — the step computes the file list and the diff and hands
+both to it — so agents can run it locally under the exfiltration guard.
+
 **The `ci/...` carve-out covers `.claude/hooks/` too, and covers comparisons
 only.** Both the enforcement-tampering check and the exfiltration guard's
 integrity comparison treat a `ci/` branch as out of scope, for the reason the
