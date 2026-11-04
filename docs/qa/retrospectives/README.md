@@ -34,8 +34,14 @@ point-in-time record that is cleaned up once its proposals have been triaged, an
 the root `CLAUDE.md` classes `docs/qa/retrospectives/` with `docs/plans/` for
 exactly that reason. A report may therefore cite temporary identifiers — job,
 run, workstream and memory ids, short SHAs, timestamped branch names — as the
-evidence behind a finding, just as a plan document may; `check-temporary-identifiers.py`
-reads the reports' own handles rather than scanning these directories.
+evidence behind a finding, just as a plan document may. `check-temporary-identifiers.py`
+does not scan the plan directories for violations, so an identifier a report cites
+there is never flagged. It reads these directories only the other way round — to
+collect the handles it bans *elsewhere*: a report's own dated name (`RETRO-<date>`),
+its numbered items (`F6`, `P1`), and the proposal slugs listed in `ledger.tsv`.
+Those are a narrower set than the evidentiary ids above; the generic shapes (a bare
+hex job/run/workstream/memory id, a short SHA, a timestamped branch name) are not
+derived or enforced by this check at all.
 
 ## Files
 
