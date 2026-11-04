@@ -19,10 +19,9 @@ package io.flowtree.controller;
 /**
  * The controller's one per-PR remediation record, keyed by workstream (one
  * workstream is one branch is one pull request). It is the single piece of
- * state the two halves of the remediation loop read (RETRO-20261026 P2 and P3,
- * designed together per the owner): the count of consecutive passes that
- * changed nothing, which bounds how many times a PR may be auto-remediated
- * before a person is pinged, and the last commit a pass produced, so a review
+ * state the two halves of the remediation loop read: the count of consecutive
+ * passes that changed nothing, which bounds how many times a PR may be
+ * auto-remediated before a person is pinged, and the last commit a pass produced, so a review
  * re-triggered only by the previous review's own commit is not run again.
  *
  * <p>A "pass" is a completed remediation job on the workstream. A pass that

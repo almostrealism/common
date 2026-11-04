@@ -225,7 +225,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     private JobLifecycleRecorder jobLifecycleRecorder = new JobLifecycleRecorder(null);
 
-    /** Submit-time per-PR remediation gate (RETRO P3); a no-op until {@link #setRemediationStore}. */
+    /** Submit-time per-PR remediation gate; a no-op until {@link #setRemediationStore}. */
     private RemediationBudgetGuard remediationGuard = new RemediationBudgetGuard(null, 0, null);
 
     /** Handles {@code GET /api/agents} metadata requests. */
@@ -568,7 +568,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Installs the per-PR remediation record store (RETRO P3): wires the
+     * Installs the per-PR remediation record store: wires the
      * submit-time budget gate and extends the lifecycle recorder to record each
      * pass. Call after {@link #setStatsStore}.
      *
@@ -982,7 +982,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 log("Invalid startedAfter value: " + startedAfterStr);
             }
         }
-        // Per-PR remediation budget / own-commit skip for automated jobs (RETRO P3).
+        // Per-PR remediation budget / own-commit skip for automated jobs.
         String remediationSkip = remediationGuard.skipReason(workstreamId, automated, JsonFieldExtractor.extractString(body, "triggerCommit"));
         if (remediationSkip != null) {
             return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true,"

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ─── Fetch the most recent master CI test failures as a baseline ─────
 #
-# For classifying auto-resolve failures as regression-vs-pre-existing (RETRO
-# P2, autoresolve-attribution) WITHOUT re-running: a test that fails on the
+# For classifying auto-resolve failures as regression-vs-pre-existing
+# WITHOUT re-running: a test that fails on the
 # branch but passes on master's most recent CI result is a regression; one that
 # fails on master too is pre-existing. This downloads the Surefire reports from
 # the most recent completed "Build and Test" run on origin/master and parses

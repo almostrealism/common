@@ -19,6 +19,10 @@
 #                             "python-test-hiding", "infrastructure", or
 #                             empty (optional; defaults to empty)
 #   CHECKSTYLE_PASSED       - "true" or "false" (optional; defaults to "true")
+#   TEMPORARY_IDENTIFIERS_PASSED - "true" or "false" (optional; defaults to
+#                             "true"): whether the checkstyle job found no
+#                             plan-document identifier outside the plan
+#                             directories
 #   DECEPTION_AUDIT_ERROR   - "true" when deception-audit.sh could not resolve
 #                             the merge-base (or its file listing) and never
 #                             ran the audit -- distinct from
@@ -107,6 +111,11 @@ fi
 
 if [ "${CHECKSTYLE_PASSED:-true}" != "true" ]; then
     echo "- checkstyle: Checkstyle violations detected (no \`var\` keyword, no \`@SuppressWarnings\`). Run \`mvn checkstyle:check\` locally to see details." >> "$OUTPUT_FILE"
+    FAILURE_COUNT=$((FAILURE_COUNT + 1))
+fi
+
+if [ "${TEMPORARY_IDENTIFIERS_PASSED:-true}" != "true" ]; then
+    echo "- temporary-identifiers: A file outside docs/plans/ and docs/qa/retrospectives/ cites an identifier that a plan document defines (its dated name such as PLAN-<date>-<slug>, one of its numbered items, or a retrospective proposal slug). Plans are disposable, so the reference goes dead with them: describe the behavior or the reason itself instead. Run \`git ls-files -z | python3 scripts/check-temporary-identifiers.py\` locally to list each occurrence." >> "$OUTPUT_FILE"
     FAILURE_COUNT=$((FAILURE_COUNT + 1))
 fi
 

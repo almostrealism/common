@@ -26,8 +26,8 @@
 #   REPO_URL, CREATE_WORKSTREAM, TRIGGER_COMMIT
 #
 # TRIGGER_COMMIT is the commit that triggered this run; the controller skips a
-# review re-triggered only by the previous remediation pass's own commit (RETRO
-# P3). It is staged only by the review routes, so other routes never carry it.
+# review re-triggered only by the previous remediation pass's own commit.
+# It is staged only by the review routes, so other routes never carry it.
 #
 # REPO_URL and CREATE_WORKSTREAM are only worth staging to override the
 # defaults submit-agent-job.sh applies: it derives the repository from

@@ -24,8 +24,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.util.function.BiConsumer;
 
 /**
- * The submit-time gate for the per-PR remediation loop (RETRO-20261026 P3,
- * {@code review-loop-cap}, designed with P2). It reads the one
+ * The submit-time gate for the per-PR remediation loop. It reads the one
  * {@link RemediationState} record for a workstream and decides whether an
  * automated remediation submission should be dispatched or skipped, so the
  * controller stops re-dispatching {@code auto-review}/{@code auto-resolve} on

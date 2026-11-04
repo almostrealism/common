@@ -1511,6 +1511,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
+      identifiers_passed: ${{ steps.identifiers.outcome == 'success' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1549,6 +1550,23 @@ jobs:
           mvn checkstyle:check -B 2>&1 | tee ${RUNNER_TEMP}/checkstyle-output.txt
           exit ${PIPESTATUS[0]}
 
+      # Plan documents (docs/plans/, docs/qa/retrospectives/) are disposable, so
+      # the identifiers they define -- a document's dated name, its numbered
+      # items, a retrospective's proposal slugs -- must not appear in any other
+      # tracked file. The script reads those identifiers from the plan documents
+      # themselves. It runs even when Checkstyle failed, so both verdicts are
+      # reported, and is skipped with a notice on a head that predates it.
+      - name: Check for plan-document identifiers in long-term files
+        id: identifiers
+        if: ${{ !cancelled() }}
+        run: |
+          if [ ! -f scripts/check-temporary-identifiers.py ]; then
+            echo "::notice::scripts/check-temporary-identifiers.py is not on this head; skipping"
+            exit 0
+          fi
+          git ls-files -z | python3 scripts/check-temporary-identifiers.py 2>&1 | tee "${RUNNER_TEMP}/identifier-output.txt"
+          exit ${PIPESTATUS[1]}
+
       - name: Summary
         if: ${{ !cancelled() }}
         run: |
@@ -1564,6 +1582,14 @@ jobs:
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "Run \`mvn checkstyle:check\` locally to see details." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "${{ steps.identifiers.outcome }}" = "failure" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Plan-document identifiers found outside the plan directories.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat "${RUNNER_TEMP}/identifier-output.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no output captured)" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ─── Python Unit Tests ─────────────────────────────────────────────
@@ -3830,6 +3856,7 @@ jobs:
           DECEPTION_AUDIT_FINDINGS: ${{ needs.deception-audit.outputs.has_findings }}
           DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
           CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
+          TEMPORARY_IDENTIFIERS_PASSED: ${{ needs.checkstyle.outputs.identifiers_passed }}
         run: |
           ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
 
@@ -3874,8 +3901,8 @@ jobs:
           echo "::notice::auto-review prompt: ${ROUTE}"
 
       # GitHub Copilot has been dark for long stretches, posting only an
-      # "insufficient remaining quota" notice in place of a review (RETRO
-      # P1, copilot-review-dark). When that is the latest Copilot review on
+      # "insufficient remaining quota" notice in place of a review.
+      # When that is the latest Copilot review on
       # this PR, record the gap here and let auto-review-submit skip the
       # delay it otherwise holds so the agent "starts with" Copilot's review.
       # Best-effort: any lookup failure leaves copilot_available=true (wait as
@@ -4006,7 +4033,7 @@ jobs:
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           # The controller skips a review re-triggered only by the previous
-          # review's own commit (RETRO P3); a commit by anyone else still triggers.
+          # review's own commit; a commit by anyone else still triggers.
           TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Review docs changes"
         run: |
@@ -4048,7 +4075,7 @@ jobs:
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
           # The controller skips a review re-triggered only by the previous
-          # review's own commit (RETRO P3); a commit by anyone else still triggers.
+          # review's own commit; a commit by anyone else still triggers.
           TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Review branch changes"
         run: |
@@ -4134,8 +4161,7 @@ jobs:
           # minutes) has posted. The controller holds the job this long before
           # dispatching it, so the agent starts with that review to act on.
           # This is the default hold; the run step below drops it to 0 when
-          # Copilot is out of quota, since then no review is coming (RETRO P1,
-          # copilot-review-dark).
+          # Copilot is out of quota, since then no review is coming.
           DELAY_SECONDS: "300"
           # 'false' when the latest Copilot review on this PR is a quota notice.
           COPILOT_AVAILABLE: ${{ needs.auto-review.outputs.copilot_available }}
@@ -4158,7 +4184,7 @@ jobs:
           # Copilot has been dark for long stretches, posting only a quota
           # notice. When its latest review on this PR is that notice there is
           # no review to wait for, so drop the hold rather than make the agent
-          # wait five minutes for nothing (RETRO P1, copilot-review-dark).
+          # wait five minutes for nothing.
           if [ "${COPILOT_AVAILABLE}" = "false" ]; then
             echo "::notice::Copilot unavailable (quota) — dropping the ${DELAY_SECONDS}s review-wait to 0"
             export DELAY_SECONDS=0
@@ -4285,8 +4311,8 @@ jobs:
             echo "::notice::No test failures found"
           fi
 
-      # Classify failures so the branch is only charged for what it broke
-      # (RETRO P2, autoresolve-attribution). The baseline fetch is best-effort:
+      # Classify failures so the branch is only charged for what it broke.
+      # The baseline fetch is best-effort:
       # without it, every non-environmental failure is a regression (today's
       # behaviour), which over-assigns rather than dropping a failure.
       - name: Fetch master test baseline
@@ -4580,7 +4606,7 @@ jobs:
       # Dispatch only when there is at least one regression — a failure this
       # branch introduced. When every failure is pre-existing or environmental,
       # nothing is staged (see the Summary step), so auto-resolve is not
-      # dispatched at all (RETRO P2). The prompt names only the regressions as
+      # dispatched at all. The prompt names only the regressions as
       # "you broke these", and lists the pre-existing and environmental
       # failures in their own non-blaming sections.
       - name: Build prompt (test failures)

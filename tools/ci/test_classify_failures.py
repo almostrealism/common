@@ -1,4 +1,4 @@
-"""Tests for classify-failures.py (RETRO P2, autoresolve-attribution)."""
+"""Tests for classify-failures.py."""
 import importlib.util
 import os
 import subprocess

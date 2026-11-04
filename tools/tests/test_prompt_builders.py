@@ -342,7 +342,7 @@ class PromptBuilderTests(unittest.TestCase):
     def test_general_review_is_scope_bounded_with_follow_up_routing(self):
         """The auto-review prompt must bound itself to the branch's scope.
 
-        RETRO-20261019 F5: `general-review.txt` once told the reviewer to "fix
+        `general-review.txt` once told the reviewer to "fix
         every issue you find" over the whole branch diff, with no boundary and
         no route for out-of-scope work. It now carries the same "stay in scope,
         defer the rest" shape `coverage.txt` has, routing anything broader to
@@ -356,7 +356,7 @@ class PromptBuilderTests(unittest.TestCase):
     def test_retrospective_writes_its_artifact_before_surveying(self):
         """The retrospective must put its report on disk before the survey.
 
-        RETRO-20261019 F1: a run that surveyed and then stalled left nothing to
+        A run that surveyed and then stalled left nothing to
         review because the report was written only at the end. The prompt now
         makes writing a skeleton report plus the ledger row the first action,
         enriched as the survey proceeds.
@@ -372,7 +372,7 @@ class PromptBuilderTests(unittest.TestCase):
     def test_retrospective_surveys_open_prs_before_reporting_a_proposal_open(self):
         """The retrospective must catch in-flight implementations of prior proposals.
 
-        RETRO-20261022 F5: the previous run reported two proposals "still open"
+        A previous run reported two proposals "still open"
         while a PR was already implementing them, because a master-only status
         read cannot see an unmerged implementation. The prompt now tells the
         round to list open PRs with `github_list_open_prs` and in-window
@@ -393,7 +393,7 @@ class PromptBuilderTests(unittest.TestCase):
         """The flaky-hunt pilot must stay inside the test-execution limits and
         not weaken the test that reveals a flake.
 
-        RETRO-20261022 F6: the round runs a small, named selection repeatedly on
+        The round runs a small, named selection repeatedly on
         one commit. The prompt must forbid a module/full-suite run and a CI
         shard selector, require an explicit timeout, tell the round to repeat
         a small selection rather than widen it, forbid editing existing test
@@ -413,7 +413,7 @@ class PromptBuilderTests(unittest.TestCase):
     def test_flaky_hunt_continues_from_prior_rounds_and_evidence(self):
         """The flaky round must not pick its hunting ground blind.
 
-        RETRO-20261026 F5 (`flaky-target-memory`): the round recalls earlier
+        The round recalls earlier
         flaky-round memories and continues from the previous round's named
         next target, consults the tracker for known flaky/timing-out tests,
         biases its module choice toward where determinism has failed

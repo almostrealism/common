@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Classify auto-resolve test failures so a branch is only charged for what it
-actually broke (RETRO P2, autoresolve-attribution).
+actually broke.
 
 The auto-resolve path tells every branch "YOU BROKE THESE TESTS" for every
 failing test in the run, even ones that fail on master too and ones that are

@@ -40,7 +40,7 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Covers the one per-PR remediation-state record (RETRO-20261026 P2+P3): the
+ * Covers the one per-PR remediation-state record: the
  * {@link RemediationState} predicates, the {@link RemediationStateStore}
  * counting of passes, and the {@link RemediationBudgetGuard} submit-time
  * decision — the budget cap and the own-commit skip.

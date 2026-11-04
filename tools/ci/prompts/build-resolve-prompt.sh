@@ -10,7 +10,7 @@
 # A third and fourth positional argument are optional: a pre-existing-failures
 # file and an environmental-failures file. <failures-file> is the list the
 # agent is told it broke — only the REGRESSIONS once classify-failures.sh has
-# run (RETRO P2, autoresolve-attribution), so the "YOU BROKE THESE TESTS"
+# run, so the "YOU BROKE THESE TESTS"
 # directive is accurate. The optional extra files carry the failures that are
 # NOT the branch's to fix: tests that fail on master too (pre-existing) and
 # hardware/native faults (environmental). When supplied and non-empty they are
@@ -282,7 +282,7 @@ EOF
 # Only appended when classify-failures.sh produced a non-empty list. These
 # were deliberately kept out of the "you broke these" set above so the agent
 # does not patch unrelated modules to make them pass — the exact failure mode
-# RETRO P2 (autoresolve-attribution) was raised to stop.
+# the classification exists to stop.
 
 if [ -n "$PREEXISTING_FILE" ] && [ -s "$PREEXISTING_FILE" ]; then
     PREEXISTING_LIST=$(cat "$PREEXISTING_FILE")

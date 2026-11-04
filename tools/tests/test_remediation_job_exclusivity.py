@@ -287,7 +287,7 @@ class CredentialIsolationTests(unittest.TestCase):
         self.assertGreaterEqual(int(env["DELAY_SECONDS"]), 300)
 
     def test_auto_review_submit_drops_the_delay_when_copilot_is_dark(self):
-        """RETRO P1 (copilot-review-dark): when Copilot's latest review on the
+        """When Copilot's latest review on the
         PR is an out-of-quota notice there is no review to wait for, so the
         submit step drops its default hold to 0. The 300s default is unchanged;
         the run step overrides it only when COPILOT_AVAILABLE is false."""
@@ -302,7 +302,7 @@ class CredentialIsolationTests(unittest.TestCase):
 
     def test_auto_review_exposes_copilot_availability(self):
         """auto-review detects a dark Copilot and exposes it as an output the
-        submit job reads (RETRO P1)."""
+        submit job reads."""
         job = _jobs()["auto-review"]
         self.assertIn("copilot_available", job.get("outputs", {}))
         names = [s.get("name") for s in job["steps"]]
@@ -393,7 +393,7 @@ def _classify_step_script(runner_temp, failure_count):
 
 
 class ClassifyFailuresStepTests(unittest.TestCase):
-    """RETRO P2: a classifier that crashes must not silently drop a real
+    """A classifier that crashes must not silently drop a real
     failure; the step falls back to treating every failure as a regression."""
 
     def _run(self, classifier):

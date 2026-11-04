@@ -78,7 +78,7 @@ class EnforcementRunner implements ConsoleFeatures {
      *
      * <p>A second-pass review of such a tree reviews nothing: the no-op review
      * passes a clean branch kept drawing were each a full review session run
-     * against a tree the primary had not touched (RETRO P3).
+     * against a tree the primary had not touched.
      * {@link #run()} skips the {@code review} rule and records the skip in the
      * job's phase messages when this holds. The review of a tree the primary
      * <em>did</em> change is unaffected.</p>
