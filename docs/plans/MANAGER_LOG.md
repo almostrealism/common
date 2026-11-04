@@ -28,6 +28,97 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-11-04 (later) — Skip the per-dispatch copy-in of a folded aggregate slice the kernel never reads
+
+**Category:** Performance
+**Branch:** `project/plan-20261104-182220`
+**Plan:** [`PLAN-20261104-aggregate-copy-in-skip-unread.md`](PLAN-20261104-aggregate-copy-in-skip-unread.md)
+**Tracker:** `cfffa36b-bb97-4350-b15d-bc7bfc2ce48a`
+
+#### What changed since last cycle
+
+The text-tokenization documentation merged (PR #838), closing the documentation gap at the input
+layer of every language model that the earlier 2026-11-04 cycle opened. Around it, the **MaleCNS
+simulation** work merged (PR #829) — not a plan cycle but a project branch that advanced the
+connectome proof-of-value track (run the Shiu et al. model on any connectome, record each neuron's
+side, compare with Brian2 from the reference manifest, and a `CacheRowAddressingTests` correctness
+fix for cache rows past 2²⁴) and **updated its own internals docs as it landed**
+(`neural-population-simulation.md`, `neuron-level-connectome-simulation.md`, the bioscience README).
+The copy-once-read-only aggregate work (PR #825) and the vector-index docs (PR #834) are both in.
+
+#### Category assessment (priority order)
+
+- **Documentation — strong and current, checked not assumed.** The last two cycles were
+  documentation (text tokenization, vector index), and the one fresh subsystem to land since
+  (MaleCNS, PR #829) carried its own connective internals docs rather than Javadoc only. The
+  `consult` corpus (built 2026-11-01) predates these merges, so it cannot adjudicate currency; I
+  relied on the Manager Log's record that each fresh subsystem got connective prose as it merged,
+  and on the log's own standing direction — *if the corpus is current, return to performance
+  (`38f78778`) or proof of value rather than look for a fourth gap.* No fresh flagship prose gap.
+  Moved on.
+- **Code quality — owned by continuous QA.** The attention-gradient and cache-ownership arcs stay
+  closed; the standing items (`io.almostrealism.collect` split; `TransformerResamplingFeatures`
+  buffered K/V) are real but not reachable flagships. Moved on.
+- **Performance — the telegraphed, freshly-evidenced, high-leverage lever, and it decided the
+  cycle.** The rolling KV cache (PR #818) landed correct but *missed its throughput criterion*:
+  on Metal it issues ~245 argument-aggregation copy dispatches per byte against the sliding
+  window's ~123, dispatch-bound on the per-dispatch copy-ins. Copy-once-read-only (PR #825) removed
+  the read-only weights from that count; what remains is one device copy per other folded slice,
+  each a command-buffer blit on Metal. That per-dispatch copy *count* is the category's definition
+  of a bottleneck: known, measured, on the critical path of two proof-of-value tracks at once.
+- **Proof of value — the category these levers serve, gated or heavier.** MaleCNS just advanced but
+  is itself capped by this copy path (every connectome tensor is folded, not replaced); long-form
+  self-description at speed is capped the same way; conditional diffusion is heavy. The highest-
+  leverage move toward proof of value is removing the gate, not adding a feature behind it.
+
+#### Why this task
+
+I verified against source that the copy path already makes two of its three decisions by reading
+the **compiled kernel**, never a declared property: copy-*back* is limited to the slices
+`getWrittenSlices(Scope)` finds written (via `Scope.containsAssignment(array, start, end)`), and
+read-only slices are copied in once (`isCopiedOnce` + `OnceSubmittable.unordered()`). The missing
+piece is the **dual**: a folded slice the kernel never *reads* needs no copy-in at all — its staged
+input is dead. The read machinery already exists (`ExpressionReferences.containsReference`), and
+`containsAssignment` is exactly its position-bounded *write* case; the task adds the position-bounded
+*read* case, a `getReadSlices(Scope)`, and a `limitCopyInTo`/`setReadSlices` pair mirroring the
+copy-back API, then skips the copy-in of any unread slice in `ensureCopyOperations`. It is the
+copy-back arc applied symmetrically to the copy-in, on the same evidence source and with the same
+rule — infer off the scope, never declare (`INVESTIGATION-20261031-declared-property-shortcut.md`).
+Localized to `MemoryDataArgumentMap` + one read-query method + the already-wired `apply` prepare
+site, with a backend-independent structural regression test that pins the partition (not a timing
+threshold) so it cannot be gamed. The old tracker id `38f78778` is no longer resolvable, so this
+cycle files a fresh, precisely-scoped task and the two remaining levers (one coalesced multi-region
+Metal copy; aggregate-only-over-limit) stay as follow-ups.
+
+#### Balance across categories
+
+The last two cycles were documentation; the two before that were performance (copy-once) and proof
+of value (rolling cache). Returning to performance now is the disciplined move the measurement
+forces, not a detour to an easier category — the foundation is covered and current, the proof-of-
+value feature is landed and correct, and its promised win is blocked precisely here. Small–medium
+task needing a Metal node for the dispatches/byte and bridge-commit measurement (workstream settings
+file present), as the copy-once and rolling-cache cycles did; correctness is verifiable on any
+backend.
+
+#### What comes next
+
+1. This plan: the position-bounded read query, `getReadSlices(Scope)`,
+   `limitCopyInTo`/`setReadSlices`, the `ensureCopyOperations` partition, the structural regression
+   test, and the Metal measurement.
+2. **Performance, same arc:** coalesce the slices that must still be copied every dispatch into a
+   single multi-region copy on Metal (one blit, not N); aggregate only when the folded-argument
+   count is over a threshold.
+3. **Proof of value, self-hosted LM:** attention sinks (pin the first `k` tokens) if the rolling
+   cache's long-generation quality degrades.
+4. **Proof of value, connectome:** build on the merged MaleCNS work toward the fuller whole-brain
+   reproduction, now that the Shiu et al. model runs on any connectome and the Brian2 comparison is
+   manifest-driven.
+5. **Proof of value:** conditional diffusion training.
+6. Still open: the reduced `matmul`/convolution-gradient forms; `TransformerResamplingFeatures`'
+   buffered K/V; the `io.almostrealism.collect` split; letting a trained model read the platform's
+   own *source* — its retrieval substrate (vector index) and input layer (tokenization) are now
+   documented.
+
 ### 2026-11-04 — Document text tokenization, from a string to the token ids a model consumes
 
 **Category:** Documentation
