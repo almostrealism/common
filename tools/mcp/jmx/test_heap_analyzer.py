@@ -38,6 +38,9 @@ def fake_env(tmp_path, monkeypatch):
     monkeypatch.setattr(heap_analyzer, "_TOOLS_TARGET", tools_target)
     monkeypatch.setattr(heap_analyzer.Path, "home",
                         classmethod(lambda cls: tmp_path / "home"))
+    # A FlowTree job exports these; the fake repository is unsplit at ~/.m2.
+    monkeypatch.delenv("FLOWTREE_MAVEN_LOCAL_REPOSITORY", raising=False)
+    monkeypatch.delenv("MAVEN_ARGS", raising=False)
     return tmp_path
 
 
@@ -51,6 +54,31 @@ class TestBuildClasspath:
                          "jackson-core", "jackson-annotations",
                          "ar-io", "ar-meta"):
             assert fragment in joined
+
+    def test_split_repository_reads_job_space_and_shared_cache(self, tmp_path, monkeypatch):
+        """In a FlowTree job, ar-* jars are in the job's space and the rest in cached/."""
+        tools_target = tmp_path / "tools" / "target"
+        tools_target.mkdir(parents=True)
+        (tools_target / "ar-tools-0.75.jar").write_bytes(b"jar")
+        m2 = tmp_path / "home" / ".m2" / "repository"
+        for rel in _DEP_JARS:
+            root = m2 / ("flowtree-jobs/task-1" if "almostrealism" in rel else "cached")
+            jar = root / rel
+            jar.parent.mkdir(parents=True)
+            jar.write_bytes(b"jar")
+        monkeypatch.setattr(heap_analyzer, "_TOOLS_TARGET", tools_target)
+        monkeypatch.setattr(heap_analyzer.Path, "home",
+                            classmethod(lambda cls: tmp_path / "home"))
+        monkeypatch.delenv("FLOWTREE_MAVEN_LOCAL_REPOSITORY", raising=False)
+        monkeypatch.setenv("MAVEN_ARGS",
+                           "-Daether.enhancedLocalRepository.split=true "
+                           "-Daether.enhancedLocalRepository.localPrefix=flowtree-jobs/task-1")
+
+        entries = heap_analyzer._build_classpath().split(":")
+
+        assert len(entries) == 1 + len(_DEP_JARS)
+        assert any("flowtree-jobs/task-1/org/almostrealism/ar-io" in e for e in entries)
+        assert any("cached/com/fasterxml/jackson/core/jackson-core" in e for e in entries)
 
     def test_missing_ar_io_raises_with_artifact_named(self, fake_env):
         ar_io = (fake_env / "home" / ".m2" / "repository"

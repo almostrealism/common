@@ -482,8 +482,10 @@ public class AudioLibrary implements ConsoleFeatures {
 	/**
 	 * Returns the identifier of the model the configured feature provider
 	 * produces, or {@code null} if no feature provider is configured.
+	 *
+	 * @return the current model identifier, or {@code null}
 	 */
-	private String currentModelId() {
+	public String currentModelId() {
 		WaveDataFeatureProvider provider = factory.getFeatureProvider();
 		return provider == null ? null : provider.getModelIdentifier();
 	}
@@ -1051,8 +1053,11 @@ public class AudioLibrary implements ConsoleFeatures {
 			return;
 		}
 
-		PackedCollection embedding = computeEmbeddingVector(details);
+		String modelId = currentModelId();
+		PackedCollection embedding = details.meanPooledEmbedding(modelId);
 		if (embedding != null) {
+			// The store indexes the vector under the active model; make it the model the vector was pooled from
+			if (modelId != null) details.setActiveModelIdentifier(modelId);
 			store.put(id, details, embedding);
 		} else {
 			store.put(id, details);
@@ -1227,12 +1232,7 @@ public class AudioLibrary implements ConsoleFeatures {
 			if (d == null) return null;
 
 			if (store != null) {
-				PackedCollection embedding = computeEmbeddingVector(d);
-				if (embedding != null) {
-					store.put(d.getIdentifier(), d, embedding);
-				} else {
-					store.put(d.getIdentifier(), d);
-				}
+				persist(d);
 				// Skip include(d) when store != null: include() would re-write
 				// the id to the store without an embedding, removing it from the
 				// HNSW index (ProtobufDiskStore behaviour).

@@ -216,6 +216,26 @@ class QaRoundWorkflowShapeTests(unittest.TestCase):
         self.assertEqual("true", submit["env"]["AUTO_CREATE_PR"])
         self.assertNotIn("PR_DRAFT", submit["env"])
 
+    def test_an_application_caller_workstream_gets_the_framework_and_its_tracker_role(self):
+        """An application caller (one whose repository is not the framework) has
+        its round registered with the framework as a dependent repository, so
+        its agent can build against it, and with the tracker role the caller
+        asks for. A framework caller — one whose repository is the framework
+        itself — adds no dependent repository, which the conditional's empty
+        fallback expresses."""
+        register = next(s for s in self.job["steps"]
+                        if "register-workstream.sh" in s.get("run", ""))
+        dependent = register["env"]["DEPENDENT_REPOS"]
+        self.assertIn("inputs.framework-repository != github.repository", dependent)
+        self.assertIn("git@github.com:{0}.git", dependent)
+        # The framework-caller branch of the conditional contributes no
+        # dependent repository: the framework is cloned beside the application only.
+        self.assertIn("|| ''", dependent)
+        self.assertEqual("${{ inputs.tracker-capabilities }}",
+                         register["env"]["TRACKER_CAPABILITIES"])
+        self.assertEqual("", self.workflow[True]["workflow_call"]["inputs"]
+                         ["tracker-capabilities"]["default"])
+
 
 if __name__ == "__main__":
     unittest.main()

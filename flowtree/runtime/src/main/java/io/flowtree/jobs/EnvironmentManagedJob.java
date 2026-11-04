@@ -25,23 +25,27 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Base64;
+import java.util.Map;
 import org.almostrealism.util.KeyUtils;
 
 /**
  * Abstract base class for jobs that require a managed execution
  * environment on the receiving node.
  *
- * <p>Currently handles Python virtual environment setup: when
+ * <p>Handles Python virtual environment setup: when
  * {@link #pythonRequirements} is set, this class ensures a venv
  * exists at a known location with the specified packages installed.
  * The venv is reused across jobs and only reinstalled when the
  * requirements change (detected via SHA-256 hash).</p>
+ *
+ * <p>Also gives every job with a task id its own
+ * {@link MavenInstallSpace}, so the Maven artifacts the job installs are
+ * isolated from other jobs on the node. Every process the job launches is
+ * pointed at it by {@link #applyEnvironmentTo(Map)}, and the space is
+ * released by {@link #releaseEnvironment()} when the job ends.</p>
  *
  * <p>The venv python path is exposed via {@link #getPythonCommand()}
  * so that subclasses and MCP tool configuration can use it instead
@@ -79,6 +83,9 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
 
     /** Resolved path to the venv directory after {@link #prepareEnvironment()}. */
     private Path venvPath;
+
+    /** This job's installed-artifact space, created by {@link #prepareEnvironment()}. */
+    private MavenInstallSpace mavenInstallSpace;
 
     /**
      * Sets the Python package requirements (pip requirements.txt content).
@@ -121,9 +128,38 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
+     * Applies what {@link #prepareEnvironment()} set up for this job alone to
+     * the environment of a process the job is about to launch: the job's
+     * {@link MavenInstallSpace}, so every Maven build the process runs installs
+     * into, and resolves from, this job's space. Every process the job launches
+     * that may run Maven must be started with an environment passed through
+     * here. Leaves {@code env} unchanged before {@link #prepareEnvironment()}
+     * and for a job without a task id.
+     *
+     * @param env the environment a process will be launched with
+     */
+    public void applyEnvironmentTo(Map<String, String> env) {
+        if (mavenInstallSpace != null) {
+            mavenInstallSpace.applyTo(env);
+        }
+    }
+
+    /**
+     * Releases what {@link #prepareEnvironment()} set up for this job alone —
+     * the job's {@link MavenInstallSpace}. The shared Python venv is kept for
+     * the next job. Called when the job ends, whether or not it succeeded.
+     */
+    protected void releaseEnvironment() {
+        if (mavenInstallSpace != null) {
+            mavenInstallSpace.release();
+        }
+    }
+
+    /**
      * Prepares the execution environment on the receiving node.
      *
-     * <p>When Python requirements are configured, this method:</p>
+     * <p>First creates the job's {@link MavenInstallSpace} (when the job has a
+     * task id). Then, when Python requirements are configured, this method:</p>
      * <ol>
      *   <li>Resolves the venv directory (system property, then default)</li>
      *   <li>Creates the venv if it does not exist</li>
@@ -137,6 +173,12 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
      * @throws InterruptedException if a process is interrupted
      */
     protected void prepareEnvironment() throws IOException, InterruptedException {
+        String taskId = getTaskId();
+        if (taskId != null && !taskId.isEmpty()) {
+            mavenInstallSpace = MavenInstallSpace.forJob(taskId);
+            mavenInstallSpace.prepare();
+        }
+
         // Auto-discover requirements from the working directory if not
         // explicitly set on the job
         if ((pythonRequirements == null || pythonRequirements.isEmpty())
@@ -234,13 +276,9 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
     }
 
     /**
-     * Recursively deletes a directory tree.
-     *
-     * <p>Walks with {@link Files#walkFileTree} and deletes each entry on the way
-     * out, tolerating entries that vanish concurrently: a {@link Files#walk}
-     * stream would throw if a file it had listed was removed by another process
-     * before it was reached, whereas the visitor treats an already-gone entry as
-     * success — which, for a delete, it is.</p>
+     * Recursively deletes a directory tree this job's environment manages,
+     * tolerating entries that vanish concurrently (see
+     * {@link ManagedDirectory#delete()}).
      *
      * <p>Package-private so {@link EnvironmentManagedJobTest} can verify the
      * vanishing-entry tolerance directly rather than through reflection.</p>
@@ -249,27 +287,7 @@ public abstract class EnvironmentManagedJob implements Job, ConsoleFeatures {
      * @throws IOException if the tree cannot be traversed
      */
     void deleteDirectory(Path dir) throws IOException {
-        if (!Files.exists(dir)) return;
-        Files.walkFileTree(dir, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs)
-                    throws IOException {
-                Files.deleteIfExists(file);
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFileFailed(Path file, IOException exc) {
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult postVisitDirectory(Path directory, IOException exc)
-                    throws IOException {
-                Files.deleteIfExists(directory);
-                return FileVisitResult.CONTINUE;
-            }
-        });
+        new ManagedDirectory(dir).delete();
     }
 
     /**

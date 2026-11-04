@@ -145,6 +145,9 @@ class StartRunPreflightIntegrationTests(unittest.TestCase):
             patch.object(server, "subprocess",
                          _StubSubprocess(_FakePopen)),
             patch.object(preflight, "DEFAULT_M2_REPOSITORY", self._m2),
+            # The fake repository uses the unsplit layout, whatever
+            # MAVEN_ARGS the job running these tests carries.
+            patch.dict(os.environ, {"MAVEN_ARGS": ""}),
             patch.object(server.threading, "Timer", _NoOpTimer),
             patch.object(server.threading, "Thread", _NoOpThread),
             patch.object(server.TestRunner, "_spawn_watcher_subprocess",

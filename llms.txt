@@ -38,7 +38,7 @@
 - [biology](domain/biology/README.md): Neurons, synapses, cell types, connectomes and their dynamics
 
 ### engine/ — Applications & Training
-- [ml](engine/ml/README.md): Transformer models (Qwen3), StateDictionary, attention, diffusion | [Details](docs/modules/ml.html)
+- [ml](engine/ml/README.md): Transformer models (Qwen3), StateDictionary, attention, diffusion; protobuf disk store and HNSW vector similarity search (`org.almostrealism.persist.index`: `HnswIndex`, `ProtobufDiskStore`, `SimilarityMetric`) | [Details](docs/modules/ml.html)
 - [optimize](engine/optimize/README.md): ModelOptimizer, loss functions, Adam, evolutionary algorithms | [Details](docs/modules/optimize.html)
 - [render](engine/render/README.md): Ray tracing engine, lighting, image output | [Details](docs/modules/render.html)
 - [audio](engine/audio/README.md): Audio synthesis, signal processing, filters, MIDI | [Details](docs/modules/audio.html)
@@ -110,6 +110,7 @@
 - [Training Loop Examples](docs/internals/training-loop-examples.md): ModelOptimizer patterns
 - [Training Compile Performance](docs/internals/training-compile-performance.md): Measuring and attributing first-step training compile cost, with the defects that once made fine-tuning look infeasible
 - [Sampling Loop Examples](docs/internals/sampling-loop-examples.md): DiffusionSampler patterns
+- [Vector Index](docs/internals/vector-index.md): Native-accelerated vector similarity search — the `ProtobufDiskStore` layout and vector API, `HnswIndex` as a computation graph (compiled-once normalize and whole-store `matmul` scoring, host-side top-K), the `hnsw.bin` save/load format, the model-keyed rebuild contract (`hnsw.model` marker, re-embedding in `ProtobufWaveDetailsStore`), and known limits
 
 ### Simulation
 - [Simulation Loop Examples](docs/internals/simulation-loop-examples.md): SimulationRunner patterns — the loop owner for recurrent dynamical systems, the step contract, boundary inputs, recording, measured dispatch overhead

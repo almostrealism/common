@@ -587,5 +587,52 @@ class ArtifactAgeReportTests(unittest.TestCase):
             self.assertLess(report.index("ar-base-code"), report.index("ar-engine-ml"))
 
 
+class JobInstallSpaceTests(unittest.TestCase):
+    """Inside a FlowTree job, installed artifacts are looked up in the job's space.
+
+    The harness sets MAVEN_ARGS so Maven's split local repository installs
+    into ``<repository>/flowtree-jobs/<task id>``. A jar another job left at
+    the unsplit location is one Maven will not resolve, so it must count as
+    missing and trigger a seed.
+    """
+
+    JOB_ARGS = ("-Daether.enhancedLocalRepository.split=true "
+                "-Daether.enhancedLocalRepository.localPrefix=flowtree-jobs/task-1")
+
+    def test_jar_outside_the_job_space_is_missing(self):
+        with TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "src"
+            repository = Path(tmp) / "m2"
+            project_root.mkdir()
+            _write_root_pom(project_root)
+            _write_module_pom(project_root, "engine/utils", deps=[
+                ("org.almostrealism", "ar-space", "0.74"),
+            ])
+            _install_jar(repository, "org.almostrealism", "ar-space", "0.74")
+            with mock.patch.object(preflight, "DEFAULT_M2_REPOSITORY", repository), \
+                    mock.patch.dict(os.environ, {"MAVEN_ARGS": self.JOB_ARGS}):
+                missing = preflight.find_missing_upstream_artifacts(project_root, "engine/utils")
+            self.assertEqual(["ar-space"], [m.artifact_id for m in missing])
+            self.assertEqual(
+                repository / "flowtree-jobs/task-1/org/almostrealism/ar-space/0.74/ar-space-0.74.jar",
+                missing[0].expected_path)
+
+    def test_jar_in_the_job_space_is_installed(self):
+        with TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "src"
+            repository = Path(tmp) / "m2"
+            project_root.mkdir()
+            _write_root_pom(project_root)
+            _write_module_pom(project_root, "engine/utils", deps=[
+                ("org.almostrealism", "ar-space", "0.74"),
+            ])
+            _install_jar(repository / "flowtree-jobs" / "task-1",
+                         "org.almostrealism", "ar-space", "0.74")
+            with mock.patch.object(preflight, "DEFAULT_M2_REPOSITORY", repository), \
+                    mock.patch.dict(os.environ, {"MAVEN_ARGS": self.JOB_ARGS}):
+                missing = preflight.find_missing_upstream_artifacts(project_root, "engine/utils")
+            self.assertEqual([], missing)
+
+
 if __name__ == "__main__":
     unittest.main()

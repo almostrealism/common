@@ -154,6 +154,17 @@ if [ "${BUILD}" = true ] && ! command -v mvn >/dev/null 2>&1; then
     echo "ERROR: mvn is not on PATH for $(id -un)." >&2
     exit 1
 fi
+# Jobs isolate their installed artifacts with Maven's split local repository
+# (MavenInstallSpace), which Maven older than 3.9 silently ignores.
+if command -v mvn >/dev/null 2>&1; then
+    MVN_VERSION="$(mvn --version 2>/dev/null | sed -n 's/^Apache Maven \([0-9]*\)\.\([0-9]*\).*/\1 \2/p')"
+    read -r MVN_MAJOR MVN_MINOR <<< "${MVN_VERSION}"
+    if [ -z "${MVN_VERSION}" ] || [ "${MVN_MAJOR}" -lt 3 ] \
+            || { [ "${MVN_MAJOR}" -eq 3 ] && [ "${MVN_MINOR}" -lt 9 ]; }; then
+        echo "WARNING: mvn on PATH is older than 3.9 (or unreadable); jobs on this" >&2
+        echo "         node will NOT get isolated Maven install spaces." >&2
+    fi
+fi
 
 daemon_registered() {
     launchctl print "${SERVICE}" >/dev/null 2>&1

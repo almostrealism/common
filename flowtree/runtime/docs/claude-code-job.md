@@ -127,7 +127,7 @@ NDJSON-derived execution metrics are extracted by `extractOutputMetrics()`, and 
 `ClaudeCodeJob` instantiates two collaborating objects as final fields:
 
 - `mcpConfigBuilder` (`McpConfigBuilder`): Constructs the `--mcp-config` JSON and `--allowedTools` string. Configured via `configureMcpBuilder()` before each execution.
-- `launchConfig` (`AgentLaunchConfig`): Assembles what each agent session launches with. It owns the `ManagedToolsDownloader` that downloads pushed tool server files from the controller, pushes the job's state into `mcpConfigBuilder`, composes the allowed-tools list, and builds the `AgentRunRequest`. The job's `configureMcpBuilder()` and `buildComposedAllowedTools()` delegate to it.
+- `runRequestFactory` (`AgentRunRequestFactory`): Builds the `AgentRunRequest` each agent session launches with. It owns the `ManagedToolsDownloader` that downloads pushed tool server files from the controller, pushes the job's state into `mcpConfigBuilder`, composes the allowed-tools list, and builds the `AgentRunRequest`. The job's `configureMcpBuilder()` and `buildComposedAllowedTools()` delegate to it.
 - `outputMapper` (`ObjectMapper`): A static Jackson mapper shared by all instances for NDJSON parsing and JSON serialization.
 
 Two stateless helpers are invoked per Claude attempt:
@@ -702,7 +702,7 @@ The `0.0.0.0` placeholder is used throughout the system as a stand-in for the co
 
 ## ManagedToolsDownloader and Pushed Tool Lifecycle
 
-`ManagedToolsDownloader` handles the download and verification of pushed MCP tool server files. It is instantiated by the job's `AgentLaunchConfig` with a reference to the `McpConfigBuilder` for configuration parsing.
+`ManagedToolsDownloader` handles the download and verification of pushed MCP tool server files. It is instantiated by the job's `AgentRunRequestFactory` with a reference to the `McpConfigBuilder` for configuration parsing.
 
 ### ensurePushedTools(String pushedToolsConfig)
 
