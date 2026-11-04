@@ -81,10 +81,28 @@ public class PullRequestEventHandlerTest extends TestSuiteBase {
 	 * @return the handler
 	 */
 	private PullRequestEventHandler newHandler(JobStatsStore store) {
+		return newHandler(store, REPO);
+	}
+
+	/**
+	 * Creates a handler over {@code store} whose resolver maps {@link #BRANCH},
+	 * whatever repository is asked for, to {@link #WORKSTREAM} registered with
+	 * {@code workstreamRepo} — the way branch resolution falls back to a
+	 * workstream that names no repository, or would answer for a fork.
+	 *
+	 * @param store          the store to query
+	 * @param workstreamRepo the repository the resolved workstream names, or
+	 *                       {@code null} for an unscoped workstream
+	 * @return the handler
+	 */
+	private PullRequestEventHandler newHandler(JobStatsStore store, String workstreamRepo) {
 		return new PullRequestEventHandler(store,
-				(branch, repoUrl) -> BRANCH.equals(branch)
-						? BranchResolution.of(new Workstream(WORKSTREAM, "C1", "#example"))
-						: BranchResolution.none(),
+				(branch, repoUrl) -> {
+					if (!BRANCH.equals(branch)) return BranchResolution.none();
+					Workstream ws = new Workstream(WORKSTREAM, "C1", "#example");
+					if (workstreamRepo != null) ws.setRepoUrl(workstreamRepo);
+					return BranchResolution.of(ws);
+				},
 				(ws, event) -> dispatched.add(event));
 	}
 
@@ -339,7 +357,7 @@ public class PullRequestEventHandlerTest extends TestSuiteBase {
 				event.minus(Duration.ofHours(1)));
 
 		try {
-			newAmbiguousHandler(store).cancelInFlightJobs(null, BRANCH, "123", true, event);
+			newAmbiguousHandler(store).cancelInFlightJobs(REPO, BRANCH, "123", true, event);
 			Assert.fail("an ambiguous branch must not be reported as a successful cancellation");
 		} catch (IllegalArgumentException e) {
 			Assert.assertEquals(AMBIGUOUS, e.getMessage());
@@ -364,6 +382,7 @@ public class PullRequestEventHandlerTest extends TestSuiteBase {
 				Instant.parse("2026-11-01T16:12:00Z"));
 
 		String response = newAmbiguousHandler(store).handleJson("{\"headBranch\":\"" + BRANCH
+				+ "\",\"repoUrl\":\"" + REPO
 				+ "\",\"merged\":true,\"eventTime\":\"2026-11-01T17:40:00Z\"}");
 
 		assertTrue("an ambiguous branch is a failure: " + response,
@@ -373,6 +392,107 @@ public class PullRequestEventHandlerTest extends TestSuiteBase {
 		assertFalse("no count is reported for a failed resolution: " + response,
 				response.contains("\"count\""));
 		assertTrue("nothing dispatched", dispatched.isEmpty());
+		store.close();
+	}
+
+	/**
+	 * A fork's pull request names the fork as its head repository. A workstream
+	 * that names a different repository is not cancelled even when the
+	 * resolver hands it back for the shared branch name.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void forkRepositoryDoesNotCancelAnotherRepositorysWorkstream() throws Exception {
+		JobStatsStore store = newStore();
+		Instant event = Instant.parse("2026-11-01T17:40:00Z");
+		store.recordJobStarted("job-impl", WORKSTREAM, "Implement the plan",
+				event.minus(Duration.ofHours(1)));
+
+		List<String> cancelled = newHandler(store, REPO).cancelInFlightJobs(
+				"https://github.com/someone-else/common.git", BRANCH, "901", false, event);
+
+		assertTrue("a fork's event cancels nothing", cancelled.isEmpty());
+		assertTrue("nothing dispatched for a fork's event", dispatched.isEmpty());
+		assertEquals("the running job is still in flight", 1,
+				store.getActiveJobs(WORKSTREAM).size());
+		store.close();
+	}
+
+	/**
+	 * A workstream that names no repository is a fallback match in branch
+	 * resolution, but it is never cancelled: it cannot be shown to belong to
+	 * the event's repository.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void unscopedWorkstreamIsNotCancelled() throws Exception {
+		JobStatsStore store = newStore();
+		Instant event = Instant.parse("2026-11-01T17:40:00Z");
+		store.recordJobSubmitted("job-queued", WORKSTREAM, "waiting for a worker",
+				"ci", null, event.minus(Duration.ofMinutes(10)));
+
+		List<String> cancelled = newHandler(store, null)
+				.cancelInFlightJobs(REPO, BRANCH, "902", true, event);
+
+		assertTrue("an unscoped workstream is not cancelled", cancelled.isEmpty());
+		assertTrue("nothing dispatched for an unscoped workstream", dispatched.isEmpty());
+		assertEquals("the pending job is still waiting", 1,
+				store.getPendingJobs(WORKSTREAM).size());
+		store.close();
+	}
+
+	/**
+	 * The repository comparison is by identity, so the HTTPS clone URL a pull
+	 * request event carries matches a workstream registered with the SSH form
+	 * of the same repository.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void sshRegisteredWorkstreamMatchesHttpsEventRepository() throws Exception {
+		JobStatsStore store = newStore();
+		Instant event = Instant.parse("2026-11-01T17:40:00Z");
+		store.recordJobStarted("job-impl", WORKSTREAM, "Implement the plan",
+				event.minus(Duration.ofHours(1)));
+
+		List<String> cancelled = newHandler(store, "git@github.com:almostrealism/common.git")
+				.cancelInFlightJobs(REPO, BRANCH, "903", true, event);
+
+		assertEquals("the same repository in another form still matches", 1, cancelled.size());
+		assertEquals("job-impl", cancelled.get(0));
+		store.close();
+	}
+
+	/**
+	 * An event without a head repository is rejected rather than resolved by
+	 * branch name alone, and nothing is cancelled.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void missingRepositoryIsRejectedWithoutCancelling() throws Exception {
+		JobStatsStore store = newStore();
+		Instant event = Instant.parse("2026-11-01T17:40:00Z");
+		store.recordJobStarted("job-impl", WORKSTREAM, "Implement the plan",
+				event.minus(Duration.ofHours(1)));
+
+		try {
+			newHandler(store).cancelInFlightJobs(null, BRANCH, "904", true, event);
+			Assert.fail("an event without a repository must not cancel by branch name alone");
+		} catch (IllegalArgumentException e) {
+			assertTrue("the error names the missing field: " + e.getMessage(),
+					e.getMessage().contains("repoUrl is required"));
+		}
+
+		String response = newHandler(store).handleJson("{\"headBranch\":\"" + BRANCH
+				+ "\",\"repoUrl\":\"\",\"merged\":true}");
+		assertTrue("an empty repoUrl is a failure: " + response,
+				response.contains("\"ok\":false") && response.contains("repoUrl is required"));
+		assertTrue("nothing dispatched", dispatched.isEmpty());
+		assertEquals("the running job is still in flight", 1,
+				store.getActiveJobs(WORKSTREAM).size());
 		store.close();
 	}
 }

@@ -29,9 +29,12 @@
 # Required environment:
 #   CONTROLLER_URL  - FlowTree controller base URL
 #   HEAD_BRANCH     - the closed pull request's head branch
+#   REPO_URL        - the head repository's clone URL; the controller cancels
+#                     only a workstream that names this same repository, so a
+#                     fork's pull request never reaches another repository's
+#                     workstream that happens to share the branch name
 #
 # Optional environment:
-#   REPO_URL                - head repository URL, to disambiguate the branch
 #   PR_NUMBER               - the pull request number, for the cancellation reason
 #   MERGED                  - "true" if the pull request was merged (default false)
 #   EVENT_TIME              - ISO-8601 instant of the close; jobs submitted at or
@@ -45,6 +48,8 @@ set -euo pipefail
 
 : "${CONTROLLER_URL:?CONTROLLER_URL is required}"
 : "${HEAD_BRANCH:?HEAD_BRANCH is required}"
+# TODO(review): a PR whose head repo was deleted has an empty clone_url, so this fails the job instead of failing soft.
+: "${REPO_URL:?REPO_URL is required}"
 
 if [ "${MERGED:-false}" = "true" ]; then
     MERGED_JSON=true
@@ -54,7 +59,7 @@ fi
 
 BODY=$(jq -nc \
     --arg headBranch "$HEAD_BRANCH" \
-    --arg repoUrl "${REPO_URL:-}" \
+    --arg repoUrl "$REPO_URL" \
     --arg prNumber "${PR_NUMBER:-}" \
     --arg eventTime "${EVENT_TIME:-}" \
     --argjson merged "$MERGED_JSON" \

@@ -1488,6 +1488,21 @@ head, so a SHA-based filter would cancel the master pipeline. The
 head-repository match keeps a fork's branch from matching a same-named branch
 here.
 
+A second job, `cancel-branch-jobs`, tells the FlowTree controller that the PR
+reached a terminal state. It POSTs to the controller's `/api/pr-events` through
+`tools/ci/cancel-pr-branch-jobs.sh`, and the controller cancels the agent jobs
+on the head branch that it accepted before the PR closed. Unlike `cancel`,
+it is **not** gated on `merged`: a close without a merge settles the branch's
+work too. It holds the `FLOWTREE_CF_ACCESS_CLIENT_SECRET` controller credential
+and fails soft. An unreachable controller or an `ok:false` answer is a workflow
+warning, and the stall watchdog stays the backstop. It is safe under
+`pull_request_target` for the same reason as `cancel`: it checks out no PR
+code, and `HEAD_BRANCH`, `REPO_URL` and the other event values reach the script
+through `env`, never interpolated into `run:`. Because a fork supplies its own
+event metadata, the controller cancels only a workstream that names the event's
+head repository (`REPO_URL`, the head repo's clone URL). A branch name alone,
+or a workstream that names no repository, is never enough.
+
 ### What the `analysis` job does
 
 Waits for `build`, `test`, `test-flowtree`, `test-media`, `test-mac`,

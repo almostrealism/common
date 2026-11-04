@@ -52,6 +52,13 @@ import java.util.function.BiFunction;
  * follow-up the owner starts on the same branch after the merge is submitted
  * after the event and is therefore left untouched.</p>
  *
+ * <p>The event must name its head repository, and only a workstream that names
+ * that same repository is cancelled. The event metadata of a fork's pull
+ * request is supplied by the fork, so matching on the branch name alone — or
+ * accepting a workstream that names no repository, which branch resolution
+ * otherwise treats as a fallback match — would let a fork cancel an unrelated
+ * workstream by closing a pull request from a branch of the same name.</p>
+ *
  * <p>Each job is first moved to {@code CANCELLED} by the store's atomic
  * {@link JobStatsStore#cancelIfInFlight in-flight transition}; a job that
  * completed on its own after the in-flight snapshot keeps its own terminal
@@ -109,15 +116,16 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
      * Handles a {@code POST /api/pr-events} request body describing a terminal
      * pull request event and returns the JSON response body.
      *
-     * <p>Expected fields: {@code headBranch} (required), {@code repoUrl},
-     * {@code prNumber}, {@code merged} (boolean; {@code false} is a close
+     * <p>Expected fields: {@code headBranch} and {@code repoUrl} (both
+     * required), {@code prNumber}, {@code merged} (boolean; {@code false} is a close
      * without a merge) and {@code eventTime} (ISO-8601 instant of the event;
      * defaults to now when absent or unparseable).</p>
      *
      * @param body the request body, or {@code null}
      * @return a JSON object carrying {@code ok}, the {@code cancelled} job ids
      *         and their {@code count}; or {@code ok:false} with an
-     *         {@code error} when the branch is missing or resolves ambiguously,
+     *         {@code error} when the branch or repository is missing or the
+     *         branch resolves ambiguously,
      *         so the caller can tell a failed cancellation from one that found
      *         nothing to cancel
      */
@@ -153,8 +161,11 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
      * Cancels the running and pending jobs on {@code headBranch} that the
      * controller accepted before {@code eventInstant}.
      *
-     * @param repoUrl      the head repository URL, used to disambiguate the
-     *                     branch; may be {@code null}
+     * @param repoUrl      the head repository URL; required. Only a workstream
+     *                     that itself names this repository is cancelled, so
+     *                     a fork's pull request (whose head repository is the
+     *                     fork) never reaches a workstream that merely shares
+     *                     the branch name, nor one that names no repository
      * @param headBranch   the pull request's head branch
      * @param prNumber     the pull request number, for the cancellation reason
      * @param merged       whether the pull request was merged (vs closed)
@@ -162,16 +173,20 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
      *                     submitted at or after it are left untouched. When
      *                     {@code null} the current instant is used.
      * @return the ids of the jobs cancelled, in the order they were cancelled;
-     *         empty when no workstream tracks the branch
-     * @throws IllegalArgumentException when the branch resolves to more than
-     *         one workstream; nothing is cancelled, and the message says how to
-     *         disambiguate
+     *         empty when no workstream naming {@code repoUrl} tracks the branch
+     * @throws IllegalArgumentException when {@code repoUrl} is absent, or the
+     *         branch resolves to more than one workstream; nothing is
+     *         cancelled, and the message says what is missing
      */
     public List<String> cancelInFlightJobs(String repoUrl, String headBranch,
             String prNumber, boolean merged, Instant eventInstant) {
         List<String> cancelled = new ArrayList<>();
         if (statsStore == null || headBranch == null || headBranch.isEmpty()) {
             return cancelled;
+        }
+        if (repoUrl == null || repoUrl.isEmpty()) {
+            throw new IllegalArgumentException("repoUrl is required: a terminal PR event"
+                    + " cancels only the workstream that names the head repository");
         }
         Instant cutoff = eventInstant != null ? eventInstant : Instant.now();
         BranchResolution resolution = workstreamResolver == null ? null
@@ -181,9 +196,10 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
                     + resolution.error());
             throw new IllegalArgumentException(resolution.error());
         }
-        if (resolution == null || resolution.match() == null) {
-            log("No workstream resolved for terminal PR event on branch=" + headBranch
-                    + " repoUrl=" + repoUrl + "; nothing to cancel");
+        if (resolution == null || resolution.match() == null
+                || !resolution.match().matchesRepo(repoUrl)) {
+            log("No workstream on branch=" + headBranch + " names repoUrl=" + repoUrl
+                    + "; nothing to cancel");
             return cancelled;
         }
         String workstreamId = resolution.match().getWorkstreamId();
