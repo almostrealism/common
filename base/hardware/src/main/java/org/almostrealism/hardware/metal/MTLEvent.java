@@ -47,6 +47,43 @@ public class MTLEvent extends MTLObject {
 	}
 
 	/**
+	 * Returns whether this event has been signaled, by the GPU or the host, to at least the given
+	 * value, without waiting. A command buffer's encoded signal is visible here as soon as the GPU
+	 * executes it, ahead of the buffer's completion notification, which is what lets a host
+	 * thread poll for GPU work.
+	 *
+	 * <p>The value is read by a small native operation compiled at runtime (see
+	 * {@link #isSignalReadable()}), which the first call compiles if nothing has yet.</p>
+	 *
+	 * <p>Mutually excluded with {@link #release()}, as {@link #signal(long)} is, so a poll that
+	 * races the event's release reads either the live event or the released state, never a freed
+	 * native pointer. A released event reports {@code false}: it has no signal left to observe.</p>
+	 *
+	 * @param value the value to check for
+	 * @return true if the event's signaled value is at least {@code value}, false if it is lower
+	 *         or the event has been released
+	 * @throws IllegalStateException if this host cannot read event values (see
+	 *         {@link #isSignalReadable()})
+	 */
+	public synchronized boolean isSignaled(long value) {
+		return !isReleased() && MTLSignaledValue.get().apply(getNativePointer()) >= value;
+	}
+
+	/**
+	 * Returns whether the host can read this event's signaled value, which
+	 * {@link #isSignaled(long)} does. The value is read by a JNI operation that is compiled at
+	 * runtime, once per JVM, with the toolchain the JNI backend compiles with, rather than built
+	 * into {@code libMTL.dylib}; the first call compiles it. A host without that toolchain cannot
+	 * read event values, which is logged, with the cause, by the call that finds out.
+	 *
+	 * @return true if {@link #isSignaled(long)} can be used, false if this host cannot read event
+	 *         values
+	 */
+	public boolean isSignalReadable() {
+		return MTLSignaledValue.isAvailable();
+	}
+
+	/**
 	 * Signals this event to the given value if it has not been released, mutually
 	 * excluded with {@link #release()} so the native object cannot be freed while
 	 * the signal call is in flight.

@@ -90,6 +90,48 @@ public class SubmissionStreamTest {
 		}
 	}
 
+	/**
+	 * A device-free stream that can read its device's progress, or not, as the test says, whose
+	 * device reaches an ordinal only after a set number of readings, and which records every
+	 * ordinal it is asked about.
+	 */
+	private static final class PollingStream extends SubmissionStream<TestCompletion> {
+		/** Whether {@link #canPollCompletion()} reports a readable device. */
+		private final boolean readable;
+		/** The number of readings after which {@link #hasReached(long)} reports true. */
+		private final int readingsUntilReached;
+		/** The number of times the device's progress was read. */
+		private int readings;
+		/** The ordinal most recently asked about, or -1 before the first reading. */
+		private long lastOrdinal = -1;
+
+		/**
+		 * Creates a stream with a hold bound of one, taking the polling window from
+		 * {@link SubmissionStream#completionSpinMicros} as every stream does.
+		 *
+		 * @param readable             whether the stream can read its device's progress
+		 * @param readingsUntilReached the readings after which the device reports the ordinal
+		 *                             reached, or {@link Integer#MAX_VALUE} for never
+		 */
+		private PollingStream(boolean readable, int readingsUntilReached) {
+			super("polling stream", TestCompletion.class, 1, "on stream thread");
+			this.readable = readable;
+			this.readingsUntilReached = readingsUntilReached;
+		}
+
+		@Override
+		protected boolean isStreamThread() { return false; }
+
+		@Override
+		protected boolean canPollCompletion() { return readable; }
+
+		@Override
+		protected boolean hasReached(long ordinal) {
+			lastOrdinal = ordinal;
+			return ++readings >= readingsUntilReached;
+		}
+	}
+
 	/** A device-free completion of a {@link SubmissionStream}. */
 	private static final class TestCompletion extends LatchSemaphore implements StreamCompletion {
 		/** The stream the completion belongs to. */
@@ -402,6 +444,118 @@ public class SubmissionStreamTest {
 			Assert.assertEquals(0, s.getIdleCommitCount());
 		} finally {
 			SubmissionStream.minIdleCommit = saved;
+		}
+	}
+
+	/**
+	 * Creates a {@link PollingStream} with the given polling window, restoring the shared window
+	 * afterwards, since a stream reads it only when it is created.
+	 *
+	 * @param windowMicros         the polling window, in microseconds
+	 * @param readable             whether the stream can read its device's progress
+	 * @param readingsUntilReached the readings after which the device reports the ordinal reached
+	 * @return a new stream
+	 */
+	private static PollingStream pollingStream(int windowMicros, boolean readable, int readingsUntilReached) {
+		int saved = SubmissionStream.completionSpinMicros;
+
+		try {
+			SubmissionStream.completionSpinMicros = windowMicros;
+			return new PollingStream(readable, readingsUntilReached);
+		} finally {
+			SubmissionStream.completionSpinMicros = saved;
+		}
+	}
+
+	/** A stream that keeps the default hooks cannot read its device's progress, so it never polls. */
+	@Test(timeout = 10000)
+	public void defaultStreamNeverPolls() {
+		TestStream s = stream(1);
+		Assert.assertFalse(s.isPollingForCompletion());
+		Assert.assertFalse(s.pollForCompletion(1));
+		Assert.assertFalse("The default hook reports no progress", s.hasReached(1));
+	}
+
+	/**
+	 * A readable stream with a window polls its device's progress for the ordinal asked about
+	 * until the device reaches it, reading it again after each miss.
+	 */
+	@Test(timeout = 10000)
+	public void readableStreamPollsUntilReached() {
+		PollingStream s = pollingStream(5_000_000, true, 3);
+		Assert.assertTrue(s.isPollingForCompletion());
+		Assert.assertTrue(s.pollForCompletion(42));
+		Assert.assertEquals(3, s.readings);
+		Assert.assertEquals(42, s.lastOrdinal);
+	}
+
+	/**
+	 * A readable stream whose device never reaches the ordinal stops polling once the window has
+	 * passed, so the caller can block instead, having read the progress more than once.
+	 */
+	@Test(timeout = 10000)
+	public void pollingEndsWhenWindowPassesUnreached() {
+		PollingStream s = pollingStream(2000, true, Integer.MAX_VALUE);
+		long start = System.nanoTime();
+		Assert.assertFalse(s.pollForCompletion(7));
+		Assert.assertTrue("Polling must last the window", System.nanoTime() - start >= 2_000_000);
+		Assert.assertTrue(s.readings > 1);
+		Assert.assertEquals(7, s.lastOrdinal);
+	}
+
+	/**
+	 * A stream that cannot read its device's progress does not poll whatever its window, and its
+	 * device's progress is never read.
+	 */
+	@Test(timeout = 10000)
+	public void unreadableStreamNeverReadsProgress() {
+		PollingStream s = pollingStream(5_000_000, false, 1);
+		Assert.assertFalse(s.isPollingForCompletion());
+		Assert.assertFalse(s.pollForCompletion(1));
+		Assert.assertEquals(0, s.readings);
+	}
+
+	/**
+	 * A window of zero, or below, read when the stream is created, disables polling even for a
+	 * readable stream, and a window changed afterwards does not affect a stream already created.
+	 */
+	@Test(timeout = 10000)
+	public void nonPositiveWindowDisablesPolling() {
+		PollingStream zero = pollingStream(0, true, 1);
+		PollingStream negative = pollingStream(-1, true, 1);
+
+		Assert.assertFalse(zero.isPollingForCompletion());
+		Assert.assertFalse(zero.pollForCompletion(1));
+		Assert.assertFalse(negative.isPollingForCompletion());
+		Assert.assertFalse(negative.pollForCompletion(1));
+		Assert.assertEquals(0, zero.readings);
+		Assert.assertEquals(0, negative.readings);
+
+		int saved = SubmissionStream.completionSpinMicros;
+
+		try {
+			SubmissionStream.completionSpinMicros = 5_000_000;
+			Assert.assertFalse("The window is read when the stream is created", zero.isPollingForCompletion());
+		} finally {
+			SubmissionStream.completionSpinMicros = saved;
+		}
+	}
+
+	/**
+	 * An interrupted caller stops polling at once without reading the device's progress, and the
+	 * interrupt is left pending for the blocking wait that follows.
+	 */
+	@Test(timeout = 10000)
+	public void interruptEndsPollingAndStaysPending() {
+		PollingStream s = pollingStream(5_000_000, true, Integer.MAX_VALUE);
+		Thread.currentThread().interrupt();
+
+		try {
+			Assert.assertFalse(s.pollForCompletion(1));
+			Assert.assertTrue("The interrupt must stay pending", Thread.currentThread().isInterrupted());
+			Assert.assertEquals(0, s.readings);
+		} finally {
+			Thread.interrupted();
 		}
 	}
 
