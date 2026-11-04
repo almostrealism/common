@@ -126,6 +126,24 @@ run_case "other gates are still reported alongside an unattributed integrity fai
     "checkstyle" "test-integrity-check" \
     TEST_INTEGRITY_PASSED=false TEST_INTEGRITY_REASON=infrastructure CHECKSTYLE_PASSED=false
 
+# ── Plan-document identifiers: reported on their own, not as Checkstyle ──
+#
+# The identifier check runs in the checkstyle job but publishes its own
+# output, so a branch that only cites a plan is not told it has Checkstyle
+# violations, and a skipped checkstyle job (empty output) reports nothing.
+
+run_case "plan-document identifiers are reported with their own message" "true" \
+    "temporary-identifiers: A file outside docs/plans/" "checkstyle:" \
+    CHECKSTYLE_PASSED=true TEMPORARY_IDENTIFIERS_PASSED=false
+
+run_case "identifiers and checkstyle failures are reported together" "true" \
+    "temporary-identifiers:" "" \
+    CHECKSTYLE_PASSED=false TEMPORARY_IDENTIFIERS_PASSED=false
+
+run_case "a skipped checkstyle job reports no identifier failure" "false" \
+    "" "temporary-identifiers" \
+    CHECKSTYLE_PASSED= TEMPORARY_IDENTIFIERS_PASSED=
+
 # ── Deception audit: a merge-base failure is not a clean result ─────
 #
 # deception-audit.sh sets audit_error=true (and leaves has_findings/

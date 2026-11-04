@@ -491,7 +491,7 @@ jobs:
   # ── Quality Assurance — Flaky-Test Hunt (pilot) ──────────────────
   # Takes one module and a small, named slice of its tests, runs that slice
   # repeatedly on the current commit, and looks for a test whose outcome varies
-  # with no change to the code under test. A PILOT (RETRO-20261022 F6): its
+  # with no change to the code under test. A PILOT: its
   # interval is 7 days and it deliberately does NOT raise the shared MAX_OPEN_PRS
   # (the note above the jobs). PROTECT_TEST_FILES stays on — the test that reveals
   # the flake is the specification — and it pins claude/opus, as telling a real
