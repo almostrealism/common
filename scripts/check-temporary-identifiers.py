@@ -51,11 +51,14 @@ deliberately narrow:
   below the words that say what they are. A timestamped branch name is
   unambiguous and is flagged anywhere;
 - a value plainly made up by hand — four equal digits in a row, an ascending
-  run of four, hexspeak such as ``cafe`` — is a fixture, not a handle;
+  run of four or hexspeak such as ``cafe`` among its first eight digits, or a
+  timestamp whose time is one repeated digit or ``123456`` — is a fixture, not
+  a handle;
 - the plan directories are exempt, as above, and generated or vendored files
   (by path, or by an ``@generated``/``DO NOT EDIT`` header) are skipped;
 - a genuine case is suppressed on its own line with
-  ``temporary-identifier-ok: <reason>``; the reason is required.
+  ``temporary-identifier-ok: <reason>``; the reason, a word or more, is
+  required.
 
 Durable anchors — PR numbers, class names, module names — never take these
 shapes, so they stay allowed.
@@ -99,17 +102,27 @@ BINARY_PROBE_BYTES = 8192
 
 HEX_TOKEN = re.compile(
     r"(?<![0-9A-Za-z#])(?<!0x)(?<!0X)"
-    r"(?P<token>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{7,40})"
+    r"(?P<token>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{7,40}"
+    r"|[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}|[0-9A-F]{7,40})"
     r"(?![0-9A-Za-z])")
-"""A full UUID, or a lowercase hexadecimal run of 7 to 40 digits: an id prefix or a commit SHA.
+"""A full UUID, or a hexadecimal run of 7 to 40 digits: an id prefix or a commit SHA.
 
-A run preceded by ``#`` (a colour) or ``0x`` (a numeric literal) is not one."""
+Either case is matched, but not a mix of the two: tools print an id in one
+case, while a mixed-case run is a word or a name. A run preceded by ``#`` (a
+colour) or ``0x`` (a numeric literal) is not one."""
 
 TIMESTAMPED_NAME = re.compile(
     r"(?<![\w.-])(?:[A-Za-z0-9._-]+/)+[A-Za-z0-9._-]*-\d{8}-(?P<time>\d{6})(?![\w-])")
 """A round branch or workstream name: ``<prefix>/<name>-YYYYMMDD-HHMMSS``."""
 
 HEX_DIGITS = "0123456789abcdef"
+
+PLACEHOLDER_PREFIX = 8
+"""How many leading digits of a value the placeholder test reads.
+
+A fixture is made up from its first digits, while a long generated value holds
+some placeholder-shaped run somewhere in its body far more often than in its
+first eight digits."""
 
 PLACEHOLDER_WORDS = ("dead", "beef", "cafe", "babe", "face", "fade", "feed", "f00d", "c0de", "d00d")
 """Hexspeak that marks a value as made up by hand rather than generated."""
@@ -132,6 +145,9 @@ CONTEXT_AFTER = 40
 
 SUPPRESSION = re.compile(r"temporary-identifier-ok:(?P<reason>.*)$")
 """The inline suppression marker; the text after it is the required reason."""
+
+REASON_WORD = re.compile(r"[A-Za-z]{2,}")
+"""A word in a suppression's reason; a reason needs at least one."""
 
 GENERATED_PATH = re.compile(
     r"(?:^|/)(?:target|node_modules|vendor|vendored|third_party|generated|__pycache__)/"
@@ -278,21 +294,32 @@ def is_identifier_token(token: str) -> bool:
     return any(c.isdigit() for c in token) and any(c.isalpha() for c in token)
 
 
-# TODO(review): window test also exempts ~2% of real 40-digit SHAs/UUIDs and HH0000 timestamps; uppercase hex is never matched.
 def is_placeholder(value: str) -> bool:
-    """Returns True when a hexadecimal or numeric value is plainly made up by hand.
+    """Returns True when a hexadecimal value is plainly made up by hand.
 
-    A generated id or a real timestamp almost never holds four equal digits in
-    a row (``0000``), an ascending run of four (``1234``, ``abcd``) or hexspeak
-    (``cafe``), while a fixture written to stand for one usually does. Writing
-    fixtures this way keeps them out of the check without a suppression.
+    A generated id almost never begins with four equal digits in a row
+    (``0000``), an ascending run of four (``1234``, ``abcd``) or hexspeak
+    (``cafe``), while a fixture written to stand for one usually does. Only the
+    first ``PLACEHOLDER_PREFIX`` digits are read, so a real SHA or UUID that
+    happens to hold such a run further along is still judged. Writing fixtures
+    this way keeps them out of the check without a suppression.
     """
-    digits = value.replace("-", "")
+    digits = value.replace("-", "").lower()[:PLACEHOLDER_PREFIX]
     for i in range(len(digits) - 3):
         window = digits[i:i + 4]
         if len(set(window)) == 1 or window in HEX_DIGITS:
             return True
     return any(word in digits for word in PLACEHOLDER_WORDS)
+
+
+def is_placeholder_time(time: str) -> bool:
+    """Returns True when the ``HHMMSS`` of a timestamped name is plainly made up.
+
+    A real round starts at any time, on the hour included (``120000``), so only
+    a time that is one repeated digit (``000000``) or the run ``123456`` marks a
+    fixture.
+    """
+    return len(set(time)) == 1 or time == "123456"
 
 
 def in_identifying_context(before: str, after: str) -> bool:
@@ -309,11 +336,13 @@ def generic_identifiers(path: str, line: int, text: str,
     count as context: a list of ids often sits a line or two below the words
     that say what they are.
 
-    A line carrying ``temporary-identifier-ok: <reason>`` is suppressed; the
-    marker without a reason is itself reported, in place of what it hides.
+    A line carrying ``temporary-identifier-ok: <reason>`` is suppressed when
+    the reason holds at least one word (``generated`` is enough); the marker
+    without one — nothing after it, or only punctuation such as a comment's
+    closing ``-->`` — is itself reported, in place of what it hides.
     """
     found = [Violation(path, line, m.group(0), NAME_SOURCE)
-             for m in TIMESTAMPED_NAME.finditer(text) if not is_placeholder(m.group("time"))]
+             for m in TIMESTAMPED_NAME.finditer(text) if not is_placeholder_time(m.group("time"))]
     for match in HEX_TOKEN.finditer(text):
         token = match.group("token")
         if is_identifier_token(token) and not is_placeholder(token) and in_identifying_context(
@@ -324,7 +353,7 @@ def generic_identifiers(path: str, line: int, text: str,
     suppression = SUPPRESSION.search(text)
     if suppression is None:
         return found
-    if len(re.findall(r"[A-Za-z]{2,}", suppression.group("reason"))) >= 2:
+    if REASON_WORD.search(suppression.group("reason")) is not None:
         return []
     return [Violation(path, line, found[0].text, UNREASONED_SOURCE)]
 

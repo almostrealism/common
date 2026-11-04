@@ -3879,6 +3879,7 @@ jobs:
           DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
           CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
           TEMPORARY_IDENTIFIERS_PASSED: ${{ needs.checkstyle.outputs.identifiers_passed }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
         run: |
           ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
 

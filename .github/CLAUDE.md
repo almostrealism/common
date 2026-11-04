@@ -392,12 +392,16 @@ unrelated pull request, and on the base branch itself nothing is judged.
 Hexadecimal strings are legitimate data (hashes, test vectors, colours), so a
 hex token is flagged only near an identifying word — task, job, run,
 workstream, memory, commit, SHA, tracker, id — while a timestamped branch name
-is flagged anywhere. Plainly made-up fixture values (`0000`, `1234`, `abcd`,
-`cafe`) are not flagged, generated and vendored files are skipped, and a
-genuine case is suppressed on its own line with
-`temporary-identifier-ok: <reason>` (the reason is required). The script runs
-no commands itself — the step computes the file list and the diff and hands
-both to it — so agents can run it locally under the exfiltration guard.
+is flagged anywhere. Hex is matched in either case (not mixed). Plainly
+made-up fixture values — `0000`, `1234`, `abcd` or `cafe` among a value's first
+eight digits, or a branch time of `000000` or `123456` — are not flagged,
+generated and vendored files are skipped, and a genuine case is suppressed on
+its own line with `temporary-identifier-ok: <reason>` (the reason, a word or
+more, is required). The script runs no commands itself — the step computes the
+file list and the diff and hands both to it — so agents can run it locally
+under the exfiltration guard. The `checkstyle` gating above matters more for
+this rule: a docs-only pull request's added lines are never part of a later
+change's diff, so they are not judged at all.
 
 **The `ci/...` carve-out covers `.claude/hooks/` too, and covers comparisons
 only.** Both the enforcement-tampering check and the exfiltration guard's

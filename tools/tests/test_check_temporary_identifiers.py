@@ -231,6 +231,8 @@ SHORT_SHA = "".join(("a5e2", "7d194"))
 UUID = "".join(("3b8f9e", "21-6c4d", "-4a7e-", "9f02-", "d5c81e", "7a6b39"))
 ROUND_BRANCH = "".join(("qa/flaky-", "20991104", "-135711"))
 MD5_OF_HELLO = "".join(("5d4140", "2abc4b", "2a76b9", "719d91", "1017c5", "92"))
+SHA_WITH_ZEROS_INSIDE = "".join(("9c41e7", "b2d58a", "3f6e19", "c70000", "4b8d2e", "a17f53", "c6e9"))
+ON_THE_HOUR_BRANCH = "".join(("qa/flaky-", "20991104", "-120000"))
 SHA1_OF_ABC = "".join(("a9993e", "364706", "816aba", "3e2571", "7850c2", "6c9cd0", "d89d"))
 
 
@@ -264,6 +266,21 @@ class IdentifyingContextTests(unittest.TestCase):
         self.assertEqual([HEX_ID, SHORT_SHA],
                          generic(f'        for lead in ("{HEX_ID}", "{SHORT_SHA}"):', preceding))
 
+    def test_an_uppercase_id_is_flagged(self):
+        self.assertEqual([UUID.upper()], generic(f'recall(memoryId="{UUID.upper()}")'))
+        self.assertEqual([HEX_ID.upper()], generic(f"tracker task {HEX_ID.upper()} is open"))
+
+    def test_a_long_sha_holding_a_placeholder_run_past_its_prefix_is_flagged(self):
+        self.assertEqual([SHA_WITH_ZEROS_INSIDE],
+                         generic(f"Reverted commit {SHA_WITH_ZEROS_INSIDE} after the regression."))
+
+    def test_a_round_branch_started_on_the_hour_is_flagged(self):
+        self.assertEqual([ON_THE_HOUR_BRANCH], generic(f"rebased onto {ON_THE_HOUR_BRANCH}"))
+
+    def test_a_round_branch_started_at_an_ascending_time_other_than_123456_is_flagged(self):
+        branch = "".join(("qa/flaky-", "20991104", "-012345"))
+        self.assertEqual([branch], generic(f"rebased onto {branch}"))
+
     def test_a_timestamped_round_branch_is_flagged_without_any_context(self):
         self.assertEqual([ROUND_BRANCH], generic(f'BRANCH = "{ROUND_BRANCH}"'))
         self.assertEqual([f"origin/{ROUND_BRANCH}"], generic(f"diff against origin/{ROUND_BRANCH}"))
@@ -290,6 +307,13 @@ class DataTokenTests(unittest.TestCase):
         self.assertEqual([], generic('task = "00000000-0000-0000-0000-000000000000"'))
         self.assertEqual([], generic('BRANCH = "qa/defect-' + '20991104-000000"'))
 
+    def test_uppercase_fixtures_and_a_timestamp_of_123456_are_not_flagged(self):
+        self.assertEqual([], generic('job_id = "DEADBEEF"; task = "1234ABCD9"'))
+        self.assertEqual([], generic('BRANCH = "qa/defect-' + '20991104-123456"'))
+
+    def test_a_mixed_case_run_is_a_name_not_an_id(self):
+        self.assertEqual([], generic('job_id = "' + "Ab12" + 'Cd3e"'))
+
     def test_durable_anchors_are_not_flagged(self):
         self.assertEqual([], generic("Merged with PR #836 (task: NodeWorkerWakeTest in flowtree/runtime)."))
 
@@ -300,6 +324,15 @@ class SuppressionTests(unittest.TestCase):
     def test_a_suppression_with_a_reason_is_honoured(self):
         self.assertEqual([], generic(
             f'commit = "{SHORT_SHA}"  # temporary-identifier-ok: fixture for the git parser test'))
+
+    def test_a_one_word_reason_is_enough(self):
+        self.assertEqual([], generic(f'commit = "{SHORT_SHA}"  # temporary-identifier-ok: generated'))
+
+    def test_a_marker_followed_only_by_punctuation_has_no_reason(self):
+        found = generic(f"<!-- commit {SHORT_SHA} temporary-identifier-ok: -->")
+        self.assertEqual([SHORT_SHA], found)
+        self.assertEqual(CHECK.UNREASONED_SOURCE, CHECK.generic_identifiers(
+            "f.md", 1, f"<!-- commit {SHORT_SHA} temporary-identifier-ok: -->")[0].source)
 
     def test_a_suppression_without_a_reason_is_reported(self):
         found = CHECK.generic_identifiers("f.py", 3, f'commit = "{SHORT_SHA}"  # temporary-identifier-ok:')
