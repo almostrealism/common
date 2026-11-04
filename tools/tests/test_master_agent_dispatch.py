@@ -278,6 +278,58 @@ class MasterAgentDispatchTests(unittest.TestCase):
                         or condition == "always()",
                         "ungated: " + step["name"])
 
+    def test_a_round_registers_its_workstream_only_as_it_submits(self):
+        """RETRO-20261026 F6 (`jobless-roundup`): no jobless round workstreams.
+
+        A workstream is registered only after the cadence gate has said the
+        round runs and every other step of the round has succeeded: the
+        register step comes after the gate and the prompt build and directly
+        precedes the submission. If the submission then produces no job, a
+        retire step archives exactly that round's workstream (its full branch
+        name as the prefix), so a round that never got a job leaves none behind.
+
+        A job is "not produced" by a step failure, but also by the two paths
+        submit-agent-job.sh exits 0 on without creating one — the controller
+        skipping or rejecting the submission — which `failure()` never sees. The
+        retire step therefore keys on `steps.submit.outputs.submitted != 'true'`
+        under `!cancelled()`, not on `failure()`, so it fires for a skip and a
+        rejection too (an exit-1 failure writes no output, which reads as false).
+        """
+        rounds = dict(self.qa_jobs)
+        rounds["plan-next-task"] = self.jobs["plan-next-task"]
+        for name, job in rounds.items():
+            steps = job["steps"]
+            index = {script: next(i for i, s in enumerate(steps) if script in s.get("run", ""))
+                     for script in ("qa-cadence.sh", "register-workstream.sh",
+                                    "submit-agent-job.sh")}
+            build = next(i for i, s in enumerate(steps)
+                         if re.search(r"build-[a-z-]+-prompt\.sh", s.get("run", "")))
+            register = steps[index["register-workstream.sh"]]
+            submit = steps[index["submit-agent-job.sh"]]
+            with self.subTest(job=name):
+                self.assertLess(index["qa-cadence.sh"], index["register-workstream.sh"])
+                self.assertLess(build, index["register-workstream.sh"],
+                                "the prompt must be built before registering")
+                self.assertEqual(index["register-workstream.sh"] + 1,
+                                 index["submit-agent-job.sh"],
+                                 "registration must directly precede the submission")
+                self.assertEqual("register", register.get("id"))
+                self.assertEqual("submit", submit.get("id"),
+                                 "the retire step reads the submission's outcome")
+
+                retire = [s for s in steps[index["submit-agent-job.sh"] + 1:]
+                          if "archive-stale-workstreams.sh" in s.get("run", "")]
+                self.assertEqual(1, len(retire),
+                                 "a submission that made no job must be retired")
+                condition = retire[0].get("if", "")
+                self.assertIn("!cancelled()", condition)
+                self.assertIn("steps.register.outcome == 'success'", condition)
+                self.assertIn("steps.submit.outputs.submitted != 'true'", condition,
+                              "a skipped or rejected submission must also retire")
+                self.assertEqual(register["env"]["BRANCH"],
+                                 retire[0]["env"]["BRANCH_PREFIX"],
+                                 "only this round's workstream may be retired")
+
     def test_qa_rounds_do_not_archive_on_a_forced_run(self):
         """A forced QA dispatch must not retire a round that is still in progress.
 

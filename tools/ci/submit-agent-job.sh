@@ -99,16 +99,36 @@
 #                       that exists on one platform).
 #
 # Exit codes:
-#   0 - submission succeeded
-#   1 - submission failed (unreachable host, non-200 response, etc.)
+#   0 - submission succeeded, OR the controller skipped/rejected it (both leave
+#       the step green; a caller tells them apart via the `submitted` output)
+#   1 - submission failed (unreachable host, non-200 response, or a 200 that
+#       created no job — e.g. "No agents connected")
 #
 # Outputs (to stdout):
 #   job_id=<id>          (on success)
 #   workstream_id=<id>   (on success, when the controller reports one)
+#
+# Outputs (to $GITHUB_OUTPUT, when set):
+#   submitted=true       a job was created
+#   submitted=false      the controller skipped or rejected the submission
+#                        (both exit 0). A caller that registered a workstream
+#                        just before this step reads it to retire a workstream
+#                        that never got a job; absent output (an exit-1 failure)
+#                        reads the same as false.
 
 set -euo pipefail
 
 PROMPT_FILE="${1:-}"
+
+# Record whether a job was actually created, for a GitHub Actions caller that
+# retires a round's workstream when its submission produced none. A skip and a
+# rejection both exit 0, so `failure()` alone cannot see them. No-op outside
+# Actions, where GITHUB_OUTPUT is unset.
+emit_submitted() {
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then
+        echo "submitted=$1" >> "$GITHUB_OUTPUT"
+    fi
+}
 
 if [ -z "$PROMPT_FILE" ]; then
     echo "Usage: $0 <prompt-file>" >&2
@@ -304,6 +324,7 @@ if [ "$SKIPPED" = "true" ]; then
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
         echo "Agent job for \`$BRANCH\` was not submitted — the controller skipped it: $REASON" >> "$GITHUB_STEP_SUMMARY"
     fi
+    emit_submitted false
     exit 0
 fi
 
@@ -311,13 +332,30 @@ fi
 AUTOMATED_REJECTED=$(echo "$BODY" | jq -r 'if .automated == true and .ok == false then "true" else "false" end')
 if [ "$AUTOMATED_REJECTED" = "true" ]; then
     echo "::notice::Automated job submission rejected — automated jobs are currently disabled on the controller"
+    emit_submitted false
     exit 0
 fi
 
+# A 200 response is not proof a job was created. The controller answers
+# {"ok":false,"error":"No agents connected"} with HTTP 200 when no worker is
+# connected (FlowTreeApiEndpoint.handleSubmit), and that path is neither a skip
+# nor an automated rejection — so without this guard the final emit_submitted
+# below would mark a job as created when none exists, and the caller's retire
+# step would leave the newly registered workstream orphaned. The controller
+# issues a jobId only when it creates a job, so a response without one is a
+# failed submission, reported as submitted=false and a non-zero exit so the
+# dropped request is visible.
 JOB_ID=$(echo "$BODY" | jq -r '.jobId // empty')
+if [ -z "$JOB_ID" ]; then
+    ERROR=$(echo "$BODY" | jq -r '.error // "controller returned no jobId"')
+    echo "::error::Agent job was not created: $ERROR"
+    emit_submitted false
+    exit 1
+fi
 echo "job_id=$JOB_ID"
 echo "workstream_id=$(echo "$BODY" | jq -r '.workstreamId // empty')"
 echo "Agent job submitted: $JOB_ID"
+emit_submitted true
 
 if [ "$(echo "$BODY" | jq -r '.workstreamCreated // empty')" = "true" ]; then
     WS_ID=$(echo "$BODY" | jq -r '.workstreamId // "unknown"')

@@ -20,6 +20,8 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
@@ -85,6 +87,33 @@ public class CodingAgentJobPostCompletionCommandRuleTest extends TestSuiteBase {
 		String prompt = rule.buildCorrectionPrompt(job);
 		assertTrue("Correction prompt must mention timeout", prompt.toLowerCase().contains("timeout")
 				|| prompt.toLowerCase().contains("timed out"));
+	}
+
+	/**
+	 * A timeout must kill every process the command started, not only the
+	 * {@code sh} wrapper. A surviving child (a {@code mvn} build, say) would
+	 * otherwise keep writing into the job's Maven install space after the job
+	 * has released it. The command backgrounds a long sleep, records its pid,
+	 * and waits on it; after the timeout that pid must no longer be alive.
+	 */
+	@Test(timeout = 30000)
+	public void postCompletionTimeoutKillsDescendantProcesses() throws Exception {
+		File pidFile = File.createTempFile("post-completion-child-", ".pid");
+		pidFile.deleteOnExit();
+		String cmd = "sleep 60 & echo $! > " + pidFile.getAbsolutePath() + "; wait";
+		PostCompletionCommandRule rule = new PostCompletionCommandRule(cmd, null, 1);
+		CodingAgentJob job = new CodingAgentJob("t1", "do something");
+		assertTrue("timed-out command should be violated", rule.isViolated(job));
+		assertTrue("should be recorded as timed out", rule.wasLastRunTimedOut());
+
+		long childPid = Long.parseLong(
+				new String(Files.readAllBytes(pidFile.toPath())).trim());
+		ProcessHandle child = ProcessHandle.of(childPid).orElse(null);
+		if (child != null) {
+			child.onExit().get(10, TimeUnit.SECONDS);
+		}
+		assertFalse("the backgrounded child must be killed with the command",
+				ProcessHandle.of(childPid).map(ProcessHandle::isAlive).orElse(false));
 	}
 
 	/**

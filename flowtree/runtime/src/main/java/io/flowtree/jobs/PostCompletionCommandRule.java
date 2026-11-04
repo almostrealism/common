@@ -281,7 +281,14 @@ class PostCompletionCommandRule implements EnforcementRule {
      * the child blocks on write, never exits, and the wall-clock timeout fires
      * even though the work was effectively complete.</p>
      *
-     * @param job the job providing the fallback working directory
+     * <p>The command runs in the job's managed environment
+     * ({@link EnvironmentManagedJob#applyEnvironmentTo}), so a Maven build it
+     * starts resolves what the agent installed for this job. On a timeout the
+     * whole process tree is killed, so nothing the command started keeps
+     * running into that space after the job releases it.</p>
+     *
+     * @param job the job providing the fallback working directory and the
+     *            managed environment
      */
     private void runCommand(CodingAgentJob job) {
         String effectiveWorkingDir = workingDir != null ? workingDir : job.getWorkingDirectory();
@@ -295,12 +302,14 @@ class PostCompletionCommandRule implements EnforcementRule {
             pb.redirectErrorStream(true);
             pb.redirectOutput(outputFile);
             GitOperations.augmentPath(pb);
+            job.applyEnvironmentTo(pb.environment());
 
             Process process = pb.start();
             lastTimedOut = false;
 
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
                 process.destroyForcibly();
                 lastTimedOut = true;
                 lastExitCode = 1;

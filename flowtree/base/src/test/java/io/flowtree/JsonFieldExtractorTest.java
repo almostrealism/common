@@ -21,6 +21,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Tests for the JSON escape decoding performed by {@link JsonFieldExtractor}.
@@ -374,6 +375,34 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 	@Test(timeout = 10000)
 	public void topLevelObjectsReturnsEmptyListWhenNoObjectPresent() {
 		Assert.assertEquals(List.of(), JsonFieldExtractor.topLevelObjects("no objects here"));
+	}
+
+	/**
+	 * Jackson — the writer behind {@code JobCompletionEvent.toJson()}, whose
+	 * {@code costUsd} the controller reads back with {@code extractDouble} —
+	 * renders a double below {@code 1e-3} or at least {@code 1e7} in exponent
+	 * form ({@code 5.0E-4}). The exponent is part of the JSON number; dropping
+	 * it reads a $0.0005 job as $5.00.
+	 */
+	@Test(timeout = 10000)
+	public void extractDoubleReadsExponentNotationWrittenByJackson() throws Exception {
+		String json = JsonFieldExtractor.MAPPER.writeValueAsString(
+				Map.of("small", 0.0005, "large", 2.5e7, "negative", -1.25e-5));
+
+		Assert.assertTrue("Jackson should emit exponent form: " + json, json.contains("E-4"));
+		Assert.assertEquals(0.0005, JsonFieldExtractor.extractDouble(json, "small"), 1e-12);
+		Assert.assertEquals(2.5e7, JsonFieldExtractor.extractDouble(json, "large"), 1e-6);
+		Assert.assertEquals(-1.25e-5, JsonFieldExtractor.extractDouble(json, "negative"), 1e-15);
+	}
+
+	/** Lower-case and explicitly signed exponents are equally valid JSON numbers. */
+	@Test(timeout = 10000)
+	public void extractDoubleReadsLowerCaseAndSignedExponents() {
+		String json = "{\"a\":2.5e-3,\"b\":1E+2,\"c\":4}";
+
+		Assert.assertEquals(0.0025, JsonFieldExtractor.extractDouble(json, "a"), 1e-12);
+		Assert.assertEquals(100.0, JsonFieldExtractor.extractDouble(json, "b"), 1e-9);
+		Assert.assertEquals(4.0, JsonFieldExtractor.extractDouble(json, "c"), 1e-9);
 	}
 
 	/** Asserts that the strict extractor refuses {@code json}'s {@code roles} field. */

@@ -254,8 +254,8 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** Builder used to assemble the MCP tool configuration JSON for Claude Code. Package private so the same-package pushed-tools test can assert propagated state without reflection. */
     McpConfigBuilder mcpConfigBuilder = new McpConfigBuilder();
-    /** Turns this job's configuration into the launch configuration of a single agent session. */
-    private AgentLaunchConfig launchConfig = new AgentLaunchConfig(this, mcpConfigBuilder);
+    /** Builds each agent session's {@link AgentRunRequest} from this job's configuration. */
+    private AgentRunRequestFactory runRequestFactory = new AgentRunRequestFactory(this, mcpConfigBuilder);
     /** Resolves this job's commit message, including both fallbacks for an agent that wrote none. */
     private CommitMessageBuilder commitMessageBuilder = new CommitMessageBuilder();
     /** Per-runner and per-model USD cost accumulation across every phase invocation. */
@@ -990,7 +990,7 @@ public class CodingAgentJob extends GitManagedJob {
      * private so the dispatch-capable plumbing (job flag to builder to
      * allowed-tools CSV) can be exercised end to end in a unit test.
      */
-    void configureMcpBuilder() { launchConfig.configureMcpBuilder(); }
+    void configureMcpBuilder() { runRequestFactory.configureMcpBuilder(); }
 
     /**
      * Composes the allowed-tools CSV handed to the launched agent.
@@ -999,7 +999,7 @@ public class CodingAgentJob extends GitManagedJob {
      *
      * @return the composed comma-separated allowed-tools list
      */
-    String buildComposedAllowedTools() { return launchConfig.buildComposedAllowedTools(); }
+    String buildComposedAllowedTools() { return runRequestFactory.buildComposedAllowedTools(); }
 
     /**
      * Default maximum number of correction attempts per enforcement rule.
@@ -1245,7 +1245,7 @@ public class CodingAgentJob extends GitManagedJob {
         PhaseConfig effective = resolveEffectivePhaseConfig(currentPhase);
         harnessStatus().phaseEntry(currentPhase, runner.getName(), effective, placement);
         harnessStatus().recordPhaseEntry(currentPhase, runner.getName(), effective, placement);
-        launchConfig.ensurePushedTools(pushedToolsConfig);
+        runRequestFactory.ensurePushedTools();
         configureMcpBuilder();
         String mcpConfigJson = mcpConfigBuilder.buildMcpConfig();
         String composedAllowedTools = buildComposedAllowedTools();
@@ -1319,7 +1319,7 @@ public class CodingAgentJob extends GitManagedJob {
 
     /**
      * Builds the {@link AgentRunRequest} for the current session; delegates to
-     * {@link AgentLaunchConfig#buildRunRequest(String, String, Path, int)}.
+     * {@link AgentRunRequestFactory#buildRunRequest(String, String, Path, int)}.
      * Package-private for tests.
      *
      * @param composedAllowedTools allowed-tools CSV including ar-manager and
@@ -1335,7 +1335,7 @@ public class CodingAgentJob extends GitManagedJob {
                                     String mcpConfigJson,
                                     Path outputCapturePath,
                                     int attempt) {
-        return launchConfig.buildRunRequest(
+        return runRequestFactory.buildRunRequest(
                 composedAllowedTools, mcpConfigJson, outputCapturePath, attempt);
     }
 
@@ -1524,7 +1524,7 @@ public class CodingAgentJob extends GitManagedJob {
 
     /**
      * Replaces the builder this job assembles its MCP configuration with, and
-     * the launch configuration that reads it. Call before the job runs. A seam
+     * the request factory that reads it. Call before the job runs. A seam
      * for tests that run the whole job against a builder carrying a known
      * defect; production code never calls it.
      *
@@ -1532,7 +1532,7 @@ public class CodingAgentJob extends GitManagedJob {
      */
     void setMcpConfigBuilder(McpConfigBuilder builder) {
         mcpConfigBuilder = builder;
-        launchConfig = new AgentLaunchConfig(this, builder);
+        runRequestFactory = new AgentRunRequestFactory(this, builder);
     }
 
     /**

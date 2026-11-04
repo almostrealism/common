@@ -915,7 +915,10 @@ public class InstructionPromptBuilder {
             for (String depPath : dependentRepoPaths) {
                 sb.append("- `").append(depPath).append("`\n");
             }
-            sb.append("\n");
+            sb.append("\nMaven artifacts installed during this job are private to it ");
+            sb.append("(see MAVEN_ARGS). If this repository builds against a dependent one, ");
+            sb.append("run `mvn install -DskipTests` in the dependent checkout first, so your ");
+            sb.append("build resolves that checkout rather than failing to resolve it.\n\n");
         }
 
         // Branch awareness and anti-loop guidance

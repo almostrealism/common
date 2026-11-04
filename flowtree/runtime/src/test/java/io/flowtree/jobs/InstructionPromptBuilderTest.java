@@ -203,6 +203,24 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 			result.contains("/workspace/project/repo-b"));
 	}
 
+	/**
+	 * The Dependent Repositories section tells the agent that installed Maven
+	 * artifacts are private to the job, so the dependent checkout must be
+	 * installed before the primary build can resolve it.
+	 */
+	@Test(timeout = 30000)
+	public void dependentReposSectionExplainsPerJobMavenInstalls() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setTargetBranch("feature/work")
+			.setDependentRepoPaths(Arrays.asList("/workspace/project/repo-a"))
+			.build();
+		assertTrue("Expected the per-job install note",
+			result.contains("Maven artifacts installed during this job are private to it"));
+		assertTrue("Expected the instruction to install the dependent checkout",
+			result.contains("run `mvn install -DskipTests` in the dependent checkout first"));
+	}
+
 	/** InstructionPromptBuilder excludes Dependent Repositories when paths not set. */
 	@Test(timeout = 30000)
 	public void excludesDependentReposSectionWhenUnset() {
