@@ -270,24 +270,6 @@ jobs:
           echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
           echo "::notice::Created branch $BRANCH_NAME"
 
-      - name: Register workstream
-        id: register
-        if: steps.decide.outputs.run == 'true'
-        env:
-          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
-          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
-          BRANCH: ${{ steps.qa_branch.outputs.branch }}
-          BASE_BRANCH: ${{ github.event.repository.default_branch }}
-          REPO_URL: git@github.com:${{ github.repository }}.git
-          REQUIRED_LABELS_JSON: ${{ inputs.required-labels-json }}
-          TRACKER_CAPABILITIES: ${{ inputs.tracker-capabilities }}
-          # The framework beside the application, so an application's round can
-          # build against it and read it. Nothing to add when the caller is the
-          # framework itself.
-          DEPENDENT_REPOS: ${{ inputs.framework-repository != github.repository && format('git@github.com:{0}.git', inputs.framework-repository) || '' }}
-        run: bash "$FRAMEWORK/tools/ci/register-workstream.sh"
-
       # The caller's checkout is the caller-root: a built-in selector names a
       # framework template, a caller path names one in that checkout, read as
       # data. Variables reach the builder only through the environment.
@@ -319,6 +301,11 @@ jobs:
           BASE_BRANCH: ${{ github.event.repository.default_branch }}
           REPO_URL: git@github.com:${{ github.repository }}.git
           REQUIRED_LABELS_JSON: ${{ inputs.required-labels-json }}
+          TRACKER_CAPABILITIES: ${{ inputs.tracker-capabilities }}
+          # The framework beside the application, so an application's round can
+          # build against it and read it. Nothing to add when the caller is the
+          # framework itself.
+          DEPENDENT_REPOS: ${{ inputs.framework-repository != github.repository && format('git@github.com:{0}.git', inputs.framework-repository) || '' }}
         run: bash "$FRAMEWORK/tools/ci/register-workstream.sh"
 
       - name: Submit the round's agent job
