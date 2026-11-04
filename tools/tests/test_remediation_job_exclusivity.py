@@ -286,6 +286,28 @@ class CredentialIsolationTests(unittest.TestCase):
         env = [step.get("env", {}) for step in job["steps"] if "run" in step][0]
         self.assertGreaterEqual(int(env["DELAY_SECONDS"]), 300)
 
+    def test_auto_review_submit_drops_the_delay_when_copilot_is_dark(self):
+        """When Copilot's latest review on the
+        PR is an out-of-quota notice there is no review to wait for, so the
+        submit step drops its default hold to 0. The 300s default is unchanged;
+        the run step overrides it only when COPILOT_AVAILABLE is false."""
+        job = _jobs()["auto-review-submit"]
+        step = [s for s in job["steps"] if "run" in s][0]
+        env = step.get("env", {})
+        self.assertEqual("300", env["DELAY_SECONDS"])
+        self.assertIn("copilot_available", env["COPILOT_AVAILABLE"])
+        run = step["run"]
+        self.assertIn("COPILOT_AVAILABLE", run)
+        self.assertIn("DELAY_SECONDS=0", run)
+
+    def test_auto_review_exposes_copilot_availability(self):
+        """auto-review detects a dark Copilot and exposes it as an output the
+        submit job reads."""
+        job = _jobs()["auto-review"]
+        self.assertIn("copilot_available", job.get("outputs", {}))
+        names = [s.get("name") for s in job["steps"]]
+        self.assertIn("Check Copilot review availability", names)
+
     def test_submit_jobs_survive_a_skipped_or_failed_upstream_job(self):
         """Without a status function the implicit success() covers every job
         upstream, not only `needs`. The producers run exactly when python-tests
@@ -358,6 +380,95 @@ class AutoResolveSubmitStepTests(unittest.TestCase):
         result = self._run("")
         self.assertNotEqual(0, result.returncode)
         self.assertFalse(os.path.exists(self.captured))
+
+
+def _classify_step_script(runner_temp, failure_count):
+    """The auto-resolve "Classify test failures" run script, with its
+    expressions substituted the way the runner would."""
+    step = [s for s in _jobs()["auto-resolve"]["steps"]
+            if s.get("name") == "Classify test failures"][0]
+    return (step["run"]
+            .replace("${{ runner.temp }}", runner_temp)
+            .replace("${{ steps.failures.outputs.failure_count }}", str(failure_count)))
+
+
+class ClassifyFailuresStepTests(unittest.TestCase):
+    """A classifier that crashes must not silently drop a real
+    failure; the step falls back to treating every failure as a regression."""
+
+    def _run(self, classifier):
+        work = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, work)
+        temp = os.path.join(work, "temp")
+        os.makedirs(temp)
+        with open(os.path.join(temp, "test-failures.txt"), "w") as f:
+            f.write("- FooTest.bar\n- FooTest.baz\n")
+        os.makedirs(os.path.join(work, "tools", "ci"))
+        if classifier is not None:
+            with open(os.path.join(work, "tools", "ci", "classify-failures.py"), "w") as f:
+                f.write(classifier)
+        output = os.path.join(work, "github_output")
+        env = dict(os.environ, GITHUB_OUTPUT=output)
+        proc = subprocess.run(
+            ["bash", "-e", "-c", _classify_step_script(temp, 2)],
+            cwd=work, env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        with open(output) as f:
+            outputs = dict(line.strip().split("=", 1) for line in f if "=" in line)
+        with open(os.path.join(temp, "regressions.txt")) as f:
+            regressions = f.read()
+        return outputs, regressions, proc.stdout
+
+    def test_a_crashing_classifier_falls_back_to_all_regressions(self):
+        outputs, regressions, stdout = self._run("import sys\nsys.exit(3)\n")
+        self.assertEqual("2", outputs["regression_count"])
+        self.assertEqual("0", outputs["preexisting_count"])
+        self.assertEqual("0", outputs["environmental_count"])
+        self.assertIn("FooTest.bar", regressions)
+        self.assertIn("treating every failure as a regression", stdout)
+
+    def test_an_absent_classifier_falls_back_to_all_regressions(self):
+        outputs, regressions, _ = self._run(None)
+        self.assertEqual("2", outputs["regression_count"])
+        self.assertIn("FooTest.baz", regressions)
+
+    def test_a_working_classifier_is_used(self):
+        classifier = (
+            "import os, sys\n"
+            "out = sys.argv[2]\n"
+            "open(os.path.join(out, 'regressions.txt'), 'w').write('- FooTest.bar\\n')\n"
+            "print('regression_count=1')\n"
+            "print('preexisting_count=1')\n"
+            "print('environmental_count=0')\n")
+        outputs, regressions, _ = self._run(classifier)
+        self.assertEqual("1", outputs["regression_count"])
+        self.assertEqual("1", outputs["preexisting_count"])
+        self.assertNotIn("FooTest.baz", regressions)
+
+    def test_counts_that_do_not_sum_to_the_failure_count_fall_back(self):
+        # The classifier partitions every failure into exactly one bucket, so a
+        # classification whose three counts do not sum to the raw failure count
+        # (here it under-reports regressions as 0 while the run had 2 failures)
+        # is rejected and every failure is treated as a regression.
+        classifier = (
+            "print('regression_count=0')\n"
+            "print('preexisting_count=1')\n"
+            "print('environmental_count=0')\n")
+        outputs, regressions, stdout = self._run(classifier)
+        self.assertEqual("2", outputs["regression_count"])
+        self.assertEqual("0", outputs["preexisting_count"])
+        self.assertEqual("0", outputs["environmental_count"])
+        self.assertIn("FooTest.bar", regressions)
+        self.assertIn("do not match", stdout)
+
+    def test_missing_counts_fall_back_to_all_regressions(self):
+        # A classifier that prints only regression_count=0 (the other counts
+        # absent) must not be accepted: without all three it cannot be checked
+        # against the failure count, so the conservative path is taken.
+        outputs, regressions, stdout = self._run("print('regression_count=0')\n")
+        self.assertEqual("2", outputs["regression_count"])
+        self.assertIn("FooTest.baz", regressions)
+        self.assertIn("did not report all three counts", stdout)
 
 
 def _write_executable(path, text):

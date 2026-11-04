@@ -313,21 +313,9 @@ def github_pr_reviews(
             return {"ok": False, "error": "Unexpected response fetching PR"}
         head_sha = pr_data.get("head", {}).get("sha", "")
 
-    all_reviews = []
-    page = 1
-    while True:
-        result = server._github_request(
-            "GET",
-            f"/repos/{owner}/{repo}/pulls/{pr_number}/reviews?per_page=100&page={page}",
-        )
-        if isinstance(result, dict) and result.get("ok") is False:
-            return result
-        if not isinstance(result, list):
-            return {"ok": False, "error": "Unexpected response listing PR reviews"}
-        all_reviews.extend(result)
-        if len(result) < 100:
-            break
-        page += 1
+    all_reviews = server._list_pr_reviews(owner, repo, pr_number)
+    if not isinstance(all_reviews, list):
+        return all_reviews
 
     reviews = []
     for r in all_reviews:
@@ -618,6 +606,13 @@ def github_request_copilot_review(
     and its node ID (``BOT_kgDOC9w8XQ``) is rejected with "Could not
     resolve to User node with the global id of 'BOT_...'.".
 
+    When the requesting account is out of Copilot quota, GitHub accepts the
+    request but posts a refusal ("insufficient remaining quota") as the review
+    body instead of running a review. This tool detects that and returns
+    ``ok=False`` with ``quota_exceeded=True`` rather than claiming success, so
+    a caller does not treat the PR as reviewed or wait for a review that will
+    not come.
+
     Args:
         pr_number: Pull request number. If omitted, the open PR for the
             workstream/branch is looked up automatically.
@@ -629,7 +624,9 @@ def github_request_copilot_review(
         repo: GitHub repository name. Must be passed together with ``org``.
 
     Returns:
-        dict with ok=True on success or ok=False with error details.
+        dict with ok=True on success; ok=False with error details on failure,
+        and additionally ``quota_exceeded=True`` when Copilot declined the
+        review for lack of quota.
     """
     server._require_scope("github")
     if org and repo:

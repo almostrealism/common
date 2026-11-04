@@ -107,6 +107,15 @@ while IFS= read -r line || [ -n "$line" ]; do
                 echo "::warning::Ignoring STARTED_AFTER=${value} from the staged request; it is not epoch milliseconds"
             fi
             ;;
+        TRIGGER_COMMIT)
+            # Used only for the controller's own-commit skip comparison; accept
+            # a git SHA (hex) and ignore anything else rather than forward it.
+            if [[ "$value" =~ ^[0-9a-fA-F]+$ ]]; then
+                export TRIGGER_COMMIT="$value"
+            else
+                echo "::warning::Ignoring TRIGGER_COMMIT=${value} from the staged request; not a commit SHA"
+            fi
+            ;;
         BRANCH|BASE_BRANCH)
             if [ "$value" != "${!key}" ]; then
                 echo "::warning::The staged request names ${key}=${value}, but this run is for ${!key}; submitting for ${!key}"

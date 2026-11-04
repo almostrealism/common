@@ -616,3 +616,92 @@ def get_workflow_run_status(owner: str, repo: str, run_id: int) -> dict:
             "conclusion": run_result.get("conclusion"),
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# GitHub Copilot review availability
+# ---------------------------------------------------------------------------
+
+# When the account that requested a Copilot code review has no remaining quota,
+# GitHub does not run a review. It posts the refusal AS a pull-request review
+# whose body reads, verbatim, "Copilot was unable to review this pull request
+# because the user who requested the review has insufficient remaining quota."
+# That review carries no verdict a caller should act on — it is a refusal, not a
+# review — so callers detect it and treat the Copilot layer as unavailable
+# rather than reviewed. The markers below are matched case-insensitively and are
+# deliberately broad enough to also catch GitHub's "reached their quota" / "quota
+# limit" phrasings of the same refusal.
+COPILOT_QUOTA_MARKERS = (
+    "insufficient remaining quota",
+    "reached their quota",
+    "quota limit",
+)
+
+
+def is_copilot_quota_notice(body: str) -> bool:
+    """True when a review body is GitHub Copilot's out-of-quota refusal.
+
+    A quota refusal is posted as an ordinary review body but is not a review:
+    it means Copilot never ran. Detecting it lets the pipeline surface the gap
+    instead of letting a no-op stand in for a review, and lets a requester stop
+    waiting for a review that will not come.
+
+    Args:
+        body: The review body text.
+
+    Returns:
+        True when ``body`` is Copilot's "unable to review ... quota" refusal.
+    """
+    if not isinstance(body, str) or not body:
+        return False
+    lowered = body.lower()
+    if "unable to review" not in lowered:
+        return False
+    return any(marker in lowered for marker in COPILOT_QUOTA_MARKERS)
+
+
+def latest_copilot_quota_notice(reviews, is_copilot_login,
+                                exclude_ids=()) -> Optional[dict]:
+    """Return the most recent Copilot review when it is an out-of-quota refusal.
+
+    Scans ``reviews`` for those authored by Copilot (per ``is_copilot_login``),
+    takes the one submitted most recently, and returns it only when its body is
+    a quota refusal (:func:`is_copilot_quota_notice`). Returns ``None`` when
+    Copilot has no review on the pull request or its latest review is a real
+    one — i.e. Copilot is available.
+
+    Args:
+        reviews: A list of review dicts as returned by the GitHub reviews
+            endpoint (each with ``user``, ``submitted_at``, ``body``).
+        is_copilot_login: Predicate taking a login string and returning True
+            when it identifies the Copilot reviewer bot.
+        exclude_ids: Review ids to ignore. A caller that has just requested a
+            review passes the ids that existed before its request, so a quota
+            notice left by an earlier attempt is not mistaken for a refusal of
+            the new one.
+
+    Returns:
+        The quota-notice review dict, or ``None``.
+    """
+    if not isinstance(reviews, list):
+        return None
+
+    def _login(review: dict) -> str:
+        # github_pr_reviews shapes ``user`` to the login string; the raw REST
+        # review object nests it as ``user.login``. Accept either form.
+        user = review.get("user")
+        if isinstance(user, dict):
+            return user.get("login", "") or ""
+        return user or ""
+
+    copilot_reviews = [
+        r for r in reviews
+        if isinstance(r, dict) and is_copilot_login(_login(r))
+        and r.get("id") not in exclude_ids
+    ]
+    if not copilot_reviews:
+        return None
+    latest = max(copilot_reviews, key=lambda r: r.get("submitted_at") or "")
+    if is_copilot_quota_notice(latest.get("body", "")):
+        return latest
+    return None
