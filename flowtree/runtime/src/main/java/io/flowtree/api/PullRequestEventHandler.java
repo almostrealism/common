@@ -42,21 +42,31 @@ import java.util.function.BiFunction;
  * a worker on an answered question.</p>
  *
  * <p>Only jobs the controller accepted <em>before</em> the pull request event
- * are cancelled. The cut-off is the submission time the controller already
- * records ({@link PendingJob#submittedAt()} for a job not yet started;
- * {@link ActiveJob#startedAt()} for a running one, which is never earlier than
- * its submission). A follow-up the owner starts on the same branch after the
- * merge is submitted after the event and is therefore left untouched.</p>
+ * are cancelled. The cut-off is the submission time the controller records
+ * ({@link JobStatsStore#getSubmittedAt(String)}), for a running job as well as
+ * a pending one, so a job accepted before the event but picked up by a worker
+ * after it is still cancelled. Only a running job with no recorded submission
+ * (its row was created by a start event) falls back to
+ * {@link ActiveJob#startedAt()}, which is never earlier than its submission. A
+ * follow-up the owner starts on the same branch after the merge is submitted
+ * after the event and is therefore left untouched.</p>
  *
- * <p>Cancellation travels the controller's single terminal choke point
+ * <p>Each job is first moved to {@code CANCELLED} by the store's atomic
+ * {@link JobStatsStore#cancelIfInFlight in-flight transition}; a job that
+ * completed on its own after the in-flight snapshot keeps its own terminal
+ * record and is not cancelled. A job that did transition travels the
+ * controller's single terminal choke point
  * ({@code FlowTreeApiEndpoint.completeJob}) as a {@link JobCompletionEvent}
- * with {@link JobCompletionEvent.Status#CANCELLED}, so the job's record is
- * updated through {@link io.flowtree.controller.JobLifecycleRecorder} and
- * anything waiting on the job is released, exactly as a
+ * with {@link JobCompletionEvent.Status#CANCELLED}, so anything waiting on the
+ * job is released, exactly as a
  * {@link io.flowtree.controller.StuckJobScanner} termination is. The
- * cancellation reason names the pull request event. The controller never
- * touches the worker's checkout, so a cancelled job's working tree is left in
- * place for retrieval.</p>
+ * cancellation reason names the pull request event.</p>
+ *
+ * <p>This is controller-side cancellation only: no signal reaches the worker,
+ * so a job already running keeps its agent process until that process ends on
+ * its own or the worker's own watchdogs stop it. The controller never touches
+ * the worker's checkout, so a cancelled job's working tree is left in place for
+ * retrieval.</p>
  *
  * @author Michael Murray
  */
@@ -160,13 +170,11 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
         }
 
         String reason = reasonFor(prNumber, merged, headBranch);
-        // TODO(review): a job submitted before the event but started after it (startedAt >= cutoff)
-        // is missed; filtering active jobs on submittedAt would match the submitted-before rule.
         for (ActiveJob job : statsStore.getActiveJobs(workstreamId)) {
-            if (job.jobId() == null || job.startedAt() == null
-                    || !job.startedAt().isBefore(cutoff)) {
-                continue;
-            }
+            if (job.jobId() == null) continue;
+            Instant accepted = statsStore.getSubmittedAt(job.jobId());
+            if (accepted == null) accepted = job.startedAt();
+            if (accepted == null || !accepted.isBefore(cutoff)) continue;
             cancel(workstreamId, job.jobId(), job.description(), reason, cancelled);
         }
         for (PendingJob job : statsStore.getPendingJobs(workstreamId)) {
@@ -186,7 +194,12 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
     }
 
     /**
-     * Posts a cancellation event for one job and records it as cancelled.
+     * Moves one job to {@code CANCELLED} and, only when that transition
+     * happened, posts the cancellation event and records the job as cancelled.
+     *
+     * <p>The transition is the store's atomic in-flight check, so a job that
+     * completed on its own after the in-flight snapshot was taken keeps its
+     * real terminal record and receives no second completion fan-out.</p>
      *
      * @param workstreamId the workstream the job belongs to
      * @param jobId        the job to cancel
@@ -196,11 +209,17 @@ public final class PullRequestEventHandler implements ConsoleFeatures {
      */
     private void cancel(String workstreamId, String jobId, String description,
             String reason, List<String> cancelled) {
+        JobCompletionEvent event = JobCompletionEvent.cancelled(jobId, description, reason);
+        if (!statsStore.cancelIfInFlight(jobId, event.getTimestamp(), reason)) {
+            log("Job reached a terminal state before it could be cancelled (jobId=" + jobId
+                    + " workstreamId=" + workstreamId + "); leaving its record as it completed");
+            return;
+        }
+        // TODO(review): the still-running agent's own later completion overwrites CANCELLED and fans out a second time.
         warn("Cancelling in-flight job (jobId=" + jobId + " workstreamId=" + workstreamId
                 + "): " + reason);
         if (terminalEventSink != null) {
-            terminalEventSink.accept(workstreamId,
-                    JobCompletionEvent.cancelled(jobId, description, reason));
+            terminalEventSink.accept(workstreamId, event);
         }
         cancelled.add(jobId);
     }

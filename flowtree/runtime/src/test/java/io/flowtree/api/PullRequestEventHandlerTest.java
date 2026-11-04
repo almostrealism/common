@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.flowtree.controller.ActiveJob;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.util.TestSuiteBase;
@@ -151,6 +152,94 @@ public class PullRequestEventHandlerTest extends TestSuiteBase {
 
 		assertTrue("a job submitted after the event must not be cancelled", cancelled.isEmpty());
 		assertTrue("nothing should be dispatched", dispatched.isEmpty());
+		store.close();
+	}
+
+	/**
+	 * A job the controller accepted before the event but that a worker picked up
+	 * only after it is still cancelled: the cut-off reads the submission time,
+	 * not the start time.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void jobSubmittedBeforeButStartedAfterTheEventIsCancelled() throws Exception {
+		JobStatsStore store = newStore();
+		Instant event = Instant.parse("2026-11-01T17:40:00Z");
+		store.recordJobSubmitted("job-late-start", WORKSTREAM, "picked up late",
+				"ci", null, event.minus(Duration.ofMinutes(5)));
+		store.recordJobStarted("job-late-start", WORKSTREAM, "picked up late",
+				event.plus(Duration.ofMinutes(2)));
+
+		List<String> cancelled = newHandler(store)
+				.cancelInFlightJobs(REPO, BRANCH, "125", true, event);
+
+		Assert.assertEquals("a job submitted before the event is cancelled even if it started after",
+				List.of("job-late-start"), cancelled);
+		assertEquals("one terminal event dispatched", 1, dispatched.size());
+		Assert.assertEquals("the stored record is CANCELLED", JobCompletionEvent.Status.CANCELLED,
+				store.getJob("job-late-start").getStatus());
+		store.close();
+	}
+
+	/**
+	 * A running job submitted after the event is left untouched even though its
+	 * start time, if it were the cut-off, would also be after the event — and a
+	 * running job submitted before it alongside is cancelled.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void runningJobSubmittedAfterTheEventIsNotCancelled() throws Exception {
+		JobStatsStore store = newStore();
+		Instant event = Instant.parse("2026-11-01T17:40:00Z");
+		store.recordJobSubmitted("job-old", WORKSTREAM, "before", "ci", null,
+				event.minus(Duration.ofHours(2)));
+		store.recordJobStarted("job-old", WORKSTREAM, "before", event.minus(Duration.ofHours(1)));
+		store.recordJobSubmitted("job-new", WORKSTREAM, "after", "owner", null,
+				event.plus(Duration.ofMinutes(1)));
+		store.recordJobStarted("job-new", WORKSTREAM, "after", event.plus(Duration.ofMinutes(3)));
+
+		List<String> cancelled = newHandler(store)
+				.cancelInFlightJobs(REPO, BRANCH, "126", true, event);
+
+		Assert.assertEquals("only the job submitted before the event is cancelled",
+				List.of("job-old"), cancelled);
+		Assert.assertEquals("the follow-up keeps running", 1, store.getActiveJobs(WORKSTREAM).size());
+		store.close();
+	}
+
+	/**
+	 * A job that completes on its own between the handler's in-flight snapshot
+	 * and its cancellation keeps its real terminal record, and no cancellation
+	 * event is dispatched for it.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void jobCompletingAfterTheSnapshotIsNotCancelled() throws Exception {
+		File tempDir = Files.createTempDirectory("pr-event-race").toFile();
+		tempDir.deleteOnExit();
+		Instant event = Instant.parse("2026-11-01T17:40:00Z");
+		JobStatsStore store = new JobStatsStore(new File(tempDir, "stats").getAbsolutePath()) {
+			@Override
+			public synchronized List<ActiveJob> getActiveJobs(String workstreamId) {
+				List<ActiveJob> snapshot = super.getActiveJobs(workstreamId);
+				// The job finishes naturally right after the snapshot is taken.
+				recordJobCompleted(WORKSTREAM, JobCompletionEvent.success("job-racing", "racing"));
+				return snapshot;
+			}
+		};
+		store.initialize();
+		store.recordJobStarted("job-racing", WORKSTREAM, "racing", event.minus(Duration.ofHours(1)));
+
+		List<String> cancelled = newHandler(store)
+				.cancelInFlightJobs(REPO, BRANCH, "127", true, event);
+
+		assertTrue("a job that completed on its own is not cancelled", cancelled.isEmpty());
+		assertTrue("no duplicate completion is dispatched", dispatched.isEmpty());
+		Assert.assertEquals("the job keeps its own terminal status", JobCompletionEvent.Status.SUCCESS,
+				store.getJob("job-racing").getStatus());
 		store.close();
 	}
 

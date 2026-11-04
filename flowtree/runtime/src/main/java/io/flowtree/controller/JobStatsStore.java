@@ -911,6 +911,69 @@ public class JobStatsStore extends ControllerDatabase {
     }
 
     /**
+     * Returns the moment the controller accepted a job, as recorded by
+     * {@link #recordJobSubmitted}.
+     *
+     * <p>The submission time survives the job's move to {@code STARTED}, so
+     * this answers "was the job accepted before instant X" for a running job
+     * as well as a pending one.</p>
+     *
+     * @param jobId the job identifier
+     * @return the submission time, or {@code null} when the job has no row or
+     *         was never recorded as submitted (e.g. its row was created by a
+     *         start event after a controller restart)
+     */
+    public synchronized Instant getSubmittedAt(String jobId) {
+        if (!isOpen() || jobId == null) return null;
+        try (PreparedStatement ps = connection().prepareStatement(
+                "SELECT submitted_at FROM job_timing WHERE job_id = ?")) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                Timestamp submitted = rs.getTimestamp("submitted_at");
+                return submitted == null ? null : submitted.toInstant();
+            }
+        } catch (SQLException e) {
+            warn("Failed to read submitted_at: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Atomically moves a job that is still in flight ({@code SUBMITTED} or
+     * {@code STARTED}, with no completion timestamp) to {@code CANCELLED}.
+     *
+     * <p>The check and the write are a single conditional {@code UPDATE}, so a
+     * job whose own terminal event was recorded between a caller's snapshot of
+     * the in-flight jobs and this call is left exactly as it completed: the
+     * method returns {@code false} and the caller must not dispatch a
+     * cancellation for it.</p>
+     *
+     * @param jobId       the job identifier
+     * @param cancelledAt the cancellation instant, recorded as the completion
+     *                    time
+     * @param reason      why the job was cancelled, recorded as its error
+     *                    message
+     * @return {@code true} when this call moved the job to {@code CANCELLED};
+     *         {@code false} when it had already reached a terminal state, has
+     *         no row, or the store is unavailable
+     */
+    public synchronized boolean cancelIfInFlight(String jobId, Instant cancelledAt, String reason) {
+        if (!isOpen() || jobId == null || cancelledAt == null) return false;
+        String sql = "UPDATE job_timing SET status = 'CANCELLED', completed_at = ?, error_message = ? "
+            + "WHERE job_id = ? AND completed_at IS NULL AND status IN ('SUBMITTED', 'STARTED')";
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.from(cancelledAt));
+            ps.setString(2, truncate(reason, 2000));
+            ps.setString(3, jobId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            warn("Failed to cancel job: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Returns the most recent job events for a workstream, newest first.
      *
      * @param workstreamId the workstream identifier
@@ -996,6 +1059,8 @@ public class JobStatsStore extends ControllerDatabase {
             event = JobCompletionEvent.success(jobId, description);
         } else if (status == JobCompletionEvent.Status.DEGRADED) {
             event = JobCompletionEvent.degraded(jobId, description, errorMessage);
+        } else if (status == JobCompletionEvent.Status.CANCELLED) {
+            event = JobCompletionEvent.cancelled(jobId, description, errorMessage);
         } else {
             event = new JobCompletionEvent(jobId, status, description);
         }

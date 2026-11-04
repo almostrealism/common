@@ -323,4 +323,98 @@ public class JobStatsStoreLifecycleTest extends TestSuiteBase {
             second.close();
         }
     }
+
+    /**
+     * The submission time survives the move to {@code STARTED}; a job whose row
+     * was created by a start event, and an unknown job, report none.
+     */
+    @Test(timeout = 30000)
+    public void submittedAtSurvivesStartAndIsAbsentWithoutSubmission() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-submitted-at").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-1", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-1", "ws-1", "job", "node-a", submittedAt.plusSeconds(600));
+            store.recordJobStarted("job-2", "ws-1", "job", submittedAt.plusSeconds(60));
+
+            Assert.assertEquals("the submission time survives the start",
+                    submittedAt, store.getSubmittedAt("job-1"));
+            Assert.assertNull("a row created by a start event has no submission time",
+                    store.getSubmittedAt("job-2"));
+            Assert.assertNull("an unknown job has no submission time",
+                    store.getSubmittedAt("no-such-job"));
+            Assert.assertNull("a null id has no submission time", store.getSubmittedAt(null));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * Cancellation moves a pending or running job to {@code CANCELLED} with the
+     * reason recorded, and takes it out of the pending and active views.
+     */
+    @Test(timeout = 30000)
+    public void cancelIfInFlightCancelsPendingAndRunningJobs() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-cancel").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-pending", "ws-1", "job", null, null, submittedAt);
+            store.recordJobSubmitted("job-running", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-running", "ws-1", "job", "node-a", submittedAt.plusSeconds(60));
+
+            Instant cancelledAt = submittedAt.plusSeconds(3600);
+            assertTrue("a pending job transitions",
+                    store.cancelIfInFlight("job-pending", cancelledAt, "pull request #7 merged"));
+            assertTrue("a running job transitions",
+                    store.cancelIfInFlight("job-running", cancelledAt, "pull request #7 merged"));
+
+            Assert.assertTrue("no job is still pending", store.getPendingJobs("ws-1").isEmpty());
+            Assert.assertTrue("no job is still active", store.getActiveJobs("ws-1").isEmpty());
+            JobCompletionEvent persisted = store.getJob("job-running");
+            Assert.assertEquals(JobCompletionEvent.Status.CANCELLED, persisted.getStatus());
+            Assert.assertEquals("pull request #7 merged", persisted.getErrorMessage());
+
+            Assert.assertFalse("a second cancellation of the same job does not transition",
+                    store.cancelIfInFlight("job-running", cancelledAt.plusSeconds(1), "again"));
+            Assert.assertEquals("the first reason is kept", "pull request #7 merged",
+                    store.getJob("job-running").getErrorMessage());
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * A job that already completed on its own keeps its terminal record: the
+     * cancellation does not transition it, and an unknown job or null arguments
+     * transition nothing.
+     */
+    @Test(timeout = 30000)
+    public void cancelIfInFlightLeavesCompletedJobUntouched() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-cancel-terminal").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-1", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-1", "ws-1", "job", "node-a", submittedAt.plusSeconds(60));
+            store.recordJobCompleted("ws-1", JobCompletionEvent.success("job-1", "job"));
+
+            Assert.assertFalse("a completed job is not cancelled",
+                    store.cancelIfInFlight("job-1", submittedAt.plusSeconds(3600), "late"));
+            Assert.assertEquals("the job keeps its own terminal status",
+                    JobCompletionEvent.Status.SUCCESS, store.getJob("job-1").getStatus());
+            Assert.assertFalse("an unknown job is not cancelled",
+                    store.cancelIfInFlight("no-such-job", submittedAt, "late"));
+            Assert.assertFalse("a null id is not cancelled",
+                    store.cancelIfInFlight(null, submittedAt, "late"));
+            Assert.assertFalse("a null instant is not cancelled",
+                    store.cancelIfInFlight("job-1", null, "late"));
+        } finally {
+            store.close();
+        }
+    }
 }
