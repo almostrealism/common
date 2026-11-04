@@ -160,10 +160,14 @@ tokenizers are synthetic, so no workstream settings file is needed.
 Raised in review of this plan, for the person deciding whether it goes ahead.
 
 1. **Should `Qwen3Tokenizer` implement `Tokenizer`, and does that decision come before the README
-   rewrite?** The class already has every capability the `Tokenizer` interface needs, but under
-   different names: `encode(String, boolean, boolean)` / `decode(int[])` rather than the interface's
-   `encodeAsLong` / `decodeAsLong`, and public `BOS_TOKEN` / `EOS_TOKEN` constants rather than the
-   interface's default methods. Making it implement `Tokenizer` is a production API change and is out
+   rewrite?** The class already has the core capability the `Tokenizer` interface needs, but under
+   different names and types: `encode(String, boolean, boolean)` / `decode(int[])` returning `int`
+   arrays rather than the interface's `encodeAsLong` / `decodeAsLong`. (Special tokens are not part
+   of the `Tokenizer` interface at all — its only members are `encodeAsLong` / `decodeAsLong`, the
+   `int`-array defaults, and the `PackedCollection` defaults that throw. Qwen3Tokenizer exposes its
+   special tokens as the public `BOS_TOKEN` / `EOS_TOKEN` constants, while the `getBOSToken()` /
+   `getEOSToken()` it inherits from `ByteLevelBPETokenizer` are `protected`.) Making it implement
+   `Tokenizer` is a production API change and is out
    of scope here (Approach step 5): the page documents the class as it is and files a tracker task for
    the decision. But that decision changes how Scope 3's README rewrite should read — whether the
    corrected example calls the methods `Qwen3Tokenizer` exposes today, or demonstrates the `Tokenizer`
