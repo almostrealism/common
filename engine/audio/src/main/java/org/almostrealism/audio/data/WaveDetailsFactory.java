@@ -442,13 +442,17 @@ public class WaveDetailsFactory implements CodeFeatures {
 	 * Returns a cached evaluable that computes per-frame cosine similarity
 	 * between two feature tensors of shape (frames, bins, 1). The evaluable
 	 * is compiled once and reused for all comparisons with matching dimensions.
+	 *
+	 * <p>Each frame's norm is its magnitude over the bins of that frame
+	 * ({@code magnitude(1)}, shape (frames, 1)), matching the per-frame dot
+	 * product ({@code sum(1)}), so every value is a true cosine in [-1, 1].</p>
 	 */
 	private static Evaluable<PackedCollection> cosineSimilarityEvaluable(int frames, int bins) {
 		TraversalPolicy shape = new TraversalPolicy(frames, bins, 1);
 		return cosineCalc.computeIfAbsent(shapeKey(frames, bins), k ->
 				Ops.op(o -> o.multiply(o.cv(shape, 0), o.cv(shape, 1)).sum(1)
-						.divide(o.multiply(o.length(1, o.cv(shape, 0)),
-								o.length(1, o.cv(shape, 1))))).get());
+						.divide(o.multiply(o.cv(shape, 0).magnitude(1),
+								o.cv(shape, 1).magnitude(1)))).get());
 	}
 
 	/**

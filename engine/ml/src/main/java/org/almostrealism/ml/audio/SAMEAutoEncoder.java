@@ -165,6 +165,38 @@ public class SAMEAutoEncoder implements TransformerResamplingFeatures, LayerFeat
 	}
 
 	/**
+	 * The aligned audio length (see {@link #alignedAudioLength(int)}) of a clip lasting
+	 * {@code duration} seconds at {@code sampleRate}: the sample count the clip covers, rounded up
+	 * to a whole sample and then to an aligned length.
+	 *
+	 * @param sampleRate the audio sample rate in Hz
+	 * @param duration   the clip duration in seconds
+	 * @return the aligned length in samples
+	 * @throws IllegalArgumentException if {@code duration} or {@code sampleRate} is not positive and
+	 *                                  finite, or their product underflows to zero or exceeds
+	 *                                  {@link Integer#MAX_VALUE} samples, or rounding that product up to
+	 *                                  an aligned length overflows {@link Integer#MAX_VALUE}
+	 */
+	public int alignedAudioLength(double sampleRate, double duration) {
+		double exact = duration * sampleRate;
+		if (!Double.isFinite(duration) || !Double.isFinite(sampleRate)
+				|| duration <= 0.0 || sampleRate <= 0.0
+				|| exact <= 0.0 || exact > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("duration " + duration + " at sampleRate "
+					+ sampleRate + " is not a valid clip length");
+		}
+
+		int requested = (int) Math.ceil(exact);
+		int samples = alignedAudioLength(requested);
+		if (samples < requested) {
+			throw new IllegalArgumentException("duration " + duration + " at sampleRate "
+					+ sampleRate + " aligns to a clip length that overflows the sample count");
+		}
+
+		return samples;
+	}
+
+	/**
 	 * The latent length produced for an aligned audio length.
 	 *
 	 * @param samples an aligned audio length (see {@link #alignedAudioLength(int)})
