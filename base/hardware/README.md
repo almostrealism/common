@@ -1049,9 +1049,18 @@ in turn, that is a large share of every round trip: `MatrixMathTests#sumPowers`,
 synchronous dispatches, ran in 71 seconds instead of 88 on that machine.
 
 ```bash
-# Timeline polling window in microseconds (default 1000). 0 waits for the completion report.
-export AR_HARDWARE_METAL_COMPLETION_SPIN=1000
+# Completion polling window in microseconds (default 1000). 0 waits for the completion report.
+export AR_HARDWARE_COMPLETION_SPIN=1000
 ```
+
+The window, and the decision to poll before blocking, belong to `SubmissionStream`
+(`completionSpinMicros`, `pollForCompletion`), not to Metal: every accelerator API offers both a
+non-blocking reading of finished work and a blocking wait (CUDA's `cuEventQuery` beside
+`cuEventSynchronize`, which `CUEvent.isComplete()` and `CUEvent.synchronize()` already wrap;
+OpenCL's `CL_EVENT_COMMAND_EXECUTION_STATUS` beside `clWaitForEvents`). A stream polls once it
+overrides `canPollCompletion()` to say it can read its device's progress and `hasReached(ordinal)`
+to read it; the Metal runner is the only one that does so far, and it alone decides when its
+reading can be trusted, as below.
 
 The signal settles a wait only when it cannot be confused with a failure: the buffer waited
 for must be the one closed most recently, so no later buffer can have released the timeline

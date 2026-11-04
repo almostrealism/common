@@ -114,8 +114,8 @@ class MTLSignaledValue extends BaseNative {
 			try {
 				compile();
 			} catch (RuntimeException e) {
-				Hardware.console.warn("Metal event values cannot be read on this host, so host waits " +
-						"wait for each command buffer's completion rather than polling for its signal", e);
+				Hardware.console.warn("Metal event values cannot be read on this host, so a host wait " +
+						"blocks on each command buffer's completion rather than polling for its signal", e);
 			}
 		}
 

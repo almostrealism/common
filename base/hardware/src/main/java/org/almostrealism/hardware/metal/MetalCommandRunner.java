@@ -84,9 +84,10 @@ import java.util.concurrent.atomic.AtomicReference;
  * queue is serial) to finish on the GPU. The host sees the GPU finish a buffer in two ways: the
  * buffer's signal, which is visible on the timeline as soon as the GPU executes it, and the buffer's
  * completion, which Metal reports tens of microseconds later. A wait first polls the timeline for
- * the buffer's signal, for up to {@link #completionSpinMicros}, and falls back to waiting for the
- * completion when the signal does not arrive in that window or cannot be told apart from a failure
- * (see {@link #complete}).</p>
+ * the buffer's signal, for up to {@link SubmissionStream#completionSpinMicros} (the polling policy
+ * every submission stream shares, see {@link SubmissionStream#pollForCompletion}), and falls back to
+ * waiting for the completion when the signal does not arrive in that window or cannot be told apart
+ * from a failure (see {@link #complete}).</p>
  *
  * <h2>Failures</h2>
  *
@@ -191,23 +192,6 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	public static int handOffSpinMicros = SystemUtils.getInt("AR_HARDWARE_METAL_HANDOFF_SPIN").orElse(50);
 
 	/**
-	 * How long, in microseconds, a host wait for a dispatch ({@link #complete}) polls the timeline
-	 * for the signal of the dispatch's command buffer before it waits for the buffer's completion
-	 * instead. The GPU executes a buffer's signal as soon as the buffer's work is done, while Metal
-	 * reports the buffer's completion to the host tens of microseconds later, so a wait that
-	 * observes the signal returns that much sooner. For a dispatch that is waited for at once,
-	 * which is every evaluation whose result the host reads, that is a large share of the whole
-	 * round trip. A wait whose buffer takes longer than the window to finish parks as it would
-	 * without polling, having occupied its core for the window. Zero disables polling. Read when a
-	 * runner is created. Controlled by {@code AR_HARDWARE_METAL_COMPLETION_SPIN}.
-	 *
-	 * <p>Polling reads the timeline's value with a JNI operation compiled at runtime (see
-	 * {@link MTLEvent#isSignalReadable()}). A runner created on a host that cannot compile it does
-	 * not poll, whatever the window, and waits for each buffer's completion instead.</p>
-	 */
-	public static int completionSpinMicros = SystemUtils.getInt("AR_HARDWARE_METAL_COMPLETION_SPIN").orElse(1000);
-
-	/**
 	 * Confines all command-buffer operations to one thread, running each inside its own
 	 * autorelease pool ({@link MTLAutoreleasePool#run}), so transient autoreleased Metal objects
 	 * (compute command encoders, and the command buffer's own autorelease reference) are drained
@@ -222,11 +206,14 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 			new HandOffWindow(handOffSpinMicros, TimeUnit.MICROSECONDS));
 
 	/**
-	 * How long a host wait polls the timeline for its buffer's signal (see
-	 * {@link #completionSpinMicros}): {@link HandOffWindow#NONE} when polling is disabled or the
-	 * timeline's value cannot be read on this host.
+	 * Whether the host can read the timeline's value without waiting, which a host wait polls for
+	 * its buffer's signal (see {@link #canPollCompletion()}). The value is read with a JNI
+	 * operation compiled at runtime (see {@link MTLEvent#isSignalReadable()}); a runner created on
+	 * a host that cannot compile it waits for each buffer's completion instead. Also false when
+	 * polling is disabled ({@link SubmissionStream#completionSpinMicros} is zero), so that the
+	 * operation is not compiled for nothing.
 	 */
-	private final HandOffWindow completionWindow;
+	private final boolean signalReadable;
 
 	/** The command queue used to submit encoded Metal compute commands. */
 	private final MTLCommandQueue queue;
@@ -334,9 +321,31 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 		super("Metal command runner", MetalSemaphore.class, MAX_HELD, ConfinedExecutor.CONFINED_THREAD_WAIT);
 		this.queue = queue;
 		this.event = queue.getDevice().newSharedEvent();
-		this.completionWindow = completionSpinMicros > 0 && event.isSignalReadable()
-				? new HandOffWindow(completionSpinMicros, TimeUnit.MICROSECONDS) : HandOffWindow.NONE;
+		this.signalReadable = completionSpinMicros > 0 && event.isSignalReadable();
 	}
+
+	/**
+	 * Returns whether a host wait can poll the timeline for its buffer's signal, which the GPU
+	 * executes as soon as the buffer's work is done, tens of microseconds before Metal reports the
+	 * buffer's completion (see {@link #complete}).
+	 *
+	 * @return true if the timeline's value can be read on this host
+	 */
+	@Override
+	protected boolean canPollCompletion() { return signalReadable; }
+
+	/**
+	 * Returns whether the timeline has been signaled to at least the given ordinal, which is the
+	 * timeline value of the dispatch with that ordinal (see {@link MetalSemaphore#getValue()}).
+	 * A buffer's signal carries the value of its last dispatch, so this shows that the dispatch's
+	 * buffer, or a buffer closed after it, has executed its signal; {@link #isSettledBySignal}
+	 * decides whether that settles a wait.
+	 *
+	 * @param ordinal the ordinal, and timeline value, of the dispatch a host wait waits for
+	 * @return true if the timeline has reached {@code ordinal}
+	 */
+	@Override
+	protected boolean hasReached(long ordinal) { return event.isSignaled(ordinal); }
 
 	/**
 	 * Encodes a dispatch into the open command buffer and returns its completion semaphore.
@@ -561,9 +570,9 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * responsible for them. Invoked by {@link MetalSemaphore#waitFor()}.
 	 *
 	 * <p><b>Signal or completion.</b> The wait first polls the timeline, for up to
-	 * {@link #completionSpinMicros}, for the signal of the dispatch's buffer, which the GPU
-	 * executes once all of the buffer's work is done, tens of microseconds before Metal reports
-	 * the buffer's completion (see {@link #awaitSignal}). When the signal settles the wait, the
+	 * {@link SubmissionStream#completionSpinMicros}, for the signal of the dispatch's buffer, which
+	 * the GPU executes once all of the buffer's work is done, tens of microseconds before Metal
+	 * reports the buffer's completion (see {@link #awaitSignal}). When the signal settles the wait, the
 	 * buffers are drained (their released-memory callbacks run on the executor's thread, as after
 	 * any wait) without waiting for that report. Otherwise the caller waits for the completion of
 	 * each buffer in queue order and then drains them, as described below. Either way, every
@@ -673,8 +682,8 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	}
 
 	/**
-	 * Polls the timeline, for up to {@link #completionSpinMicros}, for the signal of the buffer
-	 * the given waiter waits for, and returns whether the signal shows that every one of the
+	 * Polls the timeline, for up to {@link SubmissionStream#completionSpinMicros}, for the signal of
+	 * the buffer the given waiter waits for, and returns whether the signal shows that every one of the
 	 * waiter's buffers has executed. Part of {@link #complete}.
 	 *
 	 * <p>A buffer's signal is the last command in it and carries the value of its last dispatch,
@@ -707,7 +716,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 		CommittedBuffer target = waiter.getTarget();
 		if (!target.isSubmitted()) return false;
 
-		if (!completionWindow.pollUntil(() -> event.isSignaled(value))
+		if (!pollForCompletion(value)
 				|| lastClosed != target.getBuffer()) {
 			return false;
 		}
@@ -782,8 +791,12 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * is the single point at which the runner reads whether a buffer failed, so a subclass can
 	 * report a failure the GPU did not produce and exercise the failure path deterministically.
 	 *
-	 * @param buffer a command buffer that has completed
-	 * @return the Metal error description, or {@code null} if the buffer executed
+	 * <p>Also called for a committed buffer that has not completed yet, whose timeline signal a
+	 * wait has observed (see {@link #isSettledBySignal} and {@link #drainOldestCommitted}): such a
+	 * buffer reports no failure unless Metal has already reported one.</p>
+	 *
+	 * @param buffer a committed command buffer that has completed, or whose signal was observed
+	 * @return the Metal error description, or {@code null} if no failure has been reported
 	 */
 	protected String errorOf(MTLCommandBuffer buffer) {
 		return buffer.isError() ? buffer.getError() : null;
@@ -884,8 +897,8 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 
 	/**
 	 * Returns the number of host waits that ended on the timeline signal of their command buffer
-	 * rather than on its completion (see {@link #completionSpinMicros}). A synchronous workload
-	 * whose waits are mostly settled by the signal is spared most of Metal's completion
+	 * rather than on its completion (see {@link SubmissionStream#completionSpinMicros}). A
+	 * synchronous workload whose waits are mostly settled by the signal is spared most of Metal's completion
 	 * latency; one whose count stays at zero is waiting for buffers that outlast the polling
 	 * window, or that are shared with other threads' buffers closed after them.
 	 *
@@ -1067,9 +1080,11 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 *
 	 * <p>A buffer whose timeline signal a wait has observed (see {@link #awaitSignal}) is known to
 	 * have executed: a buffer that fails runs none of its commands, its signal included. Its
-	 * completion is therefore neither waited for nor inspected, since Metal reports it only some
-	 * time after the signal; the buffer is drained and released at once, which Metal allows for a
-	 * committed buffer, keeping it until it completes.</p>
+	 * completion is therefore not waited for, since Metal reports it only some time after the
+	 * signal; the buffer is drained and released at once, which Metal allows for a committed
+	 * buffer, keeping it until it completes. Its status is still inspected here, as every drained
+	 * buffer's is, so a failure Metal has reported by the time of the drain, after the wait
+	 * observed the signal, is recorded like any other.</p>
 	 *
 	 * <p>{@link MTLCommandBuffer#waitUntilCompleted()} returns identically for a buffer
 	 * that executed and for one killed by a GPU fault or watchdog — in the killed case
@@ -1091,9 +1106,10 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 		MTLCommandBuffer buffer = c.getBuffer();
 		if (!executed) buffer.waitUntilCompleted();
 
-		// TODO(review): a failure reported after the buffer's signal was observed is not recorded here;
-		// a watchdog-killed buffer was observed never to signal, other failure modes are unverified
-		String error = executed ? null : errorOf(buffer);
+		// TODO(review): a failure Metal reports only after this drain, for a buffer whose signal was
+		// observed, is not recorded; a watchdog-killed buffer was observed never to signal, other failure
+		// modes are unverified
+		String error = errorOf(buffer);
 		if (error != null) {
 			errorCompletions.incrementAndGet();
 			String name = requester == null ? "unknown" : requester.getDisplayName();

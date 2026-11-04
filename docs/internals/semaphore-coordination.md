@@ -155,7 +155,9 @@ must respect it:
 - Those callbacks run only when a host thread drains the buffer
   (`MetalCommandRunner.complete`/`destroy`), not when the GPU finishes.
 - A host wait learns that the GPU has finished from the buffer's timeline signal when it can:
-  `complete` polls the timeline for the waited value for `completionSpinMicros` before it waits
+  `complete` polls the timeline for the waited value, through the policy every
+  `SubmissionStream` shares (`pollForCompletion`, `completionSpinMicros`), reading the
+  timeline through the runner's `hasReached` override, before it waits
   for Metal's completion report, which arrives tens of microseconds after the signal. Reading the
   timeline's value needs a JNI operation compiled at runtime (`MTLEvent.isSignalReadable`); a
   runner on a host that cannot compile it does not poll and waits for the report. The signal

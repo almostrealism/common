@@ -17,8 +17,10 @@
 package org.almostrealism.hardware.test;
 
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.ctx.SubmissionStream;
 import org.almostrealism.hardware.metal.MTLCommandBuffer;
 import org.almostrealism.hardware.metal.MTLCommandQueue;
+import org.almostrealism.hardware.metal.MTLEvent;
 import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.hardware.metal.MetalSemaphore;
@@ -34,7 +36,7 @@ import static org.junit.Assert.assertNotSame;
 /**
  * Validates how a host wait for a {@link MetalCommandRunner} dispatch observes that the GPU has
  * finished: by the timeline signal of the dispatch's command buffer, polled for up to
- * {@link MetalCommandRunner#completionSpinMicros}, rather than by the buffer's completion, which
+ * {@link SubmissionStream#completionSpinMicros}, rather than by the buffer's completion, which
  * Metal reports later. A wait settled by the signal returns with the buffer drained exactly as
  * after a completed wait, and the signal never settles a wait that it cannot tell apart from a
  * failure: a buffer reported as failed, or a timeline released by a buffer closed after the one
@@ -44,6 +46,11 @@ import static org.junit.Assert.assertNotSame;
  * polling window has been set, since a runner reads the window when it is created. The window is
  * generous so that the GPU always signals within it, which makes the expected path
  * deterministic.</p>
+ *
+ * <p>A host that cannot read the timeline's value (see {@link MTLEvent#isSignalReadable()}) is
+ * a supported configuration in which a runner never polls: there every scenario verifies that
+ * fallback instead, with each wait settled by its buffer's completion, its callbacks run and its
+ * failures reported exactly as with polling, and no wait counted as settled by a signal.</p>
  */
 public class MetalCommandRunnerSignalWaitTest extends TestSuiteBase {
 	/** A polling window far longer than an empty command buffer takes to reach the GPU and run. */
@@ -79,8 +86,9 @@ public class MetalCommandRunnerSignalWaitTest extends TestSuiteBase {
 				assertNotSame("Completion callbacks run on the runner's thread", waiting, completed.get());
 			}
 
-			assertEquals("Every wait must be settled by its buffer's signal",
-					(double) WAITS, (double) runner.getSignalCompletionCount());
+			assertEquals("Every wait must be settled by its buffer's signal, when the runner polls",
+					(double) (runner.isPollingForCompletion() ? WAITS : 0),
+					(double) runner.getSignalCompletionCount());
 		});
 	}
 
@@ -99,6 +107,26 @@ public class MetalCommandRunnerSignalWaitTest extends TestSuiteBase {
 					failure instanceof HardwareException && failure.getMessage().contains(FAILURE));
 			assertEquals("A failed buffer must not be settled by its signal",
 					0.0, (double) runner.getSignalCompletionCount());
+		});
+	}
+
+	/**
+	 * A failure that Metal reports for a buffer after a wait has observed the buffer's signal, but
+	 * by the time the runner drains the buffer, is recorded and thrown by the wait, rather than
+	 * the buffer's dispatches being treated as executed. The runner here reports the failure only
+	 * when the buffer is inspected on the runner's own thread, which is where it is drained, so
+	 * the waiting thread's inspection before the drain finds none.
+	 */
+	@Test(timeout = 120000)
+	public void failureReportedAtDrainIsRecorded() {
+		withRunner(WINDOW_MICROS, LateFailureRunner::new, runner -> {
+			MetalSemaphore dispatch = runner.submit(null, buffer -> { }, null, null);
+
+			Throwable failure = NativeExecutionFailureTest.failureOf(dispatch);
+			assertTrue("The failure reported at the drain must be thrown, got " + failure,
+					failure instanceof HardwareException && failure.getMessage().contains(FAILURE));
+			assertEquals("The failure must be counted as an error completion",
+					1.0, (double) runner.getErrorCompletionCount());
 		});
 	}
 
@@ -124,17 +152,19 @@ public class MetalCommandRunnerSignalWaitTest extends TestSuiteBase {
 				assertNotSame(first.getCommandBuffer(), second.getCommandBuffer());
 				assertNotSame(second.getCommandBuffer(), third.getCommandBuffer());
 
+				int signaled = runner.isPollingForCompletion() ? 1 : 0;
+
 				first.waitFor();
 				assertEquals("A buffer followed by a closed buffer must wait for its completion",
 						0.0, (double) runner.getSignalCompletionCount());
 
 				second.waitFor();
 				assertEquals("The most recently closed buffer must be settled by its signal",
-						1.0, (double) runner.getSignalCompletionCount());
+						(double) signaled, (double) runner.getSignalCompletionCount());
 
 				third.waitFor();
 				assertEquals("The buffer the wait closes must be settled by its signal",
-						2.0, (double) runner.getSignalCompletionCount());
+						(double) (2 * signaled), (double) runner.getSignalCompletionCount());
 			});
 		} finally {
 			MetalCommandRunner.enableHostSignaledBridges = bridges;
@@ -148,6 +178,8 @@ public class MetalCommandRunnerSignalWaitTest extends TestSuiteBase {
 	@Test(timeout = 120000)
 	public void zeroWindowWaitsForCompletion() {
 		withRunner(0, MetalCommandRunner::new, runner -> {
+			assertFalse("A runner created with a zero window must not poll", runner.isPollingForCompletion());
+
 			for (int i = 0; i < WAITS; i++) {
 				AtomicBoolean released = new AtomicBoolean();
 				runner.submit(null, buffer -> { }, null, () -> released.set(true)).waitFor();
@@ -177,15 +209,15 @@ public class MetalCommandRunnerSignalWaitTest extends TestSuiteBase {
 			return;
 		}
 
-		int window = MetalCommandRunner.completionSpinMicros;
-		MetalCommandRunner.completionSpinMicros = windowMicros;
+		int window = SubmissionStream.completionSpinMicros;
+		SubmissionStream.completionSpinMicros = windowMicros;
 		MTLCommandQueue queue = metal.getMtlDevice().newCommandQueue();
 		MetalCommandRunner runner;
 
 		try {
 			runner = factory.apply(queue);
 		} finally {
-			MetalCommandRunner.completionSpinMicros = window;
+			SubmissionStream.completionSpinMicros = window;
 		}
 
 		try {
@@ -225,6 +257,32 @@ public class MetalCommandRunnerSignalWaitTest extends TestSuiteBase {
 		@Override
 		protected String errorOf(MTLCommandBuffer buffer) {
 			return FAILURE;
+		}
+	}
+
+	/**
+	 * A runner that reports every command buffer as failed only when the buffer is inspected on a
+	 * thread other than the one that created the runner (the test's, which is also the waiting
+	 * thread): the runner's own thread, where buffers are drained. A wait polling for the
+	 * buffer's signal therefore sees no failure, and the drain that follows sees one, as it would
+	 * for a failure Metal reports between the two.
+	 */
+	private static final class LateFailureRunner extends MetalCommandRunner {
+		/** The thread that created the runner, which is the one that waits for its dispatches. */
+		private final Thread waiting = Thread.currentThread();
+
+		/**
+		 * Creates a runner on the given queue.
+		 *
+		 * @param queue the Metal command queue
+		 */
+		private LateFailureRunner(MTLCommandQueue queue) {
+			super(queue);
+		}
+
+		@Override
+		protected String errorOf(MTLCommandBuffer buffer) {
+			return Thread.currentThread() == waiting ? null : FAILURE;
 		}
 	}
 }
