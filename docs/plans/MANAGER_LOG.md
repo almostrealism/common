@@ -28,6 +28,77 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-11-04 — Document text tokenization, from a string to the token ids a model consumes
+
+**Category:** Documentation
+**Branch:** `project/plan-20261104-133539`
+**Plan:** [`PLAN-20261104-text-tokenization-docs.md`](PLAN-20261104-text-tokenization-docs.md)
+
+#### What changed since last cycle
+
+The vector-index documentation merged (PR #834) with its `VectorIndexExamplesTest` drift-guard and
+the `llms.txt` entry, and the copy-once read-only aggregate work (PR #825) is in. Around them,
+smaller correctness work landed on `master`: `CompiledModelAutoEncoder` clip-length validation,
+structural expression hashing to speed compiles (`IndexChild` equality/hash), the Fourier feature
+projection moving into `fourier_features.pdsl`, and — two days earlier — the tokenizer exporter's
+added-token and reachable-byte-fallback work for Gemma vocabularies (PR #820).
+
+#### Category assessment (priority order)
+
+- **Documentation — a real gap at the input layer of every language model, and it decided the
+  cycle.** I checked the subsystem PR #820 just changed rather than assuming the corpus covers it.
+  It does not: no internals page covers tokenization; `llms.txt`'s only tokenizer line is the
+  `extern/ml-djl` DJL wrapper — a *different* class from `engine/ml`'s `SentencePieceBPETokenizer`,
+  so a reader following the index finds the wrong tokenizer; the `tokenization` package Javadoc
+  omits `ByteTokenizer` (the self-hosted LM's vocabulary) and `SentencePieceBPETokenizer` (Gemma /
+  Stable Audio 3 conditioning); and `engine/ml/README.md`'s tokenization example **does not
+  compile** — it calls `encodeAsInt`/`decodeAsInt` on `Qwen3Tokenizer`, which does not implement
+  `Tokenizer`, and the `protected` `getBOSToken()`. The `ARTK` exporter format and its validation
+  rules live only in a docstring and a Javadoc block.
+- **Code quality — strong and owned by continuous QA.** Recent commits are themselves QA output
+  (clip-length validation, `KdTree.removeOld`, `CompleteIdentifierSet` concurrency). One small API
+  inconsistency surfaced (`Qwen3Tokenizer` has every `Tokenizer` capability under other names but
+  does not implement it); the plan documents it as-is and routes the decision to a tracker task.
+  Several plans whose work merged still read `in-progress` — a header sweep for docs QA, not a cycle.
+- **Performance — no PM-level blocker.** `38f78778` (per-dispatch copy count) and the reduced
+  `matmul`/convolution-gradient forms remain real and non-blocking.
+- **Proof of value — gated or heavier.** Attention sinks are conditional on long-generation quality
+  degrading; the MaleCNS reproduction waits on owner data; conditional diffusion is heavy.
+
+#### Why this task
+
+It is the disciplined pick: the earliest category with genuine, reachable work, and it fixes a
+README example that misleads anyone (or any model) who copies it. It is the reference-exists /
+connective-tissue-missing move of the last three documentation cycles applied to the boundary every
+language-model capability crosses first. It is reachable **on any backend**: the drift-guard
+(`TextTokenizationExamplesTest`) runs on `SentencePieceTokenizerFixture`'s synthetic `ARTK` binary,
+`ByteTokenizer` and `Qwen3Tokenizer.createTestTokenizer()`, with exact token-id assertions and no
+download. For the self-understanding aim it documents how the platform turns text into the symbols
+its own model learns from — and why that model deliberately uses a vocabulary-free byte tokenizer.
+
+#### Balance across categories
+
+Two of the last four cycles were documentation (vector index, connectome), with performance and
+proof of value between. That is not drift: each documented a subsystem that had just landed with
+Javadoc only, and the proof-of-value steps remain gated. If the next cycle finds the corpus current,
+it should return to performance (`38f78778`) or proof of value rather than look for a fourth gap.
+Medium task, no production behaviour change, any node — no workstream settings file.
+
+#### What comes next
+
+1. This plan: `docs/internals/text-tokenization.md`, `TextTokenizationExamplesTest`, the README
+   correction, `package-info`, and the `llms.txt` entry.
+2. **Performance:** `38f78778` — cut the per-dispatch device-copy count for slices still copied
+   every dispatch, so the rolling KV cache beats the sliding window on dispatches/byte outright.
+3. **Proof of value, self-hosted LM:** attention sinks if the rolling cache degrades on long runs.
+4. **Proof of value, connectome:** the MaleCNS ingest and Shiu et al. reproduction, once the owner
+   provides the tables and a Brian2 reference.
+5. **Proof of value:** conditional diffusion training.
+6. Still open: the reduced `matmul`/convolution-gradient forms; `TransformerResamplingFeatures`'
+   buffered K/V; the `io.almostrealism.collect` split; letting a trained model read the platform's
+   own *source* — now with both its retrieval substrate (vector index) and its input layer
+   (tokenization) documented.
+
 ### 2026-11-03 (later) — Document the vector-index subsystem (HNSW + disk store + model-keyed rebuild)
 
 **Category:** Documentation
@@ -287,86 +358,20 @@ and decode-throughput cycles did.
    package split; the unbuilt PDSL research/education features; letting a trained model read the
    platform's own *source*, the deepest self-understanding aim.
 
-### 2026-11-02 — Document the neuron-level connectome simulation pipeline
+### 2026-11-02 — Document the neuron-level connectome simulation pipeline (condensed)
 
-**Category:** Documentation
-**Branch:** `project/plan-20261102-014251`
+**Category:** Documentation · **Branch:** `project/plan-20261102-014251` ·
 **Plan:** [`PLAN-20261102-neuron-level-connectome-simulation-docs.md`](PLAN-20261102-neuron-level-connectome-simulation-docs.md)
 
-#### What changed since last cycle
-
-Two large things landed in the last two days. The decode-faster-than-sliding-window work
-merged (PR #783): the KV-cache decode's host-blocking aggregate copy-back is now read off the
-compiled scope instead of a declared shortcut (`AssignmentSupport.containsAssignment` inferred
-from the `Scope`, after the owner rejected a `getWrittenDestination()` declaration — recorded in
-`INVESTIGATION-20261031-declared-property-shortcut.md`), and `training-a-language-model.md` carries
-the measured figures. CUDA joined automatic backend selection (PR #810). Larger for this cycle: the
-**neuron-level connectome** subsystem merged (PRs #806, #809) — `NeuronConnectome` (a signed
-synapse-count matrix in CSR, read through `StateDictionary`, whose weights carry a
-`CompressedRowTraversalOrdering` so synaptic input is one sparse `matmul`), `ConnectomeNetwork` (the
-Shiu et al. (2024) whole-brain model composed in `/pdsl/connectome.pdsl`, stepped by
-`SimulationRunner`, with replicas and `meanRates`), the `ExponentialSynapseNeurons`/`PoissonInput`
-`Block`s in `domain/biology`, and the `connectome_csr.py`/`brian2_reference.py` ingest-and-oracle
-scripts in `studio/bioscience` — with the synthetic connectome and the FlyWire "sugar circuit" plus
-their Brian2 reference spikes committed as test resources. The platform now reproduces a published
-whole-brain experiment's spikes, spike for spike.
-
-#### Category assessment (priority order)
-
-- **Documentation — a real, fresh gap, and it decided the cycle.** The neuron-level connectome is
-  the most distinctive capability the platform added this month, and the only prose explaining it is
-  two module READMEs and the classes' Javadoc. No internals page walks the pipeline (CSR ingest →
-  `NeuronConnectome` → `ConnectomeNetwork` step in PDSL → `SimulationRunner` run → Brian2 match). The
-  one existing simulation page, `neural-population-simulation.md`, is about the *aggregate* LIF/rate
-  **population** path — a different, coarser model — and `llms.txt` still names only the older
-  `CellTypeConnectome` loader, so a reader following the index never discovers the neuron-level
-  subsystem. This is the reference-exists/connective-tissue-missing situation again, on the newest
-  high-fidelity layer.
-- **Code quality — strong and owned.** The KV-decode shortcut was caught and repaired in review, with
-  its own investigation document; the attention-correctness and cache-ownership arcs are closed. No
-  reachable flagship defect.
-- **Performance — no PM-level blocker.** The decode cache now beats the sliding window; the standing
-  levers (weighted-sum `matmul` reduced form, convolution input gradient) are real but non-blocking.
-- **Proof of value — live, deliberately deferred.** The MaleCNS whole-brain reproduction and its
-  benchmark are open for Common 0.77 and build directly on the pipeline this page documents, so
-  documenting it first is the cheaper ordering; conditional diffusion is heavy; the sliding KV cache
-  waits on confirming the decode cap binds.
-
-#### Why this task
-
-It is the disciplined pick: the earliest category with genuine, reachable, high-leverage work. It is
-the 2026-10-27 move (which documented the aggregate population path) applied to the newer
-neuron-level path that reproduces a published result. It is reachable today **on any backend** — the
-synthetic connectome (40 neurons) and its Brian2 reference ship as committed test resources, so the
-page's worked example and its drift-guard (`NeuronLevelConnectomeSimulationExamplesTest`, modeled on
-`NeuralPopulationSimulationExamplesTest`) need no curated download and no macOS node. Every complete
-excerpt the page shows is exercised by the test, asserting robust backend-independent properties
-without reducing dimensions, loosening tolerances or gating skips. For the self-understanding aim it
-is the page that lets a model trained on the corpus reason about the platform simulating a living
-brain at single-neuron resolution — the most distinctive thing it can now do on the science side.
-
-#### Balance across categories
-
-The last cycle was performance (the KV-decode copy-back). Returning to documentation now is not drift
-toward the exciting category: a whole subsystem arrived in two days with only READMEs, the index does
-not mention it, and the proof-of-value step that builds on it is next. It is a medium task touching no
-production code and running on any node, so no workstream settings file accompanies it.
-
-#### What comes next
-
-1. This plan: `docs/internals/neuron-level-connectome-simulation.md`, the
-   `NeuronLevelConnectomeSimulationExamplesTest` drift-guard, and the `llms.txt` /
-   `neural-population-simulation.md` / README cross-links.
-2. **Proof of value, connectome:** the MaleCNS whole-brain ingest and the Shiu et al. reproduction
-   gate (open for Common 0.77), now with its substrate documented.
-3. **Proof of value, self-hosted LM:** a sliding (rolling) key/value cache for long-form generation
-   past `seqLen`, if the decode cap binds now that the cache path is faster than the sliding window.
-4. **Proof of value:** conditional diffusion training.
-5. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000)
-   and a reduced form for the convolution input gradient.
-6. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2; the `io.almostrealism.collect`
-   package split; the unbuilt PDSL research/education features; letting a trained model read the
-   platform's own *source*, the deepest self-understanding aim.
+The neuron-level connectome subsystem had merged (PRs #806, #809) — `NeuronConnectome` (CSR
+synapse counts through `StateDictionary`, synaptic input as one sparse `matmul`), `ConnectomeNetwork`
+(the Shiu et al. (2024) whole-brain model in `/pdsl/connectome.pdsl`, stepped by `SimulationRunner`),
+the `domain/biology` neuron `Block`s and the `studio/bioscience` ingest/oracle scripts — reproducing a
+published experiment's spikes, spike for spike, with only READMEs and Javadoc to explain it, and
+`llms.txt` naming only the older `CellTypeConnectome`. The cycle wrote
+`docs/internals/neuron-level-connectome-simulation.md`, drift-guarded by
+`NeuronLevelConnectomeSimulationExamplesTest` over the committed synthetic connectome (PR #814,
+merged). Ran on any node.
 
 ### 2026-10-29 — Make the key/value-cache decode faster than the sliding window (condensed)
 
@@ -404,98 +409,17 @@ it from `decodeModel`, deleted the orphan allocation, corrected the javadoc/doc,
 fail-on-`master` ownership guard (PR #773, merged). It runs on any backend and hands the performance
 follow-up (`d8ad5001`) a decode graph whose cache buffers have a clear owner.
 
-### 2026-10-28 — Measure the self-hosted LM's key/value-cache decode speed, and generate prose about the platform at that speed
+### 2026-10-28 — Measure the self-hosted LM's key/value-cache decode speed (condensed)
 
-**Category:** Proof of Value (self-hosted LM generation)
-**Branch:** `project/plan-20261028-004435`
+**Category:** Proof of Value (self-hosted LM generation) · **Branch:** `project/plan-20261028-004435` ·
 **Plan:** [`PLAN-20261028-lm-decode-throughput.md`](PLAN-20261028-lm-decode-throughput.md)
 
-#### What changed since last cycle
-
-The neural-population-simulation documentation landed (PR #762, merged):
-`docs/internals/neural-population-simulation.md` walks one spiking population from device-resident
-state through the LIF step, ring-buffer delay, connectivity, in-kernel Poisson drive and a
-`SimulationRunner` run, drift-guarded by `NeuralPopulationSimulationExamplesTest`, and brought
-`shape-and-traversal.md`, `llms.txt` and the graph/biology READMEs up to date. Independently
-verified this cycle: the rate model (`RatePopulation`, `CellTypeConnectome`) merged with it and is
-documented in the same page; `CounterRandom`, `SimulationRunner` and the new `domain/biology` /
-`studio/bioscience` modules are all in `llms.txt`. The simulation substrate is now covered
-connectively, not just by Javadoc. On the connectome track, the CSR sparse matrix and
-segmented-reduction product (PR #758) and a simulation run-ahead performance change (PR #764) are
-still open; the connectome's own proof-of-value gate (MaleCNS ingest, Shiu et al. reproduction)
-waits on that sparse product merging **and** on the project owner providing the ~2 GB MaleCNS tables
-and a Brian2 reference — so it is not reachable in a self-contained session this cycle.
-
-#### Category assessment (priority order)
-
-- **Documentation — genuinely excellent and current.** Checked the newest substrate against the
-  durable corpus rather than taking the last two cycles on faith: the rate model, the spiking
-  population, `CounterRandom`/`AR_RANDOM`, `SimulationRunner` and both new modules are documented and
-  indexed. Tutorial 10 closed the PDSL teaching gap. `consult` finds no flagship gap. Moved on.
-- **Code quality — strong and owned.** The KV-decode `seqLen` out-of-bounds guard a reviewer flagged
-  on the KV-cache branch is in fact present on `master` now (`KeyValueCacheAutoregressiveModel.load`
-  throws `IllegalStateException` at or beyond `seqLen`), so that correctness item is closed, not
-  open. The attention-correctness arc is closed; the remaining items are owned by continuous QA and
-  the open cleanup PRs (#766 PdslBuiltins instance type). No flagship defect. Moved on.
-- **Performance — no PM-level blocker.** The standing lever (weighted-sum `matmul` reduced form,
-  outputs > 1000) is real but non-blocking, and simulation per-step dispatch overhead is already in
-  flight as PR #764. Moved on.
-- **Proof of value — the category, and a sharp, reachable instance.** The KV-cache decode landed
-  byte-identical to the full forward, but **its throughput was never measured.** The Generation
-  section of `training-a-language-model.md` states the sliding-window cost (~100 bytes/second for the
-  trained model) and then says only that the cache decode "avoids it" — no figure, and no benchmark
-  anywhere compares the two. The one performance claim the whole KV-cache cycle was justified by is
-  unquantified.
-
-#### Why this task
-
-It cashes the arc. The "what comes next" list has named this step five cycles running — measure the
-cache's throughput improvement and compare greedy-vs-nucleus generation now that decoding is cheap
-enough to run at length. It is bounded and low-risk: one benchmark test modeled on the existing
-`CausalLanguageModelForwardProfileTest` harness (same `OperationProfileNode`, Metal dispatch/commit
-counters, wall-clock loop), measuring both decode paths on one small model and reporting the speedup
-and per-byte dispatch reduction, plus a greedy-vs-top-p sample over a documentation prompt. The
-documentation's unquantified sentence is replaced with the measured figure, drift-guarded by the new
-benchmark the way the correctness claim is already guarded by `keyValueCacheDecodeMatchesFullForward`.
-
-Crucially the benchmark **asserts only the robust structural property** — the cache issues strictly
-fewer kernels per decoded byte than the sliding window — and *reports* wall-clock bytes/second
-without asserting a host-dependent threshold, so it is not a flaky timing gate and cannot be gamed by
-weakening a tolerance. For the self-understanding aim this is the measured confirmation that the
-software can now describe its own architecture at a usable rate, which is the first time that is both
-true and quantified.
-
-The fast path is capped at `seqLen` positions by design. If the measurement shows that usable
-long-form generation past the trained context is therefore still stuck at sliding-window speed, the
-honest next capability is a **sliding** key/value cache (rolling, position-remapped — sliding-window
-semantics at cache cost). That is explicitly out of scope here and becomes an evidenced tracker task,
-not work on this branch.
-
-#### Balance across categories
-
-Two documentation cycles preceded this (Tutorial 10, then the simulation page) after a long
-proof-of-value run, and the log said the next cycle should return to proof of value unless something
-foundational broke. Nothing did: the foundation is covered and current, so returning to proof of
-value is the disciplined move, not a jump to the exciting category. It is a medium task that needs a
-Metal node for comparable numbers (workstream settings file present), exactly as the readable-
-generation and the deferred throughput measurement always were.
-
-#### What comes next
-
-1. This plan: `CausalLanguageModelDecodeThroughputTest`, the Generation-section rewrite with the
-   measured cache throughput and speedup, and the greedy-vs-nucleus sample.
-2. **Proof of value, if the cap binds:** a sliding (rolling) key/value cache so long-form generation
-   runs at cache speed past `seqLen`, filed from this cycle's measurement.
-3. **Proof of value, connectome:** once PR #758 (CSR sparse product) merges and the owner provides
-   the MaleCNS tables and a Brian2 reference, the ingest into CSR form and the Shiu et al.
-   reproduction (the Phase 1 gate), then the throughput benchmark on every backend.
-4. **Proof of value:** conditional diffusion training, on an attention backward pass now honest end
-   to end for both conditioning (K/V) and differential cancellation (λ).
-5. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than
-   1000), now with connectome-scale evidence behind it.
-6. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2; the `io.almostrealism.collect`
-   package split; the unbuilt PDSL research/education features; letting a trained model read the
-   platform's own *source*, the deepest self-understanding aim.
+The KV-cache decode had landed byte-identical to the full forward but its throughput — the claim
+the whole cycle was justified by — was never measured. The cycle added
+`CausalLanguageModelDecodeThroughputTest`, asserting only the robust structural property (fewer
+kernels per decoded byte) and reporting wall-clock figures without a host-dependent threshold. The
+measurement (PR #768) found the cache ~4× *slower* on Metal and exposed the cache-ownership defect,
+which set up the 10-28 (later) and 10-29 cycles. Needed a Metal node.
 
 ### 2026-10-27 — Document simulating a spiking neural population, from state to recorded spikes (condensed)
 
