@@ -1075,8 +1075,9 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	}
 
 	/**
-	 * Waits for the oldest committed buffer, verifies it actually executed, runs its
-	 * callbacks, and releases it. Must run on the executor thread.
+	 * Waits for the oldest committed buffer, unless its timeline signal has already shown that it
+	 * executed, verifies it actually executed, runs its callbacks, and releases it. Must run on
+	 * the executor thread.
 	 *
 	 * <p>A buffer whose timeline signal a wait has observed (see {@link #awaitSignal}) is known to
 	 * have executed: a buffer that fails runs none of its commands, its signal included. Its
