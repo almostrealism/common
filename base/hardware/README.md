@@ -147,23 +147,31 @@ The hardware module includes comprehensive implementations for multiple accelera
 
 > **API Documentation:** Comprehensive JavaDoc is available for all 128+ classes in the hardware module. Generate it with `mvn javadoc:aggregate` and view at `target/site/apidocs/index.html`.
 
-### Native Libraries: libMTL and libNIO
+### Native Libraries: libMTL and Runtime-Compiled Operations
 
-The Metal backend and shared-memory helpers are backed by two native libraries whose
-source lives **in this repository** under [`src/main/cpp`](src/main/cpp):
+The Metal backend is backed by a prebuilt native library whose source lives **in this
+repository** under [`src/main/cpp`](src/main/cpp):
 
 | Library | Source | Backs |
 |---------|--------|-------|
 | **libMTL.dylib** | [`src/main/cpp/MTL.cpp`](src/main/cpp/MTL.cpp) | The `native` methods of [`org.almostrealism.hardware.metal.MTL`](src/main/java/org/almostrealism/hardware/metal/MTL.java) — device/queue/buffer/pipeline creation, command-buffer dispatch, autorelease-pool management |
-| **libNIO.dylib** | [`src/main/cpp/NIO.cpp`](src/main/cpp/NIO.cpp) | Shared-memory (`mmap`) helpers used by `NativeBuffer` |
+
+Smaller JNI helpers are not prebuilt: they are `BaseNative` operations whose C source is in
+the Java class, compiled at runtime by `NativeCompiler` with the toolchain the JNI backend
+uses. The shared-memory and direct-buffer helpers of `org.almostrealism.nio` (`mmap`, buffer
+addresses, `malloc`) are compiled this way, and so is `MTLSignaledValue`, which reads the
+value an `MTLSharedEvent` has been signaled to (`MTLEvent.isSignaled`) by sending
+`signaledValue` through the Objective-C runtime that `libMTL.dylib` has loaded. A host
+without that toolchain cannot read Metal event values, so its Metal host waits do not poll
+for command-buffer signals (see [Completion Wait Latency](#8-completion-wait-latency-metal)).
 
 `MTL.cpp` is Objective-C++ built against [metal-cpp](https://developer.apple.com/metal/cpp/).
 The amalgamated metal-cpp single header is committed as
 [`src/main/cpp/Metal.hpp`](src/main/cpp/Metal.hpp), so the build is **self-contained** —
-no external metal-cpp installation is required. Both libraries are rebuilt with
+no external metal-cpp installation is required. The library is rebuilt with
 [`src/main/cpp/compile.sh`](src/main/cpp/compile.sh) (auto-discovers `JAVA_HOME`); the
-resulting `.dylib` files are written to `src/main/resources/` and packaged into the
-`ar-hardware` jar, from which `MTL`/`NIO` load them at runtime. At load time, `MTL`
+resulting `.dylib` is written to `src/main/resources/` and packaged into the
+`ar-hardware` jar, from which `MTL` loads it at runtime. At load time, `MTL`
 extracts its bundled `libMTL.dylib` resource to a per-process file
 (`libMTL-<pid>.dylib`) in the OS temp directory before loading it, so that concurrent
 JVMs sharing that directory — such as parallel test forks on one CI machine — never
@@ -1026,6 +1034,44 @@ export AR_HARDWARE_METAL_HANDOFF_SPIN=50
 The window does not change which thread a task runs on, the order tasks run in, or how
 failures and interrupts reach the caller. It only changes how soon each side notices the
 other.
+
+### 8. Completion Wait Latency (Metal)
+
+A host wait for a Metal dispatch (`MetalSemaphore.waitFor()`, which is how every evaluation
+whose result the host reads ends) has to learn that the GPU has finished the dispatch's command
+buffer. The buffer's last command, the signal of the runner's timeline event, is visible to the
+host as soon as the GPU executes it, while Metal reports the buffer's completion tens of
+microseconds later (about 45 microseconds later, on average, for the small kernels of a
+synchronous loop measured on an M1 Ultra). `MetalCommandRunner.complete` therefore polls the
+timeline for that signal for a bounded window before it waits for the completion report, and
+drains the buffer as soon as the signal arrives. For a workload that waits for each small kernel
+in turn, that is a large share of every round trip: `MatrixMathTests#sumPowers`, 300,000
+synchronous dispatches, ran in 71 seconds instead of 88 on that machine.
+
+```bash
+# Timeline polling window in microseconds (default 1000). 0 waits for the completion report.
+export AR_HARDWARE_METAL_COMPLETION_SPIN=1000
+```
+
+The signal settles a wait only when it cannot be confused with a failure: the buffer waited
+for must be the one closed most recently, so no later buffer can have released the timeline
+past it, it must not be reported as failed, and every buffer committed before it must have
+completed without a failure. Otherwise the wait falls back to the completion report, as it
+does when the GPU takes longer than the window, and a buffer still waiting for a host-signaled
+bridge is not polled for at all. Either way, the buffer's completion callbacks have run on the
+runner's thread when the wait returns. A waiting thread occupies its core while it polls, and a
+GPU whose host polls rather than blocks may be held at a lower performance state. The gain is
+therefore largest when each wait covers a single small kernel; a per-sample audio loop whose
+waits each cover fifteen dispatches measured the same with polling as without it, and no
+workload measured was slower. `MetalCommandRunner.getSignalCompletionCount()` reports how many
+waits the signal settled.
+
+Polling needs the timeline's current value, which the host reads with `MTLSignaledValue`, a
+JNI operation compiled at runtime (see [Native Libraries](#native-libraries-libmtl-and-runtime-compiled-operations)).
+A runner created on a host that cannot compile it, for want of the C toolchain the JNI backend
+uses, logs why once and waits for every buffer's completion report, as with a window of 0.
+Polling the command buffer's status is no substitute for the signal: on the machine above, a
+buffer's status reported it completed later than a blocked `waitUntilCompleted` returned.
 
 ## Advanced Topics
 

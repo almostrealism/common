@@ -154,6 +154,16 @@ must respect it:
   completion callbacks and never commits the open buffer, so batching is preserved.
 - Those callbacks run only when a host thread drains the buffer
   (`MetalCommandRunner.complete`/`destroy`), not when the GPU finishes.
+- A host wait learns that the GPU has finished from the buffer's timeline signal when it can:
+  `complete` polls the timeline for the waited value for `completionSpinMicros` before it waits
+  for Metal's completion report, which arrives tens of microseconds after the signal. Reading the
+  timeline's value needs a JNI operation compiled at runtime (`MTLEvent.isSignalReadable`); a
+  runner on a host that cannot compile it does not poll and waits for the report. The signal
+  is trusted only when the waited buffer is still the most recently closed one, is not reported
+  as failed, and every buffer before it has completed without a failure, because a failed
+  buffer never signals but the buffers after it still do. The drain that follows runs on the
+  confined thread, as after any wait, and does not wait for the GPU, so the rule below still
+  holds.
 - A Metal dispatch whose dependency is *not* one of the runner's own `MetalSemaphore`s is
   **bridged**: its command buffer waits on an `MTLEvent` that the host signals from
   `dependsOn.onSettled(...)`. If a committed buffer waits longer than the GPU watchdog for
