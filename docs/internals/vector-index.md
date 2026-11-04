@@ -268,7 +268,12 @@ that already has features for the declared model is re-embedded from those featu
 pooled) and re-inserted with `insertEmbedding`. A record **without** the declared model's
 features is left out. It enters the index when its embedding for that model is computed and
 stored. `ProtobufWaveDetailsStore.put(id, details, vector)` declares the model of the record's
-active features before it inserts, so mixing models through `put` is not possible.
+active features — rebuilding the index if that model differs from the one recorded — before it
+inserts, so a `put` cannot silently add a vector to an index built for another model. This is a
+caller-side contract rather than a validated guarantee: the store does not check that `vector`
+was actually produced by that model, and when the record's active model identifier is `null`
+the index model is left unchanged (`setIndexModel(null)` is a no-op), so a vector supplied with a
+null active model is inserted into whatever index is current.
 
 The examples test checks the disk-store half of this contract directly, with `insertEmbedding`
 standing in for the re-embedding step:
