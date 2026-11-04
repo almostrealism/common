@@ -51,14 +51,15 @@ added-token and reachable-byte-fallback work for Gemma vocabularies (PR #820).
   `extern/ml-djl` DJL wrapper — a *different* class from `engine/ml`'s `SentencePieceBPETokenizer`,
   so a reader following the index finds the wrong tokenizer; the `tokenization` package Javadoc
   omits `ByteTokenizer` (the self-hosted LM's vocabulary) and `SentencePieceBPETokenizer` (Gemma /
-  Stable Audio 3 conditioning); and `engine/ml/README.md`'s tokenization example **does not
-  compile** — it calls `encodeAsInt`/`decodeAsInt` on `Qwen3Tokenizer`, which does not implement
-  `Tokenizer`, and the `protected` `getBOSToken()`. The `ARTK` exporter format and its validation
+  Stable Audio 3 conditioning); and `engine/ml/README.md`'s tokenization examples ("5. Tokenization"
+  and "Pattern 5: Manual Token Loop") **do not compile** — they call `encodeAsInt`/`decodeAsInt` on
+  `Qwen3Tokenizer`, which does not implement `Tokenizer`, and the `protected` `getBOSToken()` /
+  `getEOSToken()`. The `ARTK` exporter format and its validation
   rules live only in a docstring and a Javadoc block.
 - **Code quality — strong and owned by continuous QA.** Recent commits are themselves QA output
   (clip-length validation, `KdTree.removeOld`, `CompleteIdentifierSet` concurrency). One small API
-  inconsistency surfaced (`Qwen3Tokenizer` has every `Tokenizer` capability under other names but
-  does not implement it); the plan documents it as-is and routes the decision to a tracker task.
+  inconsistency surfaced (`Qwen3Tokenizer` encodes and decodes through `int[]` methods of its own
+  but does not implement `Tokenizer`); the plan documents it as-is and routes the decision to a tracker task.
   Several plans whose work merged still read `in-progress` — a header sweep for docs QA, not a cycle.
 - **Performance — no PM-level blocker.** `38f78778` (per-dispatch copy count) and the reduced
   `matmul`/convolution-gradient forms remain real and non-blocking.
@@ -67,8 +68,8 @@ added-token and reachable-byte-fallback work for Gemma vocabularies (PR #820).
 
 #### Why this task
 
-It is the disciplined pick: the earliest category with genuine, reachable work, and it fixes a
-README example that misleads anyone (or any model) who copies it. It is the reference-exists /
+It is the disciplined pick: the earliest category with genuine, reachable work, and it fixes
+README examples that mislead anyone (or any model) who copies them. It is the reference-exists /
 connective-tissue-missing move of the last three documentation cycles applied to the boundary every
 language-model capability crosses first. It is reachable **on any backend**: the drift-guard
 (`TextTokenizationExamplesTest`) runs on `SentencePieceTokenizerFixture`'s synthetic `ARTK` binary,
@@ -96,8 +97,8 @@ Medium task, no production behaviour change, any node — no workstream settings
 5. **Proof of value:** conditional diffusion training.
 6. Still open: the reduced `matmul`/convolution-gradient forms; `TransformerResamplingFeatures`'
    buffered K/V; the `io.almostrealism.collect` split; letting a trained model read the platform's
-   own *source* — now with both its retrieval substrate (vector index) and its input layer
-   (tokenization) documented.
+   own *source* — its retrieval substrate (vector index) is documented, and its input layer
+   (tokenization) will be once this plan lands.
 
 ### 2026-11-03 (later) — Document the vector-index subsystem (HNSW + disk store + model-keyed rebuild)
 
