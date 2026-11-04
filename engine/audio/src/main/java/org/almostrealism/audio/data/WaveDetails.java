@@ -21,7 +21,6 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Node;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.io.Console;
 
@@ -796,26 +795,32 @@ public class WaveDetails implements CodeFeatures, Node {
 	 * @return the mean-pooled embedding vector, or {@code null}
 	 */
 	public PackedCollection meanPooledEmbedding() {
-		PackedCollection featureData = getFeatureData();
+		WaveFeatures f = view();
+		if (f != null) return f.meanPooledEmbedding();
 		if (featureData == null) return null;
 
-		int frames = featureData.getShape().length(0);
-		int bins = featureData.getShape().length(1);
-		if (frames == 0 || bins == 0) return null;
+		return new WaveFeatures(null, featureSampleRate, featureChannelCount,
+				featureBinCount, featureFrameCount, featureData, similarities).meanPooledEmbedding();
+	}
 
-		CollectionProducer sum = null;
+	/**
+	 * Computes a mean-pooled embedding vector from the features the given model
+	 * produced for this item, ignoring any other model's features and the legacy
+	 * unkeyed slot. Returns {@code null} when this item holds no features for
+	 * that model, so an item that has not yet been analysed by the model never
+	 * contributes another model's embedding (possibly of another width) to that
+	 * model's index. With a {@code null} model this is
+	 * {@link #meanPooledEmbedding()}.
+	 *
+	 * @param modelIdentifier the model whose features to pool, or {@code null}
+	 * @return the mean-pooled embedding vector, or {@code null}
+	 * @see WaveFeatures#meanPooledEmbedding()
+	 */
+	public PackedCollection meanPooledEmbedding(String modelIdentifier) {
+		if (modelIdentifier == null) return meanPooledEmbedding();
 
-		for (int f = 0; f < frames; f++) {
-			if ((f + 1) * bins > featureData.getMemLength()) break;
-
-			CollectionProducer row = Ops.o().cp(
-					featureData.range(Ops.o().shape(bins), f * bins));
-			sum = sum == null ? row : sum.add(row);
-		}
-
-		if (sum == null) return null;
-
-		return sum.multiply(1.0 / frames).evaluate();
+		WaveFeatures features = getFeatures(modelIdentifier);
+		return features == null ? null : features.meanPooledEmbedding();
 	}
 
 	/**

@@ -85,6 +85,82 @@ public class SAMEAutoEncoderCompilationTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Compiling for a duration aligns the clip length the duration covers at the sample rate, and the
+	 * compiled autoencoder reports that {@code [batch, channels, samples]} shape as its audio shape.
+	 */
+	@Test(timeout = 240000)
+	public void compiledForDurationReportsAlignedAudioShape() {
+		SAMEAutoEncoder autoencoder = smallAutoEncoder(LATENT);
+		double duration = 30.0 / SAMPLE_RATE;
+		int samples = autoencoder.alignedAudioLength(30);
+
+		CompiledModelAutoEncoder compiled = CompiledModelAutoEncoder.of(autoencoder, 1, SAMPLE_RATE, duration);
+		try {
+			assertEquals(shape(1, CHANNELS, samples), compiled.getAudioShape());
+			assertEquals(duration, compiled.getMaximumDuration(), 0.0);
+		} finally {
+			compiled.destroy();
+		}
+	}
+
+	/**
+	 * The duration-based {@link CompiledModelAutoEncoder#of(SAMEAutoEncoder, int, double, double) of}
+	 * overload rejects a clip length that is not a positive, finite, in-range sample count — zero,
+	 * negative, non-finite, or larger than {@link Integer#MAX_VALUE} — with an
+	 * {@link IllegalArgumentException} rather than compiling a zero-sized or invalid encoder. A
+	 * non-finite duration or sample rate must not slip through the range check and be truncated to
+	 * zero samples, and a negative duration and negative sample rate must not pass together by way of
+	 * their positive product. Positive inputs whose product underflows to zero are rejected too, as is
+	 * a product within range whose alignment to a whole number of frames overflows the sample count.
+	 */
+	@Test(timeout = 240000)
+	public void compiledForDurationRejectsInvalidClipLength() {
+		SAMEAutoEncoder autoencoder = smallAutoEncoder(LATENT);
+		double[] invalidDurations = {0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY,
+				Double.NEGATIVE_INFINITY, (double) Integer.MAX_VALUE};
+		for (double duration : invalidDurations) {
+			try {
+				CompiledModelAutoEncoder.of(autoencoder, 1, SAMPLE_RATE, duration);
+				throw new AssertionError("expected rejection of maxDuration " + duration);
+			} catch (IllegalArgumentException expected) {
+				// the clip length is not a valid sample count
+			}
+		}
+
+		double[] invalidRates = {0.0, -SAMPLE_RATE, Double.NaN, Double.POSITIVE_INFINITY,
+				Double.NEGATIVE_INFINITY};
+		for (double rate : invalidRates) {
+			try {
+				CompiledModelAutoEncoder.of(autoencoder, 1, rate, 10.0);
+				throw new AssertionError("expected rejection of sampleRate " + rate);
+			} catch (IllegalArgumentException expected) {
+				// the clip length is not a valid sample count
+			}
+		}
+
+		try {
+			CompiledModelAutoEncoder.of(autoencoder, 1, -SAMPLE_RATE, -10.0);
+			throw new AssertionError("expected rejection of a negative duration and sample rate");
+		} catch (IllegalArgumentException expected) {
+			// a positive product does not make negative quantities valid
+		}
+
+		try {
+			CompiledModelAutoEncoder.of(autoencoder, 1, 0.25, Double.MIN_VALUE);
+			throw new AssertionError("expected rejection of a sample count that underflows to zero");
+		} catch (IllegalArgumentException expected) {
+			// positive inputs whose product underflows describe no samples at all
+		}
+
+		try {
+			CompiledModelAutoEncoder.of(autoencoder, 1, 1.0, (double) Integer.MAX_VALUE);
+			throw new AssertionError("expected rejection of a clip length whose alignment overflows");
+		} catch (IllegalArgumentException expected) {
+			// a sample count at the int limit cannot be padded up to an aligned clip length
+		}
+	}
+
+	/**
 	 * {@link AudioComposer} composes latents of a SAME-S-shaped autoencoder — 256 latent channels —
 	 * compiled through {@link CompiledModelAutoEncoder#of}. Each clip is encoded to the batched
 	 * {@code [1, 256, latentLen]} latent, the batch axis is dropped so the composer sees the

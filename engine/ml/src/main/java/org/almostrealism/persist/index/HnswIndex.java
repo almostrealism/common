@@ -212,6 +212,15 @@ public class HnswIndex implements CodeFeatures, Destroyable {
 	}
 
 	/**
+	 * Return the dimensionality of the vectors this index holds.
+	 *
+	 * @return vector dimensionality
+	 */
+	public int getDimension() {
+		return dimension;
+	}
+
+	/**
 	 * Return the number of (non-deleted) nodes in the index.
 	 *
 	 * @return active node count

@@ -122,6 +122,29 @@ public class CompiledModelAutoEncoder implements AutoEncoder, CodeFeatures {
 	}
 
 	/**
+	 * Compiles a {@link SAMEAutoEncoder} into an {@link AutoEncoder} for clips of {@code maxDuration}
+	 * seconds: the clip length is the autoencoder's
+	 * {@link SAMEAutoEncoder#alignedAudioLength(double, double) aligned length} for that duration at
+	 * {@code sampleRate}.
+	 *
+	 * @param autoencoder the autoencoder definition
+	 * @param batchSize   the number of clips processed together
+	 * @param sampleRate  the audio sample rate in Hz
+	 * @param maxDuration the clip duration in seconds the encoder and decoder are compiled for
+	 * @return the compiled autoencoder
+	 * @throws IllegalArgumentException if {@code maxDuration} or {@code sampleRate} is not positive and
+	 *                                  finite, or their product underflows to zero or exceeds
+	 *                                  {@link Integer#MAX_VALUE} samples, or rounding that product up to
+	 *                                  an aligned clip length overflows {@link Integer#MAX_VALUE}
+	 * @see #of(SAMEAutoEncoder, int, int, double, double)
+	 */
+	public static CompiledModelAutoEncoder of(SAMEAutoEncoder autoencoder, int batchSize,
+											  double sampleRate, double maxDuration) {
+		return of(autoencoder, batchSize, autoencoder.alignedAudioLength(sampleRate, maxDuration),
+				sampleRate, maxDuration);
+	}
+
+	/**
 	 * Creates an AutoEncoder with only a decoder (for generation-only use cases).
 	 *
 	 * @param decoder Compiled decoder model
@@ -176,6 +199,21 @@ public class CompiledModelAutoEncoder implements AutoEncoder, CodeFeatures {
 	 */
 	public CompiledModel getEncoder() {
 		return encoder;
+	}
+
+	/**
+	 * Returns the {@code [batch, channels, samples]} audio shape the encoder was compiled for,
+	 * which every input to {@link #encode(Producer)} must match.
+	 *
+	 * @return the encoder's input shape
+	 * @throws UnsupportedOperationException if this AutoEncoder has no encoder
+	 */
+	public TraversalPolicy getAudioShape() {
+		if (encoder == null) {
+			throw new UnsupportedOperationException("This AutoEncoder does not have an encoder");
+		}
+
+		return encoder.getInputShape();
 	}
 
 	/**

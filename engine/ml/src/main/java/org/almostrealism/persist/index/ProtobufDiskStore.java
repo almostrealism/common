@@ -356,7 +356,11 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	public List<SearchResult<T>> search(PackedCollection queryVector, int topK) {
 		List<HnswIndex.IdScore> candidates;
 		synchronized (hnswLock) {
-			if (hnswIndex == null || hnswIndex.size() == 0) {
+			// A query of another dimensionality comes from another model than the
+			// indexed vectors, so nothing in the index is comparable to it (the
+			// empty-result-on-width-mismatch contract is documented on DiskStore.search).
+			if (hnswIndex == null || hnswIndex.size() == 0
+					|| hnswIndex.getDimension() != queryVector.getMemLength()) {
 				return new ArrayList<>();
 			}
 

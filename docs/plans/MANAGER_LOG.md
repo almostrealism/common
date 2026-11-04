@@ -28,6 +28,91 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-11-03 (later) — Document the vector-index subsystem (HNSW + disk store + model-keyed rebuild)
+
+**Category:** Documentation
+**Branch:** `project/plan-20261103-172701`
+**Plan:** [`PLAN-20261103-vector-index-docs.md`](PLAN-20261103-vector-index-docs.md)
+
+#### What changed since last cycle
+
+The copy-once read-only aggregate work merged (PR #825), cashing the performance lever the
+2026-11-03 cycle chose. Alongside it, a whole **vector similarity-search subsystem** reached
+`master` (PR #827 and the commits around it: serialize HNSW index access + relax the
+model-declaration API, rebuild the index from stored records on a model change, rebuild when the
+model marker outlives the index, clarify the same-model rebuild contract in `WaveDetailsStore`).
+It spans `engine/ml`'s `org.almostrealism.persist.index` (`HnswIndex`, `ProtobufDiskStore`,
+`SimilarityMetric`, `SearchResult`, `DiskStore`) and `studio/compose`'s `ProtobufWaveDetailsStore`
+(the model-keyed rebuild). The QA rounds that merged alongside (`qa/pdsl`, `qa/performance`,
+`qa/consolidate`) keep the foundation current.
+
+#### Category assessment (priority order)
+
+- **Documentation — a real, fresh gap, and it decided the cycle.** The reference material exists
+  (`engine/ml/README.md` has a thorough "HnswIndex — Vector Search" section; every class carries
+  careful Javadoc), but `consult` confirmed this is the recurring *reference-exists /
+  connective-tissue-missing* situation on the newest subsystem: `llms.txt` has **zero** mention
+  of the vector index, so a reader (or a model trained on the corpus) following the index never
+  discovers it; and two things live only in Javadoc and nowhere connective — (1) the index *is*
+  a computation graph (`normalize` and `similarities` as Producers, compiled once and reused;
+  normalize-into-row single dispatch; whole-store `matmul` scoring single dispatch; host-side
+  top-K and graph construction), a clean **non-training** exemplar of THE FUNDAMENTAL RULE, and
+  (2) the model-keyed rebuild contract that the recent commits were entirely about.
+- **Code quality — strong and owned by continuous QA.** The copy-once aggregate work merged with
+  its structural regression test and `OnceSubmittable` unit coverage; the attention-correctness
+  and cache-ownership arcs stay closed. The standing items (`io.almostrealism.collect` split;
+  `TransformerResamplingFeatures` buffered K/V, deferred to that autoencoder's first fine-tune)
+  are real but not reachable flagships. Moved on.
+- **Performance — no PM-level blocker this cycle.** The read-only copy-in is now once-per-map;
+  the complementary `38f78778` (cut the per-dispatch copy *count* for slices that must still be
+  copied every dispatch) remains real and non-blocking, as do the weighted-sum `matmul` reduced
+  form and the convolution input-gradient reduced form. Moved on.
+- **Proof of value — the category these tracks serve, gated or heavier than the doc gap.** The
+  self-hosted LM and connectome tracks both benefit from the just-landed copy path; the next
+  proof-of-value steps are either conditional (attention sinks, only if long-generation quality
+  degrades), blocked on owner data (MaleCNS whole-brain reproduction), or heavy (conditional
+  diffusion). None outranks a fresh, reachable documentation gap under the priority order.
+
+#### Why this task
+
+It is the disciplined pick: the earliest category with genuine, reachable, high-leverage work.
+It is the 2026-10-27 / 2026-11-02 move again — the reference exists, the connective tissue and
+the index entry do not — applied to the newest subsystem. It is reachable **on any backend**: the
+drift-guard (`VectorIndexExamplesTest`, modeled on the existing `HnswSearchTest`) needs no curated
+download and no macOS node, and asserts robust backend-independent properties (top-1 recall of a
+planted neighbor, save/reload identity, model-change exclusion-then-inclusion) without reducing
+dimensions, loosening tolerances or gating skips. For the self-understanding aim it documents the
+platform's own **retrieval substrate** — the native-accelerated vector index beneath any
+retrieval-augmented reasoning over the corpus (and eventually the source), expressed in the
+computation-graph idiom rather than as host loops.
+
+#### Balance across categories
+
+The last cycle was performance (copy-once aggregate). Returning to documentation now is not drift
+toward an easier category: a whole subsystem arrived with only README + Javadoc, the index does
+not mention it, and the proof-of-value steps that would build on retrieval are either gated or
+heavier. It is a medium task touching no production code and running on any node, so no workstream
+settings file accompanies it.
+
+#### What comes next
+
+1. This plan: `docs/internals/vector-index.md`, the `VectorIndexExamplesTest` drift-guard, and the
+   `llms.txt` / `engine/ml/README.md` cross-links.
+2. **Performance, complementary:** `38f78778` — cut the *count* of per-dispatch device copies for
+   slices that must still be copied every dispatch, so the rolling KV cache beats the sliding
+   window on dispatches/byte outright.
+3. **Proof of value, self-hosted LM:** attention sinks (pin the first `k` tokens) if the rolling
+   cache's long-generation quality degrades.
+4. **Proof of value, connectome:** the MaleCNS whole-brain ingest and the Shiu et al. reproduction,
+   once the owner provides the ~2 GB tables and a Brian2 reference.
+5. **Proof of value:** conditional diffusion training.
+6. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs > 1000) and a
+   reduced form for the convolution input gradient.
+7. Still open: `TransformerResamplingFeatures`' buffered K/V; the `io.almostrealism.collect` package
+   split; the unbuilt PDSL research/education features; letting a trained model read the platform's
+   own *source*, the deepest self-understanding aim — a natural consumer of the vector index this
+   cycle documents.
+
 ### 2026-11-03 — Copy read-only aggregate slices once per argument map instead of before every dispatch
 
 **Category:** Performance
@@ -412,179 +497,34 @@ generation and the deferred throughput measurement always were.
    package split; the unbuilt PDSL research/education features; letting a trained model read the
    platform's own *source*, the deepest self-understanding aim.
 
-### 2026-10-27 — Document simulating a spiking neural population, from state to recorded spikes
+### 2026-10-27 — Document simulating a spiking neural population, from state to recorded spikes (condensed)
 
-**Category:** Documentation
-**Branch:** `project/plan-20261027-081706`
+**Category:** Documentation · **Branch:** `project/plan-20261027-081706` ·
 **Plan:** [`PLAN-20261027-neural-population-simulation-docs.md`](PLAN-20261027-neural-population-simulation-docs.md)
 
-#### What changed since last cycle
+A whole simulation substrate had arrived through the connectome Phase-1 tracker tasks with only
+Javadoc — `CounterRandom`/`AR_RANDOM`, `SimulationRunner`, `LeakyIntegrateAndFirePopulation`, the
+PDSL move to `domain/graph`, and the new `domain/biology`/`studio/bioscience` modules, none in any
+Markdown file — and `shape-and-traversal.md` still predated `TraversalOrdering.bind`. The reference
+existed, the connective tissue did not. The cycle wrote `docs/internals/neural-population-simulation.md`
+(one spiking population from device-resident state through the LIF step, ring-buffer delay,
+connectivity, in-kernel Poisson drive and a `SimulationRunner` run with a device-resident spike
+recording), drift-guarded by `NeuralPopulationSimulationExamplesTest`, and brought
+`shape-and-traversal.md`, `llms.txt` and the graph/biology READMEs current. Ran on any node.
 
-The PDSL tutorial landed (PR #757, merged): `docs/tutorials/10-pdsl-model-definitions.html` with
-`PdslTutorialExamplesTest`, and its first-mistake messages pinned by fixtures. That closes the PDSL
-teaching gap. Separately, and much larger, a whole simulation substrate reached `master` this week
-through the connectome model organism's Phase 1 tracker tasks, outside the manager-log cycles:
-ordered collections as kernel inputs (`TraversalOrdering.bind`, absent elements reading as zero),
-integer-exact split indices, integer safetensors/protobuf payloads, `CounterRandom` (in-kernel
-counter-based random numbers, `AR_RANDOM=counter`), `SimulationRunner` (the simulation loop owner)
-and `LeakyIntegrateAndFirePopulation`. The PDSL core moved to `domain/graph`
-(`org.almostrealism.dsl`, `PdslExtension`, `WeightGroup`) and two modules appeared,
-`domain/biology` and `studio/bioscience`. Two branches are still open on the same track: the
-sparse matrix–vector product (`SparseMatrix`, `SegmentedWeightedSumComputation`) and the cell-type
-rate model (`RatePopulation`, `CellTypeConnectome`).
+### 2026-10-26 (later) — Teach PDSL model authoring with a worked tutorial (condensed)
 
-#### Category assessment (priority order)
-
-- **Documentation — a real gap, and it decided the cycle.** The new substrate is well covered by
-  Javadoc, and `SimulationRunner` and split indices have good internals sections. But I checked
-  each piece against the durable corpus: `AR_RANDOM` and `CounterRandom` appear in no Markdown
-  file at all; `LeakyIntegrateAndFirePopulation` is documented nowhere outside its own class;
-  `shape-and-traversal.md` still sketches a two-method `TraversalOrdering` that predates `bind`,
-  signatures and the absent-element contract; `llms.txt` lists neither biology module nor
-  `simulation-loop-examples.md`, and `domain/graph/README.md` never mentions PDSL, which now lives
-  there. Worse, the only example of driving a LIF population (`LeakyIntegrateAndFirePopulationTest`)
-  steps it with a hand-written host loop, because the population exposes `step(Producer)` rather
-  than implementing `Temporal`. The next connectome agents will learn the wrong pattern from it.
-  Nothing puts the pieces together as one simulation.
-- **Code quality — one real item found, owned elsewhere.** `PLAN-20261025-spiking-lif-population.md`
-  has no lifecycle header, so `RepositoryPlansTest.test_every_plan_has_a_valid_header` fails on
-  `master`. The open rate-model branch adds that header; plan review on this branch added the
-  identical header (byte for byte, so the two merge cleanly), because this plan's own validation
-  step runs that test. The `io.almostrealism.collect` split is unchanged.
-- **Performance — no blocker.** The weighted-sum `matmul` reduced form remains real and
-  non-blocking; the rate-model branch measured that a dense 11,751-wide step on Metal is bound by
-  its looped reduction kernel, which is useful evidence for that lever.
-- **Proof of value — live, deliberately not chosen.** The KV-cache throughput measurement is
-  Metal-gated, conditional diffusion training is heavy, and the connectome's proof-of-value steps
-  (Shiu et al. reproduction) wait on ingest and the sparse product.
-
-#### Why this task
-
-It is the 2026-10-26 move again, applied to the newest domain: the reference material exists, the
-connective material does not. One internals page walks a spiking population from device-resident
-state through the LIF step, the ring-buffer delay, connectivity, reproducible in-kernel Poisson
-drive and a `SimulationRunner` run with a device-resident spike recording, and states the known
-limits from evidence. A drift-guard test runs the page's example through `SimulationRunner` and
-asserts its rate, silence, delay and reproducibility claims, so the page cannot rot, and it also
-tests whether the adapter pattern works. If it does not, that becomes an evidenced tracker task,
-not a production change in this cycle. Plan review found that, in a two-population tick, the
-effective delay depends on the order of the two steps, and recorded that with the other open
-questions in the plan. The cycle also brings `shape-and-traversal.md`, `llms.txt`
-and the graph and biology READMEs up to date. It runs on any node.
-
-For the self-understanding aim, this is the page that lets a model trained on the corpus reason
-about the platform's simulations of living systems, which is the most distinctive thing the
-platform added this month.
-
-#### Balance across categories
-
-Two documentation cycles in a row (tutorial, now this) after a long proof-of-value run. That is
-not drift. The substrate arrived fast through tracker tasks, and documenting it now, before the
-connectome's proof-of-value steps build on it, is cheaper than repairing the patterns later. The
-next cycle should go back to proof of value unless something foundational breaks.
-
-#### What comes next
-
-1. This plan: `docs/internals/neural-population-simulation.md`,
-   `NeuralPopulationSimulationExamplesTest`, and the `shape-and-traversal.md`, `llms.txt` and
-   README corrections.
-2. **Proof of value, connectome:** once the sparse product merges, the MaleCNS ingest into CSR
-   form and the Shiu et al. reproduction on its own FlyWire inputs (tracker tasks 2218ffdf, d72c5ca4).
-3. **Proof of value, Metal:** KV-cache decode throughput vs full forward, and greedy-vs-top-p over
-   long samples.
-4. **Proof of value:** conditional diffusion training.
-5. **Performance:** the reduced form for the weighted-sum `matmul` lowering, now with a
-   connectome-scale measurement behind it.
-6. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2; the `io.almostrealism.collect`
-   split; the PDSL research/education features; letting a trained model read the platform's own
-   source.
-
-### 2026-10-26 (later) — Teach PDSL model authoring with a worked tutorial
-
-**Category:** Documentation
-**Branch:** `project/plan-20261026-165814`
+**Category:** Documentation · **Branch:** `project/plan-20261026-165814` ·
 **Plan:** [`PLAN-20261026-pdsl-authoring-tutorial.md`](PLAN-20261026-pdsl-authoring-tutorial.md)
 
-#### What changed since last cycle
-
-The KV-cache single-position decode landed (PR #753, merged): `CausalLanguageModel.decodeModel`
-builds the single-position decode `Model` over its own `StateDictionary`, and
-`KeyValueCacheAutoregressiveModel` (sibling of `SlidingWindowAutoregressiveModel`) owns the
-compilation, per-layer caches and position, sharing the top-p `sampleToken` path. Five new tests
-pin it, chief among them a byte-identical-to-full-forward assertion at every position. I verified
-one thing the stale review-followup memory (6c8764a3) got wrong: the merged `load(Integer)` already
-throws `IllegalStateException` when the step reaches `config.seqLen`, so the out-of-bounds guard that
-memory flagged as deferred is in fact present — that correctness item is closed, not open. So the
-single step the "what comes next" lists had telegraphed five cycles running is cashed, and no
-same-class defect trails it.
-
-#### Category assessment (priority order)
-
-- **Documentation — a real teaching gap, and it decided the cycle.** The *reference* corpus is
-  excellent and current (40+ internals pages; `pdsl-language.md` is the complete normative PDSL
-  reference, guarded by `PdslLanguageReferenceExamplesTest`). But the *tutorial* series
-  (`docs/tutorials/01`–`09`) covers vectors, `PackedCollection`, hardware, computation graphs, ML
-  inference, signal processing, testing, process optimization, FlowTree setup and secrets — and
-  **nothing teaches PDSL**, the declarative language in which every model the platform trains states
-  what it computes. For several cycles I logged this as low-priority precisely because there was a
-  proof-of-value step to cash *right now*; with the KV-cache decode landed and the next proof-of-value
-  steps either Metal-gated (throughput measurement) or heavy (conditional diffusion), the long-deferred
-  teaching gap is now the first category with genuine, reachable, high-leverage work. It is not a
-  second reference — it is the pedagogical companion the reference has lacked, and the owner has
-  explicitly flagged PDSL education as a direction (`PDSL_FOR_RESEARCH_AND_EDUCATION.md`).
-- **Code quality — strong and owned by continuous QA.** The attention-correctness arc is closed; the
-  KV-cache decode merged with a clean OOP review and its one flagged guard turned out to be present.
-  No flagship defect. The standing minor item (`io.almostrealism.collect` split) is unchanged.
-- **Performance — no blocker.** The named lever (weighted-sum `matmul` reduced form, outputs > 1000)
-  is real but blocks nothing.
-- **Proof of value — the category's momentum, deliberately not chosen this cycle.** The telegraphed
-  next steps (measure KV-cache throughput and compare greedy-vs-top-p over long samples on Metal;
-  conditional diffusion training) are live and strong, but the first is hardware-gated and the
-  documentation gap outranks them under the priority order now that it is the earliest category with
-  real work.
-
-#### Why this task
-
-PDSL is the most generative page we can add to the corpus the self-hosted LM trains on — the same
-reasoning that drove the 2026-10-23 reference cycle. The reference answers "what does this construct
-mean"; a tutorial answers "how do I read a model, then write one," progressively, in the register of
-the existing series. That is what a human reaches for first and what a model learning from prose and
-worked examples learns from best, so it is simultaneously human onboarding and training material for
-the self-understanding aim. Crucially it is **reachable today on any backend**: it stays inside what
-already ships — the parser, `PdslLoader`, and the already-tested `.pdsl` assets — and depends on none
-of the unbuilt `PDSL_FOR_RESEARCH_AND_EDUCATION.md` features (`embed` token-embedding primitive,
-`transformer(block, position)`, stack slicing, runner, a Qwen checkpoint the agent cannot download).
-Hierarchical weight paths and `stack weights.model.layers as block` already ship and are taught.
-
-To hold the project's standard that shipped doc examples cannot drift, the plan pairs the page with
-`PdslTutorialExamplesTest`, modeled on the reference's examples test: it extracts every PDSL program
-the page shows as complete and asserts each parses (the final model also builds via
-`PdslLoader.buildModel` from a synthetic `StateDictionary`). Any
-rough edge the tutorial surfaces in the language is recorded as a follow-up, not fixed here — this is
-a documentation cycle, not a language change.
-
-#### Balance across categories
-
-The last five cycles were proof-of-value (KV-cache decode, nucleus sampling), documentation (the PDSL
-reference) and two correctness cycles (differential lambda, cross-attention K/V). Returning to the
-foundation now is disciplined, not a retreat from momentum: the proof-of-value step those cycles were
-building toward is cashed, and the earliest category with genuine reachable work is the teaching gap.
-It is a medium task that **runs on any node** — no macOS requirement, no workstream settings file.
-
-#### What comes next
-
-1. This plan: `docs/tutorials/10-pdsl-model-definitions.html`, the `PdslTutorialExamplesTest`
-   drift-guard, and the index/reference/README/`llms.txt` cross-links.
-2. **Proof of value, Metal:** measure KV-cache decode throughput vs full-forward and compare
-   greedy-vs-top-p decoding over long samples now that decoding is cheap enough to run at length
-   (the one Metal-gated step, with a workstream settings file).
-3. **Proof of value:** conditional diffusion training, on an attention backward pass now honest end
-   to end for both conditioning (K/V) and differential cancellation (λ).
-4. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs wider than 1000).
-5. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2 (with the SAME fine-tune); the
-   `io.almostrealism.collect` package split; the unbuilt PDSL research/education features
-   (embedding primitive, runner, interventions); letting a trained model read the platform's own
-   *source*.
+The reference corpus was excellent and current (40+ internals pages; `pdsl-language.md` the complete
+normative PDSL reference), but the tutorial series (`01`–`09`) taught no PDSL — the declarative
+language every trained model states its computation in. With the KV-cache decode landed and the next
+proof-of-value steps Metal-gated or heavy, the long-deferred teaching gap was the first category with
+reachable work. The cycle wrote `docs/tutorials/10-pdsl-model-definitions.html` with
+`PdslTutorialExamplesTest` (every complete PDSL program parses; the final model builds via
+`PdslLoader.buildModel` from a synthetic `StateDictionary`), staying inside what already ships and
+depending on none of the unbuilt `PDSL_FOR_RESEARCH_AND_EDUCATION.md` features. Ran on any node.
 
 ### 2026-10-26 — Decode the self-hosted LM one token at a time with a key/value cache (condensed)
 

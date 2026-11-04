@@ -41,6 +41,12 @@ name: "QA Round"
 #       secrets:
 #         FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
 #
+# A caller other than the framework repository gets the framework cloned beside
+# its own checkout on every job of the round (the workstream's dependent
+# repository), as an application built on it needs in order to build and to see
+# where a defect lives. tracker-capabilities grants the round's workstream a
+# tracker role; a round that files tasks into a release passes "planner".
+#
 # The round is gated three ways, in order, by the shared cadence script
 # (tools/ci/qa-cadence.sh): no round of this prefix in progress — a previous
 # round's PR open, or its branch younger than grace-hours and not yet carrying
@@ -136,6 +142,11 @@ on:
         type: string
       required-labels-json:
         description: "JSON object of capability labels every later job on the workstream must carry; empty leaves none"
+        required: false
+        default: ""
+        type: string
+      tracker-capabilities:
+        description: "Comma-separated tracker roles for the round's workstream (e.g. \"planner\", to file tasks into a release); empty grants none"
         required: false
         default: ""
         type: string
@@ -258,6 +269,24 @@ jobs:
           git push -u origin "$BRANCH_NAME"
           echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
           echo "::notice::Created branch $BRANCH_NAME"
+
+      - name: Register workstream
+        id: register
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          BRANCH: ${{ steps.qa_branch.outputs.branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_URL: git@github.com:${{ github.repository }}.git
+          REQUIRED_LABELS_JSON: ${{ inputs.required-labels-json }}
+          TRACKER_CAPABILITIES: ${{ inputs.tracker-capabilities }}
+          # The framework beside the application, so an application's round can
+          # build against it and read it. Nothing to add when the caller is the
+          # framework itself.
+          DEPENDENT_REPOS: ${{ inputs.framework-repository != github.repository && format('git@github.com:{0}.git', inputs.framework-repository) || '' }}
+        run: bash "$FRAMEWORK/tools/ci/register-workstream.sh"
 
       # The caller's checkout is the caller-root: a built-in selector names a
       # framework template, a caller path names one in that checkout, read as
