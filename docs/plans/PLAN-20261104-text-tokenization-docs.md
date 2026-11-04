@@ -148,6 +148,28 @@ it learns from, and why the self-hosted LM deliberately uses a vocabulary-free b
 None. The tokenizer work this documents (PR #820) has merged. Runs on any node — the fixture
 tokenizers are synthetic, so no workstream settings file is needed.
 
+## Open questions
+
+Raised in review of this plan, for the person deciding whether it goes ahead.
+
+1. **Should `Qwen3Tokenizer` implement `Tokenizer`, and does that decision come before the README
+   rewrite?** The class already has every capability the `Tokenizer` interface needs, but under
+   different names: `encode(String, boolean, boolean)` / `decode(int[])` rather than the interface's
+   `encodeAsLong` / `decodeAsLong`, and public `BOS_TOKEN` / `EOS_TOKEN` constants rather than the
+   interface's default methods. Making it implement `Tokenizer` is a production API change and is out
+   of scope here (Approach step 5): the page documents the class as it is and files a tracker task for
+   the decision. But that decision changes how Scope 3's README rewrite should read — whether the
+   corrected example calls the methods `Qwen3Tokenizer` exposes today, or demonstrates the `Tokenizer`
+   contract through a class that implements it (`ByteTokenizer` or `SentencePieceBPETokenizer`). The
+   approver may prefer to sequence the API decision first and write one README example against the
+   final shape, rather than correct it now and correct it again when the class changes.
+
+2. **How the corrected README illustrates special tokens.** The broken example displays BOS/EOS by
+   calling `getBOSToken()` / `getEOSToken()`, which are `protected` and cannot appear in public
+   example code — part of why the section does not compile. `Qwen3Tokenizer` exposes the same values
+   as the public constants `BOS_TOKEN` (151643) and `EOS_TOKEN` (151645), so the rewrite can keep the
+   special-token illustration by referencing those constants rather than dropping it.
+
 ## Estimated Complexity
 
 Medium. One new internals page, one new test class, and four small documentation edits; no
