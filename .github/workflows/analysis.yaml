@@ -1598,6 +1598,8 @@ jobs:
   #   - tools/mcp/manager/test_server.py (ar-manager MCP tools)
   #   - tools/mcp/common/test_memory_text.py (shared MCP libraries)
   #   - tools/tests/test_migrate_workstreams.py (workstreams migration tool)
+  #   - tools/ci/test_classify_failures.py and test_copilot_review_status.py
+  #     (remediation-job scripts)
   #   - the exfiltration guard's Python and CI-verifier regression suites
   # These are pure Python — no Maven build needed, so this job only depends
   # on `changes` and runs in parallel with build/checkstyle. Fails the PR
@@ -1649,6 +1651,15 @@ jobs:
 
       - name: Run migration tool tests
         run: python3 -m unittest discover -v -s tools/tests -p "test_*.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # The failure classifier and the Copilot quota detector are scripts the
+      # remediation jobs run; their suites live beside them in tools/ci, which
+      # none of the discoveries above reach. Named one by one because
+      # tools/ci also holds pytest-only suites run by their own jobs.
+      - name: Run remediation script tests
+        run: |
+          python3 -m unittest discover -v -s tools/ci -p "test_classify_failures.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s tools/ci -p "test_copilot_review_status.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # The exfiltration guard's decision logic is Python under
       # .claude/hooks/lib; its tests build scratch git repositories and
