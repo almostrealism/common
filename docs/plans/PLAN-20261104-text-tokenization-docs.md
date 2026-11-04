@@ -37,8 +37,13 @@ explains the subsystem:
 - **`engine/ml/README.md` contains code that does not compile.** Its "5. Tokenization" section
   calls `Qwen3Tokenizer.encodeAsInt(...)`, `decodeAsInt(...)` and `getBOSToken()`. `Qwen3Tokenizer`
   extends `ByteLevelBPETokenizer` but does not implement `org.almostrealism.ml.Tokenizer`, so it
-  has no `encodeAsInt`/`decodeAsInt`, and `getBOSToken()`/`getEOSToken()` are `protected`. The
-  README's `ByteLevelBPETokenizer` API block is likewise a four-method stub of a richer class.
+  has no `encodeAsInt`/`decodeAsInt`, and `getBOSToken()`/`getEOSToken()` are `protected`. The same
+  broken calls recur in the "Pattern 5: Manual Token Loop" section, which also calls
+  `tokenizer.encodeAsInt(...)`, `decodeAsInt(...)` and `getEOSToken()`; the correction must cover
+  both. (By contrast, the README's `ByteLevelBPETokenizer` API block and its "Pattern 4: Custom
+  Tokenization" example are accurate — `ByteLevelBPETokenizer` is `abstract` with the shown
+  `encode(String, boolean)`/`decode(int[])` and four abstract `protected` getters — though the API
+  block still understates the richer class by omitting its `toSymbols`/`fromSymbols` seams.)
 - **Two file formats, documented only at their readers.** The `ARTK` v2 length-prefixed binary
   (written by `export_tokenizer.py`, read by `SentencePieceBPETokenizer`) and Qwen3's
   `tokenizer.bin` + `merges.txt` pair are each specified only in one class's Javadoc or one script's
@@ -59,8 +64,9 @@ it learns from, and why the self-hosted LM deliberately uses a vocabulary-free b
    - **The contract.** The `org.almostrealism.ml.Tokenizer` interface (`encodeAsLong`/
      `decodeAsLong`, the `int` defaults, the `PackedCollection` defaults that throw), and which
      classes implement it (`ByteTokenizer`, `SentencePieceBPETokenizer`, `extern/ml-djl`'s
-     `SentencePieceTokenizer`) versus which do not (`Qwen3Tokenizer`, which exposes
-     `encode(String, boolean, boolean)`/`decode(int[])` from `ByteLevelBPETokenizer`).
+     `SentencePieceTokenizer`) versus which do not (`Qwen3Tokenizer`, which declares its own
+     `encode(String, boolean, boolean)` and inherits `decode(int[])` from `ByteLevelBPETokenizer`,
+     rather than the interface's `encodeAsLong`/`decodeAsLong`).
    - **The family tree.** A table of every text tokenizer in the platform — class, module,
      vocabulary source, boundary scheme, unknown-character handling, special-token behaviour, and
      the models that use it (self-hosted LM, Qwen3, Stable Audio 3/T5Gemma, DJL). Disambiguate the
@@ -102,10 +108,11 @@ it learns from, and why the self-hosted LM deliberately uses a vocabulary-free b
    Assertions are exact (token ids, round-tripped strings); nothing is gated on an environment
    probe, and no curated model file is required.
 3. **Corrections and cross-links:**
-   - Rewrite `engine/ml/README.md` "5. Tokenization" so its code compiles against the real API
-     (use the methods `Qwen3Tokenizer` actually exposes, or demonstrate the `Tokenizer`
-     interface with a class that implements it), bring the `ByteLevelBPETokenizer` API block in
-     line with the class, add `ByteTokenizer` and `SentencePieceBPETokenizer`, and link the new page.
+   - Rewrite `engine/ml/README.md` "5. Tokenization" **and** "Pattern 5: Manual Token Loop" so
+     their code compiles against the real API (use the methods `Qwen3Tokenizer` actually exposes,
+     or demonstrate the `Tokenizer` interface with a class that implements it), bring the
+     `ByteLevelBPETokenizer` API block in line with the class, add `ByteTokenizer` and
+     `SentencePieceBPETokenizer`, and link the new page.
    - Update `org.almostrealism.ml.tokenization`'s `package-info.java` to list `ByteTokenizer` and
      `SentencePieceBPETokenizer` and to describe both BPE schemes, not only byte-level GPT-2.
    - Add a tokenization entry to `llms.txt` pointing at the new page, and clarify the existing
