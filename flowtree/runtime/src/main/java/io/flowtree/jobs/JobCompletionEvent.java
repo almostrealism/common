@@ -229,6 +229,32 @@ public class JobCompletionEvent {
     }
 
     /**
+     * Creates a {@link Status#CANCELLED} event for a job whose run was
+     * superseded before it completed — for example, when a terminal pull
+     * request event (merge or close) cancels the in-flight work still running
+     * on that branch.
+     *
+     * <p>Distinguished from {@link Status#FAILED} so a cancellation is not
+     * conflated with a crash, and from {@link Status#SUCCESS} so a superseded
+     * run is not counted as a completed pass. {@link JobLifecycleRecorder}
+     * reads the status to keep a {@code CANCELLED} event out of the per-PR
+     * remediation progress count.</p>
+     *
+     * @param jobId       the job identifier
+     * @param description human-readable description of the job
+     * @param reason      why the job was cancelled; recorded as the error
+     *                    message so the operator can tell a cancellation from a
+     *                    stall or a crash
+     * @return a new event with {@link Status#CANCELLED} status
+     */
+    public static JobCompletionEvent cancelled(String jobId, String description,
+                                               String reason) {
+        JobCompletionEvent event = new JobCompletionEvent(jobId, Status.CANCELLED, description);
+        event.errorMessage = reason;
+        return event;
+    }
+
+    /**
      * Creates a {@link Status#DEGRADED} event for a job whose process
      * exited cleanly but which left work in an incomplete state — most
      * commonly, a test run started via the ar-test-runner MCP that the

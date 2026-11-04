@@ -312,4 +312,94 @@ public class StuckJobScannerTest extends TestSuiteBase {
 				Duration.ofHours(12), scanner.stalenessThreshold());
 		store.close();
 	}
+
+	/**
+	 * The warning point defaults to half the kill threshold, an explicit value
+	 * below it is honoured, and one at or above it is clamped back to the half
+	 * default so the warning can never coincide with or follow the kill.
+	 */
+	@Test(timeout = 60000)
+	public void warningPointDefaultsToHalfTheKillAndIsConfigurable() {
+		StuckJobScanner scanner = newScanner(null, Duration.ofHours(6));
+
+		Assert.assertEquals("default warning is half the 12h kill",
+				Duration.ofHours(6), scanner.warningThreshold());
+
+		scanner.setWarningThreshold(Duration.ofHours(2));
+		Assert.assertEquals("an explicit warning point below the kill is honoured",
+				Duration.ofHours(2), scanner.warningThreshold());
+
+		scanner.setWarningThreshold(Duration.ofHours(20));
+		Assert.assertEquals("a warning point at or above the kill is clamped to the default",
+				Duration.ofHours(6), scanner.warningThreshold());
+	}
+
+	/**
+	 * A job that stalls is warned about exactly once as its silence crosses the
+	 * warning point, and is failed only when the silence later crosses the kill
+	 * threshold — so the stall is visible well before reclamation, and the
+	 * warning is not repeated on every scan in between.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void warningFiresOnceBeforeTheKill() throws Exception {
+		JobStatsStore store = newStore();
+		Instant now = Instant.parse("2026-08-22T12:00:00Z");
+		store.recordJobStarted("job-stalling", "ws-1", "slowing down",
+				now.minus(Duration.ofHours(5)));
+		store.recordHeartbeat("job-stalling", now.minus(Duration.ofMinutes(90)));
+
+		List<String> warnings = new ArrayList<>();
+		StuckJobScanner scanner = newScanner(store, Duration.ofHours(6));
+		scanner.setDeadThreshold(Duration.ofMinutes(120));
+		scanner.setWarningThreshold(Duration.ofMinutes(60));
+		scanner.setWarningSink((ws, message) -> warnings.add(message));
+
+		assertTrue("90m of silence is under the 120m kill — not failed",
+				scanner.scanOnce(now).isEmpty());
+		assertEquals("but past the 60m warning point — warned once", 1, warnings.size());
+		assertTrue("the warning message names the silence",
+				warnings.get(0).contains("no heartbeat"));
+		assertTrue("the warning is not a terminal event", dispatched.isEmpty());
+
+		assertTrue("still under the kill ten minutes later — not failed",
+				scanner.scanOnce(now.plus(Duration.ofMinutes(10))).isEmpty());
+		assertEquals("the warning does not repeat scan after scan", 1, warnings.size());
+
+		List<String> failed = scanner.scanOnce(now.plus(Duration.ofMinutes(40)));
+		assertEquals("once silence passes the kill the job is failed", 1, failed.size());
+		Assert.assertEquals("job-stalling", failed.get(0));
+		assertEquals("the kill does not emit a second warning", 1, warnings.size());
+		Assert.assertEquals("a stalled job is FAILED", JobCompletionEvent.Status.FAILED,
+				dispatched.get(dispatched.size() - 1).getStatus());
+		store.close();
+	}
+
+	/**
+	 * A long-running but healthy job that keeps heartbeating is neither warned
+	 * about nor failed: both decisions read the silence since its last
+	 * heartbeat, which a live job never lets grow.
+	 *
+	 * @throws Exception if the temporary store cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void healthyHeartbeatingJobIsNeitherWarnedNorFailed() throws Exception {
+		JobStatsStore store = newStore();
+		Instant now = Instant.parse("2026-08-22T12:00:00Z");
+		store.recordJobStarted("job-healthy", "ws-1", "long but alive",
+				now.minus(Duration.ofHours(30)));
+		store.recordHeartbeat("job-healthy", now.minus(Duration.ofMinutes(2)));
+
+		List<String> warnings = new ArrayList<>();
+		StuckJobScanner scanner = newScanner(store, Duration.ofHours(6));
+		scanner.setDeadThreshold(Duration.ofMinutes(120));
+		scanner.setWarningThreshold(Duration.ofMinutes(60));
+		scanner.setWarningSink((ws, message) -> warnings.add(message));
+
+		assertTrue("a heartbeating job is never failed", scanner.scanOnce(now).isEmpty());
+		assertTrue("a heartbeating job is never warned", warnings.isEmpty());
+		assertTrue("nothing is dispatched for a healthy job", dispatched.isEmpty());
+		store.close();
+	}
 }
