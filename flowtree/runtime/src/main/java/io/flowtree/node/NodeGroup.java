@@ -968,6 +968,23 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	Node getRelayNode() { return this.relayNode; }
 
 	/**
+	 * Returns whether a job with the given task id is still queued anywhere in
+	 * this group — the group's own queue, any worker {@link Node}, or the relay
+	 * node. The controller uses this to distinguish a job it still physically
+	 * holds (never handed to a peer) from one that has already left it.
+	 *
+	 * @param taskId the task id to look for
+	 * @return {@code true} if the job is queued somewhere in this group
+	 */
+	public boolean hasQueuedJob(String taskId) {
+		if (super.hasJob(taskId) || this.relayNode.hasJob(taskId)) return true;
+		for (Node n : this.nodes) {
+			if (n.hasJob(taskId)) return true;
+		}
+		return false;
+	}
+
+	/**
 	 * Returns a snapshot copy of the active task-factory list, safe to iterate
 	 * without holding the internal lock.  Used by {@link NodeGroupStatusRenderer}.
 	 *
