@@ -243,7 +243,7 @@ class SelectPythonEnvTests(unittest.TestCase):
         self._make_fake_python("python3.11", "3.11")
         result = self._run(max_version="3.10")
         self.assertNotEqual(0, result.returncode)
-        self.assertIn("3.10", result.stderr)
+        self.assertIn("version window 3.10..3.10", result.stderr)
 
 
 if __name__ == "__main__":

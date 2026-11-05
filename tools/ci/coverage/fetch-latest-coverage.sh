@@ -269,8 +269,8 @@ fi
 # still symlink their versioned binary into these directories) even when
 # the runner's own PATH omits them. A no-op on any host without Homebrew
 # at these locations, and it only widens the search — select-python-env.sh
-# still picks the newest interpreter that actually satisfies the minimum
-# version, wherever it is found.
+# still picks the newest interpreter that actually satisfies the required
+# version window (MIN_PYTHON_VERSION..MAX_PYTHON_VERSION), wherever it is found.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "$(uname -s)" = "Darwin" ]; then
     PATH="${PATH}:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin"
