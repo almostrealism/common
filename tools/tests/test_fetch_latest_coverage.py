@@ -247,5 +247,99 @@ class FetchLatestCoverageArtifactPagingTests(unittest.TestCase):
         self.assertIn("ALLOW_RECOMPUTE=false", disallowed.stderr)
 
 
+# A fake interpreter that select-python-env.sh selects and copies into its
+# venv, then fetch-latest-coverage.sh drives for the Python coverage stage.
+# `coverage run` exits non-zero (as unittest does on a test failure/error);
+# `coverage xml` writes its -o target. This proves the stage produces a report
+# and the script continues even when the Python suite is red.
+_FAKE_PYTHON = """#!/usr/bin/env bash
+set -euo pipefail
+if [ "${1:-}" = "-c" ]; then echo "3.10"; exit 0; fi
+if [ "${1:-}" = "-m" ] && [ "${2:-}" = "venv" ]; then
+    mkdir -p "$3/bin"; cp "$0" "$3/bin/python3"; chmod +x "$3/bin/python3"; exit 0
+fi
+if [ "${1:-}" = "-m" ] && [ "${2:-}" = "pip" ]; then exit 0; fi
+if [ "${1:-}" = "-m" ] && [ "${2:-}" = "coverage" ]; then
+    sub="${3:-}"
+    if [ "$sub" = "run" ]; then exit 1; fi
+    if [ "$sub" = "xml" ]; then
+        shift 3; out=""
+        while [ $# -gt 0 ]; do
+            case "$1" in -o) out="$2"; shift 2 ;; *) shift ;; esac
+        done
+        [ -n "$out" ] && echo '<coverage/>' > "$out"
+        exit 0
+    fi
+    exit 0
+fi
+exit 0
+"""
+
+
+@unittest.skipUnless(shutil.which("jq") and shutil.which("unzip"),
+                     "fetch-latest-coverage.sh needs jq and unzip")
+class FetchLatestCoveragePythonFailureToleranceTests(unittest.TestCase):
+    """A failing Python test must not sink target selection.
+
+    The coverage round needs coverage DATA to rank directories, not a green
+    suite — the pass/fail verdict belongs to analysis.yaml's python-tests job.
+    Before this, ``set -e`` let one failing test abort the whole step (a Python
+    3.14 argparse incompatibility in tools/fleet did exactly that). The script
+    now records the non-zero run, warns, and still writes python-coverage.xml.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="fetch-latest-coverage-pyfail-")
+        self.bin_dir = os.path.join(self.tmp, "bin")
+        self.fixtures = os.path.join(self.tmp, "fixtures")
+        os.makedirs(self.bin_dir)
+        os.makedirs(self.fixtures)
+        # A fake checkout: the requirements file select-python-env.sh installs
+        # and the three directories the Python coverage stage discovers.
+        os.makedirs(os.path.join(self.tmp, "tools", "mcp"))
+        with open(os.path.join(self.tmp, "tools", "mcp", "requirements.txt"), "w") as f:
+            f.write("mcp\n")
+        for d in ("tools/mcp/manager", "tools/mcp/common", "tools/tests"):
+            os.makedirs(os.path.join(self.tmp, d))
+        # Java reuse succeeds so the script reaches the Python stage.
+        request_log = os.path.join(self.tmp, "requests.log")
+        with open(os.path.join(self.bin_dir, "curl"), "w") as f:
+            f.write(_FAKE_CURL.format(log=request_log, fixtures=self.fixtures))
+        os.chmod(os.path.join(self.bin_dir, "curl"), 0o755)
+        with zipfile.ZipFile(os.path.join(self.fixtures, "artifact.zip"), "w") as z:
+            z.writestr("coverage.xml", "<report name=\"reused\"/>")
+        with open(os.path.join(self.fixtures, "page-1.json"), "w") as f:
+            json.dump({"artifacts": [_artifact(8, "master")]}, f)
+        # The interpreter select-python-env.sh picks; MAX_PYTHON_VERSION below
+        # caps the scan to it regardless of what the host actually ships.
+        with open(os.path.join(self.bin_dir, "python3.10"), "w") as f:
+            f.write(_FAKE_PYTHON)
+        os.chmod(os.path.join(self.bin_dir, "python3.10"), 0o755)
+        self.output_dir = os.path.join(self.tmp, "out")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run(self):
+        env = {
+            "PATH": self.bin_dir + os.pathsep + os.environ.get("PATH", ""),
+            "HOME": self.tmp,
+            "OUTPUT_DIR": self.output_dir,
+            "GITHUB_REPOSITORY": "example/repo",
+            "GITHUB_TOKEN": "token",
+            "ALLOW_RECOMPUTE": "false",
+            "MAX_PYTHON_VERSION": "3.10",
+        }
+        return subprocess.run(["bash", _SCRIPT], cwd=self.tmp, env=env,
+                              capture_output=True, text=True, timeout=120)
+
+    def test_failing_python_tests_still_produce_a_report(self):
+        result = self._run()
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertTrue(os.path.exists(os.path.join(self.output_dir, "python-coverage.xml")))
+        self.assertTrue(os.path.exists(os.path.join(self.output_dir, "coverage.xml")))
+        self.assertIn("exited non-zero", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -814,5 +814,27 @@ class CollectorMainTests(unittest.TestCase):
             self.assertEqual(loop_mock.call_args.kwargs["rss_threshold_mb"], 20.0)
 
 
+class BuildParserHelpTests(unittest.TestCase):
+    """The argument help strings must survive argparse's own ``%`` expansion.
+
+    They were pre-formatted with ``%`` (e.g. ``"...CPU%% (default: %.1f)." %
+    DEFAULT_PROC_CPU_THRESHOLD``), which collapsed ``%%`` to a lone ``%`` that
+    argparse then re-expanded over its own params dict — a ``ValueError`` from
+    ``format_help`` on every Python, and a hard ``add_argument`` failure under
+    Python 3.14's stricter ``_check_help``. That failure sank the coverage-qa
+    round, which runs this module's tests under coverage.py. ``%(default)``
+    expansion is the idiomatic form: argparse fills the default itself, so no
+    pre-format is needed and ``%%`` stays a literal percent sign.
+    """
+
+    def test_format_help_renders_without_raising_and_shows_defaults(self):
+        help_text = collector.build_parser().format_help()
+        self.assertIn("CPU%", help_text)
+        self.assertIn("%.1f" % collector.DEFAULT_PROC_CPU_THRESHOLD, help_text)
+        self.assertIn("%.0f" % collector.DEFAULT_PROC_RSS_THRESHOLD_MB, help_text)
+        self.assertIn(str(collector.DEFAULT_INTERVAL_SECONDS), help_text)
+        self.assertIn(str(collector.DEFAULT_RETENTION_DAYS), help_text)
+
+
 if __name__ == "__main__":
     unittest.main()
