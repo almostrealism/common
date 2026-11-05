@@ -1110,6 +1110,28 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Like {@link #containsAssignment(ArrayVariable, long, long)}, the answer is read off the
+	 * scope's {@link #collectAssignments() assignments}, each asked whether it
+	 * {@link ExpressionAssignment#containsRead reads} the range, and a scope whose code cannot be
+	 * enumerated that way may read anything, so for it the answer is always {@code true}.</p>
+	 */
+	@Override
+	public boolean containsRead(ArrayVariable<?> array, long start, long end) {
+		if (!getAllRequiredScopes().isEmpty()) return true;
+
+		List<ExpressionAssignment<?>> assignments = collectAssignments();
+		if (assignments == null) return true;
+
+		for (ExpressionAssignment<?> assignment : assignments) {
+			if (assignment.containsRead(array, start, end)) return true;
+		}
+
+		return false;
+	}
+
+	/**
 	 * Returns the signature string for this scope.
 	 * <p>Uses the metadata signature if available, otherwise falls back to the scope name.</p>
 	 *

@@ -137,6 +137,26 @@ public interface ExpressionReferences extends AssignmentSupport {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>For an expression, the read in question is evaluating the expression: the answer is
+	 * whether its value depends on an element of {@code array} in the range. This base
+	 * implementation reads only what its children read, which matches
+	 * {@link #containsReference(Variable)}, which also finds a variable only through the
+	 * children; a reference that names the element it reads ({@link InstanceReference})
+	 * overrides it to bound the position.</p>
+	 */
+	@Override
+	default boolean containsRead(ArrayVariable<?> array, long start, long end) {
+		// TODO(review): a whole-array StaticReference (e.g. a Method argument) is not counted as a read
+		for (Expression<?> child : getChildren()) {
+			if (child.containsRead(array, start, end)) return true;
+		}
+
+		return false;
+	}
+
+	/**
 	 * Checks whether this expression tree references any variable named in {@code names}.
 	 *
 	 * <p>This is the name-based counterpart to {@link #containsReference(Variable)}, for

@@ -170,6 +170,27 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 		return destination != null && destination.containsAssignment(array, start, end);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An assignment reads what its expression reads. Its destination is written, not read,
+	 * when it is a {@link Expression#isVariableReference() variable reference}, so only what
+	 * locating the element reads (its position) counts; a destination of any other kind cannot
+	 * be told apart from an expression that is evaluated, so all of it counts.</p>
+	 */
+	@Override
+	public boolean containsRead(ArrayVariable<?> array, long start, long end) {
+		if (expression != null && expression.containsRead(array, start, end)) return true;
+		if (destination == null) return false;
+		if (!destination.isVariableReference()) return destination.containsRead(array, start, end);
+
+		for (Expression<?> child : destination.getChildren()) {
+			if (child.containsRead(array, start, end)) return true;
+		}
+
+		return false;
+	}
+
 	@Override
 	public String getStatement(LanguageOperations lang) {
 		if (declaration) {

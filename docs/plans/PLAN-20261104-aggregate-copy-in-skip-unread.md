@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-11-04
 closed:
 tracker: [cfffa36b-bb97-4350-b15d-bc7bfc2ce48a]
@@ -55,8 +55,26 @@ governed by whether the kernel **writes** a slice; copy-in should be governed by
 |---|---|---|
 | read, writable | every dispatch | every dispatch (when written) |
 | read, read-only source, not written | **once** (existing) | never (existing) |
-| **not read** | **none** (this task) | per the write analysis, unchanged |
+| **not read**, not copied back | **none** (this task) | never |
+| **not read**, copied back | **none** for a dispatch with no copy-back; every copy-back dispatch | per the write analysis, unchanged |
 | read/write set unknown | every dispatch (conservative) | every dispatch (conservative) |
+
+Refinement made during implementation: an unread slice that *is* copied back keeps its copy-in on
+every dispatch that copies back. The copy-back moves the whole slice, and nothing in the scope
+proves the kernel writes every element of it (an assignment into a view of a small folded buffer,
+or a single cache-row write, writes only part), so skipping its copy-in would copy stale aggregate
+contents over the source's untouched elements. The map therefore builds two prepare lists once —
+one for a dispatch that copies back and one for a dispatch that does not
+(`getPrepareOperations(boolean)`) — and `AcceleratedOperation.apply` picks by the same
+`output == null || enableStrictSideEffects` test that decides the copy-back.
+
+Measured result (Metal, `slidingKeyValueCacheLongDecodeThroughput`): the rolling-cache decode still
+reports ~245 dispatches/byte. About 92% of its aggregating dispatches copy back (runnables with no
+explicit output), and the unread slices in them are the written destinations the refinement above
+must keep copying in; the dispatches that do not copy back had no unread slice to skip. Reaching
+the dispatch-count goal needs a proof that the kernel writes *every* element of a slice, which
+depends on the per-dispatch work count and on reused size-generic kernels; that is tracked as a
+separate follow-up task rather than extended here.
 
 The common case this reaches is a folded slice the kernel treats as a pure destination — written
 before it is ever read (a scratch or auxiliary-output buffer that happens to be small enough to

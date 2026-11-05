@@ -17,19 +17,19 @@
 package io.almostrealism.scope;
 
 /**
- * A part of generated code that can answer whether it assigns a value to an element of an
- * {@link ArrayVariable} within a range of positions.
+ * A part of generated code that can answer whether it assigns a value to, or reads the value
+ * of, an element of an {@link ArrayVariable} within a range of positions.
  *
- * <p>The answer is conservative: {@code false} means no element of the range can be written by
- * the code this object generates, while {@code true} means some element of the range may be
- * written. It is read off the code itself rather than declared alongside it, so it cannot
- * contradict what the code does.</p>
+ * <p>Both answers are conservative: {@code false} means no element of the range can be written
+ * (or read) by the code this object generates, while {@code true} means some element of the
+ * range may be. They are read off the code itself rather than declared alongside it, so they
+ * cannot contradict what the code does.</p>
  *
  * <p>Implemented by {@link Scope} (the assignments of the scope), by
- * {@link io.almostrealism.code.ExpressionAssignment} (the assignment's destination) and, through
- * {@link io.almostrealism.expression.ExpressionReferences}, by every
+ * {@link io.almostrealism.code.ExpressionAssignment} (the assignment's destination, and what it
+ * evaluates) and, through {@link io.almostrealism.expression.ExpressionReferences}, by every
  * {@link io.almostrealism.expression.Expression} (what an assignment to the expression, as a
- * destination, writes).</p>
+ * destination, writes, and what evaluating the expression reads).</p>
  */
 public interface AssignmentSupport {
 	/**
@@ -45,4 +45,19 @@ public interface AssignmentSupport {
 	 *         {@code array} in the range
 	 */
 	boolean containsAssignment(ArrayVariable<?> array, long start, long end);
+
+	/**
+	 * Returns whether this code reads the value of an element of {@code array} at a position in
+	 * {@code [start, end)}: whether it references such an element anywhere other than as the
+	 * element an assignment writes. Positions are in the same frame as for
+	 * {@link #containsAssignment(ArrayVariable, long, long)}. An element that is both written and
+	 * read (a read-modify-write) is read.
+	 *
+	 * @param array the array whose elements are in question
+	 * @param start the first position in question
+	 * @param end   the position after the last one in question
+	 * @return false only when nothing this code generates can read an element of {@code array}
+	 *         in the range
+	 */
+	boolean containsRead(ArrayVariable<?> array, long start, long end);
 }

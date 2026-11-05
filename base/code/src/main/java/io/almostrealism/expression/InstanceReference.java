@@ -144,6 +144,19 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 				&& (lower.isEmpty() || lower.getAsLong() < end);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Evaluating a reference reads the element of its referent it names, which may be in the
+	 * range on exactly the terms an assignment to it may write there (see
+	 * {@link #containsAssignment(ArrayVariable, long, long)}), and whatever its position
+	 * expression reads to compute that element.</p>
+	 */
+	@Override
+	public boolean containsRead(ArrayVariable<?> array, long start, long end) {
+		return containsAssignment(array, start, end) || super.containsRead(array, start, end);
+	}
+
 	@Override
 	public boolean containsReference(Set<String> names) {
 		return (getReferent() != null && names.contains(getReferent().getName())) || super.containsReference(names);

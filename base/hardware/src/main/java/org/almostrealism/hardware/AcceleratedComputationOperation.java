@@ -50,11 +50,11 @@ import org.almostrealism.hardware.instructions.ScopeInstructionsManager;
 import org.almostrealism.hardware.kernel.CompiledKernelStructureContext;
 import org.almostrealism.hardware.instructions.ScopeSignatureExecutionKey;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.hardware.mem.AggregateLayout;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.io.Describable;
 import org.almostrealism.lifecycle.WeakRunnable;
 
-import java.util.BitSet;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -530,8 +530,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * per-operation copy plan and aggregate buffer, installs it as this operation's
 	 * {@link #argumentMap} (so {@link AcceleratedOperation#apply} performs the copy-in/out), and
 	 * binds the shared scope's aggregate argument to the per-operation buffer. The per-operation
-	 * copy-back is limited to the slices the shared kernel was found to write when it was
-	 * compiled, which are the same replacements here because the positions are the same.</p>
+	 * copy-back and copy-in are limited to the slices the shared kernel was found to write and read
+	 * when it was compiled (its {@link AggregateLayout}), which are the same replacements here
+	 * because the positions are the same.</p>
 	 *
 	 * <p>The generated source addresses each folded argument at a fixed position within the single
 	 * aggregate parameter, so the sequence of replacement positions is part of the compiled
@@ -568,8 +569,8 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 			}
 		}
 
-		String compiledPositions = manager.getAggregatePositions();
-		if (compiledPositions == null) {
+		AggregateLayout compiled = manager.getAggregateLayout();
+		if (compiled == null) {
 			throw new HardwareException("No aggregate positions were recorded when the shared scope for " +
 					getFunctionName() + " was compiled; reuse cannot be verified against it");
 		}
@@ -578,10 +579,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		getCompiler().prepareScope(perOperation,
 				manager.getKernelStructureContext(getComputation()));
 
-		String replayedPositions = perOperation.describeAggregatePositions();
-		if (!replayedPositions.equals(compiledPositions)) {
+		if (!perOperation.reproduces(compiled)) {
 			throw new HardwareException("Instruction cache collision reusing " + getFunctionName() +
-					": the compiled kernel was built against aggregate positions " + compiledPositions +
+					": the compiled kernel was built against aggregate positions " + compiled.getPositions() +
 					" but this computation produces " + perOperation.describeAggregate() +
 					"; the signature matched two distinct kernels (compiled from " +
 					Describable.describe(manager.getProcess()) + "; reused by " +
@@ -592,9 +592,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 			return;
 		}
 
-		BitSet written = manager.getWrittenAggregateSlices();
-		if (written != null) perOperation.setWrittenSlices(written);
-
+		perOperation.limitCopiesTo(compiled);
 		this.argumentMap = perOperation;
 
 		// Bind the shared scope's aggregate argument to this operation's buffer so the reused
@@ -706,8 +704,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * <p>Records the aggregate positions this kernel was compiled against on the
 	 * instruction set manager, so every operation reusing these instructions can be
 	 * verified against them. Alongside them it records which of the aggregated slices the
-	 * compiled scope may write, read off the scope itself, and limits this operation's
-	 * copy-back to those slices (see {@link MemoryDataArgumentMap#getWrittenSlices}).</p>
+	 * compiled scope may write and which it may read, read off the scope itself, and limits this
+	 * operation's copy-back and copy-in to them (see {@link MemoryDataArgumentMap#getWrittenSlices}
+	 * and {@link MemoryDataArgumentMap#getReadSlices}).</p>
 	 *
 	 * <p>This method is synchronized to ensure thread-safe argument setup.</p>
 	 */
@@ -716,9 +715,8 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		getCompiler().postCompile();
 
 		if (instructions != null && argumentMap != null) {
-			BitSet written = argumentMap.limitCopyBackTo(getCompiler().getScope());
-			getInstructionSetManager().setAggregatePositions(argumentMap.describeAggregatePositions());
-			getInstructionSetManager().setWrittenAggregateSlices(written);
+			getInstructionSetManager().setAggregateLayout(
+					argumentMap.limitCopiesTo(getCompiler().getScope()));
 		}
 	}
 
