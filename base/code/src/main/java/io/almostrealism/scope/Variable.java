@@ -292,6 +292,25 @@ public class Variable<T, V extends Variable<T, ?>>
 	}
 
 	/**
+	 * Adds to {@code arguments} the arguments that code using this variable requires: an
+	 * argument for this variable with the given {@link Argument.Expectation}, followed by an
+	 * argument for every variable it {@link #getDependencies() depends on}, recursively, each of
+	 * which must be {@link Argument.Expectation#EVALUATE_AHEAD evaluated ahead} of that code.
+	 * An argument already present is not added again.
+	 *
+	 * @param expectation how the code is expected to use this variable
+	 * @param arguments   the list to which the arguments are added
+	 */
+	public void collectArguments(Argument.Expectation expectation, List<Argument<?>> arguments) {
+		Argument<T> argument = new Argument<>(this, expectation);
+		if (!arguments.contains(argument)) arguments.add(argument);
+
+		for (Variable<?, ?> dependency : getDependencies()) {
+			if (dependency != null) dependency.collectArguments(Argument.Expectation.EVALUATE_AHEAD, arguments);
+		}
+	}
+
+	/**
 	 * Determines whether {@code other} stands for the same data as this variable, so that a
 	 * reference to one is a reference to the other. Unlike {@link #equals(Object)}, which
 	 * requires every property of the two variables to agree, a variable is identified by its

@@ -92,6 +92,27 @@ public class StaticReference<T> extends Expression<T> {
 		super.collectReferencedNames(names);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An assignment to a static reference changes the value it names, in addition to any
+	 * variable it depends on.</p>
+	 */
+	@Override
+	public void collectAssignedNames(Set<String> names) {
+		if (getName() != null) names.add(getName());
+		super.collectAssignedNames(names);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A static reference names the value it refers to, so a declaration of it declares that
+	 * name.</p>
+	 */
+	@Override
+	public String getDeclaredName() { return getName(); }
+
 	@Override
 	public Expression<T> withValue(String name, Number value) {
 		if (!Objects.equals(name, expression)) return this;

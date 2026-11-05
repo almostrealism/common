@@ -16,12 +16,20 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.Termination;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Cases;
+import io.almostrealism.scope.ExplicitScope;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
+import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
@@ -221,6 +229,202 @@ public class AggregateCopyBackTest extends TestSuiteBase {
 				required.assign(readArg.reference(new IntegerConstant(1)), new IntegerConstant(0));
 				child.getRequiredScopes().add(required);
 
+				BitSet slices = map.getWrittenSlices(kernel);
+				Assert.assertTrue(slices.get(0));
+				Assert.assertTrue(slices.get(1));
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
+	 * A loop is analyzed like any other scope: its condition and interval are expressions, which
+	 * read memory but never write it, so a loop whose body assigns, at the position of the kernel
+	 * thread, one aggregated argument from the element of another at the loop index, under a
+	 * condition that also reads the other, writes only the first one's slice.
+	 */
+	@Test(timeout = 60000)
+	public void loopWritesOnlyTheSlicesItsBodyAssigns() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), PackedCollection::new);
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+
+				DefaultIndex index = new DefaultIndex("i", 2);
+				Repeated<Void> loop = new Repeated<>(Variable.integer("i"),
+						index.lessThan(readArg.reference(new IntegerConstant(1))));
+				Scope<Void> body = new Scope<>("body");
+				body.assign(writtenArg.reference(new KernelIndex()), readArg.reference(index));
+				loop.getChildren().add(body);
+
+				BitSet slices = map.getWrittenSlices(loop);
+				Assert.assertFalse("The slice the loop only reads is not written", slices.get(0));
+				Assert.assertTrue(slices.get(1));
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
+	 * A choice among branches is analyzed like any other scope: its conditions are expressions,
+	 * which read memory but never write it, so a branch that assigns one aggregated argument,
+	 * taken on a condition that reads another, writes only the first one's slice.
+	 */
+	@Test(timeout = 60000)
+	public void branchesWriteOnlyTheSlicesTheyAssign() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), PackedCollection::new);
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+
+				Cases<Void> cases = new Cases<>("branches");
+				Scope<Void> branch = new Scope<>("branch");
+				branch.assign(writtenArg.reference(new IntegerConstant(1)), new IntegerConstant(0));
+				cases.addCase(readArg.reference(new IntegerConstant(0)).greaterThan(new IntegerConstant(0)),
+						branch, null);
+
+				BitSet slices = map.getWrittenSlices(cases);
+				Assert.assertFalse("The slice only the condition reads is not written", slices.get(0));
+				Assert.assertTrue(slices.get(1));
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
+	 * Explicit code is not made of assignments that can be enumerated, so a kernel with a child
+	 * of explicit code, whether on its own or combined with a generated body, may write anything,
+	 * and every slice is reported as written.
+	 */
+	@Test(timeout = 60000)
+	public void explicitCodeWritesEverySlice() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), PackedCollection::new);
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+				ExplicitScope<Void> explicit = new ExplicitScope<>("explicit",
+						new OperationMetadata("explicit", "Explicit code"), "external();");
+
+				Scope<Void> kernel = new Scope<>("parent");
+				kernel.assign(writtenArg.reference(new IntegerConstant(0)),
+						readArg.reference(new IntegerConstant(0)));
+				Assert.assertFalse(map.getWrittenSlices(kernel).get(0));
+
+				kernel.getChildren().add(explicit);
+				BitSet slices = map.getWrittenSlices(kernel);
+				Assert.assertTrue(slices.get(0));
+				Assert.assertTrue(slices.get(1));
+
+				Scope<Void> hybrid = new Scope<>("hybridParent");
+				hybrid.getChildren().add(new HybridScope<>(explicit, null));
+				slices = map.getWrittenSlices(hybrid);
+				Assert.assertTrue(slices.get(0));
+				Assert.assertTrue(slices.get(1));
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
+	 * Every statement answers for what it writes, and an early exit writes nothing, so a kernel
+	 * that returns when one aggregated argument is positive and otherwise assigns another writes
+	 * only the second one's slice.
+	 */
+	@Test(timeout = 60000)
+	public void earlyExitWritesNoSlice() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), PackedCollection::new);
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+
+				Scope<Void> kernel = new Scope<>("earlyExit");
+				kernel.addCase(readArg.reference(new IntegerConstant(0)).greaterThan(new IntegerConstant(0)),
+						new Termination());
+				Scope<Void> body = new Scope<>("body");
+				body.assign(writtenArg.reference(new IntegerConstant(1)), new IntegerConstant(0));
+				kernel.getChildren().add(body);
+
+				BitSet slices = map.getWrittenSlices(kernel);
+				Assert.assertFalse("The slice only the exit condition reads is not written", slices.get(0));
+				Assert.assertTrue(slices.get(1));
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
+	 * Declaring a local array writes no element of any argument, so a kernel that stages one
+	 * aggregated argument in a local array and assigns another from it writes only the second
+	 * one's slice.
+	 */
+	@Test(timeout = 60000)
+	public void localArrayDeclarationWritesNoSlice() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), PackedCollection::new);
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+
+				Scope<Void> kernel = new Scope<>("localArray");
+				ArrayVariable<?> staged = kernel.declareArray("staged", new IntegerConstant(2));
+				kernel.assign(staged.reference(new IntegerConstant(0)), readArg.reference(new IntegerConstant(0)));
+				kernel.assign(writtenArg.reference(new IntegerConstant(1)), staged.reference(new IntegerConstant(0)));
+
+				BitSet slices = map.getWrittenSlices(kernel);
+				Assert.assertFalse("The slice staged in the local array is not written", slices.get(0));
+				Assert.assertTrue(slices.get(1));
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
+	 * A call runs a function whose body is not among the statements of the kernel, so a kernel
+	 * whose statements include one may write anything, and every slice is reported as written,
+	 * just as for a call among its methods.
+	 */
+	@Test(timeout = 60000)
+	public void callStatementWritesEverySlice() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), PackedCollection::new);
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+
+				Scope<Void> kernel = new Scope<>("call");
+				kernel.assign(writtenArg.reference(new IntegerConstant(0)),
+						readArg.reference(new IntegerConstant(0)));
+				Assert.assertFalse(map.getWrittenSlices(kernel).get(0));
+
+				kernel.getStatements().add(new Method<>("external", new IntegerConstant(0)));
 				BitSet slices = map.getWrittenSlices(kernel);
 				Assert.assertTrue(slices.get(0));
 				Assert.assertTrue(slices.get(1));

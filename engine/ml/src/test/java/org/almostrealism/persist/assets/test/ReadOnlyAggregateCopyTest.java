@@ -21,12 +21,17 @@ import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Precision;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
+import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.streams.LatchSemaphore;
 import io.almostrealism.streams.Semaphore;
+import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
@@ -116,6 +121,26 @@ public class ReadOnlyAggregateCopyTest extends TestSuiteBase {
 			kernel.assign(written.reference(new IntegerConstant(i)), read.reference(new IntegerConstant(i)));
 		}
 		return kernel;
+	}
+
+	/**
+	 * Returns a loop kernel that assigns the element of {@code written} at the position of the
+	 * kernel thread from the element of {@code read} at the loop index, while a condition that
+	 * also reads {@code read} holds, so that it writes the slice of {@code written} and only reads
+	 * that of {@code read}.
+	 *
+	 * @param written the argument the loop writes
+	 * @param read    the argument the loop reads, in its body and in its condition
+	 * @return the loop scope
+	 */
+	private Scope<?> loopKernel(ArrayVariable<?> written, ArrayVariable<?> read) {
+		DefaultIndex index = new DefaultIndex("i", 2);
+		Repeated<Void> loop = new Repeated<>(Variable.integer("i"),
+				index.lessThan(read.reference(new IntegerConstant(1))));
+		Scope<Void> body = new Scope<>("body");
+		body.assign(written.reference(new KernelIndex()), read.reference(index));
+		loop.getChildren().add(body);
+		return loop;
 	}
 
 	/**
@@ -219,6 +244,82 @@ public class ReadOnlyAggregateCopyTest extends TestSuiteBase {
 		} finally {
 			context.destroy();
 			source.destroy();
+		}
+	}
+
+	/**
+	 * A loop kernel that only reads a read-only argument, in its body and in its condition, has it
+	 * copied into the aggregate by the first dispatch and by no later one, exactly as a kernel
+	 * without a loop does, while the argument the loop writes is copied in by every dispatch.
+	 */
+	@Test(timeout = 60000)
+	public void readOnlySliceALoopOnlyReadsIsCopiedOnce() {
+		PackedCollection source = testValues();
+		CountingComputeContext context = new CountingComputeContext(null);
+
+		try (PackedCollection written = new PackedCollection(SIZE)) {
+			MemoryDataArgumentMap map = map(context, new ArrayList<>());
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(readOnly(source)));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+				map.limitCopyBackTo(loopKernel(writtenArg, readArg));
+
+				for (int d = 0; d < DISPATCHES; d++) dispatch(map);
+				Assert.assertEquals("The read-only slice the loop only reads is copied once",
+						1, context.readOnlyCopies.get());
+				Assert.assertEquals("The slice the loop writes is copied in by every dispatch",
+						DISPATCHES, context.writableCopies.get());
+			} finally {
+				map.destroy();
+			}
+		} finally {
+			context.destroy();
+			source.destroy();
+		}
+	}
+
+	/**
+	 * The product of a sparse matrix whose stored entries are read-only with a vector that changes
+	 * between dispatches is computed by a loop kernel of its own, and is right on every one of
+	 * many dispatches: the entries, copied into that kernel's aggregate once, still hold their
+	 * values whenever a later dispatch reads them.
+	 */
+	@Test(timeout = 120000)
+	public void repeatedSparseProductReadsReadOnlyEntries() {
+		CompressedRowTraversalOrdering order = CompressedRowTraversalOrdering.of(5,
+				new int[] { 0, 2, 2, 7, 8 }, new int[] { 3, 0, 0, 1, 2, 3, 4, 2 });
+		PackedCollection entries = pack(2.0, -1.0, 3.0, -4.0, 5.0, 6.0, -7.0, 8.0);
+		PackedCollection stored = readOnly(entries);
+		PackedCollection matrix = new PackedCollection(shape(4, 5), 0, stored, 0, order);
+		PackedCollection vector = new PackedCollection(shape(5));
+		PackedCollection result = new PackedCollection(shape(4, 1));
+		double[] rowSums = { 1.0, 0.0, 3.0, 8.0 };
+
+		OperationList step = new OperationList("Read-Only Sparse Product Step", false);
+		step.add(a(cp(vector).each(), cp(vector).add(1.0)));
+		step.add(a(cp(result).each(), matmul(cp(matrix), cp(vector))));
+		Runnable run = step.get();
+
+		try {
+			for (int d = 1; d <= DISPATCHES * 4; d++) {
+				run.run();
+
+				double[] actual = result.toArray();
+				for (int i = 0; i < rowSums.length; i++) {
+					Assert.assertEquals("dispatch " + d + " row " + i, d * rowSums[i], actual[i], 1e-9);
+				}
+			}
+
+			Assert.assertEquals("The read-only entries are not migrated",
+					"PROTOBUF", stored.getRootDelegate().getMem().getProvider().getName());
+		} finally {
+			Destroyable.destroy(run);
+			entries.destroy();
+			vector.destroy();
+			result.destroy();
+			order.getRowOffsets().destroy();
+			order.getColumns().destroy();
 		}
 	}
 

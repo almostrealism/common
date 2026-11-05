@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.code.Statement;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
 import java.util.List;
@@ -123,6 +124,17 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 	@Override
 	public List<Variable<?, ?>> getDependencies() {
 		return size.getDependencies();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code false}: a declaration introduces a new array without assigning any
+	 * element, of it or of any other array.</p>
+	 */
+	@Override
+	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
+		return false;
 	}
 
 	/**

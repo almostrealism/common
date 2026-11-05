@@ -25,8 +25,9 @@ package io.almostrealism.scope;
  * written. It is read off the code itself rather than declared alongside it, so it cannot
  * contradict what the code does.</p>
  *
- * <p>Implemented by {@link Scope} (the assignments of the scope), by
- * {@link io.almostrealism.code.ExpressionAssignment} (the assignment's destination) and, through
+ * <p>Implemented by {@link Scope} (the statements and child scopes of the scope), by every
+ * {@link io.almostrealism.code.Statement} (what the statement writes, such as an
+ * {@link io.almostrealism.code.ExpressionAssignment} through its destination) and, through
  * {@link io.almostrealism.expression.ExpressionReferences}, by every
  * {@link io.almostrealism.expression.Expression} (what an assignment to the expression, as a
  * destination, writes).</p>

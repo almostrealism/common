@@ -456,7 +456,7 @@ public class Repeated<T> extends Scope<T> {
 				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
 
 				if (assignment.isDeclaration()) {
-					String declName = Scope.getDeclarationName(assignment);
+					String declName = assignment.getDeclaredName();
 					if (declName != null && !variantNames.contains(declName)) {
 						hoisted.add(stmt);
 						toRemove.add(stmt);
@@ -764,13 +764,13 @@ public class Repeated<T> extends Scope<T> {
 				if (!assignment.isDeclaration()) {
 					// Non-declaration assignments (e.g., source[offset] = 0.0) are
 					// inherently loop-variant because they mutate state each iteration
-					Scope.collectDestinationNames(assignment.getDestination(), variantNames);
+					assignment.collectAssignedNames(variantNames);
 				}
 			}
 		}
 
 		for (ExpressionAssignment<?> var : scope.getVariables()) {
-			Scope.collectDestinationNames(var.getDestination(), variantNames);
+			var.collectAssignedNames(variantNames);
 		}
 
 		for (Scope<?> child : scope.getChildren()) {
@@ -799,7 +799,7 @@ public class Repeated<T> extends Scope<T> {
 		List<Boolean> containsLoopIndexFlags = new ArrayList<>(declarations.size());
 
 		for (ExpressionAssignment<?> decl : declarations) {
-			declNames.add(Scope.getDeclarationName(decl));
+			declNames.add(decl.getDeclaredName());
 
 			Expression<?> expr = decl.getExpression();
 			Set<String> names = new HashSet<>();
@@ -915,6 +915,18 @@ public class Repeated<T> extends Scope<T> {
 	private boolean isLoopInvariant(Expression<?> expr, Set<String> loopAssignedVariables, List<Index> loopIndices) {
 		if (index == null) return false;
 		return expr.isLoopInvariant(loopAssignedVariables, Collections.emptyList(), loopIndices);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code null}: the loop condition and interval are expressions the loop generates
+	 * besides its statements, and they may read memory that a flat list of assignments does not
+	 * account for.</p>
+	 */
+	@Override
+	public List<ExpressionAssignment<?>> collectAssignments() {
+		return null;
 	}
 
 	/**

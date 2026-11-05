@@ -194,6 +194,17 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	@Override
 	public String getStatement(LanguageOperations lang) { return getExpression(lang); }
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code true}: a call runs a function whose body is not part of this expression,
+	 * so what it writes cannot be read off the call, and it may write anything.</p>
+	 */
+	@Override
+	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
+		return true;
+	}
+
 	/** {@inheritDoc} */
 	@Override
 	public void setName(String n) { this.name = n; }
