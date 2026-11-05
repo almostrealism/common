@@ -649,6 +649,7 @@ kernel.execute(cpuMem1, cpuMem2, cpuMem3);  // 3 CPU->GPU transfers
 - Respects size threshold (default: 1MB)
 - Root delegates grouped to minimize copies
 - Each root occupies, and is copied by, its physical backing length (`getDelegatedLength()`), not its logical `getMemLength()` — the two differ for a root read through a compact, sparse or gather `TraversalOrdering`
+- The copies around each dispatch are limited by what the compiled `Scope` itself reads and writes (`Scope.containsRead` / `Scope.containsAssignment`), never by anything the computation declares: only a slice the kernel may write is copied back (`getWrittenSlices`); a read-only slice the kernel does not write is copied in once; and a slice the kernel does not read (`getReadSlices`) is not copied in by a dispatch that does not copy it back. A slice that is copied back keeps its copy-in even when unread, because the copy-back moves the whole slice and the kernel is not known to write every element of it. A scope whose reads or writes cannot be enumerated copies every slice in both directions
 
 **Configuration:**
 

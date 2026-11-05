@@ -395,18 +395,20 @@ public interface ComputableInstructionSetManager<K extends ExecutionKey>
         extends InstructionSetManager<K> {
     int getOutputArgumentIndex(K key);
     int getOutputOffset(K key);
-    void setAggregatePositions(String positions);
-    String getAggregatePositions();
+    void setAggregateLayout(AggregateLayout layout);
+    AggregateLayout getAggregateLayout();
     CompiledKernelStructureContext getKernelStructureContext(Computation<?> computation);
 }
 ```
 
 `getKernelStructureContext` returns the manager-owned context that materializes kernel structure
 resources during compilation. The context is created once for the manager's instruction set and
-destroyed when that instruction set is destroyed. `setAggregatePositions` and
-`getAggregatePositions` record and verify the aggregate layout baked into generated code, so a
-reuse with a different layout fails as an instruction-cache collision instead of silently
-recompiling or binding the wrong buffer.
+destroyed when that instruction set is destroyed. `setAggregateLayout` and
+`getAggregateLayout` record the `AggregateLayout` of the compiled kernel: the aggregate positions
+baked into generated code, and which aggregated slices the kernel may write and read. A reuse
+whose argument map does not reproduce those positions fails as an instruction-cache collision
+instead of silently recompiling or binding the wrong buffer; a reuse that does reproduce them
+limits its copy-back and copy-in to the recorded slices.
 
 ### ComputationInstructionsManager
 

@@ -23,7 +23,8 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.AssignmentSupport;
+import io.almostrealism.scope.ReadPositions;
+import io.almostrealism.scope.VariableReferenceSupport;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 
@@ -47,7 +48,7 @@ import java.util.function.Supplier;
  * @see Statement
  * @see io.almostrealism.scope.Scope
  */
-public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T>>, AssignmentSupport {
+public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T>>, VariableReferenceSupport {
 	/** Whether this assignment also declares the destination variable. */
 	private final boolean declaration;
 	/** The destination expression that receives the assigned value. */
@@ -168,6 +169,29 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	@Override
 	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
 		return destination != null && destination.containsAssignment(array, start, end);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An assignment reads what its expression reads. Its destination is written, not read,
+	 * when it is a {@link Expression#isVariableReference() variable reference}, so only what
+	 * locating the element reads (its position) counts; a destination of any other kind cannot
+	 * be told apart from an expression that is evaluated, so all of it counts.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		if (expression != null && reads.visit(expression)) expression.appendReadPositions(reads);
+		if (destination == null) return;
+
+		if (!destination.isVariableReference()) {
+			if (reads.visit(destination)) destination.appendReadPositions(reads);
+			return;
+		}
+
+		for (Expression<?> child : destination.getChildren()) {
+			if (reads.visit(child)) child.appendReadPositions(reads);
+		}
 	}
 
 	@Override
