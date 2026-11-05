@@ -38,6 +38,7 @@ import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -155,6 +156,22 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * operations a dispatch submits. Built with {@link #sliceCopies}.
 	 */
 	private Submittable copyOnceOperation;
+	/**
+	 * The {@link #getPrepareOperations(boolean) prepare operations} of a dispatch that copies back,
+	 * selected from {@link #sliceCopies} when they are built, so a dispatch does not repeat the
+	 * selection.
+	 */
+	private List<Submittable> prepareWithCopyBack;
+	/**
+	 * The {@link #getPrepareOperations(boolean) prepare operations} of a dispatch that does not copy
+	 * back, selected from {@link #sliceCopies} when they are built.
+	 */
+	private List<Submittable> prepareWithoutCopyBack;
+	/**
+	 * The {@link #getPostprocessOperations(MemoryData) copy-back} of a dispatch with no explicit
+	 * output, selected from {@link #sliceCopies} when they are built.
+	 */
+	private List<Submittable> copyBackOperations;
 	/**
 	 * The replacements, by index, whose slice the kernel this map prepares arguments for may write,
 	 * as {@link #getWrittenSlices(Scope) read off} that kernel's compiled {@link Scope}; null while
@@ -590,13 +607,29 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * A dispatch that copies back keeps the copy-in of every slice it copies back, because the
 	 * kernel is not known to write every element of it (see {@link SliceCopy#isCopiedIn(boolean)}).</p>
 	 *
+	 * <p>Both selections are made once, when the copies are built, and the same unmodifiable list
+	 * is returned to every dispatch.</p>
+	 *
 	 * @param copyBack whether the dispatch submits the {@link #getPostprocessOperations(MemoryData)
 	 *                 copy-back} after the kernel
 	 * @return the pre-execution copy operations
 	 */
 	public List<Submittable> getPrepareOperations(boolean copyBack) {
+		ensureCopyOperations();
+		return copyBack ? prepareWithCopyBack : prepareWithoutCopyBack;
+	}
+
+	/**
+	 * Selects the {@link #getPrepareOperations(boolean) prepare operations} of a dispatch from
+	 * the given copies.
+	 *
+	 * @param copies   the copy of every replacement's slice
+	 * @param copyBack whether the dispatch copies back after the kernel
+	 * @return the pre-execution copy operations, unmodifiable
+	 */
+	private List<Submittable> selectPrepareOperations(List<SliceCopy> copies, boolean copyBack) {
 		List<Submittable> result = new ArrayList<>();
-		for (SliceCopy copy : ensureCopyOperations()) {
+		for (SliceCopy copy : copies) {
 			if (copy.isCopiedIn(copyBack) && !copy.isCopiedOnce()) {
 				result.add(copy.getCopyIn());
 			}
@@ -606,7 +639,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			result.add(copyOnceOperation);
 		}
 
-		return result;
+		return Collections.unmodifiableList(result);
 	}
 
 	/**
@@ -632,21 +665,38 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * {@link #setWrittenSlices(BitSet)}) is left out for the same reason: its staged copy is still
 	 * the source's own contents (see {@link SliceCopy#isCopiedBack()}).</p>
 	 *
+	 * <p>The copy-back of a dispatch with no explicit output is selected once, when the copies are
+	 * built, and the same unmodifiable list is returned to every such dispatch; only a dispatch
+	 * that names an output to exclude makes its own selection.</p>
+	 *
 	 * @param skipOutput a buffer whose memory is excluded from copy-back, or null to exclude only
 	 *                   what cannot be written
 	 * @return the post-execution copy operations, in replacement order
 	 */
 	public List<Submittable> getPostprocessOperations(MemoryData skipOutput) {
-		Memory skip = skipOutput == null ? null : skipOutput.getRootDelegate().getMem();
+		List<SliceCopy> copies = ensureCopyOperations();
+		if (skipOutput == null) return copyBackOperations;
 
+		return selectCopyBackOperations(copies, skipOutput.getRootDelegate().getMem());
+	}
+
+	/**
+	 * Selects the {@link #getPostprocessOperations(MemoryData) copy-back} of a dispatch from the
+	 * given copies.
+	 *
+	 * @param copies the copy of every replacement's slice
+	 * @param skip   memory that is excluded from copy-back, or null
+	 * @return the post-execution copy operations, in replacement order, unmodifiable
+	 */
+	private List<Submittable> selectCopyBackOperations(List<SliceCopy> copies, Memory skip) {
 		List<Submittable> result = new ArrayList<>();
-		for (SliceCopy copy : ensureCopyOperations()) {
+		for (SliceCopy copy : copies) {
 			if (copy.isCopiedBack() && !copy.sharesMemory(skip)) {
 				result.add(copy.getCopyOut());
 			}
 		}
 
-		return result;
+		return Collections.unmodifiableList(result);
 	}
 
 	/**
@@ -701,6 +751,9 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 
 		copyOnceOperation = copyOnceOperations.isEmpty() ? null
 				: new OnceSubmittable(copyOnceOperations).unordered();
+		prepareWithCopyBack = selectPrepareOperations(copies, true);
+		prepareWithoutCopyBack = selectPrepareOperations(copies, false);
+		copyBackOperations = selectCopyBackOperations(copies, null);
 		sliceCopies = copies;
 		return sliceCopies;
 	}
@@ -735,6 +788,9 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		// roots and of the aggregate, which is destroyed below
 		sliceCopies = null;
 		copyOnceOperation = null;
+		prepareWithCopyBack = null;
+		prepareWithoutCopyBack = null;
+		copyBackOperations = null;
 		rootDelegateSuppliers.forEach(RootDelegateProviderSupplier::destroy);
 		mems.forEach((k, v) -> v.destroy());
 		mems.clear();

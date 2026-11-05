@@ -116,6 +116,51 @@ public class AggregateCopyInTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The prepare operations of each kind of dispatch, and the copy-back of a dispatch with no
+	 * explicit output, are selected once and the same unmodifiable list is returned to every
+	 * dispatch, while a dispatch naming an explicit output gets its own selection that leaves the
+	 * output's slice out.
+	 */
+	@Test(timeout = 60000)
+	public void selectionsAreMadeOnce() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = createMap(new ArrayList<>());
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+
+				Scope<?> kernel = copyKernel(writtenArg, readArg);
+				map.limitCopyBackTo(kernel);
+				map.limitCopyInTo(kernel);
+
+				List<Submittable> withCopyBack = map.getPrepareOperations(true);
+				List<Submittable> withoutCopyBack = map.getPrepareOperations(false);
+				List<Submittable> copyBack = map.getPostprocessOperations(null);
+
+				Assert.assertSame(withCopyBack, map.getPrepareOperations(true));
+				Assert.assertSame(withCopyBack, map.getPrepareOperations());
+				Assert.assertSame(withoutCopyBack, map.getPrepareOperations(false));
+				Assert.assertSame(copyBack, map.getPostprocessOperations(null));
+				Assert.assertEquals(2, withCopyBack.size());
+				Assert.assertEquals(1, withoutCopyBack.size());
+				Assert.assertEquals(1, copyBack.size());
+
+				assertUnmodifiable(withCopyBack);
+				assertUnmodifiable(withoutCopyBack);
+				assertUnmodifiable(copyBack);
+
+				Assert.assertTrue(map.getPostprocessOperations(written).isEmpty());
+				Assert.assertEquals(1, map.getPostprocessOperations(read).size());
+				Assert.assertEquals(1, copyBack.size());
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
 	 * A slice the kernel reads and writes (a read-modify-write, such as an accumulator) is read,
 	 * so it is copied in by every dispatch whether or not the dispatch copies back.
 	 */
@@ -393,6 +438,21 @@ public class AggregateCopyInTest extends TestSuiteBase {
 		}
 
 		return kernel;
+	}
+
+	/**
+	 * Asserts that the given list of operations rejects modification, so a dispatch cannot alter
+	 * a selection that is shared with every other dispatch.
+	 *
+	 * @param operations the selected operations
+	 */
+	private static void assertUnmodifiable(List<Submittable> operations) {
+		try {
+			operations.add(null);
+			Assert.fail("A shared selection of copy operations accepted a modification");
+		} catch (UnsupportedOperationException expected) {
+			Assert.assertFalse(operations.contains(null));
+		}
 	}
 
 	/**
