@@ -121,13 +121,16 @@ public final class Gsm7 {
      * backtick, which GSM-7 lacks; {@link #normalize(String)} folds the
      * backtick to an apostrophe before this is ever consulted. Newline and
      * carriage return are admitted so multi-line bodies survive; no other
-     * control character is.</p>
+     * control character is. Extension-table characters are representable too,
+     * including the euro sign, which is the only one that falls outside the
+     * printable-ASCII range.</p>
      *
      * @param c the character to test
      * @return {@code true} when GSM-7 can carry the character
      */
     public static boolean isRepresentable(char c) {
         if (c == '\n' || c == '\r') return true;
+        if (EXTENDED.indexOf(c) >= 0) return true;
         return c >= 0x20 && c <= 0x7E && c != '`';
     }
 }
