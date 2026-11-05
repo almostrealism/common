@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
@@ -90,6 +91,26 @@ public class StaticReference<T> extends Expression<T> {
 	public void collectReferencedNames(Set<String> names) {
 		if (getName() != null) names.add(getName());
 		super.collectReferencedNames(names);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A static reference names no element, so when it refers to {@code array} at all it may
+	 * read any element of it: it reads the range when its referent
+	 * {@link Variable#hasSameRoot(Variable) shares a root} with {@code array}, or when its code
+	 * mentions the name of {@code array}, since the code is emitted verbatim and cannot be
+	 * inspected any further. A reference with neither reads nothing of {@code array}.</p>
+	 */
+	@Override
+	public boolean containsRead(ArrayVariable<?> array, long start, long end) {
+		if (referent != null && referent.hasSameRoot(array)) return true;
+
+		if (expression != null && array.getName() != null && expression.contains(array.getName())) {
+			return true;
+		}
+
+		return super.containsRead(array, start, end);
 	}
 
 	@Override

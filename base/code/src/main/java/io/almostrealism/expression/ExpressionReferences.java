@@ -144,11 +144,11 @@ public interface ExpressionReferences extends AssignmentSupport {
 	 * implementation reads only what its children read, which matches
 	 * {@link #containsReference(Variable)}, which also finds a variable only through the
 	 * children; a reference that names the element it reads ({@link InstanceReference})
-	 * overrides it to bound the position.</p>
+	 * overrides it to bound the position, and a reference whose code is opaque
+	 * ({@link StaticReference}) overrides it to count any mention of {@code array}.</p>
 	 */
 	@Override
 	default boolean containsRead(ArrayVariable<?> array, long start, long end) {
-		// TODO(review): a whole-array StaticReference (e.g. a Method argument) is not counted as a read
 		for (Expression<?> child : getChildren()) {
 			if (child.containsRead(array, start, end)) return true;
 		}

@@ -74,7 +74,7 @@ explicit output), and the unread slices in them are the written destinations the
 must keep copying in; the dispatches that do not copy back had no unread slice to skip. Reaching
 the dispatch-count goal needs a proof that the kernel writes *every* element of a slice, which
 depends on the per-dispatch work count and on reused size-generic kernels; that is tracked as a
-separate follow-up task rather than extended here.
+separate follow-up task (a3725998-b6d6-4c20-bf71-7302227993ed) rather than extended here.
 
 The common case this reaches is a folded slice the kernel treats as a pure destination — written
 before it is ever read (a scratch or auxiliary-output buffer that happens to be small enough to
@@ -163,6 +163,10 @@ handful of arguments are not folded-then-copied at all.
   that profiles the Metal dispatch and command-buffer commit counts and logs the per-byte figures —
   it reports them rather than asserting them, because they vary by node and backend, so the win is
   read by comparing the logged figures against the pre-change baseline.
+  **Not met by this change:** the measured rolling-cache decode still reports ~245 dispatches/byte
+  (see "Measured result" above), so this branch delivers only the structural copy-in partition. The
+  dispatch-count reduction needs the full-overwrite proof for copied-back slices, filed as tracker
+  task a3725998-b6d6-4c20-bf71-7302227993ed.
 - `ConnectomeNetworkTest` still reproduces the Brian2 reference spikes exactly, confirming the
   copy-in skip changes no simulation result. It is a correctness test and measures no copy or commit
   count; any connectome-side copy-count win is read from a separately profiled run, not from it.

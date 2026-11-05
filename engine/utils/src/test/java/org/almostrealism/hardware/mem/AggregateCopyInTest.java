@@ -18,6 +18,7 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Scope;
@@ -223,6 +224,66 @@ public class AggregateCopyInTest extends TestSuiteBase {
 				BitSet slices = map.limitCopyInTo(kernel);
 				Assert.assertEquals(3, slices.cardinality());
 				Assert.assertEquals(3, map.getPrepareOperations(false).size());
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
+	 * A static reference whose referent is an aggregated argument names no element of it, so it
+	 * may read any element of the aggregate it shares a root with: every slice is read and copied
+	 * in, even by a dispatch that does not copy back.
+	 */
+	@Test(timeout = 60000)
+	public void staticReferenceToArgumentReadsEverySlice() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0);
+			 PackedCollection unused = pack(5.0, 6.0)) {
+			MemoryDataArgumentMap map = createMap(new ArrayList<>());
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+				map.get(p(unused));
+
+				Scope<?> kernel = new Scope<>("staticRead");
+				kernel.assign(writtenArg.reference(new IntegerConstant(0)),
+						new StaticReference<>(Double.class, "external", readArg));
+
+				BitSet slices = map.limitCopyInTo(kernel);
+				Assert.assertEquals(3, slices.cardinality());
+				Assert.assertEquals(3, map.getPrepareOperations(false).size());
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
+	 * A static reference with no referent is emitted verbatim, so code that mentions the name of
+	 * the aggregate may read any of it, while code that does not mention it reads none of it.
+	 */
+	@Test(timeout = 60000)
+	public void staticCodeReadsTheAggregateOnlyWhenItNamesIt() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = createMap(new ArrayList<>());
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+				String aggregateName = readArg.getRootDelegate().getName();
+
+				Scope<?> naming = new Scope<>("staticNaming");
+				naming.assign(writtenArg.reference(new IntegerConstant(0)),
+						new StaticReference<>(Double.class, aggregateName + "[0]"));
+				Assert.assertEquals(2, map.getReadSlices(naming).cardinality());
+
+				Scope<?> unrelated = new Scope<>("staticUnrelated");
+				unrelated.assign(writtenArg.reference(new IntegerConstant(0)),
+						new StaticReference<>(Double.class, "unrelatedValue"));
+				Assert.assertEquals(0, map.getReadSlices(unrelated).cardinality());
 			} finally {
 				map.destroy();
 			}
