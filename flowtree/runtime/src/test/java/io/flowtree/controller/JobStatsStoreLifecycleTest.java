@@ -323,4 +323,159 @@ public class JobStatsStoreLifecycleTest extends TestSuiteBase {
             second.close();
         }
     }
+
+    /**
+     * The submission time survives the move to {@code STARTED}; a job whose row
+     * was created by a start event, and an unknown job, report none.
+     */
+    @Test(timeout = 30000)
+    public void submittedAtSurvivesStartAndIsAbsentWithoutSubmission() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-submitted-at").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-1", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-1", "ws-1", "job", "node-a", submittedAt.plusSeconds(600));
+            store.recordJobStarted("job-2", "ws-1", "job", submittedAt.plusSeconds(60));
+
+            Assert.assertEquals("the submission time survives the start",
+                    submittedAt, store.getSubmittedAt("job-1"));
+            Assert.assertNull("a row created by a start event has no submission time",
+                    store.getSubmittedAt("job-2"));
+            Assert.assertNull("an unknown job has no submission time",
+                    store.getSubmittedAt("no-such-job"));
+            Assert.assertNull("a null id has no submission time", store.getSubmittedAt(null));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * Cancellation moves a pending or running job to {@code CANCELLED} with the
+     * reason recorded, and takes it out of the pending and active views.
+     */
+    @Test(timeout = 30000)
+    public void cancelIfInFlightCancelsPendingAndRunningJobs() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-cancel").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-pending", "ws-1", "job", null, null, submittedAt);
+            store.recordJobSubmitted("job-running", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-running", "ws-1", "job", "node-a", submittedAt.plusSeconds(60));
+
+            Instant cancelledAt = submittedAt.plusSeconds(3600);
+            assertTrue("a pending job transitions",
+                    store.cancelIfInFlight("job-pending", cancelledAt, "pull request #7 merged"));
+            assertTrue("a running job transitions",
+                    store.cancelIfInFlight("job-running", cancelledAt, "pull request #7 merged"));
+
+            Assert.assertTrue("no job is still pending", store.getPendingJobs("ws-1").isEmpty());
+            Assert.assertTrue("no job is still active", store.getActiveJobs("ws-1").isEmpty());
+            JobCompletionEvent persisted = store.getJob("job-running");
+            Assert.assertEquals(JobCompletionEvent.Status.CANCELLED, persisted.getStatus());
+            Assert.assertEquals("pull request #7 merged", persisted.getErrorMessage());
+
+            Assert.assertFalse("a second cancellation of the same job does not transition",
+                    store.cancelIfInFlight("job-running", cancelledAt.plusSeconds(1), "again"));
+            Assert.assertEquals("the first reason is kept", "pull request #7 merged",
+                    store.getJob("job-running").getErrorMessage());
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * A job that already completed on its own keeps its terminal record: the
+     * cancellation does not transition it, and an unknown job or null arguments
+     * transition nothing.
+     */
+    @Test(timeout = 30000)
+    public void cancelIfInFlightLeavesCompletedJobUntouched() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-cancel-terminal").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-1", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-1", "ws-1", "job", "node-a", submittedAt.plusSeconds(60));
+            store.recordJobCompleted("ws-1", JobCompletionEvent.success("job-1", "job"));
+
+            Assert.assertFalse("a completed job is not cancelled",
+                    store.cancelIfInFlight("job-1", submittedAt.plusSeconds(3600), "late"));
+            Assert.assertEquals("the job keeps its own terminal status",
+                    JobCompletionEvent.Status.SUCCESS, store.getJob("job-1").getStatus());
+            Assert.assertFalse("an unknown job is not cancelled",
+                    store.cancelIfInFlight("no-such-job", submittedAt, "late"));
+            Assert.assertFalse("a null id is not cancelled",
+                    store.cancelIfInFlight(null, submittedAt, "late"));
+            Assert.assertFalse("a null instant is not cancelled",
+                    store.cancelIfInFlight("job-1", null, "late"));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * A non-cancellation terminal event is refused when the row is already
+     * {@code CANCELLED}, so a late completion cannot overwrite a cancellation;
+     * the cancellation event itself and a completion for any other job are
+     * recorded. A {@code null} event records nothing.
+     */
+    @Test(timeout = 30000)
+    public void recordJobCompletedUnlessCancelledRefusesLateCompletion() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-unless-cancelled").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        try {
+            Instant submittedAt = Instant.parse("2026-08-22T12:00:00Z");
+            store.recordJobSubmitted("job-cancelled", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-cancelled", "ws-1", "job", "node-a", submittedAt.plusSeconds(60));
+            assertTrue(store.cancelIfInFlight("job-cancelled", submittedAt.plusSeconds(3600),
+                    "pull request #7 merged"));
+
+            Assert.assertTrue("the cancellation event itself is recorded",
+                    store.recordJobCompletedUnlessCancelled("ws-1",
+                            JobCompletionEvent.cancelled("job-cancelled", "job", "pull request #7 merged")));
+            Assert.assertFalse("a late success cannot overwrite a cancellation",
+                    store.recordJobCompletedUnlessCancelled("ws-1",
+                            JobCompletionEvent.success("job-cancelled", "job")));
+            Assert.assertEquals("the job stays CANCELLED", JobCompletionEvent.Status.CANCELLED,
+                    store.getJob("job-cancelled").getStatus());
+            Assert.assertEquals("the cancellation reason is kept", "pull request #7 merged",
+                    store.getJob("job-cancelled").getErrorMessage());
+
+            store.recordJobSubmitted("job-running", "ws-1", "job", null, null, submittedAt);
+            store.recordJobStarted("job-running", "ws-1", "job", "node-a", submittedAt.plusSeconds(60));
+            Assert.assertTrue("a completion for an uncancelled job is recorded",
+                    store.recordJobCompletedUnlessCancelled("ws-1",
+                            JobCompletionEvent.success("job-running", "job")));
+            Assert.assertEquals(JobCompletionEvent.Status.SUCCESS,
+                    store.getJob("job-running").getStatus());
+
+            Assert.assertFalse("a null event records nothing",
+                    store.recordJobCompletedUnlessCancelled("ws-1", null));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * A closed store holds no {@code CANCELLED} row to protect, so it reports a
+     * terminal event as not rejected ({@code true}); the caller then dispatches
+     * the event exactly as it did before the late-completion guard existed,
+     * rather than treating the unavailable store as a cancellation.
+     */
+    @Test(timeout = 30000)
+    public void recordJobCompletedUnlessCancelledDispatchesWhenStoreClosed() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-unless-cancelled-closed").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        store.close();
+        Assert.assertTrue("a closed store rejects nothing, so the caller still dispatches",
+                store.recordJobCompletedUnlessCancelled("ws-1",
+                        JobCompletionEvent.success("job-x", "job")));
+    }
 }

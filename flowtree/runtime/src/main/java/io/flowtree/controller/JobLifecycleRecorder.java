@@ -131,17 +131,29 @@ public final class JobLifecycleRecorder {
      * superseded run, not a completed pass, so it is not counted. See
      * {@link RemediationStateStore#completeJob}.</p>
      *
+     * <p>A job the controller has already cancelled keeps that record. A
+     * cancellation does not stop the agent still running the job, so the
+     * agent's own completion can arrive later; that event is rejected rather
+     * than recorded over {@code CANCELLED}, and the caller must not dispatch
+     * it, since the cancellation already released everything waiting on the
+     * job.</p>
+     *
      * @param workstreamId the workstream the job belongs to
      * @param event        the terminal event
+     * @return {@code true} when the event was recorded and should be
+     *         dispatched; {@code false} when it is {@code null} or arrived for
+     *         a job that was already cancelled
      */
-    public void recordTerminal(String workstreamId, JobCompletionEvent event) {
-        if (event == null) return;
-        if (statsStore != null) {
-            statsStore.recordJobCompleted(workstreamId, event);
+    public boolean recordTerminal(String workstreamId, JobCompletionEvent event) {
+        if (event == null) return false;
+        if (statsStore != null
+                && !statsStore.recordJobCompletedUnlessCancelled(workstreamId, event)) {
+            return false;
         }
         if (remediationStore != null) {
             remediationStore.completeJob(event.getJobId(), workstreamId, event.getTargetBranch(),
                     event.getCommitHash(), event.getStatus() != JobCompletionEvent.Status.CANCELLED);
         }
+        return true;
     }
 }

@@ -1,6 +1,6 @@
 # QA Retrospectives
 
-This directory is the durable record of the **QA retrospective** round of the
+This directory holds the reports of the **QA retrospective** round of the
 Master Agent Dispatch workflow. Where the other automated QA rounds each improve
 the code against a problem we already know to care about, the retrospective
 looks back at what those rounds — and the agent harness that runs them — have
@@ -22,13 +22,28 @@ SHA, or a memory id) and marked with where it would land if accepted:
 - an ordinary branch, for harness Java, MCP tools, or documentation;
 - person-only, for secrets, the runner fleet, or controller configuration.
 
-A report is **not a plan**. Its proposals are deliberately independent and must
-never be implemented as a unit. A proposal a person accepts becomes its own unit
-of work — a tracker task, or a branch dispatched for exactly that change. This is
-why the reports live here under `docs/qa/` (a durable, reviewed record, the same
-kind as the documentation-QA output already in `docs/qa/`) rather than under the
-planning tree, where an implementation pass would try to carry the whole file out
-at once.
+A report is **not an implementation plan**. Its proposals are deliberately
+independent and must never be implemented as a unit. A proposal a person accepts
+becomes its own unit of work — a tracker task, or a branch dispatched for exactly
+that change. This is why the reports live here under `docs/qa/`, alongside the
+documentation-QA output already there, rather than under the planning tree, where
+an implementation pass would try to carry the whole file out at once.
+
+Like the plans under `docs/plans/`, a report is **disposable**: it is a
+point-in-time record that is cleaned up once its proposals have been triaged, and
+the root `CLAUDE.md` classes `docs/qa/retrospectives/` with `docs/plans/` for
+exactly that reason. A report may therefore cite temporary identifiers — job,
+run, workstream and memory ids, short SHAs, timestamped branch names — as the
+evidence behind a finding, just as a plan document may. `check-temporary-identifiers.py`
+does not scan the plan directories for violations, so an identifier a report cites
+there is never flagged. It reads these directories only the other way round — to
+collect the handles it bans *elsewhere*: a report's own dated name (`RETRO-<date>`),
+its numbered items in the family-prefixed form the checker matches (`RETRO F6`,
+`RETRO-<date> P1` — a bare `F6` or `P1` is not), and the proposal slugs listed in
+`ledger.tsv`.
+Those are a narrower set than the evidentiary ids above; the generic shapes (a bare
+hex job/run/workstream/memory id, a short SHA, a timestamped branch name) are not
+derived or enforced by this check at all.
 
 ## Files
 

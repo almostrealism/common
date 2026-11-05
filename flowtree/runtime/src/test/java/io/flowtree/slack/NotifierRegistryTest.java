@@ -390,4 +390,53 @@ public class NotifierRegistryTest extends TestSuiteBase {
 
         assertEquals(1, delivered.size());
     }
+
+    /**
+     * Creates a notifier for the given workstreams that records each posted
+     * message as {@code channel|text} instead of sending it.
+     */
+    private static SlackNotifier recordingNotifier(List<String> posted, Workstream... workstreams) {
+        SlackNotifier notifier = new SlackNotifier(null) {
+            @Override
+            public String postMessage(String channelId, String text) {
+                posted.add(channelId + "|" + text);
+                return "ts";
+            }
+        };
+        for (Workstream ws : workstreams) {
+            notifier.registerWorkstream(ws);
+        }
+        return notifier;
+    }
+
+    /** A workstream notice is posted to that workstream's own channel, verbatim. */
+    @Test(timeout = 10000)
+    public void testWorkstreamNoticeIsPostedToTheWorkstreamChannel() {
+        List<String> posted = new ArrayList<>();
+        SlackNotifier notifier = recordingNotifier(posted,
+                newWorkstream("ws-a", "C-a"), newWorkstream("ws-b", "C-b"));
+        NotifierRegistry registry = new NotifierRegistry(notifier, null);
+
+        registry.postWorkstreamNotice("ws-b", "Job silent: no heartbeat for 90 minutes");
+
+        assertEquals(1, posted.size());
+        assertEquals("C-b|Job silent: no heartbeat for 90 minutes", posted.get(0));
+    }
+
+    /**
+     * A notice for a workstream no notifier knows about is dropped rather than
+     * posted anywhere or thrown, so a background caller need not guard against
+     * a workstream archived between scans.
+     */
+    @Test(timeout = 10000)
+    public void testWorkstreamNoticeForUnknownWorkstreamIsDropped() {
+        List<String> posted = new ArrayList<>();
+        SlackNotifier notifier = recordingNotifier(posted, newWorkstream("ws-a", "C-a"));
+        NotifierRegistry registry = new NotifierRegistry(notifier, null);
+
+        registry.postWorkstreamNotice("ws-archived", "Job silent");
+        notifier.postWorkstreamNotice("ws-archived", "Job silent");
+
+        assertTrue("nothing is posted for an unknown workstream", posted.isEmpty());
+    }
 }

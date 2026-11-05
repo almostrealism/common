@@ -437,6 +437,23 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertLess(text.index("tracker_search_tasks"), text.index("## Scope"),
                         "the tracker search must precede the module choice")
 
+    def test_flaky_hunt_names_the_shared_infrastructure_concurrency_leads(self):
+        """The flaky round's real fixes were concurrency bugs in shared
+        infrastructure, so those areas are named leads: the `base/io` metrics
+        classes and the controller's `Node` worker queue, each with the test
+        that exercises it. They are named by module and class, never by the PR,
+        task or commit that fixed them, and they sit in the ordered target
+        preference rather than after the fallback.
+        """
+        text = _read(os.path.join(_PROMPT_DIR, "flaky-hunt.txt"))
+        for lead in ("base/io", "MetricBase", "MetricBaseConcurrencyTest",
+                     "flowtree/runtime", "Node#addJob", "NodeWorkerWakeTest"):
+            self.assertIn(lead, text)
+        fallback = text.index("Only when none of those is a live lead")
+        self.assertLess(text.index("MetricBaseConcurrencyTest"), fallback)
+        self.assertLess(text.index("NodeWorkerWakeTest"), fallback)
+        self.assertNotRegex(text, r"PR #\d+")
+
 
 if __name__ == "__main__":
     unittest.main()

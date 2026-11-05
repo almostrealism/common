@@ -381,6 +381,28 @@ pull request is not checked until the next code change (or the master run)
 scans the tree. `tools/tests/test_check_temporary_identifiers.py` covers the
 script and its wiring.
 
+The same step also passes `--diff` with the change's diff against its merge
+base with `origin/<base branch>` (`git diff --merge-base`), which adds a
+second, diff-scoped rule for the generic shapes of ephemeral handles that no
+plan document defines: tracker task, job, run, workstream and memory ids (bare
+hexadecimal prefixes or full UUIDs), commit SHAs, and timestamped round branch
+or workstream names (`<prefix>/<name>-YYYYMMDD-HHMMSS`). Only lines added
+relative to the merge base are judged, so pre-existing code never blocks an
+unrelated pull request, and on the base branch itself nothing is judged.
+Hexadecimal strings are legitimate data (hashes, test vectors, colours), so a
+hex token is flagged only near an identifying word — task, job, run,
+workstream, memory, commit, SHA, tracker, id — while a timestamped branch name
+is flagged anywhere. Hex is matched in either case (not mixed). Plainly
+made-up fixture values — `0000`, `1234`, `abcd` or `cafe` among a value's first
+eight digits, or a branch time of `000000` or `123456` — are not flagged,
+generated and vendored files are skipped, and a genuine case is suppressed on
+its own line with `temporary-identifier-ok: <reason>` (the reason, a word or
+more, is required). The script runs no commands itself — the step computes the
+file list and the diff and hands both to it — so agents can run it locally
+under the exfiltration guard. The `checkstyle` gating above matters more for
+this rule: a docs-only pull request's added lines are never part of a later
+change's diff, so they are not judged at all.
+
 **The `ci/...` carve-out covers `.claude/hooks/` too, and covers comparisons
 only.** Both the enforcement-tampering check and the exfiltration guard's
 integrity comparison treat a `ci/` branch as out of scope, for the reason the
@@ -1487,6 +1509,21 @@ fast-forward or rebase merge, master's new head can be the same SHA as the PR
 head, so a SHA-based filter would cancel the master pipeline. The
 head-repository match keeps a fork's branch from matching a same-named branch
 here.
+
+A second job, `cancel-branch-jobs`, tells the FlowTree controller that the PR
+reached a terminal state. It POSTs to the controller's `/api/pr-events` through
+`tools/ci/cancel-pr-branch-jobs.sh`, and the controller cancels the agent jobs
+on the head branch that it accepted before the PR closed. Unlike `cancel`,
+it is **not** gated on `merged`: a close without a merge settles the branch's
+work too. It holds the `FLOWTREE_CF_ACCESS_CLIENT_SECRET` controller credential
+and fails soft. An unreachable controller, an `ok:false` answer, or a PR whose
+head repository was deleted (no clone URL) is a workflow warning, and the stall watchdog stays the backstop. It is safe under
+`pull_request_target` for the same reason as `cancel`: it checks out no PR
+code, and `HEAD_BRANCH`, `REPO_URL` and the other event values reach the script
+through `env`, never interpolated into `run:`. Because a fork supplies its own
+event metadata, the controller cancels only a workstream that names the event's
+head repository (`REPO_URL`, the head repo's clone URL). A branch name alone,
+or a workstream that names no repository, is never enough.
 
 ### What the `analysis` job does
 

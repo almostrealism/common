@@ -1,21 +1,26 @@
 name: "Cancel Merged PR Runs"
 
-# Cancels the "Build and Test" pipeline still running against a pull
-# request's pre-merge head once that pull request is merged.
+# Reclaims two things a pull request's close settles:
 #
-# Merging is a decision that the checks are good enough, and the merge
-# commit's own pipeline on master re-runs them against the merged code. The
-# pre-merge pipeline is answering a settled question, so on constrained CI
-# capacity it is holding runners that a branch someone is waiting on could
-# use.
+#   - `cancel` cancels the "Build and Test" pipeline still running against the
+#     pre-merge head once the pull request is merged. Merging is a decision
+#     that the checks are good enough, and the merge commit's own pipeline on
+#     master re-runs them against the merged code, so the pre-merge pipeline is
+#     answering a settled question and holding runners.
+#   - `cancel-branch-jobs` tells the FlowTree controller the pull request
+#     reached a terminal state so it cancels the agent jobs still running or
+#     waiting on the head branch. A primary job has held a scarce worker for
+#     hours after its own PR merged, reclaimed only when the stall watchdog
+#     fired. This runs for a close without a merge too: the branch's work is
+#     settled either way.
 #
 # Why pull_request_target rather than pull_request:
 # A `pull_request` run from a fork receives a read-only token and could not
 # call the Actions API to cancel anything. `pull_request_target` runs in the
 # base repository's context with a writable token, so the cancellation works
-# for fork pull requests too. This is safe here because the job never checks
-# out or executes pull request code — actions/checkout with no `ref` takes
-# the base branch, and the job's only action is an API call driven by event
+# for fork pull requests too. This is safe here because neither job checks out
+# or executes pull request code — actions/checkout with no `ref` takes the
+# base branch, and each job's only action is an API call driven by event
 # metadata.
 
 on:
@@ -49,3 +54,27 @@ jobs:
         run: |
           chmod +x ./tools/ci/cancel-merged-pr-runs.sh
           ./tools/ci/cancel-merged-pr-runs.sh
+
+  cancel-branch-jobs:
+    # Both a merge and a close without a merge settle the branch's work, so
+    # unlike `cancel` this is not gated on merged.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Cancel the branch's in-flight FlowTree jobs
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+          REPO_URL: ${{ github.event.pull_request.head.repo.clone_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGED: ${{ github.event.pull_request.merged }}
+          EVENT_TIME: ${{ github.event.pull_request.closed_at }}
+        run: |
+          chmod +x ./tools/ci/cancel-pr-branch-jobs.sh
+          ./tools/ci/cancel-pr-branch-jobs.sh
