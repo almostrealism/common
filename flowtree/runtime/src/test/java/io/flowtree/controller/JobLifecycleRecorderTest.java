@@ -149,6 +149,25 @@ public class JobLifecycleRecorderTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * A store that is present but not open (never initialised, or already
+     * closed at shutdown) rejects nothing, so an ordinary terminal event is
+     * still dispatched rather than silently dropped. This keeps a job's
+     * listeners from hanging when the stats store is unavailable, matching the
+     * {@link #nullStoreIsSilent() null-store} behaviour: only an
+     * already-{@code CANCELLED} row suppresses dispatch.
+     */
+    @Test(timeout = 30000)
+    public void closedStoreStillDispatchesTerminalEvent() throws Exception {
+        JobStatsStore store = newStore();
+        store.close();
+        JobLifecycleRecorder recorder = new JobLifecycleRecorder(store);
+        Assert.assertTrue("a closed store must not suppress an ordinary completion",
+                recorder.recordTerminal("ws-1", JobCompletionEvent.success("job-1", "job")));
+        Assert.assertTrue("a closed store must not suppress a failure either",
+                recorder.recordTerminal("ws-1", JobCompletionEvent.failed("job-2", "job", "boom", null)));
+    }
+
     /** A null store is tolerated silently so a stats-less controller records nothing. */
     @Test(timeout = 30000)
     public void nullStoreIsSilent() {

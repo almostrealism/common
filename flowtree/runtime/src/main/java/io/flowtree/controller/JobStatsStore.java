@@ -581,13 +581,22 @@ public class JobStatsStore extends ControllerDatabase {
      *
      * @param workstreamId the workstream the job belongs to
      * @param event        the terminal event
-     * @return {@code true} when the event was recorded; {@code false} when it is
-     *         a non-cancellation event for a job already recorded as
-     *         {@code CANCELLED}, or the store is unavailable
+     * @return {@code false} only when the event is a non-cancellation outcome
+     *         for a job already recorded as {@code CANCELLED} — a superseded
+     *         late completion the caller must not dispatch — or the event is
+     *         {@code null}; {@code true} otherwise, <em>including</em> when the
+     *         store is unavailable. An unavailable store holds no cancellation
+     *         to protect, so returning {@code true} lets the caller dispatch
+     *         exactly as it did before this guard existed rather than silently
+     *         dropping an ordinary terminal event's fan-out
      */
     public synchronized boolean recordJobCompletedUnlessCancelled(String workstreamId,
                                                                   JobCompletionEvent event) {
-        if (!isOpen() || event == null) return false;
+        if (event == null) return false;
+        // An unavailable store rejects nothing — there is no CANCELLED row for a
+        // late completion to overwrite — so the caller proceeds as it always
+        // did; the record is simply a no-op.
+        if (!isOpen()) return true;
         if (event.getStatus() != JobCompletionEvent.Status.CANCELLED) {
             JobCompletionEvent recorded = getJob(event.getJobId());
             if (recorded != null && recorded.getStatus() == JobCompletionEvent.Status.CANCELLED) {

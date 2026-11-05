@@ -461,4 +461,21 @@ public class JobStatsStoreLifecycleTest extends TestSuiteBase {
             store.close();
         }
     }
+
+    /**
+     * A closed store holds no {@code CANCELLED} row to protect, so it reports a
+     * terminal event as not rejected ({@code true}); the caller then dispatches
+     * the event exactly as it did before the late-completion guard existed,
+     * rather than treating the unavailable store as a cancellation.
+     */
+    @Test(timeout = 30000)
+    public void recordJobCompletedUnlessCancelledDispatchesWhenStoreClosed() throws Exception {
+        File dir = Files.createTempDirectory("lifecycle-unless-cancelled-closed").toFile();
+        dir.deleteOnExit();
+        JobStatsStore store = newStore(dir);
+        store.close();
+        Assert.assertTrue("a closed store rejects nothing, so the caller still dispatches",
+                store.recordJobCompletedUnlessCancelled("ws-1",
+                        JobCompletionEvent.success("job-x", "job")));
+    }
 }
