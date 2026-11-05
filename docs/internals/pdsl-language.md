@@ -403,7 +403,7 @@ layer block_with_imports(size: int) {
 
 ## Builtin catalog
 
-The 32 built-ins dispatched by `PdslBuiltins` (package-private). These are the domain-agnostic
+The 34 built-ins dispatched by `PdslBuiltins` (package-private). These are the domain-agnostic
 core, available to every program. The attention and rotary position primitives of the
 machine-learning engine are an extension, cataloged under
 [The machine-learning extension](#the-machine-learning-extension). The interpreter itself evaluates
@@ -436,6 +436,8 @@ means neither the code nor a test settles it.
 | `gelu` | `gelu()` | preserved | `ActivationFeatures.gelu` | input: passes |
 | `sigmoid` | `sigmoid()` | preserved | `ActivationFeatures.sigmoid` | input: passes |
 | `tanh_act` | `tanh_act()` | preserved | `ActivationFeatures.tanh` | input: passes |
+| `cos` | `cos()` | preserved; applies cosine element-wise | `PdslBuiltins.callTrigonometric` (`layer` around `cos`) | input: passes (the cosine producer defines its own derivative) |
+| `sin` | `sin()` | preserved; applies sine element-wise | `PdslBuiltins.callTrigonometric` (`layer` around `sin`) | input: passes (the sine producer defines its own derivative) |
 | `snake` | `snake(alpha, beta)` | `[batch, ch, len]` preserved; `alpha`, `beta` `[ch]` | `ActivationFeatures.snake` | input: passes; `alpha`, `beta`: **constant**. They are copied into pre-broadcast tensors at build time and not registered as weights, so they do not train despite the "learnable" name. |
 | `scale` | `scale(f)` | preserved; `f` normalized to shape `[1]` (number, collection or producer) | `LayerFeatures.layer` around `multiply` | input: passes; `f`: **constant**. Under vectorized `for each channel`, `scale(bank[channel])` takes a `[channels]` bank. |
 | `scale` | `scale(factors, axis)`, `scale(factors, axis, w1, ..., wN)` | preserved; `factors` `[batch, length(axis)]`, one factor per batch entry and position along `axis` (a 0 masks a position) | `LayerFeatures.scale(shape, axis, factors, weights)` | input: passes; `factors`: constant, **except** that the non-null `w1..wN` it was computed from are registered weights and train (`DifferentialAttentionAssetTest.theLearnedLambdaReceivesItsGradient`) |
