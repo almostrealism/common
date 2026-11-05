@@ -166,6 +166,21 @@ public final class NotifierRegistry {
     }
 
     /**
+     * Posts an operational notice to a workstream's channel through its owning
+     * notifier. A no-op when no workspace claims the workstream, so a caller on
+     * a background timer need not guard against an archived workstream.
+     *
+     * @param workstreamId the workstream whose channel receives the notice
+     * @param message      the notice text
+     */
+    public void postWorkstreamNotice(String workstreamId, String message) {
+        SlackNotifier owner = notifierFor(workstreamId);
+        if (owner != null) {
+            owner.postWorkstreamNotice(workstreamId, message);
+        }
+    }
+
+    /**
      * Returns the workspace ID owning the given workstream, or {@code null}
      * if no workspace claims it.
      */

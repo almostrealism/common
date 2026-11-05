@@ -764,6 +764,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 return handleSubmit(session, null);
             }
 
+            if ("/api/pr-events".equals(uri)) {
+                return newFixedLengthResponse(Response.Status.OK, "application/json",
+                        pullRequestEventHandler().handleJson(readBody(session)));
+            }
+
             if (uri.startsWith("/api/jobs/") && uri.endsWith("/heartbeat")) {
                 String jobId = uri.substring("/api/jobs/".length(),
                         uri.length() - "/heartbeat".length());
@@ -800,8 +805,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
 
         if (Method.GET.equals(method) && uri.startsWith("/api/tools/")) {
-            String toolName = uri.substring("/api/tools/".length());
-            return handleToolDownload(toolName);
+            return new ToolDownloadHandler(toolFiles)
+                    .handle(uri.substring("/api/tools/".length()));
         }
 
         if (uri.startsWith("/api/secrets") && (Method.GET.equals(method)
@@ -812,32 +817,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         return newFixedLengthResponse(Response.Status.NOT_FOUND,
                 MIME_PLAINTEXT, "Not found");
     }
-
-    /**
-     * Handles {@code GET /api/tools/{name}} by serving the registered
-     * Python source file as {@code text/plain}.
-     *
-     * @param name the tool server name
-     * @return the file content or a 404 response
-     */
-    private Response handleToolDownload(String name) {
-        Path filePath = toolFiles.get(name);
-        if (filePath == null || !Files.exists(filePath)) {
-            return newFixedLengthResponse(Response.Status.NOT_FOUND,
-                    MIME_PLAINTEXT, "Tool not found: " + name);
-        }
-
-        try {
-            String content = Files.readString(filePath, StandardCharsets.UTF_8);
-            log("Served pushed tool: " + name + " (" + content.length() + " bytes)");
-            return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, content);
-        } catch (IOException e) {
-            warn("Failed to read tool file " + name + ": " + e.getMessage());
-            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
-                    MIME_PLAINTEXT, "Failed to read tool file");
-        }
-    }
-
 
     /**
      * Handles {@code POST /api/workstreams/{id}/submit} for programmatic job submission.
@@ -1408,8 +1387,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @param event        the terminal event to dispatch
      */
     public void completeJob(String workstreamId, JobCompletionEvent event) {
-        // Controller-owned terminal persistence, independent of any notifier.
-        jobLifecycleRecorder.recordTerminal(workstreamId, event);
+        // Controller-owned terminal persistence; a late event for a cancelled job is dropped.
+        if (!jobLifecycleRecorder.recordTerminal(workstreamId, event)) return;
         // A terminal job never needs re-dispatch.
         if (pendingJobRecovery != null && event != null) {
             pendingJobRecovery.clear(event.getJobId());
@@ -1559,6 +1538,19 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         return new MessageEndpointHandler(notifiers, mailboxes, memoryServerUrl,
                 this::readBody, this::errorResponse, this::log, this::warn,
                 statsQueryHandler::recordPhase);
+    }
+
+    /**
+     * Builds the terminal-pull-request-event handler bound to this endpoint:
+     * it resolves the event's head branch to a workstream through the notifier
+     * registry and cancels that workstream's in-flight jobs through
+     * {@link #completeJob}. See {@link PullRequestEventHandler}.
+     *
+     * @return a fresh handler reflecting the current registry and stats store
+     */
+    private PullRequestEventHandler pullRequestEventHandler() {
+        return new PullRequestEventHandler(statsQueryHandler.store(),
+                notifiers::resolveBranch, this::completeJob);
     }
 
     /**

@@ -673,6 +673,27 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
+     * Posts an operational notice to a workstream's channel — an unsolicited
+     * message that is not tied to a job completion, such as the stuck-job
+     * scanner's early stall warning.
+     *
+     * <p>A no-op for an unknown workstream rather than an error, so a caller on
+     * a background timer (the scanner) need not guard against a workstream that
+     * was archived between scans.</p>
+     *
+     * @param workstreamId the workstream whose channel receives the notice
+     * @param message      the notice text
+     */
+    public void postWorkstreamNotice(String workstreamId, String message) {
+        Workstream workstream = workstreams.get(workstreamId);
+        if (workstream == null) {
+            warn("Unknown workstream for notice: " + workstreamId);
+            return;
+        }
+        postMessage(workstream.getChannelId(), message);
+    }
+
+    /**
      * Posts a message directly to a channel.
      *
      * @param channelId the Slack channel ID

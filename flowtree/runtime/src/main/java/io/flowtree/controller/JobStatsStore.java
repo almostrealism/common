@@ -566,6 +566,48 @@ public class JobStatsStore extends ControllerDatabase {
     }
 
     /**
+     * Records a terminal event unless it would overwrite a job that is already
+     * {@code CANCELLED} with a non-cancellation outcome.
+     *
+     * <p>A cancelled job's agent keeps running, so the agent's own {@code SUCCESS}
+     * or {@code FAILED} completion can arrive after a
+     * {@link #cancelIfInFlight} transition. The read of the current status and
+     * the write happen inside this one synchronized call — the same monitor
+     * {@code cancelIfInFlight} holds — so no cancellation can land between the
+     * check and the write, which a separate {@link #getJob} followed by
+     * {@link #recordJobCompleted(String, JobCompletionEvent)} could not
+     * guarantee. A {@code CANCELLED} event itself is always recorded, since the
+     * cancelling path sets the row to {@code CANCELLED} before dispatching it.</p>
+     *
+     * @param workstreamId the workstream the job belongs to
+     * @param event        the terminal event
+     * @return {@code false} only when the event is a non-cancellation outcome
+     *         for a job already recorded as {@code CANCELLED} — a superseded
+     *         late completion the caller must not dispatch — or the event is
+     *         {@code null}; {@code true} otherwise, <em>including</em> when the
+     *         store is unavailable. An unavailable store holds no cancellation
+     *         to protect, so returning {@code true} lets the caller dispatch
+     *         exactly as it did before this guard existed rather than silently
+     *         dropping an ordinary terminal event's fan-out
+     */
+    public synchronized boolean recordJobCompletedUnlessCancelled(String workstreamId,
+                                                                  JobCompletionEvent event) {
+        if (event == null) return false;
+        // An unavailable store rejects nothing — there is no CANCELLED row for a
+        // late completion to overwrite — so the caller proceeds as it always
+        // did; the record is simply a no-op.
+        if (!isOpen()) return true;
+        if (event.getStatus() != JobCompletionEvent.Status.CANCELLED) {
+            JobCompletionEvent recorded = getJob(event.getJobId());
+            if (recorded != null && recorded.getStatus() == JobCompletionEvent.Status.CANCELLED) {
+                return false;
+            }
+        }
+        recordJobCompleted(workstreamId, event);
+        return true;
+    }
+
+    /**
      * Records the per-runner cost breakdown for a job, replacing any existing
      * rows for that job so a re-reported completion event is idempotent.
      *
@@ -911,6 +953,69 @@ public class JobStatsStore extends ControllerDatabase {
     }
 
     /**
+     * Returns the moment the controller accepted a job, as recorded by
+     * {@link #recordJobSubmitted}.
+     *
+     * <p>The submission time survives the job's move to {@code STARTED}, so
+     * this answers "was the job accepted before instant X" for a running job
+     * as well as a pending one.</p>
+     *
+     * @param jobId the job identifier
+     * @return the submission time, or {@code null} when the job has no row or
+     *         was never recorded as submitted (e.g. its row was created by a
+     *         start event after a controller restart)
+     */
+    public synchronized Instant getSubmittedAt(String jobId) {
+        if (!isOpen() || jobId == null) return null;
+        try (PreparedStatement ps = connection().prepareStatement(
+                "SELECT submitted_at FROM job_timing WHERE job_id = ?")) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                Timestamp submitted = rs.getTimestamp("submitted_at");
+                return submitted == null ? null : submitted.toInstant();
+            }
+        } catch (SQLException e) {
+            warn("Failed to read submitted_at: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Atomically moves a job that is still in flight ({@code SUBMITTED} or
+     * {@code STARTED}, with no completion timestamp) to {@code CANCELLED}.
+     *
+     * <p>The check and the write are a single conditional {@code UPDATE}, so a
+     * job whose own terminal event was recorded between a caller's snapshot of
+     * the in-flight jobs and this call is left exactly as it completed: the
+     * method returns {@code false} and the caller must not dispatch a
+     * cancellation for it.</p>
+     *
+     * @param jobId       the job identifier
+     * @param cancelledAt the cancellation instant, recorded as the completion
+     *                    time
+     * @param reason      why the job was cancelled, recorded as its error
+     *                    message
+     * @return {@code true} when this call moved the job to {@code CANCELLED};
+     *         {@code false} when it had already reached a terminal state, has
+     *         no row, or the store is unavailable
+     */
+    public synchronized boolean cancelIfInFlight(String jobId, Instant cancelledAt, String reason) {
+        if (!isOpen() || jobId == null || cancelledAt == null) return false;
+        String sql = "UPDATE job_timing SET status = 'CANCELLED', completed_at = ?, error_message = ? "
+            + "WHERE job_id = ? AND completed_at IS NULL AND status IN ('SUBMITTED', 'STARTED')";
+        try (PreparedStatement ps = connection().prepareStatement(sql)) {
+            ps.setTimestamp(1, Timestamp.from(cancelledAt));
+            ps.setString(2, truncate(reason, 2000));
+            ps.setString(3, jobId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            warn("Failed to cancel job: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Returns the most recent job events for a workstream, newest first.
      *
      * @param workstreamId the workstream identifier
@@ -996,6 +1101,8 @@ public class JobStatsStore extends ControllerDatabase {
             event = JobCompletionEvent.success(jobId, description);
         } else if (status == JobCompletionEvent.Status.DEGRADED) {
             event = JobCompletionEvent.degraded(jobId, description, errorMessage);
+        } else if (status == JobCompletionEvent.Status.CANCELLED) {
+            event = JobCompletionEvent.cancelled(jobId, description, errorMessage);
         } else {
             event = new JobCompletionEvent(jobId, status, description);
         }

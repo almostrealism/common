@@ -80,6 +80,10 @@ public final class CompletionListenerFanoutWiring {
 
             StuckJobScanner scanner = new StuckJobScanner(statsStore,
                     RestartGovernor.DEFAULT_MAX_WALL_CLOCK, endpoint::completeJob);
+            // Reclaim sooner than the 12h wall-clock default (see
+            // DEFAULT_DEAD_THRESHOLD) and surface the stall through the channel.
+            scanner.setDeadThreshold(StuckJobScanner.DEFAULT_DEAD_THRESHOLD);
+            scanner.setWarningSink(registry::postWorkstreamNotice);
             scanner.start();
             return scanner;
         } catch (RuntimeException ex) {

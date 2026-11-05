@@ -23,6 +23,7 @@ import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.slack.SlackNotifier;
 import io.flowtree.workstream.Workstream;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -142,6 +143,26 @@ public class PendingJobRecoveryEndpointTest extends FlowTreeApiSubmitTestBase {
         } finally {
             recovery.close();
         }
+    }
+
+    /**
+     * A cancelled job's agent may still post its own completion later. The
+     * terminal choke point drops that late event, so the job keeps its
+     * {@code CANCELLED} record and cancellation reason.
+     */
+    @Test(timeout = 30000)
+    public void lateCompletionAfterCancellationKeepsCancelledRecord() throws IOException {
+        String jobId = submit();
+        JobCompletionEvent cancel = JobCompletionEvent.cancelled(jobId, "done", "pull request #7 merged");
+        Assert.assertTrue(stats.cancelIfInFlight(jobId, cancel.getTimestamp(), "pull request #7 merged"));
+        endpoint.completeJob(WORKSTREAM_ID, cancel);
+
+        endpoint.completeJob(WORKSTREAM_ID, JobCompletionEvent.success(jobId, "done"));
+
+        JobCompletionEvent persisted = stats.getJob(jobId);
+        Assert.assertEquals("the late completion did not overwrite the cancellation",
+                JobCompletionEvent.Status.CANCELLED, persisted.getStatus());
+        Assert.assertEquals("pull request #7 merged", persisted.getErrorMessage());
     }
 
     /** The in-flight route answers with the counts, not as a lookup of a job named "in-flight". */
