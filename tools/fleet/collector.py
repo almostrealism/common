@@ -758,11 +758,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-dir", required=True, help="Directory for the date-stamped JSONL fallback files.")
     parser.add_argument(
         "--interval-seconds", type=int, default=DEFAULT_INTERVAL_SECONDS,
-        help="Seconds between samples (default: %d)." % DEFAULT_INTERVAL_SECONDS,
+        help="Seconds between samples (default: %(default)d).",
     )
     parser.add_argument(
         "--retention-days", type=int, default=DEFAULT_RETENTION_DAYS,
-        help="Delete JSONL files older than this many days (default: %d)." % DEFAULT_RETENTION_DAYS,
+        help="Delete JSONL files older than this many days (default: %(default)d).",
     )
     parser.add_argument(
         "--agent-domain-target", default=None,
@@ -783,11 +783,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--proc-cpu-threshold", type=float, default=DEFAULT_PROC_CPU_THRESHOLD,
-        help="Keep an 'other' process in the JSONL only above this CPU%% (default: %.1f)." % DEFAULT_PROC_CPU_THRESHOLD,
+        help="Keep an 'other' process in the JSONL only above this CPU%% (default: %(default).1f).",
     )
     parser.add_argument(
         "--proc-rss-threshold-mb", type=float, default=DEFAULT_PROC_RSS_THRESHOLD_MB,
-        help="Keep an 'other' process in the JSONL only above this RSS in MB (default: %.0f)." % DEFAULT_PROC_RSS_THRESHOLD_MB,
+        help="Keep an 'other' process in the JSONL only above this RSS in MB (default: %(default).0f).",
     )
     return parser
 

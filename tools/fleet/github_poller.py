@@ -842,11 +842,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--interval-seconds", type=int, default=DEFAULT_POLL_INTERVAL_SECONDS,
-        help="Seconds between polls (default: %d)." % DEFAULT_POLL_INTERVAL_SECONDS,
+        help="Seconds between polls (default: %(default)d).",
     )
     parser.add_argument(
         "--max-runs", type=int, default=DEFAULT_POLL_MAX_RUNS,
-        help="Most recent runs to re-read each cycle (default: %d)." % DEFAULT_POLL_MAX_RUNS,
+        help="Most recent runs to re-read each cycle (default: %(default)d).",
     )
     parser.add_argument(
         "--runners-org", default=None,

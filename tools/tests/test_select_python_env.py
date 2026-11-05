@@ -109,7 +109,7 @@ class SelectPythonEnvTests(unittest.TestCase):
             f.write(_FAKE_PYTHON_TEMPLATE.format(version=version, log=log or self.pip_log))
         os.chmod(path, 0o755)
 
-    def _run(self, extra_args=(), min_version=None, venv_dir=None):
+    def _run(self, extra_args=(), min_version=None, max_version=None, venv_dir=None):
         env = {
             "PATH": self.bin_dir,
             "HOME": self.tmp,
@@ -118,6 +118,8 @@ class SelectPythonEnvTests(unittest.TestCase):
         }
         if min_version is not None:
             env["MIN_PYTHON_VERSION"] = min_version
+        if max_version is not None:
+            env["MAX_PYTHON_VERSION"] = max_version
         return subprocess.run(
             ["bash", _SCRIPT] + list(extra_args),
             env=env, capture_output=True, text=True,
@@ -222,6 +224,26 @@ class SelectPythonEnvTests(unittest.TestCase):
         result = self._run(min_version="3.12")
         self.assertNotEqual(0, result.returncode)
         self.assertIn("3.12", result.stderr)
+
+    def test_maximum_version_excludes_a_newer_interpreter(self):
+        # The coverage round pins MAX_PYTHON_VERSION so it measures under the
+        # same Python analysis.yaml's python-tests job uses, rather than the
+        # newest interpreter the runner happens to ship. With 3.10 and 3.11
+        # both present and a 3.10 cap, 3.10 must win even though 3.11 is newer.
+        self._make_fake_python("python3.10", "3.10")
+        self._make_fake_python("python3.11", "3.11")
+        result = self._run(max_version="3.10")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("(3.10)", result.stderr)
+        self.assertNotIn("(3.11)", result.stderr)
+
+    def test_no_interpreter_within_the_window_is_an_error(self):
+        # Only a too-new interpreter is present and the cap excludes it, so the
+        # selection fails closed rather than drifting onto the wrong version.
+        self._make_fake_python("python3.11", "3.11")
+        result = self._run(max_version="3.10")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("3.10", result.stderr)
 
 
 if __name__ == "__main__":
