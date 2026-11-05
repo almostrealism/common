@@ -17,7 +17,9 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.Max;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
@@ -329,6 +331,43 @@ public class AggregateCopyInTest extends TestSuiteBase {
 				unrelated.assign(writtenArg.reference(new IntegerConstant(0)),
 						new StaticReference<>(Double.class, "unrelatedValue"));
 				Assert.assertEquals(0, map.getReadSlices(unrelated).cardinality());
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
+	 * Generated expressions share subtrees, so an expression that is small as a graph can be
+	 * exponentially large as a tree. Here every level refers to the level below it twice, so a
+	 * walk that followed every path would visit hundreds of millions of nodes (close to the
+	 * largest tree an expression may represent); the reads are found by visiting each node once,
+	 * and they are still attributed to the right slices.
+	 */
+	@Test(timeout = 60000)
+	public void sharedSubtreeIsWalkedOnce() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0);
+			 PackedCollection unused = pack(5.0, 6.0)) {
+			MemoryDataArgumentMap map = createMap(new ArrayList<>());
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+				map.get(p(unused));
+
+				Expression<Double> value = readArg.reference(new IntegerConstant(1)).toDouble();
+				for (int i = 0; i < 28; i++) {
+					value = Max.of(value, value);
+				}
+
+				Scope<?> kernel = new Scope<>("sharedSubtree");
+				kernel.assign(writtenArg.reference(new IntegerConstant(0)), value);
+
+				BitSet slices = map.getReadSlices(kernel);
+				Assert.assertTrue(slices.get(0));
+				Assert.assertFalse(slices.get(1));
+				Assert.assertFalse(slices.get(2));
 			} finally {
 				map.destroy();
 			}

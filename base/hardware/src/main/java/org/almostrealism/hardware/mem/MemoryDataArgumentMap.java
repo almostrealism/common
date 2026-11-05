@@ -388,14 +388,17 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * reads}, never by anything the computation declares. A slice that is both written and read is
 	 * read, and a scope whose reads cannot be enumerated reports every slice.</p>
 	 *
+	 * <p>The reads of the aggregate are {@link Scope#getReads gathered} in a single walk of the
+	 * scope and every slice is then tested against them, so the cost of the walk, which visits
+	 * every expression the kernel evaluates, does not grow with the number of slices.</p>
+	 *
 	 * @param kernel the compiled scope whose arguments this map prepared
 	 * @return the indices of the replacements whose slice {@code kernel} may read
 	 */
 	public BitSet getReadSlices(Scope<?> kernel) {
 		if (replacements.isEmpty()) return new BitSet();
 
-		ArrayVariable<?> aggregate = getAggregateArgument();
-		return getSlices((start, end) -> kernel.containsRead(aggregate, start, end));
+		return getSlices(kernel.getReads(getAggregateArgument())::contains);
 	}
 
 	/**

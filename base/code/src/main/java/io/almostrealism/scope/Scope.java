@@ -1114,21 +1114,23 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 *
 	 * <p>Like {@link #containsAssignment(ArrayVariable, long, long)}, the answer is read off the
 	 * scope's {@link #collectAssignments() assignments}, each asked whether it
-	 * {@link ExpressionAssignment#containsRead reads} the range, and a scope whose code cannot be
-	 * enumerated that way may read anything, so for it the answer is always {@code true}.</p>
+	 * {@link ExpressionAssignment#collectReads reads}, and a scope whose code cannot be enumerated
+	 * that way may read anything, so for it every position is read.</p>
 	 */
 	@Override
-	public boolean containsRead(ArrayVariable<?> array, long start, long end) {
-		if (!getAllRequiredScopes().isEmpty()) return true;
+	public void collectReads(ReadPositions reads) {
+		List<ExpressionAssignment<?>> assignments =
+				getAllRequiredScopes().isEmpty() ? collectAssignments() : null;
 
-		List<ExpressionAssignment<?>> assignments = collectAssignments();
-		if (assignments == null) return true;
-
-		for (ExpressionAssignment<?> assignment : assignments) {
-			if (assignment.containsRead(array, start, end)) return true;
+		if (assignments == null) {
+			reads.addEverything();
+			return;
 		}
 
-		return false;
+		for (ExpressionAssignment<?> assignment : assignments) {
+			if (reads.isEverything()) return;
+			assignment.collectReads(reads);
+		}
 	}
 
 	/**

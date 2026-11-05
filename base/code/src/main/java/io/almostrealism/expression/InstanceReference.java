@@ -22,6 +22,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.ReadPositions;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -147,14 +148,22 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Evaluating a reference reads the element of its referent it names, which may be in the
-	 * range on exactly the terms an assignment to it may write there (see
+	 * <p>Evaluating a reference reads the element of its referent it names, which lies between
+	 * the bounds of its position on exactly the terms an assignment to it may write there (see
 	 * {@link #containsAssignment(ArrayVariable, long, long)}), and whatever its position
 	 * expression reads to compute that element.</p>
 	 */
 	@Override
-	public boolean containsRead(ArrayVariable<?> array, long start, long end) {
-		return containsAssignment(array, start, end) || super.containsRead(array, start, end);
+	public void collectReads(ReadPositions reads) {
+		if (getReferent().hasSameRoot(reads.getArray())) {
+			if (pos == null) {
+				reads.addEverything();
+			} else {
+				reads.add(pos.lowerBound(null), pos.upperBound(null));
+			}
+		}
+
+		super.collectReads(reads);
 	}
 
 	@Override

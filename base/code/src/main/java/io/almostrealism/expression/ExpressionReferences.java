@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.ReadPositions;
 import io.almostrealism.scope.VariableReferenceSupport;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.sequence.Index;
@@ -148,12 +149,10 @@ public interface ExpressionReferences extends VariableReferenceSupport {
 	 * ({@link StaticReference}) overrides it to count any mention of {@code array}.</p>
 	 */
 	@Override
-	default boolean containsRead(ArrayVariable<?> array, long start, long end) {
+	default void collectReads(ReadPositions reads) {
 		for (Expression<?> child : getChildren()) {
-			if (child.containsRead(array, start, end)) return true;
+			if (reads.visit(child)) child.collectReads(reads);
 		}
-
-		return false;
 	}
 
 	/**

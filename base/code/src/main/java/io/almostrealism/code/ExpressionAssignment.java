@@ -23,6 +23,7 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.ReadPositions;
 import io.almostrealism.scope.VariableReferenceSupport;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
@@ -179,16 +180,18 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	 * be told apart from an expression that is evaluated, so all of it counts.</p>
 	 */
 	@Override
-	public boolean containsRead(ArrayVariable<?> array, long start, long end) {
-		if (expression != null && expression.containsRead(array, start, end)) return true;
-		if (destination == null) return false;
-		if (!destination.isVariableReference()) return destination.containsRead(array, start, end);
+	public void collectReads(ReadPositions reads) {
+		if (expression != null && reads.visit(expression)) expression.collectReads(reads);
+		if (destination == null) return;
 
-		for (Expression<?> child : destination.getChildren()) {
-			if (child.containsRead(array, start, end)) return true;
+		if (!destination.isVariableReference()) {
+			if (reads.visit(destination)) destination.collectReads(reads);
+			return;
 		}
 
-		return false;
+		for (Expression<?> child : destination.getChildren()) {
+			if (reads.visit(child)) child.collectReads(reads);
+		}
 	}
 
 	@Override

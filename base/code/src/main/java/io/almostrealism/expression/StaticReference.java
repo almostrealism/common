@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.ReadPositions;
 import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
@@ -103,14 +104,16 @@ public class StaticReference<T> extends Expression<T> {
 	 * inspected any further. A reference with neither reads nothing of {@code array}.</p>
 	 */
 	@Override
-	public boolean containsRead(ArrayVariable<?> array, long start, long end) {
-		if (referent != null && referent.hasSameRoot(array)) return true;
+	public void collectReads(ReadPositions reads) {
+		ArrayVariable<?> array = reads.getArray();
 
-		if (expression != null && array.getName() != null && expression.contains(array.getName())) {
-			return true;
+		if ((referent != null && referent.hasSameRoot(array))
+				|| (expression != null && array.getName() != null && expression.contains(array.getName()))) {
+			reads.addEverything();
+			return;
 		}
 
-		return super.containsRead(array, start, end);
+		super.collectReads(reads);
 	}
 
 	@Override

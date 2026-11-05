@@ -59,5 +59,32 @@ public interface VariableReferenceSupport {
 	 * @return false only when nothing this code generates can read an element of {@code array}
 	 *         in the range
 	 */
-	boolean containsRead(ArrayVariable<?> array, long start, long end);
+	default boolean containsRead(ArrayVariable<?> array, long start, long end) {
+		return getReads(array).contains(start, end);
+	}
+
+	/**
+	 * Returns every position of {@code array} this code may read, gathered in one walk of the
+	 * code (see {@link #collectReads(ReadPositions)}), so that any number of ranges can then be
+	 * asked about without walking it again.
+	 *
+	 * @param array the array whose reads are gathered
+	 * @return the positions of {@code array} this code may read
+	 */
+	default ReadPositions getReads(ArrayVariable<?> array) {
+		ReadPositions reads = new ReadPositions(array);
+		collectReads(reads);
+		return reads;
+	}
+
+	/**
+	 * Records in {@code reads} every read this code makes of {@link ReadPositions#getArray() its
+	 * array}, on the terms of {@link #containsRead(ArrayVariable, long, long)}. A part of the code
+	 * that contains other parts descends only into those {@code reads}
+	 * {@link ReadPositions#visit(Object) has not visited}, so code that shares a subtree is walked
+	 * once however often the subtree occurs.
+	 *
+	 * @param reads the record of the reads found so far
+	 */
+	void collectReads(ReadPositions reads);
 }
