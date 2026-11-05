@@ -18,7 +18,8 @@ package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.AssignmentSupport;
+import io.almostrealism.scope.ReadPositions;
+import io.almostrealism.scope.VariableReferenceSupport;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.sequence.Index;
 
@@ -46,7 +47,7 @@ import java.util.Set;
  * over trees of millions of nodes with only a few children each, so the children are walked
  * with plain loops that stop at the first decisive child.</p>
  */
-public interface ExpressionReferences extends AssignmentSupport {
+public interface ExpressionReferences extends VariableReferenceSupport {
 
 	/**
 	 * Returns the operands of this expression, the subtrees each query descends into.
@@ -151,6 +152,24 @@ public interface ExpressionReferences extends AssignmentSupport {
 	default void collectAssignedNames(Set<String> names) {
 		for (Variable<?, ?> var : getDependencies()) {
 			if (var.getName() != null) names.add(var.getName());
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>For an expression, the read in question is evaluating the expression: the answer is
+	 * whether its value depends on an element of {@code array} in the range. This base
+	 * implementation reads only what its children read, which matches
+	 * {@link #containsReference(Variable)}, which also finds a variable only through the
+	 * children; a reference that names the element it reads ({@link InstanceReference})
+	 * overrides it to bound the position, and a reference whose code is opaque
+	 * ({@link StaticReference}) overrides it to count any mention of {@code array}.</p>
+	 */
+	@Override
+	default void appendReadPositions(ReadPositions reads) {
+		for (Expression<?> child : getChildren()) {
+			if (reads.visit(child)) child.appendReadPositions(reads);
 		}
 	}
 

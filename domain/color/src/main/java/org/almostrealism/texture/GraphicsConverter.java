@@ -108,9 +108,38 @@ public class GraphicsConverter {
 	 * Converts the specified RGB object to an AWT Color object.
 	 */
 	public static Color convertToAWTColor(RGB color) {
-		return new Color((float)Math.min(1.0, Math.abs(color.getRed())),
-		        		(float)Math.min(1.0, Math.abs(color.getGreen())),
-		        		(float)Math.min(1.0, Math.abs(color.getBlue())));
+		return new Color((float) clampComponent(color.getRed()),
+		        		(float) clampComponent(color.getGreen()),
+		        		(float) clampComponent(color.getBlue()));
+	}
+
+	/**
+	 * Clamps the magnitude of a single color component into the displayable
+	 * {@code [0.0, 1.0]} range by taking its absolute value and capping it at
+	 * {@code 1.0}.
+	 *
+	 * @param component the raw color component
+	 * @return the component magnitude clamped to {@code [0.0, 1.0]}
+	 */
+	private static double clampComponent(double component) {
+		return Math.min(1.0, Math.abs(component));
+	}
+
+	/**
+	 * Packs three color components into an opaque 32-bit ARGB pixel. Each component
+	 * is clamped with {@link #clampComponent(double)} and scaled into the
+	 * {@code [0, 255]} channel range; the alpha channel is fully opaque.
+	 *
+	 * @param red   the red component
+	 * @param green the green component
+	 * @param blue  the blue component
+	 * @return the packed {@code 0xFFRRGGBB} pixel value
+	 */
+	private static int toARGB(double red, double green, double blue) {
+		int r = (int) (clampComponent(red) * 255);
+		int g = (int) (clampComponent(green) * 255);
+		int b = (int) (clampComponent(blue) * 255);
+		return 255 << 24 | r << 16 | g << 8 | b;
 	}
 	
 	/**
@@ -509,11 +538,7 @@ public class GraphicsConverter {
 				
 				PackedCollection c = image[i][j].evaluate(positionForImageIndices.apply(new Pair(i, j)));
 
-				int r = (int)(Math.min(1.0, Math.abs(c.toDouble(0))) * 255);
-				int g = (int)(Math.min(1.0, Math.abs(c.toDouble(1))) * 255);
-				int b = (int)(Math.min(1.0, Math.abs(c.toDouble(2))) * 255);
-				
-				data[index++] = 255 << 24 | r << 16 | g << 8 | b;
+				data[index++] = toARGB(c.toDouble(0), c.toDouble(1), c.toDouble(2));
 			}
 
 			if (notify != null) {
@@ -563,11 +588,7 @@ public class GraphicsConverter {
 
 				RGB c = image[i][j];
 
-				int r = (int)(Math.min(1.0, Math.abs(c.getRed())) * 255);
-				int g = (int)(Math.min(1.0, Math.abs(c.getGreen())) * 255);
-				int b = (int)(Math.min(1.0, Math.abs(c.getBlue())) * 255);
-
-				data[index++] = 255 << 24 | r << 16 | g << 8 | b;
+				data[index++] = toARGB(c.getRed(), c.getGreen(), c.getBlue());
 			}
 
 			if (notify != null) {
@@ -611,12 +632,7 @@ public class GraphicsConverter {
 				double gd = channelsFirst ? values.valueAt(1, j, i) : values.valueAt(j, i, 1);
 				double bd = channelsFirst ? values.valueAt(2, j, i) : values.valueAt(j, i, 2);
 
-				int a = 255;
-				int r = (int) (Math.min(1.0, Math.abs(rd)) * 255);
-				int g = (int) (Math.min(1.0, Math.abs(gd)) * 255);
-				int b = (int) (Math.min(1.0, Math.abs(bd)) * 255);
-
-				data[index++] = a << 24 | r << 16 | g << 8 | b;
+				data[index++] = toARGB(rd, gd, bd);
 			}
 		}
 

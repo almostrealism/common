@@ -220,7 +220,7 @@ on every step, through a host copy on Metal, which bridged the kernel's command 
 callback thread in `MetalSemaphore.waitFor` and forced a commit per step (verified with thread
 dumps and temporary counters in `MetalCommandRunner`). The write analysis now recurses through the
 tree, each scope answering for its own statements and children, and `ExplicitScope`/`HybridScope`
-report that they may write anything. Every `Statement` is an `AssignmentSupport` that answers for
+report that they may write anything. Every `Statement` is a `VariableReferenceSupport` that answers for
 what it writes (an assignment through its destination, a call may write anything, a local array
 declaration or an early exit writes nothing), so the scope asks its statements rather than
 testing their kinds.

@@ -23,6 +23,7 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.ReadPositions;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 
@@ -165,6 +166,29 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	 */
 	public void collectAssignedNames(Set<String> names) {
 		if (destination != null) destination.collectAssignedNames(names);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An assignment reads what its expression reads. Its destination is written, not read,
+	 * when it is a {@link Expression#isVariableReference() variable reference}, so only what
+	 * locating the element reads (its position) counts; a destination of any other kind cannot
+	 * be told apart from an expression that is evaluated, so all of it counts.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		if (expression != null && reads.visit(expression)) expression.appendReadPositions(reads);
+		if (destination == null) return;
+
+		if (!destination.isVariableReference()) {
+			if (reads.visit(destination)) destination.appendReadPositions(reads);
+			return;
+		}
+
+		for (Expression<?> child : destination.getChildren()) {
+			if (reads.visit(child)) child.appendReadPositions(reads);
+		}
 	}
 
 	@Override

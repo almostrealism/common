@@ -19,9 +19,9 @@ package io.almostrealism.code;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructure;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.scope.AssignmentSupport;
 import io.almostrealism.scope.Fragment;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.scope.VariableReferenceSupport;
 
 import java.util.List;
 
@@ -39,9 +39,9 @@ import java.util.List;
  *   <li>A method to generate the statement text for a target language</li>
  *   <li>A list of variable dependencies for dependency analysis</li>
  *   <li>Simplification support (inherited from KernelStructure)</li>
- *   <li>An account of what the statement writes (inherited from {@link AssignmentSupport}), so
- *       that a {@link io.almostrealism.scope.Scope} learns what its statements write by asking
- *       each of them rather than by inspecting its kind</li>
+ *   <li>An account of what the statement writes and reads (inherited from
+ *       {@link VariableReferenceSupport}), so that a {@link io.almostrealism.scope.Scope} learns
+ *       this by asking each of them rather than by inspecting its kind</li>
  * </ul>
  * </p>
  *
@@ -57,7 +57,7 @@ import java.util.List;
  * @see KernelStructure
  * @see Variable
  */
-public interface Statement<T extends KernelStructure> extends Fragment, KernelStructure<T>, AssignmentSupport {
+public interface Statement<T extends KernelStructure> extends Fragment, KernelStructure<T>, VariableReferenceSupport {
 	/**
 	 * Generates the statement code for the target language.
 	 * <p>

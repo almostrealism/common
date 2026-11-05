@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ReadPositions;
 import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
@@ -112,6 +113,25 @@ public class StaticReference<T> extends Expression<T> {
 	 */
 	@Override
 	public String getDeclaredName() { return getName(); }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A static reference names no element, so when it refers to {@code array} at all it may
+	 * read any element of it: it reads the range when its referent
+	 * {@link Variable#hasSameRoot(Variable) shares a root} with {@code array}, or when its code
+	 * mentions the name of {@code array}, since the code is emitted verbatim and cannot be
+	 * inspected any further. A reference with neither reads nothing of {@code array}.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		if (reads.isOf(referent) || reads.isNamedIn(expression)) {
+			reads.addEverything();
+			return;
+		}
+
+		super.appendReadPositions(reads);
+	}
 
 	@Override
 	public Expression<T> withValue(String name, Number value) {

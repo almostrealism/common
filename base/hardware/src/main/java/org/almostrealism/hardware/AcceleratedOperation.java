@@ -658,9 +658,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 *   <li><strong>Compile-time argument aggregation</strong> (active when the argument map has
 	 *   replacements; managed by {@link MemoryDataArgumentMap}). Small inputs are folded into one
 	 *   aggregate kernel buffer; their data is copied in before the kernel, except that a read-only
-	 *   slice the kernel does not write is copied in by the first dispatch only (the map's
-	 *   {@link MemoryDataArgumentMap#getPrepareOperations() prepare operations} make that decision,
-	 *   so this method submits the same list every time). Only a slice the
+	 *   slice the kernel does not write is copied in by the first dispatch only, and a slice the
+	 *   kernel does not read is not copied in by a dispatch that does not copy it back (the map's
+	 *   {@link MemoryDataArgumentMap#getPrepareOperations(boolean) prepare operations} make that
+	 *   decision, so this method submits whatever the map selects). Only a slice the
 	 *   compiled kernel's scope may write is ever copied back (see
 	 *   {@link MemoryDataArgumentMap#getWrittenSlices}); the staged copy of a slice it only reads
 	 *   is unchanged. Whether each such slice is copied back afterward follows the side-effect
@@ -753,7 +754,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				Semaphore ready = OperationSemaphore.all(getMetadata(), pending);
 
 				if (aggregating) {
-					Semaphore prepared = Submittable.submit(argumentMap.getPrepareOperations(), ready);
+					Semaphore prepared = Submittable.submit(argumentMap.getPrepareOperations(aggregateCopyOut), ready);
 					if (prepared != null) ready = inflight = prepared;
 				}
 

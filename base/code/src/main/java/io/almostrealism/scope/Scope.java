@@ -122,7 +122,7 @@ import java.util.stream.IntStream;
 public class Scope<T> extends ArrayList<Scope<T>>
 		implements Fragment, KernelTree<Scope<T>>,
 					OperationInfo, Signature, Nameable,
-					AssignmentSupport, ConsoleFeatures {
+					VariableReferenceSupport, ConsoleFeatures {
 	/**
 	 * Global flag controlling whether scope inlining is enabled.
 	 * When true, simple scopes can be absorbed into their parent scope
@@ -1119,6 +1119,30 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		}
 
 		return false;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Like {@link #containsAssignment(ArrayVariable, long, long)}, the answer is read off the
+	 * scope's {@link #collectAssignments() assignments}, each asked whether it
+	 * {@link ExpressionAssignment#appendReadPositions reads}, and a scope whose code cannot be enumerated
+	 * that way may read anything, so for it every position is read.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		List<ExpressionAssignment<?>> assignments =
+				getAllRequiredScopes().isEmpty() ? collectAssignments() : null;
+
+		if (assignments == null) {
+			reads.addEverything();
+			return;
+		}
+
+		for (ExpressionAssignment<?> assignment : assignments) {
+			if (reads.isEverything()) return;
+			assignment.appendReadPositions(reads);
+		}
 	}
 
 	/**

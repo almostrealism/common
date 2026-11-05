@@ -20,6 +20,7 @@ import io.almostrealism.code.Statement;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.ReadPositions;
 import io.almostrealism.scope.Variable;
 
 import java.util.List;
@@ -135,6 +136,17 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 	@Override
 	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
 		return false;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>What evaluating the size reads: a declaration assigns no element, so its size expression
+	 * is the only thing it evaluates.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		if (reads.visit(size)) size.appendReadPositions(reads);
 	}
 
 	/**

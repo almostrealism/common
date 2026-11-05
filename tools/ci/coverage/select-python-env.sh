@@ -22,7 +22,7 @@
 #
 # Usage:
 #   REQUIREMENTS_FILE=<path> [VENV_DIR=<path>] [MIN_PYTHON_VERSION=3.10] \
-#       select-python-env.sh [extra pip package]...
+#       [MAX_PYTHON_VERSION=<major.minor>] select-python-env.sh [extra pip package]...
 #
 # Required environment variables:
 #   REQUIREMENTS_FILE - path to a pip requirements file to install
@@ -30,10 +30,18 @@
 # Optional environment variables:
 #   VENV_DIR            - venv cache directory (default: ~/.cache/ar-coverage-qa/venv)
 #   MIN_PYTHON_VERSION  - minimum required "major.minor" version (default: 3.10)
+#   MAX_PYTHON_VERSION  - maximum allowed "major.minor" version (default: unset,
+#                        i.e. no upper bound — the newest satisfying interpreter
+#                        is selected). Set this to pin the interpreter to the
+#                        same version CI standardises on: coverage-qa sets it so
+#                        its coverage measurement runs under the exact Python
+#                        that analysis.yaml's python-tests job uses, rather than
+#                        whatever newer interpreter the runner happens to ship.
 #
 # Exit codes:
 #   0 - a provisioned (or reused) venv's python3 path was printed
-#   1 - invalid arguments, or no interpreter on PATH satisfies MIN_PYTHON_VERSION
+#   1 - invalid arguments, or no interpreter on PATH satisfies the required
+#       version window (MIN_PYTHON_VERSION .. MAX_PYTHON_VERSION)
 
 set -euo pipefail
 
@@ -50,10 +58,19 @@ VENV_DIR="${VENV_DIR:-${HOME}/.cache/ar-coverage-qa/venv}"
 MIN_PYTHON_VERSION="${MIN_PYTHON_VERSION:-3.10}"
 MIN_MAJOR="${MIN_PYTHON_VERSION%%.*}"
 MIN_MINOR="${MIN_PYTHON_VERSION##*.}"
+MAX_PYTHON_VERSION="${MAX_PYTHON_VERSION:-}"
+if [ -n "$MAX_PYTHON_VERSION" ]; then
+    MAX_MAJOR="${MAX_PYTHON_VERSION%%.*}"
+    MAX_MINOR="${MAX_PYTHON_VERSION##*.}"
+fi
 
-# ─── Select the newest interpreter on PATH that actually satisfies the
-# minimum version, verified via sys.version_info rather than trusted from
-# the candidate's name. ───────────────────────────────────────────────
+# ─── Select the newest interpreter on PATH that satisfies the required
+# version window (at least MIN_PYTHON_VERSION, and — when MAX_PYTHON_VERSION
+# is set — at most that), verified via sys.version_info rather than trusted
+# from the candidate's name. The upper bound is what keeps this aligned with
+# CI: without it the newest interpreter on the runner wins, which is how the
+# coverage round came to run under a Python newer than the one python-tests
+# pins. ─────────────────────────────────────────────────────────────────
 interpreter_version() {
     "$1" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null
 }
@@ -63,6 +80,12 @@ version_at_least() {
     [ "$major" -gt "$MIN_MAJOR" ] || { [ "$major" -eq "$MIN_MAJOR" ] && [ "$minor" -ge "$MIN_MINOR" ]; }
 }
 
+version_at_most() {
+    [ -z "$MAX_PYTHON_VERSION" ] && return 0
+    local major="${1%%.*}" minor="${1##*.}"
+    [ "$major" -lt "$MAX_MAJOR" ] || { [ "$major" -eq "$MAX_MAJOR" ] && [ "$minor" -le "$MAX_MINOR" ]; }
+}
+
 PYTHON_BIN=""
 PYTHON_VERSION=""
 for candidate in python3.14 python3.13 python3.12 python3.11 python3.10 python3; do
@@ -70,7 +93,7 @@ for candidate in python3.14 python3.13 python3.12 python3.11 python3.10 python3;
         continue
     fi
     version=$(interpreter_version "$candidate") || continue
-    if version_at_least "$version"; then
+    if version_at_least "$version" && version_at_most "$version"; then
         PYTHON_BIN=$(command -v "$candidate")
         PYTHON_VERSION="$version"
         break
@@ -78,7 +101,11 @@ for candidate in python3.14 python3.13 python3.12 python3.11 python3.10 python3;
 done
 
 if [ -z "$PYTHON_BIN" ]; then
-    echo "::error::No python3 interpreter on PATH satisfies the minimum required version ${MIN_PYTHON_VERSION} (checked python3.14, python3.13, python3.12, python3.11, python3.10, python3)" >&2
+    if [ -n "$MAX_PYTHON_VERSION" ]; then
+        echo "::error::No python3 interpreter on PATH satisfies the required version window ${MIN_PYTHON_VERSION}..${MAX_PYTHON_VERSION} (checked python3.14, python3.13, python3.12, python3.11, python3.10, python3)" >&2
+    else
+        echo "::error::No python3 interpreter on PATH satisfies the minimum required version ${MIN_PYTHON_VERSION} (checked python3.14, python3.13, python3.12, python3.11, python3.10, python3)" >&2
+    fi
     exit 1
 fi
 

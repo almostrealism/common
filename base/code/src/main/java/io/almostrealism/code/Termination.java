@@ -20,6 +20,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.ReadPositions;
 import io.almostrealism.scope.Variable;
 
 import java.util.Collections;
@@ -57,6 +58,14 @@ public class Termination implements Statement<Termination> {
 	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
 		return false;
 	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Nothing: terminating execution evaluates no expression, so it reads no element.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) { }
 
 	@Override
 	public Termination simplify(KernelStructureContext context, int depth) {
