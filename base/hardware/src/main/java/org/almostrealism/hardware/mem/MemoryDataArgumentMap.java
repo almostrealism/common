@@ -46,6 +46,7 @@ import java.util.Optional;
 import java.util.function.BiPredicate;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 /**
  * Argument mapping for kernel compilation with provider adaptation.
@@ -145,33 +146,10 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * The copies of every replacement's slice, one per replacement in replacement order, each
 	 * carrying its copy-in and copy-out together with what decides which dispatches submit them.
 	 * {@link #getPrepareOperations(boolean)} and {@link #getPostprocessOperations(MemoryData)}
-	 * select from this one list. Built once on first use and reused across every {@code apply}.
+	 * filter this one list. Built once on first use and reused across every {@code apply}.
 	 * Null until {@link #ensureCopyOperations()} runs.
 	 */
 	private List<SliceCopy> sliceCopies;
-	/**
-	 * A single {@link OnceSubmittable}, submitted {@link Submittable#unordered() unordered}, holding
-	 * the copy-in of every slice that is {@link SliceCopy#isCopiedOnce() copied once}, or null when
-	 * there is none. It is shared by every dispatch, so such a slice is copied once whichever
-	 * operations a dispatch submits. Built with {@link #sliceCopies}.
-	 */
-	private Submittable copyOnceOperation;
-	/**
-	 * The {@link #getPrepareOperations(boolean) prepare operations} of a dispatch that copies back,
-	 * selected from {@link #sliceCopies} when they are built, so a dispatch does not repeat the
-	 * selection.
-	 */
-	private List<Submittable> prepareWithCopyBack;
-	/**
-	 * The {@link #getPrepareOperations(boolean) prepare operations} of a dispatch that does not copy
-	 * back, selected from {@link #sliceCopies} when they are built.
-	 */
-	private List<Submittable> prepareWithoutCopyBack;
-	/**
-	 * The {@link #getPostprocessOperations(MemoryData) copy-back} of a dispatch with no explicit
-	 * output, selected from {@link #sliceCopies} when they are built.
-	 */
-	private List<Submittable> copyBackOperations;
 	/**
 	 * The replacements, by index, whose slice the kernel this map prepares arguments for may write,
 	 * as {@link #getWrittenSlices(Scope) read off} that kernel's compiled {@link Scope}; null while
@@ -388,7 +366,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * reads}, never by anything the computation declares. A slice that is both written and read is
 	 * read, and a scope whose reads cannot be enumerated reports every slice.</p>
 	 *
-	 * <p>The reads of the aggregate are {@link Scope#getReads gathered} in a single walk of the
+	 * <p>The reads of the aggregate are {@link Scope#getReadPositions gathered} in a single walk of the
 	 * scope and every slice is then tested against them, so the cost of the walk, which visits
 	 * every expression the kernel evaluates, does not grow with the number of slices.</p>
 	 *
@@ -398,7 +376,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	public BitSet getReadSlices(Scope<?> kernel) {
 		if (replacements.isEmpty()) return new BitSet();
 
-		return getSlices(kernel.getReads(getAggregateArgument())::contains);
+		return getSlices(kernel.getReadPositions(getAggregateArgument())::contains);
 	}
 
 	/**
@@ -589,14 +567,14 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * {@link #ensureCopyOperations()}).</p>
 	 *
 	 * <p>A slice that is {@link SliceCopy#isCopiedOnce() copied once} is not copied by every submission.
-	 * Those copies are represented in the list by a single {@link OnceSubmittable}, which issues all
-	 * of them the first time it is submitted and nothing on every later submission, while each
-	 * submission, whichever dispatch makes it and on whichever thread, still returns a completion
-	 * covering both its dependency and those copies until they are known to have completed. No
-	 * kernel can therefore read the aggregate before the copied-once slices hold their values, even
-	 * when dispatches are prepared concurrently.</p>
+	 * Its copy-in is an {@link OnceSubmittable}, owned by its {@link SliceCopy} and so shared by
+	 * every dispatch, which issues the copy the first time it is submitted and nothing on every
+	 * later submission, while each submission, whichever dispatch makes it and on whichever thread,
+	 * still returns a completion covering both its dependency and that copy until it is known to
+	 * have completed. No kernel can therefore read the aggregate before the copied-once slices hold
+	 * their values, even when dispatches are prepared concurrently.</p>
 	 *
-	 * <p>The group is submitted {@link Submittable#unordered() unordered}, with no dependency. That
+	 * <p>Such a copy is submitted {@link Submittable#unordered() unordered}, with no dependency. That
 	 * is what lets a context that cannot move a read-only source itself (a Metal context reading a
 	 * file-backed asset, for example) make the copy at once rather than complete it on the host
 	 * after the work ahead of the dispatch, and it is safe for the reasons
@@ -610,39 +588,15 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * A dispatch that copies back keeps the copy-in of every slice it copies back, because the
 	 * kernel is not known to write every element of it (see {@link SliceCopy#isCopiedIn(boolean)}).</p>
 	 *
-	 * <p>Both selections are made once, when the copies are built, and the same unmodifiable list
-	 * is returned to every dispatch.</p>
-	 *
 	 * @param copyBack whether the dispatch submits the {@link #getPostprocessOperations(MemoryData)
 	 *                 copy-back} after the kernel
-	 * @return the pre-execution copy operations
+	 * @return the pre-execution copy operations, in replacement order
 	 */
 	public List<Submittable> getPrepareOperations(boolean copyBack) {
-		ensureCopyOperations();
-		return copyBack ? prepareWithCopyBack : prepareWithoutCopyBack;
-	}
-
-	/**
-	 * Selects the {@link #getPrepareOperations(boolean) prepare operations} of a dispatch from
-	 * the given copies.
-	 *
-	 * @param copies   the copy of every replacement's slice
-	 * @param copyBack whether the dispatch copies back after the kernel
-	 * @return the pre-execution copy operations, unmodifiable
-	 */
-	private List<Submittable> selectPrepareOperations(List<SliceCopy> copies, boolean copyBack) {
-		List<Submittable> result = new ArrayList<>();
-		for (SliceCopy copy : copies) {
-			if (copy.isCopiedIn(copyBack) && !copy.isCopiedOnce()) {
-				result.add(copy.getCopyIn());
-			}
-		}
-
-		if (copyOnceOperation != null) {
-			result.add(copyOnceOperation);
-		}
-
-		return Collections.unmodifiableList(result);
+		return ensureCopyOperations().stream()
+				.filter(copy -> copy.isCopiedIn(copyBack))
+				.map(SliceCopy::getCopyIn)
+				.collect(Collectors.toUnmodifiableList());
 	}
 
 	/**
@@ -668,38 +622,16 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * {@link #setWrittenSlices(BitSet)}) is left out for the same reason: its staged copy is still
 	 * the source's own contents (see {@link SliceCopy#isCopiedBack()}).</p>
 	 *
-	 * <p>The copy-back of a dispatch with no explicit output is selected once, when the copies are
-	 * built, and the same unmodifiable list is returned to every such dispatch; only a dispatch
-	 * that names an output to exclude makes its own selection.</p>
-	 *
 	 * @param skipOutput a buffer whose memory is excluded from copy-back, or null to exclude only
 	 *                   what cannot be written
 	 * @return the post-execution copy operations, in replacement order
 	 */
 	public List<Submittable> getPostprocessOperations(MemoryData skipOutput) {
-		List<SliceCopy> copies = ensureCopyOperations();
-		if (skipOutput == null) return copyBackOperations;
-
-		return selectCopyBackOperations(copies, skipOutput.getRootDelegate().getMem());
-	}
-
-	/**
-	 * Selects the {@link #getPostprocessOperations(MemoryData) copy-back} of a dispatch from the
-	 * given copies.
-	 *
-	 * @param copies the copy of every replacement's slice
-	 * @param skip   memory that is excluded from copy-back, or null
-	 * @return the post-execution copy operations, in replacement order, unmodifiable
-	 */
-	private List<Submittable> selectCopyBackOperations(List<SliceCopy> copies, Memory skip) {
-		List<Submittable> result = new ArrayList<>();
-		for (SliceCopy copy : copies) {
-			if (copy.isCopiedBack() && !copy.sharesMemory(skip)) {
-				result.add(copy.getCopyOut());
-			}
-		}
-
-		return Collections.unmodifiableList(result);
+		Memory skip = skipOutput == null ? null : skipOutput.getRootDelegate().getMem();
+		return ensureCopyOperations().stream()
+				.filter(copy -> copy.isCopiedBack() && !copy.sharesMemory(skip))
+				.map(SliceCopy::getCopyOut)
+				.collect(Collectors.toUnmodifiableList());
 	}
 
 	/**
@@ -710,10 +642,6 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * of this map and is reused across every {@code apply} rather than rebuilt per dispatch.
 	 * Neither whether a source is read-only nor which slices the kernel reads and writes can change
 	 * once the copies are built, so each {@link SliceCopy} records them when it is created.</p>
-	 *
-	 * <p>The copy-in of every slice that is {@link SliceCopy#isCopiedOnce() copied once} is also
-	 * collected into the single {@link #copyOnceOperation} every dispatch shares (see
-	 * {@link #getPrepareOperations(boolean)}).</p>
 	 *
 	 * <p>A copy moves a root's backing memory, its {@link MemoryData#getDelegatedLength() delegated
 	 * length}; a root whose logical length differs from it (smaller for a gather ordering,
@@ -732,7 +660,6 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		}
 
 		List<SliceCopy> copies = new ArrayList<>(replacements.size());
-		List<Submittable> copyOnceOperations = new ArrayList<>();
 
 		for (int i = 0; i < replacements.size(); i++) {
 			Replacement r = replacements.get(i);
@@ -741,23 +668,13 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			MemoryData backing = len == root.getMemLength() ? root : new Bytes(len, root, 0);
 			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
 
-			SliceCopy copy = new SliceCopy(root,
+			copies.add(new SliceCopy(root,
 					copyOperation(backing, slice), copyOperation(slice, backing),
 					readSlices == null || readSlices.get(i),
-					writtenSlices == null || writtenSlices.get(i));
-			copies.add(copy);
-
-			if (copy.isCopiedOnce()) {
-				copyOnceOperations.add(copy.getCopyIn());
-			}
+					writtenSlices == null || writtenSlices.get(i)));
 		}
 
-		copyOnceOperation = copyOnceOperations.isEmpty() ? null
-				: new OnceSubmittable(copyOnceOperations).unordered();
-		prepareWithCopyBack = selectPrepareOperations(copies, true);
-		prepareWithoutCopyBack = selectPrepareOperations(copies, false);
-		copyBackOperations = selectCopyBackOperations(copies, null);
-		sliceCopies = copies;
+		sliceCopies = Collections.unmodifiableList(copies);
 		return sliceCopies;
 	}
 
@@ -790,10 +707,6 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		// The copies hold no resources of their own: they are views of the
 		// roots and of the aggregate, which is destroyed below
 		sliceCopies = null;
-		copyOnceOperation = null;
-		prepareWithCopyBack = null;
-		prepareWithoutCopyBack = null;
-		copyBackOperations = null;
 		rootDelegateSuppliers.forEach(RootDelegateProviderSupplier::destroy);
 		mems.forEach((k, v) -> v.destroy());
 		mems.clear();
@@ -921,7 +834,11 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	private static class SliceCopy {
 		/** The root delegate whose slice is copied. */
 		private final MemoryData root;
-		/** Copies the root into its slice of the aggregate. */
+		/**
+		 * Copies the root into its slice of the aggregate; for a slice that is
+		 * {@link #isCopiedOnce() copied once}, an {@link OnceSubmittable} submitted
+		 * {@link Submittable#unordered() unordered}, so only its first submission copies.
+		 */
 		private final Submittable copyIn;
 		/** Copies the slice of the aggregate back to the root. */
 		private final Submittable copyOut;
@@ -942,10 +859,11 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 		SliceCopy(MemoryData root, Submittable copyIn, Submittable copyOut,
 				  boolean read, boolean written) {
 			this.root = root;
-			this.copyIn = copyIn;
 			this.copyOut = copyOut;
 			this.read = read;
 			this.written = written;
+			this.copyIn = isCopiedOnce()
+					? new OnceSubmittable(List.of(copyIn)).unordered() : copyIn;
 		}
 
 		/** Returns the copy of the root into its slice of the aggregate. */

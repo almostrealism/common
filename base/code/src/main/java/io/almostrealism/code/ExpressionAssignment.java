@@ -180,17 +180,17 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	 * be told apart from an expression that is evaluated, so all of it counts.</p>
 	 */
 	@Override
-	public void collectReads(ReadPositions reads) {
-		if (expression != null && reads.visit(expression)) expression.collectReads(reads);
+	public void appendReadPositions(ReadPositions reads) {
+		if (expression != null && reads.visit(expression)) expression.appendReadPositions(reads);
 		if (destination == null) return;
 
 		if (!destination.isVariableReference()) {
-			if (reads.visit(destination)) destination.collectReads(reads);
+			if (reads.visit(destination)) destination.appendReadPositions(reads);
 			return;
 		}
 
 		for (Expression<?> child : destination.getChildren()) {
-			if (reads.visit(child)) child.collectReads(reads);
+			if (reads.visit(child)) child.appendReadPositions(reads);
 		}
 	}
 

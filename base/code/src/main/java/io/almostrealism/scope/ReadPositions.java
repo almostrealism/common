@@ -25,7 +25,7 @@ import java.util.Set;
 
 /**
  * The positions of one {@link ArrayVariable} that a body of generated code may read, gathered
- * in a single walk of that code (see {@link VariableReferenceSupport#collectReads}).
+ * in a single walk of that code (see {@link VariableReferenceSupport#appendReadPositions}).
  *
  * <p>Each read is recorded as the range of positions it may reach, with either side left open
  * when it cannot be bounded, and a read that names no element records the whole array. Whether
@@ -36,13 +36,13 @@ import java.util.Set;
  *
  * <p>The walk visits each distinct node once: generated expressions share subtrees, and what a
  * subtree reads does not depend on where it occurs, so a subtree already visited contributes
- * nothing new (see {@link #visit(Object)}).</p>
+ * nothing new (see {@link #visit(VariableReferenceSupport)}).</p>
  */
 public class ReadPositions {
 	/** The array whose reads are recorded. */
 	private final ArrayVariable<?> array;
 	/** The nodes already visited by the walk, compared by identity. */
-	private final Set<Object> visited;
+	private final Set<VariableReferenceSupport> visited;
 	/** The lower bound of each recorded read, {@link Long#MIN_VALUE} when it is open. */
 	private final List<Long> lower;
 	/** The upper bound of each recorded read, {@link Long#MAX_VALUE} when it is open. */
@@ -62,8 +62,28 @@ public class ReadPositions {
 		this.upper = new ArrayList<>();
 	}
 
-	/** Returns the array whose reads are recorded. */
-	public ArrayVariable<?> getArray() { return array; }
+	/**
+	 * Returns whether {@code variable} is the array whose reads are recorded: whether it
+	 * {@link Variable#hasSameRoot(Variable) shares a root} with it, so that a view of the array
+	 * and the array itself are the same array.
+	 *
+	 * @param variable the variable in question, or null
+	 * @return true if a reference to {@code variable} references the recorded array
+	 */
+	public boolean isOf(Variable<?, ?> variable) {
+		return variable != null && variable.hasSameRoot(array);
+	}
+
+	/**
+	 * Returns whether {@code code}, text emitted verbatim that cannot be inspected any further,
+	 * mentions the name of the array whose reads are recorded.
+	 *
+	 * @param code the code in question, or null
+	 * @return true if {@code code} contains the name of the recorded array
+	 */
+	public boolean isNamedIn(String code) {
+		return code != null && array.getName() != null && code.contains(array.getName());
+	}
 
 	/**
 	 * Marks {@code node} as visited, returning whether it had not been visited before. A node
@@ -74,7 +94,7 @@ public class ReadPositions {
 	 * @return true if the node has not been walked before and nothing has yet been found to read
 	 *         every position, so walking it may record something new
 	 */
-	public boolean visit(Object node) {
+	public boolean visit(VariableReferenceSupport node) {
 		return !everything && visited.add(node);
 	}
 

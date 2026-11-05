@@ -154,8 +154,8 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 	 * expression reads to compute that element.</p>
 	 */
 	@Override
-	public void collectReads(ReadPositions reads) {
-		if (getReferent().hasSameRoot(reads.getArray())) {
+	public void appendReadPositions(ReadPositions reads) {
+		if (reads.isOf(getReferent())) {
 			if (pos == null) {
 				reads.addEverything();
 			} else {
@@ -163,7 +163,7 @@ public class InstanceReference<T, V> extends Expression<V> implements Expression
 			}
 		}
 
-		super.collectReads(reads);
+		super.appendReadPositions(reads);
 	}
 
 	@Override

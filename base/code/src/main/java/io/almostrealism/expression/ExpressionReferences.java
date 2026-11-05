@@ -149,9 +149,9 @@ public interface ExpressionReferences extends VariableReferenceSupport {
 	 * ({@link StaticReference}) overrides it to count any mention of {@code array}.</p>
 	 */
 	@Override
-	default void collectReads(ReadPositions reads) {
+	default void appendReadPositions(ReadPositions reads) {
 		for (Expression<?> child : getChildren()) {
-			if (reads.visit(child)) child.collectReads(reads);
+			if (reads.visit(child)) child.appendReadPositions(reads);
 		}
 	}
 
