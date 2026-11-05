@@ -481,6 +481,9 @@ public class NodeProxy implements Proxy, Runnable, ConsoleFeatures {
 	 * @see Proxy#writeObject(java.lang.Object, int)
 	 * @throws IllegalArgumentException  If the object is not an instance of Message or Query.
 	 * @throws IOException  If an IOException occurs while writing to the output stream.
+	 *                      A {@link SocketException} first disconnects this proxy and
+	 *                      is then rethrown, so a caller handing off work (such as a
+	 *                      relayed job) learns the peer never received it.
 	 */
 	public void writeObject(Object o, int id, boolean useQueue) throws IOException {
 		if (useQueue) {
@@ -556,8 +559,8 @@ public class NodeProxy implements Proxy, Runnable, ConsoleFeatures {
 		} catch (SocketException se) {
 			this.fireDisconnect();
 			this.resets = 4;
-		} catch (IOException ioe) {
-			throw ioe;
+			// TODO(review): rethrow now aborts ServerQueryExecutor's per-peer query relay loop on the first broken peer
+			throw se;
 		}
 	}
 	

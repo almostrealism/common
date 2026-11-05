@@ -112,6 +112,13 @@ public class LostJobRecovery implements ConsoleFeatures {
 	private final Predicate<String> queuedLocally;
 
 	/**
+	 * Tells whether a job's dispatch is still deferred by the delay its submitter
+	 * requested. Such a job is waiting by design, not lost, so it is never
+	 * escalated. {@code null} treats every job as already dispatched.
+	 */
+	private final Predicate<String> dispatchDeferred;
+
+	/**
 	 * Job IDs already escalated, so each lost job raises exactly one notice and
 	 * one alert rather than one per scan. Grows with the number of distinct lost
 	 * jobs over the controller's life, which is small by construction.
@@ -127,17 +134,21 @@ public class LostJobRecovery implements ConsoleFeatures {
 	 * @param statsStore    the store to query; {@code null} disables scanning
 	 * @param noticeSink    receives the per-job workstream notice, or {@code null}
 	 * @param alertSink     receives the per-job out-of-band alert, or {@code null}
-	 * @param queuedLocally tells whether a job is still queued on the controller,
-	 *                      or {@code null} when that cannot be determined
+	 * @param queuedLocally    tells whether a job is still queued on the controller,
+	 *                         or {@code null} when that cannot be determined
+	 * @param dispatchDeferred tells whether a job is still held by its requested
+	 *                         submission delay, or {@code null} when no job is
 	 */
 	public LostJobRecovery(JobStatsStore statsStore,
 			BiConsumer<String, String> noticeSink,
 			Consumer<String> alertSink,
-			Predicate<String> queuedLocally) {
+			Predicate<String> queuedLocally,
+			Predicate<String> dispatchDeferred) {
 		this.statsStore = statsStore;
 		this.noticeSink = noticeSink;
 		this.alertSink = alertSink;
 		this.queuedLocally = queuedLocally;
+		this.dispatchDeferred = dispatchDeferred;
 	}
 
 	/**
@@ -162,7 +173,9 @@ public class LostJobRecovery implements ConsoleFeatures {
 
 	/**
 	 * Runs one scan: escalates every job that has been pending past the lost
-	 * threshold and has not already been escalated.
+	 * threshold, is not merely waiting out a requested submission delay, and has
+	 * not already been escalated. A job whose escalation fails is not recorded as
+	 * escalated, so the next scan tries it again.
 	 *
 	 * <p>Separated from the timer so the escalation decision is testable without
 	 * waiting on a schedule.</p>
@@ -178,21 +191,45 @@ public class LostJobRecovery implements ConsoleFeatures {
 			String jobId = job.jobId();
 			if (jobId == null || escalated.contains(jobId)) continue;
 			if (!job.isLost(lostThreshold, now)) continue;
+			if (dispatchDeferred != null && dispatchDeferred.test(jobId)) continue;
 
-			// TODO(review): job is marked escalated before describe()/sinks run; if any throws the escalation is lost and never retried
+			try {
+				escalate(job, now);
+			} catch (RuntimeException e) {
+				warn("Lost-job escalation failed for jobId=" + jobId
+						+ "; it will be retried on the next scan: " + e.getMessage());
+				continue;
+			}
+
 			escalated.add(jobId);
 			raised.add(jobId);
-
-			String message = describe(job, now);
-			warn(message);
-			if (noticeSink != null && job.workstreamId() != null) {
-				noticeSink.accept(job.workstreamId(), message);
-			}
-			if (alertSink != null) {
-				alertSink.accept(message);
-			}
 		}
 		return raised;
+	}
+
+	/**
+	 * Delivers the escalation for one lost job: a log warning, the workstream
+	 * notice and the out-of-band alert.
+	 *
+	 * <p>The caller records the job as escalated only after this returns, so a
+	 * probe or sink that throws leaves the job to be escalated again on the next
+	 * scan rather than silently suppressing it forever. A sink that succeeded
+	 * before a later one threw may therefore deliver its message twice — the
+	 * deliberate trade for a loss detector, where a repeated notice is harmless
+	 * and a missing one is the failure being guarded against.</p>
+	 *
+	 * @param job the lost job
+	 * @param now the reference instant for its age
+	 */
+	private void escalate(PendingJob job, Instant now) {
+		String message = describe(job, now);
+		warn(message);
+		if (noticeSink != null && job.workstreamId() != null) {
+			noticeSink.accept(job.workstreamId(), message);
+		}
+		if (alertSink != null) {
+			alertSink.accept(message);
+		}
 	}
 
 	/**

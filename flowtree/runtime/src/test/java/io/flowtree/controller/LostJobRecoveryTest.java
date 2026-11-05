@@ -68,7 +68,8 @@ public class LostJobRecoveryTest extends TestSuiteBase {
 		return new LostJobRecovery(store,
 				(ws, msg) -> { noticeWorkstreams.add(ws); notices.add(msg); },
 				alerts::add,
-				taskId -> queuedLocally);
+				taskId -> queuedLocally,
+				null);
 	}
 
 	/** A job submitted past the lost threshold is escalated once, by notice and alert. */
@@ -126,5 +127,92 @@ public class LostJobRecoveryTest extends TestSuiteBase {
 		newScanner(relayedStore, false).scanOnce(now);
 		Assert.assertTrue("relayed message warns against a duplicate run",
 				alerts.get(0).contains("handed to a peer"));
+	}
+
+	/**
+	 * A delivery that throws must not mark the job escalated: the next scan has to
+	 * try again, otherwise the one notice the feature promises is silently lost.
+	 */
+	@Test(timeout = 60000)
+	public void failedDeliveryIsRetriedOnNextScan() throws Exception {
+		JobStatsStore store = newStore();
+		Instant now = Instant.parse("2026-11-05T12:00:00Z");
+		store.recordJobSubmitted("job-retry", "ws-1", "alert sink down",
+				"alice", null, now.minus(Duration.ofMinutes(45)));
+
+		boolean[] sinkUp = {false};
+		LostJobRecovery scanner = new LostJobRecovery(store, null,
+				msg -> {
+					if (!sinkUp[0]) throw new IllegalStateException("alert service unavailable");
+					alerts.add(msg);
+				},
+				taskId -> false, null);
+
+		Assert.assertTrue("a failed delivery is not reported as escalated",
+				scanner.scanOnce(now).isEmpty());
+		Assert.assertTrue(alerts.isEmpty());
+
+		sinkUp[0] = true;
+		Assert.assertEquals("the next scan retries the escalation",
+				List.of("job-retry"), scanner.scanOnce(now.plus(Duration.ofMinutes(5))));
+		Assert.assertEquals(1, alerts.size());
+		Assert.assertTrue(alerts.get(0).contains("job-retry"));
+
+		Assert.assertTrue("once delivered it is not raised again",
+				scanner.scanOnce(now.plus(Duration.ofMinutes(10))).isEmpty());
+		Assert.assertEquals(1, alerts.size());
+	}
+
+	/** A throwing queue probe for one job neither aborts the scan nor suppresses that job. */
+	@Test(timeout = 60000)
+	public void probeFailureForOneJobDoesNotBlockOthers() throws Exception {
+		JobStatsStore store = newStore();
+		Instant now = Instant.parse("2026-11-05T12:00:00Z");
+		store.recordJobSubmitted("job-bad", "ws-1", "probe throws",
+				"alice", null, now.minus(Duration.ofMinutes(50)));
+		store.recordJobSubmitted("job-good", "ws-2", "probe fine",
+				"alice", null, now.minus(Duration.ofMinutes(45)));
+
+		LostJobRecovery scanner = new LostJobRecovery(store,
+				(ws, msg) -> { noticeWorkstreams.add(ws); notices.add(msg); },
+				alerts::add,
+				taskId -> {
+					if ("job-bad".equals(taskId)) throw new NullPointerException("no node group yet");
+					return false;
+				},
+				null);
+
+		Assert.assertEquals(List.of("job-good"), scanner.scanOnce(now));
+		Assert.assertEquals(List.of("ws-2"), noticeWorkstreams);
+		Assert.assertEquals(1, alerts.size());
+	}
+
+	/**
+	 * A job still held by its requested submission delay is waiting by design and
+	 * is never escalated, however long ago it was submitted; once the delay has
+	 * elapsed and it is still unstarted, it is.
+	 */
+	@Test(timeout = 60000)
+	public void deferredDispatchIsNotLost() throws Exception {
+		JobStatsStore store = newStore();
+		Instant now = Instant.parse("2026-11-05T12:00:00Z");
+		store.recordJobSubmitted("job-delayed", "ws-1", "delaySeconds=7200",
+				"alice", null, now.minus(Duration.ofMinutes(90)));
+
+		boolean[] deferred = {true};
+		LostJobRecovery scanner = new LostJobRecovery(store,
+				(ws, msg) -> { noticeWorkstreams.add(ws); notices.add(msg); },
+				alerts::add,
+				taskId -> true,
+				taskId -> deferred[0] && "job-delayed".equals(taskId));
+
+		Assert.assertTrue(scanner.scanOnce(now).isEmpty());
+		Assert.assertTrue(alerts.isEmpty());
+		Assert.assertTrue(notices.isEmpty());
+
+		deferred[0] = false;
+		Assert.assertEquals(List.of("job-delayed"),
+				scanner.scanOnce(now.plus(Duration.ofMinutes(5))));
+		Assert.assertEquals(1, alerts.size());
 	}
 }

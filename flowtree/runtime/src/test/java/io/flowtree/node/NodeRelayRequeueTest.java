@@ -18,11 +18,19 @@ package io.flowtree.node;
 
 import io.flowtree.job.Job;
 import io.flowtree.msg.Connection;
+import io.flowtree.msg.NodeProxy;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.ObjectOutputStream;
+import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.Socket;
 import java.net.SocketException;
 import java.util.concurrent.CompletableFuture;
 
@@ -110,6 +118,81 @@ public class NodeRelayRequeueTest extends TestSuiteBase {
 	public void emptyQueueRelaysNothing() throws IOException {
 		Node node = new Node(null, 0, 4, 4);
 		Assert.assertFalse(node.relayJobToPeer(new AcceptingConnection(node)));
+	}
+
+	/**
+	 * A peer whose socket breaks mid-write must surface the failure through the
+	 * real {@link NodeProxy} write path, so the job is requeued rather than
+	 * reported as relayed. {@link NodeProxy#writeObject(Object, int, boolean)} used
+	 * to swallow the {@link SocketException} after disconnecting, which made the
+	 * relay believe the peer had the job.
+	 */
+	@Test(timeout = 10000)
+	public void brokenSocketThroughRealProxyRequeuesJob() throws Exception {
+		Node node = new Node(null, 0, 4, 4);
+		QueuedJob a = new QueuedJob("a");
+		node.addJob(a);
+
+		BrokenSocket socket = new BrokenSocket();
+		NodeProxy proxy = new NodeProxy(socket);
+		// A new proxy buffers writes until registered; NodeGroupServerRegistry
+		// releases that buffer once the server is added, and so does this test.
+		proxy.flushQueue();
+		Connection peer = new Connection(node, proxy, 7);
+		node.connect(peer);
+		socket.broken = true;
+
+		boolean relayed = node.relayJobToPeer(peer);
+
+		Assert.assertFalse("the write failed, so the job was not handed off", relayed);
+		Assert.assertFalse("the proxy recorded the disconnect", proxy.isConnected());
+		Assert.assertEquals("the broken peer was dropped", 0, node.getPeers().length);
+		Assert.assertSame("the un-sent job is back in the queue", a, node.nextJob());
+		Assert.assertNull("exactly one job remained", node.nextJob());
+	}
+
+	/**
+	 * A socket whose output fails with a {@link SocketException} once
+	 * {@link #broken} is set. Its input carries only an object-stream header, so
+	 * the proxy's reader thread finds nothing to read and never disconnects on
+	 * its own.
+	 */
+	private static final class BrokenSocket extends Socket {
+		/** When {@code true}, every write throws as a reset connection would. */
+		private volatile boolean broken;
+
+		/** Reports the loopback address, which the proxy uses as its label. */
+		@Override
+		public InetAddress getInetAddress() { return InetAddress.getLoopbackAddress(); }
+
+		/**
+		 * @return an output stream that fails once the socket is broken
+		 */
+		@Override
+		public OutputStream getOutputStream() {
+			return new OutputStream() {
+				@Override
+				public void write(int b) throws IOException {
+					if (broken) throw new SocketException("Connection reset by peer");
+				}
+
+				@Override
+				public void write(byte[] b, int off, int len) throws IOException {
+					if (broken) throw new SocketException("Connection reset by peer");
+				}
+			};
+		}
+
+		/**
+		 * @return an input stream holding just a valid object-stream header
+		 * @throws IOException never, but declared by the superclass
+		 */
+		@Override
+		public InputStream getInputStream() throws IOException {
+			ByteArrayOutputStream header = new ByteArrayOutputStream();
+			new ObjectOutputStream(header).close();
+			return new ByteArrayInputStream(header.toByteArray());
+		}
 	}
 
 	/** A Connection whose {@link #sendJob} throws a supplied exception. */

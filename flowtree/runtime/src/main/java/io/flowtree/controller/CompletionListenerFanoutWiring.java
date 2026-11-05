@@ -63,7 +63,8 @@ public final class CompletionListenerFanoutWiring {
      * blindly re-dispatches) through the same workstream channel plus an
      * out-of-band alert. Whether a lost job is still queued on the controller or
      * was already handed to a peer is read from the server's own
-     * {@link io.flowtree.node.NodeGroup}.</p>
+     * {@link io.flowtree.node.NodeGroup}; a job still held by its requested
+     * submission delay is read from the endpoint and is not treated as lost.</p>
      *
      * @param endpoint             the endpoint to attach the fan-out to
      * @param server               the server used to submit wake-up jobs
@@ -101,7 +102,8 @@ public final class CompletionListenerFanoutWiring {
             LostJobRecovery lostJobRecovery = new LostJobRecovery(statsStore,
                     registry::postWorkstreamNotice,
                     alertRecipients == null ? null : alertRecipients.sink(Alert.Severity.WARNING),
-                    taskId -> server.getNodeGroup().hasQueuedJob(taskId));
+                    taskId -> server.getNodeGroup().hasQueuedJob(taskId),
+                    endpoint::isDispatchDeferred);
             lostJobRecovery.start();
 
             return new ControllerScanners(scanner, lostJobRecovery);
