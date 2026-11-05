@@ -101,4 +101,27 @@ public class Gsm7Test extends TestSuiteBase {
 		Assert.assertFalse(Gsm7.isRepresentable('`'));
 		Assert.assertFalse(Gsm7.isRepresentable('—'));
 	}
+
+	/**
+	 * The euro sign lives in the GSM-7 extension table, so it is representable
+	 * even though it falls outside the printable-ASCII range.
+	 */
+	@Test(timeout = 10000)
+	public void testEuroSignIsRepresentable() {
+		Assert.assertTrue(Gsm7.isRepresentable('€'));
+	}
+
+	/** An extension-table character such as the euro sign costs two septets. */
+	@Test(timeout = 10000)
+	public void testSeptetLengthCountsEuroAsTwo() {
+		Assert.assertEquals(2, Gsm7.septetLength("€"));
+		// '€'(2) + '5'(1) = 3
+		Assert.assertEquals(3, Gsm7.septetLength("€5"));
+	}
+
+	/** The euro sign survives normalization rather than being dropped. */
+	@Test(timeout = 10000)
+	public void testNormalizePreservesEuro() {
+		Assert.assertEquals("€5", Gsm7.normalize("€5"));
+	}
 }
