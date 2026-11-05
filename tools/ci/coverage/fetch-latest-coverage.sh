@@ -269,8 +269,8 @@ fi
 # still symlink their versioned binary into these directories) even when
 # the runner's own PATH omits them. A no-op on any host without Homebrew
 # at these locations, and it only widens the search — select-python-env.sh
-# still picks the newest interpreter that actually satisfies the minimum
-# version, wherever it is found.
+# still picks the newest interpreter that actually satisfies the required
+# version window (MIN_PYTHON_VERSION..MAX_PYTHON_VERSION), wherever it is found.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ "$(uname -s)" = "Darwin" ]; then
     PATH="${PATH}:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin"
@@ -281,12 +281,20 @@ PYTHON_DIRS=(tools/mcp/manager tools/mcp/common tools/tests)
 FIRST=true
 for dir in "${PYTHON_DIRS[@]}"; do
     [ -d "$dir" ] || continue
-    if [ "$FIRST" = "true" ]; then
-        "$PYTHON" -m coverage run --source="$dir" -m unittest discover -s "$dir" -p 'test_*.py'
-        FIRST=false
-    else
-        "$PYTHON" -m coverage run -a --source="$dir" -m unittest discover -s "$dir" -p 'test_*.py'
+    append_flag=""
+    [ "$FIRST" = "true" ] || append_flag="-a"
+    # A failing (or erroring) test must NOT abort target selection. coverage.py
+    # still records the lines that executed before the failure, and this round
+    # needs that coverage DATA, not a green suite — the pass/fail verdict on the
+    # Python suites belongs to analysis.yaml's python-tests job, which runs the
+    # same discovery. This mirrors the Java recompute path above, which passes
+    # -Dmaven.test.failure.ignore=true for exactly the same reason. Without this,
+    # a single unrelated Python test failure sank the whole coverage round (a
+    # Python 3.14 argparse incompatibility in tools/fleet did precisely that).
+    if ! "$PYTHON" -m coverage run $append_flag --source="$dir" -m unittest discover -s "$dir" -p 'test_*.py'; then
+        echo "::warning::Python tests under ${dir} exited non-zero; using the coverage data they produced anyway. A failing Python test is the python-tests CI job's to resolve, not the coverage round's."
     fi
+    FIRST=false
 done
 
 # --omit is the caveat the plan's appendix documents: --source=<dir> alone

@@ -17,6 +17,7 @@
 package org.almostrealism.texture.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.Hardware;
@@ -25,7 +26,9 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.awt.Color;
+import java.awt.Image;
 import java.awt.image.BufferedImage;
+import java.awt.image.PixelGrabber;
 import java.io.File;
 import java.io.IOException;
 
@@ -295,5 +298,73 @@ public class GraphicsConverterTest extends TextureTestBase {
 		Assert.assertEquals(0.25, result[0][0].getRed(), TOL);
 		Assert.assertEquals(0.5, result[0][0].getGreen(), TOL);
 		Assert.assertEquals(0.75, result[0][0].getBlue(), TOL);
+	}
+
+	/**
+	 * Grabs the ARGB pixels of an AWT {@link Image} produced from an in-memory
+	 * source, so the packed output of the array-based image converters can be
+	 * inspected pixel by pixel.
+	 *
+	 * @param image  the image to read
+	 * @param width  the image width in pixels
+	 * @param height the image height in pixels
+	 * @return the {@code width * height} ARGB pixels in row-major order
+	 * @throws InterruptedException if pixel grabbing is interrupted
+	 */
+	private static int[] grabPixels(Image image, int width, int height) throws InterruptedException {
+		int[] pixels = new int[width * height];
+		PixelGrabber grabber = new PixelGrabber(image, 0, 0, width, height, pixels, 0, width);
+		Assert.assertTrue(grabber.grabPixels());
+		return pixels;
+	}
+
+	/**
+	 * Verifies converting an {@link RGB} array to an AWT {@link Image} packs each
+	 * pixel as an opaque ARGB value that reproduces the component colors.
+	 */
+	@Test(timeout = 30000)
+	public void convertRgbArrayToAwtImage() throws InterruptedException {
+		RGB[][] image = new RGB[2][1];
+		image[0][0] = new RGB(1.0, 0.0, 0.0);
+		image[1][0] = new RGB(0.0, 1.0, 0.0);
+
+		int[] pixels = grabPixels(GraphicsConverter.convertToAWTImage(image), 2, 1);
+
+		Assert.assertEquals(0xFF, (pixels[0] >>> 24) & 0xFF);
+		Assert.assertEquals(0xFF0000, pixels[0] & 0xFFFFFF);
+		Assert.assertEquals(0x00FF00, pixels[1] & 0xFFFFFF);
+	}
+
+	/**
+	 * Verifies the {@link RGB} array converter clamps each channel's magnitude
+	 * into {@code [0, 1]} (absolute value, capped at 1.0) and truncates the scaled
+	 * channel toward zero when packing the pixel.
+	 */
+	@Test(timeout = 30000)
+	public void convertRgbArrayToAwtImageClampsAndTruncates() throws InterruptedException {
+		RGB[][] image = new RGB[1][1];
+		image[0][0] = new RGB(2.0, -0.5, 0.25);
+
+		int[] pixels = grabPixels(GraphicsConverter.convertToAWTImage(image), 1, 1);
+
+		// 2.0 -> clamp to 1.0 -> 255; -0.5 -> abs 0.5 -> (int)(127.5) = 127; 0.25 -> (int)(63.75) = 63
+		Assert.assertEquals(0xFF, (pixels[0] >>> 24) & 0xFF);
+		Assert.assertEquals(0xFF7F3F, pixels[0] & 0xFFFFFF);
+	}
+
+	/**
+	 * Verifies the {@link Evaluable} array converter packs each evaluated color
+	 * through the same clamp-and-truncate path as the other image converters.
+	 */
+	@Test(timeout = 30000)
+	public void convertEvaluableArrayToAwtImage() throws InterruptedException {
+		RGB color = new RGB(2.0, -0.5, 0.25);
+		Evaluable<PackedCollection>[][] image = new Evaluable[1][1];
+		image[0][0] = args -> color;
+
+		int[] pixels = grabPixels(GraphicsConverter.convertToAWTImage(image, (Producer) null), 1, 1);
+
+		Assert.assertEquals(0xFF, (pixels[0] >>> 24) & 0xFF);
+		Assert.assertEquals(0xFF7F3F, pixels[0] & 0xFFFFFF);
 	}
 }
