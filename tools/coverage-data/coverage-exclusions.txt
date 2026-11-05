@@ -39,6 +39,14 @@ org.almostrealism.generated.*
 org.almostrealism.audio.api
 org.almostrealism.audio.api.*
 
+# Protoc output for engine/ml/src/main/proto/{collections,model,diskstore}.proto,
+# each of which sets `option java_package = "org.almostrealism.protobuf"`.
+# No hand-written Java declares this package; its behavior is exercised
+# indirectly by the hand-written persistence code that consumes it (e.g.
+# org.almostrealism.persist.assets), whose own packages remain selectable.
+org.almostrealism.protobuf
+org.almostrealism.protobuf.*
+
 # ── base/hardware GPU / native packages ─────────────────────────────
 # Require a real Metal/OpenCL/CUDA device or a JNI bridge to a native
 # library. The CI Linux lane that runs the coverage-qa pipeline has no
