@@ -450,6 +450,53 @@ public class AggregateCopyInTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The layout a map reads off the scope compiled against it records the slices the kernel
+	 * writes and reads, and a second map folding the same arguments at the same positions
+	 * reproduces it and, limited to it, selects exactly the copies the first map selects. A map
+	 * folding different arguments does not reproduce it.
+	 */
+	@Test(timeout = 60000)
+	public void layoutLimitsTheCopiesOfAMapReusingTheKernel() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0);
+			 PackedCollection unused = pack(5.0, 6.0)) {
+			MemoryDataArgumentMap compiling = createMap(new ArrayList<>());
+			MemoryDataArgumentMap reusing = createMap(new ArrayList<>());
+			MemoryDataArgumentMap other = createMap(new ArrayList<>());
+
+			try {
+				ArrayVariable<?> readArg = compiling.get(p(read));
+				ArrayVariable<?> writtenArg = compiling.get(p(written));
+				compiling.get(p(unused));
+
+				AggregateLayout layout = compiling.limitCopiesTo(copyKernel(writtenArg, readArg));
+				Assert.assertEquals(compiling.describeAggregatePositions(), layout.getPositions());
+				Assert.assertEquals(BitSet.valueOf(new long[] { 0b010 }), layout.getWrittenSlices());
+				Assert.assertEquals(BitSet.valueOf(new long[] { 0b001 }), layout.getReadSlices());
+
+				reusing.get(p(read));
+				reusing.get(p(written));
+				reusing.get(p(unused));
+				Assert.assertTrue(reusing.reproduces(layout));
+				reusing.limitCopiesTo(layout);
+
+				Assert.assertEquals(1, reusing.getPrepareOperations(false).size());
+				Assert.assertEquals(2, reusing.getPrepareOperations(true).size());
+				Assert.assertEquals(1, reusing.getPostprocessOperations(null).size());
+				Assert.assertEquals(compiling.getPrepareOperations(false).size(),
+						reusing.getPrepareOperations(false).size());
+
+				other.get(p(read));
+				Assert.assertFalse(other.reproduces(layout));
+			} finally {
+				compiling.destroy();
+				reusing.destroy();
+				other.destroy();
+			}
+		}
+	}
+
+	/**
 	 * Creates an argument map that folds small arguments, recording every aggregate it creates.
 	 *
 	 * @param aggregates receives each aggregate buffer the map creates
