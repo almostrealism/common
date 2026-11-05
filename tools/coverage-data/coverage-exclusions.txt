@@ -29,6 +29,16 @@
 org.almostrealism.generated
 org.almostrealism.generated.*
 
+# Protoc output for studio/compose/src/main/proto/audio.proto, whose
+# `option java_package = "org.almostrealism.audio.api"` emits every class
+# in this package. No hand-written Java declares this package, so there is
+# no behavior to assert on — testing the generated getters/setters/builders
+# would exercise protobuf itself, not platform code. Sibling packages
+# org.almostrealism.audio and org.almostrealism.audio.pattern are
+# hand-written and do NOT match these globs, so they remain selectable.
+org.almostrealism.audio.api
+org.almostrealism.audio.api.*
+
 # ── base/hardware GPU / native packages ─────────────────────────────
 # Require a real Metal/OpenCL/CUDA device or a JNI bridge to a native
 # library. The CI Linux lane that runs the coverage-qa pipeline has no
