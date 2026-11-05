@@ -23,7 +23,7 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.AssignmentSupport;
+import io.almostrealism.scope.VariableReferenceSupport;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 
@@ -47,7 +47,7 @@ import java.util.function.Supplier;
  * @see Statement
  * @see io.almostrealism.scope.Scope
  */
-public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T>>, AssignmentSupport {
+public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T>>, VariableReferenceSupport {
 	/** Whether this assignment also declares the destination variable. */
 	private final boolean declaration;
 	/** The destination expression that receives the assigned value. */

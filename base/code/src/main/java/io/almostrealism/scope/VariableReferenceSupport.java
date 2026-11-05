@@ -31,7 +31,7 @@ package io.almostrealism.scope;
  * {@link io.almostrealism.expression.Expression} (what an assignment to the expression, as a
  * destination, writes, and what evaluating the expression reads).</p>
  */
-public interface AssignmentSupport {
+public interface VariableReferenceSupport {
 	/**
 	 * Returns whether this code contains an assignment to an element of {@code array} at a
 	 * position in {@code [start, end)}. Positions are in the frame of the storage

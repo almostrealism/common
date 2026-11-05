@@ -122,7 +122,7 @@ import java.util.stream.IntStream;
 public class Scope<T> extends ArrayList<Scope<T>>
 		implements Fragment, KernelTree<Scope<T>>,
 					OperationInfo, Signature, Nameable,
-					AssignmentSupport, ConsoleFeatures {
+					VariableReferenceSupport, ConsoleFeatures {
 	/**
 	 * Global flag controlling whether scope inlining is enabled.
 	 * When true, simple scopes can be absorbed into their parent scope

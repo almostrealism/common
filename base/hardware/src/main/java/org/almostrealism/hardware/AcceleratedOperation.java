@@ -661,7 +661,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 *   slice the kernel does not write is copied in by the first dispatch only, and a slice the
 	 *   kernel does not read is not copied in by a dispatch that does not copy it back (the map's
 	 *   {@link MemoryDataArgumentMap#getPrepareOperations(boolean) prepare operations} make that
-	 *   decision, so this method submits one of two lists built once). Only a slice the
+	 *   decision, so this method submits whatever the map selects). Only a slice the
 	 *   compiled kernel's scope may write is ever copied back (see
 	 *   {@link MemoryDataArgumentMap#getWrittenSlices}); the staged copy of a slice it only reads
 	 *   is unchanged. Whether each such slice is copied back afterward follows the side-effect

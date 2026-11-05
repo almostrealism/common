@@ -18,7 +18,7 @@ package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.AssignmentSupport;
+import io.almostrealism.scope.VariableReferenceSupport;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.sequence.Index;
 
@@ -46,7 +46,7 @@ import java.util.Set;
  * over trees of millions of nodes with only a few children each, so the children are walked
  * with plain loops that stop at the first decisive child.</p>
  */
-public interface ExpressionReferences extends AssignmentSupport {
+public interface ExpressionReferences extends VariableReferenceSupport {
 
 	/**
 	 * Returns the operands of this expression, the subtrees each query descends into.

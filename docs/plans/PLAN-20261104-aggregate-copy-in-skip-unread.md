@@ -26,7 +26,7 @@ Two increments of this copy path have already landed, both by reading the copy d
 compiled kernel rather than from a declared property**:
 
 - Copy-*back* is minimized. `MemoryDataArgumentMap.getWrittenSlices(Scope)` asks the compiled
-  `Scope` (through `AssignmentSupport.containsAssignment(array, start, end)`) which folded slices
+  `Scope` (through `VariableReferenceSupport.containsAssignment(array, start, end)`) which folded slices
   the kernel may write, and the de-aggregation copies back only those. A slice the kernel only
   reads is unchanged and is not copied back.
 - Read-only slices are copied in **once**. `isCopiedOnce` folds a read-only source whose
@@ -92,7 +92,7 @@ reports every slice as read, so the fallback is always "copy everything in," nev
 
 Concrete, actionable items:
 
-1. **A position-bounded read query**, symmetric to the existing write query. `AssignmentSupport`
+1. **A position-bounded read query**, symmetric to the existing write query. `VariableReferenceSupport`
    exposes `containsAssignment(ArrayVariable, long, long)` — whether the code assigns to (writes)
    an element of the array in `[start, end)`. Add its read counterpart — whether the code
    references an element of the array in `[start, end)` in a non-destination (read) position. The
