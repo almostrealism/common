@@ -58,7 +58,19 @@ failed before, in this order of preference:
   rather than assuming the old note still holds;
 - **`flowtree/runtime` relay and mailbox tests**: `NodeRelaySimulationTest`,
   `WorkstreamMailboxTest` and `MailboxEndpointTest`, which depend on threads,
-  timing and message ordering.
+  timing and message ordering;
+- **the controller's `Node` worker queue** in `flowtree/runtime`: how an idle
+  worker thread is woken when a job is queued (`Node#addJob` and the worker's
+  idle wait), exercised by `NodeWorkerWakeTest`. A missed notification there
+  shows up as latency or a timeout, not as a wrong answer;
+- **the `base/io` metrics classes**: `MetricBase`, `DistributionMetric` and
+  `TimingMetric`, whose counters and totals are updated from many threads,
+  exercised by `MetricBaseConcurrencyTest` in `engine/utils`. A data race
+  there loses updates only under contention.
+
+Both of those last two areas have produced real concurrency fixes in earlier
+flaky rounds, so shared mutable state in base and controller infrastructure is
+as live a lead as the hardware lanes.
 
 Only when none of those is a live lead, pick another module whose tests touch
 concurrency, time, random seeds, floating-point reductions, shared caches, GPU

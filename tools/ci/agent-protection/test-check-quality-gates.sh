@@ -140,6 +140,14 @@ run_case "identifiers and checkstyle failures are reported together" "true" \
     "temporary-identifiers:" "" \
     CHECKSTYLE_PASSED=false TEMPORARY_IDENTIFIERS_PASSED=false
 
+run_case "the local diff recipe names the change's own base branch" "true" \
+    "git diff --merge-base origin/develop -M" "origin/master" \
+    TEMPORARY_IDENTIFIERS_PASSED=false BASE_BRANCH=develop
+
+run_case "the local diff recipe falls back to master without a base branch" "true" \
+    "git diff --merge-base origin/master -M" "" \
+    TEMPORARY_IDENTIFIERS_PASSED=false
+
 run_case "a skipped checkstyle job reports no identifier failure" "false" \
     "" "temporary-identifiers" \
     CHECKSTYLE_PASSED= TEMPORARY_IDENTIFIERS_PASSED=
