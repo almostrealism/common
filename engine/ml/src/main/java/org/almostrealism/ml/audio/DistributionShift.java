@@ -38,14 +38,38 @@ package org.almostrealism.ml.audio;
 public interface DistributionShift {
 
 	/**
-	 * Warps a single timestep.
+	 * Warps a single timestep, pinning the endpoints so that {@code 0 -> 0} and {@code 1 -> 1} for
+	 * every warp. Interior timesteps are delegated to {@link #shiftInterior(double, int)}; this keeps
+	 * the mandatory endpoint behaviour in one place rather than re-implemented (and potentially
+	 * forgotten, or guarded differently) in each warp.
 	 *
 	 * @param t              timestep in {@code [0, 1]} ({@code 1} = noise, {@code 0} = data)
 	 * @param sequenceLength latent sequence length the schedule is built for; implementations that do
 	 *                       not depend on the length ignore it, and {@code 0} may be passed to them
 	 * @return the warped timestep in {@code [0, 1]}
 	 */
-	double shift(double t, int sequenceLength);
+	default double shift(double t, int sequenceLength) {
+		if (t <= 0.0) {
+			return 0.0;
+		} else if (t >= 1.0) {
+			return 1.0;
+		}
+
+		return shiftInterior(t, sequenceLength);
+	}
+
+	/**
+	 * Warps a timestep strictly inside the open interval {@code (0, 1)}. The endpoints are pinned by
+	 * {@link #shift(double, int)} before this is reached, so an implementation may assume
+	 * {@code 0 < t < 1} and need not guard the singularities some warp formulas have at {@code 0} or
+	 * {@code 1}.
+	 *
+	 * @param t              timestep in {@code (0, 1)}
+	 * @param sequenceLength latent sequence length the schedule is built for; implementations that do
+	 *                       not depend on the length ignore it, and {@code 0} may be passed to them
+	 * @return the warped timestep in {@code (0, 1)}
+	 */
+	double shiftInterior(double t, int sequenceLength);
 
 	/**
 	 * Whether {@link #shift(double, int)} depends on its {@code sequenceLength} argument.
@@ -94,7 +118,7 @@ public interface DistributionShift {
 	static DistributionShift identity() {
 		return new DistributionShift() {
 			@Override
-			public double shift(double t, int sequenceLength) { return t; }
+			public double shiftInterior(double t, int sequenceLength) { return t; }
 
 			@Override
 			public boolean isLengthDependent() { return false; }
