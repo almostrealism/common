@@ -28,6 +28,83 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-11-05 — Fold kernel arguments into the aggregate only when the kernel would exceed its argument limit
+
+**Category:** Performance
+**Branch:** `project/plan-20261105-221734`
+**Plan:** [`PLAN-20261105-aggregate-only-over-argument-limit.md`](PLAN-20261105-aggregate-only-over-argument-limit.md)
+**Tracker:** `7bf0af0f-6afc-4ae1-9b61-b49587531d9c`
+
+#### What changed since last cycle
+
+The skip-unread copy-in work merged (PR #839) after an owner review that reshaped
+`MemoryDataArgumentMap` around one filtered `List<SliceCopy>`, and a review pass added coverage for
+never-copied read-only slices and reused aggregate layouts. Its measured result is the important
+fact: the Metal rolling-cache decode **still reports ~245 dispatches/byte**. About 92% of its
+aggregating dispatches copy back, and the slices left in them are written destinations that must
+keep their copy-in. The follow-up filed there (`a3725998`) would prove full overwrites to drop those
+copy-ins. Alongside, QA rounds landed (`qa/consolidate`, `qa/defect`, `qa/coverage`) and CI work on
+cancel-on-merge and the temporary-identifier detector.
+
+#### Category assessment (priority order)
+
+- **Documentation — current.** The one subsystem that changed (aggregate copies) carries its
+  updated contract in `base/hardware/README.md`'s "Argument Aggregation" section and in the class
+  Javadoc. The last three cycles before PR #839 included two documentation cycles. No fresh flagship
+  gap. Moved on.
+- **Code quality — owned by continuous QA**, which has three rounds in flight. The standing items
+  are unchanged. Moved on.
+- **Performance — decided the cycle again, and this time the lever is different.** Three
+  consecutive cycles reduced *copies per folded slice* (copy-back limited to written slices,
+  read-only slices copied once, unread slices skipped), and each left dispatches/byte where it was.
+  Reading `MemoryDataArgumentMap.get` showed why. The fold itself is unconditional: every root
+  argument of at most 1024 elements is folded, one `get` at a time, whether or not the kernel is
+  anywhere near the only limit aggregation exists to respect (Metal binds at most 29 arguments, as
+  `MetalOperator` documents). No `ComputeContext` exposes that limit. Several hardware tests turn
+  aggregation off to get clean commit counts. The question had been how few copies a folded slice
+  needs; the better question is whether it should be folded at all.
+- **Proof of value — still gated by this same path.** Long-form self-description and the connectome
+  simulation are both capped by aggregate copies.
+
+#### Why this task
+
+Folding only the overflow beyond the context's argument limit removes *all* copies of every slice
+it stops folding, in both directions, without the delicate full-overwrite proof `a3725998`
+requires. That proof would still leave the copy-backs. The change keeps the copy arc's rule:
+decide from the compiled program's structure, since a kernel's argument count is structure. An
+unknown limit keeps today's fold-everything behaviour, so no backend can newly exceed its limit.
+The decision is a deterministic function of the eligible roots, their lengths and order, and the
+limit, so `rebindAggregateForReuse`'s collision check replays it unchanged. The delicate part is
+moving the decision from per-`get` to once-per-preparation, and the plan names that explicitly. A
+backend-independent structural test pins the policy, and the Metal measurement records per-kernel
+fold counts so the result is explained, not just reported.
+
+#### Balance across categories
+
+This is the fourth performance cycle on the copy path in five. That would be drift if it repeated
+the same move, so it does not: it attacks the cause (unconditional folding) instead of the symptom
+(copies per fold). If the measurement still does not move, the next cycle should stop this arc,
+record why, and return to proof of value rather than pull a fifth lever. Medium task. It needs a
+Metal node for the dispatch measurement and the buffer-table evidence (workstream settings file
+present); correctness runs on any backend.
+
+#### What comes next
+
+1. This plan: the `ComputeContext` argument limit, the overflow-only fold in `MemoryDataArgumentMap`,
+   the structural test, the doc updates, and the Metal measurement.
+2. **Performance, conditional:** for kernels that must still fold, re-evaluate `a3725998`
+   (full-overwrite copy-in skip) and a single multi-region Metal copy against this plan's
+   measurement.
+3. **Proof of value, self-hosted LM:** attention sinks if long rolling-cache generations degrade.
+   Long-form self-description at speed should be demonstrable once the decode is no longer
+   copy-bound.
+4. **Proof of value, connectome:** build on the merged MaleCNS work toward the fuller whole-brain
+   reproduction.
+5. **Proof of value:** conditional diffusion training.
+6. Still open: the reduced `matmul`/convolution-gradient forms; `TransformerResamplingFeatures`'
+   buffered K/V; the `io.almostrealism.collect` split; letting a trained model read the platform's
+   own *source*.
+
 ### 2026-11-04 (later) — Skip the per-dispatch copy-in of a folded aggregate slice the kernel never reads
 
 **Category:** Performance
@@ -276,179 +353,29 @@ settings file accompanies it.
    own *source*, the deepest self-understanding aim — a natural consumer of the vector index this
    cycle documents.
 
-### 2026-11-03 — Copy read-only aggregate slices once per argument map instead of before every dispatch
+### 2026-11-03 — Copy read-only aggregate slices once per argument map instead of before every dispatch (condensed)
 
-**Category:** Performance
-**Branch:** `project/plan-20261103-041617`
+**Category:** Performance · **Branch:** `project/plan-20261103-041617` ·
 **Plan:** [`PLAN-20261103-read-only-aggregate-copy-once.md`](PLAN-20261103-read-only-aggregate-copy-once.md)
 
-#### What changed since last cycle
+The rolling KV cache (PR #818) had landed correct but dispatch-bound (~245 dispatches/byte on Metal
+against the sliding window's ~123), with argument-aggregation copies named as the binding lever.
+The cycle chose the most self-contained piece: a read-only source the compiled scope never writes
+is copied into the aggregate once, `unordered()`, read off the same `getWrittenSlices` evidence that
+governs copy-back. Merged as PR #825 with a structural regression test; its dispatches/byte
+criterion was not met because the decode benchmark's weights are writable.
 
-The rolling (sliding) key/value cache merged (PR #818): the self-hosted LM now decodes past
-`seqLen` with sliding-window semantics — token-for-token identical to the sliding window for a
-single-block model, and for a deeper model per-layer window (Mistral-style) attention matched on
-the eviction property, as that cycle's own corrections record. But the cycle's
-own measurement recorded that its throughput success criterion was **not met** — on Metal both
-paths run ~200–260 B/s, and the rolling decode issues ~245 dispatches/byte against the sliding
-window's ~123. The cache is correct but dispatch-bound, and the implementation memory named the
-binding lever explicitly: argument-aggregation copy dispatches, tracker task `38f78778`. Alongside
-it, the tokenizer byte-fallback / added-token-reachability work merged (PR #820) and a docs
-QA round (PR #821). The rolling-cache docs (`training-a-language-model.md`, `ml-inference-pipeline.md`)
-were corrected as the feature landed.
+### 2026-11-02 (later) — Decode the self-hosted LM past its trained context with a rolling key/value cache (condensed)
 
-#### Category assessment (priority order)
-
-- **Documentation — strong and current, checked not assumed.** The newest capability (the rolling
-  cache) was documented as it merged, with a dedicated correction commit for ring addressing,
-  rotation input and the length bound; the tokenizer byte-fallback work was correctness/QA work that
-  landed with its own tests. `consult` surfaced no fresh flagship prose gap. 50 internals pages, 11
-  tutorials, PDSL reference + tutorial, two simulation pages. Moved on.
-- **Code quality — strong and owned by continuous QA.** The attention-correctness and cache-ownership
-  arcs are closed; the standing items (`io.almostrealism.collect` split; `TransformerResamplingFeatures`
-  buffered K/V, deferred to that autoencoder's first fine-tune) are real but not reachable flagships.
-  Moved on.
-- **Performance — a sharp, freshly-evidenced, high-leverage lever, and it decided the cycle.** The
-  proof-of-value feature that *just landed* is dispatch-bound on exactly one mechanism: the
-  argument-aggregation copy-in runs before every dispatch, including for read-only arguments (model
-  weights, file-backed tensors) whose contents cannot change and whose aggregate slice the kernel
-  never writes. Two tracker tasks cover it — `38f78778` (cut the device-copy *count*) and the newer,
-  more self-contained `faca1b4d` (copy read-only slices *once*, from the 2026-11-02 performance QA
-  round). The copy-back path is already minimized this way (`writtenSlices`, `isCopiedBack`); the
-  copy-in is not. This is the category's definition: a known, measured bottleneck on the critical path.
-- **Proof of value — the category these two tracks serve, but gated here.** Long-form self-description
-  at usable speed and connectome-scale simulation are both capped by this copy path; the connectome
-  MaleCNS reproduction still waits on owner-provided data; conditional diffusion is heavy. The highest-
-  leverage move toward proof of value this cycle is removing the gate, not adding a feature behind it.
-
-#### Why this task
-
-I chose `faca1b4d` (copy read-only aggregate slices once) over the broader `38f78778`: it has the
-strongest correctness invariant — a read-only source cannot change, and a slice the compiled scope
-does not write is never overwritten, so after the first copy the aggregate slice stays correct — read
-off the same compiled-scope evidence (`getWrittenSlices`) that already governs copy-back, never a
-declared property. The first copy is made `unordered()`, mirroring the proven
-`MemoryReplacementManager` read-only pattern, which is what removes the Metal bridged command buffer
-(the host round trip), not merely the device copy. It is localized to `MemoryDataArgumentMap` plus one
-`AcceleratedOperation.apply` call site, with existing aggregation tests pinning correctness on any
-backend and a new structural regression test pinning the copy-once/per-dispatch split so it cannot be
-gamed by a timing threshold. It unblocks **both** proof-of-value tracks at once — the LM decode and the
-synthetic-connectome simulation — and shrinks the set `38f78778` must still address.
-
-#### Balance across categories
-
-The last cycle was proof of value (rolling KV cache). Returning to performance now is the disciplined
-move the measurement forced, not a detour: the foundation is covered and current, the proof-of-value
-feature is already landed and correct, and its promised win is blocked precisely here. It is a
-small–medium task needing a Metal node for the throughput and bridged-commit measurements (workstream
-settings file present), as the decode-throughput and rolling-cache cycles did; correctness is
-verifiable on any backend.
-
-#### What comes next
-
-1. This plan: the copy-once partition in `MemoryDataArgumentMap`, the once/per-dispatch submit in
-   `AcceleratedOperation.apply`, the structural regression test, and the Metal measurements.
-2. **Performance, complementary:** `38f78778` — cut the *count* of per-dispatch device copies for
-   slices that must still be copied every dispatch (aggregate-only-when-over-limit; skip copy-in of a
-   fully-overwritten destination; one multi-region copy dispatch on Metal), so the cache beats the
-   sliding window on dispatches/byte outright.
-3. **Proof of value, self-hosted LM:** attention sinks (pin the first `k` tokens) if the rolling
-   cache's long-generation quality degrades.
-4. **Proof of value, connectome:** the MaleCNS whole-brain ingest and the Shiu et al. reproduction,
-   once the owner provides the ~2 GB tables and a Brian2 reference.
-5. **Proof of value:** conditional diffusion training.
-6. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs > 1000) and a
-   reduced form for the convolution input gradient.
-7. Still open: `TransformerResamplingFeatures`' buffered K/V; the `io.almostrealism.collect` package
-   split; the unbuilt PDSL research/education features; letting a trained model read the platform's
-   own *source*, the deepest self-understanding aim.
-
-### 2026-11-02 (later) — Decode the self-hosted LM past its trained context with a rolling key/value cache
-
-**Category:** Proof of Value (self-hosted LM generation)
-**Branch:** `project/plan-20261102-174749`
+**Category:** Proof of Value · **Branch:** `project/plan-20261102-174749` ·
 **Plan:** [`PLAN-20261102-sliding-kv-cache.md`](PLAN-20261102-sliding-kv-cache.md)
 
-#### What changed since last cycle
-
-The neuron-level connectome documentation landed (PR #814, merged today), with its drift-guard test
-and the `llms.txt`/README cross-links, so the platform's most distinctive new science capability is
-now covered connectively, not just by Javadoc. The two QA rounds that merged alongside it
-(`qa/performance`, `qa/pdsl`) and the earlier `qa/defect` round keep the foundation current. Nothing
-foundational broke.
-
-#### Category assessment (priority order)
-
-- **Documentation — strong and current, checked not assumed.** Two documentation cycles just landed
-  (the connectome pipeline today, the PDSL authoring tutorial before it), and `consult` surfaced only
-  weak or stale gaps (a `SimulationRunner` internals page — already covered by `compute/time/README.md`;
-  the September SA3-prep classes — a staleness item owned by docs QA). The self-hosted LM's generation
-  docs are detailed and current. No fresh flagship gap. Moved on.
-- **Code quality — closed arc, owned by continuous QA.** The whole attention backward-pass correctness
-  arc (cross-attention K/V, differential lambda, the full-Jacobian output-projection gradient) is
-  closed, and the KV-cache ownership defect was repaired with its own guard. The standing items
-  (`io.almostrealism.collect` split; `TransformerResamplingFeatures` buffered K/V, deferred until that
-  autoencoder is first fine-tuned) are real but not reachable flagships this cycle. Moved on.
-- **Performance — no PM-level blocker.** The decode cache now beats the sliding window; the standing
-  levers (weighted-sum `matmul` reduced form for outputs > 1000, convolution input-gradient reduced
-  form) are real but non-blocking. Moved on.
-- **Proof of value — the category, with a sharp reachable instance whose gate is now met.** The
-  KV-cache decode is now the *faster* path (PR #783), but it is capped at `seqLen` by design — fixed
-  `(seqLen, dim)` caches, and `KeyValueCacheAutoregressiveModel.load` throws at a step past `seqLen` —
-  so the moment the model writes more than its 64-byte trained context about itself, it falls back to
-  the slower sliding window. The Manager Log has named a rolling (sliding) key/value cache as the next
-  proof-of-value step for three cycles, each time conditioned on the cache first being faster than the
-  sliding window. That condition is now met, and no tracker task exists for it yet.
-
-#### Why this task
-
-It cashes the arc the whole self-hosted LM track points at: making self-description *usable at length*,
-not just for 64 bytes. The investigation established the capability is tractable without a kernel
-redesign, from one property of RoPE: attention scores depend only on the *relative* position of query
-and key (`R(m)ᵀR(n) = R(n − m)`), so a ring-buffer cache that stores each key rotated **once** at its
-absolute position reproduces sliding-window attention for the newest token exactly — no re-rotation,
-ever — because the relative distance between the newest query and each retained key is identical under
-both schemes, and the newest row is the only one the generator samples from. That reduces the work to
-two mechanical, shared-primitive changes (ring-buffer `cache_write` indexing by `position mod seqLen`;
-rotary rotation for positions beyond the fixed `(seqLen, …)` frequency table, computed from the stored
-inverse frequencies), plus a sibling `SlidingKeyValueCacheAutoregressiveModel` and one correctness
-test. Crucially the oracle already exists and is itself verified against a full forward pass —
-`slidingWindowGenerationMatchesFullForward` — so the new generator must match the sliding window
-**byte-for-byte past `seqLen`**, a robust greedy-argmax assertion that needs no loosened tolerance and
-cannot be gamed. The two primitive changes touch kernels every attention model shares, so the plan
-requires proving them inert for the bounded path (`position mod seqLen == position` within `seqLen`).
-
-*Correction (implementation and review):* the byte-for-byte claim holds only for a single block. The
-sliding window recomputes the retained tokens through every block each step, so in a deeper model their
-deeper keys and values change as tokens leave the window, while the ring keeps the vectors each token was
-decoded with. The rolling cache is per-layer window attention, and its test pins exact agreement for one
-block and the eviction property for two. The plan's "Corrections found during implementation" section
-has the details.
-
-#### Balance across categories
-
-The last three cycles were performance (KV-decode copies) then two documentation cycles (PDSL tutorial,
-connectome pipeline). Returning to proof of value now is the disciplined move the log has telegraphed,
-not a jump to the exciting category: the foundation is covered and current, the gate this step waited on
-is met, and the connectome proof-of-value step (the MaleCNS whole-brain reproduction) is still blocked on
-owner-provided data, so it is not the reachable one this cycle. It is a medium–large task that needs a
-Metal node for the throughput comparison (workstream settings file present), as the readable-generation
-and decode-throughput cycles did.
-
-#### What comes next
-
-1. This plan: the arbitrary-position rotary on `RotationFeatures`, the ring-buffer `cache_write`, the
-   `SlidingKeyValueCacheAutoregressiveModel` generator, `slidingKeyValueCacheMatchesSlidingWindowPastSeqLen`,
-   the long-run throughput measurement, and the Generation-section rewrite.
-2. **Proof of value, quality:** attention sinks (pin the first `k` tokens) if the rolling cache's
-   match-the-sliding-window quality proves to degrade on long generations — a follow-up, not this cycle.
-3. **Proof of value, connectome:** the MaleCNS whole-brain ingest and the Shiu et al. reproduction, once
-   the owner provides the ~2 GB tables and a Brian2 reference.
-4. **Proof of value:** conditional diffusion training.
-5. **Performance:** the reduced form for the weighted-sum `matmul` lowering (outputs > 1000) and a
-   reduced form for the convolution input gradient.
-6. Still open: `TransformerResamplingFeatures`' buffered K1/V/Q2/K2; the `io.almostrealism.collect`
-   package split; the unbuilt PDSL research/education features; letting a trained model read the
-   platform's own *source*, the deepest self-understanding aim.
+With the KV-cache decode faster than the sliding window (PR #783), the cycle lifted its `seqLen`
+cap: a ring-buffer cache storing each key rotated once at its absolute position (RoPE scores depend
+only on relative position), an arbitrary-position rotary, and `SlidingKeyValueCacheAutoregressiveModel`.
+Implementation corrected the byte-for-byte claim to a single block — deeper models get per-layer
+(Mistral-style) window attention, pinned by the eviction property. Merged as PR #818; correct, but
+it missed its throughput criterion, which opened the aggregate-copy arc that followed.
 
 ### 2026-11-02 — Document the neuron-level connectome simulation pipeline (condensed)
 
