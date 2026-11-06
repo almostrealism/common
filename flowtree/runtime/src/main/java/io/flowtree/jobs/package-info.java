@@ -41,7 +41,7 @@
  *   <dd>Immutable configuration for git-managed jobs: target branch, base
  *       branch, exclusion patterns, push policy, and identity settings.</dd>
  *
- *   <dt>{@link io.flowtree.jobs.GitOperations} (lives in {@code flowtree/base})</dt>
+ *   <dt>{@link io.flowtree.git.GitOperations} (lives in {@code flowtree/base})</dt>
  *   <dd>Encapsulates git and general subprocess execution, including PATH
  *       augmentation for headless environments and non-interactive SSH.</dd>
  *

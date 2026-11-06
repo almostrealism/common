@@ -406,6 +406,46 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link JsonFieldExtractor#toJsonArray(List)} renders a {@code null} or
+	 * empty list as the empty JSON array {@code []}, so a submit response with
+	 * no accepted merge resolutions carries a well-formed empty array rather
+	 * than {@code null} or a dropped field.
+	 */
+	@Test(timeout = 10000)
+	public void toJsonArrayNullOrEmptyYieldsEmptyArray() {
+		Assert.assertEquals("[]", JsonFieldExtractor.toJsonArray(null));
+		Assert.assertEquals("[]", JsonFieldExtractor.toJsonArray(List.of()));
+	}
+
+	/**
+	 * A list of ordinary strings is rendered as a JSON array in order, with each
+	 * element quoted. The exact text matters because a caller reads the submit
+	 * response back as JSON.
+	 */
+	@Test(timeout = 10000)
+	public void toJsonArraySerializesValuesInOrder() {
+		Assert.assertEquals("[\"a\",\"b\",\"c\"]",
+				JsonFieldExtractor.toJsonArray(List.of("a", "b", "c")));
+	}
+
+	/**
+	 * Characters with special meaning in JSON — a double quote, a backslash, a
+	 * forward slash in a path — are escaped so the output is valid JSON that
+	 * {@link JsonFieldExtractor#extractStrictStringArray(String, String)} reads
+	 * back to the original strings. A naive string concatenation would emit an
+	 * unescaped quote and corrupt the array.
+	 */
+	@Test(timeout = 10000)
+	public void toJsonArrayEscapesSpecialCharactersAndRoundTrips() {
+		List<String> values = List.of(".github/workflows/ci.yml", "a\"b", "c\\d");
+
+		String json = JsonFieldExtractor.toJsonArray(values);
+
+		Assert.assertEquals(values,
+				JsonFieldExtractor.extractStrictStringArray("{\"paths\":" + json + "}", "paths"));
+	}
+
+	/**
 	 * {@link JsonFieldExtractor#getBoolean(String, String, boolean)} reads the
 	 * top-level field's explicit value, and falls back to the default when the
 	 * field is absent, {@code null}, non-boolean, or the body is not an object.

@@ -4,6 +4,7 @@
  */
 
 /**
- * Tests for GitOperations including uncommitted changes detection.
+ * Tests for the job-adjacent utilities in {@code flowtree/base}: managed
+ * directories and the test-hiding audit.
  */
 package io.flowtree.jobs;

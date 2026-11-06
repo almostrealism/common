@@ -579,6 +579,23 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Serializes a list of strings to a JSON array string. The inverse of
+	 * {@link #extractStrictStringArray(String, String)} for one field's value.
+	 *
+	 * @param values the strings to serialize; null or empty yields {@code "[]"}
+	 * @return a JSON array string such as {@code ["a","b"]}
+	 */
+	public static String toJsonArray(List<String> values) {
+		if (values == null || values.isEmpty()) return "[]";
+
+		try {
+			return MAPPER.writeValueAsString(values);
+		} catch (Exception e) {
+			return "[]";
+		}
+	}
+
+	/**
 	 * Extracts the last JSON object line from newline-delimited JSON output
 	 * that matches the specified {@code "type"} value.
 	 *

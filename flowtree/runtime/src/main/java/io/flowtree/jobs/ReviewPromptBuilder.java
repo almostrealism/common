@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.git.GitOperations;
+
 import java.util.List;
 
 /**

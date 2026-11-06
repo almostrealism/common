@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.flowtree.jobs;
+package io.flowtree.git;
 
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -25,11 +25,13 @@ import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -127,6 +129,62 @@ public class GitOperations implements ConsoleFeatures {
     private String gitUserEmail;
 
     /**
+     * Additional environment variables applied to every git process this
+     * instance starts, such as {@code GIT_INDEX_FILE} for work against an
+     * index other than the repository's own.
+     */
+    private final Map<String, String> environment = new LinkedHashMap<>();
+
+    /**
+     * The arguments, exit code and combined standard output and standard
+     * error of one git invocation, for a caller that must report why a
+     * command failed rather than only that it did.
+     *
+     * @param args     the git sub-command and its arguments
+     * @param exitCode the process exit code (0 indicates success)
+     * @param output   the combined standard output and standard error
+     */
+    public record Result(List<String> args, int exitCode, String output) {
+
+        /**
+         * Returns whether the command exited zero.
+         *
+         * @return {@code true} on success
+         */
+        public boolean succeeded() {
+            return exitCode == 0;
+        }
+
+        /**
+         * Describes the invocation and how it ended, in the form a person
+         * reading an error needs: the command, its exit code and git's own
+         * message.
+         *
+         * @return e.g. {@code "git add -- a.txt failed (exit 128): fatal: ..."}
+         */
+        public String describe() {
+            return "git " + String.join(" ", args)
+                    + (succeeded() ? " succeeded" : " failed (exit " + exitCode + ")")
+                    + (output.isBlank() ? "" : ": " + output.trim());
+        }
+
+        /**
+         * Returns this result if the command succeeded, and otherwise throws
+         * with its {@link #describe() description}, for a caller that cannot
+         * continue past a failed command.
+         *
+         * @return this result
+         * @throws IOException if the command exited non-zero
+         */
+        public Result requireSuccess() throws IOException {
+            if (!succeeded()) {
+                throw new IOException(describe());
+            }
+            return this;
+        }
+    }
+
+    /**
      * Creates a new {@code GitOperations} instance.
      *
      * @param workingDirectory the directory in which git commands will be
@@ -176,6 +234,23 @@ public class GitOperations implements ConsoleFeatures {
      */
     public String getGitUserEmail() {
         return gitUserEmail;
+    }
+
+    /**
+     * Sets an environment variable for every git process this instance
+     * starts. Used, for example, to point {@code GIT_INDEX_FILE} at a
+     * temporary index so a commit can be assembled without touching the
+     * repository's own index.
+     *
+     * @param name  the variable name
+     * @param value the value, or {@code null} to stop setting it
+     */
+    public void setEnvironmentVariable(String name, String value) {
+        if (value == null) {
+            environment.remove(name);
+        } else {
+            environment.put(name, value);
+        }
     }
 
     /**
@@ -457,6 +532,82 @@ public class GitOperations implements ConsoleFeatures {
      *                              while waiting for the process
      */
     public int execute(String... args) throws IOException, InterruptedException {
+        Result result = executeForResult(args);
+        if (!result.succeeded()) {
+            warn(result.describe());
+        }
+        return result.exitCode();
+    }
+
+    /**
+     * Records the working-tree state of {@code path} in the index: its
+     * content when the path exists, and its removal when it does not.
+     *
+     * <p>A path absent from the working tree is staged with
+     * {@code git rm --cached --ignore-unmatch} rather than {@code git add}.
+     * The two agree for an ordinary deletion, but {@code git add} fails with
+     * "pathspec did not match any files" when the path is also gone from the
+     * index, which is the state {@code git rm} leaves, for example when a
+     * modify/delete merge conflict is resolved by taking the deletion.</p>
+     *
+     * @param path the path, relative to the working directory
+     * @return the git invocation's result
+     * @throws IOException          if the process cannot be started
+     * @throws InterruptedException if the current thread is interrupted
+     */
+    public Result stage(String path) throws IOException, InterruptedException {
+        return existsInWorkingTree(path)
+                ? executeForResult("add", "--", path)
+                : executeForResult("rm", "--cached", "--quiet", "--ignore-unmatch", "--", path);
+    }
+
+    /**
+     * Returns whether {@code path}'s state in both the index and the working
+     * tree is exactly its state in {@code commit}: identical content, or
+     * absent from all three. A comparison git cannot make reads as a
+     * mismatch.
+     *
+     * @param path   the path, relative to the working directory
+     * @param commit the commit to compare against
+     * @return {@code true} when the index and working tree both match the commit
+     * @throws IOException          if a process cannot be started
+     * @throws InterruptedException if the current thread is interrupted
+     */
+    public boolean matchesCommit(String path, String commit) throws IOException, InterruptedException {
+        boolean inCommit = executeForResult("cat-file", "-e", commit + ":" + path).succeeded();
+        return existsInWorkingTree(path) == inCommit
+                && executeForResult("diff", "--quiet", commit, "--", path).succeeded()
+                && executeForResult("diff", "--cached", "--quiet", commit, "--", path).succeeded();
+    }
+
+    /**
+     * Returns whether {@code path} exists in the working tree, counting a
+     * symbolic link as present whatever it points to.
+     *
+     * @param path the path, relative to the working directory
+     * @return {@code true} when the path exists
+     */
+    private boolean existsInWorkingTree(String path) {
+        File root = workingDirectory != null ? new File(workingDirectory) : new File(".");
+        return Files.exists(new File(root, path).toPath(), LinkOption.NOFOLLOW_LINKS);
+    }
+
+    /**
+     * Executes a git command and returns both its exit code and its combined
+     * standard output and standard error, without logging anything.
+     *
+     * <p>{@link #execute} reports only the exit code and
+     * {@link #executeWithOutput} only the output; a caller that must say
+     * <em>why</em> a command failed (to put git's own message in an error a
+     * person will read) needs both from the same invocation.</p>
+     *
+     * @param args the git sub-command and its arguments
+     * @return the exit code and output
+     * @throws IOException          if the process cannot be started
+     * @throws InterruptedException if the current thread is interrupted
+     *                              while waiting for the process
+     */
+    public Result executeForResult(String... args) throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
         command.add(resolveGitCommand());
         command.addAll(Arrays.asList(args));
@@ -466,14 +617,7 @@ public class GitOperations implements ConsoleFeatures {
 
         Process process = pb.start();
         String output = readProcessOutput(process);
-
-        int exitCode = process.waitFor();
-        if (exitCode != 0) {
-            warn("git " + String.join(" ", args)
-                    + " failed (exit " + exitCode + "): " + output.trim());
-        }
-
-        return exitCode;
+        return new Result(List.of(args), process.waitFor(), output);
     }
 
     /**
@@ -545,18 +689,7 @@ public class GitOperations implements ConsoleFeatures {
      *                              while waiting for the process
      */
     public String executeWithOutput(String... args) throws IOException, InterruptedException {
-        List<String> command = new ArrayList<>();
-        command.add(resolveGitCommand());
-        command.addAll(Arrays.asList(args));
-
-        ProcessBuilder pb = new ProcessBuilder(command);
-        configureGitProcess(pb);
-
-        Process process = pb.start();
-        String output = readProcessOutput(process);
-
-        process.waitFor();
-        return output;
+        return executeForResult(args).output();
     }
 
     /**
@@ -590,6 +723,49 @@ public class GitOperations implements ConsoleFeatures {
         result = execute("show-ref", "--verify", "--quiet",
                 "refs/remotes/origin/" + branch);
         return result == 0;
+    }
+
+    /**
+     * Checks out {@code branch}, creating it from {@code startPoint} when it
+     * exists neither locally nor on {@code origin} and {@code create} is
+     * {@code true}.
+     *
+     * <p>A new branch is created with {@code --no-track}, so it does not
+     * inherit the start point's upstream; the first push sets the upstream to
+     * the branch's own remote counterpart explicitly. In a dry run the
+     * checkout is only logged.</p>
+     *
+     * @param branch     the branch to be on
+     * @param startPoint where to create it from when it does not exist
+     * @param create     whether a missing branch may be created
+     * @param dryRun     whether to log the checkout instead of performing it
+     * @return {@code true} if the working tree is (or in a dry run would be) on the branch
+     * @throws IOException          if a git command fails to execute
+     * @throws InterruptedException if a git command is interrupted
+     */
+    public boolean checkoutBranch(String branch, String startPoint, boolean create, boolean dryRun)
+            throws IOException, InterruptedException {
+        if (branch.equals(getCurrentBranch())) {
+            log("Already on target branch: " + branch);
+            return true;
+        }
+
+        boolean exists = branchExists(branch);
+        if (!exists && !create) {
+            warn("Target branch does not exist and createBranchIfMissing=false");
+            return false;
+        }
+
+        if (dryRun) {
+            log("DRY RUN: Would " + (exists ? "checkout" : "create and checkout") + " branch: " + branch);
+            return true;
+        }
+
+        if (exists) {
+            return execute("checkout", branch) == 0;
+        }
+        log("Creating new branch: " + branch + " from " + startPoint);
+        return execute("checkout", "-b", branch, "--no-track", startPoint) == 0;
     }
 
     /**
@@ -797,6 +973,7 @@ public class GitOperations implements ConsoleFeatures {
         configureProcess(pb);
         pb.environment().put("GIT_SSH_COMMAND", SSH_COMMAND);
         applyGitIdentity(pb);
+        pb.environment().putAll(environment);
     }
 
     /**

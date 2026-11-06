@@ -17,6 +17,7 @@
 package io.flowtree.jobs;
 
 import io.almostrealism.uml.Named;
+import io.flowtree.git.GitOperations;
 
 import java.util.Set;
 
