@@ -52,6 +52,15 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	/** A length shorter than one chunk. */
 	private static final int SHORT_LENGTH = 1000;
 
+	/**
+	 * The length of the overlapping copies. Every value they move is an integer below 256,
+	 * which every supported precision, including FP16, stores exactly.
+	 */
+	private static final int OVERLAP_LENGTH = 200;
+
+	/** The chunk size of the overlapping copies, so that each spans many chunks. */
+	private static final int OVERLAP_CHUNK = 16;
+
 	/** The value every destination element outside the copied range is left holding. */
 	private static final double UNTOUCHED = -1.0;
 
@@ -141,6 +150,54 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 		Assert.assertEquals(length, dest.total);
 		Assert.assertEquals((long) (chunks - 1) * chunk, dest.lastOffset);
 		Assert.assertEquals(last, dest.lastLength);
+	}
+
+	/**
+	 * A copy within one memory region whose destination starts inside the source range
+	 * stores the values the source held before the copy, even though the earlier chunks it
+	 * writes overlap the later chunks it reads.
+	 */
+	@Test(timeout = 60000)
+	public void overlappingCopyToLaterOffsetPreservesSource() {
+		verifyOverlappingCopy(0, 37);
+	}
+
+	/**
+	 * A copy within one memory region whose destination starts before the source range
+	 * stores the values the source held before the copy.
+	 */
+	@Test(timeout = 60000)
+	public void overlappingCopyToEarlierOffsetPreservesSource() {
+		verifyOverlappingCopy(37, 0);
+	}
+
+	/**
+	 * Copies {@link #OVERLAP_LENGTH} elements of one kernel memory region onto an
+	 * overlapping range of the same region in chunks of {@link #OVERLAP_CHUNK} elements, and
+	 * checks that the result matches a copy of a snapshot of the source range.
+	 *
+	 * @param srcOffset the starting position of the source range
+	 * @param offset    the starting position of the destination range
+	 */
+	private void verifyOverlappingCopy(int srcOffset, int offset) {
+		MemoryProvider<Memory> provider = kernelProvider();
+		int size = Math.max(srcOffset, offset) + OVERLAP_LENGTH;
+
+		double[] initial = new double[size];
+		for (int i = 0; i < size; i++) initial[i] = i;
+
+		double[] expected = initial.clone();
+		for (int i = 0; i < OVERLAP_LENGTH; i++) expected[offset + i] = initial[srcOffset + i];
+
+		Memory mem = provider.allocate(size);
+
+		try {
+			provider.setMem(mem, 0, initial, 0, size);
+			provider.setMemInChunks(mem, offset, mem, srcOffset, OVERLAP_LENGTH, OVERLAP_CHUNK);
+			Assert.assertArrayEquals(expected, provider.toArray(mem, 0, size), 0.0);
+		} finally {
+			provider.deallocate(size, mem);
+		}
 	}
 
 	/**

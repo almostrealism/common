@@ -186,6 +186,10 @@ public interface MemoryProvider<T extends Memory> extends Named {
 	 * growing with {@code length}. A copy no longer than one chunk is one read and one
 	 * write of the whole range.</p>
 	 *
+	 * <p>A copy within one memory region whose destination starts inside the source range
+	 * is made from the last chunk to the first, so every chunk is read before any write
+	 * reaches it and the result is the same as copying a snapshot of the whole source.</p>
+	 *
 	 * <p>No monitor is held across the read of a chunk: a provider that serializes its
 	 * own writes takes its monitor inside {@link #setMem(Memory, int, double[], int, int)}
 	 * for each chunk, so two providers copying into each other cannot deadlock here.</p>
@@ -208,10 +212,18 @@ public interface MemoryProvider<T extends Memory> extends Named {
 		double[] chunk = new double[Math.min(length, chunkSize)];
 
 		int n;
-		for (int pos = 0; pos < length; pos += n) {
-			n = Math.min(chunk.length, length - pos);
-			source.get(srcOffset + pos, chunk, 0, n);
-			setMem(mem, offset + pos, chunk, 0, n);
+		if (source == mem && offset > srcOffset && offset - srcOffset < length) {
+			for (int end = length; end > 0; end -= n) {
+				n = Math.min(chunk.length, end);
+				source.get(srcOffset + end - n, chunk, 0, n);
+				setMem(mem, offset + end - n, chunk, 0, n);
+			}
+		} else {
+			for (int pos = 0; pos < length; pos += n) {
+				n = Math.min(chunk.length, length - pos);
+				source.get(srcOffset + pos, chunk, 0, n);
+				setMem(mem, offset + pos, chunk, 0, n);
+			}
 		}
 	}
 
