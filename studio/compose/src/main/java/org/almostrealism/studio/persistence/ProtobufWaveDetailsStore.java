@@ -27,11 +27,15 @@ import org.almostrealism.persist.index.SearchResult;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * {@link WaveDetailsStore} implementation backed by a
@@ -43,6 +47,12 @@ import java.util.function.Consumer;
  * and {@link Audio.WaveDetailData} (protobuf messages). It delegates
  * all persistence, caching, and HNSW indexing to the underlying
  * {@link ProtobufDiskStore}.</p>
+ *
+ * <p>The validated-model marker is a sidecar file beside the batch files. Every
+ * {@code put} clears it before writing, under the same lock that
+ * {@link #setValidatedModel(String, Predicate)} holds while it tests completeness
+ * and writes the marker, so no record can be stored that the marker vouches for
+ * without having been tested.</p>
  *
  * @see WaveDetailsStore
  * @see ProtobufDiskStore
@@ -63,6 +73,12 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	/** Directory holding the batch files, index, and the validated-model marker. */
 	private final File rootDir;
 
+	/** Guards the validated-model marker against concurrent record writes. */
+	private final Object markerLock = new Object();
+
+	/** Whether the validated-model marker may be present on disk; guarded by {@link #markerLock}. */
+	private boolean markerPresent;
+
 	/**
 	 * Creates a store at the given directory with default settings.
 	 *
@@ -71,6 +87,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	public ProtobufWaveDetailsStore(File rootDir) {
 		this.rootDir = rootDir;
 		this.diskStore = new ProtobufDiskStore<>(rootDir, Audio.WaveDetailData.parser());
+		this.markerPresent = markerPath().toFile().exists();
 	}
 
 	/**
@@ -84,6 +101,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 		this.rootDir = rootDir;
 		this.diskStore = new ProtobufDiskStore<>(
 				rootDir, Audio.WaveDetailData.parser(), maxMemoryBytes, targetBatchSize);
+		this.markerPresent = markerPath().toFile().exists();
 	}
 
 	/**
@@ -116,7 +134,10 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	@Override
 	public void put(String identifier, WaveDetails details) {
 		Audio.WaveDetailData data = AudioLibraryPersistence.encode(details, false);
-		diskStore.put(identifier, data);
+		synchronized (markerLock) {
+			clearValidatedModel();
+			diskStore.put(identifier, data);
+		}
 	}
 
 	@Override
@@ -124,7 +145,10 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 		// The embedding is pooled from the active model's features
 		setEmbeddingModel(details.getActiveModelIdentifier());
 		Audio.WaveDetailData data = AudioLibraryPersistence.encode(details, false);
-		diskStore.put(identifier, data, embeddingVector);
+		synchronized (markerLock) {
+			clearValidatedModel();
+			diskStore.put(identifier, data, embeddingVector);
+		}
 	}
 
 	@Override
@@ -203,11 +227,11 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	@Override
 	public String getValidatedModel() {
-		File marker = new File(rootDir, VALIDATED_MODEL_FILE_NAME);
-		if (!marker.exists()) return null;
+		Path marker = markerPath();
+		if (!Files.exists(marker)) return null;
 
 		try {
-			String model = Files.readString(marker.toPath()).trim();
+			String model = Files.readString(marker).trim();
 			return model.isEmpty() ? null : model;
 		} catch (IOException e) {
 			// Degrade to a rescan rather than aborting the library open that reads this.
@@ -217,19 +241,50 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	}
 
 	@Override
-	public void setValidatedModel(String modelIdentifier) {
-		File marker = new File(rootDir, VALIDATED_MODEL_FILE_NAME);
+	public void setValidatedModel(String modelIdentifier, Predicate<Set<String>> complete) {
+		synchronized (markerLock) {
+			if (modelIdentifier == null || !complete.test(allIdentifiers())) {
+				clearValidatedModel();
+				return;
+			}
+
+			// The marker must never vouch for a record that is not yet on disk.
+			diskStore.flush();
+
+			Path marker = markerPath();
+			Path pending = marker.resolveSibling(VALIDATED_MODEL_FILE_NAME + ".tmp");
+			try {
+				Files.writeString(pending, modelIdentifier);
+				Files.move(pending, marker, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+				markerPresent = true;
+			} catch (IOException e) {
+				// A marker that is not written only costs a rescan next launch.
+				warn("Unable to persist validated-model marker at " + marker, e);
+			}
+		}
+	}
+
+	/**
+	 * Deletes the validated-model marker, if it may be present. Must be called
+	 * holding {@link #markerLock}. Failure is thrown rather than logged: a marker
+	 * that survives would let the next launch trust records it never vouched for.
+	 *
+	 * @throws UncheckedIOException if the marker exists and cannot be deleted
+	 */
+	private void clearValidatedModel() {
+		if (!markerPresent) return;
 
 		try {
-			if (modelIdentifier == null) {
-				Files.deleteIfExists(marker.toPath());
-			} else {
-				Files.writeString(marker.toPath(), modelIdentifier);
-			}
+			Files.deleteIfExists(markerPath());
+			markerPresent = false;
 		} catch (IOException e) {
-			// A failed write only costs a rescan next launch; do not fail the refresh.
-			warn("Unable to persist validated-model marker at " + marker, e);
+			throw new UncheckedIOException("Unable to clear validated-model marker at " + markerPath(), e);
 		}
+	}
+
+	/** Returns the path of the validated-model marker file. */
+	private Path markerPath() {
+		return new File(rootDir, VALIDATED_MODEL_FILE_NAME).toPath();
 	}
 
 	@Override

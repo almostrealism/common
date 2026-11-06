@@ -702,9 +702,9 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * back to file paths (requires the file tree to be populated with the
 	 * corresponding audio files).</p>
 	 *
-	 * <p>Including a record that is not complete for the current model clears any
-	 * persisted validated-model marker, so the store is no longer taken as fully
-	 * validated and the next launch rescans rather than trusting the new record.</p>
+	 * <p>A record that is not complete for the current model is dropped from the
+	 * complete set before it is written, so replacing a complete record with an
+	 * incomplete one is recomputed rather than trusted.</p>
 	 *
 	 * @param details the WaveDetails to add (must have non-null identifier)
 	 * @throws IllegalArgumentException if details.getIdentifier() is null
@@ -714,19 +714,16 @@ public class AudioLibrary implements ConsoleFeatures {
 			throw new IllegalArgumentException();
 		}
 
+		boolean complete = isComplete(details);
+		if (!complete) completeIdentifiers.remove(details.getIdentifier());
+
 		if (store != null) {
 			store.put(details.getIdentifier(), details);
 		} else {
 			detailsCache.put(details.getIdentifier(), details);
 		}
 
-		if (isComplete(details)) {
-			completeIdentifiers.add(details.getIdentifier());
-		} else if (store != null) {
-			// An incomplete record leaves the store no longer fully validated,
-			// so the marker must not survive to let the next launch trust it.
-			store.setValidatedModel(null);
-		}
+		if (complete) completeIdentifiers.add(details.getIdentifier());
 
 		if (details.isPersistent()) {
 			persistentIdentifiers.add(details.getIdentifier());
@@ -1049,12 +1046,15 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * to the store with a mean-pooled embedding vector (enabling HNSW
 	 * nearest-neighbour search); otherwise returned to the in-memory cache. Used
 	 * by the analysis path and by {@link WaveFeatureCleanup}, which mutates an
-	 * item in place and needs the change to survive a reload.
+	 * item in place and needs the change to survive a reload. A record that is not
+	 * complete for the current model is dropped from the complete set first, so it is
+	 * recomputed rather than trusted.
 	 *
 	 * @param details the details to persist
 	 */
 	public void persist(WaveDetails details) {
 		String id = details.getIdentifier();
+		if (!isComplete(details)) completeIdentifiers.remove(id);
 		if (store == null) {
 			detailsCache.put(id, details);
 			return;
@@ -1501,9 +1501,9 @@ public class AudioLibrary implements ConsoleFeatures {
 			// The validated model is recorded only once these recompute jobs drain,
 			// so an interrupted run rescans on the next launch instead of trusting it.
 			WaveDetailsJob last = new WaveDetailsJob(this::processJob, null, false, -1.0);
-			last.getFuture().thenRun(() -> {
-				recordValidatedModel(modelId);
-				future.complete(null);
+			last.getFuture().thenRun(() -> recordValidatedModel(modelId)).whenComplete((v, e) -> {
+				if (e == null) future.complete(null);
+				else future.completeExceptionally(e);
 			});
 			latestRefresh = future;
 			executor.execute(last);
@@ -1518,25 +1518,19 @@ public class AudioLibrary implements ConsoleFeatures {
 	 * relaunch can skip re-reading every stored record to reconfirm completeness.
 	 * Invoked once a {@link #refresh()} has fully drained.
 	 *
-	 * <p>Pending records are flushed first: the marker must never claim a record the
-	 * store has not yet written to disk, or a crash in that window would leave the
-	 * next launch trusting data that was lost.</p>
-	 *
-	 * <p>The marker is recorded only when every stored identifier is complete for the
-	 * model. If a stale record could not be recomputed (its provider is unavailable,
-	 * or its recomputation failed), it remains in the store but absent from
-	 * {@link #completeIdentifiers}; recording the marker then would cause the next
-	 * launch to restore it as complete and never rescan it. In that case the marker
-	 * is cleared instead, so the next launch rescans and retries.</p>
+	 * <p>The marker is recorded only when {@link #completeIdentifiers} vouches for
+	 * every stored identifier under this model. A stale record that could not be
+	 * recomputed (its provider is unavailable, or its recomputation failed) remains
+	 * in the store but not the complete set, and a refresh that drains after a newer
+	 * one has revalidated the set for another model vouches for nothing; in either
+	 * case the marker is cleared, so the next launch rescans. The store flushes and
+	 * tests this atomically with its writes (see
+	 * {@link WaveDetailsStore#setValidatedModel(String, java.util.function.Predicate)}).</p>
 	 *
 	 * @param modelId the model the store was validated against, or {@code null}
 	 */
 	private void recordValidatedModel(String modelId) {
-		if (store == null) return;
-
-		store.flush();
-		store.setValidatedModel(
-				completeIdentifiers.containsAll(store.allIdentifiers()) ? modelId : null);
+		if (store != null) store.setValidatedModel(modelId, ids -> completeIdentifiers.covers(modelId, ids));
 	}
 
 	/**

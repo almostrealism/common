@@ -244,6 +244,30 @@ public class CompleteIdentifierSetTest extends TestSuiteBase {
 		Assert.assertEquals("the incomplete item is removed", List.of("b"), removed);
 	}
 
+	/**
+	 * {@link CompleteIdentifierSet#covers} vouches for identifiers only under the
+	 * model the set was last checked against, and only when it holds every one.
+	 */
+	@Test(timeout = 60000)
+	public void coversOnlyUnderTheCheckedModelAndOnlyHeldIdentifiers() {
+		CompleteIdentifierSet set = new CompleteIdentifierSet();
+		set.restore(List.of("a", "b"), null);
+		Assert.assertFalse("an unchecked set vouches for nothing", set.covers("model-a", List.of("a")));
+		Assert.assertFalse("a null model never matches", set.covers(null, List.of("a")));
+
+		set.revalidate("model-a", id -> true);
+		Assert.assertTrue("every held id is vouched for", set.covers("model-a", List.of("a", "b")));
+		Assert.assertTrue("an empty store is trivially covered", set.covers("model-a", List.of()));
+		Assert.assertFalse("an id the set does not hold is not vouched for",
+				set.covers("model-a", List.of("a", "b", "c")));
+		Assert.assertFalse("a different model is not vouched for", set.covers("model-b", List.of("a")));
+
+		set.revalidate("model-b", id -> true);
+		Assert.assertFalse("once revalidated for a newer model, the old model is no longer vouched for",
+				set.covers("model-a", List.of("a")));
+		Assert.assertTrue(set.covers("model-b", List.of("a", "b")));
+	}
+
 	/** The type behaves as a {@link Set}: add/remove/contains/size all delegate correctly. */
 	@Test(timeout = 60000)
 	public void behavesAsASet() {

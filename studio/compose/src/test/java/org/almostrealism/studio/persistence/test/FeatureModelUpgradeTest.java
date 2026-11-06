@@ -33,13 +33,18 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
@@ -466,6 +471,142 @@ public class FeatureModelUpgradeTest extends TestSuiteBase {
 
 		library.stop();
 		store.close();
+	}
+
+	/**
+	 * A record written to the store after a validated refresh by a path other than
+	 * {@link AudioLibrary#include} — a direct store write, as the migration path and
+	 * {@link AudioLibrary#persist} make — clears the marker, so no write can leave
+	 * a marker vouching for a record it never tested.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void anyStoreWriteAfterValidationClearsTheMarker() throws Exception {
+		generateSineWaves(3);
+
+		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		AudioLibrary library = openLibrary(store, new CountingProvider(), errors);
+		library.refresh().get();
+		Assert.assertEquals("analysis must not fail: " + errors, 0, errors.size());
+		Assert.assertEquals(NEW_MODEL, store.getValidatedModel());
+
+		store.put("written-directly", new WaveDetails("written-directly", SAMPLE_RATE));
+		Assert.assertNull("a direct store write clears the marker", store.getValidatedModel());
+
+		library.refresh().get();
+		Assert.assertNull("an unrecomputable record keeps the store unvalidated", store.getValidatedModel());
+
+		library.remove("written-directly");
+		library.refresh().get();
+		Assert.assertEquals("once every record is complete again the model is recorded",
+				NEW_MODEL, store.getValidatedModel());
+
+		WaveDetails complete = store.get(store.allIdentifiers().iterator().next());
+		library.persist(complete);
+		Assert.assertNull("persist clears the marker before writing, even for a complete record",
+				store.getValidatedModel());
+
+		library.stop();
+		store.close();
+	}
+
+	/**
+	 * Replacing a complete record with an incomplete one through
+	 * {@link AudioLibrary#include} drops it from the complete set in the same
+	 * process, so the next same-model refresh recomputes it rather than trusting it.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void includingAnIncompleteReplacementDropsTheIdentifierFromTheCompleteSet() throws Exception {
+		generateSineWaves(3);
+
+		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+		CountingProvider provider = new CountingProvider();
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		AudioLibrary library = openLibrary(store, provider, errors);
+		library.refresh().get();
+		Assert.assertEquals("analysis must not fail: " + errors, 0, errors.size());
+
+		String id = store.allIdentifiers().iterator().next();
+		Assert.assertTrue(library.getAllIdentifiers().contains(id));
+
+		WaveDetails stored = store.get(id);
+		WaveDetails replacement = new WaveDetails(id, SAMPLE_RATE);
+		replacement.setFreqData(stored.getFreqData());
+		replacement.setFreqSampleRate(stored.getFreqSampleRate());
+		replacement.setFreqChannelCount(stored.getFreqChannelCount());
+		replacement.setFreqBinCount(stored.getFreqBinCount());
+		replacement.setFreqFrameCount(stored.getFreqFrameCount());
+		library.include(replacement);
+		Assert.assertFalse("an incomplete replacement is no longer trusted as complete",
+				library.getAllIdentifiers().contains(id));
+
+		int computedBefore = provider.computed.get();
+		library.refresh().get();
+		Assert.assertEquals("the replaced record is recomputed by the next refresh",
+				computedBefore + 1, provider.computed.get());
+		Assert.assertNotNull(store.get(id).getFeatures(NEW_MODEL));
+		Assert.assertEquals(NEW_MODEL, store.getValidatedModel());
+
+		library.stop();
+		store.close();
+	}
+
+	/**
+	 * A marker that cannot be cleared fails the write that would invalidate it,
+	 * rather than surviving to let the next launch trust a record it never tested.
+	 *
+	 * @throws Exception if the store cannot be prepared
+	 */
+	@Test(timeout = 60000)
+	public void aMarkerThatCannotBeClearedFailsTheWrite() throws Exception {
+		// A non-empty directory in the marker's place cannot be deleted.
+		Path marker = storeDir.resolve("complete.model");
+		Files.createDirectories(marker);
+		Files.writeString(marker.resolve("blocker"), "x");
+
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		try {
+			store.put("record", new WaveDetails("record", SAMPLE_RATE));
+			Assert.fail("a write that cannot clear the marker must fail");
+		} catch (UncheckedIOException expected) {
+			Assert.assertFalse("the record is not written while the marker stands",
+					store.containsKey("record"));
+		} finally {
+			store.close();
+		}
+	}
+
+	/**
+	 * When recording the validated model fails, the refresh future completes
+	 * exceptionally instead of never completing.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void aFailureToRecordTheModelFailsTheRefreshRatherThanHangingIt() throws Exception {
+		generateSineWaves(2);
+
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile()) {
+			@Override
+			public void setValidatedModel(String modelIdentifier, Predicate<Set<String>> complete) {
+				throw new UncheckedIOException(new IOException("simulated marker failure"));
+			}
+		};
+		AudioLibrary library = openLibrary(store, new CountingProvider(), new ArrayList<>());
+
+		try {
+			library.refresh().get(120, TimeUnit.SECONDS);
+			Assert.fail("the refresh must report the failure");
+		} catch (ExecutionException expected) {
+			Assert.assertTrue(expected.getCause() instanceof UncheckedIOException);
+		} finally {
+			library.stop();
+			store.close();
+		}
 	}
 
 	/** Generates the library's sample files. */

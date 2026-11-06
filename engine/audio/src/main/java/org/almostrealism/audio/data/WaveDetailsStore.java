@@ -21,6 +21,7 @@ import org.almostrealism.collect.PackedCollection;
 import java.io.Closeable;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Abstraction for persisting and retrieving {@link WaveDetails} records,
@@ -158,7 +159,7 @@ public interface WaveDetailsStore extends Closeable {
 
 	/**
 	 * Return the feature model the store's contents were last fully validated
-	 * against, as persisted by {@link #setValidatedModel(String)}, or
+	 * against, as persisted by {@link #setValidatedModel(String, Predicate)}, or
 	 * {@code null} if none was recorded. A library seeds its completeness
 	 * bookkeeping from this so that reopening a store under an unchanged model
 	 * does not have to read every record to confirm it is complete. An index
@@ -177,17 +178,33 @@ public interface WaveDetailsStore extends Closeable {
 	/**
 	 * Record the feature model the store's contents have been fully validated
 	 * against, so a later reopen can skip the per-record completeness scan when
-	 * the model is unchanged. Callers record this only once a refresh has
-	 * finished recomputing every record that lacked the model's features, so an
-	 * interrupted run leaves the previous marker in place and the next launch
-	 * rescans. Passing {@code null} clears the marker. Implementations that do
-	 * not persist this marker may ignore it; the default does nothing. Failing
-	 * to persist the marker costs only a rescan on the next launch, so an
-	 * implementation degrades rather than throwing into the refresh that records it.
+	 * the model is unchanged. Callers record this once a refresh has finished
+	 * recomputing every record that lacked the model's features.
+	 *
+	 * <p>The marker vouches for every stored record, so an implementation that
+	 * persists it must keep it fail-closed:</p>
+	 * <ul>
+	 *   <li>every {@code put} clears the marker before the record is written, so
+	 *       no write — an interrupted refresh's first pass, a migration, or any
+	 *       other caller — can leave a marker vouching for a record it never saw;</li>
+	 *   <li>{@code complete} is tested against {@link #allIdentifiers()}, and the
+	 *       marker written, atomically with respect to {@code put}, so a record
+	 *       stored between the test and the write cannot be vouched for;</li>
+	 *   <li>pending records are flushed before the marker is written;</li>
+	 *   <li>if the marker cannot be cleared, the implementation throws rather
+	 *       than leaving a stale marker trusted.</li>
+	 * </ul>
+	 *
+	 * <p>A {@code null} model, or a {@code complete} test that fails, clears the
+	 * marker. Failing to <em>write</em> the marker costs only a rescan on the next
+	 * launch, so that failure is not thrown. Implementations that do not persist
+	 * the marker ignore this; the default does nothing.</p>
 	 *
 	 * @param modelIdentifier the validated feature model, or {@code null} to clear
+	 * @param complete        whether the given stored identifiers are all complete
+	 *                        for {@code modelIdentifier}
 	 */
-	default void setValidatedModel(String modelIdentifier) {
+	default void setValidatedModel(String modelIdentifier, Predicate<Set<String>> complete) {
 	}
 
 	/**

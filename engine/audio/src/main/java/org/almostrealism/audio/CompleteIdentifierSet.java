@@ -95,6 +95,22 @@ final class CompleteIdentifierSet extends AbstractSet<String> {
 	}
 
 	/**
+	 * Returns whether this set vouches for every one of {@code identifiers} under
+	 * {@code modelId}: the set was last checked against that model, and contains
+	 * each identifier. A set checked against another model — for example because
+	 * a later refresh for a newer model has revalidated it — vouches for nothing
+	 * under the old one, so a refresh that drains after the model has moved on
+	 * cannot record its stale model as validated.
+	 *
+	 * @param modelId     the model to vouch under; {@code null} never matches
+	 * @param identifiers the identifiers to vouch for
+	 * @return true if every identifier is known complete for {@code modelId}
+	 */
+	boolean covers(String modelId, Collection<String> identifiers) {
+		return modelId != null && modelId.equals(this.modelId) && this.identifiers.containsAll(identifiers);
+	}
+
+	/**
 	 * Removes every identifier that fails {@code complete}, unless this set was
 	 * already checked against {@code modelId}. Checking is costly (it reads each
 	 * item), so it runs once per model rather than on every refresh.
