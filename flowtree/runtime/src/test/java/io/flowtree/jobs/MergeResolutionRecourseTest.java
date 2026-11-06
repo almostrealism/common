@@ -331,7 +331,7 @@ public class MergeResolutionRecourseTest extends TestSuiteBase {
 
             assertTrue(message, message.contains(artifact));
             assertTrue(message, message.contains("FlowTree artifact"));
-            assertEquals("nothing may be committed", before, fresh.git("rev-parse", "HEAD").trim());
+            assertEquals(before, fresh.git("rev-parse", "HEAD").trim());
         }
     }
 
