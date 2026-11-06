@@ -960,8 +960,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 log("Invalid startedAfter value: " + startedAfterStr);
             }
         }
-        // Per-PR remediation budget / own-commit skip for automated jobs.
-        String remediationSkip = remediationGuard.skipReason(workstreamId, automated, JsonFieldExtractor.extractString(body, "triggerCommit"));
+        // Per-PR remediation budget / own-commit skip for remediation passes
+        // (auto-review/auto-resolve), which CI marks explicitly — not every automated job.
+        boolean remediationPass = JsonFieldExtractor.getBoolean(body, "remediationPass", false);
+        String remediationSkip = remediationGuard.skipReason(workstreamId, remediationPass, JsonFieldExtractor.extractString(body, "triggerCommit"));
         if (remediationSkip != null) {
             return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true,"
                 + "\"skipped\":true,\"reason\":\"" + JsonFieldExtractor.escapeJson(remediationSkip) + "\"}");
@@ -1173,7 +1175,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 factory.getDisplaySummary(),
                 JsonFieldExtractor.extractString(body, "submittedBy"),
                 requiredLabels, Instant.now());
-        remediationGuard.dispatched(factory.getTaskId(), workstreamId, automated);
+        remediationGuard.dispatched(factory.getTaskId(), workstreamId, remediationPass);
         // Persist for restart recovery; cleared at the terminal choke point.
         if (pendingJobRecovery != null) {
             pendingJobRecovery.persist(factory.getTaskId(), factory.encode());

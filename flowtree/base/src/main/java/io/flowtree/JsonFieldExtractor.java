@@ -88,6 +88,40 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Returns the boolean value of a top-level field, read from the parsed JSON
+	 * object rather than by scanning the raw text.
+	 *
+	 * <p>Unlike {@link #extractBoolean(String, String)}, which matches the first
+	 * {@code "field"} token anywhere in the raw string, this reads the field from
+	 * the top-level object. The raw scan is spoofable by a same-named key nested
+	 * in an <em>earlier</em> field — an unescaped object key such as the inner
+	 * {@code "field"} of {@code {"wrapper":{"field":true},"field":false}} — which
+	 * it matches ahead of the genuine top-level field. (A {@code "field":true}
+	 * fragment inside a string <em>value</em> cannot trigger this: serialization
+	 * escapes the inner quotes to {@code \"field\"}, so the {@code "field"} token
+	 * only appears for a real key.) Use this for a trust-sensitive control flag
+	 * whose value must not be spoofable by request content, for the same reason
+	 * {@link #extractStrictStringArray(String, String)} parses structurally.</p>
+	 *
+	 * @param json         the JSON object string
+	 * @param field        the field name
+	 * @param defaultValue the value returned when the input is not a JSON object,
+	 *                     the field is absent, or the field is not a boolean
+	 * @return the field's boolean value, or {@code defaultValue}
+	 */
+	public static boolean getBoolean(String json, String field, boolean defaultValue) {
+		if (json == null) return defaultValue;
+		try {
+			JsonNode root = MAPPER.readTree(json);
+			if (root == null || !root.isObject()) return defaultValue;
+			JsonNode node = root.get(field);
+			return (node != null && node.isBoolean()) ? node.asBoolean() : defaultValue;
+		} catch (Exception e) {
+			return defaultValue;
+		}
+	}
+
+	/**
 	 * Extracts a string field from a JSON string.
 	 * Handles JSON escape sequences including Unicode escapes.
 	 *

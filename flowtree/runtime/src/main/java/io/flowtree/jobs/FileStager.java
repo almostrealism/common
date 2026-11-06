@@ -224,7 +224,7 @@ public class FileStager implements ConsoleFeatures {
      * existed at the merge-base, since {@code check-ci-file-lock.sh} rejects a
      * branch-new workflow exactly as it rejects an edit to an existing one, and
      * the harness must drop the same files the pipeline would refuse. That lock
-     * is the sole gate on CI files in production: {@code buildStagingConfig}
+     * is the sole gate on CI files in production: {@link FileStagingConfig#forJob}
      * does not list the CI paths in {@link FileStagingConfig#getProtectedPathPatterns()},
      * so the test lock never re-locks them, and a {@code ci/...} branch (where
      * {@code protectCiFiles} is off) can stage a workflow edit even with the

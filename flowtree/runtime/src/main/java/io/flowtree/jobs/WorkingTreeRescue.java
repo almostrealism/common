@@ -286,7 +286,7 @@ class WorkingTreeRescue implements ConsoleFeatures {
         StagingResult publishable = stager.evaluateFiles(changed, publicationConfig(), workDir,
                 job.asGitOperations());
         StagingResult guarded = stager.evaluateFiles(changed,
-                GitCommitHandler.buildStagingConfig(job), workDir, job.asGitOperations());
+                FileStagingConfig.forJob(job), workDir, job.asGitOperations());
 
         Set<String> included = new LinkedHashSet<>();
         for (String path : publishable.getStagedFiles()) {
@@ -332,7 +332,7 @@ class WorkingTreeRescue implements ConsoleFeatures {
     private void restoreWithheld(GitOperations staging, String mergeHead, Set<String> withheld,
                                  List<String> notes) throws IOException, InterruptedException {
         boolean trusted = FileStager.trustedMergeParent(
-                GitCommitHandler.buildStagingConfig(job), job.asGitOperations()) != null;
+                FileStagingConfig.forJob(job), job.asGitOperations()) != null;
         MergeSides sides = MergeSides.of(job.asGitOperations(), mergeHead, trusted);
         for (String path : withheld) {
             String source = sides.cleanSource(path);
