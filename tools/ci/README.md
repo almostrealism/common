@@ -128,10 +128,11 @@ it knowingly does not cover are in
 | `check-quality-gates.sh` | Evaluate quality gate pass/fail from job outputs |
 | `deception-audit.sh` | Cross-session deception pattern detection |
 | `detect-python-test-hiding.sh` | `test-integrity-check`'s Python step: a base-branch `def test_*` must survive, and a test file's assertion count must not fall |
-| `detect-test-hiding.sh` | Detect modifications to base-branch Java tests that hide failures |
+| `detect-test-hiding.sh` | Detect modifications to base-branch Java tests that hide failures. Audits the working tree (uncommitted and staged edits included) against the comparison base, reading the diff, the line numbers and the file contents from that one state; during an in-progress merge of the base branch (MERGE_HEAD present) it compares against MERGE_HEAD so the base branch's own changes are not attributed to the agent |
 | `exfil_guard_registration.py` | Shared `invokes_adapter()` helper imported by `verify-exfiltration-guard.sh`'s CHECK 2 and CHECK 3 |
 | `test-branch-checks.sh` | Regression tests for `check-ci-file-lock.sh`, `detect-python-test-hiding.sh` and `validate-agent-commit.sh`, each against a throwaway repository |
 | `test-check-quality-gates.sh` | Regression tests for `check-quality-gates.sh` |
+| `test-detect-test-hiding.sh` | Regression tests for `detect-test-hiding.sh`, each against a throwaway repository: the twelve pattern detectors plus the working-tree / in-progress-merge handling. Run by `python-tests` when `agent_protection_changed` |
 | `test-method-lines.awk` | Report the test methods of a Java source file, by line or by body. Used by the harness's per-job test lock (`io.flowtree.jobs.TestMethodProtection`, flowtree/runtime), which runs this exact script as a subprocess, and by `validate-agent-commit.sh` to tell a new test method from an edited one |
 | `test-verify-exfiltration-guard.sh` | Regression tests for `verify-exfiltration-guard.sh` |
 | `test-verify-sensitive-bypass.sh` | Regression tests for `verify-sensitive-bypass.sh` |
