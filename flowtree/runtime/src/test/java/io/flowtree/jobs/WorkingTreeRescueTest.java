@@ -24,6 +24,9 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -269,6 +272,17 @@ public class WorkingTreeRescueTest extends TestSuiteBase {
             assertTrue(message, message.contains(WorkingTreeRescue.PATCH_DIRECTORY));
             assertFalse("no rescue branch can reach the unreachable origin",
                     remote.hasRef("refs/heads/" + WorkingTreeRescue.BRANCH_PREFIX + "job-push-failed"));
+
+            // The patch must carry the lost commit: diffing against the current
+            // HEAD (already the unpublished commit) would leave it empty.
+            Path patch = local.dir().toAbsolutePath().getParent()
+                    .resolve(WorkingTreeRescue.PATCH_DIRECTORY).resolve("job-push-failed.patch");
+            assertTrue("the patch must be written beside the working directory", Files.exists(patch));
+            String diff = Files.readString(patch, StandardCharsets.UTF_8);
+            assertTrue("the patch must not be empty", diff.length() > 0);
+            assertTrue("the patch must add the lost commit's file: " + diff, diff.contains("rescued.txt"));
+            assertTrue("the patch must carry the lost commit's content: " + diff,
+                    diff.contains("committed but never pushed"));
         }
     }
 

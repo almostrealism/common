@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -237,6 +238,31 @@ public class MergeResolutionRecourseTest extends TestSuiteBase {
 
         assertTrue(message, message.contains(CI_FILE));
         assertTrue(message, message.contains("CI-file lock"));
+        assertEquals(before, repo.git("rev-parse", "HEAD").trim());
+    }
+
+    /**
+     * When the merge in progress is not the one the harness recorded, the
+     * refusal must not promise that a resolution equal to the base branch's
+     * version is accepted automatically — nothing is, because the merge is
+     * untrusted. The failure says so and names restarting the merge, instead of
+     * sending the operator toward a retry that would still fail.
+     */
+    @Test(timeout = 60000)
+    public void untrustedMergeRefusalDoesNotPromiseAutomaticAcceptance() throws Exception {
+        repo.git("rm", "--quiet", DELETED);
+        takeBase(TEST_RESOURCE, "data v2\n");
+        takeBase(CI_FILE, "name: branch\n");
+        String before = repo.git("rev-parse", "HEAD").trim();
+
+        String message = refusal(newJob(null, new OperatorGrants()));
+
+        assertTrue(message, message.contains(CI_FILE));
+        assertTrue(message, message.contains("not the one the harness started"));
+        assertTrue(message, message.contains("no resolution is accepted automatically"));
+        assertFalse("an untrusted merge accepts no base-equal resolution automatically: " + message,
+                message.contains("version is accepted automatically; these are not"));
+        assertTrue(message, message.contains("acceptedMergeResolutions"));
         assertEquals(before, repo.git("rev-parse", "HEAD").trim());
     }
 

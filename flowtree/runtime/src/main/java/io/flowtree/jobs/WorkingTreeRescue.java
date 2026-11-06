@@ -405,6 +405,15 @@ class WorkingTreeRescue implements ConsoleFeatures {
      * {@code \n}) and could fold a git warning on stderr into the patch,
      * either of which can leave a patch that does not apply.</p>
      *
+     * <p>The patch is a diff from the pre-work {@code HEAD} (see
+     * {@link #recordPreWorkState()}), not the current one. When the job
+     * committed its work locally and only the push failed, {@code HEAD} is
+     * already that unpublished commit and the rescue commit shares its tree, so
+     * a diff against the current {@code HEAD} would be empty and recover
+     * nothing; the pre-work {@code HEAD} is the last published commit a person
+     * can apply the patch onto. It falls back to {@code HEAD} only when the
+     * pre-work head could not be read.</p>
+     *
      * @param git     git operations for the working tree
      * @param commit  the rescue commit
      * @param isMerge whether the commit records a merge
@@ -435,8 +444,9 @@ class WorkingTreeRescue implements ConsoleFeatures {
                 PATCH_DIRECTORY + File.separator + job.getTaskId() + ".patch");
         Files.createDirectories(patch.getParentFile().toPath());
         // git writes the file itself so its exact bytes survive; see the javadoc.
+        String patchBase = preWorkHead != null ? preWorkHead : "HEAD";
         git.executeForResult("diff", "--binary", "--output=" + patch.getAbsolutePath(),
-                "HEAD", commit).requireSuccess();
+                patchBase, commit).requireSuccess();
         location = patch.getAbsolutePath();
         instructions = "The job's work could not be pushed, so it was saved on the agent host as "
                 + location + " (a patch against " + job.getTargetBranch() + ") and as the local ref"

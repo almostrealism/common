@@ -457,8 +457,13 @@ class GitCommitHandler implements ConsoleFeatures {
                 : merge + " in progress is not the one the harness started, so files it changes"
                         + " that the staging guardrails rejected cannot be committed. ")
                 + String.join(" ", refusals)
-                + " A resolution equal to the base branch's version is accepted automatically;"
-                + " these are not. Once the owner has reviewed them, re-submitting the job with the"
+                + (trusted
+                        ? " A resolution equal to the base branch's version is accepted automatically;"
+                                + " these are not."
+                        : " Because this merge is not the one the harness started, no resolution is"
+                                + " accepted automatically, not even one equal to the base branch's"
+                                + " version; restart the merge from the harness to recover that.")
+                + " Once the owner has reviewed them, re-submitting the job with the"
                 + " operator-only acceptedMergeResolutions option naming these paths commits the"
                 + " agent's resolution of them.");
     }
