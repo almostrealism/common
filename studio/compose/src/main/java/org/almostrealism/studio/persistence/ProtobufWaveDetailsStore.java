@@ -20,13 +20,15 @@ import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.persist.index.DiskStore;
 import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.persist.index.SearchResult;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -46,14 +48,20 @@ import java.util.function.Consumer;
  * @see ProtobufDiskStore
  * @see AudioLibraryPersistence
  */
-public class ProtobufWaveDetailsStore implements WaveDetailsStore {
+public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatures {
 
 	/** Default target size per batch file in bytes. */
 	public static final int DEFAULT_TARGET_BATCH_SIZE =
 			ProtobufDiskStore.DEFAULT_TARGET_BATCH_SIZE;
 
+	/** Name of the sidecar file recording the model the store was last validated against. */
+	private static final String VALIDATED_MODEL_FILE_NAME = "complete.model";
+
 	/** The underlying disk store that handles batched serialization and index management. */
 	private final ProtobufDiskStore<Audio.WaveDetailData> diskStore;
+
+	/** Directory holding the batch files, index, and the validated-model marker. */
+	private final File rootDir;
 
 	/**
 	 * Creates a store at the given directory with default settings.
@@ -61,6 +69,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 	 * @param rootDir directory for batch files and index
 	 */
 	public ProtobufWaveDetailsStore(File rootDir) {
+		this.rootDir = rootDir;
 		this.diskStore = new ProtobufDiskStore<>(rootDir, Audio.WaveDetailData.parser());
 	}
 
@@ -72,6 +81,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 	 * @param targetBatchSize target byte size per batch file
 	 */
 	public ProtobufWaveDetailsStore(File rootDir, long maxMemoryBytes, int targetBatchSize) {
+		this.rootDir = rootDir;
 		this.diskStore = new ProtobufDiskStore<>(
 				rootDir, Audio.WaveDetailData.parser(), maxMemoryBytes, targetBatchSize);
 	}
@@ -189,6 +199,37 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 	@Override
 	public int indexedEmbeddingCount() {
 		return diskStore.indexedEmbeddingCount();
+	}
+
+	@Override
+	public String getValidatedModel() {
+		File marker = new File(rootDir, VALIDATED_MODEL_FILE_NAME);
+		if (!marker.exists()) return null;
+
+		try {
+			String model = Files.readString(marker.toPath()).trim();
+			return model.isEmpty() ? null : model;
+		} catch (IOException e) {
+			// Degrade to a rescan rather than aborting the library open that reads this.
+			warn("Unable to read validated-model marker at " + marker, e);
+			return null;
+		}
+	}
+
+	@Override
+	public void setValidatedModel(String modelIdentifier) {
+		File marker = new File(rootDir, VALIDATED_MODEL_FILE_NAME);
+
+		try {
+			if (modelIdentifier == null) {
+				Files.deleteIfExists(marker.toPath());
+			} else {
+				Files.writeString(marker.toPath(), modelIdentifier);
+			}
+		} catch (IOException e) {
+			// A failed write only costs a rescan next launch; do not fail the refresh.
+			warn("Unable to persist validated-model marker at " + marker, e);
+		}
 	}
 
 	@Override

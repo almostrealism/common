@@ -18,6 +18,7 @@ package org.almostrealism.audio;
 
 import java.util.AbstractSet;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -74,6 +75,24 @@ final class CompleteIdentifierSet extends AbstractSet<String> {
 
 	@Override
 	public boolean remove(Object o) { return o != null && identifiers.remove(o); }
+
+	/**
+	 * Seeds this set from a store's persisted state when a library is opened over
+	 * it: every stored identifier, taken to be complete for the model the store
+	 * was last fully validated against. Recording that model lets the first
+	 * {@link #revalidate(String, Predicate)} of the launch recognise an unchanged
+	 * model and skip the costly scan, rather than re-reading every stored item to
+	 * reconfirm completeness. A {@code null} {@code validatedModel} (a store with
+	 * no marker, as written before the model was recorded) leaves the model
+	 * unchecked, so the first refresh scans.
+	 *
+	 * @param identifiers    the stored identifiers to assume complete
+	 * @param validatedModel the model the store was last validated against, or {@code null}
+	 */
+	void restore(Collection<String> identifiers, String validatedModel) {
+		this.identifiers.addAll(identifiers);
+		this.modelId = validatedModel;
+	}
 
 	/**
 	 * Removes every identifier that fails {@code complete}, unless this set was

@@ -84,6 +84,23 @@ public class FeatureModelUpgradeTest extends TestSuiteBase {
 	/** Directory of the library store. */
 	private Path storeDir;
 
+	/** A store that counts how many records are read back from it. */
+	private static class CountingStore extends ProtobufWaveDetailsStore {
+		/** Number of {@link #get(String)} calls. */
+		private final AtomicInteger reads = new AtomicInteger();
+
+		/** Opens a counting store at the given directory. */
+		CountingStore(File rootDir) {
+			super(rootDir);
+		}
+
+		@Override
+		public WaveDetails get(String identifier) {
+			reads.incrementAndGet();
+			return super.get(identifier);
+		}
+	}
+
 	/** A provider for the new model that counts how many clips it encodes. */
 	private static class CountingProvider extends LogSpectrumFeatureProvider {
 		/** Number of clips encoded. */
@@ -223,6 +240,56 @@ public class FeatureModelUpgradeTest extends TestSuiteBase {
 
 		relaunched.stop();
 		reopened.close();
+	}
+
+	/**
+	 * The first launch records the model it validated the store against, so a
+	 * relaunch under the same model skips the per-record completeness scan rather
+	 * than reading every item back from the store. A different model still forces
+	 * the scan, so the skip is not vacuous.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void relaunchUnderTheSameModelDoesNotRescanTheStore() throws Exception {
+		int count = 8;
+		generateSineWaves(count);
+
+		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		AudioLibrary library = openLibrary(store, new CountingProvider(), errors);
+		library.refresh().get();
+		Assert.assertEquals("analysis must not fail: " + errors, 0, errors.size());
+		Assert.assertEquals(count, library.allDetails().count());
+		library.stop();
+		store.close();
+
+		CountingStore reopened = new CountingStore(storeDir.toFile());
+		AudioLibrary relaunched = openLibrary(reopened, new CountingProvider(), errors);
+		int readsBeforeRefresh = reopened.reads.get();
+		relaunched.refresh().get();
+
+		Assert.assertEquals("a same-model relaunch reads no records back from the store",
+				readsBeforeRefresh, reopened.reads.get());
+		Assert.assertEquals("the relaunch must not fail: " + errors, 0, errors.size());
+		Assert.assertEquals("every item is still complete", count, relaunched.allDetails().count());
+		relaunched.stop();
+		reopened.close();
+
+		CountingStore underNewModel = new CountingStore(storeDir.toFile());
+		AudioLibrary otherModel = new AudioLibrary(
+				new FileWaveDataProviderNode(samplesDir.toFile()), SAMPLE_RATE, underNewModel);
+		otherModel.getWaveDetailsFactory().setFeatureProvider(new LogSpectrumFeatureProvider(
+				FEATURE_FRAMES, NEW_BINS, SAMPLE_RATE, SAMPLE_DURATION, "another-model"));
+		otherModel.setErrorListener(errors::add);
+		int readsBeforeOtherRefresh = underNewModel.reads.get();
+		otherModel.refresh().get();
+
+		Assert.assertTrue("a changed model rescans the store",
+				underNewModel.reads.get() > readsBeforeOtherRefresh);
+		otherModel.stop();
+		underNewModel.close();
 	}
 
 	/**

@@ -37,7 +37,6 @@ import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
 import java.io.IOException;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -276,7 +275,7 @@ public class AudioLibrary implements ConsoleFeatures {
 				Comparator.comparing(WaveDetailsJob::getPriority).reversed());
 
 		if (store != null) {
-			completeIdentifiers.addAll(store.allIdentifiers());
+			completeIdentifiers.restore(store.allIdentifiers(), store.getValidatedModel());
 		}
 
 		start();
@@ -1491,8 +1490,13 @@ public class AudioLibrary implements ConsoleFeatures {
 			recompute.forEach(p -> submitJob(
 					new WaveDetailsJob(this::processJob, p, true, BACKGROUND_PRIORITY)));
 
+			// The validated model is recorded only once these recompute jobs drain,
+			// so an interrupted run rescans on the next launch instead of trusting it.
 			WaveDetailsJob last = new WaveDetailsJob(this::processJob, null, false, -1.0);
-			last.getFuture().thenRun(() -> future.complete(null));
+			last.getFuture().thenRun(() -> {
+				if (store != null) store.setValidatedModel(modelId);
+				future.complete(null);
+			});
 			latestRefresh = future;
 			executor.execute(last);
 			return future;
@@ -1539,61 +1543,16 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
-	 * Checks whether the persisted {@link PrototypeIndexData} is stale and
-	 * needs recomputation.
-	 *
-	 * <p>Staleness is determined by these conditions (checked in order of cost):</p>
-	 * <ol>
-	 *   <li>No index present (first run / bootstrap)</li>
-	 *   <li>Any prototype identifier not found in current info (prototype was deleted)</li>
-	 *   <li>More than 5% of indexed member identifiers not found in current info (significant removal)</li>
-	 *   <li>Current info size exceeds total indexed members by more than 5% (significant additions)</li>
-	 *   <li>Index is older than 24 hours AND any difference exists between indexed and current members</li>
-	 * </ol>
+	 * Checks whether the persisted {@link PrototypeIndexData} is stale and needs
+	 * recomputation, delegating to {@link PrototypeIndexData#isStale(Set, String)}
+	 * with this library's complete identifiers and current feature model. An index
+	 * computed from a different model than the one now configured is stale, because
+	 * similarity must never mix features from different models.
 	 *
 	 * @return true if the index should be recomputed
 	 */
 	public boolean isPrototypeIndexStale() {
-		if (prototypeIndex == null || prototypeIndex.communities().isEmpty()) {
-			return true;
-		}
-
-		Set<String> currentIds = completeIdentifiers;
-		int totalIndexed = 0;
-		int missingMembers = 0;
-
-		for (PrototypeIndexData.Community community : prototypeIndex.communities()) {
-			// Check if the prototype itself was deleted
-			if (!currentIds.contains(community.prototypeIdentifier())) {
-				return true;
-			}
-
-			for (String memberId : community.memberIdentifiers()) {
-				totalIndexed++;
-				if (!currentIds.contains(memberId)) {
-					missingMembers++;
-				}
-			}
-		}
-
-		// More than 5% of indexed members are missing
-		if (totalIndexed > 0 && missingMembers > totalIndexed * 0.05) {
-			return true;
-		}
-
-		// More than 5% new samples added beyond what's indexed
-		int currentSize = completeIdentifiers.size();
-		if (totalIndexed > 0 && currentSize > totalIndexed * 1.05) {
-			return true;
-		}
-
-		// Time-based: older than 24 hours with any difference
-		long age = System.currentTimeMillis() - prototypeIndex.computedAt();
-		boolean anyDifference = currentSize != totalIndexed || missingMembers > 0;
-		if (age > Duration.ofHours(24).toMillis() && anyDifference) {
-			return true;
-		}
-
-		return false;
+		return prototypeIndex == null
+				|| prototypeIndex.isStale(completeIdentifiers, currentModelId());
 	}
 }

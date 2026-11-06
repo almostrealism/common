@@ -157,6 +157,40 @@ public interface WaveDetailsStore extends Closeable {
 	int indexedEmbeddingCount();
 
 	/**
+	 * Return the feature model the store's contents were last fully validated
+	 * against, as persisted by {@link #setValidatedModel(String)}, or
+	 * {@code null} if none was recorded. A library seeds its completeness
+	 * bookkeeping from this so that reopening a store under an unchanged model
+	 * does not have to read every record to confirm it is complete. An index
+	 * written before the model was recorded returns {@code null} here, which
+	 * forces that confirming scan. Implementations that do not persist this
+	 * marker return {@code null}. Because the marker is only an optimization
+	 * hint, an implementation that cannot read it degrades to {@code null}
+	 * (forcing the scan) rather than throwing, so a library can open over it.
+	 *
+	 * @return the last-validated feature model, or {@code null}
+	 */
+	default String getValidatedModel() {
+		return null;
+	}
+
+	/**
+	 * Record the feature model the store's contents have been fully validated
+	 * against, so a later reopen can skip the per-record completeness scan when
+	 * the model is unchanged. Callers record this only once a refresh has
+	 * finished recomputing every record that lacked the model's features, so an
+	 * interrupted run leaves the previous marker in place and the next launch
+	 * rescans. Passing {@code null} clears the marker. Implementations that do
+	 * not persist this marker may ignore it; the default does nothing. Failing
+	 * to persist the marker costs only a rescan on the next launch, so an
+	 * implementation degrades rather than throwing into the refresh that records it.
+	 *
+	 * @param modelIdentifier the validated feature model, or {@code null} to clear
+	 */
+	default void setValidatedModel(String modelIdentifier) {
+	}
+
+	/**
 	 * Flush pending data to disk without closing the store.
 	 */
 	void flush();

@@ -201,6 +201,49 @@ public class CompleteIdentifierSetTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * {@link CompleteIdentifierSet#restore} seeds the stored identifiers together
+	 * with the model they were validated against, so a reopen under that same
+	 * model skips the costly scan — the completeness predicate is never consulted.
+	 */
+	@Test(timeout = 60000)
+	public void restoreUnderValidatedModelSkipsTheScan() {
+		CompleteIdentifierSet set = new CompleteIdentifierSet();
+		set.restore(List.of("a", "b"), "model-a");
+
+		Assert.assertTrue("stored ids are seeded", set.contains("a"));
+		Assert.assertEquals(2, set.size());
+
+		AtomicBoolean checked = new AtomicBoolean(false);
+		List<String> removed = set.revalidate("model-a", id -> {
+			checked.set(true);
+			return false;
+		});
+
+		Assert.assertTrue("a reopen under the validated model removes nothing", removed.isEmpty());
+		Assert.assertFalse("the completeness predicate is not consulted — no store scan", checked.get());
+		Assert.assertEquals("both items are retained", 2, set.size());
+	}
+
+	/**
+	 * A set restored with no validated model (a store written before the model
+	 * was recorded) is scanned on the first revalidation, as before.
+	 */
+	@Test(timeout = 60000)
+	public void restoreWithNoValidatedModelStillScans() {
+		CompleteIdentifierSet set = new CompleteIdentifierSet();
+		set.restore(List.of("a", "b"), null);
+
+		AtomicBoolean checked = new AtomicBoolean(false);
+		List<String> removed = set.revalidate("model-a", id -> {
+			checked.set(true);
+			return id.equals("a");
+		});
+
+		Assert.assertTrue("a store with no recorded model is scanned", checked.get());
+		Assert.assertEquals("the incomplete item is removed", List.of("b"), removed);
+	}
+
 	/** The type behaves as a {@link Set}: add/remove/contains/size all delegate correctly. */
 	@Test(timeout = 60000)
 	public void behavesAsASet() {
