@@ -188,7 +188,9 @@ public interface MemoryProvider<T extends Memory> extends Named {
 	 *
 	 * <p>A copy within one memory region whose destination starts inside the source range
 	 * is made from the last chunk to the first, so every chunk is read before any write
-	 * reaches it and the result is the same as copying a snapshot of the whole source.</p>
+	 * reaches it and the result is the same as copying a snapshot of the whole source.
+	 * Source and destination are one memory region when they are {@link Object#equals equal},
+	 * so two distinct handles to the same allocation are recognized as one region.</p>
 	 *
 	 * <p>No monitor is held across the read of a chunk: a provider that serializes its
 	 * own writes takes its monitor inside {@link #setMem(Memory, int, double[], int, int)}
@@ -212,7 +214,7 @@ public interface MemoryProvider<T extends Memory> extends Named {
 		double[] chunk = new double[Math.min(length, chunkSize)];
 
 		int n;
-		if (source == mem && offset > srcOffset && offset - srcOffset < length) {
+		if (source.equals(mem) && offset > srcOffset && offset - srcOffset < length) {
 			for (int end = length; end > 0; end -= n) {
 				n = Math.min(chunk.length, end);
 				source.get(srcOffset + end - n, chunk, 0, n);

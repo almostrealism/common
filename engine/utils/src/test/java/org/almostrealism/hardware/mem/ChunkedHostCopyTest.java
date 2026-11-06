@@ -172,6 +172,32 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A copy whose source and destination are distinct handles to one allocation, with the
+	 * destination starting inside the source range, stores the values the source held before
+	 * the copy: equal handles are treated as one memory region.
+	 */
+	@Test(timeout = 60000)
+	public void overlappingCopyThroughAliasedHandlesPreservesSource() {
+		int srcOffset = 0;
+		int offset = 37;
+		int size = offset + OVERLAP_LENGTH;
+
+		double[] data = new double[size];
+		for (int i = 0; i < size; i++) data[i] = i;
+
+		double[] expected = data.clone();
+		for (int i = 0; i < OVERLAP_LENGTH; i++) expected[offset + i] = data[srcOffset + i];
+
+		SharedArrayMemory source = new SharedArrayMemory(data);
+		SharedArrayMemory dest = new SharedArrayMemory(data);
+		Assert.assertNotSame(source, dest);
+		Assert.assertEquals(source, dest);
+
+		dest.setMemInChunks(dest, offset, source, srcOffset, OVERLAP_LENGTH, OVERLAP_CHUNK);
+		Assert.assertArrayEquals(expected, data, 0.0);
+	}
+
+	/**
 	 * Copies {@link #OVERLAP_LENGTH} elements of one kernel memory region onto an
 	 * overlapping range of the same region in chunks of {@link #OVERLAP_CHUNK} elements, and
 	 * checks that the result matches a copy of a snapshot of the source range.
@@ -398,6 +424,56 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 		@Override
 		public void setMem(Memory mem, int offset, double[] source, int srcOffset, int length) {
 			record(offset, length);
+		}
+	}
+
+	/**
+	 * Host memory backed by a {@code double[]}, where every handle wrapping the same array is
+	 * equal, as two {@link RAM} handles with the same native pointer are.
+	 */
+	private static class SharedArrayMemory implements Memory, MemoryProvider<Memory> {
+		/** The array this handle refers to, shared with every equal handle. */
+		private final double[] data;
+
+		/**
+		 * Creates a handle to the given array.
+		 *
+		 * @param data the backing array
+		 */
+		SharedArrayMemory(double[] data) {
+			this.data = data;
+		}
+
+		@Override
+		public MemoryProvider getProvider() { return this; }
+
+		@Override
+		public String getName() { return "SHARED_ARRAY"; }
+
+		@Override
+		public int getNumberSize() { return Double.BYTES; }
+
+		@Override
+		public void deallocate(int size, Memory mem) { }
+
+		@Override
+		public void getMem(Memory mem, int sOffset, double[] out, int oOffset, int length) {
+			System.arraycopy(((SharedArrayMemory) mem).data, sOffset, out, oOffset, length);
+		}
+
+		@Override
+		public void setMem(Memory mem, int offset, double[] source, int srcOffset, int length) {
+			System.arraycopy(source, srcOffset, ((SharedArrayMemory) mem).data, offset, length);
+		}
+
+		@Override
+		public boolean equals(Object obj) {
+			return obj instanceof SharedArrayMemory && ((SharedArrayMemory) obj).data == data;
+		}
+
+		@Override
+		public int hashCode() {
+			return System.identityHashCode(data);
 		}
 	}
 }
