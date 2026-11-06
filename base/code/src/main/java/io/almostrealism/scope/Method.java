@@ -212,10 +212,14 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	 * <p>The names of the variables the call refers to, as for any other {@link Expression}. The
 	 * function it calls may change other values as well, which
 	 * {@link #containsAssignment(ArrayVariable, long, long)} accounts for.</p>
+	 *
+	 * <p>This override, like the one of {@link #appendReadPositions(ReadPositions)}, is required
+	 * even though it only defers to {@link Expression}: a method inherits conflicting defaults of
+	 * it from {@link io.almostrealism.expression.ExpressionReferences} and {@link Statement}, and
+	 * must choose one.</p>
 	 */
 	@Override
 	public void appendAssignedNames(Set<String> names) {
-		// TODO(review): this override and appendReadPositions below only call super; consider removing them
 		super.appendAssignedNames(names);
 	}
 

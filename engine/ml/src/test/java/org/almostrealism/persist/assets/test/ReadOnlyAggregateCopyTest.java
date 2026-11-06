@@ -353,6 +353,8 @@ public class ReadOnlyAggregateCopyTest extends TestSuiteBase {
 					"PROTOBUF", stored.getRootDelegate().getMem().getProvider().getName());
 		} finally {
 			Destroyable.destroy(run);
+			matrix.destroy();
+			stored.destroy();
 			entries.destroy();
 			vector.destroy();
 			result.destroy();
