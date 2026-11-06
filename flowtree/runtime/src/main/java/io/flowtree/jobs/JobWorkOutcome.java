@@ -190,7 +190,13 @@ class JobWorkOutcome {
      *
      * <p>This is also the last moment the tree is this job's, so a job that
      * did not succeed (it threw, every change was dropped, or work was left
-     * unpublished) has its work rescued here; see {@link WorkingTreeRescue}.</p>
+     * unpublished) has its work rescued here; see {@link WorkingTreeRescue}.
+     * Rescue is skipped entirely when {@code locked} is false: it commits and
+     * pushes the tree to a durable, job-specific ref, and an unlocked snapshot
+     * may interleave another job editing the same workspace, so publishing it
+     * could present that job's changes as this one's rescued work. The job's
+     * own failure is still reported, and the warning above records that the
+     * snapshot was not observed under exclusion.</p>
      *
      * @param locked whether the workspace lock was held for this job
      * @param error  the exception the job failed with, or {@code null}
@@ -200,7 +206,10 @@ class JobWorkOutcome {
         captured = true;
         if (!locked) {
             job.warn("Workspace lock was not held; the completion snapshot of "
-                    + job.getWorkingDirectory() + " may not reflect this job alone");
+                    + job.getWorkingDirectory() + " may not reflect this job alone, so its work"
+                    + " is not rescued -- publishing a tree that may interleave another job's"
+                    + " changes to this job's rescue ref would be worse than declining to rescue");
+            return;
         }
         if (error != null) {
             rescue.preserve(error.getMessage() != null ? error.getMessage() : error.toString());

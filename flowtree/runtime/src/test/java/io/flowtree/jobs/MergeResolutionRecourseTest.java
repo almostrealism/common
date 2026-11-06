@@ -282,6 +282,59 @@ public class MergeResolutionRecourseTest extends TestSuiteBase {
         assertTrue(message, message.contains(TEST_RESOURCE));
     }
 
+    /**
+     * The merge-resolution grant does not lift the FlowTree artifact
+     * exclusion. A path under {@code .flowtree/} is never committed, whatever
+     * the phase, because it holds job/phase/harness state; even when the owner
+     * signs an acceptance of it, the acceptance path (which otherwise bypasses
+     * the staging guardrails) must keep refusing it rather than leaking that
+     * state into the merge commit. The failure names the path and the artifact
+     * exclusion, and nothing is committed.
+     */
+    @Test(timeout = 60000)
+    public void acceptedFlowtreeArtifactResolutionIsStillRefused() throws Exception {
+        String artifact = ".flowtree/state.json";
+        try (GitTestRepository fresh = GitTestRepository.create("merge-recourse-artifact", false)) {
+            fresh.write(artifact, "{\"v\":1}\n");
+            fresh.write("keep.txt", "base\n");
+            fresh.commitAll("initial");
+
+            fresh.git("checkout", "--quiet", "-b", "feature/test");
+            fresh.write(artifact, "{\"v\":\"branch\"}\n");
+            fresh.commitAll("branch changes");
+
+            fresh.git("checkout", "--quiet", "master");
+            fresh.write(artifact, "{\"v\":2}\n");
+            String parent = fresh.commitAll("master changes");
+            fresh.git("update-ref", "refs/remotes/origin/master", parent);
+
+            fresh.git("checkout", "--quiet", "feature/test");
+            fresh.run("merge", "--no-edit", "master");
+            assertTrue("the merge must be left in progress", fresh.hasRef("MERGE_HEAD"));
+
+            // The agent resolves the artifact to its own version and stages it.
+            fresh.write(artifact, "{\"v\":\"branch\"}\n");
+            fresh.git("add", artifact);
+
+            OperatorGrants grants = new OperatorGrants();
+            grants.setAcceptedMergeResolutions(List.of(artifact), "signature");
+            MergeJob job = newJob(fresh, parent, grants);
+            String before = fresh.git("rev-parse", "HEAD").trim();
+
+            String message = null;
+            try {
+                new GitCommitHandler(job).handle(true);
+                fail("the merge must not be committed");
+            } catch (RuntimeException e) {
+                message = e.getMessage();
+            }
+
+            assertTrue(message, message.contains(artifact));
+            assertTrue(message, message.contains("FlowTree artifact"));
+            assertEquals("nothing may be committed", before, fresh.git("rev-parse", "HEAD").trim());
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /** Writes {@code content} to {@code path} and stages it, as an agent resolving a conflict would. */
@@ -290,10 +343,15 @@ public class MergeResolutionRecourseTest extends TestSuiteBase {
         repo.git("add", path);
     }
 
-    /** Builds a job bound to the repository, with pushing disabled. */
+    /** Builds a job bound to the shared repository, with pushing disabled. */
     private MergeJob newJob(String parent, OperatorGrants grants) {
+        return newJob(repo, parent, grants);
+    }
+
+    /** Builds a job bound to {@code target}, with pushing disabled. */
+    private MergeJob newJob(GitTestRepository target, String parent, OperatorGrants grants) {
         MergeJob job = new MergeJob(parent, grants);
-        job.setWorkingDirectory(repo.dir().toString());
+        job.setWorkingDirectory(target.dir().toString());
         job.setTargetBranch("feature/test");
         job.setBaseBranch("master");
         job.setCreateBranchIfMissing(false);

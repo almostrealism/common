@@ -314,6 +314,41 @@ public class WorkingTreeRescueTest extends TestSuiteBase {
         assertNoRescue(job, "job-no-change");
     }
 
+    /**
+     * When the workspace lock was not held, the completion snapshot may
+     * interleave another job editing the same checkout, so the work is not
+     * rescued even though it changed the tree: publishing an unverified tree to
+     * this job's rescue ref could present another job's changes as this one's.
+     * The identical change rescues normally once the lock is reported held,
+     * which is what isolates the lock as the only reason the first is skipped.
+     */
+    @Test(timeout = 120000)
+    public void rescueIsSkippedWhenTheWorkspaceLockWasNotHeld() throws Exception {
+        IllegalStateException failure = new IllegalStateException("failed while the lock was not held");
+
+        JobWorkOutcome unlocked = new JobWorkOutcome(configure(new ScriptedJob("job-unlocked", work, repo -> { })));
+        unlocked.recordPreWorkState();
+        work.write("rescued.txt", "work that a held lock would rescue\n");
+        unlocked.capture(false, failure);
+
+        assertFalse("an unlocked snapshot must not create a local rescue ref",
+                work.hasRef("refs/rescue/job-unlocked"));
+        assertFalse("an unlocked snapshot must not be pushed to a rescue branch",
+                origin.hasRef("refs/heads/" + WorkingTreeRescue.BRANCH_PREFIX + "job-unlocked"));
+
+        JobWorkOutcome locked = new JobWorkOutcome(configure(new ScriptedJob("job-locked", work, repo -> { })));
+        locked.recordPreWorkState();
+        work.write("control.txt", "a further change under a held lock\n");
+        locked.capture(true, failure);
+
+        assertTrue("a held lock rescues the changed tree locally",
+                work.hasRef("refs/rescue/job-locked"));
+        assertTrue("a held lock pushes the rescue branch",
+                origin.hasRef("refs/heads/" + WorkingTreeRescue.BRANCH_PREFIX + "job-locked"));
+        assertEquals("work that a held lock would rescue\n", origin.show(
+                WorkingTreeRescue.BRANCH_PREFIX + "job-locked", "rescued.txt"));
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /** Runs a job performing {@code steps} and returns it. */

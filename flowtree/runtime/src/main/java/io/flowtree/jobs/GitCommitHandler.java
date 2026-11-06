@@ -424,6 +424,11 @@ class GitCommitHandler implements ConsoleFeatures {
                             + " file under the CI-file lock, which the merge-resolution grant does not"
                             + " lift. Re-submit with the sensitive-file bypass as well, or make the"
                             + " change on a ci/ branch, to commit it.");
+                } else if (FlowtreeArtifacts.isExcludedFromCommit(file, flowtreeCommitWhitelist)) {
+                    refusals.add(file + ": the owner accepted its resolution, but it is a FlowTree"
+                            + " artifact under " + FlowtreeArtifacts.DIRECTORY + "/, which is never"
+                            + " committed regardless of phase; the merge-resolution grant does not lift"
+                            + " that exclusion.");
                 } else {
                     acceptResolution(file, refusals);
                 }
