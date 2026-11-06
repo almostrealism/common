@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.Random;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -116,9 +117,13 @@ public class RandomTest extends TestSuiteBase {
 		PackedCollection secondValues = second.get().evaluate();
 		PackedCollection firstValues = first.get().evaluate();
 
+		// The collections hold the draws at the hardware precision (FP32 rounds them),
+		// which is far finer than the gap between distinct draws of the seeded source
+		double tolerance = Hardware.getLocalHardware().getPrecision().epsilon();
+
 		for (int i = 0; i < size; i++) {
-			Assert.assertEquals(expectedFirst[i], firstValues.toDouble(i), 0.0);
-			Assert.assertEquals(expectedSecond[i], secondValues.toDouble(i), 0.0);
+			Assert.assertEquals(expectedFirst[i], firstValues.toDouble(i), tolerance);
+			Assert.assertEquals(expectedSecond[i], secondValues.toDouble(i), tolerance);
 		}
 	}
 
