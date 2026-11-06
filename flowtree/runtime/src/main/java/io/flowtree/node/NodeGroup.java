@@ -486,7 +486,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 */
 	public String[] taskList() {
 		List l = new ArrayList();
-		
+
+		// TODO(review): unsynchronized this.tasks iteration can throw ConcurrentModificationException; wrap in synchronized(this.tasks) like the other readers.
 		Iterator itr = this.tasks.iterator();
 		while (itr.hasNext()) l.add(itr.next().toString());
 		
@@ -711,7 +712,9 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 */
 	public boolean addTask(JobFactory f) {
 		this.statusRenderer.addActivityMessage("Added task " + f.getTaskId());
-		return this.tasks.add(f);
+		synchronized (this.tasks) {
+			return this.tasks.add(f);
+		}
 	}
 	
 	/**
@@ -1215,7 +1218,10 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 				this.isolationTime = 0;
 			}
 			
-			Iterator itr = ((List)((ArrayList) this.tasks).clone()).iterator();
+			Iterator itr;
+			synchronized (this.tasks) {
+				itr = new ArrayList<>(this.tasks).iterator();
+			}
 
 			Job j = this.nextJob();
 			if (j == null) this.jobWasNull++;
@@ -1255,7 +1261,9 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 					addJobs(f);
 				}
 			}
-			this.tasks.removeAll(completed);
+			synchronized (this.tasks) {
+				this.tasks.removeAll(completed);
+			}
 		}
 	}
 
