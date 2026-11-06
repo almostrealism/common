@@ -559,7 +559,6 @@ public class NodeProxy implements Proxy, Runnable, ConsoleFeatures {
 		} catch (SocketException se) {
 			this.fireDisconnect();
 			this.resets = 4;
-			// TODO(review): rethrow now aborts ServerQueryExecutor's per-peer query relay loop on the first broken peer
 			throw se;
 		}
 	}

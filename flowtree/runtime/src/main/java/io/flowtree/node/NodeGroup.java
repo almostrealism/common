@@ -969,15 +969,27 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 
 	/**
 	 * Returns whether a job with the given task id is still queued anywhere in
-	 * this group — the group's own queue, any worker {@link Node}, or the relay
+	 * this group — an accepted {@link JobFactory} the run loop has not yet turned
+	 * into a job, the group's own queue, any worker {@link Node}, or the relay
 	 * node. The controller uses this to distinguish a job it still physically
 	 * holds (never handed to a peer) from one that has already left it.
+	 *
+	 * <p>The task-factory list is included because an API submission is held
+	 * there until {@link #run()} dispatches it; without it, a job accepted but
+	 * not yet dispatched (for instance while the group is stalled or backlogged)
+	 * would be misreported as already handed to a peer.</p>
 	 *
 	 * @param taskId the task id to look for
 	 * @return {@code true} if the job is queued somewhere in this group
 	 */
 	public boolean hasQueuedJob(String taskId) {
+		if (taskId == null) return false;
 		if (super.hasJob(taskId) || this.relayNode.hasJob(taskId)) return true;
+		synchronized (this.tasks) {
+			for (JobFactory f : this.tasks) {
+				if (taskId.equals(f.getTaskId())) return true;
+			}
+		}
 		for (Node n : this.nodes) {
 			if (n.hasJob(taskId)) return true;
 		}
