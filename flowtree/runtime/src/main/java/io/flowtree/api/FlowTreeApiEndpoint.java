@@ -963,9 +963,6 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         }
         // Per-PR remediation budget / own-commit skip for remediation passes
         // (auto-review/auto-resolve), which CI marks explicitly — not every automated job.
-        // Structural read, not a raw-text scan: this budget/own-commit control
-        // flag is read from the top-level object so a same-named key appearing
-        // earlier in the body (e.g. nested in another field) cannot stand in for it.
         boolean remediationPass = JsonFieldExtractor.getBoolean(body, "remediationPass", false);
         String remediationSkip = remediationGuard.skipReason(workstreamId, remediationPass, JsonFieldExtractor.extractString(body, "triggerCommit"));
         if (remediationSkip != null) {
