@@ -105,13 +105,7 @@ public class LogSNRShift implements DistributionShift {
 	}
 
 	@Override
-	public double shift(double t, int sequenceLength) {
-		if (t <= 0.0) {
-			return 0.0;
-		} else if (t >= 1.0) {
-			return 1.0;
-		}
-
+	public double shiftInterior(double t, int sequenceLength) {
 		double logSnr = logSnrEnd - t * (logSnrEnd - getLogSnrStart(sequenceLength));
 		return 1.0 / (1.0 + Math.exp(logSnr));
 	}
