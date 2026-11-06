@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.flowtree.jobs;
+package io.flowtree.git;
 
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;

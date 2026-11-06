@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.git.GitOperations;
 import io.flowtree.job.Job;
 import io.flowtree.jobs.agent.AgentRunRequest;
 import io.flowtree.jobs.agent.AgentRunResult;
@@ -201,12 +202,10 @@ public class CodingAgentJob extends GitManagedJob {
     private String falsificationFindings;
 
     /**
-     * Sensitive-file protection flag (default {@code true}): the harness-side
-     * FileStager, validateChanges TestHidingAudit, and commit-trailer signing
-     * are all gated on this flag. Operator-controlled at submission time;
-     * never settable by the agent itself.
+     * Controller-signed operator grants: the sensitive-file bypass and any
+     * accepted merge resolutions. Never settable by the agent itself.
      */
-    private boolean sensitiveFileProtectionEnabled = true;
+    private final OperatorGrants operatorGrants = new OperatorGrants();
 
     /**
      * Whether this job's sessions may bypass the agent runtime's interactive
@@ -215,15 +214,6 @@ public class CodingAgentJob extends GitManagedJob {
      * {@link #isBypassAgentPermissionPrompts()}.
      */
     private boolean bypassAgentPermissionPrompts;
-
-    /**
-     * Controller-signed HMAC-SHA256 bypass signature, populated by the
-     * controller at submission time when the flag is false. Verified by CI
-     * via {@code tools/ci/agent-protection/verify-sensitive-bypass.sh} using
-     * the same shared secret ({@code AR_AGENT_BYPASS_SECRET}). {@code null}
-     * when the flag is true or when the controller has no signing key.
-     */
-    private String sensitiveFileBypassSignature;
 
     /** Post-completion verification command, its working directory, timeout and pass cap. */
     private final PostCompletionConfig postCompletion = new PostCompletionConfig();
@@ -686,30 +676,23 @@ public class CodingAgentJob extends GitManagedJob {
      */
     void setFalsificationFindings(String findings) { this.falsificationFindings = findings; }
 
-    /** Returns whether the per-job sensitive-file protections are active; default {@code true}. */
-    public boolean isSensitiveFileProtectionEnabled() { return sensitiveFileProtectionEnabled; }
-
-    /**
-     * Sets whether the per-job sensitive-file protections are active.
-     * Operator-controlled; the agent must not be able to set this. CI
-     * honours the controller's HMAC-signed bypass signature (see
-     * {@link #setSensitiveFileBypassSignature(String)}); the agent has no
-     * access to the signing secret.
-     */
-    public void setSensitiveFileProtectionEnabled(boolean v) {
-        this.sensitiveFileProtectionEnabled = v;
-    }
+    /** Sets whether the per-job sensitive-file protections are active; operator-controlled, see {@link OperatorGrants}. */
+    public void setSensitiveFileProtectionEnabled(boolean v) { operatorGrants.setSensitiveFileProtectionEnabled(v); }
 
     /** Returns the controller-signed HMAC bypass signature, or {@code null} if absent. */
-    public String getSensitiveFileBypassSignature() { return sensitiveFileBypassSignature; }
+    public String getSensitiveFileBypassSignature() { return operatorGrants.getSensitiveFileBypassSignature(); }
+
+    /** Sets the controller-signed HMAC bypass signature; only the controller holds the signing secret. */
+    public void setSensitiveFileBypassSignature(String signature) { operatorGrants.setSensitiveFileBypassSignature(signature); }
 
     /**
-     * Sets the controller-signed HMAC bypass signature. Only the controller
-     * should call this; the agent never has access to the signing secret.
+     * Returns this job's controller-signed operator grants, populated by
+     * {@link CodingAgentJobFactory} and the wire codec.
+     *
+     * @return the grants; never {@code null}
      */
-    public void setSensitiveFileBypassSignature(String sensitiveFileBypassSignature) {
-        this.sensitiveFileBypassSignature = sensitiveFileBypassSignature;
-    }
+    @Override
+    OperatorGrants operatorGrants() { return operatorGrants; }
 
     /** Returns the post-completion command; non-empty activates {@link PostCompletionCommandRule}. */
     public String getPostCompletionCommand() { return postCompletion.getCommand(); }
@@ -1439,7 +1422,7 @@ public class CodingAgentJob extends GitManagedJob {
     protected boolean validateChanges() throws Exception {
         // Test-hiding audit gated on BOTH protectTestFiles AND the new
         // sensitiveFileProtectionEnabled flag.
-        if (isProtectTestFiles() && sensitiveFileProtectionEnabled
+        if (isProtectTestFiles() && isSensitiveFileProtectionEnabled()
                 && !TestHidingAudit.passes(getWorkingDirectory(), getBaseBranch(), this)) {
             return false;
         }
@@ -1556,6 +1539,7 @@ public class CodingAgentJob extends GitManagedJob {
         restartGovernor.appendEncoded(sb);
         postCompletion.appendEncoded(sb);
         enforceChanges.appendEncoded(sb);
+        operatorGrants.appendEncoded(sb);
         phaseRunnerConfig.appendEncoded(sb);
         return sb.toString();
     }
@@ -1565,6 +1549,7 @@ public class CodingAgentJob extends GitManagedJob {
         if (!restartGovernor.applySetting(key, value)
                 && !postCompletion.applySetting(key, value)
                 && !enforceChanges.applySetting(key, value)
+                && !operatorGrants.applySetting(key, value)
                 && !CodingAgentJobCodec.applySetting(this, key, value)) {
             super.set(key, value);
         }

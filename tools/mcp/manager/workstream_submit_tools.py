@@ -43,6 +43,7 @@ def workstream_submit_task(
     use_tmux: Optional[bool] = None,
     max_wall_clock_hours: Optional[int] = None,
     sensitive_file_protection_enabled: bool = True,
+    accepted_merge_resolutions: str = "",
     skip_agent_permission_prompts: bool = False,
     review_enabled: bool = True,
     max_review_passes: int = 0,
@@ -275,6 +276,20 @@ def workstream_submit_task(
             that tooling also needs ``skip_agent_permission_prompts=True``,
             or a workstream whose agent-permission-bypass branch prefixes
             match its target branch.
+        accepted_merge_resolutions: Comma-separated repository-relative
+            paths whose merge resolution the owner has reviewed and accepts.
+            When a job merging the base branch fails because the staging
+            guardrails rejected the agent's resolution of a path both sides
+            changed, the failure names the paths and pushes the agent's whole
+            resolution to a ``rescue/<jobId>`` branch. Re-submitting with
+            those paths here makes the harness commit the agent's resolution
+            of exactly those paths instead of failing. The controller signs
+            the grant with ``AR_AGENT_BYPASS_SECRET`` (a grant it cannot sign
+            is dropped) and the commit records it in a
+            ``Merge-Resolution-Accepted`` trailer. CI's own locks still apply.
+            Operator-only, like ``sensitive_file_protection_enabled=False``:
+            an in-flight coding agent cannot set it. Empty (default) accepts
+            nothing.
         skip_agent_permission_prompts: When ``True``, this one job's agent
             session is launched with the agent runtime's interactive
             permission prompts bypassed (for Claude Code,
@@ -440,6 +455,15 @@ def workstream_submit_task(
             "let the agent self-authorise a controller-signed bypass HMAC for "
             "that other workstream",
             "Leave sensitive_file_protection_enabled at its default (True) and re-submit",
+        )
+    if caller_workstream_id and accepted_merge_resolutions.strip():
+        return _operator_only_rejection(
+            caller_workstream_id, workstream_id,
+            "accepted_merge_resolutions",
+            "accepting a merge resolution the guardrails rejected is the "
+            "owner's decision, and letting an agent request it would let the "
+            "agent self-authorise a controller-signed acceptance",
+            "Leave accepted_merge_resolutions empty and re-submit",
         )
     # This parameter is named skip_ rather than bypass_ even though the wire
     # field and the Java side both call it bypassAgentPermissionPrompts. The
@@ -797,6 +821,10 @@ def workstream_submit_task(
     # so the controller never mints a bypass HMAC at the request of an agent.
     if not sensitive_file_protection_enabled:
         payload["sensitiveFileProtectionEnabled"] = False
+    # Operator-only, guarded above; the controller signs the grant.
+    accepted_paths = [p.strip() for p in accepted_merge_resolutions.split(",") if p.strip()]
+    if accepted_paths:
+        payload["acceptedMergeResolutions"] = accepted_paths
     if skip_agent_permission_prompts:
         payload["bypassAgentPermissionPrompts"] = True
     if not review_enabled:

@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.git.TransientGitException;
+
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;

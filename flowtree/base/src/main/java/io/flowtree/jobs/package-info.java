@@ -17,11 +17,11 @@
 /**
  * Shared job-adjacent utilities that have no flowtree runtime dependencies.
  *
- * <p>This portion of {@code io.flowtree.jobs} contains the low-level git
- * subprocess wrapper used by both runners (in {@code flowtree/agents}) and
- * the runtime job implementations (in {@code flowtree/runtime}). The bulk
- * of {@code io.flowtree.jobs} lives in those higher modules; only the
- * dependency-free helpers live here.</p>
+ * <p>This portion of {@code io.flowtree.jobs} contains the dependency-free
+ * helpers shared by both runners (in {@code flowtree/agents}) and the runtime
+ * job implementations (in {@code flowtree/runtime}). The bulk of
+ * {@code io.flowtree.jobs} lives in those higher modules. The low-level git
+ * subprocess wrapper these helpers use lives in {@link io.flowtree.git}.</p>
  *
  * @author Michael Murray
  */

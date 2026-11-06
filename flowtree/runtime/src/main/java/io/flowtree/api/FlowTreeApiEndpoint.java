@@ -27,7 +27,6 @@ import io.flowtree.jobs.DependentRepoPush;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.jobs.PostCompletionCommandValidator;
-import io.flowtree.jobs.SensitiveFileBypassTrailer;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
@@ -961,8 +960,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 log("Invalid startedAfter value: " + startedAfterStr);
             }
         }
-        // Per-PR remediation budget / own-commit skip for automated jobs.
-        String remediationSkip = remediationGuard.skipReason(workstreamId, automated, JsonFieldExtractor.extractString(body, "triggerCommit"));
+        // Per-PR remediation budget / own-commit skip for remediation passes
+        // (auto-review/auto-resolve), which CI marks explicitly — not every automated job.
+        boolean remediationPass = JsonFieldExtractor.getBoolean(body, "remediationPass", false);
+        String remediationSkip = remediationGuard.skipReason(workstreamId, remediationPass, JsonFieldExtractor.extractString(body, "triggerCommit"));
         if (remediationSkip != null) {
             return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"ok\":true,"
                 + "\"skipped\":true,\"reason\":\"" + JsonFieldExtractor.escapeJson(remediationSkip) + "\"}");
@@ -1083,35 +1084,22 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setUseTmux(JsonFieldExtractor.extractBoolean(body, "useTmux"));
         if (JsonFieldExtractor.hasField(body, "maxWallClockHours"))
             factory.setMaxWallClockHours(JsonFieldExtractor.extractInt(body, "maxWallClockHours"));
-        // Sensitive-file protections — enabled by default; only forwarded
-        // when the operator has explicitly disabled them for this job. The
-        // bypass signature is controller-computed from AR_AGENT_BYPASS_SECRET
-        // (the agent never sees the signing secret) and is the ONLY source
-        // of the signature on the factory. A previous version of this code
-        // also accepted an explicit `sensitiveFileBypassSignature` from the
-        // request body as an override, but that path defeated the forgery
-        // defence: any caller with API access could inject a signature
-        // value that bypassed the controller's HMAC computation. Tests can
-        // set the signature directly on the CodingAgentJobFactory (which
-        // already exposes a setter) without going through the API, so the
-        // override path is not needed in production. It has been removed.
-        if (JsonFieldExtractor.hasField(body, "sensitiveFileProtectionEnabled")) {
+        // Operator grants: the controller reads them off the request body here
+        // and signs each with a secret the agent never sees; see OperatorGrants.
+        if (JsonFieldExtractor.hasField(body, "sensitiveFileProtectionEnabled"))
             factory.setSensitiveFileProtectionEnabled(
                     JsonFieldExtractor.extractBoolean(body, "sensitiveFileProtectionEnabled"));
-        }
-        if (!factory.isSensitiveFileProtectionEnabled()) {
-            String secret = System.getenv("AR_AGENT_BYPASS_SECRET");
-            String jobId = factory.getTaskId();
-            if (secret != null && !secret.isEmpty() && jobId != null && !jobId.isEmpty()) {
-                String sig = SensitiveFileBypassTrailer.sign(secret, jobId);
-                if (sig != null) {
-                    factory.setSensitiveFileBypassSignature(sig);
-                }
-            } else {
-                log("sensitiveFileProtectionEnabled=false but AR_AGENT_BYPASS_SECRET"
-                        + " is unset or jobId is empty; commit will be blocked by CI");
+        List<String> acceptedResolutions = List.of();
+        if (JsonFieldExtractor.hasField(body, "acceptedMergeResolutions")) {
+            try {
+                acceptedResolutions =
+                        JsonFieldExtractor.extractStrictStringArray(body, "acceptedMergeResolutions");
+            } catch (IllegalArgumentException e) {
+                log("acceptedMergeResolutions ignored, so no merge resolution"
+                        + " will be accepted: " + e.getMessage());
             }
         }
+        factory.applyOperatorGrants(acceptedResolutions, System.getenv("AR_AGENT_BYPASS_SECRET"));
         if (JsonFieldExtractor.hasField(body, "reviewEnabled"))
             factory.setReviewEnabled(JsonFieldExtractor.extractBoolean(body, "reviewEnabled"));
         int maxReviewPasses = JsonFieldExtractor.extractInt(body, "maxReviewPasses");
@@ -1187,7 +1175,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 factory.getDisplaySummary(),
                 JsonFieldExtractor.extractString(body, "submittedBy"),
                 requiredLabels, Instant.now());
-        remediationGuard.dispatched(factory.getTaskId(), workstreamId, automated);
+        remediationGuard.dispatched(factory.getTaskId(), workstreamId, remediationPass);
         // Persist for restart recovery; cleared at the terminal choke point.
         if (pendingJobRecovery != null) {
             pendingJobRecovery.persist(factory.getTaskId(), factory.encode());
@@ -1217,6 +1205,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         // Report which optional phases are active so callers can confirm
         // the effective job configuration without inspecting phase bundles.
         SubmissionConfigResolver.appendResolvedJobConfigJson(json, factory);
+        List<String> accepted = factory.operatorGrants().getAcceptedMergeResolutions();
+        if (!accepted.isEmpty()) {
+            json.append(",\"acceptedMergeResolutions\":").append(JsonFieldExtractor.toJsonArray(accepted));
+        }
         // Report an auto-created workstream so a caller that submitted with
         // createWorkstreamIfMissing can tell a first run on a new branch from
         // a run on a workstream someone had already registered.
@@ -1304,6 +1296,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (pullRequestUrl != null) {
             event.withPullRequestUrl(pullRequestUrl);
         }
+        // The instructions already travel in errorMessage; only the location is restored.
+        event.withRescue(JsonFieldExtractor.extractString(body, "rescueRef"), null);
         // Commits the job pushed to dependent repos, for companion-PR handling.
         event.withDependentRepoPushes(DependentRepoPush.listFromJson(body));
         // Resolved from the server-side registry populated at submission time,
