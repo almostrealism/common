@@ -37,6 +37,7 @@ import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.scope.Argument.Expectation;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.io.Console;
@@ -679,9 +680,9 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		List<Argument<?>> args = new ArrayList<>();
 
 		if (arguments == null) {
-			args.addAll(extractArgumentDependencies(statements
+			args.addAll(Argument.dependencies(statements
 					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
-			args.addAll(extractArgumentDependencies(variables
+			args.addAll(Argument.dependencies(variables
 					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
 			Argument.sort(args);
 
@@ -1054,16 +1055,16 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 * descendants as a flat list, or {@code null} when the scope tree contains anything
 	 * whose memory behavior cannot be analyzed as a plain sequence of assignments.
 	 *
-	 * <p>Only plain {@link Scope} instances qualify. Subclasses carry expressions outside
-	 * the statement list that read memory invisibly to this analysis ({@link Cases} branch
-	 * conditions, nested {@link Repeated} loop bounds), and methods, metrics, or statements
-	 * that are not {@link ExpressionAssignment}s are equally opaque; any of them yields
-	 * {@code null}.</p>
+	 * <p>Methods, metrics, and statements that are not {@link ExpressionAssignment}s are
+	 * opaque to this analysis, so any of them yields {@code null}. So does a scope that
+	 * generates code besides its statements, declarations and children, which is why each
+	 * subclass that generates such code overrides this method to return {@code null}: the code it adds may
+	 * read memory invisibly to a flat list of assignments, as {@link Cases} branch conditions
+	 * and {@link Repeated} loop bounds do.</p>
 	 *
 	 * @return the assignments in traversal order, or {@code null} if the tree is not analyzable
 	 */
 	public List<ExpressionAssignment<?>> collectAssignments() {
-		if (getClass() != Scope.class) return null;
 		if (!getMethods().isEmpty() || !getMetrics().isEmpty()) return null;
 
 		List<ExpressionAssignment<?>> assignments = new ArrayList<>();
@@ -1087,23 +1088,41 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>The answer is read off the scope itself: every one of its
-	 * {@link #collectAssignments() assignments} is asked whether it
-	 * {@link ExpressionAssignment#containsAssignment contains an assignment} to the range. A
-	 * scope whose writes cannot be enumerated that way (one with methods, metrics or explicit
-	 * code, or with a required scope anywhere in its tree, since every one of those is generated
-	 * as a separate function) may write anything, so for it the answer is always
-	 * {@code true}.</p>
+	 * <p>The answer is read off the scope itself: each of its {@link Statement statements} and
+	 * declarations answers for what it writes, an assignment through its destination, and each
+	 * child scope answers for its own content in turn. A scope with methods, metrics or a
+	 * required scope may write anything, since every one of those runs code that is not among
+	 * its statements (a required scope is generated as a separate function), so for it the
+	 * answer is always {@code true}.</p>
+	 *
+	 * <p>This accounts for the code that {@link #write(CodePrintWriter)} generates from the
+	 * scope's statements, declarations and children. A subclass that generates any other code
+	 * which may write memory must override this method to account for it, as
+	 * {@link ExplicitScope} and {@link HybridScope} do for their explicit code. A scope that
+	 * repeats its children or chooses among them ({@link Repeated}, {@link Cases}) need not: the
+	 * bounds and conditions it generates besides them are expressions, which read memory but
+	 * never write it.</p>
+	 *
+	 * <p>That an expression never writes is a contract on the code generated here, not a
+	 * property checked for each expression: a call that may write ({@link Method}, such as a
+	 * {@link #call(Expression[]) call of a scope}) belongs among the statements or methods of the
+	 * scope, where it is accounted for, and the function it calls among the required scopes,
+	 * which make the answer {@code true} by themselves.</p>
 	 */
 	@Override
 	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
-		if (!getAllRequiredScopes().isEmpty()) return true;
+		if (!getRequiredScopes().isEmpty() || !getMethods().isEmpty() || !getMetrics().isEmpty()) return true;
 
-		List<ExpressionAssignment<?>> assignments = collectAssignments();
-		if (assignments == null) return true;
+		for (Statement<?> statement : getStatements()) {
+			if (statement.containsAssignment(array, start, end)) return true;
+		}
 
-		for (ExpressionAssignment<?> assignment : assignments) {
-			if (assignment.containsAssignment(array, start, end)) return true;
+		for (ExpressionAssignment<?> declaration : getVariables()) {
+			if (declaration.containsAssignment(array, start, end)) return true;
+		}
+
+		for (Scope<?> child : getChildren()) {
+			if (child.containsAssignment(array, start, end)) return true;
 		}
 
 		return false;
@@ -1112,24 +1131,106 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>Like {@link #containsAssignment(ArrayVariable, long, long)}, the names are read off the
+	 * scope itself: each of its {@link Statement statements} and declarations adds what it
+	 * assigns, and each child scope adds what its own content assigns.</p>
+	 */
+	@Override
+	public void appendAssignedNames(Set<String> names) {
+		appendAssignedNames(names, statement -> true);
+	}
+
+	/**
+	 * Adds to {@code names} the names of the variables assigned by the
+	 * {@link Statement statements} and declarations of this scope and of its descendants that
+	 * {@code included} accepts, so that an analysis which accounts for some statements by
+	 * other means (as loop-invariant code motion does for the declarations it may hoist) learns
+	 * what the rest of the scope assigns without walking the scope itself.
+	 *
+	 * <p>A subclass that assigns a variable besides its statements and declarations adds it
+	 * here, as {@link Repeated} does for its index.</p>
+	 *
+	 * @param names    the set to which the names are added
+	 * @param included which statements and declarations contribute their assigned names
+	 */
+	public void appendAssignedNames(Set<String> names, Predicate<Statement<?>> included) {
+		for (Statement<?> statement : getStatements()) {
+			if (included.test(statement)) statement.appendAssignedNames(names);
+		}
+
+		for (ExpressionAssignment<?> declaration : getVariables()) {
+			if (included.test(declaration)) declaration.appendAssignedNames(names);
+		}
+
+		for (Scope<?> child : getChildren()) {
+			child.appendAssignedNames(names, included);
+		}
+	}
+
+	/**
+	 * Returns the {@link Index} of every loop in this scope and its descendants, in traversal
+	 * order.
+	 *
+	 * @return a new list of the loop indices
+	 * @see #appendLoopIndices(List)
+	 */
+	public List<Index> collectLoopIndices() {
+		List<Index> indices = new ArrayList<>();
+		appendLoopIndices(indices);
+		return indices;
+	}
+
+	/**
+	 * Adds to {@code indices} the {@link Index} of every loop in this scope and its
+	 * descendants, in traversal order, so that an analysis of expressions which may refer to a
+	 * loop index through the {@link Index} interface, rather than through a variable
+	 * dependency, knows which indices advance inside this scope.
+	 *
+	 * <p>A plain scope declares no index of its own and only asks its children; a subclass
+	 * that advances an index adds it here, as {@link Repeated} does.</p>
+	 *
+	 * @param indices the list to which the indices are added
+	 */
+	public void appendLoopIndices(List<Index> indices) {
+		for (Scope<?> child : getChildren()) {
+			child.appendLoopIndices(indices);
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p>Like {@link #containsAssignment(ArrayVariable, long, long)}, the answer is read off the
-	 * scope's {@link #collectAssignments() assignments}, each asked whether it
-	 * {@link ExpressionAssignment#appendReadPositions reads}, and a scope whose code cannot be enumerated
-	 * that way may read anything, so for it every position is read.</p>
+	 * scope itself: each of its {@link Statement statements} and declarations records what it
+	 * reads, and each child scope records what its own content reads. A scope with methods,
+	 * metrics or a required scope may read anything, since every one of those runs code that is
+	 * not among its statements, so for it every position is read.</p>
+	 *
+	 * <p>A subclass that generates any other code which may read memory must override this
+	 * method to account for it, as {@link Repeated} does for its loop condition and interval,
+	 * {@link Cases} for its branch conditions, and {@link ExplicitScope} and {@link HybridScope}
+	 * for their explicit code.</p>
 	 */
 	@Override
 	public void appendReadPositions(ReadPositions reads) {
-		List<ExpressionAssignment<?>> assignments =
-				getAllRequiredScopes().isEmpty() ? collectAssignments() : null;
-
-		if (assignments == null) {
+		if (!getRequiredScopes().isEmpty() || !getMethods().isEmpty() || !getMetrics().isEmpty()) {
 			reads.addEverything();
 			return;
 		}
 
-		for (ExpressionAssignment<?> assignment : assignments) {
+		for (Statement<?> statement : getStatements()) {
 			if (reads.isEverything()) return;
-			assignment.appendReadPositions(reads);
+			statement.appendReadPositions(reads);
+		}
+
+		for (ExpressionAssignment<?> declaration : getVariables()) {
+			if (reads.isEverything()) return;
+			declaration.appendReadPositions(reads);
+		}
+
+		for (Scope<?> child : getChildren()) {
+			if (reads.isEverything()) return;
+			child.appendReadPositions(reads);
 		}
 	}
 
@@ -1184,29 +1285,6 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 */
 	@Override
 	public Console console() { return console; }
-
-	/**
-	 * Generates kernel index children from the given statements.
-	 *
-	 * @param <T>    the type of statements
-	 * @param values the statements to scan for kernel index children
-	 * @return list of kernel index children found in the statements
-	 * @deprecated Use of kernel children is being phased out.
-	 */
-	@Deprecated
-	protected <T extends Statement> List<KernelIndexChild> generateKernelChildren(List<T> values) {
-		List<KernelIndexChild> kernelChildren = new ArrayList<>();
-
-		for (T value : values) {
-			if (value instanceof ExpressionAssignment) {
-				((ExpressionAssignment) value).getExpression().children()
-						.filter(c -> c instanceof KernelIndexChild)
-						.forEach(c -> kernelChildren.add((KernelIndexChild) c));
-			}
-		}
-
-		return kernelChildren;
-	}
 
 	/**
 	 * Processes expression replacements to extract common subexpressions.
@@ -1375,7 +1453,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 */
 	public List<ExpressionAssignment<?>> collectDeclarations() {
 		List<ExpressionAssignment<?>> declarations = new ArrayList<>();
-		collectDeclarations(declarations);
+		appendDeclarations(declarations);
 		return declarations;
 	}
 
@@ -1384,7 +1462,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 *
 	 * @param declarations the list to add declarations to
 	 */
-	private void collectDeclarations(List<ExpressionAssignment<?>> declarations) {
+	private void appendDeclarations(List<ExpressionAssignment<?>> declarations) {
 		for (Statement<?> stmt : getStatements()) {
 			if (stmt instanceof ExpressionAssignment) {
 				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
@@ -1395,100 +1473,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		}
 
 		for (Scope<?> child : getChildren()) {
-			child.collectDeclarations(declarations);
+			child.appendDeclarations(declarations);
 		}
-	}
-
-	/**
-	 * Extracts the declared variable name from a declaration assignment's destination.
-	 *
-	 * <p>If the destination is a {@link StaticReference}, returns its name.
-	 * Otherwise returns null. This is a convenience method for scope analysis
-	 * operations that need to identify declared variable names.</p>
-	 *
-	 * @param assignment the declaration assignment to inspect
-	 * @return the declared variable name, or null if it cannot be determined
-	 */
-	public static String getDeclarationName(ExpressionAssignment<?> assignment) {
-		Expression<?> dest = assignment.getDestination();
-		if (dest instanceof StaticReference) {
-			return ((StaticReference<?>) dest).getName();
-		}
-		return null;
-	}
-
-	/**
-	 * Collects variable names from an assignment destination expression into the given set.
-	 *
-	 * <p>Handles both {@link StaticReference} destinations (whose {@code getDependencies()}
-	 * may return empty) and general expressions whose dependencies are collected via
-	 * {@link Expression#getDependencies()}.</p>
-	 *
-	 * @param dest the destination expression of an assignment (may be null)
-	 * @param names the set to add variable names to
-	 */
-	public static void collectDestinationNames(Expression<?> dest, Set<String> names) {
-		if (dest == null) return;
-
-		if (dest instanceof StaticReference) {
-			String name = ((StaticReference<?>) dest).getName();
-			if (name != null) {
-				names.add(name);
-			}
-		}
-
-		for (Variable<?, ?> var : dest.getDependencies()) {
-			if (var.getName() != null) {
-				names.add(var.getName());
-			}
-		}
-	}
-
-	/**
-	 * Extracts argument dependencies from a collection of variables.
-	 * <p>This is a convenience method that calls {@link #extractArgumentDependencies(Collection, boolean)}
-	 * with {@code top = true}.</p>
-	 *
-	 * @param vars the variables to extract dependencies from
-	 * @return list of arguments representing the dependencies
-	 */
-	protected static List<Argument<?>> extractArgumentDependencies(Collection<Variable<?, ?>> vars) {
-		return extractArgumentDependencies(vars, true);
-	}
-
-	/**
-	 * Extracts argument dependencies from a collection of variables.
-	 * <p>Creates {@link Argument} instances for each variable with appropriate expectations.
-	 * Top-level variables get {@code WILL_EVALUATE}, nested dependencies get {@code EVALUATE_AHEAD}.
-	 * Recursively processes variable dependencies.</p>
-	 *
-	 * @param vars the variables to extract dependencies from
-	 * @param top  true if these are top-level variables, false for nested dependencies
-	 * @return list of arguments representing the dependencies
-	 */
-	private static List<Argument<?>> extractArgumentDependencies(Collection<Variable<?, ?>> vars, boolean top) {
-		List<Argument<?>> args = new ArrayList<>();
-
-		v: for (Variable<?, ?> var : vars) {
-			if (var == null) continue v;
-
-			Argument<?> arg = new Argument(var, top ? Expectation.WILL_EVALUATE : Expectation.EVALUATE_AHEAD);
-			if (!args.contains(arg)) args.add(arg);
-
-			// When the variable itself is an InstanceReference, the referent is a dependency
-//			if (!(var instanceof Array) && var.getExpression() instanceof InstanceReference) {
-//				arg = new Argument((Variable) ((InstanceReference) var.getExpression()).getReferent(),
-//												Expectation.EVALUATE_AHEAD);
-//				if (!args.contains(arg)) {
-//					args.add(arg);
-//				}
-//			}
-
-			// Recursive dependencies are computed
-			extractArgumentDependencies(var.getDependencies(), false).stream()
-					.filter(a -> !args.contains(a)).forEach(args::add);
-		}
-
-		return args;
 	}
 }
