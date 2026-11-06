@@ -44,7 +44,10 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.NavigableSet;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.DoubleUnaryOperator;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -1044,6 +1047,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 		ChannelInfo renderChannel = new ChannelInfo(voicing, audioChannel);
 		PackedCollection renderDestination = ctx.getDestination();
 		Map<NoteAudioChoice, NoteAudioContext> audioContexts = new HashMap<>();
+		DoubleUnaryOperator nextNotePositions = nextNotePositions();
 
 		IntStream.range(firstRepetition, lastRepetition).forEach(rep -> {
 			double repStart = rep * duration;
@@ -1072,7 +1076,7 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 
 				NoteAudioContext audioContext = audioContexts.computeIfAbsent(choice,
 						c -> new NoteAudioContext(voicing, audioChannel,
-								c.getValidPatternNotes(), this::nextNotePosition));
+								c.getValidPatternNotes(), nextNotePositions));
 
 				render(ctx, audioContext, elements.get(choice), melodic,
 						repStart, startFrame, frameCount, effectiveCache);
@@ -1093,6 +1097,41 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 				.filter(p -> p > position)
 				.mapToDouble(p -> p)
 				.min().orElse(duration);
+	}
+
+	/**
+	 * Returns a lookup that answers {@link #nextNotePosition(double)} for the elements as they
+	 * are now, without walking the layer hierarchy on every query.
+	 *
+	 * <p>{@link #nextNotePosition(double)} collects every element and every repetition of it
+	 * each time it is called, and a streaming render calls it once per note per buffer, so
+	 * that walk dominated the render-ahead thread. The lookup collects every onset into a
+	 * sorted set once and resolves each query with a logarithmic lookup. The answer is the same: the first onset after
+	 * {@code position} that is still before the pattern {@link #getDuration() duration}
+	 * belongs to an element that is present in {@code [position, duration)}, so it is the
+	 * minimum. When there is no such onset, the only elements present are those with an
+	 * onset exactly at {@code position}; that case, which is rare, is answered by
+	 * {@link #nextNotePosition(double)} itself.</p>
+	 *
+	 * <p>The lookup reflects the elements at the time it is created, so it is meant for a
+	 * single render pass, during which the elements do not change.</p>
+	 *
+	 * @return the next-note-position lookup over a snapshot of the current elements
+	 */
+	public DoubleUnaryOperator nextNotePositions() {
+		NavigableSet<Double> onsets = getAllElements(Double.NEGATIVE_INFINITY, duration).stream()
+				.map(PatternElement::getPositions)
+				.flatMap(List::stream)
+				.collect(Collectors.toCollection(TreeSet::new));
+
+		return position -> {
+			if (!(position < duration)) return duration;
+
+			Double next = onsets.higher(position);
+			if (next != null && next < duration) return next;
+			if (!onsets.contains(position)) return duration;
+			return nextNotePosition(position);
+		};
 	}
 
 	/**
