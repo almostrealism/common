@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.function.DoubleUnaryOperator;
 import java.util.stream.Collectors;
 
 /**
@@ -237,6 +238,37 @@ public class PatternLayerManagerTest extends TestSuiteBase implements AudioTestF
 
 		Assert.assertEquals(1.5, plm.nextNotePosition(1.2), 0.0);
 		Assert.assertEquals(3.0, plm.nextNotePosition(1.6), 0.0);
+	}
+
+	/**
+	 * The snapshot lookup used by streaming renders answers every query exactly as
+	 * {@link PatternLayerManager#nextNotePosition(double)} does — at onsets, between
+	 * them, before the first and past the duration — including the case where the
+	 * only element present at the query sounds next beyond the pattern duration.
+	 */
+	@Test(timeout = 60000)
+	public void nextNotePositionsMatchesNextNotePosition() {
+		PatternElement late = hit(3.5, 2);
+		late.setRepeatDuration(1.0);
+
+		PatternLayerManager plm = manager(List.of(), 4.0, false);
+		plm.setExplicitElements(new NoteAudioChoice("explicit"),
+				List.of(hit(0.0, 1), hit(1.0, 2), hit(1.25, 3), hit(3.0, 1), late));
+
+		DoubleUnaryOperator lookup = plm.nextNotePositions();
+		Assert.assertEquals(1.0, lookup.applyAsDouble(0.0), 0.0);
+		Assert.assertEquals(1.25, lookup.applyAsDouble(1.0), 0.0);
+		Assert.assertEquals(3.0, lookup.applyAsDouble(2.25), 0.0);
+		Assert.assertEquals("the repetition of the element at 3.5 lies past the duration",
+				4.5, lookup.applyAsDouble(3.5), 0.0);
+		Assert.assertEquals(4.0, lookup.applyAsDouble(3.75), 0.0);
+		Assert.assertEquals(4.0, lookup.applyAsDouble(5.0), 0.0);
+
+		for (int i = -4; i <= 24; i++) {
+			double position = i * 0.25;
+			Assert.assertEquals("position " + position, plm.nextNotePosition(position),
+					lookup.applyAsDouble(position), 0.0);
+		}
 	}
 
 	/**

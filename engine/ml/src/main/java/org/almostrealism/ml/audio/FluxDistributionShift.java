@@ -103,7 +103,7 @@ public class FluxDistributionShift implements DistributionShift {
 	}
 
 	@Override
-	public double shift(double t, int sequenceLength) {
+	public double shiftInterior(double t, int sequenceLength) {
 		double alpha = getAlpha(sequenceLength);
 		return alpha * t / (1.0 + (alpha - 1.0) * t);
 	}
