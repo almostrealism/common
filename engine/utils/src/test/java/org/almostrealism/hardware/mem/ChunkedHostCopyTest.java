@@ -114,6 +114,36 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A copy of {@link Integer#MAX_VALUE} elements, whose final chunk is partial, stops after
+	 * that chunk: advancing the position past it must not overflow into negative offsets and
+	 * keep the copy going. Source and destination discard the values, so no memory of that
+	 * length is allocated.
+	 */
+	@Test(timeout = 60000)
+	public void maximumLengthCopyEndsAfterFinalPartialChunk() {
+		int length = Integer.MAX_VALUE;
+		int chunk = MemoryProvider.HOST_COPY_CHUNK_SIZE;
+
+		DiscardingMemory source = new DiscardingMemory();
+		DiscardingMemory dest = new DiscardingMemory();
+		dest.setMemInChunks(dest, 0, source, 0, length);
+
+		int chunks = length / chunk + 1;
+		int last = length % chunk;
+		Assert.assertNotEquals(0, last);
+
+		Assert.assertEquals(chunks, source.calls);
+		Assert.assertEquals(length, source.total);
+		Assert.assertEquals((long) (chunks - 1) * chunk, source.lastOffset);
+		Assert.assertEquals(last, source.lastLength);
+
+		Assert.assertEquals(chunks, dest.calls);
+		Assert.assertEquals(length, dest.total);
+		Assert.assertEquals((long) (chunks - 1) * chunk, dest.lastOffset);
+		Assert.assertEquals(last, dest.lastLength);
+	}
+
+	/**
 	 * Copies {@code length} elements from a counting source into memory of the given
 	 * provider, at non-zero offsets on both sides, and checks the reads and the result.
 	 *
@@ -151,23 +181,42 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Checks that the destination holds the source values in the copied range, converted as
-	 * the provider's precision requires, and is untouched on either side of it.
+	 * Checks that the destination holds, in the copied range, exactly the values a single
+	 * whole-range write of the source values through the same provider stores, and is
+	 * untouched on either side of it. Deriving the expected values from the provider itself
+	 * covers whatever conversion its precision (FP64, FP32 or FP16) performs.
 	 */
 	private static void assertCopied(MemoryProvider<Memory> provider, Memory dest, int size, int length) {
 		double[] result = provider.toArray(dest, 0, size);
-		boolean fp32 = provider.getNumberSize() == Float.BYTES;
+		double[] expected = wholeRangeCopy(provider, length);
 
 		Assert.assertEquals(UNTOUCHED, result[DESTINATION_OFFSET - 1], 0.0);
 		Assert.assertEquals(UNTOUCHED, result[DESTINATION_OFFSET + length], 0.0);
 
 		for (int i = 0; i < length; i++) {
-			double value = CountingSource.valueAt(SOURCE_OFFSET + i);
-			double expected = fp32 ? (float) value : value;
-			if (result[DESTINATION_OFFSET + i] != expected) {
-				Assert.fail("element " + i + " expected " + expected
+			if (result[DESTINATION_OFFSET + i] != expected[i]) {
+				Assert.fail("element " + i + " expected " + expected[i]
 						+ " but was " + result[DESTINATION_OFFSET + i]);
 			}
+		}
+	}
+
+	/**
+	 * Writes the source values of the copied range to fresh memory of the given provider in
+	 * one call and reads them back, giving the values an unchunked copy stores.
+	 */
+	private static double[] wholeRangeCopy(MemoryProvider<Memory> provider, int length) {
+		double[] values = new double[length];
+		for (int i = 0; i < length; i++) {
+			values[i] = CountingSource.valueAt(SOURCE_OFFSET + i);
+		}
+
+		Memory reference = provider.allocate(length);
+		try {
+			provider.setMem(reference, 0, values, 0, length);
+			return provider.toArray(reference, 0, length);
+		} finally {
+			provider.deallocate(length, reference);
 		}
 	}
 
@@ -235,6 +284,63 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 			for (int i = 0; i < length; i++) {
 				out[oOffset + i] = valueAt(sOffset + i);
 			}
+		}
+	}
+
+	/**
+	 * Memory of unbounded length that neither stores nor produces values, recording only
+	 * the position and length of each read from it or write to it. Any read or write with
+	 * a negative offset or a non-positive length fails.
+	 */
+	private static class DiscardingMemory implements Memory, MemoryProvider<Memory> {
+		/** The number of reads or writes made. */
+		private int calls;
+
+		/** The total number of elements read or written. */
+		private long total;
+
+		/** The offset of the most recent read or write. */
+		private long lastOffset;
+
+		/** The length of the most recent read or write. */
+		private int lastLength;
+
+		/**
+		 * Records one read or write, rejecting an invalid range.
+		 *
+		 * @param offset the starting position
+		 * @param length the number of elements
+		 */
+		private void record(int offset, int length) {
+			if (offset < 0 || length <= 0)
+				throw new IndexOutOfBoundsException("offset " + offset + ", length " + length);
+
+			calls++;
+			total += length;
+			lastOffset = offset;
+			lastLength = length;
+		}
+
+		@Override
+		public MemoryProvider getProvider() { return this; }
+
+		@Override
+		public String getName() { return "DISCARDING"; }
+
+		@Override
+		public int getNumberSize() { return Double.BYTES; }
+
+		@Override
+		public void deallocate(int size, Memory mem) { }
+
+		@Override
+		public void getMem(Memory mem, int sOffset, double[] out, int oOffset, int length) {
+			record(sOffset, length);
+		}
+
+		@Override
+		public void setMem(Memory mem, int offset, double[] source, int srcOffset, int length) {
+			record(offset, length);
 		}
 	}
 }

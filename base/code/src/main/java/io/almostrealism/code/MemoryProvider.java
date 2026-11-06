@@ -207,8 +207,9 @@ public interface MemoryProvider<T extends Memory> extends Named {
 
 		double[] chunk = new double[Math.min(length, chunkSize)];
 
-		for (int pos = 0; pos < length; pos += chunk.length) {
-			int n = Math.min(chunk.length, length - pos);
+		int n;
+		for (int pos = 0; pos < length; pos += n) {
+			n = Math.min(chunk.length, length - pos);
 			source.get(srcOffset + pos, chunk, 0, n);
 			setMem(mem, offset + pos, chunk, 0, n);
 		}
