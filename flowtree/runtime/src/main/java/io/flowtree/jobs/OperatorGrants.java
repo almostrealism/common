@@ -221,6 +221,21 @@ public final class OperatorGrants extends WireConfig implements ConsoleFeatures 
     }
 
     /**
+     * Removes every operator-grant trailer an agent could have written into
+     * {@code message}: both {@code Sensitive-File-Bypass} and
+     * {@code Merge-Resolution-Accepted}. The harness appends its own copy of a
+     * trailer only after an authorized grant, so a forged line in the agent's
+     * {@code commit.txt} must never survive into a message the harness composes
+     * from it.
+     *
+     * @param message the agent's commit message; may be {@code null}
+     * @return the message with both grant trailers stripped, never {@code null}
+     */
+    static String stripGrantTrailers(String message) {
+        return RESOLUTION_TRAILER.strip(SensitiveFileBypassTrailer.stripTrailer(message));
+    }
+
+    /**
      * Applies the operator grants a submission requests, signing each with
      * {@code secret}. Called by the controller only: the request supplies
      * what the operator asked for, and never a signature.

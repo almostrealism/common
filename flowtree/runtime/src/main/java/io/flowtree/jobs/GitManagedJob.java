@@ -563,8 +563,15 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         } finally {
             // Last thing inside the lock: the completion event is built after
             // it is released, by which time the tree may belong to another job.
-            // TODO(review): an unchecked exception from capture() here now skips the lock release and completion event below.
-            workOutcome.capture(workspaceHeld, error);
+            // Capture is isolated so its failure cannot skip the cleanup below.
+            try {
+                workOutcome.capture(workspaceHeld, error);
+            } catch (RuntimeException e) {
+                warn("Could not capture the job's work outcome: " + e.getMessage(), e);
+                if (error == null) {
+                    error = e;
+                }
+            }
             releaseEnvironment();
             workspaceLock.release();
             fireJobCompleted(error);

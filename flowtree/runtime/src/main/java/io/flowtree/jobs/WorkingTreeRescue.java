@@ -63,10 +63,11 @@ import java.util.Set;
  * </ul>
  *
  * <h2>When it runs</h2>
- * <p>Only for a job whose work changed the tree: the working-tree fingerprint
+ * <p>Only for a job whose work changed something: the working-tree fingerprint
  * after the job differs from the one {@link #recordPreWorkState()} took
- * before {@link GitManagedJob#doWork()}. A job that fails before its work
- * starts, or whose work changed nothing, creates nothing. The one excluded
+ * before {@link GitManagedJob#doWork()}, or {@code HEAD} moved because the job
+ * committed locally and then failed to publish that commit. A job that fails
+ * before its work starts, or whose work changed nothing, creates nothing. The one excluded
  * failure class is a tampering revert ({@link GitManagedJob#hasRevertedAgentWork()}):
  * the harness destroyed that work deliberately, and rescuing it would undo the
  * remedy. A job that does not push ({@link GitManagedJob#isPushToOrigin()}
@@ -93,6 +94,9 @@ class WorkingTreeRescue implements ConsoleFeatures {
 
     /** The working-tree fingerprint before the work, or {@code null} if it could not be taken. */
     private String preWorkFingerprint;
+
+    /** The commit {@code HEAD} named before the work, or {@code null} if it could not be read. */
+    private String preWorkHead;
 
     /** Where the work was preserved, or {@code null} when nothing was rescued. */
     private String location;
@@ -121,6 +125,27 @@ class WorkingTreeRescue implements ConsoleFeatures {
         } catch (IOException e) {
             warn("Could not fingerprint the working tree before the job's work: " + e.getMessage());
             preWorkFingerprint = null;
+        }
+        preWorkHead = currentHead();
+    }
+
+    /**
+     * Returns the commit {@code HEAD} names in the job's working tree, or
+     * {@code null} when it cannot be read (an unborn branch, an unreadable
+     * repository, an interrupted query).
+     *
+     * @return the {@code HEAD} commit hash, or {@code null}
+     */
+    private String currentHead() {
+        try {
+            GitOperations.Result head = job.gitOperations(job.getWorkingDirectory())
+                    .executeForResult("rev-parse", "--verify", "HEAD");
+            return head.succeeded() ? head.output().trim() : null;
+        } catch (IOException e) {
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
         }
     }
 
@@ -184,7 +209,12 @@ class WorkingTreeRescue implements ConsoleFeatures {
             return false;
         }
         String now = GitOperations.fingerprintUncommittedState(job.getWorkingDirectory());
-        return preWorkFingerprint == null || !preWorkFingerprint.equals(now);
+        if (preWorkFingerprint == null || !preWorkFingerprint.equals(now)) {
+            return true;
+        }
+        // A moved HEAD is an unpublished local commit; see the class javadoc.
+        String head = currentHead();
+        return preWorkHead != null && head != null && !preWorkHead.equals(head);
     }
 
     /**
@@ -344,7 +374,7 @@ class WorkingTreeRescue implements ConsoleFeatures {
     private String commitMessage(String failure, String mergeHead, List<String> notes) {
         String agentMessage;
         try {
-            agentMessage = SensitiveFileBypassTrailer.stripTrailer(job.getCommitMessage()).trim();
+            agentMessage = OperatorGrants.stripGrantTrailers(job.getCommitMessage()).trim();
         } catch (RuntimeException e) {
             agentMessage = "";
         }
@@ -368,6 +398,12 @@ class WorkingTreeRescue implements ConsoleFeatures {
      * Publishes the rescue commit: pushes it to {@code rescue/<jobId>} when
      * the job pushes, and otherwise, or when the push fails, writes it as a
      * patch beside the working directory.
+     *
+     * <p>The patch is written by git itself, with {@code git diff --output},
+     * so its exact bytes survive: reading the diff back through the process
+     * output would normalise line endings (the reader joins lines with
+     * {@code \n}) and could fold a git warning on stderr into the patch,
+     * either of which can leave a patch that does not apply.</p>
      *
      * @param git     git operations for the working tree
      * @param commit  the rescue commit
@@ -398,10 +434,9 @@ class WorkingTreeRescue implements ConsoleFeatures {
         File patch = new File(new File(job.getWorkingDirectory()).getAbsoluteFile().getParentFile(),
                 PATCH_DIRECTORY + File.separator + job.getTaskId() + ".patch");
         Files.createDirectories(patch.getParentFile().toPath());
-        // TODO(review): output is read line by line with stderr merged, so CRLF and git warnings can corrupt the patch; write it with git diff --output instead.
-        Files.writeString(patch.toPath(),
-                git.executeForResult("diff", "--binary", "HEAD", commit).requireSuccess().output(),
-                StandardCharsets.UTF_8);
+        // git writes the file itself so its exact bytes survive; see the javadoc.
+        git.executeForResult("diff", "--binary", "--output=" + patch.getAbsolutePath(),
+                "HEAD", commit).requireSuccess();
         location = patch.getAbsolutePath();
         instructions = "The job's work could not be pushed, so it was saved on the agent host as "
                 + location + " (a patch against " + job.getTargetBranch() + ") and as the local ref"

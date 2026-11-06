@@ -413,10 +413,18 @@ class GitCommitHandler implements ConsoleFeatures {
         GitOperations git = job.gitOperations(job.getWorkingDirectory());
         MergeSides sides = MergeSides.of(job.asGitOperations(), mergedCommit);
         OperatorGrants grants = job.operatorGrants();
+        boolean ciLocked = buildStagingConfig(job).isProtectCiFiles();
         List<String> refusals = new ArrayList<>();
         for (String file : rejected) {
             if (grants.acceptsMergeResolution(file)) {
-                acceptResolution(file, refusals);
+                if (ciLocked && FileStager.isCiWorkflowFile(file)) {
+                    refusals.add(file + ": the owner accepted its resolution, but it is a CI/workflow"
+                            + " file under the CI-file lock, which the merge-resolution grant does not"
+                            + " lift. Re-submit with the sensitive-file bypass as well, or make the"
+                            + " change on a ci/ branch, to commit it.");
+                } else {
+                    acceptResolution(file, refusals);
+                }
                 continue;
             }
             String source = sides.cleanSource(file, trusted);

@@ -216,6 +216,30 @@ public class MergeResolutionRecourseTest extends TestSuiteBase {
                 + job.getTaskId() + "=signature; paths=" + TEST_RESOURCE));
     }
 
+    /**
+     * The merge-resolution grant does not lift the CI-file lock. Even when the
+     * owner signs an acceptance of a CI/workflow path, it is still refused
+     * while sensitive-file protection is on, because committing it would defeat
+     * the CI-file lock without the separate sensitive-file bypass. The failure
+     * names the path and the lock that the grant cannot open.
+     */
+    @Test(timeout = 60000)
+    public void acceptedCiFileResolutionIsStillRefusedUnderTheCiLock() throws Exception {
+        repo.git("rm", "--quiet", DELETED);
+        takeBase(TEST_RESOURCE, "data v2\n");
+        takeBase(CI_FILE, "name: branch\n");
+        OperatorGrants grants = new OperatorGrants();
+        grants.setAcceptedMergeResolutions(List.of(CI_FILE), "signature");
+        MergeJob job = newJob(mergeParent, grants);
+        String before = repo.git("rev-parse", "HEAD").trim();
+
+        String message = refusal(job);
+
+        assertTrue(message, message.contains(CI_FILE));
+        assertTrue(message, message.contains("CI-file lock"));
+        assertEquals(before, repo.git("rev-parse", "HEAD").trim());
+    }
+
     /** An acceptance nothing signed accepts nothing: the merge is still refused. */
     @Test(timeout = 60000)
     public void unsignedAcceptanceIsRefused() throws Exception {

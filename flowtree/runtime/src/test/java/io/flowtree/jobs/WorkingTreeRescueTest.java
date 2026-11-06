@@ -228,6 +228,51 @@ public class WorkingTreeRescueTest extends TestSuiteBase {
     }
 
     /**
+     * A job that commits its work locally and then cannot push — the origin is
+     * unreachable by the time the push runs — has the lost local commit
+     * rescued even though the working tree is clean before and after the job,
+     * so only the moved {@code HEAD} reveals the unpublished commit. With the
+     * origin gone the rescue push cannot reach it either, so the work is kept
+     * as a patch and the local {@code refs/rescue/<jobId>} ref.
+     */
+    @Test(timeout = 120000)
+    public void jobThatCommitsThenCannotPushRescuesTheLostCommit() throws Exception {
+        try (GitTestRepository remote = GitTestRepository.create("rescue-pushfail-origin", true);
+             GitTestRepository local = GitTestRepository.create("rescue-pushfail-work", false)) {
+            local.git("remote", "add", "origin", remote.dir().toString());
+            local.write("shared.txt", "base\n");
+            local.commitAll("initial");
+            local.git("push", "--quiet", "origin", "master");
+            local.git("checkout", "--quiet", "-b", TARGET);
+            local.git("push", "--quiet", "origin", TARGET);
+
+            ScriptedJob job = new ScriptedJob("job-push-failed", local, repo -> {
+                repo.write("rescued.txt", "committed but never pushed\n");
+                repo.git("remote", "set-url", "origin", repo.dir().resolve("missing.git").toString());
+            });
+            job.setWorkingDirectory(local.dir().toString());
+            job.setTargetBranch(TARGET);
+            job.setBaseBranch("master");
+            job.setPushToOrigin(true);
+            job.setGitUserName(GitTestRepository.USER);
+            job.setGitUserEmail(GitTestRepository.EMAIL);
+            job.setWorkstreamUrl("http://127.0.0.1:9/api/workstreams/ws-rescue/jobs/" + job.getTaskId());
+            job.run();
+
+            JsonNode event = job.completion();
+            assertEquals("FAILED", event.get("status").asText());
+            assertTrue("the lost local commit must be kept under refs/rescue",
+                    local.hasRef("refs/rescue/job-push-failed"));
+            assertEquals("committed but never pushed\n",
+                    local.show("refs/rescue/job-push-failed", "rescued.txt"));
+            String message = event.get("errorMessage").asText();
+            assertTrue(message, message.contains(WorkingTreeRescue.PATCH_DIRECTORY));
+            assertFalse("no rescue branch can reach the unreachable origin",
+                    remote.hasRef("refs/heads/" + WorkingTreeRescue.BRANCH_PREFIX + "job-push-failed"));
+        }
+    }
+
+    /**
      * A job that fails before its work starts leaves no rescue branch and
      * mentions none, even though the harness had already left a merge in
      * progress.

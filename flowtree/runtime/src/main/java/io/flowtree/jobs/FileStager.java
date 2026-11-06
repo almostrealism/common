@@ -537,7 +537,7 @@ public class FileStager implements ConsoleFeatures {
      * @param file the file path to test
      * @return true if the path is a protected CI/workflow path
      */
-    private static boolean isCiWorkflowFile(String file) {
+    static boolean isCiWorkflowFile(String file) {
         return matchesGlobPattern(file, ".github/workflows/**")
                 || matchesGlobPattern(file, ".github/actions/**")
                 || matchesGlobPattern(file, "tools/ci/**");
