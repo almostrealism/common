@@ -35,12 +35,14 @@
 #
 # Optional environment (from the caller, never overridden by the request):
 #   PROTECT_TEST_FILES, ENFORCE_CHANGES, STARTED_AFTER, REQUIRED_LABELS,
-#   OBJECT_ORIENTED_REVIEW_ENABLED
-#   (REQUIRED_LABELS and OBJECT_ORIENTED_REVIEW_ENABLED pass straight through
-#   to submit-agent-job.sh; a request that names either is ignored like any
-#   other unexpected key. The remediation submitters set
+#   OBJECT_ORIENTED_REVIEW_ENABLED, REMEDIATION_PASS
+#   (REQUIRED_LABELS, OBJECT_ORIENTED_REVIEW_ENABLED and REMEDIATION_PASS pass
+#   straight through to submit-agent-job.sh; a request that names any of them is
+#   ignored like any other unexpected key. The remediation submitters set
 #   OBJECT_ORIENTED_REVIEW_ENABLED=false so the object-oriented design review
-#   does not ride along on the follow-up jobs CI runs in a loop.)
+#   does not ride along on the follow-up jobs CI runs in a loop, and
+#   REMEDIATION_PASS=true so the controller counts the pass against the per-PR
+#   budget and may skip a re-review of the pass's own commit.)
 #
 # Environment:
 #   Everything submit-agent-job.sh reads for reaching the controller

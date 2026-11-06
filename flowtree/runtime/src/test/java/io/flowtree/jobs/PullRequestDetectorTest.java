@@ -30,7 +30,7 @@ import static org.junit.Assert.assertTrue;
 /**
  * Tests for {@link PullRequestDetector} covering the static
  * {@code extractOwnerRepo} utility — which parses a GitHub remote URL into an
- * {@code owner/repo} slug via {@link RepositoryUrl#getGitHubSlug()}, which
+ * {@code owner/repo} slug via {@link io.flowtree.git.RepositoryUrl#getGitHubSlug()}, which
  * requires the host to be exactly {@code github.com} — and verifying that
  * {@link PullRequestDetector#detect(String, String, String)} returns empty when
  * preconditions are not met. No real HTTP calls are made.

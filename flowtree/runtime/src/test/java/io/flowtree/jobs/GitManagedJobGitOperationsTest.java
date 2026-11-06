@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.git.GitOperations;
+import io.flowtree.git.TransientGitException;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;

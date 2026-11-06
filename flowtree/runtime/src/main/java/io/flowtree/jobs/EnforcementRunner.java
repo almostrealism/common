@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.git.GitOperations;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;

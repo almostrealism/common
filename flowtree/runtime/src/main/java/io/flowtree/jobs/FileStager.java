@@ -171,6 +171,24 @@ public class FileStager implements ConsoleFeatures {
         }
 
         /**
+         * Lists the paths that differ between two commits, without rename
+         * detection, so a rename reads as a deletion and an addition.
+         *
+         * @param from the starting commit
+         * @param to   the ending commit
+         * @return the changed paths in output order
+         * @throws IOException if git cannot list them
+         * @throws InterruptedException if the calling thread is interrupted while waiting
+         */
+        default Set<String> changedPaths(String from, String to) throws IOException, InterruptedException {
+            Set<String> paths = executeForPaths("diff", "--name-only", "--no-renames", from, to);
+            if (paths == null) {
+                throw new IOException("Could not list the files changed between " + from + " and " + to);
+            }
+            return paths;
+        }
+
+        /**
          * Like {@link #executeForPaths}, but answers {@code null} rather than
          * throwing when the command cannot be run, for callers that treat an
          * unavailable listing as "no answer". An interruption is re-asserted
@@ -206,7 +224,7 @@ public class FileStager implements ConsoleFeatures {
      * existed at the merge-base, since {@code check-ci-file-lock.sh} rejects a
      * branch-new workflow exactly as it rejects an edit to an existing one, and
      * the harness must drop the same files the pipeline would refuse. That lock
-     * is the sole gate on CI files in production: {@code buildStagingConfig}
+     * is the sole gate on CI files in production: {@link FileStagingConfig#forJob}
      * does not list the CI paths in {@link FileStagingConfig#getProtectedPathPatterns()},
      * so the test lock never re-locks them, and a {@code ci/...} branch (where
      * {@code protectCiFiles} is off) can stage a workflow edit even with the
@@ -277,19 +295,14 @@ public class FileStager implements ConsoleFeatures {
             // Guardrail 2: CI/workflow and test file protection. In production
             // protectCiFiles is the sole gate on CI files (the test-lock operand
             // is inert -- see the guardrail-2 note in evaluateFiles' javadoc).
-            boolean ciFile = isCiWorkflowFile(file);
-            boolean inProtectedPath = matchesAnyPattern(file, config.getProtectedPathPatterns());
-            boolean ciLocked = ciFile
-                    && (config.isProtectCiFiles() || (config.isProtectTestFiles() && inProtectedPath));
-            boolean testLocked = !ciFile && config.isProtectTestFiles() && inProtectedPath;
-            if (ciLocked) {
+            if (config.isCiLocked(file)) {
                 // Blocked whole-file whether branch-new or pre-existing; see
                 // the guardrail-2 note in evaluateFiles' javadoc.
                 log("Blocked (protected - CI/workflow file): " + file);
                 skippedFiles.add(file + " (protected - CI/workflow file)");
                 continue;
             }
-            if (testLocked) {
+            if (config.isTestLocked(file)) {
                 if (!file.endsWith(".java")) {
                     if (existsOnBaseBranch(file, mergeBaseFiles)) {
                         log("Blocked (protected - exists on " + config.getBaseBranch() + "): " + file);
@@ -502,27 +515,6 @@ public class FileStager implements ConsoleFeatures {
             // If we can't read it, assume it might be binary
             return true;
         }
-    }
-
-    /**
-     * Returns whether {@code file} is CI configuration: a GitHub Actions
-     * workflow or action definition ({@code .github/workflows/**},
-     * {@code .github/actions/**}) or CI tooling ({@code tools/ci/**}) — the
-     * paths the repository's CI file lock covers.
-     *
-     * <p>These paths keep whole-file protection rather than the test-method
-     * granularity {@link TestMethodProtection} applies to Java test sources:
-     * a workflow file has no "test method" structure to reason about, and
-     * CI/workflow configuration is locked in full by design (see
-     * {@code tools/ci/agent-protection/check-ci-file-lock.sh}).</p>
-     *
-     * @param file the file path to test
-     * @return true if the path is a protected CI/workflow path
-     */
-    private static boolean isCiWorkflowFile(String file) {
-        return matchesGlobPattern(file, ".github/workflows/**")
-                || matchesGlobPattern(file, ".github/actions/**")
-                || matchesGlobPattern(file, "tools/ci/**");
     }
 
     /**
