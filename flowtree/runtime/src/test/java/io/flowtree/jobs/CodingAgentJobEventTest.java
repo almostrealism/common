@@ -17,6 +17,7 @@
 package io.flowtree.jobs;
 
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.git.TransientGitException;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 

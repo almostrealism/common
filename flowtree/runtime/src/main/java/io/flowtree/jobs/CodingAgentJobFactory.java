@@ -179,26 +179,13 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     private boolean collaborative = false;
 
     /**
-     * When {@code true} (the default), jobs created by this factory activate the
-     * sensitive-file protections: the harness-side {@link FileStager} refuses to
-     * stage test files that exist on the base branch, {@link CodingAgentJob#validateChanges()}
-     * runs the {@code TestHidingAudit}, and no bypass trailer is appended to
-     * the commit message. Set to {@code false} only when the operator has
-     * explicitly authorized the job to modify the protected files (e.g. a job
-     * that intentionally edits a base-branch test or updates a policy
-     * validator). The flag is operator-controlled at job submission time and
-     * is never settable by the agent itself.
+     * Controller-signed operator grants (the sensitive-file bypass and any
+     * accepted merge resolutions) propagated to jobs created by this factory.
+     * The same type backs {@link CodingAgentJob}; constructed with
+     * {@link #set(String, String)} as its property sink so every mutation
+     * travels to the worker.
      */
-    private boolean sensitiveFileProtectionEnabled = true;
-
-    /**
-     * Controller-signed HMAC-SHA256 bypass signature propagated to jobs created
-     * by this factory. {@code null} when no signature is available. Used by
-     * the harness to append a {@code Sensitive-File-Bypass} trailer to the
-     * commit message after stripping any agent-supplied instance; verified by
-     * CI using the same shared secret ({@code AR_AGENT_BYPASS_SECRET}).
-     */
-    private String sensitiveFileBypassSignature;
+    private final OperatorGrants operatorGrants = new OperatorGrants(this::set);
 
     /**
      * Per-job cap on review passes propagated to jobs created by this factory.
@@ -1005,7 +992,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @return {@code true} when sensitive-file protections are active (the default)
      */
     public boolean isSensitiveFileProtectionEnabled() {
-        return sensitiveFileProtectionEnabled;
+        return operatorGrants.isSensitiveFileProtectionEnabled();
     }
 
     /**
@@ -1017,8 +1004,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      *        job to modify test files / CI files that exist on the base branch
      */
     public void setSensitiveFileProtectionEnabled(boolean sensitiveFileProtectionEnabled) {
-        this.sensitiveFileProtectionEnabled = sensitiveFileProtectionEnabled;
-        set("sensitiveFileProtectionEnabled", String.valueOf(sensitiveFileProtectionEnabled));
+        operatorGrants.setSensitiveFileProtectionEnabled(sensitiveFileProtectionEnabled);
     }
 
     /**
@@ -1028,7 +1014,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @return the Base64-encoded HMAC signature, or {@code null}
      */
     public String getSensitiveFileBypassSignature() {
-        return sensitiveFileBypassSignature;
+        return operatorGrants.getSensitiveFileBypassSignature();
     }
 
     /**
@@ -1039,12 +1025,33 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
      * @param sensitiveFileBypassSignature Base64-encoded HMAC signature, or {@code null} to clear
      */
     public void setSensitiveFileBypassSignature(String sensitiveFileBypassSignature) {
-        this.sensitiveFileBypassSignature = sensitiveFileBypassSignature;
-        if (sensitiveFileBypassSignature != null && !sensitiveFileBypassSignature.isEmpty()) {
-            set("sensitiveFileBypassSignature", GitManagedJob.base64Encode(sensitiveFileBypassSignature));
-        } else {
-            set("sensitiveFileBypassSignature", null);
-        }
+        operatorGrants.setSensitiveFileBypassSignature(sensitiveFileBypassSignature);
+    }
+
+    /**
+     * Signs the operator grants a submission requests for this factory's job
+     * id; this is the only place they are signed. The caller extracts the
+     * request-body keys (the sensitive-file protection flag is already set via
+     * {@link #setSensitiveFileProtectionEnabled}); see
+     * {@link OperatorGrants#applySubmission}.
+     *
+     * @param acceptedMergeResolutions the paths whose merge resolution the
+     *                                 owner accepted, or {@code null}/empty for none
+     * @param secret                   the controller's signing secret, or {@code null}
+     */
+    public void applyOperatorGrants(List<String> acceptedMergeResolutions, String secret) {
+        operatorGrants.applySubmission(acceptedMergeResolutions, secret, getTaskId());
+    }
+
+    /**
+     * Returns the controller-signed operator grants for jobs created by this
+     * factory, which report what was granted. They are signed only through
+     * {@link #applyOperatorGrants}.
+     *
+     * @return the grants; never {@code null}
+     */
+    public OperatorGrants operatorGrants() {
+        return operatorGrants;
     }
 
     /**
@@ -1418,8 +1425,7 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
         job.setRetrospectiveEnabled(retrospectiveEnabled);
         job.setFalsificationEnabled(falsificationEnabled);
         job.setCollaborative(collaborative);
-        job.setSensitiveFileProtectionEnabled(sensitiveFileProtectionEnabled);
-        job.setSensitiveFileBypassSignature(sensitiveFileBypassSignature);
+        operatorGrants.applyTo(job.operatorGrants());
         postCompletion.applyTo(job.postCompletion());
 
         if (getPythonRequirements() != null) job.setPythonRequirements(getPythonRequirements());
@@ -1560,21 +1566,16 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
             case "collaborative":
                 this.collaborative = Boolean.parseBoolean(value);
                 return;
-            case "sensitiveFileProtectionEnabled":
-                this.sensitiveFileProtectionEnabled = Boolean.parseBoolean(value);
-                return;
-            case "sensitiveFileBypassSignature":
-                this.sensitiveFileBypassSignature = GitManagedJob.base64Decode(value);
-                return;
             case "maxReviewPasses":
                 this.maxReviewPasses = WireConfig.parsePositiveOrDefault(
                         value, CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES);
                 return;
             default:
-                // Post-completion and change-requirement keys are decoded by their
-                // owners; any other key is already stored in the properties map by
-                // AbstractJobFactory.set().
-                if (!enforceChanges.applySetting(key, value)) {
+                // Post-completion, change-requirement and operator-grant keys are
+                // decoded by their owners; any other key is already stored in the
+                // properties map by AbstractJobFactory.set().
+                if (!enforceChanges.applySetting(key, value)
+                        && !operatorGrants.applySetting(key, value)) {
                     postCompletion.applySetting(key, value);
                 }
         }

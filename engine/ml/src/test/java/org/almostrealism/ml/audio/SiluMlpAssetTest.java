@@ -144,6 +144,58 @@ public class SiluMlpAssetTest extends TestSuiteBase implements DiffusionTransfor
 		}
 	}
 
+	/**
+	 * The asset built with both biases null — the bias-free {@code dense -> SiLU -> dense} projection
+	 * the {@link org.almostrealism.ml.audio.DiffusionTransformer} cross-attention and global
+	 * conditioning embeddings use ({@code to_cond_embed} and {@code to_global_embed} carry no bias) —
+	 * reproduces both an independent bias-free host reference and the exact Java {@link SequentialBlock}
+	 * assembly it replaced ({@code dense(w)}, not {@code dense(w, b)}). This pins the null-bias path of
+	 * the asset, which the biased timestep-embedding callers never exercise.
+	 */
+	@Test(timeout = 300000)
+	public void siluMlpAssetBiasFreeMatchesReferences() {
+		Weights w = new Weights(6, 8, 4, 7L);
+		double[] reference = new HostReference(w).forward(w.input().toArray(), false);
+
+		double[] asset = run(siluMlp(shape(1, w.in), w.wIn, null, w.wOut, null), w.input(), shape(1, w.in));
+
+		double[] java = run(biasFreeAssembly(w, shape(1, w.in), shape(1, w.hidden)), w.input(), shape(1, w.in));
+
+		log("silu_mlp bias-free asset -> " + literal(asset));
+		assertClose("bias-free asset vs host reference", reference, asset);
+		assertClose("bias-free asset vs java assembly", java, asset);
+	}
+
+	/**
+	 * At the three-axis {@code [batch, condSeqLen, condTokenDim]} shape the
+	 * {@link org.almostrealism.ml.audio.DiffusionTransformer} feeds its {@code to_cond_embed}
+	 * projection — where the first projection changes the trailing width and both projections carry no
+	 * bias — the asset reproduces the bias-free host reference and the Java assembly it replaced. This
+	 * is the exact structure and shape of the migrated conditioning embedding, applied per position.
+	 */
+	@Test(timeout = 300000)
+	public void conditioningEmbeddingBiasFreeMatchesReferences() {
+		int batch = 1;
+		int condSeqLen = 3;
+		int condTokenDim = 5;
+		int embedDim = 4;
+
+		Weights w = new Weights(condTokenDim, embedDim, embedDim, 31L);
+		TraversalPolicy inputShape = shape(batch, condSeqLen, condTokenDim);
+		int total = batch * condSeqLen * condTokenDim;
+		PackedCollection input = sin(integers(0, total).multiply(0.3).add(1.0)).reshape(inputShape).evaluate();
+
+		double[] reference = new HostReference(w).forward(input.toArray(), false);
+
+		double[] asset = run(siluMlp(inputShape, w.wIn, null, w.wOut, null), input, inputShape);
+
+		double[] java = run(biasFreeAssembly(w, inputShape, shape(batch, condSeqLen, embedDim)), input, inputShape);
+
+		log("conditioning bias-free asset -> " + literal(asset));
+		assertClose("conditioning asset vs host reference", reference, asset);
+		assertClose("conditioning asset vs java assembly", java, asset);
+	}
+
 	/** Builds the asset-backed SiLU MLP for {@code w}, compiles it and runs one forward pass. */
 	private double[] runAsset(Weights w) {
 		return run(siluMlp(shape(1, w.in), w.wIn, w.bIn, w.wOut, w.bOut), w.input(), shape(1, w.in));
@@ -165,6 +217,25 @@ public class SiluMlpAssetTest extends TestSuiteBase implements DiffusionTransfor
 		mlp.add(silu(shape(1, w.hidden)));
 		mlp.add(dense(w.wOut, w.bOut));
 		return mlp;
+	}
+
+	/**
+	 * The bias-free {@code dense -> SiLU -> dense} assembly — {@code dense(w)} with no bias, the exact
+	 * structure the {@link org.almostrealism.ml.audio.DiffusionTransformer} conditioning embeddings
+	 * built before they loaded the asset — for the given input shape, with the SiLU applied at
+	 * {@code hiddenShape}.
+	 *
+	 * @param w           the two projections (their biases are ignored)
+	 * @param inputShape  the input shape of the assembly
+	 * @param hiddenShape the shape the SiLU activation sees between the projections
+	 * @return the reference block
+	 */
+	private Block biasFreeAssembly(Weights w, TraversalPolicy inputShape, TraversalPolicy hiddenShape) {
+		SequentialBlock assembly = new SequentialBlock(inputShape);
+		assembly.add(dense(w.wIn));
+		assembly.add(silu(hiddenShape));
+		assembly.add(dense(w.wOut));
+		return assembly;
 	}
 
 	/**
@@ -277,19 +348,45 @@ public class SiluMlpAssetTest extends TestSuiteBase implements DiffusionTransfor
 		}
 
 		/**
-		 * One forward pass: the first affine projection, the SiLU gate, then the second affine
-		 * projection.
+		 * One forward pass over a single {@code [1, in]} row, with the configuration's biases.
 		 *
 		 * @param token the input vector
 		 * @return the MLP output
 		 */
 		double[] forward(PackedCollection token) {
-			double[] hidden = project(w.wIn, w.bIn, token.toArray(), w.hidden);
-			double[] activated = new double[w.hidden];
-			for (int j = 0; j < w.hidden; j++) {
-				activated[j] = silu(hidden[j]);
+			return forward(token.toArray(), true);
+		}
+
+		/**
+		 * The {@code linear -> SiLU -> linear} arithmetic applied to every row of {@code rows}
+		 * independently — each contiguous run of {@code w.in} values is one row — with the two
+		 * projection biases when {@code bias} is true and without them when it is false. The bias-free
+		 * form is the projection the {@link DiffusionTransformer} cross-attention and global
+		 * conditioning embeddings use.
+		 *
+		 * @param rows the flattened input rows, length a multiple of {@code w.in}
+		 * @param bias whether to add the first and second projection biases
+		 * @return the flattened output rows, length {@code (rows.length / w.in) * w.out}
+		 */
+		double[] forward(double[] rows, boolean bias) {
+			int rowCount = rows.length / w.in;
+			double[] result = new double[rowCount * w.out];
+			for (int r = 0; r < rowCount; r++) {
+				double[] row = new double[w.in];
+				for (int s = 0; s < w.in; s++) {
+					row[s] = rows[r * w.in + s];
+				}
+				double[] hidden = project(w.wIn, bias ? w.bIn : null, row, w.hidden);
+				double[] activated = new double[w.hidden];
+				for (int j = 0; j < w.hidden; j++) {
+					activated[j] = silu(hidden[j]);
+				}
+				double[] out = project(w.wOut, bias ? w.bOut : null, activated, w.out);
+				for (int n = 0; n < w.out; n++) {
+					result[r * w.out + n] = out[n];
+				}
 			}
-			return project(w.wOut, w.bOut, activated, w.out);
+			return result;
 		}
 
 		/** SiLU (a.k.a. Swish): {@code x * sigmoid(x)}. */
@@ -299,11 +396,12 @@ public class SiluMlpAssetTest extends TestSuiteBase implements DiffusionTransfor
 
 		/**
 		 * Affine projection {@code weights @ x + bias} with weights of shape {@code [nodes, x.length]}
-		 * and bias of shape {@code [nodes]}.
+		 * and bias of shape {@code [nodes]}, or the plain {@code weights @ x} when {@code bias} is
+		 * {@code null}.
 		 */
 		private double[] project(PackedCollection weights, PackedCollection bias, double[] x, int nodes) {
 			double[] wv = weights.toArray();
-			double[] bv = bias.toArray();
+			double[] bv = bias == null ? new double[nodes] : bias.toArray();
 			double[] out = new double[nodes];
 			for (int n = 0; n < nodes; n++) {
 				double acc = bv[n];

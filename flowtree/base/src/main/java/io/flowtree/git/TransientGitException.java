@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.flowtree.jobs;
+package io.flowtree.git;
 
 import java.io.IOException;
 
