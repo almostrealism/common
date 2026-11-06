@@ -104,7 +104,7 @@ class RemediationPassMarkingTest(unittest.TestCase):
         workflows = os.path.join(_REPO_ROOT, ".github", "workflows")
         for name in ("implement-plan.yaml", "verify-completion.yaml",
                      "goal-decomposition.yaml", "master-agent-dispatch.yaml",
-                     "qa-round.yaml", "plan-review.yaml"):
+                     "qa-round.yaml", "plan-review.yaml", "task-planning.yaml"):
             with self.subTest(workflow=name):
                 with open(os.path.join(workflows, name)) as f:
                     self.assertNotIn("REMEDIATION_PASS", f.read(),
