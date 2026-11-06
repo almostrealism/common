@@ -20,6 +20,8 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Named;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -142,9 +144,8 @@ public class Argument<T> implements Named, Delegated<Argument<T>> {
 	 */
 	@Override
 	public Argument<T> getDelegate() {
-		if (getVariable() == null) return null;
-		if (((Delegated) getVariable()).getDelegate() == null) return null;
-		return new Argument((Variable) ((Delegated) getVariable()).getDelegate(), Expectation.EVALUATE_AHEAD);
+		Variable<T, ?> delegate = getVariable().getDelegate();
+		return delegate == null ? null : new Argument<>(delegate, Expectation.EVALUATE_AHEAD);
 	}
 
 	/**
@@ -187,5 +188,26 @@ public class Argument<T> implements Named, Delegated<Argument<T>> {
 
 			return a;
 		});
+	}
+
+	/**
+	 * Returns the arguments that code depending on {@code vars} requires: an argument for each of
+	 * the variables, which the code {@link Expectation#WILL_EVALUATE evaluates}, each followed by
+	 * an argument for every variable it depends on, recursively, which must be
+	 * {@link Expectation#EVALUATE_AHEAD evaluated ahead} of the code. Each variable
+	 * {@link Variable#appendArguments(Expectation, List) contributes} its own arguments. Null
+	 * variables are skipped, and an argument already present is not added again.
+	 *
+	 * @param vars the variables the code depends on directly
+	 * @return the arguments for the variables and everything they depend on
+	 */
+	public static List<Argument<?>> dependencies(Collection<Variable<?, ?>> vars) {
+		List<Argument<?>> args = new ArrayList<>();
+
+		for (Variable<?, ?> var : vars) {
+			if (var != null) var.appendArguments(Expectation.WILL_EVALUATE, args);
+		}
+
+		return args;
 	}
 }

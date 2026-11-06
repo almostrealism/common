@@ -338,6 +338,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         this.delayedJobs = new DelayedJobQueue(server);
     }
 
+    /** Returns whether the job with {@code taskId} is still held by its requested submission delay. */
+    public boolean isDispatchDeferred(String taskId) {
+        return delayedJobs != null && delayedJobs.isPending(taskId);
+    }
+
     /** Sets the SlackListener used for job creation. */
     public void setListener(SlackListener listener) { this.listener = listener; }
 

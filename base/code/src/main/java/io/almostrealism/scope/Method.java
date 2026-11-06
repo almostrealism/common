@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * A {@link Method} is included in a {@link Scope} to indicate that a function should
@@ -193,6 +194,45 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	 */
 	@Override
 	public String getStatement(LanguageOperations lang) { return getExpression(lang); }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code true}: a call runs a function whose body is not part of this expression,
+	 * so what it writes cannot be read off the call, and it may write anything.</p>
+	 */
+	@Override
+	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
+		return true;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The names of the variables the call refers to, as for any other {@link Expression}. The
+	 * function it calls may change other values as well, which
+	 * {@link #containsAssignment(ArrayVariable, long, long)} accounts for.</p>
+	 *
+	 * <p>This override, like the one of {@link #appendReadPositions(ReadPositions)}, is required
+	 * even though it only defers to {@link Expression}: a method inherits conflicting defaults of
+	 * it from {@link io.almostrealism.expression.ExpressionReferences} and {@link Statement}, and
+	 * must choose one.</p>
+	 */
+	@Override
+	public void appendAssignedNames(Set<String> names) {
+		super.appendAssignedNames(names);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>What evaluating the call reads, as for any other {@link Expression}: the reads of its
+	 * arguments.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		super.appendReadPositions(reads);
+	}
 
 	/** {@inheritDoc} */
 	@Override
