@@ -97,9 +97,6 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 	/** Longest an idle worker thread waits for a new job before re-checking failed jobs. */
 	private static final long IDLE_POLL_MILLIS = 5000;
 
-	/** Formatter for percentage values used in status output. */
-	protected NumberFormat pFormat = NumberFormat.getPercentInstance();
-
 	/** Formatter for decimal values (three decimal places) used in status output. */
 	protected NumberFormat dFormat = new DecimalFormat("#.000");
 
@@ -244,23 +241,18 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 	private int sleep;
 
 	/**
-	 * Running sum of relay-probability samples ({@code relaySum}) and connect-probability
-	 * samples ({@code connectSum}) accumulated since the last status snapshot.
+	 * Sleep-duration strip chart displayed in the status HTML. The relay- and
+	 * connect-probability charts and their accumulators live in
+	 * {@link NodeStatusRenderer}, which owns the status page; this one remains
+	 * here because {@link NodeGroup} populates it directly.
 	 */
-	private double relaySum, connectSum;
+	protected Chart sleepGraph;
 
 	/**
-	 * Number of samples accumulated into {@link #relaySum} ({@code relayDiv}) and
-	 * {@link #connectSum} ({@code connectDiv}) respectively.
+	 * Renders this node's HTML status page and owns the display-only relay and
+	 * connect probability charts it draws.
 	 */
-	private int relayDiv, connectDiv;
-
-	/**
-	 * Strip charts displayed in the status HTML: relay probability over time
-	 * ({@code relayGraph}), connect probability over time ({@code connectGraph}),
-	 * and sleep duration over time ({@code sleepGraph}).
-	 */
-	protected Chart relayGraph, connectGraph, sleepGraph;
+	private final NodeStatusRenderer statusRenderer = new NodeStatusRenderer(this);
 
 	/**
 	 * Running sum ({@code sleepSum}) and total sum ({@code totalSleepSum}) of sleep
@@ -382,12 +374,7 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 		this.peers = new HashSet();
 		this.jobs = new ArrayList();
 		this.listeners = new ArrayList();
-		
-		this.relayGraph = new Chart();
-		this.relayGraph.setDivisions(40);
-		this.connectGraph = new Chart();
-		this.connectGraph.setDivisions(40);
-		
+
 		Client c = Client.getCurrentClient();
 		ThreadGroup g = null;
 		if (c != null) g = c.getServer().getThreadGroup();
@@ -853,6 +840,20 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 	public int getCompletedJobCount() { return this.totalJobs; }
 
 	/**
+	 * Returns the number of jobs this node's worker thread failed to complete.
+	 *
+	 * @return  The count of jobs that ended in an error.
+	 */
+	public int getErrorJobCount() { return this.totalErrJobs; }
+
+	/**
+	 * Returns the number of jobs this node has relayed to peers or its parent.
+	 *
+	 * @return  The count of jobs relayed away from this node.
+	 */
+	public int getRelayedJobCount() { return this.totalRelay; }
+
+	/**
 	 * Returns the time that this node has spent working in milliseconds.
 	 *
 	 * @return  The time that this node has spent working in msecs.
@@ -922,16 +923,84 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 			this.jobs.notifyAll();
 		}
 
+		startWorkerIfIdle();
+
+		if (this.parent != null) this.parent.addCachedTask(j.getTaskString());
+
+		return id;
+	}
+
+	/**
+	 * Starts this node's worker thread when it exists, is idle, and this is not a
+	 * relay node. Shared by {@link #addJob(Job)} and {@link #requeueJobAtHead(Job)}
+	 * so a job that arrives on an idle worker — whether freshly queued or returned
+	 * after a failed relay — is executed rather than left for the next idle poll.
+	 */
+	private void startWorkerIfIdle() {
 		if (this.worker != null && !"relay".equals(labels.get("role"))) {
 			synchronized (this.worker) {
-				if (!this.working &&
-						!this.worker.isAlive()) this.worker.start();
+				if (!this.working && !this.worker.isAlive()) this.worker.start();
 			}
 		}
-		
-		if (this.parent != null) this.parent.addCachedTask(j.getTaskString());
-		
-		return id;
+	}
+
+	/**
+	 * Returns a job to the head of this node's queue after a relay hand-off
+	 * failed, so the next relay iteration or this node's own worker picks it up
+	 * instead of the job being lost. Wakes an idle worker exactly as
+	 * {@link #addJob(Job)} does.
+	 *
+	 * @param j the job to requeue; ignored when {@code null}
+	 */
+	private void requeueJobAtHead(Job j) {
+		if (j == null) return;
+		synchronized (this.jobs) {
+			this.jobs.add(0, j);
+			this.jobs.notifyAll();
+		}
+		startWorkerIfIdle();
+	}
+
+	/**
+	 * Relays the next queued job to {@code c}, removing it from the queue only
+	 * once the peer has provably accepted it: the job is taken, sent, and — if
+	 * the send throws — returned to the head of the queue by
+	 * {@link #requeueJobAtHead(Job)} so a failed hand-off never loses it. A
+	 * {@link SocketException} additionally drops the now-broken peer. Because the
+	 * relay loop re-reads the queue each iteration, a requeued job is retried on a
+	 * later pass or executed by this node's worker rather than vanishing when a
+	 * peer goes away.
+	 *
+	 * @param c the peer connection to relay the next job to
+	 * @return {@code true} if a job was handed to the peer; {@code false} when the
+	 *         queue was empty or the send failed and the job was requeued
+	 */
+	boolean relayJobToPeer(Connection c) {
+		Job j = this.nextJob();
+		if (j == null) return false;
+
+		String id = j.getTaskId();
+		String label = id != null ? id : j.getClass().getSimpleName();
+		this.displayMessage("Relaying job " + label + " to peer " + c);
+
+		try {
+			c.sendJob(j);
+		} catch (SocketException se) {
+			warn("Node " + this.id + ": " + se.getMessage());
+			this.peers.remove(c);
+			this.displayMessage("Dropped peer " + c + "; requeued job " + label);
+			requeueJobAtHead(j);
+			return false;
+		} catch (IOException ioe) {
+			warn("Node " + this.id + ": " + ioe);
+			requeueJobAtHead(j);
+			return false;
+		}
+
+		this.totalRelay++;
+		if (totalRelay % 20 == 0) this.displayMessage("Relayed 20 jobs.");
+		else if (totalRelay == 1) this.displayMessage("Relayed first job.");
+		return true;
 	}
 	
 	/**
@@ -1017,6 +1086,24 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 	 * @return the active job, or {@code null}
 	 */
 	public Job getCurrentJob() { return this.currentJob; }
+
+	/**
+	 * Returns whether a job with the given task id is currently queued on this
+	 * node, waiting to be executed or relayed. Lets the controller tell a job it
+	 * still physically holds from one it has already handed to a peer.
+	 *
+	 * @param taskId the task id to look for; {@code null} matches nothing
+	 * @return {@code true} if such a job is in this node's queue
+	 */
+	public boolean hasJob(String taskId) {
+		if (taskId == null) return false;
+		synchronized (this.jobs) {
+			for (Job j : this.jobs) {
+				if (taskId.equals(j.getTaskId())) return true;
+			}
+		}
+		return false;
+	}
 
 	/**
 	 * Removes all queued jobs with the specified task ID from this node's queue
@@ -1264,105 +1351,7 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 	 * @return the HTML status string
 	 */
 	public String getStatus(String nl) {
-		StringBuilder buf = new StringBuilder();
-		
-		buf.append("<h3>" + this + "</h3>");
-		
-		buf.append("<p>");
-		buf.append("Sleep time: ");
-		buf.append(NodeTimeFormatter.format(this.sleep));
-		buf.append(nl);
-		
-		if (this.isAlive())
-			buf.append("Currently alive and ");
-		else
-			buf.append("Currently dead and ");
-		
-		if (this.isWorking())
-			buf.append("working." + nl);
-		else
-			buf.append("not working." + nl);
-		
-		double workP = -1.0, comP = -1;
-		Client c = Client.getCurrentClient();
-		if (c != null) { // TODO  Should be able to do this even without a current client
-			double up = c.getServer().getUptime();
-			workP = this.totalWorkTime / up;
-			comP = this.totalComTime / up;
-		}
-		
-		buf.append("Worked for " + NodeTimeFormatter.format(this.totalWorkTime));
-		if (workP > 0.0) {
-			buf.append(" (");
-			buf.append(pFormat.format(workP));
-			buf.append(")");
-		}
-		buf.append(" and completed " + this.totalJobs + " jobs");
-		if (this.totalErrJobs > 0) {
-			buf.append(" (");
-			buf.append(this.totalErrJobs);
-			buf.append(" errors).");
-			buf.append(nl);
-		} else {
-			buf.append(".");
-			buf.append(nl);
-		}
-		
-		buf.append("Communicated for " + NodeTimeFormatter.format(this.totalComTime));
-		if (comP > 0.0) {
-			buf.append(" (");
-			buf.append(pFormat.format(comP));
-			buf.append(")");
-		}
-		buf.append(" and relayed " + this.totalRelay + " jobs.");
-		
-		buf.append("</p>");
-		
-		if (this.peers != null) {
-			Iterator itr = this.peers.iterator();
-			int i = 0;
-			
-			while (itr.hasNext())
-				buf.append("\t <b>Peer "  + i++ + "</b>: " + itr.next().toString() + nl);
-		}
-		
-		double a = 0.0;
-		
-		if (this.relayGraph != null && this.relayDiv > 0) {
-			a = this.relaySum / this.relayDiv;
-			this.relaySum = 0.0;
-			this.relayDiv = 0;
-		}
-		
-		buf.append("<table><tr>");
-		
-		if (this.relayGraph != null) {
-			this.relayGraph.addEntry(a);
-			buf.append("<td><pre>");
-			buf.append("<font size=\"-4\">" + nl);
-			this.relayGraph.print(buf);
-			buf.append("</font></pre></td>");
-		}
-		
-		a = 0.0;
-		
-		if (this.connectGraph != null && this.connectDiv > 0) {
-			a = this.connectSum / this.connectDiv;
-			this.connectSum = 0.0;
-			this.connectDiv = 0;
-		}
-		
-		if (this.connectGraph != null) {
-			this.connectGraph.addEntry(a);
-			buf.append("<td><pre>");
-			buf.append("<font size=\"-4\">" + nl);
-			this.connectGraph.print(buf);
-			buf.append("</font></pre></td>");
-		}
-		
-		buf.append("</tr></table>");
-		
-		return buf.toString();
+		return this.statusRenderer.getStatus(nl);
 	}
 	
 	/**
@@ -1478,10 +1467,9 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 			long start = System.currentTimeMillis();
 			
 			double r = this.connect * (1.0 - ((double)this.peers.size()) / this.maxPeers);
-			
-			this.connectSum += r;
-			this.connectDiv++;
-			
+
+			this.statusRenderer.recordConnectSample(r);
+
 			if (this.parent != null && this.peers.size() < this.maxPeers && Math.random() < r) {
 				Connection c = this.parent.getConnection(this.id);
 				
@@ -1506,8 +1494,7 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 				r += this.peerRelayC * (((double) this.peers.size()) / this.maxPeers);
 			}
 
-			this.relaySum += r;
-			this.relayDiv++;
+			this.statusRenderer.recordRelaySample(r);
 
 			// Worker nodes should only relay when currently executing a job
 			// (so they have a genuine backlog) or when the queue has more
@@ -1533,31 +1520,7 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 							+ " -- cannot relay");
 					}
 				} else {
-					try {
-						Job j = this.nextJob();
-
-						if (j != null) {
-							String jobId = j.getTaskId();
-							this.displayMessage("Relaying job "
-								+ (jobId != null ? jobId : j.getClass().getSimpleName())
-								+ " to peer " + c);
-							c.sendJob(j);
-							this.totalRelay++;
-
-							if (totalRelay % 20 == 0)
-								this.displayMessage("Relayed 20 jobs (" + r + ").");
-							else if (totalRelay == 1)
-								this.displayMessage("Relayed first job (" + r + ").");
-
-							break r;
-						}
-					} catch (SocketException se) {
-						warn("Node " + id + ": " + se.getMessage());
-						this.peers.remove(c);
-						this.displayMessage("Dropped peer connection " + c);
-					} catch (IOException ioe) {
-						warn("Node " + id + ": " + ioe);
-					}
+					if (relayJobToPeer(c)) break r;
 				}
 			}
 			

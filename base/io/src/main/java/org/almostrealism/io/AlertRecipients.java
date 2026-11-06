@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 /**
  * A directory of named alert recipients, each with the
@@ -150,5 +151,23 @@ public class AlertRecipients implements ConsoleFeatures {
 		}
 
 		return unknown;
+	}
+
+	/**
+	 * Returns a consumer that delivers each message it accepts to every recipient
+	 * in this directory as an {@link Alert} of the given severity.
+	 *
+	 * <p>This is the directory's view as a plain {@link Consumer} of message
+	 * text, for a caller that produces escalation text and should not itself
+	 * assemble an {@link Alert} or enumerate recipients — it hands the text to
+	 * the returned sink and the directory does the rest. Recipients are resolved
+	 * at delivery time, so a recipient added after this call still receives later
+	 * messages, and an empty directory makes the sink a harmless no-op.</p>
+	 *
+	 * @param severity the severity stamped on every alert the sink delivers
+	 * @return a consumer that broadcasts each accepted message to all recipients
+	 */
+	public Consumer<String> sink(Alert.Severity severity) {
+		return text -> send(new Alert(severity, text), names());
 	}
 }

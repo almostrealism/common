@@ -367,18 +367,21 @@ public class Connection implements Runnable, NodeProxy.EventListener, ConsoleFea
 	 *                  {@code true}, appending {@code [min/max/avg]} latency
 	 *                  data to the string.
 	 * @return  A string identifying the local node name, the remote node ID,
-	 *          and a representation of the backing proxy.
+	 *          and a representation of the backing proxy, or {@code disconnected}
+	 *          once {@link #disconnect(NodeProxy)} has released it — a dropped
+	 *          connection is still logged by the code that dropped it.
 	 */
 	public String toString(boolean showStat) {
+		NodeProxy p = this.proxy;
 
 		String b = "Connection from " +
 				this.node.getName() +
 				" to remote node " +
 				this.id +
 				" (" +
-				this.proxy.toString(showStat) +
+				(p == null ? "disconnected" : p.toString(showStat)) +
 				") ";
-		
+
 		return b;
 	}
 }

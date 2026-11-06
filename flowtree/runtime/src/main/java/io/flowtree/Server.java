@@ -749,13 +749,15 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	public void stop() {
 		this.stop = true;
 		this.group.stop();
-		
-		try {
-			this.socket.close();
-		} catch (IOException ioe) {
-			warn("IO error closing socket (" + ioe.getMessage() + ")");
+
+		if (this.socket != null) {
+			try {
+				this.socket.close();
+			} catch (IOException ioe) {
+				warn("IO error closing socket (" + ioe.getMessage() + ")");
+			}
 		}
-		
+
 		this.displayMessage("Stopped");
 	}
 	
