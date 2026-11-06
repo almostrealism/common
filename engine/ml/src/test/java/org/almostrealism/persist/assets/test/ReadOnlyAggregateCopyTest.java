@@ -223,6 +223,44 @@ public class ReadOnlyAggregateCopyTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A read-only argument whose slice the kernel neither reads nor writes is never copied into
+	 * the aggregate, not even by the first dispatch or by one that copies back: nothing reads the
+	 * staged value and a read-only slice is never copied back. The writable slices are still
+	 * copied in by every dispatch that copies back.
+	 */
+	@Test(timeout = 60000)
+	public void readOnlySliceTheKernelNeverReadsIsNeverCopied() {
+		PackedCollection source = testValues();
+		CountingComputeContext context = new CountingComputeContext(null);
+
+		try (PackedCollection read = new PackedCollection(SIZE);
+			 PackedCollection written = new PackedCollection(SIZE)) {
+			MemoryDataArgumentMap map = map(context, new ArrayList<>());
+
+			try {
+				map.get(p(readOnly(source)));
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+
+				Scope<?> kernel = assignKernel(writtenArg, readArg);
+				map.limitCopyBackTo(kernel);
+				map.limitCopyInTo(kernel);
+
+				for (int d = 0; d < DISPATCHES; d++) dispatch(map);
+				Assert.assertEquals("An unread read-only slice is never copied in",
+						0, context.readOnlyCopies.get());
+				Assert.assertEquals("Both writable slices are copied in by every dispatch that copies back",
+						2 * DISPATCHES, context.writableCopies.get());
+			} finally {
+				map.destroy();
+			}
+		} finally {
+			context.destroy();
+			source.destroy();
+		}
+	}
+
+	/**
 	 * A dispatch prepared after the first one, while the first one's single copy of the read-only
 	 * slice is still outstanding, is ordered after that copy even though it does not make it: its
 	 * prepared completion does not settle until the copy has.

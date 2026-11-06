@@ -18,8 +18,8 @@ package org.almostrealism.hardware.instructions;
 
 import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.kernel.CompiledKernelStructureContext;
-
-import java.util.BitSet;
+import org.almostrealism.hardware.mem.AggregateLayout;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
 /**
  * Extended {@link InstructionSetManager} that tracks output argument location for each operation.
@@ -123,51 +123,34 @@ public interface ComputableInstructionSetManager<K extends ExecutionKey> extends
 	int getOutputOffset(K key);
 
 	/**
-	 * Records the aggregate replacement positions the compiled kernel was built against.
+	 * Records the layout of the compiled kernel's aggregate argument: the replacement positions
+	 * the generated source addresses, and which aggregated slices the kernel may write and read.
 	 *
 	 * <p>Folded arguments are addressed by the generated source at fixed positions within the
 	 * single aggregate parameter, so those positions are part of the compiled kernel's
 	 * identity — while per-argument element counts travel with each dispatch and are not (see
-	 * {@code MemoryDataArgumentMap#describeAggregatePositions()}). The positions are recorded
-	 * by the operation that compiles the scope, immediately after compilation, and serve as
-	 * the reference every operation reusing these instructions is verified against.</p>
+	 * {@link MemoryDataArgumentMap#describeAggregatePositions()}). The layout is recorded by the
+	 * operation that compiles the scope, immediately after compilation (see
+	 * {@link MemoryDataArgumentMap#limitCopiesTo(io.almostrealism.scope.Scope)}), and is a property
+	 * of the compiled kernel rather than of any one operation using it: every operation reusing
+	 * these instructions is verified against its positions and limits its copies to its slices.</p>
 	 *
-	 * @param positions the baked position sequence from the compiling operation's argument map
+	 * @param layout the layout read off the compiled scope by the compiling operation's argument map
 	 */
-	void setAggregatePositions(String positions);
+	void setAggregateLayout(AggregateLayout layout);
 
 	/**
-	 * Returns the aggregate replacement positions the compiled kernel was built against, or
-	 * null if no compilation has recorded them yet.
+	 * Returns the layout of the compiled kernel's aggregate argument, or null if no compilation
+	 * has recorded it yet.
 	 *
-	 * <p>An operation reusing these instructions must reproduce these positions exactly; a
-	 * difference means two distinct kernels were matched to one signature — an instruction
-	 * cache collision — and the reuse must fail with an exception rather than proceed.</p>
+	 * <p>An operation reusing these instructions must reproduce its positions exactly (see
+	 * {@link MemoryDataArgumentMap#reproduces(AggregateLayout)}); a difference means two distinct
+	 * kernels were matched to one signature — an instruction cache collision — and the reuse must
+	 * fail with an exception rather than proceed.</p>
 	 *
-	 * @return the recorded position sequence, or null
+	 * @return the recorded layout, or null
 	 */
-	String getAggregatePositions();
-
-	/**
-	 * Records which aggregated slices the compiled kernel may write, as the compiling operation
-	 * read them off the compiled scope (see {@code MemoryDataArgumentMap#getWrittenSlices}).
-	 *
-	 * <p>Like the {@link #setAggregatePositions(String) positions}, this is a property of the
-	 * compiled kernel rather than of any one operation using it: an operation reusing these
-	 * instructions reproduces the positions exactly, so the same replacements are the ones the
-	 * kernel writes, and their copy-back is limited the same way.</p>
-	 *
-	 * @param written the indices of the replacements whose slice the compiled kernel may write
-	 */
-	void setWrittenAggregateSlices(BitSet written);
-
-	/**
-	 * Returns which aggregated slices the compiled kernel may write, or null if no compilation
-	 * has recorded them yet.
-	 *
-	 * @return the indices of the replacements whose slice the compiled kernel may write, or null
-	 */
-	BitSet getWrittenAggregateSlices();
+	AggregateLayout getAggregateLayout();
 
 	/**
 	 * Returns the {@link CompiledKernelStructureContext} of this manager's compiled

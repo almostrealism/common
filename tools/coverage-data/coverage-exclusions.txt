@@ -29,6 +29,24 @@
 org.almostrealism.generated
 org.almostrealism.generated.*
 
+# Protoc output for studio/compose/src/main/proto/audio.proto, whose
+# `option java_package = "org.almostrealism.audio.api"` emits every class
+# in this package. No hand-written Java declares this package, so there is
+# no behavior to assert on — testing the generated getters/setters/builders
+# would exercise protobuf itself, not platform code. Sibling packages
+# org.almostrealism.audio and org.almostrealism.audio.pattern are
+# hand-written and do NOT match these globs, so they remain selectable.
+org.almostrealism.audio.api
+org.almostrealism.audio.api.*
+
+# Protoc output for engine/ml/src/main/proto/{collections,model,diskstore}.proto,
+# each of which sets `option java_package = "org.almostrealism.protobuf"`.
+# No hand-written Java declares this package; its behavior is exercised
+# indirectly by the hand-written persistence code that consumes it (e.g.
+# org.almostrealism.persist.assets), whose own packages remain selectable.
+org.almostrealism.protobuf
+org.almostrealism.protobuf.*
+
 # ── base/hardware GPU / native packages ─────────────────────────────
 # Require a real Metal/OpenCL/CUDA device or a JNI bridge to a native
 # library. The CI Linux lane that runs the coverage-qa pipeline has no

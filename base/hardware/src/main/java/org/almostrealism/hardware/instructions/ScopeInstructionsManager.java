@@ -30,11 +30,12 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
 import org.almostrealism.hardware.kernel.CompiledKernelStructureContext;
+import org.almostrealism.hardware.mem.AggregateLayout;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
-import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -195,20 +196,13 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	private ProcessArgumentMap argumentMap;
 
 	/**
-	 * The aggregate replacement positions the compiled kernel was built against, as recorded
-	 * by the operation that compiled the scope (see
-	 * {@code MemoryDataArgumentMap#describeAggregatePositions()}). The generated source bakes
-	 * these positions in, so any operation reusing this manager's instructions must reproduce
-	 * them exactly; a difference means the signature matched two distinct kernels
+	 * The layout of the compiled kernel's aggregate argument, as recorded by the operation that
+	 * compiled the scope (see {@link MemoryDataArgumentMap#limitCopiesTo(Scope)}). The generated
+	 * source bakes its positions in, so any operation reusing this manager's instructions must
+	 * reproduce them exactly; a difference means the signature matched two distinct kernels
 	 * (an instruction cache collision) and is grounds for failing the reuse with an exception.
 	 */
-	private String aggregatePositions;
-
-	/**
-	 * The aggregated slices the compiled kernel may write, read off the compiled scope by the
-	 * operation that compiled it (see {@code MemoryDataArgumentMap#getWrittenSlices}).
-	 */
-	private BitSet writtenAggregateSlices;
+	private AggregateLayout aggregateLayout;
 
 	/**
 	 * The structure context of this manager's compiled instructions, owning the kernel
@@ -259,11 +253,10 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	public void setProcess(Process<?, ?> process) { this.process = process; }
 
 	/**
-	 * Populates the argument map by mapping Process inputs to scope arguments.
-	 *
-	 * @param process the Process to map arguments from
+	 * Populates the argument map by mapping the inputs of the {@link #getProcess() associated
+	 * Process} to scope arguments.
 	 */
-	public void populateArgumentMap(Process<?, ?> process) {
+	private void populateArgumentMap() {
 		this.argumentMap = new ProcessArgumentMap(process,
 				arguments.stream().map(Argument::getVariable)
 						.map(arg -> arg instanceof ArrayVariable<?> ? (ArrayVariable<?>) arg : null)
@@ -280,19 +273,11 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 
 	/** {@inheritDoc} */
 	@Override
-	public void setAggregatePositions(String positions) { this.aggregatePositions = positions; }
+	public void setAggregateLayout(AggregateLayout layout) { this.aggregateLayout = layout; }
 
 	/** {@inheritDoc} */
 	@Override
-	public String getAggregatePositions() { return aggregatePositions; }
-
-	/** {@inheritDoc} */
-	@Override
-	public void setWrittenAggregateSlices(BitSet written) { this.writtenAggregateSlices = written; }
-
-	/** {@inheritDoc} */
-	@Override
-	public BitSet getWrittenAggregateSlices() { return writtenAggregateSlices; }
+	public AggregateLayout getAggregateLayout() { return aggregateLayout; }
 
 	/** {@inheritDoc} */
 	@Override
@@ -390,7 +375,7 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 		arguments = s.getArguments();
 
 		if (process != null) {
-			populateArgumentMap(process);
+			populateArgumentMap();
 		}
 
 		return s;

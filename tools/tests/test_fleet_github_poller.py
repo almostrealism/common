@@ -1032,5 +1032,20 @@ class PollLoopWiringTests(unittest.TestCase):
                 self.assertIsNone(loop.call_args.kwargs["runners_org"])
 
 
+class BuildParserHelpTests(unittest.TestCase):
+    """The argument help strings must survive argparse's own ``%`` expansion.
+
+    Like the collector, the poller pre-formatted its ``default:`` help with
+    ``%`` (``"... (default: %d)." % DEFAULT_POLL_INTERVAL_SECONDS``). That is
+    the same shape that broke the coverage round under Python 3.14's stricter
+    ``_check_help``; ``%(default)d`` lets argparse fill the default itself.
+    """
+
+    def test_format_help_renders_without_raising_and_shows_defaults(self):
+        help_text = github_poller.build_parser().format_help()
+        self.assertIn(str(github_poller.DEFAULT_POLL_INTERVAL_SECONDS), help_text)
+        self.assertIn(str(github_poller.DEFAULT_POLL_MAX_RUNS), help_text)
+
+
 if __name__ == "__main__":
     unittest.main()

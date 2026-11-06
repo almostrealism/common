@@ -508,10 +508,10 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 			PackedCollection condProjWeight1 = createWeight("model.model.to_cond_embed.0.weight", embedDim, condTokenDim);
 			PackedCollection condProjWeight2 = createWeight("model.model.to_cond_embed.2.weight", embedDim, embedDim);
 
+			// Bias-free dense -> SiLU -> dense: the silu_mlp asset with null biases.
 			condEmbed = new SequentialBlock(shape(batchSize, condSeqLen, condTokenDim));
-			condEmbed.add(dense(condProjWeight1));
-			condEmbed.add(silu());
-			condEmbed.add(dense(condProjWeight2));
+			condEmbed.add(siluMlp(shape(batchSize, condSeqLen, condTokenDim),
+					condProjWeight1, null, condProjWeight2, null));
 			condEmbed.reshape(batchSize, condSeqLen, embedDim);
 			model.addInput(condEmbed);
 		} else if (condTokenDim > 0) {
@@ -529,10 +529,10 @@ public class DiffusionTransformer implements DiffusionModel, DiffusionTransforme
 			PackedCollection globalProjOutWeight =
 					createWeight("model.model.to_global_embed.2.weight", embedDim, embedDim);
 			
+			// Bias-free dense -> SiLU -> dense, as the cross-attention embedding above.
 			globalEmbed = new SequentialBlock(shape(batchSize, globalCondDim));
-			globalEmbed.add(dense(globalProjInWeight));
-			globalEmbed.add(silu());
-			globalEmbed.add(dense(globalProjOutWeight));
+			globalEmbed.add(siluMlp(shape(batchSize, globalCondDim),
+					globalProjInWeight, null, globalProjOutWeight, null));
 			globalEmbed.reshape(batchSize, embedDim);
 			model.addInput(globalEmbed);
 		}

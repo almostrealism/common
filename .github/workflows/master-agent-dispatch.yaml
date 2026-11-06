@@ -625,9 +625,12 @@ jobs:
       #
       # It stays best-effort: continue-on-error keeps a failed provision from
       # aborting the job before the "Fetch latest coverage report" step, where
-      # select-python-env.sh falls back to any >= 3.10 interpreter already on
-      # PATH (and fetch-latest-coverage.sh's Homebrew-path widening on a macOS
-      # host), and reports clearly if neither path yields one.
+      # select-python-env.sh falls back to an interpreter already on PATH
+      # within the pinned version window (and fetch-latest-coverage.sh's
+      # Homebrew-path widening on a macOS host), and reports clearly if neither
+      # path yields one. That step sets MAX_PYTHON_VERSION to this same 3.10 so
+      # the fallback cannot drift onto a newer interpreter than python-tests
+      # runs the suites under.
       - name: Set up Python
         if: steps.decide.outputs.run == 'true'
         continue-on-error: true
@@ -652,6 +655,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           ALLOW_RECOMPUTE: "false"
+          # Pin the interpreter that computes Python coverage to the SAME
+          # version analysis.yaml's python-tests job uses (3.10, the
+          # setup-python version above). select-python-env.sh otherwise picks
+          # the newest interpreter on PATH, so on a runner that also ships a
+          # newer Python this round measured — and broke — under a version CI
+          # never runs the suites on (a Python 3.14 argparse incompatibility
+          # in tools/fleet sank the whole round this way). MAX_PYTHON_VERSION
+          # caps the selection so the two jobs stay on the same interpreter.
+          MAX_PYTHON_VERSION: "3.10"
         run: |
           chmod +x ./tools/ci/coverage/fetch-latest-coverage.sh
           ./tools/ci/coverage/fetch-latest-coverage.sh

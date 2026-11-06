@@ -6,9 +6,11 @@
  * This file replaces the Java assembly that used to live in
  * DiffusionTransformerFeatures.timestepEmbedding(...) (the linear -> SiLU -> linear tail that
  * follows the Fourier feature projection) and DiffusionFeatures.timestepEmbeddings(...), both of
- * which built this same structure as a SequentialBlock (dense, SiLU, dense). Those methods now
- * only bind the two projections and load this asset, so there is one definition of the structure
- * and it is here.
+ * which built this same structure as a SequentialBlock (dense, SiLU, dense). The same structure
+ * also backs the DiffusionTransformer cross-attention (to_cond_embed) and global (to_global_embed)
+ * conditioning embeddings, which bind null for the two biases those projections omit. Every caller
+ * now only binds the projections (and biases, where present) and loads this asset, so there is one
+ * definition of the structure and it is here.
  *
  * The Fourier feature stage that precedes this MLP in a full timestep embedding is NOT part of
  * this asset: the Fourier features are [cos(f), sin(f)] over a projected scalar. concat_blocks is
@@ -24,7 +26,9 @@
  *     dense(w_out, b_out)                                [..., out]
  *
  * SiLU-MLP(x) = w_out . silu(w_in . x + b_in) + b_out, with silu(z) = z * sigmoid(z). w_in is the
- * first projection [hidden, in], w_out the second projection [out, hidden]; both carry a bias.
+ * first projection [hidden, in], w_out the second projection [out, hidden]; a bias is added to a
+ * projection when one is bound and omitted when its argument is null (the conditioning embeddings
+ * bind null for both).
  *
  * Stage 1 dense(w_in, b_in) projects the input to the hidden width. Stage 2 silu applies the SiLU
  * gate element-wise, preserving the shape. Stage 3 dense(w_out, b_out) projects the activated
