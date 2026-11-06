@@ -198,6 +198,84 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A copy of zero elements reads nothing from its source and writes nothing to its
+	 * destination, whichever direction the overlap check would choose.
+	 */
+	@Test(timeout = 60000)
+	public void zeroLengthCopyMakesNoReadsOrWrites() {
+		DiscardingMemory source = new DiscardingMemory();
+		DiscardingMemory dest = new DiscardingMemory();
+		dest.setMemInChunks(dest, 0, source, 0, 0);
+		dest.setMemInChunks(dest, 5, dest, 0, 0, 1);
+
+		Assert.assertEquals(0, source.calls);
+		Assert.assertEquals(0, dest.calls);
+	}
+
+	/**
+	 * A negative length or a chunk size that is not positive is rejected before anything is
+	 * read or written.
+	 */
+	@Test(timeout = 60000)
+	public void invalidLengthOrChunkSizeIsRejected() {
+		DiscardingMemory source = new DiscardingMemory();
+		DiscardingMemory dest = new DiscardingMemory();
+
+		assertRejected(() -> dest.setMemInChunks(dest, 0, source, 0, -1));
+		assertRejected(() -> dest.setMemInChunks(dest, 0, source, 0, 10, 0));
+		assertRejected(() -> dest.setMemInChunks(dest, 0, source, 0, 10, -4));
+
+		Assert.assertEquals(0, source.calls);
+		Assert.assertEquals(0, dest.calls);
+	}
+
+	/**
+	 * Fails unless running the given copy throws {@link IllegalArgumentException}.
+	 *
+	 * @param copy the copy expected to be rejected
+	 */
+	private static void assertRejected(Runnable copy) {
+		try {
+			copy.run();
+		} catch (IllegalArgumentException expected) {
+			return;
+		}
+
+		Assert.fail("expected IllegalArgumentException");
+	}
+
+	/**
+	 * A copy within one memory region whose destination starts exactly where the source
+	 * range ends does not overlap it, and is made front to back, starting at the lowest
+	 * offset.
+	 */
+	@Test(timeout = 60000)
+	public void adjacentCopyWithinOneRegionIsMadeFrontToBack() {
+		int length = 10;
+		int chunk = 4;
+		double[] data = new double[2 * length];
+		for (int i = 0; i < length; i++) data[i] = i + 1;
+
+		SharedArrayMemory mem = new SharedArrayMemory(data);
+		List<Integer> writes = new ArrayList<>();
+		SharedArrayMemory dest = new SharedArrayMemory(data) {
+			@Override
+			public void setMem(Memory m, int offset, double[] source, int srcOffset, int len) {
+				writes.add(offset);
+				super.setMem(m, offset, source, srcOffset, len);
+			}
+		};
+
+		dest.setMemInChunks(mem, length, mem, 0, length, chunk);
+
+		Assert.assertEquals(List.of(10, 14, 18), writes);
+		for (int i = 0; i < length; i++) {
+			Assert.assertEquals(i + 1, data[i], 0.0);
+			Assert.assertEquals(i + 1, data[length + i], 0.0);
+		}
+	}
+
+	/**
 	 * Copies {@link #OVERLAP_LENGTH} elements of one kernel memory region onto an
 	 * overlapping range of the same region in chunks of {@link #OVERLAP_CHUNK} elements, and
 	 * checks that the result matches a copy of a snapshot of the source range.
