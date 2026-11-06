@@ -405,6 +405,44 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 		Assert.assertEquals(4.0, JsonFieldExtractor.extractDouble(json, "c"), 1e-9);
 	}
 
+	/**
+	 * {@link JsonFieldExtractor#getBoolean(String, String, boolean)} reads the
+	 * top-level field's explicit value, and falls back to the default when the
+	 * field is absent, {@code null}, non-boolean, or the body is not an object.
+	 */
+	@Test(timeout = 10000)
+	public void getBooleanReadsTopLevelValueOrDefault() {
+		Assert.assertTrue(JsonFieldExtractor.getBoolean("{\"flag\":true}", "flag", false));
+		Assert.assertFalse(JsonFieldExtractor.getBoolean("{\"flag\":false}", "flag", true));
+		Assert.assertTrue(JsonFieldExtractor.getBoolean("{\"other\":1}", "flag", true));
+		Assert.assertFalse(JsonFieldExtractor.getBoolean("{\"other\":1}", "flag", false));
+		Assert.assertTrue(JsonFieldExtractor.getBoolean("{\"flag\":null}", "flag", true));
+		Assert.assertTrue(JsonFieldExtractor.getBoolean("{\"flag\":\"true\"}", "flag", true));
+		Assert.assertFalse(JsonFieldExtractor.getBoolean("{\"flag\":\"true\"}", "flag", false));
+		Assert.assertTrue(JsonFieldExtractor.getBoolean("not json", "flag", true));
+		Assert.assertFalse(JsonFieldExtractor.getBoolean(null, "flag", false));
+	}
+
+	/**
+	 * The robustness the structural read buys: a same-named key nested in an
+	 * <em>earlier</em> field must not be read as the top-level flag. The raw-text
+	 * {@link JsonFieldExtractor#extractBoolean(String, String)} matches that first
+	 * {@code "flag"} token and reports the nested {@code true}; {@code getBoolean}
+	 * reads the genuine top-level {@code false}. (A literal {@code "flag":true}
+	 * inside a string <em>value</em> cannot trigger this — serialization escapes
+	 * the inner quotes to {@code \"flag\"}, so the {@code "flag"} token only
+	 * appears for a real key — but a nested object key is unescaped and does.)
+	 */
+	@Test(timeout = 10000)
+	public void getBooleanReadsTopLevelFieldNotAnEarlierNestedKey() {
+		String json = "{\"wrapper\":{\"flag\":true},\"flag\":false}";
+
+		Assert.assertTrue("raw-text scan matches the earlier nested key",
+				JsonFieldExtractor.extractBoolean(json, "flag"));
+		Assert.assertFalse("structural read honours the real top-level field",
+				JsonFieldExtractor.getBoolean(json, "flag", false));
+	}
+
 	/** Asserts that the strict extractor refuses {@code json}'s {@code roles} field. */
 	private static void assertRejected(String json) {
 		try {
