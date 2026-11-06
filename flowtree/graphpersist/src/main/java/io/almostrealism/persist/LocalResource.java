@@ -155,12 +155,22 @@ public class LocalResource implements Resource {
 	 * Copies every byte of the resource contents, from the first through the last, to the
 	 * given stream and flushes it.
 	 *
+	 * <p>A stream opened from the backing {@link File} is owned by this method and closed
+	 * once the copy completes. A stream supplied through {@link #load(IOStreams)} is left
+	 * open, remaining under the ownership of the caller that provided it.</p>
+	 *
 	 * @param out The stream that receives the resource data
 	 * @throws IOException If reading or writing fails
 	 */
 	protected void copyTo(OutputStream out) throws IOException {
-		// TODO(review): the FileInputStream opened by getInputStream() is never closed here; decide ownership and close it
-		this.getInputStream().transferTo(out);
+		if (this.in != null) {
+			this.in.transferTo(out);
+		} else {
+			try (InputStream stream = this.getInputStream()) {
+				stream.transferTo(out);
+			}
+		}
+
 		out.flush();
 	}
 

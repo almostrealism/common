@@ -13,12 +13,34 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertFalse;
 
 /**
  * Tests that {@link LocalResource} reproduces its content exactly when it is copied to a
  * local file or sent to a stream.
  */
 public class LocalResourceTest extends TestSuiteBase {
+
+	/** An {@link InputStream} that records whether it has been closed. */
+	private static final class CloseTrackingInputStream extends ByteArrayInputStream {
+		/** Set to {@code true} once {@link #close()} has been invoked. */
+		private boolean closed;
+
+		/**
+		 * Constructs a stream over the given bytes.
+		 *
+		 * @param buf The backing byte array
+		 */
+		private CloseTrackingInputStream(byte[] buf) {
+			super(buf);
+		}
+
+		@Override
+		public void close() throws IOException {
+			this.closed = true;
+			super.close();
+		}
+	}
 
 	/** Content whose first byte is distinguishable from the rest. */
 	private static final byte[] CONTENT = "ABCDEF".getBytes(StandardCharsets.US_ASCII);
@@ -55,5 +77,24 @@ public class LocalResourceTest extends TestSuiteBase {
 		resource.send(destination);
 
 		assertArrayEquals(CONTENT, sent.toByteArray());
+	}
+
+	/**
+	 * A stream supplied through {@link LocalResource#load(IOStreams)} is owned by its
+	 * caller, so {@link LocalResource#send(IOStreams)} copies from it without closing it.
+	 */
+	@Test(timeout = 10000)
+	public void sendLeavesSuppliedStreamOpen() throws IOException {
+		CloseTrackingInputStream supplied = new CloseTrackingInputStream(CONTENT);
+		LocalResource resource = new LocalResource();
+		resource.load(new IOStreams(supplied));
+
+		ByteArrayOutputStream sent = new ByteArrayOutputStream();
+		IOStreams destination = new IOStreams();
+		destination.out = new DataOutputStream(sent);
+		resource.send(destination);
+
+		assertArrayEquals(CONTENT, sent.toByteArray());
+		assertFalse("A caller-supplied stream must not be closed by send", supplied.closed);
 	}
 }
