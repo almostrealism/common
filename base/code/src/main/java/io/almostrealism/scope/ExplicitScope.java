@@ -17,6 +17,7 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.ComputableBase;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.profile.OperationMetadata;
 
@@ -140,6 +141,38 @@ public class ExplicitScope<T> extends Scope<T> {
 		if (!getMethods().isEmpty()) return false;
 		if (!getVariables().isEmpty()) return false;
 		return false; // TODO  Maybe it can be inlinable
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code true}: the body is explicit code, whose writes cannot be enumerated, so
+	 * it may write anything.</p>
+	 */
+	@Override
+	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
+		return true;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Every position is read: the body is explicit code, whose reads cannot be enumerated, so
+	 * it may read anything.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		reads.addEverything();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code null}: the body is explicit code, which is not made of assignments.</p>
+	 */
+	@Override
+	public List<ExpressionAssignment<?>> collectAssignments() {
+		return null;
 	}
 
 	/**
