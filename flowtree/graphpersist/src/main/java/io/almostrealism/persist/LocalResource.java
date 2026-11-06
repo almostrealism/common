@@ -126,22 +126,15 @@ public class LocalResource implements Resource {
 	}
 
 	/**
-	 * Saves the resource contents to a local file path by copying bytes one at a time.
+	 * Saves the full resource contents to a local file path.
 	 *
 	 * @param file The destination file path
 	 * @throws IOException If reading or writing fails
 	 */
 	@Override
 	public void saveLocal(String file) throws IOException {
-		InputStream in = this.getInputStream();
-		
 		try (OutputStream out = new FileOutputStream(file)) {
-			byte[] b = new byte[1];
-			in.read(b);
-			
-			while (in.read(b) >= 0) { out.write(b); }
-			
-			out.flush();
+			copyTo(out);
 		}
 	}
 
@@ -154,15 +147,31 @@ public class LocalResource implements Resource {
 	 */
 	@Override
 	public void send(IOStreams io) throws IOException {
-		InputStream in = this.getInputStream();
-		
-		byte[] b = new byte[1];
-		in.read(b);
-		
-		while (in.read(b) >= 0) { io.out.write(b); }
-		
-		io.out.flush();
+		copyTo(io.out);
 		io.out.close();
+	}
+
+	/**
+	 * Copies every byte of the resource contents, from the first through the last, to the
+	 * given stream and flushes it.
+	 *
+	 * <p>A stream opened from the backing {@link File} is owned by this method and closed
+	 * once the copy completes. A stream supplied through {@link #load(IOStreams)} is left
+	 * open, remaining under the ownership of the caller that provided it.</p>
+	 *
+	 * @param out The stream that receives the resource data
+	 * @throws IOException If reading or writing fails
+	 */
+	protected void copyTo(OutputStream out) throws IOException {
+		if (this.in != null) {
+			this.in.transferTo(out);
+		} else {
+			try (InputStream stream = this.getInputStream()) {
+				stream.transferTo(out);
+			}
+		}
+
+		out.flush();
 	}
 
 	/**
