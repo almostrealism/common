@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.flowtree.jobs;
+package io.flowtree.git;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;

@@ -389,7 +389,7 @@ public class FileStagerTest extends TestSuiteBase {
 	 * Verifies that the per-job test lock does not re-lock CI/workflow files.
 	 *
 	 * <p>This is the configuration a {@code ci/...} branch produces: the CI
-	 * lock is off ({@code buildStagingConfig} disables {@code protectCiFiles}
+	 * lock is off ({@link FileStagingConfig#forJob} disables {@code protectCiFiles}
 	 * for such a branch) while the per-job test lock is on, with the production
 	 * {@link GitJobConfig#PROTECTED_PATH_PATTERNS}. Because those patterns list
 	 * test paths only, an existing workflow file is staged — matching
@@ -443,9 +443,9 @@ public class FileStagerTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void onlyCiBranchesAreExemptFromTheCiFileLock() {
-		assertTrue(GitCommitHandler.isCiBranch("ci/pipeline-change"));
-		assertFalse(GitCommitHandler.isCiBranch("feature/ci-thing"));
-		assertFalse(GitCommitHandler.isCiBranch(null));
+		assertTrue(FileStagingConfig.isCiBranch("ci/pipeline-change"));
+		assertFalse(FileStagingConfig.isCiBranch("feature/ci-thing"));
+		assertFalse(FileStagingConfig.isCiBranch(null));
 	}
 
 	/**

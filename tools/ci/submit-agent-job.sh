@@ -70,6 +70,15 @@
 #                       auto-resolve-python) set this to false so the review
 #                       runs once on a branch's initial work, not on each pass
 #                       of the remediation loop.
+#   REMEDIATION_PASS  - mark this submission as an auto-review/auto-resolve
+#                       remediation pass (default: false). Only the remediation
+#                       submitters set it to true; the controller counts only a
+#                       remediation pass against the per-PR budget and treats
+#                       only a remediation pass's commit as the one its
+#                       own-commit skip may refuse. Every CI submission sets
+#                       `automated`, so the controller must not infer this from
+#                       it — a QA, planning or implementation job is automated
+#                       but is the primary work a review reviews, not a pass.
 #   REVIEW_ENABLED    - run the review phase after the job (true/false).
 #                       Omitted → the field is not sent and the controller's
 #                       default applies (on). The post-deploy canary sets it
@@ -190,6 +199,7 @@ PAYLOAD=$(jq -n \
     --argjson autopr "${AUTO_CREATE_PR:-false}" \
     --argjson prdraft "${PR_DRAFT:-false}" \
     --argjson automated true \
+    --argjson remediation "${REMEDIATION_PASS:-false}" \
     --argjson createws "$CREATE_WORKSTREAM" \
     '{
         prompt: $prompt,
@@ -200,6 +210,7 @@ PAYLOAD=$(jq -n \
         autoCreatePr: $autopr,
         createPrAsDraft: $prdraft,
         automated: $automated,
+        remediationPass: $remediation,
         createWorkstreamIfMissing: $createws
     }')
 

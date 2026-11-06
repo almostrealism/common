@@ -457,6 +457,7 @@ for each file in changedFiles:
         skip("excluded pattern")
         continue
 
+    # FileStagingConfig.isCiLocked / isTestLocked:
     ciFile = isCiWorkflowFile(file)
     inProtectedPath = matchesAnyPattern(file, protectedPathPatterns)
     ciLocked = ciFile AND (protectCiFiles OR (protectTestFiles AND inProtectedPath))
@@ -753,7 +754,8 @@ lock (`protectCiFiles`), whose exemptions differ from the test lock's — a
 ### Protection Logic
 
 One of three checks applies, chosen by whether the file is CI configuration
-(`isCiWorkflowFile(file)`), which lock is active, and the file's extension:
+(`FileStagingConfig.isCiLocked(file)` / `isTestLocked(file)`), which lock is
+active, and the file's extension:
 
 **Whole-file, unconditional** (CI configuration — `.github/workflows/**`,
 `.github/actions/**`, `tools/ci/**` — under the CI lock `protectCiFiles`, or
@@ -1086,12 +1088,12 @@ StagingResult result = stager.evaluateFiles(
 ```
 
 `FileStager.GitOperations` also has a `public` constructor-free concrete
-implementation, `io.flowtree.jobs.GitOperations`, that wraps a real git
+implementation, `io.flowtree.git.GitOperations`, that wraps a real git
 process:
 
 ```java
-io.flowtree.jobs.GitOperations git =
-    new io.flowtree.jobs.GitOperations("/repo", "task-1");
+io.flowtree.git.GitOperations git =
+    new io.flowtree.git.GitOperations("/repo", "task-1");
 // git::execute alone only satisfies the exit-code half of the interface --
 // wrap both methods to get content-based checks too:
 FileStager.GitOperations gitOps = new FileStager.GitOperations() {

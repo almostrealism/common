@@ -23,7 +23,7 @@ import fi.iki.elonen.NanoHTTPD.Response;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
-import io.flowtree.jobs.RepositoryUrl;
+import io.flowtree.git.RepositoryUrl;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;

@@ -134,6 +134,13 @@ public class JobCompletionEvent {
     private String pullRequestUrl;
 
     /**
+     * Where a failed job's work was preserved — a pushed {@code rescue/<jobId>}
+     * branch, or a patch file on the agent host — or {@code null} when nothing
+     * was rescued; see {@link WorkingTreeRescue}.
+     */
+    private String rescueRef;
+
+    /**
      * Commits this job pushed to dependent repositories, one entry per push.
      * Written by the job and parsed by the controller, which opens a companion
      * pull request for each. Never {@code null}; empty when the job pushed to
@@ -663,6 +670,32 @@ public class JobCompletionEvent {
     }
 
     /**
+     * Records where this failed job's work was preserved, and appends
+     * {@code instructions} to the error message so that everyone who reads
+     * the failure learns where the work is and how to take it.
+     *
+     * @param ref          the rescue branch or patch location
+     * @param instructions a sentence naming the location and how to use it;
+     *                     {@code null} to record the location only
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withRescue(String ref, String instructions) {
+        this.rescueRef = ref;
+        if (instructions != null && !instructions.isEmpty()) {
+            this.errorMessage = errorMessage == null || errorMessage.isEmpty()
+                    ? instructions : errorMessage + "\n\n" + instructions;
+        }
+        return this;
+    }
+
+    /**
+     * Returns where this failed job's work was preserved.
+     *
+     * @return the rescue branch or patch location, or {@code null} when nothing was rescued
+     */
+    public String getRescueRef() { return rescueRef; }
+
+    /**
      * Sets the commits this job pushed to dependent repositories.
      *
      * @param pushes the dependent-repo pushes; {@code null} is treated as empty
@@ -721,6 +754,7 @@ public class JobCompletionEvent {
         for (String f : skippedFiles) skippedArray.add(f);
 
         root.put("pullRequestUrl", pullRequestUrl);
+        root.put("rescueRef", rescueRef);
 
         ArrayNode pushesArray = root.putArray(DependentRepoPush.JSON_FIELD);
         for (DependentRepoPush push : dependentRepoPushes) push.toJson(pushesArray);
