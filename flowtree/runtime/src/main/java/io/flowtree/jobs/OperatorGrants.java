@@ -16,7 +16,6 @@
 
 package io.flowtree.jobs;
 
-import io.flowtree.JsonFieldExtractor;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.Collections;
@@ -237,15 +236,16 @@ public final class OperatorGrants extends WireConfig implements ConsoleFeatures 
 
     /**
      * Applies the operator grants a submission requests, signing each with
-     * {@code secret}. Called by the controller only: the request supplies
-     * what the operator asked for, and never a signature.
+     * {@code secret}. Called by the controller only: the caller has already
+     * extracted what the operator asked for from the request body (the
+     * sensitive-file protection flag through {@link #setSensitiveFileProtectionEnabled},
+     * the accepted paths passed here), and never a signature.
      *
      * <p>A grant the controller cannot sign (no secret, or no job id) is not
      * forwarded at all. For the sensitive-file bypass that leaves the
      * protections off and CI blocking the commit, as before; for accepted
      * merge resolutions it drops the paths, so a job never carries an
-     * acceptance that nothing authorized. The paths are read strictly: a
-     * value that is not an array of strings grants nothing.</p>
+     * acceptance that nothing authorized.</p>
      *
      * <p>No signature is ever taken from the request. An earlier controller
      * accepted an explicit {@code sensitiveFileBypassSignature} from the body
@@ -256,23 +256,11 @@ public final class OperatorGrants extends WireConfig implements ConsoleFeatures 
      * which supplies its own job id. Each grant that could not be signed is
      * reported as a warning.</p>
      *
-     * @param body   the submission's JSON body
+     * @param paths  the accepted merge-resolution paths, or {@code null}/empty for none
      * @param secret the controller's signing secret, or {@code null}
      * @param jobId  the job being submitted
      */
-    void applySubmission(String body, String secret, String jobId) {
-        if (JsonFieldExtractor.hasField(body, PROTECTION_KEY)) {
-            setSensitiveFileProtectionEnabled(JsonFieldExtractor.extractBoolean(body, PROTECTION_KEY));
-        }
-        List<String> paths;
-        try {
-            paths = JsonFieldExtractor.hasField(body, ACCEPTED_RESOLUTIONS_KEY)
-                    ? JsonFieldExtractor.extractStrictStringArray(body, ACCEPTED_RESOLUTIONS_KEY) : null;
-        } catch (IllegalArgumentException e) {
-            warn("acceptedMergeResolutions ignored, so no merge resolution will be accepted: "
-                    + e.getMessage());
-            paths = null;
-        }
+    void applySubmission(List<String> paths, String secret, String jobId) {
         boolean canSign = secret != null && !secret.isEmpty() && jobId != null && !jobId.isEmpty();
         if (!sensitiveFileProtectionEnabled) {
             if (canSign) {

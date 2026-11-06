@@ -1082,8 +1082,22 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             factory.setUseTmux(JsonFieldExtractor.extractBoolean(body, "useTmux"));
         if (JsonFieldExtractor.hasField(body, "maxWallClockHours"))
             factory.setMaxWallClockHours(JsonFieldExtractor.extractInt(body, "maxWallClockHours"));
-        // Operator grants are signed with a secret the agent never sees; see OperatorGrants.
-        factory.applyOperatorGrants(body, System.getenv("AR_AGENT_BYPASS_SECRET"));
+        // Operator grants: the controller reads them off the request body here
+        // and signs each with a secret the agent never sees; see OperatorGrants.
+        if (JsonFieldExtractor.hasField(body, "sensitiveFileProtectionEnabled"))
+            factory.setSensitiveFileProtectionEnabled(
+                    JsonFieldExtractor.extractBoolean(body, "sensitiveFileProtectionEnabled"));
+        List<String> acceptedResolutions = List.of();
+        if (JsonFieldExtractor.hasField(body, "acceptedMergeResolutions")) {
+            try {
+                acceptedResolutions =
+                        JsonFieldExtractor.extractStrictStringArray(body, "acceptedMergeResolutions");
+            } catch (IllegalArgumentException e) {
+                log("acceptedMergeResolutions ignored, so no merge resolution"
+                        + " will be accepted: " + e.getMessage());
+            }
+        }
+        factory.applyOperatorGrants(acceptedResolutions, System.getenv("AR_AGENT_BYPASS_SECRET"));
         if (JsonFieldExtractor.hasField(body, "reviewEnabled"))
             factory.setReviewEnabled(JsonFieldExtractor.extractBoolean(body, "reviewEnabled"));
         int maxReviewPasses = JsonFieldExtractor.extractInt(body, "maxReviewPasses");

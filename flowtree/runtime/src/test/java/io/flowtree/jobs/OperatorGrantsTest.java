@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.JsonFieldExtractor;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -26,6 +27,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Checks that {@link OperatorGrants} grants exactly what the controller
@@ -46,8 +48,7 @@ public class OperatorGrantsTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void signedGrantTravelsFromSubmissionToJob() {
         CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Prompt");
-        factory.applyOperatorGrants(
-                "{\"acceptedMergeResolutions\":[\"src/A.java\",\"docs/b.md\"]}", SECRET);
+        factory.applyOperatorGrants(List.of("src/A.java", "docs/b.md"), SECRET);
 
         CodingAgentJob.Factory restored = GitManagedJobSerializationTest.roundTripFactory(factory);
         assertEquals(List.of("src/A.java", "docs/b.md"),
@@ -69,7 +70,8 @@ public class OperatorGrantsTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void sensitiveFileBypassStillTravels() {
         CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Prompt");
-        factory.applyOperatorGrants("{\"sensitiveFileProtectionEnabled\":false}", SECRET);
+        factory.setSensitiveFileProtectionEnabled(false);
+        factory.applyOperatorGrants(List.of(), SECRET);
 
         CodingAgentJob job = GitManagedJobSerializationTest.roundTrip(
                 (CodingAgentJob) GitManagedJobSerializationTest.roundTripFactory(factory).nextJob());
@@ -85,21 +87,30 @@ public class OperatorGrantsTest extends TestSuiteBase {
     @Test(timeout = 30000)
     public void grantWithoutSecretIsDropped() {
         CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Prompt");
-        factory.applyOperatorGrants("{\"acceptedMergeResolutions\":[\"src/A.java\"]}", null);
+        factory.applyOperatorGrants(List.of("src/A.java"), null);
 
         assertTrue(factory.operatorGrants().getAcceptedMergeResolutions().isEmpty());
         assertNull(factory.operatorGrants().getMergeResolutionSignature());
     }
 
-    /** A value that is not an array of strings grants nothing, rather than being coerced. */
+    /**
+     * A value that is not an array of strings is rejected at the controller's
+     * extraction point rather than being coerced, which is what lets the
+     * submit path drop the grant (see
+     * {@code FlowTreeApiEndpoint.handleSubmit}). A well-formed array extracts
+     * to its elements.
+     */
     @Test(timeout = 30000)
     public void malformedGrantIsIgnored() {
-        CodingAgentJob.Factory factory = new CodingAgentJob.Factory("Prompt");
-        factory.applyOperatorGrants(
-                "{\"acceptedMergeResolutions\":\"src/A.java\",\"other\":[\"src/B.java\"]}", SECRET);
-
-        assertTrue(factory.operatorGrants().getAcceptedMergeResolutions().isEmpty());
-        assertNull(factory.operatorGrants().getMergeResolutionSignature());
+        try {
+            JsonFieldExtractor.extractStrictStringArray(
+                    "{\"acceptedMergeResolutions\":\"src/A.java\"}", "acceptedMergeResolutions");
+            fail("a non-array acceptedMergeResolutions value must be rejected");
+        } catch (IllegalArgumentException expected) {
+            assertNotNull(expected.getMessage());
+        }
+        assertEquals(List.of("src/B.java"), JsonFieldExtractor.extractStrictStringArray(
+                "{\"acceptedMergeResolutions\":[\"src/B.java\"]}", "acceptedMergeResolutions"));
     }
 
     /** Paths carried without a signature accept nothing. */

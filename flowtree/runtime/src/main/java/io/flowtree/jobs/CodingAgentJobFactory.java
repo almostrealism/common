@@ -1029,15 +1029,18 @@ public class CodingAgentJobFactory extends AbstractJobFactory implements Console
     }
 
     /**
-     * Applies the operator grants a submission requests, signed with
-     * {@code secret} for this factory's job id; this is the only place they
-     * are signed. See {@link OperatorGrants#applySubmission}.
+     * Signs the operator grants a submission requests for this factory's job
+     * id; this is the only place they are signed. The caller extracts the
+     * request-body keys (the sensitive-file protection flag is already set via
+     * {@link #setSensitiveFileProtectionEnabled}); see
+     * {@link OperatorGrants#applySubmission}.
      *
-     * @param body   the submission's JSON body
-     * @param secret the controller's signing secret, or {@code null}
+     * @param acceptedMergeResolutions the paths whose merge resolution the
+     *                                 owner accepted, or {@code null}/empty for none
+     * @param secret                   the controller's signing secret, or {@code null}
      */
-    public void applyOperatorGrants(String body, String secret) {
-        operatorGrants.applySubmission(body, secret, getTaskId());
+    public void applyOperatorGrants(List<String> acceptedMergeResolutions, String secret) {
+        operatorGrants.applySubmission(acceptedMergeResolutions, secret, getTaskId());
     }
 
     /**
