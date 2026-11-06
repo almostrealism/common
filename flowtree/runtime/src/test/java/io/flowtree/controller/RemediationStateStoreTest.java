@@ -711,6 +711,112 @@ public class RemediationStateStoreTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * A non-remediation job (a QA round, a planning or implementation job) is
+     * dispatched as not a remediation pass, so its primary-work commit is not
+     * recorded as the workstream's last-produced commit; an auto-review
+     * triggered by that commit therefore dispatches rather than being skipped as
+     * the previous pass's own.
+     */
+    @Test(timeout = 30000)
+    public void aNonRemediationJobsCommitLeavesTheNextReviewDispatching() throws Exception {
+        File dir = Files.createTempDirectory("rem-nonremediation").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 5, new RecordingNotifier());
+            guard.dispatched("qa-1", "ws", false);
+            store.completeJob("qa-1", "ws", "b", "qa-sha", true);
+            assertNull("the non-remediation commit is not the last-produced commit",
+                    store.get("ws").getLastProducedCommit());
+            assertNull("auto-review must run on the primary work's commit",
+                    guard.skipReason("ws", true, "qa-sha"));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * A remediation pass is dispatched as one, so its own review commit becomes
+     * the last-produced commit and a re-review triggered only by that commit is
+     * skipped — the self-triggered loop the own-commit skip exists to stop.
+     */
+    @Test(timeout = 30000)
+    public void aRemediationPassOwnCommitIsSkipped() throws Exception {
+        File dir = Files.createTempDirectory("rem-ownpass").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 5, new RecordingNotifier());
+            guard.dispatched("review-1", "ws", true);
+            store.completeJob("review-1", "ws", "b", "review-sha", true);
+            assertEquals("review-sha", store.get("ws").getLastProducedCommit());
+            assertTrue("re-reviewing the pass's own commit is skipped",
+                    guard.skipReason("ws", true, "review-sha") != null);
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * After a remediation pass's own commit, a person's commit on the same
+     * branch still triggers a review: it is not the pass's own commit, so the
+     * own-commit skip does not fire.
+     */
+    @Test(timeout = 30000)
+    public void aPersonsCommitAfterAReviewStillDispatches() throws Exception {
+        File dir = Files.createTempDirectory("rem-reviewthenhuman").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 5, new RecordingNotifier());
+            guard.dispatched("review-1", "ws", true);
+            store.completeJob("review-1", "ws", "b", "review-sha", true);
+            assertTrue("the review's own commit is skipped",
+                    guard.skipReason("ws", true, "review-sha") != null);
+
+            guard.dispatched("human-1", "ws", false);
+            store.completeJob("human-1", "ws", "b", "human-sha", true);
+            assertNull("a review of the person's commit runs",
+                    guard.skipReason("ws", true, "human-sha"));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * Only remediation passes count against the per-PR budget. Non-remediation
+     * automated jobs — dispatched with the flag false — are not registered, so
+     * however many of them complete without a commit the budget is untouched;
+     * only remediation passes with no commit exhaust it.
+     */
+    @Test(timeout = 30000)
+    public void theBudgetCountsOnlyRemediationPasses() throws Exception {
+        File dir = Files.createTempDirectory("rem-budget-scope").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 2, new RecordingNotifier());
+            for (int i = 0; i < 5; i++) {
+                guard.dispatched("qa-" + i, "ws", false);
+                store.completeJob("qa-" + i, "ws", "b", null, true);
+            }
+            assertEquals("non-remediation jobs never move the budget",
+                    0, store.get("ws").getConsecutiveNoProgress());
+            assertNull(guard.skipReason("ws", true, null));
+
+            guard.dispatched("review-1", "ws", true);
+            store.completeJob("review-1", "ws", "b", null, true);
+            guard.dispatched("review-2", "ws", true);
+            store.completeJob("review-2", "ws", "b", null, true);
+            assertEquals(2, store.get("ws").getConsecutiveNoProgress());
+            assertTrue("only remediation passes exhaust the budget",
+                    guard.skipReason("ws", true, null) != null);
+        } finally {
+            store.close();
+        }
+    }
+
     /** Reads the stored count for {@code ws} as text, bypassing the store's parsing. */
     private String rawCount(RemediationStateStore store) throws Exception {
         try (Statement stmt = store.connection().createStatement();

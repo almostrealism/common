@@ -25,8 +25,8 @@ import java.util.function.BiPredicate;
 
 /**
  * The submit-time gate for the per-PR remediation loop. It reads the one
- * {@link RemediationState} record for a workstream and decides whether an
- * automated remediation submission should be dispatched or skipped, so the
+ * {@link RemediationState} record for a workstream and decides whether a
+ * remediation-pass submission should be dispatched or skipped, so the
  * controller stops re-dispatching {@code auto-review}/{@code auto-resolve} on
  * every CI run once a PR has stopped making progress — a loop that has charged a
  * single PR dozens of jobs.
@@ -128,9 +128,14 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
     }
 
     /**
-     * Returns why an automated remediation submission should be skipped, or
-     * {@code null} to dispatch it. A non-automated submission (a person's work)
-     * is never skipped.
+     * Returns why a remediation-pass submission should be skipped, or
+     * {@code null} to dispatch it. Only an {@code auto-review}/{@code auto-resolve}
+     * pass is gated; any other submission — a person's work, or an automated job
+     * that is the primary work being reviewed (a QA round, a planning job, an
+     * implementation) — is never skipped. Whether a submission is a remediation
+     * pass is stated explicitly by the caller (CI's remediation submitters),
+     * never inferred from the generic {@code automated} flag, which every CI
+     * submission sets.
      *
      * <p>Pings a person — once — when it first finds the budget spent, and
      * marks the record so a later refused submission on the same PR is silent
@@ -138,14 +143,15 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
      * channel or notifier yet) leaves the record unmarked, so a later refused
      * submission tries again. Every skip is logged with its reason.</p>
      *
-     * @param workstreamId  the workstream (branch / PR) key
-     * @param automated     whether this is an automated remediation submission
-     * @param triggerCommit the commit that triggered the submission, or
-     *                      {@code null} when the caller did not supply one
+     * @param workstreamId   the workstream (branch / PR) key
+     * @param remediationPass whether this is a remediation-pass submission
+     *                       (an {@code auto-review}/{@code auto-resolve} pass)
+     * @param triggerCommit  the commit that triggered the submission, or
+     *                       {@code null} when the caller did not supply one
      * @return a skip reason, or {@code null} to dispatch
      */
-    public String skipReason(String workstreamId, boolean automated, String triggerCommit) {
-        if (store == null || !automated || workstreamId == null || workstreamId.isEmpty()) {
+    public String skipReason(String workstreamId, boolean remediationPass, String triggerCommit) {
+        if (store == null || !remediationPass || workstreamId == null || workstreamId.isEmpty()) {
             return null;
         }
         String reason = evaluate(workstreamId, triggerCommit);
@@ -156,7 +162,7 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
     }
 
     /**
-     * Decides the skip for an automated submission on a known workstream,
+     * Decides the skip for a remediation-pass submission on a known workstream,
      * sending the one budget-spent ping when this call claims it and releasing
      * the claim when the ping is not delivered.
      *
@@ -206,17 +212,20 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
 
     /**
      * Records that a submission this guard let through was dispatched as job
-     * {@code jobId}. An automated submission is registered as a remediation
-     * job, so its terminal event counts against the per-PR budget
-     * ({@link RemediationStateStore#completeJob}); any other submission — a
-     * person's work — is not registered and never moves the budget.
+     * {@code jobId}. A remediation pass ({@code auto-review}/{@code auto-resolve})
+     * is registered as a remediation job, so its terminal event counts against
+     * the per-PR budget ({@link RemediationStateStore#completeJob}) and its
+     * produced commit becomes the last-produced commit the own-commit skip
+     * compares against; any other submission — a person's work, or an automated
+     * job that is the primary work being reviewed — is not registered, so it
+     * never moves the budget and its commit is never taken as a review's own.
      *
-     * @param jobId        the dispatched job's id
-     * @param workstreamId the workstream (branch / PR) key
-     * @param automated    whether the submission was an automated remediation
+     * @param jobId           the dispatched job's id
+     * @param workstreamId    the workstream (branch / PR) key
+     * @param remediationPass whether the submission was a remediation pass
      */
-    public void dispatched(String jobId, String workstreamId, boolean automated) {
-        if (store == null || !automated) return;
+    public void dispatched(String jobId, String workstreamId, boolean remediationPass) {
+        if (store == null || !remediationPass) return;
         store.registerJob(jobId, workstreamId);
     }
 }
