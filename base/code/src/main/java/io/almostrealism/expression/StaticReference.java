@@ -100,9 +100,9 @@ public class StaticReference<T> extends Expression<T> {
 	 * variable it depends on.</p>
 	 */
 	@Override
-	public void collectAssignedNames(Set<String> names) {
+	public void appendAssignedNames(Set<String> names) {
 		if (getName() != null) names.add(getName());
-		super.collectAssignedNames(names);
+		super.appendAssignedNames(names);
 	}
 
 	/**

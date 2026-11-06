@@ -24,6 +24,7 @@ import io.almostrealism.scope.ReadPositions;
 import io.almostrealism.scope.Variable;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Represents a declaration of an array variable in generated code.
@@ -137,6 +138,14 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
 		return false;
 	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Nothing: a declaration introduces a new array without assigning any variable.</p>
+	 */
+	@Override
+	public void appendAssignedNames(Set<String> names) { }
 
 	/**
 	 * {@inheritDoc}

@@ -16,6 +16,8 @@
 
 package io.almostrealism.scope;
 
+import java.util.Set;
+
 /**
  * A part of generated code that can answer whether it assigns a value to, or reads the value
  * of, an element of an {@link ArrayVariable} within a range of positions.
@@ -46,6 +48,22 @@ public interface VariableReferenceSupport {
 	 *         {@code array} in the range
 	 */
 	boolean containsAssignment(ArrayVariable<?> array, long start, long end);
+
+	/**
+	 * Appends to {@code names}, which this method modifies, the name of every variable this code
+	 * may assign a value to: the name-based counterpart to
+	 * {@link #containsAssignment(ArrayVariable, long, long)}, for analyses that track variables
+	 * by name rather than by {@link ArrayVariable}, such as the loop-variance analysis of
+	 * {@link Repeated}.
+	 *
+	 * <p>Only what the code names is added. Code that runs a body it does not contain (a call,
+	 * a required scope, explicit code) may also change values it does not name; whether it may
+	 * write an element of a particular array is answered by
+	 * {@link #containsAssignment(ArrayVariable, long, long)}.</p>
+	 *
+	 * @param names the set to which the names are added
+	 */
+	void appendAssignedNames(Set<String> names);
 
 	/**
 	 * Returns whether this code reads the value of an element of {@code array} at a position in

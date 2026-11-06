@@ -26,6 +26,7 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.scope.VariableReferenceSupport;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Represents a code statement that can be rendered into target language code.
@@ -97,6 +98,20 @@ public interface Statement<T extends KernelStructure> extends Fragment, KernelSt
 	@Override
 	default boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
 		return true;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>This default adds the name of every variable the statement
+	 * {@link #getDependencies() depends on}: a statement that does not account for its writes
+	 * may assign any of the variables it refers to.</p>
+	 */
+	@Override
+	default void appendAssignedNames(Set<String> names) {
+		for (Variable<?, ?> var : getDependencies()) {
+			if (var.getName() != null) names.add(var.getName());
+		}
 	}
 
 	/**

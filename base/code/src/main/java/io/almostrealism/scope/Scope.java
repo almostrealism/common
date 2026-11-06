@@ -1130,6 +1130,29 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>Like {@link #containsAssignment(ArrayVariable, long, long)}, the names are read off the
+	 * scope itself: each of its {@link Statement statements} and declarations adds what it
+	 * assigns, and each child scope adds what its own content assigns.</p>
+	 */
+	@Override
+	public void appendAssignedNames(Set<String> names) {
+		// TODO(review): no production caller; Repeated.collectBaseVariantNamesRecursive duplicates this traversal (declaration-filtered)
+		for (Statement<?> statement : getStatements()) {
+			statement.appendAssignedNames(names);
+		}
+
+		for (ExpressionAssignment<?> declaration : getVariables()) {
+			declaration.appendAssignedNames(names);
+		}
+
+		for (Scope<?> child : getChildren()) {
+			child.appendAssignedNames(names);
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p>The answer is read off the scope's {@link #collectAssignments() assignments}, each asked
 	 * whether it {@link ExpressionAssignment#appendReadPositions reads}, and a scope whose code
 	 * cannot be enumerated that way may read anything, so for it every position is read.</p>

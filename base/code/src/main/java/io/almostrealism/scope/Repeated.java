@@ -764,13 +764,13 @@ public class Repeated<T> extends Scope<T> {
 				if (!assignment.isDeclaration()) {
 					// Non-declaration assignments (e.g., source[offset] = 0.0) are
 					// inherently loop-variant because they mutate state each iteration
-					assignment.collectAssignedNames(variantNames);
+					assignment.appendAssignedNames(variantNames);
 				}
 			}
 		}
 
 		for (ExpressionAssignment<?> var : scope.getVariables()) {
-			var.collectAssignedNames(variantNames);
+			var.appendAssignedNames(variantNames);
 		}
 
 		for (Scope<?> child : scope.getChildren()) {

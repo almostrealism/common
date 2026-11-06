@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * A {@link Method} is included in a {@link Scope} to indicate that a function should
@@ -203,6 +204,18 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	@Override
 	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
 		return true;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The names of the variables the call refers to, as for any other {@link Expression}. The
+	 * function it calls may change other values as well, which
+	 * {@link #containsAssignment(ArrayVariable, long, long)} accounts for.</p>
+	 */
+	@Override
+	public void appendAssignedNames(Set<String> names) {
+		super.appendAssignedNames(names);
 	}
 
 	/**

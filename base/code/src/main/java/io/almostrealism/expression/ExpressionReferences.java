@@ -138,18 +138,16 @@ public interface ExpressionReferences extends VariableReferenceSupport {
 	}
 
 	/**
-	 * Adds to {@code names} the name of every variable that an assignment to this expression, as
-	 * a destination, may change: the name-based counterpart to
-	 * {@link #containsAssignment(ArrayVariable, long, long)}.
+	 * {@inheritDoc}
 	 *
-	 * <p>This base implementation cannot tell which of the variables the expression depends on
-	 * such an assignment writes, so it adds the name of every one of them. A
+	 * <p>For an expression, the assignment in question is one with this expression as its
+	 * destination. This base implementation cannot tell which of the variables the expression
+	 * depends on such an assignment writes, so it adds the name of every one of them. A
 	 * {@link StaticReference}, which names the value it refers to, overrides it to add its own
 	 * name as well.</p>
-	 *
-	 * @param names the set to which the names are added
 	 */
-	default void collectAssignedNames(Set<String> names) {
+	@Override
+	default void appendAssignedNames(Set<String> names) {
 		for (Variable<?, ?> var : getDependencies()) {
 			if (var.getName() != null) names.add(var.getName());
 		}

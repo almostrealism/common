@@ -158,14 +158,14 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	}
 
 	/**
-	 * Adds to {@code names} the name of every variable this assignment may change. Whatever this
-	 * assignment changes, it changes through its destination, so the destination
-	 * {@link Expression#collectAssignedNames(Set) answers}.
+	 * {@inheritDoc}
 	 *
-	 * @param names the set to which the names are added
+	 * <p>Whatever this assignment changes, it changes through its destination, so the
+	 * destination {@link Expression#appendAssignedNames(Set) answers}.</p>
 	 */
-	public void collectAssignedNames(Set<String> names) {
-		if (destination != null) destination.collectAssignedNames(names);
+	@Override
+	public void appendAssignedNames(Set<String> names) {
+		if (destination != null) destination.appendAssignedNames(names);
 	}
 
 	/**
