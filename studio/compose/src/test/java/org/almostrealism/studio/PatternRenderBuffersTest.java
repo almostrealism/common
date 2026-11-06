@@ -160,6 +160,43 @@ public class PatternRenderBuffersTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A stream registered after {@link PatternRenderBuffers#destroy()} has released the
+	 * buffer — a runner finishing its build while the scene is concurrently torn down — must
+	 * be rejected and stopped, not tracked against freed storage. The stopped producer can no
+	 * longer render into the released buffer when its runner later starts it.
+	 */
+	@Test(timeout = 60000)
+	public void addStreamAfterDestroyStopsLateRegistration() {
+		PatternRenderBuffers buffers = new PatternRenderBuffers();
+		buffers.consolidate(CHANNELS, BUFFER_SIZE);
+		buffers.destroy();
+
+		AtomicReference<Thread> producer = new AtomicReference<>();
+		PackedCollection workingInput = new PackedCollection(shape(1, BUFFER_SIZE));
+		PatternRenderStream late = new PatternRenderStream(
+				() -> producer.set(Thread.currentThread()),
+				new long[1], workingInput, 2, 1, BUFFER_SIZE);
+
+		try {
+			late.start(1);
+			Thread thread = producer.get();
+			Assert.assertNotNull("Late stream should have rendered during prefill", thread);
+			Assert.assertTrue("Late stream producer should be running before registration",
+					thread.isAlive());
+
+			buffers.addStream(late);
+
+			Assert.assertFalse("A stream registered after destroy() must be stopped, not tracked",
+					thread.isAlive());
+			Assert.assertEquals("A rejected stream's counters are reset by the stop",
+					0, late.buffersRendered());
+		} finally {
+			late.destroy();
+			workingInput.destroy();
+		}
+	}
+
+	/**
 	 * {@link PatternRenderBuffers#destroy()} releases the consolidated buffer only after a
 	 * render in progress on the producer thread has finished with it.
 	 *

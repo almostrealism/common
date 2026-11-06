@@ -73,6 +73,15 @@ class PatternRenderBuffers implements Destroyable {
 	private final List<PatternRenderStream> streams = new ArrayList<>();
 
 	/**
+	 * Whether {@link #destroy()} has released the consolidated buffer. Guarded by
+	 * {@link #streams}. Once set, {@link #addStream} rejects late registrations: a runner
+	 * built against this scene may call {@link #addStream} after a concurrent
+	 * {@code AudioScene.destroy()} has already freed the buffer, and tracking (or later
+	 * starting) a producer against freed storage is a use-after-release.
+	 */
+	private boolean destroyed;
+
+	/**
 	 * Allocates (or replaces) the consolidated buffer and clears the render-cell list,
 	 * preparing for a fresh runner build. The total region count is
 	 * {@code channelCount * 4} (MAIN + WET voicing, LEFT + RIGHT stereo).
@@ -89,14 +98,16 @@ class PatternRenderBuffers implements Destroyable {
 	 * @param bufferSize   frames per render region
 	 */
 	void consolidate(int channelCount, int bufferSize) {
-		retireStreams();
-		cells = new ArrayList<>();
-		if (buffer != null) {
-			buffer.destroy();
-			buffer = null;
+		synchronized (streams) {
+			retireStreams();
+			cells = new ArrayList<>();
+			if (buffer != null) {
+				buffer.destroy();
+				buffer = null;
+			}
+			buffer = new PackedCollection(bufferSize * channelCount * 4);
+			regionIndex = 0;
 		}
-		buffer = new PackedCollection(bufferSize * channelCount * 4);
-		regionIndex = 0;
 	}
 
 	/**
@@ -215,12 +226,22 @@ class PatternRenderBuffers implements Destroyable {
 	 * {@link #buffer} from this scene's patterns, so that {@link #stopStreams()} can halt
 	 * it before the buffer or the pattern state it reads is torn down.
 	 *
+	 * <p>A registration that arrives after {@link #destroy()} has released the buffer (a
+	 * runner finishing its build while the scene is concurrently torn down) is rejected
+	 * rather than tracked: the stream is stopped, outside the lock, so a later
+	 * {@link PatternRenderStream#start(int)} cannot render into freed storage, and it is
+	 * not added to {@link #streams}.</p>
+	 *
 	 * @param stream the render-ahead stream to track
 	 */
 	void addStream(PatternRenderStream stream) {
 		synchronized (streams) {
-			streams.add(stream);
+			if (!destroyed) {
+				streams.add(stream);
+				return;
+			}
 		}
+		stream.stop();
 	}
 
 	/**
@@ -235,48 +256,49 @@ class PatternRenderBuffers implements Destroyable {
 	 * {@link #destroy()} must still stop it. They are forgotten only when the buffer they
 	 * render into is released, by {@link #consolidate} for the next build or by
 	 * {@link #destroy()}.</p>
+	 *
+	 * <p>The {@link #streams} monitor is held across the stops so a concurrent
+	 * {@link #addStream} cannot slip a stream in while retirement is stopping and clearing
+	 * the list — which would leave that stream unstopped yet forgotten, its producer free to
+	 * render into a buffer about to be released. Producer threads never take this monitor, so
+	 * holding it while each producer exits cannot deadlock.</p>
 	 */
 	void stopStreams() {
-		Destroyable.releaseAll(trackedStreams().stream()
-				.map(stream -> (Runnable) stream::stop)
-				.toList());
+		synchronized (streams) {
+			Destroyable.releaseAll(streams.stream()
+					.map(stream -> (Runnable) stream::stop)
+					.toList());
+		}
 	}
 
 	/**
 	 * Stops every tracked render-ahead producer thread and stops tracking the streams,
-	 * because the buffer they render into is about to be released.
+	 * because the buffer they render into is about to be released. The stop and the clear
+	 * are a single critical section (see {@link #stopStreams()}), so no registration can
+	 * interleave between them.
 	 */
 	private void retireStreams() {
-		stopStreams();
-
 		synchronized (streams) {
+			stopStreams();
 			streams.clear();
 		}
 	}
 
 	/**
-	 * Returns a snapshot of the tracked streams, so they can be stopped without holding
-	 * the list while each producer exits.
-	 *
-	 * @return the tracked render-ahead streams
-	 */
-	private List<PatternRenderStream> trackedStreams() {
-		synchronized (streams) {
-			return new ArrayList<>(streams);
-		}
-	}
-
-	/**
 	 * Stops any tracked render-ahead producers, then releases the consolidated buffer
-	 * they rendered into.
+	 * they rendered into. The buffer release and the {@link #destroyed} flag are set under
+	 * the {@link #streams} monitor, atomically with retirement, so a registration racing
+	 * teardown either is stopped and cleared here or is rejected by {@link #addStream}.
 	 */
 	@Override
 	public void destroy() {
-		retireStreams();
-
-		if (buffer != null) {
-			buffer.destroy();
-			buffer = null;
+		synchronized (streams) {
+			retireStreams();
+			destroyed = true;
+			if (buffer != null) {
+				buffer.destroy();
+				buffer = null;
+			}
 		}
 	}
 }

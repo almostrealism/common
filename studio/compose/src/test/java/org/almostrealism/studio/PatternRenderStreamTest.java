@@ -176,9 +176,10 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 
 	/**
 	 * A render that {@link PatternRenderStream#stop()} cancels, by failing on the interrupt
-	 * {@code stop()} delivers, is not reported as a render failure: a consumer waiting for a
-	 * slot is not woken with a "render-ahead failed" error, and only its own interrupt ends
-	 * the wait.
+	 * {@code stop()} delivers, is not reported as a render failure: a consumer blocked
+	 * awaiting a slot is woken by the stop so teardown cannot strand it, and it is rejected
+	 * with {@link IllegalStateException} ("not running") rather than a "render-ahead failed"
+	 * error — the cancelled render is never surfaced as a failure or its cause.
 	 */
 	@Test(timeout = 60000)
 	public void renderCancelledByStopIsNotReportedAsFailure() throws InterruptedException {
@@ -218,15 +219,14 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 
 			stream.stop();
 
-			consumer.join(500);
-			Assert.assertTrue("A cancelled render must not wake the waiting consumer", consumer.isAlive());
-
-			consumer.interrupt();
 			consumer.join(10000);
-			Assert.assertFalse("The consumer should exit on its own interrupt", consumer.isAlive());
-			Assert.assertTrue("The consumer should observe its interrupt, not a render failure: "
-					+ fromConsumer.get(), fromConsumer.get() instanceof HardwareException);
-			Assert.assertNull("A render cancelled by stop() must not be reported as its cause",
+			Assert.assertFalse("stop() must wake a consumer blocked awaiting a slot rather than "
+					+ "strand it with no producer left to fill one", consumer.isAlive());
+			Assert.assertTrue("The woken consumer should be rejected with IllegalStateException, was "
+					+ fromConsumer.get(), fromConsumer.get() instanceof IllegalStateException);
+			Assert.assertTrue("The rejection names the stopped stream, not a render failure",
+					fromConsumer.get().getMessage().contains("stopped"));
+			Assert.assertNull("A render cancelled by stop() must not be reported as a cause",
 					fromConsumer.get().getCause());
 			Assert.assertEquals(0, stream.buffersRendered());
 		} finally {

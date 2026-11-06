@@ -151,6 +151,9 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 		int target = Math.min(prefill, slots);
 		running = true;
 		producerError = null;
+		// Clear any wake permit a previous stop() released so the first awaitSlot() blocks
+		// on a real rendered slot rather than consuming a stale shutdown signal.
+		filled.drainPermits();
 		producer = new Thread(this::produceLoop, "pattern-render-ahead");
 		producer.setDaemon(true);
 		producer.start();
@@ -227,8 +230,16 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 	 * to fill a slot, so the call is rejected rather than left waiting forever. A producer
 	 * that failed reports its failure on every later call, not only the first.</p>
 	 *
+	 * <p>The running check and the wait are not one atomic step: a consumer can pass the
+	 * check and then have {@link #stop()} run — setting {@code running} false, joining the
+	 * producer, and draining {@link #filled} — before it blocks on {@code filled.acquire()}.
+	 * With the producer gone no slot permit would ever arrive, so {@code stop()} releases a
+	 * wake permit and this method re-checks {@code running} once the wait returns, rejecting
+	 * a stream torn down mid-await instead of stranding the consumer or reading a slot whose
+	 * buffer is being released.</p>
+	 *
 	 * @return a {@code [inputChannels, bufferSize]} view of the next buffer's rendered input
-	 * @throws IllegalStateException if the stream is not running
+	 * @throws IllegalStateException if the stream is not running, or is stopped while awaiting
 	 * @throws HardwareException if the producer failed
 	 */
 	public PackedCollection awaitSlot() {
@@ -249,6 +260,10 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 		}
 		if (producerError != null) {
 			throw new HardwareException("Pattern render-ahead failed", new RuntimeException(producerError));
+		}
+		if (!running) {
+			throw new IllegalStateException("Render-ahead stream was stopped while a rendered"
+					+ " buffer was awaited; it must be running for a slot to be returned");
 		}
 		return ring.range(slotShape, (int) (readIndex.get() % slots) * sliceSize);
 	}
@@ -290,6 +305,11 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 	 * {@code destroy()} release the ring while the render that triggered the call is still using
 	 * it.</p>
 	 *
+	 * <p>A consumer blocked in {@link #awaitSlot()} when the stream is stopped is woken (with a
+	 * released {@link #filled} permit) rather than left waiting for a producer that no longer
+	 * exists; it observes {@code running == false} and rejects the await. Any surplus wake
+	 * permit left when no consumer is waiting is cleared by the next {@link #start(int)}.</p>
+	 *
 	 * @throws IllegalStateException if invoked on the producer thread
 	 */
 	public void stop() {
@@ -308,6 +328,8 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 		empty.drainPermits();
 		empty.release(slots);
 		filled.drainPermits();
+		// Wake a consumer already blocked in awaitSlot(); a surplus permit is cleared by start().
+		filled.release();
 	}
 
 	/**
