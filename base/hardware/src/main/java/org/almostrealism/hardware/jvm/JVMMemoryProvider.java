@@ -137,7 +137,8 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 	 * Copies data from source memory to destination memory.
 	 *
 	 * <p>If both source and destination are {@link JVMMemory}, performs
-	 * direct array copy. Otherwise, converts source to array first.</p>
+	 * direct array copy. Otherwise, reads the source in bounded chunks
+	 * (see {@link #setMemInChunks(Memory, int, Memory, int, int)}).</p>
 	 *
 	 * @param mem Destination memory
 	 * @param offset Destination offset
@@ -154,7 +155,7 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 				dest.data[offset + i] = src.data[srcOffset + i];
 			}
 		} else {
-			setMem(mem, offset, source.toArray(srcOffset, length), 0, length);
+			setMemInChunks(mem, offset, source, srcOffset, length);
 		}
 	}
 
