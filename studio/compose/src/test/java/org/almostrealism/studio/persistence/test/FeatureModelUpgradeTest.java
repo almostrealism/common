@@ -123,6 +123,19 @@ public class FeatureModelUpgradeTest extends TestSuiteBase {
 		}
 	}
 
+	/** A store whose validated-model marker can never be recorded. */
+	private static class UnrecordableMarkerStore extends ProtobufWaveDetailsStore {
+		/** Opens a store at the given directory. */
+		UnrecordableMarkerStore(File rootDir) {
+			super(rootDir);
+		}
+
+		@Override
+		public void setValidatedModel(String modelIdentifier, Predicate<Set<String>> complete) {
+			throw new UncheckedIOException(new IOException("simulated marker failure"));
+		}
+	}
+
 	/**
 	 * Creates the temporary directories.
 	 *
@@ -581,6 +594,25 @@ public class FeatureModelUpgradeTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The marker is shared by every store on the directory, so a write through
+	 * one store clears a marker another store published after the first opened.
+	 */
+	@Test(timeout = 60000)
+	public void aWriteClearsAMarkerPublishedByAnotherStoreOnTheDirectory() {
+		ProtobufWaveDetailsStore writer = new ProtobufWaveDetailsStore(storeDir.toFile());
+		ProtobufWaveDetailsStore publisher = new ProtobufWaveDetailsStore(storeDir.toFile());
+
+		publisher.setValidatedModel(NEW_MODEL, ids -> true);
+		Assert.assertEquals(NEW_MODEL, writer.getValidatedModel());
+
+		writer.put("record", new WaveDetails("record", SAMPLE_RATE));
+		Assert.assertNull("a write must clear the shared marker", publisher.getValidatedModel());
+
+		writer.close();
+		publisher.close();
+	}
+
+	/**
 	 * When recording the validated model fails, the refresh future completes
 	 * exceptionally instead of never completing.
 	 *
@@ -590,12 +622,7 @@ public class FeatureModelUpgradeTest extends TestSuiteBase {
 	public void aFailureToRecordTheModelFailsTheRefreshRatherThanHangingIt() throws Exception {
 		generateSineWaves(2);
 
-		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile()) {
-			@Override
-			public void setValidatedModel(String modelIdentifier, Predicate<Set<String>> complete) {
-				throw new UncheckedIOException(new IOException("simulated marker failure"));
-			}
-		};
+		ProtobufWaveDetailsStore store = new UnrecordableMarkerStore(storeDir.toFile());
 		AudioLibrary library = openLibrary(store, new CountingProvider(), new ArrayList<>());
 
 		try {

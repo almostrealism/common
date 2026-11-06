@@ -76,9 +76,6 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	/** Guards the validated-model marker against concurrent record writes. */
 	private final Object markerLock = new Object();
 
-	/** Whether the validated-model marker may be present on disk; guarded by {@link #markerLock}. */
-	private boolean markerPresent;
-
 	/**
 	 * Creates a store at the given directory with default settings.
 	 *
@@ -87,7 +84,6 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	public ProtobufWaveDetailsStore(File rootDir) {
 		this.rootDir = rootDir;
 		this.diskStore = new ProtobufDiskStore<>(rootDir, Audio.WaveDetailData.parser());
-		this.markerPresent = markerPath().toFile().exists();
 	}
 
 	/**
@@ -101,7 +97,6 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 		this.rootDir = rootDir;
 		this.diskStore = new ProtobufDiskStore<>(
 				rootDir, Audio.WaveDetailData.parser(), maxMemoryBytes, targetBatchSize);
-		this.markerPresent = markerPath().toFile().exists();
 	}
 
 	/**
@@ -256,7 +251,6 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 			try {
 				Files.writeString(pending, modelIdentifier);
 				Files.move(pending, marker, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-				markerPresent = true;
 			} catch (IOException e) {
 				// A marker that is not written only costs a rescan next launch.
 				warn("Unable to persist validated-model marker at " + marker, e);
@@ -265,18 +259,17 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	}
 
 	/**
-	 * Deletes the validated-model marker, if it may be present. Must be called
-	 * holding {@link #markerLock}. Failure is thrown rather than logged: a marker
-	 * that survives would let the next launch trust records it never vouched for.
+	 * Deletes the validated-model marker, if present. Must be called holding
+	 * {@link #markerLock}. The file is checked on every call rather than cached,
+	 * because the marker is shared by every store opened on the directory.
+	 * Failure is thrown rather than logged: a marker that survives would let
+	 * the next launch trust records it never vouched for.
 	 *
 	 * @throws UncheckedIOException if the marker exists and cannot be deleted
 	 */
 	private void clearValidatedModel() {
-		if (!markerPresent) return;
-
 		try {
 			Files.deleteIfExists(markerPath());
-			markerPresent = false;
 		} catch (IOException e) {
 			throw new UncheckedIOException("Unable to clear validated-model marker at " + markerPath(), e);
 		}
