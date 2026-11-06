@@ -453,6 +453,62 @@ public class GitOperationsTest extends TestSuiteBase {
                 GitOperations.parseChangedFiles("").isEmpty());
     }
 
+    /**
+     * A path already removed from both the index and the working tree, as
+     * {@code git rm} leaves it, is still staged as a deletion: a bare
+     * {@code git add} fails on it with "pathspec did not match any files".
+     */
+    @Test(timeout = 30000)
+    public void stageRecordsARemovalAlreadyGoneFromTheIndex() throws Exception {
+        Path dir = initRepo();
+        Files.writeString(dir.resolve("gone.txt"), "content\n");
+        gitRun(dir, "add", "gone.txt");
+        gitRun(dir, "commit", "-q", "-m", "initial");
+        gitRun(dir, "rm", "-q", "gone.txt");
+        GitOperations git = new GitOperations(dir.toString(), "test");
+
+        assertFalse("a bare git add must fail here", git.executeForResult("add", "gone.txt").succeeded());
+        GitOperations.Result staged = git.stage("gone.txt");
+
+        assertTrue(staged.describe(), staged.succeeded());
+        assertFalse(git.matchesCommit("gone.txt", "HEAD"));
+        assertTrue("the deletion must be staged",
+                git.executeForResult("diff", "--cached", "--name-only").output().contains("gone.txt"));
+    }
+
+    /**
+     * {@link GitOperations#matchesCommit} compares both the index and the
+     * working tree with the commit, absence included.
+     */
+    @Test(timeout = 30000)
+    public void matchesCommitComparesIndexAndWorkingTree() throws Exception {
+        Path dir = initRepo();
+        Files.writeString(dir.resolve("a.txt"), "one\n");
+        gitRun(dir, "add", "a.txt");
+        gitRun(dir, "commit", "-q", "-m", "initial");
+        GitOperations git = new GitOperations(dir.toString(), "test");
+
+        assertTrue(git.matchesCommit("a.txt", "HEAD"));
+        assertTrue("a path absent everywhere matches", git.matchesCommit("never.txt", "HEAD"));
+        Files.writeString(dir.resolve("a.txt"), "two\n");
+        assertFalse("a working-tree edit does not match", git.matchesCommit("a.txt", "HEAD"));
+        Files.writeString(dir.resolve("untracked.txt"), "new\n");
+        assertFalse("an untracked file the commit lacks does not match",
+                git.matchesCommit("untracked.txt", "HEAD"));
+    }
+
+    /** A failed command's description names the command, its exit code and git's message. */
+    @Test(timeout = 30000)
+    public void failedResultDescribesTheCommand() throws Exception {
+        Path dir = initRepo();
+        GitOperations.Result result = new GitOperations(dir.toString(), "test")
+                .executeForResult("add", "--", "missing.txt");
+
+        assertFalse(result.succeeded());
+        assertTrue(result.describe(), result.describe().startsWith("git add -- missing.txt failed (exit "));
+        assertTrue(result.describe(), result.describe().contains("missing.txt"));
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

@@ -171,6 +171,24 @@ public class FileStager implements ConsoleFeatures {
         }
 
         /**
+         * Lists the paths that differ between two commits, without rename
+         * detection, so a rename reads as a deletion and an addition.
+         *
+         * @param from the starting commit
+         * @param to   the ending commit
+         * @return the changed paths in output order
+         * @throws IOException if git cannot list them
+         * @throws InterruptedException if the calling thread is interrupted while waiting
+         */
+        default Set<String> changedPaths(String from, String to) throws IOException, InterruptedException {
+            Set<String> paths = executeForPaths("diff", "--name-only", "--no-renames", from, to);
+            if (paths == null) {
+                throw new IOException("Could not list the files changed between " + from + " and " + to);
+            }
+            return paths;
+        }
+
+        /**
          * Like {@link #executeForPaths}, but answers {@code null} rather than
          * throwing when the command cannot be run, for callers that treat an
          * unavailable listing as "no answer". An interruption is re-asserted

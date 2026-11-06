@@ -24,7 +24,6 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.util.Base64;
-import java.util.regex.Pattern;
 
 /**
  * Builds and verifies the {@code Sensitive-File-Bypass} commit-message trailer
@@ -70,14 +69,11 @@ public final class SensitiveFileBypassTrailer implements ConsoleFeatures {
     public static final String TRAILER_KEY = "Sensitive-File-Bypass";
 
     /**
-     * Pattern matching a line that introduces the bypass trailer, allowing
-     * optional leading whitespace and case-insensitive key matching. The
-     * {@link #TRAILER_KEY} is fixed in practice but the matcher is liberal so
-     * that the harness reliably strips any agent attempt to forge a similar
-     * key (e.g. {@code "sensitive-file-bypass:"}, {@code "SENSITIVE-FILE-BYPASS:"}).
+     * The bypass trailer. Its line matcher is liberal so that the harness
+     * reliably strips any agent attempt to forge a similar key (e.g.
+     * {@code "sensitive-file-bypass:"}, {@code "SENSITIVE-FILE-BYPASS:"}).
      */
-    private static final Pattern TRAILER_LINE = Pattern.compile(
-            "(?im)^[ \t]*Sensitive-File-Bypass[ \t]*:.*$");
+    private static final CommitTrailer TRAILER = new CommitTrailer(TRAILER_KEY);
 
     /** Length (in bytes) of the Base64-URL-safe HMAC-SHA256 signature. */
     public static final int SIGNATURE_LENGTH = 43;
@@ -104,12 +100,8 @@ public final class SensitiveFileBypassTrailer implements ConsoleFeatures {
      * @return the cleaned commit message, never null
      */
     public static String applyToMessage(String message, String jobId, String signature) {
-        String cleaned = stripTrailer(message == null ? "" : message);
-        if (signature == null || signature.isEmpty() || jobId == null || jobId.isEmpty()) {
-            return cleaned;
-        }
-        return cleaned + (cleaned.endsWith("\n") ? "" : "\n")
-                + TRAILER_KEY + ": " + jobId + "=" + signature + "\n";
+        boolean signed = signature != null && !signature.isEmpty() && jobId != null && !jobId.isEmpty();
+        return TRAILER.apply(message, signed ? jobId + "=" + signature : null);
     }
 
     /**
@@ -133,29 +125,7 @@ public final class SensitiveFileBypassTrailer implements ConsoleFeatures {
      * @return the message with bypass trailer lines removed
      */
     public static String stripTrailer(String message) {
-        if (message == null || message.isEmpty()) return "";
-        StringBuilder out = new StringBuilder(message.length());
-        for (String line : message.split("\n", -1)) {
-            // -1 keeps trailing empty fields so we preserve the final newline
-            // of the original message. The last element may be "" when the
-            // input ends with a newline; we re-emit it so the message structure
-            // is preserved. The trailer line itself is dropped entirely and
-            // we do NOT mutate the previous line's trailing newline. A prior
-            // version of this method stripped the preceding newline so the
-            // appended controller trailer would not introduce a blank gap,
-            // but that approach was incorrect for an arbitrary number of
-            // consecutive trailers: the second (and later) trailers would not
-            // find a trailing newline to strip, so the next non-trailer line
-            // ended up concatenated to the previous non-trailer line. Leaving
-            // the previous newline in place and skipping the trailer line
-            // entirely preserves the original message structure exactly,
-            // regardless of how many trailers appear consecutively.
-            if (TRAILER_LINE.matcher(line).matches()) {
-                continue;
-            }
-            out.append(line).append('\n');
-        }
-        return out.toString();
+        return TRAILER.strip(message);
     }
 
     /**

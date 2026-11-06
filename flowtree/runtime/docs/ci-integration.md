@@ -627,6 +627,26 @@ In addition to the `validateChanges()` quality gate, the `FileStager` class appl
 
 The `FileStager.evaluateFiles()` method returns a `StagingResult` that classifies each changed file as "staged" (passed all guardrails) or "skipped" (failed a guardrail, with a reason string).
 
+A path absent from the working tree is staged as a deletion with `git rm --cached --ignore-unmatch` (`GitOperations.stage`), because `git add` fails on a path that is also gone from the index, which is what an agent leaves when it resolves a modify/delete conflict with `git rm`. A staging command that fails is recorded as a skip whose reason is the command and git's own message.
+
+#### Merge resolutions the guardrails reject
+
+While a merge of the base branch is in progress, `GitCommitHandler.restoreRejected` settles every path that was not staged:
+
+1. If the owner accepted the agent's resolution of the path (see below), the agent's version is staged as it is.
+2. If a clean merge has a version for it (`MergeSides.cleanSource`: `HEAD` for a path the base branch did not change, the base commit for one only it changed while the merge is the harness's own), the path returns to that version.
+3. If the merge is the harness's own and the agent's resolution equals the base branch's version (both sides end with a file deleted as the base branch deleted it, for instance), the resolution is committed: it is the base branch's reviewed content and cannot revert it.
+
+Any other rejected path fails the commit. For each one, the failure names the guardrail or failed git command that rejected it, says whether the resolution keeps the target branch's version (reverting the base branch's change), equals the base version, or matches neither, and explains why neither side can stand in for it.
+
+Once the owner has reviewed such a resolution, re-submitting the job with the operator-only `accepted_merge_resolutions` option (`acceptedMergeResolutions` on `/api/submit`) naming the paths commits the agent's resolution of them. The controller signs the grant with `AR_AGENT_BYPASS_SECRET`, exactly as it signs the sensitive-file bypass (`OperatorGrants`), drops a grant it cannot sign, and never takes a signature from the request. The commit records the grant in a `Merge-Resolution-Accepted: <jobId>=<signature>; paths=...` trailer, after stripping any copy the agent wrote. CI's own locks still apply to the result.
+
+#### Rescue of a failed job's work
+
+When a job ends in failure (it threw, every change was dropped, or work was left unpublished) after its work changed the working tree, `WorkingTreeRescue` commits the whole tree in a temporary index and pushes it to `rescue/<jobId>`. The job's own index and working tree are not touched. During a merge the rescue commit's second parent is `MERGE_HEAD`, so a rescued merge resolution can be accepted with one fast-forward push: `git push origin rescue/<jobId>:<targetBranch>`. The failure message and the completion event's `rescueRef` name the branch. When the job does not push, or the push fails, the commit is written as a patch to `flowtree-rescue/<jobId>.patch` beside the working directory instead. Either way it is kept locally as `refs/rescue/<jobId>`.
+
+The rescue is for a person to retrieve, so a test-lock finding is listed in its commit message rather than blocking it. Content whose publication is itself the harm is withheld and left at the version a clean merge would give it: CI configuration under the CI-file lock (a pushed branch runs the workflows its own tree defines), files matching the excluded patterns (credentials and keys among them), harness artifacts, and oversized or binary files. Nothing is created for a job that fails before its work changes the tree, or for one whose work the harness reverted as git tampering.
+
 ---
 
 ## Concurrency Model

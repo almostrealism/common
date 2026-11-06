@@ -438,7 +438,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         Exception error = null;
         WorkspaceLock workspaceLock = new WorkspaceLock(taskId);
         // False when no lock was taken at all, and when one was attempted and
-        // failed; see JobWorkOutcome#capture(boolean).
+        // failed; see JobWorkOutcome#capture(boolean, Exception).
         boolean workspaceHeld = false;
 
         // Liveness independent of agent messages, for the whole run; see
@@ -506,6 +506,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
             }
 
             // Perform the actual work.
+            workOutcome.recordPreWorkState();
             doWork();
 
             // Handle git operations if a target branch is specified.
@@ -556,14 +557,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
                 }
             }
 
-            // Last thing inside the lock: the completion event is built after
-            // it is released, by which time the tree may belong to another job.
-            workOutcome.capture(workspaceHeld);
-
         } catch (Exception e) {
             warn("Error: " + e.getMessage(), e);
             error = e;
         } finally {
+            // Last thing inside the lock: the completion event is built after
+            // it is released, by which time the tree may belong to another job.
+            // TODO(review): an unchecked exception from capture() here now skips the lock release and completion event below.
+            workOutcome.capture(workspaceHeld, error);
             releaseEnvironment();
             workspaceLock.release();
             fireJobCompleted(error);
@@ -603,6 +604,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         } else {
             event.withGitInfo(targetBranch, null, new ArrayList<>(), new ArrayList<>(), false);
         }
+        workOutcome.rescue().describe(event);
         populateEventDetails(event);
         postStatusEvent(event);
     }
@@ -1425,52 +1427,39 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     }
 
     /**
-     * Checks out the target branch, creating it from the base branch if it does
-     * not yet exist and {@link #createBranchIfMissing} is {@code true}.
-     *
-     * <p>If {@link #dryRun} is {@code true}, the checkout is only logged.
-     * New branches are created with {@code --no-track} so that the upstream
-     * is set explicitly to {@code origin/<targetBranch>} by the push operation
-     * rather than inheriting the base branch's upstream.</p>
+     * Checks out the target branch, creating it from {@code origin/<baseBranch>}
+     * if it does not yet exist and {@link #createBranchIfMissing} is
+     * {@code true}; see {@link GitOperations#checkoutBranch}.
      *
      * @return true if we are (or would be in dry-run mode) on the target branch
      * @throws IOException if a git command fails to execute
      * @throws InterruptedException if a git command is interrupted
      */
     boolean ensureOnTargetBranch() throws IOException, InterruptedException {
-        String currentBranch = getCurrentBranch();
+        return gitOperations(getWorkingDirectory()).checkoutBranch(
+                targetBranch, "origin/" + baseBranch, createBranchIfMissing, dryRun);
+    }
 
-        if (targetBranch.equals(currentBranch)) {
-            log("Already on target branch: " + targetBranch);
-            return true;
-        }
+    /**
+     * Returns the controller-signed operator grants this job carries. A job
+     * that runs no agent is granted nothing, which keeps every harness-side
+     * guardrail on; {@link CodingAgentJob} returns its own.
+     *
+     * @return the job's grants; never {@code null}
+     */
+    OperatorGrants operatorGrants() {
+        return new OperatorGrants();
+    }
 
-        // Check if target branch exists
-        boolean branchExists = branchExists(targetBranch);
-
-        if (!branchExists && !createBranchIfMissing) {
-            warn("Target branch does not exist and createBranchIfMissing=false");
-            return false;
-        }
-
-        if (dryRun) {
-            log("DRY RUN: Would " +
-                (branchExists ? "checkout" : "create and checkout") + " branch: " + targetBranch);
-            return true;
-        }
-
-        if (branchExists) {
-            // Checkout existing branch
-            return executeGit("checkout", targetBranch) == 0;
-        } else {
-            // Create new branch from the configured base branch.
-            // Use --no-track so the new branch does NOT inherit
-            // origin/<baseBranch> as its upstream; pushToOrigin() will
-            // set the upstream to origin/<targetBranch> explicitly.
-            String startPoint = "origin/" + baseBranch;
-            log("Creating new branch: " + targetBranch + " from " + startPoint);
-            return executeGit("checkout", "-b", targetBranch, "--no-track", startPoint) == 0;
-        }
+    /**
+     * Returns whether the per-job sensitive-file protections are active:
+     * {@code true} unless an operator turned them off through this job's
+     * {@link #operatorGrants()}.
+     *
+     * @return {@code true} when the protections are active (the default)
+     */
+    public boolean isSensitiveFileProtectionEnabled() {
+        return operatorGrants().isSensitiveFileProtectionEnabled();
     }
 
     /**

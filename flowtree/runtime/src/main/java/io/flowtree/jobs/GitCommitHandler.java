@@ -84,6 +84,9 @@ class GitCommitHandler implements ConsoleFeatures {
     /** Files that were rejected by a guardrail, with a reason appended to each entry. */
     private final List<String> skippedFiles = new ArrayList<>();
 
+    /** Merge resolutions committed under the owner's {@link OperatorGrants} acceptance. */
+    private final List<String> acceptedResolutions = new ArrayList<>();
+
     /** Full SHA-1 hash of the commit created by this handler, or {@code null}. */
     private String commitHash;
 
@@ -358,27 +361,38 @@ class GitCommitHandler implements ConsoleFeatures {
     }
 
     /**
-     * Puts every candidate that was not staged back to the version a clean
-     * merge would have given it, so that nothing reaches the merge commit
-     * without passing the guardrails.
+     * Settles every candidate that was not staged, so that nothing reaches the
+     * merge commit without either passing the guardrails or being a version
+     * that cannot revert the base branch.
      *
-     * <p>A path the merged commit did not change returns to {@code HEAD}. A
-     * path only the merged commit changed returns to that commit, but only
-     * when it is the trusted merge parent the harness recorded (see
-     * {@link FileStager#trustedMergeParent}). Every other rejected path has no
-     * version the harness can choose on the agent's behalf, and the commit
-     * fails and names it rather than commit the rejected content or silently
-     * drop a change the merge commit records as merged:</p>
-     * <ul>
-     *   <li>a path both sides changed, whose resolution only the agent (or a
-     *       human) can choose; and</li>
-     *   <li>while the merge is untrusted (the harness did not start it, or
-     *       {@code MERGE_HEAD} no longer names the commit it merged), a path
-     *       the merged commit changed. Its content cannot be trusted, yet
-     *       reverting it to {@code HEAD} inside a commit that records the
-     *       merge would leave the branch reverting the base branch's change,
-     *       which the pipeline's own locks reject on every later run.</li>
-     * </ul>
+     * <p>Each rejected path is settled by the first of these that applies:</p>
+     * <ol>
+     *   <li>The owner accepted the agent's resolution of the path (see
+     *       {@link OperatorGrants#acceptsMergeResolution}): the agent's
+     *       working-tree state is staged as it is.</li>
+     *   <li>A clean merge has a version for it ({@link MergeSides#cleanSource}):
+     *       {@code HEAD} for a path the merged commit did not change, the
+     *       merged commit for one only it changed while the merge is trusted
+     *       (see {@link FileStager#trustedMergeParent}). The path returns to
+     *       that version.</li>
+     *   <li>The merge is trusted and the agent's resolution equals the merged
+     *       commit's version, as when both sides end with a file deleted the
+     *       way the base branch deleted it. That is the base branch's own
+     *       reviewed content and can never revert it, so it is committed.</li>
+     * </ol>
+     *
+     * <p>Every other rejected path has no version the harness can choose on
+     * the agent's behalf, and the commit fails rather than commit content a
+     * guardrail rejected or silently drop a change the merge commit records as
+     * merged. The failure names, for each such path, the guardrail or failed
+     * git command that rejected it, how the resolution relates to each side
+     * (in particular whether it reverts the base branch's change), and why
+     * neither side's version may stand in for it: both sides changed it, or
+     * the merge is untrusted (the harness did not start it, or
+     * {@code MERGE_HEAD} no longer names the commit it merged), so the base
+     * version cannot be trusted while reverting to {@code HEAD} inside a
+     * commit that records the merge would revert the base branch's change,
+     * which the pipeline's own locks reject on every later run.</p>
      *
      * @param candidates   every file that was evaluated for staging
      * @param mergedCommit the commit {@code MERGE_HEAD} names
@@ -396,20 +410,22 @@ class GitCommitHandler implements ConsoleFeatures {
             return;
         }
 
-        String mergeBase = job.executeGitWithOutput("merge-base", "HEAD", mergedCommit).trim();
-        if (mergeBase.isEmpty()) {
-            throw new IOException("Could not find the merge-base of HEAD and " + mergedCommit);
-        }
-        Set<String> branchChanges = changedPaths(mergeBase, "HEAD");
-        Set<String> baseChanges = changedPaths(mergeBase, mergedCommit);
-
-        List<String> unresolvable = new ArrayList<>();
+        GitOperations git = job.gitOperations(job.getWorkingDirectory());
+        MergeSides sides = MergeSides.of(job.asGitOperations(), mergedCommit);
+        OperatorGrants grants = job.operatorGrants();
+        List<String> refusals = new ArrayList<>();
         for (String file : rejected) {
-            String source = !baseChanges.contains(file) ? "HEAD"
-                    : trusted && !branchChanges.contains(file) ? mergedCommit
-                    : null;
+            if (grants.acceptsMergeResolution(file)) {
+                acceptResolution(file, refusals);
+                continue;
+            }
+            String source = sides.cleanSource(file, trusted);
+            if (source == null && trusted && git.matchesCommit(file, mergedCommit)) {
+                log("Accepting resolution equal to the base branch's version: " + file);
+                source = mergedCommit;
+            }
             if (source == null) {
-                unresolvable.add(file);
+                refusals.add(describeRefusal(git, file, sides, trusted));
             } else if (job.executeGit("diff", "--cached", "--quiet", source, "--", file) != 0) {
                 if (job.isDryRun()) {
                     log("DRY RUN: Would restore " + file + " to " + source);
@@ -422,47 +438,82 @@ class GitCommitHandler implements ConsoleFeatures {
             }
         }
 
-        if (unresolvable.isEmpty()) {
+        if (refusals.isEmpty()) {
             return;
         }
-        // Name each file with the guardrail that rejected it (protection, size,
-        // binary content, or an excluded pattern), as recorded in skippedFiles.
-        List<String> described = new ArrayList<>();
-        for (String file : unresolvable) {
-            described.add(skippedFiles.stream()
-                    .filter(entry -> entry.startsWith(file + " ("))
-                    .findFirst().orElse(file));
-        }
-        String reasons = String.join(", ", described);
-        if (!trusted) {
-            throw new RuntimeException("The merge of " + TestMethodProtection.shortSha(mergedCommit)
-                    + " in progress is not the one the harness started, so files it changes that"
-                    + " the staging guardrails rejected cannot be committed, and reverting them"
-                    + " inside a merge commit would silently drop them: " + reasons
-                    + ". The merge needs a human.");
-        }
-        throw new RuntimeException("The merge changes files that both "
-                + job.getTargetBranch() + " and the base branch changed, and the"
-                + " staging guardrails rejected their resolution: " + reasons
-                + ". The harness cannot pick a side for them; they need a human.");
+        String merge = "The merge of " + TestMethodProtection.shortSha(mergedCommit)
+                + " into " + job.getTargetBranch();
+        throw new RuntimeException((trusted
+                ? merge + " cannot be committed: the staging guardrails rejected the agent's"
+                        + " resolution of paths the harness cannot settle on its behalf. "
+                : merge + " in progress is not the one the harness started, so files it changes"
+                        + " that the staging guardrails rejected cannot be committed. ")
+                + String.join(" ", refusals)
+                + " A resolution equal to the base branch's version is accepted automatically;"
+                + " these are not. Once the owner has reviewed them, re-submitting the job with the"
+                + " operator-only acceptedMergeResolutions option naming these paths commits the"
+                + " agent's resolution of them.");
     }
 
     /**
-     * Lists the paths that differ between two commits.
+     * Stages the agent's resolution of {@code file} under the owner's
+     * {@link OperatorGrants} acceptance, bypassing the guardrail that
+     * rejected it, and records the path for the commit's
+     * {@code Merge-Resolution-Accepted} trailer.
      *
-     * @param from the starting commit
-     * @param to   the ending commit
-     * @return the changed paths
-     * @throws IOException if git cannot list them
+     * @param file     the accepted path
+     * @param refusals receives a refusal when the resolution cannot be staged
+     * @throws IOException if git cannot be started
      * @throws InterruptedException if the command is interrupted
      */
-    private Set<String> changedPaths(String from, String to) throws IOException, InterruptedException {
-        Set<String> paths = job.asGitOperations().executeForPaths(
-                "diff", "--name-only", "--no-renames", from, to);
-        if (paths == null) {
-            throw new IOException("Could not list the files changed between " + from + " and " + to);
+    private void acceptResolution(String file, List<String> refusals)
+            throws IOException, InterruptedException {
+        String failure = job.isDryRun() ? null : stage(file);
+        if (failure != null) {
+            refusals.add(file + ": the owner accepted its resolution, but it could not be staged: "
+                    + failure + ".");
+            return;
         }
-        return paths;
+        skippedFiles.removeIf(entry -> entry.startsWith(file + " ("));
+        stagedFiles.add(file);
+        acceptedResolutions.add(file);
+        log("Staged owner-accepted merge resolution: " + file);
+    }
+
+    /**
+     * Explains why a rejected path cannot be committed: the guardrail or git
+     * command that rejected the agent's resolution, how that resolution
+     * relates to each side of the merge, and why neither side's version may
+     * stand in for it.
+     *
+     * @param git     git operations for the working tree
+     * @param file    the refused path
+     * @param sides   what each side of the merge changed
+     * @param trusted whether the merged commit is the merge parent the harness recorded
+     * @return one sentence-level explanation naming the path
+     * @throws IOException if git cannot be started
+     * @throws InterruptedException if a command is interrupted
+     */
+    private String describeRefusal(GitOperations git, String file, MergeSides sides,
+                                   boolean trusted) throws IOException, InterruptedException {
+        String rejection = skippedFiles.stream()
+                .filter(entry -> entry.startsWith(file + " ("))
+                .findFirst().orElse(file + " (not staged, and no guardrail recorded a reason)");
+        String target = job.getTargetBranch();
+        String resolution;
+        if (git.matchesCommit(file, "HEAD")) {
+            resolution = "keeps " + target + "'s version, which reverts the base branch's change to it";
+        } else if (git.matchesCommit(file, sides.mergedCommit())) {
+            resolution = "equals the base branch's version";
+        } else {
+            resolution = "matches neither side";
+        }
+        String why = !trusted
+                ? "the base version cannot be trusted while the merge is not the harness's own,"
+                        + " and restoring " + target + "'s version would revert the base branch's change"
+                : "both " + target + " and the base branch changed it, so restoring either"
+                        + " side's version would drop the other's change";
+        return rejection + ": the agent's resolution " + resolution + "; " + why + ".";
     }
 
     /**
@@ -501,18 +552,34 @@ class GitCommitHandler implements ConsoleFeatures {
             if (job.isDryRun()) {
                 log("DRY RUN: Would stage: " + file);
                 stagedFiles.add(file);
+                continue;
+            }
+            String failure = stage(file);
+            if (failure == null) {
+                stagedFiles.add(file);
+                log("Staged: " + file);
             } else {
-                if (job.executeGit("add", file) == 0) {
-                    stagedFiles.add(file);
-                    log("Staged: " + file);
-                } else {
-                    warn("Failed to stage: " + file);
-                }
+                warn("Failed to stage " + file + ": " + failure);
+                skippedFiles.add(file + " (" + failure + ")");
             }
         }
 
         skippedFiles.addAll(result.getSkippedFiles());
         log("Staged " + stagedFiles.size() + " files, skipped " + skippedFiles.size());
+    }
+
+    /**
+     * Records the working-tree state of {@code file} in the index, a deletion
+     * included; see {@link GitOperations#stage(String)}.
+     *
+     * @param file the repository-relative path
+     * @return {@code null} when staged, otherwise the failed git command and its output
+     * @throws IOException if git cannot be started
+     * @throws InterruptedException if the command is interrupted
+     */
+    private String stage(String file) throws IOException, InterruptedException {
+        GitOperations.Result result = job.gitOperations(job.getWorkingDirectory()).stage(file);
+        return result.succeeded() ? null : result.describe();
     }
 
     /**
@@ -533,30 +600,10 @@ class GitCommitHandler implements ConsoleFeatures {
     private void commit() throws IOException, InterruptedException {
         String message = job.getCommitMessage();
 
-        // Apply the controller-signed sensitive-file bypass trailer when the
-        // job has the protection disabled. The strip-then-replace order is
-        // what prevents the agent from forging a bypass: any
-        // agent-supplied "Sensitive-File-Bypass:" line in commit.txt is
-        // removed first, then the controller-signed trailer (bound to the
-        // job ID) is appended. See SensitiveFileBypassTrailer javadoc for
-        // the full threat model.
-        String bypassSignature = null;
-        String bypassJobId = null;
-        if (job instanceof CodingAgentJob caj) {
-            if (!caj.isSensitiveFileProtectionEnabled()) {
-                bypassSignature = caj.getSensitiveFileBypassSignature();
-                bypassJobId = caj.getTaskId();
-                if (bypassSignature != null && !bypassSignature.isEmpty()) {
-                    log("Appending controller-signed Sensitive-File-Bypass trailer"
-                            + " (jobId=" + bypassJobId + ")");
-                } else {
-                    log("Sensitive-file protection disabled but no bypass signature"
-                            + " present on the job; commit will be blocked by CI");
-                }
-            }
-        }
-        message = SensitiveFileBypassTrailer.applyToMessage(
-                message, bypassJobId, bypassSignature);
+        // Strip-then-replace: any agent-supplied copy of a controller-signed
+        // trailer is removed before the grants append their own; see
+        // OperatorGrants#applyToMessage and SensitiveFileBypassTrailer.
+        message = job.operatorGrants().applyToMessage(message, job.getTaskId(), acceptedResolutions);
 
         if (job.isDryRun()) {
             log("DRY RUN: Would commit with message: " + message);
@@ -882,30 +929,13 @@ class GitCommitHandler implements ConsoleFeatures {
                 .excludedPatterns(job.getAllExcludedPatterns())
                 .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
                 .protectTestFiles(job.isProtectTestFiles()
-                        && isSensitiveFileProtectionEnabled(job))
-                .protectCiFiles(isSensitiveFileProtectionEnabled(job)
+                        && job.isSensitiveFileProtectionEnabled())
+                .protectCiFiles(job.isSensitiveFileProtectionEnabled()
                         && !isCiBranch(job.getTargetBranch()))
                 .baseBranch(job.getBaseBranch())
                 .maxFileSizeBytes(job.getMaxFileSizeBytes())
                 .mergeParent(job.getHarnessMergeParent())
                 .build();
-    }
-
-    /**
-     * Returns whether the broader per-job sensitive-file protections are
-     * active. {@link CodingAgentJob} (the only job type that runs an
-     * agent) implements the flag explicitly; for any other job type we
-     * conservatively assume the protection is enabled so that the
-     * harness-side guardrails remain on by default.
-     *
-     * @param job the job whose protection state is being queried
-     * @return {@code true} when the protection is active
-     */
-    static boolean isSensitiveFileProtectionEnabled(GitManagedJob job) {
-        if (job instanceof CodingAgentJob caj) {
-            return caj.isSensitiveFileProtectionEnabled();
-        }
-        return true;
     }
 
     /**

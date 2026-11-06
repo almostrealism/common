@@ -43,11 +43,14 @@ class JobWorkOutcome {
     /** The job whose work this reports on. */
     private final GitManagedJob job;
 
-    /** Whether {@link #capture(boolean)} has run; {@link #capturedDescription} is authoritative once it has. */
+    /** Whether {@link #capture(boolean, Exception)} has run; {@link #capturedDescription} is authoritative once it has. */
     private boolean captured;
 
-    /** The outcome recorded by {@link #capture(boolean)}; {@code null} means nothing was orphaned. */
+    /** The outcome recorded by {@link #capture(boolean, Exception)}; {@code null} means nothing was orphaned. */
     private String capturedDescription;
+
+    /** Preserves the work of a job that fails after producing it. */
+    private final WorkingTreeRescue rescue;
 
     /**
      * Creates an outcome view of {@code job}.
@@ -56,6 +59,26 @@ class JobWorkOutcome {
      */
     JobWorkOutcome(GitManagedJob job) {
         this.job = job;
+        this.rescue = new WorkingTreeRescue(job);
+    }
+
+    /**
+     * Records the working tree's state just before the job's work starts, so
+     * a later rescue can tell the work's changes from the harness's own; see
+     * {@link WorkingTreeRescue#recordPreWorkState()}.
+     */
+    void recordPreWorkState() {
+        rescue.recordPreWorkState();
+    }
+
+    /**
+     * Returns the rescue of this job's work, which knows whether and where
+     * the work was preserved.
+     *
+     * @return the rescue; never {@code null}
+     */
+    WorkingTreeRescue rescue() {
+        return rescue;
     }
 
     /**
@@ -163,14 +186,26 @@ class JobWorkOutcome {
      * later is strictly worse, but the caller is told so it can say the
      * outcome was not observed under exclusion.</p>
      *
+     * <p>This is also the last moment the tree is this job's, so a job that
+     * did not succeed (it threw, every change was dropped, or work was left
+     * unpublished) has its work rescued here; see {@link WorkingTreeRescue}.</p>
+     *
      * @param locked whether the workspace lock was held for this job
+     * @param error  the exception the job failed with, or {@code null}
      */
-    void capture(boolean locked) {
+    void capture(boolean locked, Exception error) {
         capturedDescription = computeUnpublishedWork();
         captured = true;
         if (!locked) {
             job.warn("Workspace lock was not held; the completion snapshot of "
                     + job.getWorkingDirectory() + " may not reflect this job alone");
+        }
+        if (error != null) {
+            rescue.preserve(error.getMessage() != null ? error.getMessage() : error.toString());
+        } else if (allChangesDropped()) {
+            rescue.preserve("every change was dropped by the staging guardrails");
+        } else if (capturedDescription != null) {
+            rescue.preserve(capturedDescription);
         }
     }
 
@@ -271,7 +306,7 @@ class JobWorkOutcome {
      * {@link #hasUncommittedChanges(String)}.</p>
      *
      * <p>Covers every repository, which is safe for callers that run while the
-     * job still holds its workspace lock. {@link #capture(boolean)} does not
+     * job still holds its workspace lock. {@link #capture(boolean, Exception)} does not
      * use it, because by then a dependent repository may belong to whoever
      * runs next.</p>
      *

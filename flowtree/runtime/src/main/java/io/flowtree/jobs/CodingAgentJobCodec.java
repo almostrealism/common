@@ -29,7 +29,8 @@ import io.flowtree.jobs.agent.PhaseConfigBundle;
  * boilerplate. State held by the job's collaborators is encoded by the
  * collaborator that owns it: {@link RestartGovernor} carries the job-wide
  * ceilings, {@link PostCompletionConfig} the post-completion command,
- * {@link EnforceChangesConfig} the change requirement and its re-run cap, and
+ * {@link EnforceChangesConfig} the change requirement and its re-run cap,
+ * {@link OperatorGrants} the controller-signed operator grants, and
  * {@link PhaseRunnerConfig} the runner identity and
  * {@link PhaseConfigBundle}. Inherited fields from {@link GitManagedJob} are
  * encoded/decoded by the parent.</p>
@@ -120,15 +121,6 @@ final class CodingAgentJobCodec {
         if (job.isCollaborative()) {
             sb.append("::collaborative:=true");
         }
-        // sensitiveFileProtectionEnabled defaults to TRUE; emit only when false.
-        if (!job.isSensitiveFileProtectionEnabled()) {
-            sb.append("::sensitiveFileProtectionEnabled:=false");
-        }
-        String bypassSig = job.getSensitiveFileBypassSignature();
-        if (bypassSig != null && !bypassSig.isEmpty()) {
-            sb.append("::sensitiveFileBypassSignature:=")
-                    .append(GitManagedJob.base64Encode(bypassSig));
-        }
         if (job.getMaxReviewPasses() != CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES) {
             sb.append("::maxReviewPasses:=").append(job.getMaxReviewPasses());
         }
@@ -211,12 +203,6 @@ final class CodingAgentJobCodec {
                 return true;
             case "collaborative":
                 job.setCollaborative(Boolean.parseBoolean(value));
-                return true;
-            case "sensitiveFileProtectionEnabled":
-                job.setSensitiveFileProtectionEnabled(Boolean.parseBoolean(value));
-                return true;
-            case "sensitiveFileBypassSignature":
-                job.setSensitiveFileBypassSignature(GitManagedJob.base64Decode(value));
                 return true;
             case "maxReviewPasses":
                 job.setMaxReviewPasses(WireConfig.parsePositiveOrDefault(value, CodingAgentJob.DEFAULT_MAX_REVIEW_PASSES));
