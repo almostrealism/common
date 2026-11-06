@@ -38,8 +38,9 @@ import java.util.stream.IntStream;
  * this class.
  *
  * <p>The class maintains an internal cache of generated values that can be refreshed
- * using the {@link #refresh()} method. Values are generated lazily and cached until
- * explicitly refreshed or the object is recreated.</p>
+ * using the {@link #refresh()} method. Values are drawn when the generator is
+ * constructed and cached until explicitly refreshed or the object is recreated; a
+ * {@link #refresh()} draws a fresh series on the next evaluation.</p>
  *
  * <p><strong>Distribution Types:</strong></p>
  * <ul>
@@ -125,7 +126,17 @@ public class Random implements RandomProducer, OperationInfo, Signature {
 	 * This constructor initializes the random generator with the given shape and
 	 * distribution type. The shape must have a non-zero total size.
 	 * </p>
-	 * 
+	 * <p>
+	 * The values are drawn from {@code random} immediately, when the generator is
+	 * constructed, rather than lazily on first evaluation. Each generator holds its own
+	 * values, so when two generators share a single {@link java.util.Random} source they
+	 * consume their slices of it in construction order. That makes a seeded source
+	 * reproducible regardless of the order in which a compiled (and possibly cache-reused)
+	 * kernel later evaluates the generators: drawing lazily instead let that evaluation
+	 * order decide which generator consumed which draws, so siblings sharing a seeded
+	 * source produced results that depended on kernel scheduling rather than on the seed.
+	 * </p>
+	 *
 	 * @param shape the {@link TraversalPolicy} defining the dimensions and shape of random values to generate
 	 * @param normal if true, generates values from a standard normal distribution (mean=0, stddev=1);
 	 *               if false, generates values from a uniform distribution in range [0.0, 1.0)
@@ -142,6 +153,9 @@ public class Random implements RandomProducer, OperationInfo, Signature {
 		if (shape.getTotalSizeLong() == 0) {
 			throw new IllegalArgumentException();
 		}
+
+		// Draw in construction order, independent of later kernel evaluation order
+		initValues();
 	}
 
 	/**
@@ -221,7 +235,8 @@ public class Random implements RandomProducer, OperationInfo, Signature {
 
 	/**
 	 * Returns an {@link Evaluable} over the random values produced by this generator.
-	 * Values are generated lazily and cached until {@link #refresh()} is called.
+	 * The values were drawn when the generator was constructed and are cached until
+	 * {@link #refresh()} is called.
 	 *
 	 * <p>The two evaluation paths deliver those cached values differently:</p>
 	 * <ul>
