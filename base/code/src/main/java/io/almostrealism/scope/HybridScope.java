@@ -17,6 +17,7 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.ComputableBase;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.lang.CodePrintWriter;
 import io.almostrealism.relation.Parent;
 
@@ -89,7 +90,7 @@ public class HybridScope<T> extends Scope<T> {
 	 * @param dependencies the variables whose arguments should be extracted
 	 */
 	public void setDependencies(Collection<Variable<?, ?>> dependencies) {
-		explicit.setArguments(Scope.extractArgumentDependencies(dependencies));
+		explicit.setArguments(Argument.dependencies(dependencies));
 	}
 
 	/**
@@ -142,6 +143,39 @@ public class HybridScope<T> extends Scope<T> {
 	 */
 	@Override
 	public boolean isInlineable() { return explicit.isInlineable(); }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code true}: the body is explicit code, or the output of a
+	 * {@link CodeGenerator}, whose writes cannot be enumerated, so it may write anything.</p>
+	 */
+	@Override
+	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
+		return true;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Every position is read: the body is explicit code, or the output of a
+	 * {@link CodeGenerator}, whose reads cannot be enumerated, so it may read anything.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		reads.addEverything();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code null}: the body is explicit code, or the output of a {@link CodeGenerator},
+	 * which is not made of assignments.</p>
+	 */
+	@Override
+	public List<ExpressionAssignment<?>> collectAssignments() {
+		return null;
+	}
 
 	/**
 	 * {@inheritDoc}

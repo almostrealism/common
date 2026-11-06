@@ -24,14 +24,13 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.ReadPositions;
-import io.almostrealism.scope.VariableReferenceSupport;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Supplier;
+import java.util.Set;
 
 /**
  * A statement that assigns an expression value to a destination expression.
@@ -48,7 +47,7 @@ import java.util.function.Supplier;
  * @see Statement
  * @see io.almostrealism.scope.Scope
  */
-public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T>>, VariableReferenceSupport {
+public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T>> {
 	/** Whether this assignment also declares the destination variable. */
 	private final boolean declaration;
 	/** The destination expression that receives the assigned value. */
@@ -120,32 +119,6 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	}
 
 	/**
-	 * Returns the array size expression for the destination array variable, if present.
-	 *
-	 * @return the array size expression, or {@code null} if the destination is not an array variable
-	 */
-	public Expression<Integer> getArraySize() {
-		if (getDestination() == null) return null;
-
-		return getDestination().getDependencies()
-				.stream().map(v -> v instanceof ArrayVariable ? (ArrayVariable) v : null)
-				.filter(Objects::nonNull)
-				.map(ArrayVariable::getArraySize)
-				.filter(Objects::nonNull)
-				.findFirst().orElse(null);
-	}
-
-	/**
-	 * This method is not supported for expression assignments.
-	 *
-	 * @return never returns normally
-	 * @throws UnsupportedOperationException always
-	 */
-	public Supplier getProducer() {
-		throw new UnsupportedOperationException();
-	}
-
-	/**
 	 * {@inheritDoc}
 	 *
 	 * <p>Returns the union of the destination's and expression's dependencies.
@@ -169,6 +142,30 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	@Override
 	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
 		return destination != null && destination.containsAssignment(array, start, end);
+	}
+
+	/**
+	 * Returns the name this assignment declares, by which the expressions that follow it refer to
+	 * the declared value. The destination {@link Expression#getDeclaredName() answers}, since it is
+	 * the destination that a declaration names.
+	 *
+	 * @return the declared name, or {@code null} if this assignment is not a declaration or its
+	 *         destination does not name a value
+	 */
+	public String getDeclaredName() {
+		if (!declaration || destination == null) return null;
+		return destination.getDeclaredName();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Whatever this assignment changes, it changes through its destination, so the
+	 * destination {@link Expression#appendAssignedNames(Set) answers}.</p>
+	 */
+	@Override
+	public void appendAssignedNames(Set<String> names) {
+		if (destination != null) destination.appendAssignedNames(names);
 	}
 
 	/**
