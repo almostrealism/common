@@ -96,9 +96,20 @@ public abstract class WaveDataProviderAdapter implements WaveDataProvider, CodeF
 		return (int) (getCount() / playbackRate);
 	}
 
+	/**
+	 * Returns the channel data, resampled when the playback rate is not 1.0.
+	 *
+	 * @throws IllegalStateException if no audio can be loaded for this provider (for
+	 *         example a file that could not be read), naming the provider's key rather
+	 *         than failing on the absent data
+	 */
 	@Override
 	public PackedCollection getChannelData(int channel, double playbackRate) {
 		WaveData original = get();
+		if (original == null) {
+			throw new IllegalStateException("No audio could be loaded for " + getKey());
+		}
+
 		if (playbackRate == 1.0) return original.getChannelData(channel);
 
 		PackedCollection rate = PackedCollection.factory().apply(1);

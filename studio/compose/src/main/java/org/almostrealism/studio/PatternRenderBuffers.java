@@ -65,6 +65,14 @@ class PatternRenderBuffers implements Destroyable {
 	private int regionIndex;
 
 	/**
+	 * Render-ahead streams created by runner builds against the current
+	 * {@link #buffer}. Their producer threads render into that buffer and read the
+	 * scene's pattern state, so they are stopped before either is released. The runner
+	 * that created a stream owns it and destroys it; this list only halts producers.
+	 */
+	private final List<PatternRenderStream> streams = new ArrayList<>();
+
+	/**
 	 * Allocates (or replaces) the consolidated buffer and clears the render-cell list,
 	 * preparing for a fresh runner build. The total region count is
 	 * {@code channelCount * 4} (MAIN + WET voicing, LEFT + RIGHT stereo).
@@ -73,12 +81,15 @@ class PatternRenderBuffers implements Destroyable {
 	 * allocated, so repeated runner builds on the same scene do not strand the previous
 	 * consolidated allocation. The caller must have retired the runner that captured the
 	 * prior buffer's regions before rebuilding, so nothing live references it at this point
-	 * ({@code AudioScene.destroy()} otherwise releases only the most recent buffer).</p>
+	 * ({@code AudioScene.destroy()} otherwise releases only the most recent buffer). Any
+	 * render-ahead stream still tracked from an earlier build is stopped first, so its
+	 * producer thread cannot render into the buffer being released.</p>
 	 *
 	 * @param channelCount number of audio channels
 	 * @param bufferSize   frames per render region
 	 */
 	void consolidate(int channelCount, int bufferSize) {
+		retireStreams();
 		cells = new ArrayList<>();
 		if (buffer != null) {
 			buffer.destroy();
@@ -199,8 +210,70 @@ class PatternRenderBuffers implements Destroyable {
 	 */
 	PackedCollection getBuffer() { return buffer; }
 
+	/**
+	 * Records a render-ahead stream whose producer thread renders into the current
+	 * {@link #buffer} from this scene's patterns, so that {@link #stopStreams()} can halt
+	 * it before the buffer or the pattern state it reads is torn down.
+	 *
+	 * @param stream the render-ahead stream to track
+	 */
+	void addStream(PatternRenderStream stream) {
+		synchronized (streams) {
+			streams.add(stream);
+		}
+	}
+
+	/**
+	 * Stops every tracked render-ahead producer thread. A producer left running keeps
+	 * invoking pattern rendering, which reads per-pattern note-audio caches and writes the
+	 * consolidated buffer; {@link PatternRenderStream#stop()} returns only once the
+	 * producer has exited, which is what makes releasing that state safe afterwards.
+	 * Streams that are already stopped are unaffected.
+	 *
+	 * <p>The streams stay tracked: a runner that survives a settings reload may
+	 * {@link PatternRenderStream#start(int) restart} its stream, and a later
+	 * {@link #destroy()} must still stop it. They are forgotten only when the buffer they
+	 * render into is released, by {@link #consolidate} for the next build or by
+	 * {@link #destroy()}.</p>
+	 */
+	void stopStreams() {
+		Destroyable.releaseAll(trackedStreams().stream()
+				.map(stream -> (Runnable) stream::stop)
+				.toList());
+	}
+
+	/**
+	 * Stops every tracked render-ahead producer thread and stops tracking the streams,
+	 * because the buffer they render into is about to be released.
+	 */
+	private void retireStreams() {
+		stopStreams();
+
+		synchronized (streams) {
+			streams.clear();
+		}
+	}
+
+	/**
+	 * Returns a snapshot of the tracked streams, so they can be stopped without holding
+	 * the list while each producer exits.
+	 *
+	 * @return the tracked render-ahead streams
+	 */
+	private List<PatternRenderStream> trackedStreams() {
+		synchronized (streams) {
+			return new ArrayList<>(streams);
+		}
+	}
+
+	/**
+	 * Stops any tracked render-ahead producers, then releases the consolidated buffer
+	 * they rendered into.
+	 */
 	@Override
 	public void destroy() {
+		retireStreams();
+
 		if (buffer != null) {
 			buffer.destroy();
 			buffer = null;

@@ -62,13 +62,15 @@ import java.util.List;
  * field, same formula, same cache. This makes a one-member group render
  * byte-for-byte like the underlying sample.</p>
  *
- * <h2>Pitchless members</h2>
+ * <h2>Pitchless and unreadable members</h2>
  *
  * <p>Members with no usable captured pitch (a {@code null} root or a
- * {@link KeyPosition#none() none} position) are excluded from the nearest-set;
- * they never participate in pitched delivery. A group with no usable pitched
- * members is {@linkplain #isValid() invalid} and is filtered out of the
- * selectable candidate set before render rather than producing audio.</p>
+ * {@link KeyPosition#none() none} position), and members whose audio cannot be
+ * read (an {@linkplain NoteAudioProvider#isValid() invalid} provider, such as a
+ * missing or malformed file), are excluded from the nearest-set; they never
+ * participate in pitched delivery. A group with no usable pitched members is
+ * {@linkplain #isValid() invalid} and is filtered out of the selectable candidate
+ * set before render rather than producing audio.</p>
  *
  * @see NoteAudioProvider
  * @see NoteAudio
@@ -106,15 +108,24 @@ public class NoteAudioGroup implements NoteAudio, Validity {
 	/**
 	 * Returns the members eligible for nearest-pitch selection — those carrying a
 	 * usable captured pitch (a non-{@code null} root whose
-	 * {@link KeyPosition#position() position} is non-negative).
+	 * {@link KeyPosition#position() position} is non-negative) whose audio can be
+	 * read ({@link NoteAudioProvider#isValid()}).
 	 *
-	 * @return the pitched members, in member order
+	 * <p>A member whose file is missing, unreadable or malformed would otherwise be
+	 * selected like any other and fail only when its audio is evaluated, inside a
+	 * render: its provider reports a zero sample rate and no data, so the evaluation
+	 * dereferences absent audio. Such a member is excluded here, exactly as an invalid
+	 * single sample is filtered out of a choice's candidates, so the nearest readable
+	 * member delivers the pitch instead.</p>
+	 *
+	 * @return the pitched, readable members, in member order
 	 */
 	private List<NoteAudioProvider> pitchedMembers() {
 		List<NoteAudioProvider> pitched = new ArrayList<>(members.size());
 		for (NoteAudioProvider m : members) {
 			KeyPosition<?> root = m.getRoot();
-			if (root != null && root.position() >= 0) {
+			// TODO(review): isValid() is re-evaluated (and warns for unreadable files) on every nearest()/isValid() call
+			if (root != null && root.position() >= 0 && m.isValid()) {
 				pitched.add(m);
 			}
 		}

@@ -21,6 +21,10 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
+
 /**
  * Verifies the consolidated-buffer lifecycle of {@link PatternRenderBuffers}.
  *
@@ -86,5 +90,160 @@ public class PatternRenderBuffersTest extends TestSuiteBase {
 				buffers.getBuffer().getMem());
 
 		buffers.destroy();
+	}
+
+	/**
+	 * Starts a render-ahead stream whose render operation records the producer thread,
+	 * then verifies that {@link PatternRenderBuffers#stopStreams()} leaves that thread
+	 * terminated, and that a subsequent {@link PatternRenderBuffers#destroy()} is safe.
+	 */
+	@Test(timeout = 60000)
+	public void stopStreamsHaltsProducerThread() {
+		AtomicReference<Thread> producer = new AtomicReference<>();
+		PackedCollection workingInput = new PackedCollection(shape(1, BUFFER_SIZE));
+		PatternRenderStream stream = new PatternRenderStream(
+				() -> producer.set(Thread.currentThread()),
+				new long[1], workingInput, 2, 1, BUFFER_SIZE);
+
+		PatternRenderBuffers buffers = new PatternRenderBuffers();
+		buffers.addStream(stream);
+		stream.start(1);
+
+		try {
+			Thread thread = producer.get();
+			Assert.assertNotNull("Producer should have rendered during prefill", thread);
+			Assert.assertTrue("Producer should be running after start", thread.isAlive());
+
+			buffers.stopStreams();
+			Assert.assertFalse("Producer should be stopped by stopStreams", thread.isAlive());
+
+			buffers.destroy();
+		} finally {
+			stream.destroy();
+			workingInput.destroy();
+		}
+	}
+
+	/**
+	 * A stream stopped by {@link PatternRenderBuffers#stopStreams()} (as a settings reload
+	 * does) and then restarted by its surviving runner stays tracked, so a later
+	 * {@link PatternRenderBuffers#destroy()} still stops its producer.
+	 */
+	@Test(timeout = 60000)
+	public void destroyStopsStreamRestartedAfterStopStreams() {
+		AtomicReference<Thread> producer = new AtomicReference<>();
+		PackedCollection workingInput = new PackedCollection(shape(1, BUFFER_SIZE));
+		PatternRenderStream stream = new PatternRenderStream(
+				() -> producer.set(Thread.currentThread()),
+				new long[1], workingInput, 2, 1, BUFFER_SIZE);
+
+		PatternRenderBuffers buffers = new PatternRenderBuffers();
+		buffers.addStream(stream);
+
+		try {
+			stream.start(1);
+			buffers.stopStreams();
+
+			producer.set(null);
+			stream.start(1);
+			Thread restarted = producer.get();
+			Assert.assertNotNull("Restarted producer should have rendered during prefill", restarted);
+			Assert.assertTrue("Restarted producer should be running", restarted.isAlive());
+
+			buffers.destroy();
+			Assert.assertFalse("destroy() should stop a producer restarted after stopStreams()",
+					restarted.isAlive());
+		} finally {
+			stream.destroy();
+			workingInput.destroy();
+		}
+	}
+
+	/**
+	 * {@link PatternRenderBuffers#destroy()} releases the consolidated buffer only after a
+	 * render in progress on the producer thread has finished with it.
+	 *
+	 * @throws InterruptedException if the test thread is interrupted while waiting
+	 */
+	@Test(timeout = 60000)
+	public void destroyWaitsForRenderBeforeReleasingBuffer() throws InterruptedException {
+		assertReleaseWaitsForRender(PatternRenderBuffers::destroy);
+	}
+
+	/**
+	 * Re-consolidating for a new runner build releases the previous buffer only after the
+	 * render-ahead producer of the earlier build, which renders into that buffer, has
+	 * stopped.
+	 *
+	 * @throws InterruptedException if the test thread is interrupted while waiting
+	 */
+	@Test(timeout = 60000)
+	public void reconsolidateStopsPreviousBuildBeforeReleasingBuffer() throws InterruptedException {
+		assertReleaseWaitsForRender(buffers -> buffers.consolidate(CHANNELS, BUFFER_SIZE));
+	}
+
+	/**
+	 * Runs {@code release} while a tracked producer is in the middle of a render that reads
+	 * the consolidated buffer, and asserts that the render never observed the buffer
+	 * released and that the buffer was released by the time {@code release} returned.
+	 *
+	 * <p>The render spins, reading the buffer, until the producer is interrupted (which only
+	 * {@link PatternRenderStream#stop()} does), and keeps reading it for a further interval
+	 * afterwards, as a render that is mid-flight when stopped would. A release that does not
+	 * stop the producer first frees the buffer while the render is spinning, which the render
+	 * observes; a release that stops it first cannot.</p>
+	 *
+	 * @param release the operation that releases the consolidated buffer
+	 * @throws InterruptedException if the test thread is interrupted while waiting
+	 */
+	private void assertReleaseWaitsForRender(Consumer<PatternRenderBuffers> release)
+			throws InterruptedException {
+		PatternRenderBuffers buffers = new PatternRenderBuffers();
+		buffers.consolidate(CHANNELS, BUFFER_SIZE);
+		PackedCollection target = buffers.getBuffer();
+
+		AtomicBoolean rendering = new AtomicBoolean();
+		AtomicBoolean releasedUnderRender = new AtomicBoolean();
+		Runnable render = () -> {
+			rendering.set(true);
+			long deadline = System.nanoTime() + 10_000_000_000L;
+			while (!Thread.currentThread().isInterrupted() && System.nanoTime() < deadline) {
+				if (target.getMem() == null) releasedUnderRender.set(true);
+				Thread.onSpinWait();
+			}
+
+			long tail = System.nanoTime() + 200_000_000L;
+			while (System.nanoTime() < tail) {
+				if (target.getMem() == null) releasedUnderRender.set(true);
+				Thread.onSpinWait();
+			}
+		};
+
+		PackedCollection workingInput = new PackedCollection(shape(1, BUFFER_SIZE));
+		PatternRenderStream stream = new PatternRenderStream(render, new long[1],
+				workingInput, 2, 1, BUFFER_SIZE);
+		buffers.addStream(stream);
+
+		try {
+			stream.start(0);
+			while (!rendering.get()) {
+				Thread.sleep(5);
+			}
+
+			release.accept(buffers);
+
+			// Let the render run to completion (a no-op if release already stopped it), so
+			// it has read the buffer after release returned before the outcome is checked.
+			stream.stop();
+
+			Assert.assertFalse("The buffer was released while a render was still using it",
+					releasedUnderRender.get());
+			Assert.assertNull("The buffer must be released once the render has stopped",
+					target.getMem());
+		} finally {
+			stream.destroy();
+			buffers.destroy();
+			workingInput.destroy();
+		}
 	}
 }

@@ -212,6 +212,37 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	private final List<PackedCollection> automationParameterData = new ArrayList<>();
 
 	/**
+	 * Serializes rendering against structural mutation and cache release.
+	 *
+	 * <p>{@link #sum} operations may run on render-ahead producer threads while the
+	 * owning thread assigns a new genome (which {@link #refresh() refreshes} the layer
+	 * hierarchy), detaches layers, or tears the manager down. Those paths release the
+	 * {@link #noteAudioCache}, the automation parameter collections and the batched
+	 * renderer's gather cache, which are plain (non-thread-safe) structures whose entries
+	 * a concurrent render may be reading. Holding this lock around the render body and
+	 * around every release/mutation path means a release waits for an in-flight render to
+	 * finish, and a render never observes a half-cleared cache, destroyed note audio, or a
+	 * partially rebuilt hierarchy.</p>
+	 */
+	private final Object renderLock = new Object();
+
+	/**
+	 * Set by {@link #destroy()} once the manager's caches, automation data and batched
+	 * renderer have been released, and read by {@link #sum} before it renders. Both
+	 * guard it with {@link #renderLock}, so a render that acquires the lock after a
+	 * teardown observes it and refuses to run against released memory rather than
+	 * dereferencing it.
+	 *
+	 * <p>This closes the one window the {@link PatternSystemManager#sum} generation
+	 * guard leaves open: a render-ahead tick can pass that guard and only then have the
+	 * owning thread call {@link PatternSystemManager#clear()}, which destroys this
+	 * manager before the tick reaches {@link #sum}. The flag makes {@link #sum} throw
+	 * {@link IllegalStateException} in that case, matching the stale-operation contract
+	 * of {@link PatternSystemManager#sum}.</p>
+	 */
+	private boolean destroyed;
+
+	/**
 	 * Returns this manager's note-audio cache. Package-private: it exposes the cache
 	 * so tests in this package can verify that {@link #destroy()} releases it, without
 	 * widening the public surface.
@@ -296,20 +327,29 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * {@link Destroyable#releaseAll(Iterable)}: a failure freeing one (for example a
 	 * cache entry whose {@code destroy()} throws) does not strand the others, and the
 	 * first failure is rethrown with any later ones attached as suppressed.</p>
+	 *
+	 * <p>The release holds {@link #renderLock}, so it waits for a {@link #sum} running on a
+	 * render-ahead thread to finish, and marks the manager destroyed before the lock is
+	 * released (even when a release fails), so a render that starts afterwards refuses to
+	 * run.</p>
 	 */
 	@Override
 	public void destroy() {
 		Destroyable.super.destroy();
 
-		BatchedPatternLayerRenderer renderer = batchedLayerRenderer;
-		Destroyable.releaseAll(List.of(
-				noteAudioCache::clear,
-				this::releaseAutomationParameterData,
-				() -> {
-					if (renderer != null) {
-						renderer.destroy();
-					}
-				}));
+		synchronized (renderLock) {
+			destroyed = true;
+
+			BatchedPatternLayerRenderer renderer = batchedLayerRenderer;
+			Destroyable.releaseAll(List.of(
+					noteAudioCache::clear,
+					this::releaseAutomationParameterData,
+					() -> {
+						if (renderer != null) {
+							renderer.destroy();
+						}
+					}));
+		}
 	}
 
 	/**
@@ -715,66 +755,72 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * Standard allocation keeps the deterministic per-layer release effective
 	 * regardless of whether a heap is active when the layer is built.</p>
 	 *
+	 * <p>Holds {@link #renderLock}, like every other mutation of the hierarchy, so a
+	 * {@link #sum} running on a render-ahead thread never observes a layer half-attached.
+	 * The lock is reentrant, so this nests inside {@link #refresh()}.</p>
+	 *
 	 * @param params the parameter set for this layer
 	 */
 	protected void layer(ParameterSet params) {
-		PackedCollection automationParams = new PackedCollection(AUTOMATION_GENE_LENGTH);
-		automationParameterData.add(automationParams);
-		automationParamEvaluables.computeIfAbsent(depth(), d -> {
-			Gene<PackedCollection> automationGene = envelopeAutomationChromosome.valueAt(d);
-			return concat(shape(AUTOMATION_GENE_LENGTH),
-					IntStream.range(0, AUTOMATION_GENE_LENGTH)
-							.mapToObj(i -> automationGene.valueAt(i).getResultant(null))
-							.toArray(Producer[]::new)).get();
-		}).into(automationParams).evaluate();
-
-		if (rootCount() <= 0) {
-			PatternLayerSeeds seeds = getSeeds(params);
-
-			if (seeds != null) {
-				seeds.generator(getElementFactory(), 0, duration,
-							scaleTraversalStrategy, scaleTraversalDepth, minLayerScale)
-						.forEach(roots::add);
-
-				scale = seeds.getScale(duration, minLayerScale);
-			}
+		synchronized (renderLock) {
+			PackedCollection automationParams = new PackedCollection(AUTOMATION_GENE_LENGTH);
+			automationParameterData.add(automationParams);
+			automationParamEvaluables.computeIfAbsent(depth(), d -> {
+				Gene<PackedCollection> automationGene = envelopeAutomationChromosome.valueAt(d);
+				return concat(shape(AUTOMATION_GENE_LENGTH),
+						IntStream.range(0, AUTOMATION_GENE_LENGTH)
+								.mapToObj(i -> automationGene.valueAt(i).getResultant(null))
+								.toArray(Producer[]::new)).get();
+			}).into(automationParams).evaluate();
 
 			if (rootCount() <= 0) {
-				roots.add(new PatternLayer());
-			}
+				PatternLayerSeeds seeds = getSeeds(params);
 
-			roots.forEach(layer -> layer.setAutomationParameters(automationParams));
-		} else {
-			if (enableLogging) {
-				log(roots.size() +
-						" roots (scale = " + scale + ", duration = " + duration + ")");
-			}
+				if (seeds != null) {
+					seeds.generator(getElementFactory(), 0, duration,
+								scaleTraversalStrategy, scaleTraversalDepth, minLayerScale)
+							.forEach(roots::add);
 
-			roots.forEach(layer -> {
-				NoteAudioChoice choice = scale >= minLayerScale ? choose(scale, params) : null;
-				PatternLayer next;
-
-				if (choice != null) {
-					next = choice.apply(getElementFactory(), layer.getAllElements(0, 2 * duration), scale,
-								scaleTraversalStrategy, scaleTraversalDepth, params);
-					next.trim(2 * duration);
-				} else {
-					next = new PatternLayer();
+					scale = seeds.getScale(duration, minLayerScale);
 				}
 
-				next.setAutomationParameters(automationParams);
+				if (rootCount() <= 0) {
+					roots.add(new PatternLayer());
+				}
 
+				roots.forEach(layer -> layer.setAutomationParameters(automationParams));
+			} else {
 				if (enableLogging) {
-					log(layer.getAllElements(0, duration).size() +
-										" elements --> " + next.getElements().size() + " elements");
+					log(roots.size() +
+							" roots (scale = " + scale + ", duration = " + duration + ")");
 				}
 
-				layer.getTail().setChild(next);
-			});
-		}
+				roots.forEach(layer -> {
+					NoteAudioChoice choice = scale >= minLayerScale ? choose(scale, params) : null;
+					PatternLayer next;
 
-		layerParams.add(params);
-		increment();
+					if (choice != null) {
+						next = choice.apply(getElementFactory(), layer.getAllElements(0, 2 * duration), scale,
+									scaleTraversalStrategy, scaleTraversalDepth, params);
+						next.trim(2 * duration);
+					} else {
+						next = new PatternLayer();
+					}
+
+					next.setAutomationParameters(automationParams);
+
+					if (enableLogging) {
+						log(layer.getAllElements(0, duration).size() +
+											" elements --> " + next.getElements().size() + " elements");
+					}
+
+					layer.getTail().setChild(next);
+				});
+			}
+
+			layerParams.add(params);
+			increment();
+		}
 	}
 
 	/**
@@ -798,20 +844,25 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * the automation collection is destroyed, so a failure there leaves the layer hierarchy
 	 * consistent with {@link #layerParams} and still referencing live automation data rather
 	 * than freed memory.</p>
+	 *
+	 * <p>Holds {@link #renderLock}, so the detachment waits for a {@link #sum} running on a
+	 * render-ahead thread instead of freeing state that render is still reading.</p>
 	 */
 	public void removeLayer() {
-		releaseRenderCaches();
-		layerParams.remove(layerParams.size() - 1);
-		decrement();
-		releaseLastAutomationParameterData();
+		synchronized (renderLock) {
+			releaseRenderCaches();
+			layerParams.remove(layerParams.size() - 1);
+			decrement();
+			releaseLastAutomationParameterData();
 
-		if (depth() <= 0) return;
-		if (depth() <= 1) {
-			roots.clear();
-			return;
+			if (depth() <= 0) return;
+			if (depth() <= 1) {
+				roots.clear();
+				return;
+			}
+
+			roots.forEach(layer -> layer.getLastParent().setChild(null));
 		}
-
-		roots.forEach(layer -> layer.getLastParent().setChild(null));
 	}
 
 	/**
@@ -829,12 +880,15 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	/**
 	 * Removes all layers from the hierarchy, releasing the manager-owned automation
 	 * parameter collections those layers referenced so they do not leak across a
-	 * {@link #refresh()}.
+	 * {@link #refresh()}. Holds {@link #renderLock} for the whole detachment, so a
+	 * concurrent {@link #sum} sees either the complete hierarchy or none of it.
 	 */
 	public void clear() {
-		while (depth() > 0) removeLayer();
-		releaseAutomationParameterData();
-		releaseRenderCaches();
+		synchronized (renderLock) {
+			while (depth() > 0) removeLayer();
+			releaseAutomationParameterData();
+			releaseRenderCaches();
+		}
 	}
 
 	/**
@@ -850,13 +904,19 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * or teardown. Clearing them here bounds the retention to the live hierarchy. Idempotent:
 	 * a repeated call finds empty caches, and the renderer may not have been materialised
 	 * yet.</p>
+	 *
+	 * <p>Holds {@link #renderLock}, so the release waits for any {@link #sum} running on a
+	 * render-ahead thread rather than clearing (and destroying audio in) maps that render
+	 * is still reading.</p>
 	 */
 	private void releaseRenderCaches() {
-		noteAudioCache.clear();
+		synchronized (renderLock) {
+			noteAudioCache.clear();
 
-		BatchedPatternLayerRenderer renderer = batchedLayerRenderer;
-		if (renderer != null) {
-			renderer.clearGatherCache();
+			BatchedPatternLayerRenderer renderer = batchedLayerRenderer;
+			if (renderer != null) {
+				renderer.clearGatherCache();
+			}
 		}
 	}
 
@@ -878,23 +938,31 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * @param elements the pattern elements to install (copied defensively)
 	 */
 	public void setExplicitElements(NoteAudioChoice choice, List<PatternElement> elements) {
-		releaseRenderCaches();
-		releaseAutomationParameterData();
-		roots.clear();
-		layerParams.clear();
-		roots.add(new PatternLayer(choice, new ArrayList<>(elements)));
-		layerParams.add(new ParameterSet());
-		layerCount = 1;
+		synchronized (renderLock) {
+			releaseRenderCaches();
+			releaseAutomationParameterData();
+			roots.clear();
+			layerParams.clear();
+			roots.add(new PatternLayer(choice, new ArrayList<>(elements)));
+			layerParams.add(new ParameterSet());
+			layerCount = 1;
+		}
 	}
 
-	/** Refreshes the pattern by clearing and regenerating all layers. */
+	/**
+	 * Refreshes the pattern by clearing and regenerating all layers. The rebuild holds
+	 * {@link #renderLock}, so a concurrent {@link #sum} sees either the previous or the
+	 * regenerated hierarchy, never a partially rebuilt one.
+	 */
 	public void refresh() {
-		clear();
-		if (layerParams.size() != depth())
-			throw new IllegalStateException("Layer count mismatch (" + layerParams.size() +
-											" != " + layerChoiceChromosome.length() + ")");
+		synchronized (renderLock) {
+			clear();
+			if (layerParams.size() != depth())
+				throw new IllegalStateException("Layer count mismatch (" + layerParams.size() +
+												" != " + layerChoiceChromosome.length() + ")");
 
-		IntStream.range(0, layerCount).forEach(i -> layer(layerChoiceChromosome.valueAt(i)));
+			IntStream.range(0, layerCount).forEach(i -> layer(layerChoiceChromosome.valueAt(i)));
+		}
 	}
 
 	/**
@@ -941,7 +1009,11 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 	 * @param audioChannel Target stereo channel (LEFT or RIGHT)
 	 * @param startFrame Supplier for the starting frame (absolute position)
 	 * @param frameCount Number of frames to render
-	 * @return Operation that renders elements within the frame range
+	 * @return Operation that renders elements within the frame range. Running it throws
+	 *         {@link IllegalStateException} if the manager was {@link #destroy() destroyed}
+	 *         after the operation was built, so a render-ahead tick that reaches a manager
+	 *         torn down by {@link PatternSystemManager#clear()} refuses to run rather than
+	 *         dereferencing released memory.
 	 *
 	 * @see PatternFeatures#render
 	 */
@@ -954,28 +1026,35 @@ public class PatternLayerManager implements PatternFeatures, HeredityFeatures, D
 				new OperationMetadata("PatternLayerManager.sum",
 						"PatternLayerManager.sum"),
 				() -> () -> {
-					int frame = startFrame.getAsInt();
-					AudioSceneContext ctx = context.get();
-
-					int currentEpoch = cacheEpoch.get();
-					if (observedCacheEpoch != currentEpoch) {
-						// Arrangement switched: discard audio rendered for the previous
-						// genome so the new arrangement renders fresh.
-						observedCacheEpoch = currentEpoch;
-						noteAudioCache.clear();
-					} else if (!cachePersist) {
-						if (frame == 0) {
-							noteAudioCache.clear();
-						} else {
-							noteAudioCache.evictBefore(frame);
+					synchronized (renderLock) {
+						if (destroyed) {
+							throw new IllegalStateException("Pattern render operation is stale"
+									+ " because its manager was destroyed after it was built");
 						}
-					}
-					sumInternal(ctx, voicing, audioChannel, frame, frameCount, noteAudioCache);
 
-					// Release the final window's note audio once a non-persistent render
-					// reaches the arrangement end (see method javadoc).
-					if (!cachePersist && frame + frameCount >= ctx.getFrames()) {
-						noteAudioCache.clear();
+						int frame = startFrame.getAsInt();
+						AudioSceneContext ctx = context.get();
+
+						int currentEpoch = cacheEpoch.get();
+						if (observedCacheEpoch != currentEpoch) {
+							// Arrangement switched: discard audio rendered for the previous
+							// genome so the new arrangement renders fresh.
+							observedCacheEpoch = currentEpoch;
+							noteAudioCache.clear();
+						} else if (!cachePersist) {
+							if (frame == 0) {
+								noteAudioCache.clear();
+							} else {
+								noteAudioCache.evictBefore(frame);
+							}
+						}
+						sumInternal(ctx, voicing, audioChannel, frame, frameCount, noteAudioCache);
+
+						// Release the final window's note audio once a non-persistent render
+						// reaches the arrangement end (see method javadoc).
+						if (!cachePersist && frame + frameCount >= ctx.getFrames()) {
+							noteAudioCache.clear();
+						}
 					}
 				});
 	}

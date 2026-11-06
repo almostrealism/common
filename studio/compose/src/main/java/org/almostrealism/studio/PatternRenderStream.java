@@ -222,9 +222,25 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 	 * it. The caller must mix the returned slot and then call {@link #release()}. The view stays
 	 * valid until {@code release()} frees the slot for reuse.
 	 *
+	 * <p>A stream that is not running (never started, or {@link #stop() stopped} — for
+	 * instance because the scene it renders from was torn down or reloaded) has no producer
+	 * to fill a slot, so the call is rejected rather than left waiting forever. A producer
+	 * that failed reports its failure on every later call, not only the first.</p>
+	 *
 	 * @return a {@code [inputChannels, bufferSize]} view of the next buffer's rendered input
+	 * @throws IllegalStateException if the stream is not running
+	 * @throws HardwareException if the producer failed
 	 */
 	public PackedCollection awaitSlot() {
+		if (producerError != null) {
+			throw new HardwareException("Pattern render-ahead failed", new RuntimeException(producerError));
+		}
+
+		if (!running) {
+			throw new IllegalStateException("Render-ahead stream is not running; it was never"
+					+ " started or was stopped, and must be started before slots are awaited");
+		}
+
 		try {
 			filled.acquire();
 		} catch (InterruptedException e) {

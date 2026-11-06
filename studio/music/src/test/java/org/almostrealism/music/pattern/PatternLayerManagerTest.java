@@ -39,6 +39,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
@@ -609,5 +612,147 @@ public class PatternLayerManagerTest extends TestSuiteBase implements AudioTestF
 		BatchedPatternLayerRenderer renderer = plm.getBatchedLayerRenderer();
 		Assert.assertSame("the batched renderer is created once", renderer, plm.getBatchedLayerRenderer());
 		Assert.assertEquals(OutputLine.sampleRate, renderer.getSampleRate());
+	}
+
+	/**
+	 * A render operation built by {@link PatternLayerManager#sum} runs while the manager
+	 * is live, but once the manager is {@link PatternLayerManager#destroy() destroyed} —
+	 * which releases its automation parameter collections and batched renderer — running
+	 * the operation throws {@link IllegalStateException} rather than rendering against the
+	 * released memory. This closes the window the {@link PatternSystemManager#sum}
+	 * generation guard leaves open: a render-ahead tick can pass that guard and only then
+	 * have the owning thread destroy this manager through {@link PatternSystemManager#clear()}.
+	 * The manager's {@code renderLock} makes the check and the teardown mutually exclusive,
+	 * so the operation either completes before the teardown or observes it and refuses to run.
+	 */
+	@Test(timeout = 60000)
+	public void renderOperationIsRejectedAfterManagerDestroyed() {
+		PatternLayerManager plm = manager(List.of(), 2.0, false);
+		AudioSceneContext context = emptyRenderContext();
+
+		Runnable render = plm.sum(() -> context, ChannelInfo.Voicing.MAIN,
+				ChannelInfo.StereoChannel.LEFT, () -> 0, context.getFrames()).get();
+
+		// An empty manager renders silence while live, exercising the live path without audio.
+		render.run();
+
+		plm.destroy();
+
+		try {
+			render.run();
+			Assert.fail("a render operation built before destroy() must be rejected afterwards");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue("the rejection explains the operation is stale",
+					expected.getMessage().contains("stale"));
+		}
+	}
+
+	/**
+	 * Teardown on the owning thread waits for a render already in progress on another
+	 * thread (a render-ahead producer) instead of releasing the manager's caches and
+	 * automation data underneath it.
+	 *
+	 * <p>The render is held inside {@link PatternLayerManager#sum} deterministically: its
+	 * context supplier, which the render consults after taking the manager's render lock,
+	 * blocks on a latch. While it is held, a {@link PatternLayerManager#destroy()} on a
+	 * second thread must be blocked on that lock; once the render is released it completes
+	 * normally, the teardown then runs, and the operation is rejected from then on.</p>
+	 *
+	 * @throws InterruptedException if the test thread is interrupted while waiting
+	 */
+	@Test(timeout = 60000)
+	public void destroyWaitsForInFlightRender() throws InterruptedException {
+		PatternLayerManager plm = manager(List.of(), 2.0, false);
+		AudioSceneContext context = emptyRenderContext();
+
+		CountDownLatch rendering = new CountDownLatch(1);
+		CountDownLatch release = new CountDownLatch(1);
+		Runnable render = plm.sum(() -> {
+					rendering.countDown();
+					awaitLatch(release);
+					return context;
+				}, ChannelInfo.Voicing.MAIN, ChannelInfo.StereoChannel.LEFT,
+				() -> 0, context.getFrames()).get();
+
+		AtomicReference<Throwable> renderFailure = new AtomicReference<>();
+		Thread renderer = new Thread(() -> {
+			try {
+				render.run();
+			} catch (Throwable t) {
+				renderFailure.set(t);
+			}
+		}, "render-under-test");
+		renderer.start();
+		Assert.assertTrue("the render should reach its context lookup",
+				rendering.await(30, TimeUnit.SECONDS));
+
+		Thread destroyer = new Thread(plm::destroy, "destroy-under-test");
+		destroyer.start();
+		awaitState(destroyer, Thread.State.BLOCKED);
+		Assert.assertTrue("destroy() must wait while a render is in flight", destroyer.isAlive());
+
+		release.countDown();
+		renderer.join(30000);
+		destroyer.join(30000);
+		Assert.assertFalse("the render should have finished", renderer.isAlive());
+		Assert.assertFalse("destroy() should have finished", destroyer.isAlive());
+		Assert.assertNull("the in-flight render must complete against live state",
+				renderFailure.get());
+
+		try {
+			render.run();
+			Assert.fail("the operation must be rejected once the teardown has run");
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue(expected.getMessage().contains("stale"));
+		}
+	}
+
+	/**
+	 * Builds a four-measure render context with two-second measures and no channels, for
+	 * render-lifecycle tests that do not need audio.
+	 *
+	 * @return the context
+	 */
+	private static AudioSceneContext emptyRenderContext() {
+		int measureFrames = 2 * OutputLine.sampleRate;
+		AudioSceneContext context = new AudioSceneContext();
+		context.setMeasures(4);
+		context.setFrames(4 * measureFrames);
+		context.setFrameForPosition(pos -> (int) (pos * measureFrames));
+		context.setTimeForDuration(d -> d * 2.0);
+		context.setScaleForPosition(pos -> Scale.of(WesternChromatic.C4));
+		return context;
+	}
+
+	/**
+	 * Waits on the latch, converting an interrupt into a failure of the waiting render.
+	 *
+	 * @param latch the latch to await
+	 */
+	private static void awaitLatch(CountDownLatch latch) {
+		try {
+			if (!latch.await(30, TimeUnit.SECONDS)) {
+				throw new IllegalStateException("latch was not released");
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException(e);
+		}
+	}
+
+	/**
+	 * Waits until the thread reaches the given state, failing after thirty seconds.
+	 *
+	 * @param thread the thread to observe
+	 * @param state  the state to wait for
+	 * @throws InterruptedException if the test thread is interrupted while waiting
+	 */
+	private static void awaitState(Thread thread, Thread.State state) throws InterruptedException {
+		long deadline = System.currentTimeMillis() + 30000;
+		while (thread.getState() != state) {
+			Assert.assertTrue("thread " + thread.getName() + " did not reach " + state
+					+ " (state " + thread.getState() + ")", System.currentTimeMillis() < deadline);
+			Thread.sleep(10);
+		}
 	}
 }
