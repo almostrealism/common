@@ -7,6 +7,24 @@
 # combination the controller creates one (see CREATE_WORKSTREAM below), so a
 # project gets auto-resolve runs on a branch nobody registered by hand.
 #
+# ─── What this step confirms, and what it does not ──────────────────
+#
+# This step confirms ACCEPTANCE — the controller took responsibility for the
+# job and issued a jobId (the no-agents / skip / reject cases below all fail or
+# report submitted=false instead). It deliberately does NOT wait for the job to
+# START on a worker. Confirming start from here would mean polling the
+# controller until the job transitions out of SUBMITTED, which is the wrong
+# place for that check: a job may legitimately sit queued for minutes waiting
+# for a worker whose labels match, far longer than a CI step should block; the
+# QA cadence fires several jobs within seconds, so polling each would serialise
+# the dispatch; and the runner is ephemeral and cannot babysit a job for its
+# whole life. A job that is accepted but never starts is caught on the
+# controller instead, which outlives any single run: LostJobRecovery escalates
+# it (a workstream message plus an alert naming the job) once it has waited past
+# the lost threshold, and recoverPendingJobs re-dispatches still-SUBMITTED jobs
+# on the next controller restart. So start-confirmation is left to controller
+# recovery by design; this step's job is to make acceptance unambiguous.
+#
 # Usage:
 #   submit-agent-job.sh <prompt-file>
 #

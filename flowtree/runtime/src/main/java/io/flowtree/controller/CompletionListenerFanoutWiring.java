@@ -23,6 +23,8 @@ import io.flowtree.jobs.CompletionListenerFanout;
 import io.flowtree.slack.NotifierRegistry;
 import io.flowtree.slack.SlackListener;
 import io.flowtree.slack.SlackNotifier;
+import org.almostrealism.io.Alert;
+import org.almostrealism.io.AlertRecipients;
 import org.almostrealism.io.Console;
 
 import java.util.Map;
@@ -56,21 +58,32 @@ public final class CompletionListenerFanoutWiring {
      * correct once the fan-out it dispatches through is attached. Started
      * here, it cannot be wired in the wrong order.</p>
      *
+     * <p>Also starts the {@link LostJobRecovery} counterpart, which watches for
+     * {@code SUBMITTED} jobs no worker ever started and escalates them (it never
+     * blindly re-dispatches) through the same workstream channel plus an
+     * out-of-band alert. Whether a lost job is still queued on the controller or
+     * was already handed to a peer is read from the server's own
+     * {@link io.flowtree.node.NodeGroup}; a job still held by its requested
+     * submission delay is read from the endpoint and is not treated as lost.</p>
+     *
      * @param endpoint             the endpoint to attach the fan-out to
      * @param server               the server used to submit wake-up jobs
      * @param statsStore           the job history; also scanned for stalls
      * @param listener             the Slack listener backing job submission
      * @param primaryNotifier      the primary workspace notifier
      * @param notifiersByWorkspace every configured per-workspace notifier
-     * @return the started scanner, so the caller can stop it on shutdown, or
-     *         {@code null} when wiring failed and no scanner was started
+     * @param alertRecipients      the directory used to raise an out-of-band
+     *                             alert about a lost job, or {@code null} for none
+     * @return the started scanners, so the caller can stop them on shutdown;
+     *         both fields are {@code null} when wiring failed
      */
-    public static StuckJobScanner wire(FlowTreeApiEndpoint endpoint,
+    public static ControllerScanners wire(FlowTreeApiEndpoint endpoint,
                             Server server,
                             JobStatsStore statsStore,
                             SlackListener listener,
                             SlackNotifier primaryNotifier,
-                            Map<String, SlackNotifier> notifiersByWorkspace) {
+                            Map<String, SlackNotifier> notifiersByWorkspace,
+                            AlertRecipients alertRecipients) {
         try {
             NotifierRegistry registry = new NotifierRegistry(
                     primaryNotifier, notifiersByWorkspace);
@@ -85,12 +98,37 @@ public final class CompletionListenerFanoutWiring {
             scanner.setDeadThreshold(StuckJobScanner.DEFAULT_DEAD_THRESHOLD);
             scanner.setWarningSink(registry::postWorkstreamNotice);
             scanner.start();
-            return scanner;
+
+            LostJobRecovery lostJobRecovery = new LostJobRecovery(statsStore,
+                    registry::postWorkstreamNotice,
+                    alertRecipients == null ? null : alertRecipients.sink(Alert.Severity.WARNING),
+                    taskId -> server.getNodeGroup().hasQueuedJob(taskId),
+                    endpoint::isDispatchDeferred);
+            lostJobRecovery.start();
+
+            return new ControllerScanners(scanner, lostJobRecovery);
         } catch (RuntimeException ex) {
             Console root = Console.root();
             root.println("CompletionListenerFanoutWiring: "
                     + "Completion-listener fanout wiring failed: " + ex.getMessage());
-            return null;
+            return new ControllerScanners(null, null);
+        }
+    }
+
+    /**
+     * The two post-completion scanners started by {@link #wire}, bundled so the
+     * controller can stop both on shutdown. Either field may be {@code null} when
+     * wiring failed.
+     *
+     * @param stuck the scanner that fails jobs which started and went silent
+     * @param lost  the scanner that escalates jobs that never started
+     */
+    public record ControllerScanners(StuckJobScanner stuck, LostJobRecovery lost) {
+
+        /** Stops both scanners; a {@code null} scanner is skipped. */
+        public void stopAll() {
+            if (stuck != null) stuck.stop();
+            if (lost != null) lost.stop();
         }
     }
 }
