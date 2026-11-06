@@ -16,6 +16,9 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.git.GitOperations;
+import io.flowtree.git.MergeSides;
+import io.flowtree.git.TransientGitException;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
@@ -201,12 +204,10 @@ class GitCommitHandler implements ConsoleFeatures {
             // Stage any additional changes the agent made (through guardrails),
             // but do NOT reset HEAD — that would abort the in-progress merge.
             // Rejected paths are restored in the index instead.
-            FileStager.GitOperations gitOps = job.asGitOperations();
-            boolean trusted = FileStager.trustedMergeParent(buildStagingConfig(job), gitOps) != null;
-            List<String> candidates = stagingCandidates(findChangedFiles(), mergeHead, gitOps);
+            List<String> candidates = stagingCandidates(findChangedFiles(), mergeHead, job.asGitOperations());
             if (!candidates.isEmpty()) {
                 stageFiles(candidates);
-                restoreRejected(candidates, mergeHead, trusted);
+                restoreRejected(candidates, mergeHead);
             }
 
             if (job.executeGitWithOutput("diff", "--name-only", "--cached").trim().isEmpty()) {
@@ -396,13 +397,11 @@ class GitCommitHandler implements ConsoleFeatures {
      *
      * @param candidates   every file that was evaluated for staging
      * @param mergedCommit the commit {@code MERGE_HEAD} names
-     * @param trusted      whether {@code mergedCommit} is the merge parent the
-     *                     harness recorded
      * @throws IOException if a git command fails to execute
      * @throws InterruptedException if a git command is interrupted
      * @throws RuntimeException if a rejected path has no version to restore
      */
-    private void restoreRejected(List<String> candidates, String mergedCommit, boolean trusted)
+    private void restoreRejected(List<String> candidates, String mergedCommit)
             throws IOException, InterruptedException {
         Set<String> rejected = new LinkedHashSet<>(candidates);
         stagedFiles.forEach(rejected::remove);
@@ -411,13 +410,16 @@ class GitCommitHandler implements ConsoleFeatures {
         }
 
         GitOperations git = job.gitOperations(job.getWorkingDirectory());
-        MergeSides sides = MergeSides.of(job.asGitOperations(), mergedCommit);
+        FileStagingConfig config = buildStagingConfig(job);
+        FileStager.GitOperations gitOps = job.asGitOperations();
+        MergeSides sides = MergeSides.of(gitOps, mergedCommit,
+                FileStager.trustedMergeParent(config, gitOps) != null);
+        boolean trusted = sides.isTrusted();
         OperatorGrants grants = job.operatorGrants();
-        boolean ciLocked = buildStagingConfig(job).isProtectCiFiles();
         List<String> refusals = new ArrayList<>();
         for (String file : rejected) {
             if (grants.acceptsMergeResolution(file)) {
-                if (ciLocked && FileStager.isCiWorkflowFile(file)) {
+                if (config.isCiLocked(file)) {
                     refusals.add(file + ": the owner accepted its resolution, but it is a CI/workflow"
                             + " file under the CI-file lock, which the merge-resolution grant does not"
                             + " lift. Re-submit with the sensitive-file bypass as well, or make the"
@@ -427,13 +429,13 @@ class GitCommitHandler implements ConsoleFeatures {
                 }
                 continue;
             }
-            String source = sides.cleanSource(file, trusted);
+            String source = sides.cleanSource(file);
             if (source == null && trusted && git.matchesCommit(file, mergedCommit)) {
                 log("Accepting resolution equal to the base branch's version: " + file);
                 source = mergedCommit;
             }
             if (source == null) {
-                refusals.add(describeRefusal(git, file, sides, trusted));
+                refusals.add(describeRefusal(git, file, sides));
             } else if (job.executeGit("diff", "--cached", "--quiet", source, "--", file) != 0) {
                 if (job.isDryRun()) {
                     log("DRY RUN: Would restore " + file + " to " + source);
@@ -501,14 +503,13 @@ class GitCommitHandler implements ConsoleFeatures {
      *
      * @param git     git operations for the working tree
      * @param file    the refused path
-     * @param sides   what each side of the merge changed
-     * @param trusted whether the merged commit is the merge parent the harness recorded
+     * @param sides   what each side of the merge changed, and whether it is trusted
      * @return one sentence-level explanation naming the path
      * @throws IOException if git cannot be started
      * @throws InterruptedException if a command is interrupted
      */
-    private String describeRefusal(GitOperations git, String file, MergeSides sides,
-                                   boolean trusted) throws IOException, InterruptedException {
+    private String describeRefusal(GitOperations git, String file, MergeSides sides)
+            throws IOException, InterruptedException {
         String rejection = skippedFiles.stream()
                 .filter(entry -> entry.startsWith(file + " ("))
                 .findFirst().orElse(file + " (not staged, and no guardrail recorded a reason)");
@@ -521,7 +522,7 @@ class GitCommitHandler implements ConsoleFeatures {
         } else {
             resolution = "matches neither side";
         }
-        String why = !trusted
+        String why = !sides.isTrusted()
                 ? "the base version cannot be trusted while the merge is not the harness's own,"
                         + " and restoring " + target + "'s version would revert the base branch's change"
                 : "both " + target + " and the base branch changed it, so restoring either"

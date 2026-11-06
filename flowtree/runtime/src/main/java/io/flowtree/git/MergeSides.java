@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-package io.flowtree.jobs;
+package io.flowtree.git;
+
+import io.flowtree.jobs.FileStager;
 
 import java.io.IOException;
 import java.util.Set;
@@ -30,10 +32,10 @@ import java.util.Set;
  * anyone's behalf.</p>
  *
  * @author Michael Murray
- * @see GitCommitHandler
- * @see WorkingTreeRescue
+ * @see io.flowtree.jobs.GitCommitHandler
+ * @see io.flowtree.jobs.WorkingTreeRescue
  */
-final class MergeSides {
+public final class MergeSides {
 
     /** The commit being merged into {@code HEAD}. */
     private final String mergedCommit;
@@ -44,17 +46,23 @@ final class MergeSides {
     /** Paths {@link #mergedCommit} changed since the merge-base. */
     private final Set<String> baseChanges;
 
+    /** Whether {@link #mergedCommit} is the merge parent the harness recorded. */
+    private final boolean trusted;
+
     /**
      * Creates the record of a merge's two sides.
      *
      * @param mergedCommit  the commit being merged
      * @param branchChanges the paths {@code HEAD} changed since the merge-base
      * @param baseChanges   the paths the merged commit changed since the merge-base
+     * @param trusted       whether the merged commit is the merge parent the harness recorded
      */
-    private MergeSides(String mergedCommit, Set<String> branchChanges, Set<String> baseChanges) {
+    private MergeSides(String mergedCommit, Set<String> branchChanges, Set<String> baseChanges,
+                       boolean trusted) {
         this.mergedCommit = mergedCommit;
         this.branchChanges = branchChanges;
         this.baseChanges = baseChanges;
+        this.trusted = trusted;
     }
 
     /**
@@ -63,11 +71,13 @@ final class MergeSides {
      *
      * @param gitOps       git operations for the working tree
      * @param mergedCommit the commit being merged
+     * @param trusted      whether {@code mergedCommit} is the merge parent the
+     *                     harness recorded (see {@link FileStager#trustedMergeParent})
      * @return the two sides' changes
      * @throws IOException if the merge-base or either side's changes cannot be listed
      * @throws InterruptedException if a git command is interrupted
      */
-    static MergeSides of(FileStager.GitOperations gitOps, String mergedCommit)
+    public static MergeSides of(FileStager.GitOperations gitOps, String mergedCommit, boolean trusted)
             throws IOException, InterruptedException {
         String mergeBase = gitOps.executeOrNull("merge-base", "HEAD", mergedCommit);
         if (mergeBase == null || mergeBase.trim().isEmpty()) {
@@ -75,7 +85,19 @@ final class MergeSides {
         }
         return new MergeSides(mergedCommit,
                 gitOps.changedPaths(mergeBase.trim(), "HEAD"),
-                gitOps.changedPaths(mergeBase.trim(), mergedCommit));
+                gitOps.changedPaths(mergeBase.trim(), mergedCommit), trusted);
+    }
+
+    /**
+     * Returns whether the merged commit is the merge parent the harness
+     * recorded, so that its content may stand in for a rejected resolution.
+     * An untrusted merge was not started by the harness, or {@code MERGE_HEAD}
+     * no longer names the commit it merged.
+     *
+     * @return {@code true} when the merge is the harness's own
+     */
+    public boolean isTrusted() {
+        return trusted;
     }
 
     /**
@@ -83,7 +105,7 @@ final class MergeSides {
      *
      * @return the merged commit
      */
-    String mergedCommit() {
+    public String mergedCommit() {
         return mergedCommit;
     }
 
@@ -93,7 +115,7 @@ final class MergeSides {
      * @param path a repository-relative path
      * @return {@code true} when the base side changed it
      */
-    boolean baseChanged(String path) {
+    public boolean baseChanged(String path) {
         return baseChanges.contains(path);
     }
 
@@ -103,7 +125,7 @@ final class MergeSides {
      * @param path a repository-relative path
      * @return {@code true} when the target branch changed it
      */
-    boolean branchChanged(String path) {
+    public boolean branchChanged(String path) {
         return branchChanges.contains(path);
     }
 
@@ -111,14 +133,13 @@ final class MergeSides {
      * Returns the commit whose version of {@code path} a clean merge would
      * produce, when the harness may choose it: {@code HEAD} for a path the
      * merged commit did not change, the merged commit for a path only it
-     * changed (and only while it is trusted, see
-     * {@link FileStager#trustedMergeParent}), and {@code null} otherwise.
+     * changed (and only while it is {@link #isTrusted() trusted}), and
+     * {@code null} otherwise.
      *
-     * @param path    a repository-relative path
-     * @param trusted whether the merged commit is the merge parent the harness recorded
+     * @param path a repository-relative path
      * @return {@code "HEAD"}, the merged commit, or {@code null} when no side can be chosen
      */
-    String cleanSource(String path, boolean trusted) {
+    public String cleanSource(String path) {
         if (!baseChanged(path)) return "HEAD";
         return trusted && !branchChanged(path) ? mergedCommit : null;
     }

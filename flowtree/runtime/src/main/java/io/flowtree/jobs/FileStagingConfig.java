@@ -153,6 +153,56 @@ public final class FileStagingConfig {
     }
 
     /**
+     * Returns whether this configuration blocks {@code file} whole-file as CI
+     * configuration under the CI file lock (see {@link #isProtectCiFiles()}).
+     * In production {@link #isProtectCiFiles()} is the sole gate; a CI file
+     * named by {@link #getProtectedPathPatterns()} is also locked while the
+     * test lock is on.
+     *
+     * @param file the repository-relative path
+     * @return {@code true} when the path is CI configuration this configuration locks
+     */
+    public boolean isCiLocked(String file) {
+        return isCiWorkflowFile(file) && (protectCiFiles
+                || (protectTestFiles && FileStager.matchesAnyPattern(file, protectedPathPatterns)));
+    }
+
+    /**
+     * Returns whether {@code file} falls under this configuration's test lock:
+     * the test lock is on and the path, which is not CI configuration, matches
+     * {@link #getProtectedPathPatterns()}. Whether a test-locked file may still
+     * be staged depends on its base-branch history; see {@link FileStager}.
+     *
+     * @param file the repository-relative path
+     * @return {@code true} when the test lock applies to the path
+     */
+    public boolean isTestLocked(String file) {
+        return protectTestFiles && !isCiWorkflowFile(file)
+                && FileStager.matchesAnyPattern(file, protectedPathPatterns);
+    }
+
+    /**
+     * Returns whether {@code file} is CI configuration: a GitHub Actions
+     * workflow or action definition ({@code .github/workflows/**},
+     * {@code .github/actions/**}) or CI tooling ({@code tools/ci/**}) — the
+     * paths the repository's CI file lock covers.
+     *
+     * <p>These paths keep whole-file protection rather than the test-method
+     * granularity {@link TestMethodProtection} applies to Java test sources:
+     * a workflow file has no "test method" structure to reason about, and
+     * CI/workflow configuration is locked in full by design (see
+     * {@code tools/ci/agent-protection/check-ci-file-lock.sh}).</p>
+     *
+     * @param file the file path to test
+     * @return true if the path is a protected CI/workflow path
+     */
+    private static boolean isCiWorkflowFile(String file) {
+        return FileStager.matchesGlobPattern(file, ".github/workflows/**")
+                || FileStager.matchesGlobPattern(file, ".github/actions/**")
+                || FileStager.matchesGlobPattern(file, "tools/ci/**");
+    }
+
+    /**
      * Returns the base branch used for test file existence checks.
      *
      * @return the base branch name

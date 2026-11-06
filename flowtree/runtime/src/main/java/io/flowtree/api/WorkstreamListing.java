@@ -30,9 +30,9 @@ import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.github.GitHubProxyHandler;
+import io.flowtree.git.RepositoryUrl;
 import io.flowtree.github.PullRequest;
 import io.flowtree.jobs.JobCompletionEvent;
-import io.flowtree.jobs.RepositoryUrl;
 import io.flowtree.workstream.Workstream;
 
 /**

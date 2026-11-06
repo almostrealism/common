@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.git.GitOperations;
 import io.flowtree.job.Job;
 import io.flowtree.jobs.agent.AgentRunRequest;
 import io.flowtree.jobs.agent.AgentRunResult;

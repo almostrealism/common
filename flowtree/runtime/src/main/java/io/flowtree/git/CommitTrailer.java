@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package io.flowtree.jobs;
+package io.flowtree.git;
 
 import java.util.regex.Pattern;
 
@@ -29,10 +29,10 @@ import java.util.regex.Pattern;
  * harness's own value.</p>
  *
  * @author Michael Murray
- * @see SensitiveFileBypassTrailer
- * @see OperatorGrants
+ * @see io.flowtree.jobs.SensitiveFileBypassTrailer
+ * @see io.flowtree.jobs.OperatorGrants
  */
-final class CommitTrailer {
+public final class CommitTrailer {
 
     /** The trailer key as it appears in the commit message. */
     private final String key;
@@ -45,7 +45,7 @@ final class CommitTrailer {
      *
      * @param key the trailer key, e.g. {@code "Sensitive-File-Bypass"}
      */
-    CommitTrailer(String key) {
+    public CommitTrailer(String key) {
         this.key = key;
         this.line = Pattern.compile("(?im)^[ \t]*" + Pattern.quote(key) + "[ \t]*:.*$");
     }
@@ -55,7 +55,7 @@ final class CommitTrailer {
      *
      * @return the key as it appears in the commit message
      */
-    String key() {
+    public String key() {
         return key;
     }
 
@@ -76,7 +76,7 @@ final class CommitTrailer {
      * @param message the original commit message; may be {@code null}
      * @return the message with this trailer's lines removed, never {@code null}
      */
-    String strip(String message) {
+    public String strip(String message) {
         if (message == null || message.isEmpty()) return "";
         StringBuilder out = new StringBuilder(message.length());
         for (String text : message.split("\n", -1)) {
@@ -97,7 +97,7 @@ final class CommitTrailer {
      * @param value   the trailer value, or {@code null} to only strip
      * @return the message with the trailer applied, never {@code null}
      */
-    String apply(String message, String value) {
+    public String apply(String message, String value) {
         String cleaned = strip(message);
         if (value == null || value.isEmpty()) {
             return cleaned;

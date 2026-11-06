@@ -33,7 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import io.flowtree.controller.FlowTreeController;
-import io.flowtree.jobs.RepositoryUrl;
+import io.flowtree.git.RepositoryUrl;
 import io.flowtree.workstream.WorkstreamConfig;
 
 /**

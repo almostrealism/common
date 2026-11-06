@@ -17,6 +17,8 @@
 package io.flowtree.jobs;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.flowtree.git.GitOperations;
+import io.flowtree.git.TransientGitException;
 import io.flowtree.job.Job;
 import io.flowtree.node.AutomaticLabel;
 import org.almostrealism.io.ConsoleFeatures;

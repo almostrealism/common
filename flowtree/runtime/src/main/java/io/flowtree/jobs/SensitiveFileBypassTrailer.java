@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.git.CommitTrailer;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 

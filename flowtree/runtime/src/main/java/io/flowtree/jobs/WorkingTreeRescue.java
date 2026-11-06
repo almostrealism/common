@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.git.GitOperations;
+import io.flowtree.git.MergeSides;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
@@ -331,9 +333,9 @@ class WorkingTreeRescue implements ConsoleFeatures {
                                  List<String> notes) throws IOException, InterruptedException {
         boolean trusted = FileStager.trustedMergeParent(
                 GitCommitHandler.buildStagingConfig(job), job.asGitOperations()) != null;
-        MergeSides sides = MergeSides.of(job.asGitOperations(), mergeHead);
+        MergeSides sides = MergeSides.of(job.asGitOperations(), mergeHead, trusted);
         for (String path : withheld) {
-            String source = sides.cleanSource(path, trusted);
+            String source = sides.cleanSource(path);
             if (mergeHead.equals(source)) {
                 staging.executeForResult("reset", "-q", mergeHead, "--", path).requireSuccess();
             } else if (source == null) {

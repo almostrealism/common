@@ -16,7 +16,7 @@
 
 package io.flowtree.workstream;
 
-import io.flowtree.jobs.RepositoryUrl;
+import io.flowtree.git.RepositoryUrl;
 
 import java.util.List;
 

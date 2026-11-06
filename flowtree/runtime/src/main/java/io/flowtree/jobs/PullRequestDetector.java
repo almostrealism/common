@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.flowtree.git.RepositoryUrl;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.net.HttpURLConnection;

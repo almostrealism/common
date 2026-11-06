@@ -74,7 +74,7 @@ and `flowtree/runtime` but have no flowtree-specific runtime dependencies:
 
 - `io.flowtree.JsonFieldExtractor` — small, side-effect-free utility for pulling typed
   fields out of Claude Code's NDJSON output and similar payloads.
-- `io.flowtree.jobs.GitOperations` — wraps `git`/`ssh` subprocess execution with PATH
+- `io.flowtree.git.GitOperations` — wraps `git`/`ssh` subprocess execution with PATH
   augmentation for headless environments.
 
 These were originally part of `flowtree/runtime` (formerly `flowtree/core`, then the
