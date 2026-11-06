@@ -19,6 +19,8 @@ package io.almostrealism.code;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.ReadPositions;
 import io.almostrealism.scope.Variable;
 
 import java.util.Collections;
@@ -44,6 +46,26 @@ public class Termination implements Statement<Termination> {
 	public List<Variable<?, ?>> getDependencies() {
 		return Collections.emptyList();
 	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code false}: terminating execution assigns nothing. It can only keep the
+	 * statements after it from running, and a write that does not happen leaves its element as
+	 * it was.</p>
+	 */
+	@Override
+	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
+		return false;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Nothing: terminating execution evaluates no expression, so it reads no element.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) { }
 
 	@Override
 	public Termination simplify(KernelStructureContext context, int depth) {

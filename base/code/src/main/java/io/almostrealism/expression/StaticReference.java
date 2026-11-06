@@ -88,10 +88,31 @@ public class StaticReference<T> extends Expression<T> {
 	 * referent and indices.</p>
 	 */
 	@Override
-	public void collectReferencedNames(Set<String> names) {
+	public void appendReferencedNames(Set<String> names) {
 		if (getName() != null) names.add(getName());
-		super.collectReferencedNames(names);
+		super.appendReferencedNames(names);
 	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An assignment to a static reference changes the value it names, in addition to any
+	 * variable it depends on.</p>
+	 */
+	@Override
+	public void appendAssignedNames(Set<String> names) {
+		if (getName() != null) names.add(getName());
+		super.appendAssignedNames(names);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A static reference names the value it refers to, so a declaration of it declares that
+	 * name.</p>
+	 */
+	@Override
+	public String getDeclaredName() { return getName(); }
 
 	/**
 	 * {@inheritDoc}

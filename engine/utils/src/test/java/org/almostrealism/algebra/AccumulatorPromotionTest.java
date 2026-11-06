@@ -23,8 +23,11 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.NoOpKernelStructureContext;
+import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Cases;
+import io.almostrealism.scope.ExplicitScope;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
@@ -264,6 +267,83 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 				simplified instanceof Repeated);
 		Assert.assertTrue("The loop body should still store to the array",
 				bodyReferencesArray(simplified, out));
+	}
+
+	/**
+	 * Verifies that promotion is abandoned when the loop body contains a nested loop,
+	 * since the nested loop's condition is an expression outside the statement list:
+	 * here it reads the element being accumulated, which would be stale once the store
+	 * is deferred until after the outer loop.
+	 *
+	 * <p>Scope structure:</p>
+	 * <pre>
+	 * for (i = 0; i < 64; i++) {
+	 *   { out[_gid] = out[_gid] + in[i];
+	 *     for (j = 0; j < out[_gid]; j++) { counts[j] = counts[j] + 1.0; } }
+	 * }
+	 * </pre>
+	 */
+	@Test(timeout = 30000)
+	public void nestedLoopBlocksPromotion() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(64));
+		loop.setName("nestedLoopTest");
+
+		ArrayVariable<Double> out = new ArrayVariable(Double.class, "out", e(4));
+		ArrayVariable<Double> in = new ArrayVariable(Double.class, "in", e(64));
+		ArrayVariable<Double> counts = new ArrayVariable(Double.class, "counts", e(64));
+
+		Scope<Void> body = new Scope<>("body");
+		body.getStatements().add(new ExpressionAssignment(
+				outElement(out), outElement(out).add(inElement(in))));
+
+		Variable<Integer, ?> inner = Variable.integer("_test_j");
+		Expression<Integer> j = new StaticReference<>(Integer.class, "_test_j");
+		Expression<Double> count = new InstanceReference(counts, j, j);
+		Repeated<Void> nested = new Repeated<>(inner, inner.ref().lessThan(outElement(out)));
+		Scope<Void> nestedBody = new Scope<>("nestedBody");
+		nestedBody.getStatements().add(new ExpressionAssignment(count, count.add(e(1.0))));
+		nested.getChildren().add(nestedBody);
+		body.getChildren().add(nested);
+
+		loop.getChildren().add(body);
+
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		Assert.assertTrue("Promotion should be abandoned when the body contains a nested loop",
+				simplified instanceof Repeated);
+		Assert.assertTrue("The loop body should still store to the array",
+				bodyReferencesArray(simplified, out));
+	}
+
+	/**
+	 * Verifies that whether a scope tree flattens into a sequence of assignments is
+	 * decided by the code each scope generates, not by its class: a scope made of
+	 * assignments flattens whatever its class, while a loop, a choice among branches
+	 * and explicit code, which generate code besides their statements, do not.
+	 */
+	@Test(timeout = 10000)
+	public void onlyScopesOfAssignmentsAreFlattened() {
+		ArrayVariable<Double> out = new ArrayVariable(Double.class, "out", e(4));
+		ArrayVariable<Double> in = new ArrayVariable(Double.class, "in", e(64));
+
+		Scope<Void> subclass = new Scope<>("subclass") { };
+		subclass.getStatements().add(new ExpressionAssignment(outElement(out), inElement(in)));
+		List<ExpressionAssignment<?>> assignments = subclass.collectAssignments();
+		Assert.assertNotNull("A subclass that generates only assignments should flatten", assignments);
+		Assert.assertEquals(1, assignments.size());
+
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Assert.assertNull("A loop should not flatten",
+				new Repeated<Void>(idx, idx.ref().lessThan(64)).collectAssignments());
+		Assert.assertNull("A choice among branches should not flatten",
+				new Cases<Void>("branches").collectAssignments());
+
+		ExplicitScope<Void> explicit = new ExplicitScope<>("explicit",
+				new OperationMetadata("explicit", "Explicit code"), "external();");
+		Assert.assertNull("Explicit code should not flatten", explicit.collectAssignments());
+		Assert.assertNull("Explicit code combined with a generated body should not flatten",
+				new HybridScope<>(explicit, null).collectAssignments());
 	}
 
 	/**

@@ -207,3 +207,25 @@ to them. Extending copy-once to writable sources the kernel does not write would
 (`StateDictionary`) weights in the benchmark or the per-dispatch copy reduction of `38f78778`.
 `MetalCommandRunner.getBridgeCommitCount()` was not instrumented in the connectome tests; the
 timing change is the evidence for criterion 1.
+
+## Follow-up (2026-11-05): loop and branch kernels
+
+The copy-once rule did not reach a kernel compiled from a loop. `Scope.containsAssignment`
+flattened the scope tree with `collectAssignments()`, which refuses every `Scope` subclass (for
+the sake of read analysis: loop bounds and branch conditions read memory outside the statement
+list), so a `Repeated` or `Cases` kernel reported every aggregated slice as written. The
+synthetic connectome's sparse product (`SegmentedWeightedSumComputation`, a
+`RepeatedProducerComputation`) therefore still copied its file-backed weights into the aggregate
+on every step, through a host copy on Metal, which bridged the kernel's command buffer, parked a
+callback thread in `MetalSemaphore.waitFor` and forced a commit per step (verified with thread
+dumps and temporary counters in `MetalCommandRunner`). The write analysis now recurses through the
+tree, each scope answering for its own statements and children, and `ExplicitScope`/`HybridScope`
+report that they may write anything. Every `Statement` is a `VariableReferenceSupport` that answers for
+what it writes (an assignment through its destination, a call may write anything, a local array
+declaration or an early exit writes nothing), so the scope asks its statements rather than
+testing their kinds.
+
+Metal, 5 repetitions per arm, same node: `ConnectomeNetworkTest#poissonInputDrivesItsTargets`
+8.06 s → 3.68 s, `#replicasEachMatchBrian2Spikes` 5.88 s → 2.49 s, `#matchesBrian2Spikes`
+4.10 s → 1.96 s, `#silentWithoutInput` 1.60 s → 0.73 s; one commit per step → about one per
+three steps.
