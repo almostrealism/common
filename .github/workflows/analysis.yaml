@@ -1707,6 +1707,12 @@ jobs:
       - name: Run quality-gate messaging regression tests
         run: bash tools/ci/agent-protection/test-check-quality-gates.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
+      # The Java test-hiding detector's own regression suite — the twelve
+      # pattern detectors plus the working-tree / in-progress-merge handling —
+      # each against a throwaway repository.
+      - name: Run test-hiding detector regression tests
+        run: bash tools/ci/agent-protection/test-detect-test-hiding.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
       # The CI file lock, the Python test-hiding detector and the change-set
       # validator, each against a throwaway repository.
       - name: Run branch-check regression tests

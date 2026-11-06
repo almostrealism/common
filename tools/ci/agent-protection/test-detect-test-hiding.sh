@@ -508,6 +508,265 @@ setup_no_test_changes() {
     git commit -q -m "change"
 }
 
+# ── Scenario: committed swallowing catch in an existing method — TRUE POSITIVE ──
+#
+# The branch commits a change that wraps an existing @Test body in a try/catch
+# that neither rethrows nor fails. On a clean committed checkout the detector
+# must still report EXCEPTION_SWALLOWING (expected exit 2) — the working-tree
+# evaluation collapses to the committed diff when nothing is uncommitted, so a
+# committed-only branch behaves exactly as before.
+setup_committed_swallowing_catch() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        try {
+            assertEquals(1, compute());
+        } catch (Exception e) {
+            // swallow
+        }
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: UNCOMMITTED swallowing catch in an existing method — TRUE POSITIVE ──
+#
+# The candidate change the harness is about to commit lives only in the working
+# tree: a committed, benign new test method, plus an UNCOMMITTED edit that wraps
+# an existing @Test body in a swallowing try/catch. Because the audit now diffs
+# the working tree against the comparison base, the uncommitted swallow is seen
+# and EXCEPTION_SWALLOWING fires (expected exit 2). The earlier committed-history
+# diff saw only the benign commit and passed this straight through.
+setup_uncommitted_swallowing_catch() {
+    mkdir -p src/test/java
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "base"
+    git branch -M master
+
+    git checkout -q -b feature
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    @Test(timeout = 5000)
+    public void testB() {
+        assertEquals(2, compute() + 1);
+    }
+    int compute() { return 1; }
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "add new test testB"
+
+    # Uncommitted candidate change: swallow in the existing testA.
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        try {
+            assertEquals(1, compute());
+        } catch (Exception e) {
+            // swallow
+        }
+    }
+
+    @Test(timeout = 5000)
+    public void testB() {
+        assertEquals(2, compute() + 1);
+    }
+    int compute() { return 1; }
+}' > src/test/java/MyTest.java
+}
+
+# ── Scenario: in-progress merge of the base branch shifts lines — FALSE-POSITIVE REGRESSION ──
+#
+# Reproduces the reported false positive: an agent branch that merges the base
+# branch in is wrongly flagged for EXCEPTION_SWALLOWING. The feature branch
+# wraps an existing testA in a LEGITIMATE rethrowing try/catch. The base branch
+# then advances with a brand-new test method inserted at the TOP of the same
+# file, shifting testA down. Merging the base branch into the feature branch
+# (left in progress, MERGE_HEAD present) produces a working tree whose testA sits
+# below its committed-history position.
+#
+# The committed-history audit took the catch's line number from the committed
+# diff (feature coordinates, before the shift) but peeked at the working-tree
+# file (after the shift). At the feature-coordinate line number the working tree
+# still shows the top of testA — an existing method, so method-scoping does not
+# filter it — and the peeked lines are testA's opening statements, which rethrow
+# nothing: a phantom EXCEPTION_SWALLOWING, exit 2. Diffing the working tree
+# against MERGE_HEAD keeps the line numbers and the file contents in the same
+# state, so the peek lands on the real catch body and finds the rethrow, and the
+# base branch's added method is already in MERGE_HEAD and so is never attributed
+# to the agent. The script MUST NOT fire (expected exit 0).
+setup_merge_shift_passes() {
+    mkdir -p src/test/java
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int x = compute();
+        use(x);
+    }
+    int compute() { return 1; }
+    void use(int x) {}
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "base"
+    git branch -M master
+
+    git checkout -q -b feature
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int x = compute();
+        try {
+            use(x);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+    int compute() { return 1; }
+    void use(int x) {}
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "wrap testA in a rethrowing try/catch"
+
+    git checkout -q master
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testZearly() {
+        assertEquals(2, 1 + 1);
+    }
+
+    @Test(timeout = 5000)
+    public void testA() {
+        int x = compute();
+        use(x);
+    }
+    int compute() { return 1; }
+    void use(int x) {}
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "base adds testZearly at the top, shifting testA down"
+
+    git checkout -q feature
+    # Leave the base-branch merge in progress (MERGE_HEAD present). The regions
+    # are disjoint, so the three-way merge resolves cleanly without a commit.
+    # Do NOT swallow the merge's exit status: if it errored the scenario would
+    # otherwise run on the plain feature checkout, where the rethrowing catch
+    # still yields exit 0 and the case would pass without ever exercising the
+    # in-progress-merge comparison-base path. Assert MERGE_HEAD afterwards so a
+    # merge that silently fails to leave one fails the test loudly instead.
+    git merge --no-commit --no-ff master >/dev/null 2>&1
+    if ! git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+        echo "setup_merge_shift_passes: expected an in-progress merge (MERGE_HEAD) but found none" >&2
+        exit 1
+    fi
+}
+
+# ── Scenario: in-progress merge of an UNRELATED branch — BYPASS MUST STAY CLOSED ──
+#
+# The comparison base is moved to MERGE_HEAD only for a merge of the base branch;
+# a bare MERGE_HEAD is not enough. Here an agent weakens an existing testA (wraps
+# its body in a swallowing try/catch) on an unrelated branch, then merges that
+# branch into the feature branch and leaves the merge in progress, so MERGE_HEAD
+# points at the unrelated tip that already contains the weakening. If the
+# detector trusted any MERGE_HEAD it would diff the working tree against that tip
+# — where the weakening is identical and so invisible — and pass (exit 0),
+# letting the weakening escape. Because MERGE_HEAD is NOT an ancestor of master,
+# the detector keeps the merge-base as its comparison base, sees the swallowing
+# catch in the working tree, and fires EXCEPTION_SWALLOWING (expected exit 2).
+setup_unrelated_merge_weakening() {
+    mkdir -p src/test/java
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "base"
+    git branch -M master
+
+    # Unrelated branch (not the base branch) carrying the weakening.
+    git checkout -q -b sneaky
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        try {
+            assertEquals(1, compute());
+        } catch (Exception e) {
+            // swallow
+        }
+    }
+    int compute() { return 1; }
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "swallow the assertion in existing testA on an unrelated branch"
+
+    # The agent branch merges the unrelated branch in and leaves it in progress.
+    git checkout -q master
+    git checkout -q -b feature
+    git merge --no-commit --no-ff sneaky >/dev/null 2>&1
+    if ! git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+        echo "setup_unrelated_merge_weakening: expected an in-progress merge (MERGE_HEAD) but found none" >&2
+        exit 1
+    fi
+}
+
 # ── Run all cases ──────────────────────────────────────────────────────────
 
 echo "Running detect-test-hiding regression tests..."
@@ -527,6 +786,10 @@ run_case "helper-body-loses-assertion [true positive]"      2 setup_helper_body_
 run_case "test-body-assertion-removed-with-helper [true positive]" 2 setup_test_body_assertion_removed_with_helper
 run_case "expected-count-raised [no false positive]"        0 setup_expected_count_raised
 run_case "no-test-changes [clean branch]"                   0 setup_no_test_changes
+run_case "committed-swallowing-catch [true positive]"       2 setup_committed_swallowing_catch
+run_case "uncommitted-swallowing-catch [true positive / working-tree audit]" 2 setup_uncommitted_swallowing_catch
+run_case "merge-shift [false-positive regression]"          0 setup_merge_shift_passes
+run_case "unrelated-merge-weakening [bypass stays closed]"  2 setup_unrelated_merge_weakening
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
