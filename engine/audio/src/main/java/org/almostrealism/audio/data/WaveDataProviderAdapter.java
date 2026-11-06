@@ -101,11 +101,20 @@ public abstract class WaveDataProviderAdapter implements WaveDataProvider, CodeF
 	 *
 	 * @throws IllegalStateException if no audio can be loaded for this provider (for
 	 *         example a file that could not be read), naming the provider's key rather
-	 *         than failing on the absent data
+	 *         than failing on the absent data. A later access returns {@code null} once
+	 *         the source is marked unreadable; the first access instead propagates the
+	 *         load failure, which is wrapped here so both report the provider key.
 	 */
 	@Override
 	public PackedCollection getChannelData(int channel, double playbackRate) {
-		WaveData original = get();
+		WaveData original;
+
+		try {
+			original = get();
+		} catch (RuntimeException e) {
+			throw new IllegalStateException("No audio could be loaded for " + getKey(), e);
+		}
+
 		if (original == null) {
 			throw new IllegalStateException("No audio could be loaded for " + getKey());
 		}

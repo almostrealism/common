@@ -155,6 +155,29 @@ public class FileWaveDataProviderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link FileWaveDataProvider#getChannelData(int, double)} reports the provider key through
+	 * an {@link IllegalStateException} when the source cannot be loaded, rather than leaking the
+	 * low-level load failure or dereferencing absent audio. The first access propagates the load
+	 * failure out of {@code get()} (its validity predicate dereferences the loaded data, so the
+	 * corrupt source never surfaces as a {@code null} return), which the guard wraps so the key is
+	 * reported.
+	 */
+	@Test(timeout = 60000)
+	public void getChannelDataReportsKeyForUnreadableSource() {
+		File missing = new File(System.getProperty("java.io.tmpdir"),
+				"ar-filewaveprovider-channel-missing-" + System.nanoTime() + ".wav");
+		FileWaveDataProvider provider = new FileWaveDataProvider(missing);
+
+		try {
+			provider.getChannelData(0, 1.0);
+			Assert.fail("getChannelData on an unreadable source must throw");
+		} catch (IllegalStateException e) {
+			Assert.assertTrue("the exception message must name the provider key",
+					e.getMessage().contains(missing.getPath()));
+		}
+	}
+
+	/**
 	 * Exposes the protected {@link FileWaveDataProvider#load()} so the shared
 	 * corrupt-tracking load path can be exercised directly from this test
 	 * package, where {@link FileWaveDataProvider#get()} cannot reach the
