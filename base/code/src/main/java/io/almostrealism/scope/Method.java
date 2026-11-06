@@ -205,6 +205,17 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 		return true;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>What evaluating the call reads, as for any other {@link Expression}: the reads of its
+	 * arguments.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		super.appendReadPositions(reads);
+	}
+
 	/** {@inheritDoc} */
 	@Override
 	public void setName(String n) { this.name = n; }

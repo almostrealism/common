@@ -131,7 +131,7 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 	 * {@inheritDoc}
 	 *
 	 * <p>Always {@code false}: a declaration introduces a new array without assigning any
-	 * element, of it or of any other array.</p>
+	 * element of it or of any other array.</p>
 	 */
 	@Override
 	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {

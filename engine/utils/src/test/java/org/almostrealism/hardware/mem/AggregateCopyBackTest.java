@@ -16,10 +16,14 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.Statement;
 import io.almostrealism.code.Termination;
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Cases;
@@ -41,6 +45,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.BitSet;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -435,6 +440,42 @@ public class AggregateCopyBackTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A statement that gives no account of its own effects is answered for by the conservative
+	 * defaults of {@link Statement}: it may write, and may read, any position of any array, so a
+	 * kernel whose statements include one reports every slice as written.
+	 */
+	@Test(timeout = 60000)
+	public void statementWithoutAccountWritesAndReadsEverything() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), PackedCollection::new);
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+				Statement<?> unknown = new UnaccountedStatement();
+
+				Assert.assertTrue(unknown.containsAssignment(readArg, 0, 1));
+				Assert.assertTrue(unknown.getReadPositions(readArg).isEverything());
+				Assert.assertTrue(unknown.containsRead(writtenArg, 1, 2));
+
+				Scope<Void> kernel = new Scope<>("unaccounted");
+				kernel.assign(writtenArg.reference(new IntegerConstant(0)),
+						readArg.reference(new IntegerConstant(0)));
+				Assert.assertFalse(map.getWrittenSlices(kernel).get(0));
+
+				kernel.getStatements().add(unknown);
+				BitSet slices = map.getWrittenSlices(kernel);
+				Assert.assertTrue(slices.get(0));
+				Assert.assertTrue(slices.get(1));
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
 	 * The copy-back is built once, so the written slices must be known before it is: limiting
 	 * it afterwards would leave the already built copy-back in force, and is refused.
 	 */
@@ -506,5 +547,23 @@ public class AggregateCopyBackTest extends TestSuiteBase {
 			Assert.assertArrayEquals(new double[] { 1.0, 2.0, 3.0, 4.0 }, a.toArray(), 1e-6);
 			Assert.assertArrayEquals(new double[] { 10.0, 20.0, 30.0, 40.0 }, b.toArray(), 1e-6);
 		}
+	}
+
+	/**
+	 * A statement that implements only what {@link Statement} requires, leaving what it writes
+	 * and reads to the interface defaults.
+	 */
+	private static class UnaccountedStatement implements Statement<UnaccountedStatement> {
+		@Override
+		public String getStatement(LanguageOperations lang) { return "external();"; }
+
+		@Override
+		public List<Variable<?, ?>> getDependencies() { return Collections.emptyList(); }
+
+		@Override
+		public UnaccountedStatement simplify(KernelStructureContext context, int depth) { return this; }
+
+		@Override
+		public UnaccountedStatement replace(Expression target, Expression replacement) { return this; }
 	}
 }

@@ -1056,8 +1056,8 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 *
 	 * <p>Methods, metrics, and statements that are not {@link ExpressionAssignment}s are
 	 * opaque to this analysis, so any of them yields {@code null}. So does a scope that
-	 * generates code besides its statements, declarations and children, which is why every
-	 * subclass that does overrides this method to return {@code null}: the code it adds may
+	 * generates code besides its statements, declarations and children, which is why each
+	 * subclass that generates such code overrides this method to return {@code null}: the code it adds may
 	 * read memory invisibly to a flat list of assignments, as {@link Cases} branch conditions
 	 * and {@link Repeated} loop bounds do.</p>
 	 *
@@ -1101,6 +1101,12 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 * repeats its children or chooses among them ({@link Repeated}, {@link Cases}) need not: the
 	 * bounds and conditions it generates besides them are expressions, which read memory but
 	 * never write it.</p>
+	 *
+	 * <p>That an expression never writes is a contract on the code generated here, not a
+	 * property checked for each expression: a call that may write ({@link Method}, such as a
+	 * {@link #call(Expression[]) call of a scope}) belongs among the statements or methods of the
+	 * scope, where it is accounted for, and the function it calls among the required scopes,
+	 * which make the answer {@code true} by themselves.</p>
 	 */
 	@Override
 	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
@@ -1124,13 +1130,13 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Like {@link #containsAssignment(ArrayVariable, long, long)}, the answer is read off the
-	 * scope's {@link #collectAssignments() assignments}, each asked whether it
-	 * {@link ExpressionAssignment#appendReadPositions reads}, and a scope whose code cannot be enumerated
-	 * that way may read anything, so for it every position is read.</p>
+	 * <p>The answer is read off the scope's {@link #collectAssignments() assignments}, each asked
+	 * whether it {@link ExpressionAssignment#appendReadPositions reads}, and a scope whose code
+	 * cannot be enumerated that way may read anything, so for it every position is read.</p>
 	 */
 	@Override
 	public void appendReadPositions(ReadPositions reads) {
+		// TODO(review): recurse statements/declarations/children like containsAssignment, so loops and branches stop reading everything
 		List<ExpressionAssignment<?>> assignments =
 				getAllRequiredScopes().isEmpty() ? collectAssignments() : null;
 
