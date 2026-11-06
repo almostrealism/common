@@ -72,22 +72,6 @@ public class RemediationStateStore extends ControllerDatabase {
         + "job_id VARCHAR(255) PRIMARY KEY, "
         + "workstream_id VARCHAR(255) NOT NULL)";
 
-    /** DDL recording which one-time data migrations have run against this database. */
-    private static final String CREATE_MIGRATION_TABLE =
-        "CREATE TABLE IF NOT EXISTS pr_remediation_migration (name VARCHAR(255) PRIMARY KEY)";
-
-    /**
-     * The one-time migration that clears records the earlier over-broad
-     * registration left behind. Before an explicit remediation-pass marker, the
-     * controller registered <em>every</em> automated submission as a remediation
-     * pass, so a QA, planning or implementation job's primary-work commit was
-     * recorded as a workstream's {@code last_produced_commit} and its no-commit
-     * completions counted against the budget. Those stored values cannot be told
-     * apart from genuine ones after the fact, so this reset returns every open
-     * PR to a clean slate: the next real remediation pass repopulates the record.
-     */
-    private static final String RESET_NON_REMEDIATION_MIGRATION = "reset-non-remediation-records";
-
     /**
      * Creates a remediation store backed by an HSQLDB file database.
      *
@@ -103,69 +87,6 @@ public class RemediationStateStore extends ControllerDatabase {
         try (Statement stmt = connection().createStatement()) {
             stmt.execute(CREATE_TABLE);
             stmt.execute(CREATE_JOBS_TABLE);
-            stmt.execute(CREATE_MIGRATION_TABLE);
-        }
-        resetNonRemediationRecordsOnce();
-    }
-
-    /**
-     * Runs, once per database, the {@link #RESET_NON_REMEDIATION_MIGRATION}
-     * correction: clears {@code last_produced_commit}, resets the
-     * consecutive-no-progress count and the notification flag on every stored
-     * record, and drops every in-flight job registration. On a fresh database
-     * there is nothing to clear and the migration only records that it ran.
-     *
-     * <p>Without this, an open PR whose record was polluted before the
-     * remediation-pass distinction keeps skipping its auto-review as the
-     * previous pass's own commit after deploy, and the in-flight registrations
-     * that the old code wrote for non-remediation jobs would be counted as
-     * passes when those jobs complete.</p>
-     *
-     * @throws SQLException when the migration cannot be applied, so preparation
-     *                      fails and the database is left closed
-     */
-    private void resetNonRemediationRecordsOnce() throws SQLException {
-        if (migrationApplied(RESET_NON_REMEDIATION_MIGRATION)) {
-            return;
-        }
-        try (Statement stmt = connection().createStatement()) {
-            stmt.execute("UPDATE pr_remediation SET last_produced_commit = NULL, "
-                + "consecutive_no_progress = 0, notified = FALSE");
-            stmt.execute("DELETE FROM pr_remediation_job");
-        }
-        markMigrationApplied(RESET_NON_REMEDIATION_MIGRATION);
-        log("Applied one-time remediation reset " + RESET_NON_REMEDIATION_MIGRATION
-            + " to " + getDbPath());
-    }
-
-    /**
-     * Returns whether a one-time migration has already run against this database.
-     *
-     * @param name the migration's name
-     * @return {@code true} when the migration is recorded as applied
-     * @throws SQLException when the record cannot be read
-     */
-    private boolean migrationApplied(String name) throws SQLException {
-        try (PreparedStatement ps = connection().prepareStatement(
-                "SELECT 1 FROM pr_remediation_migration WHERE name = ?")) {
-            ps.setString(1, name);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next();
-            }
-        }
-    }
-
-    /**
-     * Records that a one-time migration has run, so it is not run again.
-     *
-     * @param name the migration's name
-     * @throws SQLException when the record cannot be written
-     */
-    private void markMigrationApplied(String name) throws SQLException {
-        try (PreparedStatement ps = connection().prepareStatement(
-                "INSERT INTO pr_remediation_migration (name) VALUES (?)")) {
-            ps.setString(1, name);
-            ps.executeUpdate();
         }
     }
 

@@ -817,57 +817,6 @@ public class RemediationStateStoreTest extends TestSuiteBase {
         }
     }
 
-    /**
-     * The one-time reset clears records the earlier over-broad registration
-     * polluted — a non-remediation commit recorded as last-produced, an inflated
-     * count, a stale ping flag, and an in-flight job registration — and runs
-     * only once, so a record a later remediation pass writes survives a reopen.
-     */
-    @Test(timeout = 30000)
-    public void theOneTimeResetClearsPollutedRecordsAndRunsOnlyOnce() throws Exception {
-        File dir = Files.createTempDirectory("rem-migrate").toFile();
-        dir.deleteOnExit();
-        RemediationStateStore store = newStore(dir);
-        try {
-            // Simulate a database written before the remediation-pass
-            // distinction, then remove the migration marker so the next open
-            // treats the database as un-migrated.
-            try (Statement stmt = store.connection().createStatement()) {
-                stmt.execute("INSERT INTO pr_remediation (workstream_id, "
-                    + "consecutive_no_progress, last_produced_commit, notified) "
-                    + "VALUES ('ws', 4, 'qa-commit', TRUE)");
-                stmt.execute("INSERT INTO pr_remediation_job (job_id, workstream_id) "
-                    + "VALUES ('qa-1', 'ws')");
-                stmt.execute("DELETE FROM pr_remediation_migration");
-            }
-        } finally {
-            store.close();
-        }
-
-        RemediationStateStore migrated = newStore(dir);
-        try {
-            RemediationState state = migrated.get("ws");
-            assertNull("the non-remediation commit is cleared", state.getLastProducedCommit());
-            assertEquals("the polluted count is reset", 0, state.getConsecutiveNoProgress());
-            assertFalse("the stale ping flag is cleared", state.isNotified());
-            assertNull("the in-flight registration from before the distinction is dropped",
-                    migrated.completeJob("qa-1", "ws", "b", null, true));
-            assertEquals(0, migrated.get("ws").getConsecutiveNoProgress());
-            migrated.recordPass("ws", "r", "b", "review-sha");
-        } finally {
-            migrated.close();
-        }
-
-        RemediationStateStore reopened = newStore(dir);
-        try {
-            // The migration does not run again: the commit the remediation pass
-            // wrote above survives the reopen rather than being cleared.
-            assertEquals("review-sha", reopened.get("ws").getLastProducedCommit());
-        } finally {
-            reopened.close();
-        }
-    }
-
     /** Reads the stored count for {@code ws} as text, bypassing the store's parsing. */
     private String rawCount(RemediationStateStore store) throws Exception {
         try (Statement stmt = store.connection().createStatement();
