@@ -91,15 +91,26 @@ fi
 # reported phantom violations.
 #
 # COMPARE_BASE is normally the merge-base computed above. When a merge of
-# the base branch is in progress (MERGE_HEAD present) it is MERGE_HEAD
-# instead: the base branch's own commits are already contained in
-# MERGE_HEAD, so a diff against it excludes them and attributes only the
-# branch's divergence — its committed work plus the agent's in-progress
-# conflict resolution — to the agent. Diffing against the plain
-# merge-base during a merge would count every change the base branch
-# brought in as the agent's own, which is how a line-shifting merge of
-# master produced a false positive.
-if MERGE_HEAD_SHA=$(git rev-parse -q --verify "MERGE_HEAD^{commit}" 2>/dev/null); then
+# the base branch is in progress it is MERGE_HEAD instead: the base
+# branch's own commits are already contained in MERGE_HEAD, so a diff
+# against it excludes them and attributes only the branch's divergence —
+# its committed work plus the agent's in-progress conflict resolution —
+# to the agent. Diffing against the plain merge-base during a merge would
+# count every change the base branch brought in as the agent's own, which
+# is how a line-shifting merge of master produced a false positive.
+#
+# The override is honoured only when MERGE_HEAD is an ancestor of
+# $BASE_BRANCH — that is, the in-progress merge really is a merge of the
+# base branch (or of something the base branch already contains). A bare
+# MERGE_HEAD proves only that *some* merge is in progress; an agent could
+# otherwise merge an unrelated branch to move the baseline off the
+# merge-base, so any test weakening carried by that branch — already
+# contained in its tip and thus excluded from a diff against it — would
+# escape the audit. When the merge is of anything else, fall back to the
+# merge-base, which attributes every incoming change to the agent (the
+# safe over-reporting direction).
+if MERGE_HEAD_SHA=$(git rev-parse -q --verify "MERGE_HEAD^{commit}" 2>/dev/null) \
+        && git merge-base --is-ancestor "$MERGE_HEAD_SHA" "$BASE_BRANCH" 2>/dev/null; then
     COMPARE_BASE="$MERGE_HEAD_SHA"
     echo "Merge of ${BASE_BRANCH} in progress — auditing the working tree against the merged-in base ${COMPARE_BASE}."
 else

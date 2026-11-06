@@ -696,7 +696,75 @@ public class MyTest {
     git checkout -q feature
     # Leave the base-branch merge in progress (MERGE_HEAD present). The regions
     # are disjoint, so the three-way merge resolves cleanly without a commit.
-    git merge --no-commit --no-ff master >/dev/null 2>&1 || true
+    # Do NOT swallow the merge's exit status: if it errored the scenario would
+    # otherwise run on the plain feature checkout, where the rethrowing catch
+    # still yields exit 0 and the case would pass without ever exercising the
+    # in-progress-merge comparison-base path. Assert MERGE_HEAD afterwards so a
+    # merge that silently fails to leave one fails the test loudly instead.
+    git merge --no-commit --no-ff master >/dev/null 2>&1
+    if ! git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+        echo "setup_merge_shift_passes: expected an in-progress merge (MERGE_HEAD) but found none" >&2
+        exit 1
+    fi
+}
+
+# ── Scenario: in-progress merge of an UNRELATED branch — BYPASS MUST STAY CLOSED ──
+#
+# The comparison base is moved to MERGE_HEAD only for a merge of the base branch;
+# a bare MERGE_HEAD is not enough. Here an agent weakens an existing testA (wraps
+# its body in a swallowing try/catch) on an unrelated branch, then merges that
+# branch into the feature branch and leaves the merge in progress, so MERGE_HEAD
+# points at the unrelated tip that already contains the weakening. If the
+# detector trusted any MERGE_HEAD it would diff the working tree against that tip
+# — where the weakening is identical and so invisible — and pass (exit 0),
+# letting the weakening escape. Because MERGE_HEAD is NOT an ancestor of master,
+# the detector keeps the merge-base as its comparison base, sees the swallowing
+# catch in the working tree, and fires EXCEPTION_SWALLOWING (expected exit 2).
+setup_unrelated_merge_weakening() {
+    mkdir -p src/test/java
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "base"
+    git branch -M master
+
+    # Unrelated branch (not the base branch) carrying the weakening.
+    git checkout -q -b sneaky
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        try {
+            assertEquals(1, compute());
+        } catch (Exception e) {
+            // swallow
+        }
+    }
+    int compute() { return 1; }
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "swallow the assertion in existing testA on an unrelated branch"
+
+    # The agent branch merges the unrelated branch in and leaves it in progress.
+    git checkout -q master
+    git checkout -q -b feature
+    git merge --no-commit --no-ff sneaky >/dev/null 2>&1
+    if ! git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+        echo "setup_unrelated_merge_weakening: expected an in-progress merge (MERGE_HEAD) but found none" >&2
+        exit 1
+    fi
 }
 
 # ── Run all cases ──────────────────────────────────────────────────────────
@@ -721,6 +789,7 @@ run_case "no-test-changes [clean branch]"                   0 setup_no_test_chan
 run_case "committed-swallowing-catch [true positive]"       2 setup_committed_swallowing_catch
 run_case "uncommitted-swallowing-catch [true positive / working-tree audit]" 2 setup_uncommitted_swallowing_catch
 run_case "merge-shift [false-positive regression]"          0 setup_merge_shift_passes
+run_case "unrelated-merge-weakening [bypass stays closed]"  2 setup_unrelated_merge_weakening
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

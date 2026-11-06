@@ -128,7 +128,7 @@ it knowingly does not cover are in
 | `check-quality-gates.sh` | Evaluate quality gate pass/fail from job outputs |
 | `deception-audit.sh` | Cross-session deception pattern detection |
 | `detect-python-test-hiding.sh` | `test-integrity-check`'s Python step: a base-branch `def test_*` must survive, and a test file's assertion count must not fall |
-| `detect-test-hiding.sh` | Detect modifications to base-branch Java tests that hide failures. Audits the working tree (uncommitted and staged edits included) against the comparison base, reading the diff, the line numbers and the file contents from that one state; during an in-progress merge of the base branch (MERGE_HEAD present) it compares against MERGE_HEAD so the base branch's own changes are not attributed to the agent |
+| `detect-test-hiding.sh` | Detect modifications to base-branch Java tests that hide failures. Audits the working tree (uncommitted and staged edits included) against the comparison base, reading the diff, the line numbers and the file contents from that one state; during an in-progress merge whose MERGE_HEAD is an ancestor of the base branch it compares against MERGE_HEAD so the base branch's own changes are not attributed to the agent (an unrelated in-progress merge keeps the merge-base, so its incoming changes cannot escape the audit) |
 | `exfil_guard_registration.py` | Shared `invokes_adapter()` helper imported by `verify-exfiltration-guard.sh`'s CHECK 2 and CHECK 3 |
 | `test-branch-checks.sh` | Regression tests for `check-ci-file-lock.sh`, `detect-python-test-hiding.sh` and `validate-agent-commit.sh`, each against a throwaway repository |
 | `test-check-quality-gates.sh` | Regression tests for `check-quality-gates.sh` |
