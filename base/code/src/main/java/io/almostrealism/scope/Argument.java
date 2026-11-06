@@ -195,7 +195,7 @@ public class Argument<T> implements Named, Delegated<Argument<T>> {
 	 * the variables, which the code {@link Expectation#WILL_EVALUATE evaluates}, each followed by
 	 * an argument for every variable it depends on, recursively, which must be
 	 * {@link Expectation#EVALUATE_AHEAD evaluated ahead} of the code. Each variable
-	 * {@link Variable#collectArguments(Expectation, List) contributes} its own arguments. Null
+	 * {@link Variable#appendArguments(Expectation, List) contributes} its own arguments. Null
 	 * variables are skipped, and an argument already present is not added again.
 	 *
 	 * @param vars the variables the code depends on directly
@@ -205,7 +205,7 @@ public class Argument<T> implements Named, Delegated<Argument<T>> {
 		List<Argument<?>> args = new ArrayList<>();
 
 		for (Variable<?, ?> var : vars) {
-			if (var != null) var.collectArguments(Expectation.WILL_EVALUATE, args);
+			if (var != null) var.appendArguments(Expectation.WILL_EVALUATE, args);
 		}
 
 		return args;

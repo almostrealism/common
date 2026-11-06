@@ -27,6 +27,7 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.scope.VariableReferenceSupport;
@@ -37,6 +38,7 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 
@@ -137,6 +139,57 @@ public class AssignedNamesTests extends TestSuiteBase {
 		Set<String> names = new HashSet<>();
 		scope.appendAssignedNames(names);
 		Assert.assertEquals(new HashSet<>(Arrays.asList("statementTarget", "declared", "childTarget")), names);
+	}
+
+	/**
+	 * A loop assigns its index, which it advances on every iteration, as well as what its body
+	 * assigns, and a nested loop reports its index to the scope that contains it.
+	 */
+	@Test(timeout = 30000)
+	public void loopAddsItsIndex() {
+		Repeated<Void> inner = new Repeated<>(Variable.integer("j"),
+				new StaticReference<>(Integer.class, "j").lessThan(new IntegerConstant(4)));
+		Scope<Void> body = new Scope<>("body");
+		body.assign(new StaticReference<>(Double.class, "bodyTarget"), new DoubleConstant(1.0));
+		inner.getChildren().add(body);
+
+		Scope<Void> outer = new Scope<>("outer");
+		outer.getChildren().add(inner);
+
+		Set<String> names = new HashSet<>();
+		outer.appendAssignedNames(names);
+		Assert.assertEquals(new HashSet<>(Arrays.asList("j", "bodyTarget")), names);
+	}
+
+	/**
+	 * Only the statements and declarations the filter accepts contribute their names, in the
+	 * scope and in its descendants alike, so a declaration accounted for by other means can be
+	 * left out while a later reassignment of the same name still counts.
+	 */
+	@Test(timeout = 30000)
+	public void excludedStatementsAddNothing() {
+		ExpressionAssignment<Double> declaration = new ExpressionAssignment<>(true,
+				new StaticReference<>(Double.class, "accumulator"), new DoubleConstant(0.0));
+
+		Scope<Void> scope = new Scope<>("parent");
+		scope.getStatements().add(declaration);
+
+		Scope<Void> child = new Scope<>("child");
+		ExpressionAssignment<Double> childDeclaration = new ExpressionAssignment<>(true,
+				new StaticReference<>(Double.class, "local"), new DoubleConstant(2.0));
+		child.getStatements().add(childDeclaration);
+		scope.getChildren().add(child);
+
+		Set<Statement<?>> excluded = Collections.newSetFromMap(new IdentityHashMap<>());
+		excluded.addAll(Arrays.asList(declaration, childDeclaration));
+		Set<String> names = new HashSet<>();
+		scope.appendAssignedNames(names, statement -> !excluded.contains(statement));
+		Assert.assertTrue(names.toString(), names.isEmpty());
+
+		scope.assign(new StaticReference<>(Double.class, "accumulator"),
+				new StaticReference<>(Double.class, "increment"));
+		scope.appendAssignedNames(names, statement -> !excluded.contains(statement));
+		Assert.assertEquals(Collections.singleton("accumulator"), names);
 	}
 
 	/**

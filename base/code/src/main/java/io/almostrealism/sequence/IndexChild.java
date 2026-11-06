@@ -147,9 +147,9 @@ public class IndexChild extends Sum<Integer> implements Index {
 	 * child indices refer to.</p>
 	 */
 	@Override
-	public void collectReferencedNames(Set<String> names) {
+	public void appendReferencedNames(Set<String> names) {
 		names.add(getName());
-		super.collectReferencedNames(names);
+		super.appendReferencedNames(names);
 	}
 
 	/**

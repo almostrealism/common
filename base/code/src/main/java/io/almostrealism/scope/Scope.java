@@ -37,6 +37,7 @@ import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.scope.Argument.Expectation;
+import io.almostrealism.sequence.Index;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.uml.Signature;
 import org.almostrealism.io.Console;
@@ -1136,41 +1137,100 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 */
 	@Override
 	public void appendAssignedNames(Set<String> names) {
-		// TODO(review): no production caller; Repeated.collectBaseVariantNamesRecursive duplicates this traversal (declaration-filtered)
+		appendAssignedNames(names, statement -> true);
+	}
+
+	/**
+	 * Adds to {@code names} the names of the variables assigned by the
+	 * {@link Statement statements} and declarations of this scope and of its descendants that
+	 * {@code included} accepts, so that an analysis which accounts for some statements by
+	 * other means (as loop-invariant code motion does for the declarations it may hoist) learns
+	 * what the rest of the scope assigns without walking the scope itself.
+	 *
+	 * <p>A subclass that assigns a variable besides its statements and declarations adds it
+	 * here, as {@link Repeated} does for its index.</p>
+	 *
+	 * @param names    the set to which the names are added
+	 * @param included which statements and declarations contribute their assigned names
+	 */
+	public void appendAssignedNames(Set<String> names, Predicate<Statement<?>> included) {
 		for (Statement<?> statement : getStatements()) {
-			statement.appendAssignedNames(names);
+			if (included.test(statement)) statement.appendAssignedNames(names);
 		}
 
 		for (ExpressionAssignment<?> declaration : getVariables()) {
-			declaration.appendAssignedNames(names);
+			if (included.test(declaration)) declaration.appendAssignedNames(names);
 		}
 
 		for (Scope<?> child : getChildren()) {
-			child.appendAssignedNames(names);
+			child.appendAssignedNames(names, included);
+		}
+	}
+
+	/**
+	 * Returns the {@link Index} of every loop in this scope and its descendants, in traversal
+	 * order.
+	 *
+	 * @return a new list of the loop indices
+	 * @see #appendLoopIndices(List)
+	 */
+	public List<Index> collectLoopIndices() {
+		List<Index> indices = new ArrayList<>();
+		appendLoopIndices(indices);
+		return indices;
+	}
+
+	/**
+	 * Adds to {@code indices} the {@link Index} of every loop in this scope and its
+	 * descendants, in traversal order, so that an analysis of expressions which may refer to a
+	 * loop index through the {@link Index} interface, rather than through a variable
+	 * dependency, knows which indices advance inside this scope.
+	 *
+	 * <p>A plain scope declares no index of its own and only asks its children; a subclass
+	 * that advances an index adds it here, as {@link Repeated} does.</p>
+	 *
+	 * @param indices the list to which the indices are added
+	 */
+	public void appendLoopIndices(List<Index> indices) {
+		for (Scope<?> child : getChildren()) {
+			child.appendLoopIndices(indices);
 		}
 	}
 
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>The answer is read off the scope's {@link #collectAssignments() assignments}, each asked
-	 * whether it {@link ExpressionAssignment#appendReadPositions reads}, and a scope whose code
-	 * cannot be enumerated that way may read anything, so for it every position is read.</p>
+	 * <p>Like {@link #containsAssignment(ArrayVariable, long, long)}, the answer is read off the
+	 * scope itself: each of its {@link Statement statements} and declarations records what it
+	 * reads, and each child scope records what its own content reads. A scope with methods,
+	 * metrics or a required scope may read anything, since every one of those runs code that is
+	 * not among its statements, so for it every position is read.</p>
+	 *
+	 * <p>A subclass that generates any other code which may read memory must override this
+	 * method to account for it, as {@link Repeated} does for its loop condition and interval,
+	 * {@link Cases} for its branch conditions, and {@link ExplicitScope} and {@link HybridScope}
+	 * for their explicit code.</p>
 	 */
 	@Override
 	public void appendReadPositions(ReadPositions reads) {
-		// TODO(review): recurse statements/declarations/children like containsAssignment, so loops and branches stop reading everything
-		List<ExpressionAssignment<?>> assignments =
-				getAllRequiredScopes().isEmpty() ? collectAssignments() : null;
-
-		if (assignments == null) {
+		if (!getRequiredScopes().isEmpty() || !getMethods().isEmpty() || !getMetrics().isEmpty()) {
 			reads.addEverything();
 			return;
 		}
 
-		for (ExpressionAssignment<?> assignment : assignments) {
+		for (Statement<?> statement : getStatements()) {
 			if (reads.isEverything()) return;
-			assignment.appendReadPositions(reads);
+			statement.appendReadPositions(reads);
+		}
+
+		for (ExpressionAssignment<?> declaration : getVariables()) {
+			if (reads.isEverything()) return;
+			declaration.appendReadPositions(reads);
+		}
+
+		for (Scope<?> child : getChildren()) {
+			if (reads.isEverything()) return;
+			child.appendReadPositions(reads);
 		}
 	}
 
@@ -1393,7 +1453,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 */
 	public List<ExpressionAssignment<?>> collectDeclarations() {
 		List<ExpressionAssignment<?>> declarations = new ArrayList<>();
-		collectDeclarations(declarations);
+		appendDeclarations(declarations);
 		return declarations;
 	}
 
@@ -1402,7 +1462,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 *
 	 * @param declarations the list to add declarations to
 	 */
-	private void collectDeclarations(List<ExpressionAssignment<?>> declarations) {
+	private void appendDeclarations(List<ExpressionAssignment<?>> declarations) {
 		for (Statement<?> stmt : getStatements()) {
 			if (stmt instanceof ExpressionAssignment) {
 				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
@@ -1413,7 +1473,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		}
 
 		for (Scope<?> child : getChildren()) {
-			child.collectDeclarations(declarations);
+			child.appendDeclarations(declarations);
 		}
 	}
 }

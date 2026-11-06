@@ -158,6 +158,17 @@ public class HybridScope<T> extends Scope<T> {
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>Every position is read: the body is explicit code, or the output of a
+	 * {@link CodeGenerator}, whose reads cannot be enumerated, so it may read anything.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		reads.addEverything();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p>Always {@code null}: the body is explicit code, or the output of a {@link CodeGenerator},
 	 * which is not made of assignments.</p>
 	 */

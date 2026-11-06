@@ -222,6 +222,20 @@ public class Cases<T> extends Scope<T> {
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The scope also reads whatever its {@link #getConditions() branch conditions} read.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		super.appendReadPositions(reads);
+
+		for (Expression<Boolean> condition : getConditions()) {
+			if (reads.visit(condition)) condition.appendReadPositions(reads);
+		}
+	}
+
+	/**
 	 * Generates a new cases scope with the given children while preserving this scope's configuration.
 	 *
 	 * @param children the child scopes to include in the generated scope

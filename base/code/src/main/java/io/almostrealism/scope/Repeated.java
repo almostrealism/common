@@ -33,10 +33,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * A {@link Scope} representing a repeated (loop) block of code.
@@ -227,7 +229,7 @@ public class Repeated<T> extends Scope<T> {
 		scope.setCondition(getCondition().simplify(context, depth + 1));
 
 		if (enableLoopInvariantHoisting && index != null) {
-			hoistLoopInvariantStatements(scope);
+			scope.hoistLoopInvariantStatements();
 		}
 
 		if (ScopeSettings.enableAccumulatorPromotion) {
@@ -249,42 +251,39 @@ public class Repeated<T> extends Scope<T> {
 	 * Non-declaration assignments might have side effects or depend on values
 	 * assigned earlier in the loop, so they are not hoisted.</p>
 	 *
-	 * @param scope the simplified scope to optimize
+	 * <p>This loop is modified in place; {@link #simplify(KernelStructureContext, int)}
+	 * applies it to the simplified copy it returns.</p>
 	 */
-	private void hoistLoopInvariantStatements(Repeated<T> scope) {
-		// Phase 1: collect the base set of loop-variant variable names.
-		// This includes the loop index, nested loop indices, and destinations
-		// of non-declaration assignments (e.g., array element writes like source[offset] = 0.0).
-		Set<String> variantNames = collectBaseVariantNames(scope);
-
-		// Collect all loop indices (this scope's index plus nested loop indices)
-		List<Index> loopIndices = collectLoopIndices(scope);
-
-		// Phase 2: collect all declarations from child scopes and propagate variance.
-		// A declaration is variant if its expression references any variant name.
-		// Since declarations can form dependency chains (f_1 depends on f_0), we
-		// iterate until no new variant names are discovered (fixed-point).
+	private void hoistLoopInvariantStatements() {
+		// Phase 1: collect the declarations that may be hoisted, and the base set of
+		// loop-variant names: everything else the loop assigns, and its indices.
 		List<ExpressionAssignment<?>> allDeclarations = new ArrayList<>();
-		for (Scope<T> child : scope.getChildren()) {
+		for (Scope<T> child : getChildren()) {
 			allDeclarations.addAll(child.collectDeclarations());
 		}
 
+		Set<String> variantNames = collectBaseVariantNames(allDeclarations);
+
+		// Collect all loop indices (this scope's index plus nested loop indices)
+		List<Index> loopIndices = collectLoopIndices();
+
+		// Phase 2: propagate variance through declaration dependency chains (fixed-point).
 		propagateVariance(allDeclarations, variantNames, loopIndices);
 
 		// Phase 3: hoist declarations whose names are NOT in the variant set.
 		List<Statement<?>> hoisted = new ArrayList<>();
 
-		for (Scope<T> child : scope.getChildren()) {
+		for (Scope<T> child : getChildren()) {
 			hoistInvariantDeclarations(child, variantNames, hoisted);
 		}
 
 		// Phase 4: extract loop-invariant sub-expressions from remaining variant
 		// declaration expressions.
 		List<Statement<?>> extractedDeclarations = new ArrayList<>();
-		extractInvariantSubExpressions(scope, variantNames, loopIndices, extractedDeclarations);
+		extractInvariantSubExpressions(variantNames, loopIndices, extractedDeclarations);
 
 		if (enableLicmDiagnostics && allDeclarations.size() > 10) {
-			log(scope.getName() + ": " +
+			log(getName() + ": " +
 					allDeclarations.size() + " decls, " +
 					hoisted.size() + " hoisted, " +
 					extractedDeclarations.size() + " extracted");
@@ -296,7 +295,7 @@ public class Repeated<T> extends Scope<T> {
 		List<Statement<?>> allHoisted = new ArrayList<>();
 		allHoisted.addAll(hoisted);
 		allHoisted.addAll(extractedDeclarations);
-		scope.getStatements().addAll(0, allHoisted);
+		getStatements().addAll(0, allHoisted);
 	}
 
 	/**
@@ -354,13 +353,13 @@ public class Repeated<T> extends Scope<T> {
 			} else if (dest != null) {
 				// An unrecognized destination may mutate anything it references, so
 				// every name it mentions is treated as loop-variant.
-				dest.collectReferencedNames(loopScalars);
+				dest.appendReferencedNames(loopScalars);
 			}
 		}
 
 		if (storedArrays.isEmpty()) return this;
 
-		List<Index> loopIndices = collectLoopIndices(this);
+		List<Index> loopIndices = collectLoopIndices();
 
 		// Distinct element references stored at a loop-invariant position, per array;
 		// an array with any variant-position store is disqualified outright.
@@ -492,18 +491,17 @@ public class Repeated<T> extends Scope<T> {
 	 * ({@code minDepth = 1}) while non-declaration assignments use a higher threshold
 	 * ({@code minDepth = 3}) to avoid extracting trivially cheap sub-expressions.</p>
 	 *
-	 * @param scope the Repeated scope being optimized
 	 * @param variantNames the set of loop-variant variable names
 	 * @param loopIndices all loop indices (outer and nested)
 	 * @param extractedDeclarations list to receive the new extracted declarations
 	 */
-	private void extractInvariantSubExpressions(Repeated<T> scope, Set<String> variantNames,
+	private void extractInvariantSubExpressions(Set<String> variantNames,
 												List<Index> loopIndices,
 												List<Statement<?>> extractedDeclarations) {
 		Map<Expression<?>, StaticReference<?>> extracted = new HashMap<>();
 		int[] extractIdx = { 0 };
 
-		for (Scope<T> child : scope.getChildren()) {
+		for (Scope<T> child : getChildren()) {
 			extractFromScope(child, variantNames, loopIndices, extracted, extractIdx, extractedDeclarations);
 		}
 	}
@@ -717,65 +715,58 @@ public class Repeated<T> extends Scope<T> {
 	}
 
 	/**
-	 * Collects the base set of loop-variant variable names, excluding declaration names.
+	 * Collects the base set of loop-variant variable names: the loop index, and every name the
+	 * loop body {@link Scope#appendAssignedNames(Set, java.util.function.Predicate) assigns}
+	 * other than by the given declarations, including the indices of nested loops.
 	 *
-	 * <p>This includes the loop index variable, nested loop indices, and the destinations
-	 * of non-declaration assignments (array element writes, etc.). Declaration names are
-	 * handled separately via variance propagation in {@link #propagateVariance}.</p>
+	 * <p>The given declarations are the candidates for hoisting, whose names are decided
+	 * separately via variance propagation in {@link #propagateVariance}. Anything else that
+	 * assigns a name (array element writes, a later reassignment of a declared name, a
+	 * statement that does not account for its writes) changes it on every iteration.</p>
 	 *
-	 * @param scope the repeated scope to analyze
+	 * @param declarations the declarations whose variance is decided by propagation
 	 * @return a set of variable names that are inherently loop-variant
 	 */
-	private static <T> Set<String> collectBaseVariantNames(Repeated<T> scope) {
+	private Set<String> collectBaseVariantNames(List<ExpressionAssignment<?>> declarations) {
 		Set<String> variantNames = new HashSet<>();
 
-		// The loop index itself is loop-variant
-		Variable<Integer, ?> scopeIndex = scope.getIndex();
-		if (scopeIndex != null && scopeIndex.getName() != null) {
-			variantNames.add(scopeIndex.getName());
+		if (index != null && index.getName() != null) {
+			variantNames.add(index.getName());
 		}
 
-		// Collect non-declaration assignment targets and nested loop indices
-		for (Scope<T> child : scope.getChildren()) {
-			collectBaseVariantNamesRecursive(child, variantNames);
+		Set<Statement<?>> propagated = Collections.newSetFromMap(new IdentityHashMap<>());
+		propagated.addAll(declarations);
+
+		for (Scope<T> child : getChildren()) {
+			child.appendAssignedNames(variantNames, statement -> !propagated.contains(statement));
 		}
 
 		return variantNames;
 	}
 
 	/**
-	 * Recursively collects non-declaration assignment targets and nested loop indices.
+	 * {@inheritDoc}
 	 *
-	 * @param scope the scope to analyze
-	 * @param variantNames the set to add variant names to
+	 * <p>The loop also assigns its {@link #getIndex() index}, which it advances on every
+	 * iteration.</p>
 	 */
-	private static void collectBaseVariantNamesRecursive(Scope<?> scope, Set<String> variantNames) {
-		if (scope instanceof Repeated) {
-			Repeated<?> nested = (Repeated<?>) scope;
-			Variable<Integer, ?> nestedIndex = nested.getIndex();
-			if (nestedIndex != null && nestedIndex.getName() != null) {
-				variantNames.add(nestedIndex.getName());
-			}
-		}
+	@Override
+	public void appendAssignedNames(Set<String> names, Predicate<Statement<?>> included) {
+		if (index != null && index.getName() != null) names.add(index.getName());
+		super.appendAssignedNames(names, included);
+	}
 
-		for (Statement<?> stmt : scope.getStatements()) {
-			if (stmt instanceof ExpressionAssignment) {
-				ExpressionAssignment<?> assignment = (ExpressionAssignment<?>) stmt;
-				if (!assignment.isDeclaration()) {
-					// Non-declaration assignments (e.g., source[offset] = 0.0) are
-					// inherently loop-variant because they mutate state each iteration
-					assignment.appendAssignedNames(variantNames);
-				}
-			}
-		}
-
-		for (ExpressionAssignment<?> var : scope.getVariables()) {
-			var.appendAssignedNames(variantNames);
-		}
-
-		for (Scope<?> child : scope.getChildren()) {
-			collectBaseVariantNamesRecursive(child, variantNames);
-		}
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The loop also reads whatever its {@link #getCondition() condition} and
+	 * {@link #getInterval() interval} read, on every iteration.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		super.appendReadPositions(reads);
+		if (condition != null && reads.visit(condition)) condition.appendReadPositions(reads);
+		if (interval != null && reads.visit(interval)) interval.appendReadPositions(reads);
 	}
 
 	/**
@@ -803,7 +794,7 @@ public class Repeated<T> extends Scope<T> {
 
 			Expression<?> expr = decl.getExpression();
 			Set<String> names = new HashSet<>();
-			expr.collectReferencedNames(names);
+			expr.appendReferencedNames(names);
 
 			boolean hasLoopIdx = false;
 			for (Index idx : loopIndices) {
@@ -844,49 +835,15 @@ public class Repeated<T> extends Scope<T> {
 	}
 
 	/**
-	 * Collects all Index objects from this scope and nested Repeated scopes.
+	 * {@inheritDoc}
 	 *
-	 * <p>This is necessary because expressions may reference loop indices via
-	 * the Index interface rather than through Variable dependencies.</p>
-	 *
-	 * @param scope the scope to analyze
-	 * @return a list of all Index objects from this and nested loops
+	 * <p>The loop adds its own {@link #getIndex() index}, when that is an {@link Index},
+	 * before the indices of the loops nested in it.</p>
 	 */
-	private static <T> List<Index> collectLoopIndices(Repeated<T> scope) {
-		List<Index> indices = new ArrayList<>();
-
-		// Add this scope's index if it implements Index
-		Variable<Integer, ?> scopeIndex = scope.getIndex();
-		if (scopeIndex instanceof Index) {
-			indices.add((Index) scopeIndex);
-		}
-
-		// Recursively collect from children
-		for (Scope<T> child : scope.getChildren()) {
-			collectLoopIndicesRecursive(child, indices);
-		}
-
-		return indices;
-	}
-
-	/**
-	 * Recursively collects Index objects from nested Repeated scopes.
-	 *
-	 * @param scope the scope to analyze
-	 * @param indices the list to add indices to
-	 */
-	private static void collectLoopIndicesRecursive(Scope<?> scope, List<Index> indices) {
-		if (scope instanceof Repeated) {
-			Repeated<?> nested = (Repeated<?>) scope;
-			Variable<Integer, ?> nestedIndex = nested.getIndex();
-			if (nestedIndex instanceof Index) {
-				indices.add((Index) nestedIndex);
-			}
-		}
-
-		for (Scope<?> child : scope.getChildren()) {
-			collectLoopIndicesRecursive(child, indices);
-		}
+	@Override
+	public void appendLoopIndices(List<Index> indices) {
+		if (index instanceof Index) indices.add((Index) index);
+		super.appendLoopIndices(indices);
 	}
 
 	/**

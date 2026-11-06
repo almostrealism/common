@@ -215,6 +215,7 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	 */
 	@Override
 	public void appendAssignedNames(Set<String> names) {
+		// TODO(review): this override and appendReadPositions below only call super; consider removing them
 		super.appendAssignedNames(names);
 	}
 

@@ -274,7 +274,7 @@ public interface ExpressionReferences extends VariableReferenceSupport {
 	 *
 	 * @param names the output set to which all referenced names are added
 	 */
-	default void collectReferencedNames(Set<String> names) {
+	default void appendReferencedNames(Set<String> names) {
 		List<Expression<?>> children = getChildren();
 		if (children.isEmpty()) {
 			for (Variable<?, ?> var : getDependencies()) {
@@ -286,7 +286,7 @@ public interface ExpressionReferences extends VariableReferenceSupport {
 		}
 
 		for (Expression<?> child : children) {
-			child.collectReferencedNames(names);
+			child.appendReferencedNames(names);
 		}
 	}
 }

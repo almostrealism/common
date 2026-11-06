@@ -301,12 +301,12 @@ public class Variable<T, V extends Variable<T, ?>>
 	 * @param expectation how the code is expected to use this variable
 	 * @param arguments   the list to which the arguments are added
 	 */
-	public void collectArguments(Argument.Expectation expectation, List<Argument<?>> arguments) {
+	public void appendArguments(Argument.Expectation expectation, List<Argument<?>> arguments) {
 		Argument<T> argument = new Argument<>(this, expectation);
 		if (!arguments.contains(argument)) arguments.add(argument);
 
 		for (Variable<?, ?> dependency : getDependencies()) {
-			if (dependency != null) dependency.collectArguments(Argument.Expectation.EVALUATE_AHEAD, arguments);
+			if (dependency != null) dependency.appendArguments(Argument.Expectation.EVALUATE_AHEAD, arguments);
 		}
 	}
 

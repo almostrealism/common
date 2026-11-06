@@ -308,6 +308,75 @@ public class AggregateCopyBackTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A loop reads what its body reads and what its condition reads, and nothing else: a loop
+	 * whose body assigns one aggregated argument from a second, under a condition that reads a
+	 * third, reads the slices of the second and the third but not that of the first.
+	 */
+	@Test(timeout = 60000)
+	public void loopReadsOnlyWhatItsBodyAndConditionRead() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection bound = pack(2.0, 2.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), PackedCollection::new);
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				ArrayVariable<?> boundArg = map.get(p(bound));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+
+				DefaultIndex index = new DefaultIndex("i", 2);
+				Repeated<Void> loop = new Repeated<>(Variable.integer("i"),
+						index.lessThan(boundArg.reference(new IntegerConstant(0))));
+				Scope<Void> body = new Scope<>("body");
+				body.assign(writtenArg.reference(new KernelIndex()), readArg.reference(index));
+				loop.getChildren().add(body);
+
+				BitSet slices = map.getReadSlices(loop);
+				Assert.assertTrue("The body reads the first slice", slices.get(0));
+				Assert.assertTrue("The condition reads the second slice", slices.get(1));
+				Assert.assertFalse("The slice the loop only writes is not read", slices.get(2));
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
+	 * A choice among branches reads what its conditions read and what its branches read, and
+	 * nothing else: a branch that assigns a constant to one aggregated argument, taken on a
+	 * condition that reads a second, reads only the second one's slice.
+	 */
+	@Test(timeout = 60000)
+	public void branchesReadOnlyWhatTheirConditionsAndBranchesRead() {
+		try (PackedCollection read = pack(1.0, 2.0);
+			 PackedCollection untouched = pack(5.0, 6.0);
+			 PackedCollection written = pack(3.0, 4.0)) {
+			MemoryDataArgumentMap map = MemoryDataArgumentMap.create(
+					Hardware.getLocalHardware().getComputeContext(), PackedCollection::new);
+
+			try {
+				ArrayVariable<?> readArg = map.get(p(read));
+				map.get(p(untouched));
+				ArrayVariable<?> writtenArg = map.get(p(written));
+
+				Cases<Void> cases = new Cases<>("branches");
+				Scope<Void> branch = new Scope<>("branch");
+				branch.assign(writtenArg.reference(new IntegerConstant(1)), new IntegerConstant(0));
+				cases.addCase(readArg.reference(new IntegerConstant(0)).greaterThan(new IntegerConstant(0)),
+						branch, null);
+
+				BitSet slices = map.getReadSlices(cases);
+				Assert.assertTrue("The condition reads the first slice", slices.get(0));
+				Assert.assertFalse("No code reads the second slice", slices.get(1));
+				Assert.assertFalse("The slice the branch only writes is not read", slices.get(2));
+			} finally {
+				map.destroy();
+			}
+		}
+	}
+
+	/**
 	 * Explicit code is not made of assignments that can be enumerated, so a kernel with a child
 	 * of explicit code, whether on its own or combined with a generated body, may write anything,
 	 * and every slice is reported as written.

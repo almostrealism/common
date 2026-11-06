@@ -125,7 +125,7 @@ public class ArgumentDependenciesTests extends TestSuiteBase {
 
 		List<Argument<?>> args = new ArrayList<>();
 		args.add(new Argument<>(root, Expectation.EVALUATE_AHEAD));
-		view.collectArguments(Expectation.WILL_EVALUATE, args);
+		view.appendArguments(Expectation.WILL_EVALUATE, args);
 
 		Assert.assertEquals(Arrays.asList(
 						new Argument<>(root, Expectation.EVALUATE_AHEAD),

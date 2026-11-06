@@ -88,9 +88,9 @@ public class StaticReference<T> extends Expression<T> {
 	 * referent and indices.</p>
 	 */
 	@Override
-	public void collectReferencedNames(Set<String> names) {
+	public void appendReferencedNames(Set<String> names) {
 		if (getName() != null) names.add(getName());
-		super.collectReferencedNames(names);
+		super.appendReferencedNames(names);
 	}
 
 	/**
