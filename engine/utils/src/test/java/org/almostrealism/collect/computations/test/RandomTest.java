@@ -85,6 +85,44 @@ public class RandomTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Two generators sharing a single {@link java.util.Random} source draw their
+	 * values in construction order, not in the order they are later evaluated.
+	 * The first-constructed generator holds the first slice of the seeded source
+	 * and the second-constructed generator the next slice, even when the second
+	 * is evaluated before the first. This pins the reproducibility contract that
+	 * the drawing happens at construction: were it deferred to first evaluation,
+	 * evaluating the second generator first would hand it the first slice, so the
+	 * two generators' values would depend on evaluation (kernel scheduling) order
+	 * rather than on the seed.
+	 */
+	@Test(timeout = 10000)
+	public void sharedSourceDrawsInConstructionOrderNotEvaluationOrder() {
+		TraversalPolicy shape = new TraversalPolicy(4);
+		int size = shape.getTotalSize();
+		long seed = 42L;
+
+		// Draws the first and second constructed generators must each hold
+		java.util.Random reference = new java.util.Random(seed);
+		double[] expectedFirst = new double[size];
+		double[] expectedSecond = new double[size];
+		for (int i = 0; i < size; i++) expectedFirst[i] = reference.nextDouble();
+		for (int i = 0; i < size; i++) expectedSecond[i] = reference.nextDouble();
+
+		java.util.Random shared = new java.util.Random(seed);
+		Random first = new Random(shape, false, shared);
+		Random second = new Random(shape, false, shared);
+
+		// Evaluate in the reverse of construction order
+		PackedCollection secondValues = second.get().evaluate();
+		PackedCollection firstValues = first.get().evaluate();
+
+		for (int i = 0; i < size; i++) {
+			Assert.assertEquals(expectedFirst[i], firstValues.toDouble(i), 0.0);
+			Assert.assertEquals(expectedSecond[i], secondValues.toDouble(i), 0.0);
+		}
+	}
+
+	/**
 	 * {@link Random#refresh()} clears the cache so the next evaluation regenerates
 	 * the values, producing a different series than the one held before the refresh.
 	 */
