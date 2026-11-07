@@ -128,6 +128,39 @@ public class ImageCanvasTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies PPM encoding emits a structurally valid NetPBM {@code P3} header:
+	 * the magic, then the {@code width height} line, then the {@code maxval}. A
+	 * non-square image is used so the two dimensions are distinguishable, and the
+	 * pixel token count must equal {@code width * height * 3}.
+	 *
+	 * <p>The raster is written row-major as {@code image[0].length} rows of
+	 * {@code image.length} pixels (matching the {@code PIXEncoding} branch, which
+	 * uses {@code w = image.length}, {@code h = image[0].length}), so width is
+	 * {@code image.length} and height is {@code image[0].length}.</p>
+	 */
+	@Test(timeout = 30000)
+	public void writeImagePpmHeaderIncludesDimensions() throws IOException {
+		int width = 3;
+		int height = 2;
+		RGB[][] image = new RGB[width][height];
+		for (int i = 0; i < width; i++) {
+			for (int j = 0; j < height; j++) {
+				image[i][j] = new RGB(0.0, 0.0, 0.0);
+			}
+		}
+
+		ByteArrayOutputStream out = new ByteArrayOutputStream();
+		ImageCanvas.writeImage(image, out, ImageCanvas.PPMEncoding);
+
+		String[] tokens = out.toString(StandardCharsets.UTF_8).trim().split("\\s+");
+		Assert.assertEquals("P3", tokens[0]);
+		Assert.assertEquals(Integer.toString(width), tokens[1]);
+		Assert.assertEquals(Integer.toString(height), tokens[2]);
+		Assert.assertEquals("255", tokens[3]);
+		Assert.assertEquals(4 + width * height * 3, tokens.length);
+	}
+
+	/**
 	 * Verifies PIX encoding writes the fixed-size byte buffer with the dimension
 	 * header and 24-bit depth marker.
 	 */
