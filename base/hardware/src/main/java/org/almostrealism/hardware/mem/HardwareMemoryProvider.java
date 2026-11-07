@@ -190,7 +190,7 @@ import java.util.stream.Stream;
  * @see NativeRef
  * @see MemoryProvider
  */
-public abstract class HardwareMemoryProvider<T extends RAM> implements MemoryProvider<T>, ConsoleFeatures {
+public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemoryProvider<T> implements ConsoleFeatures {
 	/** If true, deallocation is deferred to a background queue rather than happening synchronously. */
 	public static boolean queueDeallocation = false;
 

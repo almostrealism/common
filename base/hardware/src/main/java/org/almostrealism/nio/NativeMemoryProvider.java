@@ -403,9 +403,7 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 			}
 		}
 
-		double[] value = new double[length];
-		source.getProvider().getMem(source, srcOffset, value, 0, length);
-		setMem(mem, offset, value, 0, length);
+		setMemInChunks(mem, offset, source, srcOffset, length);
 	}
 
 	@Override

@@ -318,7 +318,7 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 			return;
 		}
 
-		setMem(mem, offset, srcRam.toArray(srcOffset, length), 0, length);
+		setMemInChunks(mem, offset, srcRam, srcOffset, length);
 	}
 
 	@Override
