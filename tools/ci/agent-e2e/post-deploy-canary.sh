@@ -83,9 +83,17 @@ CANARY_BASE_BRANCH="${CANARY_BASE_BRANCH:-master}"
 CANARY_TIMEOUT_SECONDS="${CANARY_TIMEOUT_SECONDS:-3600}"
 CANARY_POLL_SECONDS="${CANARY_POLL_SECONDS:-20}"
 
-# The file the agent is asked to write. Kept inside the e2e tooling so its
-# purpose is obvious to anyone who finds it in a diff.
-CANARY_FILE="tools/ci/agent-e2e/canary/last-run.txt"
+# The file the agent is asked to write. It MUST live outside every path the
+# agent staging guardrails protect, because the canary runs on the non-ci/
+# branch agent-canary and so exercises the ordinary commit path: tools/ci/** is
+# under the CI file lock (FileStager.protectCiFiles), .github/workflows|actions
+# are too, **/src/test|it/** are under the test lock, .claude/ is sensitive, and
+# .flowtree/ is scratch the commit guard drops. tools/canary/ is under none of
+# them, so a plain agent job can publish the marker. Overridable from the
+# workflow (see deploy.yaml) but the default keeps run/verify/selftest working
+# standalone. Do not move it back under tools/ci/ — that is what made every
+# canary run end DEGRADED, unable to commit the marker at all.
+CANARY_FILE="${CANARY_FILE:-tools/canary/last-run.txt}"
 
 die() { echo "::error::$*" >&2; exit 1; }
 

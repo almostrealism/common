@@ -41,6 +41,21 @@ class CanarySubmissionSettingsTest(unittest.TestCase):
     def test_waits_an_hour_by_default(self):
         self.assertIn('CANARY_TIMEOUT_SECONDS="${CANARY_TIMEOUT_SECONDS:-3600}"', self.script)
 
+    def test_marker_path_is_outside_the_ci_file_lock(self):
+        """The marker must not live under tools/ci/ (or any guarded path): the
+        canary runs on the non-ci/ agent-canary branch, where the harness drops
+        a tools/ci/** write under the CI file lock. The old path made every run
+        end DEGRADED, unable to commit the marker."""
+        match = re.search(r'(?m)^CANARY_FILE="\$\{CANARY_FILE:-([^}]+)\}"', self.script)
+        self.assertIsNotNone(match, "CANARY_FILE must have an overridable default")
+        path = match.group(1)
+        self.assertFalse(path.startswith("tools/ci/"),
+                         "marker must not be under the CI file lock: " + path)
+        self.assertNotRegex(path, r"(^|/)(src/test|src/it)/")
+        self.assertFalse(path.startswith(".github/"))
+        self.assertFalse(path.startswith(".claude/"))
+        self.assertFalse(path.startswith(".flowtree/"))
+
     def test_still_queued_has_its_own_exit_status(self):
         """Exit 3 and outcome=queued, distinct from the exit 1 of every failure."""
         queued = re.search(r"still-queued\)\n(.*?);;", self.script, re.S)
