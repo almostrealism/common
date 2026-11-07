@@ -524,6 +524,51 @@ public class FileStagerTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Verifies that the post-deploy canary marker ({@code tools/canary/last-run.txt})
+	 * is stageable under the configuration an ordinary job on the non-{@code ci/}
+	 * {@code agent-canary} branch produces — both locks on, with the production
+	 * {@link GitJobConfig#PROTECTED_PATH_PATTERNS} and
+	 * {@link GitJobConfig#DEFAULT_EXCLUDED_PATTERNS}.
+	 *
+	 * <p>The marker used to live at {@code tools/ci/agent-e2e/canary/last-run.txt},
+	 * which {@link FileStagingConfig#isCiLocked} drops whole-file under the CI file
+	 * lock, so every canary run ended DEGRADED, unable to commit it. The new path is
+	 * outside {@code tools/ci/**}, {@code .github/**}, {@code **}{@code /src/test|it/**},
+	 * {@code .claude/} and {@code .flowtree/}, so the same commit path an ordinary job
+	 * uses can publish it. A merge-base listing without the marker stands in for its
+	 * first appearance on the branch; it must stage regardless, since no protected
+	 * pattern matches it.</p>
+	 */
+	@Test(timeout = 30000)
+	public void stagesTheCanaryMarkerOutsideEveryGuardrail() throws IOException {
+		Path tempDir = Files.createTempDirectory("stager-test");
+		try {
+			Files.createDirectories(tempDir.resolve("tools/canary"));
+			Files.writeString(tempDir.resolve("tools/canary/last-run.txt"),
+				"canary-20261107T000000Z-1-2\ndeployed-sha=abc1234\n");
+
+			FileStagingConfig config = FileStagingConfig.builder()
+				.protectTestFiles(true)
+				.protectCiFiles(true)
+				.excludedPatterns(GitJobConfig.DEFAULT_EXCLUDED_PATTERNS)
+				.protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+				.baseBranch("master")
+				.build();
+
+			StagingResult result = new FileStager().evaluateFiles(
+				Collections.singletonList("tools/canary/last-run.txt"),
+				config, tempDir.toFile(), listingGitOps());
+
+			assertTrue("the canary marker must stage on a non-ci/ job config; got skipped="
+				+ result.getSkippedFiles(),
+				result.getSkippedFiles().isEmpty());
+			assertEquals(Collections.singletonList("tools/canary/last-run.txt"), result.getStagedFiles());
+		} finally {
+			deleteRecursively(tempDir);
+		}
+	}
+
 	/** Verifies that files missing from disk (deleted files) are still staged for removal. */
 	@Test(timeout = 30000)
 	public void handlesDeletedFiles() throws IOException {

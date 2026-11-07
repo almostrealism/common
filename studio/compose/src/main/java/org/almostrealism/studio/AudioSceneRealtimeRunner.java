@@ -489,10 +489,12 @@ public class AudioSceneRealtimeRunner implements CellFeatures {
 			}
 		}
 
-		// Created only after every fallible construction step above has succeeded, so a
-		// failure never leaves an orphaned stream. The runner owns it and stops it in reset().
+		// Created and registered only after every fallible construction step above has
+		// succeeded, so a failure never leaves an orphaned stream. The runner owns it (and
+		// destroys it); the scene stops it before releasing the state it renders from.
 		PatternRenderStream renderStream = new PatternRenderStream(
 				renderOp, renderFrame, pdslInput, renderAheadSlots, inputChannels, bufferSize);
+		scene.registerRenderStream(renderStream);
 
 		return new TemporalCellular() {
 			/**

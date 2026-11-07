@@ -66,14 +66,8 @@ public class ConditionalExpressionBase extends OperandCollectionExpression {
 			return getOperands().get(i.getAsInt()).getValueAt(index);
 		}
 
-		Expression v = getOperands().get(0).getValueAt(index);
-
-		for (int j = 1; j < getOperands().size(); j++) {
-			v = Conditional.of(ch.eq(e(j)),
-					getOperands().get(j).getValueAt(index), v);
-		}
-
-		return v;
+		return Conditional.select(ch, getOperands().size(),
+				j -> getOperands().get(j).getValueAt(index));
 	}
 
 	/** {@inheritDoc} */

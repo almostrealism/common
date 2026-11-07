@@ -669,17 +669,35 @@ public class PrototypeDiscovery implements ConsoleFeatures, GraphFeatures {
 
 	/**
 	 * Builds a {@link PrototypeIndexData} from discovered prototypes for
-	 * persistence in the protobuf library file.
+	 * persistence in the protobuf library file, recording no feature model.
 	 *
 	 * @param prototypes the discovered prototypes
-	 * @return a persistable index
+	 * @return a persistable index with no recorded model
+	 * @see #buildIndex(List, String)
 	 */
 	public static PrototypeIndexData buildIndex(List<PrototypeResult> prototypes) {
+		return buildIndex(prototypes, null);
+	}
+
+	/**
+	 * Builds a {@link PrototypeIndexData} from discovered prototypes, recording
+	 * the feature model the prototypes were discovered from. The model is read
+	 * back by {@link PrototypeIndexData#isStale(java.util.Set, String)} so an
+	 * index is recomputed after a feature-model change rather than mixing
+	 * features from different models.
+	 *
+	 * @param prototypes      the discovered prototypes
+	 * @param modelIdentifier the feature model the prototypes were discovered
+	 *                        from, typically {@link AudioLibrary#currentModelId()},
+	 *                        or {@code null} if none
+	 * @return a persistable index tagged with the feature model
+	 */
+	public static PrototypeIndexData buildIndex(List<PrototypeResult> prototypes, String modelIdentifier) {
 		List<PrototypeIndexData.Community> communities = prototypes.stream()
 				.map(p -> new PrototypeIndexData.Community(
 						p.identifier(), p.centrality(), p.memberIdentifiers()))
 				.toList();
-		return new PrototypeIndexData(System.currentTimeMillis(), communities);
+		return new PrototypeIndexData(System.currentTimeMillis(), modelIdentifier, communities);
 	}
 
 	/**

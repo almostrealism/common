@@ -176,9 +176,10 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 
 	/**
 	 * A render that {@link PatternRenderStream#stop()} cancels, by failing on the interrupt
-	 * {@code stop()} delivers, is not reported as a render failure: a consumer waiting for a
-	 * slot is not woken with a "render-ahead failed" error, and only its own interrupt ends
-	 * the wait.
+	 * {@code stop()} delivers, is not reported as a render failure: a consumer blocked
+	 * awaiting a slot is woken by the stop so teardown cannot strand it, and it is rejected
+	 * with {@link IllegalStateException} ("not running") rather than a "render-ahead failed"
+	 * error — the cancelled render is never surfaced as a failure or its cause.
 	 */
 	@Test(timeout = 60000)
 	public void renderCancelledByStopIsNotReportedAsFailure() throws InterruptedException {
@@ -218,21 +219,100 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 
 			stream.stop();
 
-			consumer.join(500);
-			Assert.assertTrue("A cancelled render must not wake the waiting consumer", consumer.isAlive());
-
-			consumer.interrupt();
 			consumer.join(10000);
-			Assert.assertFalse("The consumer should exit on its own interrupt", consumer.isAlive());
-			Assert.assertTrue("The consumer should observe its interrupt, not a render failure: "
-					+ fromConsumer.get(), fromConsumer.get() instanceof HardwareException);
-			Assert.assertNull("A render cancelled by stop() must not be reported as its cause",
+			Assert.assertFalse("stop() must wake a consumer blocked awaiting a slot rather than "
+					+ "strand it with no producer left to fill one", consumer.isAlive());
+			Assert.assertTrue("The woken consumer should be rejected with IllegalStateException, was "
+					+ fromConsumer.get(), fromConsumer.get() instanceof IllegalStateException);
+			Assert.assertTrue("The rejection names the stopped stream, not a render failure",
+					fromConsumer.get().getMessage().contains("stopped"));
+			Assert.assertNull("A render cancelled by stop() must not be reported as a cause",
 					fromConsumer.get().getCause());
 			Assert.assertEquals(0, stream.buffersRendered());
 		} finally {
 			consumer.interrupt();
 			stream.destroy();
 			workingInput.destroy();
+		}
+	}
+
+	/**
+	 * A consumer that asks a stopped stream for a slot is rejected rather than left waiting
+	 * for a producer that no longer exists — the case of a runner ticked after the scene it
+	 * renders from was torn down or reloaded, which stops its stream.
+	 */
+	@Test(timeout = 60000)
+	public void awaitSlotOnStoppedStreamIsRejected() {
+		PackedCollection workingInput = new PackedCollection(shape(1, BUFFER_SIZE));
+		PatternRenderStream stream = new PatternRenderStream(() -> { }, new long[1],
+				workingInput, SLOTS, 1, BUFFER_SIZE);
+
+		try {
+			assertAwaitRejected(stream, "before the stream is started");
+
+			stream.start(1);
+			stream.awaitSlot();
+			stream.release();
+			stream.stop();
+
+			assertAwaitRejected(stream, "after the stream is stopped");
+		} finally {
+			stream.destroy();
+			workingInput.destroy();
+		}
+	}
+
+	/**
+	 * A producer failure is reported to every later {@link PatternRenderStream#awaitSlot()},
+	 * not only to the first, so a consumer that keeps ticking after a failure keeps seeing
+	 * it instead of blocking on a slot that will never be filled.
+	 */
+	@Test(timeout = 60000)
+	public void producerFailureIsReportedOnEveryAwait() {
+		AtomicInteger renders = new AtomicInteger();
+		Runnable failingRender = () -> {
+			if (renders.incrementAndGet() > 1) {
+				throw new IllegalStateException("render failure under test");
+			}
+		};
+
+		PackedCollection workingInput = new PackedCollection(shape(1, BUFFER_SIZE));
+		PatternRenderStream stream = new PatternRenderStream(failingRender, new long[1],
+				workingInput, SLOTS, 1, BUFFER_SIZE);
+
+		try {
+			stream.start(1);
+			stream.awaitSlot();
+			stream.release();
+
+			for (int i = 0; i < 3; i++) {
+				try {
+					stream.awaitSlot();
+					Assert.fail("await " + i + " after the producer failed must report the failure");
+				} catch (HardwareException expected) {
+					Assert.assertTrue("the report carries the render failure",
+							expected.getCause().getCause() instanceof IllegalStateException);
+				}
+			}
+		} finally {
+			stream.destroy();
+			workingInput.destroy();
+		}
+	}
+
+	/**
+	 * Asserts that awaiting a slot on the given stream is rejected with
+	 * {@link IllegalStateException}.
+	 *
+	 * @param stream the stream that is not running
+	 * @param when   describes the stream state, for the failure message
+	 */
+	private void assertAwaitRejected(PatternRenderStream stream, String when) {
+		try {
+			stream.awaitSlot();
+			Assert.fail("awaitSlot() must be rejected " + when);
+		} catch (IllegalStateException expected) {
+			Assert.assertTrue(expected.getMessage().contains("not running"));
 		}
 	}
 }
