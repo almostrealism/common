@@ -51,7 +51,14 @@ public class TestDepthRuleAudioDeviceTest extends TestSuiteBase {
 
 	/**
 	 * Applies the rule to the named {@link Candidates} method under the pipeline
-	 * profile, restoring the previous profile before returning.
+	 * profile, restoring the previous profile and test group before returning.
+	 *
+	 * <p>{@link TestDepthRule#apply} evaluates the target class's group assignment
+	 * before the profile condition, skipping the whole class when it does not hash
+	 * to the active {@code AR_TEST_GROUP}. Under CI, {@code engine/utils} is sharded,
+	 * so to exercise the profile behaviour regardless of which shard runs this test,
+	 * the active group is temporarily pinned to the one this class hashes to; the
+	 * {@code this} target then always passes the group check.</p>
 	 *
 	 * @param method the name of the {@link Candidates} method
 	 * @param base   the statement to wrap
@@ -59,17 +66,25 @@ public class TestDepthRuleAudioDeviceTest extends TestSuiteBase {
 	 */
 	private Statement applyUnderPipeline(String method, Statement base) throws NoSuchMethodException {
 		FrameworkMethod target = new FrameworkMethod(Candidates.class.getMethod(method));
-		String previous = System.getProperty("AR_TEST_PROFILE");
+		String previousProfile = System.getProperty("AR_TEST_PROFILE");
+		String previousGroup = System.getProperty("AR_TEST_GROUP");
 		System.setProperty("AR_TEST_PROFILE", TestUtils.PIPELINE);
+		// Pin the active group to this class so the rule's group check passes on any shard
+		System.setProperty("AR_TEST_GROUP", Integer.toString(TestUtils.getGroupForClass(getClass().getName())));
 
 		try {
 			// The test itself is the target so the rule's group check sees a class in the current group
 			return new TestDepthRule().apply(base, target, this);
 		} finally {
-			if (previous == null) {
+			if (previousProfile == null) {
 				System.clearProperty("AR_TEST_PROFILE");
 			} else {
-				System.setProperty("AR_TEST_PROFILE", previous);
+				System.setProperty("AR_TEST_PROFILE", previousProfile);
+			}
+			if (previousGroup == null) {
+				System.clearProperty("AR_TEST_GROUP");
+			} else {
+				System.setProperty("AR_TEST_GROUP", previousGroup);
 			}
 		}
 	}
