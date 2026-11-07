@@ -18,6 +18,7 @@ package org.almostrealism.hardware.jvm;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.mem.AbstractMemoryProvider;
 
 /**
  * {@link MemoryProvider} for pure Java heap memory allocation.
@@ -86,7 +87,7 @@ import io.almostrealism.code.MemoryProvider;
  * @see JVMMemory
  * @see org.almostrealism.hardware.mem.Heap
  */
-public class JVMMemoryProvider implements MemoryProvider<Memory> {
+public class JVMMemoryProvider extends AbstractMemoryProvider<Memory> {
 	/**
 	 * Creates a JVM memory provider for Java heap allocation.
 	 */
@@ -137,7 +138,8 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 	 * Copies data from source memory to destination memory.
 	 *
 	 * <p>If both source and destination are {@link JVMMemory}, performs
-	 * direct array copy. Otherwise, converts source to array first.</p>
+	 * direct array copy. Otherwise, reads the source in bounded chunks
+	 * (see {@link #setMemInChunks(Memory, int, Memory, int, int)}).</p>
 	 *
 	 * @param mem Destination memory
 	 * @param offset Destination offset
@@ -154,7 +156,7 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 				dest.data[offset + i] = src.data[srcOffset + i];
 			}
 		} else {
-			setMem(mem, offset, source.toArray(srcOffset, length), 0, length);
+			setMemInChunks(mem, offset, source, srcOffset, length);
 		}
 	}
 
