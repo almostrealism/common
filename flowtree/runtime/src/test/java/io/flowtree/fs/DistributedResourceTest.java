@@ -24,6 +24,10 @@ import org.apache.commons.lang3.NotImplementedException;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
@@ -35,60 +39,6 @@ import java.io.InputStream;
  * operations that must fail loudly.
  */
 public class DistributedResourceTest extends TestSuiteBase {
-
-	/**
-	 * A minimal {@link Resource} whose {@link #getData()} returns a fixed
-	 * {@code byte[][]} chunk array, used to drive the {@link DistributedResource}
-	 * wrapping constructor without touching the network or database.
-	 */
-	private static final class ChunkResource implements Resource<byte[][]> {
-		/** URI reported by this stub resource. */
-		private String uri;
-
-		/** Fixed chunk array returned by {@link #getData()}. */
-		private final byte[][] data;
-
-		/**
-		 * Constructs a stub resource with the given URI and chunk data.
-		 *
-		 * @param uri  the resource URI
-		 * @param data the chunk array to expose
-		 */
-		private ChunkResource(String uri, byte[][] data) {
-			this.uri = uri;
-			this.data = data;
-		}
-
-		@Override
-		public void load(IOStreams io) { }
-
-		@Override
-		public void load(byte[] data, long offset, int len) { }
-
-		@Override
-		public void loadFromURI() { }
-
-		@Override
-		public void send(IOStreams io) { }
-
-		@Override
-		public void saveLocal(String file) { }
-
-		@Override
-		public String getURI() { return uri; }
-
-		@Override
-		public void setURI(String uri) { this.uri = uri; }
-
-		@Override
-		public byte[][] getData() { return data; }
-
-		@Override
-		public InputStream getInputStream() { return null; }
-
-		@Override
-		public Permissions getPermissions() { return new Permissions(); }
-	}
 
 	/**
 	 * A URI beginning with a leading slash must be normalised to carry the
@@ -350,5 +300,38 @@ public class DistributedResourceTest extends TestSuiteBase {
 	@Test(timeout = 5000, expected = IOException.class)
 	public void saveLocalIsUnsupported() throws IOException {
 		new DistributedResource("/x").saveLocal("/tmp/whatever");
+	}
+
+	/**
+	 * {@link DistributedResource#send(IOStreams)} must first announce the chunk
+	 * count, then respond to each requested chunk index with that chunk's length
+	 * followed by its bytes, stopping when the peer writes a negative index. A
+	 * fully in-memory (wrapping-constructor) resource exercises this protocol
+	 * without a database, since every chunk is already loaded.
+	 */
+	@Test(timeout = 5000)
+	public void sendTransmitsRequestedChunk() throws IOException {
+		byte[] payload = "hi".getBytes();
+		DistributedResource res = new DistributedResource(new ChunkResource("/snd", new byte[][] { payload }));
+
+		ByteArrayOutputStream requestBytes = new ByteArrayOutputStream();
+		DataOutputStream request = new DataOutputStream(requestBytes);
+		request.writeInt(0);
+		request.writeInt(-1);
+		request.flush();
+
+		IOStreams io = new IOStreams();
+		io.in = new DataInputStream(new ByteArrayInputStream(requestBytes.toByteArray()));
+		ByteArrayOutputStream sink = new ByteArrayOutputStream();
+		io.out = new DataOutputStream(sink);
+
+		res.send(io);
+
+		DataInputStream result = new DataInputStream(new ByteArrayInputStream(sink.toByteArray()));
+		Assert.assertEquals(1, result.readInt());
+		Assert.assertEquals(payload.length, result.readInt());
+		Assert.assertEquals('h', result.readByte());
+		Assert.assertEquals('i', result.readByte());
+		Assert.assertEquals(0, result.available());
 	}
 }
