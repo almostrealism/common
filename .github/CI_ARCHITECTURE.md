@@ -329,13 +329,13 @@ This skip is intentional and correct. The test categories covered by this job ar
 
 ## Job Reference: test-media
 
-**Purpose**: Run tests that require physical hardware (GPU, audio devices) — covering the studio and extern layers plus any layer those depend on.
+**Purpose**: Run tests that require physical hardware (GPU) — covering the studio and extern layers plus any layer those depend on.
 
 **Needs**: `changes`
 
 **Condition**: `studio_changed OR extern_changed OR engine_changed OR domain_changed OR compute_changed OR base_changed`
 
-**Runner**: self-hosted (requires physical GPU and audio hardware not available on GitHub-hosted runners)
+**Runner**: self-hosted (requires a physical GPU not available on GitHub-hosted runners)
 
 ### Steps
 
@@ -360,7 +360,6 @@ Skipped when only flowtree-family or tools/ change (no layer flag is set by thos
 
 Studio, audio, and extern-ML modules require:
 - Physical GPU (for hardware acceleration tests)
-- Audio device presence (for audio synthesis tests)
 - Potentially large model files cached on the runner
 
 GitHub-hosted runners do not provide these capabilities. The self-hosted runner is a dedicated machine with the required hardware.
