@@ -641,6 +641,41 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 	}
 
 	/**
+	 * A matrix-vector product consumed by a kernel of the same count on Metal, a bias added to
+	 * each row's dot product and the sum passed through a sigmoid, matches the host evaluation:
+	 * whether the weighted sum is embedded in its consumer or, summed by lanes, remains a kernel
+	 * of its own (see {@link Scope#getLaneCount()}), every output element receives its row's sum.
+	 * The 777 columns leave nine members after the last whole step of 32 lanes.
+	 */
+	@Test(timeout = 180000)
+	public void metalMatrixVectorProductConsumersMatchReference() {
+		if (!Hardware.getLocalHardware().isAvailable(ComputeRequirement.MTL)) {
+			log("skipping, Metal is not available");
+			return;
+		}
+
+		int rows = 300;
+		int columns = 777;
+		PackedCollection matrix = track(new PackedCollection(shape(rows, columns)).randFill());
+		PackedCollection vector = track(new PackedCollection(shape(columns)).randFill());
+		PackedCollection bias = track(new PackedCollection(shape(rows)).randFill());
+
+		double[] sums = matmulReference(matrix.toArray(), vector.toArray(), rows, columns, 1);
+		double[] offsets = bias.toArray();
+		double[] biased = new double[rows];
+		double[] activated = new double[rows];
+		for (int i = 0; i < rows; i++) {
+			biased[i] = sums[i] + offsets[i];
+			activated[i] = 1.0 / (1.0 + Math.exp(-biased[i]));
+		}
+
+		assertMatches("Metal matmul plus bias", biased,
+				evaluateOnMetal(() -> matmul(cp(matrix), cp(vector)).add(cp(bias))));
+		assertMatches("Metal sigmoid of matmul plus bias", activated,
+				evaluateOnMetal(() -> sigmoid(matmul(cp(matrix), cp(vector)).add(cp(bias)))));
+	}
+
+	/**
 	 * Saves a profile of a looped matrix product so the generated loop kernel source can be
 	 * read with the profile analyzer.
 	 */
