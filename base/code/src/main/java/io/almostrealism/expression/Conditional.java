@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
+import java.util.function.IntFunction;
 
 /**
  * A ternary conditional expression that evaluates to one of two branches
@@ -246,5 +247,37 @@ public class Conditional<T extends Number> extends Expression<T> {
 		} else {
 			return new Conditional(Double.class, condition, positive, negative);
 		}
+	}
+
+	/**
+	 * Builds a linear selection over {@code count} candidate values, choosing the one
+	 * whose branch position equals the integer value of {@code index} at runtime.
+	 *
+	 * <p>The result is a right-folded chain of {@link #of(Expression, Expression, Expression)}
+	 * conditionals equivalent to
+	 * {@code index == count-1 ? valueAt(count-1) : ( ... : (index == 1 ? valueAt(1) : valueAt(0)))}.
+	 * The branch for position {@code 0} is the final fallback, so callers must supply a selector
+	 * already reduced into {@code [0, count)} (for example via {@code imod(count)}) — the position
+	 * {@code 0} value is returned whenever the selector matches none of positions {@code 1..count-1}.
+	 * When {@code count} is one, {@code valueAt(0)} is returned directly with no conditional.</p>
+	 *
+	 * @param index   the integer-valued selector expression, assumed to be in {@code [0, count)}
+	 * @param count   the number of candidate branches; must be at least one
+	 * @param valueAt supplies the candidate value for each branch position in {@code [0, count)}
+	 * @return an expression that evaluates to the selected branch value
+	 * @throws IllegalArgumentException if {@code count} is less than one
+	 */
+	public static Expression select(Expression<?> index, int count, IntFunction<Expression<?>> valueAt) {
+		if (count < 1) {
+			throw new IllegalArgumentException("count must be at least one (was " + count + ")");
+		}
+
+		Expression v = valueAt.apply(0);
+
+		for (int j = 1; j < count; j++) {
+			v = Conditional.of(index.eq(new IntegerConstant(j)), valueAt.apply(j), v);
+		}
+
+		return v;
 	}
 }
