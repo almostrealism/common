@@ -151,10 +151,44 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
      * @return a skip reason, or {@code null} to dispatch
      */
     public String skipReason(String workstreamId, boolean remediationPass, String triggerCommit) {
+        return skipReason(workstreamId, remediationPass, triggerCommit, Boolean.FALSE, null);
+    }
+
+    /**
+     * Returns why a remediation-pass submission should be skipped, taking into
+     * account whether the pull request still has reviewer feedback outstanding,
+     * or {@code null} to dispatch it.
+     *
+     * <p>This is the feedback-aware form the controller's submit path uses. The
+     * own-commit skip — "the only new commit is the previous pass's own" — now
+     * applies <em>only</em> when nothing is outstanding ({@code feedbackOutstanding}
+     * is {@link Boolean#FALSE}). Feedback that arrived on, or is still open at,
+     * the pass's own commit (a reviewer reviewing it) is new work, so the pass
+     * is dispatched. When the caller cannot establish that nothing is
+     * outstanding ({@code feedbackOutstanding} is {@code null}), the submission
+     * is dispatched rather than skipped — a review finding left unanswered must
+     * never be stranded by a skip. The {@link #skipReason(String, boolean, String)}
+     * form, for callers that do not report feedback state, keeps the original
+     * own-commit skip by passing {@link Boolean#FALSE}.</p>
+     *
+     * @param workstreamId      the workstream (branch / PR) key
+     * @param remediationPass   whether this is a remediation-pass submission
+     * @param triggerCommit     the commit that triggered the submission, or {@code null}
+     * @param feedbackOutstanding {@link Boolean#TRUE} when the PR has a finding not
+     *                          yet accounted for, {@link Boolean#FALSE} when every
+     *                          finding is accounted for, or {@code null} when it
+     *                          could not be determined
+     * @param feedbackFindings  a human-readable list of the outstanding findings
+     *                          (one per line), included in the budget-pause ping,
+     *                          or {@code null}
+     * @return a skip reason, or {@code null} to dispatch
+     */
+    public String skipReason(String workstreamId, boolean remediationPass, String triggerCommit,
+                             Boolean feedbackOutstanding, String feedbackFindings) {
         if (store == null || !remediationPass || workstreamId == null || workstreamId.isEmpty()) {
             return null;
         }
-        String reason = evaluate(workstreamId, triggerCommit);
+        String reason = evaluate(workstreamId, triggerCommit, feedbackOutstanding, feedbackFindings);
         if (reason != null) {
             log("Skipping job submission for workstream " + workstreamId + ": " + reason);
         }
@@ -166,16 +200,20 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
      * sending the one budget-spent ping when this call claims it and releasing
      * the claim when the ping is not delivered.
      *
-     * @param workstreamId  the workstream (branch / PR) key
-     * @param triggerCommit the commit that triggered the submission, or {@code null}
+     * @param workstreamId      the workstream (branch / PR) key
+     * @param triggerCommit     the commit that triggered the submission, or {@code null}
+     * @param feedbackOutstanding tri-state outstanding-feedback flag; see
+     *                          {@link #skipReason(String, boolean, String, Boolean, String)}
+     * @param feedbackFindings  the outstanding findings for the ping, or {@code null}
      * @return a skip reason, or {@code null} to dispatch
      */
-    private String evaluate(String workstreamId, String triggerCommit) {
+    private String evaluate(String workstreamId, String triggerCommit,
+                            Boolean feedbackOutstanding, String feedbackFindings) {
         // TODO(review): a direct push the controller never sees does not reset exhaustion.
         RemediationStateStore.Decision decision =
                 store.evaluateSubmission(workstreamId, budget, triggerCommit);
         if (decision == RemediationStateStore.Decision.BUDGET_SPENT_NOTIFY
-                && !notifyBudgetSpent(workstreamId)) {
+                && !notifyBudgetSpent(workstreamId, feedbackFindings)) {
             warn("Budget-spent ping for workstream " + workstreamId
                 + " was not delivered; a later refused submission will retry it");
             store.releaseNotification(workstreamId);
@@ -186,8 +224,12 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
                 return "Per-PR remediation budget of " + budget
                     + " consecutive no-progress passes reached; auto-dispatch paused pending a person";
             case OWN_COMMIT:
-                return "The only new commit is the previous remediation pass's own ("
-                    + triggerCommit + "); not re-reviewing it";
+                // Skip only when nothing is outstanding; see skipReason's javadoc.
+                if (Boolean.FALSE.equals(feedbackOutstanding)) {
+                    return "The only new commit is the previous remediation pass's own ("
+                        + triggerCommit + ") and no reviewer feedback is outstanding; not re-reviewing it";
+                }
+                return null;
             case UNAVAILABLE:
                 return "Remediation state could not be read; refusing automated submission "
                     + "until it can be read again";
@@ -197,17 +239,22 @@ public final class RemediationBudgetGuard implements ConsoleFeatures {
     }
 
     /**
-     * Pings a person that the per-PR budget is spent.
+     * Pings a person that the per-PR budget is spent, listing any reviewer
+     * findings still outstanding so the person knows exactly what remains.
      *
-     * @param workstreamId the workstream (branch / PR) key
+     * @param workstreamId     the workstream (branch / PR) key
+     * @param feedbackFindings outstanding findings (one per line), or {@code null}
      * @return {@code true} when the ping was delivered
      */
-    private boolean notifyBudgetSpent(String workstreamId) {
-        return notifier != null && notifier.test(workstreamId,
-            "Per-PR remediation budget reached on this branch: " + budget
+    private boolean notifyBudgetSpent(String workstreamId, String feedbackFindings) {
+        String message = "Per-PR remediation budget reached on this branch: " + budget
                 + " consecutive auto-review/auto-resolve passes changed nothing. "
                 + "Auto-dispatch is paused for this PR until a commit lands — someone should "
-                + "look at why it is not converging.");
+                + "look at why it is not converging.";
+        if (feedbackFindings != null && !feedbackFindings.isBlank()) {
+            message += "\n\nReviewer feedback still outstanding:\n" + feedbackFindings.strip();
+        }
+        return notifier != null && notifier.test(workstreamId, message);
     }
 
     /**

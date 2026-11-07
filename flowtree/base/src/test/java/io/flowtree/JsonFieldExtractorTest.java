@@ -483,6 +483,28 @@ public class JsonFieldExtractorTest extends TestSuiteBase {
 				JsonFieldExtractor.getBoolean(json, "flag", false));
 	}
 
+	/**
+	 * The tri-state extractor distinguishes an explicit {@code false} from an
+	 * absent or unrecognised field (both {@code null}), and accepts the value as
+	 * a JSON boolean or as the string {@code "true"}/{@code "false"} a CI
+	 * submitter sends through {@code jq --arg}.
+	 */
+	@Test(timeout = 10000)
+	public void getTriStateBooleanDistinguishesFalseFromUnknown() {
+		Assert.assertEquals(Boolean.TRUE,
+				JsonFieldExtractor.getTriStateBoolean("{\"feedbackOutstanding\":true}", "feedbackOutstanding"));
+		Assert.assertEquals(Boolean.FALSE,
+				JsonFieldExtractor.getTriStateBoolean("{\"feedbackOutstanding\":false}", "feedbackOutstanding"));
+		Assert.assertEquals(Boolean.TRUE,
+				JsonFieldExtractor.getTriStateBoolean("{\"feedbackOutstanding\":\"true\"}", "feedbackOutstanding"));
+		Assert.assertEquals(Boolean.FALSE,
+				JsonFieldExtractor.getTriStateBoolean("{\"feedbackOutstanding\":\"false\"}", "feedbackOutstanding"));
+		Assert.assertNull("an absent field is unknown",
+				JsonFieldExtractor.getTriStateBoolean("{}", "feedbackOutstanding"));
+		Assert.assertNull("an unrecognised value is unknown",
+				JsonFieldExtractor.getTriStateBoolean("{\"feedbackOutstanding\":\"maybe\"}", "feedbackOutstanding"));
+	}
+
 	/** Asserts that the strict extractor refuses {@code json}'s {@code roles} field. */
 	private static void assertRejected(String json) {
 		try {

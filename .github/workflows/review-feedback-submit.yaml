@@ -1,0 +1,96 @@
+name: Review Feedback Submit
+
+# A reviewer's verdict can land after a run's auto-review step has already run —
+# GitHub Copilot reviews a push about eight minutes later, long after the gates
+# reported. When that review opens a finding, nothing re-triggers a pass: the
+# own-commit skip (now feedback-aware) only helps if a submission is attempted,
+# and no later "Build and Test" run need happen. This workflow is that trigger.
+# On a review submission it reads whether the PR still has reviewer feedback
+# outstanding and, if so, submits one review-remediation pass.
+#
+# De-duplication is the controller's existing stale-submission guard:
+# STARTED_AFTER is the review's own submission time, so a pass already
+# dispatched after this review (by auto-review-submit, or an earlier firing of
+# this workflow) is newer work and the controller skips this one. The own-commit
+# skip is the other half — a pass that re-reviews its own commit with nothing
+# outstanding is still refused.
+#
+# It is a separate workflow, not a job in analysis.yaml, for the same reason
+# auto-resolve-submit.yaml is: it holds the controller credential, and a
+# pull_request-family run must not carry it on a job beside one that builds PR
+# code. It checks out the default branch (trusted scripts) and reads only event
+# metadata — never the PR's code.
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    # Only same-repository branches (a fork gets no controller secret and must
+    # not be handed a submission), never master. `!cancelled()` keeps the job
+    # runnable; the real gates are the explicit conditions below.
+    if: >-
+      !cancelled() &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref != 'master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted scripts
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Submit a review-remediation pass when feedback is outstanding
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+          # The review's own time: a pass already submitted after it is newer
+          # work the controller's stale-submission guard skips.
+          REVIEW_SUBMITTED_AT: ${{ github.event.review.submitted_at }}
+          # A review is a remediation trigger, never work to be reviewed.
+          REMEDIATION_PASS: "true"
+          # A review may improve an existing test; test-integrity-check is what
+          # stops it weakening one, so the per-job test lock stays off.
+          PROTECT_TEST_FILES: "false"
+          OBJECT_ORIENTED_REVIEW_ENABLED: "false"
+          DESCRIPTION: "Address outstanding reviewer feedback"
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          # The scripts are read from the default branch, which lacks them until
+          # the change that added them has merged; do nothing rather than fail.
+          if [ ! -f ./tools/ci/pr-feedback-env.sh ] || [ ! -f ./tools/ci/submit-agent-job.sh ]; then
+            echo "::notice::The default branch has no review-feedback scripts yet — nothing submitted"
+            exit 0
+          fi
+          if [ -z "${CF_ACCESS_CLIENT_SECRET}" ]; then
+            echo "::notice::No controller credentials in this run — nothing submitted"
+            exit 0
+          fi
+          export FEEDBACK_FINDINGS_FILE="${RUNNER_TEMP}/feedback-findings.txt"
+          FEEDBACK_STATUS=$(REPO="${{ github.repository }}" PR="${PR_NUMBER}" \
+            bash ./tools/ci/pr-feedback-env.sh || true)
+          if [ "$FEEDBACK_STATUS" != "feedback_outstanding=true" ]; then
+            echo "::notice::No reviewer feedback outstanding on PR #${PR_NUMBER} — nothing to submit"
+            exit 0
+          fi
+          export FEEDBACK_OUTSTANDING=true
+          if [ -s "${FEEDBACK_FINDINGS_FILE}" ]; then
+            FEEDBACK_FINDINGS=$(cat "${FEEDBACK_FINDINGS_FILE}")
+            export FEEDBACK_FINDINGS
+          fi
+          STARTED_AFTER="$(date -u -d "$REVIEW_SUBMITTED_AT" +%s)000"
+          export STARTED_AFTER
+          export TRIGGER_COMMIT="$COMMIT_SHA"
+          ./tools/ci/prompts/build-review-prompt.sh "${RUNNER_TEMP}/agent-prompt.txt"
+          bash ./tools/ci/submit-agent-job.sh "${RUNNER_TEMP}/agent-prompt.txt"

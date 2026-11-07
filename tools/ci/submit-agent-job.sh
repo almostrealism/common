@@ -112,6 +112,12 @@
 #   TRIGGER_COMMIT    - commit that triggered this run; the controller skips a
 #                       review re-triggered only by the previous pass's own
 #                       commit (default: unset → no own-commit skip)
+#   FEEDBACK_OUTSTANDING - "true"/"false" whether the PR still has reviewer
+#                       feedback unaccounted for. Gates the own-commit skip: the
+#                       controller skips only when "false". Unset → the controller
+#                       cannot tell, so it dispatches (default: unset)
+#   FEEDBACK_FINDINGS - newline-separated list of outstanding findings, listed in
+#                       the budget-pause ping so a person sees what remains (default: unset)
 #   DESCRIPTION       - short label for notifications (e.g., "Resolve test failures")
 #   DEFAULT_PHASE_CONFIG - JSON object applied to every phase that has no
 #                       dedicated entry, e.g. '{"model":"opus"}'. Omitted →
@@ -319,6 +325,14 @@ fi
 
 if [ -n "${DELAY_SECONDS:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson d "$DELAY_SECONDS" '. + {delaySeconds: $d}')
+fi
+
+if [ -n "${FEEDBACK_OUTSTANDING:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --arg f "$FEEDBACK_OUTSTANDING" '. + {feedbackOutstanding: $f}')
+fi
+
+if [ -n "${FEEDBACK_FINDINGS:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --arg f "$FEEDBACK_FINDINGS" '. + {feedbackFindings: $f}')
 fi
 
 if [ -n "${TRIGGER_COMMIT:-}" ]; then

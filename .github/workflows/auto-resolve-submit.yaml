@@ -164,6 +164,9 @@ jobs:
           BASE_BRANCH: ${{ github.event.workflow_run.pull_requests[0].base.ref || 'master' }}
           ATTEMPT_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
           REQUIRED_LABELS: ${{ steps.labels.outputs.required_labels }}
+          # Outstanding reviewer feedback, listed in the budget-pause ping.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
           # A follow-up job CI runs in a loop; the object-oriented design review
           # belongs to a branch's initial work, not each remediation pass.
           OBJECT_ORIENTED_REVIEW_ENABLED: "false"
@@ -179,4 +182,19 @@ jobs:
           : "${ATTEMPT_STARTED_AT:?the workflow_run event carries no run_started_at}"
           STARTED_AFTER="$(date -u -d "$ATTEMPT_STARTED_AT" +%s)000"
           export STARTED_AFTER
+          # Determine outstanding reviewer feedback. Leaving the flag unset when
+          # it cannot be read lets the controller dispatch rather than skip.
+          if [ -n "${PR_NUMBER}" ] && [ -f ./tools/ci/pr-feedback-env.sh ]; then
+            export FEEDBACK_FINDINGS_FILE="${RUNNER_TEMP}/feedback-findings.txt"
+            FEEDBACK_STATUS=$(REPO="${{ github.repository }}" PR="${PR_NUMBER}" \
+              bash ./tools/ci/pr-feedback-env.sh || true)
+            case "$FEEDBACK_STATUS" in
+              feedback_outstanding=true)  export FEEDBACK_OUTSTANDING=true ;;
+              feedback_outstanding=false) export FEEDBACK_OUTSTANDING=false ;;
+            esac
+            if [ -s "${FEEDBACK_FINDINGS_FILE}" ]; then
+              FEEDBACK_FINDINGS=$(cat "${FEEDBACK_FINDINGS_FILE}")
+              export FEEDBACK_FINDINGS
+            fi
+          fi
           bash ./tools/ci/submit-staged-request.sh auto-resolve-request

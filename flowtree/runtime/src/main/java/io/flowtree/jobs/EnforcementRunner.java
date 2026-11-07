@@ -141,6 +141,8 @@ class EnforcementRunner implements ConsoleFeatures {
             rules.add(new ObjectOrientedDesignRule());
         }
         if (job.getTargetBranch() != null && !job.getTargetBranch().isEmpty()) {
+            // Inert unless the pass recorded an unanswered reviewer finding.
+            rules.add(new OutstandingFeedbackRule());
             // Checked after the content rules above, right before the final
             // commit-message check -- see StagingSkipRule's class javadoc.
             rules.add(new StagingSkipRule());

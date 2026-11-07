@@ -35,6 +35,7 @@ import java.util.function.BiPredicate;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -554,6 +555,53 @@ public class RemediationStateStoreTest extends TestSuiteBase {
             assertTrue(guard.skipReason("ws", true, "review-sha") != null);
             assertNull(guard.skipReason("ws", true, "someone-elses-sha"));
             assertNull(guard.skipReason("ws", true, null));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * The own-commit skip is feedback-aware: a finding opened on the pass's own
+     * commit (feedbackOutstanding TRUE) is new work and dispatches; only when
+     * nothing is outstanding (FALSE) is the own commit skipped; and when it
+     * cannot be established (null) the submission dispatches rather than skip.
+     */
+    @Test(timeout = 30000)
+    public void theOwnCommitSkipRespectsOutstandingFeedback() throws Exception {
+        File dir = Files.createTempDirectory("rem-guard-feedback").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 5, new RecordingNotifier());
+            store.recordPass("ws", "r", "b", "review-sha");
+
+            assertNull("a new Copilot thread on the own commit is dispatched",
+                    guard.skipReason("ws", true, "review-sha", Boolean.TRUE, "race on LaneSum\thttp://x"));
+            assertNotNull("the own commit with everything answered is still skipped",
+                    guard.skipReason("ws", true, "review-sha", Boolean.FALSE, null));
+            assertNull("when it cannot be established, dispatch rather than skip",
+                    guard.skipReason("ws", true, "review-sha", null, null));
+        } finally {
+            store.close();
+        }
+    }
+
+    /** The budget-pause ping lists the outstanding findings so a person sees what remains. */
+    @Test(timeout = 30000)
+    public void theBudgetPausePingListsOutstandingFindings() throws Exception {
+        File dir = Files.createTempDirectory("rem-guard-ping-findings").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        RecordingNotifier notifier = new RecordingNotifier();
+        try {
+            RemediationBudgetGuard guard = new RemediationBudgetGuard(store, 3, notifier);
+            for (int i = 0; i < 3; i++) store.recordPass("ws", "r", "b", null);
+
+            assertNotNull(guard.skipReason("ws", true, null, Boolean.TRUE,
+                    "LaneSum output store is a data race\thttp://gh/thread/1"));
+            assertEquals(1, notifier.pings.size());
+            assertTrue("the ping must list the outstanding finding: " + notifier.pings.get(0),
+                    notifier.pings.get(0).contains("LaneSum output store is a data race"));
         } finally {
             store.close();
         }

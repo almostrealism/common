@@ -705,3 +705,209 @@ def latest_copilot_quota_notice(reviews, is_copilot_login,
     if is_copilot_quota_notice(latest.get("body", "")):
         return latest
     return None
+
+
+# ---------------------------------------------------------------------------
+# Outstanding reviewer feedback
+# ---------------------------------------------------------------------------
+
+# A review body carries a finding — not just a verdict — when it requests
+# changes, or when its text names one of the sections GitHub Copilot uses to
+# report issues that are not attached to an inline thread (its "Previously
+# missed" list, most importantly: the incident on PR #866 turned on a
+# previously-missed finding that lived only in the review body). Matched
+# case-insensitively against the review body.
+# TODO(review): verify "comments suppressed" is not present in routine Copilot
+# review bodies; if it is, every reviewed PR reads feedback-outstanding forever
+# (the suppressed comments are invisible, so no pass can ever clear them).
+REVIEW_BODY_FINDING_MARKERS = (
+    "previously missed",
+    "comments suppressed",
+)
+
+
+def _default_is_copilot_login(login) -> bool:
+    """Substring test identifying the Copilot reviewer bot by login.
+
+    GitHub reserves the ``copilot`` name, so the substring is safe. Used as the
+    default predicate by :func:`pr_outstanding_findings` when a caller does not
+    supply one.
+    """
+    return isinstance(login, str) and "copilot" in login.lower()
+
+
+def _comment_author(comment: dict) -> str:
+    """Return a review-thread comment's author login, accepting either shape.
+
+    GraphQL nests it as ``author.login``; the MCP tools flatten it to ``user``.
+    """
+    if not isinstance(comment, dict):
+        return ""
+    author = comment.get("author")
+    if isinstance(author, dict):
+        return author.get("login", "") or ""
+    return comment.get("user") or author or ""
+
+
+def _comment_time(comment: dict) -> str:
+    """Return a comment's creation timestamp, accepting either key shape."""
+    if not isinstance(comment, dict):
+        return ""
+    return comment.get("created_at") or comment.get("createdAt") or ""
+
+
+def _thread_resolved(thread: dict) -> bool:
+    """Return whether a review thread is marked resolved, accepting either key."""
+    return bool(thread.get("isResolved") or thread.get("resolved"))
+
+
+def _first_line(text: str, limit: int = 140) -> str:
+    """Return the first non-empty line of ``text``, truncated to ``limit``."""
+    if not isinstance(text, str):
+        return ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped[:limit]
+    return ""
+
+
+def _thread_is_outstanding(thread: dict) -> bool:
+    """Return whether a review thread still awaits a reply.
+
+    A thread is *accounted for* — not outstanding — when it is resolved (a
+    person marked the finding fixed), or when someone has replied after the
+    reviewer's latest comment. The reviewer who opened the thread is its first
+    comment's author; a later comment by anyone else is a reply that accounts
+    for the finding. A thread whose newest comment is still the opening
+    reviewer's (nobody answered, or the reviewer re-raised it after a reply)
+    is outstanding.
+
+    Args:
+        thread: A review thread with ``comments`` (each carrying an author and
+            a creation time) and a resolved flag.
+
+    Returns:
+        True when the thread is unresolved and unanswered.
+    """
+    if _thread_resolved(thread):
+        return False
+    comments = [c for c in (thread.get("comments") or []) if isinstance(c, dict)]
+    if not comments:
+        return False
+    ordered = sorted(comments, key=_comment_time)
+    opening_author = _comment_author(ordered[0])
+    latest_author = _comment_author(ordered[-1])
+    return latest_author == opening_author
+
+
+def _review_body_has_finding(review: dict) -> bool:
+    """Return whether a review's verdict/body carries an unaccounted finding.
+
+    True when the review requests changes, or its body names one of
+    :data:`REVIEW_BODY_FINDING_MARKERS`. A quota refusal
+    (:func:`is_copilot_quota_notice`) is not a review and carries no finding.
+    """
+    body = review.get("body") or ""
+    if is_copilot_quota_notice(body):
+        return False
+    if (review.get("state") or "").upper() == "CHANGES_REQUESTED":
+        return True
+    lowered = body.lower()
+    return any(marker in lowered for marker in REVIEW_BODY_FINDING_MARKERS)
+
+
+def _outstanding_review_body_findings(reviews, is_copilot_login) -> list:
+    """Return review-body findings (Copilot overviews) not yet superseded.
+
+    Only the *latest* review each Copilot reviewer submitted is considered: an
+    earlier "Previously missed" overview is accounted for once a newer review
+    supersedes it (an APPROVED verdict, or a later overview that no longer
+    names a finding). The latest review is outstanding when it still carries a
+    finding (:func:`_review_body_has_finding`).
+    """
+    if not isinstance(reviews, list):
+        return []
+    latest_by_author = {}
+    for review in reviews:
+        if not isinstance(review, dict):
+            continue
+        login = _review_login(review)
+        if not is_copilot_login(login):
+            continue
+        current = latest_by_author.get(login)
+        if current is None or (review.get("submitted_at") or "") >= (
+                current.get("submitted_at") or ""):
+            latest_by_author[login] = review
+    findings = []
+    for review in latest_by_author.values():
+        if _review_body_has_finding(review):
+            findings.append({
+                "kind": "review",
+                "summary": _first_line(review.get("body"))
+                           or "Reviewer requested changes",
+                "url": review.get("html_url") or review.get("url") or "",
+            })
+    return findings
+
+
+def _review_login(review: dict) -> str:
+    """Return a review's author login, accepting the REST or flattened shape."""
+    user = review.get("user")
+    if isinstance(user, dict):
+        return user.get("login", "") or ""
+    return user or ""
+
+
+def pr_outstanding_findings(reviews, threads, is_copilot_login=None) -> list:
+    """Return the reviewer findings on a PR that are not yet accounted for.
+
+    A pull request with an unaccounted finding is unfinished work: it cannot be
+    merged, so an automated pass must neither be skipped nor reported complete
+    while one stands. A finding is *accounted for* when it is fixed, when it has
+    a reply posted after its latest comment, or when its thread is resolved.
+    This covers both of a PR's finding surfaces:
+
+    * review-thread comments — outstanding while unresolved and unanswered
+      (:func:`_thread_is_outstanding`);
+    * review bodies — a reviewer's overview, including Copilot's "Previously
+      missed" section, which lives only in the body and is invisible to the
+      thread API (:func:`_outstanding_review_body_findings`).
+
+    The determination lives here, in one place, so every consumer agrees on
+    what "outstanding" means: the CI submit gate (whether the own-commit skip
+    may apply), the budget-pause ping (what to list for the person), and the
+    pass-completion check.
+
+    Args:
+        reviews: The reviews JSON array (``GET /pulls/{n}/reviews``), each with
+            ``user``, ``state``, ``body``, ``submitted_at``, and ``html_url``.
+        threads: The PR's review threads, each with a resolved flag and a
+            ``comments`` list (author + creation time per comment). Accepts
+            both the GraphQL shape (``isResolved`` / ``author.login`` /
+            ``createdAt``) and the flattened MCP shape (``resolved`` / ``user``
+            / ``created_at``).
+        is_copilot_login: Predicate identifying the Copilot reviewer bot by
+            login; defaults to a ``copilot`` substring test.
+
+    Returns:
+        A list of finding dicts, each ``{"kind", "summary", "url"}`` — empty
+        when every finding is accounted for.
+    """
+    predicate = is_copilot_login or _default_is_copilot_login
+    findings = []
+    for thread in threads or []:
+        if not isinstance(thread, dict) or not _thread_is_outstanding(thread):
+            continue
+        comments = sorted(
+            [c for c in (thread.get("comments") or []) if isinstance(c, dict)],
+            key=_comment_time)
+        findings.append({
+            "kind": "thread",
+            "summary": _first_line(comments[0].get("body")) if comments
+                       else "Unresolved review comment",
+            "url": (comments[-1].get("url") if comments else "")
+                   or thread.get("url") or "",
+        })
+    findings.extend(_outstanding_review_body_findings(reviews, predicate))
+    return findings

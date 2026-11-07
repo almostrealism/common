@@ -122,6 +122,37 @@ public final class JsonFieldExtractor {
 	}
 
 	/**
+	 * Extracts a tri-state boolean field: {@link Boolean#TRUE} or
+	 * {@link Boolean#FALSE} when the field is a JSON boolean or the string
+	 * {@code "true"}/{@code "false"}, and {@code null} when the input is not a
+	 * JSON object, the field is absent or null, or its value is neither. A CI
+	 * submitter sends such a flag as a JSON string (jq {@code --arg}), so both
+	 * the boolean and string forms are accepted; {@code null} means "unknown",
+	 * which a caller distinguishes from an explicit {@code false}.
+	 *
+	 * @param json  the JSON object string
+	 * @param field the field name
+	 * @return {@link Boolean#TRUE}/{@link Boolean#FALSE}, or {@code null} when unknown
+	 */
+	public static Boolean getTriStateBoolean(String json, String field) {
+		if (json == null) return null;
+		try {
+			JsonNode root = MAPPER.readTree(json);
+			if (root == null || !root.isObject()) return null;
+			JsonNode node = root.get(field);
+			if (node == null || node.isNull()) return null;
+			if (node.isBoolean()) return node.booleanValue();
+			if (node.isTextual()) {
+				if ("true".equalsIgnoreCase(node.asText())) return Boolean.TRUE;
+				if ("false".equalsIgnoreCase(node.asText())) return Boolean.FALSE;
+			}
+			return null;
+		} catch (Exception e) {
+			return null;
+		}
+	}
+
+	/**
 	 * Extracts a string field from a JSON string.
 	 * Handles JSON escape sequences including Unicode escapes.
 	 *

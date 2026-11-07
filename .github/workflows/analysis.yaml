@@ -4190,6 +4190,12 @@ jobs:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # Read outstanding reviewer feedback so the controller's own-commit
+          # skip applies only when nothing is outstanding. A review (Copilot's,
+          # or a human's) that landed since the push is visible here, even when
+          # it arrived after the auto-review step ran.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           # auto-review submits as soon as the gates report, which can be
           # before GitHub Copilot's review of the same push (about eight
           # minutes) has posted. The controller holds the job this long before
@@ -4227,6 +4233,21 @@ jobs:
           if [ "${COPILOT_AVAILABLE}" = "false" ]; then
             echo "::notice::Copilot unavailable (quota) — dropping the ${DELAY_SECONDS}s review-wait to 0"
             export DELAY_SECONDS=0
+          fi
+          # Determine outstanding reviewer feedback. Leaving the flag unset when
+          # it cannot be read lets the controller dispatch rather than skip.
+          if [ -n "${PR_NUMBER}" ] && [ -f ./tools/ci/pr-feedback-env.sh ]; then
+            export FEEDBACK_FINDINGS_FILE="${RUNNER_TEMP}/feedback-findings.txt"
+            FEEDBACK_STATUS=$(REPO="${{ github.repository }}" PR="${PR_NUMBER}" \
+              bash ./tools/ci/pr-feedback-env.sh || true)
+            case "$FEEDBACK_STATUS" in
+              feedback_outstanding=true)  export FEEDBACK_OUTSTANDING=true ;;
+              feedback_outstanding=false) export FEEDBACK_OUTSTANDING=false ;;
+            esac
+            if [ -s "${FEEDBACK_FINDINGS_FILE}" ]; then
+              FEEDBACK_FINDINGS=$(cat "${FEEDBACK_FINDINGS_FILE}")
+              export FEEDBACK_FINDINGS
+            fi
           fi
           bash ./tools/ci/submit-staged-request.sh staged-request
 

@@ -633,6 +633,11 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
                     + job.getMaxPostCompletionPasses()
                     + " pass(es) — gate abandoned, work may be incomplete");
         }
+        if (OutstandingFeedbackRule.hasUnaccountedFeedback(job.getWorkingDirectory())) {
+            return degraded(job.getTaskId(), job.getTaskString(),
+                    "Reviewer feedback on the pull request was left unaccounted for; "
+                    + "a corrective pass is needed to answer it");
+        }
         if (job.workOutcome().allChangesDropped()) {
             return degraded(job.getTaskId(), job.getTaskString(),
                     "All changes were dropped by staging guardrails: "

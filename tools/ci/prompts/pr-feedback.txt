@@ -59,3 +59,15 @@ reproduce the failure it describes, or find the line that refutes it.
 
 Say it in the thread when replying is safe, and in your final summary when it
 is not; the rules above decide which.
+
+**Record what you could not account for.** A finding is accounted for once it is
+fixed, answered by a reply posted after its latest comment, or answered by a
+reply citing a follow-up task you filed for it. Before you finish, list every
+finding — an unresolved review thread, or a finding in a review body such as
+Copilot's "Previously missed" section — that you did NOT account for, one per
+line, in the scratch file `.flowtree/outstanding-feedback.txt` (create the
+`.flowtree` directory if needed; it is never committed). Remove a line as you
+account for it, and leave the file empty or absent when every finding is
+answered. The harness reads this file: while it names a finding, the pass is not
+complete and a corrective session is run to answer the rest. Do not resolve
+threads to clear the file — resolving is a person's decision; you only reply.
