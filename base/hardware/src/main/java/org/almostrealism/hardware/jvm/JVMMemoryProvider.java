@@ -18,6 +18,7 @@ package org.almostrealism.hardware.jvm;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.mem.AbstractMemoryProvider;
 
 /**
  * {@link MemoryProvider} for pure Java heap memory allocation.
@@ -86,7 +87,7 @@ import io.almostrealism.code.MemoryProvider;
  * @see JVMMemory
  * @see org.almostrealism.hardware.mem.Heap
  */
-public class JVMMemoryProvider implements MemoryProvider<Memory> {
+public class JVMMemoryProvider extends AbstractMemoryProvider<Memory> {
 	/**
 	 * Creates a JVM memory provider for Java heap allocation.
 	 */

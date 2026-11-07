@@ -30,7 +30,7 @@ import java.util.List;
 
 /**
  * Tests that copying from a source memory a provider cannot transfer from directly is done
- * in chunks of at most {@link MemoryProvider#HOST_COPY_CHUNK_SIZE} elements, so the temporary
+ * in chunks of at most {@link AbstractMemoryProvider#HOST_COPY_CHUNK_SIZE} elements, so the temporary
  * memory a copy needs does not grow with its length, and that every element still lands in
  * the right place with the value the whole-range copy produced.
  *
@@ -47,7 +47,7 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	private static final int DESTINATION_OFFSET = 5;
 
 	/** A length spanning two full chunks and a partial third. */
-	private static final int LONG_LENGTH = 2 * MemoryProvider.HOST_COPY_CHUNK_SIZE + 12345;
+	private static final int LONG_LENGTH = 2 * AbstractMemoryProvider.HOST_COPY_CHUNK_SIZE + 12345;
 
 	/** A length shorter than one chunk. */
 	private static final int SHORT_LENGTH = 1000;
@@ -73,7 +73,7 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	public void deviceCopyLongerThanChunkIsReadInChunks() {
 		CountingSource source = verifyCopy(kernelProvider(), LONG_LENGTH);
 		Assert.assertEquals(3, source.reads.size());
-		Assert.assertEquals(MemoryProvider.HOST_COPY_CHUNK_SIZE, source.maxRead());
+		Assert.assertEquals(AbstractMemoryProvider.HOST_COPY_CHUNK_SIZE, source.maxRead());
 	}
 
 	/**
@@ -101,7 +101,7 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 60000)
 	public void explicitChunkSizeWithRemainder() {
-		MemoryProvider<Memory> provider = kernelProvider();
+		AbstractMemoryProvider<Memory> provider = kernelProvider();
 		int length = 10537;
 		int chunk = 1000;
 
@@ -131,7 +131,7 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	@Test(timeout = 60000)
 	public void maximumLengthCopyEndsAfterFinalPartialChunk() {
 		int length = Integer.MAX_VALUE;
-		int chunk = MemoryProvider.HOST_COPY_CHUNK_SIZE;
+		int chunk = AbstractMemoryProvider.HOST_COPY_CHUNK_SIZE;
 
 		DiscardingMemory source = new DiscardingMemory();
 		DiscardingMemory dest = new DiscardingMemory();
@@ -284,7 +284,7 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	 * @param offset    the starting position of the destination range
 	 */
 	private void verifyOverlappingCopy(int srcOffset, int offset) {
-		MemoryProvider<Memory> provider = kernelProvider();
+		AbstractMemoryProvider<Memory> provider = kernelProvider();
 		int size = Math.max(srcOffset, offset) + OVERLAP_LENGTH;
 
 		double[] initial = new double[size];
@@ -329,7 +329,7 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 		}
 
 		Assert.assertTrue("a read of " + source.maxRead() + " elements exceeds the chunk size",
-				source.maxRead() <= MemoryProvider.HOST_COPY_CHUNK_SIZE);
+				source.maxRead() <= AbstractMemoryProvider.HOST_COPY_CHUNK_SIZE);
 		Assert.assertEquals(length, source.reads.stream().mapToInt(Integer::intValue).sum());
 		return source;
 	}
@@ -382,8 +382,8 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	}
 
 	/** Returns the kernel memory provider of the selected backend. */
-	private static MemoryProvider<Memory> kernelProvider() {
-		return (MemoryProvider<Memory>) Hardware.getLocalHardware()
+	private static AbstractMemoryProvider<Memory> kernelProvider() {
+		return (AbstractMemoryProvider<Memory>) Hardware.getLocalHardware()
 				.getDataContext().getKernelMemoryProvider();
 	}
 
@@ -453,7 +453,7 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	 * the position and length of each read from it or write to it. Any read or write with
 	 * a negative offset or a non-positive length fails.
 	 */
-	private static class DiscardingMemory implements Memory, MemoryProvider<Memory> {
+	private static class DiscardingMemory extends AbstractMemoryProvider<Memory> implements Memory {
 		/** The number of reads or writes made. */
 		private int calls;
 
@@ -509,7 +509,7 @@ public class ChunkedHostCopyTest extends TestSuiteBase {
 	 * Host memory backed by a {@code double[]}, where every handle wrapping the same array is
 	 * equal, as two {@link RAM} handles with the same native pointer are.
 	 */
-	private static class SharedArrayMemory implements Memory, MemoryProvider<Memory> {
+	private static class SharedArrayMemory extends AbstractMemoryProvider<Memory> implements Memory {
 		/** The array this handle refers to, shared with every equal handle. */
 		private final double[] data;
 

@@ -343,6 +343,8 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 		if (length < 0)
 			throw new IllegalArgumentException();
 		if (!(srcRam instanceof MetalMemory)) {
+			// TODO  Native code can be used here, for some types of srcRam, to transfer
+			//       directly instead of through the double[] chunks of setMemInChunks
 			setMemInChunks(mem, offset, srcRam, srcOffset, length);
 			return;
 		}
