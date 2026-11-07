@@ -321,12 +321,13 @@ public class MetalOperator extends HardwareOperator {
 	 * @param args      the kernel arguments, each a {@link MemoryData}
 	 * @param dependsOn the completion this dispatch must be ordered after, or {@code null}
 	 * @return the dispatch's completion
-	 * @throws UnsupportedOperationException if the global work size exceeds the largest grid a
-	 *         Metal dispatch can describe
+	 * @throws UnsupportedOperationException if the threads of the global work size, one for each
+	 *         lane of every work item, exceed the largest grid a Metal dispatch can describe
 	 */
 	@Override
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
-		if (getThreadCount() > Integer.MAX_VALUE) {
+		// Compared by division so that a work size whose thread count overflows a long is refused too
+		if (getGlobalWorkSize() > Integer.MAX_VALUE / prog.getLaneCount()) {
 			throw new UnsupportedOperationException("Global work size " + getGlobalWorkSize() +
 					(prog.getLaneCount() > 1 ? " of " + prog.getLaneCount() + " lanes each" : "") +
 					" for " + getName() + " exceeds the largest grid a Metal dispatch can describe");

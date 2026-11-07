@@ -26,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.hardware.metal.MetalLanguageOperations;
+import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -141,6 +142,39 @@ public class KernelLaneTest extends TestSuiteBase {
 		} finally {
 			matching.destroy();
 			narrower.destroy();
+		}
+	}
+
+	/**
+	 * A Metal operator for a program of several lanes per work item refuses a global work size
+	 * whose threads, one for each lane of every work item, exceed the largest grid a dispatch can
+	 * describe, including a work size so large that its thread count overflows a {@code long}, and
+	 * refuses it before any argument is prepared or anything is encoded.
+	 */
+	@Test(timeout = 60000)
+	public void metalOperatorRefusesGridBeyondDispatchLimit() {
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		int lanes = metal.getLaneCount();
+		MetalProgram program = laneProgram(metal, lanes);
+
+		try {
+			MetalOperator operator = new MetalOperator(metal, program, "laneThreads", 1);
+
+			operator.setGlobalWorkSize(Integer.MAX_VALUE / lanes + 1);
+			assertRefused(UnsupportedOperationException.class, () -> operator.accept(new Object[0], null));
+
+			operator.setGlobalWorkSize(Long.MAX_VALUE);
+			assertRefused(UnsupportedOperationException.class, () -> operator.accept(new Object[0], null));
+
+			operator.setGlobalWorkSize(Long.MAX_VALUE / lanes + 1);
+			assertRefused(UnsupportedOperationException.class, () -> operator.accept(new Object[0], null));
+		} finally {
+			program.destroy();
 		}
 	}
 
