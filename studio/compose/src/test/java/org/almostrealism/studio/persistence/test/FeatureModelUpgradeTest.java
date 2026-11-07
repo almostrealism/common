@@ -33,13 +33,18 @@ import org.junit.Test;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
@@ -84,6 +89,23 @@ public class FeatureModelUpgradeTest extends TestSuiteBase {
 	/** Directory of the library store. */
 	private Path storeDir;
 
+	/** A store that counts how many records are read back from it. */
+	private static class CountingStore extends ProtobufWaveDetailsStore {
+		/** Number of {@link #get(String)} calls. */
+		private final AtomicInteger reads = new AtomicInteger();
+
+		/** Opens a counting store at the given directory. */
+		CountingStore(File rootDir) {
+			super(rootDir);
+		}
+
+		@Override
+		public WaveDetails get(String identifier) {
+			reads.incrementAndGet();
+			return super.get(identifier);
+		}
+	}
+
 	/** A provider for the new model that counts how many clips it encodes. */
 	private static class CountingProvider extends LogSpectrumFeatureProvider {
 		/** Number of clips encoded. */
@@ -98,6 +120,19 @@ public class FeatureModelUpgradeTest extends TestSuiteBase {
 		public PackedCollection computeFeatures(WaveData waveData) {
 			computed.incrementAndGet();
 			return super.computeFeatures(waveData);
+		}
+	}
+
+	/** A store whose validated-model marker can never be recorded. */
+	private static class UnrecordableMarkerStore extends ProtobufWaveDetailsStore {
+		/** Opens a store at the given directory. */
+		UnrecordableMarkerStore(File rootDir) {
+			super(rootDir);
+		}
+
+		@Override
+		public void setValidatedModel(String modelIdentifier, Predicate<Set<String>> complete) {
+			throw new UncheckedIOException(new IOException("simulated marker failure"));
 		}
 	}
 
@@ -226,6 +261,56 @@ public class FeatureModelUpgradeTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The first launch records the model it validated the store against, so a
+	 * relaunch under the same model skips the per-record completeness scan rather
+	 * than reading every item back from the store. A different model still forces
+	 * the scan, so the skip is not vacuous.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void relaunchUnderTheSameModelDoesNotRescanTheStore() throws Exception {
+		int count = 8;
+		generateSineWaves(count);
+
+		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		AudioLibrary library = openLibrary(store, new CountingProvider(), errors);
+		library.refresh().get();
+		Assert.assertEquals("analysis must not fail: " + errors, 0, errors.size());
+		Assert.assertEquals(count, library.allDetails().count());
+		library.stop();
+		store.close();
+
+		CountingStore reopened = new CountingStore(storeDir.toFile());
+		AudioLibrary relaunched = openLibrary(reopened, new CountingProvider(), errors);
+		int readsBeforeRefresh = reopened.reads.get();
+		relaunched.refresh().get();
+
+		Assert.assertEquals("a same-model relaunch reads no records back from the store",
+				readsBeforeRefresh, reopened.reads.get());
+		Assert.assertEquals("the relaunch must not fail: " + errors, 0, errors.size());
+		Assert.assertEquals("every item is still complete", count, relaunched.allDetails().count());
+		relaunched.stop();
+		reopened.close();
+
+		CountingStore underNewModel = new CountingStore(storeDir.toFile());
+		AudioLibrary otherModel = new AudioLibrary(
+				new FileWaveDataProviderNode(samplesDir.toFile()), SAMPLE_RATE, underNewModel);
+		otherModel.getWaveDetailsFactory().setFeatureProvider(new LogSpectrumFeatureProvider(
+				FEATURE_FRAMES, NEW_BINS, SAMPLE_RATE, SAMPLE_DURATION, "another-model"));
+		otherModel.setErrorListener(errors::add);
+		int readsBeforeOtherRefresh = underNewModel.reads.get();
+		otherModel.refresh().get();
+
+		Assert.assertTrue("a changed model rescans the store",
+				underNewModel.reads.get() > readsBeforeOtherRefresh);
+		otherModel.stop();
+		underNewModel.close();
+	}
+
+	/**
 	 * An item the new model has not yet analysed offers no embedding for the new
 	 * model's index, so its old-width vector cannot displace the new index.
 	 *
@@ -287,6 +372,268 @@ public class FeatureModelUpgradeTest extends TestSuiteBase {
 
 		library.stop();
 		store.close();
+	}
+
+	/**
+	 * Including an incomplete record after a fully validated refresh drops the
+	 * validated-model marker, so the next launch rescans the store rather than
+	 * restoring the incomplete record as complete and trusting it forever.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void includingAnIncompleteRecordClearsTheValidatedModelMarker() throws Exception {
+		int count = 6;
+		generateSineWaves(count);
+
+		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		AudioLibrary library = openLibrary(store, new CountingProvider(), errors);
+		library.refresh().get();
+		Assert.assertEquals("analysis must not fail: " + errors, 0, errors.size());
+		Assert.assertEquals("a fully validated refresh records the model",
+				NEW_MODEL, store.getValidatedModel());
+
+		// No features for the model: the record is incomplete, so the store is no
+		// longer fully validated once it holds it.
+		WaveDetails incomplete = new WaveDetails("incomplete-no-features", SAMPLE_RATE);
+		incomplete.setPersistent(true);
+		library.include(incomplete);
+		Assert.assertNull("including an incomplete record clears the validated-model marker",
+				store.getValidatedModel());
+
+		library.stop();
+		store.close();
+
+		CountingStore reopened = new CountingStore(storeDir.toFile());
+		AudioLibrary relaunched = openLibrary(reopened, new CountingProvider(), errors);
+		int readsBeforeRefresh = reopened.reads.get();
+		relaunched.refresh().get();
+
+		Assert.assertTrue("the next launch rescans rather than trusting the incomplete record",
+				reopened.reads.get() > readsBeforeRefresh);
+		Assert.assertEquals("the relaunch must not fail: " + errors, 0, errors.size());
+		relaunched.stop();
+		reopened.close();
+	}
+
+	/**
+	 * A stored record that cannot be recomputed for the current model — no file in
+	 * the tree and no stored audio or frequency data to synthesize from — leaves the
+	 * store unvalidated, so its marker is never written and the next launch rescans.
+	 * Without this, the record would be restored as complete and trusted forever.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void anUnrecomputableStoredRecordLeavesTheStoreUnvalidated() throws Exception {
+		ProtobufWaveDetailsStore seed = new ProtobufWaveDetailsStore(storeDir.toFile());
+		WaveDetails orphan = new WaveDetails("orphan-unrecomputable", SAMPLE_RATE);
+		orphan.setPersistent(true);
+		seed.put("orphan-unrecomputable", orphan);
+		seed.close();
+
+		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+		CountingStore store = new CountingStore(storeDir.toFile());
+		AudioLibrary library = openLibrary(store, new CountingProvider(), errors);
+		library.refresh().get();
+
+		Assert.assertEquals("the refresh must not fail: " + errors, 0, errors.size());
+		Assert.assertNull("a record that cannot be completed must not mark the store validated",
+				store.getValidatedModel());
+
+		library.stop();
+		store.close();
+
+		CountingStore reopened = new CountingStore(storeDir.toFile());
+		AudioLibrary relaunched = openLibrary(reopened, new CountingProvider(), errors);
+		int readsBeforeRefresh = reopened.reads.get();
+		relaunched.refresh().get();
+
+		Assert.assertTrue("the next launch rescans because the store was never marked validated",
+				reopened.reads.get() > readsBeforeRefresh);
+		relaunched.stop();
+		reopened.close();
+	}
+
+	/**
+	 * The validated-model marker is written only after the recomputed records are
+	 * flushed to disk, so a second store opened on the same directory sees every
+	 * record the marker vouches for. Were the marker written first, a crash in the
+	 * gap would leave the next launch trusting records that were never persisted.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void aValidatedRefreshFlushesRecordsBeforeRecordingTheModel() throws Exception {
+		int count = 5;
+		generateSineWaves(count);
+
+		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		AudioLibrary library = openLibrary(store, new CountingProvider(), errors);
+		library.refresh().get();
+		Assert.assertEquals("analysis must not fail: " + errors, 0, errors.size());
+		Assert.assertEquals("a fully validated refresh records the model",
+				NEW_MODEL, store.getValidatedModel());
+
+		ProtobufWaveDetailsStore observer = new ProtobufWaveDetailsStore(storeDir.toFile());
+		Assert.assertEquals("records are flushed to disk before the model is recorded",
+				count, observer.size());
+		observer.close();
+
+		library.stop();
+		store.close();
+	}
+
+	/**
+	 * A record written to the store after a validated refresh by a path other than
+	 * {@link AudioLibrary#include} — a direct store write, as the migration path and
+	 * {@link AudioLibrary#persist} make — clears the marker, so no write can leave
+	 * a marker vouching for a record it never tested.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void anyStoreWriteAfterValidationClearsTheMarker() throws Exception {
+		generateSineWaves(3);
+
+		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		AudioLibrary library = openLibrary(store, new CountingProvider(), errors);
+		library.refresh().get();
+		Assert.assertEquals("analysis must not fail: " + errors, 0, errors.size());
+		Assert.assertEquals(NEW_MODEL, store.getValidatedModel());
+
+		store.put("written-directly", new WaveDetails("written-directly", SAMPLE_RATE));
+		Assert.assertNull("a direct store write clears the marker", store.getValidatedModel());
+
+		library.refresh().get();
+		Assert.assertNull("an unrecomputable record keeps the store unvalidated", store.getValidatedModel());
+
+		library.remove("written-directly");
+		library.refresh().get();
+		Assert.assertEquals("once every record is complete again the model is recorded",
+				NEW_MODEL, store.getValidatedModel());
+
+		WaveDetails complete = store.get(store.allIdentifiers().iterator().next());
+		library.persist(complete);
+		Assert.assertNull("persist clears the marker before writing, even for a complete record",
+				store.getValidatedModel());
+
+		library.stop();
+		store.close();
+	}
+
+	/**
+	 * Replacing a complete record with an incomplete one through
+	 * {@link AudioLibrary#include} drops it from the complete set in the same
+	 * process, so the next same-model refresh recomputes it rather than trusting it.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void includingAnIncompleteReplacementDropsTheIdentifierFromTheCompleteSet() throws Exception {
+		generateSineWaves(3);
+
+		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+		CountingProvider provider = new CountingProvider();
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		AudioLibrary library = openLibrary(store, provider, errors);
+		library.refresh().get();
+		Assert.assertEquals("analysis must not fail: " + errors, 0, errors.size());
+
+		String id = store.allIdentifiers().iterator().next();
+		Assert.assertTrue(library.getAllIdentifiers().contains(id));
+
+		WaveDetails stored = store.get(id);
+		WaveDetails replacement = new WaveDetails(id, SAMPLE_RATE);
+		replacement.setFreqData(stored.getFreqData());
+		replacement.setFreqSampleRate(stored.getFreqSampleRate());
+		replacement.setFreqChannelCount(stored.getFreqChannelCount());
+		replacement.setFreqBinCount(stored.getFreqBinCount());
+		replacement.setFreqFrameCount(stored.getFreqFrameCount());
+		library.include(replacement);
+		Assert.assertFalse("an incomplete replacement is no longer trusted as complete",
+				library.getAllIdentifiers().contains(id));
+
+		int computedBefore = provider.computed.get();
+		library.refresh().get();
+		Assert.assertEquals("the replaced record is recomputed by the next refresh",
+				computedBefore + 1, provider.computed.get());
+		Assert.assertNotNull(store.get(id).getFeatures(NEW_MODEL));
+		Assert.assertEquals(NEW_MODEL, store.getValidatedModel());
+
+		library.stop();
+		store.close();
+	}
+
+	/**
+	 * A marker that cannot be cleared fails the write that would invalidate it,
+	 * rather than surviving to let the next launch trust a record it never tested.
+	 *
+	 * @throws Exception if the store cannot be prepared
+	 */
+	@Test(timeout = 60000)
+	public void aMarkerThatCannotBeClearedFailsTheWrite() throws Exception {
+		// A non-empty directory in the marker's place cannot be deleted.
+		Path marker = storeDir.resolve("complete.model");
+		Files.createDirectories(marker);
+		Files.writeString(marker.resolve("blocker"), "x");
+
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+		try {
+			store.put("record", new WaveDetails("record", SAMPLE_RATE));
+			Assert.fail("a write that cannot clear the marker must fail");
+		} catch (UncheckedIOException expected) {
+			Assert.assertFalse("the record is not written while the marker stands",
+					store.containsKey("record"));
+		} finally {
+			store.close();
+		}
+	}
+
+	/**
+	 * The marker is shared by every store on the directory, so a write through
+	 * one store clears a marker another store published after the first opened.
+	 */
+	@Test(timeout = 60000)
+	public void aWriteClearsAMarkerPublishedByAnotherStoreOnTheDirectory() {
+		ProtobufWaveDetailsStore writer = new ProtobufWaveDetailsStore(storeDir.toFile());
+		ProtobufWaveDetailsStore publisher = new ProtobufWaveDetailsStore(storeDir.toFile());
+
+		publisher.setValidatedModel(NEW_MODEL, ids -> true);
+		Assert.assertEquals(NEW_MODEL, writer.getValidatedModel());
+
+		writer.put("record", new WaveDetails("record", SAMPLE_RATE));
+		Assert.assertNull("a write must clear the shared marker", publisher.getValidatedModel());
+
+		writer.close();
+		publisher.close();
+	}
+
+	/**
+	 * When recording the validated model fails, the refresh future completes
+	 * exceptionally instead of never completing.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void aFailureToRecordTheModelFailsTheRefreshRatherThanHangingIt() throws Exception {
+		generateSineWaves(2);
+
+		ProtobufWaveDetailsStore store = new UnrecordableMarkerStore(storeDir.toFile());
+		AudioLibrary library = openLibrary(store, new CountingProvider(), new ArrayList<>());
+
+		try {
+			library.refresh().get(120, TimeUnit.SECONDS);
+			Assert.fail("the refresh must report the failure");
+		} catch (ExecutionException expected) {
+			Assert.assertTrue(expected.getCause() instanceof UncheckedIOException);
+		} finally {
+			library.stop();
+			store.close();
+		}
 	}
 
 	/** Generates the library's sample files. */

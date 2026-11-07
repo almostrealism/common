@@ -18,10 +18,13 @@ package org.almostrealism.studio.persistence.test;
 
 import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
+import org.almostrealism.audio.data.WaveDataFeatureProvider;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsStore;
+import org.almostrealism.audio.data.WaveFeatures;
 import org.almostrealism.audio.similarity.AudioSimilarityGraph;
 import org.almostrealism.audio.similarity.PrototypeIndexData;
+import org.almostrealism.studio.persistence.test.support.LogSpectrumFeatureProvider;
 import org.almostrealism.audio.similarity.SimilarityNode;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
@@ -656,6 +659,67 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 				library.isPrototypeIndexStale());
 	}
 
+	/**
+	 * Verifies that a prototype index built from one feature model is reported
+	 * stale once a different model is configured, even though every indexed
+	 * identifier is still present — because similarity must never mix features
+	 * from different models. The model identifier also survives a protobuf
+	 * round-trip, so a reopened library sees it.
+	 */
+	@Test(timeout = 10000)
+	public void staleWhenFeatureModelChangesThoughIdentifiersUnchanged() {
+		WaveDataFeatureProvider modelA =
+				new LogSpectrumFeatureProvider(2, 4, 44100, 0.1, "model-a");
+		library.getWaveDetailsFactory().setFeatureProvider(modelA);
+
+		library.include(createModelCompleteDetails("idx-1", "model-a"));
+		library.include(createModelCompleteDetails("idx-2", "model-a"));
+
+		PrototypeIndexData index = new PrototypeIndexData(
+				System.currentTimeMillis(), "model-a",
+				List.of(new PrototypeIndexData.Community(
+						"idx-1", 0.5, List.of("idx-1", "idx-2"))));
+		library.setPrototypeIndex(index);
+		Assert.assertFalse("not stale under its own model",
+				library.isPrototypeIndexStale());
+
+		PrototypeIndexData roundTrip = AudioLibraryPersistence.decodePrototypeIndex(
+				AudioLibraryPersistence.encodePrototypeIndex(index));
+		Assert.assertEquals("the model identifier survives persistence",
+				"model-a", roundTrip.modelIdentifier());
+		library.setPrototypeIndex(roundTrip);
+		Assert.assertFalse("still not stale after a persistence round-trip",
+				library.isPrototypeIndexStale());
+
+		WaveDataFeatureProvider modelB =
+				new LogSpectrumFeatureProvider(2, 8, 44100, 0.1, "model-b");
+		library.getWaveDetailsFactory().setFeatureProvider(modelB);
+		Assert.assertTrue("an index from model-a is stale under model-b",
+				library.isPrototypeIndexStale());
+	}
+
+	/**
+	 * Verifies that an index written before a model was recorded (0.40) is
+	 * reported stale as soon as a feature model is configured, as on the upgrade
+	 * to native SA3.
+	 */
+	@Test(timeout = 10000)
+	public void legacyIndexWithNoModelIsStaleOnceAModelIsConfigured() {
+		WaveDataFeatureProvider model =
+				new LogSpectrumFeatureProvider(2, 8, 44100, 0.1, "stable-audio-3");
+		library.getWaveDetailsFactory().setFeatureProvider(model);
+		library.include(createModelCompleteDetails("leg-1", "stable-audio-3"));
+
+		PrototypeIndexData legacyIndex = new PrototypeIndexData(
+				System.currentTimeMillis(),
+				List.of(new PrototypeIndexData.Community("leg-1", 0.5, List.of("leg-1"))));
+		Assert.assertNull("a 0.40 index records no model", legacyIndex.modelIdentifier());
+		library.setPrototypeIndex(legacyIndex);
+
+		Assert.assertTrue("a 0.40 index with no recorded model is stale under SA3",
+				library.isPrototypeIndexStale());
+	}
+
 	// ── Store-backed library tests ───────────────────────────────────────
 
 	/**
@@ -923,6 +987,18 @@ public class AudioLibraryCacheTest extends TestSuiteBase {
 		details.setFreqData(new PackedCollection(1));
 		details.setFeatureData(new PackedCollection(1));
 		details.setSimilarities(new HashMap<>());
+		return details;
+	}
+
+	/**
+	 * Creates a {@link WaveDetails} complete for the given feature model: it has
+	 * frequency data and a model-keyed feature set, so a library configured with
+	 * that model's provider treats it as complete.
+	 */
+	private WaveDetails createModelCompleteDetails(String identifier, String modelId) {
+		WaveDetails details = new WaveDetails(identifier, 44100);
+		details.setFreqData(new PackedCollection(1));
+		details.putFeatures(new WaveFeatures(modelId, 16.0, 1, 1, 1, new PackedCollection(1)));
 		return details;
 	}
 

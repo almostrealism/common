@@ -17,6 +17,9 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.collect.CollectionProducerBase;
+import io.almostrealism.expression.Conditional;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
@@ -57,5 +60,37 @@ public class ConditionalTest extends TestSuiteBase {
 		PackedCollection result = ev.evaluate();
 		log(String.valueOf(result.toDouble(0)));
 		assertEquals(5, result.toDouble(0));
+	}
+
+	/**
+	 * A single-branch selection returns the position {@code 0} value directly,
+	 * with no conditional wrapping, as documented by {@link Conditional#select}.
+	 */
+	@Test(timeout = 10000)
+	public void selectSingleBranch() {
+		Expression<?> selected = Conditional.select(new IntegerConstant(0), 1,
+				j -> new IntegerConstant(10 + j));
+		assertEquals(10.0, selected.doubleValue().getAsDouble());
+	}
+
+	/**
+	 * A non-positive {@code count} is rejected before the value supplier is invoked,
+	 * rather than silently producing the out-of-range position {@code 0} value.
+	 */
+	@Test(timeout = 10000)
+	public void selectRejectsNonPositiveCount() {
+		boolean[] supplierCalled = { false };
+
+		try {
+			Conditional.select(new IntegerConstant(0), 0, j -> {
+				supplierCalled[0] = true;
+				return new IntegerConstant(j);
+			});
+			throw new AssertionError("Expected IllegalArgumentException for count 0");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		assertFalse(supplierCalled[0]);
 	}
 }

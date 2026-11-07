@@ -26,6 +26,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Random;
 
@@ -117,6 +120,36 @@ public class NoteAudioGroupTest extends TestSuiteBase {
 				c4.getProvider().getChannelData(0, 1.0, OutputLine.sampleRate);
 		PackedCollection delivered = group.getAudio(WesternChromatic.C4, 0).evaluate();
 		assertBytesIdentical(passthrough, delivered);
+	}
+
+	/**
+	 * A member whose file cannot be read is never selected, even when its captured
+	 * pitch is the nearest: the nearest readable member delivers the pitch instead,
+	 * and a group whose only member is unreadable is invalid, so it is filtered out of
+	 * the candidates before a render rather than failing inside one on absent audio.
+	 *
+	 * @throws IOException if the malformed member file cannot be written
+	 */
+	@Test(timeout = 60000)
+	public void unreadableMemberIsNeverSelected() throws IOException {
+		File malformed = File.createTempFile("malformed-group-member", ".wav");
+		malformed.deleteOnExit();
+		Files.write(malformed.toPath(), new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+
+		NoteAudioProvider unreadable =
+				NoteAudioProvider.create(malformed.getPath(), WesternChromatic.C4, tuning);
+		NoteAudioProvider c2 = member(WesternChromatic.C2);
+		NoteAudioGroup group = new NoteAudioGroup(List.of(c2, unreadable));
+
+		Assert.assertTrue("a group with a readable member is valid", group.isValid());
+		Assert.assertSame("the unreadable member must not be selected for its own pitch",
+				c2, group.nearest(WesternChromatic.C4));
+
+		PackedCollection delivered = group.getAudio(WesternChromatic.C4, 0).evaluate();
+		Assert.assertTrue("the readable member delivers the pitch", delivered.getMemLength() > 0);
+
+		Assert.assertFalse("a group whose only member is unreadable is invalid",
+				new NoteAudioGroup(List.of(unreadable)).isValid());
 	}
 
 	/** A target above the captured range resolves to the highest member. */
