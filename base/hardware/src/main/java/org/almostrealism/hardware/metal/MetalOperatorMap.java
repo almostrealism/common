@@ -33,7 +33,7 @@ import java.util.Map;
  * <h2>Basic Usage</h2>
  *
  * <pre>{@code
- * MetalOperatorMap map = new MetalOperatorMap(context, metadata, funcName, source);
+ * MetalOperatorMap map = new MetalOperatorMap(context, metadata, funcName, source, 1);
  * // Compiles Metal source during construction
  *
  * MetalOperator op = map.get("matmul", 3);  // 3 arguments
@@ -64,12 +64,16 @@ public class MetalOperatorMap implements InstructionSet, ConsoleFeatures {
 	 * @param metadata Operation metadata for profiling and identification
 	 * @param func Name of the kernel function in the source
 	 * @param src Metal Shading Language source code
+	 * @param laneCount The lanes the kernel assigns to each work item (see
+	 *                  {@link io.almostrealism.scope.Scope#getLaneCount()}), the number the
+	 *                  source was rendered for, at least 1
 	 */
-	public MetalOperatorMap(MetalComputeContext ctx, OperationMetadata metadata, String func, String src) {
+	public MetalOperatorMap(MetalComputeContext ctx, OperationMetadata metadata, String func, String src,
+							int laneCount) {
 		this.context = ctx;
 		this.operators = new ThreadLocal<>();
 		this.allOperators = new ArrayList<>();
-		init(metadata, func, src);
+		init(metadata, func, src, laneCount);
 	}
 
 	/**
@@ -78,9 +82,11 @@ public class MetalOperatorMap implements InstructionSet, ConsoleFeatures {
 	 * @param metadata Operation metadata
 	 * @param func Kernel function name
 	 * @param src Metal Shading Language source code
+	 * @param laneCount The lanes the kernel assigns to each work item, recorded by the
+	 *                  {@link MetalProgram} (see {@link MetalProgram#getLaneCount()})
 	 * @throws RuntimeException if compilation fails
 	 */
-	protected void init(OperationMetadata metadata, String func, String src) {
+	protected void init(OperationMetadata metadata, String func, String src, int laneCount) {
 		if (MetalOperator.enableLog) {
 			log("MetalOperatorMap: init " + metadata.getDisplayName());
 		}
@@ -90,7 +96,7 @@ public class MetalOperatorMap implements InstructionSet, ConsoleFeatures {
 			log(src);
 		}
 
-		prog = MetalProgram.create(context, metadata, func, src);
+		prog = new MetalProgram(context, metadata, func, src, laneCount);
 
 		RuntimeException ex = null;
 

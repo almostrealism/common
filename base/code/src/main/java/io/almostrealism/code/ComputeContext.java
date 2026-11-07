@@ -112,6 +112,23 @@ public interface ComputeContext<MEM> {
 	boolean isCPU();
 
 	/**
+	 * Returns the number of lanes this context can assign to each work item of a kernel, or 1 (the
+	 * default) when it cannot assign more than one.
+	 *
+	 * <p>The lanes of a work item are threads that execute the work item's code together, as one
+	 * SIMD group, and can sum a value across themselves in hardware (see
+	 * {@link LanguageOperations#laneSum(String)}). A kernel whose root {@link Scope} declares this
+	 * many lanes (see {@link Scope#getLaneCount()}) is dispatched with that many threads for every
+	 * work item; any other kernel is dispatched with one thread per work item, as always. A
+	 * reduction over a long run of contiguous elements can then distribute the elements across the
+	 * lanes, so that adjacent lanes read adjacent addresses, rather than leaving every element to a
+	 * single thread.</p>
+	 *
+	 * @return the lanes available to each work item, at least 1
+	 */
+	default int getLaneCount() { return 1; }
+
+	/**
 	 * Copies all of {@code source} into {@code destination} &mdash; each carrying its own offset and
 	 * length &mdash; using whatever mechanism this context prefers for a plain memory-to-memory copy,
 	 * and sequencing the copy after {@code dependsOn}.

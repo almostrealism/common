@@ -61,24 +61,32 @@ public class CompiledKernelStructureContext implements KernelStructureContext, D
 	/** Traversal generator referenced by the compiled code, materialized at compilation. */
 	private KernelTraversalOperationGenerator traversalGenerator;
 
+	/** The lanes the compute context of the instructions can assign to each work item. */
+	private final int laneCount;
+
 	/**
-	 * Creates the structure context for instructions compiled from the given computation.
+	 * Creates the structure context for instructions compiled from the given computation, for a
+	 * compute context that can assign the given number of lanes to each work item.
 	 *
 	 * @param computation The computation the instructions are compiled from
+	 * @param laneCount   The lanes the compute context can assign to each work item (see
+	 *                    {@link io.almostrealism.code.ComputeContext#getLaneCount()})
 	 */
-	public CompiledKernelStructureContext(Computation<?> computation) {
+	public CompiledKernelStructureContext(Computation<?> computation, int laneCount) {
 		this.computation = computation;
+		this.laneCount = laneCount;
 	}
 
 	/**
-	 * Checks if kernel structure optimization is supported for the computation.
-	 * Returns {@code false} for {@link KernelTraversalOperation} to prevent recursive
-	 * traversal generation, {@code true} for all other computations.
+	 * Checks if kernel structure optimization is supported for the computation, as the
+	 * computation reports it (see {@link Computation#isKernelStructureSupported()}): a
+	 * {@link KernelTraversalOperation} reports that it is not, which prevents recursive
+	 * traversal generation.
 	 *
 	 * @return {@code true} if kernel structure optimization is supported
 	 */
 	public boolean isKernelStructureSupported() {
-		return !(computation instanceof KernelTraversalOperation);
+		return computation.isKernelStructureSupported();
 	}
 
 	/**
@@ -166,6 +174,14 @@ public class CompiledKernelStructureContext implements KernelStructureContext, D
 	public KernelTraversalProvider getTraversalProvider() {
 		return isKernelStructureSupported() ? traversalGenerator : null;
 	}
+
+	/**
+	 * Returns the lanes the compute context of the instructions can assign to each work item.
+	 *
+	 * @return the lanes available to each work item, at least 1
+	 */
+	@Override
+	public int getLaneCount() { return laneCount; }
 
 	/**
 	 * Destroys the kernel structure resources.

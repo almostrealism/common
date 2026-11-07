@@ -16,13 +16,17 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.LaneSum;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.kernel.LaneIndex;
 import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
@@ -301,7 +305,11 @@ public abstract class CollectionProducerComputationAdapter
 	 * kernel performance, and compatibility with different argument sizes.</p>
 	 *
 	 * <p>A computation with a positive {@link #getAccumulationCount()} instead writes the
-	 * same output elements from a native loop; see {@link #getAccumulationLoop}.</p>
+	 * same output elements from a native loop; see {@link #getAccumulationLoop}. When the
+	 * kernel's compute context can assign several lanes to each work item and the computation
+	 * sums {@link #getAccumulationMemberCount() members} that can be distributed across them,
+	 * the kernel is its own, and each work item writes one output element, the members are
+	 * summed by the lanes of each work item instead; see {@link #getLaneAccumulation}.</p>
 	 *
 	 * @param context The kernel structure context providing information about the compilation
 	 *               environment, including kernel maximums, threading constraints, and
@@ -319,9 +327,13 @@ public abstract class CollectionProducerComputationAdapter
 	public Scope<PackedCollection> getScope(KernelStructureContext context) {
 		Scope<PackedCollection> scope = super.getScope(context);
 
-		int iterations = getAccumulationCount();
-		if (iterations > 0) {
-			return getAccumulationLoop(scope, context, iterations);
+		// TODO(review): a laned scope generated for a parent kernel of equal count is never absorbed, so it no longer fuses with its consumer on Metal; measure that cost
+		if (isLaneAccumulated(context)) {
+			return getLaneAccumulation(scope, context);
+		}
+
+		if (getAccumulationCount() > 0) {
+			return getAccumulationLoop(scope, context);
 		}
 
 		forEachStatement(context, (output, index) ->
@@ -377,9 +389,9 @@ public abstract class CollectionProducerComputationAdapter
 	}
 
 	/**
-	 * Generates the kernel scope that accumulates each output element over {@code iterations}
-	 * iterations of a loop: before the loop the element is assigned
-	 * {@link #getAccumulationInitialValue(Expression)}, and each iteration adds
+	 * Generates the kernel scope that accumulates each output element over the
+	 * {@link #getAccumulationCount()} iterations of a loop: before the loop the element is
+	 * assigned {@link #getAccumulationInitialValue(Expression)}, and each iteration adds
 	 * {@link #getAccumulationTerm(Expression, Expression)} to it. {@link Repeated} promotes
 	 * the element to a local accumulator and hoists the index arithmetic that does not depend
 	 * on the iteration out of the loop.
@@ -390,14 +402,13 @@ public abstract class CollectionProducerComputationAdapter
 	 * recognizes as a computation referring to its own output, rather than as a dependency on
 	 * another kernel.</p>
 	 *
-	 * @param scope      the scope the kernel would otherwise consist of
-	 * @param context    the kernel structure context for scope generation
-	 * @param iterations the number of loop iterations
+	 * @param scope   the scope the kernel would otherwise consist of
+	 * @param context the kernel structure context for scope generation
 	 * @return the accumulation loop
 	 */
 	protected Repeated<PackedCollection> getAccumulationLoop(Scope<PackedCollection> scope,
-															 KernelStructureContext context,
-															 int iterations) {
+															 KernelStructureContext context) {
+		int iterations = getAccumulationCount();
 		String name = getVariablePrefix() + "_i";
 		DefaultIndex iteration = new DefaultIndex(name, iterations);
 
@@ -418,6 +429,124 @@ public abstract class CollectionProducerComputationAdapter
 
 		loop.add(body);
 		return loop;
+	}
+
+	/**
+	 * Returns the number of members whose terms each output element sums, when the members can
+	 * be distributed across the lanes of a work item, or zero (the default) when they cannot.
+	 * Each member's term is located by {@link #getAccumulationMember(Expression, Expression)}
+	 * from the member's position alone, and the terms of all members sum to
+	 * {@link #getValueAt(Expression)} at the same index.
+	 *
+	 * <p>A computation returns a positive count when adjacent members lie at adjacent addresses
+	 * of its operands, so that lanes summing adjacent members read adjacent memory, as the dot
+	 * product of each row of a matrix-vector product does.</p>
+	 *
+	 * @return the members summed into each output element, or zero
+	 * @see #getLaneAccumulation
+	 */
+	protected long getAccumulationMemberCount() { return 0; }
+
+	/**
+	 * Returns the term that one member contributes to an output element, for a computation
+	 * whose {@link #getAccumulationMemberCount()} is positive.
+	 *
+	 * @param index  the index of the output element
+	 * @param member the position of the member, from zero up to but excluding
+	 *               {@link #getAccumulationMemberCount()}
+	 * @return the term the member adds to the output element
+	 * @throws UnsupportedOperationException if the members of the computation cannot be distributed
+	 */
+	protected Expression<?> getAccumulationMember(Expression<?> index, Expression<?> member) {
+		throw new UnsupportedOperationException();
+	}
+
+	/**
+	 * Indicates whether the kernel generated for this computation in the given context sums the
+	 * {@link #getAccumulationMemberCount() members} of each output element by the lanes of its
+	 * work item (see {@link #getLaneAccumulation}): the context can assign several lanes to each
+	 * work item (see {@link KernelStructureContext#getLaneCount()}), the computation has at least
+	 * that many members to distribute across them, the kernel is the computation's own, each of
+	 * its work items writes a single output element, and the threads of all the work items can
+	 * be counted by an {@code int}.
+	 *
+	 * @param context the kernel structure context for scope generation
+	 * @return true if the lanes of each work item sum the members of its output element
+	 */
+	private boolean isLaneAccumulated(KernelStructureContext context) {
+		int lanes = context.getLaneCount();
+		return lanes > 1 && getAccumulationMemberCount() >= lanes && getMemLength() == 1 &&
+				context.getKernelMaximum().orElse(0) == getCountLong() &&
+				getCountLong() <= Integer.MAX_VALUE / lanes;
+	}
+
+	/**
+	 * Generates the kernel scope in which the lanes of each work item sum the
+	 * {@link #getAccumulationMemberCount() members} of its output element together: lane
+	 * {@code l} of the {@link KernelStructureContext#getLaneCount() L lanes} of the context adds
+	 * the terms of members {@code l, l + L, l + 2L, ...} to a local accumulator, so that at each
+	 * step the lanes read adjacent members, and the {@link LaneSum sum across the lanes} is stored
+	 * to the output element. Every lane stores the same total, so the store needs no lane of its
+	 * own.
+	 *
+	 * <p>The loop takes the steps in which every lane has a member, a number that does not depend
+	 * on the lane, so each member it locates is known to lie within the group. The members after
+	 * the last such step, fewer than the lanes, seed the accumulators of the lanes they fall to.</p>
+	 *
+	 * <p>The kernel scope takes the name, metadata, compute requirements and variables of the
+	 * scope it replaces and declares the lanes (see {@link Scope#getLaneCount()}), which a target
+	 * dispatches as that many threads for every work item. The store that refers to the output
+	 * is a direct child of the kernel scope, the structure
+	 * {@link Scope#convertArgumentsToRequiredScopes} recognizes as a computation referring to
+	 * its own output.</p>
+	 *
+	 * @param scope   the scope the kernel would otherwise consist of
+	 * @param context the kernel structure context for scope generation, whose lanes are at most
+	 *                the {@link #getAccumulationMemberCount() members} of each output element
+	 * @return the kernel scope
+	 */
+	protected Scope<PackedCollection> getLaneAccumulation(Scope<PackedCollection> scope,
+														  KernelStructureContext context) {
+		int lanes = context.getLaneCount();
+		long members = getAccumulationMemberCount();
+		String name = getVariablePrefix() + "_l";
+		int steps = Math.toIntExact(members / lanes);
+		int remaining = Math.toIntExact(members % lanes);
+
+		LaneIndex lane = new LaneIndex(lanes);
+		DefaultIndex step = new DefaultIndex(name, steps);
+		Expression<?> member = step.multiply(lanes).add(lane);
+
+		Scope<PackedCollection> kernel = new Scope<>(scope.getName(), scope.getMetadata());
+		kernel.setComputeRequirements(scope.getComputeRequirements());
+		kernel.getVariables().addAll(scope.getVariables());
+		kernel.setLaneCount(lanes);
+
+		Repeated<PackedCollection> loop = new Repeated<>(getFunctionName() + "_lanes",
+				new OperationMetadata(getFunctionName() + "_lanes", "Accumulation (Lanes)"));
+		loop.setIndex(new Variable<>(name));
+		loop.setInterval(e(1));
+		loop.setCondition(step.lessThan(e(steps)));
+
+		Scope<PackedCollection> body = new Scope<>(getFunctionName() + "_body",
+				new OperationMetadata(getFunctionName() + "_body", "Accumulation (Body)"));
+		Scope<PackedCollection> store = new Scope<>(getFunctionName() + "_store",
+				new OperationMetadata(getFunctionName() + "_store", "Accumulation (Store)"));
+		StaticReference<Double> accumulator = new StaticReference<>(Double.class, name + "_acc");
+
+		forEachStatement(context, (output, index) -> {
+			Expression<Double> initial = remaining == 0 ? e(0.0) :
+					lane.lessThan(e(remaining)).conditional(
+							getAccumulationMember(index, lane.add(e(steps * (long) lanes))), e(0.0));
+			kernel.getStatements().add(new ExpressionAssignment<>(true, accumulator, initial));
+			body.getStatements().add(accumulator.assign(accumulator.add(getAccumulationMember(index, member))));
+			store.getStatements().add(output.assign(new LaneSum(accumulator)));
+		});
+
+		loop.add(body);
+		kernel.add(loop);
+		kernel.add(store);
+		return kernel;
 	}
 
 	/**

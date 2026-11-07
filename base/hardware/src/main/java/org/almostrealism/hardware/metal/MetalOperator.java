@@ -20,6 +20,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.profile.OperationMetadata;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
@@ -50,6 +51,16 @@ import java.util.stream.IntStream;
  * // Returns [simdWidth, workgroupSize/simdWidth, 1]
  * }</pre>
  *
+ * <h2>Lanes per Work Item</h2>
+ *
+ * <p>A kernel whose root scope assigns several lanes to each work item (see
+ * {@link io.almostrealism.scope.Scope#getLaneCount()}) is dispatched with that many threads for
+ * every work item, one SIMD group each, in one-dimensional threadgroups of whole work items (see
+ * {@link #LANED_THREADGROUP_THREADS}). The lane count is the one the {@link MetalProgram} was
+ * rendered for ({@link MetalProgram#getLaneCount()}), the SIMD width of the device
+ * ({@link MetalComputeContext#getLaneCount()}); the program refuses a pipeline whose execution
+ * width differs, since its SIMD groups would not match the work items.</p>
+ *
  * @see MetalOperatorMap
  * @see MTLComputePipelineState
  * @see HardwareOperator
@@ -59,6 +70,15 @@ public class MetalOperator extends HardwareOperator {
 	 * Enables {@code dispatchThreadgroups} mode instead of {@code dispatchThreads} for kernel execution.
 	 */
 	public static boolean enableDispatchThreadgroups = false;
+
+	/**
+	 * Threads in each threadgroup of a kernel that assigns several lanes to each work item,
+	 * when the kernel allows that many: eight work items of 32 lanes. A laned kernel launches a
+	 * grid whose threads are the lanes of its work items, so whole work items are grouped
+	 * together; for the dot products of a matrix-vector product with some thousands of rows this
+	 * size ran faster than any narrower or wider threadgroup.
+	 */
+	public static final int LANED_THREADGROUP_THREADS = 256;
 
 	/** Cumulative count of all Metal kernel invocations across all operator instances. */
 	private static long totalInvocations;
@@ -77,7 +97,8 @@ public class MetalOperator extends HardwareOperator {
 	private MTLComputePipelineState kernel;
 
 	/**
-	 * Creates a Metal operator for executing a compiled kernel.
+	 * Creates a Metal operator for executing a compiled kernel, with as many threads for each
+	 * work item as the program's kernel assigns lanes to it (see {@link MetalProgram#getLaneCount()}).
 	 *
 	 * @param context The {@link MetalComputeContext} providing execution environment
 	 * @param program The compiled {@link MetalProgram} containing the kernel function
@@ -89,6 +110,15 @@ public class MetalOperator extends HardwareOperator {
 		this.prog = program;
 		this.name = name;
 		this.argCount = argCount;
+	}
+
+	/**
+	 * Returns the number of threads a dispatch launches: one for each lane of every work item.
+	 *
+	 * @return the global work size times the lanes the program's kernel assigns to each work item
+	 */
+	protected long getThreadCount() {
+		return getGlobalWorkSize() * prog.getLaneCount();
 	}
 
 	/**
@@ -155,9 +185,10 @@ public class MetalOperator extends HardwareOperator {
 	/**
 	 * Computes optimal workgroup (threadgroup) size for the kernel.
 	 *
-	 * <p>Finds the largest power-of-2 divisor of global work size that doesn't
-	 * exceed the kernel's {@code maxTotalThreadsPerThreadgroup}. Falls back to
-	 * SIMD width if {@link #enableDispatchThreadgroups} is enabled.</p>
+	 * <p>Finds the largest power-of-2 divisor of the {@link #getThreadCount() thread count} that
+	 * doesn't exceed the kernel's {@code maxTotalThreadsPerThreadgroup}. Falls back to
+	 * SIMD width if {@link #enableDispatchThreadgroups} is enabled. The lanes of a work item are
+	 * a power of two, the SIMD width, so a threadgroup always holds whole work items.</p>
 	 *
 	 * @return Workgroup size in threads
 	 */
@@ -166,14 +197,14 @@ public class MetalOperator extends HardwareOperator {
 		if (kernel == null) return super.getWorkgroupSize();
 
 		int simdWidth = kernel.threadExecutionWidth();
-		if (enableDispatchThreadgroups && getGlobalWorkSize() % simdWidth == 0) {
+		if (enableDispatchThreadgroups && getThreadCount() % simdWidth == 0) {
 			return simdWidth;
 		}
 
 		int max = kernel.maxTotalThreadsPerThreadgroup();
 
 		while (max > 1) {
-			if (getGlobalWorkSize() % max == 0) {
+			if (getThreadCount() % max == 0) {
 				return max;
 			}
 
@@ -194,9 +225,29 @@ public class MetalOperator extends HardwareOperator {
 	 * which is not a valid threadgroup, so it is dispatched one-dimensional as
 	 * {@code [workgroupSize, 1, 1]} instead.</p>
 	 *
+	 * <p>A kernel that assigns several lanes to each work item is dispatched with a
+	 * one-dimensional threadgroup of whole work items, {@link #LANED_THREADGROUP_THREADS} threads
+	 * when the kernel allows that many and the grid is that large; the grid's last threadgroup may
+	 * hold fewer work items, but never part of one, since the grid is a whole number of work
+	 * items.</p>
+	 *
 	 * @return 3-element array of [width, height, depth] dimensions
 	 */
 	public int[] getWorkgroupDimensions() {
+		int lanes = prog.getLaneCount();
+
+		if (lanes > 1 && !enableDispatchThreadgroups) {
+			int wholeWorkItems = kernel.maxTotalThreadsPerThreadgroup() / lanes * lanes;
+			if (wholeWorkItems == 0) {
+				throw new HardwareException(getName() + " assigns " + lanes +
+						" lanes to each work item, more than a threadgroup of it can hold");
+			}
+
+			int width = Math.max(lanes,
+					Math.min(LANED_THREADGROUP_THREADS, wholeWorkItems) / lanes * lanes);
+			return new int[] { (int) Math.min(getThreadCount(), width), 1, 1 };
+		}
+
 		int workgroupSize = getWorkgroupSize();
 
 		if (enableDispatchThreadgroups) {
@@ -275,8 +326,9 @@ public class MetalOperator extends HardwareOperator {
 	 */
 	@Override
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
-		if (getGlobalWorkSize() > Integer.MAX_VALUE) {
+		if (getThreadCount() > Integer.MAX_VALUE) {
 			throw new UnsupportedOperationException("Global work size " + getGlobalWorkSize() +
+					(prog.getLaneCount() > 1 ? " of " + prog.getLaneCount() + " lanes each" : "") +
 					" for " + getName() + " exceeds the largest grid a Metal dispatch can describe");
 		}
 
@@ -337,11 +389,11 @@ public class MetalOperator extends HardwareOperator {
 
 				if (enableDispatchThreadgroups) {
 					int groupSize = groupDims[0] * groupDims[1] * groupDims[2];
-					int gridDims[] = new int[]{(int) (getGlobalWorkSize() / groupSize), 1, 1};
+					int gridDims[] = new int[]{(int) (getThreadCount() / groupSize), 1, 1};
 					encoder.dispatchThreadgroups(groupDims[0], groupDims[1], groupDims[2],
 							gridDims[0], gridDims[1], gridDims[2]);
 				} else {
-					int gridDims[] = new int[]{(int) (getGlobalWorkSize()), 1, 1};
+					int gridDims[] = new int[]{(int) (getThreadCount()), 1, 1};
 					encoder.dispatchThreads(groupDims[0], groupDims[1], groupDims[2],
 							gridDims[0], gridDims[1], gridDims[2]);
 				}
