@@ -597,8 +597,10 @@ needs an asset or port the runners do not have. It is **not** the full set:
 about forty methods now carry the annotation (mostly heavy studio/compose
 benchmarks), with no central registry, and nothing in `test-integrity-check`
 flags the annotation being added to an existing test.
-`knownIssue = true` and `highMemory = true` also always skip under the
-pipeline profile. Run `grep -rn "excludeProfiles *=" --include='*.java' .` for
+`knownIssue = true`, `highMemory = true`, and `audioDeviceRequired = true` also
+always skip under the pipeline profile. (`audioDeviceRequired` additionally skips
+under any profile on a host with no audio output, so CI runners with a working
+device never play a test aloud.) Run `grep -rn "excludeProfiles *=" --include='*.java' .` for
 the current list, and see
 [`docs/internals/test-skip-gating-prevention.md`](../docs/internals/test-skip-gating-prevention.md)
 for why adding any of these to an existing test must be treated as a skip, and
