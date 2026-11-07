@@ -72,7 +72,15 @@ public class Random implements RandomProducer, OperationInfo, Signature {
 	/** Flag indicating whether to generate normal distribution (true) or uniform distribution (false) */
 	private final boolean normal;
 
-	/** Cached collection of generated random values, null until first initialization */
+	/**
+	 * Host-side values drawn from {@link #random} in construction order. Held here,
+	 * rather than materialized straight into a native {@link PackedCollection}, so
+	 * that constructing a generator does not reserve device memory for values that a
+	 * structural (never-evaluated) producer may never need. Null after {@link #refresh()}.
+	 */
+	private double[] drawn;
+
+	/** Cached collection of generated random values, null until first materialized */
 	private PackedCollection values;
 
 	/**
@@ -154,8 +162,10 @@ public class Random implements RandomProducer, OperationInfo, Signature {
 			throw new IllegalArgumentException();
 		}
 
-		// Draw in construction order, independent of later kernel evaluation order
-		initValues();
+		// Draw in construction order, independent of later kernel evaluation order.
+		// Only the host values are drawn here; the native collection is materialized
+		// lazily on first evaluation so a never-evaluated generator reserves no device memory.
+		this.drawn = draw();
 	}
 
 	/**
@@ -210,10 +220,26 @@ public class Random implements RandomProducer, OperationInfo, Signature {
 	 */
 	protected void initValues() {
 		if (values == null) {
-			values = PackedCollection.of(IntStream.range(0, getShape().getTotalSize())
-					.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())
-					.toArray()).reshape(getShape());
+			if (drawn == null) {
+				// A refresh cleared the construction draw, so draw a fresh series now
+				drawn = draw();
+			}
+			values = PackedCollection.of(drawn).reshape(getShape());
 		}
+	}
+
+	/**
+	 * Draws a fresh series of host-side values from {@link #random} according to the
+	 * configured distribution. The draw consumes the source in call order, so
+	 * generators sharing one seeded {@link java.util.Random} take their slices in the
+	 * order they draw.
+	 *
+	 * @return the drawn values, one per element of {@link #getShape()}
+	 */
+	private double[] draw() {
+		return IntStream.range(0, getShape().getTotalSize())
+				.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())
+				.toArray();
 	}
 
 	/**
@@ -223,7 +249,10 @@ public class Random implements RandomProducer, OperationInfo, Signature {
 	 * a fresh generation of random values.</p>
 	 */
 	@Override
-	public void refresh() { values = null; }
+	public void refresh() {
+		values = null;
+		drawn = null;
+	}
 
 	/**
 	 * Returns whether this generator produces standard normal values.
