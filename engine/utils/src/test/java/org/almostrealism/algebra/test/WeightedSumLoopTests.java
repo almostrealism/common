@@ -17,10 +17,17 @@
 package org.almostrealism.algebra.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.Process;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.profile.OperationSource;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
@@ -32,8 +39,13 @@ import org.junit.Test;
 import java.io.File;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * Tests weighted sums whose group is large enough to be summed by a native loop rather than by
@@ -538,6 +550,200 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Matrix-vector products computed on Metal, whose rows are summed by the lanes of each work
+	 * item (see {@link io.almostrealism.code.ComputeContext#getLaneCount()}), match the host
+	 * evaluation whether every lane takes the same number of members (256 columns) or the members
+	 * after the last whole step of the lanes fall to a few lanes (300 and 777 columns) or to one
+	 * (257 columns), and whether {@code matmul} takes its single-vector form (at most 1000 rows)
+	 * or its general one (more than 1000 rows).
+	 */
+	@Test(timeout = 180000)
+	public void metalMatrixVectorProductsMatchReference() {
+		if (!Hardware.getLocalHardware().isAvailable(ComputeRequirement.MTL)) {
+			log("skipping, Metal is not available");
+			return;
+		}
+
+		for (int[] product : new int[][] { { 37, 256 }, { 40, 300 }, { 1001, 257 }, { 1500, 777 } }) {
+			int rows = product[0];
+			int columns = product[1];
+			PackedCollection matrix = track(new PackedCollection(shape(rows, columns)).randFill());
+			PackedCollection vector = track(new PackedCollection(shape(columns)).randFill());
+
+			assertMatches("Metal matmul " + rows + "x" + columns,
+					matmulReference(matrix.toArray(), vector.toArray(), rows, columns, 1),
+					evaluateOnMetal(() -> matmul(cp(matrix), cp(vector))));
+		}
+	}
+
+	/**
+	 * A looped weighted sum whose group runs along the contiguous dimension of both operands,
+	 * the dot product of each row of a matrix with a vector, is compiled for Metal with several
+	 * lanes for each work item, and matches the host evaluation with the 777 members of each row
+	 * leaving nine after the last whole step of 32 lanes.
+	 */
+	@Test(timeout = 120000)
+	public void metalRowSumsAreSummedByLanes() {
+		if (!Hardware.getLocalHardware().isAvailable(ComputeRequirement.MTL)) {
+			log("skipping, Metal is not available");
+			return;
+		}
+
+		int rows = 300;
+		int columns = 777;
+		PackedCollection matrix = track(new PackedCollection(shape(rows, columns)).randFill());
+		PackedCollection vector = track(new PackedCollection(shape(1, columns)).randFill());
+
+		TraversalPolicy result = shape(rows, 1);
+		TraversalPolicy group = shape(1, columns);
+		List<Integer> laneCounts = new ArrayList<>();
+
+		assertMatches("Metal row sums", matmulReference(matrix.toArray(), vector.toArray(), rows, columns, 1),
+				evaluateOnMetal(() -> new LaneRecordingWeightedSum(
+						new TraversalPolicy[] { result, result, result.withRate(0, 1, rows), group, group },
+						cp(matrix), cp(vector), laneCounts)));
+		Assert.assertFalse("the weighted sum was compiled", laneCounts.isEmpty());
+		Assert.assertTrue("each row was summed by several lanes, not " + laneCounts,
+				laneCounts.stream().allMatch(lanes -> lanes > 1));
+	}
+
+	/**
+	 * A looped weighted sum whose group runs along a dimension that is not contiguous, each
+	 * column of a matrix whose rows are contiguous, is compiled for Metal with one thread for each
+	 * work item, since lanes summing adjacent members would read a whole row apart, and matches
+	 * the host evaluation.
+	 */
+	@Test(timeout = 120000)
+	public void metalColumnSumsAreNotSummedByLanes() {
+		if (!Hardware.getLocalHardware().isAvailable(ComputeRequirement.MTL)) {
+			log("skipping, Metal is not available");
+			return;
+		}
+
+		int rows = 300;
+		int columns = 40;
+		PackedCollection matrix = track(new PackedCollection(shape(rows, columns)).randFill());
+		PackedCollection vector = track(new PackedCollection(shape(rows, 1)).randFill());
+
+		TraversalPolicy result = shape(1, columns);
+		TraversalPolicy group = shape(rows, 1);
+		List<Integer> laneCounts = new ArrayList<>();
+
+		double[] transposed = new double[rows * columns];
+		double[] values = matrix.toArray();
+		for (int i = 0; i < rows; i++) {
+			for (int j = 0; j < columns; j++) {
+				transposed[j * rows + i] = values[i * columns + j];
+			}
+		}
+
+		assertMatches("Metal column sums", matmulReference(transposed, vector.toArray(), columns, rows, 1),
+				evaluateOnMetal(() -> new LaneRecordingWeightedSum(
+						new TraversalPolicy[] { result, result, result.withRate(1, 1, columns), group, group },
+						cp(matrix), cp(vector), laneCounts)));
+		Assert.assertFalse("the weighted sum was compiled", laneCounts.isEmpty());
+		Assert.assertTrue("each column was summed by one thread, not " + laneCounts,
+				laneCounts.stream().allMatch(lanes -> lanes == 1));
+	}
+
+	/**
+	 * A matrix-vector product consumed by a kernel of the same count on Metal, a bias added to
+	 * each row's dot product and the sum passed through a sigmoid, matches the host evaluation:
+	 * whether the weighted sum is embedded in its consumer or, summed by lanes, remains a kernel
+	 * of its own (see {@link Scope#getLaneCount()}), every output element receives its row's sum.
+	 * The 777 columns leave nine members after the last whole step of 32 lanes.
+	 */
+	@Test(timeout = 180000)
+	public void metalMatrixVectorProductConsumersMatchReference() {
+		if (!Hardware.getLocalHardware().isAvailable(ComputeRequirement.MTL)) {
+			log("skipping, Metal is not available");
+			return;
+		}
+
+		int rows = 300;
+		int columns = 777;
+		PackedCollection matrix = track(new PackedCollection(shape(rows, columns)).randFill());
+		PackedCollection vector = track(new PackedCollection(shape(columns)).randFill());
+		PackedCollection bias = track(new PackedCollection(shape(rows)).randFill());
+
+		double[] sums = matmulReference(matrix.toArray(), vector.toArray(), rows, columns, 1);
+		double[] offsets = bias.toArray();
+		double[] biased = new double[rows];
+		double[] activated = new double[rows];
+		for (int i = 0; i < rows; i++) {
+			biased[i] = sums[i] + offsets[i];
+			activated[i] = 1.0 / (1.0 + Math.exp(-biased[i]));
+		}
+
+		assertMatches("Metal matmul plus bias", biased,
+				evaluateOnMetal(() -> matmul(cp(matrix), cp(vector)).add(cp(bias))));
+		assertMatches("Metal sigmoid of matmul plus bias", activated,
+				evaluateOnMetal(() -> sigmoid(matmul(cp(matrix), cp(vector)).add(cp(bias)))));
+	}
+
+	/**
+	 * The Metal kernel in which the lanes of each work item sum a row of a matrix-vector product
+	 * evaluates the sum across the lanes on every lane, into a local variable, and stores it to
+	 * the output from the first lane alone: a store executed by every lane would be concurrent
+	 * writes of one address, a data race even though the lanes write the same value. Such a race
+	 * cannot be made to produce a wrong value deterministically, so the generated source is
+	 * inspected instead, and the product is checked against the host evaluation as well.
+	 */
+	@Test(timeout = 120000)
+	public void metalLaneSumIsStoredByOneLane() throws Exception {
+		if (!Hardware.getLocalHardware().isAvailable(ComputeRequirement.MTL)) {
+			log("skipping, Metal is not available");
+			return;
+		}
+
+		int rows = 300;
+		int columns = 777;
+		PackedCollection matrix = track(new PackedCollection(shape(rows, columns)).randFill());
+		PackedCollection vector = track(new PackedCollection(shape(columns)).randFill());
+
+		OperationProfileNode profile = new OperationProfileNode("weighted_sum_lanes");
+		Hardware.getLocalHardware().assignProfile(profile);
+
+		try {
+			assertMatches("Metal matmul", matmulReference(matrix.toArray(), vector.toArray(), rows, columns, 1),
+					evaluateOnMetal(() -> matmul(cp(matrix), cp(vector))));
+		} finally {
+			Hardware.getLocalHardware().clearProfile();
+		}
+
+		new File("results").mkdirs();
+		profile.save("results/weighted_sum_lanes.xml");
+
+		String source = profile.getOperationSources().values().stream()
+				.flatMap(List::stream)
+				.map(OperationSource::getSource)
+				.filter(s -> s.contains("simd_sum("))
+				.findFirst().orElse(null);
+		Assert.assertNotNull("no generated source sums across lanes", source);
+
+		List<String> lines = Arrays.stream(source.split("\n")).map(String::trim).collect(Collectors.toList());
+		int sum = IntStream.range(0, lines.size())
+				.filter(i -> lines.get(i).contains("simd_sum(")).findFirst().getAsInt();
+		Matcher local = Pattern.compile("^\\w+ (\\w+) = metal::simd_sum\\(").matcher(lines.get(sum));
+		Assert.assertTrue("the lane sum is declared as a local variable: " + lines.get(sum), local.find());
+		Assert.assertEquals("the lanes sum once", 1,
+				lines.stream().filter(line -> line.contains("simd_sum(")).count());
+
+		String total = local.group(1);
+		Pattern store = Pattern.compile("\\] = " + total + ";$");
+		List<Integer> stores = IntStream.range(0, lines.size())
+				.filter(i -> store.matcher(lines.get(i)).find()).boxed().collect(Collectors.toList());
+		Assert.assertEquals("the total is stored once: " + source, 1, stores.size());
+
+		int guard = stores.get(0) - 1;
+		Assert.assertTrue("the store follows the sum", guard > sum);
+		Assert.assertTrue("only the first lane stores the total: " + lines.get(guard),
+				lines.get(guard).startsWith("if (") && lines.get(guard).contains("lane_id") &&
+						lines.get(guard).contains("== 0"));
+		Assert.assertEquals("the guard encloses the store alone", "}", lines.get(stores.get(0) + 1));
+	}
+
+	/**
 	 * Saves a profile of a looped matrix product so the generated loop kernel source can be
 	 * read with the profile analyzer.
 	 */
@@ -587,6 +793,62 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 			assertMatches(label + " (single expression)", expected, track(single.evaluate()));
 		} finally {
 			WeightedSumComputation.loopThreshold = threshold;
+		}
+	}
+
+	/**
+	 * Evaluates a producer with its kernel compiled for, and run on, the Metal context, and
+	 * registers the result for destruction after the test.
+	 *
+	 * @param producer the producer to evaluate
+	 * @return the result
+	 */
+	private PackedCollection evaluateOnMetal(Supplier<CollectionProducer> producer) {
+		Hardware.getLocalHardware().getComputer().pushRequirements(List.of(ComputeRequirement.MTL));
+
+		try {
+			return track(producer.get().evaluate());
+		} finally {
+			Hardware.getLocalHardware().getComputer().popRequirements();
+		}
+	}
+
+	/**
+	 * A weighted sum that records the lane count of every kernel scope it generates (see
+	 * {@link Scope#getLaneCount()}), so that a test can tell whether the lanes of each work item
+	 * summed its group.
+	 */
+	private static class LaneRecordingWeightedSum extends WeightedSumComputation {
+		/** Result, input positions, weight positions, input group and weight group. */
+		private final TraversalPolicy[] shapes;
+
+		/** The lane counts of the kernel scopes generated so far. */
+		private final List<Integer> laneCounts;
+
+		/**
+		 * @param shapes     result, input positions, weight positions, input group and weight group
+		 * @param input      the input values
+		 * @param weights    the weight values
+		 * @param laneCounts receives the lane count of every kernel scope generated
+		 */
+		LaneRecordingWeightedSum(TraversalPolicy[] shapes, Producer<PackedCollection> input,
+								 Producer<PackedCollection> weights, List<Integer> laneCounts) {
+			super(shapes[0], shapes[1], shapes[2], shapes[3], shapes[4], input, weights);
+			this.shapes = shapes;
+			this.laneCounts = laneCounts;
+		}
+
+		@Override
+		public Scope<PackedCollection> getScope(KernelStructureContext context) {
+			Scope<PackedCollection> scope = super.getScope(context);
+			laneCounts.add(scope.getLaneCount());
+			return scope;
+		}
+
+		@Override
+		public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
+			return new LaneRecordingWeightedSum(shapes, (Producer<PackedCollection>) children.get(1),
+					(Producer<PackedCollection>) children.get(2), laneCounts);
 		}
 	}
 

@@ -103,6 +103,21 @@ public interface KernelStructureContext {
 	KernelTraversalProvider getTraversalProvider();
 
 	/**
+	 * Returns the number of lanes the kernel this context belongs to may assign to each of its
+	 * work items, or 1 (the default) when it may not assign more than one. This is the lane count
+	 * of the compute context the kernel is compiled for (see
+	 * {@link io.almostrealism.code.ComputeContext#getLaneCount()}); a kernel whose root
+	 * {@link io.almostrealism.scope.Scope} declares it is dispatched with that many threads for
+	 * every work item, which {@link LaneIndex} tells apart.
+	 *
+	 * <p>Assigning lanes never changes what a work item is: the kernel index still identifies
+	 * the work item, and {@link #getKernelMaximum()} still counts work items, not threads.</p>
+	 *
+	 * @return the lanes available to each work item, at least 1
+	 */
+	default int getLaneCount() { return 1; }
+
+	/**
 	 * Returns {@code true} if the given kernel size is compatible with this context.
 	 *
 	 * <p>A size is valid when it matches the kernel maximum (if set) and the series
