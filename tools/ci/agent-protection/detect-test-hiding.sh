@@ -79,18 +79,56 @@ if ! MERGE_BASE=$(git merge-base "$BASE_BRANCH" HEAD 2>&1); then
     exit 1
 fi
 
-# ── Merge-base file listing ─────────────────────────────────────────
+# ── Candidate change under audit: the working tree ──────────────────
 #
-# Every "does this file exist at the merge-base" question below is
+# Every check below reads its diff, its line numbers and its file
+# contents from the SAME state: the working tree (including staged and
+# unstaged edits), compared against COMPARE_BASE. The working tree is
+# what the agent is about to commit, so it is what must be audited.
+# Diffing committed history alone (BASE...HEAD) both missed the agent's
+# uncommitted work and, when the working tree had moved on from HEAD,
+# paired committed-diff line numbers with working-tree file contents and
+# reported phantom violations.
+#
+# COMPARE_BASE is normally the merge-base computed above. When a merge of
+# the base branch is in progress it is MERGE_HEAD instead: the base
+# branch's own commits are already contained in MERGE_HEAD, so a diff
+# against it excludes them and attributes only the branch's divergence —
+# its committed work plus the agent's in-progress conflict resolution —
+# to the agent. Diffing against the plain merge-base during a merge would
+# count every change the base branch brought in as the agent's own, which
+# is how a line-shifting merge of master produced a false positive.
+#
+# The override is honoured only when MERGE_HEAD is an ancestor of
+# $BASE_BRANCH — that is, the in-progress merge really is a merge of the
+# base branch (or of something the base branch already contains). A bare
+# MERGE_HEAD proves only that *some* merge is in progress; an agent could
+# otherwise merge an unrelated branch to move the baseline off the
+# merge-base, so any test weakening carried by that branch — already
+# contained in its tip and thus excluded from a diff against it — would
+# escape the audit. When the merge is of anything else, fall back to the
+# merge-base, which attributes every incoming change to the agent (the
+# safe over-reporting direction).
+if MERGE_HEAD_SHA=$(git rev-parse -q --verify "MERGE_HEAD^{commit}" 2>/dev/null) \
+        && git merge-base --is-ancestor "$MERGE_HEAD_SHA" "$BASE_BRANCH" 2>/dev/null; then
+    COMPARE_BASE="$MERGE_HEAD_SHA"
+    echo "Merge of ${BASE_BRANCH} in progress — auditing the working tree against the merged-in base ${COMPARE_BASE}."
+else
+    COMPARE_BASE="$MERGE_BASE"
+fi
+
+# ── Comparison-base file listing ────────────────────────────────────
+#
+# Every "does this file exist at the comparison base" question below is
 # answered from this one-time listing rather than a per-file
 # `git cat-file -e <rev>:<path>` probe: for that object-name form git
 # reports the same exit code and message whether the path is absent from
 # the tree or the lookup itself failed, so the probe cannot tell them apart. A listing failure is treated the
 # same as the diff-unavailable case above: no evidence is a reason to
 # stop, not a reason to report a clean audit.
-if ! MERGE_BASE_FILE_LIST=$(git ls-tree -r --name-only "$MERGE_BASE" 2>&1); then
-    echo "Cannot list files at merge-base ${MERGE_BASE} — the branch cannot be checked:" >&2
-    echo "$MERGE_BASE_FILE_LIST" >&2
+if ! COMPARE_BASE_FILE_LIST=$(git ls-tree -r --name-only "$COMPARE_BASE" 2>&1); then
+    echo "Cannot list files at comparison base ${COMPARE_BASE} — the branch cannot be checked:" >&2
+    echo "$COMPARE_BASE_FILE_LIST" >&2
 
     if [ -n "${GITHUB_OUTPUT:-}" ]; then
         echo "violation_count=0" >> "$GITHUB_OUTPUT"
@@ -106,15 +144,15 @@ fi
 # `set -e`. This guard also runs outside CI -- TestHidingAudit invokes
 # detect-test-hiding.sh from the job harness before every commit -- so it
 # has to work under the oldest bash any agent host provides.
-MERGE_BASE_FILE_SET="
-$MERGE_BASE_FILE_LIST
+COMPARE_BASE_FILE_SET="
+$COMPARE_BASE_FILE_LIST
 "
 
-# Reports whether $1 exists at the merge-base. Exact whole-line membership
-# in the listing above -- the listing's own success was already checked,
-# so this can never confuse "absent" with "lookup failed".
-merge_base_has_file() {
-    case "$MERGE_BASE_FILE_SET" in
+# Reports whether $1 exists at the comparison base. Exact whole-line
+# membership in the listing above -- the listing's own success was already
+# checked, so this can never confuse "absent" with "lookup failed".
+compare_base_has_file() {
+    case "$COMPARE_BASE_FILE_SET" in
         *"
 $1
 "*) return 0 ;;
@@ -458,8 +496,11 @@ count_unpaired_removals() {
 
 # Get list of modified (not added) test files.
 # We only care about files that existed on the base branch. New files (A status)
-# are excluded because modifying your own new tests is acceptable.
-MODIFIED_TEST_FILES=$(git diff --name-status "${BASE_BRANCH}...HEAD" -- \
+# are excluded because modifying your own new tests is acceptable. The diff is
+# taken against the working tree (two-dot `git diff <commit>`), so uncommitted
+# and staged edits are part of the candidate change, and its +line numbers refer
+# to the working-tree file every later check reads.
+MODIFIED_TEST_FILES=$(git diff --name-status "$COMPARE_BASE" -- \
     '**/*Test*.java' '**/test/**/*.java' \
     | grep -E '^M\s' \
     | awk '{print $2}' \
@@ -478,12 +519,12 @@ FILE_COUNT=$(echo "$MODIFIED_TEST_FILES" | wc -l)
 echo "Checking ${FILE_COUNT} modified test file(s) for test-hiding patterns..."
 
 for FILE in $MODIFIED_TEST_FILES; do
-    # Verify the file actually existed at the merge-base (belt-and-suspenders).
-    # git already reported this file with "M" status against the merge-base,
+    # Verify the file actually existed at the comparison base (belt-and-suspenders).
+    # git already reported this file with "M" status against the comparison base,
     # so its absence from our own tree listing means the listing itself
     # cannot be trusted here -- not that the file is legitimately new.
-    if ! merge_base_has_file "$FILE"; then
-        echo "Modified test file ${FILE} was not found at merge-base ${MERGE_BASE} — the check cannot proceed:" >&2
+    if ! compare_base_has_file "$FILE"; then
+        echo "Modified test file ${FILE} was not found at comparison base ${COMPARE_BASE} — the check cannot proceed:" >&2
         echo "git reported it as modified relative to the base branch, which is inconsistent with it being absent there." >&2
 
         if [ -n "${GITHUB_OUTPUT:-}" ]; then
@@ -494,16 +535,17 @@ for FILE in $MODIFIED_TEST_FILES; do
         exit 1
     fi
 
-    # Get only the additions and deletions for this file
-    DIFF=$(git diff "${BASE_BRANCH}...HEAD" -- "$FILE")
+    # Get only the additions and deletions for this file, against the working
+    # tree so the diff matches the file contents read below.
+    DIFF=$(git diff "$COMPARE_BASE" -- "$FILE")
 
     # Pre-compute method spans and added-line metadata once per file. The
     # method-scoped patterns below filter additions through OWNS_RANGES so
     # that lines inside brand-new test methods (or between methods, leading
     # into a new one) are not attributed to a previous existing method.
     BASE_FILE_TMP=$(mktemp)
-    if ! git show "${MERGE_BASE}:${FILE}" > "$BASE_FILE_TMP" 2>/dev/null; then
-        echo "Could not read ${FILE} at merge-base ${MERGE_BASE} — the check cannot proceed:" >&2
+    if ! git show "${COMPARE_BASE}:${FILE}" > "$BASE_FILE_TMP" 2>/dev/null; then
+        echo "Could not read ${FILE} at comparison base ${COMPARE_BASE} — the check cannot proceed:" >&2
         rm -f "$BASE_FILE_TMP"
 
         if [ -n "${GITHUB_OUTPUT:-}" ]; then

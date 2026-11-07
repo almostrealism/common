@@ -513,7 +513,7 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		Assert.assertFalse(tree.containsReference(Set.of("z")));
 
 		Set<String> names = new HashSet<>();
-		tree.collectReferencedNames(names);
+		tree.appendReferencedNames(names);
 		Assert.assertTrue(names.containsAll(Set.of("x", "y")));
 
 		Assert.assertFalse(tree.isLoopInvariant(Set.of("x"), Collections.emptyList(), Collections.emptyList()));
@@ -542,7 +542,7 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		Assert.assertTrue(scaled.containsIndex(cell));
 
 		Set<String> names = new HashSet<>();
-		scaled.collectReferencedNames(names);
+		scaled.appendReferencedNames(names);
 		Assert.assertEquals(Set.of(cell.getName(), "row", "col", "x"), names);
 	}
 
