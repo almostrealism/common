@@ -25,7 +25,9 @@ import org.almostrealism.audio.tone.KeyboardTuning;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A {@link NoteAudio} that delivers a target pitch from the nearest captured
@@ -85,6 +87,18 @@ public class NoteAudioGroup implements NoteAudio, Validity {
 	 */
 	private final List<NoteAudioProvider> members;
 
+	/**
+	 * Memoized {@link NoteAudioProvider#isValid()} result per member, keyed by
+	 * member identity. {@link #pitchedMembers()} runs on every
+	 * {@link #nearest(KeyPosition)}/{@link #isValid()}/{@link #representativeMember()}
+	 * call — and for an unreadable file each {@code isValid()} reads metadata and
+	 * logs a warning — so without memoization a group with a bad member re-reads it
+	 * and warns once per pitched lookup throughout a render. Caching makes the check
+	 * and its warning happen once per member; a member added later is evaluated on
+	 * first use.
+	 */
+	private final Map<NoteAudioProvider, Boolean> readable = new IdentityHashMap<>();
+
 	/** Creates an empty group; mostly useful for incremental construction. */
 	public NoteAudioGroup() {
 		this(List.of());
@@ -124,12 +138,21 @@ public class NoteAudioGroup implements NoteAudio, Validity {
 		List<NoteAudioProvider> pitched = new ArrayList<>(members.size());
 		for (NoteAudioProvider m : members) {
 			KeyPosition<?> root = m.getRoot();
-			// TODO(review): isValid() is re-evaluated (and warns for unreadable files) on every nearest()/isValid() call
-			if (root != null && root.position() >= 0 && m.isValid()) {
+			if (root != null && root.position() >= 0 && isReadable(m)) {
 				pitched.add(m);
 			}
 		}
 		return pitched;
+	}
+
+	/**
+	 * Returns whether the member's audio can be read, memoizing
+	 * {@link NoteAudioProvider#isValid()} so it is evaluated — and, for an
+	 * unreadable file, warns — only once per member rather than on every
+	 * pitched lookup.
+	 */
+	private synchronized boolean isReadable(NoteAudioProvider member) {
+		return readable.computeIfAbsent(member, NoteAudioProvider::isValid);
 	}
 
 	/**
