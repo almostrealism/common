@@ -72,6 +72,7 @@ class CanarySubmissionSettingsTest(unittest.TestCase):
                        ".github/canary.txt",
                        ".claude/canary.txt",
                        ".flowtree/canary.txt",
+                       "engine/ml/.flowtree/canary.txt",
                        "src/test/canary.txt",
                        "flowtree/runtime/src/test/canary.txt",
                        "src/it/canary.txt"):
@@ -79,6 +80,34 @@ class CanarySubmissionSettingsTest(unittest.TestCase):
                 result = self._run_with_marker(marker)
                 self.assertEqual(1, result.returncode, result.stderr)
                 self.assertIn("guarded path", result.stderr)
+
+    def test_non_canonical_override_is_rejected(self):
+        """A spelling git would canonicalize into a guarded path (or any other
+        non-canonical form) must be rejected before the guarded-root check,
+        which compares spellings and would otherwise let it through."""
+        for marker in ("./tools/ci/agent-e2e/canary/last-run.txt",
+                       "tools/../tools/ci/canary.txt",
+                       "tools/./ci/canary.txt",
+                       "tools//ci/canary.txt",
+                       "/tmp/canary.txt",
+                       "../canary.txt",
+                       "tools/canary/",
+                       "tools/canary/.."):
+            with self.subTest(marker=marker):
+                result = self._run_with_marker(marker)
+                self.assertEqual(1, result.returncode, result.stderr)
+                self.assertIn("not a canonical repository-relative path", result.stderr)
+
+    def test_dotted_file_name_is_not_mistaken_for_a_dot_segment(self):
+        """Only whole '.'/'..' segments are non-canonical; a name that merely
+        contains or starts with dots is an ordinary path and clears the guard."""
+        for marker in ("tools/canary/..last-run.txt", "tools/canary/.last-run"):
+            with self.subTest(marker=marker):
+                result = self._run_with_marker(marker)
+                self.assertEqual(1, result.returncode)
+                self.assertIn("Usage", result.stderr)
+                self.assertNotIn("canonical", result.stderr)
+                self.assertNotIn("guarded path", result.stderr)
 
     def test_override_outside_every_guarded_root_passes_the_guard(self):
         """A marker outside every guarded root clears the guard and reaches the

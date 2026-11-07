@@ -104,10 +104,19 @@ die() { echo "::error::$*" >&2; exit 1; }
 # deploy.yaml, or a caller) is not guaranteed to be, so reject one that lands in
 # a guarded root here, naming the cause, rather than letting it masquerade as a
 # fleet failure. The roots match FileStager's guardrails; see the comment above.
+# The path must be canonical and repository-relative first: the guarded-root
+# patterns compare spellings, so ./tools/ci/... or a/../tools/ci/... would slip
+# past them while git still reports the file as tools/ci/... and it is dropped.
+# A .flowtree/ directory is scratch at any depth (FlowtreeArtifacts), not only
+# at the root.
 assert_marker_unguarded() {
     case "$1" in
-        tools/ci/*|.github/*|.claude/*|.flowtree/*|src/test/*|src/it/*|*/src/test/*|*/src/it/*)
-            die "CANARY_FILE '$1' is under a guarded path (tools/ci/, .github/, .claude/, .flowtree/ or a src/test|src/it tree). The harness drops such a write at staging on the non-ci/ canary branch, so the marker would never be committed and the run would report a fleet failure it did not have. Point CANARY_FILE outside every guarded root (the default tools/canary/last-run.txt is)." ;;
+        ''|/*|*/|*//*|.|..|./*|../*|*/./*|*/../*|*/.|*/..)
+            die "CANARY_FILE '$1' is not a canonical repository-relative path (no leading /, no empty, '.' or '..' segments). Git reports the marker by its canonical path, so a non-canonical spelling would bypass the guarded-path check below." ;;
+    esac
+    case "$1" in
+        tools/ci/*|.github/*|.claude/*|.flowtree/*|*/.flowtree/*|src/test/*|src/it/*|*/src/test/*|*/src/it/*)
+            die "CANARY_FILE '$1' is under a guarded path (tools/ci/, .github/, .claude/, a .flowtree/ directory at any depth, or a src/test|src/it tree). The harness drops such a write at staging on the non-ci/ canary branch, so the marker would never be committed and the run would report a fleet failure it did not have. Point CANARY_FILE outside every guarded root (the default tools/canary/last-run.txt is)." ;;
     esac
 }
 assert_marker_unguarded "$CANARY_FILE"
