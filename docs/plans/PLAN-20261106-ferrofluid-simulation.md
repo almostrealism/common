@@ -435,10 +435,16 @@ physical check that onset and spike spacing match theory.
   sim's height field (vertex positions equal h within tolerance) and the image has non-background,
   lit pixels.
 - **Phase 1 (physical):** (a) **threshold** — below the predicted critical magnetization the flat
-  state is stable (surface stays flat to within noise); above it, spikes grow. (b) **wavelength** —
-  measured spike spacing matches the critical wavelength λ_c = 2π√(σ/ρg) (capillary length scale)
-  within a stated tolerance. (c) **hexagonal/regular pattern** emerges, as observed experimentally.
-  (d) energy/dimensional sanity. These are quantitative, not visual.
+  state is stable (surface stays flat to within noise); above it, perturbations grow. (b)
+  **wavelength** — measured spike spacing matches the critical wavelength λ_c = 2π√(σ/(ρg)) (2π
+  times the capillary length √(σ/(ρg))) within a stated tolerance. Both (a) and (b) are predictions
+  of **linear** stability theory and are the robust, quantitative acceptance criteria for a
+  height-field model. (c) **hexagonal/regular pattern selection**, as observed experimentally — a
+  *weakly-nonlinear* phenomenon. Treat this as a **qualitative/stretch** check, not a pass/fail gate:
+  pattern selection and the sharp, overturning conical spike morphology are nonlinear effects that a
+  single-valued height field may not reproduce honestly (see §6.1 Option A and §9); reaching them
+  faithfully may require the 3D model (Phase 5). (d) energy/dimensional sanity. Criteria (a), (b),
+  and (d) are quantitative, not visual.
 - **Phase 2:** reflection correctness (a known environment is mirrored in the surface at the
   geometrically correct angle); a restored, asserting CI render test; no `knownIssue` exclusion of
   the new render assertion.
@@ -464,6 +470,14 @@ tests are additive; no existing test is weakened to make a phase pass.
 - **Numerical stability.** Surface tension and magnetic stress impose tight time-step limits
   (surface-tension CFL). The integrator and step size must respect them; getting a stable, correct
   instability is the main physics risk. Mitigated by the analytic checks in Phase 1.
+- **Height-field model validity (physics).** A single-valued height field h(x,y) captures the
+  **linear** onset of the Rosensweig instability — threshold field and critical wavelength — which is
+  what the Phase 1 quantitative checks (§8) target. It cannot represent the fully-developed sharp
+  conical spikes (which overturn and are strongly nonlinear), and the experimentally-observed
+  **hexagonal pattern selection** is a weakly-nonlinear effect it may not reproduce faithfully. If a
+  visually convincing spike field or correct pattern selection is a hard requirement rather than the
+  linear onset, the 3D model (Phase 5) — not the height-field slice — is the honest vehicle. This is
+  a model-fidelity limit, independent of the numerical-stability risk above.
 - **Render performance.** The current orchestration is host-side per pixel and the intersection is a
   linear scan; naive frame sequences will be slow. Phase 4 addresses this, but the useful resolution
   is an unknown until measured.
