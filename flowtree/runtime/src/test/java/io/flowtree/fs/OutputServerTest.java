@@ -17,7 +17,9 @@
 package io.flowtree.fs;
 
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
 /**
@@ -26,8 +28,35 @@ import org.junit.Test;
  * constructor and the JVM-wide current-server registration. The database- and
  * socket-backed behaviour (the {@link OutputServer#init} path, query handling,
  * and the accept loop) is integration territory and is not exercised here.
+ *
+ * <p>Registering a current server mutates the JVM-wide {@code current} singleton,
+ * which other fs tests (for example {@code nextJob} with no server) read. It is
+ * snapshotted before each test and restored afterwards via {@link OutputServerState}
+ * so these tests neither depend on nor leak that shared state into other tests
+ * running in the same JVM.
  */
 public class OutputServerTest extends TestSuiteBase {
+
+	/** The current-server singleton captured before each test. */
+	private OutputServer savedCurrent;
+
+	/**
+	 * Captures the current-server singleton so it can be restored after the test,
+	 * keeping the JVM-wide static state unchanged across test boundaries.
+	 */
+	@Before
+	public void snapshotCurrentServer() {
+		savedCurrent = OutputServer.getCurrentServer();
+	}
+
+	/**
+	 * Restores the current-server singleton captured in
+	 * {@link #snapshotCurrentServer()}.
+	 */
+	@After
+	public void restoreCurrentServer() {
+		OutputServerState.setCurrentServer(savedCurrent);
+	}
 
 	/**
 	 * An {@link OutputServer} built with the no-argument constructor is not yet
