@@ -265,8 +265,13 @@ public class Conditional<T extends Number> extends Expression<T> {
 	 * @param count   the number of candidate branches; must be at least one
 	 * @param valueAt supplies the candidate value for each branch position in {@code [0, count)}
 	 * @return an expression that evaluates to the selected branch value
+	 * @throws IllegalArgumentException if {@code count} is less than one
 	 */
 	public static Expression select(Expression<?> index, int count, IntFunction<Expression<?>> valueAt) {
+		if (count < 1) {
+			throw new IllegalArgumentException("count must be at least one (was " + count + ")");
+		}
+
 		Expression v = valueAt.apply(0);
 
 		for (int j = 1; j < count; j++) {
