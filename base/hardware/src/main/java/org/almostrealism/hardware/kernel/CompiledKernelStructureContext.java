@@ -70,9 +70,14 @@ public class CompiledKernelStructureContext implements KernelStructureContext, D
 	 *
 	 * @param computation The computation the instructions are compiled from
 	 * @param laneCount   The lanes the compute context can assign to each work item (see
-	 *                    {@link io.almostrealism.code.ComputeContext#getLaneCount()})
+	 *                    {@link io.almostrealism.code.ComputeContext#getLaneCount()}), at least 1
+	 * @throws IllegalArgumentException if {@code laneCount} is less than 1
 	 */
 	public CompiledKernelStructureContext(Computation<?> computation, int laneCount) {
+		if (laneCount < 1) {
+			throw new IllegalArgumentException("A work item needs at least one lane");
+		}
+
 		this.computation = computation;
 		this.laneCount = laneCount;
 	}

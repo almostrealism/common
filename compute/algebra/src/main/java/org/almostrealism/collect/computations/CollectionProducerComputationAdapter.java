@@ -486,8 +486,9 @@ public abstract class CollectionProducerComputationAdapter
 	 * {@code l} of the {@link KernelStructureContext#getLaneCount() L lanes} of the context adds
 	 * the terms of members {@code l, l + L, l + 2L, ...} to a local accumulator, so that at each
 	 * step the lanes read adjacent members, and the {@link LaneSum sum across the lanes} is stored
-	 * to the output element. Every lane stores the same total, so the store needs no lane of its
-	 * own.
+	 * to the output element. Every lane takes part in the sum, which leaves the total in a local
+	 * variable of each lane, but only the first lane stores it: concurrent writes of one address
+	 * by several threads are a data race even when they write the same value.
 	 *
 	 * <p>The loop takes the steps in which every lane has a member, a number that does not depend
 	 * on the lane, so each member it locates is known to lie within the group. The members after
@@ -495,10 +496,10 @@ public abstract class CollectionProducerComputationAdapter
 	 *
 	 * <p>The kernel scope takes the name, metadata, compute requirements and variables of the
 	 * scope it replaces and declares the lanes (see {@link Scope#getLaneCount()}), which a target
-	 * dispatches as that many threads for every work item. The store that refers to the output
-	 * is a direct child of the kernel scope, the structure
-	 * {@link Scope#convertArgumentsToRequiredScopes} recognizes as a computation referring to
-	 * its own output.</p>
+	 * dispatches as that many threads for every work item. The branch that writes the output lies
+	 * within the store scope, and {@link Scope#convertArgumentsToRequiredScopes} keeps a scope
+	 * that declares lanes as an argument rather than absorbing it, so the reference to the output
+	 * is not mistaken for a dependency on another kernel.</p>
 	 *
 	 * @param scope   the scope the kernel would otherwise consist of
 	 * @param context the kernel structure context for scope generation, whose lanes are at most
@@ -533,6 +534,8 @@ public abstract class CollectionProducerComputationAdapter
 		Scope<PackedCollection> store = new Scope<>(getFunctionName() + "_store",
 				new OperationMetadata(getFunctionName() + "_store", "Accumulation (Store)"));
 		StaticReference<Double> accumulator = new StaticReference<>(Double.class, name + "_acc");
+		StaticReference<Double> total = new StaticReference<>(Double.class, name + "_sum");
+		Expression<Boolean> storingLane = lane.eq(0);
 
 		forEachStatement(context, (output, index) -> {
 			Expression<Double> initial = remaining == 0 ? e(0.0) :
@@ -540,7 +543,8 @@ public abstract class CollectionProducerComputationAdapter
 							getAccumulationMember(index, lane.add(e(steps * (long) lanes))), e(0.0));
 			kernel.getStatements().add(new ExpressionAssignment<>(true, accumulator, initial));
 			body.getStatements().add(accumulator.assign(accumulator.add(getAccumulationMember(index, member))));
-			store.getStatements().add(output.assign(new LaneSum(accumulator)));
+			store.getStatements().add(new ExpressionAssignment<>(true, total, new LaneSum(accumulator)));
+			store.addCase(storingLane, output.assign(total));
 		});
 
 		loop.add(body);

@@ -21,6 +21,7 @@ import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.Process;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.profile.OperationProfileNode;
+import io.almostrealism.profile.OperationSource;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
@@ -38,8 +39,13 @@ import org.junit.Test;
 import java.io.File;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * Tests weighted sums whose group is large enough to be summed by a native loop rather than by
@@ -673,6 +679,68 @@ public class WeightedSumLoopTests extends TestSuiteBase {
 				evaluateOnMetal(() -> matmul(cp(matrix), cp(vector)).add(cp(bias))));
 		assertMatches("Metal sigmoid of matmul plus bias", activated,
 				evaluateOnMetal(() -> sigmoid(matmul(cp(matrix), cp(vector)).add(cp(bias)))));
+	}
+
+	/**
+	 * The Metal kernel in which the lanes of each work item sum a row of a matrix-vector product
+	 * evaluates the sum across the lanes on every lane, into a local variable, and stores it to
+	 * the output from the first lane alone: a store executed by every lane would be concurrent
+	 * writes of one address, a data race even though the lanes write the same value. Such a race
+	 * cannot be made to produce a wrong value deterministically, so the generated source is
+	 * inspected instead, and the product is checked against the host evaluation as well.
+	 */
+	@Test(timeout = 120000)
+	public void metalLaneSumIsStoredByOneLane() throws Exception {
+		if (!Hardware.getLocalHardware().isAvailable(ComputeRequirement.MTL)) {
+			log("skipping, Metal is not available");
+			return;
+		}
+
+		int rows = 300;
+		int columns = 777;
+		PackedCollection matrix = track(new PackedCollection(shape(rows, columns)).randFill());
+		PackedCollection vector = track(new PackedCollection(shape(columns)).randFill());
+
+		OperationProfileNode profile = new OperationProfileNode("weighted_sum_lanes");
+		Hardware.getLocalHardware().assignProfile(profile);
+
+		try {
+			assertMatches("Metal matmul", matmulReference(matrix.toArray(), vector.toArray(), rows, columns, 1),
+					evaluateOnMetal(() -> matmul(cp(matrix), cp(vector))));
+		} finally {
+			Hardware.getLocalHardware().clearProfile();
+		}
+
+		new File("results").mkdirs();
+		profile.save("results/weighted_sum_lanes.xml");
+
+		String source = profile.getOperationSources().values().stream()
+				.flatMap(List::stream)
+				.map(OperationSource::getSource)
+				.filter(s -> s.contains("simd_sum("))
+				.findFirst().orElse(null);
+		Assert.assertNotNull("no generated source sums across lanes", source);
+
+		List<String> lines = Arrays.stream(source.split("\n")).map(String::trim).collect(Collectors.toList());
+		int sum = IntStream.range(0, lines.size())
+				.filter(i -> lines.get(i).contains("simd_sum(")).findFirst().getAsInt();
+		Matcher local = Pattern.compile("^\\w+ (\\w+) = metal::simd_sum\\(").matcher(lines.get(sum));
+		Assert.assertTrue("the lane sum is declared as a local variable: " + lines.get(sum), local.find());
+		Assert.assertEquals("the lanes sum once", 1,
+				lines.stream().filter(line -> line.contains("simd_sum(")).count());
+
+		String total = local.group(1);
+		Pattern store = Pattern.compile("\\] = " + total + ";$");
+		List<Integer> stores = IntStream.range(0, lines.size())
+				.filter(i -> store.matcher(lines.get(i)).find()).boxed().collect(Collectors.toList());
+		Assert.assertEquals("the total is stored once: " + source, 1, stores.size());
+
+		int guard = stores.get(0) - 1;
+		Assert.assertTrue("the store follows the sum", guard > sum);
+		Assert.assertTrue("only the first lane stores the total: " + lines.get(guard),
+				lines.get(guard).startsWith("if (") && lines.get(guard).contains("lane_id") &&
+						lines.get(guard).contains("== 0"));
+		Assert.assertEquals("the guard encloses the store alone", "}", lines.get(stores.get(0) + 1));
 	}
 
 	/**

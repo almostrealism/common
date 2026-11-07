@@ -63,4 +63,23 @@ public class CompiledKernelStructureContextTest extends TestSuiteBase {
 			Assert.assertEquals(32, context.getLaneCount());
 		}
 	}
+
+	/**
+	 * A work item has at least one lane, so the structure context refuses to be created for a
+	 * compute context that reports none, or a negative number, rather than letting the kernel
+	 * compile against a lane count no target can dispatch.
+	 */
+	@Test(timeout = 30000)
+	public void laneCountBelowOneIsRejected() {
+		KernelTraversalOperation<?> traversal = new KernelTraversalOperation<>();
+
+		for (int lanes : new int[] { 0, -1 }) {
+			try {
+				new CompiledKernelStructureContext(traversal, lanes);
+				Assert.fail("a context of " + lanes + " lanes was created");
+			} catch (IllegalArgumentException expected) {
+				log("refused " + lanes + " lanes");
+			}
+		}
+	}
 }
