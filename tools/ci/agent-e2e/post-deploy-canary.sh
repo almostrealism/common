@@ -97,6 +97,21 @@ CANARY_FILE="${CANARY_FILE:-tools/canary/last-run.txt}"
 
 die() { echo "::error::$*" >&2; exit 1; }
 
+# A marker under any guarded root is silently dropped at staging on the non-ci/
+# canary branch, so the agent commits nothing and the run ends with the generic
+# "fleet published nothing" verdict — which reads as a broken fleet when the
+# real cause is a mis-pointed path. The default above is safe; an override (from
+# deploy.yaml, or a caller) is not guaranteed to be, so reject one that lands in
+# a guarded root here, naming the cause, rather than letting it masquerade as a
+# fleet failure. The roots match FileStager's guardrails; see the comment above.
+assert_marker_unguarded() {
+    case "$1" in
+        tools/ci/*|.github/*|.claude/*|.flowtree/*|src/test/*|src/it/*|*/src/test/*|*/src/it/*)
+            die "CANARY_FILE '$1' is under a guarded path (tools/ci/, .github/, .claude/, .flowtree/ or a src/test|src/it tree). The harness drops such a write at staging on the non-ci/ canary branch, so the marker would never be committed and the run would report a fleet failure it did not have. Point CANARY_FILE outside every guarded root (the default tools/canary/last-run.txt is)." ;;
+    esac
+}
+assert_marker_unguarded "$CANARY_FILE"
+
 # Records the run's outcome for the workflow step that follows, when there is
 # one to read it.
 report_outcome() {

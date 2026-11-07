@@ -56,6 +56,39 @@ class CanarySubmissionSettingsTest(unittest.TestCase):
         self.assertFalse(path.startswith(".claude/"))
         self.assertFalse(path.startswith(".flowtree/"))
 
+    def _run_with_marker(self, marker):
+        """Runs the canary with a bogus subcommand so the marker guard — which
+        runs at load time, before the subcommand is dispatched — decides the
+        outcome without any network, agent, or git activity."""
+        env = dict(os.environ, CANARY_FILE=marker)
+        return subprocess.run(["bash", _CANARY, "__noop__"], env=env,
+                              capture_output=True, text=True, timeout=60)
+
+    def test_override_under_a_guarded_root_is_rejected(self):
+        """An override that points the marker under a guarded root must fail
+        loudly and name the cause, not masquerade as a fleet failure. Covers
+        each guarded root the harness drops at staging on the non-ci/ branch."""
+        for marker in ("tools/ci/agent-e2e/canary/last-run.txt",
+                       ".github/canary.txt",
+                       ".claude/canary.txt",
+                       ".flowtree/canary.txt",
+                       "src/test/canary.txt",
+                       "flowtree/runtime/src/test/canary.txt",
+                       "src/it/canary.txt"):
+            with self.subTest(marker=marker):
+                result = self._run_with_marker(marker)
+                self.assertEqual(1, result.returncode, result.stderr)
+                self.assertIn("guarded path", result.stderr)
+
+    def test_override_outside_every_guarded_root_passes_the_guard(self):
+        """A marker outside every guarded root clears the guard and reaches the
+        subcommand dispatch (which rejects the bogus subcommand with usage),
+        proving the guard does not reject ordinary paths."""
+        result = self._run_with_marker("tools/canary/last-run.txt")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("Usage", result.stderr)
+        self.assertNotIn("guarded path", result.stderr)
+
     def test_still_queued_has_its_own_exit_status(self):
         """Exit 3 and outcome=queued, distinct from the exit 1 of every failure."""
         queued = re.search(r"still-queued\)\n(.*?);;", self.script, re.S)
