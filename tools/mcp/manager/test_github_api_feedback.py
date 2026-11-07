@@ -122,6 +122,45 @@ class TestReviewBodyFindings(unittest.TestCase):
                            body="No issues found.")]
         self.assertEqual([], github_api.pr_outstanding_findings(reviews, []))
 
+    def test_a_quota_notice_does_not_supersede_an_earlier_finding(self):
+        # A finding, then a later quota refusal. The refusal means Copilot never
+        # ran; it must not be selected as the latest review and clear the real
+        # finding that preceded it — the finding is still outstanding.
+        reviews = [
+            _review("copilot-pull-request-reviewer", state="COMMENTED",
+                    body="## Previously missed\nx", submitted_at="2026-11-07T06:50:00Z"),
+            _review("copilot-pull-request-reviewer", state="COMMENTED",
+                    body="Copilot was unable to review this pull request because "
+                         "the user who requested the review has insufficient "
+                         "remaining quota.",
+                    submitted_at="2026-11-07T07:20:00Z"),
+        ]
+        findings = github_api.pr_outstanding_findings(reviews, [])
+        self.assertEqual(1, len(findings))
+        self.assertEqual("review", findings[0]["kind"])
+
+    def test_human_body_only_changes_requested_is_outstanding(self):
+        # A human CHANGES_REQUESTED review whose finding lives only in the body,
+        # with no thread. It is a blocking verdict from a non-Copilot reviewer,
+        # so it must be reported outstanding too.
+        reviews = [_review("octocat", state="CHANGES_REQUESTED",
+                           body="This needs rework before it can merge.")]
+        findings = github_api.pr_outstanding_findings(reviews, [])
+        self.assertEqual(1, len(findings))
+        self.assertEqual("review", findings[0]["kind"])
+
+    def test_human_commented_review_is_not_a_finding(self):
+        # A human COMMENTED review is not blocking, and the Copilot overview
+        # markers are Copilot-scoped: a human body that happens to contain one
+        # ("previously missed") is not a finding.
+        reviews = [_review("octocat", state="COMMENTED",
+                           body="I think this was previously missed, worth a look.")]
+        self.assertEqual([], github_api.pr_outstanding_findings(reviews, []))
+
+    def test_human_approval_is_accounted_for(self):
+        reviews = [_review("octocat", state="APPROVED", body="LGTM")]
+        self.assertEqual([], github_api.pr_outstanding_findings(reviews, []))
+
 
 if __name__ == "__main__":
     unittest.main()

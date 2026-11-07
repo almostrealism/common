@@ -2,7 +2,7 @@
 # ─── Report a PR's outstanding reviewer feedback for a submission ─────
 #
 # Fetches a pull request's reviews and review threads and prints, on stdout,
-#   feedback_outstanding=true|false
+#   feedback_outstanding=true|false|unknown
 # for the caller to turn into the FEEDBACK_OUTSTANDING env the submit scripts
 # forward to the controller. It also writes one `summary <TAB> url` line per
 # outstanding finding to $FEEDBACK_FINDINGS_FILE (when set), for the submission
@@ -42,9 +42,11 @@ fi
 
 owner="${REPO%%/*}"
 name="${REPO##*/}"
-# TODO(review): reviewThreads(first:100)/comments(first:50) are not paginated;
-# a PR past those limits can under-report findings and strand one (skip wrongly).
-threads_query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:100){nodes{isResolved comments(first:50){nodes{author{login} createdAt body url}}}}}}}'
+# reviewThreads(first:100)/comments(first:50) are not paginated here, so a PR
+# past those limits is under-read. pageInfo.hasNextPage lets pr-feedback-status.py
+# detect that truncation and report "unknown" rather than "false", which fails
+# open to dispatch instead of stranding an unseen finding on a large PR.
+threads_query='query($owner:String!,$repo:String!,$pr:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$pr){reviewThreads(first:100){pageInfo{hasNextPage} nodes{isResolved comments(first:50){pageInfo{hasNextPage} nodes{author{login} createdAt body url}}}}}}}'
 if ! gh api graphql -f query="$threads_query" \
         -F owner="$owner" -F repo="$name" -F pr="$PR" > "$threads_file" 2>/dev/null; then
     exit 0

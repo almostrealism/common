@@ -114,6 +114,10 @@ jobs:
     permissions:
       actions: read
       contents: read
+      # The feedback fetch below lists reviews and GraphQL review threads; both
+      # require this, or the helper fails open and the flag/findings stay unset
+      # so the budget-pause ping cannot include the outstanding findings.
+      pull-requests: read
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4

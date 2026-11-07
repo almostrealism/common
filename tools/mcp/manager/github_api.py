@@ -801,30 +801,43 @@ def _thread_is_outstanding(thread: dict) -> bool:
     return latest_author == opening_author
 
 
-def _review_body_has_finding(review: dict) -> bool:
+def _review_body_has_finding(review: dict, check_markers: bool = True) -> bool:
     """Return whether a review's verdict/body carries an unaccounted finding.
 
-    True when the review requests changes, or its body names one of
-    :data:`REVIEW_BODY_FINDING_MARKERS`. A quota refusal
+    True when the review requests changes, or — when ``check_markers`` — its
+    body names one of :data:`REVIEW_BODY_FINDING_MARKERS`. A quota refusal
     (:func:`is_copilot_quota_notice`) is not a review and carries no finding.
+
+    Args:
+        review: The review dict (``state`` and ``body``).
+        check_markers: Whether to apply the Copilot overview markers. The
+            markers describe Copilot's own section headings, so pass False for
+            a non-Copilot reviewer, whose body-only finding is recognised solely
+            by a CHANGES_REQUESTED verdict — the state a human uses to block.
     """
     body = review.get("body") or ""
     if is_copilot_quota_notice(body):
         return False
     if (review.get("state") or "").upper() == "CHANGES_REQUESTED":
         return True
+    if not check_markers:
+        return False
     lowered = body.lower()
     return any(marker in lowered for marker in REVIEW_BODY_FINDING_MARKERS)
 
 
 def _outstanding_review_body_findings(reviews, is_copilot_login) -> list:
-    """Return review-body findings (Copilot overviews) not yet superseded.
+    """Return review-body findings (reviewer overviews) not yet superseded.
 
-    Only the *latest* review each Copilot reviewer submitted is considered: an
-    earlier "Previously missed" overview is accounted for once a newer review
-    supersedes it (an APPROVED verdict, or a later overview that no longer
-    names a finding). The latest review is outstanding when it still carries a
-    finding (:func:`_review_body_has_finding`).
+    Only the *latest* review each reviewer submitted is considered: an earlier
+    overview is accounted for once a newer review supersedes it (an APPROVED
+    verdict, or a later review that no longer names a finding). A quota refusal
+    is not a review — it means Copilot never ran — so it is skipped when picking
+    the latest, and cannot supersede an earlier real finding. The latest review
+    is outstanding when it still carries a finding
+    (:func:`_review_body_has_finding`); the Copilot overview markers apply only
+    to Copilot's own reviews, while a CHANGES_REQUESTED verdict is a finding
+    from any reviewer, so a human's body-only blocking review is included too.
     """
     if not isinstance(reviews, list):
         return []
@@ -833,15 +846,17 @@ def _outstanding_review_body_findings(reviews, is_copilot_login) -> list:
         if not isinstance(review, dict):
             continue
         login = _review_login(review)
-        if not is_copilot_login(login):
+        if not login:
+            continue
+        if is_copilot_quota_notice(review.get("body") or ""):
             continue
         current = latest_by_author.get(login)
         if current is None or (review.get("submitted_at") or "") >= (
                 current.get("submitted_at") or ""):
             latest_by_author[login] = review
     findings = []
-    for review in latest_by_author.values():
-        if _review_body_has_finding(review):
+    for login, review in latest_by_author.items():
+        if _review_body_has_finding(review, check_markers=is_copilot_login(login)):
             findings.append({
                 "kind": "review",
                 "summary": _first_line(review.get("body"))

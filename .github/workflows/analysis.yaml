@@ -4171,6 +4171,10 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # The feedback fetch below lists reviews and GraphQL review threads; both
+      # require this, or the helper fails open and FEEDBACK_OUTSTANDING stays
+      # unset so this path never applies the feedback-aware own-commit skip.
+      pull-requests: read
     steps:
       - name: Checkout trusted scripts
         uses: actions/checkout@v4

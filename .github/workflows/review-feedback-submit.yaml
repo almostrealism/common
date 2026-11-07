@@ -40,6 +40,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # The feedback fetch lists reviews and GraphQL review threads; without
+      # this the job-level block grants only `contents: read` (it overrides the
+      # workflow-level one), so both calls fail and the fetch falls open to
+      # "unknown" — a late review's finding would never be submitted.
+      pull-requests: read
     steps:
       - name: Checkout trusted scripts
         uses: actions/checkout@v4
@@ -80,11 +85,19 @@ jobs:
           export FEEDBACK_FINDINGS_FILE="${RUNNER_TEMP}/feedback-findings.txt"
           FEEDBACK_STATUS=$(REPO="${{ github.repository }}" PR="${PR_NUMBER}" \
             bash ./tools/ci/pr-feedback-env.sh || true)
-          if [ "$FEEDBACK_STATUS" != "feedback_outstanding=true" ]; then
+          # Skip ONLY on an explicit "false" — a PR with nothing outstanding.
+          # An empty or "unknown" result (a failed, malformed or truncated
+          # fetch) submits with FEEDBACK_OUTSTANDING left unset, so the
+          # controller dispatches rather than skips. Failing closed here would
+          # defeat that fail-open path: a late review could arrive, the fetch
+          # fail transiently, and no remediation ever be sent.
+          if [ "$FEEDBACK_STATUS" = "feedback_outstanding=false" ]; then
             echo "::notice::No reviewer feedback outstanding on PR #${PR_NUMBER} — nothing to submit"
             exit 0
           fi
-          export FEEDBACK_OUTSTANDING=true
+          if [ "$FEEDBACK_STATUS" = "feedback_outstanding=true" ]; then
+            export FEEDBACK_OUTSTANDING=true
+          fi
           if [ -s "${FEEDBACK_FINDINGS_FILE}" ]; then
             FEEDBACK_FINDINGS=$(cat "${FEEDBACK_FINDINGS_FILE}")
             export FEEDBACK_FINDINGS
