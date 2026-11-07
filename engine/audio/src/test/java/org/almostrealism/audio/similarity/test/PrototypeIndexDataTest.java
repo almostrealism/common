@@ -23,6 +23,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Tests for {@link PrototypeIndexData} and its nested {@link PrototypeIndexData.Community} record.
@@ -122,6 +123,70 @@ public class PrototypeIndexDataTest extends TestSuiteBase {
 	@Test(timeout = 5000, expected = NullPointerException.class)
 	public void communityRejectsNullPrototype() {
 		new PrototypeIndexData.Community(null, 0.9, List.of("m1"));
+	}
+
+	/**
+	 * Verifies that the two-argument constructor records no feature model, as an
+	 * index written before models were recorded (0.40) is represented.
+	 */
+	@Test(timeout = 5000)
+	public void twoArgumentConstructorRecordsNoModel() {
+		PrototypeIndexData index = new PrototypeIndexData(1000L,
+				List.of(new PrototypeIndexData.Community("p", 0.5, List.of("p"))));
+		Assert.assertNull("legacy construction records no feature model", index.modelIdentifier());
+	}
+
+	/**
+	 * Verifies that an index built from one feature model is stale once a
+	 * different model is current, even when every member is still present.
+	 */
+	@Test(timeout = 5000)
+	public void staleWhenCurrentModelDiffersFromIndexModel() {
+		PrototypeIndexData index = new PrototypeIndexData(System.currentTimeMillis(), "model-a",
+				List.of(new PrototypeIndexData.Community("p", 0.5, List.of("p", "m"))));
+
+		Assert.assertTrue("an index from model-a is stale under model-b",
+				index.isStale(Set.of("p", "m"), "model-b"));
+	}
+
+	/**
+	 * Verifies that an index with no recorded model (0.40) is stale as soon as a
+	 * current feature model is known, as happens on the upgrade to native SA3.
+	 */
+	@Test(timeout = 5000)
+	public void staleWhenLegacyIndexHasNoModelButCurrentModelKnown() {
+		PrototypeIndexData index = new PrototypeIndexData(System.currentTimeMillis(),
+				List.of(new PrototypeIndexData.Community("p", 0.5, List.of("p", "m"))));
+
+		Assert.assertNull(index.modelIdentifier());
+		Assert.assertTrue("a model-less index is stale once a current model is known",
+				index.isStale(Set.of("p", "m"), "stable-audio-3"));
+	}
+
+	/**
+	 * Verifies that a fresh index whose recorded model matches the current model,
+	 * with unchanged members, is not stale.
+	 */
+	@Test(timeout = 5000)
+	public void notStaleWhenModelMatchesAndContentsUnchanged() {
+		PrototypeIndexData index = new PrototypeIndexData(System.currentTimeMillis(), "model-a",
+				List.of(new PrototypeIndexData.Community("p", 0.5, List.of("p", "m"))));
+
+		Assert.assertFalse("a fresh index under its own model is not stale",
+				index.isStale(Set.of("p", "m"), "model-a"));
+	}
+
+	/**
+	 * Verifies that with no current feature model the model check is skipped and
+	 * the index is judged only on its contents, preserving the pre-model behaviour.
+	 */
+	@Test(timeout = 5000)
+	public void notStaleWhenNoCurrentModelAndContentsUnchanged() {
+		PrototypeIndexData index = new PrototypeIndexData(System.currentTimeMillis(), "model-a",
+				List.of(new PrototypeIndexData.Community("p", 0.5, List.of("p", "m"))));
+
+		Assert.assertFalse("with no current model the index is judged only on contents",
+				index.isStale(Set.of("p", "m"), null));
 	}
 
 	/**

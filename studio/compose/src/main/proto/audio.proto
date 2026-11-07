@@ -76,6 +76,11 @@ message FeatureSet {
 message PrototypeIndex {
   int64 computed_at = 1;
   repeated PrototypeCommunity communities = 2;
+
+  // Identifier of the feature model the communities were computed from. Empty
+  // for an index written before the model was recorded; similarity must never
+  // mix features from different models, so such an index is treated as stale.
+  string model_identifier = 3;
 }
 
 message PrototypeCommunity {
