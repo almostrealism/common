@@ -375,7 +375,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			// transfer, avoiding the double[] mediation of the array fallback
 			if (srcRam.getProvider().getNumberSize() != getNumberSize()) {
 				warn("Unable to copy memory directly due to precision difference");
-				setMem(mem, offset, srcRam.toArray(srcOffset, length), 0, length);
+				setMemInChunks(mem, offset, srcRam, srcOffset, length);
 				return;
 			}
 
@@ -394,7 +394,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 				ioTime.addEntry("setMem", System.nanoTime() - start);
 			}
 		} else {
-			setMem(mem, offset, srcRam.toArray(srcOffset, length), 0, length);
+			setMemInChunks(mem, offset, srcRam, srcOffset, length);
 		}
 	}
 

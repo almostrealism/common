@@ -328,7 +328,8 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	 * Copies data from another memory region into Metal memory.
 	 *
 	 * <p>Optimized for Metal-to-Metal transfers when source is also {@link MetalMemory}.
-	 * Falls back to array-based transfer for other memory types.</p>
+	 * Other memory types are read through their own provider in bounded chunks
+	 * (see {@link #setMemInChunks(Memory, int, Memory, int, int)}).</p>
 	 *
 	 * @param mem The destination {@link MetalMemory}
 	 * @param offset Starting offset in destination (in elements)
@@ -342,8 +343,9 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 		if (length < 0)
 			throw new IllegalArgumentException();
 		if (!(srcRam instanceof MetalMemory)) {
-			// TODO  Native code can be used here, for some types of srcRam
-			setMem(mem, offset, srcRam.toArray(srcOffset, length), 0, length);
+			// TODO  Native code can be used here, for some types of srcRam, to transfer
+			//       directly instead of through the double[] chunks of setMemInChunks
+			setMemInChunks(mem, offset, srcRam, srcOffset, length);
 			return;
 		}
 
