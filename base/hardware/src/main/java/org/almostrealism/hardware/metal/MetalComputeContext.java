@@ -216,6 +216,12 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 			instructionSets.get(instructionSetKey(scope.getName(), scope.signature())).destroy();
 		}
 
+		int lanes = scope.getLaneCount();
+		if (lanes != 1 && lanes != getLaneCount()) {
+			throw new IllegalArgumentException(scope.getName() + " assigns " + lanes +
+					" lanes to each work item, but the SIMD groups of this device have " + getLaneCount());
+		}
+
 		long start = System.nanoTime();
 		StringBuilder buf = new StringBuilder();
 
@@ -223,10 +229,12 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 			buf.append(includes);
 			buf.append("\n");
 
-			ScopeEncoder enc = new ScopeEncoder(pw -> new MetalPrintWriter(pw, scope.getName(), getLanguage().getPrecision()), Accessibility.EXTERNAL);
+			ScopeEncoder enc = new ScopeEncoder(pw -> new MetalPrintWriter(pw, scope.getName(),
+					getDataContext().getPrecision(), lanes), Accessibility.EXTERNAL);
 			buf.append(enc.apply(scope));
 
-			MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(), buf.toString());
+			MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(),
+					buf.toString(), lanes);
 			instructionSets.put(instructionSetKey(scope.getName(), scope.signature()), instSet);
 			return instSet;
 		} finally {
@@ -241,6 +249,21 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	 */
 	@Override
 	public boolean isCPU() { return false; }
+
+	/**
+	 * Returns the SIMD group width of the device: the threads that execute together and can sum
+	 * a value across themselves, and therefore the lanes a kernel can assign to each work item.
+	 * It is the {@link MTLComputePipelineState#threadExecutionWidth() execution width} of this
+	 * context's copy kernel, which is compiled on first use; the execution width is a property
+	 * of the device, the same for every kernel. A program compiled with this many lanes refuses a
+	 * pipeline whose execution width differs (see {@link MetalProgram#newComputePipelineState()}).
+	 *
+	 * @return the SIMD group width of the device
+	 */
+	@Override
+	public int getLaneCount() {
+		return copyKernel(0).threadExecutionWidth();
+	}
 
 	/**
 	 * Copies all of {@code source} into {@code destination} by queuing a copy onto the command buffer

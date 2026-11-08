@@ -87,6 +87,18 @@ public interface Computation<T> extends
 	Scope<T> getScope(KernelStructureContext context);
 
 	/**
+	 * Indicates whether the kernel compiled from this computation may refer to kernel structure
+	 * resources: the precomputed series of a {@link io.almostrealism.kernel.KernelSeriesProvider}
+	 * and the traversal operations a {@link io.almostrealism.kernel.KernelTraversalProvider}
+	 * generates (see {@link KernelStructureContext}). The default is {@code true}; a computation
+	 * that is itself one of those resources, generated for another kernel, returns {@code false},
+	 * so that compiling it never creates resources of its own.
+	 *
+	 * @return {@code true} if the kernel may refer to kernel structure resources
+	 */
+	default boolean isKernelStructureSupported() { return true; }
+
+	/**
 	 * Returns the console instance for logging.
 	 *
 	 * @return the shared computation console

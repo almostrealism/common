@@ -16,9 +16,15 @@
 
 package org.almostrealism.hardware.metal;
 
+import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.Precision;
+import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.io.PrintWriter;
+
+import java.util.List;
 
 /**
  * {@link CPrintWriter} for Metal Shading Language (MSL) code generation.
@@ -40,6 +46,9 @@ import org.almostrealism.io.PrintWriter;
  */
 public class MetalPrintWriter extends CPrintWriter {
 
+	/** The Metal language operations this writer renders with, which know the kernel's lanes. */
+	private final MetalLanguageOperations metalLanguage;
+
 	/**
 	 * Creates a Metal print writer with default FP32 precision.
 	 *
@@ -57,9 +66,44 @@ public class MetalPrintWriter extends CPrintWriter {
 	 * @param precision Numeric precision for code generation
 	 */
 	public MetalPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision) {
+		this(p, topLevelMethodName, precision, 1);
+	}
+
+	/**
+	 * Creates a Metal print writer for a kernel that assigns the given number of lanes to each
+	 * work item (see {@link io.almostrealism.scope.Scope#getLaneCount()}).
+	 *
+	 * @param p Underlying {@link PrintWriter} for output
+	 * @param topLevelMethodName Name of the top-level kernel function
+	 * @param precision Numeric precision for code generation
+	 * @param laneCount The lanes of each work item of the kernel, at least 1
+	 */
+	public MetalPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision, int laneCount) {
 		super(p, topLevelMethodName, precision, false);
-		language = new MetalLanguageOperations(precision);
+		metalLanguage = new MetalLanguageOperations(precision, laneCount);
+		language = metalLanguage;
 		setExternalScopePrefix("[[kernel]] void");
 		setInternalScopePrefix("void");
+	}
+
+	/**
+	 * Begins a scope, opening the body of a kernel that assigns several lanes to each work item
+	 * with the {@link MetalLanguageOperations#laneDeclarations() declarations} of its work item
+	 * and lane.
+	 *
+	 * @param name the scope name
+	 * @param metadata operation metadata for rendering comments
+	 * @param access the accessibility level of this scope
+	 * @param arguments array variables passed as arguments to this scope
+	 * @param parameters additional parameters for this scope
+	 */
+	@Override
+	public void beginScope(String name, OperationMetadata metadata, Accessibility access,
+						   List<ArrayVariable<?>> arguments, List<Variable<?, ?>> parameters) {
+		super.beginScope(name, metadata, access, arguments, parameters);
+
+		if (access == Accessibility.EXTERNAL) {
+			metalLanguage.laneDeclarations().forEach(this::println);
+		}
 	}
 }
