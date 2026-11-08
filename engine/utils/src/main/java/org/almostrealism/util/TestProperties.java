@@ -79,9 +79,10 @@ public @interface TestProperties {
 	boolean knownIssue() default false;
 
 	/**
-	 * Marks a test as requiring a real audio output device. The CI Linux runners
-	 * do not expose one, so the test is skipped unless the host is macOS
-	 * (used as a proxy for "audio device probably available").
+	 * Marks a test as playing through a real audio output device. The test is skipped
+	 * under the {@link TestUtils#PIPELINE} profile on every host, because CI machines
+	 * with a working device would play it aloud, and on any host where
+	 * {@link org.almostrealism.io.SystemUtils#isAudioOutputAvailable()} is false.
 	 *
 	 * @return true if this test needs an audio output device
 	 */
