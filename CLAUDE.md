@@ -78,7 +78,8 @@ common/
 │   ├── relation/                  #   ar-relation: Producer/Evaluable model, process optimization
 │   ├── code/                      #   ar-code: Expression trees, scopes, code generation
 │   ├── collect/                   #   ar-collect: PackedCollection, tensor storage
-│   └── hardware/                  #   ar-hardware: GPU/CPU acceleration, memory, kernel compilation
+│   ├── hardware/                  #   ar-hardware: GPU/CPU acceleration, memory, kernel compilation
+│   └── hardware-js/               #   ar-hardware-js: JavaScript code-generation backend
 │
 ├── compute/                       # Layer 2 — Mathematical Domains
 │   ├── algebra/                   #   ar-algebra: Vector, matrix, numerical computing

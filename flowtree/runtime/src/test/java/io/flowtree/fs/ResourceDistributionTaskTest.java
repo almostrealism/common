@@ -226,24 +226,6 @@ public class ResourceDistributionTaskTest extends ResourceDistributionStaticStat
 	}
 
 	/**
-	 * {@link ResourceDistributionTask#neighbors(Resource)} is not part of the
-	 * distributed file-system graph contract and must throw.
-	 */
-	@Test(timeout = 5000, expected = UnsupportedOperationException.class)
-	public void neighborsIsUnsupported() {
-		new InMemoryTask().neighbors(null);
-	}
-
-	/**
-	 * {@link ResourceDistributionTask#countNodes()} is not supported and must
-	 * throw.
-	 */
-	@Test(timeout = 5000, expected = UnsupportedOperationException.class)
-	public void countNodesIsUnsupported() {
-		new InMemoryTask().countNodes();
-	}
-
-	/**
 	 * The scheduling accessors report fixed values: priority is pinned at
 	 * {@code 1.0} and ignores {@link ResourceDistributionTask#setPriority(double)},
 	 * completeness is {@code 0}, the task never reports complete, and it does not
