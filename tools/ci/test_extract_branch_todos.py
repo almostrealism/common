@@ -98,6 +98,40 @@ class ExtractAddedTodosTest(unittest.TestCase):
         )
         self.assertEqual([], extract_added_todos(diff))
 
+    def test_removed_line_whose_content_starts_dashes_does_not_shift_lines(self):
+        """A removed body line shown as "----" does not advance the new-file counter."""
+        # The removed line's own content is "---" (e.g. a Markdown rule or YAML
+        # separator), so git renders it as "----". It is a removal, not a file
+        # header, and must not push the following added TODO's line number up.
+        diff = (
+            "diff --git a/src/Doc.md b/src/Doc.md\n"
+            "--- a/src/Doc.md\n"
+            "+++ b/src/Doc.md\n"
+            "@@ -3,1 +3,1 @@\n"
+            "----\n"
+            "+<!-- TODO: after a removed rule -->\n"
+        )
+        self.assertEqual(
+            [("src/Doc.md", 3, "<!-- TODO: after a removed rule -->")],
+            extract_added_todos(diff))
+
+    def test_added_line_whose_content_starts_plus_is_examined(self):
+        """An added body line shown as "+++..." is a real addition, not a file header."""
+        # The added line's own content is "++i;" (a C/Java pre-increment at
+        # column 0), so git renders it as "+++i;". It must be examined for a
+        # TODO marker rather than skipped as a "+++ " file header.
+        diff = (
+            "diff --git a/src/Inc.c b/src/Inc.c\n"
+            "--- a/src/Inc.c\n"
+            "+++ b/src/Inc.c\n"
+            "@@ -5,0 +5,2 @@\n"
+            "+++i; // TODO: fix the increment\n"
+            "+normal();\n"
+        )
+        self.assertEqual(
+            [("src/Inc.c", 5, "++i; // TODO: fix the increment")],
+            extract_added_todos(diff))
+
     def test_render_lists_each_todo_with_file_and_line(self):
         """The rendered section lists each TODO with its file:line."""
         section = render([("src/Foo.java", 11, "// TODO(review): x")])

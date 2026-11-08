@@ -48,27 +48,45 @@ def extract_added_todos(diff_text):
     todos = []
     path = None
     new_line = 0
+    in_header = False
     for line in diff_text.split("\n"):
-        # TODO(review): body lines whose content starts "++"/"--" are misread as file headers; only treat ---/+++ as headers before a file's first hunk.
-        if line.startswith("+++ "):
-            # "+++ b/path" (or "+++ /dev/null" for a deletion).
-            target = line[4:]
-            if target.startswith("b/"):
-                target = target[2:]
-            path = None if target == "/dev/null" else target
+        if line.startswith("diff --git"):
+            # A new file's section begins. Its "---"/"+++" file headers follow,
+            # until the first "@@" hunk; only there are those markers headers.
+            in_header = True
+            path = None
             continue
+        if in_header:
+            # File-header region: "+++ " names the new file; the first hunk
+            # header ends the region and every later "---"/"+++" is hunk body.
+            if line.startswith("+++ "):
+                # "+++ b/path" (or "+++ /dev/null" for a deletion).
+                target = line[4:]
+                if target.startswith("b/"):
+                    target = target[2:]
+                path = None if target == "/dev/null" else target
+            elif line.startswith("@@"):
+                match = _HUNK.match(line)
+                if match:
+                    new_line = int(match.group(1))
+                in_header = False
+            continue
+        # Hunk body: classify each line by its first character alone, so an
+        # added line whose content starts "++" and a removed line whose content
+        # starts "--" are an addition and a removal, not misread file headers.
         if line.startswith("@@"):
             match = _HUNK.match(line)
             if match:
                 new_line = int(match.group(1))
             continue
-        if line.startswith("+") and not line.startswith("+++"):
+        if line.startswith("+"):
             content = line[1:]
             if path is not None and _TODO.search(content):
                 todos.append((path, new_line, content.strip()))
             new_line += 1
-        elif line.startswith("-") and not line.startswith("---"):
-            # A removed line: does not exist in the new file.
+        elif line.startswith("-"):
+            # A removed line: does not exist in the new file, so it does not
+            # advance the new-file counter.
             continue
         elif not line.startswith("\\"):
             # Context line (or a blank diff line); advances the new-file counter.
