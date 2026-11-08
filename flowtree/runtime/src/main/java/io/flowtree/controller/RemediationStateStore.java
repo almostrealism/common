@@ -248,7 +248,8 @@ public class RemediationStateStore extends ControllerDatabase {
         BUDGET_SPENT_NOTIFY,
         /** Skip: the cap is reached and the ping was already claimed. */
         BUDGET_SPENT_SILENT,
-        /** Skip: the record could not be read, so dispatch fails closed. */
+        /** Skip: the record could not be read or the counted pass could not be
+         *  persisted, so dispatch fails closed. */
         UNAVAILABLE
     }
 
@@ -266,11 +267,12 @@ public class RemediationStateStore extends ControllerDatabase {
      * is not yet reached, the pass is counted and dispatched; when it is, the
      * submission is skipped and a person pinged once.</p>
      *
-     * <p>Fails closed: when the record cannot be read (a transient DB error) the
-     * decision is {@link Decision#UNAVAILABLE}, so the caller refuses the
-     * automated submission rather than dispatching without the cap. A disabled
-     * (closed) store leaves the gate inactive, exactly as a caller with no store
-     * does, so it dispatches.</p>
+     * <p>Fails closed: when the record cannot be read, or the counted pass cannot
+     * be persisted (a transient DB error), the decision is
+     * {@link Decision#UNAVAILABLE}, so the caller refuses the automated submission
+     * rather than dispatching an uncounted pass a later submission would not see.
+     * A disabled (closed) store leaves the gate inactive, exactly as a caller with
+     * no store does, so it dispatches.</p>
      *
      * @param workstreamId  the workstream (branch / PR) key
      * @param budget        the per-PR cap; non-positive disables it
@@ -298,7 +300,12 @@ public class RemediationStateStore extends ControllerDatabase {
             return claimNotification(state) ? Decision.BUDGET_SPENT_NOTIFY
                     : Decision.BUDGET_SPENT_SILENT;
         }
-        write(state.afterDispatch(), null, null);
+        if (!write(state.afterDispatch(), null, null)) {
+            // The counted pass could not be persisted. Fail closed rather than
+            // dispatching an uncounted pass: a later submission would read the
+            // old count and could dispatch past the cap.
+            return Decision.UNAVAILABLE;
+        }
         return Decision.DISPATCH;
     }
 
