@@ -118,7 +118,7 @@ RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
 ENV JAVA_HOME=/usr/lib/jvm/temurin-17-jdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
-# Both CL jobs run actions/setup-java@v4 with java-version 17. setup-java honours
+# Both CL jobs run actions/setup-java@v5 with java-version 17. setup-java honours
 # JAVA_HOME_<version>_<arch> for a pre-installed JDK, so advertising the image's
 # Temurin here keeps every job from downloading its own copy.
 ENV JAVA_HOME_17_X64=/usr/lib/jvm/temurin-17-jdk

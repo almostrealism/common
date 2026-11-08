@@ -18,6 +18,11 @@
 # make them pass. Both are optional so a caller that has not classified still
 # works, naming every failure as a regression.
 #
+# A fifth positional argument is optional: a file holding the rendered
+# "new TODOs this branch adds" section (extract_branch_todos.py's output). When
+# supplied and non-empty, the prompt is extended with the instruction to treat
+# each new TODO as a finding and that section's list.
+#
 # Required environment variables:
 #   FAILURE_COUNT   - number of regression failures (for the prompt text)
 #   BRANCH          - branch name where failures occurred
@@ -33,9 +38,10 @@ FAILURES_FILE="${1:-}"
 OUTPUT_FILE="${2:-}"
 PREEXISTING_FILE="${3:-}"
 ENVIRONMENTAL_FILE="${4:-}"
+TODOS_FILE="${5:-}"
 
 if [ -z "$FAILURES_FILE" ] || [ -z "$OUTPUT_FILE" ]; then
-    echo "Usage: $0 <failures-file> <output-file> [preexisting-file] [environmental-file]" >&2
+    echo "Usage: $0 <failures-file> <output-file> [preexisting-file] [environmental-file] [todos-section-file]" >&2
     exit 1
 fi
 
@@ -332,3 +338,6 @@ These are reported for a person to look at (the runner fleet / hardware), not
 assigned to you. Mention them in your summary and move on.
 EOF
 fi
+
+# Extend the prompt with the new-TODO findings, when CI has computed them.
+append_todo_findings "$OUTPUT_FILE" "$TODOS_FILE"
