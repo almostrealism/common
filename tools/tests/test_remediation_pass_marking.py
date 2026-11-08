@@ -1,14 +1,14 @@
 """Guard: only the remediation submitters mark a submission as a remediation pass.
 
-The controller's per-PR remediation loop skips an ``auto-review`` whose only new
-commit is the previous pass's own, and caps how many no-progress passes a PR may
-draw. Both decisions must act on genuine remediation passes
-(``auto-review`` / ``auto-resolve``) only — not on every automated job. Every CI
-submission sets ``automated`` (it is how the intake gate works), so a QA round, a
-planning job or a plan implementation is automated too, yet each is the primary
-work a review reviews, not a remediation pass. Inferring "remediation pass" from
-``automated`` made the controller record those jobs' primary-work commits as a
-review's own and skip the first real auto-review of nearly every PR.
+The controller's per-PR remediation loop caps how many ``auto-review`` /
+``auto-resolve`` passes a PR may draw, and resets that cap when the branch gains
+a commit no remediation pass produced. Both decisions must act on genuine
+remediation passes (``auto-review`` / ``auto-resolve``) only — not on every
+automated job. Every CI submission sets ``automated`` (it is how the intake gate
+works), so a QA round, a planning job or a plan implementation is automated too,
+yet each is the primary work a review reviews, not a remediation pass. Inferring
+"remediation pass" from ``automated`` made the controller record those jobs'
+primary-work commits as the loop's own and mis-count the per-PR cap.
 
 So the three trusted submission paths that *are* remediation passes set
 ``REMEDIATION_PASS=true`` explicitly, and every other submission path leaves it

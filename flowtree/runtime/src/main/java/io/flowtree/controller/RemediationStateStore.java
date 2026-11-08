@@ -29,21 +29,23 @@ import java.time.Instant;
  * container rebuilds.
  *
  * <p>It keeps a single row per workstream (branch / PR) in the
- * {@code pr_remediation} table, updated as each remediation job completes via
- * {@link #recordPass}. A job that produced a commit made progress and resets
- * the consecutive-no-progress count; one that produced no commit changed
- * nothing and increments it. The submit path reads the row with {@link #get}
- * to decide whether the per-PR budget is spent (stop auto-dispatching and ping
- * a person) or whether a new review would only re-review the previous pass's
- * own commit.</p>
+ * {@code pr_remediation} table. The submit path reads the row with
+ * {@link #evaluateSubmission} to decide whether a remediation pass should be
+ * dispatched: it counts every dispatched pass, resets the count when the
+ * triggering commit is one no remediation pass produced, and stops dispatching
+ * (pinging a person once) when the per-PR cap is reached. A remediation pass's
+ * terminal event records the commit it produced via {@link #completeJob}, so
+ * the next pass that commit triggers is recognised as the loop's own rather
+ * than a person's.</p>
  *
- * <p>The controller cannot see whether a committing pass flipped a CI quality
- * gate from red to green, so a commit is taken as progress. This under-counts
- * the "changed things but no gate flipped" case the report also describes;
- * the dominant cost — the no-commit passes a clean PR keeps drawing — is
- * counted exactly. Only jobs registered as automated remediation passes
- * ({@link #registerJob}) count; a commit made by any other FlowTree job also
- * resets the count, but a direct push the controller never sees does not.</p>
+ * <p>Only jobs registered as automated remediation passes ({@link #registerJob})
+ * have their produced commit recorded; any other FlowTree job's commit is left
+ * unrecorded, so a pass triggered by it is treated as triggered by a foreign
+ * commit and resets the count.</p>
+ *
+ * <p>The {@code consecutive_no_progress} column name is retained from the
+ * previous "consecutive no-progress passes" design to avoid a schema migration
+ * on the deployed database; it now stores the dispatched-pass count.</p>
  *
  * @author Michael Murray
  * @see RemediationState
@@ -64,8 +66,8 @@ public class RemediationStateStore extends ControllerDatabase {
 
     /**
      * DDL creating the table of in-flight remediation jobs: the automated
-     * submissions whose terminal event counts as a pass. Persisted so a job
-     * that completes after a controller restart is still counted.
+     * submissions whose terminal event records a produced commit. Persisted so a
+     * job that completes after a controller restart is still recognised.
      */
     private static final String CREATE_JOBS_TABLE =
         "CREATE TABLE IF NOT EXISTS pr_remediation_job ("
@@ -91,10 +93,10 @@ public class RemediationStateStore extends ControllerDatabase {
     }
 
     /**
-     * Registers a dispatched automated remediation job, so its terminal event
-     * is counted as a pass by {@link #completeJob}. Jobs that were never
-     * registered — a person's work, shell jobs, anything not submitted as
-     * automated — never move the per-PR budget.
+     * Registers a dispatched automated remediation job, so its terminal event's
+     * produced commit is recorded by {@link #completeJob}. Jobs that were never
+     * registered — a person's work, shell jobs, anything not submitted as a
+     * remediation pass — never have a commit recorded as the loop's own.
      *
      * @param jobId        the dispatched job's id
      * @param workstreamId the workstream (branch / PR) the job remediates
@@ -121,20 +123,21 @@ public class RemediationStateStore extends ControllerDatabase {
     /**
      * Records a job's terminal event against the per-PR record.
      *
-     * <p>A job registered with {@link #registerJob} is a remediation pass: it
-     * is forgotten and, when {@code countsAsPass}, recorded against the
-     * workstream it was registered for via {@link #recordPass}. A job that was
-     * never registered (a person's work) is not a pass and never increments
-     * the count, but a commit it produced is still progress on the branch and
-     * resets the count ({@link RemediationState#afterExternalCommit}).</p>
+     * <p>A job registered with {@link #registerJob} is a remediation pass: it is
+     * forgotten and, when it produced a commit, that commit is recorded as the
+     * workstream's last-produced commit via {@link RemediationState#withProducedCommit}.
+     * The dispatched-pass count is not touched here — a pass is counted when it
+     * is dispatched ({@link #evaluateSubmission}), not when it completes. A job
+     * that was never registered (a person's work) records nothing: a pass
+     * triggered by its commit is reset at submit time instead.</p>
      *
      * @param jobId          the completed job's id
-     * @param workstreamId   the workstream the event belongs to, used for an
-     *                       unregistered job's commit; may be {@code null}
+     * @param workstreamId   the workstream the event belongs to; unused for an
+     *                       unregistered job, kept for symmetry; may be {@code null}
      * @param branch         the branch, for the record; may be {@code null}
      * @param producedCommit the commit SHA the job produced, or {@code null}
      * @param countsAsPass   {@code false} for a terminal event that is not a
-     *                       completed pass (a cancelled run), which changes no count
+     *                       completed pass (a cancelled run), which records nothing
      * @return the updated record, or {@code null} when nothing was recorded
      */
     public synchronized RemediationState completeJob(String jobId, String workstreamId, String branch,
@@ -142,14 +145,18 @@ public class RemediationStateStore extends ControllerDatabase {
         if (!isOpen() || jobId == null || jobId.isEmpty()) return null;
         String registeredWorkstream = forgetJob(jobId);
         if (!countsAsPass) return null;
-        if (registeredWorkstream != null) {
-            return recordPass(registeredWorkstream, null, branch, producedCommit);
-        }
-        if (producedCommit == null || producedCommit.isEmpty()
-                || workstreamId == null || workstreamId.isEmpty()) {
+        if (registeredWorkstream == null) return null;
+        if (producedCommit == null || producedCommit.isEmpty()) return null;
+        RemediationState current;
+        try {
+            current = read(registeredWorkstream);
+        } catch (SQLException e) {
+            warn("Failed to read remediation state for " + registeredWorkstream
+                + "; not recording the produced commit: " + e.getMessage());
             return null;
         }
-        RemediationState next = get(workstreamId).afterExternalCommit();
+        if (current == null) current = RemediationState.empty(registeredWorkstream);
+        RemediationState next = current.withProducedCommit(producedCommit);
         write(next, null, branch);
         return next;
     }
@@ -187,9 +194,8 @@ public class RemediationStateStore extends ControllerDatabase {
      * Returns the current record for a workstream, or the empty record when the
      * store is closed, has no row for it yet, or could not be read. This lenient
      * reading suits only a caller whose outcome does not depend on the stored
-     * count, such as the reset an external commit records; the submit gate and a
-     * no-progress pass must distinguish a read error from an absent row, so they
-     * read strictly ({@link #evaluateSubmission}, {@link #recordPass}).
+     * count; the submit gate reads strictly ({@link #evaluateSubmission}) so a
+     * read error fails closed rather than refunding a spent cap.
      *
      * @param workstreamId the workstream (branch / PR) key
      * @return the record; never {@code null}
@@ -238,24 +244,27 @@ public class RemediationStateStore extends ControllerDatabase {
     public enum Decision {
         /** Dispatch the submission; nothing bars it. */
         DISPATCH,
-        /** Skip: the budget is spent and this call claimed the one-time ping. */
+        /** Skip: the cap is reached and this call claimed the one-time ping. */
         BUDGET_SPENT_NOTIFY,
-        /** Skip: the budget is spent and the ping was already claimed. */
+        /** Skip: the cap is reached and the ping was already claimed. */
         BUDGET_SPENT_SILENT,
-        /** Skip: the only new commit is the previous pass's own. */
-        OWN_COMMIT,
         /** Skip: the record could not be read, so dispatch fails closed. */
         UNAVAILABLE
     }
 
     /**
      * Decides, atomically, whether an automated remediation submission should be
-     * dispatched, claiming the one-time budget-spent ping in the same locked
-     * step. Reading the record, testing the budget and claiming the notification
-     * all happen under the store's lock, so a concurrent {@link #completeJob}
-     * cannot reset the record between the budget test and the claim (which would
-     * otherwise mark a freshly reset record notified and silence the next real
-     * exhaustion).
+     * dispatched, counting the pass or claiming the one-time cap-reached ping in
+     * the same locked step. Reading the record, resetting the count for a foreign
+     * commit, testing the cap, counting the pass and claiming the notification
+     * all happen under the store's lock, so concurrent submissions cannot
+     * interleave to over-count, lose a reset, or ping twice.
+     *
+     * <p>A commit no remediation pass produced (the triggering commit is not the
+     * last one a pass produced) resets the count first: a person's push or a
+     * manually submitted job starts the per-PR cap over. Otherwise, when the cap
+     * is not yet reached, the pass is counted and dispatched; when it is, the
+     * submission is skipped and a person pinged once.</p>
      *
      * <p>Fails closed: when the record cannot be read (a transient DB error) the
      * decision is {@link Decision#UNAVAILABLE}, so the caller refuses the
@@ -264,7 +273,7 @@ public class RemediationStateStore extends ControllerDatabase {
      * does, so it dispatches.</p>
      *
      * @param workstreamId  the workstream (branch / PR) key
-     * @param budget        the per-PR budget; non-positive disables the budget skip
+     * @param budget        the per-PR cap; non-positive disables it
      * @param triggerCommit the commit that triggered the submission, or {@code null}
      * @return the submit-time decision; never {@code null}
      */
@@ -282,66 +291,19 @@ public class RemediationStateStore extends ControllerDatabase {
             return Decision.UNAVAILABLE;
         }
         if (state == null) state = RemediationState.empty(workstreamId);
+        if (!state.wasProducedByRemediationPass(triggerCommit)) {
+            state = state.afterForeignCommitReset();
+        }
         if (state.budgetExhausted(budget)) {
             return claimNotification(state) ? Decision.BUDGET_SPENT_NOTIFY
                     : Decision.BUDGET_SPENT_SILENT;
         }
-        if (state.isLastProducedCommit(triggerCommit)) {
-            return Decision.OWN_COMMIT;
-        }
+        write(state.afterDispatch(), null, null);
         return Decision.DISPATCH;
     }
 
     /**
-     * Records the outcome of one completed remediation pass and returns the
-     * updated record.
-     *
-     * <p>A pass that produced a commit ({@code producedCommit} non-null) made
-     * progress: the consecutive-no-progress count resets to zero, the commit is
-     * remembered as the last produced, and the notification flag clears so a
-     * later budget exhaustion pings again. A pass that produced no commit
-     * increments the count and leaves the last-produced commit and the flag as
-     * they were.</p>
-     *
-     * <p>A no-progress pass on a record that cannot be read is not recorded:
-     * incrementing a substitute empty record would overwrite the stored count
-     * with one and clear the notification flag, silently refunding a spent
-     * budget. A pass that produced a commit is still recorded, because its
-     * outcome does not depend on the prior record.</p>
-     *
-     * @param workstreamId   the workstream (branch / PR) key
-     * @param repoUrl        the repository URL, for the record; may be {@code null}
-     * @param branch         the branch, for the record; may be {@code null}
-     * @param producedCommit the commit SHA this pass produced, or {@code null}
-     *                       when it changed nothing
-     * @return the updated record (the empty record when the store is closed), or
-     *         {@code null} when a no-progress pass was not recorded because the
-     *         record could not be read
-     */
-    public synchronized RemediationState recordPass(String workstreamId, String repoUrl,
-                                                    String branch, String producedCommit) {
-        if (!isOpen() || workstreamId == null || workstreamId.isEmpty()) {
-            return RemediationState.empty(workstreamId);
-        }
-        boolean progress = producedCommit != null && !producedCommit.isEmpty();
-        RemediationState current;
-        try {
-            current = read(workstreamId);
-        } catch (SQLException e) {
-            warn("Failed to read remediation state for " + workstreamId
-                + (progress ? "; recording the commit reset anyway: "
-                            : "; not recording this no-progress pass: ") + e.getMessage());
-            if (!progress) return null;
-            current = null;
-        }
-        if (current == null) current = RemediationState.empty(workstreamId);
-        RemediationState next = current.afterPass(producedCommit);
-        write(next, repoUrl, branch);
-        return next;
-    }
-
-    /**
-     * Marks a workstream's budget-spent notification as sent, so a person is
+     * Marks a workstream's cap-reached notification as sent, so a person is
      * pinged once per exhaustion rather than on every refused submission.
      *
      * <p>The read and the write happen under the store's lock, so of several
@@ -350,7 +312,7 @@ public class RemediationStateStore extends ControllerDatabase {
      *
      * <p>A record that cannot be read claims nothing: writing the flag onto a
      * substitute empty record would overwrite the stored count with zero and
-     * silently refund the spent budget.</p>
+     * silently refund the spent cap.</p>
      *
      * @param workstreamId the workstream (branch / PR) key
      * @return {@code true} when this call flipped the flag from unset to set and
@@ -374,7 +336,7 @@ public class RemediationStateStore extends ControllerDatabase {
     }
 
     /**
-     * Returns a claimed budget-spent notification that could not be delivered,
+     * Returns a claimed cap-reached notification that could not be delivered,
      * clearing the flag so the next refused submission claims the ping again.
      * Without this, a claim made while no channel or notifier is configured
      * would silence the escalation for good, even after one is configured.
@@ -422,8 +384,8 @@ public class RemediationStateStore extends ControllerDatabase {
 
     /**
      * Upserts the row holding {@code state}. {@code repoUrl}/{@code branch} are
-     * recorded only when non-null, so a {@link #markNotified} that does not know
-     * them does not erase values a {@link #recordPass} set.
+     * recorded only when non-null, so a write that does not know them does not
+     * erase values an earlier write set.
      *
      * @param state   the record to persist
      * @param repoUrl the repository URL to record, or {@code null} to keep the
@@ -446,7 +408,7 @@ public class RemediationStateStore extends ControllerDatabase {
             ps.setString(1, state.getWorkstreamId());
             ps.setString(2, repoUrl);
             ps.setString(3, branch);
-            ps.setInt(4, state.getConsecutiveNoProgress());
+            ps.setInt(4, state.getPassCount());
             ps.setString(5, state.getLastProducedCommit());
             ps.setBoolean(6, state.isNotified());
             ps.setTimestamp(7, Timestamp.from(Instant.now()));

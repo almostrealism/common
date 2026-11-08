@@ -91,12 +91,13 @@
 #   REMEDIATION_PASS  - mark this submission as an auto-review/auto-resolve
 #                       remediation pass (default: false). Only the remediation
 #                       submitters set it to true; the controller counts only a
-#                       remediation pass against the per-PR budget and treats
-#                       only a remediation pass's commit as the one its
-#                       own-commit skip may refuse. Every CI submission sets
-#                       `automated`, so the controller must not infer this from
-#                       it — a QA, planning or implementation job is automated
-#                       but is the primary work a review reviews, not a pass.
+#                       remediation pass against the per-PR cap and records only
+#                       a remediation pass's commit as the loop's own (so the cap
+#                       resets on a commit no pass produced). Every CI submission
+#                       sets `automated`, so the controller must not infer this
+#                       from it — a QA, planning or implementation job is
+#                       automated but is the primary work a review reviews, not a
+#                       pass.
 #   REVIEW_ENABLED    - run the review phase after the job (true/false).
 #                       Omitted → the field is not sent and the controller's
 #                       default applies (on). The post-deploy canary sets it
@@ -109,9 +110,10 @@
 #                       false). No effect unless AUTO_CREATE_PR is true.
 #   STARTED_AFTER     - epoch millis; skip if a newer job exists (default: unset)
 #   DELAY_SECONDS     - delay execution by this many seconds (default: unset → run immediately)
-#   TRIGGER_COMMIT    - commit that triggered this run; the controller skips a
-#                       review re-triggered only by the previous pass's own
-#                       commit (default: unset → no own-commit skip)
+#   TRIGGER_COMMIT    - commit that triggered this run; the controller uses it
+#                       to tell a commit a remediation pass produced from one it
+#                       did not, resetting the per-PR cap when the branch gains a
+#                       commit no pass produced (default: unset → no reset)
 #   DESCRIPTION       - short label for notifications (e.g., "Resolve test failures")
 #   DEFAULT_PHASE_CONFIG - JSON object applied to every phase that has no
 #                       dedicated entry, e.g. '{"model":"opus"}'. Omitted →
