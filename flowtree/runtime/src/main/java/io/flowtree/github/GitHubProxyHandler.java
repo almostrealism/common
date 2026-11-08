@@ -417,6 +417,14 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     private static final Pattern HUNK_HEADER = Pattern.compile("^@@ -\\d+(?:,\\d+)? \\+(\\d+)");
 
     /**
+     * Matches a {@code TODO} marker as a word token, so {@code TODO},
+     * {@code TODO:}, and {@code TODO(review)} match but an identifier such as
+     * {@code TODOList} does not. Mirrors the {@code \bTODO\b} match in
+     * {@code tools/ci/extract_branch_todos.py}.
+     */
+    private static final Pattern TODO_MARKER = Pattern.compile("\\bTODO\\b");
+
+    /**
      * Creates a pull request whose title and body describe the commit on the
      * head branch rather than the job that produced it.
      *
@@ -794,14 +802,19 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     }
 
     /**
-     * Returns, for a unified-diff patch, each added line that contains a
+     * Returns, for a GitHub file-patch body, each added line that contains a
      * {@code TODO} marker as {@code [newFileLineNumber]}. New-file line numbers
      * are tracked from each hunk header; removed lines do not advance them.
      *
-     * @param patch the unified-diff patch body
+     * <p>The patch is the {@code patch} field of a pull request's file listing:
+     * hunk bodies only, with no {@code diff --git}/{@code ---}/{@code +++} file
+     * headers. Every {@code +} line is therefore an added line — including one
+     * whose content itself begins with {@code ++} — and must be examined.</p>
+     *
+     * @param patch the GitHub file-patch body (hunks only, no file headers)
      * @return one single-element {@code int[]} per added TODO line
      */
-    private static List<int[]> addedTodoLineNumbers(String patch) {
+    static List<int[]> addedTodoLineNumbers(String patch) {
         List<int[]> lines = new ArrayList<>();
         int newLine = 0;
         for (String line : patch.split("\n", -1)) {
@@ -810,12 +823,15 @@ public class GitHubProxyHandler implements ConsoleFeatures {
                 if (matcher.find()) newLine = Integer.parseInt(matcher.group(1));
                 continue;
             }
-            if (line.startsWith("+") && !line.startsWith("+++")) {
-                // TODO(review): diverges from extract_branch_todos.py (substring TODO match, not
-                // a \bTODO\b word boundary; no "\ No newline" guard); align the two detections.
-                if (line.contains("TODO")) lines.add(new int[] {newLine});
+            if (line.startsWith("+")) {
+                if (TODO_MARKER.matcher(line).find()) lines.add(new int[] {newLine});
                 newLine++;
-            } else if (!line.startsWith("-") || line.startsWith("---")) {
+            } else if (line.startsWith("-")) {
+                // A removed line: not present in the new file; does not advance.
+                continue;
+            } else if (!line.startsWith("\\")) {
+                // A context line advances the new-file counter; a
+                // "\ No newline at end of file" marker does not.
                 newLine++;
             }
         }

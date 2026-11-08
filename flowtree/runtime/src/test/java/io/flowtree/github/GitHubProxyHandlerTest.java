@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
@@ -266,6 +267,78 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
         assertNull(GitHubProxyHandler.extractOrgFromRepoUrl("https://gitlab.com/almostrealism/common.git"));
         assertNull(GitHubProxyHandler.extractOrgFromRepoUrl("https://github.com.evil.example/almostrealism/common"));
         assertNull(GitHubProxyHandler.extractOrgFromRepoUrl("not-a-url"));
+    }
+
+    /**
+     * An added line carrying a {@code TODO} marker is reported at its new-file
+     * line number, tracked from the hunk header. A removed line does not advance
+     * the counter; a context line does.
+     */
+    @Test(timeout = 10000)
+    public void addedTodoLineNumbersCountsFromTheHunkHeader() {
+        String patch = "@@ -10,2 +10,4 @@\n"
+                + " context line\n"
+                + "-removed line\n"
+                + "+// TODO(review): first\n"
+                + "+plain added line\n"
+                + "+// TODO: second\n";
+        List<int[]> todos = GitHubProxyHandler.addedTodoLineNumbers(patch);
+        assertEquals(2, todos.size());
+        assertEquals(11, todos.get(0)[0]);
+        assertEquals(13, todos.get(1)[0]);
+    }
+
+    /**
+     * A word that merely contains the letters {@code TODO} is not a {@code TODO}
+     * marker, matching {@code extract_branch_todos.py}'s word-boundary match.
+     */
+    @Test(timeout = 10000)
+    public void addedTodoLineNumbersRequiresAWordBoundary() {
+        String patch = "@@ -1,0 +1,2 @@\n"
+                + "+private TODOList items;\n"
+                + "+// TODO: real one\n";
+        List<int[]> todos = GitHubProxyHandler.addedTodoLineNumbers(patch);
+        assertEquals(1, todos.size());
+        assertEquals(2, todos.get(0)[0]);
+    }
+
+    /**
+     * A {@code "\ No newline at end of file"} marker is neither an added nor a
+     * context line, so it does not advance the new-file counter.
+     */
+    @Test(timeout = 10000)
+    public void addedTodoLineNumbersIgnoresTheNoNewlineMarker() {
+        String patch = "@@ -1 +1,2 @@\n"
+                + " context\n"
+                + "\\ No newline at end of file\n"
+                + "+// TODO: after the marker\n";
+        List<int[]> todos = GitHubProxyHandler.addedTodoLineNumbers(patch);
+        assertEquals(1, todos.size());
+        assertEquals(2, todos.get(0)[0]);
+    }
+
+    /**
+     * A GitHub file-patch has no {@code +++} file header, so an added line whose
+     * content itself begins with {@code ++} is a real added line and its TODO is
+     * reported rather than discarded as a header.
+     */
+    @Test(timeout = 10000)
+    public void addedTodoLineNumbersExaminesContentStartingWithPlusPlus() {
+        String patch = "@@ -1,0 +1,2 @@\n"
+                + "+++counter; // TODO: fix the increment\n"
+                + "+plain added line\n";
+        List<int[]> todos = GitHubProxyHandler.addedTodoLineNumbers(patch);
+        assertEquals(1, todos.size());
+        assertEquals(1, todos.get(0)[0]);
+    }
+
+    /** A patch with no added TODO line reports none. */
+    @Test(timeout = 10000)
+    public void addedTodoLineNumbersReportsNoneWhenAbsent() {
+        String patch = "@@ -1,2 +1,2 @@\n"
+                + " unchanged\n"
+                + "+a plain added line\n";
+        assertTrue(GitHubProxyHandler.addedTodoLineNumbers(patch).isEmpty());
     }
 
     /** Writes a JSON body, filtering an empty {@code head=} match to an empty listing. */
