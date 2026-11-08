@@ -123,13 +123,21 @@ public class RemediationStateStore extends ControllerDatabase {
     /**
      * Records a job's terminal event against the per-PR record.
      *
-     * <p>A job registered with {@link #registerJob} is a remediation pass: it is
-     * forgotten and, when it produced a commit, that commit is recorded as the
-     * workstream's last-produced commit via {@link RemediationState#withProducedCommit}.
-     * The dispatched-pass count is not touched here — a pass is counted when it
-     * is dispatched ({@link #evaluateSubmission}), not when it completes. A job
-     * that was never registered (a person's work) records nothing: a pass
+     * <p>A job registered with {@link #registerJob} is a remediation pass: when it
+     * produced a commit, that commit is recorded as the workstream's last-produced
+     * commit via {@link RemediationState#withProducedCommit} and the job is then
+     * forgotten. The dispatched-pass count is not touched here — a pass is counted
+     * when it is dispatched ({@link #evaluateSubmission}), not when it completes. A
+     * job that was never registered (a person's work) records nothing: a pass
      * triggered by its commit is reset at submit time instead.</p>
+     *
+     * <p>Fails closed on a persistence failure. The job is forgotten only after the
+     * produced commit is durably written; if the read or the write fails, the
+     * registration is kept and the method returns {@code null} rather than
+     * forgetting the job and reporting success. A forgotten commit that was never
+     * recorded would make {@link #evaluateSubmission} treat the pass's own
+     * next-triggering commit as foreign, reset the cap, and dispatch past it;
+     * keeping the registration lets a later terminal event re-record it instead.</p>
      *
      * @param jobId          the completed job's id
      * @param workstreamId   the workstream the event belongs to; unused for an
@@ -143,43 +151,60 @@ public class RemediationStateStore extends ControllerDatabase {
     public synchronized RemediationState completeJob(String jobId, String workstreamId, String branch,
                                                      String producedCommit, boolean countsAsPass) {
         if (!isOpen() || jobId == null || jobId.isEmpty()) return null;
-        String registeredWorkstream = forgetJob(jobId);
-        if (!countsAsPass) return null;
+        String registeredWorkstream = registeredWorkstream(jobId);
         if (registeredWorkstream == null) return null;
-        if (producedCommit == null || producedCommit.isEmpty()) return null;
+        if (!countsAsPass || producedCommit == null || producedCommit.isEmpty()) {
+            // Nothing to record; the registration is finished with.
+            forgetJob(jobId);
+            return null;
+        }
         RemediationState current;
         try {
             current = read(registeredWorkstream);
         } catch (SQLException e) {
             warn("Failed to read remediation state for " + registeredWorkstream
-                + "; not recording the produced commit: " + e.getMessage());
+                + "; keeping the job registered so the produced commit is not lost: "
+                + e.getMessage());
             return null;
         }
         if (current == null) current = RemediationState.empty(registeredWorkstream);
         RemediationState next = current.withProducedCommit(producedCommit);
-        write(next, null, branch);
+        if (!write(next, null, branch)) {
+            // Fail closed: keep the registration so the unrecorded commit is not lost.
+            return null;
+        }
+        forgetJob(jobId);
         return next;
+    }
+
+    /**
+     * Returns the workstream a job was registered for, without removing its
+     * registration, so {@link #completeJob} can record the produced commit before
+     * forgetting the job and fail closed (keeping the registration) if it cannot.
+     *
+     * @param jobId the job's id
+     * @return the workstream the job was registered for, or {@code null} when
+     *         it was never registered or could not be read
+     */
+    private String registeredWorkstream(String jobId) {
+        try (PreparedStatement ps = connection().prepareStatement(
+                "SELECT workstream_id FROM pr_remediation_job WHERE job_id = ?")) {
+            ps.setString(1, jobId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getString(1);
+            }
+        } catch (SQLException e) {
+            warn("Failed to read remediation job " + jobId + ": " + e.getMessage());
+        }
+        return null;
     }
 
     /**
      * Removes a job from the registered remediation jobs.
      *
      * @param jobId the job's id
-     * @return the workstream the job was registered for, or {@code null} when
-     *         it was never registered
      */
-    private String forgetJob(String jobId) {
-        String workstreamId = null;
-        try (PreparedStatement ps = connection().prepareStatement(
-                "SELECT workstream_id FROM pr_remediation_job WHERE job_id = ?")) {
-            ps.setString(1, jobId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) workstreamId = rs.getString(1);
-            }
-        } catch (SQLException e) {
-            warn("Failed to read remediation job " + jobId + ": " + e.getMessage());
-        }
-        if (workstreamId == null) return null;
+    private void forgetJob(String jobId) {
         try (PreparedStatement ps = connection().prepareStatement(
                 "DELETE FROM pr_remediation_job WHERE job_id = ?")) {
             ps.setString(1, jobId);
@@ -187,7 +212,6 @@ public class RemediationStateStore extends ControllerDatabase {
         } catch (SQLException e) {
             warn("Failed to forget remediation job " + jobId + ": " + e.getMessage());
         }
-        return workstreamId;
     }
 
     /**

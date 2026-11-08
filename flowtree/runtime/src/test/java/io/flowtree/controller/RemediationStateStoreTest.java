@@ -702,6 +702,37 @@ public class RemediationStateStoreTest extends TestSuiteBase {
     }
 
     /**
+     * A produced commit that cannot be persisted fails closed: {@code completeJob}
+     * records nothing and keeps the job registered, so once the store can write
+     * again a later terminal event re-records the commit rather than the commit
+     * being forgotten and the pass's own next commit resetting the cap.
+     */
+    @Test(timeout = 30000)
+    public void completeJobKeepsTheRegistrationWhenTheCommitCannotBePersisted() throws Exception {
+        File dir = Files.createTempDirectory("rem-complete-unwritable").toFile();
+        dir.deleteOnExit();
+        RemediationStateStore store = newStore(dir);
+        try {
+            store.registerJob("auto-1", "ws");
+            try (Statement stmt = store.connection().createStatement()) {
+                stmt.execute("ALTER TABLE pr_remediation ADD CONSTRAINT no_commit "
+                        + "CHECK (last_produced_commit IS NULL)");
+            }
+            assertNull("a commit that cannot be persisted records nothing",
+                    store.completeJob("auto-1", "ws", "b", "c1", true));
+            assertNull("the produced commit was not recorded",
+                    store.get("ws").getLastProducedCommit());
+            try (Statement stmt = store.connection().createStatement()) {
+                stmt.execute("ALTER TABLE pr_remediation DROP CONSTRAINT no_commit");
+            }
+            assertEquals("c1",
+                    store.completeJob("auto-1", "ws", "b", "c1", true).getLastProducedCommit());
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
      * A record that cannot be read claims no notification, rather than claiming
      * it on a substitute empty record whose write would zero the stored count.
      */
