@@ -413,17 +413,6 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      */
     private static final ObjectMapper GITHUB_MAPPER = new ObjectMapper();
 
-    /** Matches a unified-diff hunk header, capturing the new-file start line. */
-    private static final Pattern HUNK_HEADER = Pattern.compile("^@@ -\\d+(?:,\\d+)? \\+(\\d+)");
-
-    /**
-     * Matches a {@code TODO} marker as a word token, so {@code TODO},
-     * {@code TODO:}, and {@code TODO(review)} match but an identifier such as
-     * {@code TODOList} does not. Mirrors the {@code \bTODO\b} match in
-     * {@code tools/ci/extract_branch_todos.py}.
-     */
-    private static final Pattern TODO_MARKER = Pattern.compile("\\bTODO\\b");
-
     /**
      * Creates a pull request whose title and body describe the commit on the
      * head branch rather than the job that produced it.
@@ -760,11 +749,11 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             if (thread.path("isResolved").asBoolean(false)) continue;
             JsonNode comment = thread.path("comments").path("nodes").path(0);
             if (comment.isMissingNode()) continue;
-            findings.add(new PullRequestEscalation.Finding(
+            findings.add(PullRequestEscalation.Finding.reviewComment(
                     comment.path("path").asText(""),
                     comment.path("line").asInt(0),
                     comment.path("url").asText(null),
-                    summarizeOneLine(comment.path("body").asText(""))));
+                    comment.path("body").asText("")));
         }
         return findings;
     }
@@ -790,64 +779,12 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             String path = file.path("filename").asText("");
             String patch = file.path("patch").asText("");
             if (path.isEmpty() || patch.isEmpty()) continue;
-            for (int[] todo : addedTodoLineNumbers(patch)) {
-                String url = headSha != null
-                        ? "https://github.com/" + ownerRepo + "/blob/" + headSha + "/" + path
-                            + "#L" + todo[0]
-                        : null;
-                todos.add(new PullRequestEscalation.Finding(path, todo[0], url, null));
-            }
+            String blobUrl = headSha != null
+                    ? "https://github.com/" + ownerRepo + "/blob/" + headSha + "/" + path
+                    : null;
+            todos.addAll(PullRequestEscalation.Finding.addedTodos(path, patch, blobUrl));
         }
         return todos;
-    }
-
-    /**
-     * Returns, for a GitHub file-patch body, each added line that contains a
-     * {@code TODO} marker as {@code [newFileLineNumber]}. New-file line numbers
-     * are tracked from each hunk header; removed lines do not advance them.
-     *
-     * <p>The patch is the {@code patch} field of a pull request's file listing:
-     * hunk bodies only, with no {@code diff --git}/{@code ---}/{@code +++} file
-     * headers. Every {@code +} line is therefore an added line — including one
-     * whose content itself begins with {@code ++} — and must be examined.</p>
-     *
-     * @param patch the GitHub file-patch body (hunks only, no file headers)
-     * @return one single-element {@code int[]} per added TODO line
-     */
-    static List<int[]> addedTodoLineNumbers(String patch) {
-        List<int[]> lines = new ArrayList<>();
-        int newLine = 0;
-        for (String line : patch.split("\n", -1)) {
-            if (line.startsWith("@@")) {
-                Matcher matcher = HUNK_HEADER.matcher(line);
-                if (matcher.find()) newLine = Integer.parseInt(matcher.group(1));
-                continue;
-            }
-            if (line.startsWith("+")) {
-                if (TODO_MARKER.matcher(line).find()) lines.add(new int[] {newLine});
-                newLine++;
-            } else if (line.startsWith("-")) {
-                // A removed line: not present in the new file; does not advance.
-                continue;
-            } else if (!line.startsWith("\\")) {
-                // A context line advances the new-file counter; a
-                // "\ No newline at end of file" marker does not.
-                newLine++;
-            }
-        }
-        return lines;
-    }
-
-    /** First non-blank line of {@code text}, capped so a ping bullet stays short. */
-    private static String summarizeOneLine(String text) {
-        if (text == null) return null;
-        for (String line : text.split("\n", -1)) {
-            String trimmed = line.strip();
-            if (!trimmed.isEmpty()) {
-                return trimmed.length() <= 120 ? trimmed : trimmed.substring(0, 117) + "...";
-            }
-        }
-        return null;
     }
 
     /**

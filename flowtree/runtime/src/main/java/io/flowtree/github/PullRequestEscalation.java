@@ -16,7 +16,10 @@
 
 package io.flowtree.github;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The pull-request facts a cap-reached remediation ping lists so a person knows
@@ -85,6 +88,90 @@ public record PullRequestEscalation(String prUrl, List<Finding> unresolvedThread
      * @param detail a short description (the comment's or the TODO's text)
      */
     public record Finding(String path, int line, String url, String detail) {
+
+        /** Matches a unified-diff hunk header, capturing the new-file start line. */
+        private static final Pattern HUNK_HEADER = Pattern.compile("^@@ -\\d+(?:,\\d+)? \\+(\\d+)");
+
+        /**
+         * Matches a {@code TODO} marker as a word token, so {@code TODO},
+         * {@code TODO:}, and {@code TODO(review)} match but an identifier such as
+         * {@code TODOList} does not. Mirrors the {@code \bTODO\b} match in
+         * {@code tools/ci/extract_branch_todos.py}.
+         */
+        private static final Pattern TODO_MARKER = Pattern.compile("\\bTODO\\b");
+
+        /** Longest detail a review-thread finding carries, so a ping bullet stays short. */
+        private static final int MAX_DETAIL_LENGTH = 120;
+
+        /**
+         * Returns the finding for an unresolved review thread, anchored at its
+         * first comment, whose detail is the first non-blank line of that
+         * comment's body, shortened to {@value #MAX_DETAIL_LENGTH} characters.
+         *
+         * @param path the file the comment is anchored to
+         * @param line the comment's line, or {@code 0} when it has none
+         * @param url  the comment's URL
+         * @param body the comment's Markdown body; may be {@code null}
+         * @return the finding
+         */
+        public static Finding reviewComment(String path, int line, String url, String body) {
+            String detail = null;
+            if (body != null) {
+                for (String bodyLine : body.split("\n", -1)) {
+                    String trimmed = bodyLine.strip();
+                    if (!trimmed.isEmpty()) {
+                        detail = trimmed.length() <= MAX_DETAIL_LENGTH ? trimmed
+                                : trimmed.substring(0, MAX_DETAIL_LENGTH - 3) + "...";
+                        break;
+                    }
+                }
+            }
+            return new Finding(path, line, url, detail);
+        }
+
+        /**
+         * Returns one finding per added line of {@code patch} that carries a
+         * {@code TODO} marker, at its new-file line number. New-file line numbers
+         * are tracked from each hunk header; removed lines do not advance them.
+         *
+         * <p>The patch is the {@code patch} field of a pull request's file listing:
+         * hunk bodies only, with no {@code diff --git}/{@code ---}/{@code +++} file
+         * headers. Every {@code +} line is therefore an added line — including one
+         * whose content itself begins with {@code ++} — and must be examined.</p>
+         *
+         * @param path    the file the patch belongs to (its new name when renamed)
+         * @param patch   the GitHub file-patch body (hunks only, no file headers)
+         * @param blobUrl the URL of the file at the PR head, to which each
+         *                finding's {@code #L<line>} anchor is appended; may be
+         *                {@code null}, in which case findings carry no link
+         * @return the added TODO lines, in patch order
+         */
+        public static List<Finding> addedTodos(String path, String patch, String blobUrl) {
+            List<Finding> todos = new ArrayList<>();
+            int newLine = 0;
+            for (String line : patch.split("\n", -1)) {
+                if (line.startsWith("@@")) {
+                    Matcher matcher = HUNK_HEADER.matcher(line);
+                    if (matcher.find()) newLine = Integer.parseInt(matcher.group(1));
+                    continue;
+                }
+                if (line.startsWith("+")) {
+                    if (TODO_MARKER.matcher(line).find()) {
+                        String url = blobUrl == null ? null : blobUrl + "#L" + newLine;
+                        todos.add(new Finding(path, newLine, url, null));
+                    }
+                    newLine++;
+                } else if (line.startsWith("-")) {
+                    // A removed line: not present in the new file; does not advance.
+                    continue;
+                } else if (!line.startsWith("\\")) {
+                    // A context line advances the new-file counter; a
+                    // "\ No newline at end of file" marker does not.
+                    newLine++;
+                }
+            }
+            return todos;
+        }
 
         /**
          * Renders the finding as one Markdown bullet, e.g.

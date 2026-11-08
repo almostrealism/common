@@ -49,6 +49,7 @@ def extract_added_todos(diff_text):
     path = None
     new_line = 0
     for line in diff_text.split("\n"):
+        # TODO(review): body lines whose content starts "++"/"--" are misread as file headers; only treat ---/+++ as headers before a file's first hunk.
         if line.startswith("+++ "):
             # "+++ b/path" (or "+++ /dev/null" for a deletion).
             target = line[4:]
