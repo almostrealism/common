@@ -156,6 +156,8 @@ public class AbsorberVolumeTest extends TestSuiteBase {
 				plane.intersect(new Vector(0.0, 1.5, 5.0), new Vector(0.0, 0.0, -1.0)), 0.0);
 		assertEquals("parallel", Volume.MISS,
 				plane.intersect(new Vector(0.0, 0.0, 5.0), new Vector(1.0, 0.0, 0.0)), 0.0);
+		assertEquals("parallel from the far side", Volume.MISS,
+				plane.intersect(new Vector(0.0, 0.0, -5.0), new Vector(1.0, 0.0, 0.0)), 0.0);
 	}
 
 	/** Each wall is inside the box, but the space the walls enclose is not. */

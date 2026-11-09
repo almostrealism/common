@@ -62,6 +62,18 @@ public class PhotonFieldAnimationTest extends TestSuiteBase {
 	}
 
 	/**
+	 * An absorbing sphere that compares equal to every other of its kind, used to show that
+	 * detaching keys on object identity rather than {@code equals}.
+	 */
+	private static class EqualAbsorbingSphere extends AbsorbingSphere {
+		@Override
+		public boolean equals(Object o) { return o instanceof EqualAbsorbingSphere; }
+
+		@Override
+		public int hashCode() { return EqualAbsorbingSphere.class.hashCode(); }
+	}
+
+	/**
 	 * Asserts the number of absorbers in the animation's absorber set.
 	 *
 	 * @param expected  the expected number
@@ -92,6 +104,24 @@ public class PhotonFieldAnimationTest extends TestSuiteBase {
 		animation.add(a);
 		animation.remove(animation.size() - 1);
 		assertAbsorbers(0, animation);
+	}
+
+	/**
+	 * A removed member is detached from the absorber set by object identity, so a distinct member
+	 * that merely compares {@code equal} does not keep it registered.
+	 */
+	@Test(timeout = 30000)
+	public void detachKeysOnIdentityNotEquals() {
+		PhotonFieldAnimation<ShadableSurface> animation = new PhotonFieldAnimation<>();
+		EqualAbsorbingSphere a = new EqualAbsorbingSphere();
+		EqualAbsorbingSphere b = new EqualAbsorbingSphere();
+
+		animation.add(a);
+		animation.add(b);
+		assertAbsorbers(2, animation);
+
+		animation.remove(a);
+		assertAbsorbers(1, animation);
 	}
 
 	/** Bulk additions and removals of absorbers reach the absorber set. */

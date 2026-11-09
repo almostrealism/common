@@ -168,6 +168,8 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 		double a = p.dotProduct(n);
 		double b = d.dotProduct(n);
 
+		if (b == 0.0) return MISS;
+
 		return Math.min(faceDistance(p, d, n, (this.thick - a) / b),
 						faceDistance(p, d, n, (-this.thick - a) / b));
 	}

@@ -131,7 +131,7 @@ public class RayTracedAnimation<T extends ShadableSurface> extends Animation<T> 
 		List<String> names = new ArrayList<>();
 		for (File f : frameFiles) names.add(f.getName());
 
-		int fps = (int) (1 / getFrameDuration());
+		int fps = Math.max(1, (int) Math.round(1.0 / getFrameDuration()));
 
 		try (PrintWriter out = new PrintWriter(new FileWriter(script))) {
 			out.println("#!/bin/sh");

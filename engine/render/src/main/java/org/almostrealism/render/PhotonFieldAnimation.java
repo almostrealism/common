@@ -96,7 +96,24 @@ public class PhotonFieldAnimation<T extends ShadableSurface> extends RayTracedAn
 	 * @param member the member removed from the animation
 	 */
 	private void detach(Object member) {
-		if (member instanceof Absorber && !contains(member)) absorber.removeAbsorber((Absorber) member);
+		if (member instanceof Absorber && !containsIdentity(member)) absorber.removeAbsorber((Absorber) member);
+	}
+
+	/**
+	 * Returns whether the given object is still a member of the animation by reference identity.
+	 * Used by {@link #detach} rather than {@link #contains} so that the decision keys on the exact
+	 * object reference, not on {@code equals} - matching the "same object" semantics the absorber
+	 * set is kept in step with.
+	 *
+	 * @param member the object to look for
+	 * @return true if a member of the animation is the same object as {@code member}
+	 */
+	private boolean containsIdentity(Object member) {
+		for (int i = 0; i < size(); i++) {
+			if (get(i) == member) return true;
+		}
+
+		return false;
 	}
 
 	@Override
