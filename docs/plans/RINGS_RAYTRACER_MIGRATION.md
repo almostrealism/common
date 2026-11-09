@@ -1,3 +1,10 @@
+---
+status: in-progress
+created: 2026-11-08
+closed:
+tracker: []
+---
+
 # Migrating the rings `raytracer` module into common
 
 **Scope:** the `raytracer` module of the rings repository (`ar-raytracer`), 33 main
