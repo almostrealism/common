@@ -113,8 +113,8 @@ quantity in the Young–Laplace pressure jump `σκ`. Sign: a surface convex upw
 It is discretised in conservative flux form: for each axis `k` the flux
 `h_k / sqrt(1 + |grad h|^2)` is evaluated on both faces of every cell, with the normal derivative
 a one-sided difference across the face and each tangential derivative the average of the central
-differences of the two cells sharing the face. For small slopes the flux reduces to the one-sided
-difference, so the operator reduces **exactly** to the compact `laplacian`, which is what
+differences of the two cells sharing the face. In the small-slope limit the flux reduces to the
+one-sided difference, so the operator reduces to the compact `laplacian`, which is what
 `linearizedHeightFieldCurvature` returns. Second-order accurate (measured, §4).
 
 ### Poisson relaxation, `laplacian(p) = f`
@@ -240,6 +240,11 @@ backward pass through a stencil prefer the reduced delta (`delta(target, ReduceA
    `FieldCalculusTests.laplacian3D` before the gradient was stored). In 2D the same composition
    compiles in seconds. When composing operators in 3D, store the intermediate field (assign it
    to a collection in an earlier operation of the step) and apply the next operator to that.
+   `heightFieldCurvature` (its flux shifts the central differences) and `redBlackGaussSeidelStep`
+   (its black half shifts the red half, itself a shift) are shifts of shifts in the same way;
+   both are tested only in 2D, and their 3D compile cost is expected to be comparable. Unlike
+   `divergence(gradient(f))` they have no intermediate the caller can store, so a 3D use that
+   proves too slow needs the operator split into separate per-half or per-face operations.
 2. **The 9-point Laplacian is 2D only** and needs equal spacing on both axes. There is no 19- or
    27-point 3D stencil.
 3. **No staggered (MAC) grids.** All operators are collocated: every field lives at the grid
@@ -247,9 +252,15 @@ backward pass through a stencil prefer the reduced delta (`delta(target, ReduceA
    variants of `divergence` and `gradient`.
 4. **No multigrid.** Only single-level Jacobi and red-black Gauss–Seidel/SOR are provided; their
    convergence slows like `h²` per sweep on fine grids.
-5. **Red-black ordering assumes the compact stencil.** `redBlackGaussSeidelStep` is a true
-   Gauss–Seidel sweep only for the 5-/7-point `laplacian` stencil it uses (red cells read only
-   black neighbours).
+5. **Red-black ordering assumes the compact stencil and even periodic lengths.**
+   `redBlackGaussSeidelStep` is a true Gauss–Seidel sweep only for the 5-/7-point `laplacian`
+   stencil it uses (red cells read only black neighbours). The checkerboard colouring is also a
+   true two-colouring only when every `periodic()` axis has an even length: across the wrap of an
+   odd-length periodic axis two adjacent cells share a colour, so the sweep degrades to a
+   Jacobi/Gauss–Seidel hybrid along that wrap (it still converges, only more slowly). The clamped
+   and fixed boundaries place the colouring discontinuity outside the grid and are unaffected, so
+   this applies only to periodic axes. Use even lengths on periodic axes for a true red-black
+   sweep.
 
 ---
 

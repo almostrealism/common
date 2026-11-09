@@ -127,7 +127,7 @@ public class FieldCalculusTests extends TestSuiteBase {
 	private void assertShifts(PackedCollection field, double[] logical, int n0, int n1) {
 		for (String mode : new String[] { "periodic", "clamped", "fixed" }) {
 			for (int axis = 0; axis < 2; axis++) {
-				for (int offset : new int[] { -2, -1, 1, 2 }) {
+				for (int offset : new int[] { -2, -1, 0, 1, 2 }) {
 					double[] expected = expectedShift(logical, n0, n1, axis, offset, mode, 7.5);
 					double[] actual = values(shift(cp(field), axis, offset, boundary(mode, 7.5)));
 					for (int k = 0; k < expected.length; k++) {
@@ -142,7 +142,8 @@ public class FieldCalculusTests extends TestSuiteBase {
 	/**
 	 * Every boundary mode supplies the specified ghost cells: periodic wraps, clamped repeats the
 	 * edge cell, and fixed supplies the fixed value, for shifts of one and two cells in both
-	 * directions along both axes.
+	 * directions along both axes. A zero shift reproduces the field (no ghost cells) with the
+	 * ordering dropped from its shape.
 	 */
 	@Test(timeout = 120000)
 	public void shiftBoundaryModes() {
@@ -174,6 +175,37 @@ public class FieldCalculusTests extends TestSuiteBase {
 		assertTrue("the input should carry its ordering", ordered.getShape().getOrder() == order);
 
 		assertShifts(ordered, logical, n0, n1);
+	}
+
+	/**
+	 * {@code component} of a vector field whose shape carries a
+	 * {@link io.almostrealism.collect.TraversalOrdering} returns the component's values in logical
+	 * order: the extracted component is dense and must not inherit the whole vector field's
+	 * ordering, which indexes a larger layout and would otherwise expose the wrong values.
+	 */
+	@Test(timeout = 120000)
+	public void componentRespectsOrdering() {
+		int d = 2;
+		int n0 = 3;
+		int n1 = 4;
+		int size = d * n0 * n1;
+		double[] logical = new double[size];
+		for (int k = 0; k < size; k++) logical[k] = 10.0 * (size - 1 - k) + 1.0;
+
+		PackedCollection memory = integers(0, size).multiply(10.0).add(1.0).evaluate();
+		PackedCollection permutation = integers(0, size).minus().add(size - 1).evaluate();
+		ExplicitIndexTraversalOrdering order = new ExplicitIndexTraversalOrdering(permutation);
+		TraversalPolicy shape = shape(d, n0, n1);
+		PackedCollection ordered = new PackedCollection(shape, shape.getDimensions() - 1, memory, 0, order);
+		assertTrue("the input should carry its ordering", ordered.getShape().getOrder() == order);
+
+		for (int k = 0; k < d; k++) {
+			double[] actual = values(component(cp(ordered), k));
+			assertEquals("component " + k + " length", n0 * n1, actual.length);
+			for (int m = 0; m < n0 * n1; m++) {
+				assertEquals("component " + k + " at " + m, logical[k * n0 * n1 + m], actual[m]);
+			}
+		}
 	}
 
 	/**

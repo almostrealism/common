@@ -71,16 +71,17 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 			throw new IllegalArgumentException("axis " + axis + " is not an axis of " + shape);
 		}
 
-		int depth = Math.abs(offset);
-		if (depth > shape.length(axis)) {
+		long magnitude = Math.abs((long) offset);
+		if (magnitude > shape.length(axis)) {
 			throw new IllegalArgumentException("offset " + offset + " exceeds the length of axis "
 					+ axis + " of " + shape);
 		}
 
-		if (offset == 0) return c(field);
-
-		CollectionProducer ghost = boundary.ghost(field, axis, depth, offset > 0);
 		int[] position = new int[shape.getDimensions()];
+		if (offset == 0) return subset(shape, field, position);
+
+		int depth = (int) magnitude;
+		CollectionProducer ghost = boundary.ghost(field, axis, depth, offset > 0);
 
 		CollectionProducer extended;
 		if (offset > 0) {
@@ -192,7 +193,7 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * @return the component, of shape {@code (n0, ..., n(d-1))}
 	 */
 	default CollectionProducer component(Producer<PackedCollection> vectorField, int k) {
-		return slice(0, k, 1, vectorField).reshape(shape(vectorField).subset(1));
+		return slice(0, k, 1, vectorField).reshape(shape(vectorField).subset(1).withOrder(null));
 	}
 
 	/**
@@ -301,8 +302,13 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * {@code grad h / sqrt(1 + |grad h|^2)} is evaluated at the two faces of the cell along
 	 * {@code k}, with the normal derivative a one-sided difference across the face and the
 	 * tangential derivatives the average of the central differences of the two cells sharing the
-	 * face. The result is second-order accurate, and for small slopes it reduces exactly to
+	 * face. The result is second-order accurate, and in the small-slope limit it reduces to
 	 * {@link #laplacian} (see {@link #linearizedHeightFieldCurvature}).</p>
+	 *
+	 * <p>The flux shifts the central differences, so the operator nests shifts of shifts like
+	 * {@link #divergence}({@link #gradient}); on a 3D grid its index-expression simplification is
+	 * correspondingly slow to compile (tested only in 2D). See the 3D nesting note on
+	 * {@link #divergence}.</p>
 	 *
 	 * @param height   the height field
 	 * @param boundary the boundary condition
@@ -313,7 +319,6 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 													double... spacing) {
 		int d = shape(height).getDimensions();
 
-		// TODO(review): faceFlux shifts central differences (shift of shift); 3D compile time untested, see divergence(gradient) limit
 		CollectionProducer[] central = new CollectionProducer[d];
 		for (int j = 0; j < d; j++) {
 			central[j] = centralDifference(height, j, gridSpacing(spacing, j, d), boundary);
@@ -413,6 +418,16 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * <p>The result is globally coupled in the same way as {@link #jacobiStep}: write it to a
 	 * next-state collection and copy it back in a later operation.</p>
 	 *
+	 * <p>The checkerboard is a true two-colouring only when every {@link GridBoundary#periodic()}
+	 * axis has an even length: across the wrap of an odd-length periodic axis the two adjacent
+	 * cells share a colour, so the black half no longer reads only updated red neighbours and the
+	 * sweep becomes a Jacobi/Gauss-Seidel hybrid along that wrap. It still converges, but for a
+	 * true red-black sweep use even lengths on periodic axes (the clamped and fixed boundaries put
+	 * the colouring discontinuity outside the grid and are unaffected). The black half also reads
+	 * the red half, which is itself built from shifts, so the sweep nests shifts of shifts like
+	 * {@link #divergence}({@link #gradient}) and is correspondingly slow to compile in 3D (tested
+	 * only in 2D).</p>
+	 *
 	 * @param p        the current estimate of the solution
 	 * @param f        the right-hand side, with the shape of {@code p}
 	 * @param boundary the boundary condition of the problem
@@ -422,7 +437,6 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 */
 	default CollectionProducer redBlackGaussSeidelStep(Producer<PackedCollection> p, Producer<PackedCollection> f,
 													   GridBoundary boundary, double omega, double... spacing) {
-		// TODO(review): shifts of shifts like divergence(gradient) (3D compile cost untested); not a true red-black sweep under periodic with an odd axis length
 		CollectionProducer red = gaussSeidelHalfStep(p, f, boundary, omega, 0, spacing);
 		return gaussSeidelHalfStep(red, f, boundary, omega, 1, spacing);
 	}
