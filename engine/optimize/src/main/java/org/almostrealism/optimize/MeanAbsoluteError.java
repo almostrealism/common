@@ -72,7 +72,7 @@ import org.almostrealism.collect.PackedCollection;
  *
  * @author Michael Murray
  */
-public class MeanAbsoluteError implements LossProvider, CodeFeatures {
+public final class MeanAbsoluteError implements LossProvider, CodeFeatures {
 	/** The shape of model output tensors, used to normalize the loss. */
 	private final TraversalPolicy outputShape;
 
@@ -109,7 +109,7 @@ public class MeanAbsoluteError implements LossProvider, CodeFeatures {
 	 * @return a producer of {@code |output - target|}, element by element
 	 */
 	@Override
-	public final CollectionProducer terms(Producer<PackedCollection> output,
+	public CollectionProducer terms(Producer<PackedCollection> output,
 									Producer<PackedCollection> target) {
 		return c(output).subtract(c(target)).abs();
 	}
