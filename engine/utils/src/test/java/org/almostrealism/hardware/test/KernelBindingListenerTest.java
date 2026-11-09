@@ -160,4 +160,25 @@ public class KernelBindingListenerTest extends TestSuiteBase {
 			Assert.assertTrue(e.getMessage(), e.getMessage().startsWith("Instruction cache collision"));
 		}
 	}
+
+	/**
+	 * {@link InstructionCacheCollisionException#findIn(Throwable)} returns the collision itself, the
+	 * innermost collision however deeply it is wrapped, and null for a chain without one.
+	 */
+	@Test(timeout = 60000)
+	public void findInLocatesCollisionInCauseChain() {
+		InstructionCacheCollisionException collision = new InstructionCacheCollisionException(
+				InstructionCacheCollisionException.Kind.AGGREGATE_LAYOUT, "Instruction cache collision probe");
+
+		Assert.assertSame(collision, InstructionCacheCollisionException.findIn(collision));
+		Assert.assertSame(collision, InstructionCacheCollisionException.findIn(
+				new RuntimeException("outer", new IllegalStateException("middle", collision))));
+		Assert.assertEquals(InstructionCacheCollisionException.Kind.AGGREGATE_LAYOUT,
+				InstructionCacheCollisionException.findIn(new RuntimeException(collision)).getKind());
+
+		Assert.assertNull(InstructionCacheCollisionException.findIn(
+				new RuntimeException("outer", new IllegalStateException("no collision"))));
+		Assert.assertNull(InstructionCacheCollisionException.findIn(new RuntimeException()));
+		Assert.assertNull(InstructionCacheCollisionException.findIn(null));
+	}
 }

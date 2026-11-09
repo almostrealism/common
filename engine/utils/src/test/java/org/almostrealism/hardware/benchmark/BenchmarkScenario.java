@@ -100,14 +100,15 @@ public class BenchmarkScenario {
 	/**
 	 * Returns a fingerprint of the scenario's population: equal for two runs exactly when they
 	 * generated the same instances in the same order, which is what makes their reports
-	 * comparable.
+	 * comparable. It is built from each instance's {@link WorkloadInstance#generationKey()}, so a
+	 * change to any generated constant, scalar or data seed changes it.
 	 *
 	 * @return the population fingerprint
 	 */
 	public String fingerprint() {
 		long hash = 1125899906842597L;
 		for (WorkloadInstance instance : instances) {
-			hash = 31 * hash + instance.describe().hashCode();
+			hash = 31 * hash + instance.generationKey().hashCode();
 		}
 
 		return Long.toUnsignedString(hash, 36);

@@ -360,6 +360,19 @@ public class WorkloadInstance {
 	}
 
 	/**
+	 * Returns a key that is equal for two instances exactly when they were generated identically:
+	 * the {@link #describe() structure and layout} together with the value of every scalar slot,
+	 * embedded or not, and the seed of the input values. Unlike {@link #structureKey()}, it also
+	 * distinguishes instances that differ only in data a kernel does not depend on, since that
+	 * data still decides whether the instance verifies.
+	 *
+	 * @return the generation key
+	 */
+	public String generationKey() {
+		return describe() + " scalars=" + Arrays.toString(scalarValues) + " dataSeed=" + dataSeed;
+	}
+
+	/**
 	 * Returns a description of this instance's structure and layout.
 	 *
 	 * @return the description

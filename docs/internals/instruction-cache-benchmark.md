@@ -116,7 +116,8 @@ Each metric is reported per scenario and per compute context:
 - **Copies.** Aggregate slices copied in and copied back, for the first evaluation and the later
   ones, and per aggregating dispatch.
 - **Timing.** Native compilation count and time from the compilation timing listener, and the
-  wall-clock time to the end of each first evaluation.
+  wall-clock time from the end of input allocation to the moment each first output has been
+  read back. Verifying that output against the host reference is not included.
 - **Problems.** Mismatches, and failures grouped by exception type, with the first detail seen.
 - **Instance records.** One line per instance: its outcome and every kernel it obtained. In the
   kernel notation, `c3/1` is compiled with 3 arguments and 1 folded, `u` is compiled without a

@@ -4,11 +4,11 @@
   "command": "AR_LONG_TESTS=enabled AR_CACHE_BENCHMARK_SEED=1729 AR_CACHE_BENCHMARK_POPULATION=500 mvn -pl engine/utils test -Dtest=InstructionCacheBenchmark",
   "parameters": {"population": "500", "evaluations": "3", "seed": "1729", "templatePoolSize": "24", "templateSkew": "1.1", "shapeSkew": "1.0", "constantSkew": "1.2", "aliasProbability": "0.15", "maxDepth": "4", "maxInputs": "4", "scalarProbability": "0.3", "literalProbability": "0.5", "aggregateLimit": "1024", "argumentAggregation": "true"},
   "scenarios": [
-    {"name": "generated", "purpose": "instances drawn with Zipf-skewed reuse from pools of generated templates, shapes and constants", "instances": 500, "distinctTemplates": 24, "structuralRepeatRate": 0.5320, "fingerprint": "3shv6c1mi02z4"},
-    {"name": "size-generic", "purpose": "the most frequent templates over every shape, ascending then descending", "instances": 56, "distinctTemplates": 4, "structuralRepeatRate": 0.5000, "fingerprint": "2wz38j5jwzcud"},
-    {"name": "aliasing", "purpose": "two inputs on separate roots, on one root, overlapping, and bound to the same view", "instances": 42, "distinctTemplates": 3, "structuralRepeatRate": 0.4286, "fingerprint": "2li2uwjqxvqn2"},
-    {"name": "aggregate-threshold", "purpose": "roots at, below and above the aggregation limit under one shape, and shapes crossing it", "instances": 64, "distinctTemplates": 2, "structuralRepeatRate": 0.0000, "fingerprint": "tzcqln7qtymr"},
-    {"name": "argument-limit", "purpose": "n distinct inputs in one computation around the Metal argument limit, unfolded and folded", "instances": 120, "distinctTemplates": 30, "structuralRepeatRate": 0.5000, "fingerprint": "1pn5pdia5bc2t"}
+    {"name": "generated", "purpose": "instances drawn with Zipf-skewed reuse from pools of generated templates, shapes and constants", "instances": 500, "distinctTemplates": 24, "structuralRepeatRate": 0.5320, "fingerprint": "143yiekeuvyks"},
+    {"name": "size-generic", "purpose": "the most frequent templates over every shape, ascending then descending", "instances": 56, "distinctTemplates": 4, "structuralRepeatRate": 0.5000, "fingerprint": "u4sicdepmtoq"},
+    {"name": "aliasing", "purpose": "two inputs on separate roots, on one root, overlapping, and bound to the same view", "instances": 42, "distinctTemplates": 3, "structuralRepeatRate": 0.4286, "fingerprint": "26uddv18z5fdy"},
+    {"name": "aggregate-threshold", "purpose": "roots at, below and above the aggregation limit under one shape, and shapes crossing it", "instances": 64, "distinctTemplates": 2, "structuralRepeatRate": 0.0000, "fingerprint": "1tjj1tpkasebn"},
+    {"name": "argument-limit", "purpose": "n distinct inputs in one computation around the Metal argument limit, unfolded and folded", "instances": 120, "distinctTemplates": 30, "structuralRepeatRate": 0.5000, "fingerprint": "2hftc3g81mbjn"}
   ],
   "contexts": [{"requirement": "JNI", "context": "NativeComputeContext"}, {"requirement": "MTL", "context": "MetalComputeContext"}],
   "limitations": [

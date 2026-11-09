@@ -218,35 +218,40 @@ public class InstructionCacheBenchmark extends TestSuiteBase {
 
 	/**
 	 * Builds, optimizes, compiles and evaluates one instance, checking every output, and returns
-	 * what happened together with the events it caused. Nothing it throws escapes.
+	 * what happened together with the events it caused. No runtime exception it throws escapes,
+	 * including one raised while allocating its inputs. The first-evaluation time ends when the
+	 * first output has been read back, so it does not include verifying that output.
 	 */
 	private InstanceResult run(WorkloadInstance instance, KernelBindingRecorder recorder, int evaluations) {
-		// TODO(review): allocate() runs outside the try, so an allocation failure escapes and aborts the whole run despite "Nothing it throws escapes"
-		instance.allocate(this);
-		recorder.drain();
-
 		KernelBindingRecorder.Events first = null;
 		Outcome outcome = Outcome.VERIFIED;
 		InstructionCacheCollisionException.Kind kind = null;
 		String detail = null;
 		String failureType = null;
+		boolean allocated = false;
 		long start = System.nanoTime();
 		long firstNanos = 0;
 
 		try {
+			instance.allocate(this);
+			allocated = true;
+			recorder.drain();
+			start = System.nanoTime();
+
 			CollectionProducer producer = instance.build(this);
 			Evaluable<? extends PackedCollection> evaluable = Process.optimized(producer).get();
 
 			for (int i = 0; i < evaluations; i++) {
 				PackedCollection out = evaluable.evaluate();
-				String mismatch = instance.verify(out.toArray());
-				out.destroy();
+				double[] values = out.toArray();
 
 				if (i == 0) {
 					firstNanos = System.nanoTime() - start;
 					first = recorder.drain();
 				}
 
+				out.destroy();
+				String mismatch = instance.verify(values);
 				if (mismatch != null && detail == null) {
 					outcome = Outcome.MISMATCH;
 					detail = "evaluation " + i + ": " + mismatch;
@@ -271,6 +276,9 @@ public class InstructionCacheBenchmark extends TestSuiteBase {
 
 		if (first == null) {
 			firstNanos = System.nanoTime() - start;
+
+			// The events of a failed allocation belong to its random inputs, not to the instance
+			if (!allocated) recorder.drain();
 			first = recorder.drain();
 		}
 

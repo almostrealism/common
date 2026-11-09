@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.benchmark;
 
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -42,6 +43,37 @@ public class WorkloadGeneratorTest extends TestSuiteBase {
 		}
 
 		Assert.assertNotEquals(a.get(0).fingerprint(), c.get(0).fingerprint());
+	}
+
+	/**
+	 * The fingerprint distinguishes populations that differ only in an embedded constant, a
+	 * scalar input or a data seed, none of which {@link WorkloadInstance#describe()} renders, and
+	 * is unchanged when nothing differs.
+	 */
+	@Test(timeout = 60000)
+	public void fingerprintDistinguishesGeneratedValues() {
+		ComputationTemplate canonical = ComputationTemplate.canonical();
+		TraversalPolicy shape = new TraversalPolicy(4, 16);
+		String base = fingerprint(canonical, shape, new double[] { 2.0 }, 7);
+
+		Assert.assertEquals(base, fingerprint(canonical, shape, new double[] { 2.0 }, 7));
+		Assert.assertNotEquals("embedded constant", base, fingerprint(canonical, shape, new double[] { 3.0 }, 7));
+		Assert.assertNotEquals("data seed", base, fingerprint(canonical, shape, new double[] { 2.0 }, 8));
+		Assert.assertNotEquals("shape", base, fingerprint(canonical, new TraversalPolicy(4, 32), new double[] { 2.0 }, 7));
+
+		ComputationTemplate scaled = new ComputationTemplate("scaled", new TemplateNode.Input(0),
+				ComputationTemplate.Reduction.NONE, 0, 1, 1, new boolean[] { false });
+		Assert.assertNotEquals("scalar input",
+				fingerprint(scaled, shape, new double[] { 2.0 }, 7),
+				fingerprint(scaled, shape, new double[] { 3.0 }, 7));
+	}
+
+	/** Returns the fingerprint of a scenario holding the single described instance. */
+	private static String fingerprint(ComputationTemplate template, TraversalPolicy shape,
+									  double[] scalars, long dataSeed) {
+		WorkloadInstance instance = new WorkloadInstance(template, shape,
+				WorkloadInstance.Aliasing.DISTINCT, scalars, dataSeed);
+		return new BenchmarkScenario("single", "one instance", List.of(instance)).fingerprint();
 	}
 
 	/**
