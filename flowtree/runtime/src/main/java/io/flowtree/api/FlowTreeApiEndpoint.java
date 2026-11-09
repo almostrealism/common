@@ -56,6 +56,7 @@ import io.flowtree.tracker.TaskCloseOutReconciler;
 import io.flowtree.tracker.TrackerService;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.controller.RemediationBudgetGuard;
+import io.flowtree.controller.RemediationEscalation;
 import io.flowtree.controller.RemediationStateStore;
 import io.flowtree.controller.PendingJob;
 import io.flowtree.submission.SubmissionConfigResolver;
@@ -579,7 +580,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * @param store the remediation record store, or null to leave it disabled
      */
     public void setRemediationStore(RemediationStateStore store) {
-        this.remediationGuard = RemediationBudgetGuard.forChannel(store, notifiers);
+        RemediationEscalation escalation =
+                new RemediationEscalation(githubProxyHandler::escalationFor);
+        this.remediationGuard = RemediationBudgetGuard.forChannel(store, notifiers, escalation);
         this.jobLifecycleRecorder = new JobLifecycleRecorder(statsQueryHandler.store(), store);
     }
 
@@ -965,8 +968,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 log("Invalid startedAfter value: " + startedAfterStr);
             }
         }
-        // Per-PR remediation budget / own-commit skip for remediation passes
-        // (auto-review/auto-resolve), which CI marks explicitly — not every automated job.
+        // Per-PR remediation cap for remediation passes (auto-review/auto-resolve),
+        // which CI marks explicitly — not every automated job. The triggering
+        // commit lets the cap reset when the branch gains a commit no pass produced.
         boolean remediationPass = JsonFieldExtractor.getBoolean(body, "remediationPass", false);
         String remediationSkip = remediationGuard.skipReason(workstreamId, remediationPass, JsonFieldExtractor.extractString(body, "triggerCommit"));
         if (remediationSkip != null) {

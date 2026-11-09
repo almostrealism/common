@@ -28,18 +28,16 @@ final class WorkstreamUtils {
 
     /**
      * Extracts the workstream id from a workstream URL of the shape
-     * {@code .../api/workstreams/<wsId>[/jobs/...]}.
+     * {@code .../workstreams/<wsId>[/jobs/...]}.
+     *
+     * <p>Delegates to {@link WorkspaceResolver#extractWorkstreamId(String)},
+     * the single home for workstream-URL parsing. Retained as a
+     * package-private entry point for existing callers and tests.</p>
      *
      * @param url the workstream URL or {@code null}
      * @return the workstream id, or {@code null} when none could be parsed
      */
     static String extractWorkstreamId(String url) {
-        if (url == null || url.isEmpty()) return null;
-        int idx = url.indexOf("/workstreams/");
-        if (idx < 0) return null;
-        int start = idx + "/workstreams/".length();
-        int end = url.indexOf('/', start);
-        String id = end < 0 ? url.substring(start) : url.substring(start, end);
-        return id.isEmpty() ? null : id;
+        return WorkspaceResolver.extractWorkstreamId(url);
     }
 }

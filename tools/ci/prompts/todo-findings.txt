@@ -1,0 +1,28 @@
+## New TODOs are findings
+
+A review comment — human or Copilot — very often does no more than point at a
+TODO someone already left in the code. The TODOs this branch adds are therefore
+findings in their own right, every bit as important as a review comment, and
+the list of them is given below, computed the same way the review feedback is
+passed to you: each one is a line this branch added that is not on the base
+branch, with its file and line.
+
+Resolve every TODO in that list in exactly one of two ways:
+
+- **Fix it and remove the TODO**, when the work it names is within this branch's
+  scope and small enough to do here. Delete the TODO line once the work is done.
+- **Turn it into a tracker task** with `tracker_create_task` (give it the
+  project id, a clear title, and a description that points at the file and the
+  line), when the work is out of scope or larger than this pass should take on.
+  Then replace the TODO line with a reference to that task's id, so the note
+  lives on as a tracked item rather than an anonymous marker. Do not simply
+  delete it.
+
+Leaving a TODO the branch added untouched is not one of the options. This
+includes the `TODO(review)` notes a review pass leaves for itself: the next
+pass must fix them or file them, not carry them forward.
+
+Do not chase minor or out-of-scope improvements while you are here. When you
+notice one — whether it comes from a TODO, a review comment, or your own reading
+of the code — file a follow-up tracker task for it rather than doing it in this
+pass. That is the same routing an out-of-scope review comment gets.
