@@ -41,6 +41,10 @@ import java.util.function.Supplier;
  * {@link KernelBindingListener} reports a compilation for the first of two structurally identical
  * computations and a reuse for the second, a dispatch for each evaluation and the aggregate copies
  * around it, and a collision is thrown as an {@link InstructionCacheCollisionException}.
+ *
+ * <p>Tests that assert a compilation evict the whole instruction cache first, because a
+ * structurally identical computation evaluated earlier in the same JVM would otherwise be
+ * reused.</p>
  */
 public class KernelBindingListenerTest extends TestSuiteBase {
 
@@ -98,6 +102,8 @@ public class KernelBindingListenerTest extends TestSuiteBase {
 		AcceleratedOperation.bindingListener = recorder;
 
 		try {
+			Hardware.getLocalHardware().getComputer().evictAllInstructions();
+
 			PackedCollection first = Process.optimized(computation(8)).get().evaluate();
 			List<String> compiled = recorder.drain();
 			log("firstEvents=" + compiled);
@@ -134,6 +140,8 @@ public class KernelBindingListenerTest extends TestSuiteBase {
 		AcceleratedOperation.bindingListener = recorder;
 
 		try {
+			Hardware.getLocalHardware().getComputer().evictAllInstructions();
+
 			Process.optimized(computation(6)).get().evaluate();
 			List<String> first = recorder.drain();
 			Assert.assertTrue(first.toString(), first.contains("compiled true 2 2 12"));
