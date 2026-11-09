@@ -513,7 +513,7 @@ library.allDetails().forEach(details -> {
 
 - `identifiers` map: key (file path) -> identifier (MD5 hash)
 - `detailsCache`: a bounded `FrequencyCache<String, WaveDetails>` keyed by identifier
-- `completeIdentifiers`: a `Set<String>` tracking identifiers with complete data
+- `completeIdentifiers`: a `CompleteIdentifierSet` (an `AbstractSet<String>`) that is the authoritative record of which identifiers have complete data for the current embedding model; it is thread-safe so the analysis worker can add entries while callers scan it
 - `fileIndex` (`ContentIndex`): identifier → file lookup populated by `indexFiles()` and the tree-refresh path, with a generation counter so derivations can notice when the library has moved on
 
 For detailed documentation, see [Audio Library Documentation](docs/AUDIO_LIBRARY.md).

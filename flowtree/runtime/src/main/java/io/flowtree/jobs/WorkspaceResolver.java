@@ -159,4 +159,49 @@ public class WorkspaceResolver {
 
         return url;
     }
+
+    /**
+     * Extracts the controller base URL (scheme + host + port) from a workstream URL.
+     *
+     * <p>The controller base is everything preceding the {@code /api/workstreams/}
+     * segment, so for {@code http://host:7780/api/workstreams/ws-1/jobs/j1} this
+     * returns {@code http://host:7780}. The {@code /api} prefix must be part of the
+     * marker so it is stripped along with the workstream path.</p>
+     *
+     * @param workstreamUrl the full workstream URL, or {@code null}
+     * @return the controller base URL, or {@code null} when the input is
+     *         {@code null}/empty or contains no {@code /api/workstreams/} segment
+     */
+    public static String extractControllerBaseUrl(String workstreamUrl) {
+        if (workstreamUrl == null || workstreamUrl.isEmpty()) return null;
+
+        int idx = workstreamUrl.indexOf("/api/workstreams/");
+        if (idx < 0) return null;
+        return workstreamUrl.substring(0, idx);
+    }
+
+    /**
+     * Extracts the workstream identifier from a workstream URL of the shape
+     * {@code .../workstreams/<wsId>[/jobs/...]}.
+     *
+     * <p>The {@code /workstreams/} marker matches with or without the
+     * {@code /api} prefix, so both {@code http://host/api/workstreams/ws-1}
+     * and {@code http://host/workstreams/ws-1} yield {@code ws-1}.</p>
+     *
+     * @param workstreamUrl the full workstream URL, or {@code null}
+     * @return the workstream id, or {@code null} when the input is
+     *         {@code null}/empty, contains no {@code /workstreams/} segment,
+     *         or the segment is followed by an empty identifier
+     */
+    public static String extractWorkstreamId(String workstreamUrl) {
+        if (workstreamUrl == null || workstreamUrl.isEmpty()) return null;
+
+        int idx = workstreamUrl.indexOf("/workstreams/");
+        if (idx < 0) return null;
+
+        int start = idx + "/workstreams/".length();
+        int end = workstreamUrl.indexOf('/', start);
+        String id = end < 0 ? workstreamUrl.substring(start) : workstreamUrl.substring(start, end);
+        return id.isEmpty() ? null : id;
+    }
 }

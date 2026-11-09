@@ -105,27 +105,29 @@ final class DeduplicationSpawner {
     /**
      * Extracts the controller base URL (scheme + host + port) from a workstream URL.
      *
+     * <p>Delegates to {@link WorkspaceResolver#extractControllerBaseUrl(String)},
+     * the single home for workstream-URL parsing. Retained as a package-private
+     * entry point for existing callers and tests.</p>
+     *
      * @param workstreamUrl the full workstream URL
      * @return the controller base URL, or {@code null} when the URL cannot be parsed
      */
     static String extractControllerBaseUrl(String workstreamUrl) {
-        int idx = workstreamUrl.indexOf("/api/workstreams/");
-        if (idx < 0) return null;
-        return workstreamUrl.substring(0, idx);
+        return WorkspaceResolver.extractControllerBaseUrl(workstreamUrl);
     }
 
     /**
      * Extracts the workstream identifier from a workstream URL.
      *
+     * <p>Delegates to {@link WorkspaceResolver#extractWorkstreamId(String)},
+     * the single home for workstream-URL parsing. Retained as a package-private
+     * entry point for existing callers and tests.</p>
+     *
      * @param workstreamUrl the full workstream URL
      * @return the workstream ID, or {@code null} when the URL cannot be parsed
      */
     static String extractWorkstreamId(String workstreamUrl) {
-        int start = workstreamUrl.indexOf("/api/workstreams/");
-        if (start < 0) return null;
-        start += "/api/workstreams/".length();
-        int end = workstreamUrl.indexOf("/", start);
-        return end < 0 ? workstreamUrl.substring(start) : workstreamUrl.substring(start, end);
+        return WorkspaceResolver.extractWorkstreamId(workstreamUrl);
     }
 
     /** Functional interface decoupling the spawner from {@code GitManagedJob.postJson}. */
