@@ -548,8 +548,13 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * @param shape the shape of the grid
 	 * @param axis  the axis whose index is returned
 	 * @return the index field, with the given shape
+	 * @throws IllegalArgumentException if the axis is out of range
 	 */
 	default CollectionProducer gridIndex(TraversalPolicy shape, int axis) {
+		if (axis < 0 || axis >= shape.getDimensions()) {
+			throw new IllegalArgumentException("axis " + axis + " is not an axis of " + shape);
+		}
+
 		int size = shape.getTotalSize();
 		long stride = 1;
 		for (int k = axis + 1; k < shape.getDimensions(); k++) {

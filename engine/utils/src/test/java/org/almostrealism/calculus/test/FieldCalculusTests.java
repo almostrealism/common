@@ -209,6 +209,40 @@ public class FieldCalculusTests extends TestSuiteBase {
 	}
 
 	/**
+	 * {@code gridIndex} rejects an axis outside {@code [0, dimensions)} rather than silently
+	 * producing an incorrect field: a negative axis would otherwise make the stride span every
+	 * dimension and return an all-zero index field, and an index field built from it would be wrong.
+	 * A valid axis returns the cell index along that axis, repeating across the other axes.
+	 */
+	@Test(timeout = 120000)
+	public void gridIndexRejectsInvalidAxis() {
+		TraversalPolicy shape = shape(2, 3);
+
+		for (int axis : new int[] { -1, 2, 3 }) {
+			boolean rejected = false;
+			try {
+				gridIndex(shape, axis);
+			} catch (IllegalArgumentException expected) {
+				rejected = true;
+			}
+
+			assertTrue("gridIndex should reject axis " + axis + " of " + shape, rejected);
+		}
+
+		double[] along0 = values(gridIndex(shape, 0));
+		double[] expected0 = { 0, 0, 0, 1, 1, 1 };
+		for (int k = 0; k < expected0.length; k++) {
+			assertEquals("gridIndex axis 0 at " + k, expected0[k], along0[k]);
+		}
+
+		double[] along1 = values(gridIndex(shape, 1));
+		double[] expected1 = { 0, 1, 2, 0, 1, 2 };
+		for (int k = 0; k < expected1.length; k++) {
+			assertEquals("gridIndex axis 1 at " + k, expected1[k], along1[k]);
+		}
+	}
+
+	/**
 	 * The 5-point and 9-point Laplacians of {@code sin(kx x) sin(ky y)} on a periodic grid are
 	 * {@code -(kx^2 + ky^2) f} up to their leading truncation errors, {@code (kx^4 + ky^4) h^2 / 12}
 	 * and the isotropic {@code (kx^2 + ky^2)^2 h^2 / 12} respectively, and each equals the exact
