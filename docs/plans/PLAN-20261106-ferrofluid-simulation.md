@@ -7,6 +7,36 @@ tracker: []
 
 # Ferrofluid Simulation and Rendering — Capability Inventory and Roadmap
 
+## Revision note — 2026-11-09 (rings raytracer/photonfield migration)
+
+This plan was first written before the rings repository's `raytracer` (`ar-raytracer`) and
+`photonfield` (`ar-photonfield`) modules were inventoried. Open question 6 (§11) asked whether
+that inventory should happen. It has: the **library** parts of both modules are now in `common`
+on master. What moved, what was fixed, and what is still broken is recorded in
+`RINGS_RAYTRACER_MIGRATION.md`, `RINGS_PHOTONFIELD_MIGRATION.md`, and the GLSL rendering option in
+`GLSL_RENDER_OPTION.md`. This revision reconciles the plan with that code (every claim below was
+re-checked against the current source on this branch). The substantive changes:
+
+- **R19 frame-sequence driver** is no longer flatly MISSING: `RayTracedAnimation` (engine/render)
+  renders a scene frame by frame to image files. It is a **reference, not a drop-in** — its base
+  `Animation.run()` steps rigid-body physics itself, which §10 forbids of the outer frame loop
+  (§4.5 R19, §7 Phase 3).
+- **R17 reflection/refraction** failures are earlier and more concrete than "`getAccelerated()`
+  throws": the new `ReflectionRefractionRenderTest` shows both shaders fail while
+  `RayTracedScene.realize` builds the producer. The `getAccelerated()` gap still exists behind
+  that (§4.5 R17, §5 items 1 and 3, §7 Phase 2).
+- **Mesh and scene file formats** (GTS read/write, PLY/OBJ/RAW read) are now present in
+  `org.almostrealism.space.format`, useful for verification fixtures and mesh export (§4.4).
+- **The photon-absorber path** moved into `common` with several bug fixes (`Plane.intersect` now
+  reports hits); it remains an alternative render path, not the fluid path (§4.2).
+- **Batched camera rays** are a verified known issue (`CameraRayIntersectionTest#kernelMatchesPerPixel`)
+  bearing on Phase 4 and any per-pixel kernel path (§4.5, §7 Phase 4, §9).
+- **A GLSL / per-pixel rendering option** is folded in as a concrete form of §6.2 Option C — a
+  possibility to weigh, not the recommendation (§6.2, §7, §9, §11).
+
+The recommendation (height-field mesh through the existing ray tracer) is unchanged; the owner
+decisions in §6 and §11 are updated but left open.
+
 ## 1. Purpose and framing
 
 This is a proof-of-value plan. The motivating phenomenon is **ferrofluid**: a colloidal
@@ -183,7 +213,7 @@ photon/light-absorption simulator plus a small rigid-body state holder.
 | R10 | Boundary / container conditions | **MISSING** | Yes | M | No fluid BCs (no-slip, wetting, pressure). `Volume.inside()` gives static containment only. |
 | — | Rigid body dynamics | **IMPROVE** | No | M | `RigidBody.State.update()` (`domain/physics`) is host-Java semi-implicit Euler on `Vector`; **untested**, not driven by any loop, consumed only by `RigidBodyStateShader` (rendering). Not on the ferrofluid critical path (a fluid is not a rigid body); relevant only if a container is treated as dynamic. |
 | — | Physical constants | **IMPROVE** | No | S | `PhysicalConstants` is real and correct but scoped to photon-sim units (µm/µs/eV); lacks µ₀ and fluid constants. Add magnetic/fluid constants where the new physics lives. |
-| R17 (render input) | PhotonField / Absorber path | **PRESENT** (legacy) | No | — | `PhotonField`/`Absorber`/`VolumeAbsorber` + `DefaultPhotonField` (`engine/render`) are a working **host-Java CPU** photon simulation with tests (`DefaultPhotonFieldTest`, `AbsorberHashSetTest`, `PhotonFieldContextCloneTest`). **Does not depend on the external `rings` repo.** Relevant only as an alternative render path, not for the fluid; likely dead weight for this project (see §5). |
+| R17 (render input) | PhotonField / Absorber path | **PRESENT** (legacy) | No | — | `PhotonField`/`Absorber`/`VolumeAbsorber` + `DefaultPhotonField` (`engine/render`) are a working **host-Java CPU** photon simulation with tests (`DefaultPhotonFieldTest`, `AbsorberHashSetTest`, `PhotonFieldContextCloneTest`). The photon-absorber **library** parts of the rings repository's `ar-photonfield` module have now been migrated into `common` (per `RINGS_PHOTONFIELD_MIGRATION.md`): the BRDFs in `org.almostrealism.space.distribution` (`DirectionDistribution` base + `UniformHemisphericalDistribution`, `ReflectiveProbabilityDistribution`, `RefractiveProbabilityDistribution`, `OverlayBRDF`), `SphericalVolume`/`BoxVolume`/`SpecularAbsorber` in `org.almostrealism.primitives`, and `PhotonFieldAnimation` in `engine/render`; the move fixed real bugs (Snell-law refraction, `SphericalVolume` miss distance, `BoxVolume` wall offsets, `SpecularAbsorber` emission, and **`Plane.intersect`**, which now reports hits instead of missing every face). Relevant only as an **alternative render path**, not for the fluid; not on the ferrofluid critical path (see §5). |
 
 **Conclusion for physics:** essentially the entire physics stack the ferrofluid needs
 (magnetostatics, magnetization, magnetic force, incompressible flow, surface tension, free-surface,
@@ -213,6 +243,7 @@ layer** that records what the fluid is nominally made of. This is a quality nice
 | R15 (alt) | Implicit-surface / SDF path | **MISSING** (stubbed) | Yes* | L | `DistanceEstimator` (`domain/space`) is a host-Java interface (`double estimateDistance(Ray)`), only implemented by `Sphere`; the render side (`RayMarchingEngine`, `DistanceEstimationLightingEngine`) is stubbed (see §4.5). *Blocks only if the implicit route is chosen. |
 | R16 | Ray–triangle intersection | **PRESENT** | — | — | Compiled Möller–Trumbore via `MeshData.evaluateIntersectionKernel` + `TriangleIntersectAt` (`domain/graph`); closest-hit by `RankedChoiceEvaluable`. Tested (`MeshDataIntersectionTest`). |
 | R15 (mesh I/O) | Dynamic mesh build each frame | **PRESENT** | — | — | `Mesh` has a full mutable API and a `VertexData` provider; `getMeshData()` rebuilds the packed GPU buffer. A per-frame rebuild is feasible (the blocker is producing the geometry, not the mesh API). `buildSpatialVertexTree()` throws (not needed if reconstruction emits a flat mesh). |
+| R15/R16 (verification) | Mesh / scene file I/O (GTS, PLY, OBJ, RAW) | **PRESENT** | No | — | `org.almostrealism.space.format` (migrated from the rings raytracer, per `RINGS_RAYTRACER_MIGRATION.md`) holds GTS (**read and write**), PLY, OBJ and RAW readers, plus `FileDecoder`/`FileEncoder`, `FileSystemSceneLoader`, `MeshFile` and `ModelData`; covered by `MeshFormatTest` (`engine/utils`). Not on the critical path, but a **verification aid**: a reconstructed height-field `Mesh` can be written to GTS for inspection or diffing against an external tool, and reference meshes can be loaded as test fixtures. |
 | R16 | Acceleration structure (BVH/octree) | **MISSING** (BSP stubbed) | Yes | L | `SpacePartition` BSP construction works but **traversal returns null** (`intersectAt` stub; `SpacePartitionTest` asserts null), and `Mesh/Triangle.calculateBoundingSolid` **throw**. Intersection today is an **unaccelerated linear scan** over all triangles — will not scale to a spiky surface. |
 | R16 | GPU mesh intersection path | **IMPROVE** | No | M | `CachedMeshIntersectionKernel` runs the triangle kernel on-device but loops rays on the host (`enablePartialKernel=true`) and reads the cache back per pixel with `toDouble`. Works; not yet a single kernel. |
 | — | CSG / primitives | **IMPROVE** | No | — | `CSG` supports UNION only (host Java); DIFFERENCE/INTERSECT throw. `Sphere`/`Plane` usable for scaffolding. Not on the critical path. |
@@ -222,21 +253,25 @@ layer** that records what the fluid is nominally made of. This is a quality nice
 Primary working path: `RayTracedScene` → `RayTracer` → `RayIntersectionEngine` → per-surface/light
 `IntersectionalLightingEngine` aggregated by `LightingEngineAggregator`. It is a **hybrid**:
 per-ray intersection and the color source are compiled, but ranked-choice surface selection and
-color combine run as **host-Java per-pixel loops**. **No CI test renders and asserts a lit image**
-— the end-to-end `SimpleRenderTest` cases are `@TestProperties(knownIssue = true)` and excluded from
-the pipeline; only camera-ray and intersection-distance unit tests run (unverified beyond reading).
+color combine run as **host-Java per-pixel loops**. **No CI test renders and asserts a lit image in
+the default lanes** — the end-to-end render tests are `@TestProperties(knownIssue = true)` and
+excluded from the pipeline (`SimpleRenderTest`, and now also `ReflectionRefractionRenderTest`, which
+asserts a shaded disc is not entirely black but currently fails while building the producer). Only
+single-ray camera and intersection-distance unit tests run in the default lanes
+(`CameraRayIntersectionTest.centreHitsAndCornerMisses` passes; its batched `kernelMatchesPerPixel` is
+`knownIssue`).
 
 | Requirement | Capability | Status | Blocks? | Size | Evidence |
 |---|---|---|---|---|---|
-| R16 | Ray-trace entry point (intersection) | **PRESENT** (hybrid) | — | — | `RayTracedScene`/`RayIntersectionEngine`; compiled per-ray intersection, host-loop orchestration. |
+| R16 | Ray-trace entry point (intersection) | **PRESENT** (hybrid) | — | — | `RayTracedScene`/`RayIntersectionEngine`; compiled per-ray intersection, host-loop orchestration. Single-ray camera-ray intersection is tested and passes (`CameraRayIntersectionTest.centreHitsAndCornerMisses`, `engine/render`). But **evaluating the camera-ray producers over a batch of pixels in one kernel is a known issue** (`CameraRayIntersectionTest#kernelMatchesPerPixel`, `knownIssue`): it fails "Could not obtain operator", caused by an `IllegalArgumentException` from `TraversalPolicy#subset` when the ray direction takes a one-dimensional subset of the two-dimensional pixel batch. This bears on kernelizing the per-pixel path (§7 Phase 4) and on the GLSL route-1 experiment (§6.2). |
 | R17 | Diffuse / specular / ambient lighting | **PRESENT** | — | — | `LightingEngine` builds a Producer lighting graph; `DiffuseShader`/`HighlightShader`/`AmbientLight`/`PointLight`. A dark glossy base is achievable today with diffuse + highlight. |
-| R17 | Glossy Fresnel reflection | **IMPROVE** (broken) | Yes | M–L | `ReflectionShader` has a correct Schlick/Fresnel Producer structure but calls `LightingEngineAggregator.getAccelerated()`, which routes to `RankedChoiceEvaluableForMemoryData.getAccelerated()` — **throws `UnsupportedOperationException`**. Reflections are broken by default. Fixing this is the main shading blocker for a glossy fluid. |
-| R17 | Refraction / Fresnel rim | **IMPROVE** (non-functional) | No | L | `RefractionShader` is class-level `// TODO Fix refraction algorithm`; a host-Java lambda with debug `Math.random()` logging and a deprecated duplicate `refract()`. Minor for a near-opaque fluid; a thin Fresnel rim is a nicety. |
+| R17 | Glossy Fresnel reflection | **IMPROVE** (broken) | Yes | L | `ReflectionShader` has a correct Schlick/Fresnel Producer structure, but the new `ReflectionRefractionRenderTest` (`engine/render`, `knownIssue`) shows reflection fails **earlier than the previously-named `getAccelerated()` gap**: while `RayTracedScene.realize` builds the producer (before any pixel is evaluated), the reflected ray's lighting aggregator intersects it with the floor and `RayFeatures.origin` throws **"Subset cannot be performed without a TraversalPolicy"** — the reflected-ray producer carries no shape. The `LightingEngineAggregator.getAccelerated()` gap is reached only after that: `RankedChoiceEvaluableForMemoryData.getAccelerated()` is verified to still **throw `UnsupportedOperationException`** (its base implementation). So a working glossy reflection needs *both* the reflected-ray shape fixed *and* an accelerated aggregation path — the main shading blocker, and larger than one fix. |
+| R17 | Refraction / Fresnel rim | **IMPROVE** (non-functional) | No | L | `RefractionShader` is class-level `// TODO Fix refraction algorithm`; a host-Java lambda. The new `ReflectionRefractionRenderTest` (`knownIssue`) shows it fails in `RayTracedScene.realize` too: `GeneratedColorProducer.getShape` throws a `ClassCastException` casting the lambda `RefractionShader` returns to `io.almostrealism.collect.Shape`. Minor for a near-opaque fluid; a thin Fresnel rim is a nicety. |
 | R15 (alt) | Ray-march / SDF engines | **MISSING** (stubbed) | No* | L | `RayMarchingEngine.trace()` returns null (`// TODO`; its test asserts null); `DistanceEstimationLightingEngine` passes null to super with the march loop commented out. *Only relevant if the implicit route is chosen. |
 | R18 | Camera / ray generation | **PRESENT** | — | — | `PinholeCamera.rayAt` via `ProjectionFeatures` (compiled); `ThinLensCamera` present. |
 | R18 | Anti-aliasing / supersampling | **IMPROVE** | No | M | `SuperSampler`/`Pixel` average an N×M grid correctly but as a host-Java loop (`toDouble`/`addTo` per pixel). Correct, slow. |
 | R18 | Image file output (PNG) | **PRESENT** | — | — | `ImageCanvas.encodeImageFile` and `RGBFeatures.saveRgb` both emit PNG via `ImageIO`. |
-| R19 | Animation / frame-sequence driver | **MISSING** | Yes | S–M | Two abandoned `Animation` classes (`domain/color/texture`, `domain/space`); no scene/time-coupled frame driver. `RayTracedScene` offers only single-image `realize()`. The pieces exist; a driver must orchestrate step → reconstruct → render → save per frame at the host boundary. |
+| R19 | Animation / frame-sequence driver | **IMPROVE** (reference only) | Yes | S–M | `RayTracedAnimation` (`engine/render`, migrated from the rings raytracer) now renders a scene **frame by frame** to image files: its `writeImage` ray-traces each frame with `RayTracedScene.realize().get().evaluate()`, writes a JPEG via `ImageCanvas.encodeImageFile`, and emits an `encode.sh`. So the per-frame render→save plumbing exists and is a useful **reference**. But it is **not a drop-in** ferrofluid driver: it extends `space.Animation`, whose `run()` **steps the physics itself** (rigid-body `State.update(dt)`, force application and impulse collisions each iteration, calling `writeImage` every *iterationsPerFrame*). §10 requires the outer frame loop *not* to drive the physics step — the fluid step belongs to `SimulationRunner` — so the ferrofluid frame driver must adapt this pattern, not inherit `Animation.run()`. (Two further caveats found in the source: the in-loop `clock.tick()` advance is commented out, so `Animation.run()` never advances its `Clock`; and `generateProperties` writes `bodies.length` from `size()`, counting non-serializable surfaces. The `camera.foclen` round-trip, by contrast, is fixed.) |
 | — | Photon-mapping renderer | **IMPROVE** (dead) | No | — | `AbsorberHashSet` + `DefaultPhotonField` form a separate photon renderer referenced only by its own tests; not wired into `Engine`. Candidate for removal/relocation (see §5). |
 
 ---
@@ -248,25 +283,38 @@ what the code actually is, not assumed:
 
 **Ray tracer (engine/render).** Tie each item to the goal:
 
-1. **`RankedChoiceEvaluableForMemoryData.getAccelerated()` throws** — this is the advertised GPU
-   aggregation path, and `ReflectionShader` depends on it unconditionally. *Why it matters:* glossy
-   reflections (R17) are the defining look of ferrofluid and are broken until this is implemented as
-   a compiled kernel (or the throw and its callers are removed). **Blocks the glossy look.** Size L.
+1. **Reflection is broken in two places, not one.** The new `ReflectionRefractionRenderTest`
+   (`engine/render`, `knownIssue`) pins the failures and is the concrete target to turn green.
+   (a) **Reflected ray has no shape:** while `RayTracedScene.realize` builds the producer, the
+   reflected ray's lighting aggregator intersects it with the scene and `RayFeatures.origin` throws
+   "Subset cannot be performed without a TraversalPolicy". This is the *first* failure and must be
+   fixed before the next is even reached. (b) **`RankedChoiceEvaluableForMemoryData.getAccelerated()`
+   throws `UnsupportedOperationException`** — the advertised GPU aggregation path, reached once (a)
+   is fixed; it must be implemented as a compiled kernel (or the throw and its callers removed).
+   *Why it matters:* glossy reflections (R17) are the defining look of ferrofluid and need both
+   fixes. **Blocks the glossy look.** Size L (two gaps, not one).
 2. **Host per-pixel orchestration** — `RankedChoiceEvaluable.evaluate`, `LightingEngineAggregator.evaluate`,
    and `SuperSampler` select/combine per pixel on the host. *Why:* a frame sequence (R19) at useful
    resolution needs the selection+combine in a compiled kernel, or render time dominates. Improves,
    does not block a first slice. Size M–L.
-3. **`RefractionShader` rewrite** — non-functional host-Java with debug randomness and a deprecated
-   duplicate method. *Why:* only a thin Fresnel rim is wanted for a near-opaque fluid; rewrite as a
-   Producer graph or scope it out. Improves. Size L.
+3. **`RefractionShader` rewrite** — non-functional host-Java (`// TODO Fix refraction algorithm`).
+   `ReflectionRefractionRenderTest` shows it fails in `RayTracedScene.realize` with a
+   `ClassCastException` from `GeneratedColorProducer.getShape`, casting the lambda `RefractionShader`
+   returns to `io.almostrealism.collect.Shape`. *Why:* only a thin Fresnel rim is wanted for a
+   near-opaque fluid; rewrite as a Producer graph (one that carries a shape) or scope it out.
+   Improves. Size L.
 4. **Dead/stubbed engines** — `RayMarchingEngine` and `DistanceEstimationLightingEngine` are stubs
    (null/commented-out); the `AbsorberHashSet`/`DefaultPhotonField` photon renderer is unwired.
    *Why:* remove or clearly quarantine so the one working path is unambiguous; keep the SDF engines
    only if the implicit-surface route (§7) is chosen. Size S–M.
-5. **No CI render assertion** — the end-to-end render tests are `knownIssue`-excluded. *Why:* the
-   project needs a test that renders a known scene and asserts on the image, restored once the path
-   works, so regressions are caught. Size M (gated on item 1). *This is additive — a new/restored
-   test, never weakening an existing one.*
+5. **No CI render assertion** — the end-to-end render tests are `knownIssue`-excluded. The migration
+   added `ReflectionRefractionRenderTest` (`engine/render`), which renders a sphere carrying only a
+   `ReflectionShader` or only a `RefractionShader` over a lit floor and asserts the disc is not
+   entirely black — exactly the asserting render test this item calls for, already written and
+   currently `knownIssue` (run with `AR_LONG_TESTS=enabled AR_KNOWN_ISSUES=enabled`). *Why:* once
+   item 1 (reflection) / item 3 (refraction) are fixed, clearing its `knownIssue` flag restores a CI
+   render assertion so regressions are caught. Size M (gated on items 1 and 3). *This is additive —
+   clearing a `knownIssue` on a test that already asserts, never weakening an existing one.*
 
 **Physics "engine."** There is essentially no fluid/magnetics engine to clean up — it must be
 written (§4.2). The genuine cleanup items are: (a) `Pressure` is an empty placeholder to be
@@ -320,12 +368,34 @@ front-loads the largest missing piece (neighbor search). The A-vs-B/C scope call
 - **Option C — implicit surface / SDF ray marching.** Render φ directly without meshing. *Pros:*
   no meshing, no triangle explosion. *Cons:* requires reviving the stubbed ray-march engines and a
   Producer-form SDF; a second, parallel render path to maintain.
+  - **Option C, GLSL / per-pixel form (`GLSL_RENDER_OPTION.md`).** A concrete way to realize C: write
+    the whole renderer as one small per-pixel program — build the camera ray from the pixel, march
+    it against the SDF, shade the hit with lights, a Fresnel term and an environment lookup. The
+    height field fits this especially well, since `h(x, z)` is the implicit surface `y − h(x, z) = 0`
+    that a ray marcher can step against with no meshing, and the glossy look comes from shading code
+    in the same program, so it does **not** depend on the broken `ReflectionShader` path. Two routes:
+    **(1) per-pixel producer-graph kernels on the existing backends** (Metal/OpenCL/native) — no new
+    backend or dependency, runs in CI wherever kernels run, output is a `PackedCollection` image the
+    existing writers handle; a fixed march-step count must be unrolled or looped in the graph, and
+    whether such a graph compiles cleanly is *unverified* (note the batched camera-ray known issue in
+    §4.5, which a marcher computing ray directions directly from pixel coordinates would sidestep but
+    has not been shown to avoid). **(2) a new GLSL code-generation backend** following the Metal
+    backend and `base/hardware-js` — modest on the text side, but single-precision, would not run in
+    CI, and a **new Maven module needs the owner's approval** (agents must not create one). *Pros:*
+    the quickest route to a moving, glossy picture; interactive viewing (route 2); avoids both
+    blocked shading paths; route 1 is reusable and could later be emitted as GLSL. *Cons:* a second
+    render path (which this plan already counts against Option C); single precision; GLSL execution
+    outside CI (route 2); the recommended meshing path reuses more working, tested code.
 
 **Recommendation:** **A** for the slice (height-field tessellation + the existing mesh
 intersection), **B** (marching cubes) as the general reconstruction capability alongside fluid
 Option B. Prefer meshing (A/B) over SDF (C) because the triangle intersection path already works and
 is tested, whereas the ray-march path is entirely stubbed. If **B** is chosen, the **acceleration
-structure (R16) becomes mandatory**, since isosurface meshes of a spiky surface are large.
+structure (R16) becomes mandatory**, since isosurface meshes of a spiky surface are large. Keep the
+**GLSL / per-pixel form of C open as an optional experiment** (§7): its appeal is reaching a first
+moving, glossy picture sooner and sidestepping the broken `ReflectionShader`; it is not promoted to
+the recommendation because it is a second render path, is single-precision, and (route 2) would not
+run in CI — but route 1 is a cheap, reusable comparison to run once the height field exists.
 
 ### 6.3 Magnetic model
 
@@ -391,21 +461,44 @@ and the spike spacing (wavelength) match the analytic Rosensweig/Cowley–Rosens
 within tolerance; dimensional/energy sanity checks.
 
 **Phase 2 — Rendering quality (glossy fluid).**
-Fix `RankedChoiceEvaluableForMemoryData.getAccelerated()` so `ReflectionShader` works; assemble a
-dark, glossy, near-opaque material with environment/lights; supersampling. *Demonstrable:* a
-convincing still of the Phase 1 spikes with glossy Fresnel reflection. *Verifiable:* reflection is
-present and correct (mirror a known environment); a restored CI render test asserts on the image.
+Make `ReflectionShader` work. This is **two fixes, not one** (§5 item 1): first give the reflected
+ray producer a shape so `RayTracedScene.realize` stops throwing "Subset cannot be performed without a
+TraversalPolicy", then implement `RankedChoiceEvaluableForMemoryData.getAccelerated()` (still throwing)
+as a compiled kernel. Assemble a dark, glossy, near-opaque material with environment/lights;
+supersampling. *Demonstrable:* a convincing still of the Phase 1 spikes with glossy Fresnel reflection.
+*Verifiable:* reflection is present and correct (mirror a known environment); clear the `knownIssue`
+flag on the already-written `ReflectionRefractionRenderTest` (`engine/render`) so a CI render
+assertion runs. *Size note:* larger than the original single-`getAccelerated()` estimate, because the
+realize-stage reflected-ray failure must be fixed first.
 
 **Phase 3 — Animation (frame sequence).**
-Add the frame-sequence driver (step → reconstruct → render → save per frame). *Demonstrable:* a
-short clip of spikes forming as the field ramps up. *Verifiable:* N frames on disk, monotonic
-field schedule, deterministic within a pinned backend/precision.
+Add the frame-sequence driver (step → reconstruct → render → save per frame). `RayTracedAnimation`
+(`engine/render`) is a **reference** for the per-frame render→save plumbing (it already ray-traces
+each frame and writes image files via `ImageCanvas.encodeImageFile` plus an encode script), but it
+must **not** be inherited wholesale: its base `Animation.run()` steps the physics itself, which §10
+forbids of the outer frame loop (the fluid step belongs to `SimulationRunner`). The driver reuses
+`RayTracedAnimation`'s render/write stage while keeping the physics in the simulation loop.
+*Demonstrable:* a short clip of spikes forming as the field ramps up. *Verifiable:* N frames on disk,
+monotonic field schedule, deterministic within a pinned backend/precision.
+
+**Phase 3 (optional experiment) — GLSL / per-pixel route-1 comparison.**
+Once the height field exists, render the same surface the mesh path renders as a per-pixel
+producer-graph kernel (§6.2 Option C, route 1) and compare the two pictures and their cost. This is
+an optional, low-commitment experiment — kept because it may reach a moving, glossy picture sooner
+and sidesteps the blocked `ReflectionShader` path; it is not a replacement for the recommended mesh
+path. Mind the batched camera-ray known issue (§4.5) when building the per-pixel graph. A GLSL
+*backend* (route 2) is out of scope unless interactive viewing becomes a goal and the owner approves
+a new module.
 
 **Phase 4 — Scaling and acceleration (make it usably fast / higher resolution).**
 Add a triangle acceleration structure (R16) and move the ray-trace orchestration + supersampling
-into compiled kernels (ray-tracer cleanup items 1–2). *Demonstrable:* the same clip at higher
-resolution / larger grid at materially better frame time. *Verifiable:* measured intersection
-scaling vs. the linear-scan baseline; frame time budget met at a stated resolution.
+into compiled kernels (ray-tracer cleanup items 1–2). Moving the per-pixel orchestration into a
+single kernel must contend with the **batched camera-ray known issue** (`CameraRayIntersectionTest#kernelMatchesPerPixel`,
+§4.5): evaluating the camera-ray producers over a pixel batch fails today in `TraversalPolicy#subset`,
+so this gap is a prerequisite for a fully kernelized per-pixel render (and for GLSL route 1).
+*Demonstrable:* the same clip at higher resolution / larger grid at materially better frame time.
+*Verifiable:* measured intersection scaling vs. the linear-scan baseline; frame time budget met at a
+stated resolution.
 
 **Phase 5 (optional) — Generality: 3D fluid + marching cubes.**
 Only if the owner wants arbitrary geometry/overturning: 3D grid fluid (Option B), pressure
@@ -446,8 +539,10 @@ physical check that onset and spike spacing match theory.
   faithfully may require the 3D model (Phase 5). (d) energy/dimensional sanity. Criteria (a), (b),
   and (d) are quantitative, not visual.
 - **Phase 2:** reflection correctness (a known environment is mirrored in the surface at the
-  geometrically correct angle); a restored, asserting CI render test; no `knownIssue` exclusion of
-  the new render assertion.
+  geometrically correct angle); an asserting CI render test — concretely, the already-written
+  `ReflectionRefractionRenderTest` (`engine/render`) with its `knownIssue` flag cleared once the
+  reflection fixes land (it asserts the shaded disc is not entirely black); no `knownIssue` exclusion
+  of that render assertion.
 - **Phase 3:** N frames, correct ordering, reproducible under a pinned backend+precision; field
   schedule honored.
 - **Phase 4:** measured intersection cost scales sub-linearly vs. triangle count relative to the
@@ -480,7 +575,19 @@ tests are additive; no existing test is weakened to make a phase pass.
   a model-fidelity limit, independent of the numerical-stability risk above.
 - **Render performance.** The current orchestration is host-side per pixel and the intersection is a
   linear scan; naive frame sequences will be slow. Phase 4 addresses this, but the useful resolution
-  is an unknown until measured.
+  is an unknown until measured. A full kernelization of the per-pixel path is additionally gated on
+  the **batched camera-ray known issue** (`CameraRayIntersectionTest#kernelMatchesPerPixel`,
+  `TraversalPolicy#subset`), which must be fixed for a single-kernel render.
+- **Glossy reflection is deeper than first stated.** The defining look (R17) is blocked by *two*
+  failures, not just the `getAccelerated()` throw: the reflected-ray producer also lacks a shape and
+  fails earlier in `RayTracedScene.realize`. Phase 2 is correspondingly larger, and the risk is that
+  the realize-stage producer construction hides further issues once the first is fixed.
+- **GLSL / per-pixel option trade-off.** The GLSL / per-pixel form of surface Option C
+  (`GLSL_RENDER_OPTION.md`) could reach a moving, glossy picture sooner and avoid the blocked
+  `ReflectionShader` path, but it introduces a second render path, is single-precision, and (as a
+  dedicated backend) would not run in CI and would need a new module. Its route-1 (producer-graph)
+  form is the low-risk way to keep it open as an experiment; whether such a graph compiles cleanly is
+  *unverified*.
 - **FP32 precision.** Metal is FP32; accumulation in iterative solvers and long simulations may need
   FP64 (native) for the validation runs. Determinism is within-backend only.
 - **Marching cubes at scale.** If Phase 5 is pursued, isosurface meshes are large and interact with
@@ -543,20 +650,35 @@ From CLAUDE.md and `docs/internals`, binding on every phase:
 5. **Ray-tracer investment (§5):** how far to take the render cleanup — fix reflections only (Phase 2),
    or fully kernelize orchestration + add acceleration (Phase 4) within this project vs. as separate
    platform work?
-6. **The `rings` repository.** Downstream documentation states that the separate `almostrealism/rings`
-   repository holds `ar-raytracer` and `ar-photonfield`. **That repository is not in this checkout and
-   could not be inspected.** The ray tracing inventoried here lives entirely in **this** repository
-   (`engine/render` `org.almostrealism.raytrace`/`render`/`rayshade`, `domain/color`, `domain/space`),
-   and the physics audit found **no dependency from this repo's render path on `rings`** (the
-   `PhotonField`/`Absorber` code here is self-contained). **Open question:** does the owner intend the
-   ferrofluid render to use this repository's ray tracer (the subject of this plan), or an external
-   `rings`-based tracer? If any `rings` code is meant to be the renderer, it must be inventoried
-   separately — this plan cannot assess code it cannot see.
+6. **The rings repository (answered).** When this plan was written, the rings repository's
+   `ar-raytracer` and `ar-photonfield` modules were not in the checkout and could not be inspected.
+   They have since been **inventoried, and their library parts migrated into `common`** on master
+   (recorded in `RINGS_RAYTRACER_MIGRATION.md` and `RINGS_PHOTONFIELD_MIGRATION.md`). What landed
+   that is relevant here: the mesh/scene file formats (`org.almostrealism.space.format`, §4.4), the
+   frame-sequence driver `RayTracedAnimation` (§4.5 R19), the photon-absorber path
+   (`space.distribution` BRDFs, `primitives` volumes/`SpecularAbsorber`, `PhotonFieldAnimation`,
+   §4.2), and the two `knownIssue` render tests (`ReflectionRefractionRenderTest`,
+   `CameraRayIntersectionTest`). The ferrofluid render therefore uses **this** repository's ray
+   tracer, now including the migrated pieces; there is no external rings-based renderer to assess.
+   What stayed in rings is UI, demos, one-offs, and the distributed ray-tracing jobs (deferred,
+   not needed for ferrofluid). **New question for the owner:** the frame-sequence driver (R19) can
+   either build on the migrated `RayTracedAnimation`/`Animation` (which currently steps rigid-body
+   physics in its own `run()` loop, with a commented-out `clock.tick()` advance — a pattern §10
+   forbids for the fluid step) or be a fresh `SimulationRunner`-driven driver that reuses only
+   `RayTracedAnimation`'s render/write stage. Which does the owner prefer, and is reworking
+   `Animation.run()` itself in scope or strictly out of it?
 7. **Validation strictness (§8):** what tolerances are acceptable for the Phase 1 physical checks
    (threshold field, spike wavelength), and is a within-backend (FP32-pinned) determinism guarantee
    sufficient, or is cross-backend agreement required?
 8. **Performance target (§9):** what resolution and frame-time budget define "useful" for the
    demonstration?
+9. **GLSL / per-pixel rendering option (§6.2, `GLSL_RENDER_OPTION.md`):** should the per-pixel
+   producer-graph form of surface Option C (route 1) be run as an optional experiment once the
+   height field exists (it may reach a moving, glossy picture sooner and sidesteps the broken
+   `ReflectionShader` path), and is a dedicated GLSL code-generation backend (route 2 — a **new
+   module**, single-precision, not CI-exercised) of interest only if interactive viewing becomes a
+   goal? The recommendation keeps the height-field mesh through the existing tracer as the primary
+   path; this question is only about whether to keep the GLSL route open.
 
 ---
 
@@ -567,8 +689,11 @@ The platform already provides the hard-to-build foundations: a tested, loop-owni
 execution model; large device-resident arrays; a working compiled ray–triangle intersection core; a
 dynamically buildable mesh; and working PNG output. What is missing is the **domain middle**: all of
 the magnetics and fluid physics, free-surface tracking and a time integrator, **surface
-reconstruction** (the single largest upstream gap), a **triangle acceleration structure**, working
-**glossy reflection** (the `getAccelerated()` throw), and a **frame-sequence driver**. The chemistry
+reconstruction** (the single largest upstream gap), a **triangle acceleration structure**, and
+working **glossy reflection** (two gaps: the reflected-ray producer's missing shape and the
+`getAccelerated()` throw). A **frame-sequence driver** is now partly in place — `RayTracedAnimation`
+renders frame by frame, but its base `Animation.run()` drives the physics itself, so a
+`SimulationRunner`-honoring driver must reuse its render stage rather than inherit it. The chemistry
 tools cannot honestly supply bulk material properties, which are therefore continuum inputs.
 
 The recommended path minimizes new infrastructure and surfaces integration risk early: a 2D
