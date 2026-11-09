@@ -44,6 +44,7 @@ import java.util.WeakHashMap;
 import java.util.Optional;
 import java.util.ArrayDeque;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -600,14 +601,31 @@ public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	 * @param signature the computation signature whose manager should be evicted
 	 */
 	public void evictInstructions(String signature) {
-		List<String> keys = new ArrayList<>();
-		instructionsCache.forEach((key, mgr) -> {
+		evictInstructions(key -> {
 			int contextIdStart = key.lastIndexOf(':');
-			if (contextIdStart >= 0 && key.substring(0, contextIdStart).equals(signature)) {
-				keys.add(key);
-			}
+			return contextIdStart >= 0 && key.substring(0, contextIdStart).equals(signature);
 		});
-		keys.forEach(instructionsCache::evict);
+	}
+
+	/**
+	 * Removes and destroys every cached instruction manager, exactly as
+	 * {@link #evictInstructions(String)} does for one signature, so the next
+	 * operation of any signature compiles a fresh manager.
+	 *
+	 * <p>This exists so measurements of cache behaviour can start from a cache
+	 * that holds nothing compiled by earlier work in the same JVM.</p>
+	 */
+	public void evictAllInstructions() {
+		evictInstructions(key -> true);
+	}
+
+	/** Evicts every cached instruction manager whose cache key matches the given predicate. */
+	private void evictInstructions(Predicate<String> keys) {
+		List<String> matching = new ArrayList<>();
+		instructionsCache.forEach((key, mgr) -> {
+			if (keys.test(key)) matching.add(key);
+		});
+		matching.forEach(instructionsCache::evict);
 	}
 
 	/**

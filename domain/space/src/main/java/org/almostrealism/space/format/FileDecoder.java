@@ -39,13 +39,12 @@ public class FileDecoder extends ModelData {
 	 *
 	 * @param file     the file to read
 	 * @param encoding the encoding code of the data
-	 * @param ui       no longer has any effect
 	 * @param listener notified of exceptions while decoding XML; may be {@code null}
 	 * @param s        for GTS, a mesh to add the data to in place of a new one; may be {@code null}
 	 * @return the surface, or {@code null} if the encoding is not supported
 	 * @throws IOException if the file cannot be read or decoded
 	 */
-	public static ShadableSurface decodeSurfaceFile(File file, int encoding, boolean ui,
+	public static ShadableSurface decodeSurfaceFile(File file, int encoding,
 													ExceptionListener listener, ShadableSurface s) throws IOException {
 		try (FileInputStream fileIn = new FileInputStream(file)) {
 			if (encoding == XMLEncoding) {
@@ -53,10 +52,10 @@ public class FileDecoder extends ModelData {
 				decoder.setExceptionListener(listener);
 				return (ShadableSurface) decoder.readObject();
 			} else if (encoding == RAWEncoding) {
-				Scene<?> scene = decodeScene(fileIn, RAWEncoding, ui, listener, s);
+				Scene<?> scene = decodeScene(fileIn, RAWEncoding, listener, s);
 				return new SurfaceGroup<>(scene.getSurfaces());
 			} else if (encoding == GTSEncoding || encoding == PLYEncoding || encoding == OBJEncoding) {
-				Scene<?> scene = decodeScene(fileIn, encoding, ui, listener, s);
+				Scene<?> scene = decodeScene(fileIn, encoding, listener, s);
 				return scene.get(0);
 			} else {
 				return null;

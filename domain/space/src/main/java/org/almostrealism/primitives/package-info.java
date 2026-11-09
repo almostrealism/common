@@ -23,6 +23,12 @@
  * It also contains camera and light-source primitives such as pinhole cameras,
  * absorption planes, rectangular lights, spherical lights, and point-light grids.</p>
  *
+ * <p>For the photon-absorber simulation it provides the volumes
+ * {@link org.almostrealism.primitives.SphericalVolume} and
+ * {@link org.almostrealism.primitives.BoxVolume}, alongside {@link org.almostrealism.primitives.Plane},
+ * and {@link org.almostrealism.primitives.SpecularAbsorber}, which re-emits absorbed photons in
+ * directions chosen by a BRDF from {@link org.almostrealism.space.distribution}.</p>
+ *
  * <p>Rigid-body variants ({@link org.almostrealism.primitives.RigidSphere},
  * {@link org.almostrealism.primitives.RigidPlane}) extend the basic shapes
  * with physics simulation support via {@link org.almostrealism.physics.RigidBody}.</p>

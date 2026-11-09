@@ -68,6 +68,9 @@ import java.util.function.Function;
  *   <li>{@code identity()} - pass-through block, forward and backward unchanged</li>
  *   <li>{@code scale(factor)} - element-wise multiply by a scalar producer;
  *       {@code scale(factors, axis)} - multiply by one factor per position along an axis</li>
+ *   <li>{@code modulate(factors, offsets, axis)} - multiply by one factor and add one offset per
+ *       position along an axis (a feature-wise affine modulation), the affine counterpart of
+ *       {@code scale(factors, axis)}</li>
  *   <li>{@code repeat(n)} - replicate the input along axis 0 to produce {@code n}
  *       times as many leading rows (equivalent to {@code CollectionProducer.repeat(0, n)})</li>
  *   <li>{@code sum_channels()} - collapse a {@code [C, S]} tensor to {@code [1, S]}
@@ -280,17 +283,17 @@ public class PdslInterpreter {
 	/**
 	 * Creates the program scope of one build: the outermost {@link Environment}, holding the
 	 * entries of every {@code data} and {@code state} block of the program, bound from
-	 * {@code args}, and the {@link Build} state shared by every scope of the build. Every
-	 * layer interpreted during the build, including a layer called from another layer's body,
-	 * reads these entries through its enclosing scopes, so a block declared once at program
+	 * {@code args}, and the state shared by every scope of the build (see {@link ProgramScope}).
+	 * Every layer interpreted during the build, including a layer called from another layer's
+	 * body, reads these entries through its enclosing scopes, so a block declared once at program
 	 * level means the same thing to every layer that names it.
 	 *
 	 * @param args         the arguments of the layer or model being built
 	 * @param requirements compute requirements applied to every layer the build constructs
 	 * @return the program scope
 	 */
-	private Environment programScope(Map<String, Object> args, ComputeRequirement... requirements) {
-		Environment scope = new Environment(new Build(requirements));
+	private ProgramScope programScope(Map<String, Object> args, ComputeRequirement... requirements) {
+		ProgramScope scope = new ProgramScope(requirements);
 		populateDataDefs(args, scope);
 		return scope;
 	}
@@ -309,7 +312,7 @@ public class PdslInterpreter {
 	 * @return the constructed block
 	 */
 	private SequentialBlock buildLayer(PdslNode.LayerDef def, TraversalPolicy inputShape,
-									   Map<String, Object> args, Environment programScope) {
+									   Map<String, Object> args, ProgramScope programScope) {
 		Environment env = new Environment(programScope);
 		for (PdslNode.Parameter param : def.getParameters()) {
 			Object value = args.get(param.getName());
@@ -323,13 +326,13 @@ public class PdslInterpreter {
 			env.set(param.getName(), value);
 		}
 		SequentialBlock block = new SequentialBlock(inputShape);
-		programScope.build.enter(def.getName());
+		programScope.enter(def.getName());
 		try {
 			interpretBody(def.getBody(), block, env);
 		} finally {
-			programScope.build.exit();
+			programScope.exit();
 		}
-		programScope.build.applyRequirements(block);
+		programScope.applyRequirements(block);
 		return block;
 	}
 
@@ -447,7 +450,7 @@ public class PdslInterpreter {
 		if (def == null) {
 			throw new PdslParseException("Config '" + name + "' not found");
 		}
-		Environment env = new Environment(new Build());
+		Environment env = new ProgramScope();
 		Map<String, Object> result = new HashMap<>();
 		for (Map.Entry<String, PdslNode.Expression> entry : def.getEntries().entrySet()) {
 			Object value = evaluateExpression(entry.getValue(), env);
@@ -499,7 +502,7 @@ public class PdslInterpreter {
 	 */
 	private Map<String, Object> evaluateDefEntries(PdslNode.DataDef def,
 													Map<String, Object> args) {
-		Environment env = new Environment(new Build());
+		Environment env = new ProgramScope();
 		Map<String, Object> result = new LinkedHashMap<>();
 		for (PdslNode.Parameter param : def.getParameters()) {
 			if (!args.containsKey(param.getName())) {
@@ -955,7 +958,8 @@ public class PdslInterpreter {
 			args.add(evaluateExpression(argExpr, env));
 		}
 
-		boolean constructing = env.build.isConstructing(name);
+		ProgramScope programScope = env.programScope();
+		boolean constructing = programScope.isConstructing(name);
 		if (layerDefs.containsKey(name) && !constructing) {
 			return callUserLayer(name, args, env);
 		}
@@ -965,11 +969,11 @@ public class PdslInterpreter {
 			return registered.dispatch(args, new EnvContext(env));
 		}
 
-		Object builtinResult = tryCallBuiltin(name, args, env.build);
+		Object builtinResult = tryCallBuiltin(name, args, programScope);
 		if (builtinResult != null) return builtinResult;
 
 		if (constructing) {
-			throw new PdslParseException("Layer '" + name + "' calls itself (" + env.build.cycle(name)
+			throw new PdslParseException("Layer '" + name + "' calls itself (" + programScope.cycle(name)
 					+ ") at line " + call.getLine() + "; layers are built eagerly, so a layer cannot"
 					+ " be constructed inside its own construction");
 		}
@@ -1072,14 +1076,15 @@ public class PdslInterpreter {
 	 * library itself lives in {@link PdslBuiltins}; the interpreter only routes
 	 * already-evaluated arguments to it.
 	 *
-	 * @param name  Name of the function
-	 * @param args  Evaluated arguments
-	 * @param build the state of the current build, whose record of the branches already consumed as
-	 *              a {@code scaled_dot_product} operand lets that built-in reject reuse of a branch
+	 * @param name         Name of the function
+	 * @param args         Evaluated arguments
+	 * @param programScope the program scope of the current build, whose record of the branches
+	 *                     already consumed as a {@code scaled_dot_product} operand lets that
+	 *                     built-in reject reuse of a branch
 	 * @return The result of the built-in, or {@code null} if the name is not a built-in
 	 */
-	private Object tryCallBuiltin(String name, List<Object> args, Build build) {
-		return builtins.call(name, args, build.consumedBranchOperands);
+	private Object tryCallBuiltin(String name, List<Object> args, ProgramScope programScope) {
+		return builtins.call(name, args, programScope.consumedBranchOperands());
 	}
 
 	// ---- Multi-channel statement-level dispatch ----
@@ -1186,7 +1191,7 @@ public class PdslInterpreter {
 			args.put(params.get(i).getName(), evaluatedArgs.get(i));
 		}
 
-		Environment programScope = callerEnv.root();
+		ProgramScope programScope = callerEnv.programScope();
 		if (def.getReturnShape() == null) {
 			return (Function<TraversalPolicy, Block>) inputShape -> buildLayer(def, inputShape, args, programScope);
 		}
@@ -1204,7 +1209,7 @@ public class PdslInterpreter {
 	 */
 	private TraversalPolicy declaredInputShape(PdslNode.LayerDef def,
 											   Map<String, Object> args,
-											   Environment programScope) {
+											   ProgramScope programScope) {
 		Environment tempEnv = new Environment(programScope);
 		for (Map.Entry<String, Object> entry : args.entrySet()) {
 			tempEnv.set(entry.getKey(), entry.getValue());
@@ -1291,23 +1296,22 @@ public class PdslInterpreter {
 
 	// ---- Environment ----
 
-	/** Scoped variable environment with parent chain for PDSL layer interpretation. */
+	/**
+	 * Scoped variable environment with parent chain for PDSL layer interpretation. The outermost
+	 * scope of every chain is the {@link ProgramScope} of the build the scope belongs to.
+	 */
 	private static class Environment {
 		/** Variable bindings in the current scope. */
 		private final Map<String, Object> bindings = new HashMap<>();
-		/** Enclosing scope, or {@code null} for the top-level scope. */
+		/** Enclosing scope, or {@code null} for a {@link ProgramScope}, which has none. */
 		private final Environment parent;
-		/** State of the build this scope belongs to, shared by every scope of that build. */
-		private final Build build;
 		/** Creates a new scope with the given enclosing scope, belonging to the same build. */
 		Environment(Environment parent) {
 			this.parent = Objects.requireNonNull(parent);
-			this.build = parent.build;
 		}
-		/** Creates the top-level scope of {@code build}. */
-		Environment(Build build) {
+		/** Creates a scope with no enclosing scope, which only a {@link ProgramScope} is. */
+		private Environment() {
 			this.parent = null;
-			this.build = build;
 		}
 		/** Returns the value bound to {@code name}, walking the parent chain. */
 		Object get(String name) {
@@ -1320,17 +1324,20 @@ public class PdslInterpreter {
 			return parent != null && parent.has(name);
 		}
 		/** Returns the outermost enclosing scope: the program scope of the build this scope belongs to. */
-		Environment root() { return parent == null ? this : parent.root(); }
+		ProgramScope programScope() { return parent.programScope(); }
 		/** Binds a name to a value in the current scope. */
 		void set(String name, Object value) { bindings.put(name, value); }
 	}
 
 	/**
-	 * State of one build (one {@link #buildLayer} or {@link #buildModel} call) that every layer
-	 * interpreted during it shares: the compute requirements the caller asked for, and the
-	 * layers currently under construction, outermost first.
+	 * The outermost scope of one build (one {@link #buildLayer} or {@link #buildModel} call, or the
+	 * evaluation of one {@code config}, {@code data} or {@code state} block), which also holds the
+	 * state that every layer interpreted during the build shares: the compute requirements the
+	 * caller asked for, the layers currently under construction, outermost first, and the branches
+	 * already consumed as a {@code scaled_dot_product} operand. Every other scope of the build
+	 * reaches it through {@link Environment#programScope()}.
 	 */
-	private static class Build {
+	private static final class ProgramScope extends Environment {
 		/** Compute requirements applied to every layer the build constructs; empty for none. */
 		private final ComputeRequirement[] requirements;
 		/** Names of the layers whose bodies are being interpreted, outermost first. */
@@ -1343,8 +1350,11 @@ public class PdslInterpreter {
 		 */
 		private final Set<Block> consumedBranchOperands =
 				Collections.newSetFromMap(new IdentityHashMap<>());
-		/** Creates a build with the given compute requirements. */
-		Build(ComputeRequirement... requirements) { this.requirements = requirements; }
+		/** Creates the program scope of a build with the given compute requirements. */
+		ProgramScope(ComputeRequirement... requirements) { this.requirements = requirements; }
+		/** Returns this scope, the outermost scope of its own build. */
+		@Override
+		ProgramScope programScope() { return this; }
 		/** Returns whether the layer {@code name} is under construction. */
 		boolean isConstructing(String name) { return constructing.contains(name); }
 		/** Records that the body of layer {@code name} is being interpreted. */
@@ -1357,6 +1367,11 @@ public class PdslInterpreter {
 			chain.add(name);
 			return String.join(" -> ", chain);
 		}
+		/**
+		 * Returns the branches already consumed as a {@code scaled_dot_product} operand in this build,
+		 * the record that built-in adds each branch operand to so that a second use is rejected.
+		 */
+		Set<Block> consumedBranchOperands() { return consumedBranchOperands; }
 		/** Applies the build's compute requirements, if any, to {@code block}. */
 		void applyRequirements(Block block) {
 			if (requirements.length > 0) {
@@ -1369,7 +1384,8 @@ public class PdslInterpreter {
 	 * Adapter from a PDSL {@link Environment} to {@link PdslPrimitiveContext}, created
 	 * once per primitive call. Reads {@code channels} and {@code signal_size} from the
 	 * environment on demand and routes argument normalisation through
-	 * {@link PdslBuiltins#normalizeToProducer(Object, TraversalPolicy, String)}.
+	 * {@link PdslBuiltins#normalizeToProducer(Object, TraversalPolicy, String)} and
+	 * {@link PdslBuiltins#axisValues(String, Object, int)}.
 	 */
 	private class EnvContext implements PdslPrimitiveContext {
 		/** The interpreter's environment from the layer being built. */
@@ -1407,6 +1423,11 @@ public class PdslInterpreter {
 															  TraversalPolicy expectedShape,
 															  String contextName) {
 			return builtins.normalizeToProducer(value, expectedShape, contextName);
+		}
+
+		@Override
+		public PdslAxisValues toAxisValues(String contextName, Object value, int axis) {
+			return builtins.axisValues(contextName, value, axis);
 		}
 	}
 }

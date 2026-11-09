@@ -52,19 +52,18 @@ public class ModelData {
 
 	/**
 	 * Decodes scene data from the given stream, as
-	 * {@link #decodeScene(InputStream, int, boolean, ExceptionListener, ShadableSurface)} does
+	 * {@link #decodeScene(InputStream, int, ExceptionListener, ShadableSurface)} does
 	 * with no initial mesh.
 	 *
 	 * @param fileIn   the stream to read
 	 * @param encoding the encoding code of the data
-	 * @param ui       no longer has any effect
 	 * @param listener notified of exceptions while decoding XML; may be {@code null}
 	 * @return the scene, or {@code null} if the encoding is not supported
 	 * @throws IOException if reading or decoding fails
 	 */
 	public static Scene decodeScene(InputStream fileIn, int encoding,
-									boolean ui, ExceptionListener listener) throws IOException {
-		return ModelData.decodeScene(fileIn, encoding, ui, listener, null);
+									ExceptionListener listener) throws IOException {
+		return ModelData.decodeScene(fileIn, encoding, listener, null);
 	}
 
 	/**
@@ -76,14 +75,13 @@ public class ModelData {
 	 *
 	 * @param fileIn   the stream to read
 	 * @param encoding the encoding code of the data
-	 * @param ui       no longer has any effect
 	 * @param listener notified of exceptions while decoding XML; may be {@code null}
 	 * @param s        for GTS, a mesh to add the data to in place of a new one; ignored, with
 	 *                 a warning, by the other mesh formats; may be {@code null}
 	 * @return the scene, or {@code null} if the encoding is not supported
 	 * @throws IOException if reading or decoding fails
 	 */
-	public static Scene decodeScene(InputStream fileIn, int encoding, boolean ui,
+	public static Scene decodeScene(InputStream fileIn, int encoding,
 									ExceptionListener listener, ShadableSurface s) throws IOException {
 		if (encoding == XMLEncoding) {
 			return decodeXmlScene(fileIn, listener);

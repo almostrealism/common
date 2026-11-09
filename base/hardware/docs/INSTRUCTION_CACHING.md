@@ -408,7 +408,14 @@ destroyed when that instruction set is destroyed. `setAggregateLayout` and
 baked into generated code, and which aggregated slices the kernel may write and read. A reuse
 whose argument map does not reproduce those positions fails as an instruction-cache collision
 instead of silently recompiling or binding the wrong buffer; a reuse that does reproduce them
-limits its copy-back and copy-in to the recorded slices.
+limits its copy-back and copy-in to the recorded slices. Both collision checks (this one, and
+`ProcessArgumentMap.verifySubstitutions` for a process tree that does not supply every argument
+position) throw `InstructionCacheCollisionException`, a `HardwareException` whose `getKind()`
+says which check failed.
+
+How often reuse hits, collides or recompiles on generated workloads is measured by the
+instruction-cache benchmark (`docs/internals/instruction-cache-benchmark.md`), which observes
+compilation, reuse, dispatch and aggregate copies through `KernelBindingListener`.
 
 ### ComputationInstructionsManager
 

@@ -500,6 +500,10 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 				// tree can be used to substitute arguments from this Computation
 				// for those in the shared Execution
 				ScopeInstructionsManager manager = (ScopeInstructionsManager) getInstructionSetManager();
+				if (bindingListener != null) {
+					bindingListener.reused(getMetadata(), signature(), manager.getScopeArguments().size());
+				}
+
 				setupArguments(manager.getScopeInputs(), manager.getScopeArguments());
 
 				ProcessArgumentMap map = new ProcessArgumentMap(manager.getArgumentMap());
@@ -544,16 +548,17 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * the fold over this operation's inputs are therefore compared against the positions recorded
 	 * when the shared scope was compiled, and any difference — including a replay that folds
 	 * nothing while the compiled kernel reads an aggregate — is an instruction cache collision and
-	 * throws {@link HardwareException}. A collision must never be absorbed by recompiling quietly
-	 * or otherwise routing around the cache, because that hides the fact that the cache matched
-	 * two distinct kernels to one signature. Verification is unconditional: when aggregation is
+	 * throws {@link InstructionCacheCollisionException}. A collision must never be absorbed by
+	 * recompiling quietly or otherwise routing around the cache, because that hides the fact that
+	 * the cache matched two distinct kernels to one signature. Verification is unconditional: when aggregation is
 	 * disabled, or when neither party folds anything, the replay simply confirms that both
 	 * position sequences are empty.</p>
 	 *
 	 * @param manager The shared instruction set manager whose scope is being reused
 	 * @param map     The per-operation argument map for this reused operation
-	 * @throws HardwareException if the replayed aggregate positions differ from the positions the
-	 *         shared scope was compiled against, or if the reference positions were never recorded
+	 * @throws InstructionCacheCollisionException if the replayed aggregate positions differ from the
+	 *         positions the shared scope was compiled against
+	 * @throws HardwareException if the reference positions were never recorded
 	 */
 	private void rebindAggregateForReuse(ScopeInstructionsManager<?> manager, ProcessArgumentMap map) {
 		ArrayVariable<?> sharedAggregate = null;
@@ -580,7 +585,8 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 				manager.getKernelStructureContext(getComputation()));
 
 		if (!perOperation.reproduces(compiled)) {
-			throw new HardwareException("Instruction cache collision reusing " + getFunctionName() +
+			throw new InstructionCacheCollisionException(InstructionCacheCollisionException.Kind.AGGREGATE_LAYOUT,
+					"Instruction cache collision reusing " + getFunctionName() +
 					": the compiled kernel was built against aggregate positions " + compiled.getPositions() +
 					" but this computation produces " + perOperation.describeAggregate() +
 					"; the signature matched two distinct kernels (compiled from " +
@@ -708,6 +714,8 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * operation's copy-back and copy-in to them (see {@link MemoryDataArgumentMap#getWrittenSlices}
 	 * and {@link MemoryDataArgumentMap#getReadSlices}).</p>
 	 *
+	 * <p>The compilation is then reported to the {@link #bindingListener}, if there is one.</p>
+	 *
 	 * <p>This method is synchronized to ensure thread-safe argument setup.</p>
 	 */
 	public synchronized void postCompile() {
@@ -717,6 +725,13 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 		if (instructions != null && argumentMap != null) {
 			getInstructionSetManager().setAggregateLayout(
 					argumentMap.limitCopiesTo(getCompiler().getScope()));
+		}
+
+		if (bindingListener != null) {
+			bindingListener.compiled(getMetadata(), sharedInstructions ? signature() : null,
+					getCompiler().getScope().getArguments().size(),
+					argumentMap == null ? 0 : argumentMap.getFoldedArgumentCount(),
+					argumentMap == null ? 0 : argumentMap.getAggregateLength());
 		}
 	}
 

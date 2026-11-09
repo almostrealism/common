@@ -226,7 +226,7 @@ public class MeshFormatTest extends TestSuiteBase {
 		GtsResource gts = new GtsResource.MeshTranscoder().transcode(new MeshResource(square()));
 
 		Scene<?> scene = ModelData.decodeScene(new ByteArrayInputStream(gts.getData()),
-				ModelData.GTSEncoding, false, null);
+				ModelData.GTSEncoding, null);
 
 		Assert.assertEquals(1, scene.size());
 		ShadableSurface surface = scene.get(0);

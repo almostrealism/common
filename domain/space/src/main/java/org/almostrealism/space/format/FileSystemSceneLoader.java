@@ -36,7 +36,7 @@ public class FileSystemSceneLoader implements SceneLoader, ConsoleFeatures {
 	@Override
 	public Scene apply(String path) {
 		try (FileInputStream in = new FileInputStream(path)) {
-			return ModelData.decodeScene(in, ModelData.XMLEncoding, false,
+			return ModelData.decodeScene(in, ModelData.XMLEncoding,
 					e -> warn("Problem decoding " + path, e));
 		} catch (IOException e) {
 			warn("Unable to load scene from " + path, e);
