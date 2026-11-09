@@ -598,6 +598,49 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	}
 
 	/**
+	 * Replacing a loss function that computes its loss from {@link LossProvider#terms terms}
+	 * discards the terms compiled for it: after training with mean squared error, a loss function
+	 * without terms has its loss computed by
+	 * {@link LossProvider#loss(PackedCollection, PackedCollection)} for every sample, and switching
+	 * back to a loss function with terms trains exactly as an optimizer with the same history,
+	 * whose loss functions never had terms, does.
+	 */
+	@Test(timeout = 120000)
+	public void settingLossFunctionDiscardsPreviousTerms() {
+		List<ValueTarget<PackedCollection>> samples = regressionSamples(6);
+		MeanSquaredError mse = new MeanSquaredError(shape(3).traverseEach());
+		MeanAbsoluteError mae = new MeanAbsoluteError(shape(3).traverseEach());
+		AtomicInteger calls = new AtomicInteger();
+
+		PackedCollection weights = initialWeights();
+		ModelOptimizer optimizer = new ModelOptimizer(denseModel(weights), () -> Dataset.of(samples));
+		optimizer.setLogFrequency(0);
+		optimizer.setLossFunction(mse);
+		optimizer.optimize(1);
+		optimizer.setLossFunction(eagerLoss(mae, calls));
+		optimizer.optimize(1);
+		Assert.assertEquals(samples.size() + 1, calls.get());
+
+		optimizer.setLossFunction(mae);
+		TrainingResult result = optimizer.optimize(2);
+		Assert.assertEquals(samples.size() + 1, calls.get());
+
+		PackedCollection referenceWeights = initialWeights();
+		ModelOptimizer reference = new ModelOptimizer(denseModel(referenceWeights), () -> Dataset.of(samples));
+		reference.setLogFrequency(0);
+		reference.setLossFunction(eagerLoss(mse, new AtomicInteger()));
+		reference.optimize(1);
+		reference.setLossFunction(eagerLoss(mae, new AtomicInteger()));
+		reference.optimize(1);
+		reference.setLossFunction(eagerLoss(mae, new AtomicInteger()));
+		TrainingResult referenceResult = reference.optimize(2);
+
+		Assert.assertEquals(2, result.getTrainLossHistory().size());
+		Assert.assertEquals(referenceResult.getTrainLossHistory(), result.getTrainLossHistory());
+		assertEquals(referenceWeights, weights);
+	}
+
+	/**
 	 * Returns a loss function with the loss and gradient of {@code loss} and no
 	 * {@link LossProvider#terms terms}, so that its loss is only computed by
 	 * {@link LossProvider#loss(PackedCollection, PackedCollection)}, which counts its calls in
