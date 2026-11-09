@@ -103,6 +103,9 @@ public class GtsResource extends UnicodeResource {
 			Mesh m = initial == null ? new Mesh() : initial;
 			TextFormatReader in = new TextFormatReader("GTS", r.getInputStream());
 
+			Vector[] existing = m.getVectors();
+			int base = existing == null ? 0 : existing.length;
+
 			double[] counts = in.values(in.next(), 3);
 			int pointCount = (int) counts[0];
 			int edgeCount = (int) counts[1];
@@ -134,7 +137,7 @@ public class GtsResource extends UnicodeResource {
 					throw in.error("the edges of a triangle join " + vertices.size() + " vertices");
 				}
 
-				m.addTriangle(vertices.get(2), vertices.get(1), vertices.get(0));
+				m.addTriangle(vertices.get(2) + base, vertices.get(1) + base, vertices.get(0) + base);
 			}
 
 			return new MeshResource(m);

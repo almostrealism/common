@@ -20,7 +20,9 @@ import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.js.JavaScriptLanguageOperations;
 import org.almostrealism.hardware.js.JavaScriptPrintWriter;
 import org.almostrealism.io.PrintWriter;
@@ -84,6 +86,17 @@ public class JavaScriptPrintWriterTest extends TestSuiteBase {
 		Assert.assertEquals("function main() {\n}\n{\n}\n", output.toString());
 	}
 
+	/** A named scope's signature lists its array arguments then its scalar parameters, untyped. */
+	@Test(timeout = 30000)
+	public void scopeSignature() {
+		ArrayVariable<?> data = new ArrayVariable<>(Double.class, "data", new IntegerConstant(4));
+		Variable<?, ?> count = new Variable<>("count");
+
+		js.beginScope("run", null, null, List.of(data), List.of(count));
+		js.endScope();
+		Assert.assertEquals("function run(data, count) {\n}\n", output.toString());
+	}
+
 	/** JavaScript is untyped, runs one work item, and has its own name for pi. */
 	@Test(timeout = 30000)
 	public void languageOperations() {
@@ -92,5 +105,15 @@ public class JavaScriptPrintWriterTest extends TestSuiteBase {
 		Assert.assertEquals("0", lang.kernelIndex(0));
 		Assert.assertEquals("", lang.nameForType(Double.class));
 		Assert.assertEquals("3", new IntegerConstant(3).getExpression(lang));
+	}
+
+	/** JavaScript math operations render as the corresponding {@code Math.*} calls. */
+	@Test(timeout = 30000)
+	public void mathOperations() {
+		JavaScriptLanguageOperations lang = new JavaScriptLanguageOperations();
+		Assert.assertEquals("Math.pow(a, b)", lang.pow("a", "b"));
+		Assert.assertEquals("Math.min(a, b)", lang.min("a", "b"));
+		Assert.assertEquals("Math.max(a, b)", lang.max("a", "b"));
+		Assert.assertEquals("Math.abs(a)", lang.abs("a"));
 	}
 }
