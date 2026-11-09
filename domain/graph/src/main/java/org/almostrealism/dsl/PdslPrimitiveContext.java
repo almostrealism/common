@@ -102,13 +102,22 @@ public interface PdslPrimitiveContext {
 	 * does. The stage obtains the values through {@link PdslAxisValues#forInput}, which checks them
 	 * against the input it is placed on.
 	 *
+	 * <p>Defined as a {@code default} so that this evolution of the interface leaves existing
+	 * implementors — which already supply {@link #toProducer toProducer} — source- and
+	 * binary-compatible. The interpreter's own context overrides it to route through the single
+	 * conversion point its built-ins expose; an external implementor inherits this equivalent form,
+	 * which normalizes the argument with its own {@link #toProducer toProducer} and wraps the
+	 * result.</p>
+	 *
 	 * @param contextName human-readable identifier for error messages
 	 * @param value       the raw argument as evaluated by the interpreter
 	 * @param axis        the axis of the stage input the values index; never the batch axis
 	 * @return the values of the argument along {@code axis}
 	 * @throws PdslParseException if the argument is not a tensor value
 	 */
-	PdslAxisValues toAxisValues(String contextName, Object value, int axis);
+	default PdslAxisValues toAxisValues(String contextName, Object value, int axis) {
+		return new PdslAxisValues(contextName, toProducer(value, null, contextName), axis);
+	}
 
 	/**
 	 * Reads an integer from a PDSL argument value, accepting any boxed numeric.
