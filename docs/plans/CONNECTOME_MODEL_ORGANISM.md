@@ -130,7 +130,7 @@ or recurrent-training parts.
   reliably usable, because `TraversalOrdering` and `TraversableExpression` are poorly integrated:
   - an ordered collection cannot be the input to a kernel: any `ExplicitIndexTraversalOrdering`
     (even a full permutation) or `IndexMaskTraversalOrdering` input fails at compile time
-    (reproduced 2026-10-23; see `PLAN-20261023-sparse-traversal-ordering.md`). The host-path tests
+    (reproduced 2026-10-23). The host-path tests
     `CollectionOrderingTests.compactOrdering`, `maskOrdering` and `repeatOrdering` are still marked
     `knownIssue`, but they now pass;
   - `ReshapeProducer.containsIndex` and `SlicingFeatures.pad` throw for an ordered shape;
