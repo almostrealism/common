@@ -472,13 +472,15 @@ public class Vector extends PackedCollection implements VectorFeatures, Cloneabl
 	 * <p>
 	 * This method uses hardware-accelerated computation. For maximum performance with
 	 * multiple operations, use {@link VectorFeatures#dotProduct(Producer, Producer)}.
+	 * Both operands are passed by reference, so one compiled kernel serves every pair of
+	 * values rather than a new kernel being compiled for each.
 	 * </p>
 	 *
 	 * @param vector  the vector to compute the dot product with
 	 * @return the dot product value
 	 */
 	public synchronized double dotProduct(Vector vector) {
-		return dotProduct(v(this), v(vector)).evaluate().toDouble();
+		return dotProduct(cp(this), cp(vector)).evaluate().toDouble();
 	}
 
 	/**

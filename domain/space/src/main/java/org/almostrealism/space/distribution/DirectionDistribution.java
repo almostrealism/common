@@ -44,11 +44,18 @@ public abstract class DirectionDistribution implements SphericalProbabilityDistr
 	 */
 	protected abstract Vector direction(Vector in, Vector orient);
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The sampled direction is returned by reference rather than as a constant computation:
+	 * every sample has a distinct value, and a constant computation would compile a new kernel
+	 * for each one.</p>
+	 */
 	@Override
 	public Producer<PackedCollection> getSample(double[] in, double[] orient) {
 		Vector r = direction(new Vector(in), new Vector(orient));
 		if (multiplier != 1.0) r.multiplyBy(multiplier);
-		return v(r);
+		return p(r);
 	}
 
 	@Override
