@@ -801,7 +801,7 @@ public class ModelOptimizer implements CodeFeatures {
 		for (ValueTarget<?> target : data) {
 			PackedCollection input = target.getInput();
 
-			double ls = forwardLoss(input, target.getExpectedOutput());
+			double ls = forwardLoss(input, target.getExpectedOutput(), target.getArguments());
 			count++;
 
 			if (validator.test(target.getExpectedOutput(), model.getOutput()))

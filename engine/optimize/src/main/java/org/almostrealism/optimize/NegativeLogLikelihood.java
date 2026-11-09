@@ -92,11 +92,19 @@ public class NegativeLogLikelihood implements LossProvider, CollectionFeatures {
 	 * @param output producer for the model's log-probability outputs
 	 * @param target producer for the one-hot encoded target labels, of the same size as the output
 	 * @return a producer of the negative log likelihood of each row
+	 * @throws IllegalArgumentException if the target, padded to two dimensions, does not have
+	 *                                  as many rows as the output
 	 */
 	@Override
 	public CollectionProducer loss(Producer<PackedCollection> output,
 								   Producer<PackedCollection> target) {
 		TraversalPolicy rows = padDimensions(shape(output), 2);
+		int targetRows = padDimensions(shape(target), 2).length(0);
+		if (targetRows != rows.length(0)) {
+			throw new IllegalArgumentException("Batch size mismatch: the output has " + rows.length(0)
+					+ " rows and the target has " + targetRows);
+		}
+
 		return c(output).reshape(rows).multiply(c(target).reshape(rows)).sum(1).minus();
 	}
 

@@ -120,6 +120,34 @@ public class LossTests extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link NegativeLogLikelihood} computes one term for each row, so it refuses a target whose
+	 * rows differ from those of the output, even when the two have the same number of elements,
+	 * rather than scoring the target in rows of the output's shape. A target of the output's shape
+	 * is accepted.
+	 */
+	@Test(timeout = 10000)
+	public void negativeLogLikelihoodRejectsMismatchedRows() {
+		NegativeLogLikelihood nll = new NegativeLogLikelihood();
+		TraversalPolicy outputShape = shape(2, 3).traverseEach();
+
+		try {
+			nll.loss(cv(outputShape, 0), cv(shape(1, 6).traverseEach(), 1));
+			Assert.fail("A target with one row was accepted for an output with two");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("Batch size mismatch"));
+		}
+
+		try {
+			nll.loss(cv(outputShape, 0), cv(shape(6).traverseEach(), 1));
+			Assert.fail("A one-dimensional target was accepted for an output with two rows");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("Batch size mismatch"));
+		}
+
+		Assert.assertEquals(2, nll.loss(cv(outputShape, 0), cv(outputShape, 1)).getShape().getTotalSize());
+	}
+
+	/**
 	 * Computes the terms of {@code loss} for {@code output} against {@code target}, asserts that
 	 * there are {@code count} of them, and returns their mean.
 	 */
