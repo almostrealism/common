@@ -561,6 +561,8 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 			stride *= shape.length(k);
 		}
 
+		// TODO(review): on an FP32 backend a grid with more than 2^24 cells rounds these index
+		// TODO(review): values when stored (see dynamic-indexing.md); read through a SplitIndexTraversalOrdering.
 		CollectionProducer index = integers(0, size);
 		if (stride > 1) {
 			index = floor(index.divide((double) stride));
