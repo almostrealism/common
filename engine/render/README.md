@@ -182,6 +182,16 @@ each time a frame duration of simulated time has passed.
 member that is also an `Absorber` is kept in the field's `AbsorberHashSet`, however it is added to
 or removed from the animation.
 
+### ImplicitSurfaceRenderer
+
+Renders an `ImplicitSurface` (`SignedDistanceFunction`, `HeightField`, from `ar-geometry`)
+with one program per pixel: the camera ray of every pixel is marched with conservative
+Lipschitz steps, refined by bisection and a secant step, and shaded with point and ambient
+lights, a Schlick Fresnel term and an environment gradient. `frame()` returns the operations
+of one frame; the per-pixel part compiles to a single kernel. The image is a
+`(height, width, 3)` `PackedCollection` ready for `saveRgb`. See
+[Per-Pixel Kernel Rendering](../../docs/internals/per-pixel-rendering.md).
+
 ### Engine Interface
 
 ```java

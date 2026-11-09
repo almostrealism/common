@@ -140,9 +140,9 @@ public class PackedCollectionSubset
 	 *
 	 * @param shape The desired shape (dimensions) of the resulting subset
 	 * @param collection The source collection to extract from, must implement {@link Shape}
-	 * @param pos The starting position coordinates as integers, one per dimension
+	 * @param pos The starting position coordinates as integers, one per dimension of {@code shape}
+	 *            (see {@link #PackedCollectionSubset(TraversalPolicy, Producer, Expression...)})
 	 * @throws IllegalArgumentException if collection doesn't implement Shape interface
-	 * @throws IllegalArgumentException if pos array length doesn't match input collection dimensions
 	 */
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, int... pos) {
 		this(shape, collection, IntStream.of(pos).mapToObj(i -> new IntegerConstant(i)).toArray(Expression[]::new));
@@ -162,17 +162,43 @@ public class PackedCollectionSubset
 	 *     new PackedCollectionSubset<>(shape(3, 3), collection, xOffset, yOffset);
 	 * }</pre>
 	 *
-	 * @param shape The desired shape (dimensions) of the resulting subset
+	 * <p>When {@code shape} has fewer dimensions than the collection, the subset is taken
+	 * from every item of the collection: the collection's leading dimensions enumerate the
+	 * items, its trailing dimensions (one per dimension of {@code shape}) form each item, and
+	 * {@code pos} locates the subset within an item. The resulting computation has the
+	 * collection's leading dimensions prepended to {@code shape} and traverses them, so its
+	 * count is the number of items. For example, a {@code (1)} subset at position {@code 0}
+	 * of an {@code (n, 2)} collection is the {@code (n, 1)} collection of the first
+	 * component of every row.</p>
+	 *
+	 * @param shape The desired shape (dimensions) of the resulting subset, or of the subset
+	 *              of each item when it has fewer dimensions than the collection
 	 * @param collection The source collection to extract from, must implement {@link Shape}
-	 * @param pos The starting position coordinates as expressions, one per dimension
+	 * @param pos The starting position coordinates as expressions, one per dimension of {@code shape}
 	 * @throws IllegalArgumentException if collection doesn't implement Shape interface
 	 */
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Expression... pos) {
-		super("subset", shape, null, collection);
-		Shape.requireShape("Subset", collection);
+		super("subset", Shape.requireShape("Subset", collection).itemwise(shape), null, collection);
 
-		this.pos = pos;
+		this.pos = itemPosition(shape, pos);
 		init();
+	}
+
+	/**
+	 * Returns the position of the subset of every item within the collection: the given
+	 * position within one item, preceded by a zero for each leading dimension that
+	 * {@link TraversalPolicy#itemwise(TraversalPolicy)} added to the shape of this subset.
+	 * When the subset has as many dimensions as {@code item}, the position is returned as
+	 * given.
+	 *
+	 * @param item the shape of the subset of a single item
+	 * @param pos the position within one item, one coordinate per dimension of {@code item}
+	 * @return the position within the full collection
+	 */
+	private Expression[] itemPosition(TraversalPolicy item, Expression... pos) {
+		int depth = getShape().getDimensions() - item.getDimensions();
+		return Stream.concat(Stream.generate(() -> new IntegerConstant(0)).limit(depth), Stream.of(pos))
+				.toArray(Expression[]::new);
 	}
 
 	/**

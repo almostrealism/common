@@ -99,7 +99,8 @@ public interface RGBFeatures extends ScalarFeatures {
 	 * Creates an RGB color producer by concatenating channel producers.
 	 *
 	 * <p>This enables dynamic color construction in computation graphs where
-	 * each channel is computed separately.</p>
+	 * each channel is computed separately. A channel may also be an {@code (n, 1)} batch of
+	 * values, in which case the result is the {@code (n, 3)} batch of colors.</p>
 	 *
 	 * @param r producer for the red channel
 	 * @param g producer for the green channel
@@ -109,7 +110,7 @@ public interface RGBFeatures extends ScalarFeatures {
 	default CollectionProducer rgb(Producer<PackedCollection> r,
 								   Producer<PackedCollection> g,
 								   Producer<PackedCollection> b) {
-		return concat(shape(3), r, g, b);
+		return concat(batchShape(shape(3), r, g, b), r, g, b);
 	}
 
 	/**

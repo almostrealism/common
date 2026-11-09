@@ -1038,6 +1038,23 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	}
 
 	/**
+	 * Returns the shape of a batch of items of this shape: the trailing dimensions of this
+	 * shape (one per dimension of {@code item}) are replaced by {@code item}, and its leading
+	 * dimensions are kept and traversed, so the count of the result is the number of items.
+	 * The result carries no ordering, since it describes a new collection rather than a view
+	 * of a collection of this shape.
+	 *
+	 * @param item the shape of a single item
+	 * @return the shape of the batch, or {@code item} if this shape has no more dimensions
+	 */
+	public TraversalPolicy itemwise(TraversalPolicy item) {
+		int depth = getDimensions() - item.getDimensions();
+		if (depth <= 0) return item;
+
+		return traverse(depth).replace(item).withOrder(null);
+	}
+
+	/**
 	 * Returns a copy of this policy with trailing dimensions of size {@code 1} removed.
 	 * A policy traversed past the removed dimension (a fully traversed policy) remains
 	 * fully traversed after it is removed.
@@ -1178,32 +1195,6 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	public TraversalPolicy forKernelLength(int count, boolean fixedCount, int len) {
 		int repetitions = fixedCount ? 0 : len / count;
 		return repetitions == 0 || len == count ? this : prependDimension(repetitions);
-	}
-
-	/**
-	 * Create a new {@link TraversalPolicy} which has the same dimensions,
-	 * but with a {@link #getTraversalAxis() traversal axis} which results
-	 * in a {@link #getSizeLong() size} that matches that of the specified
-	 * {@link TraversalPolicy}.
-	 */
-	public TraversalPolicy alignSize(TraversalPolicy alt) {
-		return alignSize(alt.getSizeLong());
-	}
-
-	/**
-	 * Create a new {@link TraversalPolicy} which has the same dimensions,
-	 * but with a {@link #getTraversalAxis() traversal axis} which results
-	 * in a {@link #getSizeLong() size} that matches the specified value
-	 * (if possible).
-	 */
-	public TraversalPolicy alignSize(long size) {
-		int axis = 0;
-
-		while (traverse(axis).getSizeLong() > size && axis < getDimensions()) {
-			axis++;
-		}
-
-		return getTraversalAxis() != axis ? traverse(axis) : this;
 	}
 
 	/**

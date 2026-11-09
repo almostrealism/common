@@ -119,6 +119,9 @@
 - [Simulating a Spiking Neural Population](docs/internals/neural-population-simulation.md): A tested worked example from device-resident state to recorded spikes — the LIF step, synaptic delay through the ring buffer, connectivity, reproducible random drive (`RandomProducer`, `AR_RANDOM`, `CounterRandom`), driving it with SimulationRunner, rate populations, and known limits
 - [Simulating a Neuron-Level Connectome](docs/internals/neuron-level-connectome-simulation.md): A tested worked example of the finer, neuron-level path — loading a brain circuit as a signed compressed-sparse-row `NeuronConnectome`, the sparse synaptic product, the `connectome_step` PDSL layer, the `ExponentialSynapseNeurons`/`PoissonInput` blocks, `ConnectomeNetwork` (the Shiu et al. 2024 whole-brain model) stepped by SimulationRunner with replicas and `meanRates`, and spike-for-spike cross-validation against Brian2
 
+### Rendering
+- [Per-Pixel Kernel Rendering](docs/internals/per-pixel-rendering.md): A whole image as one compiled per-pixel kernel — batched camera rays (lower-rank subsets taken from every item, `batchShape`), the `ImplicitSurface` abstraction (`SignedDistanceFunction`, `HeightField` with bilinear sampling and a Lipschitz bound), `ImplicitSurfaceRenderer` (conservative march, bisection and secant refinement, Schlick Fresnel shading, environment gradient), why the march is a uniform list of per-pixel assignments rather than one unrolled expression, a worked example, measured cost, and known limits
+
 ### Testing and Profiling
 - [Test Examples](docs/internals/test-examples.md): TestSuiteBase, @TestDepth usage
 - [Test Skip-Gating Prevention](docs/internals/test-skip-gating-prevention.md): Failure-to-skip concealment (Assume/@Disabled gating) — the shape of the attack, the inventory of every route that stops a test executing in CI, and the threat model
