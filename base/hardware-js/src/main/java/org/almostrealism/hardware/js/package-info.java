@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,11 +14,9 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.resource;
-
 /**
- * A {@link JsonResource} stores JSON data as a unicode {@link String}.
+ * The JavaScript code-generation backend:
+ * {@link org.almostrealism.hardware.js.JavaScriptLanguageOperations} and
+ * {@link org.almostrealism.hardware.js.JavaScriptPrintWriter}.
  */
-public class JsonResource extends UnicodeResource {
-	public JsonResource(String data) { super(data); }
-}
+package org.almostrealism.hardware.js;

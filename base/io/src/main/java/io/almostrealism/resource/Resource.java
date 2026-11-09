@@ -16,8 +16,6 @@
 
 package io.almostrealism.resource;
 
-import io.almostrealism.relation.Node;
-
 import java.io.IOException;
 import java.io.InputStream;
 
@@ -32,7 +30,7 @@ import java.io.InputStream;
  * @param <T> The type of the data object held by this resource
  * @author  Michael Murray
  */
-public interface Resource<T extends Object> extends Node {
+public interface Resource<T extends Object> {
 	/**
 	 * Loads resource data from the given IO streams.
 	 *

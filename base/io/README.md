@@ -243,6 +243,24 @@ CallOrigin origin = new CallOrigin(PackedCollection.class, 12);
 warn(message + " (from " + origin.getOrigin() + ")" + origin.getCallers());
 ```
 
+### Resources
+
+The `io.almostrealism.resource` package holds the resource abstraction, so that code which
+reads or writes resources does not need `ar-graphpersist`:
+
+- `Resource` — a named, permissioned unit of data that can be loaded from streams, bytes or
+  its URI, sent over streams, or saved locally
+- `ResourceAdapter` — skeletal implementation for resources backed by a byte array
+- `UnicodeResource` — text resource read from a file, stream or URL
+- `IOStreams` — paired data input/output streams; a load or send may be a request/response
+  exchange that uses both
+- `Permissions` — owner/group/others permission settings
+- `ResourceTranscoder` — converts one resource type to another, such as a file format into
+  the data it describes (the mesh and scene formats in `ar-space`'s
+  `org.almostrealism.space.format` are built on it)
+
+`ar-graphpersist` adds `ResourceVariable` to the same package.
+
 ## Environment Variables
 
 - `AR_IO_SYSOUT=false` - Disable System.out output (only listeners receive output)
