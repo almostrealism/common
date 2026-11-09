@@ -43,6 +43,15 @@ import org.almostrealism.io.TimingMetric;
  * MTLComputePipelineState pipeline = prog.newComputePipelineState();
  * }</pre>
  *
+ * <h2>Lanes per Work Item</h2>
+ *
+ * <p>A program records the lanes its kernel assigns to each work item (see
+ * {@link io.almostrealism.scope.Scope#getLaneCount()}), the number its source was rendered for:
+ * one for an ordinary kernel, or the SIMD group width for a kernel that opens by deriving its
+ * work item and lane from the position of its thread. A {@link MetalOperator} dispatches the
+ * program with that many threads for every work item, and a pipeline whose SIMD groups differ
+ * from the lanes is refused (see {@link #newComputePipelineState()}).</p>
+ *
  * <h2>Instruction Set Monitoring</h2>
  *
  * <pre>{@code
@@ -70,11 +79,15 @@ public class MetalProgram implements OperationInfo, Signature, Destroyable, Cons
 	/** Metal Shading Language source code for this program. */
 	private final String src;
 
+	/** The lanes the kernel assigns to each work item, the number its source was rendered for. */
+	private final int laneCount;
+
 	/** The compiled Metal function object used to create pipeline states. */
 	private MTLFunction function;
 
 	/**
-	 * Creates a Metal program for the specified kernel function and MSL source.
+	 * Creates a Metal program for the specified kernel function and MSL source, whose kernel
+	 * assigns one thread to each work item.
 	 *
 	 * @param ctx The {@link MetalComputeContext} providing device access
 	 * @param metadata Operation metadata for identification and profiling
@@ -82,12 +95,33 @@ public class MetalProgram implements OperationInfo, Signature, Destroyable, Cons
 	 * @param src Metal Shading Language source code
 	 */
 	public MetalProgram(MetalComputeContext ctx, OperationMetadata metadata, String func, String src) {
+		this(ctx, metadata, func, src, 1);
+	}
+
+	/**
+	 * Creates a Metal program for the specified kernel function and MSL source, whose kernel
+	 * assigns the given number of lanes to each work item.
+	 *
+	 * @param ctx The {@link MetalComputeContext} providing device access
+	 * @param metadata Operation metadata for identification and profiling
+	 * @param func Name of the kernel function in the MSL source
+	 * @param src Metal Shading Language source code, rendered for {@code laneCount} lanes
+	 * @param laneCount The lanes the kernel assigns to each work item, at least 1
+	 * @throws IllegalArgumentException if {@code laneCount} is less than 1
+	 */
+	public MetalProgram(MetalComputeContext ctx, OperationMetadata metadata, String func, String src,
+						int laneCount) {
+		if (laneCount < 1) {
+			throw new IllegalArgumentException("A work item needs at least one lane");
+		}
+
 		this.device = ctx.getMtlDevice();
 		this.metadata = (metadata == null ?
 				new OperationMetadata((String) null, null) : metadata)
 				.withContextName(ctx.getDataContext().getName());
 		this.func = func;
 		this.src = src;
+		this.laneCount = laneCount;
 	}
 
 	/**
@@ -111,6 +145,14 @@ public class MetalProgram implements OperationInfo, Signature, Destroyable, Cons
 	 * @return The {@link MTLDevice} instance
 	 */
 	public MTLDevice getDevice() { return device; }
+
+	/**
+	 * Returns the lanes the kernel assigns to each work item: the threads dispatched for every
+	 * work item, which execute it together as one SIMD group.
+	 *
+	 * @return the lanes of each work item, at least 1
+	 */
+	public int getLaneCount() { return laneCount; }
 
 	/**
 	 * Returns the compiled Metal function.
@@ -165,15 +207,31 @@ public class MetalProgram implements OperationInfo, Signature, Destroyable, Cons
 	 * <p>Must be called after {@link #compile()}. The pipeline state is required
 	 * for dispatching compute commands.</p>
 	 *
+	 * <p>A kernel of several {@link #getLaneCount() lanes} per work item relies on each SIMD group
+	 * executing exactly the lanes of one work item, so a pipeline whose
+	 * {@link MTLComputePipelineState#threadExecutionWidth() execution width} differs from the
+	 * lanes is released and refused.</p>
+	 *
 	 * @return New {@link MTLComputePipelineState} for the compiled function
-	 * @throws HardwareException if program has not been compiled
+	 * @throws HardwareException if program has not been compiled, or if its kernel assigns several
+	 *                           lanes to each work item and the pipeline's SIMD groups have a
+	 *                           different number of threads
 	 */
 	public MTLComputePipelineState newComputePipelineState() {
 		if (function == null) {
 			throw new HardwareException("MetalProgram unavailable");
 		}
 
-		return device.newComputePipelineState(function);
+		MTLComputePipelineState pipeline = device.newComputePipelineState(function);
+
+		if (laneCount > 1 && pipeline.threadExecutionWidth() != laneCount) {
+			int width = pipeline.threadExecutionWidth();
+			pipeline.release();
+			throw new HardwareException(func + " assigns " + laneCount +
+					" lanes to each work item, but its SIMD groups have " + width + " threads");
+		}
+
+		return pipeline;
 	}
 
 	/**

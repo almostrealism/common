@@ -168,6 +168,9 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 */
 	private List<ComputeRequirement> requirements;
 
+	/** The number of lanes the kernel rooted at this scope assigns to each work item. */
+	private int laneCount = 1;
+
 	/** The list of executable statements contained in this scope. */
 	private final List<Statement<?>> statements;
 
@@ -319,6 +322,28 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	 * @param requirements the list of hardware/compute constraints
 	 */
 	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
+
+	/**
+	 * Returns the number of lanes the kernel rooted at this scope assigns to each work item: 1
+	 * (the default) for an ordinary kernel, or the lane count of its compute context (see
+	 * {@link KernelStructureContext#getLaneCount()}) for a kernel whose code uses a
+	 * {@link io.almostrealism.kernel.LaneIndex}. Such a kernel is dispatched with that many threads
+	 * for every work item, so it is never absorbed into a kernel with a different lane count.
+	 *
+	 * @return the lanes of each work item, at least 1
+	 */
+	public int getLaneCount() { return laneCount; }
+
+	/**
+	 * Sets the number of lanes the kernel rooted at this scope assigns to each work item.
+	 *
+	 * @param laneCount the lanes of each work item, at least 1
+	 * @see #getLaneCount()
+	 */
+	public void setLaneCount(int laneCount) {
+		if (laneCount < 1) throw new IllegalArgumentException("A work item needs at least one lane");
+		this.laneCount = laneCount;
+	}
 
 	/**
 	 * Returns the list of statements contained in this scope.
@@ -842,6 +867,12 @@ public class Scope<T> extends ArrayList<Scope<T>>
 						return Collections.singletonList(arg);
 					}
 
+					// A kernel that assigns several lanes to each work item is dispatched
+					// with its own number of threads, so it remains a kernel of its own
+					if (s.getLaneCount() > 1) {
+						return Collections.singletonList(arg);
+					}
+
 					// Recursively convert the required Scope's arguments
 					// into required scopes themselves
 					// s.convertArgumentsToRequiredScopes();
@@ -1011,6 +1042,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		scope.refIdx = refIdx;
 
 		scope.setComputeRequirements(getComputeRequirements());
+		scope.setLaneCount(getLaneCount());
 		scope.getChildren().addAll(children);
 		return scope;
 	}

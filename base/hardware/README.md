@@ -1083,6 +1083,37 @@ uses, logs why once and waits for every buffer's completion report, as with a wi
 Polling the command buffer's status is no substitute for the signal: on the machine above, a
 buffer's status reported it completed later than a blocked `waitUntilCompleted` returned.
 
+### 9. Lanes per Work Item (Metal)
+
+A generated kernel assigns one thread to each work item, the right shape for a CPU, where a
+thread reads its work item's data from one address to the next. On a GPU the threads of a SIMD
+group execute together, so a reduction over a long run of contiguous elements, such as the dot
+product of each row of a matrix-vector product, leaves every thread of the group reading a
+different row: each load touches as many cache lines as there are threads, and only as many
+threads exist as there are rows.
+
+A compute context can instead assign several lanes to each work item:
+`ComputeContext.getLaneCount()` is 1 by default, and the SIMD group width of the device (32 on
+Apple GPUs) for Metal. A looped `WeightedSumComputation` whose group runs along a dimension that
+is contiguous in both of its operands is then compiled, when it is a kernel of its own, so that
+lane `l` of `L` sums members `l, l + L, l + 2L, ...` (adjacent lanes reading adjacent addresses)
+and the SIMD group sum (`LaneSum`, rendered as `metal::simd_sum`) totals the lanes. The loop
+takes only the steps in which every lane has a member, so its indices need no bounds wrapping;
+the members after the last such step seed the accumulators of the lanes they fall to.
+
+The kernel's root `Scope` declares its lanes (`Scope.getLaneCount()`), and a scope with lanes is
+never absorbed into another kernel. The `MetalProgram` compiled from the kernel records its lanes
+(`MetalProgram.getLaneCount()`) and refuses a pipeline whose SIMD groups have a different width.
+`MetalOperator` dispatches that many threads for every work item of the program, in
+one-dimensional threadgroups of `LANED_THREADGROUP_THREADS` threads, and the kernel opens by
+declaring `global_id` and `global_count` as the work item and the count of work items, exactly as
+every other kernel receives them, so none of its index arithmetic changes. The native, OpenCL and
+CUDA contexts report one lane and compile the same computations as before.
+
+For the dense step of a rate population over an 11,751-type connectome (`CellTypeRateModelTest`,
+a 552 MB FP32 matrix), a step took 836 microseconds instead of 3,211 on an M1 Ultra, and the
+10,000-step stability run 9.3 seconds instead of 32.7.
+
 ## Advanced Topics
 
 ### Custom ComputeRequirements

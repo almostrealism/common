@@ -7,6 +7,12 @@
 # Usage:
 #   build-review-prompt.sh <output-file>
 #
+# A second positional argument is optional: a file holding the rendered
+# "new TODOs this branch adds" section (extract_branch_todos.py's output). When
+# supplied and non-empty, the review prompt is extended with the instruction to
+# treat each new TODO as a finding and that section's list. It is optional so a
+# caller that has not computed it still produces a prompt.
+#
 # Required environment variables:
 #   BRANCH          - branch name under review
 #   BASE_BRANCH     - base branch for comparison
@@ -19,9 +25,10 @@
 set -euo pipefail
 
 OUTPUT_FILE="${1:-}"
+TODOS_FILE="${2:-}"
 
 if [ -z "$OUTPUT_FILE" ]; then
-    echo "Usage: $0 <output-file>" >&2
+    echo "Usage: $0 <output-file> [todos-section-file]" >&2
     exit 1
 fi
 
@@ -40,3 +47,6 @@ source "${SCRIPT_DIR}/prompt-render.sh"
 
 # Expand the template's @include lines and substitute its placeholders.
 render_prompt "$TEMPLATE" BRANCH BASE_BRANCH COMMIT_SHA > "$OUTPUT_FILE"
+
+# Extend the prompt with the new-TODO findings, when CI has computed them.
+append_todo_findings "$OUTPUT_FILE" "$TODOS_FILE"
