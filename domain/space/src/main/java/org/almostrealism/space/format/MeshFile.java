@@ -116,10 +116,10 @@ public class MeshFile implements MeshSource, ShadableSurfaceWrapper, ShadableSur
 			try {
 				if (this.url != null) {
 					this.mesh = (Mesh) ModelData.decodeScene(new URL(this.url + this.name).openStream(),
-							this.format, false, null, this.s).getSurfaces()[0];
+							this.format, null, this.s).getSurfaces()[0];
 				} else {
 					this.mesh = (Mesh) FileDecoder.decodeSurfaceFile(
-							new File(this.name), this.format, false, null, this.s);
+							new File(this.name), this.format, null, this.s);
 				}
 			} catch (IOException ioe) {
 				warn("Unable to load mesh data from " + this.name, ioe);

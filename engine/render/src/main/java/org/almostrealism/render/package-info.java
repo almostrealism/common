@@ -28,6 +28,8 @@
  *       averaging within each pixel</li>
  *   <li>{@link org.almostrealism.render.Pixel} — per-pixel sample collection for
  *       supersampled rendering</li>
+ *   <li>{@link org.almostrealism.render.RayTracedAnimation} — an
+ *       {@link org.almostrealism.space.Animation} that ray traces each frame to an image file</li>
  * </ul>
  *
  * <p>The rendering pipeline is:</p>
