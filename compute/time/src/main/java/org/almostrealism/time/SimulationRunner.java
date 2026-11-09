@@ -369,7 +369,8 @@ public class SimulationRunner extends TemporalRunner {
 	 * advanced (or has just been {@link #reset()}), since the frame index is derived from the
 	 * global step counter. It registers a boundary listener for the lifetime of the runner; a
 	 * caller needing finer control composes {@link #addBoundaryListener(int, LongConsumer)} and
-	 * {@link #run(long)} directly.</p>
+	 * {@link #run(long)} directly. A {@code frameCount} of {@code 0} is a no-op: no listener is
+	 * registered, so a later {@link #run(long)} on the same runner does not observe a frame.</p>
 	 *
 	 * @param stepsPerFrame the number of steps between frames; must be positive
 	 * @param frameCount    the number of frames to observe; must not be negative
@@ -378,8 +379,14 @@ public class SimulationRunner extends TemporalRunner {
 	 *                                  is negative
 	 */
 	public void runFrames(int stepsPerFrame, int frameCount, IntConsumer frame) {
+		if (stepsPerFrame <= 0) {
+			throw new IllegalArgumentException("stepsPerFrame must be positive (" + stepsPerFrame + ")");
+		}
 		if (frameCount < 0) {
 			throw new IllegalArgumentException("Cannot render a negative number of frames (" + frameCount + ")");
+		}
+		if (frameCount == 0) {
+			return;
 		}
 
 		addBoundaryListener(stepsPerFrame, step -> frame.accept((int) (step / stepsPerFrame)));

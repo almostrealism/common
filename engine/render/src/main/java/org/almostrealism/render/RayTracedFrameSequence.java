@@ -28,7 +28,9 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.IntFunction;
 
 /**
@@ -145,8 +147,14 @@ public class RayTracedFrameSequence implements ConsoleFeatures {
 	 * Drives the simulation into the frame sequence: the runner steps the physics and this driver
 	 * renders a frame at each frame boundary, then writes the encode script. The runner should not
 	 * have been advanced before this call, since frame indices are derived from its step counter.
+	 *
+	 * @throws IllegalStateException if the output directory does not exist and cannot be created
 	 */
 	public void run() {
+		if (!outputDirectory.isDirectory() && !outputDirectory.mkdirs()) {
+			throw new IllegalStateException("Could not create output directory " + outputDirectory);
+		}
+
 		runner.runFrames(stepsPerFrame, frameCount, this::renderFrame);
 		writeEncodeScript();
 	}
@@ -197,19 +205,56 @@ public class RayTracedFrameSequence implements ConsoleFeatures {
 	/**
 	 * Writes {@code encode.sh} to the output directory: an {@code ffmpeg} command that encodes the
 	 * frame sequence as an MP4. The input pattern {@code frame_%0<width>d.png} with a start number
-	 * of {@code 0} and {@code -frames:v <frameCount>} references exactly the zero-padded frames this
-	 * driver writes, so the frame list matches the files on disk.
+	 * of {@code 0} and {@code -frames:v <count>} references exactly the zero-padded frames this
+	 * driver wrote, so the frame list matches the files on disk. The {@code ffmpeg} pattern consumes
+	 * frames contiguously from {@code 0}, so a frame that failed to write bounds the sequence: the
+	 * script covers only the {@link #writtenFrameCount() leading run of frames that were written},
+	 * and no script is written when that run is empty.
 	 */
 	protected void writeEncodeScript() {
+		int available = writtenFrameCount();
+
+		if (available < frameCount) {
+			warn("Only " + available + " of " + frameCount + " frames were written; the encode " +
+					"script will cover the " + available + " contiguous frame(s) present");
+		}
+
+		if (available <= 0) {
+			warn("No contiguous frames were written; skipping encode script");
+			return;
+		}
+
 		File script = new File(outputDirectory, "encode.sh");
 		String pattern = "frame_%0" + indexWidth + "d.png";
 
 		try (PrintWriter out = new PrintWriter(new FileWriter(script))) {
 			out.println("#!/bin/sh");
 			out.println("ffmpeg -y -framerate " + frameRate + " -start_number 0 -i " + pattern +
-					" -frames:v " + frameCount + " -c:v libx264 -pix_fmt yuv420p output.mp4");
+					" -frames:v " + available + " -c:v libx264 -pix_fmt yuv420p output.mp4");
 		} catch (IOException e) {
 			warn("Could not write encode script " + script, e);
 		}
+	}
+
+	/**
+	 * Returns the number of leading frames, starting at frame {@code 0}, that were written
+	 * contiguously. Because the encode script's {@code ffmpeg} pattern consumes frames contiguously
+	 * from {@code 0}, a gap left by a failed frame write bounds the sequence the script can
+	 * reference; this is that bound.
+	 *
+	 * @return the number of contiguous frames written from frame {@code 0}
+	 */
+	protected int writtenFrameCount() {
+		Set<String> written = new HashSet<>();
+		for (File frame : frameFiles) {
+			written.add(frame.getName());
+		}
+
+		int count = 0;
+		while (count < frameCount && written.contains(frameFileName(count))) {
+			count++;
+		}
+
+		return count;
 	}
 }

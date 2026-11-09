@@ -140,11 +140,11 @@ params.ssHeight = 2;   // 2 samples per pixel vertically
 ```java
 import org.almostrealism.texture.ImageCanvas;
 
-// Save as JPEG
+// Save as PNG
 ImageCanvas.encodeImageFile(
     image.get(),
-    new File("output.jpg"),
-    ImageCanvas.JPEGEncoding
+    new File("output.png"),
+    ImageCanvas.PNGEncoding
 );
 
 // Or directly access pixel data
@@ -304,8 +304,8 @@ RayTracedScene rayTracedScene = new RayTracedScene(
 RealizableImage image = rayTracedScene.realize(params);
 
 // 6. Save
-ImageCanvas.encodeImageFile(image.get(), new File("output.jpg"),
-                           ImageCanvas.JPEGEncoding);
+ImageCanvas.encodeImageFile(image.get(), new File("output.png"),
+                           ImageCanvas.PNGEncoding);
 ```
 
 ### Pattern 2: Multi-Light Scene

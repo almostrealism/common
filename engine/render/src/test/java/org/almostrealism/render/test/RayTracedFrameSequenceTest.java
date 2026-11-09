@@ -140,6 +140,110 @@ public class RayTracedFrameSequenceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The driver creates the output directory when it does not already exist, so the documented
+	 * fresh-directory usage renders without the caller having to create it first; it throws when the
+	 * directory cannot be created.
+	 */
+	@Test(timeout = 120000)
+	public void createsOutputDirectory() throws IOException {
+		PackedCollection state = pack(1.0, 0.0).reshape(shape(2));
+		SimulationRunner runner = new SimulationRunner(mixing(state), DT);
+		File parent = Files.createTempDirectory("frame-sequence-mkdir").toFile();
+		File dir = new File(parent, "frames");
+		Assert.assertFalse("output directory should not exist yet", dir.exists());
+
+		stubbedDriver(runner, state, dir).run();
+
+		Assert.assertTrue("output directory was not created", dir.isDirectory());
+		for (int i = 0; i < FRAMES; i++) {
+			Assert.assertTrue("frame " + i + " was not written",
+					new File(dir, "frame_" + i + ".png").isFile());
+		}
+		Assert.assertTrue("encode script was not written", new File(dir, "encode.sh").isFile());
+
+		// A directory whose path is blocked by an existing regular file cannot be created
+		File blocked = new File(parent, "blocker");
+		Files.write(blocked.toPath(), new byte[] { 1 });
+		SimulationRunner blockedRunner = new SimulationRunner(mixing(pack(1.0, 0.0).reshape(shape(2))), DT);
+		RayTracedFrameSequence blockedDriver = stubbedDriver(blockedRunner,
+				pack(1.0, 0.0).reshape(shape(2)), new File(blocked, "frames"));
+		try {
+			blockedDriver.run();
+			Assert.fail("expected an IllegalStateException for an uncreatable output directory");
+		} catch (IllegalStateException expected) {
+			// expected
+		}
+		Assert.assertEquals(0, blockedRunner.getStepCount());
+
+		runner.destroy();
+		blockedRunner.destroy();
+	}
+
+	/**
+	 * A frame that fails to write bounds the encode script: the script covers only the contiguous
+	 * run of frames written from frame {@code 0}, so it never references a missing frame. With the
+	 * middle frame failing, exactly the leading frame survives and the script asks {@code ffmpeg}
+	 * for that one frame.
+	 */
+	@Test(timeout = 120000)
+	public void failedFrameBoundsEncodeScript() throws IOException {
+		PackedCollection state = pack(1.0, 0.0).reshape(shape(2));
+		SimulationRunner runner = new SimulationRunner(mixing(state), DT);
+		File dir = Files.createTempDirectory("frame-sequence-fail").toFile();
+
+		RayTracedFrameSequence driver = new RayTracedFrameSequence(runner, STEPS_PER_FRAME, FRAMES,
+				sceneForFrame(state), new RenderParameters(4, 4, 1, 1), dir) {
+			@Override
+			protected void renderScene(Scene<? extends ShadableSurface> scene, File file) throws IOException {
+				if (file.getName().equals("frame_1.png")) {
+					throw new IOException("frame 1 cannot be written");
+				}
+
+				Files.write(file.toPath(), new byte[] { 2 });
+			}
+		};
+		driver.run();
+
+		Assert.assertTrue("frame 0 should have been written", new File(dir, "frame_0.png").isFile());
+		Assert.assertFalse("frame 1 should not exist", new File(dir, "frame_1.png").isFile());
+
+		File encode = new File(dir, "encode.sh");
+		Assert.assertTrue("encode script was not written", encode.isFile());
+		String script = new String(Files.readAllBytes(encode.toPath()), StandardCharsets.UTF_8);
+		Assert.assertTrue("encode script should cover only the contiguous frame",
+				script.contains("-frames:v 1"));
+		Assert.assertFalse("encode script must not reference the missing frame count",
+				script.contains("-frames:v " + FRAMES));
+
+		runner.destroy();
+	}
+
+	/**
+	 * When no frame at all is written, no encode script is produced rather than one referencing
+	 * frames that do not exist.
+	 */
+	@Test(timeout = 120000)
+	public void noFramesWritesNoEncodeScript() throws IOException {
+		PackedCollection state = pack(1.0, 0.0).reshape(shape(2));
+		SimulationRunner runner = new SimulationRunner(mixing(state), DT);
+		File dir = Files.createTempDirectory("frame-sequence-empty").toFile();
+
+		RayTracedFrameSequence driver = new RayTracedFrameSequence(runner, STEPS_PER_FRAME, FRAMES,
+				sceneForFrame(state), new RenderParameters(4, 4, 1, 1), dir) {
+			@Override
+			protected void renderScene(Scene<? extends ShadableSurface> scene, File file) throws IOException {
+				throw new IOException("no frame can be written");
+			}
+		};
+		driver.run();
+
+		Assert.assertTrue("frame files should be empty", driver.getFrameFiles().isEmpty());
+		Assert.assertFalse("no encode script should be written", new File(dir, "encode.sh").exists());
+
+		runner.destroy();
+	}
+
+	/**
 	 * Drives the real ray tracer end to end. It exercises the same frame orchestration against a
 	 * lit sphere scene, and is a known issue until the lighting-aggregator render path works in the
 	 * default lanes (the single-pixel render is likewise a known issue).

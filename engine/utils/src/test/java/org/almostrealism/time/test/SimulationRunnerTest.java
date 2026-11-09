@@ -610,6 +610,40 @@ public class SimulationRunnerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A zero-frame {@code runFrames} call is a no-op that advances nothing and, crucially, registers
+	 * no boundary listener: a later {@link SimulationRunner#run(long)} on the same runner must not
+	 * observe a frame from a stale listener. A non-positive {@code stepsPerFrame} is rejected with
+	 * {@link IllegalArgumentException} before any listener is registered, and a negative
+	 * {@code frameCount} is rejected too.
+	 */
+	@Test(timeout = 120000)
+	public void runFramesZeroFramesAndInvalid() {
+		CountedSystem system = new CountedSystem();
+		SimulationRunner runner = new SimulationRunner(system, DT);
+		AtomicInteger calls = new AtomicInteger();
+
+		runner.runFrames(4, 0, f -> calls.incrementAndGet());
+		assertEquals(0, calls.get());
+		assertEquals(0, runner.getStepCount());
+
+		// The zero-frame call must not have left a boundary listener behind
+		runner.run(8);
+		assertEquals(0, calls.get());
+		assertEquals(8, runner.getStepCount());
+
+		assertThrowsIllegalArgument(() -> runner.runFrames(0, 3, f -> calls.incrementAndGet()));
+		assertThrowsIllegalArgument(() -> runner.runFrames(-1, 3, f -> calls.incrementAndGet()));
+		assertThrowsIllegalArgument(() -> runner.runFrames(4, -1, f -> calls.incrementAndGet()));
+
+		// A rejected call must not have registered a listener either
+		runner.run(8);
+		assertEquals(0, calls.get());
+		assertEquals(16, runner.getStepCount());
+
+		runner.destroy();
+	}
+
+	/**
 	 * Invalid arguments are rejected with {@link IllegalArgumentException} before they can affect
 	 * the simulation: a counter that is not a single element, a negative step count, and a
 	 * non-positive interval or capacity for an input, listener or recording.
