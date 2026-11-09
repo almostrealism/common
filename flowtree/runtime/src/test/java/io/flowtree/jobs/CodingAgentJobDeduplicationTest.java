@@ -150,4 +150,26 @@ public class CodingAgentJobDeduplicationTest extends TestSuiteBase {
 	public void extractWorkstreamId_emptyString_returnsNull() {
 		assertNull(DeduplicationSpawner.extractWorkstreamId(""));
 	}
+
+	/**
+	 * Verifies that extractControllerBaseUrl returns null for a null URL rather
+	 * than throwing. The pre-consolidation copy dereferenced its argument directly
+	 * and threw {@link NullPointerException}; it now shares the null-guarded
+	 * {@link WorkspaceResolver} implementation.
+	 */
+	@Test(timeout = 30000)
+	public void extractControllerBaseUrl_null_returnsNull() {
+		assertNull(DeduplicationSpawner.extractControllerBaseUrl(null));
+	}
+
+	/**
+	 * Verifies that extractWorkstreamId returns null for a null URL rather than
+	 * throwing. The pre-consolidation copy dereferenced its argument directly and
+	 * threw {@link NullPointerException}; it now shares the null-guarded
+	 * {@link WorkspaceResolver} implementation.
+	 */
+	@Test(timeout = 30000)
+	public void extractWorkstreamId_null_returnsNull() {
+		assertNull(DeduplicationSpawner.extractWorkstreamId(null));
+	}
 }
