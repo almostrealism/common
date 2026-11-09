@@ -17,6 +17,7 @@
 package org.almostrealism.optimize.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.optimize.LossProvider;
 import org.almostrealism.optimize.MeanAbsoluteError;
@@ -26,7 +27,6 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.List;
 import java.util.Random;
 
 /**
@@ -73,7 +73,9 @@ public class LossTests extends TestSuiteBase {
 		PackedCollection gradient = nll.gradient(cv(outputShape, 0), cv(outputShape, 1)).get()
 				.evaluate(output.each(), target.each());
 
-		double[] numeric = centralDifferences(output, 1e-2, () -> nll.loss(output, target));
+		Evaluable<PackedCollection> loss = nll.loss(cv(outputShape, 0), cv(outputShape, 1)).get();
+		double[] numeric = centralDifferences(output, 1e-2,
+				() -> loss.evaluate(output.each(), target.each()).doubleStream().average().orElse(0));
 		for (int i = 0; i < rows * classes; i++) {
 			Assert.assertEquals("element " + i, numeric[i], gradient.toDouble(i), 1e-4);
 		}
@@ -82,27 +84,48 @@ public class LossTests extends TestSuiteBase {
 	}
 
 	/**
-	 * The {@link LossProvider#terms terms} of {@link MeanSquaredError} and
-	 * {@link MeanAbsoluteError} are one value for each element of the output, and their mean is
-	 * exactly the loss each computes, while {@link NegativeLogLikelihood}, which computes its loss
-	 * on the host from the output itself, has no terms.
+	 * The mean of the {@link LossProvider#loss loss} terms of each loss function is the loss it
+	 * defines: for {@link MeanSquaredError} and {@link MeanAbsoluteError}, one term for each element
+	 * of the output whose mean is the mean squared or absolute difference, and for
+	 * {@link NegativeLogLikelihood}, one term for each row whose mean is the negated
+	 * log-probability at each row's target class, averaged over the rows.
 	 */
 	@Test(timeout = 60000)
-	public void termsAverageToTheLoss() {
-		TraversalPolicy outputShape = shape(2, 5).traverseEach();
+	public void lossTermsAverageToTheLoss() {
+		int rows = 2;
+		int classes = 5;
+		TraversalPolicy outputShape = shape(rows, classes).traverseEach();
 		Random random = new Random(11);
-		PackedCollection output = randn(shape(2, 5), 0.0, 1.0, random).evaluate();
-		PackedCollection target = randn(shape(2, 5), 0.0, 1.0, random).evaluate();
+		PackedCollection output = randn(shape(rows, classes), 0.0, 1.0, random).evaluate();
+		PackedCollection target = randn(shape(rows, classes), 0.0, 1.0, random).evaluate();
 
-		List<LossProvider> losses = List.of(new MeanSquaredError(outputShape), new MeanAbsoluteError(outputShape));
-		for (LossProvider loss : losses) {
-			PackedCollection terms = loss.terms(cp(output.each()), cp(target.each())).evaluate();
-
-			Assert.assertEquals(output.getMemLength(), terms.getMemLength());
-			Assert.assertEquals(loss.loss(output.each(), target.each()),
-					terms.doubleStream().average().orElse(0), 0.0);
+		double squared = 0.0;
+		double absolute = 0.0;
+		for (int i = 0; i < rows * classes; i++) {
+			double difference = output.toDouble(i) - target.toDouble(i);
+			squared += difference * difference;
+			absolute += Math.abs(difference);
 		}
 
-		Assert.assertNull(new NegativeLogLikelihood().terms(cp(output), cp(target)));
+		Assert.assertEquals(squared / (rows * classes),
+				meanLoss(new MeanSquaredError(outputShape), output, target, rows * classes), 1e-6);
+		Assert.assertEquals(absolute / (rows * classes),
+				meanLoss(new MeanAbsoluteError(outputShape), output, target, rows * classes), 1e-6);
+
+		PackedCollection oneHot = PackedCollection.of(
+				0, 0, 1, 0, 0,
+				0, 0, 0, 0, 1).reshape(shape(rows, classes));
+		double likelihood = -(output.toDouble(2) + output.toDouble(classes + 4)) / rows;
+		Assert.assertEquals(likelihood, meanLoss(new NegativeLogLikelihood(), output, oneHot, rows), 1e-6);
+	}
+
+	/**
+	 * Computes the terms of {@code loss} for {@code output} against {@code target}, asserts that
+	 * there are {@code count} of them, and returns their mean.
+	 */
+	private double meanLoss(LossProvider loss, PackedCollection output, PackedCollection target, int count) {
+		PackedCollection terms = loss.loss(cp(output.each()), cp(target.each())).evaluate();
+		Assert.assertEquals(count, terms.getMemLength());
+		return terms.doubleStream().average().orElse(0);
 	}
 }

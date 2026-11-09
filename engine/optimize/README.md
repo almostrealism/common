@@ -90,12 +90,12 @@ import org.almostrealism.optimize.*;
 
 // Mean Squared Error (regression)
 LossProvider mse = new MeanSquaredError(traverseEach());
-double loss = mse.loss(output, target);
 Producer<PackedCollection> gradient = mse.gradient(outputProducer, targetProducer);
 
-// The squared differences as a computation, whose mean is the loss; a CollectionProducer,
-// so the shape of the terms is known before they are computed
-CollectionProducer terms = mse.terms(outputProducer, targetProducer);
+// The loss is a computation of its terms (here the squared differences), whose mean is the
+// loss; a CollectionProducer, so the shape of the terms is known before they are computed
+CollectionProducer terms = mse.loss(outputProducer, targetProducer);
+double loss = terms.evaluate().doubleStream().average().orElse(0);
 
 // Mean Absolute Error (robust regression)
 LossProvider mae = new MeanAbsoluteError(traverseEach());
@@ -237,14 +237,11 @@ public class ModelOptimizer {
 
 ```java
 public interface LossProvider {
-    double loss(PackedCollection output, PackedCollection target);
-
-    // The values whose mean is the loss, or null (the default) if the loss
-    // is only computed by loss(output, target)
-    default CollectionProducer terms(
+    // The terms of the loss: the values whose mean is the loss
+    CollectionProducer loss(
         Producer<PackedCollection> output,
         Producer<PackedCollection> target
-    ) { return null; }
+    );
 
     Producer<PackedCollection> gradient(
         Producer<PackedCollection> output,
@@ -253,12 +250,12 @@ public interface LossProvider {
 }
 ```
 
-`ModelOptimizer` submits a loss function's terms with each sample's forward pass and loss
+`ModelOptimizer` submits the terms of the loss with each sample's forward pass and loss
 gradient, so a single wait for the sample covers all three, and takes the sample's loss as
-their mean. A loss function without terms has its loss computed by `loss(output, target)` once
-the sample's work has completed, which on an accelerator costs another round trip between the
-host and the device for every sample. `MeanSquaredError` and `MeanAbsoluteError` provide terms;
-`NegativeLogLikelihood` computes its loss on the host from the output itself.
+their mean; `evaluate` and `accuracy` submit them with each sample's forward pass in the same
+way. `MeanSquaredError` and `MeanAbsoluteError` have one term for each element of the output;
+`NegativeLogLikelihood` has one term for each row, the negated log-probability at the row's
+target class.
 
 ### HealthComputation
 
@@ -375,21 +372,14 @@ for (int gen = 0; gen < 100; gen++) {
 ```java
 public class HuberLoss implements LossProvider, CodeFeatures {
     private final double delta;
-    private final Evaluable<PackedCollection> loss;
 
-    public HuberLoss(TraversalPolicy outputShape, double delta) {
+    public HuberLoss(double delta) {
         this.delta = delta;
-        this.loss = terms(cv(outputShape, 0), cv(outputShape, 1)).get();
     }
 
     @Override
-    public double loss(PackedCollection output, PackedCollection target) {
-        return loss.evaluate(output, target).doubleStream().average().orElse(0);
-    }
-
-    @Override
-    public CollectionProducer terms(Producer<PackedCollection> output,
-                                    Producer<PackedCollection> target) {
+    public CollectionProducer loss(Producer<PackedCollection> output,
+                                   Producer<PackedCollection> target) {
         // Quadratic for |error| <= delta, linear beyond it
         CollectionProducer error = c(output).subtract(c(target)).abs();
         return error.greaterThan(c(delta),

@@ -21,17 +21,20 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 /**
- * Defines a loss function for neural network training with both loss computation and gradient calculation.
+ * Defines a loss function for neural network training as computations of the loss and of its
+ * gradient.
  * <p>
- * A {@code LossProvider} computes the scalar loss value between model outputs and target values,
- * and provides the gradient of the loss with respect to the outputs for backpropagation.
+ * A {@code LossProvider} describes the loss between model outputs and target values as a
+ * {@link CollectionProducer} of loss terms, whose mean is the loss, and provides the gradient of
+ * the loss with respect to the outputs for backpropagation. Both are computations, so the loss
+ * is computed on the same device as the model, with the rest of each training sample's work.
  * </p>
  *
  * <h2>Available Implementations</h2>
  * <ul>
  *   <li>{@link MeanSquaredError} - For regression tasks, penalizes squared differences</li>
  *   <li>{@link MeanAbsoluteError} - For robust regression, penalizes absolute differences</li>
- *   <li>{@link NegativeLogLikelihood} - For classification tasks, works with softmax outputs</li>
+ *   <li>{@link NegativeLogLikelihood} - For classification tasks, works with log-softmax outputs</li>
  * </ul>
  *
  * <h2>Usage Example</h2>
@@ -39,8 +42,9 @@ import org.almostrealism.collect.PackedCollection;
  * // Create loss function
  * LossProvider mse = new MeanSquaredError(outputShape.traverseEach());
  *
- * // Compute scalar loss for logging/metrics
- * double lossValue = mse.loss(modelOutput, target);
+ * // Compute the loss: the mean of its terms
+ * double lossValue = mse.loss(cp(modelOutput), cp(target))
+ *     .evaluate().doubleStream().average().orElse(0);
  *
  * // Compute gradient for backpropagation
  * Producer<PackedCollection> grad = mse.gradient(
@@ -55,16 +59,15 @@ import org.almostrealism.collect.PackedCollection;
  *
  * <h2>Custom Loss Functions</h2>
  * <p>
- * To implement a custom loss function, provide both the loss computation and its gradient, and,
- * when the loss is the mean of values a computation can produce, those values as its
- * {@link #terms terms}, so that {@link ModelOptimizer} can compute the loss with the rest of each
- * training sample's work:
+ * To implement a custom loss function, provide the terms of the loss and its gradient, both
+ * expressed as producers:
  * </p>
  * <pre>{@code
- * public class HuberLoss implements LossProvider {
+ * public class HuberLoss implements LossProvider, CodeFeatures {
  *     private double delta;
  *
- *     public double loss(PackedCollection output, PackedCollection target) {
+ *     public CollectionProducer loss(Producer<PackedCollection> output,
+ *                                    Producer<PackedCollection> target) {
  *         // Huber loss: quadratic for small errors, linear for large errors
  *         // ...
  *     }
@@ -85,36 +88,15 @@ import org.almostrealism.collect.PackedCollection;
  */
 public interface LossProvider {
 	/**
-	 * Computes the scalar loss value between model outputs and target values.
+	 * Returns the loss of {@code output} against {@code target} as a computation of its terms:
+	 * the values whose mean is the loss. Lower values indicate better predictions.
 	 * <p>
-	 * The loss value quantifies how well the model's predictions match the targets.
-	 * Lower values indicate better predictions. This method is typically used for
-	 * logging, monitoring training progress, and early stopping.
-	 * </p>
-	 *
-	 * @param output the model's output predictions
-	 * @param target the expected target values
-	 * @return the scalar loss value; lower is better
-	 */
-	double loss(PackedCollection output, PackedCollection target);
-
-	/**
-	 * Returns the terms of the loss of {@code output} against {@code target} as a computation:
-	 * the values whose mean is {@link #loss(PackedCollection, PackedCollection) the loss}.
-	 * <p>
-	 * A loss computed this way can be submitted with the work that produces {@code output},
-	 * rather than evaluated once that work has completed. {@link ModelOptimizer} submits the
-	 * terms after each sample's forward pass and loss gradient, so one wait for the sample covers
-	 * all three, and takes the sample's loss as the mean of the terms instead of calling
-	 * {@link #loss(PackedCollection, PackedCollection)}. On a device that runs its dispatches
-	 * asynchronously, that saves a round trip between the host and the device for every sample.
-	 * </p>
-	 * <p>
-	 * Returns {@code null}, the default, when the loss is not simply the mean of such terms:
-	 * when it is computed on the host from the output itself (as {@link NegativeLogLikelihood}
-	 * does), or when {@link #loss(PackedCollection, PackedCollection)} does more than average
-	 * them, such as checking or adjusting the value. The loss is then always obtained from
-	 * {@link #loss(PackedCollection, PackedCollection)}.
+	 * Because the loss is a computation, it can be submitted with the work that produces
+	 * {@code output}, rather than computed once that work has completed. {@link ModelOptimizer}
+	 * submits it after each sample's forward pass and loss gradient, so one wait for the sample
+	 * covers all three, and takes the sample's loss as the mean of the terms. On a device that
+	 * runs its dispatches asynchronously, that saves a round trip between the host and the device
+	 * for every sample.
 	 * </p>
 	 * <p>
 	 * The terms are a {@link CollectionProducer} so that their shape is known before they are
@@ -123,13 +105,10 @@ public interface LossProvider {
 	 *
 	 * @param output producer for the model's output predictions
 	 * @param target producer for the expected target values
-	 * @return a producer of the loss terms, or {@code null} if the loss is only computed by
-	 *         {@link #loss(PackedCollection, PackedCollection)}
+	 * @return a producer of the loss terms, whose mean is the loss
 	 */
-	default CollectionProducer terms(Producer<PackedCollection> output,
-									 Producer<PackedCollection> target) {
-		return null;
-	}
+	CollectionProducer loss(Producer<PackedCollection> output,
+							Producer<PackedCollection> target);
 
 	/**
 	 * Computes the gradient of the loss with respect to the model outputs.

@@ -149,21 +149,16 @@ public class ModelOptimizer implements CodeFeatures {
 	private Runnable lossGradient;
 
 	/**
-	 * The terms of the loss of the sample being trained (see {@link LossProvider#terms}), written
-	 * by {@link #lossTerms}, or {@code null} until that operation is first needed or when the loss
-	 * function computes its loss without them.
+	 * The terms of the loss of the sample being trained (see {@link LossProvider#loss}), written
+	 * by {@link #lossTerms}, or {@code null} until that operation is first needed.
 	 */
 	private PackedCollection terms;
 
 	/**
 	 * Compiled operation that writes the terms of the loss for {@link #expectedOutput} into
-	 * {@link #terms}, or {@code null} until it is first needed for the current loss function or
-	 * when the loss function has no terms to compute.
+	 * {@link #terms}, or {@code null} until it is first needed for the current loss function.
 	 */
 	private Runnable lossTerms;
-
-	/** Whether {@link #lossTerms} has been resolved for the current loss function. */
-	private boolean lossTermsResolved;
 
 	/** Running average loss from the most recent training iteration. */
 	private double averageLoss;
@@ -283,7 +278,6 @@ public class ModelOptimizer implements CodeFeatures {
 		this.lossTerms = null;
 		Destroyable.destroy(terms);
 		this.terms = null;
-		this.lossTermsResolved = false;
 	}
 
 	/**
@@ -306,61 +300,49 @@ public class ModelOptimizer implements CodeFeatures {
 	}
 
 	/**
-	 * Returns the operation that writes the terms of the loss (see {@link LossProvider#terms}),
+	 * Returns the operation that writes the terms of the loss (see {@link LossProvider#loss}),
 	 * for the model output and the collection set on {@link #expectedOutput} when it is issued,
-	 * into {@link #terms}, compiling it for the current loss function on first use, or
-	 * {@code null} if the loss function computes its loss without such terms. The terms are
+	 * into {@link #terms}, compiling it for the current loss function on first use. The terms are
 	 * allocated once, with the first operation, in the shape the loss function computes them in.
 	 *
-	 * @return the loss terms operation, or {@code null} if there are no terms to compute
+	 * @return the loss terms operation
 	 */
 	private Submittable lossTerms() {
-		if (!lossTermsResolved) {
+		if (lossTerms == null) {
 			CollectionProducer producer =
-					lossFunction.terms(p(model.getOutput().each()), expectedOutput);
-
-			if (producer != null) {
-				terms = new PackedCollection(producer.getShape());
-				lossTerms = a("Loss Terms", p(terms.each()), producer).get();
-			}
-
-			lossTermsResolved = true;
+					lossFunction.loss(p(model.getOutput().each()), expectedOutput);
+			terms = new PackedCollection(producer.getShape());
+			lossTerms = a("Loss Terms", p(terms.each()), producer).get();
 		}
 
-		return lossTerms == null ? null : Submittable.of(lossTerms);
+		return Submittable.of(lossTerms);
 	}
 
 	/**
-	 * Submits the computation of the loss of the sample whose expected output is set on
-	 * {@link #expectedOutput}, ordered after {@code dependsOn}, when the loss function computes
-	 * its loss from terms (see {@link LossProvider#terms}), so that the wait for the sample's
-	 * other work covers it too. Otherwise nothing is submitted, and the loss is computed by
-	 * {@link #sampleLoss} once that work has completed.
+	 * Returns the loss of the sample whose terms were last written by {@link #lossTerms}, once
+	 * the work that writes them has completed: the mean of {@link #terms}.
 	 *
-	 * @param dependsOn the completion of the work that produces the model output
-	 * @return the completion to wait for before {@link #sampleLoss} is read
-	 */
-	private Semaphore submitLoss(Semaphore dependsOn) {
-		Submittable operation = lossTerms();
-		return operation == null ? dependsOn : operation.submit(dependsOn);
-	}
-
-	/**
-	 * Returns the loss of the sample whose output the model holds, once the work submitted for it
-	 * through {@link #submitLoss} has completed: the mean of {@link #terms}, as
-	 * {@link LossProvider#terms} defines it, when the loss function computes such terms, and
-	 * otherwise the value of {@link LossProvider#loss(PackedCollection, PackedCollection)}.
-	 *
-	 * @param output the model output for the sample
-	 * @param target the expected output for the sample
 	 * @return the loss of the sample
 	 */
-	private double sampleLoss(PackedCollection output, PackedCollection target) {
-		if (lossTerms == null) {
-			return lossFunction.loss(output, target);
-		}
-
+	private double sampleLoss() {
 		return terms.doubleStream().average().orElse(0);
+	}
+
+	/**
+	 * Runs the forward pass for {@code input} and the loss of its output against
+	 * {@code expected}, as one chain with a single wait, and returns the loss.
+	 *
+	 * @param input     the primary input
+	 * @param expected  the expected output, of the same size as the model output
+	 * @param arguments additional inputs for multi-input models
+	 * @return the loss of the model output
+	 */
+	private double forwardLoss(PackedCollection input, PackedCollection expected,
+							   PackedCollection... arguments) {
+		expectedOutput.set(expected.reshape(expectedOutput.getShape()));
+		Semaphore completion = lossTerms().submit(model.submitForward(null, input, arguments));
+		if (completion != null) completion.waitFor();
+		return sampleLoss();
 	}
 
 	/**
@@ -584,13 +566,8 @@ public class ModelOptimizer implements CodeFeatures {
 	 * reads a result: once per sample, before the {@link LossProvider#loss loss} it needs to skip
 	 * a sample with an undefined loss and to average over the epoch, and once at the end of each
 	 * epoch, so no training work is in flight when validation, the progress callback or the
-	 * caller observes the model.
-	 * </p>
-	 * <p>
-	 * When the loss function computes its loss from {@link LossProvider#terms terms}, the terms
-	 * are part of the chain too, ordered after the loss gradient, and the loss of the sample is
-	 * their mean, read after that one wait. Otherwise the loss is computed by
-	 * {@link LossProvider#loss(PackedCollection, PackedCollection)} after it.
+	 * caller observes the model. The terms of the loss are part of the chain too, ordered after
+	 * the loss gradient, and the loss of the sample is their mean, read after that one wait.
 	 * </p>
 	 * <p>
 	 * Training stops early if:
@@ -644,11 +621,10 @@ public class ModelOptimizer implements CodeFeatures {
 					// Forward pass, loss gradient and loss; the target is compared element-wise with
 					// the output, so it is read in the output's shape and must match its size
 					expectedOutput.set(valid.reshape(expectedOutput.getShape()));
-					pending = submitLoss(lossGradient().submit(model.submitForward(pending, input, arguments)));
+					pending = lossTerms().submit(lossGradient().submit(model.submitForward(pending, input, arguments)));
 					if (pending != null) pending.waitFor();
 
-					PackedCollection out = model.getOutput();
-					double ls = sampleLoss(out.each(), valid.each());
+					double ls = sampleLoss();
 					if (Double.isNaN(ls)) continue v;
 
 					if (i == 0 && count == 0 && logIteration(totalIterations + 1))
@@ -663,9 +639,9 @@ public class ModelOptimizer implements CodeFeatures {
 					pending = model.submitBackward(pending, gradient);
 
 					if (first) {
-						pending = submitLoss(model.submitForward(pending, input, arguments));
+						pending = lossTerms().submit(model.submitForward(pending, input, arguments));
 						if (pending != null) pending.waitFor();
-						updatedLoss = sampleLoss(out, valid);
+						updatedLoss = sampleLoss();
 
 						if ((ls - updatedLoss) < 0.0) {
 							throw new RuntimeException("Loss increased from " + ls + " to " + updatedLoss);
@@ -780,8 +756,7 @@ public class ModelOptimizer implements CodeFeatures {
 			PackedCollection expected = target.getExpectedOutput();
 			PackedCollection[] arguments = target.getArguments();
 
-			PackedCollection output = model.forward(input, arguments);
-			double ls = lossFunction.loss(output, expected);
+			double ls = forwardLoss(input, expected, arguments);
 
 			if (!Double.isNaN(ls)) {
 				totalLoss += ls;
@@ -826,12 +801,10 @@ public class ModelOptimizer implements CodeFeatures {
 		for (ValueTarget<?> target : data) {
 			PackedCollection input = target.getInput();
 
-			PackedCollection valid = target.getExpectedOutput();
-			PackedCollection out = model.forward(input);
-			double ls = lossFunction.loss(out, valid);
+			double ls = forwardLoss(input, target.getExpectedOutput());
 			count++;
 
-			if (validator.test(target.getExpectedOutput(), out))
+			if (validator.test(target.getExpectedOutput(), model.getOutput()))
 				success++;
 
 			if (receptor != null)

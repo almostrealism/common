@@ -17,7 +17,6 @@
 package org.almostrealism.optimize;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -59,8 +58,9 @@ import org.almostrealism.collect.PackedCollection;
  * // Create MAE loss for output shape [batch, features]
  * MeanAbsoluteError mae = new MeanAbsoluteError(shape(10).traverseEach());
  *
- * // Compute loss
- * double loss = mae.loss(predictions, targets);
+ * // Compute loss: the mean of the absolute differences
+ * double loss = mae.loss(cp(predictions), cp(targets))
+ *     .evaluate().doubleStream().average().orElse(0);
  *
  * // Get gradient for backpropagation
  * Producer<PackedCollection> grad = mae.gradient(outputProducer, targetProducer);
@@ -76,9 +76,6 @@ public final class MeanAbsoluteError implements LossProvider, CodeFeatures {
 	/** The shape of model output tensors, used to normalize the loss. */
 	private final TraversalPolicy outputShape;
 
-	/** Compiled evaluable that computes element-wise absolute differences. */
-	private final Evaluable<PackedCollection> loss;
-
 	/**
 	 * Creates a Mean Absolute Error loss function for the specified output shape.
 	 *
@@ -86,19 +83,6 @@ public final class MeanAbsoluteError implements LossProvider, CodeFeatures {
 	 */
 	public MeanAbsoluteError(TraversalPolicy outputShape) {
 		this.outputShape = outputShape;
-		this.loss = terms(cv(outputShape, 0), cv(outputShape, 1)).get();
-	}
-
-	/**
-	 * Computes the mean absolute error between output and target.
-	 *
-	 * @param output the model's output predictions
-	 * @param target the expected target values
-	 * @return the mean of absolute differences
-	 */
-	@Override
-	public double loss(PackedCollection output, PackedCollection target) {
-		return loss.evaluate(output, target).doubleStream().average().orElse(0);
 	}
 
 	/**
@@ -109,8 +93,8 @@ public final class MeanAbsoluteError implements LossProvider, CodeFeatures {
 	 * @return a producer of {@code |output - target|}, element by element
 	 */
 	@Override
-	public CollectionProducer terms(Producer<PackedCollection> output,
-									Producer<PackedCollection> target) {
+	public CollectionProducer loss(Producer<PackedCollection> output,
+								   Producer<PackedCollection> target) {
 		return c(output).subtract(c(target)).abs();
 	}
 

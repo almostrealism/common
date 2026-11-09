@@ -171,8 +171,11 @@
                 <h3>LossProvider Interface</h3>
                 <p>The foundation for all loss functions, providing both loss computation and gradient calculation.</p>
                 <pre><code class="language-java">public interface LossProvider {
-    // Compute scalar loss value
-    double loss(PackedCollection output, PackedCollection target);
+    // The terms of the loss, whose mean is the loss
+    CollectionProducer loss(
+        Producer&lt;PackedCollection&gt; output,
+        Producer&lt;PackedCollection&gt; target
+    );
 
     // Compute gradient for backpropagation
     Producer&lt;PackedCollection&gt; gradient(
@@ -397,27 +400,21 @@ PopulationOptimizer optimizer = new PopulationOptimizer(
 // Evolution optimizes average of all metrics</code></pre>
 
                 <h3>Custom Loss Function</h3>
-                <pre><code class="language-java">public class HuberLoss implements LossProvider {
-    private double delta;
-    private CollectionProducer&lt;?&gt; shape;
+                <pre><code class="language-java">public class HuberLoss implements LossProvider, CodeFeatures {
+    private final double delta;
 
-    public HuberLoss(CollectionProducer&lt;?&gt; shape, double delta) {
-        this.shape = shape;
+    public HuberLoss(double delta) {
         this.delta = delta;
     }
 
     @Override
-    public double loss(PackedCollection output, PackedCollection target) {
-        double totalLoss = 0.0;
-        for (int i = 0; i &lt; output.getMemLength(); i++) {
-            double diff = Math.abs(output.toDouble(i) - target.toDouble(i));
-            if (diff &lt;= delta) {
-                totalLoss += 0.5 * diff * diff;
-            } else {
-                totalLoss += delta * (diff - 0.5 * delta);
-            }
-        }
-        return totalLoss / output.getMemLength();
+    public CollectionProducer loss(Producer&lt;PackedCollection&gt; output,
+                                   Producer&lt;PackedCollection&gt; target) {
+        // Quadratic for |error| &lt;= delta, linear beyond it
+        CollectionProducer error = c(output).subtract(c(target)).abs();
+        return error.greaterThan(c(delta),
+                error.subtract(c(0.5 * delta)).multiply(c(delta)),
+                error.pow(2.0).multiply(c(0.5)));
     }
 
     @Override

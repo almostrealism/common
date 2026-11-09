@@ -17,7 +17,6 @@
 package org.almostrealism.optimize.test;
 
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
@@ -36,9 +35,9 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Tests for {@link ModelOptimizer} training functionality.
@@ -543,123 +542,32 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	}
 
 	/**
-	 * Training with a loss function that computes its loss from {@link LossProvider#terms terms},
-	 * which {@link ModelOptimizer} submits with the passes of each sample, reports exactly the same
-	 * loss for every epoch, and leaves the same parameters, as training with the same loss computed
-	 * by {@link LossProvider#loss(PackedCollection, PackedCollection)} once the passes of each
-	 * sample have completed. Both mean squared error and mean absolute error are checked.
+	 * {@link ModelOptimizer#evaluate(Dataset)} computes the loss of each sample from the
+	 * {@link LossProvider#loss loss} terms, submitted with the sample's forward pass, and reports
+	 * their mean over the dataset: the same value as the mean squared error computed on the host
+	 * from the outputs of the model. {@link ModelOptimizer#accuracy} computes the loss the same way,
+	 * pushing the same values to the receptor, and passes the model output for each sample to the
+	 * validator.
 	 */
 	@Test(timeout = 120000)
-	public void lossFromTermsMatchesEagerLoss() {
-		List<ValueTarget<PackedCollection>> samples = regressionSamples(10);
-		List<LossProvider> losses = List.of(
-				new MeanSquaredError(shape(3).traverseEach()),
-				new MeanAbsoluteError(shape(3).traverseEach()));
-
-		for (LossProvider loss : losses) {
-			Assert.assertNotNull(loss.terms(cv(shape(3).traverseEach(), 0), cv(shape(3).traverseEach(), 1)));
-
-			PackedCollection eagerWeights = initialWeights();
-			ModelOptimizer eager = new ModelOptimizer(denseModel(eagerWeights), () -> Dataset.of(samples));
-			eager.setLossFunction(eagerLoss(loss, new AtomicInteger()));
-			eager.setLogFrequency(0);
-			TrainingResult eagerResult = eager.optimize(3);
-
-			PackedCollection chainedWeights = initialWeights();
-			ModelOptimizer chained = new ModelOptimizer(denseModel(chainedWeights), () -> Dataset.of(samples));
-			chained.setLossFunction(loss);
-			chained.setLogFrequency(0);
-			TrainingResult chainedResult = chained.optimize(3);
-
-			Assert.assertEquals(3, eagerResult.getTrainLossHistory().size());
-			Assert.assertEquals(eagerResult.getTrainLossHistory(), chainedResult.getTrainLossHistory());
-			Assert.assertTrue("Training did not change the weights", compare(initialWeights(), chainedWeights) > 1e-4);
-			assertEquals(eagerWeights, chainedWeights);
-		}
-	}
-
-	/**
-	 * A loss function without {@link LossProvider#terms terms} has its loss computed by
-	 * {@link LossProvider#loss(PackedCollection, PackedCollection)} for every sample trained, and
-	 * once more for the first sample of each epoch, whose loss is computed again after its update.
-	 */
-	@Test(timeout = 120000)
-	public void lossWithoutTermsIsComputedForEverySample() {
+	public void evaluateAveragesLossTerms() {
 		List<ValueTarget<PackedCollection>> samples = regressionSamples(6);
-		AtomicInteger calls = new AtomicInteger();
+		Dataset<PackedCollection> data = Dataset.of(samples);
+		CompiledModel model = denseModel(initialWeights());
+		double expected = computeAverageLoss(model, data);
 
-		ModelOptimizer optimizer = new ModelOptimizer(denseModel(initialWeights()), () -> Dataset.of(samples));
-		optimizer.setLossFunction(eagerLoss(new MeanSquaredError(shape(3).traverseEach()), calls));
+		ModelOptimizer optimizer = new ModelOptimizer(model, () -> data);
 		optimizer.setLogFrequency(0);
-		TrainingResult result = optimizer.optimize(2);
+		assertEquals(expected, optimizer.evaluate(data), 1e-6);
 
-		Assert.assertEquals(2, result.getTrainLossHistory().size());
-		Assert.assertEquals(2 * (samples.size() + 1), calls.get());
-	}
-
-	/**
-	 * Replacing a loss function that computes its loss from {@link LossProvider#terms terms}
-	 * discards the terms compiled for it: after training with mean squared error, a loss function
-	 * without terms has its loss computed by
-	 * {@link LossProvider#loss(PackedCollection, PackedCollection)} for every sample, and switching
-	 * back to a loss function with terms trains exactly as an optimizer with the same history,
-	 * whose loss functions never had terms, does.
-	 */
-	@Test(timeout = 120000)
-	public void settingLossFunctionDiscardsPreviousTerms() {
-		List<ValueTarget<PackedCollection>> samples = regressionSamples(6);
-		MeanSquaredError mse = new MeanSquaredError(shape(3).traverseEach());
-		MeanAbsoluteError mae = new MeanAbsoluteError(shape(3).traverseEach());
-		AtomicInteger calls = new AtomicInteger();
-
-		PackedCollection weights = initialWeights();
-		ModelOptimizer optimizer = new ModelOptimizer(denseModel(weights), () -> Dataset.of(samples));
-		optimizer.setLogFrequency(0);
-		optimizer.setLossFunction(mse);
-		optimizer.optimize(1);
-		optimizer.setLossFunction(eagerLoss(mae, calls));
-		optimizer.optimize(1);
-		Assert.assertEquals(samples.size() + 1, calls.get());
-
-		optimizer.setLossFunction(mae);
-		TrainingResult result = optimizer.optimize(2);
-		Assert.assertEquals(samples.size() + 1, calls.get());
-
-		PackedCollection referenceWeights = initialWeights();
-		ModelOptimizer reference = new ModelOptimizer(denseModel(referenceWeights), () -> Dataset.of(samples));
-		reference.setLogFrequency(0);
-		reference.setLossFunction(eagerLoss(mse, new AtomicInteger()));
-		reference.optimize(1);
-		reference.setLossFunction(eagerLoss(mae, new AtomicInteger()));
-		reference.optimize(1);
-		reference.setLossFunction(eagerLoss(mae, new AtomicInteger()));
-		TrainingResult referenceResult = reference.optimize(2);
-
-		Assert.assertEquals(2, result.getTrainLossHistory().size());
-		Assert.assertEquals(referenceResult.getTrainLossHistory(), result.getTrainLossHistory());
-		assertEquals(referenceWeights, weights);
-	}
-
-	/**
-	 * Returns a loss function with the loss and gradient of {@code loss} and no
-	 * {@link LossProvider#terms terms}, so that its loss is only computed by
-	 * {@link LossProvider#loss(PackedCollection, PackedCollection)}, which counts its calls in
-	 * {@code calls}.
-	 */
-	private LossProvider eagerLoss(LossProvider loss, AtomicInteger calls) {
-		return new LossProvider() {
-			@Override
-			public double loss(PackedCollection output, PackedCollection target) {
-				calls.incrementAndGet();
-				return loss.loss(output, target);
-			}
-
-			@Override
-			public Producer<PackedCollection> gradient(Producer<PackedCollection> output,
-													   Producer<PackedCollection> target) {
-				return loss.gradient(output, target);
-			}
-		};
+		List<Double> losses = new ArrayList<>();
+		optimizer.setReceptor(protein -> () -> () -> losses.add(protein.get().evaluate()));
+		List<Integer> outputSizes = new ArrayList<>();
+		double accuracy = optimizer.accuracy((target, output) -> outputSizes.add(output.getMemLength()));
+		Assert.assertEquals(1.0, accuracy, 0.0);
+		Assert.assertEquals(Collections.nCopies(samples.size(), 3), outputSizes);
+		Assert.assertEquals(samples.size(), losses.size());
+		assertEquals(expected, losses.stream().mapToDouble(Double::doubleValue).average().orElse(0), 1e-6);
 	}
 
 	/**
@@ -683,12 +591,15 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	private double blockingEpoch(CompiledModel model, LossProvider loss, List<ValueTarget<PackedCollection>> samples) {
 		Evaluable<PackedCollection> gradient = loss.gradient(
 				cv(shape(3).traverseEach(), 0), cv(shape(3).traverseEach(), 1)).get();
+		Evaluable<PackedCollection> terms = loss.loss(
+				cv(shape(3).traverseEach(), 0), cv(shape(3).traverseEach(), 1)).get();
 
 		double total = 0.0;
 		for (ValueTarget<PackedCollection> sample : samples) {
 			PackedCollection out = model.forward(sample.getInput());
 			PackedCollection grad = gradient.evaluate(out.each(), sample.getExpectedOutput().each());
-			total += loss.loss(out.each(), sample.getExpectedOutput().each());
+			total += terms.evaluate(out.each(), sample.getExpectedOutput().each())
+					.doubleStream().average().orElse(0);
 			model.backward(grad);
 		}
 
