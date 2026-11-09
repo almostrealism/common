@@ -22,6 +22,7 @@ import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionContainer;
 import org.almostrealism.graph.Receptor;
@@ -315,11 +316,11 @@ public class ModelOptimizer implements CodeFeatures {
 	 */
 	private Submittable lossTerms() {
 		if (!lossTermsResolved) {
-			Producer<PackedCollection> producer =
+			CollectionProducer producer =
 					lossFunction.terms(p(model.getOutput().each()), expectedOutput);
 
 			if (producer != null) {
-				terms = new PackedCollection(shape(producer));
+				terms = new PackedCollection(producer.getShape());
 				lossTerms = a("Loss Terms", p(terms.each()), producer).get();
 			}
 

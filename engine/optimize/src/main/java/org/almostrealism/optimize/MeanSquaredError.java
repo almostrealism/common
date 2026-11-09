@@ -106,7 +106,7 @@ public class MeanSquaredError implements LossProvider, CodeFeatures {
 	 * @return a producer of {@code (output - target)^2}, element by element
 	 */
 	@Override
-	public CollectionProducer terms(Producer<PackedCollection> output,
+	public final CollectionProducer terms(Producer<PackedCollection> output,
 									Producer<PackedCollection> target) {
 		return c(output).subtract(c(target)).pow(2.0);
 	}

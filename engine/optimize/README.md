@@ -240,7 +240,7 @@ public interface LossProvider {
 
     // The values whose mean is the loss, or null (the default) if the loss
     // is only computed by loss(output, target)
-    default Producer<PackedCollection> terms(
+    default CollectionProducer terms(
         Producer<PackedCollection> output,
         Producer<PackedCollection> target
     ) { return null; }
@@ -387,8 +387,8 @@ public class HuberLoss implements LossProvider, CodeFeatures {
     }
 
     @Override
-    public Producer<PackedCollection> terms(Producer<PackedCollection> output,
-                                            Producer<PackedCollection> target) {
+    public CollectionProducer terms(Producer<PackedCollection> output,
+                                    Producer<PackedCollection> target) {
         // Quadratic for |error| <= delta, linear beyond it
         CollectionProducer error = c(output).subtract(c(target)).abs();
         return error.greaterThan(c(delta),

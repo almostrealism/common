@@ -109,7 +109,7 @@ public class MeanAbsoluteError implements LossProvider, CodeFeatures {
 	 * @return a producer of {@code |output - target|}, element by element
 	 */
 	@Override
-	public CollectionProducer terms(Producer<PackedCollection> output,
+	public final CollectionProducer terms(Producer<PackedCollection> output,
 									Producer<PackedCollection> target) {
 		return c(output).subtract(c(target)).abs();
 	}

@@ -17,6 +17,7 @@
 package org.almostrealism.optimize;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 /**
@@ -115,14 +116,18 @@ public interface LossProvider {
 	 * them, such as checking or adjusting the value. The loss is then always obtained from
 	 * {@link #loss(PackedCollection, PackedCollection)}.
 	 * </p>
+	 * <p>
+	 * The terms are a {@link CollectionProducer} so that their shape is known before they are
+	 * computed: {@link ModelOptimizer} allocates the destination for the terms from it.
+	 * </p>
 	 *
 	 * @param output producer for the model's output predictions
 	 * @param target producer for the expected target values
 	 * @return a producer of the loss terms, or {@code null} if the loss is only computed by
 	 *         {@link #loss(PackedCollection, PackedCollection)}
 	 */
-	default Producer<PackedCollection> terms(Producer<PackedCollection> output,
-											 Producer<PackedCollection> target) {
+	default CollectionProducer terms(Producer<PackedCollection> output,
+									 Producer<PackedCollection> target) {
 		return null;
 	}
 
