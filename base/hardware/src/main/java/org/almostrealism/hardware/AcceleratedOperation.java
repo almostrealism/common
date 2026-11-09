@@ -191,6 +191,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	protected MemoryDataArgumentMap argumentMap;
 
 	/**
+	 * Observer of how operations obtain, bind and dispatch compiled kernels, or null (the default)
+	 * to report nothing. It only observes (see {@link KernelBindingListener}).
+	 */
+	public static KernelBindingListener bindingListener;
+
+	/**
 	 * Creates a new accelerated operation within the specified compute context.
 	 *
 	 * @param context The {@link ComputeContext} for compilation and execution (OpenCL, Metal, JNI, etc.)
@@ -745,6 +751,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				boolean aggregateCopyOut = aggregating
 						&& (output == null || MemoryDataArgumentMap.enableStrictSideEffects);
 				boolean processing = !process.isEmpty();
+
+				if (bindingListener != null) bindingListener.dispatched(getMetadata(), aggregating);
 
 				// The kernel chains on each copy-in group's merged completion (Submittable.submit)
 				// and on any asynchronously-delivered arguments merged in here, so it is ordered
