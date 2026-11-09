@@ -536,10 +536,10 @@ public class SimpleRenderTest extends TestSuiteBase {
 					outputDir.mkdirs();
 				}
 
-				File outputFile = new File("results/simple-sphere-test.jpg");
+				File outputFile = new File("results/simple-sphere-test.png");
 				log("Saving image to: " + outputFile.getAbsolutePath());
 
-				ImageCanvas.encodeImageFile(v(imageData).get(), outputFile, ImageCanvas.JPEGEncoding);
+				ImageCanvas.encodeImageFile(v(imageData).get(), outputFile, ImageCanvas.PNGEncoding);
 
 				log("Image saved successfully!");
 			} catch (IOException e) {
@@ -659,10 +659,10 @@ public class SimpleRenderTest extends TestSuiteBase {
 				outputDir.mkdirs();
 			}
 
-			File outputFile = new File("results/two-spheres-test.jpg");
+			File outputFile = new File("results/two-spheres-test.png");
 			log("Saving image to: " + outputFile.getAbsolutePath());
 
-			ImageCanvas.encodeImageFile(v(imageData).get(), outputFile, ImageCanvas.JPEGEncoding);
+			ImageCanvas.encodeImageFile(v(imageData).get(), outputFile, ImageCanvas.PNGEncoding);
 
 			log("Image saved successfully!");
 		} catch (Exception e) {

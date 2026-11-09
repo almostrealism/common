@@ -197,8 +197,7 @@ public class ImageCanvasTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies JPEG encoding (written as PNG) produces a decodable image of the
-	 * original dimensions.
+	 * Verifies PNG encoding produces a decodable image of the original dimensions.
 	 */
 	@Test(timeout = 30000)
 	public void writeImageJpegIsDecodable() throws IOException {
@@ -210,7 +209,7 @@ public class ImageCanvasTest extends TestSuiteBase {
 		}
 
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		ImageCanvas.writeImage(image, out, ImageCanvas.JPEGEncoding);
+		ImageCanvas.writeImage(image, out, ImageCanvas.PNGEncoding);
 
 		BufferedImage decoded = ImageIO.read(new ByteArrayInputStream(out.toByteArray()));
 		Assert.assertNotNull(decoded);

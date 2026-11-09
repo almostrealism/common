@@ -41,6 +41,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.SystemUtils;
+import org.almostrealism.time.Temporal;
 import org.junit.Assert;
 import org.junit.Assume;
 
@@ -1056,6 +1057,28 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		} else {
 			r.run();
 		}
+	}
+
+	/**
+	 * Builds a {@link Temporal} test double that steps {@code state <- operator @ state} by a
+	 * {@code matmul} into a next-state buffer followed by a copy back, so every element reads every
+	 * other element of the state (the step is globally coupled, not element-local, which is why it
+	 * cannot update the state in place).
+	 *
+	 * @param label    the name given to the step's {@link OperationList} and its {@code matmul}
+	 *                 operation (e.g. {@code "Ring Diffusion"})
+	 * @param operator the coupling matrix, shape {@code (n, n)}
+	 * @param state    the state vector, shape {@code (n)}, updated in place as the system steps
+	 * @return the coupled system
+	 */
+	default Temporal coupledMatmulStep(String label, PackedCollection operator, PackedCollection state) {
+		PackedCollection next = new PackedCollection(state.getShape());
+		return () -> {
+			OperationList tick = new OperationList(label);
+			tick.add(a(label, cp(next), matmul(cp(operator), cp(state))));
+			tick.add(a("copyBack", cp(state), cp(next)));
+			return tick;
+		};
 	}
 
 	/**

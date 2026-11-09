@@ -32,6 +32,7 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.IntConsumer;
 import java.util.function.LongConsumer;
 import java.util.function.Supplier;
 
@@ -347,6 +348,42 @@ public class SimulationRunner extends TemporalRunner {
 	 */
 	public void addBoundaryListener(int interval, LongConsumer listener) {
 		listeners.add(new Scheduled<>(interval, listener));
+	}
+
+	/**
+	 * Drives the simulation into a sequence of {@code frameCount} frames, invoking {@code frame}
+	 * once at each frame boundary with the index of the frame about to be observed. This is the
+	 * render-agnostic frame driver: the hook is where a host consumer of the state runs (it rebuilds
+	 * renderable geometry and renders it, writes a field visualisation, checkpoints, and so on),
+	 * while this runner remains the only thing that steps the physics.
+	 *
+	 * <p>It {@link #addBoundaryListener(int, LongConsumer) attaches a boundary listener} at interval
+	 * {@code stepsPerFrame} that maps the step index to a frame index, then {@link #run(long) runs}
+	 * {@code frameCount * stepsPerFrame} steps. A boundary listener is due before steps
+	 * {@code 0, stepsPerFrame, 2 * stepsPerFrame, ...}, so the hook sees frame {@code 0} at the
+	 * initial condition and frame {@code f} after {@code f * stepsPerFrame} steps, for exactly
+	 * {@code frameCount} frames. The hook must not advance the simulation itself; honoring that is
+	 * what keeps this runner the sole owner of the step loop.</p>
+	 *
+	 * <p>This is a one-shot top-level drive: it should be called on a runner that has not been
+	 * advanced (or has just been {@link #reset()}), since the frame index is derived from the
+	 * global step counter. It registers a boundary listener for the lifetime of the runner; a
+	 * caller needing finer control composes {@link #addBoundaryListener(int, LongConsumer)} and
+	 * {@link #run(long)} directly.</p>
+	 *
+	 * @param stepsPerFrame the number of steps between frames; must be positive
+	 * @param frameCount    the number of frames to observe; must not be negative
+	 * @param frame         the per-frame hook, called with the frame index
+	 * @throws IllegalArgumentException if {@code stepsPerFrame} is not positive or {@code frameCount}
+	 *                                  is negative
+	 */
+	public void runFrames(int stepsPerFrame, int frameCount, IntConsumer frame) {
+		if (frameCount < 0) {
+			throw new IllegalArgumentException("Cannot render a negative number of frames (" + frameCount + ")");
+		}
+
+		addBoundaryListener(stepsPerFrame, step -> frame.accept((int) (step / stepsPerFrame)));
+		run((long) frameCount * stepsPerFrame);
 	}
 
 	/**
