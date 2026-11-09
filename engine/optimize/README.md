@@ -93,8 +93,9 @@ LossProvider mse = new MeanSquaredError(traverseEach());
 double loss = mse.loss(output, target);
 Producer<PackedCollection> gradient = mse.gradient(outputProducer, targetProducer);
 
-// The squared differences as a computation, whose mean is the loss
-Producer<PackedCollection> terms = mse.terms(outputProducer, targetProducer);
+// The squared differences as a computation, whose mean is the loss; a CollectionProducer,
+// so the shape of the terms is known before they are computed
+CollectionProducer terms = mse.terms(outputProducer, targetProducer);
 
 // Mean Absolute Error (robust regression)
 LossProvider mae = new MeanAbsoluteError(traverseEach());
