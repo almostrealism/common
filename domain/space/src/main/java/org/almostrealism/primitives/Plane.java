@@ -156,11 +156,11 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	/**
 	 * Returns the distance along the given direction, in multiples of its length, from the given
 	 * point to the nearest face of the slab ahead of it within the active region, or
-	 * {@code Double.MAX_VALUE - 1.0} if there is none.
+	 * {@link #MISS} if there is none.
 	 *
 	 * @param p the starting point
 	 * @param d the direction
-	 * @return the distance to the nearest face, or {@code Double.MAX_VALUE - 1.0}
+	 * @return the distance to the nearest face, or {@link #MISS}
 	 */
 	@Override
 	public double intersect(Vector p, Vector d) {
@@ -181,14 +181,14 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 	 * @param d the direction
 	 * @param n the surface normal
 	 * @param t the distance to the face
-	 * @return {@code t}, or {@code Double.MAX_VALUE - 1.0} if the hit does not count
+	 * @return {@code t}, or {@link #MISS} if the hit does not count
 	 */
 	private double faceDistance(Vector p, Vector d, Vector n, double t) {
-		if (!(t >= 0.0)) return Double.MAX_VALUE - 1.0;
+		if (!(t >= 0.0)) return MISS;
 
 		Vector x = d.multiply(t).add(p);
 		Vector probe = x.subtract(n.multiply(Math.signum(x.dotProduct(n)) * this.thick / 2.0));
-		return this.inside(value(probe)) ? t : Double.MAX_VALUE - 1.0;
+		return this.inside(value(probe)) ? t : MISS;
 	}
 
 	@Override

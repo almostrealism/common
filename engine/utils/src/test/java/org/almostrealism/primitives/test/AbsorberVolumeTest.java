@@ -19,13 +19,14 @@ package org.almostrealism.primitives.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.physics.Volume;
 import org.almostrealism.primitives.BoxVolume;
+import org.almostrealism.primitives.Plane;
 import org.almostrealism.primitives.SphericalVolume;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
- * Tests {@link SphericalVolume} and {@link BoxVolume}: containment, intersection, normals, and
- * that surface coordinates and spatial coordinates are inverses.
+ * Tests {@link SphericalVolume}, {@link BoxVolume} and {@link Plane}: containment, intersection,
+ * normals, and that surface coordinates and spatial coordinates are inverses.
  */
 public class AbsorberVolumeTest extends TestSuiteBase {
 	/** The tolerance for comparing coordinates and distances. */
@@ -47,6 +48,21 @@ public class AbsorberVolumeTest extends TestSuiteBase {
 		box.setSurfaceNormal(normal);
 		box.setOrientation(orientation);
 		return box;
+	}
+
+	/**
+	 * Returns a slab in the xy plane, 4 wide along x and 2 high along y, with half-thickness 0.1.
+	 *
+	 * @return the slab
+	 */
+	private Plane slab() {
+		Plane plane = new Plane();
+		plane.setWidth(4.0);
+		plane.setHeight(2.0);
+		plane.setThickness(0.1);
+		plane.setOrientation(new double[] {0.0, 1.0, 0.0});
+		plane.setSurfaceNormal(v(new Vector(0.0, 0.0, 1.0)));
+		return plane;
 	}
 
 	/**
@@ -114,6 +130,32 @@ public class AbsorberVolumeTest extends TestSuiteBase {
 		SphericalVolume ball = new SphericalVolume(2.0);
 		assertRoundTrip(ball, new double[][] { {0.5, 0.5}, {0.25, 0.1}, {0.9, 0.75}, {0.1, 0.99} });
 		assertEquals(2.0, new Vector(ball.getSpatialCoords(new double[] {0.3, 0.6})).length(), TOLERANCE);
+	}
+
+	/** A slab is hit at the face nearest the starting point, from either side. */
+	@Test(timeout = 30000)
+	public void planeIntersectsNearestFace() {
+		Plane plane = slab();
+		assertEquals(4.9, plane.intersect(new Vector(0.0, 0.0, 5.0), new Vector(0.0, 0.0, -1.0)), TOLERANCE);
+		assertEquals(4.9, plane.intersect(new Vector(0.5, 0.5, -5.0), new Vector(0.0, 0.0, 1.0)), TOLERANCE);
+		assertEquals(2.45, plane.intersect(new Vector(0.0, 0.0, 5.0), new Vector(0.0, 0.0, -2.0)), TOLERANCE);
+	}
+
+	/**
+	 * A slab reports {@link Volume#MISS} for a ray pointing away from it, a ray that crosses it
+	 * outside its active region, and a ray parallel to it.
+	 */
+	@Test(timeout = 30000)
+	public void planeMisses() {
+		Plane plane = slab();
+		assertEquals("behind", Volume.MISS,
+				plane.intersect(new Vector(0.0, 0.0, 5.0), new Vector(0.0, 0.0, 1.0)), 0.0);
+		assertEquals("beyond width", Volume.MISS,
+				plane.intersect(new Vector(2.5, 0.0, 5.0), new Vector(0.0, 0.0, -1.0)), 0.0);
+		assertEquals("beyond height", Volume.MISS,
+				plane.intersect(new Vector(0.0, 1.5, 5.0), new Vector(0.0, 0.0, -1.0)), 0.0);
+		assertEquals("parallel", Volume.MISS,
+				plane.intersect(new Vector(0.0, 0.0, 5.0), new Vector(1.0, 0.0, 0.0)), 0.0);
 	}
 
 	/** Each wall is inside the box, but the space the walls enclose is not. */
