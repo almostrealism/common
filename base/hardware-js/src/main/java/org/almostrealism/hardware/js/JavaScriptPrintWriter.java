@@ -27,6 +27,7 @@ import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.PrintWriter;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -58,13 +59,23 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	/**
-	 * Begins a scope: a named scope is written as a function, which takes no parameters, and
-	 * an unnamed one as a block.
+	 * Begins a scope: a named scope is written as a function whose signature lists the scope's
+	 * array arguments followed by its scalar parameters, by name and untyped since JavaScript is
+	 * untyped; an unnamed scope is written as a block.
 	 */
 	@Override
 	public void beginScope(String name, OperationMetadata metadata, Accessibility access,
 						   List<ArrayVariable<?>> arguments, List<Variable<?, ?>> parameters) {
-		p.println(name == null ? "{" : "function " + name + "() {");
+		if (name == null) {
+			p.println("{");
+			return;
+		}
+
+		List<String> signature = new ArrayList<>();
+		arguments.forEach(a -> signature.add(a.getName()));
+		parameters.forEach(parameter -> signature.add(parameter.getName()));
+
+		p.println("function " + name + "(" + String.join(", ", signature) + ") {");
 	}
 
 	@Override

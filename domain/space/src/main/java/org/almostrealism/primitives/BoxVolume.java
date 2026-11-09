@@ -322,7 +322,7 @@ public class BoxVolume implements Volume<Object>, CodeFeatures {
 
 	@Override
 	public double intersect(Vector p, Vector d) {
-		double nearest = SphericalVolume.MISS;
+		double nearest = MISS;
 
 		for (Wall wall : walls()) {
 			nearest = Math.min(nearest, wall.plane.intersect(wall.local(p), d));

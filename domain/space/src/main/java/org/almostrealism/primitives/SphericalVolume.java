@@ -33,9 +33,6 @@ import org.almostrealism.physics.Volume;
  * @author  Michael Murray
  */
 public class SphericalVolume implements Volume<Object>, CodeFeatures {
-	/** The distance {@link #intersect(Vector, Vector)} returns when there is no intersection ahead. */
-	public static final double MISS = Double.MAX_VALUE - 1.0;
-
 	/** The radius of the ball. */
 	private double radius;
 

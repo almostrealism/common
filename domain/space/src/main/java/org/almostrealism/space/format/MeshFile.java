@@ -30,6 +30,7 @@ import org.almostrealism.space.ShadableSurfaceWrapper;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
 
 /**
@@ -115,8 +116,10 @@ public class MeshFile implements MeshSource, ShadableSurfaceWrapper, ShadableSur
 		if (this.mesh == null) {
 			try {
 				if (this.url != null) {
-					this.mesh = (Mesh) ModelData.decodeScene(new URL(this.url + this.name).openStream(),
-							this.format, null, this.s).getSurfaces()[0];
+					try (InputStream in = new URL(this.url + this.name).openStream()) {
+						this.mesh = (Mesh) ModelData.decodeScene(in, this.format, null, this.s)
+								.getSurfaces()[0];
+					}
 				} else {
 					this.mesh = (Mesh) FileDecoder.decodeSurfaceFile(
 							new File(this.name), this.format, null, this.s);

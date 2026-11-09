@@ -10,7 +10,8 @@ become a module like this one.
   variables, a single work item (every kernel index is `0`), no memory-space annotations, and
   `Math.PI`.
 - `JavaScriptPrintWriter` — a `CodePrintWriter` that writes declarations as `var`, method calls
-  as statements (`member.name(args);`), named scopes as parameterless functions and unnamed
+  as statements (`member.name(args);`), named scopes as functions whose signature lists the
+  scope's array arguments followed by its scalar parameters (by name, untyped), and unnamed
   scopes as blocks.
 
 ```java

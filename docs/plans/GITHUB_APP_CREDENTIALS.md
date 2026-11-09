@@ -47,7 +47,7 @@ This unlocks three things FlowTree needs across use-cases:
   agent → ar-manager → controller (`FlowTreeApiEndpoint` GitHub proxy) → GitHub,
   using the org's PAT.
 - Git **transport** (clone/push) is handled in
-  `flowtree/base/src/main/java/io/flowtree/jobs/GitOperations.java` and
+  `flowtree/base/src/main/java/io/flowtree/git/GitOperations.java` and
   `flowtree/runtime/src/main/java/io/flowtree/jobs/GitRepositorySetup.java`,
   driven by the workstream's `repoUrl` / `defaultBranch`.
 
@@ -170,7 +170,7 @@ All in the `almostrealism/common` repo:
 - `FlowTreeApiEndpoint` — GitHub proxy uses the installation token for
   App-backed workstreams.
 - `flowtree/runtime/src/main/java/io/flowtree/jobs/GitRepositorySetup.java` /
-  `flowtree/base/src/main/java/io/flowtree/jobs/GitOperations.java` — inject the
+  `flowtree/base/src/main/java/io/flowtree/git/GitOperations.java` — inject the
   installation token as the git transport credential for clone/push.
 - `tools/mcp/secrets/server.py` — source of the App private key.
 

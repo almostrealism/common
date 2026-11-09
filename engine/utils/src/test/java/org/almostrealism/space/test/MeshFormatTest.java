@@ -121,6 +121,34 @@ public class MeshFormatTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Reading GTS into a non-empty initial mesh appends the vertices and offsets the triangle
+	 * indices past the existing ones, so the triangles reference the data just read.
+	 */
+	@Test(timeout = 60000)
+	public void gtsInitialMeshOffset() throws IOException {
+		GtsResource gts = new GtsResource.MeshTranscoder().transcode(new MeshResource(square()));
+
+		Mesh initial = new Mesh();
+		initial.addVector(new Vector(9, 9, 9));
+
+		GtsResource.MeshReader reader = new GtsResource.MeshReader();
+		reader.setInitialMesh(initial);
+		Mesh mesh = reader.transcode(gts).getMesh();
+
+		Vector[] v = mesh.getVectors();
+		Assert.assertEquals(1 + SQUARE.length, v.length);
+
+		int[][] t = mesh.getTriangleData();
+		Assert.assertEquals(SQUARE_TRIANGLES.length, t.length);
+
+		for (int i = 0; i < t.length; i++) {
+			Set<Integer> expected = new HashSet<>();
+			for (int corner : SQUARE_TRIANGLES[i]) expected.add(corner + 1);
+			Assert.assertEquals("triangle " + i, expected, corners(t[i]));
+		}
+	}
+
+	/**
 	 * OBJ vertices and faces are read, comments and texture coordinates are ignored, and only
 	 * the first three corners of a larger face are used.
 	 */

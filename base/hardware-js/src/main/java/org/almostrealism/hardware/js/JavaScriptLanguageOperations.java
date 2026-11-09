@@ -49,4 +49,20 @@ public class JavaScriptLanguageOperations extends DefaultLanguageOperations {
 	public String pi() {
 		return "Math.PI";
 	}
+
+	/** JavaScript exposes exponentiation as {@code Math.pow}. */
+	@Override
+	public String pow(String a, String b) { return "Math.pow(" + a + ", " + b + ")"; }
+
+	/** JavaScript exposes the minimum as {@code Math.min}. */
+	@Override
+	public String min(String a, String b) { return "Math.min(" + a + ", " + b + ")"; }
+
+	/** JavaScript exposes the maximum as {@code Math.max}. */
+	@Override
+	public String max(String a, String b) { return "Math.max(" + a + ", " + b + ")"; }
+
+	/** JavaScript exposes the absolute value as {@code Math.abs}. */
+	@Override
+	public String abs(String value) { return "Math.abs(" + value + ")"; }
 }

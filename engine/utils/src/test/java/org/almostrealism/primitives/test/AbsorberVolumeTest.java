@@ -85,14 +85,14 @@ public class AbsorberVolumeTest extends TestSuiteBase {
 
 		assertEquals(3.0, ball.intersect(new Vector(0.0, 0.0, 5.0), down), TOLERANCE);
 		assertEquals(2.0, ball.intersect(new Vector(0.0, 0.0, 0.0), down), TOLERANCE);
-		assertEquals(SphericalVolume.MISS, ball.intersect(new Vector(0.0, 0.0, 5.0), down.minus()), 0.0);
+		assertEquals(Volume.MISS, ball.intersect(new Vector(0.0, 0.0, 5.0), down.minus()), 0.0);
 	}
 
 	/** A ray passing beside the ball reports a miss rather than NaN. */
 	@Test(timeout = 30000)
 	public void sphereMissIsNotNaN() {
 		SphericalVolume ball = new SphericalVolume(2.0);
-		assertEquals(SphericalVolume.MISS,
+		assertEquals(Volume.MISS,
 				ball.intersect(new Vector(0.0, 5.0, 5.0), new Vector(0.0, 0.0, -1.0)), 0.0);
 	}
 

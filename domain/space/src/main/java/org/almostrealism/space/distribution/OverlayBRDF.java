@@ -20,8 +20,6 @@ import io.almostrealism.uml.Nameable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.stats.SphericalProbabilityDistribution;
 
-import java.lang.reflect.Method;
-
 /**
  * Sums one sample from each of several child distributions. The sum is normalized by default,
  * which {@link #setNormalizeResult(boolean)} can turn off.
@@ -72,31 +70,6 @@ public class OverlayBRDF extends DirectionDistribution implements Nameable {
 	 * @return true if the sum is normalized
 	 */
 	public boolean getNormalizeResult() { return this.norm; }
-
-	/**
-	 * Returns {@link #createOverlayBRDF(SphericalProbabilityDistribution[])}, for tools that combine
-	 * distributions reflectively.
-	 *
-	 * @return the factory method
-	 */
-	public static Method getOverlayMethod() {
-		try {
-			return OverlayBRDF.class.getMethod("createOverlayBRDF",
-					SphericalProbabilityDistribution[].class);
-		} catch (NoSuchMethodException e) {
-			throw new IllegalStateException(e);
-		}
-	}
-
-	/**
-	 * Creates an overlay of the given distributions.
-	 *
-	 * @param children the distributions whose samples are summed
-	 * @return the overlay
-	 */
-	public static OverlayBRDF createOverlayBRDF(SphericalProbabilityDistribution[] children) {
-		return new OverlayBRDF(children);
-	}
 
 	@Override
 	public void setName(String n) { this.name = n; }
