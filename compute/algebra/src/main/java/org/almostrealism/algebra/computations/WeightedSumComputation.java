@@ -36,6 +36,7 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
  * A computation that performs a weighted sum operation, the fundamental building block for many linear algebra operations.
@@ -388,23 +389,68 @@ public class WeightedSumComputation
 	 * @return the sum of the products of the members of the run
 	 */
 	private Expression<?> sumRun(Expression<?> index, Expression<?> first, int count) {
-		TraversableExpression[] args = getTraversableArguments(index);
-		SubsetTraversalExpression input = getInputTraversal();
-		SubsetTraversalExpression weights = getWeightsTraversal();
-		int axis = runAxis();
-
 		Expression<?> sum = e(0.0);
 		for (int m = 0; m < count; m++) {
-			Expression[] position = new Expression[inputGroupShape.getDimensions()];
-			for (int d = 0; d < position.length; d++) {
-				position[d] = d == axis ? first.add(m) : e(0);
-			}
-
-			sum = sum.add(args[1].getValueAt(input.getInputIndex(position, index))
-					.multiply(args[2].getValueAt(weights.getInputIndex(position, index))));
+			sum = sum.add(getAccumulationMember(index, first.add(m)));
 		}
 
 		return sum;
+	}
+
+	/**
+	 * Returns the number of members of each group when the group extends along a single
+	 * dimension, its loop sums runs of consecutive members (see {@link #getIterationSteps()}), and
+	 * that dimension is {@link #isRunContiguous() contiguous} in both operands: adjacent members
+	 * then lie at adjacent addresses, so the members can be distributed across the lanes of a
+	 * work item, each lane reading next to its neighbours. Otherwise returns zero.
+	 *
+	 * @return the members of each group, or zero
+	 */
+	@Override
+	protected long getAccumulationMemberCount() {
+		return iterationSteps > 1 && isRunContiguous() ? inputGroupShape.getTotalSizeLong() : 0;
+	}
+
+	/**
+	 * Indicates whether adjacent members of a group lie at adjacent addresses of both operands:
+	 * in each operand the dimension the group extends along (see {@link #runAxis()}) is followed
+	 * only by dimensions of length one, and the operand neither permutes nor reorders its
+	 * elements. A group along any other dimension, such as a column of a matrix whose rows are
+	 * contiguous, places adjacent members a whole row apart.
+	 *
+	 * @return true if the members of a group are contiguous in both operands
+	 */
+	protected boolean isRunContiguous() {
+		int axis = runAxis();
+		return axis >= 0 && Stream.of(inShape, weightShape).allMatch(shape ->
+				shape.sizeLong(axis + 1) == 1 && !shape.isPermuted() && shape.getOrder() == null);
+	}
+
+	/**
+	 * Returns the product of the input and weight elements of one member of the group of an
+	 * output element, located by its position along the single dimension the group extends
+	 * along (see {@link #runAxis()}): the position is given coordinate by coordinate, zero along
+	 * every other dimension, to the {@link #getInputTraversal() input} and
+	 * {@link #getWeightsTraversal() weights} traversals. This is how every member of a run is
+	 * located, by the lanes of a work item and by each iteration of the loop that sums
+	 * {@link #getIterationSteps() several steps} alike, so it applies whenever the group extends
+	 * along a single dimension.
+	 *
+	 * @param index  the index of the output element
+	 * @param member the position of the member along the dimension of the group
+	 * @return the product the member contributes to the weighted sum
+	 */
+	@Override
+	protected Expression<?> getAccumulationMember(Expression<?> index, Expression<?> member) {
+		int axis = runAxis();
+		Expression[] position = new Expression[inputGroupShape.getDimensions()];
+		for (int d = 0; d < position.length; d++) {
+			position[d] = d == axis ? member : e(0);
+		}
+
+		TraversableExpression[] args = getTraversableArguments(index);
+		return args[1].getValueAt(getInputTraversal().getInputIndex(position, index))
+				.multiply(args[2].getValueAt(getWeightsTraversal().getInputIndex(position, index)));
 	}
 
 	/**

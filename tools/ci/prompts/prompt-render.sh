@@ -128,6 +128,27 @@ render_prompt() {
     fi
 }
 
+# Appends the "new TODOs are findings" instructions and the computed list of
+# TODO lines the branch adds, when a caller passes a non-empty section file.
+# The list is computed by a dedicated CI step (extract_branch_todos.py) and
+# passed in as a file, so the builder stays deterministic and reaches no git
+# state of its own: called with no section file — as the prompt-builder tests
+# do — it appends nothing.
+#
+#   append_todo_findings <output-file> <todos-section-file>
+append_todo_findings() {
+    local output="$1"
+    local todos_file="${2:-}"
+    if [ -z "$todos_file" ] || [ ! -s "$todos_file" ]; then
+        return 0
+    fi
+    append_prompt_fragment todo-findings.txt "$output"
+    if [ -n "$(tail -c 2 "$output" | tr -d '\n')" ]; then
+        printf '\n' >> "$output"
+    fi
+    cat "$todos_file" >> "$output"
+}
+
 # Appends a rendered fragment from this directory to a prompt that is
 # being assembled in pieces, as the builders that write their prompt
 # with heredocs do, keeping one blank line on each side of it whatever

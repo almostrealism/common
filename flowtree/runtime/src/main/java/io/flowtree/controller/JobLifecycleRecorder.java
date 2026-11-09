@@ -123,12 +123,13 @@ public final class JobLifecycleRecorder {
      * scanner-failed job and an ordinary completion both update the row with or
      * without a notifier present.
      *
-     * <p>It also updates the per-PR remediation record. Only a job registered
-     * as an automated remediation pass counts as a pass: a commit is progress
-     * (resets the consecutive-no-progress count), no commit changed nothing
-     * (increments it). Any other job's commit still resets the count, and its
-     * no-commit completion changes nothing. A {@code CANCELLED} event is a
-     * superseded run, not a completed pass, so it is not counted. See
+     * <p>It also updates the per-PR remediation record. Only a job registered as
+     * an automated remediation pass contributes: when it produced a commit, that
+     * commit is recorded as the workstream's last-produced commit, so the next
+     * pass that commit triggers is recognised as the loop's own rather than a
+     * person's. The dispatched-pass count is not changed here — a pass is counted
+     * when it is dispatched, not when it completes. A {@code CANCELLED} event is a
+     * superseded run, not a completed pass, so it records nothing. See
      * {@link RemediationStateStore#completeJob}.</p>
      *
      * <p>A job the controller has already cancelled keeps that record. A
