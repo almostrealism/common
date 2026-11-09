@@ -19,10 +19,12 @@ package org.almostrealism.render;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.physics.Absorber;
+import org.almostrealism.physics.Clock;
 import org.almostrealism.physics.PhotonField;
 import org.almostrealism.raytrace.AbsorberHashSet;
 import org.almostrealism.raytrace.DefaultPhotonField;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.function.Predicate;
 
@@ -56,6 +58,20 @@ public class PhotonFieldAnimation<T extends ShadableSurface> extends RayTracedAn
 	public AbsorberHashSet getAbsorber() { return absorber; }
 
 	/**
+	 * Replaces the clock, moving the photon field from the previous clock to the replacement so the
+	 * simulation keeps advancing when the new clock ticks.
+	 *
+	 * @param c the clock that will tick the animation
+	 */
+	@Override
+	public void setClock(Clock c) {
+		Clock previous = getClock();
+		if (previous != null) previous.removePhotonField(field);
+		super.setClock(c);
+		if (c != null) c.addPhotonField(field);
+	}
+
+	/**
 	 * Returns the photon field run by the animation's clock.
 	 *
 	 * @return the photon field
@@ -72,12 +88,14 @@ public class PhotonFieldAnimation<T extends ShadableSurface> extends RayTracedAn
 	}
 
 	/**
-	 * Removes the given member from the absorber set if it is an absorber.
+	 * Removes the given member from the absorber set if it is an absorber and no remaining member
+	 * of the animation is the same object. Called after the member has been removed from the list,
+	 * so a surviving duplicate reference keeps the absorber registered.
 	 *
 	 * @param member the member removed from the animation
 	 */
 	private void detach(Object member) {
-		if (member instanceof Absorber) absorber.removeAbsorber((Absorber) member);
+		if (member instanceof Absorber && !contains(member)) absorber.removeAbsorber((Absorber) member);
 	}
 
 	@Override
@@ -96,14 +114,14 @@ public class PhotonFieldAnimation<T extends ShadableSurface> extends RayTracedAn
 	@Override
 	public boolean addAll(Collection<? extends T> c) {
 		boolean changed = false;
-		for (T t : c) changed |= add(t);
+		for (T t : new ArrayList<T>(c)) changed |= add(t);
 		return changed;
 	}
 
 	@Override
 	public boolean addAll(int index, Collection<? extends T> c) {
 		int i = index;
-		for (T t : c) add(i++, t);
+		for (T t : new ArrayList<T>(c)) add(i++, t);
 		return !c.isEmpty();
 	}
 

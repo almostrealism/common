@@ -171,7 +171,7 @@ public class RayTracedAnimation<T extends ShadableSurface> extends Animation<T> 
 		PinholeCamera camera = (PinholeCamera) getCamera();
 		setVector(p, "camera.loc", camera.getLocation());
 		setVector(p, "camera.view", camera.getViewingDirection());
-		p.setProperty("camera.foc", String.valueOf(camera.getFocalLength()));
+		p.setProperty("camera.foclen", String.valueOf(camera.getFocalLength()));
 		p.setProperty("camera.proj.w", String.valueOf(camera.getProjectionWidth()));
 		p.setProperty("camera.proj.h", String.valueOf(camera.getProjectionHeight()));
 

@@ -160,7 +160,7 @@ public class SpecularAbsorber extends VolumeAbsorber implements Fast, BRDF, Spec
 			return behind > depth && this.volume.intersect(position, direction) >= depth;
 		}
 
-		return behind < depth && this.volume.intersect(position, direction) <= depth;
+		return behind < -depth && this.volume.intersect(position, direction) <= -depth;
 	}
 
 	/**

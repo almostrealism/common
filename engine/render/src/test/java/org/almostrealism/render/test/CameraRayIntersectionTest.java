@@ -21,6 +21,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.primitives.Sphere;
 import org.almostrealism.projection.ProjectionFeatures;
@@ -94,13 +95,14 @@ public class CameraRayIntersectionTest extends TestSuiteBase implements Projecti
 	public void kernelMatchesPerPixel() {
 		PackedCollection pixels = new PackedCollection(shape(WIDTH * HEIGHT, 2));
 
-		for (int i = 0; i < WIDTH; i++) {
-			for (int j = 0; j < HEIGHT; j++) {
-				int index = j * WIDTH + i;
-				pixels.setMem(2 * index, i);
-				pixels.setMem(2 * index + 1, j);
-			}
-		}
+		// Pixel grid computed on the device: for pixel p, column 0 holds p % WIDTH
+		// (the x pixel coordinate) and column 1 holds floor(p / WIDTH) (the y coordinate).
+		CollectionProducer index = integers(0, 2 * WIDTH * HEIGHT);
+		CollectionProducer position = floor(index.divide(c(2.0)));
+		CollectionProducer x = mod(position, c((double) WIDTH));
+		CollectionProducer y = floor(position.divide(c((double) WIDTH)));
+		greaterThan(mod(index, c(2.0)), c(0.5), y, x)
+				.reshape(pixels.getShape()).get().into(pixels).evaluate();
 
 		PackedCollection output = new PackedCollection(WIDTH * HEIGHT).traverse(1);
 		distance(shape(WIDTH * HEIGHT, 2)).get().into(output).evaluate(pixels);
