@@ -1215,6 +1215,34 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	}
 
 	/**
+	 * Creates a feature-wise affine modulation layer (FiLM): every element is multiplied by the
+	 * factor of its batch entry and position along the given axis, and then has that position's
+	 * offset added, {@code factor * x + offset}, each factor and offset applying across every other
+	 * non-batch axis. It is the affine counterpart of
+	 * {@link #scale(TraversalPolicy, int, Producer, ComputeRequirement...)}, computed as one
+	 * operation. Along the channel axis of a {@code (batch, seqLen, dim)} activation it gives every
+	 * batch entry its own factor and offset per channel, which is how adaptive layer normalization
+	 * conditions a normalized activation.
+	 *
+	 * <p>The factors and offsets are operands of the layer, not weights of it: the backward pass
+	 * delivers the output gradient times the factors to the input, and no gradient to the factors
+	 * or the offsets.</p>
+	 *
+	 * @param shape        the input and output shape, whose first axis is the batch
+	 * @param axis         the axis the factors and offsets index (never the batch axis)
+	 * @param factors      the factors, shape {@code (batch, shape.length(axis))}
+	 * @param offsets      the offsets, shape {@code (batch, shape.length(axis))}
+	 * @param requirements optional compute requirements
+	 * @return the constructed modulation {@link CellularLayer}
+	 */
+	default CellularLayer modulate(TraversalPolicy shape, int axis, Producer<PackedCollection> factors,
+								   Producer<PackedCollection> offsets, ComputeRequirement... requirements) {
+		return layer("modulateAlongAxis", shape, shape,
+				input -> c(input).multiply(broadcast(shape, axis, factors))
+						.add(broadcast(shape, axis, offsets)), requirements);
+	}
+
+	/**
 	 * Returns the source of the random values that layers created through this instance
 	 * draw their initial weights from, or {@code null} to draw them from an unseeded
 	 * source, which is the default.

@@ -39,6 +39,7 @@ canonical name used in `<dependency>` blocks across all `pom.xml` files.
 | `base/code` | `ar-code` | Layer 1 — Base |
 | `base/collect` | `ar-collect` | Layer 1 — Base |
 | `base/hardware` | `ar-hardware` | Layer 1 — Base |
+| `base/hardware-js` | `ar-hardware-js` | Layer 1 — Base |
 | `compute/algebra` | `ar-algebra` | Layer 2 — Compute |
 | `compute/geometry` | `ar-geometry` | Layer 2 — Compute |
 | `compute/stats` | `ar-stats` | Layer 2 — Compute |
@@ -144,6 +145,7 @@ ar-io        →  ar-meta
 ar-code      →  ar-relation, ar-io
 ar-collect   →  ar-code
 ar-hardware  →  ar-collect
+ar-hardware-js →  ar-code
 ```
 
 **ar-meta** (`base/meta`)
@@ -156,7 +158,9 @@ Implements the Producer/Evaluable model and process optimization infrastructure.
 Depends on `ar-meta` for lifecycle annotations.
 
 **ar-io** (`base/io`)
-Provides logging, metrics, alerting, and lifecycle management. Depends on `ar-meta`.
+Provides logging, metrics, alerting, and lifecycle management, plus the resource
+abstraction (`io.almostrealism.resource`: `Resource`, `ResourceAdapter`,
+`UnicodeResource`, `IOStreams`, `Permissions`, `ResourceTranscoder`). Depends on `ar-meta`.
 Runs alongside `ar-relation` at the same level — neither depends on the other.
 
 **ar-code** (`base/code`)
@@ -172,6 +176,11 @@ defines the primary data structure used throughout the compute and domain layers
 **ar-hardware** (`base/hardware`)
 GPU/CPU acceleration, memory management, and kernel compilation. Depends on
 `ar-collect` because hardware acceleration operates on `PackedCollection` instances.
+
+**ar-hardware-js** (`base/hardware-js`)
+The JavaScript code-generation backend (`JavaScriptLanguageOperations`,
+`JavaScriptPrintWriter`). Depends only on `ar-code`. It is the first backend in a module
+of its own; the C, OpenCL, Metal and CUDA backends are still in `ar-hardware`.
 
 ---
 
@@ -416,6 +425,7 @@ does not have to depend on the runtime.
 **ar-graphpersist** (`flowtree/graphpersist`)
 Database persistence and SSH integration. Depends on `ar-utils`. Provides
 storage infrastructure for computation graphs and model state, used by `ar-flowtree-runtime`.
+Adds `ResourceVariable` to the resource package whose core types live in `ar-io`.
 
 **ar-flowtree-agents** (`flowtree/agents`)
 The pluggable agent-runner SPI: `AgentRunner`, `AgentRunnerRegistry`,
@@ -453,7 +463,7 @@ determined by following the chain.
 | `ar-meta` | `ar-relation`, `ar-io`, `ar-flowtree-agents` |
 | `ar-relation` | `ar-code` |
 | `ar-io` | `ar-code`, `ar-flowtree-base` |
-| `ar-code` | `ar-collect` |
+| `ar-code` | `ar-collect`, `ar-hardware-js` |
 | `ar-collect` | `ar-hardware` |
 | `ar-hardware` | `ar-algebra` |
 | `ar-algebra` | `ar-geometry`, `ar-stats` |

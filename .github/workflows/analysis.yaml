@@ -357,10 +357,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # Every job that needs the project's artifacts restores them from this
@@ -403,10 +403,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -1208,10 +1208,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -1276,10 +1276,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -1520,10 +1520,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       - name: Check exempt file lengths
@@ -1671,6 +1671,7 @@ jobs:
         run: |
           python3 -m unittest discover -v -s tools/ci -p "test_classify_failures.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s tools/ci -p "test_copilot_review_status.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s tools/ci -p "test_extract_branch_todos.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # The exfiltration guard's decision logic is Python under
       # .claude/hooks/lib; its tests build scratch git repositories and
@@ -1926,10 +1927,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -2036,10 +2037,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -2127,10 +2128,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -2331,10 +2332,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -2519,10 +2520,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
 
       - name: Isolate Maven repository per runner
         # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
@@ -2688,10 +2689,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -2834,10 +2835,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -2996,10 +2997,10 @@ jobs:
           fi
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
 
       - name: Isolate Maven repository per runner
         # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
@@ -3196,10 +3197,10 @@ jobs:
           fi
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -3383,10 +3384,10 @@ jobs:
           fi
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -3525,10 +3526,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # JaCoCo reads the class files from `build`'s installed jars, so nothing
@@ -3761,6 +3762,9 @@ jobs:
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Resolve Python test failures"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-python-request
@@ -3817,7 +3821,8 @@ jobs:
           # belongs to a branch's initial work, not each remediation pass.
           OBJECT_ORIENTED_REVIEW_ENABLED: "false"
           # This is a remediation pass: the controller counts it against the
-          # per-PR budget and may skip a re-review of this pass's own commit.
+          # per-PR cap and records its commit as the loop's own (the cap resets
+          # on a commit no pass produced).
           # Marked explicitly, not inferred from `automated` (every CI job sets
           # that) — a QA, planning or implementation job is the work reviewed.
           REMEDIATION_PASS: "true"
@@ -3985,6 +3990,10 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # The commit that triggered this run; the controller uses it to tell a
+          # commit a remediation pass produced from one it did not, resetting the
+          # per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Resolve build failure"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
@@ -4008,6 +4017,9 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Resolve code policy violations"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
@@ -4038,6 +4050,9 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Resolve quality gate failures"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
@@ -4066,8 +4081,8 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          # The controller skips a review re-triggered only by the previous
-          # review's own commit; a commit by anyone else still triggers.
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
           TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Review docs changes"
         run: |
@@ -4084,7 +4099,14 @@ jobs:
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
           QUALITY_UNATTRIBUTED: ${{ steps.quality.outputs.unattributed }}
         run: |
-          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+          # The TODO lines this branch adds are findings the review must act on.
+          # Computed here and passed to the builder the way review comments are;
+          # a head that predates the script simply yields no section.
+          TODOS="${{ runner.temp }}/branch-todos.txt"
+          if [ -f ./tools/ci/extract_branch_todos.py ]; then
+            python3 ./tools/ci/extract_branch_todos.py "$BASE_BRANCH" "$TODOS" || true
+          fi
+          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "$TODOS"
           if [ "$QUALITY_UNATTRIBUTED" = "true" ]; then
             echo "::warning::A quality gate failed without recording a cause — submitting the general review; a human should read that gate's job log"
             cat >> "${{ runner.temp }}/agent-prompt.txt" <<'NOTE'
@@ -4108,8 +4130,8 @@ jobs:
           # test-integrity-check is what stops it weakening one.
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          # The controller skips a review re-triggered only by the previous
-          # review's own commit; a commit by anyone else still triggers.
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
           TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Review branch changes"
         run: |
@@ -4206,7 +4228,8 @@ jobs:
           # belongs to a branch's initial work, not each remediation pass.
           OBJECT_ORIENTED_REVIEW_ENABLED: "false"
           # This is a remediation pass: the controller counts it against the
-          # per-PR budget and may skip a re-review of this review's own commit.
+          # per-PR cap and records its commit as the loop's own (the cap resets
+          # on a commit no pass produced).
           # Marked explicitly, not inferred from `automated` (every CI job sets
           # that) — a QA, planning or implementation job is the work reviewed.
           REMEDIATION_PASS: "true"
@@ -4653,13 +4676,22 @@ jobs:
         env:
           FAILURE_COUNT: ${{ steps.classify.outputs.regression_count }}
           BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
+          # The TODO lines this branch adds are findings the resolve pass must
+          # act on, too. Computed here and passed to the builder; a head that
+          # predates the script simply yields no section.
+          TODOS="${{ runner.temp }}/branch-todos.txt"
+          if [ -f ./tools/ci/extract_branch_todos.py ]; then
+            python3 ./tools/ci/extract_branch_todos.py "$BASE_BRANCH" "$TODOS" || true
+          fi
           ./tools/ci/prompts/build-resolve-prompt.sh \
             "${{ runner.temp }}/regressions.txt" \
             "${{ runner.temp }}/agent-prompt.txt" \
             "${{ runner.temp }}/preexisting.txt" \
-            "${{ runner.temp }}/environmental.txt"
+            "${{ runner.temp }}/environmental.txt" \
+            "$TODOS"
 
       - name: Stage submit request (test failures)
         if: steps.failures.outputs.has_failures == 'true' && steps.classify.outputs.regression_count != '0' && steps.classify.outputs.regression_count != ''
@@ -4668,6 +4700,9 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Resolve ${{ steps.classify.outputs.regression_count }} regression test failure(s)"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
@@ -4692,6 +4727,9 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Resolve JVM crash in test execution"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
@@ -4716,6 +4754,9 @@ jobs:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Investigate incomplete test execution"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request

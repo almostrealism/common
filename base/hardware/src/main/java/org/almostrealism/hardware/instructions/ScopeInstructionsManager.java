@@ -283,7 +283,8 @@ public class ScopeInstructionsManager<K extends ExecutionKey>
 	@Override
 	public synchronized CompiledKernelStructureContext getKernelStructureContext(Computation<?> computation) {
 		if (kernelStructureContext == null) {
-			kernelStructureContext = new CompiledKernelStructureContext(computation);
+			kernelStructureContext = new CompiledKernelStructureContext(computation,
+					getComputeContext().getLaneCount());
 		}
 
 		return kernelStructureContext;

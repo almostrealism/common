@@ -20,16 +20,22 @@ import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.persist.index.DiskStore;
 import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.persist.index.SearchResult;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * {@link WaveDetailsStore} implementation backed by a
@@ -42,18 +48,33 @@ import java.util.function.Consumer;
  * all persistence, caching, and HNSW indexing to the underlying
  * {@link ProtobufDiskStore}.</p>
  *
+ * <p>The validated-model marker is a sidecar file beside the batch files. Every
+ * {@code put} clears it before writing, under the same lock that
+ * {@link #setValidatedModel(String, Predicate)} holds while it tests completeness
+ * and writes the marker, so no record can be stored that the marker vouches for
+ * without having been tested.</p>
+ *
  * @see WaveDetailsStore
  * @see ProtobufDiskStore
  * @see AudioLibraryPersistence
  */
-public class ProtobufWaveDetailsStore implements WaveDetailsStore {
+public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatures {
 
 	/** Default target size per batch file in bytes. */
 	public static final int DEFAULT_TARGET_BATCH_SIZE =
 			ProtobufDiskStore.DEFAULT_TARGET_BATCH_SIZE;
 
+	/** Name of the sidecar file recording the model the store was last validated against. */
+	private static final String VALIDATED_MODEL_FILE_NAME = "complete.model";
+
 	/** The underlying disk store that handles batched serialization and index management. */
 	private final ProtobufDiskStore<Audio.WaveDetailData> diskStore;
+
+	/** Directory holding the batch files, index, and the validated-model marker. */
+	private final File rootDir;
+
+	/** Guards the validated-model marker against concurrent record writes. */
+	private final Object markerLock = new Object();
 
 	/**
 	 * Creates a store at the given directory with default settings.
@@ -61,6 +82,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 	 * @param rootDir directory for batch files and index
 	 */
 	public ProtobufWaveDetailsStore(File rootDir) {
+		this.rootDir = rootDir;
 		this.diskStore = new ProtobufDiskStore<>(rootDir, Audio.WaveDetailData.parser());
 	}
 
@@ -72,6 +94,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 	 * @param targetBatchSize target byte size per batch file
 	 */
 	public ProtobufWaveDetailsStore(File rootDir, long maxMemoryBytes, int targetBatchSize) {
+		this.rootDir = rootDir;
 		this.diskStore = new ProtobufDiskStore<>(
 				rootDir, Audio.WaveDetailData.parser(), maxMemoryBytes, targetBatchSize);
 	}
@@ -106,7 +129,10 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 	@Override
 	public void put(String identifier, WaveDetails details) {
 		Audio.WaveDetailData data = AudioLibraryPersistence.encode(details, false);
-		diskStore.put(identifier, data);
+		synchronized (markerLock) {
+			clearValidatedModel();
+			diskStore.put(identifier, data);
+		}
 	}
 
 	@Override
@@ -114,7 +140,10 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 		// The embedding is pooled from the active model's features
 		setEmbeddingModel(details.getActiveModelIdentifier());
 		Audio.WaveDetailData data = AudioLibraryPersistence.encode(details, false);
-		diskStore.put(identifier, data, embeddingVector);
+		synchronized (markerLock) {
+			clearValidatedModel();
+			diskStore.put(identifier, data, embeddingVector);
+		}
 	}
 
 	@Override
@@ -189,6 +218,66 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore {
 	@Override
 	public int indexedEmbeddingCount() {
 		return diskStore.indexedEmbeddingCount();
+	}
+
+	@Override
+	public String getValidatedModel() {
+		Path marker = markerPath();
+		if (!Files.exists(marker)) return null;
+
+		try {
+			String model = Files.readString(marker).trim();
+			return model.isEmpty() ? null : model;
+		} catch (IOException e) {
+			// Degrade to a rescan rather than aborting the library open that reads this.
+			warn("Unable to read validated-model marker at " + marker, e);
+			return null;
+		}
+	}
+
+	@Override
+	public void setValidatedModel(String modelIdentifier, Predicate<Set<String>> complete) {
+		synchronized (markerLock) {
+			if (modelIdentifier == null || !complete.test(allIdentifiers())) {
+				clearValidatedModel();
+				return;
+			}
+
+			// The marker must never vouch for a record that is not yet on disk.
+			diskStore.flush();
+
+			Path marker = markerPath();
+			Path pending = marker.resolveSibling(VALIDATED_MODEL_FILE_NAME + ".tmp");
+			try {
+				Files.writeString(pending, modelIdentifier);
+				Files.move(pending, marker, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+			} catch (IOException e) {
+				// A marker that is not written only costs a rescan next launch.
+				warn("Unable to persist validated-model marker at " + marker, e);
+			}
+		}
+	}
+
+	/**
+	 * Deletes the validated-model marker, if present. Must be called holding
+	 * {@link #markerLock}. The file is checked on every call rather than cached,
+	 * because the marker is shared by every store opened on the directory.
+	 * Failure is thrown rather than logged: a marker that survives would let
+	 * the next launch trust records it never vouched for.
+	 *
+	 * @throws UncheckedIOException if the marker exists and cannot be deleted
+	 */
+	private void clearValidatedModel() {
+		try {
+			Files.deleteIfExists(markerPath());
+		} catch (IOException e) {
+			throw new UncheckedIOException("Unable to clear validated-model marker at " + markerPath(), e);
+		}
+	}
+
+	/** Returns the path of the validated-model marker file. */
+	private Path markerPath() {
+		return new File(rootDir, VALIDATED_MODEL_FILE_NAME).toPath();
 	}
 
 	@Override

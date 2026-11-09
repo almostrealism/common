@@ -153,31 +153,44 @@ public class Plane implements Volume<RGB>, CodeFeatures {
 		return !(z > this.w / 2.0);
 	}
 
+	/**
+	 * Returns the distance along the given direction, in multiples of its length, from the given
+	 * point to the nearest face of the slab ahead of it within the active region, or
+	 * {@link #MISS} if there is none.
+	 *
+	 * @param p the starting point
+	 * @param d the direction
+	 * @return the distance to the nearest face, or {@link #MISS}
+	 */
 	@Override
 	public double intersect(Vector p, Vector d) {
-		double a = p.dotProduct(new Vector(normal.get().evaluate(), 0));
-		double b = d.dotProduct(new Vector(normal.get().evaluate(), 0));
-		
-		double d1 = (this.thick - a) / b;
-		double d2 = (-this.thick - a) / b;
-		
-		if (d1 < 0.0) {
-			d1 = Double.MAX_VALUE - 1.0;
-		} else {
-			Vector x = d.multiply(d1 + this.thick / 2.0).add(p);
-			if (!this.inside(value(x))) d1 = Double.MAX_VALUE - 1.0;
-		}
+		Vector n = new Vector(normal.get().evaluate(), 0);
+		double a = p.dotProduct(n);
+		double b = d.dotProduct(n);
 
-		if (d2 < 0.0) {
-			d2 = Double.MAX_VALUE - 1.0;
-		} else {
-			Vector x = d.multiply(d2 - this.thick / 2.0).add(p);
-			if (!this.inside(value(x))) d2 = Double.MAX_VALUE - 1.0;
-		}
-		
-		
-		
-		return Math.min(d1, d2);
+		if (b == 0.0) return MISS;
+
+		return Math.min(faceDistance(p, d, n, (this.thick - a) / b),
+						faceDistance(p, d, n, (-this.thick - a) / b));
+	}
+
+	/**
+	 * Checks a hit on one face of the slab: it counts if it is ahead of the starting point and
+	 * within the active region. The region is tested at the hit moved half way back towards the
+	 * middle of the slab, so that the test does not depend on rounding at the face itself.
+	 *
+	 * @param p the starting point
+	 * @param d the direction
+	 * @param n the surface normal
+	 * @param t the distance to the face
+	 * @return {@code t}, or {@link #MISS} if the hit does not count
+	 */
+	private double faceDistance(Vector p, Vector d, Vector n, double t) {
+		if (!(t >= 0.0)) return MISS;
+
+		Vector x = d.multiply(t).add(p);
+		Vector probe = x.subtract(n.multiply(Math.signum(x.dotProduct(n)) * this.thick / 2.0));
+		return this.inside(value(probe)) ? t : MISS;
 	}
 
 	@Override

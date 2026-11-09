@@ -22,7 +22,6 @@ import io.almostrealism.db.Query;
 import io.almostrealism.db.Query.ResultHandler;
 import io.almostrealism.db.QueryHandler;
 import io.almostrealism.persist.ResourceHeaderParser;
-import io.almostrealism.relation.Graph;
 import io.almostrealism.resource.Resource;
 import io.flowtree.Server;
 import io.flowtree.Server.ResourceProvider;
@@ -40,7 +39,6 @@ import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Iterator;
@@ -68,7 +66,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public class ResourceDistributionTask extends AbstractJobFactory implements OutputHandler, QueryHandler,
 													NodeProxy.EventListener, Server.ResourceProvider,
-													Graph<Resource>, ConsoleFeatures {
+													ConsoleFeatures {
 	/**
 	 * When {@code true}, diagnostic messages about resource operations such as
 	 * directory creation, deletion, and peer notifications are printed to
@@ -725,16 +723,6 @@ public class ResourceDistributionTask extends AbstractJobFactory implements Outp
 			log("ResourceDistributionTask: Got " + names.size() + " children " + uri);
 		
 		return (String[]) names.toArray(new String[0]);
-	}
-
-	@Override
-	public Collection<Resource> neighbors(Resource node) {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	public int countNodes() {
-		throw new UnsupportedOperationException();
 	}
 
 	/**

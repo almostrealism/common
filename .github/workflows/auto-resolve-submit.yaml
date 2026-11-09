@@ -168,7 +168,8 @@ jobs:
           # belongs to a branch's initial work, not each remediation pass.
           OBJECT_ORIENTED_REVIEW_ENABLED: "false"
           # This is a remediation pass: the controller counts it against the
-          # per-PR budget and may skip a re-review of this pass's own commit.
+          # per-PR cap and records its commit as the loop's own (the cap resets
+          # on a commit no pass produced).
           # Marked explicitly, not inferred from `automated` (every CI job sets
           # that) — a QA, planning or implementation job is the work reviewed.
           REMEDIATION_PASS: "true"

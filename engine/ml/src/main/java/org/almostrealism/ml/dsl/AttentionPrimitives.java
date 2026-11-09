@@ -19,6 +19,7 @@ package org.almostrealism.ml.dsl;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.dsl.PdslAxisValues;
 import org.almostrealism.dsl.PdslExtension;
 import org.almostrealism.dsl.PdslInterpreter;
 import org.almostrealism.dsl.PdslParseException;
@@ -174,8 +175,9 @@ public class AttentionPrimitives implements PdslExtension, AttentionFeatures {
 	 * score unchanged, which is how a caller with no padding disables the stage.
 	 *
 	 * <p>The mask's shape is checked against the score shape when the layer is built: it must be
-	 * {@code [batch, keys]} with batch and key extents equal to the score shape's axes 0 and 3, so a
-	 * mismatched mask is rejected rather than silently reshaped by the broadcast.</p>
+	 * {@code [batch, keys]} with batch and key extents equal to the score shape's axes 0 and 3, the
+	 * values along axis 3 that {@link PdslAxisValues} describes, so a mismatched mask is rejected
+	 * rather than silently reshaped by the broadcast.</p>
 	 *
 	 * @param args one argument: the {@code [batch, keys]} validity mask (a bound tensor or a producer)
 	 * @param ctx  the call context
@@ -185,20 +187,13 @@ public class AttentionPrimitives implements PdslExtension, AttentionFeatures {
 	 */
 	private Function<TraversalPolicy, Block> keyMask(List<Object> args, PdslPrimitiveContext ctx) {
 		requireArguments("key_mask", args, 1, "mask");
-		CollectionProducer mask = ctx.toProducer(args.get(0), null, "key_mask() mask");
-		TraversalPolicy maskShape = shape(mask);
-		CollectionProducer bias = mask.add(-1.0).multiply(MASKED_LOGIT_PENALTY);
+		PdslAxisValues mask = ctx.toAxisValues("key_mask() mask", args.get(0), 3);
 		return scoresShape -> {
 			if (scoresShape.getDimensions() != 4) {
 				throw new PdslParseException(
 						"key_mask() expects a [batch, heads, queries, keys] score shape, got " + scoresShape);
 			}
-			if (maskShape.getDimensions() != 2
-					|| maskShape.length(0) != scoresShape.length(0)
-					|| maskShape.length(1) != scoresShape.length(3)) {
-				throw new PdslParseException("key_mask() expects a [batch, keys] mask matching the "
-						+ "[batch, heads, queries, keys] score shape " + scoresShape + ", got " + maskShape);
-			}
+			CollectionProducer bias = mask.forInput(scoresShape).add(-1.0).multiply(MASKED_LOGIT_PENALTY);
 			return layer("keyMask", scoresShape, scoresShape,
 					logits -> add(c(logits), broadcast(scoresShape, 3, bias)));
 		};

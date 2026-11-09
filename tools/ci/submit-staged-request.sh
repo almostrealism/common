@@ -42,7 +42,8 @@
 #   OBJECT_ORIENTED_REVIEW_ENABLED=false so the object-oriented design review
 #   does not ride along on the follow-up jobs CI runs in a loop, and
 #   REMEDIATION_PASS=true so the controller counts the pass against the per-PR
-#   budget and may skip a re-review of the pass's own commit.)
+#   cap and records its commit as the loop's own, so the cap resets on a commit
+#   no pass produced.)
 #
 # Environment:
 #   Everything submit-agent-job.sh reads for reaching the controller
@@ -110,8 +111,8 @@ while IFS= read -r line || [ -n "$line" ]; do
             fi
             ;;
         TRIGGER_COMMIT)
-            # Used only for the controller's own-commit skip comparison; accept
-            # a git SHA (hex) and ignore anything else rather than forward it.
+            # Used only for the controller's cap-reset comparison; accept a git
+            # SHA (hex) and ignore anything else rather than forward it.
             if [[ "$value" =~ ^[0-9a-fA-F]+$ ]]; then
                 export TRIGGER_COMMIT="$value"
             else

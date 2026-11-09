@@ -186,7 +186,10 @@ public interface AdaptiveLayerNormFeatures extends LayerFeatures {
 
 	/**
 	 * Applies an affine modulation {@code scale * x + shift} to a {@code [batch, seqLen, dim]}
-	 * activation, with per-channel {@code [batch, dim]} scale and shift broadcast across the sequence.
+	 * activation, with per-channel {@code [batch, dim]} scale and shift broadcast across the sequence:
+	 * the {@link #modulate(TraversalPolicy, int, Producer, Producer,
+	 * io.almostrealism.compute.ComputeRequirement...) modulation} along the channel axis, which is also
+	 * the {@code modulate} stage of the PDSL assets.
 	 *
 	 * @param shape the activation shape {@code [batch, seqLen, dim]}
 	 * @param scale the multiplier, shape {@code [batch, dim]}
@@ -195,15 +198,7 @@ public interface AdaptiveLayerNormFeatures extends LayerFeatures {
 	 */
 	default Block adaptiveModulate(TraversalPolicy shape,
 								   Producer<PackedCollection> scale, Producer<PackedCollection> shift) {
-		int batchSize = shape.length(0);
-		int seqLen = shape.length(1);
-		int dim = shape.length(2);
-
-		return layer("adaLNModulate", shape, shape, in -> {
-			CollectionProducer scaleB = c(scale).reshape(batchSize, dim).repeat(1, seqLen);
-			CollectionProducer shiftB = c(shift).reshape(batchSize, dim).repeat(1, seqLen);
-			return c(in).multiply(scaleB).add(shiftB);
-		});
+		return modulate(shape, 2, scale, shift);
 	}
 
 	/**

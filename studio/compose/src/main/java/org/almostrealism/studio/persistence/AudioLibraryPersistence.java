@@ -898,6 +898,8 @@ public class AudioLibraryPersistence {
 		Audio.PrototypeIndex.Builder builder = Audio.PrototypeIndex.newBuilder()
 				.setComputedAt(index.computedAt());
 
+		if (index.modelIdentifier() != null) builder.setModelIdentifier(index.modelIdentifier());
+
 		for (PrototypeIndexData.Community community : index.communities()) {
 			builder.addCommunities(Audio.PrototypeCommunity.newBuilder()
 					.setPrototypeIdentifier(community.prototypeIdentifier())
@@ -920,7 +922,8 @@ public class AudioLibraryPersistence {
 						c.getMemberIdentifiersList()))
 				.toList();
 
-		return new PrototypeIndexData(proto.getComputedAt(), communities);
+		String modelIdentifier = proto.getModelIdentifier().isBlank() ? null : proto.getModelIdentifier();
+		return new PrototypeIndexData(proto.getComputedAt(), modelIdentifier, communities);
 	}
 
 	/**

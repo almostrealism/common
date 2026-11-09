@@ -201,6 +201,73 @@ public class CompleteIdentifierSetTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * {@link CompleteIdentifierSet#restore} seeds the stored identifiers together
+	 * with the model they were validated against, so a reopen under that same
+	 * model skips the costly scan — the completeness predicate is never consulted.
+	 */
+	@Test(timeout = 60000)
+	public void restoreUnderValidatedModelSkipsTheScan() {
+		CompleteIdentifierSet set = new CompleteIdentifierSet();
+		set.restore(List.of("a", "b"), "model-a");
+
+		Assert.assertTrue("stored ids are seeded", set.contains("a"));
+		Assert.assertEquals(2, set.size());
+
+		AtomicBoolean checked = new AtomicBoolean(false);
+		List<String> removed = set.revalidate("model-a", id -> {
+			checked.set(true);
+			return false;
+		});
+
+		Assert.assertTrue("a reopen under the validated model removes nothing", removed.isEmpty());
+		Assert.assertFalse("the completeness predicate is not consulted — no store scan", checked.get());
+		Assert.assertEquals("both items are retained", 2, set.size());
+	}
+
+	/**
+	 * A set restored with no validated model (a store written before the model
+	 * was recorded) is scanned on the first revalidation, as before.
+	 */
+	@Test(timeout = 60000)
+	public void restoreWithNoValidatedModelStillScans() {
+		CompleteIdentifierSet set = new CompleteIdentifierSet();
+		set.restore(List.of("a", "b"), null);
+
+		AtomicBoolean checked = new AtomicBoolean(false);
+		List<String> removed = set.revalidate("model-a", id -> {
+			checked.set(true);
+			return id.equals("a");
+		});
+
+		Assert.assertTrue("a store with no recorded model is scanned", checked.get());
+		Assert.assertEquals("the incomplete item is removed", List.of("b"), removed);
+	}
+
+	/**
+	 * {@link CompleteIdentifierSet#covers} vouches for identifiers only under the
+	 * model the set was last checked against, and only when it holds every one.
+	 */
+	@Test(timeout = 60000)
+	public void coversOnlyUnderTheCheckedModelAndOnlyHeldIdentifiers() {
+		CompleteIdentifierSet set = new CompleteIdentifierSet();
+		set.restore(List.of("a", "b"), null);
+		Assert.assertFalse("an unchecked set vouches for nothing", set.covers("model-a", List.of("a")));
+		Assert.assertFalse("a null model never matches", set.covers(null, List.of("a")));
+
+		set.revalidate("model-a", id -> true);
+		Assert.assertTrue("every held id is vouched for", set.covers("model-a", List.of("a", "b")));
+		Assert.assertTrue("an empty store is trivially covered", set.covers("model-a", List.of()));
+		Assert.assertFalse("an id the set does not hold is not vouched for",
+				set.covers("model-a", List.of("a", "b", "c")));
+		Assert.assertFalse("a different model is not vouched for", set.covers("model-b", List.of("a")));
+
+		set.revalidate("model-b", id -> true);
+		Assert.assertFalse("once revalidated for a newer model, the old model is no longer vouched for",
+				set.covers("model-a", List.of("a")));
+		Assert.assertTrue(set.covers("model-b", List.of("a", "b")));
+	}
+
 	/** The type behaves as a {@link Set}: add/remove/contains/size all delegate correctly. */
 	@Test(timeout = 60000)
 	public void behavesAsASet() {

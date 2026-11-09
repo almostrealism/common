@@ -167,6 +167,38 @@ public interface LanguageOperations {
 	String kernelIndex(int axis);
 
 	/**
+	 * Returns the variable holding the lane that is executing, within its work item, in a kernel
+	 * that assigns several lanes to each work item (see
+	 * {@link io.almostrealism.scope.Scope#getLaneCount()}). The lanes of a work item run its code
+	 * together, and the lane distinguishes them, from zero up to but excluding the lane count.
+	 *
+	 * <p>The default refuses: a language whose kernels never assign lanes to a work item is never
+	 * asked to render one.</p>
+	 *
+	 * @return the lane variable
+	 * @throws UnsupportedOperationException if kernels in this language have no lanes
+	 */
+	default String laneIndex() {
+		throw new UnsupportedOperationException(getClass().getSimpleName() + " kernels have no lanes");
+	}
+
+	/**
+	 * Returns the sum of {@code value} over every lane of the work item that is executing, the
+	 * same total being received by each of those lanes, in a kernel that assigns several lanes to
+	 * each work item (see {@link io.almostrealism.scope.Scope#getLaneCount()}).
+	 *
+	 * <p>The default refuses: a language whose kernels never assign lanes to a work item is never
+	 * asked to render one.</p>
+	 *
+	 * @param value the rendered value each lane contributes
+	 * @return the rendered sum across the lanes
+	 * @throws UnsupportedOperationException if kernels in this language have no lanes
+	 */
+	default String laneSum(String value) {
+		throw new UnsupportedOperationException(getClass().getSimpleName() + " kernels have no lanes");
+	}
+
+	/**
 	 * Returns a variable declaration string without an array length (scalar declaration).
 	 *
 	 * @param type        the Java type to declare

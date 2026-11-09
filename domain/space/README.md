@@ -457,6 +457,22 @@ public interface Volume<T> {
 }
 ```
 
+### Photon-absorber volumes and BRDFs
+
+The photon-absorber simulation (`AbsorberHashSet` and `DefaultPhotonField` in `ar-render`) confines
+absorbers to `Volume`s and chooses re-emission directions with `SphericalProbabilityDistribution`s:
+
+- **Volumes** (`org.almostrealism.primitives`): `Plane` (a slab), `SphericalVolume` (a solid ball,
+  not to be confused with the `Sphere` surface) and `BoxVolume` (six `Plane` walls of a hollow
+  box). `intersect` returns `Double.MAX_VALUE - 1.0` when nothing is ahead.
+- **`SpecularAbsorber`** (`org.almostrealism.primitives`): absorbs photons inside its volume,
+  optionally filtered by wavelength, and re-emits each one after a delay in a direction chosen by
+  its BRDF.
+- **BRDFs** (`org.almostrealism.space.distribution`): `ReflectiveProbabilityDistribution` (mirror),
+  `RefractiveProbabilityDistribution` (Snell's law), `UniformHemisphericalDistribution` and
+  `OverlayBRDF` (a sum of others), all built on `DirectionDistribution`, which documents the
+  argument conventions.
+
 ## Integration with Other Modules
 
 ### Geometry Module

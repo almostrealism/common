@@ -25,9 +25,11 @@
 #   STARTED_AFTER, DESCRIPTION, PROTECT_TEST_FILES, ENFORCE_CHANGES,
 #   REPO_URL, CREATE_WORKSTREAM, TRIGGER_COMMIT
 #
-# TRIGGER_COMMIT is the commit that triggered this run; the controller skips a
-# review re-triggered only by the previous remediation pass's own commit.
-# It is staged only by the review routes, so other routes never carry it.
+# TRIGGER_COMMIT is the commit that triggered this run; the controller uses it
+# to tell a commit a remediation pass produced from one it did not, resetting
+# the per-PR cap when the branch gains a commit no pass produced. Every
+# remediation route stages it so a pass triggered by a prior pass's own commit
+# is recognised as the loop's own rather than resetting the cap.
 #
 # REPO_URL and CREATE_WORKSTREAM are only worth staging to override the
 # defaults submit-agent-job.sh applies: it derives the repository from

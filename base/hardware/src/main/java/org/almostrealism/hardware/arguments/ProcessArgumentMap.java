@@ -24,6 +24,7 @@ import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.InstructionCacheCollisionException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.instructions.ProcessTreePositionKey;
 import org.almostrealism.hardware.mem.MemoryDataDestinationProducer;
@@ -364,7 +365,7 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 	 * explicitly permits unmatched positions to resolve to their original producers.</p>
 	 *
 	 * @param description Identifies the operation being bound, for the failure message
-	 * @throws HardwareException if any positioned argument has no substitution
+	 * @throws InstructionCacheCollisionException if any positioned argument has no substitution
 	 */
 	public void verifySubstitutions(String description) {
 		if (enableSubstitutionFallback) return;
@@ -377,8 +378,8 @@ public class ProcessArgumentMap implements ProcessArgumentEvaluator {
 		}
 
 		if (!missing.isEmpty()) {
-			throw new HardwareException("Instruction cache collision reusing " + description +
-					": no substitution for " + missing +
+			throw new InstructionCacheCollisionException(InstructionCacheCollisionException.Kind.STRUCTURE,
+					"Instruction cache collision reusing " + description + ": no substitution for " + missing +
 					"; the reusing computation does not share the compiled scope's structure");
 		}
 	}

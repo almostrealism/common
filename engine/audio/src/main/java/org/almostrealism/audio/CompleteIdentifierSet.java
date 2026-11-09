@@ -18,6 +18,7 @@ package org.almostrealism.audio;
 
 import java.util.AbstractSet;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
@@ -74,6 +75,40 @@ final class CompleteIdentifierSet extends AbstractSet<String> {
 
 	@Override
 	public boolean remove(Object o) { return o != null && identifiers.remove(o); }
+
+	/**
+	 * Seeds this set from a store's persisted state when a library is opened over
+	 * it: every stored identifier, taken to be complete for the model the store
+	 * was last fully validated against. Recording that model lets the first
+	 * {@link #revalidate(String, Predicate)} of the launch recognise an unchanged
+	 * model and skip the costly scan, rather than re-reading every stored item to
+	 * reconfirm completeness. A {@code null} {@code validatedModel} (a store with
+	 * no marker, as written before the model was recorded) leaves the model
+	 * unchecked, so the first refresh scans.
+	 *
+	 * @param identifiers    the stored identifiers to assume complete
+	 * @param validatedModel the model the store was last validated against, or {@code null}
+	 */
+	void restore(Collection<String> identifiers, String validatedModel) {
+		this.identifiers.addAll(identifiers);
+		this.modelId = validatedModel;
+	}
+
+	/**
+	 * Returns whether this set vouches for every one of {@code identifiers} under
+	 * {@code modelId}: the set was last checked against that model, and contains
+	 * each identifier. A set checked against another model — for example because
+	 * a later refresh for a newer model has revalidated it — vouches for nothing
+	 * under the old one, so a refresh that drains after the model has moved on
+	 * cannot record its stale model as validated.
+	 *
+	 * @param modelId     the model to vouch under; {@code null} never matches
+	 * @param identifiers the identifiers to vouch for
+	 * @return true if every identifier is known complete for {@code modelId}
+	 */
+	boolean covers(String modelId, Collection<String> identifiers) {
+		return modelId != null && modelId.equals(this.modelId) && this.identifiers.containsAll(identifiers);
+	}
 
 	/**
 	 * Removes every identifier that fails {@code complete}, unless this set was

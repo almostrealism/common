@@ -44,17 +44,13 @@ layer swiglu_ffn(norm_weights: weight, w1: weight, w2: weight, w3: weight, epsil
  * FeedForwardFeatures.gatedLinearFeedForward(...), which built this same gating as a
  * SequentialBlock: a fused gate+linear projection, a split of its output into two equal halves,
  * an activation on the gate half, the element-wise product of the two halves and a down
- * projection. The Java gatedLinearFeedForward(...) methods now only build the pre-normalization
- * (and, for the adaptive-layernorm variant, the conditioning modulation that must sit between the
- * norm and the gate projection), bind the two projections and the gate activation, and load this
- * layer — so the gating composition has one definition and it is here.
+ * projection. The gating composition has one definition and it is here.
  *
- * The pre-normalization is NOT a stage of this body: the adaLN variant inserts a per-channel
- * modulation (scale * x + shift, driven by a runtime conditioning vector) between the norm and the
- * gate projection, and the language has no construct for that runtime modulation, so the norm and
- * the modulation are composed in Java by FeedForwardFeatures.gatedLinearFeedForward(...), ahead of
- * this body. Keeping both out lets the plain and modulated feed-forwards share this single gating
- * definition rather than duplicating it.
+ * The pre-normalization is NOT a stage of this body, because the sub-layers that use it normalize
+ * differently: the gated_linear_feed_forward_* layers below put a LayerNorm or an RMSNorm, and in
+ * their adaLN variants a feature-wise modulation, ahead of it; t5gemma_feed_forward and
+ * causal_lm_feed_forward an RMSNorm; resampling_transformer_layer a DynamicTanh. Keeping the norm
+ * out lets every one of them share this single gating definition rather than duplicating it.
  *
  * in_projection and out_projection arrive as projection layers — a plain dense projection, or an
  * adapter-wrapped one when the model is being fine-tuned. The adapter decision belongs to the
@@ -86,4 +82,93 @@ layer glu_feed_forward(in_projection: projection, out_projection: projection,
         { slice([batch, seq_len, inner_dim], 0, 0, inner_dim); gate_activation }
     )
     out_projection
+}
+
+/**
+ * Gated-linear feed-forward sub-layer of a diffusion transformer block: the pre-normalization, the
+ * adaptive-layernorm (adaLN) modulation when the block is conditioned that way, and the
+ * glu_feed_forward gating body above. There is one layer per normalization family and modulation:
+ *
+ *   gated_linear_feed_forward_layernorm              LayerNorm
+ *   gated_linear_feed_forward_layernorm_modulated    LayerNorm, then the adaLN modulation
+ *   gated_linear_feed_forward_rmsnorm                RMSNorm
+ *   gated_linear_feed_forward_rmsnorm_modulated      RMSNorm, then the adaLN modulation
+ *
+ * These layers replace the Java assembly that used to live in
+ * FeedForwardFeatures.gatedLinearFeedForward(...), which built the normalization of the family a
+ * NormalizationType argument chose and, when it was given a modulation, an adaLN modulation stage,
+ * as a SequentialBlock ahead of glu_feed_forward. Which norm runs and whether the activation is
+ * modulated are now read off the layer instead of being decided inside that method, which only
+ * builds the two projections (dense, or adapter-wrapped for fine-tuning), binds the weights, the
+ * family's default epsilon (NormalizationType.defaultEpsilon: 1e-5 for RMSNorm, the hardware
+ * precision's epsilon for LayerNorm) and the modulation, and loads the layer the call names. The
+ * diffusion transformer runs the LayerNorm layers for a LayerNorm checkpoint and the RMSNorm
+ * layers for an RMSNorm checkpoint (Stable Audio 3, whose norms carry no bias, so norm_biases is
+ * null), the _modulated forms in its adaLN conditioning mode.
+ *
+ * The modulation is feature-wise (FiLM): modulate(mod_scale, mod_shift, 2) multiplies every
+ * channel of every position by its batch entry's factor and adds its batch entry's offset,
+ * n' = mod_scale ⊙ n + mod_shift, with mod_scale and mod_shift [batch, dim], one value per batch
+ * entry and channel, broadcast across the sequence (axis 2 of the activation is the channel). The
+ * diffusion transformer computes them from its conditioning vector, mod_scale = 1 + scale_ff and
+ * mod_shift = shift_ff of the adaLN-Zero modulation, and binds them as producers it refreshes
+ * before every forward pass. They are constants of the graph, so no gradient reaches the
+ * conditioning through them.
+ *
+ * Data flow of one forward pass over a [batch, seq_len, dim] activation:
+ *
+ *   x                                                                       [batch, seq_len, dim]
+ *     layernorm | rmsnorm    each position normalized over its dim features [batch, seq_len, dim]
+ *     modulate(mod_scale, mod_shift, 2)
+ *                            each channel times its factor, plus its offset
+ *                                                              (_modulated) [batch, seq_len, dim]
+ *     glu_feed_forward       in_projection → linear half ⊙ gate_activation(gate half)
+ *                            → out_projection                               [batch, seq_len, dim]
+ *
+ * The residual connection around the sub-layer, and in adaLN mode the gate on its output, belong
+ * to the transformer block that uses it.
+ */
+layer gated_linear_feed_forward_layernorm(batch: int, seq_len: int, inner_dim: int,
+                                          norm_weights: weight, norm_biases: weight, epsilon: float,
+                                          in_projection: projection, out_projection: projection,
+                                          gate_activation: activation) {
+    layernorm(norm_weights, norm_biases, epsilon)
+    glu_feed_forward(in_projection, out_projection, gate_activation, batch, seq_len, inner_dim)
+}
+
+/** LayerNorm, the adaLN modulation, then the gating body: [batch, seq_len, dim] -> same. */
+layer gated_linear_feed_forward_layernorm_modulated(batch: int, seq_len: int, dim: int, inner_dim: int,
+                                                    norm_weights: weight, norm_biases: weight,
+                                                    epsilon: float,
+                                                    mod_scale: producer([batch, dim]),
+                                                    mod_shift: producer([batch, dim]),
+                                                    in_projection: projection,
+                                                    out_projection: projection,
+                                                    gate_activation: activation) {
+    layernorm(norm_weights, norm_biases, epsilon)
+    modulate(mod_scale, mod_shift, 2)
+    glu_feed_forward(in_projection, out_projection, gate_activation, batch, seq_len, inner_dim)
+}
+
+/** RMSNorm, then the gating body: [batch, seq_len, dim] -> same. */
+layer gated_linear_feed_forward_rmsnorm(batch: int, seq_len: int, inner_dim: int,
+                                        norm_weights: weight, norm_biases: weight, epsilon: float,
+                                        in_projection: projection, out_projection: projection,
+                                        gate_activation: activation) {
+    rmsnorm(norm_weights, norm_biases, epsilon)
+    glu_feed_forward(in_projection, out_projection, gate_activation, batch, seq_len, inner_dim)
+}
+
+/** RMSNorm, the adaLN modulation, then the gating body: [batch, seq_len, dim] -> same. */
+layer gated_linear_feed_forward_rmsnorm_modulated(batch: int, seq_len: int, dim: int, inner_dim: int,
+                                                  norm_weights: weight, norm_biases: weight,
+                                                  epsilon: float,
+                                                  mod_scale: producer([batch, dim]),
+                                                  mod_shift: producer([batch, dim]),
+                                                  in_projection: projection,
+                                                  out_projection: projection,
+                                                  gate_activation: activation) {
+    rmsnorm(norm_weights, norm_biases, epsilon)
+    modulate(mod_scale, mod_shift, 2)
+    glu_feed_forward(in_projection, out_projection, gate_activation, batch, seq_len, inner_dim)
 }

@@ -31,6 +31,7 @@
 		<module>base/code</module>
 		<module>base/collect</module>
 		<module>base/hardware</module>
+		<module>base/hardware-js</module>
 
 		<!-- compute — Mathematical Domains -->
 		<module>compute/algebra</module>
