@@ -10,7 +10,7 @@ For every scenario and compute context present in both reports, the script print
 deterministic metric that changed (hit rate, collisions, kernels per computation, arguments and
 folded inputs per kernel, aggregate size, copies per dispatch, outcomes) and the ratio of the
 timing metrics, followed by the instances whose kernels or outcome changed. A report pair whose
-populations differ (different seed, population or generator) is refused, because its differences
+populations differ (different seed, population, generator or scenario selection) is refused, because its differences
 would not be differences in behaviour.
 
 Exit status: 0 when the reports were compared, 2 when they cannot be.
@@ -122,8 +122,8 @@ def main():
 
     old_prints = fingerprints(before)
     new_prints = fingerprints(after)
-    common = [name for name in old_prints if name in new_prints]
-    differing = [name for name in common if old_prints[name] != new_prints[name]]
+    names = list(old_prints) + [name for name in new_prints if name not in old_prints]
+    differing = [name for name in names if old_prints.get(name) != new_prints.get(name)]
     if differing:
         print("The populations differ for " + ", ".join(differing) +
               "; run both branches with the same command:\n  before: " + before.get("command", "?") +

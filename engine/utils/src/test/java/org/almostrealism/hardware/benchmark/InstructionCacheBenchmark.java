@@ -61,8 +61,9 @@ import java.util.Set;
  * is counted as a failure; neither stops the run.</p>
  *
  * <p>Each scenario is run on each requested compute context against a cache holding nothing the
- * scenario did not compile: the signatures it compiled are evicted when it finishes, so scenarios
- * and contexts do not share kernels and their order does not matter.</p>
+ * scenario did not compile: the instruction cache is emptied before and after it, so scenarios,
+ * contexts and any earlier work in the JVM do not share kernels and their order does not
+ * matter.</p>
  *
  * <p>The benchmark is a measurement, not a check, and it runs for many minutes, so it is kept out
  * of the CI pipeline and out of ordinary local runs. Run it with long tests enabled:</p>
@@ -187,28 +188,25 @@ public class InstructionCacheBenchmark extends TestSuiteBase {
 	}
 
 	/**
-	 * Runs every instance of a scenario under a compute requirement, then evicts every signature
-	 * the scenario compiled so the next run starts from a cache without them.
+	 * Runs every instance of a scenario under a compute requirement against an empty instruction
+	 * cache, and empties it again afterward, so the scenario neither reuses kernels compiled by
+	 * earlier work in the JVM nor leaves any for the next run.
 	 */
 	private ScenarioMetrics run(BenchmarkScenario scenario, ComputeRequirement requirement,
 								KernelBindingRecorder recorder, int evaluations) {
 		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
 		List<InstanceResult> results = new ArrayList<>();
-		Set<String> compiled = new LinkedHashSet<>();
 
+		computer.evictAllInstructions();
 		computer.pushRequirements(List.of(requirement));
 
 		try {
 			for (WorkloadInstance instance : scenario.getInstances()) {
-				InstanceResult result = run(instance, recorder, evaluations);
-				results.add(result);
-				result.getFirst().getKernels().stream()
-						.filter(k -> k.isCompiled() && k.getSignature() != null)
-						.forEach(k -> compiled.add(k.getSignature()));
+				results.add(run(instance, recorder, evaluations));
 			}
 		} finally {
 			computer.popRequirements();
-			compiled.forEach(computer::evictInstructions);
+			computer.evictAllInstructions();
 		}
 
 		ScenarioMetrics metrics = new ScenarioMetrics(scenario, requirement.name(), results);
@@ -315,7 +313,7 @@ public class InstructionCacheBenchmark extends TestSuiteBase {
 		StringBuilder b = new StringBuilder("AR_LONG_TESTS=enabled");
 		b.append(" ").append(PREFIX).append("SEED=").append(seed);
 		b.append(" ").append(PREFIX).append("POPULATION=").append(population);
-		for (String name : List.of("EVALUATIONS", "CONTEXTS", "SCENARIOS", "TEMPLATES", "TEMPLATE_SKEW",
+		for (String name : List.of("EVALUATIONS", "LABEL", "OUTPUT", "CONTEXTS", "SCENARIOS", "TEMPLATES", "TEMPLATE_SKEW",
 				"SHAPE_SKEW", "CONSTANT_SKEW", "ALIAS_PROBABILITY", "MAX_DEPTH", "MAX_INPUTS",
 				"SCALAR_PROBABILITY", "LITERAL_PROBABILITY")) {
 			String value = SystemUtils.getProperty(PREFIX + name);

@@ -68,9 +68,10 @@ does the following for each instance:
 An `InstructionCacheCollisionException` anywhere in the failure's cause chain is counted as a
 collision. Any other exception is counted as a failure. Neither one stops the run.
 
-Each scenario runs once per compute context, under `pushRequirements`, against a cache that holds
-nothing the scenario compiled earlier. Every signature the scenario compiled is evicted when it
-finishes, so scenarios and contexts share no kernels and their order does not matter.
+Each scenario runs once per compute context, under `pushRequirements`, against an empty cache.
+The instruction cache is emptied (`DefaultComputer.evictAllInstructions`) before the scenario
+starts and again when it finishes, so scenarios, contexts and any earlier work in the JVM share no
+kernels and their order does not matter.
 
 ### Scenarios
 
@@ -145,7 +146,8 @@ Run the same command on both branches, then:
 python3 scripts/compare-cache-benchmark.py before.json after.json
 ```
 
-The script refuses a pair whose population fingerprints differ. For each scenario and context, it
+The script refuses a pair whose population fingerprints differ, including a pair in which a
+scenario appears in only one report. For each scenario and context, it
 prints every deterministic metric that changed and the ratio of each timing metric. It then lists
 the instances whose kernels or outcome changed. Running the same command twice on one branch
 reports no deterministic change.
