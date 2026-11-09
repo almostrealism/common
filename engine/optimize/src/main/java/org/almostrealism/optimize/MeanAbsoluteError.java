@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 /**
@@ -85,7 +86,7 @@ public class MeanAbsoluteError implements LossProvider, CodeFeatures {
 	 */
 	public MeanAbsoluteError(TraversalPolicy outputShape) {
 		this.outputShape = outputShape;
-		this.loss = cv(outputShape, 0).subtract(cv(outputShape, 1)).abs().get();
+		this.loss = terms(cv(outputShape, 0), cv(outputShape, 1)).get();
 	}
 
 	/**
@@ -98,6 +99,19 @@ public class MeanAbsoluteError implements LossProvider, CodeFeatures {
 	@Override
 	public double loss(PackedCollection output, PackedCollection target) {
 		return loss.evaluate(output, target).doubleStream().average().orElse(0);
+	}
+
+	/**
+	 * Returns the absolute differences between output and target, whose mean is the loss.
+	 *
+	 * @param output producer for the model's output predictions
+	 * @param target producer for the expected target values
+	 * @return a producer of {@code |output - target|}, element by element
+	 */
+	@Override
+	public CollectionProducer terms(Producer<PackedCollection> output,
+									Producer<PackedCollection> target) {
+		return c(output).subtract(c(target)).abs();
 	}
 
 	/**

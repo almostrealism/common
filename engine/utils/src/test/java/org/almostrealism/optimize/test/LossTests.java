@@ -18,12 +18,15 @@ package org.almostrealism.optimize.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.optimize.LossProvider;
+import org.almostrealism.optimize.MeanAbsoluteError;
 import org.almostrealism.optimize.MeanSquaredError;
 import org.almostrealism.optimize.NegativeLogLikelihood;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -76,5 +79,30 @@ public class LossTests extends TestSuiteBase {
 		}
 
 		Assert.assertEquals(-1.0 / rows, gradient.toDouble(1), 1e-9);
+	}
+
+	/**
+	 * The {@link LossProvider#terms terms} of {@link MeanSquaredError} and
+	 * {@link MeanAbsoluteError} are one value for each element of the output, and their mean is
+	 * exactly the loss each computes, while {@link NegativeLogLikelihood}, which computes its loss
+	 * on the host from the output itself, has no terms.
+	 */
+	@Test(timeout = 60000)
+	public void termsAverageToTheLoss() {
+		TraversalPolicy outputShape = shape(2, 5).traverseEach();
+		Random random = new Random(11);
+		PackedCollection output = randn(shape(2, 5), 0.0, 1.0, random).evaluate();
+		PackedCollection target = randn(shape(2, 5), 0.0, 1.0, random).evaluate();
+
+		List<LossProvider> losses = List.of(new MeanSquaredError(outputShape), new MeanAbsoluteError(outputShape));
+		for (LossProvider loss : losses) {
+			PackedCollection terms = loss.terms(cp(output.each()), cp(target.each())).evaluate();
+
+			Assert.assertEquals(output.getMemLength(), terms.getMemLength());
+			Assert.assertEquals(loss.loss(output.each(), target.each()),
+					terms.doubleStream().average().orElse(0), 0.0);
+		}
+
+		Assert.assertNull(new NegativeLogLikelihood().terms(cp(output), cp(target)));
 	}
 }

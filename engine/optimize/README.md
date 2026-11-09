@@ -91,7 +91,10 @@ import org.almostrealism.optimize.*;
 // Mean Squared Error (regression)
 LossProvider mse = new MeanSquaredError(traverseEach());
 double loss = mse.loss(output, target);
-Producer<PackedCollection<?>> gradient = mse.gradient(outputProducer, targetProducer);
+Producer<PackedCollection> gradient = mse.gradient(outputProducer, targetProducer);
+
+// The squared differences as a computation, whose mean is the loss
+Producer<PackedCollection> terms = mse.terms(outputProducer, targetProducer);
 
 // Mean Absolute Error (robust regression)
 LossProvider mae = new MeanAbsoluteError(traverseEach());
@@ -233,14 +236,28 @@ public class ModelOptimizer {
 
 ```java
 public interface LossProvider {
-    double loss(PackedCollection<?> output, PackedCollection<?> target);
+    double loss(PackedCollection output, PackedCollection target);
 
-    Producer<PackedCollection<?>> gradient(
-        Producer<PackedCollection<?>> output,
-        Producer<PackedCollection<?>> target
+    // The values whose mean is the loss, or null (the default) if the loss
+    // is only computed by loss(output, target)
+    default Producer<PackedCollection> terms(
+        Producer<PackedCollection> output,
+        Producer<PackedCollection> target
+    ) { return null; }
+
+    Producer<PackedCollection> gradient(
+        Producer<PackedCollection> output,
+        Producer<PackedCollection> target
     );
 }
 ```
+
+`ModelOptimizer` submits a loss function's terms with each sample's forward pass and loss
+gradient, so a single wait for the sample covers all three, and takes the sample's loss as
+their mean. A loss function without terms has its loss computed by `loss(output, target)` once
+the sample's work has completed, which on an accelerator costs another round trip between the
+host and the device for every sample. `MeanSquaredError` and `MeanAbsoluteError` provide terms;
+`NegativeLogLikelihood` computes its loss on the host from the output itself.
 
 ### HealthComputation
 
@@ -355,36 +372,40 @@ for (int gen = 0; gen < 100; gen++) {
 ### Pattern 3: Custom Loss Function
 
 ```java
-public class HuberLoss implements LossProvider {
-    private double delta;
-    private final CollectionProducer<?> shape;
+public class HuberLoss implements LossProvider, CodeFeatures {
+    private final double delta;
+    private final Evaluable<PackedCollection> loss;
 
-    public HuberLoss(CollectionProducer<?> shape, double delta) {
-        this.shape = shape;
+    public HuberLoss(TraversalPolicy outputShape, double delta) {
         this.delta = delta;
+        this.loss = terms(cv(outputShape, 0), cv(outputShape, 1)).get();
     }
 
     @Override
-    public double loss(PackedCollection<?> output, PackedCollection<?> target) {
-        double totalLoss = 0.0;
-        for (int i = 0; i < output.getMemLength(); i++) {
-            double diff = Math.abs(output.toDouble(i) - target.toDouble(i));
-            if (diff <= delta) {
-                totalLoss += 0.5 * diff * diff;
-            } else {
-                totalLoss += delta * (diff - 0.5 * delta);
-            }
-        }
-        return totalLoss / output.getMemLength();
+    public double loss(PackedCollection output, PackedCollection target) {
+        return loss.evaluate(output, target).doubleStream().average().orElse(0);
     }
 
     @Override
-    public Producer<PackedCollection<?>> gradient(...) {
+    public Producer<PackedCollection> terms(Producer<PackedCollection> output,
+                                            Producer<PackedCollection> target) {
+        // Quadratic for |error| <= delta, linear beyond it
+        CollectionProducer error = c(output).subtract(c(target)).abs();
+        return error.greaterThan(c(delta),
+                error.subtract(c(0.5 * delta)).multiply(c(delta)),
+                error.pow(2.0).multiply(c(0.5)));
+    }
+
+    @Override
+    public Producer<PackedCollection> gradient(...) {
         // Huber gradient: linear for |error| > delta, quadratic otherwise
         // Implementation details...
     }
 }
 ```
+
+Computing the terms with producers, rather than reading the collections element by element
+on the host, keeps the loss on the device and lets `ModelOptimizer` submit it with each sample.
 
 ### Pattern 4: Train/Validation Split
 

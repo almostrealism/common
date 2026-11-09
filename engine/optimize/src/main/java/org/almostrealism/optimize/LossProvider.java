@@ -54,7 +54,10 @@ import org.almostrealism.collect.PackedCollection;
  *
  * <h2>Custom Loss Functions</h2>
  * <p>
- * To implement a custom loss function, provide both the loss computation and its gradient:
+ * To implement a custom loss function, provide both the loss computation and its gradient, and,
+ * when the loss is the mean of values a computation can produce, those values as its
+ * {@link #terms terms}, so that {@link ModelOptimizer} can compute the loss with the rest of each
+ * training sample's work:
  * </p>
  * <pre>{@code
  * public class HuberLoss implements LossProvider {
@@ -93,6 +96,35 @@ public interface LossProvider {
 	 * @return the scalar loss value; lower is better
 	 */
 	double loss(PackedCollection output, PackedCollection target);
+
+	/**
+	 * Returns the terms of the loss of {@code output} against {@code target} as a computation:
+	 * the values whose mean is {@link #loss(PackedCollection, PackedCollection) the loss}.
+	 * <p>
+	 * A loss computed this way can be submitted with the work that produces {@code output},
+	 * rather than evaluated once that work has completed. {@link ModelOptimizer} submits the
+	 * terms after each sample's forward pass and loss gradient, so one wait for the sample covers
+	 * all three, and takes the sample's loss as the mean of the terms instead of calling
+	 * {@link #loss(PackedCollection, PackedCollection)}. On a device that runs its dispatches
+	 * asynchronously, that saves a round trip between the host and the device for every sample.
+	 * </p>
+	 * <p>
+	 * Returns {@code null}, the default, when the loss is not simply the mean of such terms:
+	 * when it is computed on the host from the output itself (as {@link NegativeLogLikelihood}
+	 * does), or when {@link #loss(PackedCollection, PackedCollection)} does more than average
+	 * them, such as checking or adjusting the value. The loss is then always obtained from
+	 * {@link #loss(PackedCollection, PackedCollection)}.
+	 * </p>
+	 *
+	 * @param output producer for the model's output predictions
+	 * @param target producer for the expected target values
+	 * @return a producer of the loss terms, or {@code null} if the loss is only computed by
+	 *         {@link #loss(PackedCollection, PackedCollection)}
+	 */
+	default Producer<PackedCollection> terms(Producer<PackedCollection> output,
+											 Producer<PackedCollection> target) {
+		return null;
+	}
 
 	/**
 	 * Computes the gradient of the loss with respect to the model outputs.

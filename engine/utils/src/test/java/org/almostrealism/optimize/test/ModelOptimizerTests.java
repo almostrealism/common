@@ -17,6 +17,7 @@
 package org.almostrealism.optimize.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
@@ -37,6 +38,7 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Tests for {@link ModelOptimizer} training functionality.
@@ -538,6 +540,83 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 		} catch (IllegalArgumentException e) {
 			Assert.assertTrue(e.getMessage(), e.getMessage().contains("does not match collection size"));
 		}
+	}
+
+	/**
+	 * Training with a loss function that computes its loss from {@link LossProvider#terms terms},
+	 * which {@link ModelOptimizer} submits with the passes of each sample, reports exactly the same
+	 * loss for every epoch, and leaves the same parameters, as training with the same loss computed
+	 * by {@link LossProvider#loss(PackedCollection, PackedCollection)} once the passes of each
+	 * sample have completed. Both mean squared error and mean absolute error are checked.
+	 */
+	@Test(timeout = 120000)
+	public void lossFromTermsMatchesEagerLoss() {
+		List<ValueTarget<PackedCollection>> samples = regressionSamples(10);
+		List<LossProvider> losses = List.of(
+				new MeanSquaredError(shape(3).traverseEach()),
+				new MeanAbsoluteError(shape(3).traverseEach()));
+
+		for (LossProvider loss : losses) {
+			Assert.assertNotNull(loss.terms(cv(shape(3).traverseEach(), 0), cv(shape(3).traverseEach(), 1)));
+
+			PackedCollection eagerWeights = initialWeights();
+			ModelOptimizer eager = new ModelOptimizer(denseModel(eagerWeights), () -> Dataset.of(samples));
+			eager.setLossFunction(eagerLoss(loss, new AtomicInteger()));
+			eager.setLogFrequency(0);
+			TrainingResult eagerResult = eager.optimize(3);
+
+			PackedCollection chainedWeights = initialWeights();
+			ModelOptimizer chained = new ModelOptimizer(denseModel(chainedWeights), () -> Dataset.of(samples));
+			chained.setLossFunction(loss);
+			chained.setLogFrequency(0);
+			TrainingResult chainedResult = chained.optimize(3);
+
+			Assert.assertEquals(3, eagerResult.getTrainLossHistory().size());
+			Assert.assertEquals(eagerResult.getTrainLossHistory(), chainedResult.getTrainLossHistory());
+			Assert.assertTrue("Training did not change the weights", compare(initialWeights(), chainedWeights) > 1e-4);
+			assertEquals(eagerWeights, chainedWeights);
+		}
+	}
+
+	/**
+	 * A loss function without {@link LossProvider#terms terms} has its loss computed by
+	 * {@link LossProvider#loss(PackedCollection, PackedCollection)} for every sample trained, and
+	 * once more for the first sample of each epoch, whose loss is computed again after its update.
+	 */
+	@Test(timeout = 120000)
+	public void lossWithoutTermsIsComputedForEverySample() {
+		List<ValueTarget<PackedCollection>> samples = regressionSamples(6);
+		AtomicInteger calls = new AtomicInteger();
+
+		ModelOptimizer optimizer = new ModelOptimizer(denseModel(initialWeights()), () -> Dataset.of(samples));
+		optimizer.setLossFunction(eagerLoss(new MeanSquaredError(shape(3).traverseEach()), calls));
+		optimizer.setLogFrequency(0);
+		TrainingResult result = optimizer.optimize(2);
+
+		Assert.assertEquals(2, result.getTrainLossHistory().size());
+		Assert.assertEquals(2 * (samples.size() + 1), calls.get());
+	}
+
+	/**
+	 * Returns a loss function with the loss and gradient of {@code loss} and no
+	 * {@link LossProvider#terms terms}, so that its loss is only computed by
+	 * {@link LossProvider#loss(PackedCollection, PackedCollection)}, which counts its calls in
+	 * {@code calls}.
+	 */
+	private LossProvider eagerLoss(LossProvider loss, AtomicInteger calls) {
+		return new LossProvider() {
+			@Override
+			public double loss(PackedCollection output, PackedCollection target) {
+				calls.incrementAndGet();
+				return loss.loss(output, target);
+			}
+
+			@Override
+			public Producer<PackedCollection> gradient(Producer<PackedCollection> output,
+													   Producer<PackedCollection> target) {
+				return loss.gradient(output, target);
+			}
+		};
 	}
 
 	/**
