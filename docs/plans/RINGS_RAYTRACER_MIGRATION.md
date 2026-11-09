@@ -180,7 +180,5 @@ other rings modules have been inventoried. Before the move:
 ## Next: photonfield
 
 photonfield is the next rings module down; it depends on raytracer only through
-`RayTracedAnimation` (now in common), `Settings` and `RayTracingOutputHandler`. It is the
-photon-absorber simulator, mostly Swing panels and XML display nodes. The library candidates
-to inventory are the BRDF distributions in `stats`, the `Box` and `Sphere` volumes,
-`SpecularAbsorber`, `PhotonFieldAnimation` and `FileLoader`.
+`RayTracedAnimation` (now in common), `Settings` and `RayTracingOutputHandler`. Its migration
+is recorded in `RINGS_PHOTONFIELD_MIGRATION.md`.

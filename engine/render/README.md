@@ -178,6 +178,10 @@ and rigid bodies can be stored as and loaded from `Properties`. Set the frame si
 `setImageDimensions` and turn on `setRenderEachFrame`; `Animation.run()` then writes a frame
 each time a frame duration of simulated time has passed.
 
+`PhotonFieldAnimation` extends it with a `DefaultPhotonField` on the animation's clock: every
+member that is also an `Absorber` is kept in the field's `AbsorberHashSet`, however it is added to
+or removed from the animation.
+
 ### Engine Interface
 
 ```java

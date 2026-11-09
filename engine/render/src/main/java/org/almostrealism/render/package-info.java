@@ -30,6 +30,9 @@
  *       supersampled rendering</li>
  *   <li>{@link org.almostrealism.render.RayTracedAnimation} — an
  *       {@link org.almostrealism.space.Animation} that ray traces each frame to an image file</li>
+ *   <li>{@link org.almostrealism.render.PhotonFieldAnimation} — a
+ *       {@link org.almostrealism.render.RayTracedAnimation} that also runs a photon field over its
+ *       members that are absorbers</li>
  * </ul>
  *
  * <p>The rendering pipeline is:</p>
