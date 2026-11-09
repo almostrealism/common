@@ -50,7 +50,7 @@ import java.util.function.Supplier;
  * layer constructors every PDSL program can call without registering a primitive
  * (dense, conv1d, conv_transpose1d, rmsnorm, layernorm, dynamic_tanh, softmax, log_softmax,
  * embedding, the activations including snake, the trigonometric cos and sin, slice, lerp,
- * reshape, permute, identity, scale, repeat, repeat_each, sum_channels, capture, cache_write,
+ * reshape, permute, identity, scale, modulate, repeat, repeat_each, sum_channels, capture, cache_write,
  * cache_read, scaled_dot_product, sqrt, shape, range, zeros). {@link PdslInterpreter} evaluates a call's
  * arguments and routes the call here via {@link #call(String, List, Set)}; domain
  * libraries register additional primitives through {@link PdslInterpreter#registerPrimitive},
@@ -60,8 +60,9 @@ import java.util.function.Supplier;
  * <p>The library is an instance type that implements the feature interfaces it needs, so its
  * built-ins call the framework feature default methods directly. Each {@link PdslInterpreter}
  * owns one instance, which it also uses to normalize producer arguments
- * ({@link #normalizeToProducer(Object, TraversalPolicy, String)}). The interpreter does not use
- * the instance as a source of feature operations: the language's block constructs it builds itself
+ * ({@link #normalizeToProducer(Object, TraversalPolicy, String)}) and the along-axis arguments of
+ * the primitives it dispatches ({@link #axisValues(String, Object, int)}). The interpreter does not
+ * use the instance as a source of feature operations: the language's block constructs it builds itself
  * ({@code accum_blocks}, {@code concat_blocks}) are operations of the
  * {@link org.almostrealism.model.SequentialBlock} it builds into. There is deliberately no shared
  * instance or static accessor:
@@ -121,6 +122,7 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 			case "permute": return callPermute(args);
 			case "identity": return callIdentity(args);
 			case "scale": return callScale(args);
+			case "modulate": return callModulate(args);
 			case "repeat": return callRepeat(args);
 			case "repeat_each": return callRepeatEach(args);
 			case "sum_channels": return callSumChannels(args);
@@ -205,6 +207,24 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 		}
 		return normalizeToProducer(args.get(index), null,
 				name + "() argument " + index);
+	}
+
+	/**
+	 * Normalizes an argument that holds one value per batch entry and position of an axis of the
+	 * stage input, {@code [batch, length(axis)]}: the single conversion shared by the along-axis
+	 * built-ins and by registered primitives, which reach it through
+	 * {@link PdslPrimitiveContext#toAxisValues toAxisValues}. The value is normalized by
+	 * {@link #normalizeToProducer(Object, TraversalPolicy, String)}, and the stage checks the result
+	 * against its input through {@link PdslAxisValues#forInput(TraversalPolicy)}.
+	 *
+	 * @param contextName identifies the values in error messages, such as {@code "modulate() offsets"}
+	 * @param value       the raw evaluated argument
+	 * @param axis        the axis of the stage input the values index
+	 * @return the values of the argument along {@code axis}
+	 * @throws PdslParseException if the argument is not a tensor value
+	 */
+	PdslAxisValues axisValues(String contextName, Object value, int axis) {
+		return new PdslAxisValues(contextName, normalizeToProducer(value, null, contextName), axis);
 	}
 
 	/**
@@ -293,10 +313,8 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 	 *      io.almostrealism.compute.ComputeRequirement...)
 	 */
 	private Function<TraversalPolicy, Block> callScaleAlongAxis(List<Object> args) {
-		CollectionProducer factors = normalizeToProducer(args.get(0), null,
-				"scale() factors");
 		int axis = toInt(args.get(1));
-		TraversalPolicy factorShape = shape(factors);
+		PdslAxisValues factors = axisValues("scale() factors", args.get(0), axis);
 		List<PackedCollection> weights = new ArrayList<>();
 		for (int i = 2; i < args.size(); i++) {
 			Object weight = args.get(i);
@@ -309,21 +327,38 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 			}
 			weights.add((PackedCollection) weight);
 		}
-		return inputShape -> {
-			if (axis <= 0 || axis >= inputShape.getDimensions()) {
-				throw new PdslParseException("scale() axis " + axis
-						+ " is not a non-batch axis of the input shape " + inputShape);
-			}
-			if (factorShape.getDimensions() != 2
-					|| factorShape.length(0) != inputShape.length(0)
-					|| factorShape.length(1) != inputShape.length(axis)) {
-				throw new PdslParseException("scale() expects factors shaped ["
-						+ inputShape.length(0) + ", " + inputShape.length(axis)
-						+ "] (one per batch entry and position of axis " + axis + " of "
-						+ inputShape + "), got " + factorShape);
-			}
-			return scale(inputShape, axis, factors, weights);
-		};
+		return inputShape -> scale(inputShape, axis, factors.forInput(inputShape), weights);
+	}
+
+	/**
+	 * Builds a block factory for a feature-wise affine modulation (FiLM) along an axis,
+	 * {@code modulate(factors, offsets, axis)}: every element is multiplied by the factor of its batch
+	 * entry and position along {@code axis} and then has that position's offset added, the affine
+	 * counterpart of {@code scale(factors, axis)}. The factors and the offsets each hold one value per
+	 * batch entry and position, {@code [batch, length(axis)]}, applied across the other non-batch
+	 * axes.
+	 *
+	 * <p>Along axis 2 of a {@code [batch, seq_len, dim]} activation this gives every batch entry its
+	 * own factor and offset per channel, the way adaptive layer normalization conditions a normalized
+	 * activation. The factors and offsets are constants of the graph (bound tensors, or producers the
+	 * caller refreshes between forward passes), so the stage passes its output gradient, times the
+	 * factors, to its input and delivers none to the factors or the offsets.</p>
+	 *
+	 * @param args the factors and the offsets (each a bound tensor or a producer) and the integer axis
+	 * @return a factory that creates the modulation for any input shape with that axis
+	 * @see org.almostrealism.layers.LayerFeatures#modulate(TraversalPolicy, int, Producer, Producer,
+	 *      io.almostrealism.compute.ComputeRequirement...)
+	 */
+	private Function<TraversalPolicy, Block> callModulate(List<Object> args) {
+		if (args.size() != 3) {
+			throw new PdslParseException(
+					"modulate() expects 3 arguments (factors, offsets, axis), got " + args.size());
+		}
+		int axis = toInt(args.get(2));
+		PdslAxisValues factors = axisValues("modulate() factors", args.get(0), axis);
+		PdslAxisValues offsets = axisValues("modulate() offsets", args.get(1), axis);
+		return inputShape -> modulate(inputShape, axis,
+				factors.forInput(inputShape), offsets.forInput(inputShape));
 	}
 
 	/**

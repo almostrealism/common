@@ -202,7 +202,7 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 
 	/**
 	 * Creates a normalization layer factory of the given family with pre-allocated weights and
-	 * optional biases, using each family's default epsilon.
+	 * optional biases, using the family's {@link NormalizationType#defaultEpsilon() default epsilon}.
 	 * @param type         the normalization family
 	 * @param weights      the normalization scale parameters
 	 * @param biases       the normalization shift parameters, or {@code null} for none
@@ -213,11 +213,7 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 														  PackedCollection weights,
 														  PackedCollection biases,
 														  ComputeRequirement... requirements) {
-		if (type == NormalizationType.RMS) {
-			return shape -> rmsnorm(shape, weights, biases, requirements);
-		}
-
-		return norm(weights, biases, requirements);
+		return norm(type, weights, biases, type.defaultEpsilon(), requirements);
 	}
 
 
@@ -462,8 +458,8 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 			CollectionProducer out = in.subtractMean(2).divide(in.variance(2).add(c(eps)).sqrt());
 			out = out.reshape(-1, Math.toIntExact(size)).traverse(1);
 
-			if (w != null) out = out.multiply(cp(w));
-			if (b != null) out = out.add(cp(b));
+			if (w != null) out = out.multiply(perFeature(out, w));
+			if (b != null) out = out.add(perFeature(out, b));
 			return out.reshape(outputShape.traverseEach());
 		}, prop, setup, requirements);
 	}
@@ -589,7 +585,8 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 
 	/**
 	 * Creates an RMS-normalization layer for the given shape with weights and bias,
-	 * using the default epsilon of {@code 1e-5}.
+	 * using the {@link NormalizationType#defaultEpsilon() default epsilon} of root-mean-square
+	 * normalization, {@code 1e-5}.
 	 *
 	 * @param shape        the input and output shape
 	 * @param weights      the normalization scale parameters
@@ -601,7 +598,7 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 								  PackedCollection weights,
 								  PackedCollection biases,
 								  ComputeRequirement... requirements) {
-		return rmsnorm(shape, weights, biases, 1e-5, requirements);
+		return rmsnorm(shape, weights, biases, NormalizationType.RMS.defaultEpsilon(), requirements);
 	}
 
 	/**
@@ -645,10 +642,10 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 			CollectionProducer out = rows.divide(rows.pow(2.0).mean(2).add(c(epsilon)).sqrt());
 			out = out.reshape(-1, extent).traverse(1);
 
-			out = out.multiply(cp(weights.flatten()));
+			out = out.multiply(perFeature(out, weights.flatten()));
 
 			if (biases != null) {
-				out = out.add(cp(biases.flatten()));
+				out = out.add(perFeature(out, biases.flatten()));
 			}
 
 			return out.reshape(shape);
@@ -745,11 +742,28 @@ public interface NormalizationLayerFeatures extends MatrixFeatures, ActivationFe
 		PackedCollection b = bias == null ? null : bias.flatten();
 
 		CollectionProducer in = input.reshape(-1, size).traverse(1);
-		CollectionProducer out = tanh(in.multiply(cp(a)));
-		if (w != null) out = out.multiply(cp(w));
-		if (b != null) out = out.add(cp(b));
+		CollectionProducer out = tanh(in.multiply(a.getShape().getTotalSize() == 1 ? cp(a) : perFeature(in, a)));
+		if (w != null) out = out.multiply(perFeature(out, w));
+		if (b != null) out = out.add(perFeature(out, b));
 
 		return out.reshape(shape);
+	}
+
+	/**
+	 * Tiles a per-feature parameter across every run of a normalization's {@code (runs, size)} view,
+	 * so that entry {@code c} of the parameter reaches feature {@code c} of every run. Applied
+	 * implicitly, a {@code size}-long vector against a view holding exactly as many runs as features
+	 * pairs with the runs rather than the features (every feature of run {@code r} would take entry
+	 * {@code r}), which is why each normalization repeats its parameters across the runs explicitly,
+	 * as the dense layer does with its bias.
+	 *
+	 * @param view      the {@code (runs, size)} view the parameter applies to
+	 * @param parameter the per-feature parameter, {@code size} values
+	 * @return the parameter, repeated for every run, in the shape of {@code view}
+	 */
+	private CollectionProducer perFeature(CollectionProducer view, PackedCollection parameter) {
+		TraversalPolicy viewShape = shape(view);
+		return repeat(viewShape.length(0), cp(parameter)).reshape(viewShape);
 	}
 
 	/**

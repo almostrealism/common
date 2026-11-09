@@ -55,6 +55,9 @@
  *       primitive: argument normalisation and the multi-channel environment</li>
  *   <li>{@link org.almostrealism.dsl.PdslChannelBank} — the whole-bank argument of a
  *       vectorized {@code for each channel} body</li>
+ *   <li>{@link org.almostrealism.dsl.PdslAxisValues} — a tensor argument holding one value per
+ *       batch entry and position of an axis of a stage's input, handed to the stage only once it
+ *       is checked against that input</li>
  *   <li>{@link org.almostrealism.dsl.PdslMultiChannelDispatcher} — builds the block behind
  *       {@code for each channel}, supplied by a domain module</li>
  * </ul>

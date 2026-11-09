@@ -1,0 +1,29 @@
+/**
+ * Fixtures for the modulate(factors, offsets, axis) built-in, the feature-wise affine counterpart of
+ * scale(factors, axis), one stage per layer, so ModulatePrimitiveTest can compare each against a
+ * reference computed on the host without any surrounding structure.
+ *
+ *   position_modulation(factors, offsets)   modulate(factors, offsets, 2): one factor and one offset
+ *                                           per batch entry and position of axis 2
+ *   batch_axis_modulation(factors, offsets) modulate(factors, offsets, 0): the batch axis, rejected
+ *   beyond_axis_modulation(factors, offsets)
+ *                                           modulate(factors, offsets, 4): no such axis of a
+ *                                           four-axis input, rejected
+ *   axis_free_modulation(factors, offsets)  modulate(factors, offsets): the axis left out, rejected
+ */
+
+layer position_modulation(factors: weight, offsets: weight) {
+    modulate(factors, offsets, 2)
+}
+
+layer batch_axis_modulation(factors: weight, offsets: weight) {
+    modulate(factors, offsets, 0)
+}
+
+layer beyond_axis_modulation(factors: weight, offsets: weight) {
+    modulate(factors, offsets, 4)
+}
+
+layer axis_free_modulation(factors: weight, offsets: weight) {
+    modulate(factors, offsets)
+}
