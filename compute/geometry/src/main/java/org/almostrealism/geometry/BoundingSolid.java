@@ -97,6 +97,48 @@ public class BoundingSolid {
      *         or a zero-sized bounding solid if the array is null or empty
      */
     public static BoundingSolid getBounds(Positioned[] points) {
+        if (points == null || points.length == 0) {
+            return new BoundingSolid(0, 0, 0, 0, 0, 0);
+        }
+
+        double[][] coords = new double[points.length][];
+        for (int i = 0; i < points.length; i++) {
+            float[] p = points[i].getPosition();
+            coords[i] = new double[] { p[0], p[1], p[2] };
+        }
+
+        return bound(coords);
+    }
+
+    /**
+     * Calculates the minimum axis-aligned bounding box that contains all the
+     * specified points.
+     *
+     * @param points the points to bound
+     * @return a new {@link BoundingSolid} containing all points,
+     *         or a zero-sized bounding solid if the array is null or empty
+     */
+    public static BoundingSolid of(Vector... points) {
+        if (points == null || points.length == 0) {
+            return new BoundingSolid(0, 0, 0, 0, 0, 0);
+        }
+
+        double[][] coords = new double[points.length][];
+        for (int i = 0; i < points.length; i++) {
+            coords[i] = new double[] { points[i].getX(), points[i].getY(), points[i].getZ() };
+        }
+
+        return bound(coords);
+    }
+
+    /**
+     * Computes the minimum axis-aligned bounding box containing the given points, shared by
+     * {@link #getBounds(Positioned[])} and {@link #of(Vector...)}.
+     *
+     * @param coords the points to bound, each a three-element {@code {x, y, z}} array
+     * @return a new {@link BoundingSolid} containing all points
+     */
+    private static BoundingSolid bound(double[][] coords) {
         double minX = Double.MAX_VALUE;
         double maxX = -Double.MAX_VALUE;
         double minY = Double.MAX_VALUE;
@@ -104,24 +146,95 @@ public class BoundingSolid {
         double minZ = Double.MAX_VALUE;
         double maxZ = -Double.MAX_VALUE;
 
-        if (points == null || points.length == 0) {
-            return new BoundingSolid(0, 0, 0, 0, 0, 0);
-        }
-
-        for (Positioned p : points) {
-            double x = p.getPosition()[0];
-            double y = p.getPosition()[1];
-            double z = p.getPosition()[2];
-
-            minX = x < minX ? x : minX;
-            maxX = x > maxX ? x : maxX;
-            minY = y < minY ? y : minY;
-            maxY = y > maxY ? y : maxY;
-            minZ = z < minZ ? z : minZ;
-            maxZ = z > maxZ ? z : maxZ;
+        for (double[] c : coords) {
+            minX = Math.min(minX, c[0]);
+            maxX = Math.max(maxX, c[0]);
+            minY = Math.min(minY, c[1]);
+            maxY = Math.max(maxY, c[1]);
+            minZ = Math.min(minZ, c[2]);
+            maxZ = Math.max(maxZ, c[2]);
         }
 
         return new BoundingSolid(minX, maxX, minY, maxY, minZ, maxZ);
+    }
+
+    /**
+     * Returns a copy of this bounding solid expanded by the given amount on every side.
+     *
+     * @param amount the distance to grow the box outward on each face
+     * @return a new {@link BoundingSolid} larger by {@code amount} on every side
+     */
+    public BoundingSolid expand(double amount) {
+        return new BoundingSolid(minX - amount, maxX + amount,
+                minY - amount, maxY + amount, minZ - amount, maxZ + amount);
+    }
+
+    /**
+     * Returns the axis along which this bounding solid is longest.
+     *
+     * @return {@code 0} for x, {@code 1} for y, or {@code 2} for z
+     */
+    public int longestAxis() {
+        if (dx >= dy && dx >= dz) return 0;
+        if (dy >= dz) return 1;
+        return 2;
+    }
+
+    /**
+     * Returns this bounding solid's center coordinate along the given axis.
+     *
+     * @param axis the axis to read ({@code 0} for x, {@code 1} for y, {@code 2} for z)
+     * @return the center coordinate on that axis
+     */
+    public double center(int axis) {
+        if (axis == 0) return center.getX();
+        if (axis == 1) return center.getY();
+        return center.getZ();
+    }
+
+    /**
+     * Tests whether the half-line that starts at the given origin and extends in the
+     * given direction enters this box at a non-negative distance, using the slab method.
+     *
+     * <p>This is the broad-phase test used by acceleration structures: a triangle whose
+     * box fails this test cannot be hit by the ray.</p>
+     *
+     * @param ox   origin x
+     * @param oy   origin y
+     * @param oz   origin z
+     * @param dirX direction x
+     * @param dirY direction y
+     * @param dirZ direction z
+     * @return {@code true} if the ray enters the box at a distance {@code >= 0}
+     */
+    public boolean intersectsRay(double ox, double oy, double oz, double dirX, double dirY, double dirZ) {
+        double tmin = 0.0;
+        double tmax = Double.POSITIVE_INFINITY;
+
+        double[] origin = { ox, oy, oz };
+        double[] direction = { dirX, dirY, dirZ };
+        double[] lo = { minX, minY, minZ };
+        double[] hi = { maxX, maxY, maxZ };
+
+        for (int a = 0; a < 3; a++) {
+            if (Math.abs(direction[a]) < 1e-12) {
+                if (origin[a] < lo[a] || origin[a] > hi[a]) return false;
+            } else {
+                double inv = 1.0 / direction[a];
+                double t1 = (lo[a] - origin[a]) * inv;
+                double t2 = (hi[a] - origin[a]) * inv;
+                if (t1 > t2) {
+                    double tmp = t1;
+                    t1 = t2;
+                    t2 = tmp;
+                }
+                if (t1 > tmin) tmin = t1;
+                if (t2 < tmax) tmax = t2;
+                if (tmin > tmax) return false;
+            }
+        }
+
+        return true;
     }
 
     /**

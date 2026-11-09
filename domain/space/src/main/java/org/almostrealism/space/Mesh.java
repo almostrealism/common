@@ -52,6 +52,13 @@ import java.util.List;
  * @author  Dan Chivers
  */
 public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, ConsoleFeatures {
+	/**
+	 * When {@code true}, {@link #intersectAt(Producer)} routes the mesh intersection
+	 * through a {@link BoundingVolumeHierarchy} instead of the linear scan. Off by
+	 * default so the linear scan remains the correctness reference.
+	 */
+	public static boolean enableAcceleratedIntersection = false;
+
 	/** Default white color assigned to triangles that do not have an explicit color set. */
 	private static final RGB white = new RGB(1.0, 1.0, 1.0);
 	
@@ -797,17 +804,128 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Not yet implemented for {@link Mesh}.
-	 *
-	 * @throws UnsupportedOperationException always
+	 * <p>Returns the axis-aligned box bounding every triangle vertex, or a zero-sized box
+	 * for an empty mesh. Works whether the mesh is backed by a vertex list or a
+	 * {@link VertexData} provider.</p>
 	 */
 	@Override
 	public BoundingSolid calculateBoundingSolid() {
-		throw new UnsupportedOperationException();
-		// TODO
-		// return BoundingSolid.getBounds(getVectors());
+		BoundingSolid bounds = null;
+
+		for (Triangle t : triangles()) {
+			BoundingSolid b = t.calculateBoundingSolid();
+			bounds = bounds == null ? b : bounds.combine(b);
+		}
+
+		return bounds == null ? new BoundingSolid(0, 0, 0, 0, 0, 0) : bounds;
 	}
-	
+
+	/**
+	 * Builds a regular grid surface mesh from a host height field, for inspection, GTS
+	 * export, and use as a test fixture.
+	 *
+	 * <p>The mesh has {@code nx*ny} vertices and {@code 2*(nx-1)*(ny-1)} triangles, with
+	 * the same node layout and winding as the device tessellation
+	 * {@link MeshData#gridSurface}: node {@code (i, j)} is at
+	 * {@code (origin.x + i*spacingX, origin.y + heights[i][j], origin.z + j*spacingZ)},
+	 * height is the Y axis, and the grid lies in the XZ plane. This builds host geometry
+	 * (a vertex list and triangle connectivity); for the device, per-frame tessellation
+	 * path use {@link MeshData#gridSurface} instead.</p>
+	 *
+	 * @param heights  the height field, indexed {@code [i][j]} over {@code nx} by {@code ny} nodes
+	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
+	 * @param spacingX the node spacing along X
+	 * @param spacingZ the node spacing along Z
+	 * @return the grid surface mesh
+	 */
+	public static Mesh gridSurface(double[][] heights, Vector origin, double spacingX, double spacingZ) {
+		int nx = heights.length;
+		int ny = heights[0].length;
+
+		Vector[] points = gridSurfaceNodes(heights, origin, spacingX, spacingZ);
+		int[][] triangles = gridSurfaceTriangleIndices(nx, ny);
+		return new Mesh(points, triangles);
+	}
+
+	/**
+	 * Builds the per-triangle vertex positions of a regular grid surface directly, with the
+	 * same node layout and winding as {@link #gridSurface(double[][], Vector, double, double)},
+	 * without constructing a {@link Mesh}. Useful for building a host-only triangle list, for
+	 * example to feed {@link BoundingVolumeHierarchy#build(List)}.
+	 *
+	 * @param heights  the height field, indexed {@code [i][j]} over {@code nx} by {@code ny} nodes
+	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
+	 * @param spacingX the node spacing along X
+	 * @param spacingZ the node spacing along Z
+	 * @return the triangles, each a three-element array of vertex positions
+	 */
+	public static List<Vector[]> gridSurfaceTriangles(double[][] heights, Vector origin,
+														double spacingX, double spacingZ) {
+		int nx = heights.length;
+		int ny = heights[0].length;
+
+		Vector[] nodes = gridSurfaceNodes(heights, origin, spacingX, spacingZ);
+		int[][] indices = gridSurfaceTriangleIndices(nx, ny);
+
+		List<Vector[]> triangles = new ArrayList<>(indices.length);
+		for (int[] tri : indices) {
+			triangles.add(new Vector[] { nodes[tri[0]], nodes[tri[1]], nodes[tri[2]] });
+		}
+		return triangles;
+	}
+
+	/**
+	 * Computes the node positions of a regular grid surface, node {@code (i, j)} at
+	 * {@code (origin.x + i*spacingX, origin.y + heights[i][j], origin.z + j*spacingZ)}.
+	 *
+	 * @param heights  the height field, indexed {@code [i][j]} over {@code nx} by {@code ny} nodes
+	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
+	 * @param spacingX the node spacing along X
+	 * @param spacingZ the node spacing along Z
+	 * @return the node positions, flattened in row-major order ({@code i*ny+j})
+	 */
+	private static Vector[] gridSurfaceNodes(double[][] heights, Vector origin, double spacingX, double spacingZ) {
+		int nx = heights.length;
+		int ny = heights[0].length;
+
+		Vector[] nodes = new Vector[nx * ny];
+		for (int i = 0; i < nx; i++) {
+			for (int j = 0; j < ny; j++) {
+				nodes[i * ny + j] = new Vector(origin.getX() + i * spacingX,
+						origin.getY() + heights[i][j], origin.getZ() + j * spacingZ);
+			}
+		}
+		return nodes;
+	}
+
+	/**
+	 * Computes, for each cell of an {@code nx} by {@code ny} grid, the node indices of its two
+	 * triangles with the winding used by the grid surface tessellation: {@code {v00,v11,v10}}
+	 * and {@code {v00,v01,v11}}.
+	 *
+	 * @param nx the number of grid nodes along X
+	 * @param ny the number of grid nodes along Z
+	 * @return the triangle node-index arrays, two per cell
+	 */
+	private static int[][] gridSurfaceTriangleIndices(int nx, int ny) {
+		int cellsX = nx - 1;
+		int cellsZ = ny - 1;
+		int[][] triangles = new int[2 * cellsX * cellsZ][];
+
+		int t = 0;
+		for (int i = 0; i < cellsX; i++) {
+			for (int j = 0; j < cellsZ; j++) {
+				int v00 = i * ny + j;
+				int v10 = (i + 1) * ny + j;
+				int v01 = i * ny + (j + 1);
+				int v11 = (i + 1) * ny + (j + 1);
+				triangles[t++] = new int[] { v00, v11, v10 };
+				triangles[t++] = new int[] { v00, v01, v11 };
+			}
+		}
+		return triangles;
+	}
+
 	/**
 	 * @return  this.
 	 */
@@ -825,7 +943,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 		Producer<Ray> tray = (Producer<Ray>) ray;
 		if (t != null) tray = (Producer) t.getInverse().transform(tray);
 
-		CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(getMeshData(), tray);
+		CachedMeshIntersectionKernel kernel =
+				new CachedMeshIntersectionKernel(getMeshData(), tray, enableAcceleratedIntersection);
 		return new ShadableIntersection(ray,
 				(Producer) () -> kernel.getClosestNormal(),
 				new DimensionAwareKernel<>(kernel));

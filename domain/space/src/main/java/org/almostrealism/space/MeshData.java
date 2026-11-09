@@ -18,13 +18,22 @@ package org.almostrealism.space;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
+import org.almostrealism.graph.mesh.TriangleFeatures;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.MemoryData;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * {@link MeshData} is a hardware-accelerated data structure that stores triangle mesh data
@@ -62,15 +71,38 @@ import org.almostrealism.hardware.MemoryData;
  */
 public class MeshData extends PackedCollection {
 	/**
-	 * Flag to enable partial kernel mode for memory-constrained environments.
-	 * When enabled, rays are processed one at a time instead of in a single batch.
-	 * If there is not enough RAM to run the entire kernel at once, this flag
-	 * allows processing one {@link Ray} at a time.
+	 * Historically selected per-ray processing to bound memory use. Intersection now always
+	 * tests a whole mesh against one ray in a single kernel and loops rays on the host, so
+	 * this flag no longer gates behaviour; it is retained only for source compatibility.
 	 */
 	public static boolean enablePartialKernel = true;
 
 	/** Temporary buffer for per-triangle intersection distances during kernel evaluation. */
 	private final PackedCollection distances;
+
+	/** A degenerate (zero-area) triangle used to clear unused candidate-buffer slots. */
+	private static final PackedCollection DEGENERATE = new PackedCollection(new TraversalPolicy(4, 3));
+
+	/** Reusable compact triangle buffer holding the current ray's candidates. */
+	private MeshData candidateBuffer;
+
+	/** Per-triangle distance buffer sized to the candidate buffer. */
+	private PackedCollection candidateDistances;
+
+	/** Maps each candidate-buffer slot to its triangle index in this mesh, or {@code -1} if unused. */
+	private int[] candidateGlobal;
+
+	/** The number of candidate-buffer slots currently holding a live triangle. */
+	private int candidateActive;
+
+	/** Compiled whole-mesh intersection kernel, built on first use. */
+	private Evaluable<PackedCollection> intersection;
+
+	/** Compiled candidate-buffer intersection kernel, rebuilt when the buffer grows. */
+	private Evaluable<PackedCollection> candidateIntersection;
+
+	/** Acceleration structure over this mesh's own triangles, built on first use. */
+	private BoundingVolumeHierarchy boundingVolumeHierarchy;
 
 	/**
 	 * Constructs a new {@link MeshData} instance with capacity for the specified
@@ -82,6 +114,35 @@ public class MeshData extends PackedCollection {
 		super(new TraversalPolicy(triangles, 4, 3), 1, delegateSpec ->
 				new PackedCollection(new TraversalPolicy(4, 3), 1, delegateSpec.getDelegate(), delegateSpec.getOffset()));
 		distances = new PackedCollection(new TraversalPolicy(getCount(), 1));
+	}
+
+	/**
+	 * Tessellates a regular grid height field into {@link MeshData} ready for the ray
+	 * intersection path, building the triangle buffer in a single kernel so the surface
+	 * can be rebuilt each frame without a host loop.
+	 *
+	 * <p>Height is the Y axis and the grid lies in the XZ plane; see
+	 * {@link TriangleFeatures#regularGridSurfacePoints} for the node layout and winding.
+	 * The returned buffer holds {@code 2*(nx-1)*(ny-1)} triangles.</p>
+	 *
+	 * @param heights  the height field, shaped {@code (nx, ny)} in row-major order
+	 * @param nx       the number of grid nodes along X
+	 * @param ny       the number of grid nodes along Z
+	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
+	 * @param spacingX the node spacing along X
+	 * @param spacingZ the node spacing along Z
+	 * @return the tessellated mesh data
+	 */
+	public static MeshData gridSurface(Producer<PackedCollection> heights, int nx, int ny,
+									   Vector origin, double spacingX, double spacingZ) {
+		int triangleCount = 2 * (nx - 1) * (ny - 1);
+		MeshData data = new MeshData(triangleCount);
+
+		TriangleFeatures tf = TriangleFeatures.getInstance();
+		CollectionProducer points = tf.regularGridSurfacePoints(heights, nx, ny,
+				origin.getX(), origin.getY(), origin.getZ(), spacingX, spacingZ);
+		tf.triangle(points).get().into(data.traverse(1)).evaluate();
+		return data;
 	}
 
 	/**
@@ -97,14 +158,15 @@ public class MeshData extends PackedCollection {
 	 *         (or negative if no intersection) and {@code getB()} is the triangle index
 	 */
 	public synchronized Pair evaluateIntersection(Evaluable<Ray> ray, Object[] args) {
-		PackedCollection in = Ray.bank(1);
-		PackedCollection out = Pair.bank(1);
+		ensureIntersection();
+
+		MemoryData r = ray.evaluate(args);
+		intersection.into(distances).evaluate(this, r);
 
 		PackedCollection conf = Pair.bank(1);
 		conf.setFrom(0, new Pair(getCountLong(), Intersection.e), 0, 2);
 
-		in.setFrom(0, ray.evaluate(args), 0, 6);
-		Triangle.intersectAt.into(distances).evaluate(in, this);
+		PackedCollection out = Pair.bank(1);
 		RankedChoiceEvaluable.highestRank.into(out).evaluate(distances, conf);
 		PackedCollection result = out.range(shape(2), 0);
 		return new Pair(result.toDouble(0), result.toDouble(1));
@@ -130,17 +192,16 @@ public class MeshData extends PackedCollection {
 	 * Evaluates ray-mesh intersections for multiple rays in batch, storing both
 	 * distance and triangle index information.
 	 *
-	 * <p>This method supports two modes based on the {@link #enablePartialKernel} flag:
-	 * <ul>
-	 *   <li>When enabled (default): Rays are processed one at a time, using less memory</li>
-	 *   <li>When disabled: All rays are processed in a single kernel call for maximum performance</li>
-	 * </ul>
+	 * <p>Each ray is tested against the whole mesh in one {@code meshIntersectAt} kernel and
+	 * the closest hit is selected; the rays are looped on the host.
 	 *
 	 * @param ray         the ray evaluable to test for intersection
 	 * @param destination collection to receive intersection results (distance, triangle index pairs)
 	 * @param args        additional arguments passed to the ray evaluable
 	 */
-	public void evaluateIntersectionKernel(Evaluable<Ray> ray, PackedCollection destination, MemoryData[] args) {
+	public synchronized void evaluateIntersectionKernel(Evaluable<Ray> ray, PackedCollection destination, MemoryData[] args) {
+		ensureIntersection();
+
 		long startTime = System.currentTimeMillis();
 		PackedCollection rays = Ray.bank(destination.getCount());
 		ray.into(rays).evaluate(args);
@@ -149,34 +210,173 @@ public class MeshData extends PackedCollection {
 			log("Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
 		}
 
-		PackedCollection dim = Pair.bank(1);
-		dim.setFrom(0, new Pair(this.getCount(), rays.getCount()), 0, 2);
+		PackedCollection in = Ray.bank(1);
+		PackedCollection out = Pair.bank(1);
 
-		if (enablePartialKernel) {
-			PackedCollection distances = new PackedCollection(new TraversalPolicy(getCount(), 1));
-			PackedCollection in = Ray.bank(1);
-			PackedCollection out = Pair.bank(1);
+		PackedCollection conf = Pair.bank(1);
+		conf.setFrom(0, new Pair(getCount(), Intersection.e), 0, 2);
 
-			PackedCollection conf = Pair.bank(1);
-			conf.setFrom(0, new Pair(getCount(), Intersection.e), 0, 2);
-
-			for (int i = 0; i < rays.getCount(); i++) {
-				in.setFrom(0, rays.range(shape(6), i * 6), 0, 6);
-				Triangle.intersectAt.into(distances).evaluate(in, this, dim);
-				RankedChoiceEvaluable.highestRank.into(out).evaluate(distances, conf);
-				destination.setFrom(i * 2, out, 0, 2);
-			}
-
-			if (HardwareOperator.enableVerboseLog)
-				log(rays.getCountLong() + " intersection kernels evaluated");
-		} else {
-			PackedCollection distances = new PackedCollection(new TraversalPolicy(this.getCount() * rays.getCount(), 1));
-
-			startTime = System.currentTimeMillis();
-			Triangle.intersectAt.into(distances).evaluate(rays, this, dim);
-			log("Completed intersection kernel in " +
-					(System.currentTimeMillis() - startTime) + " msec");
-			// TODO Choose best with highestRank kernel
+		for (int i = 0; i < rays.getCount(); i++) {
+			in.setFrom(0, rays, i * 6, 6);
+			intersection.into(distances).evaluate(this, in);
+			RankedChoiceEvaluable.highestRank.into(out).evaluate(distances, conf);
+			destination.setFrom(i * 2, out, 0, 2);
 		}
+
+		if (HardwareOperator.enableVerboseLog)
+			log(rays.getCountLong() + " intersection kernels evaluated");
+	}
+
+	/**
+	 * Builds the whole-mesh intersection kernel on first use.
+	 */
+	private void ensureIntersection() {
+		if (intersection == null) {
+			intersection = TriangleFeatures.getInstance().meshIntersectAt(
+					Input.value(new TraversalPolicy(getCount(), 4, 3), 0), getCount(),
+					Input.value(new TraversalPolicy(false, false, 6), 1)).get();
+		}
+	}
+
+	/**
+	 * Returns a {@link BoundingVolumeHierarchy} over this mesh's own triangles, building it
+	 * from the packed triangle data on first use and caching it. The hierarchy indexes this
+	 * mesh's triangle rows directly, so its candidate indices map straight back to this mesh;
+	 * it accelerates the {@link #evaluateIntersectionAccelerated(Evaluable, Object[])} path.
+	 *
+	 * @return the acceleration structure for this mesh
+	 */
+	public synchronized BoundingVolumeHierarchy getBoundingVolumeHierarchy() {
+		if (boundingVolumeHierarchy == null) {
+			boundingVolumeHierarchy = BoundingVolumeHierarchy.build(triangleVertices());
+		}
+
+		return boundingVolumeHierarchy;
+	}
+
+	/**
+	 * Reconstructs the three vertex positions of every triangle from the packed edge
+	 * representation ({@code v1 = jkl}, {@code v2 = jkl + abc}, {@code v3 = jkl + def}),
+	 * reading the host copy of this mesh's data.
+	 *
+	 * @return one three-element vertex array per triangle, in triangle-index order
+	 */
+	private List<Vector[]> triangleVertices() {
+		int count = getCount();
+		List<Vector[]> triangles = new ArrayList<>(count);
+
+		for (int i = 0; i < count; i++) {
+			int base = i * 12;
+			double v1x = toDouble(base + 6);
+			double v1y = toDouble(base + 7);
+			double v1z = toDouble(base + 8);
+			Vector v1 = new Vector(v1x, v1y, v1z);
+			Vector v2 = new Vector(v1x + toDouble(base), v1y + toDouble(base + 1), v1z + toDouble(base + 2));
+			Vector v3 = new Vector(v1x + toDouble(base + 3), v1y + toDouble(base + 4), v1z + toDouble(base + 5));
+			triangles.add(new Vector[] { v1, v2, v3 });
+		}
+
+		return triangles;
+	}
+
+	/**
+	 * Evaluates the closest intersection of a single ray using this mesh's own
+	 * {@link BoundingVolumeHierarchy} to restrict the triangle test to the ray's candidates.
+	 *
+	 * <p>The result is identical to the unaccelerated {@link #evaluateIntersection(Evaluable, Object[])}
+	 * linear scan — the same compiled intersection kernel runs over a conservative candidate
+	 * set that always contains the truly-closest triangle — but far fewer triangles are tested.
+	 * The returned triangle index is relative to this mesh, matching the linear scan.</p>
+	 *
+	 * @param ray  the ray evaluable to test for intersection
+	 * @param args additional arguments passed to the ray evaluable
+	 * @return a {@link Pair} of (intersection distance, triangle index), or a negative distance
+	 *         with index {@code -1} when the ray misses
+	 */
+	public synchronized Pair evaluateIntersectionAccelerated(Evaluable<Ray> ray, Object[] args) {
+		PackedCollection raySix = Ray.bank(1);
+		raySix.setFrom(0, ray.evaluate(args), 0, 6);
+		return queryAccelerated(raySix);
+	}
+
+	/**
+	 * Ensures the reusable candidate buffer can hold at least {@code required} triangles,
+	 * reallocating (and so recompiling the intersection kernel once) only when it must grow.
+	 *
+	 * @param required the number of candidate triangles the current query needs to hold
+	 */
+	private void ensureCandidateCapacity(int required) {
+		if (candidateBuffer != null && candidateBuffer.getCount() >= required) return;
+
+		candidateBuffer = new MeshData(required);
+		candidateDistances = new PackedCollection(new TraversalPolicy(required, 1));
+		candidateGlobal = new int[required];
+		Arrays.fill(candidateGlobal, -1);
+		candidateActive = 0;
+		candidateIntersection = TriangleFeatures.getInstance().meshIntersectAt(
+				Input.value(new TraversalPolicy(required, 4, 3), 0), required,
+				Input.value(new TraversalPolicy(false, false, 6), 1)).get();
+	}
+
+	/**
+	 * Evaluates ray-mesh intersections for multiple rays using this mesh's own
+	 * {@link BoundingVolumeHierarchy}, storing (distance, triangle index) pairs in the destination.
+	 *
+	 * <p>Rays are looped on the host, each restricted to its hierarchy candidates; the per-triangle
+	 * math is the same compiled kernel used by the linear scan, so results match it exactly. This
+	 * is the accelerated counterpart of {@link #evaluateIntersectionKernel(Evaluable, PackedCollection, MemoryData[])}.</p>
+	 *
+	 * @param ray         the ray evaluable to test for intersection
+	 * @param destination collection to receive (distance, triangle index) pairs
+	 * @param args        additional arguments passed to the ray evaluable
+	 */
+	public synchronized void evaluateIntersectionKernelAccelerated(Evaluable<Ray> ray, PackedCollection destination,
+										   MemoryData[] args) {
+		PackedCollection rays = Ray.bank(destination.getCount());
+		ray.into(rays).evaluate(args);
+
+		PackedCollection raySix = Ray.bank(1);
+		for (int i = 0; i < rays.getCount(); i++) {
+			raySix.setFrom(0, rays, i * 6, 6);
+			destination.setFrom(i * 2, queryAccelerated(raySix), 0, 2);
+		}
+	}
+
+	/**
+	 * Intersects a single ray against this mesh's hierarchy candidates and returns the closest hit.
+	 *
+	 * @param raySix a one-ray bank holding the ray's six components (origin, direction)
+	 * @return a {@link Pair} of (distance, triangle index), or {@code (-1, -1)} on a miss
+	 */
+	private Pair queryAccelerated(PackedCollection raySix) {
+		BoundingVolumeHierarchy bvh = getBoundingVolumeHierarchy();
+		int[] candidates = bvh.candidates(raySix.toDouble(0), raySix.toDouble(1), raySix.toDouble(2),
+				raySix.toDouble(3), raySix.toDouble(4), raySix.toDouble(5));
+		if (candidates.length == 0) return new Pair(-1.0, -1.0);
+
+		ensureCandidateCapacity(candidates.length);
+		int capacity = candidateBuffer.getCount();
+
+		for (int i = 0; i < candidates.length; i++) {
+			candidateBuffer.setFrom(i * 12, this, candidates[i] * 12, 12);
+			candidateGlobal[i] = candidates[i];
+		}
+		for (int i = candidates.length; i < candidateActive; i++) {
+			candidateBuffer.setFrom(i * 12, DEGENERATE, 0, 12);
+			candidateGlobal[i] = -1;
+		}
+		candidateActive = candidates.length;
+
+		candidateIntersection.into(candidateDistances).evaluate(candidateBuffer, raySix);
+
+		PackedCollection conf = Pair.bank(1);
+		conf.setFrom(0, new Pair(capacity, Intersection.e), 0, 2);
+
+		PackedCollection out = Pair.bank(1);
+		RankedChoiceEvaluable.highestRank.into(out).evaluate(candidateDistances, conf);
+
+		int slot = (int) out.toDouble(1);
+		double global = slot < 0 ? -1.0 : candidateGlobal[slot];
+		return new Pair(out.toDouble(0), global);
 	}
 }

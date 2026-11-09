@@ -73,6 +73,9 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	/** The evaluable that generates rays for intersection testing. */
 	private Evaluable<Ray> ray;
 
+	/** When {@code true}, intersection uses the mesh's acceleration structure instead of a linear scan. */
+	private boolean accelerated;
+
 	/** Evaluable that returns the closest surface normal after intersection. */
 	private Evaluable<Vector> closestNormal;
 
@@ -98,8 +101,22 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	 * @param ray  the ray producer that generates rays for intersection testing
 	 */
 	public CachedMeshIntersectionKernel(MeshData data, Producer<Ray> ray) {
+		this(data, ray, false);
+	}
+
+	/**
+	 * Constructs a new {@link CachedMeshIntersectionKernel} that optionally prunes triangles
+	 * during intersection using the mesh data's own acceleration structure.
+	 *
+	 * @param data        the mesh data containing triangle information
+	 * @param ray         the ray producer that generates rays for intersection testing
+	 * @param accelerated {@code true} to intersect through the mesh's
+	 *                    {@link BoundingVolumeHierarchy}, {@code false} for a linear scan
+	 */
+	public CachedMeshIntersectionKernel(MeshData data, Producer<Ray> ray, boolean accelerated) {
 		this.data = data;
 		this.ray = ray.get();
+		this.accelerated = accelerated;
 	}
 
 	/**
@@ -137,7 +154,12 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	public Evaluable into(Object destination) {
 		return args -> {
 			cache = Pair.bank(((MemoryBank) destination).getCount());
-			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
+			MemoryData[] memArgs = Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new);
+			if (accelerated) {
+				data.evaluateIntersectionKernelAccelerated(ray, cache, memArgs);
+			} else {
+				data.evaluateIntersectionKernel(ray, cache, memArgs);
+			}
 			for (int i = 0; i < cache.getCountLong(); i++) {
 				PackedCollection entry = (PackedCollection) ((MemoryBank) destination).get(i);
 
