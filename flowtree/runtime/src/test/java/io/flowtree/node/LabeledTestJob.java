@@ -19,6 +19,7 @@ package io.flowtree.node;
 import io.flowtree.job.Job;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -51,14 +52,18 @@ class LabeledTestJob implements Job {
 	}
 
 	/**
-	 * Creates a job that only nodes carrying the given labels may run.
+	 * Creates a job that only nodes carrying the given labels may run. The labels are
+	 * defensively copied, so a later mutation of the caller's map does not change this
+	 * job's requirements.
 	 *
 	 * @param taskId         the task identifier
-	 * @param requiredLabels the labels a node must carry
+	 * @param requiredLabels the labels a node must carry; a {@code null} value is treated as none
 	 */
 	LabeledTestJob(String taskId, Map<String, String> requiredLabels) {
 		this.taskId = taskId;
-		this.requiredLabels = requiredLabels;
+		this.requiredLabels = requiredLabels == null
+				? Collections.emptyMap()
+				: Collections.unmodifiableMap(new HashMap<>(requiredLabels));
 	}
 
 	/** Completes the job's future without performing any work. */
