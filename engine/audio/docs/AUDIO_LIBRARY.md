@@ -54,7 +54,7 @@ File file = library.fileFor(identifier);
 **Internal data structures:**
 - `identifiers` map: key (file path) → identifier (MD5 hash)
 - `detailsCache`: a `FrequencyCache<String, WaveDetails>` keyed by identifier (bounded, LFU/LRU eviction)
-- `completeIdentifiers`: a `Set<String>` tracking which identifiers have complete data (freqData + featureData)
+- `completeIdentifiers`: a `CompleteIdentifierSet` (an `AbstractSet<String>`) that is the authoritative record of which identifiers have complete data (freqData + featureData) for the current embedding model; it is thread-safe so the analysis worker can add entries while callers scan it
 
 ### WaveDataProvider
 
