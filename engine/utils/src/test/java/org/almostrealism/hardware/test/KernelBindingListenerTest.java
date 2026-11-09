@@ -24,6 +24,7 @@ import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedOperation;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.InstructionCacheCollisionException;
 import org.almostrealism.hardware.KernelBindingListener;
 import org.almostrealism.hardware.arguments.ProcessArgumentMap;
@@ -116,6 +117,37 @@ public class KernelBindingListenerTest extends TestSuiteBase {
 			Assert.assertTrue(reused.toString(), reused.stream().noneMatch(e -> e.startsWith("compiled")));
 			Assert.assertTrue(reused.toString(), reused.contains("dispatched true"));
 			Assert.assertEquals(reused.toString(), 2, reused.stream().filter("copyIn 8"::equals).count());
+		} finally {
+			AcceleratedOperation.bindingListener = previous;
+		}
+	}
+
+	/**
+	 * After {@link org.almostrealism.hardware.DefaultComputer#evictAllInstructions()} a structurally
+	 * identical computation finds nothing cached: it compiles its own kernel rather than reusing the
+	 * one the first computation compiled, and still evaluates correctly.
+	 */
+	@Test(timeout = 120000)
+	public void evictAllInstructionsForcesRecompilation() {
+		Recorder recorder = new Recorder();
+		KernelBindingListener previous = AcceleratedOperation.bindingListener;
+		AcceleratedOperation.bindingListener = recorder;
+
+		try {
+			Process.optimized(computation(6)).get().evaluate();
+			List<String> first = recorder.drain();
+			Assert.assertTrue(first.toString(), first.contains("compiled true 2 2 12"));
+
+			Hardware.getLocalHardware().getComputer().evictAllInstructions();
+
+			PackedCollection result = Process.optimized(computation(6)).get().evaluate();
+			List<String> afterEviction = recorder.drain();
+			log("afterEvictionEvents=" + afterEviction);
+
+			assertEquals(8.0, result.toDouble(5));
+			Assert.assertTrue(afterEviction.toString(), afterEviction.contains("compiled true 2 2 12"));
+			Assert.assertTrue(afterEviction.toString(),
+					afterEviction.stream().noneMatch(e -> e.startsWith("reused")));
 		} finally {
 			AcceleratedOperation.bindingListener = previous;
 		}
