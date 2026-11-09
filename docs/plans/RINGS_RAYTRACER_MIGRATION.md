@@ -29,7 +29,11 @@ and unidentified one-offs.
 | 3. JavaScript code generation | `JavaScriptPrintWriter`, `JavaScriptLanguageOperations` | New module `ar-hardware-js` | **Done** |
 | 4. Scene construction and demos | `SceneFactory`, `TestScene`, `Thing`, `RayTracingTest`, `GenerateScene` | Stay in rings | — |
 | 5. Unidentified one-off | `SpanCalculator`, `Matrix3DSolutionOutput` (a 3D packing-puzzle solver) | Stay in rings | — |
-| 6. UI | `RenderPanel`, `DebugOutputPanel`, `SurfaceUI`, `Settings`, `LegacyRayTracingEngine`, `RayTracedAnimation` | Stay in rings | — |
+| 6. UI | `RenderPanel`, `DebugOutputPanel`, `SurfaceUI`, `Settings` | Stay in rings | — |
+| 7. Frame-sequence rendering | `RayTracedAnimation` | Move to `ar-render`, package `org.almostrealism.render` | **Done** |
+| 8. Rendering tests | `AbstractIntersectionTest`, `IntersectionCompactTest`, `KernelizedIntersectionTest` | Port to `CameraRayIntersectionTest` in `engine/render` | **Done** |
+| | `SceneTest`, `IntersectionalLightingEngineTest`, `LightingEngineAggregatorTest` | Delete: stale or duplicated (see below) | **Done** |
+| 9. Broken renderer | `LegacyRayTracingEngine` | Stay in rings | — |
 
 ## The resource abstraction in `ar-io`
 
@@ -91,10 +95,9 @@ What changed in the move:
   - A PLY read given an initial mesh now warns instead of throwing.
 - **Constants:** all the encoding codes are now declared on `ModelData`; `FileDecoder.XMLEncoding`
   and the others still resolve, through inheritance.
-- **`ui` parameter:** it no longer has any effect. The XML path's unwrapping of
-  `ShadableSurfaceWrapper`s wrote into a copy of the surface array and never changed the scene,
-  so it was removed. The parameter is kept so callers only change imports; removing it is a
-  possible follow-up.
+- **`ui` parameter:** removed from `ModelData.decodeScene` and `FileDecoder.decodeSurfaceFile`.
+  Its only effect, the XML path's unwrapping of `ShadableSurfaceWrapper`s, wrote into a copy of
+  the surface array and never changed the scene.
 
 ## Group 3: `ar-hardware-js`
 
@@ -111,11 +114,63 @@ backends now inside `ar-hardware` are meant to be split into.
   dependency on it, so that they extend `TestSuiteBase` and run in the existing CI lanes. A
   test inside the new module would not run in CI, because the CI test lanes name their modules.
 
-## Group 2: distributed ray-tracing jobs (last)
+## Group 7: `RayTracedAnimation` in `ar-render`
+
+The only code that renders a scene frame by frame to image files, which the ferrofluid work needs
+as its frame-sequence driver. It extends `space.Animation`, whose `run()` steps the rigid bodies
+and calls `writeImage` for each frame. What changed in the move:
+
+- **Swing and `Settings` removed.** The `render.debug` property, which opened a Swing debug panel
+  and turned on `Settings`' output flags, is gone, as is `render.shadows`, which only set
+  `LegacyRayTracingEngine.castShadows`, a flag no renderer read.
+- **Frames** are written with `ImageCanvas.encodeImageFile` instead of drawing an AWT image into a
+  `BufferedImage`, and `getImage()` returns the last frame's `RGB[][]` instead of an AWT `Image`.
+- **Output files** go to `new File(outputDirectory, name)`, or the working directory when no
+  output directory is set; the frame path used to be `outputDirectory + "/frame_..."`, which gave
+  `null/frame_...` with no directory set.
+- **Encode script:** the frame list no longer ends with a stray comma.
+- **Lit planes:** a plane stored with `light.on` used to throw `ClassCastException` (it was cast to
+  `RigidSphere`); it now loads unlit with a warning, since only spheres can be lights.
+- Logging goes through `ConsoleFeatures` instead of `System.out`.
+
+- **Camera round-trip fixed:** `generateProperties` writes the focal length under `camera.foclen`,
+  the key `loadProperties` reads it from (via `setFocalLength`), so the focal length round-trips.
+  `camera.foc` is reserved for the focus distance, which a `PinholeCamera` does not carry.
+
+## Group 8: the rendering tests
+
+Every rendering test in raytracer was `@Ignore`d.
+
+- **Ported:** `CameraRayIntersectionTest` (`engine/render`, run by its CI lane) replaces
+  `AbstractIntersectionTest`, `IntersectionCompactTest` and `KernelizedIntersectionTest`: camera
+  rays at the centre and corner of the image hit and miss a sphere, and a kernel over every pixel
+  matches evaluating each pixel. The image is 16 by 16 rather than 400 by 400, because the
+  per-pixel comparison evaluates one pixel at a time.
+- **Deleted:**
+  - `SceneTest.intersection` expected a distance of 9 to a sphere that `TestScene` places at
+    `z = -3` (the true distance is 12); `BasicIntersectionTest.sphereIntersectionDistance` already
+    checks the correct case. `SceneTest.lightingEngine` asserted an unexplained colour value.
+  - `IntersectionalLightingEngineTest` walked the internal computation graph by position
+    (`getInputs().get(2)` and so on), which no longer matches the graph; one of its tests had no
+    assertion.
+  - `LightingEngineAggregatorTest` cast `RayTracedScene.getProducer()` to evaluable and operation
+    types it no longer returns; two of its tests had no assertion. Whole-scene renders are covered
+    by `SimpleRenderTest`.
+
+`TestScene` and `Thing` stay in rings, where a downstream render demo uses them.
+
+## Group 9: `LegacyRayTracingEngine`
+
+It stays in rings and cannot render: its main loop calls a lighting engine it has set to `null`,
+and two of its overloads return `null`. Downstream desktop render paths still call it and are
+already broken; moving them to `RayTracedScene` is downstream work.
+
+## Group 2: distributed ray-tracing jobs (deferred)
 
 A new common module that depends on `ar-render` and `ar-flowtreeapi` (and `ar-graphpersist`,
 for `RayTracingOutputHandler`'s database query handling). `ar-render` must not take a
-flowtree dependency itself. Before the move:
+flowtree dependency itself. It is not needed for the ferrofluid work and is deferred until the
+other rings modules have been inventoried. Before the move:
 
 - `RayTracingJob` turns on verbose output through `Settings` (rings, AWT-dependent) by
   setting its static output flags and print writers. Those flags have to move into something
@@ -123,17 +178,8 @@ flowtree dependency itself. Before the move:
   only its theme colours and splash-image paths.
 - `RayTracingJobOutputDecodingTest` moves with the module.
 
-## Still to decide
+## Next: photonfield
 
-- **`Settings` split.** This is required before group 2.
-- **`LegacyRayTracingEngine`.** Its render loop is not UI; only its `ProgressDisplay`
-  parameter is Swing. The options are to keep it in rings, to delete it as superseded by
-  `ar-render`'s engines, or to move it behind a non-Swing progress interface.
-- **`RayTracedAnimation`.** It extends `space.Animation` and uses `ar-swing`. How deep the
-  Swing use goes has not been checked.
-- **Rendering tests.** `IntersectionCompactTest`, `KernelizedIntersectionTest` and
-  `IntersectionalLightingEngineTest` exercise only `ar-render` code and could move to
-  `ar-render`'s tests. `LightingEngineAggregatorTest` displays its output through Swing and
-  would need that part removed.
-- **The `ui` parameter** of `ModelData.decodeScene` and `FileDecoder.decodeSurfaceFile`,
-  which no longer does anything.
+photonfield is the next rings module down; it depends on raytracer only through
+`RayTracedAnimation` (now in common), `Settings` and `RayTracingOutputHandler`. Its migration
+is recorded in `RINGS_PHOTONFIELD_MIGRATION.md`.
