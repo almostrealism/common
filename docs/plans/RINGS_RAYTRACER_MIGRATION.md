@@ -133,8 +133,9 @@ and calls `writeImage` for each frame. What changed in the move:
   `RigidSphere`); it now loads unlit with a warning, since only spheres can be lights.
 - Logging goes through `ConsoleFeatures` instead of `System.out`.
 
-Known and unchanged: `generateProperties` writes the focal length as `camera.foc`, but
-`loadProperties` reads `camera.foc` as the focus distance, so the camera does not round-trip.
+- **Camera round-trip fixed:** `generateProperties` writes the focal length under `camera.foclen`,
+  the key `loadProperties` reads it from (via `setFocalLength`), so the focal length round-trips.
+  `camera.foc` is reserved for the focus distance, which a `PinholeCamera` does not carry.
 
 ## Group 8: the rendering tests
 

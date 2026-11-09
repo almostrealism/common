@@ -26,6 +26,7 @@ import org.almostrealism.raytrace.DefaultPhotonField;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.function.Predicate;
 
 /**
@@ -175,5 +176,21 @@ public class PhotonFieldAnimation<T extends ShadableSurface> extends RayTracedAn
 	public void clear() {
 		super.clear();
 		absorber.clear();
+	}
+
+	/**
+	 * Removes the members in the given index range, detaching each absorber among them whose object
+	 * no longer survives elsewhere in the animation. This is the path a view-based removal takes
+	 * (for example {@code subList(from, to).clear()}), so overriding it keeps the absorber set in
+	 * step with such removals too.
+	 *
+	 * @param fromIndex the index of the first member to remove, inclusive
+	 * @param toIndex   the index after the last member to remove, exclusive
+	 */
+	@Override
+	protected void removeRange(int fromIndex, int toIndex) {
+		List<T> removed = new ArrayList<T>(subList(fromIndex, toIndex));
+		super.removeRange(fromIndex, toIndex);
+		for (T t : removed) detach(t);
 	}
 }

@@ -116,4 +116,24 @@ public class PhotonFieldAnimationTest extends TestSuiteBase {
 		animation.clear();
 		assertAbsorbers(0, animation);
 	}
+
+	/** View-based removals through {@code subList().clear()} reach the absorber set. */
+	@Test(timeout = 30000)
+	public void subListRemovalReachesAbsorberSet() {
+		PhotonFieldAnimation<ShadableSurface> animation = new PhotonFieldAnimation<>();
+		AbsorbingSphere a = new AbsorbingSphere();
+		AbsorbingSphere b = new AbsorbingSphere();
+		AbsorbingSphere c = new AbsorbingSphere();
+
+		animation.addAll(List.of(a, b, c));
+		assertAbsorbers(3, animation);
+
+		animation.subList(0, 2).clear();
+		assertAbsorbers(1, animation);
+		assertEquals(1, animation.size());
+
+		animation.subList(0, animation.size()).clear();
+		assertAbsorbers(0, animation);
+		assertEquals(0, animation.size());
+	}
 }
