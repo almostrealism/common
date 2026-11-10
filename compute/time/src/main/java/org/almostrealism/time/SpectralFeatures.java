@@ -324,6 +324,13 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * to reach the smallest Nyquist wavenumber {@code min(pi / d_a)} of the grid. For an
 	 * {@code n x n} grid with equal spacing this is {@code n / 2 + 1}.
 	 *
+	 * <p>The last bin is the last one whose centre is at or below that Nyquist wavenumber; cells
+	 * that round into the bin beyond it lie past Nyquist and are ignored. Every counted bin holds
+	 * at least one cell: the axis of the longest extent {@code L = n_L d_L} has wavenumbers at
+	 * every multiple of the bin width up to {@code n_L / 2}, and since the smallest Nyquist
+	 * wavenumber belongs to the axis of the largest spacing, the bin count never exceeds
+	 * {@code n_L / 2 + 1}.</p>
+	 *
 	 * @param grid    the grid shape
 	 * @param spacing the sample spacing along each axis (or one value for all axes)
 	 * @return the radial bin count
@@ -391,9 +398,10 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	/**
 	 * Returns the index of the largest bin of a radial spectrum other than bin 0 (the mean).
 	 * The result is {@linkplain #isolated isolated}, since it is normally read by several
-	 * consumers.
+	 * consumers. Bin 0 is excluded by replacing it with zero, which is below every other bin of
+	 * a power spectrum because power is never negative.
 	 *
-	 * @param radialSpectrum a radial spectrum, shaped {@code [bins]}
+	 * @param radialSpectrum a radial spectrum, shaped {@code [bins]}, with non-negative values
 	 * @return a single-element producer of the peak bin index
 	 */
 	default CollectionProducer spectralPeakBin(Producer<PackedCollection> radialSpectrum) {

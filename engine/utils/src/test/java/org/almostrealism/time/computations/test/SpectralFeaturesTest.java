@@ -307,6 +307,30 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	}
 
 	/**
+	 * On an anisotropic grid whose smallest Nyquist wavenumber is not a whole number of bins
+	 * ({@code [64, 8]} with spacing {@code (1, 1.48)}: Nyquist / dk = 21.62), the bins end at the
+	 * last bin centre at or below Nyquist, and every one of them holds at least one cell, so the
+	 * radial average of a constant power is that constant in every bin rather than NaN.
+	 */
+	@Test(timeout = 120000)
+	public void radialSpectrumOfNonIntegerNyquist() {
+		TraversalPolicy grid = shape(64, 8);
+		double[] spacing = {1.0, 1.48};
+
+		Assert.assertEquals(22, radialBinCount(grid, spacing));
+
+		PackedCollection bins = radialBin(grid, spacing).evaluate();
+		for (int b = 0; b < 22; b++) {
+			double bin = b;
+			Assert.assertTrue("bin " + b + " is empty", bins.doubleStream().anyMatch(v -> v == bin));
+		}
+
+		PackedCollection radial = radialPowerSpectrum(c(3.0).repeat(64 * 8).reshape(grid), spacing).evaluate();
+		Assert.assertEquals(22, radial.getShape().getTotalSize());
+		radial.doubleStream().forEach(v -> assertRelative("radial bin", 3.0, v, 1e-5));
+	}
+
+	/**
 	 * The radial spectrum of {@code cos(2 pi 4 x / n)} on an {@code n x n} grid holds all of its
 	 * power in bin 4, the average over that shell of the two cells at {@code (0, +-4)}; every
 	 * other bin, including bin 0, is empty. This checks the shell membership, which a constant
