@@ -273,6 +273,7 @@ intersections of the same camera rays, each evaluated one pixel at a time:
 | `sinusoidalHeightField` | hit distances on `0.2 sin(x) cos(z)` (257x257 grid) within 1e-3 of the analytic surface |
 | `cameraInsideSurfaceMisses` | a camera at the centre of the unit sphere misses at every pixel, and every pixel shows the environment color of its ray |
 | `heightFieldRejectsZeroSpacing`, `heightFieldRejectsNegativeSpacing` | a height field rejects a grid spacing that is not positive |
+| `heightFieldHeightAtGridEdge` | the height of a planar height field is exact up to the far edge of the grid and equals the edge height beyond it |
 | `heightFieldNormalOutsideGrid` | the normal of a planar height field follows both slopes inside the grid and has zero slope along each axis beyond it |
 | `fresnelGrazingExceedsNormal` | reflectance is F0 at the centre and matches analytic Schlick at the silhouette, which exceeds it |
 | `frameTime` | logs the compile and per-frame time and writes `results/implicit-surface-height-field.png` |

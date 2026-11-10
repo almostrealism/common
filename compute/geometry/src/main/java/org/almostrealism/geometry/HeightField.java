@@ -42,9 +42,6 @@ import org.almostrealism.collect.PackedCollection;
  * @author Michael Murray
  */
 public class HeightField implements ImplicitSurface {
-	/** The margin that keeps a sample position inside the last grid cell. */
-	private static final double EDGE_MARGIN = 1e-4;
-
 	/** The {@code [nx, nz]} heights. */
 	private final Producer<PackedCollection> heights;
 
@@ -177,13 +174,13 @@ public class HeightField implements ImplicitSurface {
 		Sample(Producer<PackedCollection> position) {
 			CollectionProducer rawU = subset(shape(1), position, 0).subtract(c(x0)).divide(c(dx));
 			CollectionProducer rawV = subset(shape(1), position, 2).subtract(c(z0)).divide(c(dz));
-			CollectionProducer u = bound(rawU, 0.0, nx - 1 - EDGE_MARGIN);
-			CollectionProducer v = bound(rawV, 0.0, nz - 1 - EDGE_MARGIN);
+			CollectionProducer u = bound(rawU, 0.0, nx - 1.0);
+			CollectionProducer v = bound(rawV, 0.0, nz - 1.0);
 
 			insideX = insideGrid(rawU, nx);
 			insideZ = insideGrid(rawV, nz);
-			CollectionProducer i = floor(u);
-			CollectionProducer j = floor(v);
+			CollectionProducer i = bound(floor(u), 0.0, nx - 2.0);
+			CollectionProducer j = bound(floor(v), 0.0, nz - 2.0);
 			CollectionProducer node = i.multiply(c(nz)).add(j);
 
 			fx = u.subtract(i);

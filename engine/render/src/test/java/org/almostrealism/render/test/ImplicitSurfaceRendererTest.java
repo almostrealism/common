@@ -362,12 +362,7 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 	 */
 	@Test(timeout = 120000)
 	public void heightFieldNormalOutsideGrid() {
-		int n = 4;
-		CollectionProducer index = integers(0, n * n);
-		CollectionProducer h = floor(index.divide(c((double) n))).multiply(c(0.5))
-				.add(mod(index, c((double) n)).multiply(c(0.25)));
-		PackedCollection heights = new PackedCollection(shape(n, n));
-		h.reshape(shape(n, n)).get().into(heights).evaluate();
+		PackedCollection heights = planarHeights();
 
 		// The grid covers [4, 7] along x and z: inside, on the far edge, beyond x,
 		// before z, beyond both, and on the near corner
@@ -400,6 +395,56 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 			positions.destroy();
 			heights.destroy();
 		}
+	}
+
+	/**
+	 * The height of a planar height field with slopes 0.5 along {@code x} and 0.25 along
+	 * {@code z} is exact inside the grid, right up to its far edge, and beyond the grid it is
+	 * exactly the height at the nearest edge, rather than a height interpolated slightly
+	 * inside the last cell.
+	 */
+	@Test(timeout = 120000)
+	public void heightFieldHeightAtGridEdge() {
+		PackedCollection heights = planarHeights();
+
+		// The grid covers [4, 7] along x and z: inside, just inside the far x edge, on the
+		// far x edge, beyond x, on the far corner, beyond both, and beyond z on the near side
+		PackedCollection positions = pack(
+				5.5, 0.0, 5.5,
+				6.99995, 0.0, 5.5,
+				7.0, 0.0, 5.5,
+				9.0, 0.0, 5.5,
+				7.0, 0.0, 7.0,
+				20.0, 0.0, 20.0,
+				2.0, 0.0, 14.0);
+		double[] expected = { 1.125, 1.874975, 1.875, 1.875, 2.25, 2.25, 0.75 };
+
+		try {
+			HeightField surface = new HeightField(cp(heights), 4.0, 4.0, 1.0, 1.0);
+			PackedCollection values = surface.value(cp(positions.reshape(shape(7, 3)))).evaluate();
+
+			for (int p = 0; p < expected.length; p++) {
+				assertEquals("Value at position " + p, -expected[p], values.toDouble(p), 1e-6);
+			}
+		} finally {
+			positions.destroy();
+			heights.destroy();
+		}
+	}
+
+	/**
+	 * Returns the {@code [4, 4]} heights {@code 0.5 i + 0.25 j} of a planar height field.
+	 *
+	 * @return the heights, which the caller must destroy
+	 */
+	private PackedCollection planarHeights() {
+		int n = 4;
+		CollectionProducer index = integers(0, n * n);
+		CollectionProducer h = floor(index.divide(c((double) n))).multiply(c(0.5))
+				.add(mod(index, c((double) n)).multiply(c(0.25)));
+		PackedCollection heights = new PackedCollection(shape(n, n));
+		h.reshape(shape(n, n)).get().into(heights).evaluate();
+		return heights;
 	}
 
 	/** The hit distances on a flat height field match the analytic plane intersection. */
