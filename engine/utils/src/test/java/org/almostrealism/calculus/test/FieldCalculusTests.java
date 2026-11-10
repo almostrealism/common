@@ -242,6 +242,40 @@ public class FieldCalculusTests extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * {@code gridIndex} returns the cell coordinate along the requested axis, repeated across every
+	 * other axis, for a 3D grid whose axes have distinct lengths. The construction broadcasts
+	 * {@code integers(0, length(axis))} rather than dividing a linear index, so every stored value
+	 * is a single-axis coordinate in {@code [0, length(axis))} - this both pins the layout and
+	 * confirms the values never exceed one axis length (the property that keeps the field exact on an
+	 * FP32 backend above {@code 2^24} cells).
+	 */
+	@Test(timeout = 120000)
+	public void gridIndexBroadcastsPerAxis() {
+		int n0 = 2;
+		int n1 = 3;
+		int n2 = 4;
+		TraversalPolicy shape = shape(n0, n1, n2);
+
+		for (int axis = 0; axis < 3; axis++) {
+			int length = shape.length(axis);
+			double[] actual = values(gridIndex(shape, axis));
+			assertEquals("gridIndex axis " + axis + " length", n0 * n1 * n2, actual.length);
+
+			for (int i = 0; i < n0; i++) {
+				for (int j = 0; j < n1; j++) {
+					for (int k = 0; k < n2; k++) {
+						int coordinate = axis == 0 ? i : axis == 1 ? j : k;
+						int p = (i * n1 + j) * n2 + k;
+						assertTrue("gridIndex axis " + axis + " value in range at " + p,
+								actual[p] >= 0 && actual[p] < length);
+						assertEquals("gridIndex axis " + axis + " at " + p, coordinate, actual[p]);
+					}
+				}
+			}
+		}
+	}
+
 	/** Asserts that {@code slice} rejects the given arguments at the API boundary. */
 	private void assertSliceRejected(int axis, int start, int length, CollectionProducer collection) {
 		boolean rejected = false;

@@ -545,13 +545,14 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * spacing and adding the origin gives the coordinate field along that axis, from which
 	 * analytic fields and initial conditions are built without any host loop.
 	 *
-	 * <p>The index field is built from {@code integers(0, totalSize)}. On a single-precision
-	 * (FP32, e.g. Metal) backend a float is integer-exact only up to {@code 2^24}, so a grid with
-	 * more than {@code 2^24} cells rounds these indices when they are stored, before any kernel
-	 * runs, and the resulting coordinate field (and the {@link #checkerboard} parity built from it)
-	 * is wrong above that bound. The tested grids stay far below it; an exact index field for larger
-	 * grids would read through a {@code SplitIndexTraversalOrdering}. See the FP32 section of
-	 * {@code docs/internals/grid-field-calculus.md} and {@code docs/internals/dynamic-indexing.md}.</p>
+	 * <p>The index field is built from {@code integers(0, length(axis))} - one value per cell along
+	 * the requested axis - broadcast across every other axis, so the only indices ever stored are
+	 * the {@code [0, length(axis))} coordinates of a single axis. Those stay integer-exact on a
+	 * single-precision (FP32, e.g. Metal) backend even when the whole grid has more than {@code 2^24}
+	 * cells, unlike a linear {@code integers(0, totalSize)} index, whose values above {@code 2^24}
+	 * would be rounded when stored (a float is integer-exact only up to {@code 2^24}). See the FP32
+	 * section of {@code docs/internals/grid-field-calculus.md} and
+	 * {@code docs/internals/dynamic-indexing.md}.</p>
 	 *
 	 * @param shape the shape of the grid
 	 * @param axis  the axis whose index is returned
@@ -559,24 +560,26 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * @throws IllegalArgumentException if the axis is out of range
 	 */
 	default CollectionProducer gridIndex(TraversalPolicy shape, int axis) {
-		if (axis < 0 || axis >= shape.getDimensions()) {
+		int d = shape.getDimensions();
+		if (axis < 0 || axis >= d) {
 			throw new IllegalArgumentException("axis " + axis + " is not an axis of " + shape);
 		}
 
-		int size = shape.getTotalSize();
-		long stride = 1;
-		for (int k = axis + 1; k < shape.getDimensions(); k++) {
-			stride *= shape.length(k);
+		int length = shape.length(axis);
+		int inner = 1;
+		for (int k = axis + 1; k < d; k++) {
+			inner *= shape.length(k);
+		}
+		int outer = 1;
+		for (int k = 0; k < axis; k++) {
+			outer *= shape.length(k);
 		}
 
-		// Integer-exact only up to 2^24 cells on an FP32 backend; see the javadoc.
-		CollectionProducer index = integers(0, size);
-		if (stride > 1) {
-			index = floor(index.divide((double) stride));
-		}
-
-		if (axis > 0) {
-			index = index.mod(shape.length(axis));
+		// Repeat each axis coordinate across the inner axes, then tile the block under the outer
+		// axes, so the stored values are only the axis coordinates; see the javadoc.
+		CollectionProducer index = integers(0, length).reshape(length, 1).repeat(1, inner);
+		if (outer > 1) {
+			index = index.reshape(length * inner).repeat(0, outer);
 		}
 
 		return index.reshape(shape.withOrder(null).traverseEach());

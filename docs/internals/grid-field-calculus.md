@@ -214,14 +214,15 @@ inside its own `tick()` exactly like this.
   (n ≲ 100 on an O(1) domain), but very fine grids or many accumulated relaxation sweeps reach the
   rounding floor (the RMS residual stops falling around `1e-4` for an O(1) solution with
   `h = 1/16`). Use a CPU (FP64) backend for validation runs that need more.
-- **Building index fields.** `gridIndex` computes `floor(index / stride)`; dividing by the
-  stride, rather than multiplying by its reciprocal, keeps exact multiples exact in FP32.
-  It is built from `integers(0, totalSize)`, so on an FP32 backend it is integer-exact only up to
-  `2^24` cells (16,777,216). A grid with more than `2^24` cells — e.g. `4096×4096` — rounds these
-  indices *when they are stored*, before any kernel runs, so the coordinate field and the
-  `checkerboard` red/black parity (and thus `redBlackGaussSeidelStep`) are wrong above that bound.
-  An exact index field for larger grids would read through a `SplitIndexTraversalOrdering` (see
-  `dynamic-indexing.md`, "Integer-Exact Indices Above 2^24"); use a CPU (FP64) backend otherwise.
+- **Building index fields.** `gridIndex(shape, axis)` is built from `integers(0, length(axis))` —
+  one value per cell along the requested axis — repeated across the inner axes and tiled under the
+  outer axes. The only values it ever stores are the `[0, length(axis))` coordinates of a single
+  axis, which stay integer-exact in FP32 (a float is exact up to `2^24`) for any single axis length
+  that fits a realistic grid. This is exact even when the whole grid has more than `2^24` cells —
+  e.g. `4096×4096` — unlike a linear `integers(0, totalSize)` index, whose values above `2^24` would
+  round *when they are stored*, before any kernel runs, corrupting the coordinate field and the
+  `checkerboard` red/black parity (and thus `redBlackGaussSeidelStep`). See `dynamic-indexing.md`,
+  "Integer-Exact Indices Above 2^24", for the underlying FP32 bound.
 
 ---
 
