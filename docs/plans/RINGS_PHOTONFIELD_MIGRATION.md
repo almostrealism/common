@@ -1,3 +1,10 @@
+---
+status: in-progress
+created: 2026-11-08
+closed:
+tracker: []
+---
+
 # Migrating the rings `photonfield` module into common
 
 **Scope:** the `photonfield` module of the rings repository (`ar-photonfield`), 42 main classes and

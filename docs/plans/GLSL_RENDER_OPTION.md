@@ -1,3 +1,10 @@
+---
+status: proposed
+created: 2026-11-08
+closed:
+tracker: []
+---
+
 # Option: rendering through GLSL-style per-pixel programs
 
 **Status:** an option to weigh alongside the ferrofluid rendering plan, not a decision. The
