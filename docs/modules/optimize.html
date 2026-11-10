@@ -159,8 +159,8 @@
                     <tr>
                         <td>NegativeLogLikelihood</td>
                         <td>Classification</td>
-                        <td>-sum(y * log(y'))</td>
-                        <td>-y / y'</td>
+                        <td>-(1/rows) * sum(y * y'), y' the log-probabilities</td>
+                        <td>-y / rows</td>
                     </tr>
                 </table>
             </section>
