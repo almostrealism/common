@@ -169,7 +169,7 @@ public class FlowTreeController implements ConsoleFeatures {
      * within its retry deadline and does not redeliver the event. Daemon threads
      * so a pending submission never blocks JVM shutdown.
      *
-     * <p>Shared the controller's start/stop lifecycle: {@link #stop()} shuts it
+     * <p>Shares the controller's start/stop lifecycle: {@link #stop()} shuts it
      * down and {@link #start()} revives it if it was, so the controller can be
      * restarted in the same JVM without rejecting Slack dispatches. It is never
      * null, because the Bolt handler threads that read it are external and must

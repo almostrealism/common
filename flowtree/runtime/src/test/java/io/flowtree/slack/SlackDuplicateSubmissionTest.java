@@ -98,7 +98,7 @@ public class SlackDuplicateSubmissionTest extends TestSuiteBase {
         CountingListener listener = listenerWithChannel("C_DUP");
 
         String messageTs = "1731000000.000100";
-        String text = "<@U_BOT> please resolve issues highlighted by PR comments";
+        String text = "<@UBOT> please resolve issues highlighted by PR comments";
 
         boolean first = listener.handleMessage("C_DUP", "U1", text, messageTs, null);
         boolean secondRetry = listener.handleMessage("C_DUP", "U1", text, messageTs, null);
@@ -122,7 +122,7 @@ public class SlackDuplicateSubmissionTest extends TestSuiteBase {
     public void distinctMessagesWithIdenticalTextSubmitTwoJobs() {
         CountingListener listener = listenerWithChannel("C_SAME_TEXT");
 
-        String text = "<@U_BOT> run the benchmarks";
+        String text = "<@UBOT> run the benchmarks";
 
         boolean firstMessage = listener.handleMessage(
                 "C_SAME_TEXT", "U1", text, "1731000100.000200", null);
@@ -156,7 +156,7 @@ public class SlackDuplicateSubmissionTest extends TestSuiteBase {
         listener.registerWorkstream(ws);
 
         String messageTs = "1731000300.000400";
-        String text = "<@U_BOT> do the thing";
+        String text = "<@UBOT> do the thing";
 
         boolean first = listener.handleMessage("C_RETRY", "U1", text, messageTs, null);
         boolean second = listener.handleMessage("C_RETRY", "U1", text, messageTs, null);
