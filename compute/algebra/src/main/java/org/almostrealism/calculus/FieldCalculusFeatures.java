@@ -107,7 +107,7 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 */
 	default CollectionProducer forwardDifference(Producer<PackedCollection> field, int axis,
 												 double spacing, GridBoundary boundary) {
-		return shift(field, axis, 1, boundary).subtract(field).multiply(1.0 / spacing);
+		return shift(field, axis, 1, boundary).subtract(field).multiply(1.0 / requireSpacing(spacing));
 	}
 
 	/**
@@ -122,7 +122,7 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 */
 	default CollectionProducer backwardDifference(Producer<PackedCollection> field, int axis,
 												  double spacing, GridBoundary boundary) {
-		return c(field).subtract(shift(field, axis, -1, boundary)).multiply(1.0 / spacing);
+		return c(field).subtract(shift(field, axis, -1, boundary)).multiply(1.0 / requireSpacing(spacing));
 	}
 
 	/**
@@ -138,7 +138,7 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	default CollectionProducer centralDifference(Producer<PackedCollection> field, int axis,
 												 double spacing, GridBoundary boundary) {
 		return shift(field, axis, 1, boundary).subtract(shift(field, axis, -1, boundary))
-				.multiply(0.5 / spacing);
+				.multiply(0.5 / requireSpacing(spacing));
 	}
 
 	/**
@@ -153,9 +153,10 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 */
 	default CollectionProducer secondDifference(Producer<PackedCollection> field, int axis,
 												double spacing, GridBoundary boundary) {
+		double h = requireSpacing(spacing);
 		return shift(field, axis, 1, boundary).add(shift(field, axis, -1, boundary))
 				.subtract(c(field).multiply(2.0))
-				.multiply(1.0 / (spacing * spacing));
+				.multiply(1.0 / (h * h));
 	}
 
 	/**
@@ -275,6 +276,8 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 			throw new IllegalArgumentException("the 9-point Laplacian applies to 2D fields, not " + shape(field));
 		}
 
+		double h = requireSpacing(spacing);
+
 		CollectionProducer up = shift(field, 0, 1, boundary);
 		CollectionProducer down = shift(field, 0, -1, boundary);
 		CollectionProducer edges = up.add(down)
@@ -286,7 +289,7 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 				.add(shift(down, 1, -1, boundary));
 
 		return edges.multiply(4.0).add(corners).subtract(c(field).multiply(20.0))
-				.multiply(1.0 / (6.0 * spacing * spacing));
+				.multiply(1.0 / (6.0 * h * h));
 	}
 
 	/**
@@ -602,12 +605,24 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 					+ dimensions + " grid axes");
 		}
 
-		double h = spacing.length == 1 ? spacing[0] : spacing[axis];
-		if (!(h > 0.0) || Double.isInfinite(h)) {
-			throw new IllegalArgumentException("grid spacing along axis " + axis
-					+ " must be finite and positive, not " + h);
+		return requireSpacing(spacing.length == 1 ? spacing[0] : spacing[axis]);
+	}
+
+	/**
+	 * Returns the grid spacing unchanged if it is finite and positive, and otherwise rejects it. A
+	 * zero spacing divides by zero in the stencil coefficients ({@code 1/h} and {@code 1/h^2}) and a
+	 * {@code NaN} or infinite spacing silently poisons the whole field, so every operator validates
+	 * its spacing here before forming a coefficient from it.
+	 *
+	 * @param spacing the grid spacing {@code h}
+	 * @return the spacing
+	 * @throws IllegalArgumentException if the spacing is not finite and positive
+	 */
+	private static double requireSpacing(double spacing) {
+		if (!(spacing > 0.0) || Double.isInfinite(spacing)) {
+			throw new IllegalArgumentException("grid spacing must be finite and positive, not " + spacing);
 		}
 
-		return h;
+		return spacing;
 	}
 }

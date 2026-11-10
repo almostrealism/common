@@ -34,6 +34,7 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.DoubleBinaryOperator;
+import java.util.function.DoubleFunction;
 import java.util.function.IntToDoubleFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -349,6 +350,51 @@ public class FieldCalculusTests extends TestSuiteBase {
 		CollectionProducer field = integers(0, 16).reshape(shape(4, 4));
 		assertEquals(16, values(laplacian(field, GridBoundary.periodic(), 0.5)).length);
 		assertEquals(16, values(laplacian(field, GridBoundary.periodic(), 0.5, 1.0)).length);
+	}
+
+	/**
+	 * Asserts that {@code build.apply(spacing)} rejects the given single spacing at graph-construction
+	 * time rather than building a producer that evaluates to infinities or {@code NaN}.
+	 */
+	private void assertPrimitiveRejectsSpacing(String operator,
+											   DoubleFunction<CollectionProducer> build, double spacing) {
+		boolean rejected = false;
+		try {
+			CollectionProducer unused = build.apply(spacing);
+		} catch (IllegalArgumentException expected) {
+			rejected = true;
+		}
+
+		assertTrue(operator + " should reject grid spacing " + spacing, rejected);
+	}
+
+	/**
+	 * The public single-spacing stencil primitives ({@code forwardDifference}, {@code backwardDifference},
+	 * {@code centralDifference}, {@code secondDifference}) and the {@code ninePointLaplacian} embed the
+	 * reciprocal of their spacing in a coefficient, so they must reject a spacing that is not finite and
+	 * positive at graph-construction time just as the varargs operators do; otherwise a zero spacing
+	 * divides by zero and a {@code NaN} or infinite spacing poisons every cell. A finite, positive
+	 * spacing is accepted and produces a field with the shape of the input.
+	 */
+	@Test(timeout = 120000)
+	public void stencilPrimitivesRejectInvalidSpacing() {
+		CollectionProducer field = integers(0, 16).reshape(shape(4, 4));
+		GridBoundary periodic = GridBoundary.periodic();
+		double[] invalid = { 0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY };
+
+		for (double h : invalid) {
+			assertPrimitiveRejectsSpacing("forwardDifference", s -> forwardDifference(field, 0, s, periodic), h);
+			assertPrimitiveRejectsSpacing("backwardDifference", s -> backwardDifference(field, 0, s, periodic), h);
+			assertPrimitiveRejectsSpacing("centralDifference", s -> centralDifference(field, 0, s, periodic), h);
+			assertPrimitiveRejectsSpacing("secondDifference", s -> secondDifference(field, 0, s, periodic), h);
+			assertPrimitiveRejectsSpacing("ninePointLaplacian", s -> ninePointLaplacian(field, periodic, s), h);
+		}
+
+		assertEquals(16, values(forwardDifference(field, 0, 0.5, periodic)).length);
+		assertEquals(16, values(backwardDifference(field, 0, 0.5, periodic)).length);
+		assertEquals(16, values(centralDifference(field, 0, 0.5, periodic)).length);
+		assertEquals(16, values(secondDifference(field, 0, 0.5, periodic)).length);
+		assertEquals(16, values(ninePointLaplacian(field, periodic, 0.5)).length);
 	}
 
 	/**
