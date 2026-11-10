@@ -69,6 +69,32 @@ public class NegativeLogLikelihoodTests extends TestSuiteBase {
 		assertRejected(() -> new NegativeLogLikelihood().loss(output, shapeless()));
 	}
 
+	/**
+	 * The gradient of {@link NegativeLogLikelihood} rejects an output with no shape, as the loss
+	 * terms do, rather than treating it as a single row and scaling the target by -1.
+	 */
+	@Test(timeout = 10000)
+	public void negativeLogLikelihoodGradientRejectsShapelessOutput() {
+		Producer<PackedCollection> target = cp(new PackedCollection(shape(2, 3)));
+		assertRejected(() -> new NegativeLogLikelihood().gradient(shapeless(), target));
+	}
+
+	/**
+	 * The gradient of {@link NegativeLogLikelihood} for an output of two rows is the target
+	 * scaled by -1/2, the derivative of the mean of the two row terms.
+	 */
+	@Test(timeout = 10000)
+	public void negativeLogLikelihoodGradientOfTwoRows() {
+		PackedCollection target = new PackedCollection(shape(2, 3));
+		target.setMem(1, 1.0);
+		target.setMem(5, 1.0);
+
+		PackedCollection gradient = new NegativeLogLikelihood()
+				.gradient(cp(new PackedCollection(shape(2, 3))), cp(target)).evaluate();
+		double[] expected = {0.0, -0.5, 0.0, 0.0, 0.0, -0.5};
+		Assert.assertArrayEquals(expected, gradient.toArray(), 1e-6);
+	}
+
 	/** Returns a producer that does not implement {@link io.almostrealism.collect.Shape}. */
 	private static Producer<PackedCollection> shapeless() {
 		return () -> null;

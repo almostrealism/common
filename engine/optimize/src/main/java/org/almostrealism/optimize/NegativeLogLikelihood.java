@@ -100,8 +100,8 @@ public class NegativeLogLikelihood implements LossProvider, CollectionFeatures {
 	@Override
 	public CollectionProducer loss(Producer<PackedCollection> output,
 								   Producer<PackedCollection> target) {
-		TraversalPolicy rows = padDimensions(Shape.requireShape("Negative Log Likelihood", output), 2);
-		int targetRows = padDimensions(Shape.requireShape("Negative Log Likelihood", target), 2).length(0);
+		TraversalPolicy rows = rows(output);
+		int targetRows = rows(target).length(0);
 		if (targetRows != rows.length(0)) {
 			throw new IllegalArgumentException("Batch size mismatch: the output has " + rows.length(0)
 					+ " rows and the target has " + targetRows);
@@ -125,11 +125,24 @@ public class NegativeLogLikelihood implements LossProvider, CollectionFeatures {
 	 *               the number of rows
 	 * @param target producer for the one-hot encoded target labels
 	 * @return a producer for the gradient ({@code -1 / rows} at each row's target index)
+	 * @throws IllegalArgumentException if the output does not have a shape, from which the rows
+	 *                                  are determined
 	 */
 	@Override
 	public Producer<PackedCollection> gradient(Producer<PackedCollection> output,
 												  Producer<PackedCollection> target) {
-		int rows = padDimensions(shape(output), 2).length(0);
-		return c(target).multiply(-1.0 / rows);
+		return c(target).multiply(-1.0 / rows(output).length(0));
+	}
+
+	/**
+	 * Returns the shape of the given producer padded to two dimensions, whose leading dimension
+	 * is the number of rows the loss terms and the gradient are computed for.
+	 *
+	 * @param producer the output or target producer
+	 * @return the shape of the producer padded to two dimensions
+	 * @throws IllegalArgumentException if the producer does not have a shape
+	 */
+	private TraversalPolicy rows(Producer<PackedCollection> producer) {
+		return padDimensions(Shape.requireShape("Negative Log Likelihood", producer), 2);
 	}
 }
