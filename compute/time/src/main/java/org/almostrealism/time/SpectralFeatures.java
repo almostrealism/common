@@ -58,6 +58,14 @@ import java.util.stream.IntStream;
 public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 
 	/**
+	 * The number of consecutive integers, starting at zero, that a single precision float
+	 * represents exactly ({@code 2^24}). Cell indices are decoded into per-axis coordinates with
+	 * floating-point arithmetic, so any index a spectral operation decodes must be below this
+	 * limit for the decoded coordinates to be exact on an FP32 backend.
+	 */
+	int MAX_EXACT_INDEX = 1 << 24;
+
+	/**
 	 * Transforms a complex grid along one axis, with no transposition: every line along the
 	 * axis is transformed by one kernel thread of a single {@link FourierTransform}.
 	 *
@@ -250,15 +258,20 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * their flat (row-major) index. This is the building block of spectral operators: the Fourier
 	 * symbol of the Laplacian is {@code -|k|^2}.
 	 *
+	 * <p>The index is decoded with floating-point arithmetic, so the grid may have at most
+	 * {@link #MAX_EXACT_INDEX} cells.</p>
+	 *
 	 * @param cell    producer of flat cell indices into {@code grid}; any shape
 	 * @param grid    the grid shape
 	 * @param spacing the sample spacing along each axis (or one value for all axes)
 	 * @return a producer of {@code |k|^2} with the shape of {@code cell}
+	 * @throws IllegalArgumentException if the grid has more than {@link #MAX_EXACT_INDEX} cells,
+	 *                                  or the spacing is invalid
 	 */
 	default CollectionProducer wavenumberSquared(Producer<PackedCollection> cell,
 												 TraversalPolicy grid, double... spacing) {
 		double[] d = gridSpacing(grid, spacing);
-		// TODO(review): flat cell index is decoded with floating-point mod/divide; exact in FP32 only below 2^24 cells
+		requireExactIndices("wavenumberSquared", grid.getTotalSize());
 		CollectionProducer index = c(cell);
 
 		CollectionProducer total = null;
@@ -328,18 +341,29 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * spectrum) are ignored. Bin {@code b} therefore represents angular wavenumber {@code b * dk},
 	 * i.e. wavelength {@code 2 pi / (b * dk)}.
 	 *
+	 * <p>The shell averages are computed from a dense {@code [bins, cells]} membership matrix,
+	 * so the intermediate size grows as {@code bins * cells}; a grid whose membership matrix
+	 * cannot be addressed with an {@code int} index is rejected rather than allowed to overflow.</p>
+	 *
 	 * @param power   a power spectrum in FFT order (as produced by
 	 *                {@link #powerSpectrum(Producer) powerSpectrum} of an {@link #fftn fftn}), shaped
 	 *                like the grid
 	 * @param spacing the sample spacing along each axis (or one value for all axes)
 	 * @return a producer of the {@link #radialBinCount} radially averaged powers
+	 * @throws IllegalArgumentException if {@code bins * cells} exceeds {@link Integer#MAX_VALUE},
+	 *                                  or the grid has more than {@link #MAX_EXACT_INDEX} cells
 	 */
 	default CollectionProducer radialPowerSpectrum(Producer<PackedCollection> power, double... spacing) {
 		TraversalPolicy grid = shape(power);
 		int cells = grid.getTotalSize();
 		int bins = radialBinCount(grid, spacing);
 
-		// TODO(review): membership is a dense [bins, cells] matrix; consider a scatter/segmented reduction for large grids
+		// Tracked as a follow-up task: replace the dense membership matrix with a segmented reduction
+		if ((long) bins * cells > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("radialPowerSpectrum of " + grid + " needs a " + bins + " x " +
+					cells + " membership matrix, which exceeds the addressable size");
+		}
+
 		CollectionProducer binOfCell = repeat(bins, isolated(radialBin(grid, spacing).reshape(cells))).reshape(bins, cells);
 		CollectionProducer bin = repeat(1, cells, integers(0, bins).reshape(bins, 1)).reshape(bins, cells);
 		CollectionProducer membership = greaterThan(abs(binOfCell.subtract(bin)), c(0.5), c(0.0), c(1.0));
@@ -430,6 +454,8 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * k1 = sum(P |k|) / sum(P)   over cells with |bin(k) - peak| &lt;= 1
 	 * k* = sum(P |k|) / sum(P)   over cells with ||k| - k1| &lt;= 1.5 dk
 	 * </pre>
+	 * <p>Bin indices are integers, so the first window is evaluated as {@code |bin(k) - peak| < 1.5},
+	 * which selects exactly the peak bin and its two neighbours.</p>
 	 * <p>Using the exact {@code |k|} of each cell, rather than bin centres, gives sub-bin precision
 	 * that does not depend on how the grid's discrete wavevectors fall into shells, which matters
 	 * for grids whose axes have different lengths or spacings. The second pass re-centres the
@@ -492,13 +518,18 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * so the solution has zero mean; a periodic solution exists only when {@code f} has zero mean,
 	 * and any mean in {@code f} is discarded.
 	 *
+	 * <p>The symbol is computed per interleaved complex element, whose flat index is decoded with
+	 * floating-point arithmetic, so the grid may have at most {@code MAX_EXACT_INDEX / 2} cells.</p>
+	 *
 	 * @param source  the right-hand side {@code f}, shaped like a grid
 	 * @param spacing the sample spacing along each axis (or one value for all axes)
 	 * @return a producer of the zero-mean solution {@code p}, shaped like {@code source}
+	 * @throws IllegalArgumentException if the grid has more than {@code MAX_EXACT_INDEX / 2} cells
 	 */
 	default CollectionProducer poissonSolve(Producer<PackedCollection> source, double... spacing) {
 		TraversalPolicy grid = shape(source);
 		int cells = grid.getTotalSize();
+		requireExactIndices("poissonSolve", 2L * cells);
 
 		CollectionProducer element = integers(0, 2 * cells);
 		CollectionProducer cell = element.subtract(element.mod(2.0)).divide(c(2.0));
@@ -567,6 +598,21 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 		TraversalPolicy result = dims == 1 ? shape(1) :
 				shape(IntStream.range(0, dims - 1).map(shape::length).toArray());
 		return subset(shape(count, 1), reshape(shape(count, 2), complex), 0, component).reshape(result);
+	}
+
+	/**
+	 * Validates that every index in {@code [0, count)} is represented exactly by a single
+	 * precision float, so that decoding it with floating-point arithmetic is exact.
+	 *
+	 * @param operation the operation that decodes the indices, for the error message
+	 * @param count     the number of indices decoded
+	 * @throws IllegalArgumentException if {@code count} exceeds {@link #MAX_EXACT_INDEX}
+	 */
+	private static void requireExactIndices(String operation, long count) {
+		if (count > MAX_EXACT_INDEX) {
+			throw new IllegalArgumentException(operation + " decodes " + count +
+					" flat indices, but only " + MAX_EXACT_INDEX + " are exact in single precision");
+		}
 	}
 
 	/**

@@ -136,6 +136,18 @@ single-precision roundings. The wavelength errors are dominated by spectral leak
 precision: the planted waves are deliberately not grid harmonics. A pattern that is periodic on
 the grid puts its power in exact cells, and the estimate is then exact to rounding.
 
+## Size limits
+
+- **Flat indices are decoded in floating point.** `wavenumberSquared` turns a flat cell index
+  into per-axis coordinates with `mod` and `divide`, which are exact in FP32 only for indices
+  below `2^24` (`SpectralFeatures.MAX_EXACT_INDEX`). A grid with more cells is rejected with an
+  `IllegalArgumentException`, not left to compute wrong wavenumbers. `poissonSolve` decodes one
+  index per interleaved complex element, so its limit is `2^23` cells.
+- **The radial spectrum uses a dense membership matrix.** `radialPowerSpectrum` averages shells
+  through `[bins, cells]` intermediates, so memory grows as `bins * cells`. A grid whose matrix
+  cannot be addressed with an `int` index (for example `256^3`, which has 129 bins) is rejected.
+  A segmented reduction would remove this limit; it is tracked as a follow-up.
+
 ## Gotchas found while building this
 
 - **Element-wise producers traverse per element.** `repeat(n, p)` repeats along `p`'s traversal

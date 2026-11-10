@@ -439,12 +439,18 @@ public interface CollectionFeatures extends GradientFeatures {
 	 * <p>Isolate a value that is read by several consumers, or a reduction whose compiled form
 	 * is a loop (a sum or maximum over many elements), which embedding would unroll into each
 	 * consumer. Where isolation is not permitted (see {@link Process#isolationPermitted}), the
-	 * producer is returned unchanged.</p>
+	 * producer is returned unchanged. A producer that is not a {@link Process} is never embedded
+	 * in the expressions of its consumers, so it is already isolated and is also returned
+	 * unchanged.</p>
 	 *
 	 * @param producer the producer to isolate
 	 * @return the isolated producer, with the same shape
 	 */
 	default CollectionProducer isolated(Producer<PackedCollection> producer) {
+		if (!(producer instanceof Process)) {
+			return c(producer);
+		}
+
 		return c((Producer<PackedCollection>) Process.isolated(producer));
 	}
 

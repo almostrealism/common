@@ -143,6 +143,21 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		Assert.assertEquals(label, expected, actual, tolerance * Math.abs(expected));
 	}
 
+	/**
+	 * Asserts that building a graph is rejected with an {@link IllegalArgumentException}.
+	 *
+	 * @param construction the graph construction expected to be rejected
+	 */
+	protected void assertRejected(Runnable construction) {
+		try {
+			construction.run();
+		} catch (IllegalArgumentException expected) {
+			return;
+		}
+
+		Assert.fail("Expected an IllegalArgumentException");
+	}
+
 	/** One-dimensional batched round trip on the CPU. */
 	@Test(timeout = 120000)
 	public void roundTrip1dCpu() {
@@ -410,5 +425,94 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		double error = maxDifference(expected, solution);
 		log("poissonManufacturedSolution maxError=" + error);
 		Assert.assertTrue("Poisson solution error " + error, error < 1e-4);
+	}
+
+	/**
+	 * The squared wavenumber of every cell of a non-square grid with different spacing per axis
+	 * matches the signed-frequency definition, including the Nyquist index, which maps to
+	 * {@code -n / 2}.
+	 */
+	@Test(timeout = 60000)
+	public void wavenumberSquaredMatchesDefinition() {
+		int rows = 4;
+		int cols = 8;
+		double dy = 0.5;
+		double dx = 0.25;
+
+		PackedCollection k2 = wavenumberSquared(shape(rows, cols), dy, dx).evaluate();
+		Assert.assertEquals(rows * cols, k2.getShape().getTotalSize());
+
+		for (int r = 0; r < rows; r++) {
+			for (int col = 0; col < cols; col++) {
+				int my = r < rows / 2 ? r : r - rows;
+				int mx = col < cols / 2 ? col : col - cols;
+				double ky = 2 * Math.PI * my / (rows * dy);
+				double kx = 2 * Math.PI * mx / (cols * dx);
+				double expected = ky * ky + kx * kx;
+				Assert.assertEquals("cell (" + r + ", " + col + ")", expected,
+						k2.toDouble(r * cols + col), 1e-4 * Math.max(1.0, expected));
+			}
+		}
+	}
+
+	/** Real and imaginary parts are the even and odd elements of interleaved complex data. */
+	@Test(timeout = 60000)
+	public void complexParts() {
+		PackedCollection complex = pack(1.0, -2.0, 3.0, 4.0, -5.0, 6.0).reshape(3, 2);
+		PackedCollection re = realPart(cp(complex)).evaluate();
+		PackedCollection im = imaginaryPart(cp(complex)).evaluate();
+
+		Assert.assertEquals(3, re.getShape().getTotalSize());
+		Assert.assertEquals(3, im.getShape().getTotalSize());
+		Assert.assertArrayEquals(new double[] { 1.0, 3.0, -5.0 }, re.toArray(), 1e-6);
+		Assert.assertArrayEquals(new double[] { -2.0, 4.0, 6.0 }, im.toArray(), 1e-6);
+	}
+
+	/**
+	 * Flat cell indices are decoded in floating point, so a grid of more than
+	 * {@link SpectralFeatures#MAX_EXACT_INDEX} cells is rejected, while one of exactly that
+	 * many cells is accepted. Only the graph is built; nothing is evaluated.
+	 */
+	@Test(timeout = 60000)
+	public void wavenumberSquaredRejectsInexactIndices() {
+		Assert.assertNotNull(wavenumberSquared(shape(4096, 4096), 1.0));
+		assertRejected(() -> wavenumberSquared(shape(4096, 8192), 1.0));
+	}
+
+	/**
+	 * The Poisson solve decodes two indices per cell, so a grid of
+	 * {@code MAX_EXACT_INDEX / 2} cells is accepted and one of {@code MAX_EXACT_INDEX} cells is
+	 * rejected. Only the graph is built; nothing is evaluated.
+	 */
+	@Test(timeout = 60000)
+	public void poissonSolveRejectsInexactIndices() {
+		Assert.assertNotNull(poissonSolve(zeros(shape(2048, 4096)), 1.0));
+		assertRejected(() -> poissonSolve(zeros(shape(4096, 4096)), 1.0));
+	}
+
+	/**
+	 * A {@code 256^3} grid has 129 radial bins, whose dense membership matrix exceeds the
+	 * addressable size, so the radial spectrum is rejected instead of overflowing.
+	 */
+	@Test(timeout = 60000)
+	public void radialPowerSpectrumRejectsOversizedGrid() {
+		TraversalPolicy grid = shape(256, 256, 256);
+		Assert.assertEquals(129, radialBinCount(grid, 1.0));
+		assertRejected(() -> radialPowerSpectrum(zeros(grid), 1.0));
+	}
+
+	/** Malformed transform and grid arguments are rejected while the graph is built. */
+	@Test(timeout = 60000)
+	public void invalidArgumentsAreRejected() {
+		assertRejected(() -> fftAxis(zeros(shape(8, 8)), 0, false));
+		assertRejected(() -> fftAxis(zeros(shape(8, 8, 2)), 2, false));
+		assertRejected(() -> fftAxis(zeros(shape(8, 8, 2)), -1, false));
+		assertRejected(() -> fftAxis(zeros(shape(8, 6, 2)), 1, false));
+		assertRejected(() -> fft2d(zeros(shape(4, 8, 8, 2))));
+		assertRejected(() -> ifft2d(zeros(shape(8, 2))));
+		assertRejected(() -> realPart(zeros(shape(4, 3))));
+		assertRejected(() -> wavenumberSquared(shape(8, 8), 1.0, 1.0, 1.0));
+		assertRejected(() -> wavenumberSquared(shape(8, 8), 0.0));
+		assertRejected(() -> radialBinWidth(shape(8, 8), 1.0, -1.0));
 	}
 }
