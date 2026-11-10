@@ -493,6 +493,51 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	}
 
 	/**
+	 * Power, magnitude, log magnitude and phase are computed for every element of interleaved
+	 * complex data, not only the first, and phase covers all four quadrants and both axes.
+	 */
+	@Test(timeout = 60000)
+	public void complexElementwiseOperations() {
+		double[] re = { 3.0, -1.0, -2.0, 0.5, 0.0, -4.0 };
+		double[] im = { 4.0, 1.0, -2.0, -0.5, 2.0, 0.0 };
+		PackedCollection complex = pack(3.0, 4.0, -1.0, 1.0, -2.0, -2.0,
+				0.5, -0.5, 0.0, 2.0, -4.0, 0.0).reshape(2, 3, 2);
+
+		PackedCollection power = powerSpectrum(cp(complex)).evaluate();
+		PackedCollection magnitude = complexMagnitude(cp(complex)).evaluate();
+		PackedCollection decibels = logMagnitude(cp(complex)).evaluate();
+		PackedCollection angle = phase(cp(complex)).evaluate();
+
+		Assert.assertEquals(shape(2, 3).toString(), power.getShape().toString());
+		Assert.assertEquals(shape(2, 3).toString(), angle.getShape().toString());
+
+		for (int i = 0; i < re.length; i++) {
+			double p = re[i] * re[i] + im[i] * im[i];
+			Assert.assertEquals("power " + i, p, power.toDouble(i), ROUND_TRIP_TOLERANCE);
+			Assert.assertEquals("magnitude " + i, Math.sqrt(p), magnitude.toDouble(i), ROUND_TRIP_TOLERANCE);
+			Assert.assertEquals("logMagnitude " + i, 10 * Math.log10(p + 1e-10), decibels.toDouble(i), ROUND_TRIP_TOLERANCE);
+			Assert.assertEquals("phase " + i, Math.atan2(im[i], re[i]), angle.toDouble(i), ROUND_TRIP_TOLERANCE);
+		}
+	}
+
+	/** The two-argument arctangent is applied element-wise with the y argument first. */
+	@Test(timeout = 60000)
+	public void atan2Elementwise() {
+		double[] y = { 1.0, 1.0, -1.0, -1.0, 0.0, 2.0 };
+		double[] x = { 1.0, -1.0, -1.0, 1.0, -3.0, 0.0 };
+
+		PackedCollection yc = pack(1.0, 1.0, -1.0, -1.0, 0.0, 2.0);
+		PackedCollection xc = pack(1.0, -1.0, -1.0, 1.0, -3.0, 0.0);
+
+		PackedCollection result = atan2(cp(yc), cp(xc)).evaluate();
+		Assert.assertEquals(y.length, result.getShape().getTotalSize());
+
+		for (int i = 0; i < y.length; i++) {
+			Assert.assertEquals("atan2 " + i, Math.atan2(y[i], x[i]), result.toDouble(i), ROUND_TRIP_TOLERANCE);
+		}
+	}
+
+	/**
 	 * Flat cell indices are decoded in floating point, so a grid of more than
 	 * {@link SpectralFeatures#MAX_EXACT_INDEX} cells is rejected, while one of exactly that
 	 * many cells is accepted. Only the graph is built; nothing is evaluated.
