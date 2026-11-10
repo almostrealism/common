@@ -362,12 +362,20 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * both collections back to the host and lets one large difference hide among many
 	 * small ones; this reports the worst element and leaves the data where it was computed.</p>
 	 *
+	 * <p>Both collections are supplied to the reduction as kernel arguments rather than
+	 * captured with {@code cp(...)}. A captured collection's memory offset is part of the
+	 * kernel's signature, so comparing successive rows of one collection would compile a
+	 * new kernel for every row; as arguments, every comparison of the same shapes reuses
+	 * a single compiled reduction.</p>
+	 *
 	 * @param expected the expected collection values
 	 * @param actual   the actual collection values
 	 * @return the largest absolute difference between corresponding elements
 	 */
 	default double largestDeviation(PackedCollection expected, PackedCollection actual) {
-		return max(cp(actual).subtract(cp(expected)).abs()).evaluate().toDouble(0);
+		Producer<PackedCollection> act = v(actual.getShape(), 0);
+		Producer<PackedCollection> exp = v(expected.getShape(), 1);
+		return max(subtract(act, exp).abs()).get().evaluate(actual, expected).toDouble(0);
 	}
 
 	/**
