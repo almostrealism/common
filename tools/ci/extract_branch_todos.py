@@ -6,6 +6,12 @@ passes review feedback, so an agent treats each TODO the branch introduced —
 including the ``TODO(review)`` notes a review pass leaves — as a finding to fix
 and remove or to turn into a tracker task.
 
+Only actionable TODO *markers* are listed — the ``// TODO`` / ``# TODO:`` /
+``TODO(review):`` forms that annotate code — not the word "TODO" used in prose
+(documentation, prompt text, or a rule that describes the TODO convention
+itself), which would otherwise flood the findings with references to the
+mechanism rather than real work. See :data:`_MARKER` for the exact rule.
+
 The list is computed from ``git diff --merge-base origin/<base> -M`` so that:
 
 * only lines the branch **adds** appear — a ``TODO`` already on the base branch
@@ -31,9 +37,22 @@ import sys
 
 # A hunk header: @@ -<old>[,<n>] +<new>[,<m>] @@ ; captures the new-file start.
 _HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")
-# A TODO marker as a token, so TODO, TODO:, and TODO(review) match but an
-# identifier such as TODOList does not.
-_TODO = re.compile(r"\bTODO\b")
+# An actionable TODO *marker*, told apart from the word "TODO" written in prose
+# (documentation, prompt text, a rule that describes the TODO convention). A
+# line carries a marker when either:
+#   * a comment opener (``//``, ``/*``, ``<!--``, ``#``, or a leading
+#     javadoc-continuation ``*``) is immediately followed by the TODO token —
+#     the ``// TODO`` / ``# TODO:`` / ``* TODO`` forms that actually annotate
+#     code; or
+#   * the token is written as an explicit ``TODO:`` / ``TODO(owner):`` marker,
+#     so a standalone marker in a non-comment file is still caught.
+# Prose that merely mentions TODO ("every TODO the branch adds", the
+# ``TODO(review)`` convention) has an ordinary word before the token and no
+# trailing colon, so it is left out instead of being reported as a finding.
+_MARKER = re.compile(
+    r"(?://|/\*|<!--|#)\s*TODO\b"   # a comment opener, then the TODO token
+    r"|^\s*\*\s*TODO\b"             # a leading javadoc-continuation *, then TODO
+    r"|\bTODO(?:\([^)]*\))?:")      # an explicit TODO: / TODO(owner): marker
 
 
 def extract_added_todos(diff_text):
@@ -81,7 +100,7 @@ def extract_added_todos(diff_text):
             continue
         if line.startswith("+"):
             content = line[1:]
-            if path is not None and _TODO.search(content):
+            if path is not None and _MARKER.search(content):
                 todos.append((path, new_line, content.strip()))
             new_line += 1
         elif line.startswith("-"):

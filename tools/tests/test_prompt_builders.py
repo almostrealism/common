@@ -372,10 +372,14 @@ class PromptBuilderTests(unittest.TestCase):
         append, drops the list here even though the shared-fragment tests (which
         run without a TODO file) would still pass.
         """
-        marker = "TODO(review): a branch-added marker line"
+        # A neutral sentinel rather than a literal marker: extract_branch_todos.py
+        # scans added lines for real markers, so a marker written here would itself
+        # be reported as one of this branch's findings. The sentinel still uniquely
+        # identifies the computed list where it lands in the prompt.
+        marker = "a-branch-added-finding-line-sentinel"
         todos = os.path.join(self.tmp, "branch-todos.txt")
         with open(todos, "w") as handle:
-            handle.write("## TODOs this branch adds\n\n- `x/Y.java:1` " + marker + "\n")
+            handle.write("## computed findings this branch adds\n\n- `x/Y.java:1` " + marker + "\n")
         for name in _AUTO_RESOLVE_BUILDERS:
             builder = os.path.join(_PROMPT_DIR, name)
             with self.subTest(builder=name):
