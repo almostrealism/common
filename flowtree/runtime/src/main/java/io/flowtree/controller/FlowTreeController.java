@@ -166,8 +166,10 @@ public class FlowTreeController implements ConsoleFeatures {
      * Runs job submission for an inbound Slack message off the Socket Mode
      * acknowledgement thread. The Bolt event handler enqueues the work here and
      * returns {@code ctx.ack()} at once, so Slack receives the acknowledgement
-     * within its retry deadline and does not redeliver the event. Daemon threads
-     * so a pending submission never blocks JVM shutdown.
+     * within its retry deadline and does not redeliver the event. A single
+     * daemon thread, so submissions are processed one at a time — the shared
+     * listener and notifier state they mutate is never written concurrently —
+     * and a pending submission never blocks JVM shutdown.
      *
      * <p>Shares the controller's start/stop lifecycle: {@link #stop()} shuts it
      * down and {@link #start()} revives it if it was, so the controller can be
@@ -926,7 +928,7 @@ public class FlowTreeController implements ConsoleFeatures {
      * @param threadTs    the thread timestamp, or {@code null}
      * @param workspaceId the Slack team ID, or {@code null}
      */
-    private void processSlackMessage(String channelId, String userId, String text,
+    void processSlackMessage(String channelId, String userId, String text,
                                      String messageTs, String threadTs, String workspaceId) {
         try {
             listener.handleMessage(channelId, userId, text, messageTs, threadTs, workspaceId);
@@ -936,14 +938,17 @@ public class FlowTreeController implements ConsoleFeatures {
     }
 
     /**
-     * Creates the pool that dispatches Slack message handling off the Socket
-     * Mode acknowledgement thread. Four daemon threads, so a pending submission
-     * never blocks JVM shutdown.
+     * Creates the executor that dispatches Slack message handling off the Socket
+     * Mode acknowledgement thread. A single daemon thread, so the submission
+     * path is serialized: {@link SlackListener#handleMessage} and the notifier
+     * state it records into (job history, thread timestamps) are not written
+     * concurrently for two messages, and a pending submission never blocks JVM
+     * shutdown.
      *
      * @return a freshly created Slack event dispatch executor
      */
     private static ExecutorService newSlackEventExecutor() {
-        return Executors.newFixedThreadPool(4, runnable -> {
+        return Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(runnable, "slack-event-dispatch");
             thread.setDaemon(true);
             return thread;

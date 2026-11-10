@@ -16,6 +16,8 @@
 
 package io.flowtree.slack;
 
+import io.flowtree.workstream.WorkstreamMailbox;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -53,11 +55,13 @@ public class SlackEventDeduplicator {
 
     /**
      * Default retention for a claimed identifier. Slack stops redelivering an
-     * event within a few minutes; fifteen minutes covers that window with room
-     * to spare, matching
-     * {@link io.flowtree.workstream.WorkstreamMailbox#DEDUPE_WINDOW_MILLIS}.
+     * event within a few minutes; the fifteen-minute window covers that with
+     * room to spare. Bound to
+     * {@link WorkstreamMailbox#DEDUPE_WINDOW_MILLIS} — the authoritative
+     * retry window — rather than copying its value, so the two guards cannot
+     * silently diverge if that window is ever retuned.
      */
-    public static final long DEFAULT_WINDOW_MILLIS = 15L * 60 * 1000;
+    public static final long DEFAULT_WINDOW_MILLIS = WorkstreamMailbox.DEDUPE_WINDOW_MILLIS;
 
     /** How long a claimed identifier is retained before it is pruned. */
     private final long windowMillis;
