@@ -122,7 +122,7 @@ public class RayMarchingTest extends TestSuiteBase {
 					this.setImage(new RayTracedScene(mandel, c).realize(params));
 
 					try {
-						return "marching" + format.valueToString(POWER) + ".jpg";
+						return "marching" + format.valueToString(POWER) + ".png";
 					} catch (ParseException e) {
 						warn(e.getMessage(), e);
 						return null;

@@ -244,6 +244,38 @@ public class RayTracedFrameSequenceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Invalid arguments are rejected with {@link IllegalArgumentException}: a non-positive
+	 * {@code stepsPerFrame} and a negative {@code frameCount} are refused by the constructor, and a
+	 * non-positive frame rate is refused by {@link RayTracedFrameSequence#setFrameRate(int)}, while a
+	 * positive frame rate is accepted and reported.
+	 */
+	@Test(timeout = 120000)
+	public void rejectsInvalidArguments() throws IOException {
+		PackedCollection state = pack(1.0, 0.0).reshape(shape(2));
+		SimulationRunner runner = new SimulationRunner(mixing(state), DT);
+		File dir = Files.createTempDirectory("frame-sequence-invalid").toFile();
+		RenderParameters params = new RenderParameters(4, 4, 1, 1);
+		IntFunction<Scene<? extends ShadableSurface>> scene = sceneForFrame(state);
+
+		assertThrowsIllegalArgument(() ->
+				new RayTracedFrameSequence(runner, 0, FRAMES, scene, params, dir));
+		assertThrowsIllegalArgument(() ->
+				new RayTracedFrameSequence(runner, -1, FRAMES, scene, params, dir));
+		assertThrowsIllegalArgument(() ->
+				new RayTracedFrameSequence(runner, STEPS_PER_FRAME, -1, scene, params, dir));
+
+		RayTracedFrameSequence driver =
+				new RayTracedFrameSequence(runner, STEPS_PER_FRAME, FRAMES, scene, params, dir);
+		assertThrowsIllegalArgument(() -> driver.setFrameRate(0));
+		assertThrowsIllegalArgument(() -> driver.setFrameRate(-30));
+
+		driver.setFrameRate(24);
+		assertEquals(24, driver.getFrameRate());
+
+		runner.destroy();
+	}
+
+	/**
 	 * Drives the real ray tracer end to end. It exercises the same frame orchestration against a
 	 * lit sphere scene, and is a known issue until the lighting-aggregator render path works in the
 	 * default lanes (the single-pixel render is likewise a known issue).
@@ -300,6 +332,20 @@ public class RayTracedFrameSequenceTest extends TestSuiteBase {
 						(state.toDouble(0) + "," + state.toDouble(1)).getBytes(StandardCharsets.UTF_8));
 			}
 		};
+	}
+
+	/**
+	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
+	 *
+	 * @param action the action expected to throw
+	 */
+	private static void assertThrowsIllegalArgument(Runnable action) {
+		try {
+			action.run();
+			Assert.fail("Expected an IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
 	}
 
 	/**

@@ -128,6 +128,46 @@ public class HeatmapTest extends TestSuiteBase implements RGBFeatures {
 	}
 
 	/**
+	 * A range whose {@code max} is not greater than its {@code min} is rejected with
+	 * {@link IllegalArgumentException} when the heatmap is built, so a degenerate scale cannot
+	 * silently divide by zero: both {@code max == min} and {@code max < min} are refused.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsInvalidRange() {
+		PackedCollection field = pack(0.0, 1.0, 0.5, 2.0).reshape(shape(2, 2));
+
+		assertThrowsIllegalArgument(() -> heatmap(cp(field), 1.0, 1.0));
+		assertThrowsIllegalArgument(() -> heatmap(cp(field), 2.0, 1.0));
+	}
+
+	/**
+	 * A field that is not 2D is rejected with {@link IllegalArgumentException}: a heatmap needs a
+	 * {@code (height, width)} field, so both a 1D field and a 3D field are refused.
+	 */
+	@Test(timeout = 60000)
+	public void rejectsNonTwoDimensionalField() {
+		PackedCollection oneD = pack(0.0, 1.0, 2.0, 3.0);
+		PackedCollection threeD = pack(0.0, 1.0, 2.0, 3.0).reshape(shape(2, 2, 1));
+
+		assertThrowsIllegalArgument(() -> heatmap(cp(oneD), 0.0, 1.0));
+		assertThrowsIllegalArgument(() -> heatmap(cp(threeD), 0.0, 1.0));
+	}
+
+	/**
+	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
+	 *
+	 * @param action the action expected to throw
+	 */
+	private static void assertThrowsIllegalArgument(Runnable action) {
+		try {
+			action.run();
+			Assert.fail("Expected an IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
+	/**
 	 * Asserts that the pixel at {@code (row, col)} of a {@code (height, width, 3)} image has the
 	 * expected colour.
 	 *
