@@ -16,7 +16,7 @@
 
 package io.flowtree;
 
-import org.almostrealism.util.TestSuiteBase;
+import io.flowtree.test.ServerTestBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -32,7 +32,7 @@ import java.util.Properties;
  *
  * @author Michael Murray
  */
-public class ServerResourceManagerTest extends TestSuiteBase {
+public class ServerResourceManagerTest extends ServerTestBase {
 
 	/**
 	 * Builds a passive {@link Server} whose resource manager can be driven directly.

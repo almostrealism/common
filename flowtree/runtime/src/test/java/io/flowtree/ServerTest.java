@@ -21,7 +21,7 @@ import io.almostrealism.db.Query;
 import io.almostrealism.resource.IOStreams;
 import io.flowtree.job.JobFactory;
 import io.flowtree.msg.Message;
-import org.almostrealism.util.TestSuiteBase;
+import io.flowtree.test.ServerTestBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -39,7 +39,7 @@ import java.util.Properties;
  *
  * @author Michael Murray
  */
-public class ServerTest extends TestSuiteBase {
+public class ServerTest extends ServerTestBase {
 
 	/**
 	 * Builds a passive {@link Server}: no listening socket, no initial nodes, and

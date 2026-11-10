@@ -17,7 +17,7 @@
 package io.flowtree;
 
 import io.flowtree.jobs.CodingAgentJob;
-import org.almostrealism.util.TestSuiteBase;
+import io.flowtree.test.ServerTestBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -33,7 +33,7 @@ import java.net.ServerSocket;
  *
  * @author Michael Murray
  */
-public class CodingAgentClientTest extends TestSuiteBase {
+public class CodingAgentClientTest extends ServerTestBase {
 
 	/**
 	 * Returns a local port that is guaranteed to be closed, so a connection attempt
