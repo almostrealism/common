@@ -32,7 +32,9 @@ catches up.
 ## Prerequisites
 
 - **macOS** (Intel or Apple Silicon)
-- **JDK 17**: `brew install --cask temurin@17`
+- **JDK**: `brew install --cask temurin@17` — the exact major version the
+  pipeline expects (see "JDK Version" below); `runner.sh` refuses to start on any
+  other major
 - **Maven**: `brew install maven`
 - **jq**: `brew install jq`
 - **Full Xcode** (NOT just the Command Line Tools) — required for jobs that build
@@ -186,9 +188,39 @@ The runner script exports AR environment variables automatically:
 
 `AR_HARDWARE_DRIVER` is intentionally left unset to auto-detect the best available backend.
 
-JDK and Maven must already be installed on the system. The
-`actions/setup-java` step in the workflow ensures correct PATH
-configuration.
+JDK and Maven must already be installed on the system and on the PATH the
+LaunchDaemon gives `runner.sh` (see `RUNNER_PATH` under Configuration). The CI
+jobs no longer install a JDK with `actions/setup-java`; they run the host's
+`java` directly and verify its major version (see "JDK Version" below), so the
+host's JDK is the one Maven and the forked surefire JVMs use.
+
+## JDK Version
+
+Unlike the Linux fleets, this runner has no image — it uses the **host's** JDK.
+The CI jobs that run here (`test-mac`, `test-media-mac`) verify the host's `java`
+against the workflow-level `EXPECTED_JDK_MAJOR` in
+`.github/workflows/analysis.yaml` and fail fast, naming the runner, on a
+mismatch. `runner.sh` enforces the same at startup: it reads `EXPECTED_JDK_MAJOR`
+(default `17`, overridable in the env file) and refuses to register unless the
+host's `java` is exactly that major version.
+
+To move this host to a new major version:
+
+1. Change `EXPECTED_JDK_MAJOR` in `.github/workflows/analysis.yaml` (one value,
+   shared by every self-hosted lane), on a `ci/...` branch.
+2. On the Mac, install the new JDK, make it the one on the runner account's PATH
+   (`RUNNER_PATH`), and restart the runner so it picks up the new `java`:
+
+   ```bash
+   brew install --cask temurin@21          # the new major
+   tools/bin/fleet macos stop --if-idle
+   # set EXPECTED_JDK_MAJOR=21 in the env file if it differs from the default 17
+   tools/bin/fleet macos start
+   ```
+
+Because `runner.sh` checks on every (re)start, a host left on the old JDK refuses
+to register rather than running the wrong one, and the job's verify step would
+catch it as a second line of defence.
 
 ## Stopping and Restarting
 

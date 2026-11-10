@@ -69,6 +69,19 @@ concurrency:
     && format('-rerun-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
+# ─── Expected JDK major version ───────────────────────────
+# Defined once for the whole workflow. Every self-hosted job verifies that the
+# JDK baked into its runner image or host (tools/ci/*/README.md) is this major
+# version, instead of downloading one with actions/setup-java — those downloads
+# were timing out on the ephemeral runners, mostly on the AMD/OpenCL lane.
+# A JDK upgrade is this value plus the matching runner image rebuild; keep it in
+# sync with the JDK_MAJOR build arg in tools/ci/docker/Dockerfile and
+# tools/ci/rocm/Dockerfile and the expected major in tools/ci/macos/runner.sh.
+# Hosted (ubuntu-latest) jobs keep actions/setup-java, which serves the JDK from
+# the hosted image's tool cache.
+env:
+  EXPECTED_JDK_MAJOR: "17"
+
 jobs:
   # ─── Change Detection ─────────────────────────────────────────────
   # Determines whether code files were changed. If only documentation
@@ -2129,12 +2142,28 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
+      - name: Verify JDK version
+        # The runner image ships the JDK (see tools/ci/docker/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
+        # was timing out. Fails fast, naming the runner, when java is not the expected major.
+        run: |
+          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
+          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
+            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
+            java -version || true
+            exit 1
+          fi
+          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
+
+      - name: Cache Maven dependencies
+        # Restores the dependency cache actions/setup-java's `cache: maven` provided on
+        # this lane before it was removed; the Linux ar-ci runners are ephemeral, so each
+        # job otherwise starts with an empty ~/.m2 and re-resolves every dependency.
+        uses: actions/cache@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven'
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -2333,12 +2362,28 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
+      - name: Verify JDK version
+        # The runner image ships the JDK (see tools/ci/docker/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
+        # was timing out. Fails fast, naming the runner, when java is not the expected major.
+        run: |
+          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
+          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
+            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
+            java -version || true
+            exit 1
+          fi
+          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
+
+      - name: Cache Maven dependencies
+        # Restores the dependency cache actions/setup-java's `cache: maven` provided on
+        # this lane before it was removed; the Linux ar-ci runners are ephemeral, so each
+        # job otherwise starts with an empty ~/.m2 and re-resolves every dependency.
+        uses: actions/cache@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'maven'
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-maven-
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -2521,11 +2566,18 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+      - name: Verify JDK version
+        # The runner image or host ships the JDK (see tools/ci/*/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
+        # was timing out. Fails fast, naming the runner, when java is not the expected major.
+        run: |
+          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
+          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
+            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
+            java -version || true
+            exit 1
+          fi
+          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
 
       - name: Isolate Maven repository per runner
         # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
@@ -2690,11 +2742,18 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+      - name: Verify JDK version
+        # The runner image or host ships the JDK (see tools/ci/*/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
+        # was timing out. Fails fast, naming the runner, when java is not the expected major.
+        run: |
+          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
+          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
+            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
+            java -version || true
+            exit 1
+          fi
+          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -2836,11 +2895,18 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+      - name: Verify JDK version
+        # The runner image or host ships the JDK (see tools/ci/*/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
+        # was timing out. Fails fast, naming the runner, when java is not the expected major.
+        run: |
+          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
+          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
+            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
+            java -version || true
+            exit 1
+          fi
+          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -2998,11 +3064,18 @@ jobs:
             exit 1
           fi
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+      - name: Verify JDK version
+        # The runner image or host ships the JDK (see tools/ci/*/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
+        # was timing out. Fails fast, naming the runner, when java is not the expected major.
+        run: |
+          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
+          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
+            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
+            java -version || true
+            exit 1
+          fi
+          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
 
       - name: Isolate Maven repository per runner
         # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
@@ -3198,11 +3271,18 @@ jobs:
             exit 1
           fi
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+      - name: Verify JDK version
+        # The runner image or host ships the JDK (see tools/ci/*/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
+        # was timing out. Fails fast, naming the runner, when java is not the expected major.
+        run: |
+          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
+          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
+            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
+            java -version || true
+            exit 1
+          fi
+          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -3385,11 +3465,18 @@ jobs:
             exit 1
           fi
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v5
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+      - name: Verify JDK version
+        # The runner image or host ships the JDK (see tools/ci/*/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
+        # was timing out. Fails fast, naming the runner, when java is not the expected major.
+        run: |
+          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
+          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
+            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
+            java -version || true
+            exit 1
+          fi
+          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.

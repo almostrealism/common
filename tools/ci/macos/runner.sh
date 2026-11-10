@@ -110,11 +110,21 @@ if [ -n "${MISSING}" ]; then
     exit 1
 fi
 
+# The macOS fleet runs the JDK already on the host (the CI jobs no longer install
+# one with actions/setup-java), so this runner must carry the exact major version
+# the pipeline expects. Keep EXPECTED_JDK_MAJOR in sync with the workflow-level
+# EXPECTED_JDK_MAJOR in .github/workflows/analysis.yaml and the JDK_MAJOR build arg
+# in the Linux runner images; override it in the env file only to run a fleet on a
+# different major on purpose.
+EXPECTED_JDK_MAJOR="${EXPECTED_JDK_MAJOR:-17}"
+
 JAVA_VERSION_RAW="$(java -version 2>&1 | head -1)"
 JAVA_MAJOR="$(echo "${JAVA_VERSION_RAW}" | sed -n 's/.*"\([0-9][0-9]*\).*/\1/p')"
 
-if [ -z "${JAVA_MAJOR}" ] || [ "${JAVA_MAJOR}" -lt 17 ]; then
-    echo "ERROR: JDK 17+ required. Found: ${JAVA_VERSION_RAW}"
+if [ -z "${JAVA_MAJOR}" ] || [ "${JAVA_MAJOR}" != "${EXPECTED_JDK_MAJOR}" ]; then
+    echo "ERROR: JDK ${EXPECTED_JDK_MAJOR} required (exact major version). Found: ${JAVA_VERSION_RAW}"
+    echo "  Install it and put it on PATH, e.g.:"
+    echo "    brew install --cask temurin@${EXPECTED_JDK_MAJOR}"
     exit 1
 fi
 
