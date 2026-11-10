@@ -16,10 +16,12 @@
 
 package org.almostrealism.time.computations.test;
 
+import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DefaultComputer;
 import org.almostrealism.hardware.Hardware;
@@ -97,11 +99,20 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	 * @return a producer of the signal
 	 */
 	protected CollectionProducer testSignal(TraversalPolicy shape) {
-		CollectionProducer n = integers(0, shape.getTotalSize());
+		return testSignalAt(integers(0, shape.getTotalSize())).reshape(shape);
+	}
+
+	/**
+	 * Returns the value of the {@link #testSignal(TraversalPolicy) test signal} at each of the
+	 * given flat element indices.
+	 *
+	 * @param n the flat element indices at which to evaluate the signal
+	 * @return a producer of the signal values, one per index
+	 */
+	protected CollectionProducer testSignalAt(CollectionProducer n) {
 		return sin(n.multiply(c(0.37))).multiply(c(0.6))
 				.add(cos(n.multiply(c(1.913))).multiply(c(0.3)))
-				.add(sin(n.multiply(c(0.0071))).multiply(c(0.1)))
-				.reshape(shape);
+				.add(sin(n.multiply(c(0.0071))).multiply(c(0.1)));
 	}
 
 	/**
@@ -645,5 +656,50 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		assertRejected(() -> radialPowerSpectrum(zeros(grid), 1.0, Double.MIN_VALUE));
 		assertRejected(() -> dominantWavelength(zeros(grid), 1e308));
 		assertRejected(() -> poissonSolve(zeros(grid), Double.MIN_VALUE, 1.0));
+	}
+
+	/** A permuted input is transformed in its logical order on the CPU. */
+	@Test(timeout = 120000)
+	public void orderedInputCpu() {
+		assertOrderedInput(ComputeRequirement.CPU);
+	}
+
+	/** A permuted input is transformed in its logical order on the GPU (Metal or OpenCL where present). */
+	@Test(timeout = 120000)
+	public void orderedInputGpu() {
+		assertOrderedInput(ComputeRequirement.GPU);
+	}
+
+	/**
+	 * Checks that the transform reads an input whose shape carries a {@link TraversalOrdering}
+	 * through that ordering. The input stores 16 complex samples in reverse physical order, and
+	 * its explicit ordering maps each logical index back to its physical position, so its logical
+	 * values are those of the plain test signal; the transform of both must agree. Reading the
+	 * physical memory directly would transform the reversed sequence (with real and imaginary
+	 * parts exchanged) instead.
+	 *
+	 * @param requirement the compute requirement to run under
+	 */
+	protected void assertOrderedInput(ComputeRequirement requirement) {
+		int bins = 16;
+		int size = 2 * bins;
+		TraversalPolicy shape = shape(bins, 2);
+
+		PackedCollection logical = testSignal(shape).evaluate();
+		PackedCollection reversed = integers(0, size).multiply(c(-1.0)).add(c(size - 1.0)).evaluate();
+		PackedCollection physical = testSignalAt(cp(reversed)).evaluate();
+
+		PackedCollection ordered = new PackedCollection(shape, 1, physical, 0,
+				new ExplicitIndexTraversalOrdering(reversed));
+		Assert.assertNotNull("the input should carry its ordering", ordered.getShape().getOrder());
+
+		PackedCollection expected = evaluate(requirement,
+				() -> new FourierTransform(1, bins, false, cp(logical)));
+		PackedCollection actual = evaluate(requirement,
+				() -> new FourierTransform(1, bins, false, cp(ordered)));
+
+		double error = maxDifference(expected, actual);
+		log("orderedInput requirement=" + requirement + " maxError=" + error);
+		Assert.assertTrue("ordered input error " + error, error < ROUND_TRIP_TOLERANCE);
 	}
 }

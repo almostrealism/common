@@ -16,6 +16,7 @@
 
 package org.almostrealism.time.computations;
 
+import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
@@ -199,7 +200,7 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "FourierTransform"));
 
 		ArrayVariable<Double> output = getArgument(0);
-		ArrayVariable<Double> input = getArgument(1);
+		CollectionVariable<?> input = getCollectionArgumentVariable(1);
 
 		Expression<Integer> line = kernel(context);
 		Expression first = stride == 1 ?
@@ -251,14 +252,16 @@ public class FourierTransform extends CollectionProducerComputationBase {
 
 	/**
 	 * Generates the loop that copies the input line into the output in bit-reversed order,
-	 * which is the starting arrangement of the in-place iterative FFT.
+	 * which is the starting arrangement of the in-place iterative FFT. The input is read through
+	 * {@link CollectionVariable#getOrderedReference(Expression)}, so an input whose shape carries a
+	 * {@link io.almostrealism.collect.TraversalOrdering} is transformed in its logical order.
 	 *
 	 * @param output the output argument
 	 * @param input  the input argument
 	 * @param first  the complex element index of the first sample of this thread's line
 	 * @return the copy loop
 	 */
-	protected Repeated bitReversedCopy(ArrayVariable<Double> output, ArrayVariable<Double> input,
+	protected Repeated bitReversedCopy(ArrayVariable<Double> output, CollectionVariable<?> input,
 										  Expression first) {
 		InstanceReference i = Variable.integer("i_" + varIdx++).ref();
 		Repeated copy = new Repeated<>(i.getReferent(), i.lessThan(e(bins)));
@@ -266,8 +269,8 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		Scope body = new Scope<>();
 		Expression src = body.declareInteger("src_" + varIdx++, position(first, i));
 		Expression dst = body.declareInteger("dst_" + varIdx++, position(first, reverseBits(i)));
-		body.assign(output.reference(dst), input.reference(src));
-		body.assign(output.reference(dst.add(1)), input.reference(src.add(1)));
+		body.assign(output.reference(dst), input.getOrderedReference(src));
+		body.assign(output.reference(dst.add(1)), input.getOrderedReference(src.add(1)));
 		copy.add(body);
 		return copy;
 	}

@@ -245,6 +245,21 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 			index = index.toInt().imod(getShape().getTotalSize());
 		}
 
+		return getOrderedReference(index);
+	}
+
+	/**
+	 * Returns an expression reading the element at a logical index from this variable's own
+	 * memory, through the ordering of its {@link #getShape() shape}. An index that ordering does
+	 * not contain reads as zero. Unlike {@link #getValueAt(Expression)}, this never delegates to
+	 * the {@link #getTraversableProducer() traversable producer} and never wraps the index, so it
+	 * is the read for a kernel that addresses an argument's data explicitly but must still
+	 * respect the layout the argument carries.
+	 *
+	 * @param index the logical index of the element, within the shape
+	 * @return an expression for the element at that index
+	 */
+	public Expression<Double> getOrderedReference(Expression<Integer> index) {
 		TraversalOrdering order = getShape().getOrder();
 		if (order == null) {
 			return (Expression) reference(index);
