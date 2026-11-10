@@ -87,4 +87,115 @@ public class WorkspaceResolverTest extends TestSuiteBase {
 	public void resolvesNullWorkstreamUrlToNull() {
 		assertNull(WorkspaceResolver.resolveWorkstreamUrl(null));
 	}
+
+	/**
+	 * Verifies that the controller base URL (scheme + host + port) is extracted
+	 * from a typical workstream job URL, stripping the {@code /api/workstreams/...} path.
+	 */
+	@Test(timeout = 30000)
+	public void extractsControllerBaseUrlFromTypicalUrl() {
+		assertEquals("http://0.0.0.0:7700",
+			WorkspaceResolver.extractControllerBaseUrl(
+				"http://0.0.0.0:7700/api/workstreams/ws-1/jobs/job-abc"));
+	}
+
+	/**
+	 * Verifies that the controller base URL is extracted when the authority has no port.
+	 */
+	@Test(timeout = 30000)
+	public void extractsControllerBaseUrlHostOnly() {
+		assertEquals("http://controller.local",
+			WorkspaceResolver.extractControllerBaseUrl(
+				"http://controller.local/api/workstreams/mystream/jobs/j1"));
+	}
+
+	/**
+	 * Verifies that controller base URL extraction returns {@code null} when the
+	 * URL has no {@code /api/workstreams/} segment.
+	 */
+	@Test(timeout = 30000)
+	public void extractsControllerBaseUrlNoSegmentReturnsNull() {
+		assertNull(WorkspaceResolver.extractControllerBaseUrl("http://host:7700/api/submit"));
+	}
+
+	/**
+	 * Verifies that controller base URL extraction returns {@code null} for an empty string.
+	 */
+	@Test(timeout = 30000)
+	public void extractsControllerBaseUrlEmptyReturnsNull() {
+		assertNull(WorkspaceResolver.extractControllerBaseUrl(""));
+	}
+
+	/**
+	 * Verifies that controller base URL extraction returns {@code null} for {@code null}
+	 * input rather than throwing. This pins the behavior the inline copies lacked.
+	 */
+	@Test(timeout = 30000)
+	public void extractsControllerBaseUrlNullReturnsNull() {
+		assertNull(WorkspaceResolver.extractControllerBaseUrl(null));
+	}
+
+	/**
+	 * Verifies that the workstream id is extracted from a typical workstream job URL.
+	 */
+	@Test(timeout = 30000)
+	public void extractsWorkstreamIdFromTypicalUrl() {
+		assertEquals("ws-1",
+			WorkspaceResolver.extractWorkstreamId(
+				"http://0.0.0.0:7700/api/workstreams/ws-1/jobs/job-abc"));
+	}
+
+	/**
+	 * Verifies that the workstream id is extracted when there is no trailing {@code /jobs/...} segment.
+	 */
+	@Test(timeout = 30000)
+	public void extractsWorkstreamIdNoJobsSegment() {
+		assertEquals("mystream",
+			WorkspaceResolver.extractWorkstreamId("http://host/api/workstreams/mystream"));
+	}
+
+	/**
+	 * Verifies that the {@code /workstreams/} marker matches with or without the
+	 * {@code /api} prefix.
+	 */
+	@Test(timeout = 30000)
+	public void extractsWorkstreamIdWithoutApiPrefix() {
+		assertEquals("ws-9",
+			WorkspaceResolver.extractWorkstreamId("http://host/workstreams/ws-9/jobs/j"));
+	}
+
+	/**
+	 * Verifies that workstream id extraction returns {@code null} when the URL has
+	 * no {@code /workstreams/} segment.
+	 */
+	@Test(timeout = 30000)
+	public void extractsWorkstreamIdNoSegmentReturnsNull() {
+		assertNull(WorkspaceResolver.extractWorkstreamId("http://host:7700/api/submit"));
+	}
+
+	/**
+	 * Verifies that workstream id extraction returns {@code null} when the segment is
+	 * followed by an empty identifier.
+	 */
+	@Test(timeout = 30000)
+	public void extractsWorkstreamIdEmptyIdReturnsNull() {
+		assertNull(WorkspaceResolver.extractWorkstreamId("http://host/api/workstreams/"));
+	}
+
+	/**
+	 * Verifies that workstream id extraction returns {@code null} for an empty string.
+	 */
+	@Test(timeout = 30000)
+	public void extractsWorkstreamIdEmptyReturnsNull() {
+		assertNull(WorkspaceResolver.extractWorkstreamId(""));
+	}
+
+	/**
+	 * Verifies that workstream id extraction returns {@code null} for {@code null}
+	 * input rather than throwing. This pins the behavior the diverged copy lacked.
+	 */
+	@Test(timeout = 30000)
+	public void extractsWorkstreamIdNullReturnsNull() {
+		assertNull(WorkspaceResolver.extractWorkstreamId(null));
+	}
 }

@@ -508,6 +508,621 @@ setup_no_test_changes() {
     git commit -q -m "change"
 }
 
+# ── Scenario: committed swallowing catch in an existing method — TRUE POSITIVE ──
+#
+# The branch commits a change that wraps an existing @Test body in a try/catch
+# that neither rethrows nor fails. On a clean committed checkout the detector
+# must still report EXCEPTION_SWALLOWING (expected exit 2) — the working-tree
+# evaluation collapses to the committed diff when nothing is uncommitted, so a
+# committed-only branch behaves exactly as before.
+setup_committed_swallowing_catch() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        try {
+            assertEquals(1, compute());
+        } catch (Exception e) {
+            // swallow
+        }
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: UNCOMMITTED swallowing catch in an existing method — TRUE POSITIVE ──
+#
+# The candidate change the harness is about to commit lives only in the working
+# tree: a committed, benign new test method, plus an UNCOMMITTED edit that wraps
+# an existing @Test body in a swallowing try/catch. Because the audit now diffs
+# the working tree against the comparison base, the uncommitted swallow is seen
+# and EXCEPTION_SWALLOWING fires (expected exit 2). The earlier committed-history
+# diff saw only the benign commit and passed this straight through.
+setup_uncommitted_swallowing_catch() {
+    mkdir -p src/test/java
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "base"
+    git branch -M master
+
+    git checkout -q -b feature
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    @Test(timeout = 5000)
+    public void testB() {
+        assertEquals(2, compute() + 1);
+    }
+    int compute() { return 1; }
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "add new test testB"
+
+    # Uncommitted candidate change: swallow in the existing testA.
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        try {
+            assertEquals(1, compute());
+        } catch (Exception e) {
+            // swallow
+        }
+    }
+
+    @Test(timeout = 5000)
+    public void testB() {
+        assertEquals(2, compute() + 1);
+    }
+    int compute() { return 1; }
+}' > src/test/java/MyTest.java
+}
+
+# ── Scenario: in-progress merge of the base branch shifts lines — FALSE-POSITIVE REGRESSION ──
+#
+# Reproduces the reported false positive: an agent branch that merges the base
+# branch in is wrongly flagged for EXCEPTION_SWALLOWING. The feature branch
+# wraps an existing testA in a LEGITIMATE rethrowing try/catch. The base branch
+# then advances with a brand-new test method inserted at the TOP of the same
+# file, shifting testA down. Merging the base branch into the feature branch
+# (left in progress, MERGE_HEAD present) produces a working tree whose testA sits
+# below its committed-history position.
+#
+# The committed-history audit took the catch's line number from the committed
+# diff (feature coordinates, before the shift) but peeked at the working-tree
+# file (after the shift). At the feature-coordinate line number the working tree
+# still shows the top of testA — an existing method, so method-scoping does not
+# filter it — and the peeked lines are testA's opening statements, which rethrow
+# nothing: a phantom EXCEPTION_SWALLOWING, exit 2. Diffing the working tree
+# against MERGE_HEAD keeps the line numbers and the file contents in the same
+# state, so the peek lands on the real catch body and finds the rethrow, and the
+# base branch's added method is already in MERGE_HEAD and so is never attributed
+# to the agent. The script MUST NOT fire (expected exit 0).
+setup_merge_shift_passes() {
+    mkdir -p src/test/java
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int x = compute();
+        use(x);
+    }
+    int compute() { return 1; }
+    void use(int x) {}
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "base"
+    git branch -M master
+
+    git checkout -q -b feature
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int x = compute();
+        try {
+            use(x);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+    int compute() { return 1; }
+    void use(int x) {}
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "wrap testA in a rethrowing try/catch"
+
+    git checkout -q master
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testZearly() {
+        assertEquals(2, 1 + 1);
+    }
+
+    @Test(timeout = 5000)
+    public void testA() {
+        int x = compute();
+        use(x);
+    }
+    int compute() { return 1; }
+    void use(int x) {}
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "base adds testZearly at the top, shifting testA down"
+
+    git checkout -q feature
+    # Leave the base-branch merge in progress (MERGE_HEAD present). The regions
+    # are disjoint, so the three-way merge resolves cleanly without a commit.
+    # Do NOT swallow the merge's exit status: if it errored the scenario would
+    # otherwise run on the plain feature checkout, where the rethrowing catch
+    # still yields exit 0 and the case would pass without ever exercising the
+    # in-progress-merge comparison-base path. Assert MERGE_HEAD afterwards so a
+    # merge that silently fails to leave one fails the test loudly instead.
+    git merge --no-commit --no-ff master >/dev/null 2>&1
+    if ! git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+        echo "setup_merge_shift_passes: expected an in-progress merge (MERGE_HEAD) but found none" >&2
+        exit 1
+    fi
+}
+
+# ── Scenario: in-progress merge of an UNRELATED branch — BYPASS MUST STAY CLOSED ──
+#
+# The comparison base is moved to MERGE_HEAD only for a merge of the base branch;
+# a bare MERGE_HEAD is not enough. Here an agent weakens an existing testA (wraps
+# its body in a swallowing try/catch) on an unrelated branch, then merges that
+# branch into the feature branch and leaves the merge in progress, so MERGE_HEAD
+# points at the unrelated tip that already contains the weakening. If the
+# detector trusted any MERGE_HEAD it would diff the working tree against that tip
+# — where the weakening is identical and so invisible — and pass (exit 0),
+# letting the weakening escape. Because MERGE_HEAD is NOT an ancestor of master,
+# the detector keeps the merge-base as its comparison base, sees the swallowing
+# catch in the working tree, and fires EXCEPTION_SWALLOWING (expected exit 2).
+setup_unrelated_merge_weakening() {
+    mkdir -p src/test/java
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "base"
+    git branch -M master
+
+    # Unrelated branch (not the base branch) carrying the weakening.
+    git checkout -q -b sneaky
+    printf '%s\n' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        try {
+            assertEquals(1, compute());
+        } catch (Exception e) {
+            // swallow
+        }
+    }
+    int compute() { return 1; }
+}' > src/test/java/MyTest.java
+    git add .
+    git commit -q -m "swallow the assertion in existing testA on an unrelated branch"
+
+    # The agent branch merges the unrelated branch in and leaves it in progress.
+    git checkout -q master
+    git checkout -q -b feature
+    git merge --no-commit --no-ff sneaky >/dev/null 2>&1
+    if ! git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+        echo "setup_unrelated_merge_weakening: expected an in-progress merge (MERGE_HEAD) but found none" >&2
+        exit 1
+    fi
+}
+
+# ── Scenario: removed @TestProperties(knownIssue = true) — FALSE-POSITIVE REGRESSION ──
+#
+# An existing @Test keeps its @Test annotation but loses a preceding
+# @TestProperties(knownIssue = true) line, which re-enables the test under the CI
+# pipeline profile — a strengthening, not a removal. Pattern 3 must count only the
+# @Test annotation itself, so the removed @TestProperties line must NOT be read as
+# a deleted test method. The script MUST NOT fire (expected exit 0).
+setup_removed_testproperties() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @TestProperties(knownIssue = true)
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed @TestDepth(...) — FALSE-POSITIVE REGRESSION ──
+#
+# An existing @Test keeps its @Test annotation but loses a preceding @TestDepth
+# annotation. @TestDepth shares the "@Test" prefix but is not a test method, so
+# Pattern 3 must not count its removal as a deleted @Test method. The script MUST
+# NOT fire (expected exit 0).
+setup_removed_testdepth() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @TestDepth(2)
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed commented-out @Test marker — FALSE-POSITIVE REGRESSION ──
+#
+# The base file carries a disabled, commented-out test whose body includes a
+# `// @Test(timeout = 1000)` marker (the shape present in SphereTest). The branch
+# deletes that commented-out block. A comment is not a runnable test, so removing
+# it removes no test method. Pattern 3 excludes comment lines symmetrically, so it
+# must NOT count the removed `// @Test(...)` line (expected exit 0).
+setup_removed_commented_test_marker() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    // @Test(timeout = 1000)
+    // public void disabledB() {
+    //     assertEquals(2, compute() + 1);
+    // }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed @Test token inside a string literal — FALSE-POSITIVE REGRESSION ──
+#
+# The base file carries a string-valued constant whose value happens to contain
+# the text `@Test(timeout = 1)`. The branch removes that constant. The `@Test`
+# token here is data inside a string literal, not an annotation, so removing the
+# line removes no test method. Pattern 3 anchors its match to annotation position
+# (start of the line's content), so the token sitting after `String marker = "`
+# is not counted. The script MUST NOT fire (expected exit 0).
+setup_removed_test_token_in_string() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    private static final String marker = "@Test(timeout = 1)";
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed @Test token in an inline comment after code — FALSE-POSITIVE REGRESSION ──
+#
+# The base file carries a statement followed by an inline block comment that
+# mentions `@Test` (`int value = 1; /* @Test */`). The branch removes that
+# statement. The comment is not at the start of the line, so the comment-only
+# exclusion would miss it, but the annotation-position anchor does not: the line's
+# content begins with `int`, not `@Test`, so the token is not counted. No test
+# method is removed. The script MUST NOT fire (expected exit 0).
+setup_removed_test_token_in_inline_comment() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int value = 1; /* @Test */
+        assertEquals(value, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: real @Test method deleted — TRUE POSITIVE ──
+#
+# An existing @Test method is removed outright (its @Test annotation and its
+# assertions go with it). Pattern 3 must still count the removed bare @Test
+# annotation and fire NET_TEST_METHODS_REMOVED (expected exit 2).
+setup_deleted_real_test_method() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    @Test(timeout = 5000)
+    public void testB() {
+        assertEquals(2, compute() + 1);
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: @Test(timeout = 1000) counts as a test — TRUE POSITIVE ──
+#
+# The deleted method carries a parenthesized @Test(timeout = 1000). Pattern 3 must
+# treat `@Test(...)` as a test annotation, so removing the method fires
+# NET_TEST_METHODS_REMOVED (expected exit 2). This guards the trailing boundary
+# that accepts "(" immediately after @Test.
+setup_deleted_parenthesized_test() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 1000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    @Test(timeout = 1000)
+    public void testB() {
+        assertEquals(2, compute() + 1);
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 1000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: PR #880 CameraRayIntersectionTest re-enable — FALSE-POSITIVE REGRESSION ──
+#
+# Built from the diff that motivated this fix: a per-pixel render branch removed
+# the @TestProperties(knownIssue = true) line preceding kernelMatchesPerPixel,
+# re-enabling the test under CI. The @Test annotation and the assertion stay. No
+# test method is removed and the test is strengthened, so the script MUST NOT fire
+# (expected exit 0).
+setup_pr880_reenable() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class CameraRayIntersectionTest {
+    @Test(timeout = 60000)
+    public void perPixel() {
+        assertEquals(1, compute());
+    }
+
+    @TestProperties(knownIssue = true)
+    @Test(timeout = 120000)
+    public void kernelMatchesPerPixel() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class CameraRayIntersectionTest {
+    @Test(timeout = 60000)
+    public void perPixel() {
+        assertEquals(1, compute());
+    }
+
+    @Test(timeout = 120000)
+    public void kernelMatchesPerPixel() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+        "CameraRayIntersectionTest.java"
+}
+
+# ── Scenario: same-line sibling annotation precedes @Test — TRUE POSITIVE ──
+#
+# The deleted method carries its annotations on one line:
+# `@TestProperties(knownIssue = true) @Test(timeout = 120000)` (the layout used
+# in MoonbeamFineTuningTest). Because the @Test is not the first token on the
+# line, an anchor that required @Test immediately after the diff marker would
+# count DELETED=0 and let a genuine test removal pass. Pattern 3 must match @Test
+# after any preceding same-line annotations, so removing the method fires
+# NET_TEST_METHODS_REMOVED (expected exit 2). The deleted body carries no
+# assertion so that Pattern 3 is the only pattern that can fire.
+setup_deleted_same_line_annotation_test() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 60000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    @TestProperties(knownIssue = true) @Test(timeout = 120000)
+    public void testB() {
+        // intentionally no assertions so only Pattern 3 can fire
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 60000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed unstarred block-comment @Test marker — FALSE-POSITIVE REGRESSION ──
+#
+# The base file carries a block comment whose continuation lines have no leading
+# `*`, and one of them is `@Test(timeout = 1000)` sitting at the start of its
+# line. Deleting the whole documentation block removes no runnable test, but a
+# per-line anchor would count that `@Test` line because it begins exactly where an
+# annotation would. Pattern 3 tracks block-comment state across the removed side,
+# so the token inside the comment is not counted (expected exit 0). The block
+# carries no assertion call, keeping Pattern 2 out of it.
+setup_removed_block_comment_test_marker() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    /*
+    Example of a disabled test annotation:
+    @Test(timeout = 1000)
+    */
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
 # ── Run all cases ──────────────────────────────────────────────────────────
 
 echo "Running detect-test-hiding regression tests..."
@@ -527,6 +1142,20 @@ run_case "helper-body-loses-assertion [true positive]"      2 setup_helper_body_
 run_case "test-body-assertion-removed-with-helper [true positive]" 2 setup_test_body_assertion_removed_with_helper
 run_case "expected-count-raised [no false positive]"        0 setup_expected_count_raised
 run_case "no-test-changes [clean branch]"                   0 setup_no_test_changes
+run_case "committed-swallowing-catch [true positive]"       2 setup_committed_swallowing_catch
+run_case "uncommitted-swallowing-catch [true positive / working-tree audit]" 2 setup_uncommitted_swallowing_catch
+run_case "merge-shift [false-positive regression]"          0 setup_merge_shift_passes
+run_case "unrelated-merge-weakening [bypass stays closed]"  2 setup_unrelated_merge_weakening
+run_case "removed-testproperties [false-positive regression]" 0 setup_removed_testproperties
+run_case "removed-testdepth [false-positive regression]"    0 setup_removed_testdepth
+run_case "removed-commented-test-marker [false-positive regression]" 0 setup_removed_commented_test_marker
+run_case "removed-test-token-in-string [false-positive regression]" 0 setup_removed_test_token_in_string
+run_case "removed-test-token-in-inline-comment [false-positive regression]" 0 setup_removed_test_token_in_inline_comment
+run_case "deleted-real-test-method [true positive]"         2 setup_deleted_real_test_method
+run_case "deleted-parenthesized-test [true positive]"       2 setup_deleted_parenthesized_test
+run_case "deleted-same-line-annotation-test [true positive]" 2 setup_deleted_same_line_annotation_test
+run_case "removed-block-comment-test-marker [false-positive regression]" 0 setup_removed_block_comment_test_marker
+run_case "pr880-reenable-camera-ray [false-positive regression]" 0 setup_pr880_reenable
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

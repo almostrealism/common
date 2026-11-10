@@ -77,6 +77,13 @@ class ServerQueryExecutor {
      * Executes the given {@link Query} against the local output server and optionally
      * relays it to all connected peers except the one that originated the query.
      *
+     * <p>The relay is resilient to a dead peer: {@link NodeProxy#writeObject(Object, int)}
+     * now rethrows a {@link java.net.SocketException} (so a relayed job learns the peer
+     * never received it), and this loop catches an {@link IOException} from any single
+     * peer, logs it, and continues with the remaining peers. A broken peer therefore
+     * costs only its own contribution rather than discarding every healthy peer's
+     * result that would otherwise follow it.</p>
+     *
      * @param q        The query to execute.
      * @param p        The peer {@link NodeProxy} that sent the query (excluded from relay),
      *                 or {@code null} to relay to all peers.
@@ -118,15 +125,20 @@ class ServerQueryExecutor {
                 if (Message.verbose)
                     server.log("Writing " + q);
 
-                peers[i].writeObject(q, -1);
-                Message m = (Message) peers[i].waitForMessage(Message.StringMessage, null, timeout);
+                // Contain a broken peer so it does not abort the fan-out.
+                try {
+                    peers[i].writeObject(q, -1);
+                    Message m = (Message) peers[i].waitForMessage(Message.StringMessage, null, timeout);
 
-                if (Message.verbose)
-                    server.log("Received " + m + " after waiting " + timeout + " msecs.");
+                    if (Message.verbose)
+                        server.log("Received " + m + " after waiting " + timeout + " msecs.");
 
-                if (m != null && m.getData() != null && m.getData().length() > 0) {
-                    if (result.length() > 0) result.append(Query.sep);
-                    result.append(m.getData());
+                    if (m != null && m.getData() != null && m.getData().length() > 0) {
+                        if (result.length() > 0) result.append(Query.sep);
+                        result.append(m.getData());
+                    }
+                } catch (IOException ioe) {
+                    server.log("Skipping peer whose query relay failed: " + ioe.getMessage());
                 }
             }
         }

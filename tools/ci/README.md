@@ -31,7 +31,9 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `register-workstream.sh` | Register a workstream with the FlowTree controller (emits `workstream_id`, also to `$GITHUB_OUTPUT`), optionally granting tracker roles (`TRACKER_CAPABILITIES`) and checking out other repositories beside it (`DEPENDENT_REPOS`) |
 | `resolve-release-scope.sh` | Goal decomposition: read the next version from a repository (`pom.xml` or a plain version file), the framework version it pins, and whether `<plans dir>/<version>/PLAN.md` exists (`in_scope`) |
 | `remediation-required-labels.sh` | Pin an auto-resolve submission to a macOS Node (`REQUIRED_LABELS`) when a Metal lane (`test-mac`, `test-media-mac`) failed in the attempt |
+| `classify-job-failures.py` | Classify a failed test job by *where* it failed, from the run's jobs-API payload: a job whose failed steps all precede its first Maven/test step is environmental (a setup-step failure — checkout, `setup-java`, cache restore, artifact download), reported but not assigned; a failure at or after the test step is a genuine crash routed to the VM-crash prompt. Used by the `Check for incomplete test execution` step so a setup-java network timeout is no longer sent to the crash agent |
 | `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests or python-evals failed |
+| `collect-observed-flakes.py` | Collect the flakes CI has already observed, for the flaky round's prompt: walk recent "Build and Test" runs (window configurable via `--window-days`/`FLAKE_WINDOW_DAYS`, `--max-runs`/`FLAKE_MAX_RUNS`), and for each retried run read each attempt's test-lane jobs; a `Class#method` that failed in one attempt (parsed from the attempt's job log) and passed in a later attempt of the same commit is a confirmed flake, ranked by frequency then recency, rendered as the prompt's leads section with each flake's lane, commits and failing-attempt job ids. A test that fails in every attempt is a real failure, not a flake, and is left out. Run before the prompt build via `qa-round.yaml`'s `leads-script` input (needs `actions: read`) |
 | `stage-submit-request.sh` | Write a built prompt and its submission parameters to a request directory for a remediation job to upload |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"false"`: it turns on the harness's per-job test lock (see `flowtree/runtime/docs/file-staging.md`), which only the jobs sent to make failing tests pass, and a few QA rounds, request — everything else is held to `test-integrity-check`. `ENFORCE_CHANGES` (default `"false"`) requires the job to produce a change. A run that leaves none is re-run up to `MAX_ENFORCE_CHANGES_RETRIES` times over the whole job (omitted: the controller default; `"0"`: never re-run), and a job that still commits nothing once that cap is spent is reported DEGRADED rather than SUCCESS |
 | `submit-staged-request.sh` | Submit a staged request directory from a trusted (default-branch) checkout, exporting only the documented `submit.env` keys |
@@ -53,7 +55,7 @@ declares no secret.
 | `task-planning.yaml` | Task-planning round: on the caller's default branch, gate on intake, a round in progress (`qa-cadence.sh`), the open-PR backlog (`open-pr-backlog.sh`) and a claimable task (`tracker-claimable.sh`) in `<project> <version>`, then create a `project/task-*` branch, register its workstream, claim the task (`tracker-claim.sh`) and submit an agent that plans it and opens the PR. This repository's `plan-release-task` calls it |
 | `implement-plan.yaml` | The manual "implement the plan" trigger, dispatched by the caller on a plan branch: detect the plan, resolve its workstream settings (`plan_workstream_config.py`), register the workstream, and submit the implementation through a token-free prompt build and `submit-staged-request.sh`. This repository's `verify-completion.yaml` calls it |
 | `plan-review.yaml` | Docs-only review for a repository without this pipeline: when every change on the branch is under `docs/`, submit the `docs-review.txt` agent, which improves the documents and never implements the plan |
-| `qa-round.yaml` | One recurring QA round: ask the controller about intake, gate on the shared cadence (`qa-cadence.sh`), archive the rounds that are over, create a `<branch-prefix><timestamp>` branch, build a prompt (`build-qa-round-prompt.sh`, from a built-in selector or the caller's own template path), register its workstream directly before submitting a coding-agent job that opens a PR, and archive that workstream again if the submission fails, so no round leaves a jobless workstream. The branch prefix, interval, prompt, template vars and submission settings are inputs. This repository's `master-agent-dispatch.yaml` calls it for every QA round except `coverage-qa` (which stays inline) |
+| `qa-round.yaml` | One recurring QA round: ask the controller about intake, gate on the shared cadence (`qa-cadence.sh`), archive the rounds that are over, create a `<branch-prefix><timestamp>` branch, build a prompt (`build-qa-round-prompt.sh`, from a built-in selector or the caller's own template path), register its workstream directly before submitting a coding-agent job that opens a PR, and archive that workstream again if the submission fails, so no round leaves a jobless workstream. The branch prefix, interval, prompt, template vars and submission settings are inputs. A round may set the `leads-script` input to a framework script run before the prompt build whose stdout fills the prompt's `${LEADS}` section (the flaky round passes `collect-observed-flakes.py`; its caller grants the `actions: read` the script needs, which flows through because the job declares no narrowing permissions block of its own). This repository's `master-agent-dispatch.yaml` calls it for every QA round except `coverage-qa` (which stays inline) |
 | `plan-ready.yaml` | Plan approval → implementation: on a plan PR being marked **ready for review**, dispatch the implementation workflow (`dispatch-workflow`, default `verify-completion.yaml`) on the PR's head branch, but only for a sender in the `approvers` allowlist and while every changed file is under `docs-directory` (default `docs/`). Inline shell over event metadata and the GitHub API — it checks out nothing, runs no framework script, and holds no controller secret (only `GITHUB_TOKEN`), so it has no framework checkout and no `secrets:` block. This repository's `ready-plan.yaml` is its `pull_request_target` caller |
 
 ## Coverage (`coverage/`)
@@ -102,8 +104,32 @@ result without parseable Surefire XML still routes to the build-failure path
 instead of going unresolved once the flaky-test retries are spent), and its Surefire artifact name is kept by the
 `Filter to resolvable surefire reports` allowlist (so a genuine test failure
 is actually parsed and described, not silently deleted before
-`parse-surefire-failures.sh` ever sees it). `test-flowtree` originally had
-neither — it uploaded no Surefire artifact at all — so a failure there was
+`parse-surefire-failures.sh` ever sees it).
+
+A raw `failure` result is not automatically a crash, though. Before taking the
+crash route, that step reads each failing job's steps from the jobs API and runs
+`classify-job-failures.py`: a job that failed in a setup step — `setup-java`
+timing out on the JDK host, checkout, cache restore or artifact download, all
+*before* its first Maven/test step — is environmental and dispatches no agent
+(the pipeline already retried three times), while a failure inside the test step
+still routes to the crash prompt. A mixed run routes only the genuine crashes
+and lists the environmental ones. When the jobs cannot be classified (an older
+checkout, or the jobs API is unreachable) the step falls back to the crash route,
+the conservative default that preserves the earlier behaviour. The step also
+passes the ids of the failing required jobs. The jobs payload is for the whole
+run, so the classifier restricts the crash/environmental split to runs of those
+ids — an unrelated failed job (`docker-build`, a failed `analysis`) never counts
+toward the crash count or lands in the reports. It counts any required id with
+no failed run in the payload (an empty or partial API response) as a
+crash. A payload holding fewer jobs than its declared `total_count` also counts
+one crash, since a missing matrix run can hide behind another run of the same
+job. So a zero crash count means every failing job was seen and found
+environmental. The test step is recognised by the word "test(s)" in its name
+only — never "Maven", because the macOS/CL/CUDA lanes' "Isolate Maven repository
+per runner" setup step precedes their artifact download.
+
+`test-flowtree` originally had
+neither check — it uploaded no Surefire artifact at all — so a failure there was
 never auto-resolved with a specific fix; it fell through to prompts claiming
 every test had passed.
 
@@ -128,10 +154,11 @@ it knowingly does not cover are in
 | `check-quality-gates.sh` | Evaluate quality gate pass/fail from job outputs |
 | `deception-audit.sh` | Cross-session deception pattern detection |
 | `detect-python-test-hiding.sh` | `test-integrity-check`'s Python step: a base-branch `def test_*` must survive, and a test file's assertion count must not fall |
-| `detect-test-hiding.sh` | Detect modifications to base-branch Java tests that hide failures |
+| `detect-test-hiding.sh` | Detect modifications to base-branch Java tests that hide failures. Audits the working tree (uncommitted and staged edits included) against the comparison base, reading the diff, the line numbers and the file contents from that one state; during an in-progress merge whose MERGE_HEAD is an ancestor of the base branch it compares against MERGE_HEAD so the base branch's own changes are not attributed to the agent (an unrelated in-progress merge keeps the merge-base, so its incoming changes cannot escape the audit) |
 | `exfil_guard_registration.py` | Shared `invokes_adapter()` helper imported by `verify-exfiltration-guard.sh`'s CHECK 2 and CHECK 3 |
 | `test-branch-checks.sh` | Regression tests for `check-ci-file-lock.sh`, `detect-python-test-hiding.sh` and `validate-agent-commit.sh`, each against a throwaway repository |
 | `test-check-quality-gates.sh` | Regression tests for `check-quality-gates.sh` |
+| `test-detect-test-hiding.sh` | Regression tests for `detect-test-hiding.sh`, each against a throwaway repository: the twelve pattern detectors plus the working-tree / in-progress-merge handling. Run by `python-tests` when `agent_protection_changed` |
 | `test-method-lines.awk` | Report the test methods of a Java source file, by line or by body. Used by the harness's per-job test lock (`io.flowtree.jobs.TestMethodProtection`, flowtree/runtime), which runs this exact script as a subprocess, and by `validate-agent-commit.sh` to tell a new test method from an edited one |
 | `test-verify-exfiltration-guard.sh` | Regression tests for `verify-exfiltration-guard.sh` |
 | `test-verify-sensitive-bypass.sh` | Regression tests for `verify-sensitive-bypass.sh` |

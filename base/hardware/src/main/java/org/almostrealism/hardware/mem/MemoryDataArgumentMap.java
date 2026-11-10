@@ -31,7 +31,9 @@ import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.streams.Semaphore;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.KernelBindingListener;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.io.SystemUtils;
@@ -520,6 +522,9 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	/** Returns the total number of elements folded into the aggregate buffer. */
 	public int getAggregateLength() { return aggregateLength; }
 
+	/** Returns the number of root delegates folded into the aggregate buffer. */
+	public int getFoldedArgumentCount() { return replacements.size(); }
+
 	/** Returns a compact description of the aggregate layout (per-replacement offset:length). */
 	public String describeAggregate() {
 		StringBuilder b = new StringBuilder("len=").append(aggregateLength).append(" [");
@@ -669,7 +674,7 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 			Bytes slice = new Bytes(len, getAggregateData(), r.getPosition());
 
 			copies.add(new SliceCopy(root,
-					copyOperation(backing, slice), copyOperation(slice, backing),
+					copyOperation(backing, slice, false), copyOperation(slice, backing, true),
 					readSlices == null || readSlices.get(i),
 					writtenSlices == null || writtenSlices.get(i)));
 		}
@@ -693,12 +698,20 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * difference from a compiled copy kernel, whose signature-keyed reuse could bind the wrong
 	 * destination offset when one program served aggregate slices at different positions.</p>
 	 *
-	 * @param source the memory to copy from
-	 * @param target the memory to copy into
+	 * <p>Each copy that is issued is reported to the
+	 * {@link org.almostrealism.hardware.AcceleratedOperation#bindingListener}, if there is one.</p>
+	 *
+	 * @param source   the memory to copy from
+	 * @param target   the memory to copy into
+	 * @param copyBack whether this is the copy from the aggregate back to the input
 	 * @return a submittable copy operation
 	 */
-	private Submittable copyOperation(MemoryData source, MemoryData target) {
-		return dependsOn -> context.copy(source, target, dependsOn);
+	private Submittable copyOperation(MemoryData source, MemoryData target, boolean copyBack) {
+		return dependsOn -> {
+			KernelBindingListener listener = AcceleratedOperation.bindingListener;
+			if (listener != null) listener.aggregateCopied(copyBack, source.getMemLength());
+			return context.copy(source, target, dependsOn);
+		};
 	}
 
 	@Override

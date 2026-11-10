@@ -103,6 +103,35 @@ public class NodeGroupTaskRemovalTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that a job accepted as a {@link JobFactory} but not yet turned
+	 * into a job by the run loop is reported by {@link NodeGroup#hasQueuedJob}
+	 * as still queued on the controller. This is the ownership signal
+	 * {@code LostJobRecovery} uses to tell "still held by the controller" from
+	 * "handed to a peer"; without the task-factory check an accepted-but-undispatched
+	 * job (for instance while the group is stalled) would be misreported as relayed.
+	 */
+	@Test(timeout = 30000)
+	public void acceptedFactoryReportedAsQueued() throws Exception {
+		Properties p = new Properties();
+		p.setProperty("server.port", "0");
+		p.setProperty("nodes.initial", "0");
+		p.setProperty("servers.total", "0");
+
+		NodeGroup group = new NodeGroup(p, new CompletableJobFactory("default"));
+		try {
+			group.addTask(new CompletableJobFactory("pending-task"));
+
+			Assert.assertTrue("an accepted factory the run loop has not dispatched is still queued",
+					group.hasQueuedJob("pending-task"));
+			Assert.assertFalse("a task id the group never accepted is not queued",
+					group.hasQueuedJob("never-submitted"));
+			Assert.assertFalse("a null task id is not queued", group.hasQueuedJob(null));
+		} finally {
+			group.stop();
+		}
+	}
+
+	/**
 	 * A {@link JobFactory} whose completion state can be controlled
 	 * externally for testing purposes.
 	 */

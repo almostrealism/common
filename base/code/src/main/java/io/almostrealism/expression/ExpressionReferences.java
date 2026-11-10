@@ -140,6 +140,22 @@ public interface ExpressionReferences extends VariableReferenceSupport {
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>For an expression, the assignment in question is one with this expression as its
+	 * destination. This base implementation cannot tell which of the variables the expression
+	 * depends on such an assignment writes, so it adds the name of every one of them. A
+	 * {@link StaticReference}, which names the value it refers to, overrides it to add its own
+	 * name as well.</p>
+	 */
+	@Override
+	default void appendAssignedNames(Set<String> names) {
+		for (Variable<?, ?> var : getDependencies()) {
+			if (var.getName() != null) names.add(var.getName());
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p>For an expression, the read in question is evaluating the expression: the answer is
 	 * whether its value depends on an element of {@code array} in the range. This base
 	 * implementation reads only what its children read, which matches
@@ -153,6 +169,20 @@ public interface ExpressionReferences extends VariableReferenceSupport {
 		for (Expression<?> child : getChildren()) {
 			if (reads.visit(child)) child.appendReadPositions(reads);
 		}
+	}
+
+	/**
+	 * Returns the name that a declaration with this expression as its destination introduces,
+	 * by which the expressions that follow the declaration refer to the declared value.
+	 *
+	 * <p>This base implementation answers {@code null}, since an expression of its kind does not
+	 * name a value. A {@link StaticReference}, which does, overrides it to answer its own
+	 * name.</p>
+	 *
+	 * @return the declared name, or {@code null} if a declaration of this expression has none
+	 */
+	default String getDeclaredName() {
+		return null;
 	}
 
 	/**
@@ -244,7 +274,7 @@ public interface ExpressionReferences extends VariableReferenceSupport {
 	 *
 	 * @param names the output set to which all referenced names are added
 	 */
-	default void collectReferencedNames(Set<String> names) {
+	default void appendReferencedNames(Set<String> names) {
 		List<Expression<?>> children = getChildren();
 		if (children.isEmpty()) {
 			for (Variable<?, ?> var : getDependencies()) {
@@ -256,7 +286,7 @@ public interface ExpressionReferences extends VariableReferenceSupport {
 		}
 
 		for (Expression<?> child : children) {
-			child.collectReferencedNames(names);
+			child.appendReferencedNames(names);
 		}
 	}
 }

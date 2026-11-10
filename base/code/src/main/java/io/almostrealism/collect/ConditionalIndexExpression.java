@@ -57,20 +57,15 @@ public class ConditionalIndexExpression extends OperandCollectionExpression {
 	public Expression<Double> getValueAt(Expression<?> index) {
 		TraversableExpression<Double> value = getOperands().get(0);
 
-		index = index.toInt().imod(getShape().getTotalSize());
+		Expression<?> selector = index.toInt().imod(getShape().getTotalSize());
 
-		OptionalInt i = index.intValue();
+		OptionalInt i = selector.intValue();
 
 		if (i.isPresent()) {
-			return value.getValueAt(index);
+			return value.getValueAt(selector);
 		} else {
-			Expression v = value.getValueAt(new IntegerConstant(0));
-
-			for (int j = 1; j < getShape().getTotalSize(); j++) {
-				v = Conditional.of(index.eq(new IntegerConstant(j)), value.getValueAt(new IntegerConstant(j)), v);
-			}
-
-			return v;
+			return Conditional.select(selector, getShape().getTotalSize(),
+					j -> value.getValueAt(new IntegerConstant(j)));
 		}
 	}
 

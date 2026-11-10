@@ -500,7 +500,7 @@ That settled the sampling strategy and set up the KV-cache decode cycle.
 ### 2026-10-23 — Document the PDSL language (condensed)
 
 **Category:** Documentation · **Branch:** `project/plan-20261023-025021` ·
-**Plan:** [`PLAN-20261023-pdsl-language-reference.md`](PLAN-20261023-pdsl-language-reference.md)
+**Output:** [`docs/internals/pdsl-language.md`](../internals/pdsl-language.md)
 
 The three attention-correctness cycles all turned on what PDSL builtins do with their operands, yet
 `consult` reported no complete PDSL reference. The cycle wrote `docs/internals/pdsl-language.md`

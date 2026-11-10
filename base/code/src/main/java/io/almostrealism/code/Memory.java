@@ -56,6 +56,22 @@ public interface Memory {
 	}
 
 	/**
+	 * Reads {@code length} values from this memory region, starting at the specified
+	 * offset, into an existing array.
+	 *
+	 * <p>Unlike {@link #toArray(int, int)} this allocates nothing, so a caller reading a
+	 * long region in pieces can reuse one array for every piece.</p>
+	 *
+	 * @param offset the starting position in this memory region
+	 * @param out the array to read into
+	 * @param outOffset the starting position in {@code out}
+	 * @param length the number of values to read
+	 */
+	default void get(int offset, double[] out, int outOffset, int length) {
+		getProvider().getMem(this, offset, out, outOffset, length);
+	}
+
+	/**
 	 * Reads {@code length} double values from this memory region starting at offset 0.
 	 *
 	 * @param length the number of values to read

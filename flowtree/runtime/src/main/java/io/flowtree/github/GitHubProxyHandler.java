@@ -23,7 +23,7 @@ import fi.iki.elonen.NanoHTTPD.Response;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.flowtree.JsonFieldExtractor;
-import io.flowtree.jobs.RepositoryUrl;
+import io.flowtree.git.RepositoryUrl;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
@@ -689,6 +689,140 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             log("GitHub comment on PR #" + number + " failed: " + e.getMessage());
         }
         return false;
+    }
+
+    /**
+     * Assembles the pull-request facts a cap-reached remediation ping lists for
+     * the open pull request on {@code branch}: its page, its unresolved review
+     * threads, and the TODO lines the branch added. Best-effort — a lookup that
+     * cannot be made (no token, no open PR, a transport failure) contributes
+     * nothing rather than failing the ping, so a person is still told the cap was
+     * reached.
+     *
+     * @param repoUrl the repository URL the workstream names
+     * @param branch  the workstream's branch (the pull request head)
+     * @return the escalation facts, or {@link PullRequestEscalation#NONE} when no
+     *         open pull request could be resolved
+     */
+    public PullRequestEscalation escalationFor(String repoUrl, String branch) {
+        String ownerRepo = extractOwnerRepo(repoUrl);
+        if (ownerRepo == null || branch == null || branch.isEmpty()) {
+            return PullRequestEscalation.NONE;
+        }
+        String token = resolveGithubToken(extractOrgFromRepoUrl(repoUrl));
+        if (token == null) return PullRequestEscalation.NONE;
+        PullRequest pr = findOpenPullRequest(ownerRepo, branch);
+        if (pr == null) return PullRequestEscalation.NONE;
+        int number = pr.number();
+        String headSha = pr.json().path("head").path("sha").asText(null);
+        return new PullRequestEscalation(pr.htmlUrl(),
+                unresolvedReviewThreads(ownerRepo, number, token),
+                branchAddedTodos(ownerRepo, number, headSha, token));
+    }
+
+    /**
+     * Lists the pull request's unresolved review threads, each anchored to the
+     * file and line of its first comment and carrying that comment's URL. Uses
+     * the GraphQL API, the only one that reports a thread's resolved state.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param number    the pull request number
+     * @param token     the GitHub API bearer token
+     * @return the unresolved threads, newest-anchored first; empty on any failure
+     */
+    private List<PullRequestEscalation.Finding> unresolvedReviewThreads(
+            String ownerRepo, int number, String token) {
+        List<PullRequestEscalation.Finding> findings = new ArrayList<>();
+        int slash = ownerRepo.indexOf('/');
+        if (slash < 0) return findings;
+        String owner = ownerRepo.substring(0, slash);
+        String name = ownerRepo.substring(slash + 1);
+        String query = "{\"query\":\"query{repository(owner:\\\"" + owner + "\\\",name:\\\"" + name
+            + "\\\"){pullRequest(number:" + number + "){reviewThreads(first:100){nodes{isResolved "
+            + "comments(first:1){nodes{path line url body}}}}}}}\"}";
+        JsonNode root = apiGraphQl(query, token);
+        if (root == null) return findings;
+        JsonNode nodes = root.path("data").path("repository").path("pullRequest")
+                .path("reviewThreads").path("nodes");
+        if (!nodes.isArray()) return findings;
+        for (JsonNode thread : nodes) {
+            if (thread.path("isResolved").asBoolean(false)) continue;
+            JsonNode comment = thread.path("comments").path("nodes").path(0);
+            if (comment.isMissingNode()) continue;
+            findings.add(PullRequestEscalation.Finding.reviewComment(
+                    comment.path("path").asText(""),
+                    comment.path("line").asInt(0),
+                    comment.path("url").asText(null),
+                    comment.path("body").asText("")));
+        }
+        return findings;
+    }
+
+    /**
+     * Lists the TODO lines the branch added, from the unified-diff patches in the
+     * pull request's files listing. A renamed file reports its patch under its new
+     * name, so a TODO moved into a renamed file is attributed to the new path.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param number    the pull request number
+     * @param headSha   the pull request head SHA, for stable blob links; may be {@code null}
+     * @param token     the GitHub API bearer token
+     * @return the added TODO lines; empty on any failure
+     */
+    private List<PullRequestEscalation.Finding> branchAddedTodos(
+            String ownerRepo, int number, String headSha, String token) {
+        List<PullRequestEscalation.Finding> todos = new ArrayList<>();
+        JsonNode files = apiGet(apiRoot + "/repos/" + ownerRepo + "/pulls/" + number
+                + "/files?per_page=100", token);
+        if (files == null || !files.isArray()) return todos;
+        for (JsonNode file : files) {
+            String path = file.path("filename").asText("");
+            String patch = file.path("patch").asText("");
+            if (path.isEmpty() || patch.isEmpty()) continue;
+            String blobUrl = headSha != null
+                    ? "https://github.com/" + ownerRepo + "/blob/" + headSha + "/" + path
+                    : null;
+            todos.addAll(PullRequestEscalation.Finding.addedTodos(path, patch, blobUrl));
+        }
+        return todos;
+    }
+
+    /**
+     * Issues a GraphQL {@code POST} and returns the parsed body on a {@code 200},
+     * or {@code null} otherwise. The GraphQL endpoint sits at {@code /graphql}
+     * beside the REST root, so a test's stub root is honoured.
+     *
+     * @param body  the already-built GraphQL request body
+     * @param token the GitHub API bearer token
+     * @return the parsed response body, or {@code null}
+     */
+    private JsonNode apiGraphQl(String body, String token) {
+        try {
+            HttpURLConnection conn =
+                    (HttpURLConnection) URI.create(apiRoot + "/graphql").toURL().openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            conn.setDoOutput(true);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+            int status = conn.getResponseCode();
+            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String responseBody = is != null
+                    ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "";
+            if (is != null) is.close();
+            if (status == 200) return GITHUB_MAPPER.readTree(responseBody);
+            log("GitHub GraphQL returned HTTP " + status + ": "
+                + responseBody.substring(0, Math.min(200, responseBody.length())));
+        } catch (IOException e) {
+            log("GitHub GraphQL failed: " + e.getMessage());
+        }
+        return null;
     }
 
     /**

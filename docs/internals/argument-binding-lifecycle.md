@@ -77,7 +77,7 @@ compiled kernel through them. It raised no exception and no backend error; it si
 nothing, or wrote to the wrong memory. The failure appeared only in JVMs with a long
 compilation history, such as a full CI test group. The rebind is covered by
 `InstructionEvictionRebindTest`, and instruction-cache signature collisions throw
-(`InstructionCacheCollisionEnforcementTest`).
+`InstructionCacheCollisionException` (`InstructionCacheCollisionEnforcementTest`).
 
 Open issue: the eviction listener can fire while another thread is inside `apply` for the
 same operation.
@@ -98,3 +98,4 @@ same operation.
 - [native-runtime-lifecycle.md](native-runtime-lifecycle.md)
 - [backend-compilation-and-dispatch.md](backend-compilation-and-dispatch.md)
 - `base/hardware/docs/INSTRUCTION_CACHING.md`
+- [instruction-cache-benchmark.md](instruction-cache-benchmark.md)

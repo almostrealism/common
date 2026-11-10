@@ -19,10 +19,14 @@ package io.almostrealism.code;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructure;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Fragment;
+import io.almostrealism.scope.ReadPositions;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.scope.VariableReferenceSupport;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Represents a code statement that can be rendered into target language code.
@@ -40,6 +44,13 @@ import java.util.List;
  *   <li>Simplification support (inherited from KernelStructure)</li>
  * </ul>
  * </p>
+ * <p>
+ * Every statement also gives an account of what it writes and reads (inherited from
+ * {@link VariableReferenceSupport}), so that a {@link io.almostrealism.scope.Scope} learns this
+ * by asking each of them rather than by inspecting its kind. The defaults are conservative: a
+ * statement that does not say otherwise may write, and may read, any element of any array.
+ * Statements whose effects are known override them with a precise answer.
+ * </p>
  *
  * <h2>Implementation Examples</h2>
  * <ul>
@@ -53,7 +64,7 @@ import java.util.List;
  * @see KernelStructure
  * @see Variable
  */
-public interface Statement<T extends KernelStructure> extends Fragment, KernelStructure<T> {
+public interface Statement<T extends KernelStructure> extends Fragment, KernelStructure<T>, VariableReferenceSupport {
 	/**
 	 * Generates the statement code for the target language.
 	 * <p>
@@ -77,6 +88,42 @@ public interface Statement<T extends KernelStructure> extends Fragment, KernelSt
 	 * @return a list of variable dependencies, may be empty but not null
 	 */
 	List<Variable<?, ?>> getDependencies();
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>This default answers {@code true}: a statement that does not account for its writes
+	 * may write anything.</p>
+	 */
+	@Override
+	default boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
+		return true;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>This default adds the name of every variable the statement
+	 * {@link #getDependencies() depends on}: a statement that does not account for its writes
+	 * may assign any of the variables it refers to.</p>
+	 */
+	@Override
+	default void appendAssignedNames(Set<String> names) {
+		for (Variable<?, ?> var : getDependencies()) {
+			if (var.getName() != null) names.add(var.getName());
+		}
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>This default records a read of every position: a statement that does not account for
+	 * its reads may read anything.</p>
+	 */
+	@Override
+	default void appendReadPositions(ReadPositions reads) {
+		reads.addEverything();
+	}
 
 	/**
 	 * Returns a copy of this statement with every occurrence of {@code target} within its

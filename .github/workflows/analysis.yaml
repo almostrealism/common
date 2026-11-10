@@ -357,10 +357,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # Every job that needs the project's artifacts restores them from this
@@ -403,10 +403,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -1208,10 +1208,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -1276,10 +1276,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -1520,10 +1520,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       - name: Check exempt file lengths
@@ -1670,7 +1670,10 @@ jobs:
       - name: Run remediation script tests
         run: |
           python3 -m unittest discover -v -s tools/ci -p "test_classify_failures.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s tools/ci -p "test_classify_job_failures.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s tools/ci -p "test_collect_observed_flakes.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s tools/ci -p "test_copilot_review_status.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s tools/ci -p "test_extract_branch_todos.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # The exfiltration guard's decision logic is Python under
       # .claude/hooks/lib; its tests build scratch git repositories and
@@ -1706,6 +1709,12 @@ jobs:
       # independently of the guard's own regression suite above.
       - name: Run quality-gate messaging regression tests
         run: bash tools/ci/agent-protection/test-check-quality-gates.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # The Java test-hiding detector's own regression suite — the twelve
+      # pattern detectors plus the working-tree / in-progress-merge handling —
+      # each against a throwaway repository.
+      - name: Run test-hiding detector regression tests
+        run: bash tools/ci/agent-protection/test-detect-test-hiding.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # The CI file lock, the Python test-hiding detector and the change-set
       # validator, each against a throwaway repository.
@@ -1920,10 +1929,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -2030,10 +2039,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -2121,10 +2130,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -2325,10 +2334,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
@@ -2513,10 +2522,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
 
       - name: Isolate Maven repository per runner
         # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
@@ -2682,10 +2691,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -2828,10 +2837,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -2990,10 +2999,10 @@ jobs:
           fi
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
 
       - name: Isolate Maven repository per runner
         # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
@@ -3190,10 +3199,10 @@ jobs:
           fi
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -3377,10 +3386,10 @@ jobs:
           fi
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -3519,10 +3528,10 @@ jobs:
           fetch-depth: 0
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
-          distribution: 'adopt'
+          distribution: 'temurin'
           cache: 'maven'
 
       # JaCoCo reads the class files from `build`'s installed jars, so nothing
@@ -3755,6 +3764,9 @@ jobs:
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Resolve Python test failures"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-python-request
@@ -3810,6 +3822,12 @@ jobs:
           # A follow-up job CI runs in a loop; the object-oriented design review
           # belongs to a branch's initial work, not each remediation pass.
           OBJECT_ORIENTED_REVIEW_ENABLED: "false"
+          # This is a remediation pass: the controller counts it against the
+          # per-PR cap and records its commit as the loop's own (the cap resets
+          # on a commit no pass produced).
+          # Marked explicitly, not inferred from `automated` (every CI job sets
+          # that) — a QA, planning or implementation job is the work reviewed.
+          REMEDIATION_PASS: "true"
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -3974,6 +3992,10 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # The commit that triggered this run; the controller uses it to tell a
+          # commit a remediation pass produced from one it did not, resetting the
+          # per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Resolve build failure"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
@@ -3997,6 +4019,9 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Resolve code policy violations"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
@@ -4027,6 +4052,9 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Resolve quality gate failures"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-review-request
@@ -4055,8 +4083,8 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          # The controller skips a review re-triggered only by the previous
-          # review's own commit; a commit by anyone else still triggers.
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
           TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Review docs changes"
         run: |
@@ -4073,7 +4101,14 @@ jobs:
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
           QUALITY_UNATTRIBUTED: ${{ steps.quality.outputs.unattributed }}
         run: |
-          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+          # The TODO lines this branch adds are findings the review must act on.
+          # Computed here and passed to the builder the way review comments are;
+          # a head that predates the script simply yields no section.
+          TODOS="${{ runner.temp }}/branch-todos.txt"
+          if [ -f ./tools/ci/extract_branch_todos.py ]; then
+            python3 ./tools/ci/extract_branch_todos.py "$BASE_BRANCH" "$TODOS" || true
+          fi
+          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "$TODOS"
           if [ "$QUALITY_UNATTRIBUTED" = "true" ]; then
             echo "::warning::A quality gate failed without recording a cause — submitting the general review; a human should read that gate's job log"
             cat >> "${{ runner.temp }}/agent-prompt.txt" <<'NOTE'
@@ -4097,8 +4132,8 @@ jobs:
           # test-integrity-check is what stops it weakening one.
           PROTECT_TEST_FILES: "false"
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
-          # The controller skips a review re-triggered only by the previous
-          # review's own commit; a commit by anyone else still triggers.
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
           TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Review branch changes"
         run: |
@@ -4194,6 +4229,12 @@ jobs:
           # A follow-up job CI runs in a loop; the object-oriented design review
           # belongs to a branch's initial work, not each remediation pass.
           OBJECT_ORIENTED_REVIEW_ENABLED: "false"
+          # This is a remediation pass: the controller counts it against the
+          # per-PR cap and records its commit as the loop's own (the cap resets
+          # on a commit no pass produced).
+          # Marked explicitly, not inferred from `automated` (every CI job sets
+          # that) — a QA, planning or implementation job is the work reviewed.
+          REMEDIATION_PASS: "true"
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -4412,6 +4453,11 @@ jobs:
       - name: Check for incomplete test execution
         if: steps.failures.outputs.has_failures != 'true'
         id: test-completeness
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           # A job result of "failure" means the job ran and hit a real error
           # (e.g., JVM crash, OOM, build error within the test step) even though
@@ -4428,6 +4474,7 @@ jobs:
           # cancellation).
           INCOMPLETE="false"
           HAS_REAL_FAILURE="false"
+          FAILED_JOB_IDS=""
 
           TEST_RESULT="${{ needs.test.result }}"
           MEDIA_RESULT="${{ needs.test-media.result }}"
@@ -4448,45 +4495,100 @@ jobs:
           # retries are spent — nothing after this step would stage anything.
           if [ "$TEST_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test"
             echo "::warning::test job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$MEDIA_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-media"
             echo "::warning::test-media job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$MAC_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-mac"
             echo "::warning::test-mac job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$TEST_FLOWTREE_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-flowtree"
             echo "::warning::test-flowtree job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$MEDIA_MAC_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-media-mac"
             echo "::warning::test-media-mac job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$CL_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-cl"
             echo "::warning::test-cl job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$MEDIA_CL_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-media-cl"
             echo "::warning::test-media-cl job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$CUDA_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-cuda"
             echo "::warning::test-cuda job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$MEDIA_CUDA_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-media-cuda"
             echo "::warning::test-media-cuda job failed without producing parseable surefire failures — treating as build failure"
           fi
 
-          # If a real failure occurred, route to the build-failure path
-          # (not the incomplete path) by setting build_failed retroactively
+          # A "failure" result is not automatically a crash inside the Maven/test
+          # step. A job that failed before its tests ran — setup-java timing out
+          # on the JDK host, checkout, cache restore or build-artifact download —
+          # is environmental: there is no crash for an agent to fix, and sending
+          # one ends the job DEGRADED. needs.*.result only gives the result, so
+          # inspect each failing job's steps (the jobs API, attempt-scoped) and
+          # route only genuine in-test crashes to the crash prompt. A setup-only
+          # run dispatches nothing and is reported; a mixed run routes only the
+          # genuine crashes and lists the environmental failures. The failing
+          # required job ids are passed to the classifier, which counts any of
+          # them it cannot find among the payload's failed jobs (an empty or
+          # partial API response) as a crash, so a zero crash count always means
+          # every failing required job was seen and classified environmental.
           if [ "$HAS_REAL_FAILURE" = "true" ]; then
-            echo "build_failed_in_tests=true" >> "$GITHUB_OUTPUT"
+            CRASH_COUNT=""
+            ENV_COUNT=""
+            if [ -f ./tools/ci/classify-job-failures.py ] \
+                && gh api --paginate \
+                     "/repos/${REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs" \
+                     > "${{ runner.temp }}/run-jobs.json"; then
+              if CLASSIFICATION=$(python3 ./tools/ci/classify-job-failures.py \
+                    "${{ runner.temp }}/run-jobs.json" "${{ runner.temp }}" \
+                    ${FAILED_JOB_IDS}); then
+                CRASH_COUNT=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^crash_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
+                ENV_COUNT=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^environmental_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
+                echo "::notice::classified test-job failures: ${CRASH_COUNT:-?} crash(es), ${ENV_COUNT:-?} environmental (setup-step)"
+              else
+                echo "::warning::classify-job-failures.py failed — treating the failure as a crash"
+              fi
+            else
+              echo "::warning::could not list the run's jobs (or classifier absent from this checkout) — treating the failure as a crash"
+            fi
+
+            # Report any environmental setup failures — the whole of a setup-only
+            # run or the environmental half of a mixed run.
+            if [ -n "$ENV_COUNT" ] && [ "$ENV_COUNT" != "0" ]; then
+              echo "environmental_setup_failed=true" >> "$GITHUB_OUTPUT"
+              echo "::warning::${ENV_COUNT} test job(s) failed in a setup step (environmental) — no agent dispatched for those"
+            fi
+
+            # Take the crash route when a genuine in-test crash is present, or
+            # when the jobs could not be classified (the conservative default,
+            # which preserves the pre-classification behaviour). Do NOT take it
+            # when every failure is environmental — the pipeline already retries
+            # three times before auto-resolve, so a setup failure is reported only.
+            if [ -z "$CRASH_COUNT" ] || [ "$CRASH_COUNT" != "0" ]; then
+              echo "build_failed_in_tests=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::notice::every failing test job failed in a setup step — reported as environmental, no crash agent dispatched"
+            fi
             echo "incomplete=$INCOMPLETE" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -4637,13 +4739,22 @@ jobs:
         env:
           FAILURE_COUNT: ${{ steps.classify.outputs.regression_count }}
           BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
+          # The TODO lines this branch adds are findings the resolve pass must
+          # act on, too. Computed here and passed to the builder; a head that
+          # predates the script simply yields no section.
+          TODOS="${{ runner.temp }}/branch-todos.txt"
+          if [ -f ./tools/ci/extract_branch_todos.py ]; then
+            python3 ./tools/ci/extract_branch_todos.py "$BASE_BRANCH" "$TODOS" || true
+          fi
           ./tools/ci/prompts/build-resolve-prompt.sh \
             "${{ runner.temp }}/regressions.txt" \
             "${{ runner.temp }}/agent-prompt.txt" \
             "${{ runner.temp }}/preexisting.txt" \
-            "${{ runner.temp }}/environmental.txt"
+            "${{ runner.temp }}/environmental.txt" \
+            "$TODOS"
 
       - name: Stage submit request (test failures)
         if: steps.failures.outputs.has_failures == 'true' && steps.classify.outputs.regression_count != '0' && steps.classify.outputs.regression_count != ''
@@ -4652,6 +4763,9 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Resolve ${{ steps.classify.outputs.regression_count }} regression test failure(s)"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
@@ -4676,6 +4790,9 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "true"
           ENFORCE_CHANGES: "true"
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Resolve JVM crash in test execution"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
@@ -4700,6 +4817,9 @@ jobs:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           PROTECT_TEST_FILES: "false"
+          # The commit that triggered this run; the controller uses it to reset
+          # the per-PR cap when the branch gains a commit no pass produced.
+          TRIGGER_COMMIT: ${{ needs.changes.outputs.head_sha }}
           DESCRIPTION: "Investigate incomplete test execution"
         run: |
           ./tools/ci/stage-submit-request.sh "${{ runner.temp }}/agent-prompt.txt" auto-resolve-request
@@ -4761,8 +4881,24 @@ jobs:
           elif [ "${{ steps.test-completeness.outputs.incomplete }}" = "true" ]; then
             echo "**Test execution incomplete** — some test jobs were cancelled or skipped without an upstream failure to explain it." >> "$GITHUB_STEP_SUMMARY"
             echo "A FlowTree coding agent job was staged to investigate." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.test-completeness.outputs.environmental_setup_failed }}" = "true" ]; then
+            echo "**No test failure to resolve** — the only failing test job(s) failed in a setup step (environmental); nothing was staged." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "No test failure to resolve — nothing was staged." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Environmental (setup-step) failures are listed in both a setup-only
+          # run and the environmental half of a mixed run, the same way the
+          # surefire-path "Environmental failures" section above does.
+          if [ "${{ steps.test-completeness.outputs.environmental_setup_failed }}" = "true" ]; then
+            {
+              echo ""
+              echo "### Environmental failures (infrastructure / hardware — reported, not assigned)"
+              echo "These test jobs failed before their tests ran (e.g. \`setup-java\` timing out on the JDK host, checkout, cache restore or build-artifact download). Not agent-fixable; reported for a person to look at the runner fleet. No coding agent was dispatched for them."
+              echo '```'
+              cat "${{ runner.temp }}/environmental-jobs.txt" 2>/dev/null || echo "(none)"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ─── Merge Gate ───────────────────────────────────────────────────────

@@ -60,12 +60,86 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	public static boolean enableThreadScope = false;
 
 	/**
-	 * Creates Metal language operations with specified precision.
+	 * The lanes the kernel being rendered assigns to each work item: 1 for an ordinary kernel, or
+	 * the SIMD group width for a kernel whose root scope declares lanes.
+	 */
+	private final int laneCount;
+
+	/**
+	 * Creates Metal language operations with specified precision, for kernels that assign one
+	 * thread to each work item.
 	 *
 	 * @param precision Numeric precision ({@link Precision#FP16} or {@link Precision#FP32})
 	 */
 	public MetalLanguageOperations(Precision precision) {
+		this(precision, 1);
+	}
+
+	/**
+	 * Creates Metal language operations with specified precision, for a kernel that assigns the
+	 * given number of lanes to each work item (see {@link io.almostrealism.scope.Scope#getLaneCount()}).
+	 *
+	 * <p>A kernel of several lanes per work item is dispatched with that many threads for every
+	 * work item, one SIMD group each. Its parameters receive the position and count of the
+	 * threads, and its body opens with {@link #laneDeclarations()}, which declare
+	 * {@code global_id} and {@code global_count} as the index and count of work items, exactly as
+	 * in any other kernel, together with the lane of the thread within its work item.</p>
+	 *
+	 * @param precision Numeric precision ({@link Precision#FP16} or {@link Precision#FP32})
+	 * @param laneCount The lanes of each work item, at least 1
+	 */
+	public MetalLanguageOperations(Precision precision, int laneCount) {
 		super(precision, false, true);
+
+		if (laneCount < 1) {
+			throw new IllegalArgumentException("A work item needs at least one lane");
+		}
+
+		this.laneCount = laneCount;
+	}
+
+	/**
+	 * Returns the lane of the executing thread within its work item, as a signed integer so that
+	 * arithmetic combining it with other indices is never performed unsigned.
+	 *
+	 * @return the lane variable
+	 * @throws UnsupportedOperationException if the kernel assigns one thread to each work item
+	 */
+	@Override
+	public String laneIndex() {
+		if (laneCount == 1) return super.laneIndex();
+		return "((int) lane_id)";
+	}
+
+	/**
+	 * Returns the sum of {@code value} over the SIMD group that executes the work item, which is
+	 * exactly the lanes of the work item.
+	 *
+	 * @param value the rendered value each lane contributes
+	 * @return the rendered sum across the lanes
+	 * @throws UnsupportedOperationException if the kernel assigns one thread to each work item
+	 */
+	@Override
+	public String laneSum(String value) {
+		if (laneCount == 1) return super.laneSum(value);
+		return "metal::simd_sum(" + value + ")";
+	}
+
+	/**
+	 * Returns the declarations that open the body of a kernel that assigns several lanes to each
+	 * work item: the index and count of work items, under the names every other kernel receives
+	 * them by, and the lane of the thread within its work item. A kernel of one thread per work
+	 * item needs none.
+	 *
+	 * @return the declaration statements, in order
+	 */
+	public List<String> laneDeclarations() {
+		if (laneCount == 1) return List.of();
+
+		return List.of(
+				"uint global_id = lane_thread_id / " + laneCount + ";",
+				"uint global_count = lane_thread_count / " + laneCount + ";",
+				"uint lane_id = lane_thread_id % " + laneCount + ";");
 	}
 
 	/**
@@ -144,7 +218,9 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	 * Renders kernel parameter declarations with Metal-specific attributes.
 	 *
 	 * <p>For external (kernel) functions, adds Metal attributes like
-	 * {@code [[thread_position_in_grid]]} and {@code [[threads_per_grid]]}.</p>
+	 * {@code [[thread_position_in_grid]]} and {@code [[threads_per_grid]]}. A kernel of several
+	 * lanes per work item receives them as the position and count of threads, from which
+	 * {@link #laneDeclarations()} derive the work item and the lane.</p>
 	 *
 	 * @param arguments Parameter variables to render
 	 * @param out Consumer to receive rendered parameter declarations
@@ -154,7 +230,11 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	public void renderParameters(List<Variable<?, ?>> arguments, Consumer<String> out, Accessibility access) {
 		super.renderParameters(arguments, out, access);
 
-		if (access == Accessibility.EXTERNAL) {
+		if (access == Accessibility.EXTERNAL && laneCount > 1) {
+			out.accept(", ");
+			out.accept("uint lane_thread_id [[thread_position_in_grid]], ");
+			out.accept("uint lane_thread_count [[threads_per_grid]]");
+		} else if (access == Accessibility.EXTERNAL) {
 			out.accept(", ");
 			out.accept("uint global_id [[thread_position_in_grid]], ");
 			out.accept("uint global_count [[threads_per_grid]]");

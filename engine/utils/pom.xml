@@ -32,6 +32,13 @@
 		</dependency>
 
 		<dependency>
+			<groupId>org.almostrealism</groupId>
+			<artifactId>ar-hardware-js</artifactId>
+			<version>0.76</version>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
 			<groupId>junit</groupId>
 			<artifactId>junit</artifactId>
 			<scope>compile</scope>

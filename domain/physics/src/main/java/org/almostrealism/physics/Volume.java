@@ -31,6 +31,12 @@ import org.almostrealism.geometry.Curve;
  */
 public interface Volume<T> extends Curve<T> {
 	/**
+	 * The distance {@link #intersect(Vector, Vector)} returns when the line does not meet the
+	 * volume ahead of its starting point.
+	 */
+	double MISS = Double.MAX_VALUE - 1.0;
+
+	/**
 	 * Checks if a point is within this volume.
 	 * 
 	 * @param x  {x, y, z} - The point in space to test.

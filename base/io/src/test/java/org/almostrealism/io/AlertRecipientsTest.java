@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Locks the behavior of {@link AlertRecipients}, the targeted counterpart to
@@ -124,5 +125,45 @@ public class AlertRecipientsTest {
 
 		Assert.assertTrue(recipients.send(null, Collections.singletonList("michael")).isEmpty());
 		Assert.assertTrue(recipients.send(new Alert(Alert.Severity.INFO, "x"), null).isEmpty());
+	}
+
+	/** The sink broadcasts each accepted message to every recipient as the given severity. */
+	@Test(timeout = 10000)
+	public void testSinkBroadcastsToAllRecipients() {
+		List<Alert> toMichael = new ArrayList<>();
+		List<Alert> toOncall = new ArrayList<>();
+		AlertRecipients recipients = new AlertRecipients()
+				.add("michael", toMichael::add)
+				.add("oncall", toOncall::add);
+
+		recipients.sink(Alert.Severity.WARNING).accept("lost job");
+
+		Assert.assertEquals(1, toMichael.size());
+		Assert.assertEquals(1, toOncall.size());
+		Assert.assertEquals("lost job", toMichael.get(0).getMessage());
+		Assert.assertEquals(Alert.Severity.WARNING, toMichael.get(0).getSeverity());
+	}
+
+	/** The sink resolves recipients at delivery time, so later registrations still receive. */
+	@Test(timeout = 10000)
+	public void testSinkResolvesRecipientsAtDeliveryTime() {
+		List<Alert> delivered = new ArrayList<>();
+		AlertRecipients recipients = new AlertRecipients();
+
+		Consumer<String> sink = recipients.sink(Alert.Severity.INFO);
+		recipients.add("michael", delivered::add);
+		sink.accept("after registration");
+
+		Assert.assertEquals(1, delivered.size());
+	}
+
+	/** A sink over an empty directory is a harmless no-op rather than an error. */
+	@Test(timeout = 10000)
+	public void testSinkOverEmptyDirectoryIsInert() {
+		AlertRecipients recipients = new AlertRecipients();
+
+		recipients.sink(Alert.Severity.ERROR).accept("nobody listening");
+
+		Assert.assertEquals("an empty directory delivers to no one", 0, recipients.size());
 	}
 }

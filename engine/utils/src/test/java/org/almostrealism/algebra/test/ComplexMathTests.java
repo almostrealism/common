@@ -177,6 +177,34 @@ public class ComplexMathTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Pins the branch-selection behavior of complex multiplication with fixed, known values.
+	 * {@code multiplyComplex} builds a {@code ComplexProductExpression}, which selects the real
+	 * part for even output positions and the imaginary part for odd positions through the
+	 * {@code ConditionalExpressionBase} selection chain. Using deterministic inputs rather than
+	 * random fill makes the expected (real, imaginary) outputs explicit, so a regression in the
+	 * selection would produce a concrete, recognizable mismatch.
+	 */
+	@Test(timeout = 30000)
+	public void multiplySelectsRealAndImaginaryBranches() {
+		// Row 0: (1 + 2i) * (3 + 4i) = (3 - 8) + (4 + 6)i = -5 + 10i
+		// Row 1: (2 + 0i) * (0 + 3i) = (0 - 0) + (6 + 0)i =  0 +  6i
+		PackedCollection a = pack(1.0, 2.0, 2.0, 0.0).reshape(shape(2, 2));
+		PackedCollection b = pack(3.0, 4.0, 0.0, 3.0).reshape(shape(2, 2));
+
+		verboseLog(() -> {
+			PackedCollection result = multiplyComplex(traverse(1, p(a)), traverse(1, p(b))).get().evaluate();
+
+			assertEquals(multiplyComplexL(1.0, 2.0, 3.0, 4.0), result.valueAt(0, 0));
+			assertEquals(-5.0, result.valueAt(0, 0));
+			assertEquals(multiplyComplexR(1.0, 2.0, 3.0, 4.0), result.valueAt(0, 1));
+			assertEquals(10.0, result.valueAt(0, 1));
+
+			assertEquals(0.0, result.valueAt(1, 0));
+			assertEquals(6.0, result.valueAt(1, 1));
+		});
+	}
+
+	/**
 	 * Computes the left-hand complex multiplication result.
 	 */
 	protected double multiplyComplexL(double p, double q, double r, double s) {

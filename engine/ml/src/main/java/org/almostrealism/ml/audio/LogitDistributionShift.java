@@ -89,13 +89,7 @@ public class LogitDistributionShift implements DistributionShift {
 	}
 
 	@Override
-	public double shift(double t, int sequenceLength) {
-		if (t <= 0.0) {
-			return 0.0;
-		} else if (t >= 1.0) {
-			return 1.0;
-		}
-
+	public double shiftInterior(double t, int sequenceLength) {
 		double expMu = Math.exp(getMu(sequenceLength));
 		double out = 1.0 - expMu / (expMu + (1.0 / (1.0 - t) - 1.0));
 		return sine ? Math.sin(out * Math.PI / 2) : out;

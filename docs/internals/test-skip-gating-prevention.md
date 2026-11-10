@@ -118,8 +118,9 @@ Facts the table depends on:
   `getSkipHighMemoryTests()` return `true` unconditionally; under the default
   profile the depth is `9` (so `@TestDepth(n > 9)` skips), `highMemory` does
   **not** skip, and `knownIssue` still skips because long tests are disabled at
-  depth 9. `audioDeviceRequired` skips on any host without an audio output
-  regardless of profile, which includes every Linux runner.
+  depth 9. `audioDeviceRequired` skips under the pipeline profile on every host,
+  so the macOS runners never play audio aloud, and under any profile on a host
+  without an audio output, which includes every Linux runner.
 - `detect-test-hiding.sh` selects files with
   `git diff --name-status ... | grep -E '^M\s'`, so only *modified* test files
   are examined. A deleted (`D`) or renamed (`R`) test file is never opened.
@@ -136,7 +137,7 @@ Facts the table depends on:
 | 3 | `@TestProperties(knownIssue = true)` | **always skipped** (pipeline; and default, via disabled long tests) | **missed** | caught |
 | 4 | `@TestProperties(highMemory = true)` | **skipped under pipeline**; **runs** under the default profile (`base/hardware`, `engine/utils`, `engine/render`; `studio/music` on the GPU media lanes) | **missed** | caught |
 | 5 | `@TestProperties(excludeProfiles = PIPELINE)` | **skipped under pipeline**; **runs** under the default profile (`base/hardware`, `engine/utils`, `engine/render`; `studio/music` on the GPU media lanes) | **missed** | caught |
-| 6 | `@TestProperties(audioDeviceRequired = true)` | skipped on every Linux lane | **missed** | caught |
+| 6 | `@TestProperties(audioDeviceRequired = true)` | **skipped under pipeline** on every host; under the default profile, skipped where no audio output exists | **missed** | caught |
 | 7 | `Assume.*` added inside the `@Test` body | skipped where the condition holds | **missed** | caught |
 | 8 | `Assume.*` added or widened in a helper, `*TestBase`, `@Before`, `@BeforeClass` or rule | skipped where the condition holds | **missed** | **missed** (helpers are not locked) — *the incidents* |
 | 9 | environment-keyed early `return` in the `@Test` body | reported as **passed** | **missed** | caught |

@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.flowtree.git.RepositoryUrl;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.net.HttpURLConnection;
@@ -129,13 +130,12 @@ public class PullRequestDetector implements ConsoleFeatures {
         try {
             String resolvedUrl = WorkspaceResolver.resolveWorkstreamUrl(workstreamUrl);
 
-            int wsIdx = resolvedUrl.indexOf("/api/workstreams/");
-            if (wsIdx < 0) {
+            String controllerBase = WorkspaceResolver.extractControllerBaseUrl(resolvedUrl);
+            if (controllerBase == null) {
                 log("Cannot derive controller base from workstream URL: " + resolvedUrl);
                 return null;
             }
 
-            String controllerBase = resolvedUrl.substring(0, wsIdx);
             String proxyUrl = controllerBase + "/api/github/proxy?url="
                 + URLEncoder.encode(apiPath, StandardCharsets.UTF_8);
             if (org != null && !org.isEmpty()) {

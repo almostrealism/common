@@ -31,6 +31,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.OutputFeatures;
 import io.flowtree.workstream.AlertRecipientEntry;
+import org.almostrealism.io.AlertRecipients;
 import org.almostrealism.util.SignalWireDeliveryProvider;
 
 import java.nio.charset.StandardCharsets;
@@ -196,11 +197,12 @@ public class FlowTreeController implements ConsoleFeatures {
     private WorkstreamMetadataStore metadataStore;
 
     /**
-     * Terminates jobs that stop reporting, so a dependent chain waiting on a
-     * completion event is released instead of stalling indefinitely. Started
+     * The post-completion scanners: one terminates jobs that started and went
+     * silent (so a dependent chain is released), the other escalates jobs that
+     * were accepted but never started (so a loss is not silent). Started
      * alongside the API endpoint and stopped with the controller.
      */
-    private StuckJobScanner stuckJobScanner;
+    private CompletionListenerFanoutWiring.ControllerScanners scanners;
 
     /** True when tokens are absent and the controller runs without a live Slack connection. */
     private boolean simulationMode = false;
@@ -1125,8 +1127,9 @@ public class FlowTreeController implements ConsoleFeatures {
             remediationStore.initialize();
             apiEndpoint.setRemediationStore(remediationStore);
             apiEndpoint.setDataDirectory(dataDir);
-            apiEndpoint.setAlertRecipients(AlertRecipientEntry.directory(
-                    loadedConfig == null ? null : loadedConfig.getAlertRecipients()));
+            AlertRecipients alertRecipients = AlertRecipientEntry.directory(
+                    loadedConfig == null ? null : loadedConfig.getAlertRecipients());
+            apiEndpoint.setAlertRecipients(alertRecipients);
 
             // Opt-out is a carrier compliance obligation that must outlive the
             // process, so it is persisted beside the other controller databases
@@ -1139,9 +1142,9 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint.setSmsCompliance(AlertRecipientEntry.numbers(
                     loadedConfig == null ? null : loadedConfig.getAlertRecipients()),
                     optOutStore);
-            stuckJobScanner = CompletionListenerFanoutWiring.wire(apiEndpoint,
+            scanners = CompletionListenerFanoutWiring.wire(apiEndpoint,
                     flowtreeServer, statsStore, listener, primaryNotifier,
-                    notifiersByWorkspace);
+                    notifiersByWorkspace, alertRecipients);
 
             // Populate per-org GitHub tokens: global githubOrgs merged with per-workspace
             // overrides via WorkstreamConfig.mergedGithubOrgTokens().
@@ -1233,9 +1236,9 @@ public class FlowTreeController implements ConsoleFeatures {
             apiEndpoint = null;
         }
 
-        if (stuckJobScanner != null) {
-            stuckJobScanner.stop();
-            stuckJobScanner = null;
+        if (scanners != null) {
+            scanners.stopAll();
+            scanners = null;
         }
 
         if (statsStore != null) {

@@ -35,12 +35,15 @@
 #
 # Optional environment (from the caller, never overridden by the request):
 #   PROTECT_TEST_FILES, ENFORCE_CHANGES, STARTED_AFTER, REQUIRED_LABELS,
-#   OBJECT_ORIENTED_REVIEW_ENABLED
-#   (REQUIRED_LABELS and OBJECT_ORIENTED_REVIEW_ENABLED pass straight through
-#   to submit-agent-job.sh; a request that names either is ignored like any
-#   other unexpected key. The remediation submitters set
+#   OBJECT_ORIENTED_REVIEW_ENABLED, REMEDIATION_PASS
+#   (REQUIRED_LABELS, OBJECT_ORIENTED_REVIEW_ENABLED and REMEDIATION_PASS pass
+#   straight through to submit-agent-job.sh; a request that names any of them is
+#   ignored like any other unexpected key. The remediation submitters set
 #   OBJECT_ORIENTED_REVIEW_ENABLED=false so the object-oriented design review
-#   does not ride along on the follow-up jobs CI runs in a loop.)
+#   does not ride along on the follow-up jobs CI runs in a loop, and
+#   REMEDIATION_PASS=true so the controller counts the pass against the per-PR
+#   cap and records its commit as the loop's own, so the cap resets on a commit
+#   no pass produced.)
 #
 # Environment:
 #   Everything submit-agent-job.sh reads for reaching the controller
@@ -108,8 +111,8 @@ while IFS= read -r line || [ -n "$line" ]; do
             fi
             ;;
         TRIGGER_COMMIT)
-            # Used only for the controller's own-commit skip comparison; accept
-            # a git SHA (hex) and ignore anything else rather than forward it.
+            # Used only for the controller's cap-reset comparison; accept a git
+            # SHA (hex) and ignore anything else rather than forward it.
             if [[ "$value" =~ ^[0-9a-fA-F]+$ ]]; then
                 export TRIGGER_COMMIT="$value"
             else

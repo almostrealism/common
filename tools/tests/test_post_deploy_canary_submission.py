@@ -41,6 +41,83 @@ class CanarySubmissionSettingsTest(unittest.TestCase):
     def test_waits_an_hour_by_default(self):
         self.assertIn('CANARY_TIMEOUT_SECONDS="${CANARY_TIMEOUT_SECONDS:-3600}"', self.script)
 
+    def test_marker_path_is_outside_the_ci_file_lock(self):
+        """The marker must not live under tools/ci/ (or any guarded path): the
+        canary runs on the non-ci/ agent-canary branch, where the harness drops
+        a tools/ci/** write under the CI file lock. The old path made every run
+        end DEGRADED, unable to commit the marker."""
+        match = re.search(r'(?m)^CANARY_FILE="\$\{CANARY_FILE:-([^}]+)\}"', self.script)
+        self.assertIsNotNone(match, "CANARY_FILE must have an overridable default")
+        path = match.group(1)
+        self.assertFalse(path.startswith("tools/ci/"),
+                         "marker must not be under the CI file lock: " + path)
+        self.assertNotRegex(path, r"(^|/)(src/test|src/it)/")
+        self.assertFalse(path.startswith(".github/"))
+        self.assertFalse(path.startswith(".claude/"))
+        self.assertFalse(path.startswith(".flowtree/"))
+
+    def _run_with_marker(self, marker):
+        """Runs the canary with a bogus subcommand so the marker guard — which
+        runs at load time, before the subcommand is dispatched — decides the
+        outcome without any network, agent, or git activity."""
+        env = dict(os.environ, CANARY_FILE=marker)
+        return subprocess.run(["bash", _CANARY, "__noop__"], env=env,
+                              capture_output=True, text=True, timeout=60)
+
+    def test_override_under_a_guarded_root_is_rejected(self):
+        """An override that points the marker under a guarded root must fail
+        loudly and name the cause, not masquerade as a fleet failure. Covers
+        each guarded root the harness drops at staging on the non-ci/ branch."""
+        for marker in ("tools/ci/agent-e2e/canary/last-run.txt",
+                       ".github/canary.txt",
+                       ".claude/canary.txt",
+                       ".flowtree/canary.txt",
+                       "engine/ml/.flowtree/canary.txt",
+                       "src/test/canary.txt",
+                       "flowtree/runtime/src/test/canary.txt",
+                       "src/it/canary.txt"):
+            with self.subTest(marker=marker):
+                result = self._run_with_marker(marker)
+                self.assertEqual(1, result.returncode, result.stderr)
+                self.assertIn("guarded path", result.stderr)
+
+    def test_non_canonical_override_is_rejected(self):
+        """A spelling git would canonicalize into a guarded path (or any other
+        non-canonical form) must be rejected before the guarded-root check,
+        which compares spellings and would otherwise let it through."""
+        for marker in ("./tools/ci/agent-e2e/canary/last-run.txt",
+                       "tools/../tools/ci/canary.txt",
+                       "tools/./ci/canary.txt",
+                       "tools//ci/canary.txt",
+                       "/tmp/canary.txt",
+                       "../canary.txt",
+                       "tools/canary/",
+                       "tools/canary/.."):
+            with self.subTest(marker=marker):
+                result = self._run_with_marker(marker)
+                self.assertEqual(1, result.returncode, result.stderr)
+                self.assertIn("not a canonical repository-relative path", result.stderr)
+
+    def test_dotted_file_name_is_not_mistaken_for_a_dot_segment(self):
+        """Only whole '.'/'..' segments are non-canonical; a name that merely
+        contains or starts with dots is an ordinary path and clears the guard."""
+        for marker in ("tools/canary/..last-run.txt", "tools/canary/.last-run"):
+            with self.subTest(marker=marker):
+                result = self._run_with_marker(marker)
+                self.assertEqual(1, result.returncode)
+                self.assertIn("Usage", result.stderr)
+                self.assertNotIn("canonical", result.stderr)
+                self.assertNotIn("guarded path", result.stderr)
+
+    def test_override_outside_every_guarded_root_passes_the_guard(self):
+        """A marker outside every guarded root clears the guard and reaches the
+        subcommand dispatch (which rejects the bogus subcommand with usage),
+        proving the guard does not reject ordinary paths."""
+        result = self._run_with_marker("tools/canary/last-run.txt")
+        self.assertEqual(1, result.returncode)
+        self.assertIn("Usage", result.stderr)
+        self.assertNotIn("guarded path", result.stderr)
+
     def test_still_queued_has_its_own_exit_status(self):
         """Exit 3 and outcome=queued, distinct from the exit 1 of every failure."""
         queued = re.search(r"still-queued\)\n(.*?);;", self.script, re.S)

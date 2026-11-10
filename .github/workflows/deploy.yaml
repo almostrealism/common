@@ -377,6 +377,12 @@ jobs:
       CONTROLLER_URL: ${{ vars.FLOWTREE_LOCAL_CONTROLLER_URL || 'http://localhost:7780' }}
       CANARY_BRANCH: ${{ vars.FLOWTREE_CANARY_BRANCH || 'agent-canary' }}
       CANARY_BASE_BRANCH: master
+      # The marker the canary job commits. It lives outside tools/ci/ (and every
+      # other guarded path) so the ordinary agent commit path on the non-ci/
+      # agent-canary branch can publish it; a path under the CI file lock made
+      # every run end DEGRADED. Kept here so the workflow and the verifier script
+      # name the same path.
+      CANARY_FILE: tools/canary/last-run.txt
     steps:
       - name: Checkout master
         uses: actions/checkout@v4

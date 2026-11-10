@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.git.GitOperations;
 import io.flowtree.node.AutomaticLabel;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;

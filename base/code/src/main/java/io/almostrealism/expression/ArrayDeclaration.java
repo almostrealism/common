@@ -19,9 +19,12 @@ package io.almostrealism.expression;
 import io.almostrealism.code.Statement;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.ReadPositions;
 import io.almostrealism.scope.Variable;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Represents a declaration of an array variable in generated code.
@@ -123,6 +126,36 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 	@Override
 	public List<Variable<?, ?>> getDependencies() {
 		return size.getDependencies();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code false}: a declaration introduces a new array without assigning any
+	 * element of it or of any other array.</p>
+	 */
+	@Override
+	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
+		return false;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Nothing: a declaration introduces a new array without assigning any variable.</p>
+	 */
+	@Override
+	public void appendAssignedNames(Set<String> names) { }
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>What evaluating the size reads: a declaration assigns no element, so its size expression
+	 * is the only thing it evaluates.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		if (reads.visit(size)) size.appendReadPositions(reads);
 	}
 
 	/**

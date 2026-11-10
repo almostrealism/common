@@ -150,7 +150,7 @@ public class Cases<T> extends Scope<T> {
 	@Override
 	protected <A> List<A> arguments(Function<Argument<?>, A> mapper) {
 		List<Argument<?>> args = new ArrayList<>();
-		args.addAll(extractArgumentDependencies(getConditions().stream()
+		args.addAll(Argument.dependencies(getConditions().stream()
 				.flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
 		args.addAll(super.arguments(Function.identity()));
 		return Argument.removeDuplicates(args).stream().map(mapper).collect(Collectors.toList());
@@ -207,6 +207,32 @@ public class Cases<T> extends Scope<T> {
 		Cases<T> scope = (Cases<T>) super.simplify(context, depth);
 		scope.getConditions().addAll(getConditions().stream().map(c -> c.simplify(context, depth + 1)).collect(Collectors.toList()));
 		return scope;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Always {@code null}: the branch conditions are expressions this scope generates besides
+	 * its statements, and they may read memory that a flat list of assignments does not account
+	 * for.</p>
+	 */
+	@Override
+	public List<ExpressionAssignment<?>> collectAssignments() {
+		return null;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The scope also reads whatever its {@link #getConditions() branch conditions} read.</p>
+	 */
+	@Override
+	public void appendReadPositions(ReadPositions reads) {
+		super.appendReadPositions(reads);
+
+		for (Expression<Boolean> condition : getConditions()) {
+			if (reads.visit(condition)) condition.appendReadPositions(reads);
+		}
 	}
 
 	/**

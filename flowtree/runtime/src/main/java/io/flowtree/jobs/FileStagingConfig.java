@@ -98,6 +98,59 @@ public final class FileStagingConfig {
     }
 
     /**
+     * Builds the staging configuration that governs which of {@code job}'s
+     * changed files may be staged. This is the single source of truth for the
+     * two locks so that {@link GitCommitHandler} and
+     * {@link GitManagedJob#previewStaging()} cannot drift apart: a preview that
+     * showed a file as stageable while the commit silently dropped it would
+     * cost the agent its correction turn.
+     *
+     * <p>The test-file lock is gated on BOTH the {@code protectTestFiles} flag
+     * AND {@code sensitiveFileProtectionEnabled} — ANDed, not ORed, so a
+     * default job (both true) gets the full protection and either being off
+     * disables it. The CI file lock is independent of the test lock: it is on
+     * for every job whose sensitive-file protection is enabled, except one on a
+     * {@code ci/...} branch, matching the exemptions
+     * {@code check-ci-file-lock.sh} applies in CI.</p>
+     *
+     * @param job the job whose staging configuration is being built
+     * @return the immutable staging configuration for the job
+     */
+    public static FileStagingConfig forJob(GitManagedJob job) {
+        return builder()
+                .excludedPatterns(job.getAllExcludedPatterns())
+                .protectedPathPatterns(GitJobConfig.PROTECTED_PATH_PATTERNS)
+                .protectTestFiles(job.isProtectTestFiles()
+                        && job.isSensitiveFileProtectionEnabled())
+                .protectCiFiles(job.isSensitiveFileProtectionEnabled()
+                        && !isCiBranch(job.getTargetBranch()))
+                .baseBranch(job.getBaseBranch())
+                .maxFileSizeBytes(job.getMaxFileSizeBytes())
+                .mergeParent(job.getHarnessMergeParent())
+                .build();
+    }
+
+    /**
+     * Returns whether {@code branch} is a CI branch ({@code ci/...}), whose
+     * declared subject is the pipeline itself and which is therefore exempt
+     * from the CI file lock {@link #isProtectCiFiles()} applies.
+     *
+     * <p>The harness applies the repository's CI file lock to every job,
+     * independently of the job's test lock: a CI/workflow file (branch-new or
+     * pre-existing) is not staged unless the controller authorised the job to
+     * change sensitive files (its commit then carries the signed bypass
+     * trailer) or the job works on a CI branch. These are the same exemptions
+     * {@code tools/ci/agent-protection/check-ci-file-lock.sh} applies in CI, so
+     * an edit the harness would stage is never one the pipeline rejects.</p>
+     *
+     * @param branch the target branch, or {@code null}
+     * @return {@code true} when the branch name starts with {@code ci/}
+     */
+    public static boolean isCiBranch(String branch) {
+        return branch != null && branch.startsWith("ci/");
+    }
+
+    /**
      * Returns the maximum file size in bytes. Files exceeding this
      * threshold are skipped during staging.
      *
@@ -150,6 +203,56 @@ public final class FileStagingConfig {
      */
     public boolean isProtectCiFiles() {
         return protectCiFiles;
+    }
+
+    /**
+     * Returns whether this configuration blocks {@code file} whole-file as CI
+     * configuration under the CI file lock (see {@link #isProtectCiFiles()}).
+     * In production {@link #isProtectCiFiles()} is the sole gate; a CI file
+     * named by {@link #getProtectedPathPatterns()} is also locked while the
+     * test lock is on.
+     *
+     * @param file the repository-relative path
+     * @return {@code true} when the path is CI configuration this configuration locks
+     */
+    public boolean isCiLocked(String file) {
+        return isCiWorkflowFile(file) && (protectCiFiles
+                || (protectTestFiles && FileStager.matchesAnyPattern(file, protectedPathPatterns)));
+    }
+
+    /**
+     * Returns whether {@code file} falls under this configuration's test lock:
+     * the test lock is on and the path, which is not CI configuration, matches
+     * {@link #getProtectedPathPatterns()}. Whether a test-locked file may still
+     * be staged depends on its base-branch history; see {@link FileStager}.
+     *
+     * @param file the repository-relative path
+     * @return {@code true} when the test lock applies to the path
+     */
+    public boolean isTestLocked(String file) {
+        return protectTestFiles && !isCiWorkflowFile(file)
+                && FileStager.matchesAnyPattern(file, protectedPathPatterns);
+    }
+
+    /**
+     * Returns whether {@code file} is CI configuration: a GitHub Actions
+     * workflow or action definition ({@code .github/workflows/**},
+     * {@code .github/actions/**}) or CI tooling ({@code tools/ci/**}) — the
+     * paths the repository's CI file lock covers.
+     *
+     * <p>These paths keep whole-file protection rather than the test-method
+     * granularity {@link TestMethodProtection} applies to Java test sources:
+     * a workflow file has no "test method" structure to reason about, and
+     * CI/workflow configuration is locked in full by design (see
+     * {@code tools/ci/agent-protection/check-ci-file-lock.sh}).</p>
+     *
+     * @param file the file path to test
+     * @return true if the path is a protected CI/workflow path
+     */
+    private static boolean isCiWorkflowFile(String file) {
+        return FileStager.matchesGlobPattern(file, ".github/workflows/**")
+                || FileStager.matchesGlobPattern(file, ".github/actions/**")
+                || FileStager.matchesGlobPattern(file, "tools/ci/**");
     }
 
     /**

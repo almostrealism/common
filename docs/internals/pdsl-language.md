@@ -403,7 +403,7 @@ layer block_with_imports(size: int) {
 
 ## Builtin catalog
 
-The 32 built-ins dispatched by `PdslBuiltins` (package-private). These are the domain-agnostic
+The 35 built-ins dispatched by `PdslBuiltins` (package-private). These are the domain-agnostic
 core, available to every program. The attention and rotary position primitives of the
 machine-learning engine are an extension, cataloged under
 [The machine-learning extension](#the-machine-learning-extension). The interpreter itself evaluates
@@ -436,9 +436,12 @@ means neither the code nor a test settles it.
 | `gelu` | `gelu()` | preserved | `ActivationFeatures.gelu` | input: passes |
 | `sigmoid` | `sigmoid()` | preserved | `ActivationFeatures.sigmoid` | input: passes |
 | `tanh_act` | `tanh_act()` | preserved | `ActivationFeatures.tanh` | input: passes |
+| `cos` | `cos()` | preserved; applies cosine element-wise | `PdslBuiltins.callTrigonometric` (`layer` around `cos`) | input: passes (the cosine producer defines its own derivative) |
+| `sin` | `sin()` | preserved; applies sine element-wise | `PdslBuiltins.callTrigonometric` (`layer` around `sin`) | input: passes (the sine producer defines its own derivative) |
 | `snake` | `snake(alpha, beta)` | `[batch, ch, len]` preserved; `alpha`, `beta` `[ch]` | `ActivationFeatures.snake` | input: passes; `alpha`, `beta`: **constant**. They are copied into pre-broadcast tensors at build time and not registered as weights, so they do not train despite the "learnable" name. |
 | `scale` | `scale(f)` | preserved; `f` normalized to shape `[1]` (number, collection or producer) | `LayerFeatures.layer` around `multiply` | input: passes; `f`: **constant**. Under vectorized `for each channel`, `scale(bank[channel])` takes a `[channels]` bank. |
 | `scale` | `scale(factors, axis)`, `scale(factors, axis, w1, ..., wN)` | preserved; `factors` `[batch, length(axis)]`, one factor per batch entry and position along `axis` (a 0 masks a position) | `LayerFeatures.scale(shape, axis, factors, weights)` | input: passes; `factors`: constant, **except** that the non-null `w1..wN` it was computed from are registered weights and train (`DifferentialAttentionAssetTest.theLearnedLambdaReceivesItsGradient`) |
+| `modulate` | `modulate(factors, offsets, axis)` | preserved; `factors` and `offsets` each `[batch, length(axis)]`: every element is multiplied by the factor of its batch entry and position along `axis` and has that position's offset added, `factor * x + offset`, across the other non-batch axes. Along axis 2 of a `[batch, seq_len, dim]` activation this is the feature-wise affine (FiLM) modulation of adaptive layer normalization | `LayerFeatures.modulate(shape, axis, factors, offsets)` | input: passes, times the factors (`ModulatePrimitiveTest.axisModulationPassesTheGradientTimesItsFactors`); `factors`, `offsets`: constant |
 
 ### Shape and routing
 
@@ -497,7 +500,13 @@ PdslLoader loader = new PdslLoader(MyPrimitives::registerWith);
 - **`PdslPrimitiveContext`** is the per-call context. `toProducer(value, shape, name)` is the
   *single* conversion of a `Number`, `PackedCollection` or `Producer` argument to a
   `CollectionProducer` of the declared shape, and a primitive must not inspect the argument's
-  type itself. `channels()`, `signalSize()` and `setChannels(int)` read and update the
+  type itself. `toAxisValues(name, value, axis)` is the same conversion for an argument holding
+  one value per batch entry and position of an axis of the stage input, such as the mask of
+  `key_mask`: it returns a `PdslAxisValues`, whose `forInput(inputShape)` hands the values to the
+  stage only once they are exactly `[batch, length(axis)]` for that input, so a transposed or flat
+  tensor of the right count is rejected rather than reshaped by the broadcast. The along-axis
+  built-ins (`scale(factors, axis)`, `modulate`) check their values the same way.
+  `channels()`, `signalSize()` and `setChannels(int)` read and update the
   multi-channel environment. The static `toInt`, `toInts` and `toDouble` are the shared numeric
   coercions.
 - **Registration.** There are two ways to register, and they differ in who decides.

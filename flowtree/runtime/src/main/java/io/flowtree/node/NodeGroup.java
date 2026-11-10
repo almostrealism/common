@@ -486,7 +486,8 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 */
 	public String[] taskList() {
 		List l = new ArrayList();
-		
+
+		// TODO(review): unsynchronized this.tasks iteration can throw ConcurrentModificationException; wrap in synchronized(this.tasks) like the other readers.
 		Iterator itr = this.tasks.iterator();
 		while (itr.hasNext()) l.add(itr.next().toString());
 		
@@ -711,7 +712,9 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	 */
 	public boolean addTask(JobFactory f) {
 		this.statusRenderer.addActivityMessage("Added task " + f.getTaskId());
-		return this.tasks.add(f);
+		synchronized (this.tasks) {
+			return this.tasks.add(f);
+		}
 	}
 	
 	/**
@@ -968,6 +971,35 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 	Node getRelayNode() { return this.relayNode; }
 
 	/**
+	 * Returns whether a job with the given task id is still queued anywhere in
+	 * this group — an accepted {@link JobFactory} the run loop has not yet turned
+	 * into a job, the group's own queue, any worker {@link Node}, or the relay
+	 * node. The controller uses this to distinguish a job it still physically
+	 * holds (never handed to a peer) from one that has already left it.
+	 *
+	 * <p>The task-factory list is included because an API submission is held
+	 * there until {@link #run()} dispatches it; without it, a job accepted but
+	 * not yet dispatched (for instance while the group is stalled or backlogged)
+	 * would be misreported as already handed to a peer.</p>
+	 *
+	 * @param taskId the task id to look for
+	 * @return {@code true} if the job is queued somewhere in this group
+	 */
+	public boolean hasQueuedJob(String taskId) {
+		if (taskId == null) return false;
+		if (super.hasJob(taskId) || this.relayNode.hasJob(taskId)) return true;
+		synchronized (this.tasks) {
+			for (JobFactory f : this.tasks) {
+				if (taskId.equals(f.getTaskId())) return true;
+			}
+		}
+		for (Node n : this.nodes) {
+			if (n.hasJob(taskId)) return true;
+		}
+		return false;
+	}
+
+	/**
 	 * Returns a snapshot copy of the active task-factory list, safe to iterate
 	 * without holding the internal lock.  Used by {@link NodeGroupStatusRenderer}.
 	 *
@@ -1186,7 +1218,10 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 				this.isolationTime = 0;
 			}
 			
-			Iterator itr = ((List)((ArrayList) this.tasks).clone()).iterator();
+			Iterator itr;
+			synchronized (this.tasks) {
+				itr = new ArrayList<>(this.tasks).iterator();
+			}
 
 			Job j = this.nextJob();
 			if (j == null) this.jobWasNull++;
@@ -1226,7 +1261,9 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 					addJobs(f);
 				}
 			}
-			this.tasks.removeAll(completed);
+			synchronized (this.tasks) {
+				this.tasks.removeAll(completed);
+			}
 		}
 	}
 

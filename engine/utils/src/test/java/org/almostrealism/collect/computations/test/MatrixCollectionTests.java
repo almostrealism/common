@@ -92,4 +92,30 @@ public class MatrixCollectionTests extends TestSuiteBase {
 		assertEquals(0.0, small.valueAt(1, 0));
 		assertEquals(3.0, small.valueAt(1, 1));
 	}
+
+	/**
+	 * Pins the runtime selection behavior of a small embedded constant. A constant below
+	 * {@link ScopeSettings#maxConditionSize} is realized as a {@link FixedCollectionComputation},
+	 * and when it is multiplied by a non-constant input it is embedded in the generated kernel
+	 * and accessed at a runtime index. That forces the backing {@code ConditionalIndexExpression}
+	 * to build its linear chain of conditionals — one branch per element (here four, so the chain
+	 * has more than the two branches the complex-multiply path exercises) — selecting the correct
+	 * constant for each position. The distinct values would misalign if the chain mis-ordered a
+	 * branch, so the element-wise equality checks pin the selection order.
+	 */
+	@Test(timeout = 30000)
+	public void embeddedConstantRuntimeSelection() {
+		PackedCollection values = pack(2.0, 3.0, 5.0, 7.0);
+		PackedCollection input = pack(1.0, 10.0, 100.0, 1000.0);
+
+		CollectionProducer constant = c(values);
+		assertTrue(constant instanceof FixedCollectionComputation);
+
+		CollectionProducer product = multiply(traverseEach(constant), traverseEach(p(input)));
+		PackedCollection out = product.evaluate();
+
+		for (int i = 0; i < 4; i++) {
+			assertEquals(values.valueAt(i) * input.valueAt(i), out.valueAt(i));
+		}
+	}
 }

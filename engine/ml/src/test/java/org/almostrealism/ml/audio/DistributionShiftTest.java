@@ -194,4 +194,53 @@ public class DistributionShiftTest extends TestSuiteBase {
 		assertEquals(0.389360766050778, shortSchedule[6], TOLERANCE);
 		assertTrue(longSchedule[4] > shortSchedule[4]);
 	}
+
+	/**
+	 * The endpoint pinning is supplied once by the {@link DistributionShift#shift(double, int)}
+	 * template method: a warp whose {@link DistributionShift#shiftInterior(double, int)} returns a
+	 * constant still maps {@code 0 -> 0} and {@code 1 -> 1}, and inputs at or beyond the endpoints are
+	 * clamped before the interior formula is consulted, so the interior value is used only strictly
+	 * inside {@code (0, 1)}.
+	 */
+	@Test(timeout = 60000)
+	public void templatePinsEndpointsAroundInterior() {
+		DistributionShift constant = new DistributionShift() {
+			@Override
+			public double shiftInterior(double t, int sequenceLength) { return 0.5; }
+
+			@Override
+			public boolean isLengthDependent() { return false; }
+		};
+
+		assertEquals(0.0, constant.shift(0.0, 0), TOLERANCE);
+		assertEquals(1.0, constant.shift(1.0, 0), TOLERANCE);
+		assertEquals(0.0, constant.shift(-0.25, 0), TOLERANCE);
+		assertEquals(1.0, constant.shift(1.25, 0), TOLERANCE);
+		assertEquals(0.5, constant.shift(0.5, 0), TOLERANCE);
+	}
+
+	/**
+	 * Every concrete warp inherits the same endpoint contract from the shared template: the two warps
+	 * whose formulas are singular at the endpoints and the Flux warp whose formula is exact there all
+	 * pin {@code 0 -> 0} and {@code 1 -> 1} and clamp inputs that stray outside {@code [0, 1]}.
+	 */
+	@Test(timeout = 60000)
+	public void concreteWarpsSharePinnedEndpoints() {
+		DistributionShift[] shifts = {
+				new LogSNRShift(),
+				new FluxDistributionShift(256, 4096, 2.0, 8.0),
+				new LogitDistributionShift()
+		};
+
+		for (DistributionShift shift : shifts) {
+			assertEquals(0.0, shift.shift(0.0, 1024), TOLERANCE);
+			assertEquals(1.0, shift.shift(1.0, 1024), TOLERANCE);
+			assertEquals(0.0, shift.shift(-0.5, 1024), TOLERANCE);
+			assertEquals(1.0, shift.shift(2.0, 1024), TOLERANCE);
+		}
+
+		// The interior still follows each warp's own formula.
+		FluxDistributionShift flux = new FluxDistributionShift(256, 4096, 2.0, 8.0);
+		assertEquals(flux.shiftInterior(0.25, 1024), flux.shift(0.25, 1024), TOLERANCE);
+	}
 }
