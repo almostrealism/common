@@ -117,7 +117,9 @@ checkout, or the jobs API is unreachable) the step falls back to the crash route
 the conservative default that preserves the earlier behaviour. The step also
 passes the ids of the failing required jobs, and the classifier counts any of
 them with no failed run in the payload (an empty or partial API response) as a
-crash, so a zero crash count means every failing job was seen and found
+crash. A payload holding fewer jobs than its declared `total_count` also counts
+one crash, since a missing matrix run can hide behind another run of the same
+job. So a zero crash count means every failing job was seen and found
 environmental. The test step is recognised by the word "test(s)" in its name
 only — never "Maven", because the macOS/CL/CUDA lanes' "Isolate Maven repository
 per runner" setup step precedes their artifact download.

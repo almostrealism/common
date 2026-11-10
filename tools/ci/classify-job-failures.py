@@ -43,7 +43,9 @@ Each ``<required-job-id>`` names a workflow job (``test``, ``test-media-cl``)
 whose ``needs.<job>.result`` was ``failure``. A required job none of whose runs
 appears among the payload's failed jobs — matched by name, ``<id>`` or a matrix
 run ``<id> (...)`` — is counted as a crash: an empty or partial jobs response
-must never turn a real failure into a zero crash count.
+must never turn a real failure into a zero crash count. Likewise, when the
+payload holds fewer jobs than its declared ``total_count`` — which can hide an
+omitted matrix run behind another run of the same job — one crash is counted.
 
 Writes ``<out-dir>/crash-jobs.txt`` and ``<out-dir>/environmental-jobs.txt``
 (each a human-readable block per job, naming the step that failed), and prints
@@ -77,15 +79,21 @@ FAILED_CONCLUSIONS = ("failure", "timed_out")
 _WORK_STEP_PATTERN = re.compile(r"\btests?\b", re.IGNORECASE)
 
 
-def load_jobs(text):
-    """Return the list of job objects in the jobs-API payload ``text``.
+def load_payload(text):
+    """Return ``(jobs, declared_total)`` for the jobs-API payload ``text``.
 
     Accepts a JSON *stream* — zero or more concatenated JSON values, as
     ``gh api --paginate`` emits one response object per page — as well as a
     single ``{"jobs": [...]}`` object or a bare list of jobs. Every value's
     ``jobs`` array is collected; a bare list is taken as jobs directly.
+
+    ``declared_total`` is the largest ``total_count`` any page reports (every
+    page of one listing carries the same value), or ``None`` when no page
+    declares one. Comparing it with ``len(jobs)`` is what reveals a payload
+    missing some of the run's jobs.
     """
     jobs = []
+    declared_total = None
     decoder = json.JSONDecoder()
     index = 0
     length = len(text)
@@ -98,11 +106,37 @@ def load_jobs(text):
         index = end
         if isinstance(value, dict) and "jobs" in value:
             jobs.extend(value["jobs"])
+            total = value.get("total_count")
+            if isinstance(total, int) and (declared_total is None
+                                           or total > declared_total):
+                declared_total = total
         elif isinstance(value, list):
             jobs.extend(value)
         elif isinstance(value, dict):
             jobs.append(value)
-    return jobs
+    return jobs, declared_total
+
+
+def load_jobs(text):
+    """Return the list of job objects in the jobs-API payload ``text``; see
+    ``load_payload``."""
+    return load_payload(text)[0]
+
+
+def missing_job_count(jobs, declared_total):
+    """How many of the run's jobs the payload omits: ``declared_total`` less
+    the jobs collected, or 0 when no total was declared or none is missing.
+
+    Accounting by workflow job id (``unaccounted_job_ids``) cannot see an
+    omitted matrix run when another run of the same job is present — a payload
+    holding an environmental ``test-media-cl (3)`` but missing a crashed
+    ``test-media-cl (5)`` accounts for ``test-media-cl``. The declared total
+    closes that gap.
+    """
+    # TODO(review): confirm on a real run that total_count equals the paginated job count; a systematic excess would route every setup failure as a crash.
+    if declared_total is None:
+        return 0
+    return max(0, declared_total - len(jobs))
 
 
 def ordered_steps(job):
@@ -219,10 +253,11 @@ def main(argv=None):
     jobs_file, out_dir, required_ids = argv[0], argv[1], argv[2:]
 
     with open(jobs_file, encoding="utf-8") as handle:
-        jobs = load_jobs(handle.read())
+        jobs, declared_total = load_payload(handle.read())
 
     crashes, environmental = classify(jobs)
     missing = unaccounted_job_ids(jobs, required_ids)
+    omitted = missing_job_count(jobs, declared_total)
 
     os.makedirs(out_dir, exist_ok=True)
     _write(os.path.join(out_dir, "crash-jobs.txt"), crashes)
@@ -232,9 +267,16 @@ def main(argv=None):
             for job_id in missing:
                 handle.write("- " + job_id + "\n  not found among the run's"
                              " failed jobs; treated as a crash\n")
+    if omitted:
+        with open(os.path.join(out_dir, "crash-jobs.txt"), "a",
+                  encoding="utf-8") as handle:
+            handle.write(f"- {omitted} of the run's {declared_total} jobs"
+                         " missing from the jobs payload\n  an omitted job"
+                         " may have crashed; treated as a crash\n")
     _write(os.path.join(out_dir, "environmental-jobs.txt"), environmental)
 
-    print(f"crash_count={len(crashes) + len(missing)}")
+    crash_count = len(crashes) + len(missing) + (1 if omitted else 0)
+    print(f"crash_count={crash_count}")
     print(f"environmental_count={len(environmental)}")
     return 0
 

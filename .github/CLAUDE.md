@@ -317,7 +317,10 @@ API is unreachable) the step falls back to the crash route — the conservative
 default that never drops a real failure. For the same reason the step passes the
 ids of the failing required jobs to the classifier, which counts any of them with
 no failed run in the payload as a crash: an empty or partial jobs response can
-never turn a real failure into a zero crash count. The test step is identified
+never turn a real failure into a zero crash count. A payload holding fewer jobs
+than its declared `total_count` counts one crash too, because an omitted matrix
+run (a crashed `test-media-cl (5)`) is invisible to id-level accounting while
+another run of the same job is present. The test step is identified
 by "test(s)" in its name alone; "Maven" is not a marker, because the accelerator
 lanes' "Isolate Maven repository per runner" setup step runs before their
 artifact download and restore.

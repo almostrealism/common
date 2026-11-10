@@ -271,14 +271,44 @@ class TestLoadJobs(unittest.TestCase):
     def test_paginated_stream_is_concatenated(self):
         # gh api --paginate emits one {"total_count", "jobs"} object per page,
         # concatenated with no array wrapper. The loader must collect all pages.
-        page1 = json.dumps({"total_count": 4, "jobs": _MIXED["jobs"][:2]})
-        page2 = json.dumps({"total_count": 4, "jobs": _MIXED["jobs"][2:]})
+        page1 = json.dumps({"total_count": 3, "jobs": _MIXED["jobs"][:2]})
+        page2 = json.dumps({"total_count": 3, "jobs": _MIXED["jobs"][2:]})
         jobs = classify_job_failures.load_jobs(page1 + "\n" + page2)
         self.assertEqual(len(jobs), 3)
         crashes, environmental = classify_job_failures.classify(jobs)
         self.assertEqual([j["name"] for j in crashes], ["test"])
         self.assertEqual([j["name"] for j in environmental],
                          ["test-media-cl (3)"])
+
+    def test_declared_total_is_read_from_the_pages(self):
+        page1 = json.dumps({"total_count": 7, "jobs": _MIXED["jobs"][:2]})
+        page2 = json.dumps({"total_count": 7, "jobs": _MIXED["jobs"][2:]})
+        jobs, total = classify_job_failures.load_payload(page1 + page2)
+        self.assertEqual(len(jobs), 3)
+        self.assertEqual(total, 7)
+
+    def test_bare_list_declares_no_total(self):
+        jobs, total = classify_job_failures.load_payload(
+            json.dumps(_SETUP_JAVA_ONLY["jobs"]))
+        self.assertEqual(len(jobs), 5)
+        self.assertIsNone(total)
+
+
+class TestMissingJobCount(unittest.TestCase):
+    def test_complete_payload_omits_nothing(self):
+        self.assertEqual(classify_job_failures.missing_job_count(
+            _SETUP_JAVA_ONLY["jobs"], 5), 0)
+
+    def test_short_payload_reports_the_shortfall(self):
+        self.assertEqual(classify_job_failures.missing_job_count(
+            _SETUP_JAVA_ONLY["jobs"], 8), 3)
+
+    def test_no_declared_total_omits_nothing(self):
+        self.assertEqual(classify_job_failures.missing_job_count([], None), 0)
+
+    def test_more_jobs_than_declared_is_not_negative(self):
+        self.assertEqual(classify_job_failures.missing_job_count(
+            _SETUP_JAVA_ONLY["jobs"], 2), 0)
 
 
 class TestCli(unittest.TestCase):
@@ -342,6 +372,23 @@ class TestCli(unittest.TestCase):
         self.assertIn("environmental_count=2", out)
         self.assertIn("- test\n", crash_text)
         self.assertIn("test-media-cl (3)", env_text)
+
+    def test_omitted_matrix_run_is_counted_as_a_crash(self):
+        # test-media-cl (3) and (4) are present and environmental, which
+        # accounts for the "test-media-cl" id; but the payload declares six
+        # jobs and holds five, so a crashed matrix run may be missing.
+        payload = dict(_SETUP_JAVA_ONLY, total_count=6)
+        out, crash_text, env_text = self._run(payload, "test-media-cl")
+        self.assertIn("crash_count=1", out)
+        self.assertIn("environmental_count=2", out)
+        self.assertIn("1 of the run's 6 jobs missing", crash_text)
+        self.assertIn("test-media-cl (3)", env_text)
+
+    def test_complete_declared_payload_dispatches_nothing(self):
+        payload = dict(_SETUP_JAVA_ONLY, total_count=5)
+        out, crash_text, _ = self._run(payload, "test-media-cl")
+        self.assertIn("crash_count=0", out)
+        self.assertEqual(crash_text, "")
 
 
 if __name__ == "__main__":
