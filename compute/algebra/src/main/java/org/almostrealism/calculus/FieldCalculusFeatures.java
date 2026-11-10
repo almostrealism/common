@@ -593,15 +593,21 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * @param axis       the axis
 	 * @param dimensions the number of grid axes
 	 * @return the spacing along the axis
-	 * @throws IllegalArgumentException if the number of spacings is neither 1 nor the number of axes
+	 * @throws IllegalArgumentException if the number of spacings is neither 1 nor the number of
+	 *         axes, or if the spacing along the axis is not finite and positive
 	 */
 	private static double gridSpacing(double[] spacing, int axis, int dimensions) {
-		if (spacing.length == 1) return spacing[0];
-		if (spacing.length != dimensions) {
+		if (spacing.length != 1 && spacing.length != dimensions) {
 			throw new IllegalArgumentException(spacing.length + " grid spacings for "
 					+ dimensions + " grid axes");
 		}
 
-		return spacing[axis];
+		double h = spacing.length == 1 ? spacing[0] : spacing[axis];
+		if (!(h > 0.0) || Double.isInfinite(h)) {
+			throw new IllegalArgumentException("grid spacing along axis " + axis
+					+ " must be finite and positive, not " + h);
+		}
+
+		return h;
 	}
 }

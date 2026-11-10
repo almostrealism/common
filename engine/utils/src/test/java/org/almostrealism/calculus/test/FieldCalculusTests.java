@@ -315,6 +315,42 @@ public class FieldCalculusTests extends TestSuiteBase {
 		}
 	}
 
+	/** Asserts that a grid operator rejects the given spacing at the API boundary. */
+	private void assertSpacingRejected(double... spacing) {
+		CollectionProducer field = integers(0, 16).reshape(shape(4, 4));
+		boolean rejected = false;
+		try {
+			laplacian(field, GridBoundary.periodic(), spacing);
+		} catch (IllegalArgumentException expected) {
+			rejected = true;
+		}
+
+		assertTrue("operator should reject grid spacing " + Arrays.toString(spacing), rejected);
+	}
+
+	/**
+	 * Every operator funnels its {@code double... spacing} through {@code gridSpacing}, which
+	 * rejects a spacing that is not finite and positive rather than letting it propagate: a zero
+	 * spacing divides by zero in the stencil coefficients and a {@code NaN} or infinite spacing
+	 * silently poisons the whole field. The per-axis form is validated for each axis, so an invalid
+	 * value in any position is caught. A finite, positive spacing is accepted in both the single and
+	 * per-axis forms.
+	 */
+	@Test(timeout = 120000)
+	public void gridSpacingRejectsInvalidSpacing() {
+		assertSpacingRejected(0.0);
+		assertSpacingRejected(-1.0);
+		assertSpacingRejected(Double.NaN);
+		assertSpacingRejected(Double.POSITIVE_INFINITY);
+		assertSpacingRejected(Double.NEGATIVE_INFINITY);
+		assertSpacingRejected(1.0, 0.0);
+		assertSpacingRejected(1.0, Double.NaN);
+
+		CollectionProducer field = integers(0, 16).reshape(shape(4, 4));
+		assertEquals(16, values(laplacian(field, GridBoundary.periodic(), 0.5)).length);
+		assertEquals(16, values(laplacian(field, GridBoundary.periodic(), 0.5, 1.0)).length);
+	}
+
 	/**
 	 * The 5-point and 9-point Laplacians of {@code sin(kx x) sin(ky y)} on a periodic grid are
 	 * {@code -(kx^2 + ky^2) f} up to their leading truncation errors, {@code (kx^4 + ky^4) h^2 / 12}
