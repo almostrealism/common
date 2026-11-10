@@ -47,6 +47,8 @@ import java.util.Set;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import io.flowtree.api.FlowTreeApiEndpoint;
@@ -159,6 +161,21 @@ public class FlowTreeController implements ConsoleFeatures {
 
     /** Parses incoming Slack messages and slash commands into agent jobs. */
     private final SlackListener listener;
+
+    /**
+     * Runs job submission for an inbound Slack message off the Socket Mode
+     * acknowledgement thread. The Bolt event handler enqueues the work here and
+     * returns {@code ctx.ack()} at once, so Slack receives the acknowledgement
+     * within its retry deadline and does not redeliver the event. Daemon threads
+     * so a pending submission never blocks JVM shutdown.
+     *
+     * <p>Shared the controller's start/stop lifecycle: {@link #stop()} shuts it
+     * down and {@link #start()} revives it if it was, so the controller can be
+     * restarted in the same JVM without rejecting Slack dispatches. It is never
+     * null, because the Bolt handler threads that read it are external and must
+     * not race a shutdown into a {@code NullPointerException}.</p>
+     */
+    private ExecutorService slackEventExecutor = newSlackEventExecutor();
 
     /** Guards against double-start; set to {@code true} on the first {@link #start()} call. */
     private final AtomicBoolean running;
@@ -602,6 +619,12 @@ public class FlowTreeController implements ConsoleFeatures {
             return;
         }
 
+        // Revive the Slack dispatch pool if a previous stop() shut it down, so a
+        // restart in the same JVM does not reject off-thread acknowledgements.
+        if (slackEventExecutor.isShutdown()) {
+            slackEventExecutor = newSlackEventExecutor();
+        }
+
         String logFile = System.getProperty("flowtree.log.file",
             System.getenv().getOrDefault("FLOWTREE_LOG_FILE", "flowtree-controller.log"));
         Console.root().addListener(OutputFeatures.fileOutput(logFile));
@@ -854,7 +877,9 @@ public class FlowTreeController implements ConsoleFeatures {
                 return ctx.ack();
             }
 
-            listener.handleMessage(channelId, userId, text, messageTs, threadTs, workspaceId);
+            // Acknowledge first (off-thread submission); see slackEventExecutor.
+            slackEventExecutor.submit(() ->
+                processSlackMessage(channelId, userId, text, messageTs, threadTs, workspaceId));
             return ctx.ack();
         });
 
@@ -881,8 +906,47 @@ public class FlowTreeController implements ConsoleFeatures {
             }
 
             log("DM from " + userId + " (workspace " + workspaceId + "): " + text);
-            listener.handleMessage(channelId, userId, text, messageTs, threadTs, workspaceId);
+            // Acknowledge first (off-thread submission); see slackEventExecutor.
+            slackEventExecutor.submit(() ->
+                processSlackMessage(channelId, userId, text, messageTs, threadTs, workspaceId));
             return ctx.ack();
+        });
+    }
+
+    /**
+     * Runs {@link SlackListener#handleMessage} for an event already acknowledged
+     * to Slack. Any failure is logged rather than propagated: the Socket Mode
+     * envelope has already been acked, and an exception escaping the executor
+     * task would otherwise be swallowed silently.
+     *
+     * @param channelId   the channel the message was posted in
+     * @param userId      the user who posted it
+     * @param text        the message text
+     * @param messageTs   the triggering message timestamp
+     * @param threadTs    the thread timestamp, or {@code null}
+     * @param workspaceId the Slack team ID, or {@code null}
+     */
+    private void processSlackMessage(String channelId, String userId, String text,
+                                     String messageTs, String threadTs, String workspaceId) {
+        try {
+            listener.handleMessage(channelId, userId, text, messageTs, threadTs, workspaceId);
+        } catch (RuntimeException e) {
+            warn("Failed to process Slack message in " + channelId + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Creates the pool that dispatches Slack message handling off the Socket
+     * Mode acknowledgement thread. Four daemon threads, so a pending submission
+     * never blocks JVM shutdown.
+     *
+     * @return a freshly created Slack event dispatch executor
+     */
+    private static ExecutorService newSlackEventExecutor() {
+        return Executors.newFixedThreadPool(4, runnable -> {
+            Thread thread = new Thread(runnable, "slack-event-dispatch");
+            thread.setDaemon(true);
+            return thread;
         });
     }
 
@@ -1225,6 +1289,8 @@ public class FlowTreeController implements ConsoleFeatures {
      */
     public void stop() throws Exception {
         running.set(false);
+
+        slackEventExecutor.shutdown();
 
         if (flowtreeServer != null) {
             flowtreeServer.stop();
