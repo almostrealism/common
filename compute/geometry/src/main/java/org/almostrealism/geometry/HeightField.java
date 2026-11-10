@@ -133,6 +133,7 @@ public class HeightField implements ImplicitSurface {
 	 */
 	@Override
 	public CollectionProducer normal(Producer<PackedCollection> position) {
+		// TODO(review): outside the grid the height is clamped (flat skirt) but slopeX/slopeZ still report the edge cell's slope, so skirt normals are tilted
 		Sample s = new Sample(position);
 		return normalize(vector(s.slopeX().minus(), c(1.0), s.slopeZ().minus()));
 	}
