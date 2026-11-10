@@ -848,22 +848,55 @@ class MasterAgentDispatchTests(unittest.TestCase):
         follow-up, so it carries the per-job test lock. Like the defect hunt it
         pins claude/opus (telling a real flake from a deterministic failure is
         judgment), and an empty-handed round is valid so it sets no
-        ENFORCE_CHANGES. It reads tools and runs bounded test selections, so it
-        needs no Metal and carries no REQUIRED_LABELS."""
+        ENFORCE_CHANGES. It is routed to a macOS Node (REQUIRED_LABELS) so the
+        Metal and native lanes its observed flakes come from are reproducible —
+        the same routing performance-qa uses."""
         job = self.qa_jobs["flaky-qa"]
         submit = next(s for s in job["steps"]
                       if "submit-agent-job.sh" in s.get("run", ""))
         env = submit["env"]
         self.assertEqual("true", env["PROTECT_TEST_FILES"])
-        # The reusable submit step always carries these; an empty-handed round
-        # is valid (no enforce-changes) and the hunt needs no Metal (no labels).
+        # An empty-handed round is valid (no enforce-changes); the submission is
+        # pinned to a macOS Node so the lanes the observed flakes come from run.
         self.assertEqual("false", env.get("ENFORCE_CHANGES", "false"))
-        self.assertEqual("", env.get("REQUIRED_LABELS", ""))
+        self.assertEqual({"platform": "macos"}, json.loads(env["REQUIRED_LABELS"]))
         primary = json.loads(env["PHASE_CONFIGS"])["primary"]
         self.assertEqual("opus", primary["model"])
         # Runner, model and provider must be set together; see the defect
         # hunt's note in the workflow for why one alone misroutes the phase.
         self.assertEqual({"runner", "model", "provider"}, set(primary))
+
+    def test_the_flaky_workstream_is_routed_to_a_macos_node(self):
+        """The flaky round's observed flakes come from the Metal and native
+        lanes, so like performance-qa it pins its workstream to a macOS Node:
+        REQUIRED_LABELS_JSON on the registration (every later job on the
+        workstream) and REQUIRED_LABELS on the submission (the first job). The
+        two must agree, so a follow-up or fix lands on a Node that can reproduce
+        the flake too."""
+        job = self.qa_jobs["flaky-qa"]
+        register = next(s for s in job["steps"]
+                        if "register-workstream.sh" in s.get("run", ""))
+        submit = next(s for s in job["steps"]
+                      if "submit-agent-job.sh" in s.get("run", ""))
+        labels = json.loads(register["env"]["REQUIRED_LABELS_JSON"])
+        self.assertEqual({"platform": "macos"}, labels)
+        self.assertEqual(labels, json.loads(submit["env"]["REQUIRED_LABELS"]))
+
+    def test_the_flaky_round_collects_cis_observed_flakes(self):
+        """The round feeds CI's observed flakes into its prompt before it is
+        built: the caller sets the qa-round leads-script to the collection
+        script, which must exist, and the called workflow runs it before the
+        build step. A round whose leads-script named a script that is not there
+        would build its prompt with an empty leads section and no error."""
+        leads_script = self.jobs["flaky-qa"]["with"]["leads-script"]
+        self.assertEqual("tools/ci/collect-observed-flakes.py", leads_script)
+        self.assertTrue(os.path.isfile(os.path.join(_REPO_ROOT, leads_script)))
+        # The called workflow's collect step runs before the build step.
+        job = self.qa_jobs["flaky-qa"]
+        steps = [s.get("name", "") for s in job["steps"]]
+        self.assertIn("Collect the round's leads", steps)
+        self.assertLess(steps.index("Collect the round's leads"),
+                        steps.index("Build the round's prompt"))
 
     def test_the_flaky_pilot_does_not_raise_the_open_pr_limit(self):
         """MAX_OPEN_PRS is sized to the full-cadence QA rounds, one open PR per

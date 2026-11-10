@@ -124,6 +124,13 @@ public class SlackListener implements ConsoleFeatures {
 
     /** FlowTree server that accepts inbound agent connections and queues jobs. */
     private Server server;
+    /**
+     * Guards against submitting a job more than once for a Slack message that
+     * Slack redelivers because an acknowledgement did not reach it in time.
+     * Keyed on the stable per-message identifier, so a redelivery is ignored
+     * while two distinct messages — even with identical text — are not.
+     */
+    private final SlackEventDeduplicator deduplicator = new SlackEventDeduplicator();
     /** Callback invoked when a message arrives from an unrecognised channel, triggering a config reload. */
     private Runnable configReloader;
     /** Port the HTTP API endpoint is listening on; set after endpoint startup. */
@@ -427,7 +434,7 @@ public class SlackListener implements ConsoleFeatures {
             return false;
         }
 
-        return submitJob(workstream, prompt, messageTs, threadTs);
+        return submitOnce(workstream, prompt, messageTs, threadTs);
     }
 
     /**
@@ -478,7 +485,7 @@ public class SlackListener implements ConsoleFeatures {
             case "do":
             case "run":
                 if (args != null && !args.trim().isEmpty()) {
-                    return submitJob(workstream, args.trim(), messageTs, threadTs);
+                    return submitOnce(workstream, args.trim(), messageTs, threadTs);
                 }
                 wsNotifier.postMessage(workstream.getChannelId(),
                     ":warning: Usage: /" + command + " <prompt>");
@@ -527,6 +534,64 @@ public class SlackListener implements ConsoleFeatures {
     }
 
     /**
+     * Submits a job for a Slack message exactly once, ignoring redeliveries of
+     * the same message.
+     *
+     * <p>Slack redelivers an event whose acknowledgement it did not receive in
+     * time; every redelivery of a given message carries the same {@code messageTs}.
+     * This method claims that identifier before submitting and ignores any
+     * further delivery that finds it already claimed, so one message produces
+     * one job however many times Slack sends it. A submission that produced no
+     * job releases the claim, so a genuine redelivery can retry; two distinct
+     * messages carry distinct timestamps and are never collapsed, even when
+     * their text is identical.</p>
+     *
+     * @param workstream the target workstream
+     * @param prompt     the user prompt
+     * @param messageTs  the timestamp of the triggering message; also its stable
+     *                   per-message identifier, or {@code null} for a caller
+     *                   (such as a slash command) that Slack does not redeliver
+     * @param threadTs   the existing thread timestamp (non-null if already in a thread)
+     * @return {@code true} when this delivery submitted a job; {@code false}
+     *         when it was a redelivery or the submission produced no job
+     */
+    private boolean submitOnce(Workstream workstream, String prompt, String messageTs, String threadTs) {
+        String id = deliveryId(workstream, messageTs);
+        if (!deduplicator.claim(id)) {
+            log("Ignoring redelivered Slack message " + messageTs
+                    + " for channel " + workstream.getChannelId());
+            return false;
+        }
+
+        boolean submitted;
+        try {
+            submitted = submitJob(workstream, prompt, messageTs, threadTs);
+        } catch (RuntimeException e) {
+            deduplicator.release(id);
+            throw e;
+        }
+
+        // A delivery that produced no job (e.g. no agents connected) must not
+        // suppress a later redelivery that could succeed.
+        if (!submitted) deduplicator.release(id);
+        return submitted;
+    }
+
+    /**
+     * Builds the stable identifier used to recognise redeliveries of a Slack
+     * message: the workspace- and channel-scoped message timestamp.
+     *
+     * @param workstream the workstream the message was routed to
+     * @param messageTs  the triggering message timestamp, or {@code null}
+     * @return the delivery identifier, or {@code null} when {@code messageTs} is
+     *         absent and the delivery cannot be a Slack redelivery
+     */
+    private String deliveryId(Workstream workstream, String messageTs) {
+        if (messageTs == null || messageTs.isEmpty()) return null;
+        return channelKey(workstream.getWorkspaceId(), workstream.getChannelId()) + ":" + messageTs;
+    }
+
+    /**
      * Submits a job to connected agents via the FlowTree {@link Server}.
      *
      * @param workstream the target workstream
@@ -534,7 +599,7 @@ public class SlackListener implements ConsoleFeatures {
      * @param messageTs  the timestamp of the triggering message (for threading)
      * @param threadTs   the existing thread timestamp (non-null if already in a thread)
      */
-    private boolean submitJob(Workstream workstream, String prompt, String messageTs, String threadTs) {
+    protected boolean submitJob(Workstream workstream, String prompt, String messageTs, String threadTs) {
         Map<String, String> labels = workstream.getRequiredLabels();
         return submitJob(workstream, prompt, messageTs, threadTs,
                 labels != null ? labels : Collections.emptyMap());
