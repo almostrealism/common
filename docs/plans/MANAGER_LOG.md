@@ -114,7 +114,7 @@ is a medium task touching two files plus one `knownIssue` flag, runs on any node
    static render), once the owner settles the fluid-method / surface-representation choices
    (§6.1/§6.2). The plan recommends height-field + tessellation.
 4. **Performance:** kernelize the ray-tracer's per-pixel selection and supersampling, and add a
-   triangle acceleration structure (ferrofluid §5 items 1–2 / Phase 4), plus the standing
+   triangle acceleration structure (ferrofluid §5 item 2 / Phase 4), plus the standing
    aggregate-copy follow-ups.
 5. Still open from prior cycles: the reduced `matmul`/convolution-gradient forms;
    `TransformerResamplingFeatures`' buffered K/V; the `io.almostrealism.collect` split; letting a
