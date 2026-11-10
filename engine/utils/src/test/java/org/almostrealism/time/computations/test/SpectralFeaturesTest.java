@@ -586,6 +586,29 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	}
 
 	/**
+	 * A grid spacing is a positive, finite length. An infinite spacing would make the bin width
+	 * and every wavenumber zero, so each operation that takes a spacing rejects infinite and NaN
+	 * values, on one axis or all of them, while a large finite spacing is accepted.
+	 * Only the graphs are built; nothing is evaluated.
+	 */
+	@Test(timeout = 60000)
+	public void nonFiniteSpacingIsRejected() {
+		TraversalPolicy grid = shape(8, 8);
+		double inf = Double.POSITIVE_INFINITY;
+		assertRelative("large spacing bin width", 2 * Math.PI / 8e300, radialBinWidth(grid, 1e300), 1e-12);
+		Assert.assertEquals(5, radialBinCount(grid, 1.0, 1e300));
+
+		assertRejected(() -> wavenumberSquared(grid, inf));
+		assertRejected(() -> wavenumberSquared(grid, 1.0, Double.NaN));
+		assertRejected(() -> radialBinWidth(grid, inf, 1.0));
+		assertRejected(() -> radialBinCount(grid, Double.NaN));
+		assertRejected(() -> radialPowerSpectrum(zeros(grid), inf));
+		assertRejected(() -> dominantWavelength(zeros(grid), 1.0, inf));
+		assertRejected(() -> poissonSolve(zeros(grid), inf));
+		assertRejected(() -> poissonSolve(zeros(grid), Double.NEGATIVE_INFINITY));
+	}
+
+	/**
 	 * A radial bin width is a positive, finite wavenumber, so {@link SpectralFeatures#spectralPeak}
 	 * rejects zero, negative, NaN and infinite widths while a small positive width is accepted.
 	 * Only the graph is built; nothing is evaluated.

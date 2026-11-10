@@ -635,7 +635,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * @param spacing one value per axis, or a single value for every axis
 	 * @return one spacing per axis
 	 * @throws IllegalArgumentException if the number of values matches neither 1 nor the grid rank,
-	 *                                  or any spacing is not positive
+	 *                                  or any spacing is not positive and finite
 	 */
 	private double[] gridSpacing(TraversalPolicy grid, double... spacing) {
 		int dims = grid.getDimensions();
@@ -644,8 +644,8 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 		}
 
 		double[] d = IntStream.range(0, dims).mapToDouble(a -> spacing[spacing.length == 1 ? 0 : a]).toArray();
-		if (IntStream.range(0, dims).anyMatch(a -> !(d[a] > 0))) {
-			throw new IllegalArgumentException("Grid spacing must be positive");
+		if (IntStream.range(0, dims).anyMatch(a -> !(d[a] > 0) || !Double.isFinite(d[a]))) {
+			throw new IllegalArgumentException("Grid spacing must be positive and finite");
 		}
 
 		return d;
