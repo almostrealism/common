@@ -271,6 +271,38 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 		return false;
 	}
 
+	/**
+	 * A camera inside the sphere sees no hit: every ray starts where the surface value is
+	 * negative, so there is no bracket with a positive near end and every pixel misses.
+	 */
+	@Test(timeout = 600000)
+	public void cameraInsideSurfaceMisses() {
+		int size = 8;
+		PinholeCamera camera = new PinholeCamera(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, -1.0),
+				new Vector(0.0, 1.0, 0.0), 1.0, 1.0, 1.0);
+		ImplicitSurfaceRenderer renderer = renderer(unitSphere(), camera, size);
+		renderer.frame().get().run();
+
+		PackedCollection distance = renderer.getDistance();
+		PackedCollection reflectance = renderer.getReflectance();
+		for (int i = 0; i < size * size; i++) {
+			assertEquals("Pixel " + i + " should miss", -1.0, distance.toDouble(i), 0.0);
+			assertEquals(0.0, reflectance.toDouble(i), 0.0);
+		}
+	}
+
+	/** A height field rejects a grid spacing of zero. */
+	@Test(timeout = 60000, expected = IllegalArgumentException.class)
+	public void heightFieldRejectsZeroSpacing() {
+		new HeightField(cp(new PackedCollection(shape(4, 4))), 0.0, 0.0, 0.0, 1.0);
+	}
+
+	/** A height field rejects a negative grid spacing. */
+	@Test(timeout = 60000, expected = IllegalArgumentException.class)
+	public void heightFieldRejectsNegativeSpacing() {
+		new HeightField(cp(new PackedCollection(shape(4, 4))), 0.0, 0.0, 1.0, -1.0);
+	}
+
 	/** The hit distances on a flat height field match the analytic plane intersection. */
 	@Test(timeout = 600000)
 	public void flatHeightField() {

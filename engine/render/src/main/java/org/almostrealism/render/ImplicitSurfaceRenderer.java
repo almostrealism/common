@@ -59,7 +59,9 @@ import java.util.stream.Stream;
  * positive, which closes the bracket on the surface. The bracket is then narrowed by
  * {@link #setRefinementSteps(int) refinementSteps} bisections and a final secant step. A
  * pixel whose bracket never closes before {@link #setMaximumDistance(double) maximumDistance}
- * misses the surface.</p>
+ * misses the surface. So does a pixel whose ray starts inside the surface (where the value
+ * at distance zero is not positive): there is no bracket with a positive near end, so the
+ * pixel shows the environment rather than a hit at distance zero.</p>
  *
  * <h2>Shading</h2>
  * <p>With {@code n} the surface normal, {@code d} the ray direction and {@code r} the
@@ -344,7 +346,8 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 			addMarchStep(pixels);
 		}
 
-		pixels.add(a(cp(hit), lessThan(cp(far), c(maximumDistance), c(1.0), c(0.0))));
+		pixels.add(a(cp(hit), greaterThan(cp(far), c(0.0),
+				lessThan(cp(far), c(maximumDistance), c(1.0), c(0.0)), c(0.0))));
 
 		for (int i = 0; i < refinementSteps; i++) {
 			addBisection(pixels);

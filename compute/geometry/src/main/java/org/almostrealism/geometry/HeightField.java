@@ -72,15 +72,20 @@ public class HeightField implements ImplicitSurface {
 	 * @param heights the {@code [nx, nz]} heights, with at least two nodes along each axis
 	 * @param x0 the {@code x} coordinate of the first grid node
 	 * @param z0 the {@code z} coordinate of the first grid node
-	 * @param dx the spacing of the grid nodes along {@code x}
-	 * @param dz the spacing of the grid nodes along {@code z}
+	 * @param dx the spacing of the grid nodes along {@code x}, which must be positive
+	 * @param dz the spacing of the grid nodes along {@code z}, which must be positive
 	 * @throws IllegalArgumentException if the heights are not a two-dimensional collection
-	 *                                  with at least two nodes along each axis
+	 *                                  with at least two nodes along each axis, or if either
+	 *                                  spacing is not positive
 	 */
 	public HeightField(Producer<PackedCollection> heights, double x0, double z0, double dx, double dz) {
 		TraversalPolicy shape = Shape.requireShape("HeightField", heights);
 		if (shape.getDimensions() != 2 || shape.length(0) < 2 || shape.length(1) < 2) {
 			throw new IllegalArgumentException("Heights must be [nx, nz] with nx, nz >= 2, got " + shape);
+		}
+
+		if (!(dx > 0.0) || !(dz > 0.0)) {
+			throw new IllegalArgumentException("Grid spacing must be positive, got dx=" + dx + ", dz=" + dz);
 		}
 
 		this.heights = heights;
