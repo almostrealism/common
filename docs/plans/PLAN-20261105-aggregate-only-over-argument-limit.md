@@ -258,12 +258,14 @@ with nothing folded, and a 30-argument Metal kernel does fail (see below). So **
 decode compiles for Metal has at most 29 arguments**, and the plan's "under the limit" case is
 the only case the decode exercises.
 
-The branch's `decisions` memory could not be read: the ar-manager service rejected this session's
-credentials. The owner's constraint is taken as stated in the request for this assessment. Fold
-decisions must be deterministic for every computation that shares a signature and compute
-context. Each decision must either be reflected in the signature or come from a real dry-run
-compile. Otherwise a mismatch surfaces as an `AGGREGATE_LAYOUT` collision in
-`rebindAggregateForReuse`.
+The owner's constraint, taken from the request for this assessment, matches the owner's recorded
+directive on this branch (the compilation of a `Computation` into a `Scope` must be deterministic,
+because kernels are shared by signature with the compute context in the cache key, so any novel
+fold decision must either be reflected in the signature before the `Scope` exists or come from a
+real dry-run compile). Fold decisions must therefore be deterministic for every computation that
+shares a signature and compute context. Each decision must either be reflected in the signature or
+come from a real dry-run compile. Otherwise a mismatch surfaces as an `AGGREGATE_LAYOUT` collision
+in `rebindAggregateForReuse`.
 
 ### What the baseline shows, and where it departs from the plan's assumptions
 

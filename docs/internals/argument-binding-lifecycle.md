@@ -30,7 +30,8 @@ in local variables and assigns it only once it is complete. `construct(PreparedA
 Semaphore)` works only on locals.
 
 This matters because preparation can throw. One example is a kernel compile failure when
-an aggregate kernel exceeds a device's buffer-argument limit, which Metal caps at about 31.
+an aggregate kernel exceeds a device's buffer-argument limit: Metal's buffer table has 31
+entries, so a kernel may declare at most 29 arguments (see `MetalOperator`).
 An earlier design published partially built arrays before the failing step. Every later
 call with the same output and arguments then took a fast path over the half-built state
 and failed with a `NullPointerException`, permanently poisoning the shared compiled
