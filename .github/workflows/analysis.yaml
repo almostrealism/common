@@ -4473,6 +4473,7 @@ jobs:
           # cancellation).
           INCOMPLETE="false"
           HAS_REAL_FAILURE="false"
+          FAILED_JOB_IDS=""
 
           TEST_RESULT="${{ needs.test.result }}"
           MEDIA_RESULT="${{ needs.test-media.result }}"
@@ -4493,38 +4494,47 @@ jobs:
           # retries are spent — nothing after this step would stage anything.
           if [ "$TEST_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test"
             echo "::warning::test job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$MEDIA_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-media"
             echo "::warning::test-media job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$MAC_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-mac"
             echo "::warning::test-mac job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$TEST_FLOWTREE_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-flowtree"
             echo "::warning::test-flowtree job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$MEDIA_MAC_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-media-mac"
             echo "::warning::test-media-mac job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$CL_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-cl"
             echo "::warning::test-cl job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$MEDIA_CL_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-media-cl"
             echo "::warning::test-media-cl job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$CUDA_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-cuda"
             echo "::warning::test-cuda job failed without producing parseable surefire failures — treating as build failure"
           fi
           if [ "$MEDIA_CUDA_RESULT" = "failure" ]; then
             HAS_REAL_FAILURE="true"
+            FAILED_JOB_IDS="${FAILED_JOB_IDS} test-media-cuda"
             echo "::warning::test-media-cuda job failed without producing parseable surefire failures — treating as build failure"
           fi
 
@@ -4536,7 +4546,11 @@ jobs:
           # inspect each failing job's steps (the jobs API, attempt-scoped) and
           # route only genuine in-test crashes to the crash prompt. A setup-only
           # run dispatches nothing and is reported; a mixed run routes only the
-          # genuine crashes and lists the environmental failures.
+          # genuine crashes and lists the environmental failures. The failing
+          # required job ids are passed to the classifier, which counts any of
+          # them it cannot find among the payload's failed jobs (an empty or
+          # partial API response) as a crash, so a zero crash count always means
+          # every failing required job was seen and classified environmental.
           if [ "$HAS_REAL_FAILURE" = "true" ]; then
             CRASH_COUNT=""
             ENV_COUNT=""
@@ -4545,7 +4559,8 @@ jobs:
                      "/repos/${REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs" \
                      > "${{ runner.temp }}/run-jobs.json"; then
               if CLASSIFICATION=$(python3 ./tools/ci/classify-job-failures.py \
-                    "${{ runner.temp }}/run-jobs.json" "${{ runner.temp }}"); then
+                    "${{ runner.temp }}/run-jobs.json" "${{ runner.temp }}" \
+                    ${FAILED_JOB_IDS}); then
                 CRASH_COUNT=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^crash_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
                 ENV_COUNT=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^environmental_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
                 echo "::notice::classified test-job failures: ${CRASH_COUNT:-?} crash(es), ${ENV_COUNT:-?} environmental (setup-step)"

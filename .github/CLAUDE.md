@@ -314,7 +314,13 @@ crash and still routes to the crash prompt (`build_failed_in_tests=true`). A
 mixed run routes only the genuine crashes and lists the environmental ones. When
 the jobs cannot be classified (an older checkout without the script, or the jobs
 API is unreachable) the step falls back to the crash route — the conservative
-default that never drops a real failure.
+default that never drops a real failure. For the same reason the step passes the
+ids of the failing required jobs to the classifier, which counts any of them with
+no failed run in the payload as a crash: an empty or partial jobs response can
+never turn a real failure into a zero crash count. The test step is identified
+by "test(s)" in its name alone; "Maven" is not a marker, because the accelerator
+lanes' "Isolate Maven repository per runner" setup step runs before their
+artifact download and restore.
 `test-flowtree` originally had no `needs.test-flowtree.result` check here at
 all — back when one job owned every prompt, a `test-flowtree` failure fell
 straight through to a prompt claiming everything had passed. (The quality-gate

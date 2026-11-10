@@ -29,15 +29,16 @@ def _steps(*pairs):
 # A test lane's setup preamble, then its first Maven/test step. The media lanes
 # add "Verify curated sample library" and "Isolate Maven repository per runner"
 # to the preamble; both are before the first "Run ... Tests" step.
-def _media_cl_steps(setup_java, test_conclusion, verify="success"):
+def _media_cl_steps(setup_java, test_conclusion, verify="success",
+                    isolate="success", download="success", restore="success"):
     return _steps(
         ("Set up job", "success"),
         ("Checkout Code", "success"),
         ("Set up JDK 17", setup_java),
         ("Verify curated sample library", verify),
-        ("Isolate Maven repository per runner", "success"),
-        ("Download build artifacts", "success"),
-        ("Restore build artifacts", "success"),
+        ("Isolate Maven repository per runner", isolate),
+        ("Download build artifacts", download),
+        ("Restore build artifacts", restore),
         ("Run Audio Tests", test_conclusion),
         ("Run Music Tests", "skipped" if test_conclusion != "success" else "success"),
         ("Upload Surefire Reports", "success"),
@@ -134,6 +135,37 @@ class TestEnvironmentalDetection(unittest.TestCase):
                "steps": _media_cl_steps("success", "skipped", verify="failure")}
         self.assertTrue(classify_job_failures.is_environmental(job))
 
+    def test_accelerator_lane_artifact_download_failure_is_environmental(self):
+        # In the macOS/CL/CUDA lanes "Isolate Maven repository per runner"
+        # precedes the artifact steps. It names Maven but is setup, so a failed
+        # download after it must still classify as environmental.
+        job = {"name": "test-media-cl (2)", "conclusion": "failure",
+               "steps": _media_cl_steps("success", "skipped",
+                                        download="failure")}
+        self.assertTrue(classify_job_failures.is_environmental(job))
+
+    def test_accelerator_lane_artifact_restore_failure_is_environmental(self):
+        job = {"name": "test-cl (1)", "conclusion": "failure",
+               "steps": _media_cl_steps("success", "skipped",
+                                        restore="failure")}
+        self.assertTrue(classify_job_failures.is_environmental(job))
+
+    def test_isolate_maven_repository_failure_is_environmental(self):
+        job = {"name": "test-mac (3)", "conclusion": "failure",
+               "steps": _media_cl_steps("success", "skipped",
+                                        isolate="failure")}
+        self.assertTrue(classify_job_failures.is_environmental(job))
+
+    def test_step_naming_maven_is_not_the_work_step(self):
+        # Only "test"/"tests" anchors the work step; a Maven-named step is
+        # skipped over, and with no test step at all the anchor is unknown.
+        steps = _steps(("Isolate Maven repository per runner", "success"),
+                       ("mvn dependency:go-offline", "success"),
+                       ("Run Audio Tests", "failure"))
+        self.assertEqual(classify_job_failures.first_work_step_index(steps), 2)
+        self.assertIsNone(classify_job_failures.first_work_step_index(
+            _steps(("Isolate Maven repository per runner", "failure"))))
+
     def test_unidentifiable_work_step_defaults_to_crash(self):
         # No step names a Maven/test step, so the anchor is unknown and the job
         # is routed as a crash rather than silently dropped.
@@ -199,6 +231,33 @@ class TestClassification(unittest.TestCase):
         self.assertEqual(environmental, [])
 
 
+class TestRequiredJobAccounting(unittest.TestCase):
+    def test_matrix_and_plain_runs_match_their_job_id(self):
+        is_run_of = classify_job_failures.is_run_of
+        self.assertTrue(is_run_of({"name": "test"}, "test"))
+        self.assertTrue(is_run_of({"name": "test-media-cl (3)"}, "test-media-cl"))
+        self.assertFalse(is_run_of({"name": "test-media-cl (3)"}, "test-media"))
+        self.assertFalse(is_run_of({"name": "test-media"}, "test"))
+        self.assertFalse(is_run_of({}, "test"))
+
+    def test_every_failing_job_seen_leaves_nothing_unaccounted(self):
+        self.assertEqual(classify_job_failures.unaccounted_job_ids(
+            _MIXED["jobs"], ["test", "test-media-cl"]), [])
+
+    def test_empty_payload_leaves_every_failing_job_unaccounted(self):
+        self.assertEqual(classify_job_failures.unaccounted_job_ids(
+            [], ["test-media-cl", "test", "test-media-cl"]),
+            ["test-media-cl", "test"])
+
+    def test_a_successful_run_does_not_account_for_a_failing_job(self):
+        # Only failed/timed-out runs count: a partial payload holding just the
+        # job's passing matrix entries has not shown where it failed.
+        jobs = [job for job in _SETUP_JAVA_ONLY["jobs"]
+                if job["conclusion"] == "success"]
+        self.assertEqual(classify_job_failures.unaccounted_job_ids(
+            jobs, ["test-media-cl"]), ["test-media-cl"])
+
+
 class TestLoadJobs(unittest.TestCase):
     def test_single_object(self):
         jobs = classify_job_failures.load_jobs(json.dumps(_SETUP_JAVA_ONLY))
@@ -223,14 +282,14 @@ class TestLoadJobs(unittest.TestCase):
 
 
 class TestCli(unittest.TestCase):
-    def _run(self, payload):
+    def _run(self, payload, *required_ids):
         with tempfile.TemporaryDirectory() as tmp:
             jobs_file = os.path.join(tmp, "jobs.json")
             out_dir = os.path.join(tmp, "out")
             with open(jobs_file, "w", encoding="utf-8") as handle:
                 handle.write(json.dumps(payload))
             proc = subprocess.run(
-                [sys.executable, _SCRIPT, jobs_file, out_dir],
+                [sys.executable, _SCRIPT, jobs_file, out_dir, *required_ids],
                 capture_output=True, text=True, timeout=60)
             self.assertEqual(proc.returncode, 0, proc.stderr)
             with open(os.path.join(out_dir, "crash-jobs.txt"),
@@ -255,6 +314,33 @@ class TestCli(unittest.TestCase):
         self.assertIn("environmental_count=1", out)
         self.assertIn("test", crash_text)
         self.assertIn("Run Hardware Tests", crash_text)
+        self.assertIn("test-media-cl (3)", env_text)
+
+    def test_setup_only_run_with_required_ids_dispatches_nothing(self):
+        out, crash_text, _ = self._run(_SETUP_JAVA_ONLY, "test-media-cl")
+        self.assertIn("crash_count=0", out)
+        self.assertIn("environmental_count=2", out)
+        self.assertEqual(crash_text, "")
+
+    def test_empty_payload_counts_failing_jobs_as_crashes(self):
+        # An empty jobs response must not yield crash_count=0 while the
+        # workflow reported a failing required job.
+        out, crash_text, env_text = self._run({"jobs": []}, "test", "test-cl")
+        self.assertIn("crash_count=2", out)
+        self.assertIn("environmental_count=0", out)
+        self.assertIn("- test\n", crash_text)
+        self.assertIn("- test-cl\n", crash_text)
+        self.assertIn("treated as a crash", crash_text)
+        self.assertEqual(env_text, "")
+
+    def test_partial_payload_counts_the_missing_job_as_a_crash(self):
+        # The payload shows only the environmental test-media-cl failures; the
+        # failing "test" job is absent, so it still takes the crash route.
+        out, crash_text, env_text = self._run(_SETUP_JAVA_ONLY,
+                                              "test-media-cl", "test")
+        self.assertIn("crash_count=1", out)
+        self.assertIn("environmental_count=2", out)
+        self.assertIn("- test\n", crash_text)
         self.assertIn("test-media-cl (3)", env_text)
 
 

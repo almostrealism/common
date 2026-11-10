@@ -22,10 +22,10 @@ anchors on the job's Maven/test step:
   crash          a step at or after the first Maven/test step failed — a real
                  failure inside test execution. This is the crash route's job.
 
-The Maven/test step is found by *name* ("Run ... Tests", "Flowtree Tests", or a
-step naming Maven directly), relative to which the setup steps are simply the
-steps before it — rather than a hard-coded list of setup action names that goes
-stale as the setup preamble changes. When a job's first Maven/test step cannot
+The Maven/test step is found by *name* ("Run ... Tests", "Flowtree Tests"),
+relative to which the setup steps are simply the steps before it — rather than
+a hard-coded list of setup action names that goes stale as the setup preamble
+changes. When a job's first Maven/test step cannot
 be identified (an unrecognised name), or a job failed with no failed step to
 point at, the job is treated as a crash: the conservative default that preserves
 the pre-classification behaviour rather than silently dropping a real failure.
@@ -37,7 +37,13 @@ page, so the loader accepts a JSON stream of such objects (as well as a single
 object or a bare jobs array).
 
 Usage:
-    classify-job-failures.py <jobs-json-file> <out-dir>
+    classify-job-failures.py <jobs-json-file> <out-dir> [<required-job-id> ...]
+
+Each ``<required-job-id>`` names a workflow job (``test``, ``test-media-cl``)
+whose ``needs.<job>.result`` was ``failure``. A required job none of whose runs
+appears among the payload's failed jobs — matched by name, ``<id>`` or a matrix
+run ``<id> (...)`` — is counted as a crash: an empty or partial jobs response
+must never turn a real failure into a zero crash count.
 
 Writes ``<out-dir>/crash-jobs.txt`` and ``<out-dir>/environmental-jobs.txt``
 (each a human-readable block per job, naming the step that failed), and prints
@@ -61,16 +67,14 @@ import sys
 FAILED_CONCLUSIONS = ("failure", "timed_out")
 
 # The name of a Maven/test step. Every test lane's invocation step is named
-# "Run <area> Tests" or "Flowtree Tests", so the word "test(s)" identifies it;
-# a step naming Maven directly ("mvn ..."/"Maven ...") is also work, covering a
-# future rename. Matched case-insensitively on word boundaries so "Download
-# build artifacts" (which contains "build", a setup step) is NOT taken for the
-# work step — only "test"/"tests"/"mvn"/"maven" are work markers, never "build".
-# TODO(review): "maven" matches the real setup step "Isolate Maven repository per
-# runner" (present in every macOS/CL/CUDA lane, before Download/Restore build
-# artifacts), anchoring the work step on setup and misrouting a later
-# artifact-download/restore failure in those lanes to the crash prompt.
-_WORK_STEP_PATTERN = re.compile(r"\b(tests?|mvn|maven)\b", re.IGNORECASE)
+# "Run <area> Tests" or "Flowtree Tests", so the word "test(s)" identifies it.
+# Matched case-insensitively on word boundaries. "Maven"/"mvn" are deliberately
+# NOT work markers: "Isolate Maven repository per runner" is a setup step that
+# precedes "Download build artifacts" and "Restore build artifacts" in every
+# macOS, CL and CUDA lane, and anchoring on it would route a failed artifact
+# download in those lanes to the crash prompt. Likewise "build" is not a marker,
+# so "Download build artifacts" is never taken for the work step.
+_WORK_STEP_PATTERN = re.compile(r"\btests?\b", re.IGNORECASE)
 
 
 def load_jobs(text):
@@ -183,25 +187,54 @@ def _write(path, jobs):
             handle.write(_block(job))
 
 
+def is_run_of(job, job_id):
+    """True when ``job`` (a jobs-API entry) is a run of the workflow job
+    ``job_id``: its name is the id itself, or a matrix run ``<id> (...)``."""
+    name = job.get("name") or ""
+    return name == job_id or name.startswith(job_id + " (")
+
+
+def unaccounted_job_ids(jobs, required_ids):
+    """The ids in ``required_ids`` (failing workflow jobs) of which no run is
+    among the failed/timed-out ``jobs``, in input order without duplicates."""
+    failed = [job for job in jobs
+              if (job.get("conclusion") or "").lower() in FAILED_CONCLUSIONS]
+    missing = []
+    for job_id in required_ids:
+        if job_id in missing:
+            continue
+        if not any(is_run_of(job, job_id) for job in failed):
+            missing.append(job_id)
+    return missing
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if len(argv) < 2:
         sys.stderr.write(
-            "Usage: classify-job-failures.py <jobs-json-file> <out-dir>\n")
+            "Usage: classify-job-failures.py <jobs-json-file> <out-dir>"
+            " [<required-job-id> ...]\n")
         return 1
 
-    jobs_file, out_dir = argv[0], argv[1]
+    jobs_file, out_dir, required_ids = argv[0], argv[1], argv[2:]
 
     with open(jobs_file, encoding="utf-8") as handle:
         jobs = load_jobs(handle.read())
 
     crashes, environmental = classify(jobs)
+    missing = unaccounted_job_ids(jobs, required_ids)
 
     os.makedirs(out_dir, exist_ok=True)
     _write(os.path.join(out_dir, "crash-jobs.txt"), crashes)
+    if missing:
+        with open(os.path.join(out_dir, "crash-jobs.txt"), "a",
+                  encoding="utf-8") as handle:
+            for job_id in missing:
+                handle.write("- " + job_id + "\n  not found among the run's"
+                             " failed jobs; treated as a crash\n")
     _write(os.path.join(out_dir, "environmental-jobs.txt"), environmental)
 
-    print(f"crash_count={len(crashes)}")
+    print(f"crash_count={len(crashes) + len(missing)}")
     print(f"environmental_count={len(environmental)}")
     return 0
 

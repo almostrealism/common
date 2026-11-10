@@ -114,7 +114,13 @@ timing out on the JDK host, checkout, cache restore or artifact download, all
 still routes to the crash prompt. A mixed run routes only the genuine crashes
 and lists the environmental ones. When the jobs cannot be classified (an older
 checkout, or the jobs API is unreachable) the step falls back to the crash route,
-the conservative default that preserves the earlier behaviour.
+the conservative default that preserves the earlier behaviour. The step also
+passes the ids of the failing required jobs, and the classifier counts any of
+them with no failed run in the payload (an empty or partial API response) as a
+crash, so a zero crash count means every failing job was seen and found
+environmental. The test step is recognised by the word "test(s)" in its name
+only — never "Maven", because the macOS/CL/CUDA lanes' "Isolate Maven repository
+per runner" setup step precedes their artifact download.
 
 `test-flowtree` originally had
 neither check — it uploaded no Surefire artifact at all — so a failure there was
