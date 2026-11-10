@@ -60,6 +60,13 @@ import urllib.request
 WORKFLOW_NAME = "Build and Test"
 WORKFLOW_FILE = "analysis.yaml"
 
+# A bound on every GitHub API read, in seconds. Without it a stalled connection
+# leaves ``urlopen`` blocked indefinitely, so the leads step hangs instead of
+# reaching its best-effort fallback; a timed-out request raises a URLError the
+# collector lets propagate, which the workflow reads as a failed leads-script and
+# falls back to its memory and tracker leads.
+REQUEST_TIMEOUT_SECONDS = 30
+
 # The test-execution jobs whose failures are real test outcomes (a lane). Only
 # these are read for failing tests; a failed setup/policy/build job is not a test
 # result. A sharded lane's job name carries a matrix suffix — "test-media-cl (2)"
@@ -271,7 +278,8 @@ class GitHubClient:
         request.add_header("X-GitHub-Api-Version", "2022-11-28")
         if self.token:
             request.add_header("Authorization", "Bearer %s" % self.token)
-        with urllib.request.urlopen(request) as response:
+        with urllib.request.urlopen(
+                request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             data = response.read()
         return data if raw else json.loads(data.decode("utf-8"))
 

@@ -357,5 +357,38 @@ class WorkflowScopedListingTests(unittest.TestCase):
         self.assertNotIn("/actions/runs?", captured[0])
 
 
+class RequestTimeoutTests(unittest.TestCase):
+    """Every GitHub API read is bounded by a timeout, so a stalled connection
+    cannot hang the leads step instead of reaching its best-effort fallback."""
+
+    def test_request_passes_a_bounded_timeout_to_urlopen(self):
+        import contextlib
+        import urllib.request
+
+        captured = {}
+
+        class _FakeResponse:
+            def read(self):
+                return b"{}"
+
+        @contextlib.contextmanager
+        def _fake_urlopen(request, timeout=None):
+            captured["timeout"] = timeout
+            yield _FakeResponse()
+
+        original = urllib.request.urlopen
+        urllib.request.urlopen = _fake_urlopen
+        try:
+            client = collect_observed_flakes.GitHubClient("owner/name", token="")
+            client._request("/repos/owner/name/actions/runs")
+        finally:
+            urllib.request.urlopen = original
+
+        self.assertEqual(captured["timeout"],
+                         collect_observed_flakes.REQUEST_TIMEOUT_SECONDS)
+        self.assertIsNotNone(collect_observed_flakes.REQUEST_TIMEOUT_SECONDS)
+        self.assertGreater(collect_observed_flakes.REQUEST_TIMEOUT_SECONDS, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
