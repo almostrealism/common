@@ -3722,6 +3722,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.changes.outputs.head_sha }}
+          # Full history so extract_branch_todos.py can diff against the merge base.
+          fetch-depth: 0
 
       - name: Download test output
         continue-on-error: true
@@ -3741,6 +3743,7 @@ jobs:
         id: prompt
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
           # The workflow comes from the merge with the base, the checkout from
@@ -3752,7 +3755,14 @@ jobs:
           # Either job (or both) may have failed; quote every log that exists.
           cat python-tests-output/python-tests.log python-evals-output/python-evals.log \
             > "${{ runner.temp }}/python-failures.log" 2>/dev/null || true
-          bash ./tools/ci/prompts/build-python-failure-prompt.sh "${{ runner.temp }}/python-failures.log" "${{ runner.temp }}/agent-prompt.txt"
+          # The TODO lines this branch adds are findings the resolve pass carries
+          # too; a head that predates the script simply yields no section.
+          TODOS="${{ runner.temp }}/branch-todos.txt"
+          : > "$TODOS"
+          if [ -f ./tools/ci/extract_branch_todos.py ]; then
+            python3 ./tools/ci/extract_branch_todos.py "$BASE_BRANCH" "$TODOS" || true
+          fi
+          bash ./tools/ci/prompts/build-python-failure-prompt.sh "${{ runner.temp }}/python-failures.log" "${{ runner.temp }}/agent-prompt.txt" "$TODOS"
           echo "built=true" >> "$GITHUB_OUTPUT"
 
       - name: Stage submit request (python test failures)
@@ -3975,6 +3985,21 @@ jobs:
           fi
           echo "$STATUS" >> "$GITHUB_OUTPUT"
 
+      # The TODO lines this branch adds are findings every route's prompt must
+      # carry, alongside the review-comment policy. Computed once here and
+      # passed to whichever builder the route selects; a head that predates the
+      # script simply yields no section. The file always exists so each build
+      # step can pass it unconditionally.
+      - name: Compute branch TODOs
+        env:
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+        run: |
+          TODOS="${{ runner.temp }}/branch-todos.txt"
+          : > "$TODOS"
+          if [ -f ./tools/ci/extract_branch_todos.py ]; then
+            python3 ./tools/ci/extract_branch_todos.py "$BASE_BRANCH" "$TODOS" || true
+          fi
+
       # ── Build failure path ──────────────────────────────────────
       - name: Build prompt (build failure)
         if: steps.route.outputs.route == 'build-failure'
@@ -3982,7 +4007,7 @@ jobs:
           BRANCH: ${{ needs.changes.outputs.branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
-          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (build failure)
         if: steps.route.outputs.route == 'build-failure'
@@ -4009,7 +4034,7 @@ jobs:
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
           chmod +x ./tools/ci/prompts/build-policy-violation-prompt.sh
-          ./tools/ci/prompts/build-policy-violation-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+          ./tools/ci/prompts/build-policy-violation-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (code policy violations)
         if: steps.route.outputs.route == 'code-policy'
@@ -4042,7 +4067,7 @@ jobs:
           BRANCH: ${{ needs.changes.outputs.branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
-          ./tools/ci/prompts/build-quality-gate-prompt.sh "${{ runner.temp }}/quality-gate-failures.txt" "${{ runner.temp }}/agent-prompt.txt"
+          ./tools/ci/prompts/build-quality-gate-prompt.sh "${{ runner.temp }}/quality-gate-failures.txt" "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (quality gates)
         if: steps.route.outputs.route == 'quality-gates'
@@ -4073,7 +4098,7 @@ jobs:
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
           chmod +x ./tools/ci/prompts/build-docs-review-prompt.sh
-          ./tools/ci/prompts/build-docs-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+          ./tools/ci/prompts/build-docs-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (docs-only review)
         if: steps.route.outputs.route == 'docs-review'
@@ -4100,14 +4125,9 @@ jobs:
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
           QUALITY_UNATTRIBUTED: ${{ steps.quality.outputs.unattributed }}
         run: |
-          # The TODO lines this branch adds are findings the review must act on.
-          # Computed here and passed to the builder the way review comments are;
-          # a head that predates the script simply yields no section.
-          TODOS="${{ runner.temp }}/branch-todos.txt"
-          if [ -f ./tools/ci/extract_branch_todos.py ]; then
-            python3 ./tools/ci/extract_branch_todos.py "$BASE_BRANCH" "$TODOS" || true
-          fi
-          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "$TODOS"
+          # The branch's new TODOs (the "Compute branch TODOs" step above) are
+          # findings the review must act on, passed the way review comments are.
+          ./tools/ci/prompts/build-review-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
           if [ "$QUALITY_UNATTRIBUTED" = "true" ]; then
             echo "::warning::A quality gate failed without recording a cause — submitting the general review; a human should read that gate's job log"
             cat >> "${{ runner.temp }}/agent-prompt.txt" <<'NOTE'
@@ -4295,6 +4315,21 @@ jobs:
         with:
           ref: ${{ needs.changes.outputs.head_sha }}
           fetch-depth: 0
+
+      # The TODO lines this branch adds are findings every resolve route's
+      # prompt must carry, alongside the review-comment policy. Computed once
+      # here and passed to whichever builder the failure classification selects;
+      # a head that predates the script simply yields no section. The file
+      # always exists so each build step can pass it unconditionally.
+      - name: Compute branch TODOs
+        env:
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+        run: |
+          TODOS="${{ runner.temp }}/branch-todos.txt"
+          : > "$TODOS"
+          if [ -f ./tools/ci/extract_branch_todos.py ]; then
+            python3 ./tools/ci/extract_branch_todos.py "$BASE_BRANCH" "$TODOS" || true
+          fi
 
       # Every test lane is considered: Linux (test, test-media), flowtree,
       # Metal (test-mac, test-media-mac), OpenCL (test-cl, test-media-cl) and
@@ -4741,19 +4776,14 @@ jobs:
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
-          # The TODO lines this branch adds are findings the resolve pass must
-          # act on, too. Computed here and passed to the builder; a head that
-          # predates the script simply yields no section.
-          TODOS="${{ runner.temp }}/branch-todos.txt"
-          if [ -f ./tools/ci/extract_branch_todos.py ]; then
-            python3 ./tools/ci/extract_branch_todos.py "$BASE_BRANCH" "$TODOS" || true
-          fi
+          # The branch's new TODOs (the "Compute branch TODOs" step above) are
+          # findings the resolve pass must act on, too.
           ./tools/ci/prompts/build-resolve-prompt.sh \
             "${{ runner.temp }}/regressions.txt" \
             "${{ runner.temp }}/agent-prompt.txt" \
             "${{ runner.temp }}/preexisting.txt" \
             "${{ runner.temp }}/environmental.txt" \
-            "$TODOS"
+            "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (test failures)
         if: steps.failures.outputs.has_failures == 'true' && steps.classify.outputs.regression_count != '0' && steps.classify.outputs.regression_count != ''
@@ -4780,7 +4810,7 @@ jobs:
           BRANCH: ${{ needs.changes.outputs.branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
-          ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports "${{ runner.temp }}/agent-prompt.txt"
+          ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (test job crash)
         if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
@@ -4808,7 +4838,7 @@ jobs:
           BRANCH: ${{ needs.changes.outputs.branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
         run: |
-          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt"
+          ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (incomplete tests)
         if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'

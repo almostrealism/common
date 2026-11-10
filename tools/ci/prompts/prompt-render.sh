@@ -26,7 +26,7 @@
 #
 #   source "${SCRIPT_DIR}/prompt-render.sh"
 #   render_prompt "${SCRIPT_DIR}/general-review.txt" BRANCH BASE_BRANCH COMMIT_SHA > "$OUTPUT_FILE"
-#   render_prompt "${SCRIPT_DIR}/pr-feedback.txt" BRANCH >> "$OUTPUT_FILE"
+#   append_branch_feedback "$OUTPUT_FILE" "$TODOS_FILE"
 
 PROMPT_FRAGMENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -128,25 +128,30 @@ render_prompt() {
     fi
 }
 
-# Appends the "new TODOs are findings" instructions and the computed list of
-# TODO lines the branch adds, when a caller passes a non-empty section file.
-# The list is computed by a dedicated CI step (extract_branch_todos.py) and
+# Appends the shared branch-feedback block — the pull-request review-comment
+# policy and the "new TODOs are findings" instructions, which live together in
+# pr-feedback.txt — followed by the computed list of TODO lines the branch adds,
+# when a caller passes a non-empty section file. Every prompt a branch's
+# pipeline sends to an agent carries this, so whatever the session was
+# dispatched to do, it leaves every outstanding review comment and every TODO
+# the branch introduced accounted for before it finishes.
+#
+# The TODO list is computed by a dedicated CI step (extract_branch_todos.py) and
 # passed in as a file, so the builder stays deterministic and reaches no git
 # state of its own: called with no section file — as the prompt-builder tests
-# do — it appends nothing.
+# do — it appends the fragment without a list.
 #
-#   append_todo_findings <output-file> <todos-section-file>
-append_todo_findings() {
+#   append_branch_feedback <output-file> <todos-section-file>
+append_branch_feedback() {
     local output="$1"
     local todos_file="${2:-}"
-    if [ -z "$todos_file" ] || [ ! -s "$todos_file" ]; then
-        return 0
+    append_prompt_fragment pr-feedback.txt "$output" BRANCH
+    if [ -n "$todos_file" ] && [ -s "$todos_file" ]; then
+        if [ -n "$(tail -c 2 "$output" | tr -d '\n')" ]; then
+            printf '\n' >> "$output"
+        fi
+        cat "$todos_file" >> "$output"
     fi
-    append_prompt_fragment todo-findings.txt "$output"
-    if [ -n "$(tail -c 2 "$output" | tr -d '\n')" ]; then
-        printf '\n' >> "$output"
-    fi
-    cat "$todos_file" >> "$output"
 }
 
 # Appends a rendered fragment from this directory to a prompt that is
