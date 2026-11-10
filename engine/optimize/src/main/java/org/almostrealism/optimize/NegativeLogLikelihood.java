@@ -26,14 +26,16 @@ import org.almostrealism.collect.PackedCollection;
 /**
  * Negative Log Likelihood (NLL) loss function for classification tasks.
  * <p>
- * NLL computes the negative log probability of the correct class. When used with
- * log-softmax outputs, this is equivalent to cross-entropy loss. The loss is computed as:
+ * NLL computes the negative log probability of the correct class. The outputs are already
+ * log-probabilities (from log-softmax), so no further logarithm is taken, and the loss is
+ * equivalent to cross-entropy loss. The term of each row {@code r} is computed as:
  * </p>
  * <pre>
- * NLL = -log(output[target_class])
+ * NLL[r] = -sum(output[r] * target[r])
  * </pre>
  * <p>
- * For batched inputs, the average NLL across all samples is returned.
+ * For a one-hot target row this is {@code -output[r, target_class]}. For batched inputs, the
+ * loss is the average of the row terms.
  * </p>
  *
  * <h2>Gradient</h2>
