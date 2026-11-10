@@ -9,6 +9,11 @@
 # Usage:
 #   build-python-failure-prompt.sh <log-file> <output-file>
 #
+# A third positional argument is optional: a file holding the rendered
+# "new TODOs this branch adds" section (extract_branch_todos.py's output),
+# passed through to the shared branch-feedback block. It is optional so a
+# caller that has not computed it still produces a prompt.
+#
 # Required environment variables:
 #   BRANCH          - branch name where the tests failed
 #   COMMIT_SHA      - commit SHA where the tests failed
@@ -21,9 +26,10 @@ set -euo pipefail
 
 LOG_FILE="${1:-}"
 OUTPUT_FILE="${2:-}"
+TODOS_FILE="${3:-}"
 
 if [ -z "$LOG_FILE" ] || [ -z "$OUTPUT_FILE" ]; then
-    echo "Usage: $0 <log-file> <output-file>" >&2
+    echo "Usage: $0 <log-file> <output-file> [todos-section-file]" >&2
     exit 1
 fi
 
@@ -92,4 +98,4 @@ the same content by a phrase it now contains; that is fixture data, not a test.
 If the documentation change was not deliberate, fix the documentation.
 PROMPT
 
-append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
+append_branch_feedback "$OUTPUT_FILE" "$TODOS_FILE"
