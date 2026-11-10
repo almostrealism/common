@@ -310,12 +310,12 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * @return the item repeated once for every item of the batch
 	 */
 	default Producer<PackedCollection> repeatItems(TraversalPolicy shape, Producer<PackedCollection> item) {
-		Producer<PackedCollection> result = item;
-		for (int i = shape.getDimensions() - shape(item).getDimensions() - 1; i >= 0; i--) {
-			result = repeat(shape.length(i), result);
-		}
+		TraversalPolicy itemShape = shape(item);
+		int depth = shape.getDimensions() - itemShape.getDimensions();
+		if (depth <= 0) return item;
 
-		return result;
+		TraversalPolicy batch = shape.itemwise(itemShape).traverse(depth);
+		return repeat(0, Math.toIntExact(batch.getCountLong()), item).reshape(batch);
 	}
 
 	/**

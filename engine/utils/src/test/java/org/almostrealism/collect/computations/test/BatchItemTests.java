@@ -18,16 +18,17 @@ package org.almostrealism.collect.computations.test;
 
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 /**
  * Operations written for one item applied to a fixed-count batch of items: a subset with
  * fewer dimensions than its input is taken from every item, and the constructors of items
- * ({@code pair}, {@code vector}, {@code ray}) build a batch from batched components,
+ * ({@code pair}, {@code vector}, {@code ray}, {@code rgb}) build a batch from batched components,
  * repeating a single shared component for every item.
  */
-public class BatchItemTests extends TestSuiteBase {
+public class BatchItemTests extends TestSuiteBase implements RGBFeatures {
 	/** The number of items in each batch. */
 	private static final int ITEMS = 4;
 
@@ -96,6 +97,53 @@ public class BatchItemTests extends TestSuiteBase {
 				assertEquals(-(j + 1), result.toDouble(6 * i + j));
 				assertEquals(3 * i + j, result.toDouble(6 * i + 3 + j));
 			}
+		}
+	}
+
+	/** A ray built from a two-level batch of directions repeats a shared origin over both levels. */
+	@Test(timeout = 60000)
+	public void rayRepeatsSharedOriginOverNestedBatch() {
+		CollectionProducer directions = integers(0, 2 * ITEMS * 3).reshape(shape(2, ITEMS, 3).traverse(2));
+		CollectionProducer rays = ray(vector(-1.0, -2.0, -3.0), directions);
+		assertEquals(3, rays.getShape().getDimensions());
+		assertEquals(2 * ITEMS, rays.getShape().getCountLong());
+
+		PackedCollection result = rays.evaluate();
+		for (int i = 0; i < 2 * ITEMS; i++) {
+			for (int j = 0; j < 3; j++) {
+				assertEquals(-(j + 1), result.toDouble(6 * i + j));
+				assertEquals(3 * i + j, result.toDouble(6 * i + 3 + j));
+			}
+		}
+	}
+
+	/** Components taken from a batch of pairs rebuild the batch, swapped by {@code pair}. */
+	@Test(timeout = 60000)
+	public void pairOfBatchedComponents() {
+		CollectionProducer p = batch(2);
+		CollectionProducer swapped = pair(subset(shape(1), p, 1), subset(shape(1), p, 0));
+		assertEquals(ITEMS, swapped.getShape().getCountLong());
+
+		PackedCollection result = swapped.evaluate();
+		for (int i = 0; i < ITEMS; i++) {
+			assertEquals(2 * i + 1, result.toDouble(2 * i));
+			assertEquals(2 * i, result.toDouble(2 * i + 1));
+		}
+	}
+
+	/** A color built from batched channels and one shared channel repeats the shared channel. */
+	@Test(timeout = 60000)
+	public void rgbRepeatsSharedChannel() {
+		CollectionProducer channels = batch(2);
+		CollectionProducer colors = rgb(subset(shape(1), channels, 0), c(0.5),
+				subset(shape(1), channels, 1));
+		assertEquals(ITEMS, colors.getShape().getCountLong());
+
+		PackedCollection result = colors.evaluate();
+		for (int i = 0; i < ITEMS; i++) {
+			assertEquals(2 * i, result.toDouble(3 * i));
+			assertEquals(0.5, result.toDouble(3 * i + 1));
+			assertEquals(2 * i + 1, result.toDouble(3 * i + 2));
 		}
 	}
 
