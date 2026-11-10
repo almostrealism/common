@@ -354,6 +354,54 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 		new HeightField(cp(new PackedCollection(shape(4, 4))), 0.0, 0.0, 1.0, -1.0);
 	}
 
+	/**
+	 * The normal of a planar height field with slopes 0.5 along {@code x} and 0.25 along
+	 * {@code z} follows both slopes inside
+	 * the grid, and outside the grid, where the height is clamped to the nearest edge, the
+	 * slope along each axis that is beyond the grid is zero.
+	 */
+	@Test(timeout = 120000)
+	public void heightFieldNormalOutsideGrid() {
+		int n = 4;
+		CollectionProducer index = integers(0, n * n);
+		CollectionProducer h = floor(index.divide(c((double) n))).multiply(c(0.5))
+				.add(mod(index, c((double) n)).multiply(c(0.25)));
+		PackedCollection heights = new PackedCollection(shape(n, n));
+		h.reshape(shape(n, n)).get().into(heights).evaluate();
+
+		// The grid covers [4, 7] along x and z: inside, on the far edge, beyond x,
+		// before z, beyond both, and on the near corner
+		PackedCollection positions = pack(
+				5.5, 0.0, 5.5,
+				7.0, 0.0, 5.5,
+				9.0, 0.0, 5.5,
+				5.5, 0.0, 1.0,
+				2.0, 0.0, 14.0,
+				4.0, 0.0, 4.0);
+		double[][] slopes = {
+				{ 0.5, 0.25 }, { 0.5, 0.25 }, { 0.0, 0.25 }, { 0.5, 0.0 }, { 0.0, 0.0 }, { 0.5, 0.25 }
+		};
+
+		try {
+			HeightField surface = new HeightField(cp(heights), 4.0, 4.0, 1.0, 1.0);
+			PackedCollection normals = surface.normal(cp(positions.reshape(shape(6, 3)))).evaluate();
+
+			for (int p = 0; p < slopes.length; p++) {
+				double sx = slopes[p][0];
+				double sz = slopes[p][1];
+				double length = Math.sqrt(1.0 + sx * sx + sz * sz);
+				double[] expected = { -sx / length, 1.0 / length, -sz / length };
+				for (int i = 0; i < 3; i++) {
+					assertEquals("Component " + i + " of the normal at position " + p,
+							expected[i], normals.toDouble(3 * p + i), 1e-5);
+				}
+			}
+		} finally {
+			positions.destroy();
+			heights.destroy();
+		}
+	}
+
 	/** The hit distances on a flat height field match the analytic plane intersection. */
 	@Test(timeout = 600000)
 	public void flatHeightField() {

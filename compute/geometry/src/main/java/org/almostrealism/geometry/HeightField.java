@@ -126,14 +126,15 @@ public class HeightField implements ImplicitSurface {
 
 	/**
 	 * Returns the unit normal {@code (-dh/dx, 1, -dh/dz) / |(-dh/dx, 1, -dh/dz)|} of the
-	 * bilinearly interpolated surface below the given position.
+	 * bilinearly interpolated surface below the given position. Outside the grid the height
+	 * does not change along an axis whose coordinate is beyond the grid, so the derivative
+	 * along that axis is zero there.
 	 *
 	 * @param position a {@code (3)} position, or an {@code (n, 3)} batch of positions
 	 * @return the {@code (3)} normal, or the {@code (n, 3)} batch of normals
 	 */
 	@Override
 	public CollectionProducer normal(Producer<PackedCollection> position) {
-		// TODO(review): outside the grid the height is clamped (flat skirt) but slopeX/slopeZ still report the edge cell's slope, so skirt normals are tilted
 		Sample s = new Sample(position);
 		return normalize(vector(s.slopeX().minus(), c(1.0), s.slopeZ().minus()));
 	}
@@ -149,6 +150,12 @@ public class HeightField implements ImplicitSurface {
 
 		/** The position within the cell along {@code z}, from 0 to 1. */
 		private final CollectionProducer fz;
+
+		/** 1 where the unclamped grid coordinate along {@code x} is within the grid, otherwise 0. */
+		private final CollectionProducer insideX;
+
+		/** 1 where the unclamped grid coordinate along {@code z} is within the grid, otherwise 0. */
+		private final CollectionProducer insideZ;
 
 		/** The height at the corner {@code (i, j)} of the cell. */
 		private final CollectionProducer h00;
@@ -168,10 +175,13 @@ public class HeightField implements ImplicitSurface {
 		 * @param position a {@code (3)} position, or an {@code (n, 3)} batch of positions
 		 */
 		Sample(Producer<PackedCollection> position) {
-			CollectionProducer u = bound(subset(shape(1), position, 0).subtract(c(x0)).divide(c(dx)),
-					0.0, nx - 1 - EDGE_MARGIN);
-			CollectionProducer v = bound(subset(shape(1), position, 2).subtract(c(z0)).divide(c(dz)),
-					0.0, nz - 1 - EDGE_MARGIN);
+			CollectionProducer rawU = subset(shape(1), position, 0).subtract(c(x0)).divide(c(dx));
+			CollectionProducer rawV = subset(shape(1), position, 2).subtract(c(z0)).divide(c(dz));
+			CollectionProducer u = bound(rawU, 0.0, nx - 1 - EDGE_MARGIN);
+			CollectionProducer v = bound(rawV, 0.0, nz - 1 - EDGE_MARGIN);
+
+			insideX = insideGrid(rawU, nx);
+			insideZ = insideGrid(rawV, nz);
 			CollectionProducer i = floor(u);
 			CollectionProducer j = floor(v);
 			CollectionProducer node = i.multiply(c(nz)).add(j);
@@ -182,6 +192,19 @@ public class HeightField implements ImplicitSurface {
 			h10 = heightAt(node.add(c(nz)));
 			h01 = heightAt(node.add(c(1.0)));
 			h11 = heightAt(node.add(c(nz + 1.0)));
+		}
+
+		/**
+		 * Returns 1 where the unclamped grid coordinate is within {@code [0, n - 1]}, and 0
+		 * where it is beyond the grid, so the height there is clamped to the edge.
+		 *
+		 * @param coordinate the unclamped grid coordinate, for every position
+		 * @param n the number of grid nodes along the axis
+		 * @return the mask, for every position
+		 */
+		private CollectionProducer insideGrid(CollectionProducer coordinate, int n) {
+			return greaterThan(coordinate, c(0.0),
+					lessThan(coordinate, c(n - 1.0), c(1.0), c(0.0), true), c(0.0), true);
 		}
 
 		/**
@@ -206,25 +229,27 @@ public class HeightField implements ImplicitSurface {
 		}
 
 		/**
-		 * Returns the derivative of the interpolated height along {@code x}.
+		 * Returns the derivative of the interpolated height along {@code x}, which is zero
+		 * where the position is beyond the grid along {@code x}.
 		 *
 		 * @return {@code dh/dx}, for every position
 		 */
 		CollectionProducer slopeX() {
 			CollectionProducer near = h10.subtract(h00);
 			CollectionProducer far = h11.subtract(h01);
-			return near.add(far.subtract(near).multiply(fz)).divide(c(dx));
+			return near.add(far.subtract(near).multiply(fz)).divide(c(dx)).multiply(insideX);
 		}
 
 		/**
-		 * Returns the derivative of the interpolated height along {@code z}.
+		 * Returns the derivative of the interpolated height along {@code z}, which is zero
+		 * where the position is beyond the grid along {@code z}.
 		 *
 		 * @return {@code dh/dz}, for every position
 		 */
 		CollectionProducer slopeZ() {
 			CollectionProducer near = h01.subtract(h00);
 			CollectionProducer far = h11.subtract(h10);
-			return near.add(far.subtract(near).multiply(fx)).divide(c(dz));
+			return near.add(far.subtract(near).multiply(fx)).divide(c(dz)).multiply(insideZ);
 		}
 	}
 }

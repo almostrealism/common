@@ -102,7 +102,9 @@ HeightField surface = new HeightField(cp(heights), x0, z0, dx, dz);
 
 - **Sampling** is bilinear within a cell, using device gathers of the four corner heights;
   outside the grid the height is that of the nearest edge.
-- **Normals** are analytic: `normalize(-dh/dx, 1, -dh/dz)` of the bilinear surface.
+- **Normals** are analytic: `normalize(-dh/dx, 1, -dh/dz)` of the bilinear surface. Outside
+  the grid the slope along each axis whose coordinate is beyond the grid is zero, matching
+  the flat edge heights there.
 - **Lipschitz bound**: within a cell, `dh/dx` is a weighted average of the slopes of the
   two cell edges along `x` (likewise `z`), so `|grad f| <= sqrt(1 + sx^2 + sz^2)` where
   `sx`, `sz` are the largest slopes between neighbouring nodes. These are computed on the
@@ -147,7 +149,9 @@ For every pixel `k` (column `k % width`, row `k / width` from the top):
    close the bracket there (`far = probe`); otherwise move `near` to the probe and advance
    the probe by `max(f / L, minimumStep)`, clamped to `maximumDistance`. Once the bracket is
    closed, nothing changes.
-3. **Hit flag.** A pixel hits if its bracket closed before `maximumDistance`.
+3. **Hit flag.** A pixel hits if its bracket closed before `maximumDistance` and after the
+   ray origin (`far > 0`). A ray that starts inside the surface (`f <= 0` at the origin)
+   is a miss.
 4. **Bisection** (`refinementSteps` times) of `[near, far]`.
 5. **Secant step**: the zero of the line through `f(near)` and `f(far)`, which is the hit
    distance (or -1 for a miss).
@@ -267,11 +271,17 @@ intersections of the same camera rays, each evaluated one pixel at a time:
 | `sphereSilhouette` | hit set matches the analytic projection of a unit sphere to within one pixel (0 mismatches at 32x32); hit distances within 1e-3; centre lit; corners miss; per-pixel list is one kernel |
 | `flatHeightField` | hit distances on a flat height field within 1e-3 of the plane intersection |
 | `sinusoidalHeightField` | hit distances on `0.2 sin(x) cos(z)` (257x257 grid) within 1e-3 of the analytic surface |
+| `cameraInsideSurfaceMisses` | a camera at the centre of the unit sphere misses at every pixel, and every pixel shows the environment color of its ray |
+| `heightFieldRejectsZeroSpacing`, `heightFieldRejectsNegativeSpacing` | a height field rejects a grid spacing that is not positive |
+| `heightFieldNormalOutsideGrid` | the normal of a planar height field follows both slopes inside the grid and has zero slope along each axis beyond it |
 | `fresnelGrazingExceedsNormal` | reflectance is F0 at the centre and matches analytic Schlick at the silhouette, which exceeds it |
 | `frameTime` | logs the compile and per-frame time and writes `results/implicit-surface-height-field.png` |
 
 `CameraRayIntersectionTest.kernelMatchesPerPixel` checks that the batched camera ray graph
-gives the same intersection distances as evaluating each pixel on its own.
+gives the same intersection distances as evaluating each pixel on its own, and
+`BatchItemTests` (`engine/utils`) covers what the camera rays rely on for batched collections: lower-rank
+subsets read from every item, vectors built from batched components, a shared ray origin
+repeated per item, and `scale` applied to each vector.
 
 ---
 
@@ -281,7 +291,7 @@ gives the same intersection distances as evaluating each pixel on its own.
   is reported as a miss. Rays that graze a height field take many small steps; raise
   `marchSteps` or `minimumStep` (a larger minimum step can skip a thin crossing).
 - **Height fields outside the grid** take the height of the nearest edge, so the surface
-  extends as flat skirts; keep the camera's view of the grid inside its footprint, or put
+  extends as flat skirts (with flat normals); keep the camera's view of the grid inside its footprint, or put
   the footprint where the skirts do not matter.
 - **Bilinear sampling** follows the samples, not the function they came from: between
   nodes the surface is within about `|h''| dx^2 / 8` of a smooth function.
