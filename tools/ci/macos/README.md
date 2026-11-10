@@ -770,7 +770,10 @@ the runner's environment instead; `xcodebuild` honors it over `xcode-select`.
 
 - Verify `java` is on PATH: `which java && java -version`
 - If using Homebrew: `brew info --cask temurin@17`
-- The `actions/setup-java` workflow step will also configure the path
+- The CI jobs no longer install or configure Java with `actions/setup-java`;
+  they use the host's `java` directly (see "JDK Version"). Make sure the JDK is
+  on the PATH the LaunchDaemon gives the runner (`RUNNER_PATH` under
+  Configuration), not only on your interactive shell's PATH
 
 ## Test Data (Sample Library)
 
