@@ -33,6 +33,13 @@
 #                          for test-runner / tooling guidance (default:
 #                          test-runner-maven.txt). A non-Maven consumer passes
 #                          test-runner-generic.txt (or another published one).
+#   LEADS_FILE           - path to a file whose contents the round's workflow
+#                          computed before the prompt was built (e.g. the flaky
+#                          round's observed-flake evidence). Its text replaces
+#                          ${LEADS} in the template. A template that names
+#                          ${LEADS} without this set — or with a missing or
+#                          empty file — gets an empty section; a template that
+#                          does not name it is unaffected.
 #
 # Exit codes:
 #   0 - prompt written successfully
@@ -64,6 +71,18 @@ source "${SCRIPT_DIR}/prompt-render.sh"
 export REPO_URL="${REPO_URL:-}"
 export TEST_RUNNER_FRAGMENT="${TEST_RUNNER_FRAGMENT:-test-runner-maven.txt}"
 
+# The round-computed leads section (the flaky round's observed-flake evidence).
+# It is a whole multi-line block, so it cannot travel as a TEMPLATE_VARS value
+# (those are single-line); the workflow writes it to LEADS_FILE and it is
+# substituted for ${LEADS} here. Absent, missing or empty leaves ${LEADS} empty,
+# which a template that names it renders as a blank section and one that does
+# not name it ignores.
+LEADS=""
+if [ -n "${LEADS_FILE:-}" ] && [ -s "${LEADS_FILE}" ]; then
+    LEADS="$(cat "${LEADS_FILE}")"
+fi
+export LEADS
+
 # A built-in selector names a framework template; anything else is a path,
 # relative to the caller's checkout, read as data. Reject an absolute path or
 # one that climbs out of the checkout.
@@ -86,8 +105,9 @@ if [ ! -f "$TEMPLATE" ]; then
 fi
 
 # The names substituted into the template: the three the workflow always
-# supplies, plus every key the caller listed in TEMPLATE_VARS.
-NAMES=(BRANCH BASE_BRANCH REPO_URL)
+# supplies, the round-computed leads section, plus every key the caller listed
+# in TEMPLATE_VARS.
+NAMES=(BRANCH BASE_BRANCH REPO_URL LEADS)
 
 if [ -n "${TEMPLATE_VARS:-}" ]; then
     # Captured by command substitution rather than read from a process
@@ -103,7 +123,7 @@ import json, os, sys
 # builder refuses it instead of exporting it.
 RESERVED = {
     "PATH", "HOME", "IFS",
-    "BRANCH", "BASE_BRANCH", "REPO_URL",
+    "BRANCH", "BASE_BRANCH", "REPO_URL", "LEADS",
     "PROMPT", "TEMPLATE_VARS", "TEST_RUNNER_FRAGMENT",
 }
 raw = os.environ.get("TEMPLATE_VARS", "").strip()
