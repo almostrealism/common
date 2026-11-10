@@ -489,13 +489,18 @@ jobs:
       FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
 
   # ── Quality Assurance — Flaky-Test Hunt (pilot) ──────────────────
-  # Takes one module and a small, named slice of its tests, runs that slice
-  # repeatedly on the current commit, and looks for a test whose outcome varies
-  # with no change to the code under test. A PILOT: its
+  # Starts from the flakes CI has already observed — tests that failed in one
+  # attempt of a Build and Test run and passed in a later attempt of the same
+  # commit, which rerun-flaky-tests.sh surfaces — collected by
+  # tools/ci/collect-observed-flakes.py (the leads-script) into the prompt's
+  # leads section, then reproduces or diagnoses one. A PILOT: its
   # interval is 7 days and it deliberately does NOT raise the shared MAX_OPEN_PRS
   # (the note above the jobs). PROTECT_TEST_FILES stays on — the test that reveals
   # the flake is the specification — and it pins claude/opus, as telling a real
-  # flake from a deterministic failure is judgment. A caller of qa-round.yaml.
+  # flake from a deterministic failure is judgment. Like the performance round it
+  # carries required-labels/-json pinning the submission and every later job on
+  # the workstream to a macOS Node, so the Metal and native lanes its observed
+  # flakes come from are reproducible. A caller of qa-round.yaml.
   flaky-qa:
     if: >-
       github.event_name != 'workflow_dispatch' ||
@@ -504,6 +509,11 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      # The leads-script reads the Actions API (workflow runs, their per-attempt
+      # jobs and job logs) to collect CI's observed flakes. A called workflow's
+      # token can only narrow the caller's grant, so the caller must grant
+      # actions: read for the collect step to receive it.
+      actions: read
 
     # Serialize so two merges landing together cannot both pass the gate.
     concurrency:
@@ -520,8 +530,15 @@ jobs:
       force: ${{ github.event.inputs.force || 'false' }}
       ignore-interval: ${{ github.event.inputs.ignore_interval_flaky || 'false' }}
       prompt: flaky-hunt
+      # Collect CI's observed flakes into the prompt before it is built.
+      leads-script: tools/ci/collect-observed-flakes.py
       protect-test-files: "true"
       phase-configs: '{"primary": {"runner": "claude", "model": "opus", "provider": "anthropic"}}'
+      # Route the round to a macOS Node — the submission and every later job on
+      # the workstream — so the Metal and native lanes its observed flakes come
+      # from are reproducible, exactly as performance-qa does.
+      required-labels: '{"platform": "macos"}'
+      required-labels-json: '{"platform": "macos"}'
       description: "Pilot: hunt a flaky test and fix its nondeterminism or file a follow-up"
       controller-url: ${{ vars.FLOWTREE_CONTROLLER_URL }}
       cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}

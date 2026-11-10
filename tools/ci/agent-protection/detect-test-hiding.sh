@@ -36,9 +36,15 @@
 # whose name begins with "assert" (e.g. `protected void assertWithin(...) {`) — a
 # method name is not an assertion call. The declaration exclusion is applied
 # symmetrically to the removed and added side. Pattern 3
-# (NET_TEST_METHODS_REMOVED) counts `@Test` lines and needs no equivalent
-# exclusion: a declaration line carries no `@Test` annotation and no method is
-# named `@Test`, so it cannot mistake a declaration for a test method.
+# (NET_TEST_METHODS_REMOVED) counts the `@Test` annotation itself via
+# count_test_annotations, which strips string/char literals and line and block
+# comments (tracking multi-line `/* ... */` state across a hunk) before matching
+# `@Test`/`@Test(...)` as an annotation. That makes the count immune to four
+# disguises a bare regex cannot see through: the @TestProperties/@TestDepth/
+# @TestFactory prefixes (trailing boundary), the token inside a string literal,
+# the token inside a line or block comment — including an unstarred
+# `/*\n@Test\n*/` continuation — and, counted rather than missed, a real `@Test`
+# preceded on its line by a sibling annotation (`@TestProperties(...) @Test(...)`).
 #
 # Exit codes:
 #   0 - no test-hiding detected (or only new test files modified)
@@ -492,6 +498,74 @@ count_unpaired_removals() {
     ' <<< "$diff"
 }
 
+# Counts `@Test` annotations on one side of a unified diff: the removed side
+# when MARKER is "-", the added side when "+". The token is counted only where
+# it is a genuine `@Test`/`@Test(...)` annotation, which requires looking past
+# four disguises a single-line regex cannot see through:
+#   - a longer annotation that merely shares the prefix (@TestProperties,
+#     @TestDepth, @TestFactory) — excluded by the trailing boundary;
+#   - the token inside a string literal, a line comment, or a single- or
+#     multi-line block comment (`/*\n@Test(...)\n*/`) — excluded by stripping
+#     strings and comments, tracking block-comment state across the side's
+#     lines in hunk order (reset at each `@@` so an unterminated block cannot
+#     bleed across hunks);
+#   - the token preceded on the same line by other annotations
+#     (`@TestProperties(knownIssue = true) @Test(timeout = 120000)`) — counted,
+#     because after stripping the match only requires `@Test` to sit at line
+#     start or after whitespace, not immediately after the diff marker.
+# Stripping before matching is what lets the same ruleset both ignore a `@Test`
+# buried in a deleted doc block and catch one that trails a sibling annotation.
+count_test_annotations() {
+    local diff="$1"
+    local marker="$2"
+    [ -z "$diff" ] && { echo 0; return 0; }
+    awk -v marker="$marker" '
+        function skip_quote(s, i, q,   n, c) {
+            n = length(s)
+            while (i <= n) {
+                c = substr(s, i, 1)
+                if (c == "\\") { i += 2; continue }
+                if (c == q) return i + 1
+                i += 1
+            }
+            return i    # unterminated literal: consume to end of line
+        }
+        # Returns the code portion of a line with string/char literals, line
+        # comments and block comments removed. Uses the global in_block state
+        # so a block comment opened on an earlier line keeps suppressing text
+        # until its closing */.
+        function strip(s,   out, i, n, c, c2) {
+            out = ""
+            n = length(s)
+            i = 1
+            while (i <= n) {
+                c = substr(s, i, 1)
+                c2 = substr(s, i, 2)
+                if (in_block) {
+                    if (c2 == "*/") { in_block = 0; i += 2 } else { i += 1 }
+                    continue
+                }
+                if (c2 == "/*") { in_block = 1; i += 2; continue }
+                if (c2 == "//") break
+                if (c == "\"") { i = skip_quote(s, i + 1, "\""); continue }
+                if (c == "\047") { i = skip_quote(s, i + 1, "\047"); continue }
+                out = out c
+                i += 1
+            }
+            return out
+        }
+        BEGIN { in_block = 0; count = 0 }
+        /^@@/ { in_block = 0; next }                  # new hunk: drop stale block state
+        substr($0, 1, 3) == "---" || substr($0, 1, 3) == "+++" { next }
+        substr($0, 1, 1) != marker { next }
+        {
+            code = strip(substr($0, 2))               # drop the diff marker
+            if (code ~ /(^|[ \t])@Test([ \t(]|$)/) count++
+        }
+        END { print count }
+    ' <<< "$diff"
+}
+
 # ── File-level checks ───────────────────────────────────────────────────
 
 # Get list of modified (not added) test files.
@@ -587,8 +661,15 @@ for FILE in $MODIFIED_TEST_FILES; do
     fi
 
     # ── Pattern 3: Deleted @Test methods (net) ──
-    DELETED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\-.*@Test' || true)
-    ADDED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\+.*@Test' || true)
+    # Count @Test annotations on each side with count_test_annotations, which
+    # strips strings and comments (tracking multi-line block comments) before
+    # matching, so the count is immune to the four disguises documented on that
+    # helper: the @TestProperties/@TestDepth/@TestFactory prefixes, the token in
+    # a string literal, the token in a line or block comment (including an
+    # unstarred `/*\n@Test\n*/` continuation), and the real annotation preceded
+    # on its line by a sibling annotation.
+    DELETED_TEST_METHODS=$(count_test_annotations "$DIFF" "-")
+    ADDED_TEST_METHODS=$(count_test_annotations "$DIFF" "+")
     if [ "$DELETED_TEST_METHODS" -gt 0 ] && [ "$ADDED_TEST_METHODS" -lt "$DELETED_TEST_METHODS" ]; then
         NET_REMOVED=$((DELETED_TEST_METHODS - ADDED_TEST_METHODS))
         record_violation "$FILE" "NET_TEST_METHODS_REMOVED" \
