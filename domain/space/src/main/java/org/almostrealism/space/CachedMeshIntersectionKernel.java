@@ -210,18 +210,19 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	public Evaluable<Vector> getClosestNormal() {
 		if (closestNormal == null) {
 			closestNormal = new HardwareEvaluable<Vector>(() -> args -> {
+				int a;
 				if (cache == null) {
 					Pair hit = accelerated ? data.evaluateIntersectionAccelerated(ray, args)
-								: data.evaluateIntersection(ray, args);
-						return new Vector(data.range(new TraversalPolicy(3), ((int) hit.getB()) * 12 + 9), 0);
+							: data.evaluateIntersection(ray, args);
+					a = (int) hit.getB();
 				} else {
 					Pair pos = (Pair) args[0];
 					int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-					if (n < 0) return new Vector(ZeroVector.getEvaluable().evaluate(), 0);
-					int a = (int) cache.toDouble(n * 2 + 1);
-					if (a < 0) return new Vector(ZeroVector.getEvaluable().evaluate(), 0);
-					return new Vector(data.range(new TraversalPolicy(3), a * 12 + 9), 0);
+					a = n < 0 ? -1 : (int) cache.toDouble(n * 2 + 1);
 				}
+
+				if (a < 0) return new Vector(ZeroVector.getEvaluable().evaluate(), 0);
+				return new Vector(data.range(new TraversalPolicy(3), a * 12 + 9), 0);
 			}, new MemoryDataDestination<Vector>(size -> (MemoryBank) Vector.bank(size)), null, true);
 		}
 

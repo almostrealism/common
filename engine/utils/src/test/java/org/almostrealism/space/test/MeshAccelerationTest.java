@@ -25,6 +25,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.space.BoundingVolumeHierarchy;
+import org.almostrealism.space.CachedMeshIntersectionKernel;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
@@ -58,9 +59,13 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		return sin(ij[0].multiply(0.6)).multiply(0.6).add(cos(ij[1].multiply(0.5)).multiply(0.3));
 	}
 
-	/** Diagnostic: a ray that hits only the second of two triangles must report triangle index 1. */
-	@Test(timeout = 60000)
-	public void multiTriangleScan() {
+	/**
+	 * Builds a two-triangle mesh in the {@code z = 0} plane: a small triangle far along X
+	 * (index 0) and a large triangle covering the origin (index 1).
+	 *
+	 * @return the device mesh data for the two triangles
+	 */
+	private static MeshData twoTriangleMesh() {
 		DefaultVertexData data = new DefaultVertexData(6, 2);
 		data.getVertices().set(0, new Vector(100.0, 1.0, 0.0));
 		data.getVertices().set(1, new Vector(99.0, -1.0, 0.0));
@@ -70,9 +75,41 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		data.getVertices().set(4, new Vector(-100.0, -100.0, 0.0));
 		data.getVertices().set(5, new Vector(100.0, -100.0, 0.0));
 		data.setTriangle(1, 3, 4, 5);
+		return new Mesh(data).getMeshData();
+	}
 
-		Mesh mesh = new Mesh(data);
-		MeshData md = mesh.getMeshData();
+	/**
+	 * Without a populated cache, {@link CachedMeshIntersectionKernel#getClosestNormal()} must
+	 * return the hit triangle's face normal for a hit and the zero vector for a miss, whether
+	 * intersection runs as a linear scan or through the acceleration structure. A miss reports
+	 * triangle index {@code -1}, which must not be turned into a mesh-data offset.
+	 */
+	@Test(timeout = 60000)
+	public void uncachedClosestNormalHitAndMiss() {
+		MeshData md = twoTriangleMesh();
+
+		for (boolean accelerated : new boolean[] { false, true }) {
+			Producer<Ray> hitRay = (Producer) ray(vector(0.0, 1.0, 1.0), vector(0.0, 0.0, -1.0));
+			Vector hit = new CachedMeshIntersectionKernel(md, hitRay, accelerated)
+					.getClosestNormal().evaluate();
+			Assert.assertEquals("hit normal x, accelerated=" + accelerated, 0.0, hit.getX(), 1e-6);
+			Assert.assertEquals("hit normal y, accelerated=" + accelerated, 0.0, hit.getY(), 1e-6);
+			Assert.assertEquals("hit normal |z|, accelerated=" + accelerated,
+					1.0, Math.abs(hit.getZ()), 1e-6);
+
+			Producer<Ray> missRay = (Producer) ray(vector(0.0, 1.0, 1.0), vector(0.0, 0.0, 1.0));
+			Vector miss = new CachedMeshIntersectionKernel(md, missRay, accelerated)
+					.getClosestNormal().evaluate();
+			Assert.assertEquals("miss normal x, accelerated=" + accelerated, 0.0, miss.getX(), 0.0);
+			Assert.assertEquals("miss normal y, accelerated=" + accelerated, 0.0, miss.getY(), 0.0);
+			Assert.assertEquals("miss normal z, accelerated=" + accelerated, 0.0, miss.getZ(), 0.0);
+		}
+	}
+
+	/** Diagnostic: a ray that hits only the second of two triangles must report triangle index 1. */
+	@Test(timeout = 60000)
+	public void multiTriangleScan() {
+		MeshData md = twoTriangleMesh();
 
 		Producer<Ray> rp = (Producer) ray(vector(0.0, 1.0, 1.0), vector(0.0, 0.0, -1.0));
 		Evaluable<Ray> re = rp.get();
