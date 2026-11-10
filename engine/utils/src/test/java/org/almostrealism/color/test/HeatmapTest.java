@@ -128,6 +128,31 @@ public class HeatmapTest extends TestSuiteBase implements RGBFeatures {
 	}
 
 	/**
+	 * A flat field has no range of its own, so auto-range saving gives it a unit range and every
+	 * cell maps to the low colour (blue) rather than dividing by a zero range. This exercises the
+	 * degenerate-range guard in {@code saveHeatmap(File, String, Producer)}.
+	 */
+	@Test(timeout = 60000)
+	public void autoRangeFlatFieldMapsToLow() throws IOException {
+		PackedCollection field = pack(3.0, 3.0, 3.0, 3.0).reshape(shape(2, 2));
+
+		File file = File.createTempFile("heatmap-flat-test", ".png");
+		file.deleteOnExit();
+
+		saveHeatmap(file, "png", cp(field)).get().run();
+
+		BufferedImage decoded = ImageIO.read(file);
+		for (int y = 0; y < decoded.getHeight(); y++) {
+			for (int x = 0; x < decoded.getWidth(); x++) {
+				RGB cell = GraphicsConverter.convertToRGB(new Color(decoded.getRGB(x, y)));
+				Assert.assertEquals("red at " + x + "," + y, 0.0, cell.getRed(), 0.02);
+				Assert.assertEquals("green at " + x + "," + y, 0.0, cell.getGreen(), 0.02);
+				Assert.assertEquals("blue at " + x + "," + y, 1.0, cell.getBlue(), 0.02);
+			}
+		}
+	}
+
+	/**
 	 * A range whose {@code max} is not greater than its {@code min} is rejected with
 	 * {@link IllegalArgumentException} when the heatmap is built, so a degenerate scale cannot
 	 * silently divide by zero: both {@code max == min} and {@code max < min} are refused.
