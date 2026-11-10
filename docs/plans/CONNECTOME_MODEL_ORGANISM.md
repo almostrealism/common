@@ -7,8 +7,10 @@ tracker: []
 
 # A Connectome Model Organism for Brain–Computer Interface Research
 
-**Status:** Proposal. Nothing here is implemented. The tracker tasks for Phase 1 are filed in the
-Common project (see "Phase 1 tasks"); later phases are described but not yet filed.
+**Status:** Proposal. The connectome model organism itself is not yet built, but some of the
+general platform capabilities it needs have since landed (the ordered-collection kernel inputs and
+the integer safetensors/protobuf payloads — see "Phase 1 tasks"). The tracker tasks for Phase 1 are
+filed in the Common project; later phases are described but not yet filed.
 
 ## Goal
 
@@ -120,28 +122,32 @@ or recurrent-training parts.
   (the self-hosted language model plans) and is not repeated here. The implant network in this
   project is small, so it needs that effort to continue, not to finish.
 
-### Two sparse representations, neither ready
+### Two sparse representations
 
 - **`Tensor`** (`compute/algebra`) stores values in nested lists that grow as needed. It is
   practical for very sparse data only, becomes inefficient once the number of non-zero values is
   even modest, and lives on the host. It is used mostly to build test data. It is not a candidate
   for 50–125 million edges.
-- **`PackedCollection` with a sparse `TraversalOrdering`** is the better design, but it is not
-  reliably usable, because `TraversalOrdering` and `TraversableExpression` are poorly integrated:
-  - an ordered collection cannot be the input to a kernel: any `ExplicitIndexTraversalOrdering`
-    (even a full permutation) or `IndexMaskTraversalOrdering` input fails at compile time
-    (reproduced 2026-10-23). The host-path tests
-    `CollectionOrderingTests.compactOrdering`, `maskOrdering` and `repeatOrdering` are still marked
-    `knownIssue`, but they now pass;
-  - `ReshapeProducer.containsIndex` and `SlicingFeatures.pad` throw for an ordered shape;
-  - `IndexMaskTraversalOrdering.indexOf` needs a constant index and scans the mask on the host, so
-    it can never appear in generated code;
-  - computations strip the ordering from their output shape, so nothing can produce an ordered
-    result;
-  - `TraversableExpression.containsIndex` throws by default.
+- **`PackedCollection` with a sparse `TraversalOrdering`** is the better design, and an ordered
+  collection is now a correct **input** to a kernel. A compact `ExplicitIndexTraversalOrdering`
+  (including a full permutation) and an `IndexMaskTraversalOrdering` compile and return the expected
+  values through element-wise, reshape, subset, pad and matrix-multiply kernels, on both the native
+  and Metal backends (`OrderedCollectionInputTests`). The integration that made this work:
+  - the index table or mask is delivered to the kernel as an argument and read symbolically rather
+    than being scanned on the host, so an `IndexMaskTraversalOrdering` lookup can appear in generated
+    code;
+  - `ReshapeProducer.containsIndex` and `SlicingFeatures.pad` accept an ordered shape;
+  - `TraversableExpression.containsIndex` defaults to membership of every non-negative index instead
+    of throwing;
+  - the host-path tests `CollectionOrderingTests.compactOrdering`, `maskOrdering` and
+    `repeatOrdering` no longer carry a `knownIssue` flag.
 
-  This integration is also the subject of the existing tracker task "Sparse traversal support",
-  which wants the same machinery for the large, mostly-zero outputs of delta computations.
+  One deliberate limitation remains: computations still strip the ordering from their **output**
+  shape (`CollectionProducerComputationBase` applies `withOrder(null)`), so a computation reads
+  through an ordering but cannot *produce* a compact or sparse result. Producing one is a
+  scatter/segmented reduction, a materially larger change left to the sparse-matrix work. That is
+  the same machinery the existing tracker task "Sparse traversal support" wants for the large,
+  mostly-zero outputs of delta computations.
 
 ### Missing
 
@@ -150,7 +156,6 @@ or recurrent-training parts.
 | No sparse matrix type and no sparse matrix–vector product | A neuron-level step cannot be expressed. A dense 166k × 166k matrix is about 110 GB in FP32, so dense is not a fallback. |
 | No reduction of per-edge values into their targets (segmented sum or scatter-add), and no atomics in any backend's code generation | Per-edge terms can be formed but not summed into postsynaptic neurons. |
 | Index data is floating point, and FP32 backends (Metal) are exact only to 2^24 | Row offsets into a 50-million-edge array cannot be stored exactly on Metal. |
-| No integer dtypes in `SafetensorsReference` (it reads BF16, F16, F32 and F64) and no integer payload in `collections.proto` | There is no way to bring an edge list in exactly. |
 | `Random` generates values on the host and caches them until refreshed | Per-step Poisson drive would mean host work inside the simulation loop. |
 | No owner for a closed simulation loop | The rule that one class owns each loop (`ModelOptimizer` for training, `DiffusionSampler` for sampling) has no counterpart for simulation. |
 | No backpropagation through time, no surrogate gradients, and gather has no reduced delta (its gradient falls back to the full Jacobian) | Needed for Phase 3 only. |
@@ -186,8 +191,8 @@ The sparse type is general linear algebra and belongs in `compute/algebra`, not 
 connectome-specific place. Whether it is backed by the `TraversalOrdering` machinery or holds its
 arrays directly is a design question for the sparse-matrix task. The matrix–vector product above
 does not need a compact ordering to work, so it is not blocked on fixing the ordering integration.
-Fixing that integration is still filed in Phase 1, because it is what makes a sparse
-`PackedCollection` usable as an ordinary collection everywhere else.
+That integration is Phase 1 task 1, now complete for ordered inputs, because it is what makes a
+sparse `PackedCollection` usable as an ordinary collection everywhere else.
 
 **Event-driven propagation** (touch only the outgoing edges of neurons that spiked) is cheaper at
 fly firing rates, but it needs a scatter-add. It is an optimization for later, not a Phase 1
@@ -220,9 +225,9 @@ neuron-to-neuron edges. Following the PDSL plan's data decisions:
 
 - the source tables are Apache Arrow Feather files, kept in the shared model directory (see "Assets");
 - a one-time conversion (Python, with `pyarrow`) writes the edge list as **safetensors with integer
-  arrays**, which the pure Java reader can then load once it accepts integer dtypes;
-- the framework's own form is protobuf (`CollectionLibraryData`), which needs an integer payload
-  for index arrays;
+  arrays**, which the pure Java reader now loads directly, since it accepts integer dtypes;
+- the framework's own form is protobuf (`CollectionLibraryData`), which now carries an integer
+  payload for index arrays;
 - signs come from the predicted neurotransmitter, using the same rule as Shiu et al.
   (acetylcholine excitatory; GABA and glutamate inhibitory), so the parity comparison is
   like-for-like.
@@ -332,11 +337,12 @@ plasticity at the mushroom body's learning synapses, and study co-adaptation.
 Filed on 2026-10-21 in the Common tracker project, in the release under development. Blockers are
 recorded on the tasks. The order below is the dependency order (tracker id prefixes in brackets):
 
-1. Make sparse `TraversalOrdering` work through `TraversableExpression` [82bda0b7]. Related to
-   the existing "Sparse traversal support" task [87b95b81].
+1. Make sparse `TraversalOrdering` work through `TraversableExpression` [82bda0b7] — **done** for
+   ordered kernel *inputs* (`OrderedCollectionInputTests`); producing ordered outputs stays out of
+   scope. Related to the existing "Sparse traversal support" task [87b95b81].
 2. Integer-exact index storage for gather and sparse addressing on FP32 backends [2c0793a7].
 3. Integer dtypes in `SafetensorsReference` and an integer payload in `collections.proto`
-   [3e0043d3].
+   [3e0043d3] — **done** (I32/I64 dtypes and the `data_i32`/`data_i64` protobuf payloads).
 4. A sparse matrix type and a sparse matrix–vector product with a segmented reduction (after 2)
    [66b57639].
 5. Counter-based random numbers generated inside kernels [18c76a7a].
