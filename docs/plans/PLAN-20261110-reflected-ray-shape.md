@@ -34,6 +34,36 @@ execution discipline the whole platform is built on. A renderer whose reflection
 runs, guarded by a CI assertion, is a stronger foundation for everything downstream, human- or
 model-driven.
 
+## Relationship to existing work — this fix is already implemented on an open PR
+
+**Before scheduling this plan, read it against PR #886 (branch `feature/glossy-reflection`,
+"Make ray-traced reflection render and rewrite refraction as a graph"), which is open at the time
+of writing and already implements everything this plan proposes — and more.** That branch:
+
+- rebuilds `ReflectedRay` (`compute/geometry`) as a shape-`(6)` `TraversableExpressionComputation`
+  (no host-Java `evaluate`, no throwing `getScope`), keeping a public four-argument constructor —
+  this plan's **Scope item 1**;
+- reworks `ReflectionShader.shade` so the reflected-ray aggregation builds and runs — this plan's
+  **Scope item 3** (it reworks the aggregator rather than routing `shadeFront` through the
+  `shadeBack` value path, so the *approach* to gap (b) differs from §Approach step 3 below, but it
+  reaches the same end: a reflection that renders);
+- clears the `knownIssue` flag on `reflectiveSphereShowsFloor` so the render assertion runs in CI —
+  this plan's **Scope item 4** (verified: on that branch the method carries `@Test` only);
+- goes **beyond this plan's scope** by also rewriting `RefractionShader` as a Producer graph and
+  adding a new `docs/internals/ray-traced-reflection-and-refraction.md`, i.e. the refraction
+  follow-up this plan explicitly scopes out. Note that `refractiveSphereShowsFloor` still carries
+  `knownIssue` on that branch, so the refraction *render assertion* is not yet enabled there.
+
+The defect analysis in the sections below is independently accurate against `origin/master` (every
+claim was re-verified), so this plan remains a correct specification of the problem. What it is
+**not** is un-started work. The decision for whoever approves this plan is therefore: **review and
+merge PR #886 rather than carry this plan out from scratch**, and if #886 is merged, mark this plan
+`completed` (or `abandoned` as superseded) rather than dispatching it. If #886 is instead rejected
+or substantially reworked, this plan's narrower, two-edit approach remains available as the
+fallback. Either way, do not run both in parallel: a second implementation of the same reflection
+fix would collide with #886 on `ReflectedRay` and `ReflectionShader`. See also the **Open
+questions** section.
+
 ## The defect (evidence)
 
 `ReflectionRefractionRenderTest.reflectiveSphereShowsFloor` renders a single sphere carrying only
@@ -162,3 +192,24 @@ Medium. Two localized edits (`ReflectedRay` in `compute/geometry`; the `shadeFro
 `ReflectionShader` in `engine/render`) plus clearing one `knownIssue` flag. The risk is in making
 the rewritten `ReflectedRay` graph exactly reproduce the old mirror reflection and in the
 glossy-blur decision; both are bounded and testable.
+
+## Open questions
+
+- **This is already implemented — approve the existing PR, do not re-run this plan.** PR #886
+  (`feature/glossy-reflection`) is open and implements all of Scope items 1, 3 and 4 (and the
+  out-of-scope refraction graph rewrite). The primary decision is whether to merge that PR and close
+  this plan as superseded, versus dispatching this plan as fresh work. Running both produces two
+  conflicting rewrites of `ReflectedRay`/`ReflectionShader`. See **Relationship to existing work**.
+- **Gap (b) approach is not settled.** This plan proposes routing `shadeFront` through the
+  `shadeBack` aggregator-as-value path (no change to the aggregator). PR #886 instead reworks the
+  aggregator itself. If this plan were carried out independently, the reviewer should decide which
+  route is preferred; the two should not both land.
+- **Refraction coupling.** This plan scopes refraction out, but PR #886 fixes reflection and
+  refraction together in one changeset touching shared types (`ShaderContext`, `LightingEngine`,
+  `LightingEngineAggregator`). If the owner prefers to keep the reflection fix small and separate,
+  that is an argument *for* this plan's narrower scope and *against* #886 as-is — a trade-off for
+  the approver, not a settled matter.
+- **Glossy `blur != 0` graph form** remains genuinely open (the mirror case `blur == 0` is exact and
+  unambiguous); whichever implementation lands must decide whether to express the tangent-plane
+  perturbation with the framework's random features or record it as a documented follow-up. It must
+  not reintroduce a host-Java per-element `evaluate`.

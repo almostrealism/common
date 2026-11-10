@@ -102,9 +102,14 @@ is a medium task touching two files plus one `knownIssue` flag, runs on any node
 #### What comes next
 
 1. This plan: the `ReflectedRay` Producer-graph rewrite, the `shadeFront` selection-path switch, and
-   the cleared `knownIssue` on `reflectiveSphereShowsFloor`.
+   the cleared `knownIssue` on `reflectiveSphereShowsFloor`. **Already implemented on an open PR
+   (#886, `feature/glossy-reflection`), which also covers item 2 below** — so the live decision is to
+   review/merge that PR rather than dispatch this plan fresh (see the plan's *Relationship to existing
+   work* section).
 2. **Code quality, sibling:** fix refraction (`RefractionShader` / `GeneratedColorProducer.getShape`
-   `ClassCastException`) and clear `refractiveSphereShowsFloor` (ferrofluid §5 item 3).
+   `ClassCastException`) and clear `refractiveSphereShowsFloor` (ferrofluid §5 item 3). PR #886
+   rewrites `RefractionShader` as a graph too, though it leaves `refractiveSphereShowsFloor` pinned
+   `knownIssue` (the render assertion is not yet enabled).
 3. **Proof of value, ferrofluid Phase 0:** the end-to-end vertical slice (height field → mesh →
    static render), once the owner settles the fluid-method / surface-representation choices
    (§6.1/§6.2). The plan recommends height-field + tessellation.
