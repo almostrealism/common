@@ -47,10 +47,11 @@ import java.util.List;
  *   <li>One row for the precomputed face normal</li>
  * </ul>
  *
- * <p>The class provides efficient batch ray intersection evaluation methods that can
- * operate on multiple rays simultaneously, leveraging hardware parallelism when available.
- * For memory-constrained environments, a partial kernel mode allows processing one ray
- * at a time.
+ * <p>The class provides ray intersection evaluation methods for both single rays and
+ * batches. Each ray is tested against the whole mesh in one compiled {@code meshIntersectAt}
+ * kernel and the closest hit is selected; the batch methods loop the rays on the host. An
+ * optional {@link BoundingVolumeHierarchy} path ({@link #evaluateIntersectionAccelerated})
+ * restricts each ray to its candidate triangles while running the same per-triangle kernel.
  *
  * <h3>Usage Example:</h3>
  * <pre>{@code

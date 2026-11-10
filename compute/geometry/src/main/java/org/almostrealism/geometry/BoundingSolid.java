@@ -197,7 +197,11 @@ public class BoundingSolid {
      * given direction enters this box at a non-negative distance, using the slab method.
      *
      * <p>This is the broad-phase test used by acceleration structures: a triangle whose
-     * box fails this test cannot be hit by the ray.</p>
+     * box fails this test cannot be hit by the ray. It runs for every hierarchy node and
+     * leaf triangle, so the slab state is kept in scalar locals rather than per-axis arrays
+     * to avoid allocating garbage proportional to the number of boxes tested. Because
+     * {@code tmin} only grows and {@code tmax} only shrinks as axes are narrowed, a single
+     * {@code tmin <= tmax} check after all three axes is equivalent to testing it per axis.</p>
      *
      * @param ox   origin x
      * @param oy   origin y
@@ -211,30 +215,37 @@ public class BoundingSolid {
         double tmin = 0.0;
         double tmax = Double.POSITIVE_INFINITY;
 
-        double[] origin = { ox, oy, oz };
-        double[] direction = { dirX, dirY, dirZ };
-        double[] lo = { minX, minY, minZ };
-        double[] hi = { maxX, maxY, maxZ };
-
-        for (int a = 0; a < 3; a++) {
-            if (direction[a] == 0.0) {
-                if (origin[a] < lo[a] || origin[a] > hi[a]) return false;
-            } else {
-                double inv = 1.0 / direction[a];
-                double t1 = (lo[a] - origin[a]) * inv;
-                double t2 = (hi[a] - origin[a]) * inv;
-                if (t1 > t2) {
-                    double tmp = t1;
-                    t1 = t2;
-                    t2 = tmp;
-                }
-                if (t1 > tmin) tmin = t1;
-                if (t2 < tmax) tmax = t2;
-                if (tmin > tmax) return false;
-            }
+        if (dirX == 0.0) {
+            if (ox < minX || ox > maxX) return false;
+        } else {
+            double inv = 1.0 / dirX;
+            double t1 = (minX - ox) * inv;
+            double t2 = (maxX - ox) * inv;
+            tmin = Math.max(tmin, Math.min(t1, t2));
+            tmax = Math.min(tmax, Math.max(t1, t2));
         }
 
-        return true;
+        if (dirY == 0.0) {
+            if (oy < minY || oy > maxY) return false;
+        } else {
+            double inv = 1.0 / dirY;
+            double t1 = (minY - oy) * inv;
+            double t2 = (maxY - oy) * inv;
+            tmin = Math.max(tmin, Math.min(t1, t2));
+            tmax = Math.min(tmax, Math.max(t1, t2));
+        }
+
+        if (dirZ == 0.0) {
+            if (oz < minZ || oz > maxZ) return false;
+        } else {
+            double inv = 1.0 / dirZ;
+            double t1 = (minZ - oz) * inv;
+            double t2 = (maxZ - oz) * inv;
+            tmin = Math.max(tmin, Math.min(t1, t2));
+            tmax = Math.min(tmax, Math.max(t1, t2));
+        }
+
+        return tmin <= tmax;
     }
 
     /**
