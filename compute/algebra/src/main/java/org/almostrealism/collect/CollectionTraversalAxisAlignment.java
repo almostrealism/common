@@ -75,7 +75,6 @@ public class CollectionTraversalAxisAlignment extends TraversalAxisAlignment<Pro
 	 */
 	@Override
 	protected Producer<PackedCollection> expand(int repeat, Producer<PackedCollection> producer) {
-		// TODO(review): broadened repeat rule affects every caller of alignTraversalAxes; add a direct ar-algebra test for the fixed-shape variable-count case
 		if (enableVariableRepeat || Countable.isFixedCount(producer) || shapeOf(producer).isFixedCount()) {
 			return repeat(repeat, producer);
 		}

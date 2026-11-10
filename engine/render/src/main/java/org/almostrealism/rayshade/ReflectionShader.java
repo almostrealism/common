@@ -190,7 +190,8 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 													Producer<PackedCollection> tint) {
 		Producer<PackedCollection> reflectedRay = new ReflectedRay(point, viewer, normal, blur);
 
-		// TODO  Environment map should be a feature of the aggregator
+		// A reflected ray that misses every surface contributes black: the environment map is not
+		// yet consulted (a known limitation in docs/internals/ray-traced-reflection-and-refraction.md)
 		CollectionProducer color = new LightingEngineAggregator(reflectedRay, surfaces, lights, context)
 				.getClosestColor();
 

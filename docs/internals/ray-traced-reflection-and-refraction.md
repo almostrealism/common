@@ -153,8 +153,9 @@ Metal, most of it compiling. Keep test images small and recursion limits low.
 
 ## Tests
 
-- `ReflectionRefractionRenderTest` (`engine/render`): a mirror sphere and a refractive
-  sphere each show the lit floor.
+- `ReflectionRefractionRenderTest` (`engine/render`): a mirror sphere shows the lit floor.
+  The matching refractive-sphere test is still a known issue (it does not finish within
+  its timeout, as described above), so CI skips it and refraction is not yet covered.
 - `MirrorReflectionTest` (`engine/render`): a mirror sphere reflects a red plane behind the
   camera exactly where an analytic trace of the same pixels predicts.
 - `SimpleRenderTest` (`engine/render`): single-sphere renders through `RayTracedScene`.
