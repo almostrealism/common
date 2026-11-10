@@ -1047,6 +1047,82 @@ public class CameraRayIntersectionTest {
         "CameraRayIntersectionTest.java"
 }
 
+# ── Scenario: same-line sibling annotation precedes @Test — TRUE POSITIVE ──
+#
+# The deleted method carries its annotations on one line:
+# `@TestProperties(knownIssue = true) @Test(timeout = 120000)` (the layout used
+# in MoonbeamFineTuningTest). Because the @Test is not the first token on the
+# line, an anchor that required @Test immediately after the diff marker would
+# count DELETED=0 and let a genuine test removal pass. Pattern 3 must match @Test
+# after any preceding same-line annotations, so removing the method fires
+# NET_TEST_METHODS_REMOVED (expected exit 2). The deleted body carries no
+# assertion so that Pattern 3 is the only pattern that can fire.
+setup_deleted_same_line_annotation_test() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 60000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    @TestProperties(knownIssue = true) @Test(timeout = 120000)
+    public void testB() {
+        // intentionally no assertions so only Pattern 3 can fire
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 60000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed unstarred block-comment @Test marker — FALSE-POSITIVE REGRESSION ──
+#
+# The base file carries a block comment whose continuation lines have no leading
+# `*`, and one of them is `@Test(timeout = 1000)` sitting at the start of its
+# line. Deleting the whole documentation block removes no runnable test, but a
+# per-line anchor would count that `@Test` line because it begins exactly where an
+# annotation would. Pattern 3 tracks block-comment state across the removed side,
+# so the token inside the comment is not counted (expected exit 0). The block
+# carries no assertion call, keeping Pattern 2 out of it.
+setup_removed_block_comment_test_marker() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    /*
+    Example of a disabled test annotation:
+    @Test(timeout = 1000)
+    */
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
 # ── Run all cases ──────────────────────────────────────────────────────────
 
 echo "Running detect-test-hiding regression tests..."
@@ -1077,6 +1153,8 @@ run_case "removed-test-token-in-string [false-positive regression]" 0 setup_remo
 run_case "removed-test-token-in-inline-comment [false-positive regression]" 0 setup_removed_test_token_in_inline_comment
 run_case "deleted-real-test-method [true positive]"         2 setup_deleted_real_test_method
 run_case "deleted-parenthesized-test [true positive]"       2 setup_deleted_parenthesized_test
+run_case "deleted-same-line-annotation-test [true positive]" 2 setup_deleted_same_line_annotation_test
+run_case "removed-block-comment-test-marker [false-positive regression]" 0 setup_removed_block_comment_test_marker
 run_case "pr880-reenable-camera-ray [false-positive regression]" 0 setup_pr880_reenable
 
 echo ""
