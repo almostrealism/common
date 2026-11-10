@@ -40,6 +40,8 @@
 # `@Test(...)` followed by whitespace or end of line — and not annotations that
 # merely share the `@Test` prefix (@TestProperties, @TestDepth, @TestFactory).
 # Removing one of those does not remove a test method, so it must not be counted.
+# It also excludes comment lines symmetrically (like Pattern 2), so removing a
+# commented-out `// @Test(...)` marker is not counted as a removed test method.
 #
 # Exit codes:
 #   0 - no test-hiding detected (or only new test files modified)
@@ -592,8 +594,12 @@ for FILE in $MODIFIED_TEST_FILES; do
     # whitespace or end of line. The trailing boundary is what keeps this from
     # matching other annotations that merely start with "@Test" — @TestProperties,
     # @TestDepth, @TestFactory — whose removal does not remove a test method.
-    DELETED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\-.*@Test([[:space:](]|$)' || true)
-    ADDED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\+.*@Test([[:space:](]|$)' || true)
+    # Comment lines (// single-line, /* block/javadoc, * continuation) are excluded
+    # symmetrically on the removed and added side, as in Pattern 2: a commented-out
+    # `// @Test(...)` marker is not a runnable test, so removing one does not remove
+    # a test method and must not be counted.
+    DELETED_TEST_METHODS=$(echo "$DIFF" | grep -E '^\-' | grep -vE '^\-[[:space:]]*(//|/\*|\*)' | grep -cE '@Test([[:space:](]|$)' || true)
+    ADDED_TEST_METHODS=$(echo "$DIFF" | grep -E '^\+' | grep -vE '^\+[[:space:]]*(//|/\*|\*)' | grep -cE '@Test([[:space:](]|$)' || true)
     if [ "$DELETED_TEST_METHODS" -gt 0 ] && [ "$ADDED_TEST_METHODS" -lt "$DELETED_TEST_METHODS" ]; then
         NET_REMOVED=$((DELETED_TEST_METHODS - ADDED_TEST_METHODS))
         record_violation "$FILE" "NET_TEST_METHODS_REMOVED" \

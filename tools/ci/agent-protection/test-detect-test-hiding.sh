@@ -830,6 +830,43 @@ public class MyTest {
 }'
 }
 
+# ── Scenario: removed commented-out @Test marker — FALSE-POSITIVE REGRESSION ──
+#
+# The base file carries a disabled, commented-out test whose body includes a
+# `// @Test(timeout = 1000)` marker (the shape present in SphereTest). The branch
+# deletes that commented-out block. A comment is not a runnable test, so removing
+# it removes no test method. Pattern 3 excludes comment lines symmetrically, so it
+# must NOT count the removed `// @Test(...)` line (expected exit 0).
+setup_removed_commented_test_marker() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    // @Test(timeout = 1000)
+    // public void disabledB() {
+    //     assertEquals(2, compute() + 1);
+    // }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    int compute() { return 1; }
+}'
+}
+
 # ── Scenario: real @Test method deleted — TRUE POSITIVE ──
 #
 # An existing @Test method is removed outright (its @Test annotation and its
@@ -967,6 +1004,7 @@ run_case "merge-shift [false-positive regression]"          0 setup_merge_shift_
 run_case "unrelated-merge-weakening [bypass stays closed]"  2 setup_unrelated_merge_weakening
 run_case "removed-testproperties [false-positive regression]" 0 setup_removed_testproperties
 run_case "removed-testdepth [false-positive regression]"    0 setup_removed_testdepth
+run_case "removed-commented-test-marker [false-positive regression]" 0 setup_removed_commented_test_marker
 run_case "deleted-real-test-method [true positive]"         2 setup_deleted_real_test_method
 run_case "deleted-parenthesized-test [true positive]"       2 setup_deleted_parenthesized_test
 run_case "pr880-reenable-camera-ray [false-positive regression]" 0 setup_pr880_reenable
