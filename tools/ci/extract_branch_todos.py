@@ -44,15 +44,18 @@ _HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)")
 #     javadoc-continuation ``*``) is immediately followed by the TODO token —
 #     the ``// TODO`` / ``# TODO:`` / ``* TODO`` forms that actually annotate
 #     code; or
-#   * the token is written as an explicit ``TODO:`` / ``TODO(owner):`` marker,
+#   * the line *begins* with an explicit ``TODO:`` / ``TODO(owner):`` marker,
 #     so a standalone marker in a non-comment file is still caught.
-# Prose that merely mentions TODO ("every TODO the branch adds", the
-# ``TODO(review)`` convention) has an ordinary word before the token and no
-# trailing colon, so it is left out instead of being reported as a finding.
+# The standalone form is anchored to the start of the line (after leading
+# whitespace) on purpose: prose that merely quotes the marker syntax mid-sentence
+# — the extractor's own docstring, this rule's prompt text, or a test fixture
+# describing ``TODO(review):`` — has text before the token and must not be
+# reported as a finding. An unanchored ``\bTODO...:`` matched every such
+# reference, flooding the branch's own findings with the mechanism it documents.
 _MARKER = re.compile(
     r"(?://|/\*|<!--|#)\s*TODO\b"   # a comment opener, then the TODO token
     r"|^\s*\*\s*TODO\b"             # a leading javadoc-continuation *, then TODO
-    r"|\bTODO(?:\([^)]*\))?:")      # an explicit TODO: / TODO(owner): marker
+    r"|^\s*TODO(?:\([^)]*\))?:")    # a line beginning with a TODO: / TODO(owner): marker
 
 
 def extract_added_todos(diff_text):

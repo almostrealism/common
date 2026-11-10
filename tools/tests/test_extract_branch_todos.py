@@ -94,6 +94,27 @@ class MarkerClassificationTest(unittest.TestCase):
             "- the **new-TODO findings rule** — every `TODO` this branch adds",
         ]))
 
+    def test_prose_quoting_the_colon_marker_mid_line_is_not_reported(self):
+        """A ``TODO:`` / ``TODO(review):`` quoted mid-sentence — as the extractor's
+        own docstring and these fixtures do — is prose, not a standalone marker,
+        so the line must begin with the marker before it counts."""
+        self.assertEqual([], self._added_texts([
+            "the token is written as an explicit TODO: / TODO(owner): marker,",
+            "describe the TODO(review): note a review pass leaves",
+            '    "TODO(review): a note a review pass left",',
+        ]))
+
+    def test_line_beginning_with_the_colon_marker_is_reported(self):
+        """A line that genuinely begins with ``TODO:``/``TODO(review):`` — a
+        standalone marker in a file with no comment syntax — is still a finding,
+        allowing leading whitespace."""
+        self.assertEqual(
+            ["TODO: standalone marker", "TODO(review): a note a review pass left"],
+            self._added_texts([
+                "TODO: standalone marker",
+                "\tTODO(review): a note a review pass left",
+            ]))
+
     def test_plural_todos_token_is_not_reported(self):
         """``TODOs`` is a different word; the ``\\bTODO\\b`` boundary excludes it
         even right after a comment opener."""
