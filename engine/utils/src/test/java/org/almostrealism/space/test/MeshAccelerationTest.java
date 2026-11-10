@@ -32,6 +32,8 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -87,6 +89,33 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		Assert.assertEquals("partial triangle", 1.0, dest.toDouble(1), 1e-9);
 		Assert.assertEquals("single distance", 1.0, single.getA(), 1e-4);
 		Assert.assertEquals("single triangle", 1.0, single.getB(), 1e-9);
+	}
+
+	/**
+	 * The hierarchy must return candidates in ascending triangle-index order regardless of the
+	 * internal spatial sort, so that an intersection-distance tie resolves to the same triangle
+	 * the linear scan (which tests in mesh-index order) would pick.
+	 */
+	@Test(timeout = 30000)
+	public void candidatesReturnedInAscendingIndexOrder() {
+		// Eight coplanar-footprint triangles stacked along Z, with list index deliberately
+		// shuffled relative to height so the BVH's internal median split reorders them.
+		int[] zByIndex = { 5, 2, 7, 0, 4, 1, 6, 3 };
+		List<Vector[]> triangles = new ArrayList<>();
+		for (int z : zByIndex) {
+			triangles.add(new Vector[] {
+					new Vector(0.0, 0.0, z), new Vector(1.0, 0.0, z), new Vector(0.0, 1.0, z) });
+		}
+
+		BoundingVolumeHierarchy bvh = BoundingVolumeHierarchy.build(triangles);
+
+		// A ray dropping straight down through the shared XY footprint pierces every box.
+		int[] candidates = bvh.candidates(0.25, 0.25, 100.0, 0.0, 0.0, -1.0);
+
+		Assert.assertEquals(zByIndex.length, candidates.length);
+		for (int i = 0; i < candidates.length; i++) {
+			Assert.assertEquals("candidate " + i, i, candidates[i]);
+		}
 	}
 
 	/** The accelerated closest hit equals the linear-scan closest hit for every random ray. */

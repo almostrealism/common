@@ -70,13 +70,6 @@ import java.util.List;
  * @see CachedMeshIntersectionKernel
  */
 public class MeshData extends PackedCollection {
-	/**
-	 * Historically selected per-ray processing to bound memory use. Intersection now always
-	 * tests a whole mesh against one ray in a single kernel and loops rays on the host, so
-	 * this flag no longer gates behaviour; it is retained only for source compatibility.
-	 */
-	public static boolean enablePartialKernel = true;
-
 	/** Temporary buffer for per-triangle intersection distances during kernel evaluation. */
 	private final PackedCollection distances;
 

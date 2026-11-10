@@ -187,8 +187,9 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	@Override
 	public PackedCollection evaluate(Object[] args) {
 		if (cache == null) {
-			double distance = data.evaluateIntersection(ray, args).getA();
-			return Ops.o().pack(distance);
+			Pair hit = accelerated ? data.evaluateIntersectionAccelerated(ray, args)
+					: data.evaluateIntersection(ray, args);
+			return Ops.o().pack(hit.getA());
 		}
 
 		Pair pos = (Pair) args[0];
@@ -210,7 +211,9 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 		if (closestNormal == null) {
 			closestNormal = new HardwareEvaluable<Vector>(() -> args -> {
 				if (cache == null) {
-					return new Vector(data.range(new TraversalPolicy(3), ((int) data.evaluateIntersection(ray, args).getB()) * 12 + 9), 0);
+					Pair hit = accelerated ? data.evaluateIntersectionAccelerated(ray, args)
+								: data.evaluateIntersection(ray, args);
+						return new Vector(data.range(new TraversalPolicy(3), ((int) hit.getB()) * 12 + 9), 0);
 				} else {
 					Pair pos = (Pair) args[0];
 					int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);

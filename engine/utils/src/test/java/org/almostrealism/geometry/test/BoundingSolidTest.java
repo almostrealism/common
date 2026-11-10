@@ -129,4 +129,100 @@ public class BoundingSolidTest extends TestSuiteBase {
 		Assert.assertEquals(-5.0, bounds.minZ, 1e-9);
 		Assert.assertEquals(-3.0, bounds.maxZ, 1e-9);
 	}
+
+	/** {@code of(Vector...)} returns the axis-aligned box over the given points. */
+	@Test(timeout = 10000)
+	public void ofVectorsBoundsAllPoints() {
+		BoundingSolid bounds = BoundingSolid.of(new Vector(1.0, -2.0, 3.0),
+				new Vector(-4.0, 5.0, 0.0), new Vector(2.0, 1.0, -6.0));
+
+		Assert.assertEquals(-4.0, bounds.minX, 1e-9);
+		Assert.assertEquals(2.0, bounds.maxX, 1e-9);
+		Assert.assertEquals(-2.0, bounds.minY, 1e-9);
+		Assert.assertEquals(5.0, bounds.maxY, 1e-9);
+		Assert.assertEquals(-6.0, bounds.minZ, 1e-9);
+		Assert.assertEquals(3.0, bounds.maxZ, 1e-9);
+	}
+
+	/** {@code of} with no points yields a zero-sized box at the origin. */
+	@Test(timeout = 10000)
+	public void ofNoPointsIsZeroBox() {
+		BoundingSolid bounds = BoundingSolid.of();
+
+		Assert.assertEquals(0.0, bounds.minX, 1e-9);
+		Assert.assertEquals(0.0, bounds.maxX, 1e-9);
+		Assert.assertEquals(0.0, bounds.volume, 1e-9);
+	}
+
+	/** {@code expand} grows the box outward by the amount on every face. */
+	@Test(timeout = 10000)
+	public void expandGrowsEveryFace() {
+		BoundingSolid bounds = new BoundingSolid(0.0, 2.0, 0.0, 2.0, 0.0, 2.0).expand(0.5);
+
+		Assert.assertEquals(-0.5, bounds.minX, 1e-9);
+		Assert.assertEquals(2.5, bounds.maxX, 1e-9);
+		Assert.assertEquals(-0.5, bounds.minY, 1e-9);
+		Assert.assertEquals(2.5, bounds.maxY, 1e-9);
+		Assert.assertEquals(-0.5, bounds.minZ, 1e-9);
+		Assert.assertEquals(2.5, bounds.maxZ, 1e-9);
+	}
+
+	/** {@code longestAxis} and {@code center(axis)} report the correct extents. */
+	@Test(timeout = 10000)
+	public void longestAxisAndCenterByAxis() {
+		BoundingSolid bounds = new BoundingSolid(0.0, 1.0, 0.0, 5.0, 0.0, 2.0);
+
+		Assert.assertEquals(1, bounds.longestAxis());
+		Assert.assertEquals(0.5, bounds.center(0), 1e-9);
+		Assert.assertEquals(2.5, bounds.center(1), 1e-9);
+		Assert.assertEquals(1.0, bounds.center(2), 1e-9);
+	}
+
+	/** {@code combine} returns the union box of two bounds. */
+	@Test(timeout = 10000)
+	public void combineUnionsBothBoxes() {
+		BoundingSolid bounds = new BoundingSolid(0.0, 1.0, 0.0, 1.0, 0.0, 1.0)
+				.combine(new BoundingSolid(-2.0, 0.5, 3.0, 4.0, -1.0, 0.0));
+
+		Assert.assertEquals(-2.0, bounds.minX, 1e-9);
+		Assert.assertEquals(1.0, bounds.maxX, 1e-9);
+		Assert.assertEquals(0.0, bounds.minY, 1e-9);
+		Assert.assertEquals(4.0, bounds.maxY, 1e-9);
+		Assert.assertEquals(-1.0, bounds.minZ, 1e-9);
+		Assert.assertEquals(1.0, bounds.maxZ, 1e-9);
+	}
+
+	/** A ray aimed into the box from outside is reported as a hit. */
+	@Test(timeout = 10000)
+	public void intersectsRayHit() {
+		BoundingSolid bounds = new BoundingSolid(0.0, 1.0, 0.0, 1.0, 0.0, 1.0);
+		Assert.assertTrue(bounds.intersectsRay(0.5, 0.5, -5.0, 0.0, 0.0, 1.0));
+	}
+
+	/** A ray that points away from the box misses it. */
+	@Test(timeout = 10000)
+	public void intersectsRayMissesWhenPointingAway() {
+		BoundingSolid bounds = new BoundingSolid(0.0, 1.0, 0.0, 1.0, 0.0, 1.0);
+		Assert.assertFalse(bounds.intersectsRay(0.5, 0.5, -5.0, 0.0, 0.0, -1.0));
+	}
+
+	/** A ray parallel to a slab but outside its extent on that axis misses. */
+	@Test(timeout = 10000)
+	public void intersectsRayParallelOutsideSlabMisses() {
+		BoundingSolid bounds = new BoundingSolid(0.0, 1.0, 0.0, 1.0, 0.0, 1.0);
+		// Direction has no z component and the origin's z lies outside [0, 1].
+		Assert.assertFalse(bounds.intersectsRay(0.5, 0.5, 5.0, 1.0, 0.0, 0.0));
+	}
+
+	/**
+	 * A direction component that is tiny but non-zero must not be treated as parallel:
+	 * such a ray still legitimately enters the box and must be kept as a candidate, or
+	 * the broad-phase test would prune a real intersection.
+	 */
+	@Test(timeout = 10000)
+	public void intersectsRayNearParallelIsNotPruned() {
+		BoundingSolid bounds = new BoundingSolid(0.0, 1.0, 0.0, 1.0, 0.0, 1.0);
+		// Starts below the box in z with a minuscule positive z slope; it does reach the box.
+		Assert.assertTrue(bounds.intersectsRay(0.5, 0.5, -1.0, 0.0, 0.0, 1e-13));
+	}
 }

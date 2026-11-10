@@ -168,7 +168,7 @@ public class BoundingVolumeHierarchy {
 	 * @param dx direction x
 	 * @param dy direction y
 	 * @param dz direction z
-	 * @return the candidate triangle indices (possibly empty, never {@code null})
+	 * @return the candidate triangle indices in ascending order (possibly empty, never {@code null})
 	 */
 	public int[] candidates(double ox, double oy, double oz, double dx, double dy, double dz) {
 		List<Integer> hits = new ArrayList<>();
@@ -176,6 +176,11 @@ public class BoundingVolumeHierarchy {
 
 		int[] result = new int[hits.size()];
 		for (int i = 0; i < result.length; i++) result[i] = hits.get(i);
+
+		// Return candidates in ascending triangle-index order so that a tie on intersection
+		// distance (a ray grazing a shared edge or coplanar triangles) resolves to the same
+		// triangle the linear scan would select, which tests triangles in mesh-index order.
+		Arrays.sort(result);
 		return result;
 	}
 

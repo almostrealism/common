@@ -217,7 +217,7 @@ public class BoundingSolid {
         double[] hi = { maxX, maxY, maxZ };
 
         for (int a = 0; a < 3; a++) {
-            if (Math.abs(direction[a]) < 1e-12) {
+            if (direction[a] == 0.0) {
                 if (origin[a] < lo[a] || origin[a] > hi[a]) return false;
             } else {
                 double inv = 1.0 / direction[a];

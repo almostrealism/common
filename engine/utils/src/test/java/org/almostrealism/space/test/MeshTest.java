@@ -17,6 +17,7 @@
 package org.almostrealism.space.test;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.Triangle;
@@ -178,10 +179,30 @@ public class MeshTest extends TestSuiteBase {
 		new Mesh().neighbors(new Vector(0.0, 0.0, 0.0));
 	}
 
-	/** calculateBoundingSolid is not yet implemented for meshes. */
-	@Test(timeout = 30000, expected = UnsupportedOperationException.class)
-	public void boundingSolidUnsupported() {
-		new Mesh().calculateBoundingSolid();
+	/** An empty mesh bounds to a zero-sized box at the origin rather than throwing. */
+	@Test(timeout = 30000)
+	public void boundingSolidEmptyMeshIsZeroBox() {
+		BoundingSolid bounds = new Mesh().calculateBoundingSolid();
+
+		Assert.assertEquals(0.0, bounds.minX, 1e-9);
+		Assert.assertEquals(0.0, bounds.maxX, 1e-9);
+		Assert.assertEquals(0.0, bounds.minY, 1e-9);
+		Assert.assertEquals(0.0, bounds.maxY, 1e-9);
+		Assert.assertEquals(0.0, bounds.minZ, 1e-9);
+		Assert.assertEquals(0.0, bounds.maxZ, 1e-9);
+	}
+
+	/** A mesh bounds to the axis-aligned box over all of its triangle vertices. */
+	@Test(timeout = 30000)
+	public void boundingSolidCoversAllVertices() {
+		BoundingSolid bounds = singleTriangle().calculateBoundingSolid();
+
+		Assert.assertEquals(0.0, bounds.minX, 1e-9);
+		Assert.assertEquals(1.0, bounds.maxX, 1e-9);
+		Assert.assertEquals(0.0, bounds.minY, 1e-9);
+		Assert.assertEquals(1.0, bounds.maxY, 1e-9);
+		Assert.assertEquals(0.0, bounds.minZ, 1e-9);
+		Assert.assertEquals(0.0, bounds.maxZ, 1e-9);
 	}
 
 	/** setSurfaces is a no-op and does not disturb existing state. */
