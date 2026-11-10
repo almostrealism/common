@@ -767,6 +767,181 @@ public class MyTest {
     fi
 }
 
+# ── Scenario: removed @TestProperties(knownIssue = true) — FALSE-POSITIVE REGRESSION ──
+#
+# An existing @Test keeps its @Test annotation but loses a preceding
+# @TestProperties(knownIssue = true) line, which re-enables the test under the CI
+# pipeline profile — a strengthening, not a removal. Pattern 3 must count only the
+# @Test annotation itself, so the removed @TestProperties line must NOT be read as
+# a deleted test method. The script MUST NOT fire (expected exit 0).
+setup_removed_testproperties() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @TestProperties(knownIssue = true)
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed @TestDepth(...) — FALSE-POSITIVE REGRESSION ──
+#
+# An existing @Test keeps its @Test annotation but loses a preceding @TestDepth
+# annotation. @TestDepth shares the "@Test" prefix but is not a test method, so
+# Pattern 3 must not count its removal as a deleted @Test method. The script MUST
+# NOT fire (expected exit 0).
+setup_removed_testdepth() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @TestDepth(2)
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: real @Test method deleted — TRUE POSITIVE ──
+#
+# An existing @Test method is removed outright (its @Test annotation and its
+# assertions go with it). Pattern 3 must still count the removed bare @Test
+# annotation and fire NET_TEST_METHODS_REMOVED (expected exit 2).
+setup_deleted_real_test_method() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    @Test(timeout = 5000)
+    public void testB() {
+        assertEquals(2, compute() + 1);
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: @Test(timeout = 1000) counts as a test — TRUE POSITIVE ──
+#
+# The deleted method carries a parenthesized @Test(timeout = 1000). Pattern 3 must
+# treat `@Test(...)` as a test annotation, so removing the method fires
+# NET_TEST_METHODS_REMOVED (expected exit 2). This guards the trailing boundary
+# that accepts "(" immediately after @Test.
+setup_deleted_parenthesized_test() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 1000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    @Test(timeout = 1000)
+    public void testB() {
+        assertEquals(2, compute() + 1);
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 1000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: PR #880 CameraRayIntersectionTest re-enable — FALSE-POSITIVE REGRESSION ──
+#
+# Built from the diff that motivated this fix: a per-pixel render branch removed
+# the @TestProperties(knownIssue = true) line preceding kernelMatchesPerPixel,
+# re-enabling the test under CI. The @Test annotation and the assertion stay. No
+# test method is removed and the test is strengthened, so the script MUST NOT fire
+# (expected exit 0).
+setup_pr880_reenable() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class CameraRayIntersectionTest {
+    @Test(timeout = 60000)
+    public void perPixel() {
+        assertEquals(1, compute());
+    }
+
+    @TestProperties(knownIssue = true)
+    @Test(timeout = 120000)
+    public void kernelMatchesPerPixel() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class CameraRayIntersectionTest {
+    @Test(timeout = 60000)
+    public void perPixel() {
+        assertEquals(1, compute());
+    }
+
+    @Test(timeout = 120000)
+    public void kernelMatchesPerPixel() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+        "CameraRayIntersectionTest.java"
+}
+
 # ── Run all cases ──────────────────────────────────────────────────────────
 
 echo "Running detect-test-hiding regression tests..."
@@ -790,6 +965,11 @@ run_case "committed-swallowing-catch [true positive]"       2 setup_committed_sw
 run_case "uncommitted-swallowing-catch [true positive / working-tree audit]" 2 setup_uncommitted_swallowing_catch
 run_case "merge-shift [false-positive regression]"          0 setup_merge_shift_passes
 run_case "unrelated-merge-weakening [bypass stays closed]"  2 setup_unrelated_merge_weakening
+run_case "removed-testproperties [false-positive regression]" 0 setup_removed_testproperties
+run_case "removed-testdepth [false-positive regression]"    0 setup_removed_testdepth
+run_case "deleted-real-test-method [true positive]"         2 setup_deleted_real_test_method
+run_case "deleted-parenthesized-test [true positive]"       2 setup_deleted_parenthesized_test
+run_case "pr880-reenable-camera-ray [false-positive regression]" 0 setup_pr880_reenable
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

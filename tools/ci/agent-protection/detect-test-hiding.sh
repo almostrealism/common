@@ -36,9 +36,10 @@
 # whose name begins with "assert" (e.g. `protected void assertWithin(...) {`) — a
 # method name is not an assertion call. The declaration exclusion is applied
 # symmetrically to the removed and added side. Pattern 3
-# (NET_TEST_METHODS_REMOVED) counts `@Test` lines and needs no equivalent
-# exclusion: a declaration line carries no `@Test` annotation and no method is
-# named `@Test`, so it cannot mistake a declaration for a test method.
+# (NET_TEST_METHODS_REMOVED) counts the `@Test` annotation itself — `@Test` or
+# `@Test(...)` followed by whitespace or end of line — and not annotations that
+# merely share the `@Test` prefix (@TestProperties, @TestDepth, @TestFactory).
+# Removing one of those does not remove a test method, so it must not be counted.
 #
 # Exit codes:
 #   0 - no test-hiding detected (or only new test files modified)
@@ -587,8 +588,12 @@ for FILE in $MODIFIED_TEST_FILES; do
     fi
 
     # ── Pattern 3: Deleted @Test methods (net) ──
-    DELETED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\-.*@Test' || true)
-    ADDED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\+.*@Test' || true)
+    # Match the @Test annotation itself only: `@Test` or `@Test(...)` followed by
+    # whitespace or end of line. The trailing boundary is what keeps this from
+    # matching other annotations that merely start with "@Test" — @TestProperties,
+    # @TestDepth, @TestFactory — whose removal does not remove a test method.
+    DELETED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\-.*@Test([[:space:](]|$)' || true)
+    ADDED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\+.*@Test([[:space:](]|$)' || true)
     if [ "$DELETED_TEST_METHODS" -gt 0 ] && [ "$ADDED_TEST_METHODS" -lt "$DELETED_TEST_METHODS" ]; then
         NET_REMOVED=$((DELETED_TEST_METHODS - ADDED_TEST_METHODS))
         record_violation "$FILE" "NET_TEST_METHODS_REMOVED" \
