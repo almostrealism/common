@@ -19,10 +19,8 @@ package org.almostrealism.time;
 import io.almostrealism.code.Computation;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.lifecycle.Setup;
-import io.almostrealism.expression.Atan2;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
@@ -194,7 +192,7 @@ import java.util.stream.IntStream;
  *
  * @author Michael Murray
  */
-public interface TemporalFeatures extends GeometryFeatures {
+public interface TemporalFeatures extends SpectralFeatures {
 	/**
 	 * When true, flattens setup operations in iteration (adds them directly to operation list).
 	 * When false, wraps setup in a single operation.
@@ -793,168 +791,6 @@ public interface TemporalFeatures extends GeometryFeatures {
 		int size = shape.getSize();
 		WindowComputation window = new WindowComputation(type, size);
 		return multiply(signal, window);
-	}
-
-	// ==================== Spectral Analysis Operations ====================
-
-	/**
-	 * Computes the power spectrum (magnitude squared) of complex data.
-	 *
-	 * <p>For complex data with interleaved [re, im] pairs, this computes:
-	 * power[k] = re[k]^2 + im[k]^2</p>
-	 *
-	 * <p>This is more efficient than computing the magnitude (which requires
-	 * a square root) when the actual magnitude value isn't needed, such as
-	 * for power spectral density or energy calculations.</p>
-	 *
-	 * <h3>Example Usage</h3>
-	 * <pre>{@code
-	 * // Compute FFT and get power spectrum
-	 * Producer<PackedCollection> signal = ...;
-	 * FourierTransform fft = fft(1024, signal);
-	 *
-	 * // Reshape to [512, 2] for complex pairs
-	 * CollectionProducer complex = fft.reshape(512, 2);
-	 *
-	 * // Compute power spectrum
-	 * CollectionProducer power = powerSpectrum(complex);
-	 * // Output shape: [512]
-	 * }</pre>
-	 *
-	 * @param complex Producer of complex data with shape [..., 2] where the last
-	 *                dimension contains [real, imaginary] pairs
-	 * @return A producer that outputs the power spectrum with the last dimension removed
-	 */
-	default CollectionProducer powerSpectrum(Producer<PackedCollection> complex) {
-		// Extract real and imaginary parts
-		CollectionProducer cp = (CollectionProducer) complex;
-		CollectionProducer real = l(cp.traverse(1));   // Real part at index 0
-		CollectionProducer imag = r(cp.traverse(1));   // Imaginary part at index 1
-
-		// power = re^2 + im^2
-		return add(sq(real), sq(imag));
-	}
-
-	/**
-	 * Computes the phase angle (argument) of complex data.
-	 *
-	 * <p>For complex data with interleaved [re, im] pairs, this computes:
-	 * phase[k] = atan2(im[k], re[k])</p>
-	 *
-	 * <p>The result is in radians, ranging from -PI to PI. This represents
-	 * the angle of each complex value in the complex plane.</p>
-	 *
-	 * <h3>Example Usage</h3>
-	 * <pre>{@code
-	 * // Compute FFT and get phase spectrum
-	 * Producer<PackedCollection> signal = ...;
-	 * FourierTransform fft = fft(1024, signal);
-	 *
-	 * // Reshape to [512, 2] for complex pairs
-	 * CollectionProducer complex = fft.reshape(512, 2);
-	 *
-	 * // Compute phase
-	 * CollectionProducer phaseAngles = phase(complex);
-	 * // Output shape: [512], values in range [-PI, PI]
-	 * }</pre>
-	 *
-	 * @param complex Producer of complex data with shape [..., 2] where the last
-	 *                dimension contains [real, imaginary] pairs
-	 * @return A producer that outputs phase angles in radians with the last dimension removed
-	 * @see io.almostrealism.expression.Atan2
-	 */
-	default CollectionProducer phase(Producer<PackedCollection> complex) {
-		// Extract real and imaginary parts
-		CollectionProducer cp = (CollectionProducer) complex;
-		CollectionProducer real = l(cp.traverse(1));   // Real part at index 0
-		CollectionProducer imag = r(cp.traverse(1));   // Imaginary part at index 1
-
-		// phase = atan2(im, re)
-		return atan2(imag, real);
-	}
-
-	/**
-	 * Computes the atan2 function element-wise: atan2(y, x).
-	 *
-	 * <p>This is the two-argument arctangent function that correctly handles
-	 * all four quadrants and produces results in the range [-PI, PI].</p>
-	 *
-	 * @param y the y-coordinate (or imaginary part for complex phase)
-	 * @param x the x-coordinate (or real part for complex phase)
-	 * @return A producer computing atan2(y, x) element-wise
-	 */
-	default CollectionProducer atan2(Producer<PackedCollection> y, Producer<PackedCollection> x) {
-		TraversalPolicy shape = shape(y);
-		return new DefaultTraversableExpressionComputation("atan2",
-				shape,
-				true,
-				args -> new UniformCollectionExpression(
-						"atan2",
-						shape,
-						in -> Atan2.of(
-								(Expression<Double>) in[0],
-								(Expression<Double>) in[1]
-						),
-						args[1], args[2]
-				),
-				y, x);
-	}
-
-	/**
-	 * Computes the log magnitude (power in dB) of complex data.
-	 *
-	 * <p>For complex data with interleaved [re, im] pairs, this computes:
-	 * logMag[k] = 10 * log10(re[k]^2 + im[k]^2)</p>
-	 *
-	 * <p>This is equivalent to: 20 * log10(magnitude) = 20 * log10(sqrt(re^2 + im^2))</p>
-	 *
-	 * <p>The result is in decibels (dB), which is the standard unit for expressing
-	 * power ratios in signal processing. A small epsilon is added to avoid log(0).</p>
-	 *
-	 * <h3>Example Usage</h3>
-	 * <pre>{@code
-	 * // Compute FFT and get log magnitude spectrum (dB)
-	 * Producer<PackedCollection> signal = ...;
-	 * FourierTransform fft = fft(1024, signal);
-	 *
-	 * // Reshape to [512, 2] for complex pairs
-	 * CollectionProducer complex = fft.reshape(512, 2);
-	 *
-	 * // Compute log magnitude in dB
-	 * CollectionProducer dBSpectrum = logMagnitude(complex);
-	 * // Output shape: [512], values in dB
-	 * }</pre>
-	 *
-	 * @param complex Producer of complex data with shape [..., 2] where the last
-	 *                dimension contains [real, imaginary] pairs
-	 * @return A producer that outputs log magnitude in dB with the last dimension removed
-	 */
-	default CollectionProducer logMagnitude(Producer<PackedCollection> complex) {
-		// power = re^2 + im^2
-		CollectionProducer power = powerSpectrum(complex);
-
-		// Add small epsilon to avoid log(0)
-		// Using 1e-10 as a reasonable floor for power values
-		CollectionProducer safePower = add(power, c(1e-10));
-
-		// logMag = 10 * log10(power) = 10 * ln(power) / ln(10)
-		// Since log() computes natural log, we need to divide by ln(10) = 2.302585...
-		double ln10 = Math.log(10.0);
-		return multiply(c(10.0 / ln10), log(safePower));
-	}
-
-	/**
-	 * Computes the magnitude (absolute value) of complex data.
-	 *
-	 * <p>For complex data with interleaved [re, im] pairs, this computes:
-	 * magnitude[k] = sqrt(re[k]^2 + im[k]^2)</p>
-	 *
-	 * @param complex Producer of complex data with shape [..., 2] where the last
-	 *                dimension contains [real, imaginary] pairs
-	 * @return A producer that outputs the magnitude with the last dimension removed
-	 */
-	default CollectionProducer complexMagnitude(Producer<PackedCollection> complex) {
-		return sqrt(powerSpectrum(complex));
 	}
 
 	/**

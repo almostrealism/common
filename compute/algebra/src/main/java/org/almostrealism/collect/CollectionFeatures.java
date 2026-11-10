@@ -21,6 +21,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Absolute;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Countable;
@@ -428,6 +429,23 @@ public interface CollectionFeatures extends GradientFeatures {
 		} else {
 			throw new UnsupportedOperationException();
 		}
+	}
+
+	/**
+	 * Returns the {@linkplain Process#isolated isolated} form of a producer: one that is
+	 * computed once, as its own kernel, and read from memory by every consumer instead of
+	 * being embedded in their expressions.
+	 *
+	 * <p>Isolate a value that is read by several consumers, or a reduction whose compiled form
+	 * is a loop (a sum or maximum over many elements), which embedding would unroll into each
+	 * consumer. Where isolation is not permitted (see {@link Process#isolationPermitted}), the
+	 * producer is returned unchanged.</p>
+	 *
+	 * @param producer the producer to isolate
+	 * @return the isolated producer, with the same shape
+	 */
+	default CollectionProducer isolated(Producer<PackedCollection> producer) {
+		return c((Producer<PackedCollection>) Process.isolated(producer));
 	}
 
 	/**
