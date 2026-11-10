@@ -141,7 +141,7 @@ render_prompt() {
 # state of its own: called with no section file — as the prompt-builder tests
 # do — it appends the fragment without a list.
 #
-#   append_branch_feedback <output-file> <todos-section-file>
+#   append_branch_feedback <output-file> [<todos-section-file>]
 append_branch_feedback() {
     local output="$1"
     local todos_file="${2:-}"

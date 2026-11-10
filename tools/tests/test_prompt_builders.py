@@ -109,11 +109,41 @@ def _builders():
             and name != _GENERIC_QA_BUILDER]
 
 
+_TODOS_POSITION = re.compile(r'^TODOS_FILE="\$\{(\d+):-\}"$', re.MULTILINE)
+
+
+def _branch_feedback_builders():
+    """Returns the basenames of the fixed-shape builders that patch in the
+    shared branch-feedback fragment by calling ``append_branch_feedback``.
+
+    This is the set of routes that run against a branch which may carry a pull
+    request, discovered from the code rather than hard-coded, so it cannot drift
+    from ``_AUTO_RESOLVE_BUILDERS`` unnoticed.
+    """
+    return {os.path.basename(builder)
+            for builder in _builders()
+            if _BRANCH_FEEDBACK_CALL.search(_read(builder))}
+
+
 def _required_vars(builder):
     """Returns the variables a builder's validation loop insists on."""
     source = _read(builder)
     match = _REQUIRED_LOOP.search(source)
     return match.group(1).split() if match else []
+
+
+def _todos_position(builder):
+    """Returns the 1-based positional index at which a builder reads its
+    optional TODO-section file, or None when it takes none.
+
+    The TODO file is always a builder's final positional, but it is not always
+    the one right after the output path: ``build-resolve-prompt.sh`` reads two
+    optional classification files between them. The index is declared in the
+    ``TODOS_FILE="${N:-}"`` line rather than in the usage header, so a route
+    that forwards the file to the wrong slot is caught here.
+    """
+    match = _TODOS_POSITION.search(_read(builder))
+    return int(match.group(1)) if match else None
 
 
 def _usage_args(builder):
@@ -181,6 +211,25 @@ class PromptBuilderTests(unittest.TestCase):
                 open(path, "w").close()
                 args.append(path)
         return args + [self.output]
+
+    def _args_with_todos(self, builder, todos):
+        """Builds a builder's positional arguments with ``todos`` in its TODO
+        slot, padding any undocumented optional inputs between the output path
+        and the TODO file with empty fixtures.
+
+        A builder's TODO file is its final positional, but not always the one
+        right after the output (``build-resolve-prompt.sh`` reads two optional
+        files in between). Padding to the declared index verifies the route
+        forwards the TODO file to the right slot rather than into an earlier
+        one.
+        """
+        args = self._args(builder)
+        position = _todos_position(builder)
+        while len(args) < position - 1:
+            path = os.path.join(self.tmp, "pad-%d" % len(args))
+            open(path, "w").close()
+            args.append(path)
+        return args + [todos]
 
     def _run(self, builder, env_overrides=None, args=None):
         """Runs a builder with every required variable set, minus any removed."""
@@ -300,25 +349,44 @@ class PromptBuilderTests(unittest.TestCase):
                 self.assertIn(_TODO_FINDINGS_MARKER, prompt)
                 self.assertEqual(1, prompt.count(_TODO_FINDINGS_MARKER))
 
-    def test_a_route_prompt_appends_the_ci_computed_todo_list(self):
-        """When CI passes the extracted-TODO section, the builder appends it
-        after the instructions, so the agent sees the actual TODO lines and
-        not only the rule to resolve them. Exercised on the route builder with
-        the fewest inputs, whose TODOS file is its second positional.
+    def test_the_auto_resolve_tuple_matches_the_routes_carrying_branch_feedback(self):
+        """`_AUTO_RESOLVE_BUILDERS` must stay in step with the builders that
+        actually patch in the shared fragment.
+
+        The tuple is hard-coded so the shared-fragment tests name the routes
+        they cover, but a remediation route added later that calls
+        `append_branch_feedback` without being listed here would escape every
+        one of those tests. Discovering the branch-feedback routes from the code
+        and comparing the two sets fails the moment they diverge — whether a new
+        route is added or a listed one stops carrying the fragment.
+        """
+        self.assertEqual(set(_AUTO_RESOLVE_BUILDERS), _branch_feedback_builders())
+
+    def test_every_route_prompt_appends_the_ci_computed_todo_list(self):
+        """When CI passes the extracted-TODO section, every route builder
+        appends it after the instructions, so the agent sees the actual TODO
+        lines and not only the rule to resolve them.
+
+        Run through each route with a non-empty computed list in its TODO slot:
+        a route that forwards the file to the wrong positional, or omits the
+        append, drops the list here even though the shared-fragment tests (which
+        run without a TODO file) would still pass.
         """
         marker = "TODO(review): a branch-added marker line"
         todos = os.path.join(self.tmp, "branch-todos.txt")
         with open(todos, "w") as handle:
             handle.write("## TODOs this branch adds\n\n- `x/Y.java:1` " + marker + "\n")
-        builder = os.path.join(_PROMPT_DIR, "build-build-failure-prompt.sh")
-        result = self._run(builder, args=[self.output, todos])
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual("", result.stderr)
-        prompt = _read(self.output)
-        self.assertIn(_TODO_FINDINGS_MARKER, prompt)
-        self.assertIn(marker, prompt)
-        self.assertLess(prompt.index(_TODO_FINDINGS_MARKER), prompt.index(marker),
-                        "the computed list must follow the instructions")
+        for name in _AUTO_RESOLVE_BUILDERS:
+            builder = os.path.join(_PROMPT_DIR, name)
+            with self.subTest(builder=name):
+                result = self._run(builder, args=self._args_with_todos(builder, todos))
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("", result.stderr)
+                prompt = _read(self.output)
+                self.assertIn(_TODO_FINDINGS_MARKER, prompt)
+                self.assertIn(marker, prompt)
+                self.assertLess(prompt.index(_TODO_FINDINGS_MARKER), prompt.index(marker),
+                                "the computed list must follow the instructions")
 
     def test_a_branch_name_with_sed_metacharacters_is_substituted_literally(self):
         """A branch such as `feature/a&b|c\\d` must not corrupt the prompt.
