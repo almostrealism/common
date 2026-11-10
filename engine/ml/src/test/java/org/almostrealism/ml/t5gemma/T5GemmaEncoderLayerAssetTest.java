@@ -318,10 +318,11 @@ public class T5GemmaEncoderLayerAssetTest extends TestSuiteBase implements Atten
 	private void assertEncoderAssetMatchesHost(T5GemmaConfig config, String layer) {
 		Map<String, PackedCollection> weights = fixture.weights(config, 29);
 		T5GemmaReferenceEncoder host = new T5GemmaReferenceEncoder(config, weights);
-		T5GemmaEncoder encoder = new T5GemmaEncoder(config, new StateDictionary(weights));
+		StateDictionary dictionary = new StateDictionary(weights);
+		T5GemmaEncoder encoder = new T5GemmaEncoder(config, dictionary);
 
 		Model model = new Model(shape(1, config.getMaxLength()));
-		model.add(encoderAsset(layer, config, new StateDictionary(weights), cp(encoder.getAttentionMask())));
+		model.add(encoderAsset(layer, config, dictionary, cp(encoder.getAttentionMask())));
 
 		try (CompiledModel compiled = model.compile(false)) {
 			for (long[] prompt : new long[][] {PROMPT, LONGER_PROMPT}) {
