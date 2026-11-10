@@ -249,6 +249,24 @@ class TestRequiredJobAccounting(unittest.TestCase):
             [], ["test-media-cl", "test", "test-media-cl"]),
             ["test-media-cl", "test"])
 
+    def test_runs_of_required_keeps_only_matching_jobs(self):
+        # The whole-run payload carries jobs that are not required test jobs;
+        # runs_of_required keeps only runs of the given ids, in input order.
+        jobs = [
+            {"name": "test-media-cl (3)", "conclusion": "failure"},
+            {"name": "docker-build", "conclusion": "failure"},
+            {"name": "analysis", "conclusion": "failure"},
+            {"name": "test", "conclusion": "failure"},
+        ]
+        kept = classify_job_failures.runs_of_required(
+            jobs, ["test-media-cl", "test"])
+        self.assertEqual([j["name"] for j in kept],
+                         ["test-media-cl (3)", "test"])
+
+    def test_runs_of_required_with_no_ids_keeps_nothing(self):
+        self.assertEqual(classify_job_failures.runs_of_required(
+            _MIXED["jobs"], []), [])
+
     def test_a_successful_run_does_not_account_for_a_failing_job(self):
         # Only failed/timed-out runs count: a partial payload holding just the
         # job's passing matrix entries has not shown where it failed.
@@ -389,6 +407,40 @@ class TestCli(unittest.TestCase):
         out, crash_text, _ = self._run(payload, "test-media-cl")
         self.assertIn("crash_count=0", out)
         self.assertEqual(crash_text, "")
+
+    def test_unrelated_failed_job_is_not_classified(self):
+        # The jobs payload is the whole run. An unrelated failed job
+        # (docker-build) must not be counted as a crash or written to the
+        # reports when the only failing required test jobs are environmental;
+        # otherwise it would dispatch the crash agent for a run with no in-test
+        # crash. The required id restricts the crash/environmental split.
+        payload = {"jobs": _SETUP_JAVA_ONLY["jobs"] + [
+            {"name": "docker-build", "conclusion": "failure", "steps": _steps(
+                ("Set up job", "success"),
+                ("Build images", "failure"),
+            )},
+        ]}
+        out, crash_text, env_text = self._run(payload, "test-media-cl")
+        self.assertIn("crash_count=0", out)
+        self.assertIn("environmental_count=2", out)
+        self.assertEqual(crash_text, "")
+        self.assertNotIn("docker-build", env_text)
+        self.assertIn("test-media-cl (3)", env_text)
+
+    def test_unrelated_failed_job_counts_as_crash_without_required_ids(self):
+        # With no required ids (standalone use) there is nothing to restrict
+        # against, so the whole payload is classified — the conservative
+        # default. The docker-build failure then counts as a crash.
+        payload = {"jobs": _SETUP_JAVA_ONLY["jobs"] + [
+            {"name": "docker-build", "conclusion": "failure", "steps": _steps(
+                ("Set up job", "success"),
+                ("Build images", "failure"),
+            )},
+        ]}
+        out, crash_text, env_text = self._run(payload)
+        self.assertIn("crash_count=1", out)
+        self.assertIn("environmental_count=2", out)
+        self.assertIn("docker-build", crash_text)
 
 
 if __name__ == "__main__":

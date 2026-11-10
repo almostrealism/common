@@ -40,11 +40,14 @@ Usage:
     classify-job-failures.py <jobs-json-file> <out-dir> [<required-job-id> ...]
 
 Each ``<required-job-id>`` names a workflow job (``test``, ``test-media-cl``)
-whose ``needs.<job>.result`` was ``failure``. A required job none of whose runs
-appears among the payload's failed jobs — matched by name, ``<id>`` or a matrix
-run ``<id> (...)`` — is counted as a crash: an empty or partial jobs response
-must never turn a real failure into a zero crash count. Likewise, when the
-payload holds fewer jobs than its declared ``total_count`` — which can hide an
+whose ``needs.<job>.result`` was ``failure``. The jobs payload is for the whole
+run, so when any required id is given the crash/environmental split is
+restricted to runs of those ids — an unrelated failed job (``docker-build``, a
+failed ``analysis``) is never classified or counted. A required job none of
+whose runs appears among the payload's failed jobs — matched by name, ``<id>``
+or a matrix run ``<id> (...)`` — is counted as a crash: an empty or partial jobs
+response must never turn a real failure into a zero crash count. Likewise, when
+the payload holds fewer jobs than its declared ``total_count`` — which can hide an
 omitted matrix run behind another run of the same job — one crash is counted.
 
 Writes ``<out-dir>/crash-jobs.txt`` and ``<out-dir>/environmental-jobs.txt``
@@ -133,7 +136,11 @@ def missing_job_count(jobs, declared_total):
     ``test-media-cl (5)`` accounts for ``test-media-cl``. The declared total
     closes that gap.
     """
-    # TODO(review): confirm on a real run that total_count equals the paginated job count; a systematic excess would route every setup failure as a crash.
+    # This assumes ``total_count`` equals the number of jobs the attempt-scoped
+    # listing paginates through. If it systematically exceeded that count, every
+    # setup-only failure would be counted a crash and the environmental routing
+    # would silently never fire; that assumption is a tracked verification item
+    # against a real run rather than something this script can check offline.
     if declared_total is None:
         return 0
     return max(0, declared_total - len(jobs))
@@ -228,6 +235,23 @@ def is_run_of(job, job_id):
     return name == job_id or name.startswith(job_id + " (")
 
 
+def runs_of_required(jobs, required_ids):
+    """The entries of ``jobs`` that are runs of one of ``required_ids``, in
+    input order.
+
+    The jobs-API payload is for the *whole* workflow run, not just the required
+    test jobs. Classifying all of it would count an unrelated failure
+    (``docker-build``, ``agent-volume-isolation``, a failed ``analysis``) as a
+    crash and write it to the reports, dispatching the crash agent even when
+    every failing *test* job was environmental. Restricting the
+    crash/environmental split to the required test jobs keeps those extras out;
+    the full payload is still used for completeness accounting (``total_count``
+    and ``unaccounted_job_ids``).
+    """
+    return [job for job in jobs
+            if any(is_run_of(job, job_id) for job_id in required_ids)]
+
+
 def unaccounted_job_ids(jobs, required_ids):
     """The ids in ``required_ids`` (failing workflow jobs) of which no run is
     among the failed/timed-out ``jobs``, in input order without duplicates."""
@@ -255,7 +279,12 @@ def main(argv=None):
     with open(jobs_file, encoding="utf-8") as handle:
         jobs, declared_total = load_payload(handle.read())
 
-    crashes, environmental = classify(jobs)
+    # The payload covers the whole run; classify only the required test jobs so
+    # an unrelated failed job cannot inflate the crash count. With no required
+    # ids given (standalone use) there is nothing to restrict against, so every
+    # job is classified — the conservative default.
+    to_classify = runs_of_required(jobs, required_ids) if required_ids else jobs
+    crashes, environmental = classify(to_classify)
     missing = unaccounted_job_ids(jobs, required_ids)
     omitted = missing_job_count(jobs, declared_total)
 

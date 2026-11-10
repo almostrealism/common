@@ -115,8 +115,11 @@ still routes to the crash prompt. A mixed run routes only the genuine crashes
 and lists the environmental ones. When the jobs cannot be classified (an older
 checkout, or the jobs API is unreachable) the step falls back to the crash route,
 the conservative default that preserves the earlier behaviour. The step also
-passes the ids of the failing required jobs, and the classifier counts any of
-them with no failed run in the payload (an empty or partial API response) as a
+passes the ids of the failing required jobs. The jobs payload is for the whole
+run, so the classifier restricts the crash/environmental split to runs of those
+ids — an unrelated failed job (`docker-build`, a failed `analysis`) never counts
+toward the crash count or lands in the reports. It counts any required id with
+no failed run in the payload (an empty or partial API response) as a
 crash. A payload holding fewer jobs than its declared `total_count` also counts
 one crash, since a missing matrix run can hide behind another run of the same
 job. So a zero crash count means every failing job was seen and found
