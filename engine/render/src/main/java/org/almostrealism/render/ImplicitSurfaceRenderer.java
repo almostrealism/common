@@ -152,7 +152,10 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 	/** The near end of the bracket of every ray, where the surface value is positive. */
 	private final PackedCollection near;
 
-	/** The far end of the bracket of every ray, where the surface value is not positive. */
+	/**
+	 * The far end of the bracket of every ray, where the surface value is not positive, or
+	 * {@link #unclosedDistance()} while the bracket has not closed.
+	 */
 	private final PackedCollection far;
 
 	/** The surface value at the probe, or at the near end of the bracket. */
@@ -340,15 +343,14 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 		pixels.add(a(cp(rays), camera.rayAt(pixelPositions(), pair(width, height))));
 		pixels.add(a(cp(probe), c(0.0)));
 		pixels.add(a(cp(near), c(0.0)));
-		pixels.add(a(cp(far), c(maximumDistance)));
+		pixels.add(a(cp(far), c(unclosedDistance())));
 
 		for (int i = 0; i < marchSteps; i++) {
 			addMarchStep(pixels);
 		}
 
-		// TODO(review): a bracket that closes exactly at the clamped probe maximumDistance leaves far == maximumDistance and is classified as a miss
 		pixels.add(a(cp(hit), greaterThan(cp(far), c(0.0),
-				lessThan(cp(far), c(maximumDistance), c(1.0), c(0.0)), c(0.0))));
+				lessThan(cp(far), c(unclosedDistance()), c(1.0), c(0.0)), c(0.0))));
 
 		for (int i = 0; i < refinementSteps; i++) {
 			addBisection(pixels);
@@ -374,12 +376,24 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 		ops.add(a(cp(value), surface.value(pointAt(cp(probe)))));
 		ops.add(a(cp(far), greaterThan(cp(value), c(0.0), cp(far), min(cp(far), cp(probe)))));
 
-		CollectionProducer open = greaterThan(cp(far), c(maximumDistance), c(1.0), c(0.0), true);
+		CollectionProducer open = greaterThan(cp(far), c(maximumDistance), c(1.0), c(0.0));
 		ops.add(a(cp(near), add(cp(near), open.multiply(subtract(cp(probe), cp(near))))));
 
 		CollectionProducer step = max(cp(value).divide(cp(bound)), c(minimumStep));
 		CollectionProducer next = min(add(cp(probe), step), c(maximumDistance));
 		ops.add(a(cp(probe), add(cp(probe), open.multiply(subtract(next, cp(probe))))));
+	}
+
+	/**
+	 * Returns the far end of a bracket that has not closed. It lies beyond
+	 * {@link #setMaximumDistance(double) maximumDistance}, where no probe reaches, so that a
+	 * bracket closing at a probe clamped to {@code maximumDistance} remains distinguishable
+	 * from one that never closed.
+	 *
+	 * @return the far end of an unclosed bracket
+	 */
+	protected double unclosedDistance() {
+		return 2.0 * maximumDistance + 1.0;
 	}
 
 	/**

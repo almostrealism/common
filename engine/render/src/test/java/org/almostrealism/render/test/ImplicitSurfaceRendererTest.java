@@ -342,6 +342,55 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 		}
 	}
 
+	/**
+	 * A bracket that closes at the last probe, the one clamped to the maximum distance, is a
+	 * hit. A minimum step longer than the maximum distance clamps the first probe of every ray
+	 * to the maximum distance, so every hit of the unit sphere closes there: a ray hits exactly
+	 * when the point at the maximum distance is inside the sphere, at the analytic distance of
+	 * its entry, and every other ray misses.
+	 */
+	@Test(timeout = 600000)
+	public void bracketClosingAtMaximumDistanceHits() {
+		int size = 16;
+		double maximumDistance = 4.5;
+		PinholeCamera camera = sphereCamera();
+		ImplicitSurfaceRenderer renderer = renderer(unitSphere(), camera, size);
+		renderer.setMaximumDistance(maximumDistance);
+		renderer.setMinimumStep(10.0);
+		renderer.setRefinementSteps(40);
+
+		try {
+			renderer.frame().get().run();
+
+			PackedCollection distance = renderer.getDistance();
+			Evaluable<PackedCollection> rays = camera.rayAt(v(Pair.shape(), 0), pair(size, size)).get();
+
+			int hits = 0;
+			int beyond = 0;
+			for (int i = 0; i < size * size; i++) {
+				double[] r = ray(rays, size, i / size, i % size);
+				double x = r[0] + maximumDistance * r[3];
+				double y = r[1] + maximumDistance * r[4];
+				double z = r[2] + maximumDistance * r[5];
+
+				if (x * x + y * y + z * z <= 1.0) {
+					hits++;
+					assertEquals("Pixel " + i + " should hit at its entry into the sphere",
+							sphereDistance(r), distance.toDouble(i), 1e-4);
+				} else {
+					if (sphereDistance(r) > 0) beyond++;
+					assertEquals("Pixel " + i + " should miss", -1.0, distance.toDouble(i), 0.0);
+				}
+			}
+
+			log("Hits closing at the maximum distance: " + hits + ", hits beyond it: " + beyond);
+			assertTrue("Some rays should hit within the maximum distance", hits > 0);
+			assertTrue("Some rays should hit only beyond the maximum distance", beyond > 0);
+		} finally {
+			renderer.destroy();
+		}
+	}
+
 	/** A height field rejects a grid spacing of zero. */
 	@Test(timeout = 60000, expected = IllegalArgumentException.class)
 	public void heightFieldRejectsZeroSpacing() {

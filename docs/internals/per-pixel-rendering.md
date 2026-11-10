@@ -145,12 +145,14 @@ For every pixel `k` (column `k % width`, row `k / width` from the top):
 1. **Ray.** `camera.rayAt(...)` on the `(n, 2)` batch of screen positions, stored in an
    `(n, 6)` collection.
 2. **March** (`marchSteps` times). Each pixel keeps a bracket `[near, far]` along its ray,
-   with `f > 0` at `near`, and a probe distance. Evaluate `f` at the probe; if `f <= 0`
+   with `f > 0` at `near`, and a probe distance; `far` starts at a sentinel beyond
+   `maximumDistance` that no probe reaches. Evaluate `f` at the probe; if `f <= 0`
    close the bracket there (`far = probe`); otherwise move `near` to the probe and advance
    the probe by `max(f / L, minimumStep)`, clamped to `maximumDistance`. Once the bracket is
    closed, nothing changes.
-3. **Hit flag.** A pixel hits if its bracket closed before `maximumDistance` and after the
-   ray origin (`far > 0`). A ray that starts inside the surface (`f <= 0` at the origin)
+3. **Hit flag.** A pixel hits if its bracket closed (`far` is below the sentinel, which
+   includes a bracket closing at the last probe, clamped to `maximumDistance`) and closed
+   after the ray origin (`far > 0`). A ray that starts inside the surface (`f <= 0` at the origin)
    is a miss.
 4. **Bisection** (`refinementSteps` times) of `[near, far]`.
 5. **Secant step**: the zero of the line through `f(near)` and `f(far)`, which is the hit
@@ -272,6 +274,7 @@ intersections of the same camera rays, each evaluated one pixel at a time:
 | `flatHeightField` | hit distances on a flat height field within 1e-3 of the plane intersection |
 | `sinusoidalHeightField` | hit distances on `0.2 sin(x) cos(z)` (257x257 grid) within 1e-3 of the analytic surface |
 | `cameraInsideSurfaceMisses` | a camera at the centre of the unit sphere misses at every pixel, and every pixel shows the environment color of its ray |
+| `bracketClosingAtMaximumDistanceHits` | with every probe clamped to the maximum distance, a ray hits at its analytic entry into the unit sphere exactly when the point at the maximum distance is inside it, and misses otherwise |
 | `heightFieldRejectsZeroSpacing`, `heightFieldRejectsNegativeSpacing` | a height field rejects a grid spacing that is not positive |
 | `heightFieldHeightAtGridEdge` | the height of a planar height field is exact up to the far edge of the grid and equals the edge height beyond it |
 | `heightFieldNormalOutsideGrid` | the normal of a planar height field follows both slopes inside the grid and has zero slope along each axis beyond it |
