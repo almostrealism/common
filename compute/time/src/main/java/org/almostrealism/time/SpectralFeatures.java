@@ -430,8 +430,13 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * @param radialSpectrum a radial spectrum, shaped {@code [bins]}
 	 * @param binWidth       the wavenumber represented by one bin (see {@link #radialBinWidth})
 	 * @return a single-element producer of the peak wavenumber, {@code (b + delta) * binWidth}
+	 * @throws IllegalArgumentException if {@code binWidth} is not positive and finite
 	 */
 	default CollectionProducer spectralPeak(Producer<PackedCollection> radialSpectrum, double binWidth) {
+		if (!(binWidth > 0) || Double.isInfinite(binWidth)) {
+			throw new IllegalArgumentException("Radial bin width must be positive and finite, not " + binWidth);
+		}
+
 		int bins = shape(radialSpectrum).getTotalSize();
 		CollectionProducer spectrum = isolated(c(radialSpectrum).reshape(bins));
 		CollectionProducer peak = spectralPeakBin(spectrum);

@@ -539,4 +539,19 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		assertRejected(() -> wavenumberSquared(shape(8, 8), 0.0));
 		assertRejected(() -> radialBinWidth(shape(8, 8), 1.0, -1.0));
 	}
+
+	/**
+	 * A radial bin width is a positive, finite wavenumber, so {@link SpectralFeatures#spectralPeak}
+	 * rejects zero, negative, NaN and infinite widths while a small positive width is accepted.
+	 * Only the graph is built; nothing is evaluated.
+	 */
+	@Test(timeout = 60000)
+	public void spectralPeakRejectsInvalidBinWidth() {
+		CollectionProducer spectrum = integers(0, 8);
+		Assert.assertNotNull(spectralPeak(spectrum, Double.MIN_VALUE));
+		assertRejected(() -> spectralPeak(spectrum, 0.0));
+		assertRejected(() -> spectralPeak(spectrum, -0.25));
+		assertRejected(() -> spectralPeak(spectrum, Double.NaN));
+		assertRejected(() -> spectralPeak(spectrum, Double.POSITIVE_INFINITY));
+	}
 }

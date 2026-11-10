@@ -17,9 +17,11 @@ native kernels on every backend, Metal and OpenCL included; nothing is computed 
 | Peak of any radial spectrum | `spectralPeakBin(spectrum)`, `spectralPeak(spectrum, binWidth)` |
 | Periodic Poisson solve `∇²p = f` | `poissonSolve(f, spacing...)` |
 
-All of these except `FourierTransform` are default methods of `SpectralFeatures`
-(`org.almostrealism.time`). `TemporalFeatures` extends `SpectralFeatures`, so any class that
-implements `TemporalFeatures` (including every `TestSuiteBase` test) already has them.
+The 1-D `fft(bins, input)` and `ifft(bins, input)` are methods of `TemporalFeatures`, and
+`FourierTransform` is the computation behind every transform. Everything else in the table is a
+default method of `SpectralFeatures` (`org.almostrealism.time`). `TemporalFeatures` extends
+`SpectralFeatures`, so any class that implements `TemporalFeatures` (including every
+`TestSuiteBase` test) has all of them.
 
 ## Conventions
 
