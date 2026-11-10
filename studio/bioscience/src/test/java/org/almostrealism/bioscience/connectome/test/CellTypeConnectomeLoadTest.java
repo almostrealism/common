@@ -229,7 +229,7 @@ public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 	 *
 	 * @param directory the connectome directory
 	 */
-	private void assertThrowsLoad(File directory) {
+	private static void assertThrowsLoad(File directory) {
 		assertThrowsIllegalArgument(() -> {
 			try {
 				CellTypeConnectome.load(directory).destroy();
@@ -237,5 +237,19 @@ public class CellTypeConnectomeLoadTest extends TestSuiteBase {
 				throw new AssertionError("Expected an IllegalArgumentException, not " + e, e);
 			}
 		});
+	}
+
+	/**
+	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
+	 *
+	 * @param action the action expected to throw
+	 */
+	private static void assertThrowsIllegalArgument(Runnable action) {
+		try {
+			action.run();
+			Assert.fail("Expected an IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
 	}
 }

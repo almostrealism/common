@@ -135,9 +135,8 @@ public class RayTracedAnimation<T extends ShadableSurface> extends Animation<T> 
 	private ImageSequence frameSequence(String instance) {
 		if (sequence == null) {
 			String dir = getOutputDirectory();
-			// TODO(review): getIterations() is the physics-step count, not the frame count, so the bound over-widens the zero-pad and makes writeEncodeScript always warn "Only X of Y frames"
 			sequence = new ImageSequence(dir == null ? new File(".") : new File(dir),
-					getIterations(), "frame_" + instance + ".");
+					getFrameCount(), "frame_" + instance + ".");
 			sequence.prepare();
 			sequence.setFrameRate(Math.max(1, (int) Math.round(1.0 / getFrameDuration())));
 		}

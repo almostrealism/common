@@ -223,4 +223,37 @@ public class ImageSequenceTest extends TextureTestBase {
 		sequence.setFrameRate(48);
 		Assert.assertEquals(48, sequence.getFrameRate());
 	}
+
+	/**
+	 * A name prefix that is not a safe filename fragment is rejected, so it cannot escape the output
+	 * directory with a path separator or inject shell syntax into the encode script; a plain prefix
+	 * and the empty prefix are accepted.
+	 */
+	@Test(timeout = 30000)
+	public void rejectsUnsafeNamePrefix() throws IOException {
+		File dir = Files.createTempDirectory("image-sequence-prefix").toFile();
+
+		assertThrowsIllegalArgument(() -> new ImageSequence(dir, 3, "../escape_"));
+		assertThrowsIllegalArgument(() -> new ImageSequence(dir, 3, "sub/dir_"));
+		assertThrowsIllegalArgument(() -> new ImageSequence(dir, 3, "shot; rm -rf x;"));
+		assertThrowsIllegalArgument(() -> new ImageSequence(dir, 3, "$(whoami)"));
+		assertThrowsIllegalArgument(() -> new ImageSequence(dir, 3, (String) null));
+
+		Assert.assertEquals("shot_00.png", new ImageSequence(dir, 100, "shot_").frameName(0));
+		Assert.assertEquals("0.png", new ImageSequence(dir, 1, "").frameName(0));
+	}
+
+	/**
+	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
+	 *
+	 * @param action the action expected to throw
+	 */
+	private static void assertThrowsIllegalArgument(Runnable action) {
+		try {
+			action.run();
+			Assert.fail("Expected an IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
 }

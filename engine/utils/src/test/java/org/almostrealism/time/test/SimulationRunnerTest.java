@@ -861,6 +861,20 @@ public class SimulationRunnerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
+	 *
+	 * @param action the action expected to throw
+	 */
+	private static void assertThrowsIllegalArgument(Runnable action) {
+		try {
+			action.run();
+			Assert.fail("Expected an IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
+	/**
 	 * Asserts that every count the runner keeps equals {@code steps} and setup ran once.
 	 *
 	 * @param runner    the runner

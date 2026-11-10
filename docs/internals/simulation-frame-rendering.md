@@ -14,13 +14,13 @@ runner produces and never steps it.
    frame lives.
 2. **`RayTracedFrameSequence`** (`engine/render`) — the ray-traced implementation of that hook:
    reconstruct a `Scene` from the state, ray trace it, and hand each frame to an `ImageSequence`.
-4. **`ImageSequence`** (`domain/color`) — the single owner of frame-sequence output: the output
+3. **`ImageSequence`** (`domain/color`) — the single owner of frame-sequence output: the output
    directory, zero-padded (optionally prefixed) frame naming, encoding each frame through
    `ImageCanvas`, tracking which frames were written, and the `ffmpeg` encode script bounded to the
    contiguous run on disk. It is renderer-agnostic — a caller hands it an `RGB[][]` (or image
    producer) however it was produced — so every frame-sequence writer shares it, and there is one
    way to write a frame sequence.
-3. **`RGBFeatures.heatmap` / `RGBFeatures.saveHeatmap`** (`domain/color`) — a colour-mapped heatmap of
+4. **`RGBFeatures.heatmap` / `RGBFeatures.saveHeatmap`** (`domain/color`) — a colour-mapped heatmap of
    a 2D `PackedCollection` field, for inspecting a height field or scalar field directly.
 
 The split follows the dependency graph: `compute/time` has no dependency on `engine/render` or

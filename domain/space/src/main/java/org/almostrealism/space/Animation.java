@@ -160,6 +160,25 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	public double getFrameDuration() { return this.fdt; }
 
 	/**
+	 * Returns the number of frames a {@link #run() run} writes. A frame is written every
+	 * {@code getFrameDuration() / getTickDuration()} iterations, so the frame count is fewer than
+	 * {@link #getIterations() the iteration count} whenever several physics ticks elapse per frame.
+	 * When a velocity-dependent time step is configured a frame is written every iteration, so the
+	 * frame count equals the iteration count.
+	 *
+	 * @return the number of frames written by a run
+	 */
+	public int getFrameCount() {
+		int iterationsPerFrame = (int) (this.fdt / this.dt);
+
+		if (this.vdt > 0.0 || iterationsPerFrame <= 0) {
+			return this.itr;
+		}
+
+		return this.itr / iterationsPerFrame;
+	}
+
+	/**
 	 * If the value of vdt is set to anything greater than 0.0, the time interval for each
 	 * iteration will be set so that it is the value of vdt divided by the average velocity
 	 * of the objects in the screen.

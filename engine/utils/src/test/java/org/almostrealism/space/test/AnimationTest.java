@@ -62,6 +62,29 @@ public class AnimationTest extends TestSuiteBase {
 		Assert.assertEquals(1.0 / 25.0, anim.getFrameDuration(), 1e-12);
 	}
 
+	/**
+	 * The frame count is the number of frames {@link Animation#run()} writes: the iteration count
+	 * divided by the iterations-per-frame ({@code frameDuration / tickDuration}), discarding a
+	 * trailing partial frame, and never the physics-step count when several steps elapse per frame.
+	 * With a velocity-dependent time step a frame is written every iteration, so the frame count then
+	 * equals the iteration count. The durations {@code 0.5} and {@code 0.125} are exact in IEEE-754,
+	 * so {@code 0.5 / 0.125} is exactly {@code 4.0} and the assertions need no tolerance.
+	 */
+	@Test(timeout = 10000)
+	public void frameCount() {
+		TickAnimation anim = new TickAnimation(0.125);
+		anim.setFPS(2.0);
+
+		anim.setIterations(100);
+		Assert.assertEquals(25, anim.getFrameCount());
+
+		anim.setIterations(103);
+		Assert.assertEquals(25, anim.getFrameCount());
+
+		anim.setVDT(0.5);
+		Assert.assertEquals(103, anim.getFrameCount());
+	}
+
 	/** The boolean rendering/logging/sleep flags round-trip. */
 	@Test(timeout = 10000)
 	public void booleanFlags() {
@@ -165,5 +188,20 @@ public class AnimationTest extends TestSuiteBase {
 				new Vector(speed, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
 				new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0),
 				1.0, 1.0, 1.0, 4);
+	}
+
+	/**
+	 * An {@link Animation} that exposes its protected tick-duration setter, so a test can configure
+	 * the physics time step and exercise the frame-count derivation.
+	 */
+	private static final class TickAnimation extends Animation<ShadableSurface> {
+		/**
+		 * Creates an animation with the given physics time step.
+		 *
+		 * @param tickDuration the duration of each physics tick in seconds
+		 */
+		private TickAnimation(double tickDuration) {
+			setTickDuration(tickDuration);
+		}
 	}
 }

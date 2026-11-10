@@ -91,12 +91,21 @@ public class ImageSequence implements ConsoleFeatures {
 	 *
 	 * @param outputDirectory the directory the frames and encode script are written to
 	 * @param frameCount      the number of frames the sequence will hold; must not be negative
-	 * @param namePrefix      the prefix placed before the zero-padded index in each frame file name
-	 * @throws IllegalArgumentException if {@code frameCount} is negative
+	 * @param namePrefix      the prefix placed before the zero-padded index in each frame file name;
+	 *                        must be a safe filename fragment (letters, digits, {@code .}, {@code _}
+	 *                        and {@code -}), so it cannot escape the output directory or inject shell
+	 *                        syntax into the encode script
+	 * @throws IllegalArgumentException if {@code frameCount} is negative, or {@code namePrefix} is
+	 *                                  {@code null} or not a safe filename fragment
 	 */
 	public ImageSequence(File outputDirectory, int frameCount, String namePrefix) {
 		if (frameCount < 0) {
 			throw new IllegalArgumentException("frameCount must not be negative (" + frameCount + ")");
+		}
+
+		if (namePrefix == null || !namePrefix.matches("[A-Za-z0-9._-]*")) {
+			throw new IllegalArgumentException("namePrefix must be a safe filename fragment " +
+					"(letters, digits, '.', '_', '-'), but was " + namePrefix);
 		}
 
 		this.outputDirectory = outputDirectory;

@@ -357,6 +357,20 @@ public class RayTracedFrameSequenceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
+	 *
+	 * @param action the action expected to throw
+	 */
+	private static void assertThrowsIllegalArgument(Runnable action) {
+		try {
+			action.run();
+			Assert.fail("Expected an IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
+	/**
 	 * A two-element coupled mixing step {@code x <- M x}, so each element reads the other (the step
 	 * is coupled, not element-local).
 	 *
