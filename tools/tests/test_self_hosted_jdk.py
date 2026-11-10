@@ -125,6 +125,17 @@ class SelfHostedJdkTest(unittest.TestCase):
         self.assertGreater(seen, 0,
                            "expected at least one hosted setup-java step to guard")
 
+    def test_no_step_name_hard_codes_a_jdk_major(self):
+        """A step name such as 'Set up JDK 17' would keep advertising the old
+        major in the run log after EXPECTED_JDK_MAJOR is upgraded, so names
+        that mention a JDK major must derive it from the env value too."""
+        for name, job in _jobs().items():
+            for step in job.get("steps", []):
+                with self.subTest(job=name, step=step.get("name")):
+                    self.assertNotRegex(str(step.get("name", "")), r"JDK\s+\d",
+                                        f"{name} has a step name with a hard-coded "
+                                        "JDK major; use ${{ env.EXPECTED_JDK_MAJOR }}")
+
 
 if __name__ == "__main__":
     unittest.main()

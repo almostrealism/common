@@ -370,7 +370,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
         uses: actions/setup-java@v5
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
@@ -416,7 +416,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
         uses: actions/setup-java@v5
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
@@ -1221,7 +1221,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
         uses: actions/setup-java@v5
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
@@ -1289,7 +1289,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
         uses: actions/setup-java@v5
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
@@ -1533,7 +1533,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
         uses: actions/setup-java@v5
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
@@ -1942,7 +1942,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
         uses: actions/setup-java@v5
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
@@ -2052,7 +2052,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Set up JDK 17
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
         uses: actions/setup-java@v5
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
@@ -3615,7 +3615,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Set up JDK 17
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
         uses: actions/setup-java@v5
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
