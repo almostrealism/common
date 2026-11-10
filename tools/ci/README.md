@@ -24,7 +24,9 @@ is baked into each runner's image or host, and every self-hosted job runs a
 workflow-level `EXPECTED_JDK_MAJOR` in
 [`.github/workflows/analysis.yaml`](../../.github/workflows/analysis.yaml),
 failing fast and naming the runner on a mismatch. (Hosted `ubuntu-latest` jobs
-keep `setup-java`, which serves the JDK from the hosted image's tool cache.)
+keep `setup-java`, which serves the JDK from the hosted image's tool cache; its
+`java-version` is `${{ env.EXPECTED_JDK_MAJOR }}`, so the hosted and self-hosted
+lanes track the same major from the one env value.)
 
 The major version is a single value: `EXPECTED_JDK_MAJOR` in the workflow, the
 `JDK_MAJOR` build arg in the Linux images, and the `EXPECTED_JDK_MAJOR` check in

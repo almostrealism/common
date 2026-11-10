@@ -104,6 +104,27 @@ class SelfHostedJdkTest(unittest.TestCase):
                 with self.subTest(job=name):
                     self.assertEqual(["ubuntu-latest"], _runs_on(job))
 
+    def test_hosted_setup_java_consumes_the_workflow_level_major(self):
+        """Hosted jobs keep setup-java, but its java-version must come from the
+        workflow-level EXPECTED_JDK_MAJOR rather than a second hard-coded value.
+        Otherwise an intentional JDK upgrade (which this file documents as a
+        single edit to that env value plus a runner image rebuild) would leave
+        the hosted build/check lanes pinned to the old major while the
+        self-hosted lanes moved, so the single-version contract would be a
+        fiction. At least one hosted setup-java step must exist for this guard
+        to mean anything."""
+        seen = 0
+        for name, job in _jobs().items():
+            for step in _steps_using(job, "actions/setup-java"):
+                seen += 1
+                version = str(step.get("with", {}).get("java-version", ""))
+                with self.subTest(job=name):
+                    self.assertIn("env.EXPECTED_JDK_MAJOR", version,
+                                  f"{name} setup-java must take java-version from "
+                                  "env.EXPECTED_JDK_MAJOR, not a hard-coded major")
+        self.assertGreater(seen, 0,
+                           "expected at least one hosted setup-java step to guard")
+
 
 if __name__ == "__main__":
     unittest.main()
