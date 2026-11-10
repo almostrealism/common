@@ -301,8 +301,29 @@ on, because their premise is that existing tests stay the reference.
 
 **A required test job's `failure` result must never go unresolved on
 `auto-resolve`'s attempt.** The `Check for incomplete test execution` step
-reads every required job's raw `needs.<job>.result` and, if any is `failure`,
-routes to the crash prompt regardless of whether Surefire XML was parsed.
+reads every required job's raw `needs.<job>.result`, and when any is `failure`
+it decides the route by *where in the job* the failure happened rather than
+treating every `failure` as a crash. It lists the failing jobs' steps from the
+run's jobs API and runs `tools/ci/classify-job-failures.py`: a job whose failed
+steps all precede its first Maven/test step failed in setup — `setup-java`
+timing out on the JDK host (the incident this split addresses), checkout, cache
+restore or build-artifact download — which is **environmental**, reported in the
+summary and assigned to no agent, because the pipeline already retried three
+times before auto-resolve. A failure at or inside the Maven/test step is a real
+crash and still routes to the crash prompt (`build_failed_in_tests=true`). A
+mixed run routes only the genuine crashes and lists the environmental ones. When
+the jobs cannot be classified (an older checkout without the script, or the jobs
+API is unreachable) the step falls back to the crash route — the conservative
+default that never drops a real failure. For the same reason the step passes the
+ids of the failing required jobs to the classifier, which counts any of them with
+no failed run in the payload as a crash: an empty or partial jobs response can
+never turn a real failure into a zero crash count. A payload holding fewer jobs
+than its declared `total_count` counts one crash too, because an omitted matrix
+run (a crashed `test-media-cl (5)`) is invisible to id-level accounting while
+another run of the same job is present. The test step is identified
+by "test(s)" in its name alone; "Maven" is not a marker, because the accelerator
+lanes' "Isolate Maven repository per runner" setup step runs before their
+artifact download and restore.
 `test-flowtree` originally had no `needs.test-flowtree.result` check here at
 all — back when one job owned every prompt, a `test-flowtree` failure fell
 straight through to a prompt claiming everything had passed. (The quality-gate
