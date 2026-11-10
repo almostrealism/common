@@ -224,6 +224,6 @@ public class CollectionExponentialComputation extends TraversableExpressionCompu
 
 		CollectionProducer input = (CollectionProducer) getInputs().get(1);
 		return chainRuleDelta(target, input,
-				() -> isIgnoreZero() ? expIgnoreZero(input) : exp(input));
+				isIgnoreZero() ? expIgnoreZero(input) : exp(input));
 	}
 }
