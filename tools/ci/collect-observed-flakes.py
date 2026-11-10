@@ -53,8 +53,12 @@ import urllib.request
 
 # The "Build and Test" workflow whose retried runs record the flakes. Matched
 # against each run's ``name`` so a differently-named workflow in the same
-# repository is never mistaken for it.
+# repository is never mistaken for it. ``WORKFLOW_FILE`` is the workflow
+# definition's file name, used to scope the runs listing to this one workflow so
+# the run cap bounds Build-and-Test runs directly rather than being spent on the
+# repository's other workflows.
 WORKFLOW_NAME = "Build and Test"
+WORKFLOW_FILE = "analysis.yaml"
 
 # The test-execution jobs whose failures are real test outcomes (a lane). Only
 # these are read for failing tests; a failed setup/policy/build job is not a test
@@ -119,9 +123,9 @@ def surefire_failures(log_text):
 
     Reads the Surefire ``<<< FAILURE!`` / ``<<< ERROR!`` lines, which name the
     failing class and method directly, so a timestamped CI log line prefix does
-    not interfere. Returns an empty set for a log with none (a job that failed
-    before any test ran leaves no such line, and is then treated as having no
-    identifiable failing test)."""
+    not interfere. Returns an empty set for a log with none; a job that failed
+    before any test ran leaves no such line, and ``collect`` then treats that
+    failure as non-evidence rather than as a clean pass."""
     names = set()
     for cls, method in _SUREFIRE_FAILURE.findall(log_text or ""):
         names.add("%s#%s" % (cls, method))
@@ -134,12 +138,18 @@ def detect_flakes(attempt_results):
     ``attempt_results`` is a list of dicts, one per (run, lane, attempt) that
     actually ran, each with:
         run_id, commit, branch, lane, attempt (int), created_at,
-        failed (set of Class#method), job_id, html_url
+        failed (set of Class#method), job_id, html_url, and optionally shard
+        (the full job name, carrying the matrix-shard suffix when the lane is
+        sharded; defaults to lane for an unsharded lane)
 
-    A test is flaky for a (run, lane) when it is in the failed set of one attempt
-    and absent from the failed set of a LATER attempt of the same (run, lane) —
-    it failed, then passed on re-run of the same commit. A test in every
-    attempt's failed set never passed and is a real failure, not a flake.
+    Attempts are compared within the same (run, shard), not merely (run, lane),
+    because each shard of a sharded lane runs a distinct subset of tests: a test
+    absent from a SIBLING shard's failed set never ran there and is no evidence
+    it passed. A test is flaky when it is in the failed set of one attempt and
+    absent from the failed set of a LATER attempt of the same (run, shard) — it
+    failed, then passed on re-run of the same commit. A test in every attempt's
+    failed set never passed and is a real failure, not a flake. Confirmed flakes
+    are then aggregated by (test, lane), collapsing shards.
 
     Returns a list of flake entries aggregated by (test, lane):
         {test, lane, lane_label, count, last_occurrence, commits (sorted list),
@@ -148,10 +158,12 @@ def detect_flakes(attempt_results):
     """
     groups = {}
     for result in attempt_results:
-        groups.setdefault((result["run_id"], result["lane"]), []).append(result)
+        shard = result.get("shard", result["lane"])
+        groups.setdefault((result["run_id"], shard), []).append(result)
 
     aggregate = {}
-    for (run_id, lane), records in groups.items():
+    for (run_id, shard), records in groups.items():
+        lane = records[0]["lane"]
         records.sort(key=lambda record: record["attempt"])
         every_failed = set()
         for record in records:
@@ -263,15 +275,20 @@ class GitHubClient:
             data = response.read()
         return data if raw else json.loads(data.decode("utf-8"))
 
-    def list_workflow_runs(self, max_runs):
-        """The most recent workflow runs, newest first, across every branch."""
+    def list_workflow_runs(self, max_runs, workflow_file=WORKFLOW_FILE):
+        """The most recent Build and Test runs, newest first, across every branch.
+
+        Scoped to the ``workflow_file`` workflow so ``max_runs`` bounds that
+        workflow's runs directly; listing ``/actions/runs`` for the whole
+        repository would let the repository's other workflows crowd the cap and
+        discard recent Build-and-Test retries before they are seen."""
         runs = []
         page = 1
         while len(runs) < max_runs:
             per_page = min(100, max_runs - len(runs))
             payload = self._request(
-                "/repos/%s/actions/runs?per_page=%d&page=%d"
-                % (self.repo, per_page, page))
+                "/repos/%s/actions/workflows/%s/runs?per_page=%d&page=%d"
+                % (self.repo, workflow_file, per_page, page))
             batch = payload.get("workflow_runs", [])
             if not batch:
                 break
@@ -354,14 +371,18 @@ def collect(client, workflow_name=WORKFLOW_NAME, window_days=14, max_runs=100,
                     continue
                 conclusion = job.get("conclusion")
                 if conclusion == "failure":
-                    # TODO(review): a lane that failed before any test ran (setup
-                    # step, build/compile error, JVM crash) parses to an empty
-                    # set here, which detect_flakes reads the same as a clean
-                    # pass — so a real failure in an earlier attempt looks like it
-                    # "passed on re-run" and is reported as a false flake.
-                    # Consider treating failure-with-no-parsed-failures as
-                    # non-evidence (continue) rather than an empty failed set.
                     failed = surefire_failures(client.job_log(job.get("id")))
+                    if not failed:
+                        # A failure with no Surefire line failed before any test
+                        # produced a result — a setup step, a build/compile
+                        # error, a JVM crash, or an expired log. It is not
+                        # attributable to a test outcome, so it is no evidence
+                        # that any test passed or failed. Skip it, the same as a
+                        # skipped or cancelled lane; recording it as an empty
+                        # (all-passed) set would make a real failure in an
+                        # earlier attempt look like it "passed on re-run" and
+                        # report a false flake.
+                        continue
                 elif conclusion == "success":
                     failed = set()
                 else:
@@ -373,6 +394,7 @@ def collect(client, workflow_name=WORKFLOW_NAME, window_days=14, max_runs=100,
                     "commit": commit,
                     "branch": branch,
                     "lane": lane_of(name),
+                    "shard": name,
                     "attempt": attempt,
                     "created_at": created_at,
                     "failed": failed,

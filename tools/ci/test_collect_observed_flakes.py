@@ -282,6 +282,80 @@ class CollectEndToEndTests(unittest.TestCase):
             _FakeClient(runs, attempt_jobs, logs), window_days=14, now=now)
         self.assertEqual(flakes, [])
 
+    def test_a_failed_lane_with_no_surefire_output_is_not_a_false_flake(self):
+        # Attempt 1 fails a real test; attempt 2's lane fails before any test
+        # ran (a setup/build failure, no Surefire line). The attempt-2 failure
+        # is not evidence the test passed, so no flake is reported — recording
+        # it as an empty (all-passed) set would be a false confirmed flake.
+        runs = [_run(600, attempt=2)]
+        attempt_jobs = {
+            (600, 1): [_job(6001, "test", "failure")],
+            (600, 2): [_job(6002, "test", "failure")],
+        }
+        logs = {
+            6001: _surefire_line("org.example.FooTest.a"),
+            6002: "2026-11-09T19:41:03Z setup-java failed: could not download JDK",
+        }
+        flakes = collect_observed_flakes.collect(
+            _FakeClient(runs, attempt_jobs, logs), window_days=None)
+        self.assertEqual(flakes, [])
+
+    def test_a_persistent_failure_in_one_shard_is_not_a_false_flake(self):
+        # A sharded lane: shard 3 fails the same test in every attempt while its
+        # sibling shard 4 (a different test subset) passes. Collapsing shards to
+        # the lane before comparing attempts would pair shard 3's failure with
+        # shard 4's pass and report a false flake; comparing per shard does not.
+        runs = [_run(700, attempt=2)]
+        fail = _surefire_line("org.example.BarTest.b")
+        attempt_jobs = {
+            (700, 1): [_job(7001, "test-media-cl (3)", "failure"),
+                       _job(7002, "test-media-cl (4)", "success")],
+            (700, 2): [_job(7003, "test-media-cl (3)", "failure"),
+                       _job(7004, "test-media-cl (4)", "success")],
+        }
+        logs = {7001: fail, 7003: fail}
+        flakes = collect_observed_flakes.collect(
+            _FakeClient(runs, attempt_jobs, logs), window_days=None)
+        self.assertEqual(flakes, [])
+
+    def test_a_flake_within_a_shard_is_detected_and_reported_by_lane(self):
+        # The same shard fails then passes on re-run: a genuine flake. It is
+        # still detected, and the output collapses the shard suffix to the lane.
+        runs = [_run(800, attempt=2)]
+        attempt_jobs = {
+            (800, 1): [_job(8001, "test-media-cl (3)", "failure"),
+                       _job(8002, "test-media-cl (4)", "success")],
+            (800, 2): [_job(8003, "test-media-cl (3)", "success"),
+                       _job(8004, "test-media-cl (4)", "success")],
+        }
+        logs = {8001: _surefire_line("org.example.BarTest.b")}
+        flakes = collect_observed_flakes.collect(
+            _FakeClient(runs, attempt_jobs, logs), window_days=None)
+        self.assertEqual(len(flakes), 1)
+        self.assertEqual(flakes[0]["test"], "org.example.BarTest#b")
+        self.assertEqual(flakes[0]["lane"], "test-media-cl")  # shard collapsed
+
+
+class WorkflowScopedListingTests(unittest.TestCase):
+    """The run listing is scoped to the Build and Test workflow, not the whole
+    repository, so the run cap bounds Build-and-Test runs directly."""
+
+    def test_run_listing_requests_the_workflow_scoped_endpoint(self):
+        captured = []
+
+        class _CapturingClient(collect_observed_flakes.GitHubClient):
+            def _request(self, path, raw=False):
+                captured.append(path)
+                return {"workflow_runs": []}
+
+        client = _CapturingClient("owner/name", token="")
+        client.list_workflow_runs(50)
+        self.assertEqual(len(captured), 1)
+        self.assertIn(
+            "/actions/workflows/%s/runs" % collect_observed_flakes.WORKFLOW_FILE,
+            captured[0])
+        self.assertNotIn("/actions/runs?", captured[0])
+
 
 if __name__ == "__main__":
     unittest.main()
