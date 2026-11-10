@@ -16,6 +16,7 @@
 
 package org.almostrealism.optimize.test;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.optimize.NegativeLogLikelihood;
 import org.almostrealism.util.TestSuiteBase;
@@ -46,5 +47,46 @@ public class NegativeLogLikelihoodTests extends TestSuiteBase {
 				.loss(cp(output.each()), cp(target.each())).evaluate();
 		Assert.assertEquals(1, terms.getMemLength());
 		Assert.assertEquals(9.0, terms.toDouble(0), 1e-4);
+	}
+
+	/**
+	 * {@link NegativeLogLikelihood} rejects an output with no shape, rather than treating it as
+	 * a single element and computing a term for one row of one column.
+	 */
+	@Test(timeout = 10000)
+	public void negativeLogLikelihoodRejectsShapelessOutput() {
+		Producer<PackedCollection> target = cp(new PackedCollection(shape(2, 3)));
+		assertRejected(() -> new NegativeLogLikelihood().loss(shapeless(), target));
+	}
+
+	/**
+	 * {@link NegativeLogLikelihood} rejects a target with no shape, rather than reporting a row
+	 * count mismatch derived from a shape it does not have.
+	 */
+	@Test(timeout = 10000)
+	public void negativeLogLikelihoodRejectsShapelessTarget() {
+		Producer<PackedCollection> output = cp(new PackedCollection(shape(2, 3)));
+		assertRejected(() -> new NegativeLogLikelihood().loss(output, shapeless()));
+	}
+
+	/** Returns a producer that does not implement {@link io.almostrealism.collect.Shape}. */
+	private static Producer<PackedCollection> shapeless() {
+		return () -> null;
+	}
+
+	/**
+	 * Asserts that {@code loss} throws an {@link IllegalArgumentException} naming the
+	 * negative log likelihood as the operation that requires a shape.
+	 */
+	private static void assertRejected(Runnable loss) {
+		try {
+			loss.run();
+		} catch (IllegalArgumentException e) {
+			Assert.assertEquals("Negative Log Likelihood cannot be performed without a TraversalPolicy",
+					e.getMessage());
+			return;
+		}
+
+		Assert.fail("Expected IllegalArgumentException for a shapeless producer");
 	}
 }
