@@ -159,9 +159,9 @@ public interface TriangleFeatures extends VectorFeatures {
 		TraversalPolicy inputShape = shape(abc);
 		TraversalPolicy outputShape;
 		if (inputShape.getDimensions() >= 2) {
-			// Input is (N, 3), output should be (N, 4, 3)
+			// Input is (N, 3), output should be (N, 4, 3), one kernel thread per triangle
 			int batchSize = inputShape.length(0);
-			outputShape = new TraversalPolicy(false, false, batchSize, 4, 3);
+			outputShape = new TraversalPolicy(false, false, batchSize, 4, 3).traverse(1);
 		} else {
 			// Single triangle: input is (3), output is (4, 3)
 			outputShape = new TraversalPolicy(false, false, 4, 3);
@@ -231,7 +231,7 @@ public interface TriangleFeatures extends VectorFeatures {
 		int cellsX = nx - 1;
 		int cellsZ = ny - 1;
 		int triangleCount = 2 * cellsX * cellsZ;
-		TraversalPolicy outputShape = new TraversalPolicy(false, false, triangleCount, 3, 3);
+		TraversalPolicy outputShape = new TraversalPolicy(false, false, triangleCount, 3, 3).traverse(1);
 
 		return new DefaultTraversableExpressionComputation("regularGridSurfacePoints", outputShape, args ->
 			CollectionExpression.create(outputShape, idx -> {
@@ -282,7 +282,7 @@ public interface TriangleFeatures extends VectorFeatures {
 			Producer<PackedCollection> heights, int nx, int ny,
 			double spacingX, double spacingZ) {
 		int nodeCount = nx * ny;
-		TraversalPolicy outputShape = new TraversalPolicy(false, false, nodeCount, 3);
+		TraversalPolicy outputShape = new TraversalPolicy(false, false, nodeCount, 3).traverse(1);
 
 		CollectionProducer unnormalized = new DefaultTraversableExpressionComputation(
 				"regularGridSurfaceNormalVectors", outputShape, args ->
@@ -333,7 +333,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	 */
 	default CollectionProducer meshIntersectAt(Producer<PackedCollection> mesh, int triangleCount,
 											   Producer<PackedCollection> ray) {
-		TraversalPolicy outputShape = new TraversalPolicy(triangleCount, 1);
+		TraversalPolicy outputShape = new TraversalPolicy(triangleCount, 1).traverse(1);
 		double eps = Intersection.e;
 
 		return new DefaultTraversableExpressionComputation("meshIntersectAt", outputShape, args ->

@@ -46,6 +46,12 @@ public class GridSurfaceTessellationTest extends TestSuiteBase implements GridIn
 	private static final double SPACING_Z = 0.25;
 
 	/**
+	 * Tolerance for vertex positions read back from a {@link Vector}, whose storage uses the
+	 * hardware precision; single-precision backends round each coordinate to about 1e-7.
+	 */
+	private static final double POSITION_TOLERANCE = 1e-5;
+
+	/**
 	 * Builds a small bumpy height field, shared with other tests in this package that need a
 	 * non-planar grid surface fixture.
 	 *
@@ -94,9 +100,9 @@ public class GridSurfaceTessellationTest extends TestSuiteBase implements GridIn
 		for (int i = 0; i < nx; i++) {
 			for (int j = 0; j < ny; j++) {
 				Vector node = v[i * ny + j];
-				Assert.assertEquals(ORIGIN.getX() + i * SPACING_X, node.getX(), 1e-9);
-				Assert.assertEquals(ORIGIN.getY() + h[i][j], node.getY(), 1e-9);
-				Assert.assertEquals(ORIGIN.getZ() + j * SPACING_Z, node.getZ(), 1e-9);
+				Assert.assertEquals(ORIGIN.getX() + i * SPACING_X, node.getX(), POSITION_TOLERANCE);
+				Assert.assertEquals(ORIGIN.getY() + h[i][j], node.getY(), POSITION_TOLERANCE);
+				Assert.assertEquals(ORIGIN.getZ() + j * SPACING_Z, node.getZ(), POSITION_TOLERANCE);
 			}
 		}
 	}

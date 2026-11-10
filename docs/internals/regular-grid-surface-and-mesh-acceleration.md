@@ -94,9 +94,16 @@ reference).
 
 For a downward ray over a height field, the candidate count stays roughly constant as the grid
 is refined (the ray crosses a near-constant number of cells), while the linear scan tests every
-triangle. The accelerated work therefore grows sub-linearly with triangle count. Measured on
-the native backend, a `20x20` grid (722 triangles) intersected by 24 rays took ~1066 ms for the
-linear scan versus ~22 ms accelerated.
+triangle. The accelerated work therefore grows sub-linearly with triangle count. Wall time is
+backend-dependent: the linear kernel tests its triangles in parallel, so at a modest size such
+as a `20x20` grid (722 triangles, 24 rays) both paths take tens of milliseconds, and the
+triangle-test count is the measure that shows the gap widening as the mesh grows.
+
+Every batched kernel here (`triangle`, `regularGridSurfacePoints`, `regularGridSurfaceNormals`,
+`meshIntersectAt`) declares an output shape traversed per triangle or per node, for example
+`new TraversalPolicy(t, 4, 3).traverse(1)`. Without the traversal axis the output has a count of
+one, so the whole `t * 12` element buffer is unrolled into a single kernel body and compile time
+grows linearly with the triangle count.
 
 ## Worked example
 

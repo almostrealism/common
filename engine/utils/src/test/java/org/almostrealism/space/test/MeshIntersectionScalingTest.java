@@ -17,7 +17,6 @@
 package org.almostrealism.space.test;
 
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
@@ -117,9 +116,10 @@ public class MeshIntersectionScalingTest extends TestSuiteBase {
 		for (int k = 0; k < rayCount; k++) {
 			double fx = 0.15 + 0.7 * (k + 0.5) / rayCount;
 			double fz = 0.15 + 0.7 * ((k * 7) % rayCount + 0.5) / rayCount;
-			Producer<Ray> rp = (Producer) ray(vector(origin.getX() + fx * extent, 5.0,
-					origin.getZ() + fz * extent), vector(0.0, -1.0, 0.0));
-			rays[k] = rp.get();
+			// Supplied as data, so the timed loops do not include compiling a kernel per ray.
+			Ray value = new Ray(new Vector(origin.getX() + fx * extent, 5.0,
+					origin.getZ() + fz * extent), new Vector(0.0, -1.0, 0.0));
+			rays[k] = args -> value;
 		}
 
 		md.evaluateIntersection(rays[0], new Object[0]);

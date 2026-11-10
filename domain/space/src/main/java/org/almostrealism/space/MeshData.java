@@ -106,7 +106,7 @@ public class MeshData extends PackedCollection {
 	public MeshData(int triangles) {
 		super(new TraversalPolicy(triangles, 4, 3), 1, delegateSpec ->
 				new PackedCollection(new TraversalPolicy(4, 3), 1, delegateSpec.getDelegate(), delegateSpec.getOffset()));
-		distances = new PackedCollection(new TraversalPolicy(getCount(), 1));
+		distances = new PackedCollection(new TraversalPolicy(getCount(), 1).traverse(1));
 	}
 
 	/**
@@ -302,7 +302,7 @@ public class MeshData extends PackedCollection {
 		if (candidateBuffer != null && candidateBuffer.getCount() >= required) return;
 
 		candidateBuffer = new MeshData(required);
-		candidateDistances = new PackedCollection(new TraversalPolicy(required, 1));
+		candidateDistances = new PackedCollection(new TraversalPolicy(required, 1).traverse(1));
 		candidateGlobal = new int[required];
 		Arrays.fill(candidateGlobal, -1);
 		candidateActive = 0;

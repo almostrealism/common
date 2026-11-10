@@ -141,8 +141,10 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 			double tiltX = (random.nextDouble() - 0.5) * 0.02;
 			double tiltZ = (random.nextDouble() - 0.5) * 0.02;
 
-			Producer<Ray> rp = (Producer) ray(vector(x, 5.0, z), vector(tiltX, -1.0, tiltZ));
-			Evaluable<Ray> re = rp.get();
+			// The ray is supplied as data rather than as a new producer per iteration, so the
+			// loop does not compile a separate ray kernel for every random ray.
+			Ray value = new Ray(new Vector(x, 5.0, z), new Vector(tiltX, -1.0, tiltZ));
+			Evaluable<Ray> re = args -> value;
 
 			Pair linear = md.evaluateIntersection(re, new Object[0]);
 			Pair accelerated = md.evaluateIntersectionAccelerated(re, new Object[0]);
