@@ -199,6 +199,36 @@ public abstract class TraversableExpressionComputation
 	}
 
 	/**
+	 * Applies the single-factor chain rule {@code d/dx[g(f(x))] = g'(f(x)) * f'(x)} at the
+	 * {@link CollectionProducer} level, the shared construction used by the element-wise unary
+	 * functions (sine, cosine, hyperbolic tangent, exponential, logarithm) to differentiate
+	 * {@code g(f(x))} with respect to {@code target}.
+	 *
+	 * <p>The inner factor {@code f'(x)} is {@code input.delta(target)}, reshaped so each output
+	 * element indexes a row of the Jacobian and traversed over those rows. The outer factor
+	 * {@code g'(f(x))} is the supplied {@code cofactor}, flattened to a one-dimensional vector of
+	 * row scale factors, and the two are combined with
+	 * {@link org.almostrealism.algebra.MatrixFeatures#expandAndMultiply(CollectionProducer, CollectionProducer)}.
+	 * The result is reshaped to this computation's output shape appended with the shape of
+	 * {@code target}.</p>
+	 *
+	 * @param target   the {@link Producer} with respect to which the derivative is computed
+	 * @param input    the inner function {@code f(x)} whose delta supplies {@code f'(x)}
+	 * @param cofactor the outer derivative {@code g'(f(x))} evaluated at the input, used as the
+	 *                 per-row scale factor
+	 * @return a {@link CollectionProducer} computing the chain-rule derivative
+	 */
+	protected CollectionProducer chainRuleDelta(Producer<?> target,
+												CollectionProducer input, CollectionProducer cofactor) {
+		TraversalPolicy shape = getShape().append(shape(target));
+
+		CollectionProducer d = input.delta(target);
+		d = d.reshape(getShape().getTotalSize(), -1).traverse(0);
+
+		return expandAndMultiply(cofactor.flatten(), d).reshape(shape);
+	}
+
+	/**
 	 * Gets the value at the specified position in the output collection.
 	 * This method converts multi-dimensional position coordinates to a linear index
 	 * and then retrieves the value at that index.
