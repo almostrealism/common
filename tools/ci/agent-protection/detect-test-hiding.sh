@@ -37,11 +37,14 @@
 # method name is not an assertion call. The declaration exclusion is applied
 # symmetrically to the removed and added side. Pattern 3
 # (NET_TEST_METHODS_REMOVED) counts the `@Test` annotation itself — `@Test` or
-# `@Test(...)` followed by whitespace or end of line — and not annotations that
-# merely share the `@Test` prefix (@TestProperties, @TestDepth, @TestFactory).
-# Removing one of those does not remove a test method, so it must not be counted.
-# It also excludes comment lines symmetrically (like Pattern 2), so removing a
-# commented-out `// @Test(...)` marker is not counted as a removed test method.
+# `@Test(...)` followed by whitespace or end of line — but only in annotation
+# position, i.e. at the start of the line's content after the diff marker and any
+# indentation. The trailing boundary excludes annotations that merely share the
+# `@Test` prefix (@TestProperties, @TestDepth, @TestFactory); the leading anchor
+# excludes the token where it is not an annotation — inside a string literal, in an
+# inline comment after code, or in a comment-only line (`// @Test`, ` * @Test`) —
+# since a runnable test annotation always begins its line. Removing any of those
+# does not remove a test method, so none are counted.
 #
 # Exit codes:
 #   0 - no test-hiding detected (or only new test files modified)
@@ -590,16 +593,24 @@ for FILE in $MODIFIED_TEST_FILES; do
     fi
 
     # ── Pattern 3: Deleted @Test methods (net) ──
-    # Match the @Test annotation itself only: `@Test` or `@Test(...)` followed by
-    # whitespace or end of line. The trailing boundary is what keeps this from
-    # matching other annotations that merely start with "@Test" — @TestProperties,
-    # @TestDepth, @TestFactory — whose removal does not remove a test method.
-    # Comment lines (// single-line, /* block/javadoc, * continuation) are excluded
-    # symmetrically on the removed and added side, as in Pattern 2: a commented-out
-    # `// @Test(...)` marker is not a runnable test, so removing one does not remove
-    # a test method and must not be counted.
-    DELETED_TEST_METHODS=$(echo "$DIFF" | grep -E '^\-' | grep -vE '^\-[[:space:]]*(//|/\*|\*)' | grep -cE '@Test([[:space:](]|$)' || true)
-    ADDED_TEST_METHODS=$(echo "$DIFF" | grep -E '^\+' | grep -vE '^\+[[:space:]]*(//|/\*|\*)' | grep -cE '@Test([[:space:](]|$)' || true)
+    # Match the @Test annotation only when it appears in annotation position:
+    # `@Test` or `@Test(...)`, at the start of the line's content (after the diff
+    # marker and any indentation), followed by whitespace or end of line. Two
+    # properties come from anchoring to the start of content rather than matching
+    # the token anywhere on the line:
+    #   - The trailing boundary `([[:space:](]|$)` keeps this from matching other
+    #     annotations that merely start with "@Test" — @TestProperties, @TestDepth,
+    #     @TestFactory — whose removal does not remove a test method.
+    #   - The leading anchor `^[+-][[:space:]]*` keeps this from matching the token
+    #     where it is not an annotation at all: inside a string literal
+    #     (`String marker = "@Test(timeout = 1)";`), after code in an inline comment
+    #     (`int value = 1; /* @Test */`), or in a comment-only line (`// @Test(...)`,
+    #     ` * @Test` javadoc continuation). None of those begin with @Test once the
+    #     indentation is consumed, so none are counted — a runnable test annotation
+    #     always sits at the start of its line. The anchor therefore subsumes the
+    #     separate comment-line exclusion Pattern 2 applies and needs no counterpart.
+    DELETED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\-[[:space:]]*@Test([[:space:](]|$)' || true)
+    ADDED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\+[[:space:]]*@Test([[:space:](]|$)' || true)
     if [ "$DELETED_TEST_METHODS" -gt 0 ] && [ "$ADDED_TEST_METHODS" -lt "$DELETED_TEST_METHODS" ]; then
         NET_REMOVED=$((DELETED_TEST_METHODS - ADDED_TEST_METHODS))
         record_violation "$FILE" "NET_TEST_METHODS_REMOVED" \

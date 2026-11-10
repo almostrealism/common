@@ -867,6 +867,74 @@ public class MyTest {
 }'
 }
 
+# ── Scenario: removed @Test token inside a string literal — FALSE-POSITIVE REGRESSION ──
+#
+# The base file carries a string-valued constant whose value happens to contain
+# the text `@Test(timeout = 1)`. The branch removes that constant. The `@Test`
+# token here is data inside a string literal, not an annotation, so removing the
+# line removes no test method. Pattern 3 anchors its match to annotation position
+# (start of the line's content), so the token sitting after `String marker = "`
+# is not counted. The script MUST NOT fire (expected exit 0).
+setup_removed_test_token_in_string() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    private static final String marker = "@Test(timeout = 1)";
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed @Test token in an inline comment after code — FALSE-POSITIVE REGRESSION ──
+#
+# The base file carries a statement followed by an inline block comment that
+# mentions `@Test` (`int value = 1; /* @Test */`). The branch removes that
+# statement. The comment is not at the start of the line, so the comment-only
+# exclusion would miss it, but the annotation-position anchor does not: the line's
+# content begins with `int`, not `@Test`, so the token is not counted. No test
+# method is removed. The script MUST NOT fire (expected exit 0).
+setup_removed_test_token_in_inline_comment() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int value = 1; /* @Test */
+        assertEquals(value, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
 # ── Scenario: real @Test method deleted — TRUE POSITIVE ──
 #
 # An existing @Test method is removed outright (its @Test annotation and its
@@ -1005,6 +1073,8 @@ run_case "unrelated-merge-weakening [bypass stays closed]"  2 setup_unrelated_me
 run_case "removed-testproperties [false-positive regression]" 0 setup_removed_testproperties
 run_case "removed-testdepth [false-positive regression]"    0 setup_removed_testdepth
 run_case "removed-commented-test-marker [false-positive regression]" 0 setup_removed_commented_test_marker
+run_case "removed-test-token-in-string [false-positive regression]" 0 setup_removed_test_token_in_string
+run_case "removed-test-token-in-inline-comment [false-positive regression]" 0 setup_removed_test_token_in_inline_comment
 run_case "deleted-real-test-method [true positive]"         2 setup_deleted_real_test_method
 run_case "deleted-parenthesized-test [true positive]"       2 setup_deleted_parenthesized_test
 run_case "pr880-reenable-camera-ray [false-positive regression]" 0 setup_pr880_reenable
