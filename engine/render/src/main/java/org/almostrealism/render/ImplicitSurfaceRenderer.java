@@ -346,6 +346,7 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 			addMarchStep(pixels);
 		}
 
+		// TODO(review): a bracket that closes exactly at the clamped probe maximumDistance leaves far == maximumDistance and is classified as a miss
 		pixels.add(a(cp(hit), greaterThan(cp(far), c(0.0),
 				lessThan(cp(far), c(maximumDistance), c(1.0), c(0.0)), c(0.0))));
 
