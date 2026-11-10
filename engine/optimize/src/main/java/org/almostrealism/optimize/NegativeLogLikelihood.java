@@ -105,7 +105,9 @@ public class NegativeLogLikelihood implements LossProvider, CollectionFeatures {
 					+ " rows and the target has " + targetRows);
 		}
 
-		return c(output).reshape(rows).multiply(c(target).reshape(rows)).sum(1).minus();
+		// The sum is the last operation, so it is computed as a reduction loop; an operation
+		// applied to its result would inline the sum as one term for every column of the row
+		return c(output).reshape(rows).multiply(c(target).reshape(rows).minus()).sum(1);
 	}
 
 	/**
