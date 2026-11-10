@@ -767,6 +767,362 @@ public class MyTest {
     fi
 }
 
+# ── Scenario: removed @TestProperties(knownIssue = true) — FALSE-POSITIVE REGRESSION ──
+#
+# An existing @Test keeps its @Test annotation but loses a preceding
+# @TestProperties(knownIssue = true) line, which re-enables the test under the CI
+# pipeline profile — a strengthening, not a removal. Pattern 3 must count only the
+# @Test annotation itself, so the removed @TestProperties line must NOT be read as
+# a deleted test method. The script MUST NOT fire (expected exit 0).
+setup_removed_testproperties() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @TestProperties(knownIssue = true)
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed @TestDepth(...) — FALSE-POSITIVE REGRESSION ──
+#
+# An existing @Test keeps its @Test annotation but loses a preceding @TestDepth
+# annotation. @TestDepth shares the "@Test" prefix but is not a test method, so
+# Pattern 3 must not count its removal as a deleted @Test method. The script MUST
+# NOT fire (expected exit 0).
+setup_removed_testdepth() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @TestDepth(2)
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed commented-out @Test marker — FALSE-POSITIVE REGRESSION ──
+#
+# The base file carries a disabled, commented-out test whose body includes a
+# `// @Test(timeout = 1000)` marker (the shape present in SphereTest). The branch
+# deletes that commented-out block. A comment is not a runnable test, so removing
+# it removes no test method. Pattern 3 excludes comment lines symmetrically, so it
+# must NOT count the removed `// @Test(...)` line (expected exit 0).
+setup_removed_commented_test_marker() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    // @Test(timeout = 1000)
+    // public void disabledB() {
+    //     assertEquals(2, compute() + 1);
+    // }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed @Test token inside a string literal — FALSE-POSITIVE REGRESSION ──
+#
+# The base file carries a string-valued constant whose value happens to contain
+# the text `@Test(timeout = 1)`. The branch removes that constant. The `@Test`
+# token here is data inside a string literal, not an annotation, so removing the
+# line removes no test method. Pattern 3 anchors its match to annotation position
+# (start of the line's content), so the token sitting after `String marker = "`
+# is not counted. The script MUST NOT fire (expected exit 0).
+setup_removed_test_token_in_string() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    private static final String marker = "@Test(timeout = 1)";
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed @Test token in an inline comment after code — FALSE-POSITIVE REGRESSION ──
+#
+# The base file carries a statement followed by an inline block comment that
+# mentions `@Test` (`int value = 1; /* @Test */`). The branch removes that
+# statement. The comment is not at the start of the line, so the comment-only
+# exclusion would miss it, but the annotation-position anchor does not: the line's
+# content begins with `int`, not `@Test`, so the token is not counted. No test
+# method is removed. The script MUST NOT fire (expected exit 0).
+setup_removed_test_token_in_inline_comment() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int value = 1; /* @Test */
+        assertEquals(value, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: real @Test method deleted — TRUE POSITIVE ──
+#
+# An existing @Test method is removed outright (its @Test annotation and its
+# assertions go with it). Pattern 3 must still count the removed bare @Test
+# annotation and fire NET_TEST_METHODS_REMOVED (expected exit 2).
+setup_deleted_real_test_method() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    @Test(timeout = 5000)
+    public void testB() {
+        assertEquals(2, compute() + 1);
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: @Test(timeout = 1000) counts as a test — TRUE POSITIVE ──
+#
+# The deleted method carries a parenthesized @Test(timeout = 1000). Pattern 3 must
+# treat `@Test(...)` as a test annotation, so removing the method fires
+# NET_TEST_METHODS_REMOVED (expected exit 2). This guards the trailing boundary
+# that accepts "(" immediately after @Test.
+setup_deleted_parenthesized_test() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 1000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    @Test(timeout = 1000)
+    public void testB() {
+        assertEquals(2, compute() + 1);
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 1000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: PR #880 CameraRayIntersectionTest re-enable — FALSE-POSITIVE REGRESSION ──
+#
+# Built from the diff that motivated this fix: a per-pixel render branch removed
+# the @TestProperties(knownIssue = true) line preceding kernelMatchesPerPixel,
+# re-enabling the test under CI. The @Test annotation and the assertion stay. No
+# test method is removed and the test is strengthened, so the script MUST NOT fire
+# (expected exit 0).
+setup_pr880_reenable() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class CameraRayIntersectionTest {
+    @Test(timeout = 60000)
+    public void perPixel() {
+        assertEquals(1, compute());
+    }
+
+    @TestProperties(knownIssue = true)
+    @Test(timeout = 120000)
+    public void kernelMatchesPerPixel() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class CameraRayIntersectionTest {
+    @Test(timeout = 60000)
+    public void perPixel() {
+        assertEquals(1, compute());
+    }
+
+    @Test(timeout = 120000)
+    public void kernelMatchesPerPixel() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+        "CameraRayIntersectionTest.java"
+}
+
+# ── Scenario: same-line sibling annotation precedes @Test — TRUE POSITIVE ──
+#
+# The deleted method carries its annotations on one line:
+# `@TestProperties(knownIssue = true) @Test(timeout = 120000)` (the layout used
+# in MoonbeamFineTuningTest). Because the @Test is not the first token on the
+# line, an anchor that required @Test immediately after the diff marker would
+# count DELETED=0 and let a genuine test removal pass. Pattern 3 must match @Test
+# after any preceding same-line annotations, so removing the method fires
+# NET_TEST_METHODS_REMOVED (expected exit 2). The deleted body carries no
+# assertion so that Pattern 3 is the only pattern that can fire.
+setup_deleted_same_line_annotation_test() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 60000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+
+    @TestProperties(knownIssue = true) @Test(timeout = 120000)
+    public void testB() {
+        // intentionally no assertions so only Pattern 3 can fire
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 60000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
+# ── Scenario: removed unstarred block-comment @Test marker — FALSE-POSITIVE REGRESSION ──
+#
+# The base file carries a block comment whose continuation lines have no leading
+# `*`, and one of them is `@Test(timeout = 1000)` sitting at the start of its
+# line. Deleting the whole documentation block removes no runnable test, but a
+# per-line anchor would count that `@Test` line because it begins exactly where an
+# annotation would. Pattern 3 tracks block-comment state across the removed side,
+# so the token inside the comment is not counted (expected exit 0). The block
+# carries no assertion call, keeping Pattern 2 out of it.
+setup_removed_block_comment_test_marker() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    /*
+    Example of a disabled test annotation:
+    @Test(timeout = 1000)
+    */
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, compute());
+    }
+    int compute() { return 1; }
+}'
+}
+
 # ── Run all cases ──────────────────────────────────────────────────────────
 
 echo "Running detect-test-hiding regression tests..."
@@ -790,6 +1146,16 @@ run_case "committed-swallowing-catch [true positive]"       2 setup_committed_sw
 run_case "uncommitted-swallowing-catch [true positive / working-tree audit]" 2 setup_uncommitted_swallowing_catch
 run_case "merge-shift [false-positive regression]"          0 setup_merge_shift_passes
 run_case "unrelated-merge-weakening [bypass stays closed]"  2 setup_unrelated_merge_weakening
+run_case "removed-testproperties [false-positive regression]" 0 setup_removed_testproperties
+run_case "removed-testdepth [false-positive regression]"    0 setup_removed_testdepth
+run_case "removed-commented-test-marker [false-positive regression]" 0 setup_removed_commented_test_marker
+run_case "removed-test-token-in-string [false-positive regression]" 0 setup_removed_test_token_in_string
+run_case "removed-test-token-in-inline-comment [false-positive regression]" 0 setup_removed_test_token_in_inline_comment
+run_case "deleted-real-test-method [true positive]"         2 setup_deleted_real_test_method
+run_case "deleted-parenthesized-test [true positive]"       2 setup_deleted_parenthesized_test
+run_case "deleted-same-line-annotation-test [true positive]" 2 setup_deleted_same_line_annotation_test
+run_case "removed-block-comment-test-marker [false-positive regression]" 0 setup_removed_block_comment_test_marker
+run_case "pr880-reenable-camera-ray [false-positive regression]" 0 setup_pr880_reenable
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

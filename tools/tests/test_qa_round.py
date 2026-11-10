@@ -56,9 +56,11 @@ class QaRoundPromptBuildStepTests(unittest.TestCase):
         shutil.rmtree(self.caller, ignore_errors=True)
 
     def _render(self, prompt, template_vars=None, fragment="test-runner-maven.txt",
-                caller_files=None):
+                caller_files=None, leads=None):
         """Runs the build step's own shell with a concrete environment, the way
-        a GitHub runner would, and returns (result, prompt-or-None)."""
+        a GitHub runner would, and returns (result, prompt-or-None). When
+        ``leads`` is given it is written to a LEADS_FILE the builder substitutes
+        for ${LEADS}, the way the collect step's output reaches it."""
         for path, text in (caller_files or {}).items():
             full = os.path.join(self.caller, path)
             os.makedirs(os.path.dirname(full), exist_ok=True)
@@ -76,6 +78,11 @@ class QaRoundPromptBuildStepTests(unittest.TestCase):
             "TEMPLATE_VARS": json.dumps(template_vars or {}),
             "TEST_RUNNER_FRAGMENT": fragment,
         })
+        if leads is not None:
+            leads_file = os.path.join(self.caller, "leads.txt")
+            with open(leads_file, "w") as f:
+                f.write(leads)
+            env["LEADS_FILE"] = leads_file
         result = subprocess.run(["bash", "-e", "-c", run], cwd=self.caller, env=env,
                                 capture_output=True, text=True, timeout=60)
         output = os.path.join(self.caller, "agent-prompt.txt")
@@ -131,6 +138,32 @@ class QaRoundPromptBuildStepTests(unittest.TestCase):
         self.assertIn("Round on qa/defect-20261030-000000 from main", prompt)
         self.assertIn("git@github.com:example/consumer.git", prompt)
         self.assertIn("Focus on the import pipeline.", prompt)
+
+    def test_a_computed_leads_section_is_substituted_for_the_placeholder(self):
+        """A round's workflow may compute a leads section before the prompt is
+        built (the flaky round reads CI's observed flakes); it reaches the
+        builder as a LEADS_FILE whose multi-line contents replace ${LEADS}."""
+        leads = "1. `org.example.FooTest#a` — lane test-cuda\n   - run 100, job 1001"
+        result, prompt = self._render(
+            "qa/custom-round.txt",
+            leads=leads,
+            caller_files={"qa/custom-round.txt":
+                          "Round on ${BRANCH}.\n\nLeads:\n${LEADS}\n"})
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("${", prompt)
+        self.assertIn("org.example.FooTest#a", prompt)
+        self.assertIn("job 1001", prompt)
+
+    def test_an_absent_leads_file_leaves_the_placeholder_empty(self):
+        """With no LEADS_FILE the ${LEADS} placeholder renders empty rather than
+        surviving into the prompt, so a round that names it but collected nothing
+        still builds — and a template that never names it is unaffected."""
+        result, prompt = self._render(
+            "qa/custom-round.txt",
+            caller_files={"qa/custom-round.txt": "Round on ${BRANCH}.\nLeads:${LEADS}\n"})
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("${", prompt)
+        self.assertIn("Leads:", prompt)
 
     def test_a_missing_template_variable_fails_the_step(self):
         """A caller template with a placeholder no variable supplies must fail,
@@ -215,6 +248,29 @@ class QaRoundWorkflowShapeTests(unittest.TestCase):
                       if "submit-agent-job.sh" in s.get("run", ""))
         self.assertEqual("true", submit["env"]["AUTO_CREATE_PR"])
         self.assertNotIn("PR_DRAFT", submit["env"])
+
+    def test_a_leads_script_runs_before_the_build_and_feeds_it(self):
+        """A round that sets the leads-script input computes a leads section
+        before its prompt is built: the collect step is gated on the input,
+        runs ahead of the build step, and the build step passes LEADS_FILE so
+        the section reaches the builder. The input exists and defaults to empty,
+        so a round that sets nothing runs no such step."""
+        inputs = self.workflow[True]["workflow_call"]["inputs"]
+        self.assertIn("leads-script", inputs)
+        self.assertEqual("", inputs["leads-script"]["default"])
+
+        names = [s.get("name", "") for s in self.job["steps"]]
+        self.assertIn("Collect the round's leads", names)
+        self.assertLess(names.index("Collect the round's leads"),
+                        names.index("Build the round's prompt"))
+
+        collect = next(s for s in self.job["steps"]
+                       if s.get("name") == "Collect the round's leads")
+        self.assertIn("inputs.leads-script != ''", collect["if"])
+
+        build = next(s for s in self.job["steps"]
+                     if s.get("name") == "Build the round's prompt")
+        self.assertIn("LEADS_FILE", build["env"])
 
     def test_an_application_caller_workstream_gets_the_framework_and_its_tracker_role(self):
         """An application caller (one whose repository is not the framework) has
