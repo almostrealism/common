@@ -144,7 +144,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * @return the complex grid, shaped {@code [n0, ..., nk, 2]}
 	 */
 	default CollectionProducer toComplex(Producer<PackedCollection> real) {
-		TraversalPolicy shape = shape(real);
+		TraversalPolicy shape = gridShape(real);
 		return complexFromParts(real, zeros(shape)).reshape(shape.appendDimension(2));
 	}
 
@@ -361,7 +361,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 *                                  or the grid has more than {@link #MAX_EXACT_INDEX} cells
 	 */
 	default CollectionProducer radialPowerSpectrum(Producer<PackedCollection> power, double... spacing) {
-		TraversalPolicy grid = shape(power);
+		TraversalPolicy grid = gridShape(power);
 		int cells = grid.getTotalSize();
 		int bins = radialBinCount(grid, spacing);
 
@@ -480,7 +480,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * @return a single-element producer of the dominant wavenumber, in radians per unit length
 	 */
 	default CollectionProducer dominantWavenumber(Producer<PackedCollection> field, double... spacing) {
-		TraversalPolicy grid = shape(field);
+		TraversalPolicy grid = gridShape(field);
 		int cells = grid.getTotalSize();
 		double dk = radialBinWidth(grid, spacing);
 
@@ -540,7 +540,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * @throws IllegalArgumentException if the grid has more than {@code MAX_EXACT_INDEX / 2} cells
 	 */
 	default CollectionProducer poissonSolve(Producer<PackedCollection> source, double... spacing) {
-		TraversalPolicy grid = shape(source);
+		TraversalPolicy grid = gridShape(source);
 		int cells = grid.getTotalSize();
 		requireExactIndices("poissonSolve", 2L * cells);
 
@@ -558,15 +558,29 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	}
 
 	/**
+	 * Returns the dimensions and traversal axis of a grid with no {@link io.almostrealism.collect.TraversalOrdering}.
+	 * An input may carry an ordering that maps its logical indices to its memory, but every
+	 * intermediate and result a spectral operation produces is dense and in plain row-major order;
+	 * reshaping one of those with the input's shape would reattach the input's ordering to data it
+	 * does not describe, so every shape derived from an input is taken from here.
+	 *
+	 * @param grid the grid, which may carry an ordering
+	 * @return its shape without an ordering
+	 */
+	private TraversalPolicy gridShape(Producer<PackedCollection> grid) {
+		return shape(grid).withOrder(null);
+	}
+
+	/**
 	 * Returns the shape of a complex grid, validating that its last dimension holds
 	 * interleaved (real, imaginary) pairs.
 	 *
 	 * @param complex the complex grid
-	 * @return its shape
+	 * @return its {@link #gridShape grid shape}
 	 * @throws IllegalArgumentException if the shape is not {@code [n0, ..., nk, 2]} with k >= 0
 	 */
 	private TraversalPolicy complexGridShape(Producer<PackedCollection> complex) {
-		TraversalPolicy shape = shape(complex);
+		TraversalPolicy shape = gridShape(complex);
 		if (shape.getDimensions() < 2 || shape.length(shape.getDimensions() - 1) != 2) {
 			throw new IllegalArgumentException("A complex grid must have shape [n0, ..., nk, 2], not " + shape);
 		}

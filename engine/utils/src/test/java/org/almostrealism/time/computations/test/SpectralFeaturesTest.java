@@ -686,12 +686,7 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		TraversalPolicy shape = shape(bins, 2);
 
 		PackedCollection logical = testSignal(shape).evaluate();
-		PackedCollection reversed = integers(0, size).multiply(c(-1.0)).add(c(size - 1.0)).evaluate();
-		PackedCollection physical = testSignalAt(cp(reversed)).evaluate();
-
-		PackedCollection ordered = new PackedCollection(shape, 1, physical, 0,
-				new ExplicitIndexTraversalOrdering(reversed));
-		Assert.assertNotNull("the input should carry its ordering", ordered.getShape().getOrder());
+		PackedCollection ordered = reversedCopy(shape, size);
 
 		PackedCollection expected = evaluate(requirement,
 				() -> new FourierTransform(1, bins, false, cp(logical)));
@@ -701,5 +696,100 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		double error = maxDifference(expected, actual);
 		log("orderedInput requirement=" + requirement + " maxError=" + error);
 		Assert.assertTrue("ordered input error " + error, error < ROUND_TRIP_TOLERANCE);
+	}
+
+	/**
+	 * A 2D transform of a permuted complex grid applies the input ordering once: the second
+	 * (column) pass reads the dense result of the first pass in plain order, so the spectrum
+	 * matches that of the same values stored without an ordering.
+	 */
+	@Test(timeout = 120000)
+	public void orderedInput2d() {
+		TraversalPolicy shape = shape(4, 8, 2);
+		int size = shape.getTotalSize();
+
+		PackedCollection logical = testSignal(shape).evaluate();
+		PackedCollection ordered = reversedCopy(shape, size);
+
+		PackedCollection expected = fft2d(cp(logical)).evaluate();
+		PackedCollection actual = fft2d(cp(ordered)).evaluate();
+		Assert.assertNull("the spectrum should not carry the input ordering",
+				fft2d(cp(ordered)).getShape().getOrder());
+
+		double error = maxDifference(expected, actual);
+		log("orderedInput2d maxError=" + error);
+		Assert.assertTrue("ordered 2D input error " + error, error < ROUND_TRIP_TOLERANCE * 4);
+	}
+
+	/**
+	 * Converting a permuted real grid to complex form produces a dense interleaved grid that no
+	 * longer carries the real grid's ordering, so its real part and its spectrum match those of
+	 * the same values stored without an ordering.
+	 */
+	@Test(timeout = 120000)
+	public void orderedRealToComplex() {
+		TraversalPolicy grid = shape(4, 8);
+		int size = grid.getTotalSize();
+
+		PackedCollection logical = testSignal(grid).evaluate();
+		PackedCollection ordered = reversedCopy(grid, size);
+
+		CollectionProducer complex = toComplex(cp(ordered));
+		Assert.assertNull("the complex grid should not carry the real ordering", complex.getShape().getOrder());
+		Assert.assertEquals(shape(4, 8, 2).getTotalSize(), complex.getShape().getTotalSize());
+
+		double partError = maxDifference(logical, realPart(complex).evaluate());
+		log("orderedRealToComplex realPartError=" + partError);
+		Assert.assertTrue("ordered real part error " + partError, partError < ROUND_TRIP_TOLERANCE);
+
+		PackedCollection expected = fft2d(toComplex(cp(logical))).evaluate();
+		PackedCollection actual = fft2d(complex).evaluate();
+		double error = maxDifference(expected, actual);
+		log("orderedRealToComplex spectrumError=" + error);
+		Assert.assertTrue("ordered real spectrum error " + error, error < ROUND_TRIP_TOLERANCE * 4);
+	}
+
+	/**
+	 * The grid-level analyses of a permuted real field (the spectral Poisson solve and the
+	 * dominant wavelength) match those of the same values stored without an ordering: the
+	 * symbol, centred field and power spectrum they build are dense and must not be read through
+	 * the field's ordering.
+	 */
+	@Test(timeout = 120000)
+	public void orderedFieldAnalysis() {
+		TraversalPolicy grid = shape(8, 8);
+		int size = grid.getTotalSize();
+
+		PackedCollection logical = testSignal(grid).evaluate();
+		PackedCollection ordered = reversedCopy(grid, size);
+
+		PackedCollection expectedSolution = poissonSolve(cp(logical), 0.5).evaluate();
+		PackedCollection actualSolution = poissonSolve(cp(ordered), 0.5).evaluate();
+		double solutionError = maxDifference(expectedSolution, actualSolution);
+		log("orderedFieldAnalysis poissonError=" + solutionError);
+		Assert.assertTrue("ordered Poisson error " + solutionError, solutionError < ROUND_TRIP_TOLERANCE * 4);
+
+		double expectedWavelength = dominantWavelength(cp(logical), 0.5).evaluate().toDouble(0);
+		double actualWavelength = dominantWavelength(cp(ordered), 0.5).evaluate().toDouble(0);
+		log("orderedFieldAnalysis wavelength expected=" + expectedWavelength + " actual=" + actualWavelength);
+		assertRelative("ordered dominant wavelength", expectedWavelength, actualWavelength, 1e-4);
+	}
+
+	/**
+	 * Returns a collection of the given shape whose values are those of the
+	 * {@link #testSignal(TraversalPolicy) test signal}, stored in reverse physical order under an
+	 * {@link ExplicitIndexTraversalOrdering} that maps each logical index back to its position.
+	 *
+	 * @param shape the logical shape
+	 * @param size  the total number of elements of {@code shape}
+	 * @return the ordered collection
+	 */
+	protected PackedCollection reversedCopy(TraversalPolicy shape, int size) {
+		PackedCollection reversed = integers(0, size).multiply(c(-1.0)).add(c(size - 1.0)).evaluate();
+		PackedCollection physical = testSignalAt(cp(reversed)).evaluate();
+		PackedCollection ordered = new PackedCollection(shape, shape.getDimensions() - 1, physical, 0,
+				new ExplicitIndexTraversalOrdering(reversed));
+		Assert.assertNotNull("the input should carry its ordering", ordered.getShape().getOrder());
+		return ordered;
 	}
 }
