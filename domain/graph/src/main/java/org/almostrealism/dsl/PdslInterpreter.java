@@ -863,11 +863,15 @@ public class PdslInterpreter {
 				return new PdslChannelBank(obj, toInt(env.get("channels")));
 			}
 			if (obj instanceof PackedCollection) {
-				// TODO(review): unlike the CollectionProducer branch, no broadcast when totalSize < channels (stride 0 throws)
 				PackedCollection coll = (PackedCollection) obj;
-				int index = toInt(indexValue);
 				int channels = toInt(env.get("channels"));
-				int stride = coll.getShape().getTotalSize() / channels;
+				int totalSize = coll.getShape().getTotalSize();
+				if (totalSize < channels) {
+					// Scalar/sub-channel broadcast, as for a producer below.
+					return coll;
+				}
+				int index = toInt(indexValue);
+				int stride = totalSize / channels;
 				return coll.range(new TraversalPolicy(stride), index * stride);
 			}
 			if (obj instanceof CollectionProducer) {

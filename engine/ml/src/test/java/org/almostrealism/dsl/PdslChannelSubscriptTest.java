@@ -69,6 +69,17 @@ public class PdslChannelSubscriptTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A bank holding fewer elements than there are channels is broadcast: every channel reads the
+	 * same single factor rather than failing on a zero-length slice.
+	 */
+	@Test(timeout = 120000)
+	public void subscriptBroadcastsSingleValueBank() {
+		for (int index = 0; index < CHANNELS; index++) {
+			assertChannelGain(PackedCollection.of(7.0), index, 7.0);
+		}
+	}
+
+	/**
 	 * The per-channel factors, one distinct value for each of the {@link #CHANNELS} channels.
 	 *
 	 * @return the bank, shaped {@code [CHANNELS]} at the default traversal axis
@@ -85,6 +96,18 @@ public class PdslChannelSubscriptTest extends TestSuiteBase {
 	 * @param index  the channel to select
 	 */
 	private void assertChannelGain(PackedCollection volume, int index) {
+		assertChannelGain(volume, index, bank().doubleStream().toArray()[index]);
+	}
+
+	/**
+	 * Builds {@code channel_gain} for one channel of the bank, forwards a fixed input and asserts
+	 * every output element is the input times the expected factor.
+	 *
+	 * @param volume the bank of per-channel factors
+	 * @param index  the channel to select
+	 * @param factor the factor the selected channel is expected to apply
+	 */
+	private void assertChannelGain(PackedCollection volume, int index, double factor) {
 		TraversalPolicy inputShape = shape(1, 4);
 		PackedCollection input = PackedCollection.of(1.0, -0.5, 0.25, 4.0).reshape(inputShape);
 
@@ -100,7 +123,6 @@ public class PdslChannelSubscriptTest extends TestSuiteBase {
 		model.add(block);
 		try (CompiledModel compiled = model.compile(false)) {
 			double[] in = input.doubleStream().toArray();
-			double factor = bank().doubleStream().toArray()[index];
 			double[] actual = compiled.forward(input).doubleStream().toArray();
 			Assert.assertEquals("output length", in.length, actual.length);
 			for (int i = 0; i < in.length; i++) {
