@@ -31,6 +31,7 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `register-workstream.sh` | Register a workstream with the FlowTree controller (emits `workstream_id`, also to `$GITHUB_OUTPUT`), optionally granting tracker roles (`TRACKER_CAPABILITIES`) and checking out other repositories beside it (`DEPENDENT_REPOS`) |
 | `resolve-release-scope.sh` | Goal decomposition: read the next version from a repository (`pom.xml` or a plain version file), the framework version it pins, and whether `<plans dir>/<version>/PLAN.md` exists (`in_scope`) |
 | `remediation-required-labels.sh` | Pin an auto-resolve submission to a macOS Node (`REQUIRED_LABELS`) when a Metal lane (`test-mac`, `test-media-mac`) failed in the attempt |
+| `classify-job-failures.py` | Classify a failed test job by *where* it failed, from the run's jobs-API payload: a job whose failed steps all precede its first Maven/test step is environmental (a setup-step failure — checkout, `setup-java`, cache restore, artifact download), reported but not assigned; a failure at or after the test step is a genuine crash routed to the VM-crash prompt. Used by the `Check for incomplete test execution` step so a setup-java network timeout is no longer sent to the crash agent |
 | `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests or python-evals failed |
 | `stage-submit-request.sh` | Write a built prompt and its submission parameters to a request directory for a remediation job to upload |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"false"`: it turns on the harness's per-job test lock (see `flowtree/runtime/docs/file-staging.md`), which only the jobs sent to make failing tests pass, and a few QA rounds, request — everything else is held to `test-integrity-check`. `ENFORCE_CHANGES` (default `"false"`) requires the job to produce a change. A run that leaves none is re-run up to `MAX_ENFORCE_CHANGES_RETRIES` times over the whole job (omitted: the controller default; `"0"`: never re-run), and a job that still commits nothing once that cap is spent is reported DEGRADED rather than SUCCESS |
@@ -102,8 +103,21 @@ result without parseable Surefire XML still routes to the build-failure path
 instead of going unresolved once the flaky-test retries are spent), and its Surefire artifact name is kept by the
 `Filter to resolvable surefire reports` allowlist (so a genuine test failure
 is actually parsed and described, not silently deleted before
-`parse-surefire-failures.sh` ever sees it). `test-flowtree` originally had
-neither — it uploaded no Surefire artifact at all — so a failure there was
+`parse-surefire-failures.sh` ever sees it).
+
+A raw `failure` result is not automatically a crash, though. Before taking the
+crash route, that step reads each failing job's steps from the jobs API and runs
+`classify-job-failures.py`: a job that failed in a setup step — `setup-java`
+timing out on the JDK host, checkout, cache restore or artifact download, all
+*before* its first Maven/test step — is environmental and dispatches no agent
+(the pipeline already retried three times), while a failure inside the test step
+still routes to the crash prompt. A mixed run routes only the genuine crashes
+and lists the environmental ones. When the jobs cannot be classified (an older
+checkout, or the jobs API is unreachable) the step falls back to the crash route,
+the conservative default that preserves the earlier behaviour.
+
+`test-flowtree` originally had
+neither check — it uploaded no Surefire artifact at all — so a failure there was
 never auto-resolved with a specific fix; it fell through to prompts claiming
 every test had passed.
 

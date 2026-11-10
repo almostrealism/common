@@ -1670,6 +1670,7 @@ jobs:
       - name: Run remediation script tests
         run: |
           python3 -m unittest discover -v -s tools/ci -p "test_classify_failures.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s tools/ci -p "test_classify_job_failures.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s tools/ci -p "test_copilot_review_status.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s tools/ci -p "test_extract_branch_todos.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
@@ -4451,6 +4452,11 @@ jobs:
       - name: Check for incomplete test execution
         if: steps.failures.outputs.has_failures != 'true'
         id: test-completeness
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           # A job result of "failure" means the job ran and hit a real error
           # (e.g., JVM crash, OOM, build error within the test step) even though
@@ -4522,10 +4528,51 @@ jobs:
             echo "::warning::test-media-cuda job failed without producing parseable surefire failures — treating as build failure"
           fi
 
-          # If a real failure occurred, route to the build-failure path
-          # (not the incomplete path) by setting build_failed retroactively
+          # A "failure" result is not automatically a crash inside the Maven/test
+          # step. A job that failed before its tests ran — setup-java timing out
+          # on the JDK host, checkout, cache restore or build-artifact download —
+          # is environmental: there is no crash for an agent to fix, and sending
+          # one ends the job DEGRADED. needs.*.result only gives the result, so
+          # inspect each failing job's steps (the jobs API, attempt-scoped) and
+          # route only genuine in-test crashes to the crash prompt. A setup-only
+          # run dispatches nothing and is reported; a mixed run routes only the
+          # genuine crashes and lists the environmental failures.
           if [ "$HAS_REAL_FAILURE" = "true" ]; then
-            echo "build_failed_in_tests=true" >> "$GITHUB_OUTPUT"
+            CRASH_COUNT=""
+            ENV_COUNT=""
+            if [ -f ./tools/ci/classify-job-failures.py ] \
+                && gh api --paginate \
+                     "/repos/${REPO}/actions/runs/${RUN_ID}/attempts/${RUN_ATTEMPT}/jobs" \
+                     > "${{ runner.temp }}/run-jobs.json"; then
+              if CLASSIFICATION=$(python3 ./tools/ci/classify-job-failures.py \
+                    "${{ runner.temp }}/run-jobs.json" "${{ runner.temp }}"); then
+                CRASH_COUNT=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^crash_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
+                ENV_COUNT=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^environmental_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
+                echo "::notice::classified test-job failures: ${CRASH_COUNT:-?} crash(es), ${ENV_COUNT:-?} environmental (setup-step)"
+              else
+                echo "::warning::classify-job-failures.py failed — treating the failure as a crash"
+              fi
+            else
+              echo "::warning::could not list the run's jobs (or classifier absent from this checkout) — treating the failure as a crash"
+            fi
+
+            # Report any environmental setup failures — the whole of a setup-only
+            # run or the environmental half of a mixed run.
+            if [ -n "$ENV_COUNT" ] && [ "$ENV_COUNT" != "0" ]; then
+              echo "environmental_setup_failed=true" >> "$GITHUB_OUTPUT"
+              echo "::warning::${ENV_COUNT} test job(s) failed in a setup step (environmental) — no agent dispatched for those"
+            fi
+
+            # Take the crash route when a genuine in-test crash is present, or
+            # when the jobs could not be classified (the conservative default,
+            # which preserves the pre-classification behaviour). Do NOT take it
+            # when every failure is environmental — the pipeline already retries
+            # three times before auto-resolve, so a setup failure is reported only.
+            if [ -z "$CRASH_COUNT" ] || [ "$CRASH_COUNT" != "0" ]; then
+              echo "build_failed_in_tests=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "::notice::every failing test job failed in a setup step — reported as environmental, no crash agent dispatched"
+            fi
             echo "incomplete=$INCOMPLETE" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -4818,8 +4865,24 @@ jobs:
           elif [ "${{ steps.test-completeness.outputs.incomplete }}" = "true" ]; then
             echo "**Test execution incomplete** — some test jobs were cancelled or skipped without an upstream failure to explain it." >> "$GITHUB_STEP_SUMMARY"
             echo "A FlowTree coding agent job was staged to investigate." >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.test-completeness.outputs.environmental_setup_failed }}" = "true" ]; then
+            echo "**No test failure to resolve** — the only failing test job(s) failed in a setup step (environmental); nothing was staged." >> "$GITHUB_STEP_SUMMARY"
           else
             echo "No test failure to resolve — nothing was staged." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Environmental (setup-step) failures are listed in both a setup-only
+          # run and the environmental half of a mixed run, the same way the
+          # surefire-path "Environmental failures" section above does.
+          if [ "${{ steps.test-completeness.outputs.environmental_setup_failed }}" = "true" ]; then
+            {
+              echo ""
+              echo "### Environmental failures (infrastructure / hardware — reported, not assigned)"
+              echo "These test jobs failed before their tests ran (e.g. \`setup-java\` timing out on the JDK host, checkout, cache restore or build-artifact download). Not agent-fixable; reported for a person to look at the runner fleet. No coding agent was dispatched for them."
+              echo '```'
+              cat "${{ runner.temp }}/environmental-jobs.txt" 2>/dev/null || echo "(none)"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ─── Merge Gate ───────────────────────────────────────────────────────
