@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: abandoned
 created: 2026-11-05
-closed:
+closed: 2026-11-10
 tracker: [7bf0af0f-6afc-4ae1-9b61-b49587531d9c]
 ---
 
@@ -188,3 +188,245 @@ Medium. The pieces are:
 - one structural test;
 - doc updates;
 - the Metal measurement.
+
+## Assessment (2026-11-10)
+
+<!-- TODO(review): the owner asked for a case, not a decision; confirm with them before keeping `status: abandoned`, or keep `proposed` until Variant B is approved as its own plan (the plan sweep deletes abandoned plans 14 days after `closed`, taking this assessment with it). -->
+
+**Recommendation: do not implement the plan as written. Implement a narrower, all-or-nothing
+variant (Variant B below) instead.** The plan's diagnosis is right, and its goal is reachable:
+with no folding at all, the rolling-cache decode drops from 245 to 112 dispatches/byte, below the
+sliding window. The part that costs the most, though, is folding only the overflow, smallest
+first, with the decision deferred until the argument set is known. That part buys almost
+nothing on any measured workload. It is also the only part that can break the determinism
+constraint. The status above is `abandoned` for the plan as written. Tracker task 7bf0af0f
+should be re-scoped to Variant B rather than closed.
+
+### Evidence gathered
+
+All runs used this branch, after confirming that `origin/master` (including the benchmark) is
+merged into it. Production code was not changed. Every comparison flips the existing switch
+`AR_HARDWARE_ARGUMENT_AGGREGATION`. With that switch disabled, every kernel folds nothing. That
+is exactly what both variants do to a kernel under the limit, so this one switch measures the
+plan's end point without implementing it.
+
+| Run | Command (all on an Apple Silicon host, Metal available) |
+|---|---|
+| Benchmark, baseline | `docs/internals/instruction-cache-benchmark/baseline.json` (seed 1729, population 500) |
+| Benchmark, nothing folded | same command plus `-DAR_HARDWARE_ARGUMENT_AGGREGATION=disabled`, compared with `scripts/compare-cache-benchmark.py` (fingerprints equal) |
+| Decode, baseline | `CausalLanguageModelDecodeThroughputTest#keyValueCacheDecodeThroughput` and `#slidingKeyValueCacheLongDecodeThroughput` |
+| Decode, nothing folded | the same two methods with `-DAR_HARDWARE_ARGUMENT_AGGREGATION=disabled` |
+| Connectome, nothing folded | `ConnectomeNetworkTest#matchesBrian2Spikes`, `#sugarCircuitMatchesBrian2Spikes`, `#poissonInputDrivesItsTargets`, `#silentWithoutInput` on Metal with aggregation disabled: 4/4 pass |
+
+Decode measurements (Metal; counts are deterministic; bytes/second come from one run each and
+are noisy):
+
+| Generator | Dispatches/byte (on → off) | Commits/byte (on → off) | Bytes/s (on → off) |
+|---|---|---|---|
+| sliding window (context) | 123.0 → 114.0 | 7.02 → 7.02 | 194 → 218 |
+| bounded KV cache | 245.1 → 112.1 | 5.05 → 3.06 | 237 → 310 |
+| sliding window (3 × context) | 123.0 → 114.0 | 7.01 → 7.01 | 228 → 228 |
+| rolling KV cache (3 × context) | 245.0 → 112.0 | 4.65 → 3.02 | 257 → 324 |
+
+Kernel invocations per byte are unchanged (80.0 and 85.0). Both greedy continuations, and the
+within-context agreement assertion, are unchanged. No decode kernel failed Metal compilation
+with nothing folded, and a 30-argument Metal kernel does fail (see below). So **every kernel the
+decode compiles for Metal has at most 29 arguments**, and the plan's "under the limit" case is
+the only case the decode exercises.
+
+The branch's `decisions` memory could not be read: the ar-manager service rejected this session's
+credentials. The owner's constraint is taken as stated in the request for this assessment. Fold
+decisions must be deterministic for every computation that shares a signature and compute
+context. Each decision must either be reflected in the signature or come from a real dry-run
+compile. Otherwise a mismatch surfaces as an `AGGREGATE_LAYOUT` collision in
+`rebindAggregateForReuse`.
+
+### What the baseline shows, and where it departs from the plan's assumptions
+
+1. **The benchmark's workloads are not the workloads the plan was written for.** The plan is
+   motivated by copy-back: about 92% of the decode's aggregating dispatches copy back written
+   destinations. The benchmark records **zero copy-backs in every scenario**, because
+   `evaluate()` supplies an explicit output and the default side-effect policy
+   (`enableStrictSideEffects = false`) then skips copy-back. The benchmark can therefore price
+   the copy-ins and the structural effects of a fold policy. It says nothing about the copy-back
+   cost the plan set out to remove. The decode tests are the measurement for that.
+2. **Kernels are far below the limit.** Unfolded, the largest kernel in `generated`,
+   `size-generic`, `aliasing` and `aggregate-threshold` has 6 arguments. In `generated`, 771 of
+   869 kernel requests have 2 arguments, typically the output plus the aggregate. The plan
+   expected the decode kernels to be small; the benchmark shows that ordinary generated kernels
+   are small too.
+3. **`Process::optimize` decides kernel boundaries independently of folding.** The
+   `argument-limit` chains at 16 elements (folded) and at 2048 elements (unfolded) split into
+   the same number of kernels, at most 10 arguments each. The nothing-folded run left every
+   instance's kernel count unchanged. Only a single n-ary computation (`add(List)`) exceeds the
+   limit.
+4. **Metal's 29 is confirmed empirically.** In the baseline, `flat-sum-of-28` (29 arguments)
+   compiles on Metal and `flat-sum-of-29` (30 arguments) fails. JNI compiled 41 arguments
+   without failing, which is evidence of headroom but not a limit.
+5. **Folding prevents a failure in exactly one benchmark case.** That case is the flat sum of 29
+   or more *small* inputs, 4 templates × 2 instances. With nothing folded these become 8
+   additional Metal failures (8 → 16, half of them the `ProcessArgumentMap.match`
+   `NullPointerException` follow-up). The 8 baseline failures have 2048-element inputs. No fold
+   policy can help them, because those inputs are not eligible.
+6. **Today's fold is context-independent.** Every deterministic JNI metric equals its MTL
+   counterpart. Any limit-aware policy makes Metal and the native backend diverge. The cache
+   tolerates this, because it is keyed by context. Behaviour, and the tests that observe it,
+   will differ between a macOS host and a Linux host.
+7. **The signature over-partitions for folding's sake.** `CollectionProviderProducer.signature()`
+   appends `&aggRoot=<root length>` to every eligible leaf. In `aggregate-threshold`, the 27
+   root-length combinations compile 71 kernels (hit rate 0.4453). With nothing folded, which
+   drops the suffix, they compile 19 (hit rate 0.8516, native compile time ×0.33). In
+   `generated` the suffix costs nothing (0.6628 either way), because there every root is the
+   size of its view.
+
+### Variants considered
+
+- **A — the plan as written.** On a context with a known limit, fold only the overflow, choosing
+  the smallest eligible roots first, with the decision made once the kernel's argument set is
+  known.
+- **B — all-or-nothing on a structural bound.** On a context with a known limit, an operation
+  folds nothing when its *structural* argument bound fits the limit. Otherwise it folds exactly
+  as today. The structural bound is the number of argument slots of its `Process` tree before
+  any de-duplication by memory or value identity, plus the output. De-duplication only lowers
+  the real count, so a bound that fits guarantees a kernel that fits. The decision sits where
+  the operation creates its argument map: `AcceleratedOperation.createArgumentMap()`, through
+  the existing `isArgumentAggregationSupported()` hook, passing a `null` aggregate generator.
+  `MemoryDataArgumentMap.get` keeps its per-call fold contract, so there is no deferred
+  resolution. `rebindAggregateForReuse` calls the same `createArgumentMap()`, so the reuser
+  reaches the same decision. With no known limit, nothing changes.
+- **C — optional, after B.** Move the `aggRoot` suffix out of leaf signatures, and append the
+  fold layout to the kernel signature only for kernels that do fold. This is a signature change
+  with its own collision argument. It is listed only because the nothing-folded run gives its
+  upper bound.
+
+### Predictions per scenario and context
+
+For the **JNI context, every metric under A and B equals the baseline** (high confidence). The
+native backend has no evidence-backed limit, and both variants leave "no known limit" exactly as
+it is today. The table covers MTL. "Measured" means the value equals the nothing-folded run.
+That holds wherever no kernel is near the limit, because there A, B and nothing-folded make the
+same decision for every kernel, and A and B keep today's signatures.
+
+| Scenario (MTL) | Metric | Baseline | A | B | Confidence and reasoning |
+|---|---|---|---|---|---|
+| generated | hit rate | 0.6628 | 0.6628 | 0.6628 | High. Signatures are unchanged, and hits depend only on signatures. C gives 0.6628 too (measured). |
+| | collision rate | 0 | 0 | 0 | High. No kernel is near the limit, so no decision can differ between computations sharing a signature. |
+| | failures | 0 | 0 | 0 | High. Max 6 arguments. |
+| | arguments/kernel | 2.2152 (6) | 3.4499 (6) | 3.4499 (6) | High (measured). |
+| | folded/compiled kernel | 1.7577 (5) | 0 | 0 | High (measured). |
+| | copies in per aggregating dispatch | 3.0754 | none | none | High. No aggregating dispatch remains; copy-ins over three evaluations go 4770 → 0. |
+| | kernels/computation | 1.7380 | 1.7380 | 1.7380 | High (measured; optimize does not see folding). |
+| size-generic | hit / collisions / failures | 0.57 / 0 / 0 | unchanged | unchanged | High, as for generated. |
+| | arguments/kernel; folded | 2.24; 1.9767 | 3.32; 0 | 3.32; 0 | High (measured). |
+| | copies in per aggregating dispatch; kernels/computation | 3.16; 1.7857 | none; 1.7857 | none; 1.7857 | High. |
+| aliasing | hit / collisions / failures | 0.5714 / 0 / 0 | unchanged | unchanged | High for this population: max 4 arguments. See the correctness section for what this scenario cannot see. |
+| | arguments/kernel; folded | 2.2857; 0.7667 | 2.5714; 0 | 2.5714; 0 | High (measured). |
+| | copies; kernels/computation | 1.9524; 1.6667 | none; 1.6667 | none; 1.6667 | High. |
+| aggregate-threshold | hit rate | 0.4453 | 0.4453 | 0.4453 | High. The `aggRoot` suffix stays, so 71 kernels are still compiled although none of them folds. C: 0.8516 (measured upper bound). |
+| | collisions / failures | 0 / 0 | 0 / 0 | 0 / 0 | High. |
+| | arguments/kernel; folded | 2.4688; 1.7746 | 3.0; 0 | 3.0; 0 | High (measured). |
+| | copies; kernels/computation | 2.1724; 2.0 | none; 2.0 | none; 2.0 | High. |
+| argument-limit | hit rate | 0.7595 | 0.7595 | 0.7595 | High. Failures, and therefore requests, are as in the baseline. |
+| | collisions | 0 | 0 | 0 | High. Every instance is `DISTINCT`, and repeats are identical. |
+| | failures | 8 | 8 | 8 | High. The failing kernels have ineligible 2048-element inputs. Nothing-folded gives 16. |
+| | arguments/kernel | 6.3141 (29) | 10.68 (29) | 9.99 (29) | High for B; medium-high for A. A folds `n − 27` roots of the flat sums with `n` ≥ 29 and leaves each at exactly 29, which assumes its count matches `get`'s de-duplication exactly. |
+| | folded/compiled kernel | 5.94 (40) | 0.32 (13) | 1.82 (40) | Same reasoning. |
+| | copies in per aggregating dispatch | 9.75 | 5.75 | 32.75 | High. Only the four small flat sums aggregate, at 2/3/5/13 slices (A) or 29/30/32/40 (B). First-evaluation copy-ins go 1560 → 46 (A) and 1560 → 262 (B). |
+| | kernels/computation | 2.7857 | 2.7857 | 2.7857 | High. |
+| decode (cache paths) | dispatches/byte | 245 | 112 | 112 if the structural bound fits | High for A (measured: every decode kernel fits). Medium for B. B reaches the measured value only if no decode kernel's *structural* bound exceeds 29 while its de-duplicated count fits, for example by referring to one root through many leaves. This is the open question; see the experiment. |
+| | commits/byte | 4.65 (rolling) | 3.02 | 3.02 under the same condition | As above. |
+
+### Consequences for the platform
+
+**Correctness.**
+
+- *A adds a collision class that the benchmark cannot see.* A's decision depends on how many
+  *distinct roots* a kernel has, including ineligible ones. The signature does not encode root
+  identity: a provider leaf is `offset:memLength|shape` (plus `aggRoot` when eligible). Take two
+  computations that are identical except that two large leaves at offset 0 with the same length
+  refer to two different roots in one and to the same root in the other. They share a signature
+  but differ by one argument. At the limit boundary A folds in one and not in the other, and the
+  reuser's replay throws `AGGREGATE_LAYOUT`. The collision is detected, not silent, so it
+  surfaces as a failure. Still, it is exactly the mismatch the owner's constraint forbids. Every
+  `aliasing` case differs in offset or root length, or (`SAME_VIEW`) is already distinguished,
+  and every `argument-limit` instance is `DISTINCT`, so the baseline's 0 collisions say nothing
+  about it. To make A safe, root sharing would have to enter the signature, or the decision
+  would have to come from a dry-run whose inputs are themselves in the signature. Either is a
+  larger change than the plan budgets.
+- *B adds no collision class.* Its decision is a function of the `Process` tree, which the
+  signature encodes, and of the context, which keys the cache. A kernel that does not fold has
+  an empty layout for every computation sharing its signature. That also removes, for those
+  kernels, today's sensitivity of the layout to small-root aliasing.
+- *A changes `MemoryDataArgumentMap.get`; B does not.* `AggregateCopyInTest`,
+  `AggregateCopyBackTest` and `ReadOnlyAggregateCopyTest` call `get` directly on a map built by
+  `MemoryDataArgumentMap.create(Hardware.getLocalHardware().getComputeContext(), …)`, and use
+  each folded variable immediately. Under A's deferred resolution on a Metal host, those maps
+  would learn a limit of 29 and fold nothing. The plan's criterion that the existing tests "pass
+  unmodified" is in tension with its own mechanism. B leaves those maps untouched, because the
+  decision is made by the operation before it creates the map.
+- *Both change one observable behaviour.* Today, a kernel given an explicit output under the
+  default side-effect policy drops its writes to *folded* buffers (no copy-back). It keeps its
+  writes to unfolded ones. So a side effect currently survives or not depending on whether its
+  buffer has ≤ 1024 elements. On Metal both variants make every non-folding kernel behave as
+  unfolded: its writes land. That is more consistent, and the decode and connectome results are
+  unchanged by it. It is a behaviour difference between Metal and the native backend, and the
+  implementation should state it in `enableStrictSideEffects`' Javadoc.
+
+**Cache behaviour.** A and B leave the hit rate and signatures unchanged. The `aggRoot`
+over-partitioning remains, and becomes pure waste on Metal, where almost nothing folds any more:
+`aggregate-threshold` compiles 71 kernels where 19 would do. Variant C recovers that (0.45 →
+0.85 measured), but it is a separate change and is not needed for the copy win.
+
+**Copy costs.** On the decode, the whole aggregate copy traffic goes: 245 → 112 dispatches/byte
+on the rolling cache, now *below* the sliding window, and commits/byte down by a third. This
+meets the plan's goal and makes tracker `a3725998` (proving full overwrites to drop copy-ins)
+unnecessary on Metal. On the benchmark, every copy-in in four of five scenarios goes. The only
+place A beats B is a kernel with more than 29 arguments and small inputs. There, A copies the
+overflow (46 slices per evaluation in `argument-limit`) where B copies everything (262). No
+measured real workload has such a kernel. The cost of that marginal gain is A's whole delicate
+part: deferred variable resolution, smallest-first ordering, partial layouts, and the collision
+class above.
+
+### The argument
+
+The plan rests on two claims: decode kernels are under the limit, and not folding them removes
+the copies that cap decode throughput. Both are now measured, not assumed. Every decode kernel
+fits, and removing the fold more than halves dispatches/byte with identical output. That justifies
+investing. What it does not justify is the overflow-only mechanism. The benchmark shows that
+`Process::optimize` already keeps ordinary kernels at 10 arguments or fewer. Only single n-ary
+computations reach the limit, and for those today's fold-everything rule is adequate. The one
+thing the plan adds over "fold nothing when it fits" is the one thing that collides with the
+owner's determinism constraint. Variant B keeps the measured win, uses an existing hook, and is
+deterministic by construction.
+
+### Smallest experiment that decides B
+
+One number is not yet measured: whether B's *structural* bound (before de-duplication) is at
+most 29 for every decode kernel, as the de-duplicated count is. Decide it this way:
+
+1. Implement B behind the existing hook, with Metal reporting 29 and every other backend
+   reporting no limit. This is a small change. Alternatively, log each Metal kernel's structural
+   bound next to its argument count for one decode step.
+2. Run the two decode methods above and the benchmark at seed 1729, population 500. Compare the
+   benchmark with `scripts/compare-cache-benchmark.py` against the baseline.
+
+**Success:**
+
+- rolling-cache dispatches/byte ≤ 114 (expected 112) and commits/byte ≤ 3.1, with the
+  continuations identical;
+- every MTL benchmark row equals the B column above exactly: 0 collisions, 8 failures (not 16),
+  `argument-limit` copies in per aggregating dispatch 32.75;
+- every JNI row byte-identical to the baseline;
+- `AggregateCopyInTest`, `AggregateCopyBackTest`, `ReadOnlyAggregateCopyTest`,
+  `InstructionCacheCollisionEnforcementTest` and `ProcessDetailsFactoryRecoveryTest` pass
+  unmodified, and the four `ConnectomeNetworkTest` methods pass.
+
+**Failure:**
+
+- any collision;
+- any MTL failure count above 8;
+- rolling-cache dispatches/byte above ~150, meaning some decode kernel's structural bound
+  over-counts aliased roots.
+
+On the last outcome, the next step is to make root sharing part of the signature. It is not to
+adopt A, which has the same dependence on root identity without a signature that carries it.
