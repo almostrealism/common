@@ -7,11 +7,17 @@ lane). The self-hosted jobs now run the image's or host's JDK and verify its
 major version instead. These tests keep a new or copied self-hosted job from
 re-introducing ``setup-java``, and keep the expected version defined once.
 
+The macOS fleet's ``fleet.sh install`` preflight is held to the same exact
+major runner.sh enforces, so install refuses a host its runner would refuse.
+
 Hosted (``ubuntu-latest``) jobs are exempt: the hosted image serves the JDK
 from its tool cache, so they keep ``setup-java``.
 """
 
 import os
+import re
+import subprocess
+import tempfile
 import unittest
 
 import yaml
@@ -135,6 +141,68 @@ class SelfHostedJdkTest(unittest.TestCase):
                     self.assertNotRegex(str(step.get("name", "")), r"JDK\s+\d",
                                         f"{name} has a step name with a hard-coded "
                                         "JDK major; use ${{ env.EXPECTED_JDK_MAJOR }}")
+
+
+_FLEET = os.path.join(_REPO_ROOT, "tools", "ci", "macos", "fleet.sh")
+
+
+def _fleet_jdk_preflight():
+    """The bash program `fleet.sh install` runs as the runner account to check
+    the daemon PATH's tools and JDK, cut from the script so it can be run
+    against a stand-in java."""
+    with open(_FLEET) as f:
+        text = f.read()
+    match = re.search(r"missing=\"\$\(sudo .*?/bin/bash -c '(.*?)' _ \$\{REQUIRED_TOOLS\}",
+                      text, re.S)
+    if match is None:
+        raise AssertionError("fleet.sh install no longer has the daemon-PATH tool preflight")
+    return match.group(1)
+
+
+class FleetJdkPreflightTest(unittest.TestCase):
+    """`fleet.sh install` must refuse exactly the JDKs runner.sh refuses. A
+    looser preflight (it once accepted any major >= 17) passes a host whose
+    runner then exits at start-up, so install waits for a registration that
+    never arrives instead of reporting the wrong JDK."""
+
+    def _missing(self, version_line, expected):
+        with tempfile.TemporaryDirectory() as bindir:
+            java = os.path.join(bindir, "java")
+            with open(java, "w") as f:
+                f.write("#!/bin/sh\necho '%s' >&2\n" % version_line)
+            os.chmod(java, 0o755)
+            env = {"PATH": bindir + ":/usr/bin:/bin", "EXPECTED_JDK_MAJOR": expected}
+            result = subprocess.run(["/bin/bash", "-c", _fleet_jdk_preflight(), "_", "java"],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            return result.stdout
+
+    def test_matching_major_passes(self):
+        self.assertEqual("", self._missing('openjdk version "17.0.12" 2024-07-16', "17"))
+
+    def test_newer_major_is_refused(self):
+        missing = self._missing('openjdk version "21.0.2" 2024-01-16', "17")
+        self.assertIn("jdk17 exactly", missing)
+        self.assertIn('"21.0.2"', missing)
+
+    def test_older_major_is_refused(self):
+        self.assertIn("jdk17 exactly", self._missing('openjdk version "11.0.20" 2023-07-18', "17"))
+
+    def test_major_follows_the_configured_expectation(self):
+        self.assertEqual("", self._missing('openjdk version "21.0.2" 2024-01-16', "21"))
+        self.assertIn("jdk21 exactly", self._missing('openjdk version "17.0.12" 2024-07-16', "21"))
+
+    def test_unparseable_version_is_refused(self):
+        self.assertIn("jdk17 exactly", self._missing("no java here", "17"))
+
+    def test_preflight_receives_the_configured_major(self):
+        """The preflight runs under `env -i`, so the expectation must be passed
+        into that clean environment explicitly, and derived from the env file
+        with the same default runner.sh applies."""
+        with open(_FLEET) as f:
+            text = f.read()
+        self.assertIn('EXPECTED_JDK_MAJOR="${ENV_EXPECTED_JDK_MAJOR:-17}"', text)
+        self.assertRegex(text, r'env -i [^\n]*\\\n\s+EXPECTED_JDK_MAJOR="\$\{EXPECTED_JDK_MAJOR\}" /bin/bash -c')
+        self.assertNotIn("-ge 17", text)
 
 
 if __name__ == "__main__":

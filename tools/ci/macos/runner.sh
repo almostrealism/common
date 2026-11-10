@@ -10,7 +10,7 @@ set -euo pipefail
 #
 # Prerequisites:
 #   - macOS (Intel or Apple Silicon)
-#   - JDK 17+ installed and on PATH
+#   - JDK EXPECTED_JDK_MAJOR (default 17, exact major) installed and on PATH
 #   - Maven installed and on PATH
 #   - curl, jq available
 #
