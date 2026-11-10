@@ -92,8 +92,6 @@ change was needed on a branch they had themselves broken. Knowing the shape of
 those mistakes is what lets you avoid making them — and, in section 1 below,
 recognize them in the diff you are reviewing.
 
-@include pr-feedback.txt
-
 ## What to look for and fix
 
 ### 1. Test Integrity & Deception Detection (HIGHEST PRIORITY)

@@ -547,6 +547,39 @@ public class FlowTreeControllerMultiWorkspaceTest extends TestSuiteBase {
         assertEquals("U_OWNER", conn.notifier.getChannelOwnerUserId());
     }
 
+    /**
+     * Verifies that the executor task the Bolt event handlers enqueue —
+     * {@link FlowTreeController#processSlackMessage} — logs and swallows a
+     * failure raised while handling the message instead of letting it escape.
+     *
+     * <p>The Socket Mode envelope is acknowledged before this task runs, so an
+     * exception escaping it would be lost to the executor's default handler with
+     * no diagnostic. A message with {@code null} text makes
+     * {@link SlackListener#handleMessage} throw (it trims the text to match
+     * commands); the test first confirms the listener really does propagate that
+     * failure, then confirms routing the same delivery through the controller's
+     * dispatch wrapper completes normally.</p>
+     */
+    @Test(timeout = 10000)
+    public void processSlackMessageSwallowsHandlerFailure() {
+        FlowTreeController controller = new FlowTreeController(null, null);
+
+        Workstream ws = new Workstream("C_DISPATCH", "#dispatch");
+        ws.setDefaultBranch("main");
+        controller.registerWorkstream(ws);
+
+        try {
+            controller.getListener().handleMessage(
+                    "C_DISPATCH", "U1", null, "1731000000.000100", null, null);
+            fail("Listener should propagate the handler failure for a null-text message");
+        } catch (RuntimeException expected) {
+            assertNotNull(expected);
+        }
+
+        controller.processSlackMessage(
+                "C_DISPATCH", "U1", null, "1731000000.000100", null, null);
+    }
+
     // -------------------------------------------------------------------------
     // Helper
     // -------------------------------------------------------------------------
