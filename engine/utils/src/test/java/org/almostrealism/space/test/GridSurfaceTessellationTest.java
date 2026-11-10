@@ -16,6 +16,7 @@
 
 package org.almostrealism.space.test;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -29,6 +30,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Tests the regular grid height-field tessellation on {@link Mesh}, {@link MeshData}, and
@@ -122,6 +124,140 @@ public class GridSurfaceTessellationTest extends TestSuiteBase implements GridIn
 		MeshData md = MeshData.gridSurface(cp(new PackedCollection(shape(nx, ny))),
 				nx, ny, ORIGIN, SPACING_X, SPACING_Z);
 		Assert.assertEquals(expected, md.getCount());
+	}
+
+	/**
+	 * Builds the host height field of the same tilted plane as
+	 * {@link #planeHeights(int, int, double, double, double)}, indexed {@code [i][j]}.
+	 *
+	 * @param nx the number of nodes along X
+	 * @param ny the number of nodes along Z
+	 * @param a  the X slope
+	 * @param b  the Z slope
+	 * @param c  the constant offset
+	 * @return the height field
+	 */
+	private static double[][] planeHeightField(int nx, int ny, double a, double b, double c) {
+		double[][] h = new double[nx][ny];
+		for (int i = 0; i < nx; i++) {
+			for (int j = 0; j < ny; j++) {
+				h[i][j] = a * i * SPACING_X + b * j * SPACING_Z + c;
+			}
+		}
+		return h;
+	}
+
+	/**
+	 * Asserts that the device tessellation of a tilted plane produces, triangle by triangle
+	 * and corner by corner, the same positions as the host tessellation of the same plane.
+	 *
+	 * @param heights the device height field of the plane {@code h = a*x + b*z + c}
+	 * @param nx      the number of nodes along X
+	 * @param ny      the number of nodes along Z
+	 * @param a       the X slope
+	 * @param b       the Z slope
+	 * @param c       the constant offset
+	 */
+	private void assertMatchesHostTessellation(Producer<PackedCollection> heights, int nx, int ny,
+											   double a, double b, double c) {
+		PackedCollection points = TriangleFeatures.getInstance()
+				.regularGridSurfacePoints(heights, nx, ny,
+						ORIGIN.getX(), ORIGIN.getY(), ORIGIN.getZ(), SPACING_X, SPACING_Z)
+				.evaluate();
+		List<Vector[]> expected = Mesh.gridSurfaceTriangles(
+				planeHeightField(nx, ny, a, b, c), ORIGIN, SPACING_X, SPACING_Z);
+
+		Assert.assertEquals(2 * (nx - 1) * (ny - 1), expected.size());
+		Assert.assertEquals(expected.size() * 9, points.getMemLength());
+
+		for (int t = 0; t < expected.size(); t++) {
+			for (int k = 0; k < 3; k++) {
+				Vector corner = expected.get(t)[k];
+				int offset = t * 9 + k * 3;
+				String label = "triangle " + t + " corner " + k;
+				Assert.assertEquals(label + " x", corner.getX(), points.toDouble(offset), POSITION_TOLERANCE);
+				Assert.assertEquals(label + " y", corner.getY(), points.toDouble(offset + 1), POSITION_TOLERANCE);
+				Assert.assertEquals(label + " z", corner.getZ(), points.toDouble(offset + 2), POSITION_TOLERANCE);
+			}
+		}
+	}
+
+	/**
+	 * The device tessellation of a height field computed by a Producer graph matches the host
+	 * tessellation corner by corner, so the kernel's cell, sub-triangle, and corner index
+	 * mapping (including the winding order) matches the documented layout. A non-square grid
+	 * and distinct slopes on each axis make any transposition of the X and Z axes or any corner
+	 * reordering visible.
+	 */
+	@Test(timeout = 60000)
+	public void devicePointsMatchHostTessellation() {
+		assertMatchesHostTessellation(planeHeights(5, 4, 0.3, -0.7, 0.5), 5, 4, 0.3, -0.7, 0.5);
+	}
+
+	/**
+	 * The device tessellation of a height field held in a collection matches the host
+	 * tessellation. Regression test: on this grid size a {@code conditional} in the corner
+	 * offset index arithmetic became floating-point once the kernel compiler hoisted one of
+	 * its branches, making the node index floating-point, and the kernel failed to compile.
+	 */
+	@Test(timeout = 60000)
+	public void devicePointsFromCollectionMatchHostTessellation() {
+		PackedCollection heights = planeHeights(5, 4, 0.3, -0.7, 0.5).evaluate();
+		assertMatchesHostTessellation(cp(heights), 5, 4, 0.3, -0.7, 0.5);
+	}
+
+	/**
+	 * Every face of the device-built {@link MeshData} on a tilted plane carries the plane's
+	 * upward unit normal and has its first corner at the expected node, confirming the
+	 * documented {@code +Y} winding of both triangles in each cell.
+	 */
+	@Test(timeout = 60000)
+	public void deviceFaceNormalsPointUp() {
+		int nx = 4;
+		int ny = 6;
+		double a = -0.4;
+		double b = 0.25;
+		double c = 0.1;
+
+		MeshData md = MeshData.gridSurface(planeHeights(nx, ny, a, b, c), nx, ny,
+				ORIGIN, SPACING_X, SPACING_Z);
+		List<Vector[]> expected = Mesh.gridSurfaceTriangles(
+				planeHeightField(nx, ny, a, b, c), ORIGIN, SPACING_X, SPACING_Z);
+		Assert.assertEquals(expected.size(), md.getCount());
+
+		double len = Math.sqrt(a * a + 1.0 + b * b);
+		for (int t = 0; t < expected.size(); t++) {
+			int row = t * 12;
+			Vector first = expected.get(t)[0];
+			Assert.assertEquals("jkl x@" + t, first.getX(), md.toDouble(row + 6), POSITION_TOLERANCE);
+			Assert.assertEquals("jkl y@" + t, first.getY(), md.toDouble(row + 7), POSITION_TOLERANCE);
+			Assert.assertEquals("jkl z@" + t, first.getZ(), md.toDouble(row + 8), POSITION_TOLERANCE);
+
+			Assert.assertEquals("normal x@" + t, -a / len, md.toDouble(row + 9), 1e-5);
+			Assert.assertEquals("normal y@" + t, 1.0 / len, md.toDouble(row + 10), 1e-5);
+			Assert.assertEquals("normal z@" + t, -b / len, md.toDouble(row + 11), 1e-5);
+		}
+	}
+
+	/** A grid with a single node along X has no cells, so tessellating it is rejected. */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void singleColumnGridPointsRejected() {
+		TriangleFeatures.getInstance().regularGridSurfacePoints(cp(new PackedCollection(shape(4))),
+				1, 4, 0.0, 0.0, 0.0, SPACING_X, SPACING_Z);
+	}
+
+	/** A grid with a single node along Z has no cells, so tessellating it is rejected. */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void singleRowGridPointsRejected() {
+		TriangleFeatures.getInstance().regularGridSurfacePoints(cp(new PackedCollection(shape(4))),
+				4, 1, 0.0, 0.0, 0.0, SPACING_X, SPACING_Z);
+	}
+
+	/** A grid with a single node along X has no gradient span, so its normals are rejected. */
+	@Test(timeout = 30000, expected = IllegalArgumentException.class)
+	public void singleColumnGridNormalsRejected() {
+		TriangleFeatures.getInstance().regularGridSurfaceNormals(cp(new PackedCollection(shape(4))),
+				1, 4, SPACING_X, SPACING_Z);
 	}
 
 	/** On a tilted plane the per-vertex gradient normals are exact at every node. */

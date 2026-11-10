@@ -213,6 +213,14 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * (1,1)}. The result has shape {@code (2*(nx-1)*(ny-1), 3, 3)} — the three corner
 	 * positions of each triangle — suitable as input to {@link #triangle(Producer)}.</p>
 	 *
+	 * <p>The cell, triangle, corner and node indices are non-negative integers and are
+	 * derived with integer arithmetic only: integer division (which already truncates)
+	 * and closed-form corner offsets rather than conditionals. A conditional whose
+	 * branches end up with different integer types (as happens once the kernel compiler
+	 * hoists one branch into a 64-bit variable) is typed as floating-point, which would
+	 * make the node index floating-point and break the integer index arithmetic used to
+	 * read {@code heights} for some grid sizes.</p>
+	 *
 	 * @param heights  the height field, shaped {@code (nx, ny)} (or any shape with
 	 *                 {@code nx*ny} elements in row-major order)
 	 * @param nx       the number of grid nodes along X
@@ -223,11 +231,13 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param spacingX the node spacing along X
 	 * @param spacingZ the node spacing along Z
 	 * @return producer for the {@code (T, 3, 3)} triangle-corner buffer
+	 * @throws IllegalArgumentException if {@code nx} or {@code ny} is less than two
 	 */
 	default CollectionProducer regularGridSurfacePoints(
 			Producer<PackedCollection> heights, int nx, int ny,
 			double originX, double originY, double originZ,
 			double spacingX, double spacingZ) {
+		requireGridNodes(nx, ny);
 		int cellsX = nx - 1;
 		int cellsZ = ny - 1;
 		int triangleCount = 2 * cellsX * cellsZ;
@@ -236,17 +246,16 @@ public interface TriangleFeatures extends VectorFeatures {
 		return new DefaultTraversableExpressionComputation("regularGridSurfacePoints", outputShape, args ->
 			CollectionExpression.create(outputShape, idx -> {
 				Expression comp = idx.imod(3);
-				Expression corner = idx.divide(e(3)).floor().imod(3);
-				Expression tri = idx.divide(e(9)).floor();
-				Expression cell = tri.divide(e(2)).floor();
+				Expression corner = idx.divide(e(3)).imod(3);
+				Expression tri = idx.divide(e(9));
+				Expression cell = tri.divide(e(2));
 				Expression sub = tri.imod(2);
-				Expression ci = cell.divide(e(cellsZ)).floor();
+				Expression ci = cell.divide(e(cellsZ));
 				Expression cj = cell.imod(cellsZ);
 
-				Expression cornerAtLeastOne = conditional(corner.eq(e(0)), e(0), e(1));
-				Expression di = conditional(sub.eq(e(0)), cornerAtLeastOne, corner.divide(e(2)).floor());
-				Expression dj = conditional(sub.eq(e(0)),
-						conditional(corner.eq(e(1)), e(1), e(0)), cornerAtLeastOne);
+				// Corner offsets {(0,0) (1,1) (1,0)} for sub 0 and {(0,0) (0,1) (1,1)} for sub 1
+				Expression di = corner.add(e(1)).subtract(sub).divide(e(2));
+				Expression dj = corner.multiply(e(2).subtract(corner)).add(sub.multiply(corner.divide(e(2))));
 
 				Expression ni = ci.add(di);
 				Expression nj = cj.add(dj);
@@ -277,25 +286,28 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param spacingX the node spacing along X
 	 * @param spacingZ the node spacing along Z
 	 * @return producer for the {@code (nx*ny, 3)} per-vertex unit normals
+	 * @throws IllegalArgumentException if {@code nx} or {@code ny} is less than two
 	 */
 	default CollectionProducer regularGridSurfaceNormals(
 			Producer<PackedCollection> heights, int nx, int ny,
 			double spacingX, double spacingZ) {
+		requireGridNodes(nx, ny);
 		int nodeCount = nx * ny;
 		TraversalPolicy outputShape = new TraversalPolicy(false, false, nodeCount, 3).traverse(1);
 
 		CollectionProducer unnormalized = new DefaultTraversableExpressionComputation(
 				"regularGridSurfaceNormalVectors", outputShape, args ->
 			CollectionExpression.create(outputShape, idx -> {
-				Expression node = idx.divide(e(3)).floor();
+				// Integer arithmetic only; see regularGridSurfacePoints on why not conditionals
+				Expression node = idx.divide(e(3));
 				Expression comp = idx.imod(3);
-				Expression ni = node.divide(e(ny)).floor();
+				Expression ni = node.divide(e(ny));
 				Expression nj = node.imod(ny);
 
-				Expression niPlus = conditional(ni.eq(e(nx - 1)), ni, ni.add(e(1)));
-				Expression niMinus = conditional(ni.eq(e(0)), ni, ni.subtract(e(1)));
-				Expression njPlus = conditional(nj.eq(e(ny - 1)), nj, nj.add(e(1)));
-				Expression njMinus = conditional(nj.eq(e(0)), nj, nj.subtract(e(1)));
+				Expression niPlus = clampedNeighbor(ni, nx, true);
+				Expression niMinus = clampedNeighbor(ni, nx, false);
+				Expression njPlus = clampedNeighbor(nj, ny, true);
+				Expression njMinus = clampedNeighbor(nj, ny, false);
 
 				Expression hxPlus = args[1].getValueAt(niPlus.multiply(e(ny)).add(nj));
 				Expression hxMinus = args[1].getValueAt(niMinus.multiply(e(ny)).add(nj));
@@ -312,6 +324,40 @@ public interface TriangleFeatures extends VectorFeatures {
 			}), heights);
 
 		return normalize(unnormalized);
+	}
+
+	/**
+	 * Returns the neighbouring node index of {@code i} along an axis of {@code n} nodes,
+	 * clamped to the grid edge, as integer arithmetic: {@code min(i + 1, n - 1)} when
+	 * {@code next}, otherwise {@code max(i - 1, 0)}. For {@code 0 <= i <= n - 1} the
+	 * quotients below are each {@code 0} or {@code 1}, so no conditional is needed.
+	 *
+	 * @param i    the node index along the axis, in {@code [0, n)}
+	 * @param n    the number of nodes along the axis, at least two
+	 * @param next {@code true} for the following node, {@code false} for the preceding one
+	 * @return the clamped neighbouring index
+	 */
+	private Expression clampedNeighbor(Expression i, int n, boolean next) {
+		if (next) {
+			return i.add(e(1)).subtract(i.divide(e(n - 1)));
+		}
+
+		return i.subtract(e(1)).add(e(n - 1).subtract(i).divide(e(n - 1)));
+	}
+
+	/**
+	 * Validates that a regular grid has at least two nodes along each axis, the minimum
+	 * that forms a cell.
+	 *
+	 * @param nx the number of grid nodes along X
+	 * @param ny the number of grid nodes along Z
+	 * @throws IllegalArgumentException if {@code nx} or {@code ny} is less than two
+	 */
+	private static void requireGridNodes(int nx, int ny) {
+		if (nx < 2 || ny < 2) {
+			throw new IllegalArgumentException(
+					"A regular grid needs at least 2 nodes per axis, got " + nx + " x " + ny);
+		}
 	}
 
 	/**
