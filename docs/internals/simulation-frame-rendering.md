@@ -13,8 +13,13 @@ runner produces and never steps it.
    per-frame hook. This is where the host boundary between the physics step and whatever consumes a
    frame lives.
 2. **`RayTracedFrameSequence`** (`engine/render`) — the ray-traced implementation of that hook:
-   reconstruct a `Scene` from the state, ray trace it, write a zero-padded PNG per frame, and emit an
-   `ffmpeg` encode script.
+   reconstruct a `Scene` from the state, ray trace it, and hand each frame to an `ImageSequence`.
+4. **`ImageSequence`** (`domain/color`) — the single owner of frame-sequence output: the output
+   directory, zero-padded (optionally prefixed) frame naming, encoding each frame through
+   `ImageCanvas`, tracking which frames were written, and the `ffmpeg` encode script bounded to the
+   contiguous run on disk. It is renderer-agnostic — a caller hands it an `RGB[][]` (or image
+   producer) however it was produced — so every frame-sequence writer shares it, and there is one
+   way to write a frame sequence.
 3. **`RGBFeatures.heatmap` / `RGBFeatures.saveHeatmap`** (`domain/color`) — a colour-mapped heatmap of
    a 2D `PackedCollection` field, for inspecting a height field or scalar field directly.
 
@@ -60,24 +65,25 @@ RayTracedFrameSequence driver = new RayTracedFrameSequence(
 driver.run();
 ```
 
-`run()` calls `runner.runFrames(stepsPerFrame, frameCount, this::renderFrame)` and then writes the
-encode script. For each frame it:
+`run()` prepares the `ImageSequence`'s output directory, calls
+`runner.runFrames(stepsPerFrame, frameCount, this::renderFrame)`, and then writes the encode script
+through the sequence. For each frame it:
 
 1. calls `sceneForFrame.apply(frameIndex)` — the place a caller rebuilds renderable geometry from the
    current simulation state (for example tessellating a height field into a mesh); the returned
    `Scene` carries its own camera;
-2. renders and writes the frame through
-   `RayTracedScene.renderToFile(File)` — the **shared render-and-write stage** that
-   `RayTracedAnimation` also uses — to `frame_<zero-padded index>.png`;
-3. tracks the written file.
+2. renders the frame to pixels with `RayTracedScene.render()`;
+3. hands the pixels to the `ImageSequence`, which encodes them to `frame_<zero-padded index>.png` and
+   tracks the written file.
 
-After the last frame it writes `encode.sh`, an `ffmpeg` command whose input pattern
-`frame_%0<width>d.png` with `-start_number 0 -frames:v <frameCount>` references exactly the
-zero-padded frames on disk, so the frame list matches. The frame rate defaults to
-`DEFAULT_FRAME_RATE` and is settable with `setFrameRate(int)`.
+After the last frame the `ImageSequence` writes `encode.sh`, an `ffmpeg` command whose input pattern
+`frame_%0<width>d.png` with `-start_number 0 -frames:v <count>` references exactly the zero-padded
+frames on disk, so the frame list matches. The frame rate defaults to
+`ImageSequence.DEFAULT_FRAME_RATE` and is settable with `setFrameRate(int)`.
 
-The actual ray trace is the overridable `renderScene(Scene, File)` template-method hook; the frame
-driving, naming, tracking and encode script are independent of it.
+The actual ray trace is the overridable `renderScene(Scene)` template-method hook, returning the
+frame's pixels; the directory, naming, tracking and encode script all belong to the shared
+`ImageSequence` and are independent of it.
 
 > **Note on the lit render path.** Rendering a lit scene through `RayTracedScene` goes through
 > `LightingEngineAggregator`, which is a **known issue** in the default lanes (the single-pixel
@@ -142,15 +148,28 @@ ray-traced images instead.
 
 Frames are written as PNG. `ImageCanvas`'s image encoding constant for this is `PNGEncoding`
 (`ImageCanvas.encodeImageFile(image, file, ImageCanvas.PNGEncoding)` writes PNG bytes via `ImageIO`),
-and frame files carry a `.png` extension so the name matches the bytes.
+and frame files carry a `.png` extension so the name matches the bytes. `ImageSequence` is the one
+place that applies this per frame of a sequence.
+
+## One frame-sequence writer
+
+`ImageSequence` is the single implementation of writing an image frame sequence. `RayTracedAnimation`
+(whose base `space.Animation.run()` steps rigid-body physics itself) and `RayTracedFrameSequence`
+(driven by `SimulationRunner`) differ only in **what advances time between frames** — the physics
+clock — and both delegate the frame output (naming, tracking, the PNG encode, and the `ffmpeg`
+encode script) to an `ImageSequence`. `texture.Animation` is a different concept — an unbounded,
+caller-named frame renderer with no encode script — and uses the shared low-level
+`ImageCanvas.encodeImageFile` primitive directly rather than an `ImageSequence`.
 
 ## Related files
 
 | File | Role |
 |---|---|
 | `compute/time/.../SimulationRunner.java` | `runFrames` — the render-agnostic frame driver |
-| `engine/render/.../RayTracedFrameSequence.java` | ray-traced frame sequence + encode script |
-| `engine/render/.../RayTracedScene.java` | `render` / `renderToFile` — the shared render-and-write stage |
+| `engine/render/.../RayTracedFrameSequence.java` | `SimulationRunner`-driven ray-traced frame sequence |
+| `engine/render/.../RayTracedAnimation.java` | physics-driven ray-traced frame sequence |
+| `engine/render/.../RayTracedScene.java` | `render` — the shared per-frame render stage |
+| `domain/color/.../ImageSequence.java` | the single frame-sequence writer (naming, tracking, encode script) |
 | `domain/color/.../RGBFeatures.java` | `heatmap` / `saveHeatmap` — field visualisation |
 | `domain/color/.../ImageCanvas.java` | `PNGEncoding` and `encodeImageFile` |
 

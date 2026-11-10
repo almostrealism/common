@@ -179,20 +179,6 @@ public class HeatmapTest extends TestSuiteBase implements RGBFeatures {
 	}
 
 	/**
-	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
-	 *
-	 * @param action the action expected to throw
-	 */
-	private static void assertThrowsIllegalArgument(Runnable action) {
-		try {
-			action.run();
-			Assert.fail("Expected an IllegalArgumentException");
-		} catch (IllegalArgumentException expected) {
-			// expected
-		}
-	}
-
-	/**
 	 * Asserts that the pixel at {@code (row, col)} of a {@code (height, width, 3)} image has the
 	 * expected colour.
 	 *

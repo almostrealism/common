@@ -313,18 +313,4 @@ public class RatePopulationTest extends TestSuiteBase {
 
 		Destroyable.releaseAll(List.of(weights::destroy, scale::destroy));
 	}
-
-	/**
-	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
-	 *
-	 * @param action the action expected to throw
-	 */
-	private static void assertThrowsIllegalArgument(Runnable action) {
-		try {
-			action.run();
-			Assert.fail("Expected an IllegalArgumentException");
-		} catch (IllegalArgumentException expected) {
-			// expected
-		}
-	}
 }

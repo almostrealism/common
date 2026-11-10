@@ -223,6 +223,21 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	/**
+	 * Asserts that the given action throws {@link IllegalArgumentException}.
+	 *
+	 * @param action the action expected to throw
+	 * @throws AssertionError if the action does not throw {@link IllegalArgumentException}
+	 */
+	default void assertThrowsIllegalArgument(Runnable action) {
+		try {
+			action.run();
+			throw new AssertionError("Expected an IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+	}
+
+	/**
 	 * Asserts that two objects are not equal using {@link Objects#equals}.
 	 *
 	 * @param expected the first value

@@ -191,17 +191,10 @@ public class RayTracedFrameSequenceTest extends TestSuiteBase {
 		SimulationRunner runner = new SimulationRunner(mixing(state), DT);
 		File dir = Files.createTempDirectory("frame-sequence-fail").toFile();
 
-		RayTracedFrameSequence driver = new RayTracedFrameSequence(runner, STEPS_PER_FRAME, FRAMES,
-				sceneForFrame(state), new RenderParameters(4, 4, 1, 1), dir) {
-			@Override
-			protected void renderScene(Scene<? extends ShadableSurface> scene, File file) throws IOException {
-				if (file.getName().equals("frame_1.png")) {
-					throw new IOException("frame 1 cannot be written");
-				}
+		// Block the middle frame's write by occupying its path with a directory, so its encode fails
+		Assert.assertTrue("could not block frame 1", new File(dir, "frame_1.png").mkdir());
 
-				Files.write(file.toPath(), new byte[] { 2 });
-			}
-		};
+		RayTracedFrameSequence driver = stubbedDriver(runner, state, dir);
 		driver.run();
 
 		Assert.assertTrue("frame 0 should have been written", new File(dir, "frame_0.png").isFile());
@@ -228,13 +221,12 @@ public class RayTracedFrameSequenceTest extends TestSuiteBase {
 		SimulationRunner runner = new SimulationRunner(mixing(state), DT);
 		File dir = Files.createTempDirectory("frame-sequence-empty").toFile();
 
-		RayTracedFrameSequence driver = new RayTracedFrameSequence(runner, STEPS_PER_FRAME, FRAMES,
-				sceneForFrame(state), new RenderParameters(4, 4, 1, 1), dir) {
-			@Override
-			protected void renderScene(Scene<? extends ShadableSurface> scene, File file) throws IOException {
-				throw new IOException("no frame can be written");
-			}
-		};
+		// Block every frame's write by occupying each path with a directory, so no frame is written
+		for (int i = 0; i < FRAMES; i++) {
+			Assert.assertTrue("could not block frame " + i, new File(dir, "frame_" + i + ".png").mkdir());
+		}
+
+		RayTracedFrameSequence driver = stubbedDriver(runner, state, dir);
 		driver.run();
 
 		Assert.assertTrue("frame files should be empty", driver.getFrameFiles().isEmpty());
@@ -327,25 +319,41 @@ public class RayTracedFrameSequenceTest extends TestSuiteBase {
 		return new RayTracedFrameSequence(runner, STEPS_PER_FRAME, FRAMES, sceneForFrame(state),
 				new RenderParameters(4, 4, 1, 1), dir) {
 			@Override
-			protected void renderScene(Scene<? extends ShadableSurface> scene, File file) throws IOException {
-				Files.write(file.toPath(),
-						(state.toDouble(0) + "," + state.toDouble(1)).getBytes(StandardCharsets.UTF_8));
+			protected RGB[][] renderScene(Scene<? extends ShadableSurface> scene) {
+				return stateImage(state);
 			}
 		};
 	}
 
 	/**
-	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
+	 * Builds a deterministic 4x4 image whose single colour is derived from the current simulation
+	 * state, so two runs of the same simulation render byte-identical PNGs while a perturbed
+	 * trajectory would not.
 	 *
-	 * @param action the action expected to throw
+	 * @param state the simulation state
+	 * @return the frame pixels, indexed by column then row
 	 */
-	private static void assertThrowsIllegalArgument(Runnable action) {
-		try {
-			action.run();
-			Assert.fail("Expected an IllegalArgumentException");
-		} catch (IllegalArgumentException expected) {
-			// expected
+	private static RGB[][] stateImage(PackedCollection state) {
+		RGB colour = new RGB(clampUnit(state.toDouble(0)), clampUnit(state.toDouble(1)), 0.0);
+
+		RGB[][] image = new RGB[4][4];
+		for (int i = 0; i < image.length; i++) {
+			for (int j = 0; j < image[i].length; j++) {
+				image[i][j] = colour;
+			}
 		}
+
+		return image;
+	}
+
+	/**
+	 * Clamps a value to the unit interval so it is a valid colour channel.
+	 *
+	 * @param value the value
+	 * @return the value clamped to {@code [0, 1]}
+	 */
+	private static double clampUnit(double value) {
+		return Math.max(0.0, Math.min(1.0, value));
 	}
 
 	/**
