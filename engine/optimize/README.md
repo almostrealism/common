@@ -101,7 +101,8 @@ double loss = terms.evaluate().doubleStream().average().orElse(0);
 LossProvider mae = new MeanAbsoluteError(traverseEach());
 
 // Negative Log Likelihood (classification)
-LossProvider nll = new NegativeLogLikelihood(traverseEach());
+// (its rows come from the output's shape; the output must be log-probabilities)
+LossProvider nll = new NegativeLogLikelihood();
 ```
 
 ### 4. Adam Optimizer
@@ -294,7 +295,7 @@ Model model = new Model(shape(784));
 model.add(dense(weights1, bias1));
 model.add(relu());
 model.add(dense(weights2, bias2));
-model.add(softmax());
+model.add(logSoftmax(shape(10)));
 
 // Create optimizer
 ModelOptimizer optimizer = new ModelOptimizer(
@@ -303,7 +304,7 @@ ModelOptimizer optimizer = new ModelOptimizer(
 );
 
 // Configure for classification
-optimizer.setLossFunction(new NegativeLogLikelihood(shape(10).traverseEach()));
+optimizer.setLossFunction(new NegativeLogLikelihood());
 optimizer.setLogFrequency(1);
 optimizer.setLossTarget(0.01);
 

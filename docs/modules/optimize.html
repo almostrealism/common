@@ -84,7 +84,7 @@
                     </div>
                     <div class="class-item">
                         <h4>NegativeLogLikelihood</h4>
-                        <p>NLL loss for classification. Used with softmax outputs for multi-class problems.</p>
+                        <p>NLL loss for classification. Used with log-softmax outputs (log-probabilities) and one-hot targets for multi-class problems.</p>
                     </div>
                 </div>
 
@@ -270,7 +270,7 @@ Model model = new Model(shape(784));
 model.add(dense(weights1, bias1));
 model.add(relu());
 model.add(dense(weights2, bias2));
-model.add(softmax());
+model.add(logSoftmax(shape(10)));
 
 // Create optimizer
 ModelOptimizer optimizer = new ModelOptimizer(
@@ -279,7 +279,7 @@ ModelOptimizer optimizer = new ModelOptimizer(
 );
 
 // Configure for classification
-optimizer.setLossFunction(new NegativeLogLikelihood(shape(10).traverseEach()));
+optimizer.setLossFunction(new NegativeLogLikelihood());
 optimizer.setLogFrequency(1);     // Log every epoch
 optimizer.setLossTarget(0.01);    // Early stopping threshold
 
