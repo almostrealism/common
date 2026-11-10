@@ -444,11 +444,12 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 				.add(scale(environment(reflected), fresnel))
 				.add(highlights);
 
-		CollectionProducer color = scale(surfaceColor, cp(hit))
-				.add(scale(environment(d), c(1.0).subtract(cp(hit))));
+		// Select rather than blend by the hit mask: for a miss, the surface shading reads the
+		// normal at a point that need not be on the surface, where it may be undefined
+		CollectionProducer color = greaterThan(cp(hit), c(0.5), surfaceColor, environment(d));
 
 		ops.add(a(cp(image), bound(color, 0.0, 1.0)));
-		ops.add(a(cp(reflectance), fresnel.multiply(cp(hit))));
+		ops.add(a(cp(reflectance), greaterThan(cp(hit), c(0.5), fresnel, c(0.0))));
 	}
 
 	/**

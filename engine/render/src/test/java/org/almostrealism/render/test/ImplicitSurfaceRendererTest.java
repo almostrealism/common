@@ -45,6 +45,12 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 	/** The amplitude of the sinusoidal height field. */
 	private static final double AMPLITUDE = 0.2;
 
+	/** The environment color at and below the horizon used by every renderer of this test. */
+	private static final double[] HORIZON = { 0.8, 0.85, 0.9 };
+
+	/** The environment color straight up used by every renderer of this test. */
+	private static final double[] ZENITH = { 0.25, 0.4, 0.7 };
+
 	/**
 	 * The pixels of the height field images whose hit distances are compared, chosen so that
 	 * every hit is inside the grid, where the height field follows its samples rather than
@@ -97,7 +103,26 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 	private ImplicitSurfaceRenderer renderer(ImplicitSurface surface, PinholeCamera camera, int size) {
 		ImplicitSurfaceRenderer renderer = new ImplicitSurfaceRenderer(surface, camera, size, size);
 		renderer.addLight(new PointLight(new Vector(3.0, 4.0, 5.0), 1.0, new RGB(1.0, 1.0, 1.0)));
+		renderer.setEnvironment(new RGB(HORIZON[0], HORIZON[1], HORIZON[2]),
+				new RGB(ZENITH[0], ZENITH[1], ZENITH[2]));
 		return renderer;
+	}
+
+	/**
+	 * Asserts that a pixel of the image shows the environment in the direction of its ray: the
+	 * horizon color blended towards the zenith color by the clamped upward component.
+	 *
+	 * @param image the {@code (n, 3)} image, in pixel order
+	 * @param pixel the index of the pixel
+	 * @param r the ray of the pixel, with a unit direction
+	 */
+	private void assertEnvironment(PackedCollection image, int pixel, double[] r) {
+		double elevation = Math.max(0.0, Math.min(1.0, r[4]));
+		for (int i = 0; i < 3; i++) {
+			assertEquals("Channel " + i + " of pixel " + pixel + " should show the environment",
+					HORIZON[i] + (ZENITH[i] - HORIZON[i]) * elevation,
+					image.toDouble(3 * pixel + i), 1e-6);
+		}
 	}
 
 	/**
@@ -197,6 +222,22 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 		int size = 32;
 		PinholeCamera camera = sphereCamera();
 		ImplicitSurfaceRenderer renderer = renderer(unitSphere(), camera, size);
+		try {
+			assertSphereSilhouette(renderer, camera, size);
+		} finally {
+			renderer.destroy();
+		}
+	}
+
+	/**
+	 * Renders the unit sphere and checks its silhouette, hit distances, centre brightness and
+	 * corners, as described by {@link #sphereSilhouette()}.
+	 *
+	 * @param renderer the renderer of the unit sphere
+	 * @param camera the camera of the renderer
+	 * @param size the width and height of the image
+	 */
+	private void assertSphereSilhouette(ImplicitSurfaceRenderer renderer, PinholeCamera camera, int size) {
 		OperationList frame = renderer.frame();
 		OperationList pixels = (OperationList) frame.get(1);
 		assertTrue("The per-pixel operations should compile to one kernel",
@@ -250,6 +291,7 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 		for (int corner : corners) {
 			assertTrue("A corner should miss the sphere", distance.toDouble(corner) < 0);
 			assertEquals(0.0, renderer.getReflectance().toDouble(corner));
+			assertEnvironment(image, corner, ray(rays, size, corner / size, corner % size));
 		}
 	}
 
@@ -273,7 +315,9 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 
 	/**
 	 * A camera inside the sphere sees no hit: every ray starts where the surface value is
-	 * negative, so there is no bracket with a positive near end and every pixel misses.
+	 * negative, so there is no bracket with a positive near end and every pixel misses. Every
+	 * pixel shows the environment, even though the sphere normal at the camera position, the
+	 * centre of the sphere, is undefined.
 	 */
 	@Test(timeout = 600000)
 	public void cameraInsideSurfaceMisses() {
@@ -281,13 +325,20 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 		PinholeCamera camera = new PinholeCamera(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, -1.0),
 				new Vector(0.0, 1.0, 0.0), 1.0, 1.0, 1.0);
 		ImplicitSurfaceRenderer renderer = renderer(unitSphere(), camera, size);
-		renderer.frame().get().run();
+		try {
+			renderer.frame().get().run();
 
-		PackedCollection distance = renderer.getDistance();
-		PackedCollection reflectance = renderer.getReflectance();
-		for (int i = 0; i < size * size; i++) {
-			assertEquals("Pixel " + i + " should miss", -1.0, distance.toDouble(i), 0.0);
-			assertEquals(0.0, reflectance.toDouble(i), 0.0);
+			PackedCollection distance = renderer.getDistance();
+			PackedCollection reflectance = renderer.getReflectance();
+			PackedCollection image = renderer.getImage();
+			Evaluable<PackedCollection> rays = camera.rayAt(v(Pair.shape(), 0), pair(size, size)).get();
+			for (int i = 0; i < size * size; i++) {
+				assertEquals("Pixel " + i + " should miss", -1.0, distance.toDouble(i), 0.0);
+				assertEquals(0.0, reflectance.toDouble(i), 0.0);
+				assertEnvironment(image, i, ray(rays, size, i / size, i % size));
+			}
+		} finally {
+			renderer.destroy();
 		}
 	}
 
@@ -334,21 +385,26 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 		HeightField surface = new HeightField(cp(heights), -8.0, -8.0, spacing, spacing);
 		ImplicitSurfaceRenderer renderer = renderer(surface, camera, size);
 		renderer.setMarchSteps(96);
-		renderer.frame().get().run();
+		try {
+			renderer.frame().get().run();
 
-		PackedCollection distance = renderer.getDistance();
-		Evaluable<PackedCollection> rays = camera.rayAt(v(Pair.shape(), 0), pair(size, size)).get();
+			PackedCollection distance = renderer.getDistance();
+			Evaluable<PackedCollection> rays = camera.rayAt(v(Pair.shape(), 0), pair(size, size)).get();
 
-		for (int[] sample : HEIGHT_FIELD_SAMPLES) {
-			double[] r = ray(rays, size, sample[0], sample[1]);
-			double expected = heightDistance(r, h);
-			double actual = distance.toDouble(sample[0] * size + sample[1]);
-			log("Pixel (" + sample[0] + ", " + sample[1] + "): expected " + expected + ", actual " + actual);
+			for (int[] sample : HEIGHT_FIELD_SAMPLES) {
+				double[] r = ray(rays, size, sample[0], sample[1]);
+				double expected = heightDistance(r, h);
+				double actual = distance.toDouble(sample[0] * size + sample[1]);
+				log("Pixel (" + sample[0] + ", " + sample[1] + "): expected " + expected + ", actual " + actual);
 
-			assertTrue("The ray should hit the height field", expected > 0);
-			assertTrue("The hit should be inside the grid",
-					Math.abs(r[0] + expected * r[3]) < 8.0 && Math.abs(r[2] + expected * r[5]) < 8.0);
-			assertEquals(expected, actual, tolerance);
+				assertTrue("The ray should hit the height field", expected > 0);
+				assertTrue("The hit should be inside the grid",
+						Math.abs(r[0] + expected * r[3]) < 8.0 && Math.abs(r[2] + expected * r[5]) < 8.0);
+				assertEquals(expected, actual, tolerance);
+			}
+		} finally {
+			renderer.destroy();
+			heights.destroy();
 		}
 	}
 
@@ -363,6 +419,23 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 		PinholeCamera camera = sphereCamera();
 		ImplicitSurfaceRenderer renderer = renderer(unitSphere(), camera, size);
 		renderer.setNormalReflectance(f0);
+		try {
+			assertFresnel(renderer, camera, size, f0);
+		} finally {
+			renderer.destroy();
+		}
+	}
+
+	/**
+	 * Renders the unit sphere and compares the reflectance at its centre and at its edge, as
+	 * described by {@link #fresnelGrazingExceedsNormal()}.
+	 *
+	 * @param renderer the renderer of the unit sphere
+	 * @param camera the camera of the renderer
+	 * @param size the width and height of the image
+	 * @param f0 the reflectance at normal incidence
+	 */
+	private void assertFresnel(ImplicitSurfaceRenderer renderer, PinholeCamera camera, int size, double f0) {
 		renderer.frame().get().run();
 
 		PackedCollection distance = renderer.getDistance();
@@ -409,7 +482,22 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 		ImplicitSurfaceRenderer renderer = renderer(surface, heightFieldCamera(), size);
 		renderer.setBaseColor(new RGB(0.05, 0.05, 0.06));
 		renderer.setSpecular(0.8, 128.0);
+		try {
+			assertFrameTime(renderer, size);
+		} finally {
+			renderer.destroy();
+			heights.destroy();
+		}
+	}
 
+	/**
+	 * Compiles and times the frames of the height field renderer and checks that the image
+	 * shows both the surface and the environment, as described by {@link #frameTime()}.
+	 *
+	 * @param renderer the renderer of the height field
+	 * @param size the width and height of the image
+	 */
+	private void assertFrameTime(ImplicitSurfaceRenderer renderer, int size) {
 		long start = System.nanoTime();
 		Runnable frame = renderer.frame().get();
 		long compiled = System.nanoTime();
