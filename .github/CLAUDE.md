@@ -1241,24 +1241,38 @@ follow-up a person opens from an accepted proposal; it is one of the prefixes
 the survey covers (`QA_PREFIXES`), and a person — never a job — creates it.
 
 `flaky-qa` is the pilot nondeterministic-test hunt
-(`tools/ci/prompts/flaky-hunt.txt`). It takes one module and
-a small, named slice of its tests, runs that slice repeatedly on the current
-commit, and looks for a test whose pass/fail outcome varies with no change to
-the code under test; on a finding it fixes the source of the nondeterminism in
+(`tools/ci/prompts/flaky-hunt.txt`). It starts from the flakes CI has already
+observed — a test that failed in one attempt of a "Build and Test" run and
+passed in a later attempt of the same commit (which `rerun-flaky-tests.sh`
+surfaces) is a confirmed flake, on a known lane, with its failure output
+recorded. `tools/ci/collect-observed-flakes.py` collects those into the prompt's
+leads section (through `qa-round.yaml`'s `leads-script` input, run before the
+prompt is built), and the round reproduces a flake on a lane this host can run or
+diagnoses one it cannot (CUDA, OpenCL) from the recorded failure output; on a
+finding it fixes the source of the nondeterminism in
 production or test-helper code, or — when the cause is out of scope — files a
-follow-up with `tracker_create_task`, the same routing the general review uses.
-Three things set it apart. Its `MIN_INTERVAL_DAYS` is 7, tied with `qa-retrospective`
+follow-up with `tracker_create_task` carrying the evidence, the same routing the
+general review uses. It never ends with a bare "could not reproduce". Several
+things set it apart. Its `MIN_INTERVAL_DAYS` is 7, tied with `qa-retrospective`
 for the longest of any round, because it is a pilot rather than a full cadence job — and for the same
 reason it does **not** raise `MAX_OPEN_PRS` (see "One open-PR limit" above). Its
 prompt keeps it inside the repository's test-execution limits: named, bounded
 selections through the MCP test runner only, each with an explicit timeout,
 repeating a small selection rather than widening it, never a module or full
-suite or `AR_TEST_GROUP`/`AR_TEST_GROUPS`. And `PROTECT_TEST_FILES` stays
+suite or `AR_TEST_GROUP`/`AR_TEST_GROUPS`, and never oversubscribing the host to
+force a failure (a round was once killed with exit 137 doing that). And
+`PROTECT_TEST_FILES` stays
 `"true"`: the test that reveals a flake is the specification, so the round fixes
 the production/helper cause or files a follow-up rather than weakening the test
 — it carries no `ENFORCE_CHANGES`, since an honestly empty-handed round is a
 valid outcome, and pins the primary phase to `claude/opus` like the defect hunt,
 telling a real flake from a deterministic failure being judgment, not mechanism.
+Like `performance-qa` it carries `REQUIRED_LABELS`/`REQUIRED_LABELS_JSON`
+pinning the submission and every later job on the workstream to a macOS Node, so
+the Metal and native lanes its observed flakes come from are reproducible; its
+caller grants the `actions: read` the collection step needs (a reusable
+workflow's token is the caller's), which `qa-round.yaml` passes through because
+it declares no narrowing permissions block of its own.
 
 Each job carries its **own** `concurrency` group (`project-manager`,
 `task-planning`, `quality-assurance`, `defect-hunt`, `flaky-qa`, `coverage-qa`, `consolidation-qa`,
