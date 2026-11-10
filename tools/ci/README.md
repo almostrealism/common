@@ -225,13 +225,20 @@ above regardless of the hooks.
 
 Each `build-*-prompt.sh` reads its sibling template, substitutes the environment
 variables named in its header, and writes the result to an output-file argument.
-Most take that path as their only argument; a few need additional file input first
-— `build-resolve-prompt.sh <failures-file> <output-file>`,
+Most take that path as their only required argument; a few need additional file
+input first — `build-resolve-prompt.sh <failures-file> <output-file>`,
 `build-quality-gate-prompt.sh <failures-file> <output-file>`,
 `build-python-failure-prompt.sh <log-file> <output-file>` and
 `build-vm-crash-prompt.sh <crash-reports-dir> <output-file>` — where the output
-file is always the last argument. `tools/tests/test_prompt_builders.py` holds
-them to that contract.
+file is the last *required* argument. Every route builder then accepts one
+optional argument after the output file: the computed-TODO-section file that
+`append_branch_feedback` patches in (`build-resolve-prompt.sh` reads two optional
+classification files between the output path and it, so there the TODO file is
+the fifth positional). So the output path is the last argument a builder
+requires, but no longer always the last one it reads.
+`tools/tests/test_prompt_builders.py` holds the builders to that contract, and
+`tools/tests/test_branch_todos_workflow_wiring.py` checks that every route step
+in `analysis.yaml` passes that TODO file in its builder's final slot.
 
 Instructions that several tasks share live once, as a fragment in this directory,
 and are patched into each prompt by `prompt-render.sh`: a template names the
