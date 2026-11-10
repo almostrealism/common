@@ -233,6 +233,27 @@ public class T5GemmaEncoderLayerAssetTest extends TestSuiteBase implements Atten
 	}
 
 	/**
+	 * The whole-encoder {@code t5gemma_encoder_softcapped} layer, built directly from the asset with
+	 * {@link PdslLoader} rather than through the encoder's own binding code — the scaled token
+	 * embedding, the stack of soft-capped layers over the checkpoint and the final RMS norm — matches
+	 * the double-precision {@link T5GemmaReferenceEncoder}. It is compiled once and run for two prompts,
+	 * so the test also shows that the layers of the stack read the prompt mask on every forward pass.
+	 */
+	@Test(timeout = 300000)
+	public void encoderAssetMatchesHostReference() {
+		assertEncoderAssetMatchesHost(fixture.smallConfig(LENGTH), "t5gemma_encoder_softcapped");
+	}
+
+	/**
+	 * With the soft-cap off, the whole-encoder {@code t5gemma_encoder} layer, built directly from the
+	 * asset, matches the double-precision {@link T5GemmaReferenceEncoder} across two prompts.
+	 */
+	@Test(timeout = 300000)
+	public void uncappedEncoderAssetMatchesHostReference() {
+		assertEncoderAssetMatchesHost(uncappedConfig(), "t5gemma_encoder");
+	}
+
+	/**
 	 * Builds the self-attention sub-layer of the given configuration three ways — the transplanted Java
 	 * assembly, the named layer of the asset, and {@link T5GemmaEncoder#attentionBranch} — and requires
 	 * all three to agree.
@@ -281,6 +302,66 @@ public class T5GemmaEncoderLayerAssetTest extends TestSuiteBase implements Atten
 		} finally {
 			encoder.destroy();
 		}
+	}
+
+	/**
+	 * Builds the whole-encoder {@code layer} directly from the asset — binding the checkpoint, the
+	 * shared rotary frequencies and the masks exactly as {@link T5GemmaEncoder} does — and requires its
+	 * output to match {@link T5GemmaReferenceEncoder#encode} for {@link #PROMPT} and then
+	 * {@link #LONGER_PROMPT}, encoded one after the other by the same compiled asset. The prompt mask
+	 * is the one a {@link T5GemmaEncoder} fills in {@link T5GemmaEncoder#loadPrompt(long[])}, so the
+	 * layers of the stack read a fresh mask on each forward pass.
+	 *
+	 * @param config the encoder configuration
+	 * @param layer  the asset layer for the configuration ({@code t5gemma_encoder} or its soft-capped form)
+	 */
+	private void assertEncoderAssetMatchesHost(T5GemmaConfig config, String layer) {
+		Map<String, PackedCollection> weights = fixture.weights(config, 29);
+		T5GemmaReferenceEncoder host = new T5GemmaReferenceEncoder(config, weights);
+		T5GemmaEncoder encoder = new T5GemmaEncoder(config, new StateDictionary(weights));
+
+		Model model = new Model(shape(1, config.getMaxLength()));
+		model.add(encoderAsset(layer, config, new StateDictionary(weights), cp(encoder.getAttentionMask())));
+
+		try (CompiledModel compiled = model.compile(false)) {
+			for (long[] prompt : new long[][] {PROMPT, LONGER_PROMPT}) {
+				PackedCollection ids = encoder.loadPrompt(prompt);
+				assertMatchesHost(layer + ", prompt of " + prompt.length, host.encode(prompt), compiled.forward(ids));
+			}
+		} finally {
+			encoder.destroy();
+		}
+	}
+
+	/**
+	 * Builds a whole-encoder layer of the asset directly, binding the checkpoint, the rotary
+	 * frequencies, the all-ones value mask, the prompt key mask, the soft-cap (when the layer takes
+	 * one) and the RMS-norm epsilon, for a {@code [1, maxLength]} token id input.
+	 *
+	 * @param layer   the asset layer name
+	 * @param config  the encoder configuration
+	 * @param weights the checkpoint, as a {@link StateDictionary}
+	 * @param keyMask the prompt mask
+	 * @return the encoder layer
+	 */
+	private Block encoderAsset(String layer, T5GemmaConfig config, StateDictionary weights,
+							   Producer<PackedCollection> keyMask) {
+		Map<String, Object> arguments = new HashMap<>();
+		arguments.put("batch", 1);
+		arguments.put("seq_len", config.getMaxLength());
+		arguments.put("heads", config.getHeads());
+		arguments.put("head_dim", config.getHeadDim());
+		arguments.put("inner_dim", config.getIntermediateSize());
+		arguments.put("weights", weights);
+		arguments.put("inv_freq", weights.get("encoder.rotary.inv_freq"));
+		arguments.put("padding_mask", zeros(shape(1, config.getMaxLength())).add(1.0));
+		arguments.put("key_mask", keyMask);
+		arguments.put("epsilon", config.getNormEpsilon());
+		if (config.hasAttentionSoftcap()) {
+			arguments.put("softcap", config.getAttentionSoftcap());
+		}
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(ASSET), layer, shape(1, config.getMaxLength()), arguments);
 	}
 
 	/**
