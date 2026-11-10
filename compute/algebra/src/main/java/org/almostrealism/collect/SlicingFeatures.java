@@ -105,14 +105,25 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	 * CollectionProducer rows = slice(0, 2, 2, p(matrix));
 	 * }</pre>
 	 *
-	 * @param axis       the axis along which layers are taken
+	 * @param axis       the axis along which layers are taken, in {@code [0, dimensions)}
 	 * @param start      the index of the first layer
-	 * @param length     the number of layers
+	 * @param length     the number of layers, at least one
 	 * @param collection the source collection
 	 * @return a computation producing the layers, without the ordering of the source
+	 * @throws IllegalArgumentException if the axis is out of range, or the half-open range
+	 *                                  {@code [start, start + length)} is not within the axis
 	 */
 	default CollectionProducerComputation slice(int axis, int start, int length, Producer<?> collection) {
 		TraversalPolicy shape = shape(collection);
+		if (axis < 0 || axis >= shape.getDimensions()) {
+			throw new IllegalArgumentException("axis " + axis + " is not an axis of " + shape);
+		}
+
+		if (length < 1 || start < 0 || start + (long) length > shape.length(axis)) {
+			throw new IllegalArgumentException("slice [" + start + ", " + (start + (long) length)
+					+ ") is out of range for axis " + axis + " of " + shape);
+		}
+
 		int[] position = new int[shape.getDimensions()];
 		position[axis] = start;
 		return subset(shape.replaceDimension(axis, length).withOrder(null), collection, position);

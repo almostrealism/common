@@ -216,6 +216,12 @@ inside its own `tick()` exactly like this.
   `h = 1/16`). Use a CPU (FP64) backend for validation runs that need more.
 - **Building index fields.** `gridIndex` computes `floor(index / stride)`; dividing by the
   stride, rather than multiplying by its reciprocal, keeps exact multiples exact in FP32.
+  It is built from `integers(0, totalSize)`, so on an FP32 backend it is integer-exact only up to
+  `2^24` cells (16,777,216). A grid with more than `2^24` cells — e.g. `4096×4096` — rounds these
+  indices *when they are stored*, before any kernel runs, so the coordinate field and the
+  `checkerboard` red/black parity (and thus `redBlackGaussSeidelStep`) are wrong above that bound.
+  An exact index field for larger grids would read through a `SplitIndexTraversalOrdering` (see
+  `dynamic-indexing.md`, "Integer-Exact Indices Above 2^24"); use a CPU (FP64) backend otherwise.
 
 ---
 

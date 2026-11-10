@@ -545,6 +545,14 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * spacing and adding the origin gives the coordinate field along that axis, from which
 	 * analytic fields and initial conditions are built without any host loop.
 	 *
+	 * <p>The index field is built from {@code integers(0, totalSize)}. On a single-precision
+	 * (FP32, e.g. Metal) backend a float is integer-exact only up to {@code 2^24}, so a grid with
+	 * more than {@code 2^24} cells rounds these indices when they are stored, before any kernel
+	 * runs, and the resulting coordinate field (and the {@link #checkerboard} parity built from it)
+	 * is wrong above that bound. The tested grids stay far below it; an exact index field for larger
+	 * grids would read through a {@code SplitIndexTraversalOrdering}. See the FP32 section of
+	 * {@code docs/internals/grid-field-calculus.md} and {@code docs/internals/dynamic-indexing.md}.</p>
+	 *
 	 * @param shape the shape of the grid
 	 * @param axis  the axis whose index is returned
 	 * @return the index field, with the given shape
@@ -561,8 +569,7 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 			stride *= shape.length(k);
 		}
 
-		// TODO(review): on an FP32 backend a grid with more than 2^24 cells rounds these index
-		// TODO(review): values when stored (see dynamic-indexing.md); read through a SplitIndexTraversalOrdering.
+		// Integer-exact only up to 2^24 cells on an FP32 backend; see the javadoc.
 		CollectionProducer index = integers(0, size);
 		if (stride > 1) {
 			index = floor(index.divide((double) stride));

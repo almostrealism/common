@@ -242,6 +242,45 @@ public class FieldCalculusTests extends TestSuiteBase {
 		}
 	}
 
+	/** Asserts that {@code slice} rejects the given arguments at the API boundary. */
+	private void assertSliceRejected(int axis, int start, int length, CollectionProducer collection) {
+		boolean rejected = false;
+		try {
+			slice(axis, start, length, collection);
+		} catch (IllegalArgumentException expected) {
+			rejected = true;
+		}
+
+		assertTrue("slice should reject axis=" + axis + " start=" + start + " length=" + length, rejected);
+	}
+
+	/**
+	 * {@code slice} fails fast at the API boundary when the axis is out of range or the half-open
+	 * range {@code [start, start + length)} is not within the axis, rather than throwing an opaque
+	 * index error or producing an out-of-bounds projection. A valid slice extracts the requested
+	 * consecutive layers, dropping the source ordering.
+	 */
+	@Test(timeout = 120000)
+	public void sliceValidatesRange() {
+		TraversalPolicy shape = shape(3, 4);
+		CollectionProducer grid = integers(0, shape.getTotalSize()).reshape(shape);
+		PackedCollection stored = grid.evaluate();
+
+		assertSliceRejected(-1, 0, 1, cp(stored));
+		assertSliceRejected(2, 0, 1, cp(stored));
+		assertSliceRejected(0, 2, 2, cp(stored));
+		assertSliceRejected(1, 0, 5, cp(stored));
+		assertSliceRejected(0, -1, 2, cp(stored));
+		assertSliceRejected(0, 0, 0, cp(stored));
+
+		double[] rows = values(slice(0, 1, 2, cp(stored)));
+		double[] expected = { 4, 5, 6, 7, 8, 9, 10, 11 };
+		assertEquals(expected.length, rows.length);
+		for (int k = 0; k < expected.length; k++) {
+			assertEquals("slice rows at " + k, expected[k], rows[k]);
+		}
+	}
+
 	/**
 	 * The 5-point and 9-point Laplacians of {@code sin(kx x) sin(ky y)} on a periodic grid are
 	 * {@code -(kx^2 + ky^2) f} up to their leading truncation errors, {@code (kx^4 + ky^4) h^2 / 12}
