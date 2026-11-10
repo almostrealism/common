@@ -93,6 +93,62 @@ public class ElementwiseChainRuleDeltaTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies the zero-ignoring exponential delta, whose cofactor is itself
+	 * {@code expIgnoreZero(x)}: the diagonal carries {@code e^x} for non-zero inputs and
+	 * {@code 0} where the input is zero, because the forward pass passes zero through
+	 * unchanged.
+	 */
+	@Test(timeout = 120000)
+	public void exponentialIgnoreZeroDeltaScalar() {
+		PackedCollection input = pack(-1.5, 0.0, 0.5, 0.0, 2.0);
+		CollectionProducer x = cp(input);
+
+		CollectionProducer expX = expIgnoreZero(x);
+
+		PackedCollection forward = expX.get().evaluate();
+		for (int i = 0; i < 5; i++) {
+			double v = input.toDouble(i);
+			assertEquals(v == 0.0 ? 0.0 : Math.exp(v), forward.toDouble(i));
+		}
+
+		PackedCollection gradient = expX.delta(x).get().evaluate().reshape(5, 5);
+
+		for (int i = 0; i < 5; i++) {
+			double v = input.toDouble(i);
+			for (int j = 0; j < 5; j++) {
+				double expected = (i == j && v != 0.0) ? Math.exp(v) : 0.0;
+				assertEquals("d expIgnoreZero(x[" + i + "]) / d x[" + j + "]", expected, gradient.valueAt(i, j), 1e-5);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the inner factor {@code f'(x)} is applied when the input is not the
+	 * target itself: {@code d/dx[e^(3x)] = 3 e^(3x)} and {@code d/dx[ln(3x)] = 1/x}, each on
+	 * the diagonal of the Jacobian.
+	 */
+	@Test(timeout = 120000)
+	public void scaledInputDelta() {
+		PackedCollection input = pack(0.25, 0.5, 1.0, 1.5, 2.0);
+		CollectionProducer x = cp(input);
+
+		PackedCollection expGradient = exp(x.multiply(3.0)).delta(x).get().evaluate().reshape(5, 5);
+		PackedCollection logGradient = log(x.multiply(3.0)).delta(x).get().evaluate().reshape(5, 5);
+
+		for (int i = 0; i < 5; i++) {
+			double v = input.toDouble(i);
+			for (int j = 0; j < 5; j++) {
+				double expectedExp = (i == j) ? 3.0 * Math.exp(3.0 * v) : 0.0;
+				double expectedLog = (i == j) ? 1.0 / v : 0.0;
+				assertEquals("d exp(3x[" + i + "]) / d x[" + j + "]",
+						expectedExp, expGradient.valueAt(i, j), 1e-4 * Math.max(1.0, expectedExp));
+				assertEquals("d ln(3x[" + i + "]) / d x[" + j + "]",
+						expectedLog, logGradient.valueAt(i, j), 1e-5);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that {@code d/dx[sin(x)]} is a diagonal Jacobian carrying {@code cos(x)} on the
 	 * diagonal, pinning the {@link org.almostrealism.collect.computations.UnaryCollectionComputation}
 	 * chain-rule delta (via the sine cofactor) through the same shared construction.
