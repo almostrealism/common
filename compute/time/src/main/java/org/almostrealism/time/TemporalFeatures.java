@@ -32,7 +32,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
-import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Loop;
@@ -51,9 +50,10 @@ import java.util.stream.IntStream;
  * A feature interface providing convenient factory methods for creating temporal operations,
  * signal processing computations, and time-series manipulations.
  *
- * <p>{@link TemporalFeatures} extends {@link GeometryFeatures} to provide a fluent API for
- * working with time-based data, including FFT/IFFT, filtering, interpolation, and iteration
- * utilities. All methods create hardware-accelerated computations suitable for GPU execution.</p>
+ * <p>{@link TemporalFeatures} extends {@link SpectralFeatures}, inheriting its multidimensional
+ * FFTs and spectral analysis operations, to provide a fluent API for working with time-based
+ * data, including FFT/IFFT, filtering, interpolation, and iteration utilities. All methods
+ * create hardware-accelerated computations suitable for GPU execution.</p>
  *
  * <h2>Core Capabilities</h2>
  * <ul>
@@ -188,7 +188,7 @@ import java.util.stream.IntStream;
  * @see FourierTransform
  * @see MultiOrderFilter
  * @see Interpolate
- * @see GeometryFeatures
+ * @see SpectralFeatures
  *
  * @author Michael Murray
  */

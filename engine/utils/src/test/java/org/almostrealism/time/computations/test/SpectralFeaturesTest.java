@@ -622,4 +622,28 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		assertRejected(() -> spectralPeak(spectrum, Double.NaN));
 		assertRejected(() -> spectralPeak(spectrum, Double.POSITIVE_INFINITY));
 	}
+
+	/**
+	 * A finite spacing can still overflow the quantities derived from it: a huge spacing makes
+	 * the axis extent {@code n * d} infinite (so the bin width and every wavenumber collapse to
+	 * zero), and a subnormal spacing makes the wavenumber {@code 2 pi / d} infinite. Both are
+	 * rejected, while spacings at the edge of the representable range are accepted with exact
+	 * bin widths and counts. Only the graph is built; nothing is evaluated.
+	 */
+	@Test(timeout = 60000)
+	public void overflowingSpacingIsRejected() {
+		TraversalPolicy grid = shape(8, 8);
+		double largest = Double.MAX_VALUE / 8;
+		assertRelative("largest spacing bin width", 2 * Math.PI / Double.MAX_VALUE,
+				radialBinWidth(grid, largest), 1e-12);
+		assertRelative("tiny spacing bin width", 2 * Math.PI / 8e-300, radialBinWidth(grid, 1e-300), 1e-12);
+		Assert.assertEquals(5, radialBinCount(grid, 1e-300));
+
+		assertRejected(() -> radialBinWidth(grid, 1e308));
+		assertRejected(() -> radialBinCount(grid, 1.0, 1e308));
+		assertRejected(() -> wavenumberSquared(grid, Double.MIN_VALUE));
+		assertRejected(() -> radialPowerSpectrum(zeros(grid), 1.0, Double.MIN_VALUE));
+		assertRejected(() -> dominantWavelength(zeros(grid), 1e308));
+		assertRejected(() -> poissonSolve(zeros(grid), Double.MIN_VALUE, 1.0));
+	}
 }
