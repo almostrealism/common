@@ -644,6 +644,31 @@ public class SimulationRunnerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A completed {@code runFrames} drive is one-shot: the boundary listener it registers is
+	 * removed when the call returns, so a later {@link SimulationRunner#run(long)} on the same
+	 * runner observes no further frame. Without the removal the frame hook would fire again at the
+	 * next frame boundary of the later run.
+	 */
+	@Test(timeout = 120000)
+	public void runFramesRemovesListener() {
+		CountedSystem system = new CountedSystem();
+		SimulationRunner runner = new SimulationRunner(system, DT);
+		AtomicInteger calls = new AtomicInteger();
+
+		runner.runFrames(4, 3, f -> calls.incrementAndGet());
+		assertEquals(3, calls.get());
+		assertEquals(12, runner.getStepCount());
+
+		// The completed drive must not leave a frame listener behind: steps 12..19 cross the
+		// boundaries 12 and 16, yet the hook must not be called again.
+		runner.run(8);
+		assertEquals(3, calls.get());
+		assertEquals(20, runner.getStepCount());
+
+		runner.destroy();
+	}
+
+	/**
 	 * Invalid arguments are rejected with {@link IllegalArgumentException} before they can affect
 	 * the simulation: a counter that is not a single element, a negative step count, and a
 	 * non-positive interval or capacity for an input, listener or recording.

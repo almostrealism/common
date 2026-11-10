@@ -367,10 +367,11 @@ public class SimulationRunner extends TemporalRunner {
 	 *
 	 * <p>This is a one-shot top-level drive: it should be called on a runner that has not been
 	 * advanced (or has just been {@link #reset()}), since the frame index is derived from the
-	 * global step counter. It registers a boundary listener for the lifetime of the runner; a
-	 * caller needing finer control composes {@link #addBoundaryListener(int, LongConsumer)} and
-	 * {@link #run(long)} directly. A {@code frameCount} of {@code 0} is a no-op: no listener is
-	 * registered, so a later {@link #run(long)} on the same runner does not observe a frame.</p>
+	 * global step counter. The boundary listener it registers is removed when the drive returns,
+	 * including when a step throws, so a later {@link #run(long)} on the same runner observes no
+	 * further frame; a caller needing a listener that persists across runs composes
+	 * {@link #addBoundaryListener(int, LongConsumer)} and {@link #run(long)} directly. A
+	 * {@code frameCount} of {@code 0} is a no-op: no listener is registered.</p>
 	 *
 	 * @param stepsPerFrame the number of steps between frames; must be positive
 	 * @param frameCount    the number of frames to observe; must not be negative
@@ -389,8 +390,15 @@ public class SimulationRunner extends TemporalRunner {
 			return;
 		}
 
-		addBoundaryListener(stepsPerFrame, step -> frame.accept((int) (step / stepsPerFrame)));
-		run((long) frameCount * stepsPerFrame);
+		Scheduled<LongConsumer> scheduled =
+				new Scheduled<>(stepsPerFrame, step -> frame.accept((int) (step / stepsPerFrame)));
+		listeners.add(scheduled);
+
+		try {
+			run((long) frameCount * stepsPerFrame);
+		} finally {
+			listeners.remove(scheduled);
+		}
 	}
 
 	/**

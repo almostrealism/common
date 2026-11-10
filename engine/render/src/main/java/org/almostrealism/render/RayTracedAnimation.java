@@ -48,7 +48,7 @@ import java.util.Properties;
 
 /**
  * An {@link Animation} that ray traces each frame with {@link RayTracedScene} and writes it to
- * the output directory as a JPEG, and writes a script that encodes the frames as a video.
+ * the output directory as a PNG, and writes a script that encodes the frames as a video.
  *
  * <p>Its state can be stored as and restored from {@link Properties}: the camera, and the rigid
  * spheres and planes of the scene with their lights, shaders and physical state. Each body is

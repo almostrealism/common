@@ -173,7 +173,7 @@ public class RayTracedScene extends Realization<RealizableImage, RenderParameter
 ### RayTracedAnimation
 
 An `Animation` (from `ar-space`) that ray traces each frame with `RayTracedScene` and writes it to
-the output directory as a JPEG, plus an `encode.sh` that encodes the frames as a video. Its camera
+the output directory as a PNG, plus an `encode.sh` that encodes the frames as a video. Its camera
 and rigid bodies can be stored as and loaded from `Properties`. Set the frame size with
 `setImageDimensions` and turn on `setRenderEachFrame`; `Animation.run()` then writes a frame
 each time a frame duration of simulated time has passed.
