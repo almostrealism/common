@@ -16,12 +16,15 @@
 
 package org.almostrealism.render.test;
 
+import io.almostrealism.code.Operator;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.PointLight;
+import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.ShaderContext;
-import org.almostrealism.geometry.Curve;
+import org.almostrealism.geometry.BoundingSolid;
+import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -50,14 +53,14 @@ import java.util.List;
 public class ShaderContextCombineTest extends TestSuiteBase {
 
 	/**
-	 * A minimal {@link Curve} used only for identity and ordering checks; its
-	 * spatial value and normal are irrelevant to list assembly.
+	 * A minimal {@link ShadableSurface} used only for identity and ordering checks; its
+	 * value, normal, intersection, shading and bounds are irrelevant to list assembly.
 	 */
-	private static final class NamedCurve implements Curve<PackedCollection> {
+	private static final class NamedSurface implements ShadableSurface {
 		/** Identifier used only to distinguish instances in assertion messages. */
 		private final String name;
 
-		private NamedCurve(String name) { this.name = name; }
+		private NamedSurface(String name) { this.name = name; }
 
 		@Override
 		public Producer<PackedCollection> getValueAt(Producer<PackedCollection> point) { return null; }
@@ -66,7 +69,28 @@ public class ShaderContextCombineTest extends TestSuiteBase {
 		public Producer<PackedCollection> getNormalAt(Producer<PackedCollection> point) { return null; }
 
 		@Override
-		public String toString() { return "NamedCurve(" + name + ")"; }
+		public ContinuousField intersectAt(Producer<?> ray) { return null; }
+
+		@Override
+		public Operator<PackedCollection> get() { return null; }
+
+		@Override
+		public Operator<PackedCollection> expect() { return null; }
+
+		@Override
+		public Producer<PackedCollection> shade(ShaderContext parameters) { return null; }
+
+		@Override
+		public boolean getShadeFront() { return true; }
+
+		@Override
+		public boolean getShadeBack() { return false; }
+
+		@Override
+		public BoundingSolid calculateBoundingSolid() { return null; }
+
+		@Override
+		public String toString() { return "NamedSurface(" + name + ")"; }
 	}
 
 	/**
@@ -79,7 +103,7 @@ public class ShaderContextCombineTest extends TestSuiteBase {
 		PointLight other0 = new PointLight();
 		PointLight other1 = new PointLight();
 
-		ShaderContext context = new ShaderContext(new NamedCurve("s"), primary);
+		ShaderContext context = new ShaderContext(new NamedSurface("s"), primary);
 		List<Light> others = new ArrayList<>();
 		others.add(other0);
 		others.add(other1);
@@ -102,7 +126,7 @@ public class ShaderContextCombineTest extends TestSuiteBase {
 		PointLight primary = new PointLight();
 		PointLight other0 = new PointLight();
 
-		ShaderContext context = new ShaderContext(new NamedCurve("s"), primary);
+		ShaderContext context = new ShaderContext(new NamedSurface("s"), primary);
 		List<Light> others = new ArrayList<>();
 		others.add(other0);
 		context.setOtherLights(others);
@@ -120,15 +144,15 @@ public class ShaderContextCombineTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 5000)
 	public void getAllSurfacesOrdersPrimaryFirst() {
-		NamedCurve primary = new NamedCurve("primary");
-		NamedCurve other0 = new NamedCurve("other0");
-		NamedCurve other1 = new NamedCurve("other1");
+		NamedSurface primary = new NamedSurface("primary");
+		NamedSurface other0 = new NamedSurface("other0");
+		NamedSurface other1 = new NamedSurface("other1");
 
 		ShaderContext context = new ShaderContext(primary, new PointLight());
 		context.setOtherSurfaces(other0, other1);
 
-		List<Curve<PackedCollection>> all = new ArrayList<>();
-		for (Curve<PackedCollection> s : context.getAllSurfaces()) { all.add(s); }
+		List<ShadableSurface> all = new ArrayList<>();
+		for (ShadableSurface s : context.getAllSurfaces()) { all.add(s); }
 
 		Assert.assertEquals(3, all.size());
 		Assert.assertSame(primary, all.get(0));
@@ -145,13 +169,13 @@ public class ShaderContextCombineTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 5000)
 	public void getAllSurfacesSkipsNullPrimary() {
-		NamedCurve other0 = new NamedCurve("other0");
+		NamedSurface other0 = new NamedSurface("other0");
 
 		ShaderContext context = new ShaderContext(null, new PointLight());
 		context.setOtherSurfaces(other0);
 
-		List<Curve<PackedCollection>> all = new ArrayList<>();
-		for (Curve<PackedCollection> s : context.getAllSurfaces()) { all.add(s); }
+		List<ShadableSurface> all = new ArrayList<>();
+		for (ShadableSurface s : context.getAllSurfaces()) { all.add(s); }
 
 		Assert.assertEquals(1, all.size());
 		Assert.assertSame(other0, all.get(0));
@@ -165,17 +189,17 @@ public class ShaderContextCombineTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 5000)
 	public void getAllSurfacesReturnsIndependentList() {
-		NamedCurve primary = new NamedCurve("primary");
-		NamedCurve other0 = new NamedCurve("other0");
+		NamedSurface primary = new NamedSurface("primary");
+		NamedSurface other0 = new NamedSurface("other0");
 
 		ShaderContext context = new ShaderContext(primary, new PointLight());
 		context.setOtherSurfaces(other0);
 
-		List<Curve<PackedCollection>> first = context.getAllSurfaces();
+		List<ShadableSurface> first = context.getAllSurfaces();
 		first.clear();
-		first.add(new NamedCurve("extra"));
+		first.add(new NamedSurface("extra"));
 
-		List<Curve<PackedCollection>> second = context.getAllSurfaces();
+		List<ShadableSurface> second = context.getAllSurfaces();
 		Assert.assertNotSame(first, second);
 		Assert.assertEquals(2, second.size());
 		Assert.assertSame(primary, second.get(0));

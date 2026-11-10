@@ -100,6 +100,21 @@ public interface RayFeatures extends VectorFeatures {
 	}
 
 	/**
+	 * Creates a ray whose origin is moved the given distance along its direction. This is
+	 * how a secondary ray (reflected or refracted) leaves the surface it was spawned on
+	 * without immediately intersecting that surface again at its own origin.
+	 *
+	 * @param origin the producer for the point the ray leaves from
+	 * @param direction the producer for the ray direction
+	 * @param offset the distance, in units of the direction's length, to move the origin
+	 * @return a producer that yields the offset ray
+	 */
+	default CollectionProducer ray(Producer<PackedCollection> origin, Producer<PackedCollection> direction,
+								   double offset) {
+		return ray(add(origin, multiply(direction, c(offset))), direction);
+	}
+
+	/**
 	 * Creates a ray from a function that provides coordinate values by index.
 	 * Indices 0-2 are origin coordinates, indices 3-5 are direction components.
 	 *

@@ -16,12 +16,9 @@
 
 package org.almostrealism.rayshade;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
@@ -30,13 +27,10 @@ import org.almostrealism.color.Shader;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.color.ShaderSet;
 import org.almostrealism.color.computations.GeneratedColorProducer;
-import org.almostrealism.geometry.Curve;
 import org.almostrealism.geometry.DiscreteField;
-import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.geometry.ReflectedRay;
 import org.almostrealism.raytrace.LightingEngineAggregator;
-import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.texture.Texture;
 
 import java.util.Arrays;
@@ -132,22 +126,15 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 	/** Method specified by the Shader interface. */
 	@Override
 	public Producer<PackedCollection> shade(ShaderContext p, DiscreteField normals) {
+		Producer point = origin(p.getIntersection().get(0));
+
 		if (p.getReflectionCount() > ReflectionShader.maxReflections) {
-			return new DynamicCollectionProducer(RGB.shape(), args -> {
-					Vector point = new Ray(p.getIntersection().get(0).get().evaluate(args), 0).getOrigin();
-					PackedCollection surfaceValue = p.getSurface().getValueAt(v(point)).get().evaluate();
-					PackedCollection reflColor = reflectiveColor.get().evaluate(p);
-					return new RGB(
-						reflColor.toDouble(0) * surfaceValue.toDouble(0),
-						reflColor.toDouble(1) * surfaceValue.toDouble(1),
-						reflColor.toDouble(2) * surfaceValue.toDouble(2)
-					);
-				});
+			return multiply(reflectiveColor, p.getSurface().getValueAt(point));
 		}
 		
 		p.addReflection();
 		
-		List<Curve<PackedCollection>> allSurfaces = p.getAllSurfaces();
+		List<ShadableSurface> allSurfaces = p.getAllSurfaces();
 		List<Light> allLights = p.getAllLights();
 
 		Producer<PackedCollection> r = getReflectiveColor();
@@ -157,72 +144,19 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 
 		final Producer<PackedCollection> fr = r;
 
-		Producer point = origin(p.getIntersection().get(0));
-		Producer n = direction(normals.iterator().next());
-		Producer nor = p.getIntersection().getNormalAt(point);
-
-		Producer<Ray> transform = (Producer) transform(((AbstractSurface) p.getSurface()).getTransform(true), p.getIntersection().get(0));
-		Producer loc = origin(transform);
-
-		Producer<PackedCollection> cp = length(nor).multiply(length(n));
+		Producer<PackedCollection> n = direction(normals.iterator().next());
+		Producer<PackedCollection> viewer = p.getIntersection().getNormalAt(point);
 
 		Producer<PackedCollection> tc = null;
 
 		// TODO Should surface color be factored in to reflection?
-//		RGB surfaceColor = p.getSurface().getColorAt(p.getPoint());
-
-		if (!(p.getSurface() instanceof ShadableSurface) || ((ShadableSurface) p.getSurface()).getShadeFront()) {
-			Producer<Ray> reflectedRay = new ReflectedRay(loc, nor, n, blur);
-
-			// TODO  Environment map should be a feature of the aggregator
-			Evaluable<PackedCollection> aggegator = new LightingEngineAggregator(reflectedRay, Arrays.asList(p.getOtherSurfaces()), allLights, p).getAccelerated();
-			Producer<PackedCollection> color = () -> aggegator;
-
-			Producer<PackedCollection> c = scalar(1).subtract(dotProduct(minus(n), nor).divide(cp));
-			CollectionProducer reflective = add(c(reflectivity),
-					c(1 - reflectivity).multiply(pow(c, c(5.0))));
-			Producer<PackedCollection> fcolor = color;
-			color = reflective.multiply(fr).multiply(fcolor);
-
-			if (tc == null) {
-				tc = color;
-			} else {
-				tc = add(tc, color);
-			}
+		if (p.getSurface() == null || p.getSurface().getShadeFront()) {
+			tc = reflection(point, viewer, n, Arrays.asList(p.getOtherSurfaces()), allLights, p, fr);
 		}
 
-		if (!(p.getSurface() instanceof ShadableSurface) || ((ShadableSurface) p.getSurface()).getShadeBack()) {
-			n = minus(n);
-
-			Producer<Ray> reflectedRay = new ReflectedRay(loc, nor, n, blur);
-
-			// TODO  Environment map should be a feature of the aggregator
-			LightingEngineAggregator aggregator = new LightingEngineAggregator(reflectedRay, allSurfaces, allLights, p);
-			Producer<PackedCollection> color = () -> aggregator;
-			/*
-			if (color == null) {
-				if (eMap == null) {
-					break b;
-				} else {
-					throw new RuntimeException("Not implemented");
-					// TODO  Use AdaptProducer
-					// color = eMap.getColorAt(null).evaluate(new Object[] { reflectedRay.evaluate(args).getDirection() });
-				}
-			}
-			 */
-
-			Producer<PackedCollection> c = c(1.0).subtract(dotProduct(minus(n), nor).divide(cp));
-			CollectionProducer powResult = pow(c, c(5.0));
-			Producer<PackedCollection> reflective = c(reflectivity).add(
-					c(1 - reflectivity).multiply(powResult));
-			Producer<PackedCollection> fcolor = color;
-			color = multiply(fcolor, multiply(fr, cfromScalar(reflective)));
-
-			if (tc == null) {
-				tc = color;
-			} else {
-				tc = add(tc, color);
-			}
+		if (p.getSurface() == null || p.getSurface().getShadeBack()) {
+			Producer<PackedCollection> back = reflection(point, viewer, minus(n), allSurfaces, allLights, p, fr);
+			tc = tc == null ? back : add(tc, back);
 		}
 
 		Producer<PackedCollection> lightColor = p.getLight().getColorAt(point);
@@ -230,6 +164,42 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 		return GeneratedColorProducer.fromProducer(this, multiply(ftc, lightColor));
 	}
 	
+	/**
+	 * Returns the colour reflected toward the viewer from one side of the surface: the colour
+	 * seen along the {@link ReflectedRay}, weighted by Schlick's approximation of the Fresnel
+	 * reflectance {@code R0 + (1 - R0)(1 - cos(theta))^5} and by the reflective colour.
+	 *
+	 * <p>The colour seen along the reflected ray is the closest hit among the given surfaces,
+	 * selected on the device by {@link LightingEngineAggregator#getClosestColor()}, so the
+	 * whole reflection compiles into the kernel of the surface being shaded.</p>
+	 *
+	 * @param point    the intersection point
+	 * @param viewer   the unit vector from the intersection point toward the viewer
+	 * @param normal   the surface normal on the side being shaded
+	 * @param surfaces the surfaces the reflected ray may hit
+	 * @param lights   the lights illuminating those surfaces
+	 * @param context  the shader context, carrying the reflection depth
+	 * @param tint     the reflective colour, including any nested shaders
+	 * @return a producer of the reflected colour
+	 */
+	protected Producer<PackedCollection> reflection(Producer<PackedCollection> point,
+													Producer<PackedCollection> viewer,
+													Producer<PackedCollection> normal,
+													Iterable<ShadableSurface> surfaces,
+													Iterable<Light> lights, ShaderContext context,
+													Producer<PackedCollection> tint) {
+		Producer<PackedCollection> reflectedRay = new ReflectedRay(point, viewer, normal, blur);
+
+		// TODO  Environment map should be a feature of the aggregator
+		CollectionProducer color = new LightingEngineAggregator(reflectedRay, surfaces, lights, context)
+				.getClosestColor();
+
+		CollectionProducer cosine = dotProduct(normal, viewer).divide(length(normal).multiply(length(viewer)));
+		CollectionProducer reflective = c(reflectivity).add(
+				c(1 - reflectivity).multiply(pow(c(1.0).subtract(cosine), c(5.0))));
+		return color.multiply(tint).multiply(reflective);
+	}
+
 	/**
 	 * Sets the reflectivity value used by this ReflectionShader object.
 	 */

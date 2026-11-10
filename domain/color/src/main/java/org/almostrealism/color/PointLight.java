@@ -224,20 +224,18 @@ public class PointLight implements Light, Positioned, RayFeatures, RGBFeatures {
 	public String toString() { return "Point Light"; }
 
 	/**
-	 * Performs the lighting calculations for the specified surface at the specified point of
-	 * intersection on that surface using the lighting data from this {@link PointLight}
-	 * object and returns an {@link RGB} object that represents the color of the point.
-	 * A list of all other surfaces in the scene must be specified for reflection/shadowing.
-	 * This list does not include the specified surface for which the lighting calculations
-	 * are to be done. If the premultiplyIntensity option is set to true the color of the
-	 * point light will be adjusted by the intensity of the light and the intensity will
-	 * then be set to 1.0. If the premultiplyIntensity option is set to false, the color will
-	 * be left unattenuated and the shaders will be responsible for adjusting the color
+	 * Sets the light direction of the context to the normalized direction from the
+	 * intersection point toward this {@link PointLight}, then asks the surface to shade.
+	 * The color is left unattenuated; the shaders are responsible for adjusting it
 	 * based on intensity.
+	 *
+	 * @param surface  the surface being lit
+	 * @param context  the shading context carrying the intersection being lit
+	 * @return a {@link Producer} yielding the shaded {@link RGB} color
 	 */
-	// TODO  This should be a method of the Light interface
-	public Producer<PackedCollection> forShadable(Shadable surface, Producer<PackedCollection> intersection, ShaderContext context) {
-		CollectionProducer point = origin(intersection);
+	@Override
+	public Producer<PackedCollection> lightingCalculation(ShadableSurface surface, ShaderContext context) {
+		CollectionProducer point = origin(context.getIntersection().get(0));
 		Producer<PackedCollection> direction = add(point, minus(v(getLocation())));
 		direction = minus(normalize(direction));
 		context.setLightDirection(direction);

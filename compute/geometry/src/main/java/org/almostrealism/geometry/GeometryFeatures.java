@@ -151,16 +151,91 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	}
 
 	/**
-	 * Computes the reflection of a vector about a surface normal.
-	 * Uses the formula: {@code R = -V - 2((-V).N)N / |N|^2}
+	 * Computes the mirror reflection of a ray arriving at a surface.
+	 * Uses the formula: {@code R = -V - 2((-V).N)N / |N|^2}, which is the familiar
+	 * {@code I - 2(I.N)N / |N|^2} for the incident direction of travel {@code I = -V}.
 	 *
-	 * @param vector the incident vector (pointing toward the surface)
+	 * @param vector the vector from the surface toward the viewer (the negation of the
+	 *               incident direction of travel)
 	 * @param normal the surface normal
-	 * @return a producer for the reflected vector
+	 * @return a producer for the reflected direction of travel
 	 */
 	default Producer<PackedCollection> reflect(Producer<PackedCollection> vector, Producer<PackedCollection> normal) {
 		Producer<PackedCollection> newVector = minus(vector);
 		Producer<PackedCollection> s = scalar(2).multiply(dotProduct(newVector, normal).divide(lengthSq(normal)));
 		return subtract(newVector, multiply(normal, s));
+	}
+
+	/**
+	 * Computes a glossy reflection: the mirror reflection of {@link #reflect(Producer, Producer)},
+	 * perturbed within the plane perpendicular to the normal by a uniformly distributed amount
+	 * in {@code [-blur / 2, blur / 2)} along each of two tangent axes, and renormalized.
+	 * A blur of 0.0 returns the mirror reflection unchanged.
+	 *
+	 * @param vector the vector from the surface toward the viewer
+	 * @param normal the surface normal
+	 * @param blur   the amount of random perturbation (0.0 = perfect mirror)
+	 * @return a producer for the reflected direction of travel
+	 */
+	default CollectionProducer reflect(Producer<PackedCollection> vector, Producer<PackedCollection> normal,
+									   double blur) {
+		CollectionProducer reflected = c(reflect(vector, normal));
+		if (blur == 0.0) return reflected;
+
+		CollectionProducer n = normalize(normal);
+		CollectionProducer helper = greaterThan(abs(x(n)), c(0.9),
+				vector(0.0, 1.0, 0.0), vector(1.0, 0.0, 0.0));
+		CollectionProducer u = normalize(crossProduct(n, helper));
+		CollectionProducer v = crossProduct(n, u);
+
+		CollectionProducer offsets = rand(2).subtract(c(0.5)).multiply(c(blur));
+		return normalize(reflected
+				.add(u.multiply(subset(shape(1), offsets, 0)))
+				.add(v.multiply(subset(shape(1), offsets, 1))));
+	}
+
+	/**
+	 * Computes the direction of a ray refracted through the boundary of a medium with the
+	 * given index of refraction, surrounded by a medium of index 1, using Snell's law.
+	 *
+	 * <p>The viewer vector points from the surface back toward where the ray came from.
+	 * When it is on the side the normal points to, the ray is entering the medium (the
+	 * relative index is {@code 1 / index}); otherwise it is leaving it (the relative index
+	 * is {@code index}) and the normal is flipped to face the viewer. With {@code I} the
+	 * unit incident direction of travel, {@code N} the unit normal facing the viewer,
+	 * {@code eta} the relative index and {@code cos = -I . N}, the refracted direction is
+	 * {@code eta I + (eta cos - sqrt(k)) N} with {@code k = 1 - eta^2 (1 - cos^2)}. When
+	 * {@code k < 0} the ray is totally internally reflected and the mirror reflection is
+	 * returned instead.</p>
+	 *
+	 * @param vector the vector from the surface toward the viewer
+	 * @param normal the outward surface normal
+	 * @param index  the index of refraction of the medium the normal points out of
+	 * @return a producer for the unit direction of travel of the refracted (or totally
+	 *         internally reflected) ray
+	 */
+	default CollectionProducer refract(Producer<PackedCollection> vector, Producer<PackedCollection> normal,
+									   double index) {
+		CollectionProducer v = normalize(vector);
+		CollectionProducer n = normalize(normal);
+		CollectionProducer cos = dotProduct(v, n);
+
+		CollectionProducer facing = greaterThan(cos, c(0.0), n, n.minus());
+		CollectionProducer eta = greaterThan(cos, c(0.0), c(1.0 / index), c(index));
+		CollectionProducer cosi = abs(cos);
+		CollectionProducer k = c(1.0).subtract(eta.multiply(eta).multiply(c(1.0).subtract(cosi.multiply(cosi))));
+
+		CollectionProducer transmitted = v.minus().multiply(eta)
+				.add(facing.multiply(eta.multiply(cosi).subtract(sqrt(max(k, c(0.0))))));
+		return greaterThan(k, c(0.0), transmitted, c(reflect(v, facing)), true);
+	}
+
+	/**
+	 * Returns a stateless instance of {@link GeometryFeatures}.
+	 *
+	 * @return a {@link GeometryFeatures} instance
+	 */
+	static GeometryFeatures getInstance() {
+		return new GeometryFeatures() { };
 	}
 }

@@ -108,4 +108,18 @@ public interface Light {
 	 * @return a {@link Producer} yielding the attenuated/modified {@link RGB} color at that point
 	 */
 	Producer<PackedCollection> getColorAt(Producer<PackedCollection> point);
+
+	/**
+	 * Returns the color this light contributes to the specified surface at the intersection
+	 * held by the specified {@link ShaderContext}.
+	 *
+	 * <p>The context is a working copy owned by the caller, already configured with this
+	 * light and the intersection being lit; implementations may set its light direction
+	 * before asking the surface to shade.</p>
+	 *
+	 * @param surface  the surface being lit
+	 * @param context  the shading context carrying the intersection being lit
+	 * @return a {@link Producer} yielding the {@link RGB} contribution of this light
+	 */
+	Producer<PackedCollection> lightingCalculation(ShadableSurface surface, ShaderContext context);
 }

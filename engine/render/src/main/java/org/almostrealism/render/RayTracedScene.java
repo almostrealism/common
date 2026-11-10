@@ -197,8 +197,7 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 	 * @return A producer that computes colors for all pixels
 	 */
 	public Producer<PackedCollection> getProducer(RenderParameters p) {
-		int totalPixels = p.width * p.ssWidth * p.height * p.ssHeight;
-		Producer<PackedCollection> producer = operate(v(shape(totalPixels, 2), 0), (Producer) pair(p.width, p.height));
+		Producer<PackedCollection> producer = operate(v(shape(-1, 2), 0), (Producer) pair(p.width, p.height));
 
 		if (producer instanceof DimensionAware) {
 			((DimensionAware) producer).setDimensions(p.width, p.height, p.ssWidth, p.ssHeight);

@@ -88,15 +88,12 @@ HighlightShader specular = new HighlightShader();
 specular.setHighlightColor(new RGB(1, 1, 1));
 specular.setExponent(64.0);  // Sharp highlights
 
-// Reflection
-ReflectionShader mirror = new ReflectionShader();
-mirror.setReflectivity(0.9);
-mirror.setMaxReflections(4);  // Recursion depth
+// Reflection (Schlick-weighted mirror; ReflectionShader.maxReflections bounds recursion)
+ReflectionShader mirror = new ReflectionShader(0.9, white());  // R0 and tint
 
-// Refraction (glass, water)
-RefractionShader glass = new RefractionShader();
-glass.setIndexOfRefraction(1.5);  // Glass IOR
-glass.setAttenuationFactors(0.9, 0.9, 0.95);  // Slight tint
+// Refraction through a closed solid (glass, water)
+RefractionShader glass = new RefractionShader(1.5);   // Glass IOR
+glass.setAttenuationFactors(0.9, 0.9, 0.95);         // Slight tint
 
 // Apply shaders to surface
 sphere.setShaders(new Shader[] { diffuse, specular, mirror });
@@ -345,15 +342,19 @@ Sphere mirrorSphere = new Sphere(new Vector(0, 0, 0), 1.0, new RGB(0.9, 0.9, 0.9
 
 // Configure reflection
 ReflectionShader reflection = new ReflectionShader();
-reflection.setReflectivity(0.95);           // 95% reflective
-reflection.setReflectiveColor(white());
-reflection.setBlur(0.0);                    // Perfect mirror
-reflection.setMaxReflections(4);            // Recursion depth
+reflection.setReflectivity(0.95);           // Reflectance at normal incidence (Schlick R0)
+reflection.setReflectiveColor(white());     // Tint
+reflection.setBlur(0.0);                    // 0 = perfect mirror, > 0 = glossy
 
 mirrorSphere.setShaders(new Shader[] { reflection });
-
-// Engine will trace reflected rays recursively
 ```
+
+The reflected ray is a `ReflectedRay` (a shape-`(6)` computation), and the colour seen along
+it is the closest hit selected on the device by `LightingEngineAggregator.getClosestColor()`,
+so the reflection compiles into the mirror's own kernel. Recursion depth is bounded by the
+static `ReflectionShader.maxReflections`. See
+[Ray-Traced Reflection and Refraction](../../docs/internals/ray-traced-reflection-and-refraction.md)
+for the full path, the direction conventions and the known limits.
 
 ### Pattern 4: Glass/Transparent Objects
 
@@ -362,15 +363,17 @@ mirrorSphere.setShaders(new Shader[] { reflection });
 Sphere glassSphere = new Sphere(new Vector(0, 0, 0), 1.0, new RGB(1, 1, 1));
 
 // Configure refraction
-RefractionShader glass = new RefractionShader();
-glass.setIndexOfRefraction(1.5);            // Glass IOR
-glass.setAttenuationFactors(0.95, 0.95, 0.98);  // Slight blue-green tint
-glass.setTransmitAbsorb(true);
+RefractionShader glass = new RefractionShader(1.5);   // Glass IOR
+glass.setAttenuationFactors(0.95, 0.95, 0.98);       // Slight blue-green tint
 
 glassSphere.setShaders(new Shader[] { glass });
-glassSphere.setRefractedPercentage(0.9);    // 90% transparent
-glassSphere.setReflectedPercentage(0.1);    // 10% reflective
 ```
+
+`RefractionShader` treats the surface as a closed solid: the ray is refracted in with Snell's
+law (`GeometryFeatures.refract`), intersected with the surface again to find where it leaves,
+refracted out, and traced against the other surfaces; the result is weighted by `1 - R`
+(Schlick). Rendering a refractive surface currently takes longer to compile than a test
+timeout allows (see the internals guide).
 
 ### Pattern 5: Composite Materials
 

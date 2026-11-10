@@ -21,14 +21,17 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.Light;
 import org.almostrealism.color.PointLight;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.SurfaceLight;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.space.AbstractSurface;
 
-/** A {@link PointLightGrid} stores a grid of {@link PointLight}s. */
-public class PointLightGrid extends AbstractSurface implements Light {
+/**
+ * A {@link PointLightGrid} stores a grid of {@link PointLight}s. As a {@link SurfaceLight},
+ * its samples are the lights of the grid.
+ */
+public class PointLightGrid extends AbstractSurface implements SurfaceLight {
 	/** The total intensity shared across all lights in the grid. */
 	private double intensity;
 
@@ -135,6 +138,20 @@ public class PointLightGrid extends AbstractSurface implements Light {
 	
 	/** Returns the array of {@link PointLight}s stored by this {@link PointLightGrid}. */
 	public PointLight[] getLights() { return this.lights; }
+
+	/**
+	 * Returns the lights of this grid. The grid is a fixed, discrete set of lights,
+	 * so every light is returned regardless of the requested total.
+	 *
+	 * @param total  ignored
+	 * @return the lights of this grid
+	 */
+	@Override
+	public PointLight[] getSamples(int total) { return getSamples(); }
+
+	/** Returns the lights of this grid. */
+	@Override
+	public PointLight[] getSamples() { return this.lights; }
 	
 	/** Returns a zero vector. */
 	@Override
