@@ -184,8 +184,6 @@ public class CollectionLogarithmComputation extends TraversableExpressionComputa
 		}
 
 		CollectionProducer input = (CollectionProducer) getInputs().get(1);
-		CollectionProducer scale = pow(input, c(-1));
-
-		return chainRuleDelta(target, input, scale);
+		return chainRuleDelta(target, input, () -> pow(input, c(-1)));
 	}
 }

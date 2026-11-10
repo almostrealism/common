@@ -28,6 +28,8 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
 
+import java.util.function.Supplier;
+
 /**
  * A {@link TraversableExpressionComputation} provides a framework for computations that operate on
  * multi-dimensional collections using traversable expressions. This abstract class serves as a base
@@ -206,26 +208,31 @@ public abstract class TraversableExpressionComputation
 	 *
 	 * <p>The inner factor {@code f'(x)} is {@code input.delta(target)}, reshaped so each output
 	 * element indexes a row of the Jacobian and traversed over those rows. The outer factor
-	 * {@code g'(f(x))} is the supplied {@code cofactor}, flattened to a one-dimensional vector of
-	 * row scale factors, and the two are combined with
+	 * {@code g'(f(x))} is produced by the supplied {@code cofactor}, flattened to a one-dimensional
+	 * vector of row scale factors, and the two are combined with
 	 * {@link org.almostrealism.algebra.MatrixFeatures#expandAndMultiply(CollectionProducer, CollectionProducer)}.
 	 * The result is reshaped to this computation's output shape appended with the shape of
 	 * {@code target}.</p>
 	 *
+	 * <p>The cofactor is supplied lazily and built only after the inner delta graph, so the
+	 * derivative graph is constructed in the same order as every element-wise function built it
+	 * before this construction was shared.</p>
+	 *
 	 * @param target   the {@link Producer} with respect to which the derivative is computed
 	 * @param input    the inner function {@code f(x)} whose delta supplies {@code f'(x)}
-	 * @param cofactor the outer derivative {@code g'(f(x))} evaluated at the input, used as the
-	 *                 per-row scale factor
+	 * @param cofactor supplies the outer derivative {@code g'(f(x))} evaluated at the input, used
+	 *                 as the per-row scale factor
 	 * @return a {@link CollectionProducer} computing the chain-rule derivative
 	 */
-	protected CollectionProducer chainRuleDelta(Producer<?> target,
-												CollectionProducer input, CollectionProducer cofactor) {
+	// TODO(review): Supplier cofactor rests on an unproven construction-order hypothesis; revert to a plain CollectionProducer if CI shows order is irrelevant
+	protected CollectionProducer chainRuleDelta(Producer<?> target, CollectionProducer input,
+												Supplier<CollectionProducer> cofactor) {
 		TraversalPolicy shape = getShape().append(shape(target));
 
 		CollectionProducer d = input.delta(target);
 		d = d.reshape(getShape().getTotalSize(), -1).traverse(0);
 
-		return expandAndMultiply(cofactor.flatten(), d).reshape(shape);
+		return expandAndMultiply(cofactor.get().flatten(), d).reshape(shape);
 	}
 
 	/**

@@ -149,7 +149,7 @@ public abstract class UnaryCollectionComputation extends TraversableExpressionCo
 		}
 
 		// Chain rule: g'(f) * f'(x)
-		return chainRuleDelta(target, c(getInputs().get(1)), getCofactor());
+		return chainRuleDelta(target, c(getInputs().get(1)), this::getCofactor);
 	}
 
 	/**

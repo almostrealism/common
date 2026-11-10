@@ -223,8 +223,7 @@ public class CollectionExponentialComputation extends TraversableExpressionCompu
 		}
 
 		CollectionProducer input = (CollectionProducer) getInputs().get(1);
-		CollectionProducer scale = isIgnoreZero() ? expIgnoreZero(input) : exp(input);
-
-		return chainRuleDelta(target, input, scale);
+		return chainRuleDelta(target, input,
+				() -> isIgnoreZero() ? expIgnoreZero(input) : exp(input));
 	}
 }
