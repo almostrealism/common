@@ -396,7 +396,11 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	}
 
 	/**
-	 * Takes a weight of the given shape from the dictionary, marking it consumed.
+	 * Takes a weight of the given shape from the dictionary, marking it consumed. The weight must
+	 * carry exactly the expected shape: the asset reads every weight from the checkpoint with the
+	 * shape the stored tensor carries, so a tensor whose rank or per-axis lengths differ from the
+	 * expected ones — even when its total element count matches — is rejected rather than silently
+	 * reinterpreted, which would feed a mis-shaped tensor into the layer's projections.
 	 *
 	 * @param key  the weight key
 	 * @param dims the expected shape
@@ -410,15 +414,14 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 
 		TraversalPolicy actual = value.getShape();
 		TraversalPolicy expected = shape(dims);
-		boolean sameRank = actual.getDimensions() == expected.getDimensions();
-		if (actual.getTotalSize() != expected.getTotalSize()
-				|| (sameRank && !Arrays.equals(actual.extent(), expected.extent()))) {
+		if (actual.getDimensions() != expected.getDimensions()
+				|| !Arrays.equals(actual.extent(), expected.extent())) {
 			throw new IllegalArgumentException("Weight " + key + " has shape " + actual
 					+ " but " + expected + " was expected");
 		}
 
 		unusedWeights.remove(key);
-		return sameRank ? value : value.reshape(expected);
+		return value;
 	}
 
 	@Override
