@@ -1,7 +1,7 @@
 ---
-status: abandoned
+status: proposed
 created: 2026-11-05
-closed: 2026-11-10
+closed:
 tracker: [7bf0af0f-6afc-4ae1-9b61-b49587531d9c]
 ---
 
@@ -136,11 +136,14 @@ model.
   `FixedArgumentBindingTest`, `DestinationReuseTest`. Run them unchanged; they must still pass. Do
   not remove their toggles: those tests specify behaviour with aggregation off, which remains a
   supported configuration.
-- Run, at most 5 classes per invocation:
-  - `AggregateCopyInTest`, `AggregateCopyBackTest`, `InstructionCacheCollisionEnforcementTest`,
-    `ReadOnlyAggregateCopyTest`, `ProcessDetailsFactoryRecoveryTest`;
-  - the new structural test;
-  - `ConnectomeNetworkTest`, as a correctness check on a heavily folded workload.
+- Run as targeted selections, one module per test-runner invocation (at most 5 classes each; these
+  classes span three modules, so they cannot be run in a single invocation):
+  - `engine/utils`: `AggregateCopyInTest`, `AggregateCopyBackTest`,
+    `InstructionCacheCollisionEnforcementTest`, `ProcessDetailsFactoryRecoveryTest`, and the new
+    structural test;
+  - `engine/ml`: `ReadOnlyAggregateCopyTest`;
+  - `studio/bioscience`: `ConnectomeNetworkTest`, as a correctness check on a heavily folded
+    workload.
 - Then take the Metal measurement.
 
 ## Success Criteria
@@ -191,16 +194,37 @@ Medium. The pieces are:
 
 ## Assessment (2026-11-10)
 
-<!-- TODO(review): the owner asked for a case, not a decision; confirm with them before keeping `status: abandoned`, or keep `proposed` until Variant B is approved as its own plan (the plan sweep deletes abandoned plans 14 days after `closed`, taking this assessment with it). -->
-
 **Recommendation: do not implement the plan as written. Implement a narrower, all-or-nothing
 variant (Variant B below) instead.** The plan's diagnosis is right, and its goal is reachable:
 with no folding at all, the rolling-cache decode drops from 245 to 112 dispatches/byte, below the
 sliding window. The part that costs the most, though, is folding only the overflow, smallest
 first, with the decision deferred until the argument set is known. That part buys almost
 nothing on any measured workload. It is also the only part that can break the determinism
-constraint. The status above is `abandoned` for the plan as written. Tracker task 7bf0af0f
-should be re-scoped to Variant B rather than closed.
+constraint.
+
+This is a recommendation, not a decision. The owner reserved the decision on this plan — it was
+put on hold pending the instruction-cache benchmark, which this assessment now uses — so the
+lifecycle status is left `proposed` and awaits their call rather than being closed here. (An
+`abandoned`/`closed` plan is removed by the plan sweep 14 days later, which would delete this
+assessment before the owner acts on it.) The recommended disposition is to re-scope tracker task
+`7bf0af0f` to Variant B, or to approve Variant B as its own plan and abandon this one — see
+"Open questions for the owner" below.
+
+### Open questions for the owner
+
+1. **Disposition.** This assessment recommends Variant B over Variant A (the plan as written).
+   Acting on it means one of: re-scope tracker task `7bf0af0f` to Variant B and keep this document
+   as its plan of record; or spin Variant B into its own plan and abandon this one. Either is the
+   owner's call; the plan is held `proposed` until then so the assessment is not swept away.
+2. **Variant B's one unmeasured number.** Whether every decode kernel's *structural* argument
+   bound (before de-duplication) is at most 29, as the de-duplicated count already is. The
+   "Smallest experiment that decides B" section says how to settle it. If a decode kernel's
+   structural bound over-counts aliased roots, the next step is to put root sharing into the
+   signature — not to adopt Variant A.
+3. **Determinism.** Variant A's fold decision depends on the distinct-root count, which the
+   signature does not encode, so it can throw an `AGGREGATE_LAYOUT` collision between two
+   computations that share a signature — the constraint the owner stated. Variant B avoids this by
+   construction. Confirm this reading before any Variant A work is scheduled.
 
 ### Evidence gathered
 
