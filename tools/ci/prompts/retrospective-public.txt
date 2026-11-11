@@ -1,0 +1,3 @@
+This repository is public and open source. Your report must not name any private
+downstream product, nor quote or paraphrase a private workstream. Describe behavior
+in platform terms. Follow the root CLAUDE.md section "This Repository Is Public".

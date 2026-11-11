@@ -99,8 +99,9 @@ class ServerStatusWriter {
      * @throws IOException  If writing the status file fails.
      */
     void writeStatus(String file) throws IOException {
-        PrintStream p = new PrintStream(new FileOutputStream(file + "-stat.html"));
-        server.printStatus(p);
+        try (PrintStream p = new PrintStream(new FileOutputStream(file + "-stat.html"))) {
+            server.printStatus(p);
+        }
 
         ResourceDistributionTask t = ResourceDistributionTask.getCurrentTask();
 
@@ -116,11 +117,10 @@ class ServerStatusWriter {
 
             long time = server.getStartTime() % 10000;
 
-            OutputStream out = server.getOutputStream("/files/logs/" + file +
-                    "-" + time + "-stat.html");
-            p = new PrintStream(out);
-            server.printStatus(p);
-            out.close();
+            try (OutputStream out = server.getOutputStream("/files/logs/" + file +
+                    "-" + time + "-stat.html")) {
+                server.printStatus(new PrintStream(out));
+            }
         }
     }
 }
