@@ -2143,18 +2143,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Verify JDK version
-        # The runner image ships the JDK (see tools/ci/docker/README.md), so this
-        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
-        # was timing out. Fails fast, naming the runner, when java is not the expected major.
-        run: |
-          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
-          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
-            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
-            java -version || true
-            exit 1
-          fi
-          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
+      - name: Select and verify JDK
+        # The runner image or host ships the JDK (see tools/ci/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job
+        # and was timing out. The shared action selects the JDK of the expected major,
+        # verifies it robustly, and exports JAVA_HOME and PATH so every later step —
+        # the Maven launcher in particular — runs on exactly that JDK.
+        uses: ./.github/actions/select-jdk
+        with:
+          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
       - name: Cache Maven dependencies
         # Restores the dependency cache actions/setup-java's `cache: maven` provided on
@@ -2363,18 +2360,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Verify JDK version
-        # The runner image ships the JDK (see tools/ci/docker/README.md), so this
-        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
-        # was timing out. Fails fast, naming the runner, when java is not the expected major.
-        run: |
-          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
-          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
-            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
-            java -version || true
-            exit 1
-          fi
-          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
+      - name: Select and verify JDK
+        # The runner image or host ships the JDK (see tools/ci/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job
+        # and was timing out. The shared action selects the JDK of the expected major,
+        # verifies it robustly, and exports JAVA_HOME and PATH so every later step —
+        # the Maven launcher in particular — runs on exactly that JDK.
+        uses: ./.github/actions/select-jdk
+        with:
+          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
       - name: Cache Maven dependencies
         # Restores the dependency cache actions/setup-java's `cache: maven` provided on
@@ -2567,18 +2561,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Verify JDK version
-        # The runner image or host ships the JDK (see tools/ci/*/README.md), so this
-        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
-        # was timing out. Fails fast, naming the runner, when java is not the expected major.
-        run: |
-          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
-          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
-            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
-            java -version || true
-            exit 1
-          fi
-          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
+      - name: Select and verify JDK
+        # The runner image or host ships the JDK (see tools/ci/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job
+        # and was timing out. The shared action selects the JDK of the expected major,
+        # verifies it robustly, and exports JAVA_HOME and PATH so every later step —
+        # the Maven launcher in particular — runs on exactly that JDK.
+        uses: ./.github/actions/select-jdk
+        with:
+          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
       - name: Isolate Maven repository per runner
         # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
@@ -2743,18 +2734,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Verify JDK version
-        # The runner image or host ships the JDK (see tools/ci/*/README.md), so this
-        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
-        # was timing out. Fails fast, naming the runner, when java is not the expected major.
-        run: |
-          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
-          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
-            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
-            java -version || true
-            exit 1
-          fi
-          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
+      - name: Select and verify JDK
+        # The runner image or host ships the JDK (see tools/ci/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job
+        # and was timing out. The shared action selects the JDK of the expected major,
+        # verifies it robustly, and exports JAVA_HOME and PATH so every later step —
+        # the Maven launcher in particular — runs on exactly that JDK.
+        uses: ./.github/actions/select-jdk
+        with:
+          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -2896,18 +2884,15 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Verify JDK version
-        # The runner image or host ships the JDK (see tools/ci/*/README.md), so this
-        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
-        # was timing out. Fails fast, naming the runner, when java is not the expected major.
-        run: |
-          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
-          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
-            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
-            java -version || true
-            exit 1
-          fi
-          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
+      - name: Select and verify JDK
+        # The runner image or host ships the JDK (see tools/ci/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job
+        # and was timing out. The shared action selects the JDK of the expected major,
+        # verifies it robustly, and exports JAVA_HOME and PATH so every later step —
+        # the Maven launcher in particular — runs on exactly that JDK.
+        uses: ./.github/actions/select-jdk
+        with:
+          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -3065,18 +3050,15 @@ jobs:
             exit 1
           fi
 
-      - name: Verify JDK version
-        # The runner image or host ships the JDK (see tools/ci/*/README.md), so this
-        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
-        # was timing out. Fails fast, naming the runner, when java is not the expected major.
-        run: |
-          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
-          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
-            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
-            java -version || true
-            exit 1
-          fi
-          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
+      - name: Select and verify JDK
+        # The runner image or host ships the JDK (see tools/ci/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job
+        # and was timing out. The shared action selects the JDK of the expected major,
+        # verifies it robustly, and exports JAVA_HOME and PATH so every later step —
+        # the Maven launcher in particular — runs on exactly that JDK.
+        uses: ./.github/actions/select-jdk
+        with:
+          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
       - name: Isolate Maven repository per runner
         # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
@@ -3272,18 +3254,15 @@ jobs:
             exit 1
           fi
 
-      - name: Verify JDK version
-        # The runner image or host ships the JDK (see tools/ci/*/README.md), so this
-        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
-        # was timing out. Fails fast, naming the runner, when java is not the expected major.
-        run: |
-          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
-          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
-            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
-            java -version || true
-            exit 1
-          fi
-          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
+      - name: Select and verify JDK
+        # The runner image or host ships the JDK (see tools/ci/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job
+        # and was timing out. The shared action selects the JDK of the expected major,
+        # verifies it robustly, and exports JAVA_HOME and PATH so every later step —
+        # the Maven launcher in particular — runs on exactly that JDK.
+        uses: ./.github/actions/select-jdk
+        with:
+          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
@@ -3466,18 +3445,15 @@ jobs:
             exit 1
           fi
 
-      - name: Verify JDK version
-        # The runner image or host ships the JDK (see tools/ci/*/README.md), so this
-        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job and
-        # was timing out. Fails fast, naming the runner, when java is not the expected major.
-        run: |
-          major="$(java -version 2>&1 | head -1 | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p')"
-          if [ -z "${major}" ] || [ "${major}" != "${EXPECTED_JDK_MAJOR}" ]; then
-            echo "::error::Runner ${RUNNER_NAME:-unknown}: java is major '${major:-unknown}', expected ${EXPECTED_JDK_MAJOR}. Rebuild or restart this runner's image or host so it carries JDK ${EXPECTED_JDK_MAJOR} (see tools/ci/README.md)."
-            java -version || true
-            exit 1
-          fi
-          echo "Runner ${RUNNER_NAME:-unknown}: JDK major ${major} matches EXPECTED_JDK_MAJOR=${EXPECTED_JDK_MAJOR}"
+      - name: Select and verify JDK
+        # The runner image or host ships the JDK (see tools/ci/README.md), so this
+        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job
+        # and was timing out. The shared action selects the JDK of the expected major,
+        # verifies it robustly, and exports JAVA_HOME and PATH so every later step —
+        # the Maven launcher in particular — runs on exactly that JDK.
+        uses: ./.github/actions/select-jdk
+        with:
+          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
       - name: Isolate Maven repository per runner
         # See the identical step in test-mac for the rationale.
