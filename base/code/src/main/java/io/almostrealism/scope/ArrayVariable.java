@@ -362,6 +362,21 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	}
 
 	/**
+	 * Returns an expression reading the element at a logical index of this variable's own
+	 * memory. A plain array variable carries no traversal ordering, so the logical index is the
+	 * physical position and this is {@link #reference(Expression)}; subclasses whose values are
+	 * laid out through an ordering override it to read through that ordering. A kernel that
+	 * addresses an argument's data explicitly uses this read, so it respects whatever layout the
+	 * argument carries, whether or not the argument has a shape.
+	 *
+	 * @param index the logical index of the element
+	 * @return an expression for the element at that index
+	 */
+	public Expression<T> getOrderedReference(Expression<Integer> index) {
+		return reference(index);
+	}
+
+	/**
 	 * Creates a reference expression for accessing an element at the specified position.
 	 *
 	 * <p>This method generates an {@link InstanceReference} expression that can be used

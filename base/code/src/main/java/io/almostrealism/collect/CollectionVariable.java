@@ -245,7 +245,7 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 			index = index.toInt().imod(getShape().getTotalSize());
 		}
 
-		return getOrderedReference(index);
+		return (Expression) getOrderedReference(index);
 	}
 
 	/**
@@ -259,13 +259,14 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 * @param index the logical index of the element, within the shape
 	 * @return an expression for the element at that index
 	 */
-	public Expression<Double> getOrderedReference(Expression<Integer> index) {
+	@Override
+	public Expression<T> getOrderedReference(Expression<Integer> index) {
 		TraversalOrdering order = getShape().getOrder();
 		if (order == null) {
-			return (Expression) reference(index);
+			return super.getOrderedReference(index);
 		}
 
-		return Mask.of(order.containsIndex(index), (Expression) reference(order.indexOf(index)));
+		return Mask.of(order.containsIndex(index), reference(order.indexOf(index)));
 	}
 
 	/**

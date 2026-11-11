@@ -16,6 +16,7 @@
 
 package org.almostrealism.time.computations.test;
 
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
@@ -711,6 +712,28 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		double error = maxDifference(expected, actual);
 		log("orderedInput requirement=" + requirement + " maxError=" + error);
 		Assert.assertTrue("ordered input error " + error, error < ROUND_TRIP_TOLERANCE);
+	}
+
+	/**
+	 * A producer that reports no shape is compiled to a plain array argument rather than a
+	 * collection variable; the transform must still read it, in its physical order, and agree
+	 * with the transform of the same values supplied through a shaped producer.
+	 */
+	@Test(timeout = 120000)
+	public void unshapedInput() {
+		int bins = 16;
+
+		PackedCollection input = testSignal(shape(bins, 2)).evaluate();
+		Producer<PackedCollection> unshaped = () -> args -> input;
+		Assert.assertFalse("the input should report no shape",
+				unshaped instanceof Shape);
+
+		PackedCollection expected = new FourierTransform(1, bins, false, cp(input)).get().evaluate();
+		PackedCollection actual = new FourierTransform(1, bins, false, unshaped).get().evaluate();
+
+		double error = maxDifference(expected, actual);
+		log("unshapedInput maxError=" + error);
+		Assert.assertTrue("unshaped input error " + error, error < ROUND_TRIP_TOLERANCE);
 	}
 
 	/**
