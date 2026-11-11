@@ -68,7 +68,10 @@ represents wavenumber `b·dk`, i.e. wavelength `2π / (b·dk)`.
 
 `dominantWavenumber(field, spacing...)`:
 
-1. removes the field's mean and takes the power spectrum of its `fftn`;
+1. removes the field's mean, divides it by its largest absolute deviation, and takes the power
+   spectrum of its `fftn` (the estimate does not depend on amplitude, and without the division
+   the power of a small-amplitude field underflows to zero on an FP32 backend; a constant field
+   has no dominant wavenumber and yields `NaN`);
 2. finds the peak shell with `spectralPeakBin` (bin 0, the mean, is excluded);
 3. returns the power-weighted mean of the **exact** `|k|` of the cells within one bin of the peak,
    then repeats this once with the window re-centred on that first estimate (±1.5 `dk`).

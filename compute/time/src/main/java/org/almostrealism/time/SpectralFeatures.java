@@ -479,6 +479,11 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * for grids whose axes have different lengths or spacings. The second pass re-centres the
 	 * window on the first estimate, removing the bias of a window centred on a whole bin when the
 	 * true wavenumber lies between bins.</p>
+	 * <p>The estimate does not depend on the amplitude of the field, so the centred field is
+	 * divided by its largest absolute value before its power is formed. Without this, the power
+	 * of a small-amplitude field (squared FFT magnitudes) underflows to zero on a single-precision
+	 * backend and the estimate becomes {@code NaN}. A constant field has no power away from
+	 * {@code k = 0} and therefore no dominant wavenumber; the result for it is {@code NaN}.</p>
 	 *
 	 * @param field   the real field, shaped like a grid
 	 * @param spacing the sample spacing along each axis (or one value for all axes)
@@ -491,7 +496,9 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 
 		CollectionProducer values = c(field).reshape(cells);
 		CollectionProducer mean = isolated(isolated(values.sum()).divide(c(cells)));
-		CollectionProducer centred = values.subtract(mean).reshape(grid);
+		CollectionProducer deviation = values.subtract(mean);
+		CollectionProducer extent = isolated(max(abs(deviation)));
+		CollectionProducer centred = deviation.divide(extent).reshape(grid);
 		CollectionProducer power = isolated(powerSpectrum(fftn(toComplex(centred), false)).reshape(cells));
 		CollectionProducer peak = spectralPeakBin(radialPowerSpectrum(power.reshape(grid), spacing));
 

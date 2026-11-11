@@ -303,6 +303,50 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		Assert.assertTrue(label + " transform differs from the DFT by " + worst, worst < 1e-3);
 	}
 
+	/**
+	 * Compares the forward transform along the middle axis of a {@code [3, 8, 4]} complex grid
+	 * against a direct evaluation of the DFT. That transform runs 12 lines of 8 samples with a
+	 * stride of 4, so consecutive groups of 4 lines begin in different outer slabs. In the
+	 * two-dimensional case every strided line begins in the first slab, so this is the only test
+	 * that pins down the slab offset {@code (line / stride) * bins * stride} of a strided line.
+	 */
+	@Test(timeout = 120000)
+	public void forwardMiddleAxisMatchesDirectDft() {
+		int outer = 3;
+		int bins = 8;
+		int inner = 4;
+		PackedCollection input = testSignal(shape(outer, bins, inner, 2)).evaluate();
+		PackedCollection spectrum = fftAxis(cp(input), 1, false).evaluate();
+		Assert.assertEquals(input.getShape().getTotalSize(), spectrum.getShape().getTotalSize());
+
+		double[] x = input.toArray(0, input.getShape().getTotalSize());
+		double[] actual = spectrum.toArray(0, spectrum.getShape().getTotalSize());
+
+		double worst = 0;
+		for (int o = 0; o < outer; o++) {
+			for (int i = 0; i < inner; i++) {
+				for (int k = 0; k < bins; k++) {
+					double re = 0;
+					double im = 0;
+
+					for (int n = 0; n < bins; n++) {
+						double angle = -2 * Math.PI * k * n / bins;
+						int sample = 2 * ((o * bins + n) * inner + i);
+						re += x[sample] * Math.cos(angle) - x[sample + 1] * Math.sin(angle);
+						im += x[sample] * Math.sin(angle) + x[sample + 1] * Math.cos(angle);
+					}
+
+					int cell = 2 * ((o * bins + k) * inner + i);
+					worst = Math.max(worst, Math.abs(re - actual[cell]));
+					worst = Math.max(worst, Math.abs(im - actual[cell + 1]));
+				}
+			}
+		}
+
+		log("forwardMiddleAxisMatchesDirectDft maxError=" + worst);
+		Assert.assertTrue("Middle axis transform differs from the DFT by " + worst, worst < 1e-3);
+	}
+
 	/** Two-dimensional round trip of a non-square grid on the CPU. */
 	@Test(timeout = 120000)
 	public void roundTrip2dCpu() {
@@ -478,6 +522,41 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		PackedCollection result = dominantWavelength(cp(field), spacing).evaluate();
 		log("dominantWavelengthWithNoise planted=" + wavelength + " recovered=" + result.toDouble(0));
 		assertRelative("wavelength", wavelength, result.toDouble(0), WAVELENGTH_TOLERANCE);
+	}
+
+	/**
+	 * A plane wave of amplitude {@code 1e-25}: the dominant wavelength does not depend on the
+	 * amplitude of the field, so it is recovered as for a unit wave. The power of such a field is
+	 * far below the smallest single-precision value, so on an FP32 backend this fails unless the
+	 * field is normalised before its power is formed. The same holds for a constant offset, which
+	 * the mean removal must discard.
+	 */
+	@Test(timeout = 120000)
+	public void dominantWavelengthOfTinyAmplitude() {
+		int n = 64;
+		double spacing = 0.5;
+		double wavelength = 5.3;
+		double k = 2 * Math.PI / wavelength;
+
+		CollectionProducer x = coordinate(n, n, 1).multiply(c(spacing));
+		CollectionProducer y = coordinate(n, n, 0).multiply(c(spacing));
+		CollectionProducer wave = cos(x.multiply(c(k * 0.6)).add(y.multiply(c(k * 0.8))));
+		PackedCollection field = wave.multiply(c(1e-25)).add(c(1e-24)).evaluate();
+
+		PackedCollection result = dominantWavelength(cp(field), spacing).evaluate();
+		log("dominantWavelengthOfTinyAmplitude planted=" + wavelength + " recovered=" + result.toDouble(0));
+		assertRelative("wavelength", wavelength, result.toDouble(0), WAVELENGTH_TOLERANCE);
+	}
+
+	/**
+	 * A constant field has no spectral power away from {@code k = 0}, so it has no dominant
+	 * wavenumber: the estimate is {@code NaN} rather than an arbitrary finite value.
+	 */
+	@Test(timeout = 120000)
+	public void dominantWavenumberOfConstantField() {
+		PackedCollection result = dominantWavenumber(c(2.5).repeat(16 * 16).reshape(16, 16), 1.0).evaluate();
+		log("dominantWavenumberOfConstantField result=" + result.toDouble(0));
+		Assert.assertTrue("Expected NaN, got " + result.toDouble(0), Double.isNaN(result.toDouble(0)));
 	}
 
 	/**
