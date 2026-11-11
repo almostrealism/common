@@ -1,0 +1,7 @@
+/**
+ * Fixture for PdslChannelSubscriptTest: a layer that scales its input by the factor the per-channel
+ * subscript volume[index] selects from a bank holding one slice for each of the channels.
+ */
+layer channel_gain(channels: int, index: int, volume: weight) {
+    scale(volume[index])
+}
