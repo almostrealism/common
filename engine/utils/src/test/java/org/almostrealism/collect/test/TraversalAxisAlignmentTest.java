@@ -247,6 +247,25 @@ public class TraversalAxisAlignmentTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Deciding whether a fixed-shape producer's variable count follows from variable shapes
+	 * inspects each node of its graph once. The producer here doubles a per-item scalar
+	 * forty times, so each level shares the previous one twice; a walk that revisited shared
+	 * subgraphs would visit 2^40 paths, while it is still repeated up to the vector size.
+	 */
+	@Test(timeout = 30000)
+	public void repeatsDeeplySharedFixedShapeProducer() {
+		Producer<PackedCollection> vectors = v(shape(-1, 3), 0);
+		Producer<PackedCollection> shared = x(vectors);
+		for (int i = 0; i < 40; i++) {
+			shared = add(shared, shared);
+		}
+
+		assertTrue(shape(shared).isFixedCount());
+		assertFalse(Countable.isFixedCount(shared));
+		assertEquals(3, alignedTotalSize(shared, vectors));
+	}
+
+	/**
 	 * A per-item scalar computed from a variable-count input broadcasts against that input's
 	 * vectors: each item's vector is scaled by its own first component, rather than each
 	 * element being multiplied by a different element of the unrepeated scalar.

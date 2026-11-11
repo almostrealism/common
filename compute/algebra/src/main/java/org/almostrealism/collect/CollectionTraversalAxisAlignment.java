@@ -23,7 +23,9 @@ import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Producer;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The {@link TraversalAxisAlignment} of collection {@link Producer}s, which traverses each
@@ -95,12 +97,29 @@ public class CollectionTraversalAxisAlignment extends TraversalAxisAlignment<Pro
 	 * variable: each kernel position is a distinct element of it rather than one more
 	 * evaluation of a fixed-shape value, so it must not be repeated.
 	 *
+	 * <p>Each distinct node of the graph is inspected once, so subgraphs shared by several
+	 * paths do not multiply the cost of the walk.</p>
+	 *
 	 * @param producer  the producer to inspect
 	 * @return {@code true} if the producer's count is fixed or follows only variable shapes
 	 */
 	protected boolean isCountFromShapes(Producer<?> producer) {
-		// TODO(review): unmemoized recursion revisits shared subgraphs; consider a visited set if graph construction slows
+		return isCountFromShapes(producer, new IdentityHashMap<>());
+	}
+
+	/**
+	 * Computes {@link #isCountFromShapes(Producer)}, recording the result for every node it
+	 * inspects in {@code results} and reusing a recorded result when a node is reached again.
+	 *
+	 * @param producer  the producer to inspect
+	 * @param results   the results already computed for nodes of the graph, keyed by identity
+	 * @return {@code true} if the producer's count is fixed or follows only variable shapes
+	 */
+	private boolean isCountFromShapes(Producer<?> producer, Map<Producer<?>, Boolean> results) {
 		if (Countable.isFixedCount(producer)) return true;
+
+		Boolean known = results.get(producer);
+		if (known != null) return known;
 
 		List<Object> variable = new ArrayList<>();
 		if (producer instanceof Parent) {
@@ -109,10 +128,15 @@ public class CollectionTraversalAxisAlignment extends TraversalAxisAlignment<Pro
 			}
 		}
 
+		boolean result;
 		if (variable.isEmpty()) {
-			return !shape(producer).isFixedCount();
+			result = !shape(producer).isFixedCount();
+		} else {
+			result = variable.stream().allMatch(c ->
+					c instanceof Producer && isCountFromShapes((Producer<?>) c, results));
 		}
 
-		return variable.stream().allMatch(c -> c instanceof Producer && isCountFromShapes((Producer<?>) c));
+		results.put(producer, result);
+		return result;
 	}
 }
