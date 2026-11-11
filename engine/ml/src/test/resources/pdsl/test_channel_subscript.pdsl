@@ -4,7 +4,7 @@
  * of {@code volume}, a bank holding {@code channels} equal slices.
  */
 
-/** Scales the input by the factor the subscript selects from the bank. */
+/** Scales the input by the factor that channel {@code index} holds in the {@code volume} bank. */
 layer channel_gain(channels: int, index: int, volume: weight) {
     scale(volume[index])
 }
