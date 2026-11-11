@@ -9,15 +9,14 @@ This job is started by hand, once a person has read the plan and approved it
 for implementation. Before that, the branch was only reviewed; nothing in the
 plan was carried out.
 
-@include pr-feedback.txt
-
 ## Your Task
 
 ### Step 1: Understand the Plan
 
 Read the planning document (the workstream's system instructions tell you where it is).
 Extract every goal, requirement, and deliverable. Treat every review comment on the
-plan that you found above as one more requirement of it.
+plan — the review-feedback section at the end of this prompt tells you how to find
+them — as one more requirement of it.
 
 ### Step 2: Assess Current State
 

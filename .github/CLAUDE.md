@@ -276,8 +276,14 @@ spurious "had a problem deploying" red X. `auto-resolve-submit.yaml` keeps its
 assumption, and the early jobs do not go through it. None of the remediation
 jobs is part of `all-checks`.
 
-Every prompt carries the same pull-request review-comment policy, patched in
-from `tools/ci/prompts/pr-feedback.txt` (see `tools/ci/README.md`).
+Every prompt a route builds against a branch carries the same shared
+branch-feedback block — the pull-request review-comment policy *and* the rule
+that every TODO the branch adds is a finding to fix or file — patched in from
+`tools/ci/prompts/pr-feedback.txt` by `append_branch_feedback`, which also
+appends CI's computed list of the branch's new TODOs (from
+`extract_branch_todos.py`). So whatever a remediation session was dispatched
+for, it leaves every review comment and every new TODO accounted for before it
+finishes, even when its own task needs no code change (see `tools/ci/README.md`).
 
 **`PROTECT_TEST_FILES` is on only for the jobs sent to make failing tests
 pass.** It turns on the harness's per-job test lock (`TestMethodProtection`;
@@ -1058,20 +1064,24 @@ differences travel as inputs: `branch-prefix`, `min-interval-days`,
 `ignore-interval` (passed as `${{ github.event.inputs.ignore_interval_<job> ||
 'false' }}`), `max-open-prs` (the same literal `MAX_OPEN_PRS` holds, since a
 called workflow cannot read the caller's `env`), the `prompt` (a built-in
-selector — `defect-hunt`, `doc-qa`, `consolidation`, `flaky-hunt` — or a path to
-the caller's own template), `template-vars`, and the submission settings
-(`protect-test-files`, `phase-configs`, `required-labels`, `enforce-changes`).
+selector — `defect-hunt`, `doc-qa`, `consolidation`, `flaky-hunt`,
+`retrospective` — or a path to the caller's own template), `template-vars`, and
+the submission settings (`protect-test-files`, `phase-configs`,
+`required-labels`, `enforce-changes`).
 `coverage-qa` stays inline: its target selection runs before branch creation and
 gates the whole round, it interleaves an exclusion commit with branch creation,
 and it needs `actions: read` to reuse master's coverage artifact — none of which
-fit the single-job generic shape. The templates of `performance-qa`, `pdsl-qa`
-and `qa-retrospective` are about this framework's own concerns (Metal, PDSL, the
-retrospective's ledger and branch conventions), so those rounds call
-`qa-round.yaml` but pass their own local template by path rather than a built-in
-selector; they are not offered to consumers. Of the built-in templates only the
-defect hunt is generalised today (its tooling guidance is a selectable
-`TEST_RUNNER_FRAGMENT`); `doc-qa` and `consolidation` remain this repository's
-own until a concrete non-Maven consumer appears.
+fit the single-job generic shape. The templates of `performance-qa` and
+`pdsl-qa` are about this framework's own concerns (Metal, PDSL), so those rounds
+call `qa-round.yaml` but pass their own local template by path rather than a
+built-in selector; they are not offered to consumers. Of the built-in templates
+the defect hunt is generalised (its tooling guidance is a selectable
+`TEST_RUNNER_FRAGMENT`) and so is the retrospective (its report location,
+visibility and finding-landing travel as template variables and `@include`
+fragments, so a consumer runs its own retrospective scoped to its own
+`REPO_URL`; see the `qa-retrospective` section below); `doc-qa` and
+`consolidation` remain this repository's own until a concrete non-Maven consumer
+appears.
 
 A new QA job for this repository adds a caller of `qa-round.yaml` (or, for a
 coverage-shaped round, a new inline job); either way it still gets its own
@@ -1213,7 +1223,22 @@ measurement, and the merged tests run on every backend the pipeline covers.
 
 `qa-retrospective` is the round that looks back at the others: it surveys the
 repository's recent automated work and proposes, with evidence, how the agent
-harness and the QA jobs should improve — it only proposes. Its output is
+harness and the QA jobs should improve — it only proposes. It is a **built-in
+`qa-round.yaml` template** (`prompt: retrospective`), generalised with template
+variables so each consuming repository runs its own, scoped to its own
+`REPO_URL` and written into its own tree, rather than passing a Common-specific
+template by path. This caller sets `template-vars` `REVIEW_SINCE` and
+`QA_PREFIXES` and leaves the rest at the built-in defaults, which describe this
+public, framework-owned repository: `REPORT_DIR` is `docs/qa/retrospectives`,
+`VISIBILITY_FRAGMENT` is the public rule (name no private product), and
+`FINDINGS_FRAGMENT` lands findings on `ci/qa-…`/ordinary/person-only branches. A
+private consumer overrides those through its own `template-vars` (the private
+visibility fragment, the consumer finding-landing fragment, and
+`FRAMEWORK_TRACKER_PROJECT` so harness findings are filed as tracker tasks it
+can land rather than edits it cannot); the adoption example is in the header of
+`.github/workflows/qa-round.yaml`. The privacy rule is unchanged for every
+caller: a retrospective never reads, quotes or counts another repository, so
+each repository's history stays private to it. Its output is
 docs-only (a report under `docs/qa/retrospectives/` and a row in that
 directory's ledger), so `PROTECT_TEST_FILES` costs nothing. That scope is the
 prompt's contract, not a harness restriction — no submission setting confines a
@@ -1241,24 +1266,38 @@ follow-up a person opens from an accepted proposal; it is one of the prefixes
 the survey covers (`QA_PREFIXES`), and a person — never a job — creates it.
 
 `flaky-qa` is the pilot nondeterministic-test hunt
-(`tools/ci/prompts/flaky-hunt.txt`). It takes one module and
-a small, named slice of its tests, runs that slice repeatedly on the current
-commit, and looks for a test whose pass/fail outcome varies with no change to
-the code under test; on a finding it fixes the source of the nondeterminism in
+(`tools/ci/prompts/flaky-hunt.txt`). It starts from the flakes CI has already
+observed — a test that failed in one attempt of a "Build and Test" run and
+passed in a later attempt of the same commit (which `rerun-flaky-tests.sh`
+surfaces) is a confirmed flake, on a known lane, with its failure output
+recorded. `tools/ci/collect-observed-flakes.py` collects those into the prompt's
+leads section (through `qa-round.yaml`'s `leads-script` input, run before the
+prompt is built), and the round reproduces a flake on a lane this host can run or
+diagnoses one it cannot (CUDA, OpenCL) from the recorded failure output; on a
+finding it fixes the source of the nondeterminism in
 production or test-helper code, or — when the cause is out of scope — files a
-follow-up with `tracker_create_task`, the same routing the general review uses.
-Three things set it apart. Its `MIN_INTERVAL_DAYS` is 7, tied with `qa-retrospective`
+follow-up with `tracker_create_task` carrying the evidence, the same routing the
+general review uses. It never ends with a bare "could not reproduce". Several
+things set it apart. Its `MIN_INTERVAL_DAYS` is 7, tied with `qa-retrospective`
 for the longest of any round, because it is a pilot rather than a full cadence job — and for the same
 reason it does **not** raise `MAX_OPEN_PRS` (see "One open-PR limit" above). Its
 prompt keeps it inside the repository's test-execution limits: named, bounded
 selections through the MCP test runner only, each with an explicit timeout,
 repeating a small selection rather than widening it, never a module or full
-suite or `AR_TEST_GROUP`/`AR_TEST_GROUPS`. And `PROTECT_TEST_FILES` stays
+suite or `AR_TEST_GROUP`/`AR_TEST_GROUPS`, and never oversubscribing the host to
+force a failure (a round was once killed with exit 137 doing that). And
+`PROTECT_TEST_FILES` stays
 `"true"`: the test that reveals a flake is the specification, so the round fixes
 the production/helper cause or files a follow-up rather than weakening the test
 — it carries no `ENFORCE_CHANGES`, since an honestly empty-handed round is a
 valid outcome, and pins the primary phase to `claude/opus` like the defect hunt,
 telling a real flake from a deterministic failure being judgment, not mechanism.
+Like `performance-qa` it carries `REQUIRED_LABELS`/`REQUIRED_LABELS_JSON`
+pinning the submission and every later job on the workstream to a macOS Node, so
+the Metal and native lanes its observed flakes come from are reproducible; its
+caller grants the `actions: read` the collection step needs (a reusable
+workflow's token is the caller's), which `qa-round.yaml` passes through because
+it declares no narrowing permissions block of its own.
 
 Each job carries its **own** `concurrency` group (`project-manager`,
 `task-planning`, `quality-assurance`, `defect-hunt`, `flaky-qa`, `coverage-qa`, `consolidation-qa`,
@@ -1386,9 +1425,9 @@ controller secret** — no `framework-ref` input and no `secrets:` block.
   branch, register, build prompt, submit, summary — all parameterised by the
   caller's inputs. The branch prefix, interval and submission settings are
   inputs; the `prompt` input is a built-in template selector (`defect-hunt`,
-  `doc-qa`, `consolidation`, `flaky-hunt`) or a path to the caller's own
-  template, read as data by `build-qa-round-prompt.sh` and rendered but never
-  executed. Its job's `concurrency` group keys on the calling repository and the
+  `doc-qa`, `consolidation`, `flaky-hunt`, `retrospective`) or a path to the
+  caller's own template, read as data by `build-qa-round-prompt.sh` and rendered
+  but never executed. Its job's `concurrency` group keys on the calling repository and the
   round name, so two merges to one repository cannot both pass a round's gate
   while different rounds do not serialize against each other. This repository's
   `master-agent-dispatch.yaml` calls it for every QA round except `coverage-qa`.

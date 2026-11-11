@@ -47,6 +47,56 @@ name: "QA Round"
 # where a defect lives. tracker-capabilities grants the round's workstream a
 # tracker role; a round that files tasks into a release passes "planner".
 #
+# Adopting the retrospective. The retrospective — the round that surveys a
+# repository's recent automated work and proposes, with evidence, how its QA
+# process should improve — is a built-in template (prompt: retrospective), so a
+# consuming repository runs its own, scoped to its own REPO_URL and written into
+# its own tree. It never reads, quotes or counts another repository, so each
+# repository's history stays private to it. A consumer's caller job:
+#
+#     retrospective:
+#       uses: almostrealism/common/.github/workflows/qa-round.yaml@master
+#       permissions:
+#         contents: write
+#         pull-requests: write
+#       concurrency:
+#         group: qa-retrospective
+#         cancel-in-progress: false
+#       with:
+#         round-name: "qa-retrospective"
+#         branch-prefix: "qa/retro-"
+#         min-interval-days: 7
+#         max-open-prs: 7
+#         prompt: retrospective
+#         # REVIEW_SINCE: the survey window. QA_PREFIXES: this repository's QA
+#         # branch prefixes. REPORT_DIR: where the report and ledger live
+#         # (default docs/qa/retrospectives). VISIBILITY_FRAGMENT: name the
+#         # private fragment when the repository is not public. FINDINGS_FRAGMENT
+#         # + FRAMEWORK_TRACKER_PROJECT: have harness findings filed as tracker
+#         # tasks in the framework's project rather than proposed as edits the
+#         # repository cannot make.
+#         template-vars: >-
+#           {"REVIEW_SINCE": "14 days ago",
+#            "QA_PREFIXES": "qa/defect- qa/docs- qa/retro-",
+#            "VISIBILITY_FRAGMENT": "retrospective-private.txt",
+#            "FINDINGS_FRAGMENT": "retrospective-findings-consumer.txt",
+#            "FRAMEWORK_TRACKER_PROJECT": "Common"}
+#         # Needed so the round can file harness findings into the framework's
+#         # tracker project with tracker_create_task.
+#         tracker-capabilities: planner
+#         enforce-changes: "true"
+#         max-enforce-changes-retries: "0"
+#         description: "Study recent automated work and propose how QA should improve"
+#         controller-url: ${{ vars.FLOWTREE_CONTROLLER_URL }}
+#         cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+#       secrets:
+#         FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+#
+# The framework's own retrospective (master-agent-dispatch.yaml) leaves
+# VISIBILITY_FRAGMENT and FINDINGS_FRAGMENT unset: the built-in defaults already
+# describe a public, framework-owned repository that lands harness findings on
+# its own ci/qa-… branches.
+#
 # The round is gated three ways, in order, by the shared cadence script
 # (tools/ci/qa-cadence.sh): no round of this prefix in progress — a previous
 # round's PR open, or its branch younger than grace-hours and not yet carrying
@@ -102,7 +152,7 @@ on:
         default: "false"
         type: string
       prompt:
-        description: "A built-in template selector (defect-hunt | doc-qa | consolidation | flaky-hunt), or a path, relative to the caller's checkout, of the caller's own template"
+        description: "A built-in template selector (defect-hunt | doc-qa | consolidation | flaky-hunt | retrospective), or a path, relative to the caller's checkout, of the caller's own template"
         required: true
         type: string
       template-vars:
@@ -114,6 +164,11 @@ on:
         description: "Published fragment a built-in template includes for test-runner guidance (default test-runner-maven.txt; a non-Maven consumer passes test-runner-generic.txt)"
         required: false
         default: "test-runner-maven.txt"
+        type: string
+      leads-script:
+        description: "Path, relative to the framework checkout, of a script run before the prompt is built; its stdout becomes the ${LEADS} section of the prompt (e.g. tools/ci/collect-observed-flakes.py for the flaky round). Empty runs no such step and leaves ${LEADS} empty"
+        required: false
+        default: ""
         type: string
       protect-test-files:
         description: "Keep every test method that exists on the base branch exactly as it is for this job"
@@ -182,9 +237,16 @@ on:
 jobs:
   round:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
+    # No job-level permissions block: a called workflow's token is the caller's,
+    # and a block here could only narrow it. Every caller grants the
+    # contents: write and pull-requests: write this job needs to push the round's
+    # branch and open its PR. A round whose leads-script reads the GitHub Actions
+    # API (the flaky round, collecting CI's observed flakes) needs actions: read
+    # too; its caller grants that extra scope and it flows through. Were this
+    # block to declare actions: read, every caller that does not grant it — the
+    # other rounds and any external consumer — would fail, because a called
+    # workflow cannot request a permission its caller withheld. So the grant is
+    # the caller's to make, per round, rather than forced on all of them here.
 
     # Serialize per repository and round, so two merges to one repository cannot
     # both pass this round's gate, while different rounds do not queue behind
@@ -270,9 +332,44 @@ jobs:
           echo "branch=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
           echo "::notice::Created branch $BRANCH_NAME"
 
+      # A round that supplies a leads-script computes its leads section before
+      # the prompt is built — the flaky round reads CI's observed flakes here.
+      # The script is a framework script, run from the trusted framework
+      # checkout; its path reaches the shell through the environment (never
+      # interpolated into run:), and a path that climbs out of the framework
+      # checkout is refused, the same bound build-qa-round-prompt.sh applies to a
+      # caller template. It is best-effort: a GitHub API hiccup leaves the leads
+      # file unwritten, so the prompt's ${LEADS} is empty and the round falls
+      # back to its memory and tracker leads rather than failing.
+      - name: Collect the round's leads
+        if: steps.decide.outputs.run == 'true' && inputs.leads-script != ''
+        env:
+          LEADS_SCRIPT: ${{ inputs.leads-script }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          case "$LEADS_SCRIPT" in
+            /*|../*|*/../*|*/..)
+              echo "ERROR: leads-script must be relative and stay inside the framework checkout: $LEADS_SCRIPT" >&2
+              exit 1
+              ;;
+          esac
+          if [ ! -f "$FRAMEWORK/$LEADS_SCRIPT" ]; then
+            echo "ERROR: leads-script not found at $FRAMEWORK/$LEADS_SCRIPT" >&2
+            exit 1
+          fi
+          if python3 "$FRAMEWORK/$LEADS_SCRIPT" > "${{ runner.temp }}/leads.txt"; then
+            echo "::notice::Collected the round's leads ($(wc -l < "${{ runner.temp }}/leads.txt") lines)"
+          else
+            rm -f "${{ runner.temp }}/leads.txt"
+            echo "::warning::The leads-script failed; the round will fall back to its memory and tracker leads."
+          fi
+
       # The caller's checkout is the caller-root: a built-in selector names a
       # framework template, a caller path names one in that checkout, read as
-      # data. Variables reach the builder only through the environment.
+      # data. Variables reach the builder only through the environment. A leads
+      # section the step above computed reaches it as LEADS_FILE, substituted for
+      # ${LEADS}; absent, that placeholder renders empty.
       - name: Build the round's prompt
         if: steps.decide.outputs.run == 'true'
         env:
@@ -282,6 +379,7 @@ jobs:
           PROMPT: ${{ inputs.prompt }}
           TEMPLATE_VARS: ${{ inputs.template-vars }}
           TEST_RUNNER_FRAGMENT: ${{ inputs.test-runner-fragment }}
+          LEADS_FILE: ${{ runner.temp }}/leads.txt
         run: |
           bash "$FRAMEWORK/tools/ci/prompts/build-qa-round-prompt.sh" \
             "$GITHUB_WORKSPACE" "${{ runner.temp }}/agent-prompt.txt"

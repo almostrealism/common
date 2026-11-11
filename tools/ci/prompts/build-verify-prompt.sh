@@ -12,6 +12,11 @@
 # Usage:
 #   build-verify-prompt.sh <output-file>
 #
+# A second positional argument is optional: a file holding the rendered
+# "new TODOs this branch adds" section (extract_branch_todos.py's output),
+# passed through to the shared branch-feedback block. It is optional so a
+# caller that has not computed it still produces a prompt.
+#
 # Required environment variables:
 #   BRANCH          - branch name under verification
 #   BASE_BRANCH     - base branch for comparison
@@ -27,9 +32,10 @@
 set -euo pipefail
 
 OUTPUT_FILE="${1:-}"
+TODOS_FILE="${2:-}"
 
 if [ -z "$OUTPUT_FILE" ]; then
-    echo "Usage: $0 <output-file>" >&2
+    echo "Usage: $0 <output-file> [todos-section-file]" >&2
     exit 1
 fi
 
@@ -48,3 +54,7 @@ source "${SCRIPT_DIR}/prompt-render.sh"
 
 # Expand the template's @include lines and substitute its placeholders.
 render_prompt "$TEMPLATE" BRANCH BASE_BRANCH COMMIT_SHA > "$OUTPUT_FILE"
+
+# Append the shared branch-feedback block: the pull-request review-comment
+# policy and the new-TODO findings, with CI's computed list when it passed one.
+append_branch_feedback "$OUTPUT_FILE" "$TODOS_FILE"

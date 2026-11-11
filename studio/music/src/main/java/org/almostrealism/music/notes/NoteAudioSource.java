@@ -19,6 +19,7 @@ import org.almostrealism.audio.notes.NoteAudio;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import io.almostrealism.uml.Named;
 import org.almostrealism.audio.tone.KeyboardTuned;
 import org.almostrealism.audio.tone.KeyboardTuning;
 
@@ -37,10 +38,23 @@ import java.util.List;
  * @see FileNoteSource
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, include = JsonTypeInfo.As.PROPERTY, property = "@type")
-public interface NoteAudioSource extends KeyboardTuned {
+public interface NoteAudioSource extends KeyboardTuned, Named {
 	/** Returns the human-readable origin identifier for this source. */
 	@JsonIgnore
 	String getOrigin();
+
+	/**
+	 * Returns the name this source is shown by. By default this is the last
+	 * path segment of the {@link #getOrigin() origin}; sources with a more
+	 * descriptive name override it.
+	 */
+	@JsonIgnore
+	@Override
+	default String getName() {
+		String origin = getOrigin();
+		if (origin == null) return "";
+		return origin.substring(origin.lastIndexOf('/') + 1);
+	}
 
 	/** Sets the keyboard tuning for all notes in this source. */
 	@JsonIgnore
