@@ -37,11 +37,8 @@ import java.util.Map;
  */
 public class PdslChannelSubscriptTest extends TestSuiteBase {
 
-	/** A layer that scales its input by the factor the subscript selects from the bank. */
-	private static final String SOURCE = String.join("\n",
-			"layer channel_gain(channels: int, index: int, volume: weight) {",
-			"    scale(volume[index])",
-			"}");
+	/** The {@code channel_gain} fixture, which scales its input by the factor the subscript selects. */
+	private static final String FIXTURE = "/pdsl/test_channel_subscript.pdsl";
 
 	/** Largest absolute difference permitted from the host reference. */
 	private static final double TOLERANCE = 1e-6;
@@ -117,7 +114,7 @@ public class PdslChannelSubscriptTest extends TestSuiteBase {
 		args.put("volume", volume);
 
 		PdslLoader loader = new PdslLoader();
-		Block block = loader.buildLayer(loader.parse(SOURCE), "channel_gain", inputShape, args);
+		Block block = loader.buildLayer(loader.parseResource(FIXTURE), "channel_gain", inputShape, args);
 
 		Model model = new Model(inputShape);
 		model.add(block);
