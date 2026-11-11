@@ -33,9 +33,12 @@ import java.util.stream.IntStream;
  * together with the element-wise operations on interleaved complex data (real and imaginary parts,
  * power, magnitude and phase) that they are built from.
  *
- * <p>Every method returns a {@link CollectionProducer}; nothing is evaluated on the host.
- * {@link TemporalFeatures} extends this interface, so every type with the temporal operations
- * also has these.</p>
+ * <p>Every operation on data returns a {@link CollectionProducer}; nothing is evaluated on the
+ * host. The exceptions are {@link #radialBinWidth} and {@link #radialBinCount}, which return
+ * scalar metadata computed on the host from the grid shape and spacing alone, because they
+ * size the graph (the number of radial bins) or parameterise it (the bin width). They never
+ * read the grid's data. {@link TemporalFeatures} extends this interface, so every type with the
+ * temporal operations also has these.</p>
  *
  * <h2>Conventions</h2>
  * <ul>

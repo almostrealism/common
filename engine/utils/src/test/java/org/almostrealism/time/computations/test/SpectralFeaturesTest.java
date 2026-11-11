@@ -658,6 +658,21 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		assertRejected(() -> poissonSolve(zeros(grid), Double.MIN_VALUE, 1.0));
 	}
 
+	/**
+	 * Spacings at opposite ends of the representable range on the same grid cannot inflate the
+	 * radial bin count. The smallest Nyquist wavenumber belongs to the largest spacing and the bin
+	 * width to the longest extent, so their ratio is at most half the longest axis length,
+	 * whatever the spacings are. A one-cell grid therefore has exactly one bin, and a grid whose
+	 * long axis has the tiny spacing still gets the count set by the axis with the huge spacing.
+	 */
+	@Test(timeout = 60000)
+	public void extremeSpacingRatioKeepsBinCountBounded() {
+		Assert.assertEquals(1, radialBinCount(shape(1, 1), 1e308, 1e-300));
+		Assert.assertEquals(1, radialBinCount(shape(1, 1), 1e-300, 1e308));
+		Assert.assertEquals(5, radialBinCount(shape(8, 1024), 1e300, 1e-300));
+		Assert.assertEquals(513, radialBinCount(shape(1024, 8), 1e-300, 1e-300));
+	}
+
 	/** A permuted input is transformed in its logical order on the CPU. */
 	@Test(timeout = 120000)
 	public void orderedInputCpu() {
