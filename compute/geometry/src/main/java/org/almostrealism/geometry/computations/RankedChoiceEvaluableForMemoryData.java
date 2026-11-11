@@ -16,13 +16,14 @@
 
 package org.almostrealism.geometry.computations;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.ScalarFeatures;
-import org.almostrealism.algebra.computations.Choice;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.BiFunction;
@@ -82,9 +83,12 @@ public abstract class RankedChoiceEvaluableForMemoryData<T extends MemoryData> e
 	 * smallest rank that is at least the epsilon threshold, or a blank (all zero) value of
 	 * {@code memLength} elements when there is no such candidate.
 	 *
-	 * <p>Every candidate's rank and value are part of the graph, and the selection is made
-	 * with an index-of-maximum over the negated ranks followed by a {@link Choice}, so the result compiles into a
-	 * single kernel rather than evaluating each rank on the host. Unlike
+	 * <p>Every candidate's rank and value are part of the graph. The selection is an
+	 * element-wise fold over the candidates that keeps the value with the greatest key
+	 * (the negated rank, or a miss key below the blank value's key when the rank is under the
+	 * epsilon threshold), so the result compiles into a single kernel rather than evaluating
+	 * each rank on the host. Because every step is element-wise, each item of a batch (each
+	 * pixel of a render, for example) makes its own selection from its own ranks and values. Unlike
 	 * {@link #evaluate(Object[])}, a missing selection yields the blank value regardless of
 	 * {@link #tolerateNull}.</p>
 	 *
@@ -92,37 +96,21 @@ public abstract class RankedChoiceEvaluableForMemoryData<T extends MemoryData> e
 	 * @return a producer of the closest candidate's value
 	 */
 	public CollectionProducer getClosestChoice(int memLength) {
-		if (isEmpty()) return ScalarFeatures.getInstance().zeros(new TraversalPolicy(memLength));
-		return closestChoice(memLength);
-	}
-
-	/**
-	 * Builds the {@link Choice} computation behind {@link #getClosestChoice(int)}.
-	 *
-	 * @param memLength the number of elements of each candidate's value
-	 * @return the choice of the closest candidate's value
-	 */
-	private Choice closestChoice(int memLength) {
 		ScalarFeatures f = ScalarFeatures.getInstance();
-		TraversalPolicy valueShape = f.shape(1, memLength);
 
-		int count = size() + 1;
-		Producer<PackedCollection>[] keys = new Producer[count];
-		Producer<PackedCollection>[] values = new Producer[count];
+		CollectionProducer bestKey = f.c(BLANK_KEY);
+		CollectionProducer best = f.zeros(new TraversalPolicy(memLength));
 
 		for (int i = 0; i < size(); i++) {
-			CollectionProducer rank = f.c(f.reshape(f.shape(1), get(i).getRank()));
-			keys[i] = f.greaterThan(rank, f.c(e), rank.minus(), f.c(MISS_KEY), true);
-			values[i] = f.reshape(valueShape, get(i).getProducer());
+			CollectionProducer rank = f.c(get(i).getRank());
+			CollectionProducer key = f.greaterThan(rank, f.c(e), rank.minus(), f.c(MISS_KEY), true);
+
+			// Strictly greater, so that a tie keeps the earlier candidate
+			best = f.greaterThan(key, bestKey, (Producer) get(i).getProducer(), best);
+			bestKey = f.max(key, bestKey);
 		}
 
-		keys[count - 1] = f.c(BLANK_KEY);
-		values[count - 1] = f.zeros(valueShape);
-
-		CollectionProducer decision = f.indexOfMax(f.concat(f.shape(count), keys))
-				.add(0.5).divide(count);
-		return new Choice(f.shape(memLength), count, decision,
-				f.concat(f.shape(count, memLength), values));
+		return best;
 	}
 
 	/**
@@ -135,8 +123,12 @@ public abstract class RankedChoiceEvaluableForMemoryData<T extends MemoryData> e
 	 * @return an accelerated evaluable
 	 */
 	public Evaluable<T> getAccelerated(int memLength, BiFunction<MemoryData, Integer, T> postprocessor) {
-		Choice choice = closestChoice(memLength);
-		if (postprocessor != null) choice.setPostprocessor((BiFunction) postprocessor);
-		return (Evaluable) choice.get();
+		CollectionProducer closest = getClosestChoice(memLength);
+		TraversalPolicy shape = closest.getShape();
+
+		DefaultTraversableExpressionComputation accelerated = new DefaultTraversableExpressionComputation(
+				"closestChoice", shape, args -> CollectionExpression.create(shape, args[1]::getValueAt), closest);
+		if (postprocessor != null) accelerated.setPostprocessor((BiFunction) postprocessor);
+		return (Evaluable) accelerated.get();
 	}
 }

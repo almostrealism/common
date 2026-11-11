@@ -52,10 +52,16 @@ the epsilon threshold by evaluating every rank on the host. The same selection a
 `RankedChoiceEvaluableForMemoryData.getClosestChoice(int memLength)`:
 
 - each candidate's key is `-rank` when `rank >= e`, otherwise a large negative miss key;
-- a blank (all zero) candidate is appended with a key between the two, so it is chosen only
-  when nothing is hit;
-- `indexOfMax` over the keys picks the candidate (the first one on a tie, like `evaluate`), and
-  a `Choice` selects its value.
+- the selection starts from a blank (all zero) value whose key lies between the two, so it is
+  kept only when nothing is hit;
+- an element-wise fold over the candidates replaces the selected value with a candidate's
+  only when that candidate's key is strictly greater (so the first one wins a tie, like
+  `evaluate`), and carries the larger key forward.
+
+Every step is element-wise, so over a batch each item (each pixel of a render) selects from
+its own ranks and values. An index-of-maximum followed by a `Choice` would not: `Choice`
+reads a single decision for the whole output, so every pixel would take the first pixel's
+selection.
 
 `RankedChoiceEvaluableForRGB.getClosestColor()` is `getClosestChoice(3)`, and
 `LightingEngineAggregator` inherits it. `getAccelerated(memLength, postprocessor)` compiles the
