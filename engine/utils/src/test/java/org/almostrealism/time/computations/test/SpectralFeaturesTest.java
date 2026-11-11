@@ -491,6 +491,28 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		}
 	}
 
+	/**
+	 * A grid shape that carries a {@link TraversalOrdering} (such as the shape of a permuted
+	 * field) describes only the grid's dimensions to the wavenumber overload: the dense
+	 * {@code |k|^2} it produces is in plain row-major order and must not be read through that
+	 * ordering, so it matches the result for the same dimensions without one.
+	 */
+	@Test(timeout = 60000)
+	public void wavenumberSquaredIgnoresGridOrdering() {
+		TraversalPolicy plain = shape(4, 8);
+		TraversalPolicy ordered = reversedCopy(plain, plain.getTotalSize()).getShape();
+		Assert.assertNotNull("the grid should carry an ordering", ordered.getOrder());
+
+		CollectionProducer k2 = wavenumberSquared(ordered, 0.5, 0.25);
+		Assert.assertNull("|k|^2 should not carry the grid ordering", k2.getShape().getOrder());
+
+		PackedCollection expected = wavenumberSquared(plain, 0.5, 0.25).evaluate();
+		PackedCollection actual = k2.evaluate();
+		double error = maxDifference(expected, actual);
+		log("wavenumberSquaredIgnoresGridOrdering maxError=" + error);
+		Assert.assertTrue("ordered grid wavenumber error " + error, error < 1e-4);
+	}
+
 	/** Real and imaginary parts are the even and odd elements of interleaved complex data. */
 	@Test(timeout = 60000)
 	public void complexParts() {

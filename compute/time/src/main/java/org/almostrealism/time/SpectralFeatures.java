@@ -297,14 +297,16 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	}
 
 	/**
-	 * Returns the squared angular wavenumber {@code |k|^2} of every cell of a grid.
+	 * Returns the squared angular wavenumber {@code |k|^2} of every cell of a grid. Only the
+	 * dimensions of {@code grid} are used: the result is dense and in row-major order, so any
+	 * {@link io.almostrealism.collect.TraversalOrdering} the grid shape carries is not applied to it.
 	 *
 	 * @param grid    the grid shape
 	 * @param spacing the sample spacing along each axis (or one value for all axes)
-	 * @return a producer of {@code |k|^2} shaped like {@code grid}
+	 * @return a producer of {@code |k|^2} with the dimensions of {@code grid} and no ordering
 	 */
 	default CollectionProducer wavenumberSquared(TraversalPolicy grid, double... spacing) {
-		return wavenumberSquared(integers(0, grid.getTotalSize()), grid, spacing).reshape(grid);
+		return wavenumberSquared(integers(0, grid.getTotalSize()), grid, spacing).reshape(grid.withOrder(null));
 	}
 
 	/**
