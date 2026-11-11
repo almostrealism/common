@@ -402,9 +402,11 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * @param omega    the relaxation weight, in {@code (0, 1]}
 	 * @param spacing  the grid spacing per axis, or one spacing for every axis
 	 * @return the relaxed estimate, with the shape of {@code p}
+	 * @throws IllegalArgumentException if {@code omega} is not in {@code (0, 1]}
 	 */
 	default CollectionProducer jacobiStep(Producer<PackedCollection> p, Producer<PackedCollection> f,
 										  GridBoundary boundary, double omega, double... spacing) {
+		requireRelaxation(omega, 1.0, true);
 		CollectionProducer update = poissonPointUpdate(p, f, boundary, spacing);
 		if (omega == 1.0) return update;
 		return c(p).multiply(1.0 - omega).add(update.multiply(omega));
@@ -437,6 +439,7 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * @param omega    the relaxation weight, in {@code (0, 2)}
 	 * @param spacing  the grid spacing per axis, or one spacing for every axis
 	 * @return the relaxed estimate, with the shape of {@code p}
+	 * @throws IllegalArgumentException if {@code omega} is not in {@code (0, 2)}
 	 */
 	default CollectionProducer redBlackGaussSeidelStep(Producer<PackedCollection> p, Producer<PackedCollection> f,
 													   GridBoundary boundary, double omega, double... spacing) {
@@ -451,14 +454,16 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * @param p        the current estimate of the solution
 	 * @param f        the right-hand side, with the shape of {@code p}
 	 * @param boundary the boundary condition of the problem
-	 * @param omega    the relaxation weight
+	 * @param omega    the relaxation weight, in {@code (0, 2)}
 	 * @param parity   {@code 0} to relax the red cells, {@code 1} to relax the black cells
 	 * @param spacing  the grid spacing per axis, or one spacing for every axis
 	 * @return the partly relaxed estimate, with the shape of {@code p}
+	 * @throws IllegalArgumentException if {@code omega} is not in {@code (0, 2)}
 	 */
 	default CollectionProducer gaussSeidelHalfStep(Producer<PackedCollection> p, Producer<PackedCollection> f,
 												   GridBoundary boundary, double omega, int parity,
 												   double... spacing) {
+		requireRelaxation(omega, 2.0, false);
 		CollectionProducer correction = poissonPointUpdate(p, f, boundary, spacing).subtract(p);
 		CollectionProducer mask = checkerboard(shape(p), parity);
 		return c(p).add(mask.multiply(correction).multiply(omega));
@@ -624,5 +629,23 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 		}
 
 		return spacing;
+	}
+
+	/**
+	 * Rejects a relaxation weight outside {@code (0, upper)}, or {@code (0, upper]} when the upper
+	 * bound is inclusive. A {@code NaN} or infinite weight silently poisons the whole field, a zero
+	 * weight leaves the estimate unchanged forever, and a weight beyond the bound makes the
+	 * iteration diverge, so every relaxation step validates its weight here.
+	 *
+	 * @param omega          the relaxation weight
+	 * @param upper          the upper bound of the valid range
+	 * @param upperInclusive whether {@code upper} itself is a valid weight
+	 * @throws IllegalArgumentException if the weight is outside the valid range
+	 */
+	private static void requireRelaxation(double omega, double upper, boolean upperInclusive) {
+		if (!(omega > 0.0) || !(upperInclusive ? omega <= upper : omega < upper)) {
+			throw new IllegalArgumentException("relaxation weight must be in (0, " + upper
+					+ (upperInclusive ? "]" : ")") + ", not " + omega);
+		}
 	}
 }

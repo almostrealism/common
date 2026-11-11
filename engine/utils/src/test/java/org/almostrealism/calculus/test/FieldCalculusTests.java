@@ -353,19 +353,52 @@ public class FieldCalculusTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Asserts that {@code build.apply(spacing)} rejects the given single spacing at graph-construction
-	 * time rather than building a producer that evaluates to infinities or {@code NaN}.
+	 * The Poisson relaxation steps reject a weight outside their documented range at
+	 * graph-construction time: weighted Jacobi accepts {@code (0, 1]} and the red-black
+	 * Gauss-Seidel sweep (and each of its halves) accepts {@code (0, 2)}. A {@code NaN} or infinite
+	 * weight would poison every cell, a zero weight would leave the estimate frozen, and a weight
+	 * past the bound diverges. Weights at and inside the bounds are accepted.
 	 */
-	private void assertPrimitiveRejectsSpacing(String operator,
-											   DoubleFunction<CollectionProducer> build, double spacing) {
+	@Test(timeout = 120000)
+	public void relaxationStepsRejectInvalidWeight() {
+		PackedCollection p = integers(0, 16).reshape(shape(4, 4)).evaluate();
+		PackedCollection f = new PackedCollection(shape(4, 4));
+		GridBoundary boundary = GridBoundary.periodic();
+
+		DoubleFunction<CollectionProducer> jacobi = omega -> jacobiStep(cp(p), cp(f), boundary, omega, 1.0);
+		DoubleFunction<CollectionProducer> sweep = omega -> redBlackGaussSeidelStep(cp(p), cp(f), boundary, omega, 1.0);
+		DoubleFunction<CollectionProducer> half = omega -> gaussSeidelHalfStep(cp(p), cp(f), boundary, omega, 0, 1.0);
+
+		for (double omega : new double[] { 0.0, -0.5, 1.5, Double.NaN, Double.POSITIVE_INFINITY }) {
+			assertRejects("jacobiStep", "relaxation weight", jacobi, omega);
+		}
+
+		for (double omega : new double[] { 0.0, -0.5, 2.0, 2.5, Double.NaN, Double.POSITIVE_INFINITY }) {
+			assertRejects("redBlackGaussSeidelStep", "relaxation weight", sweep, omega);
+			assertRejects("gaussSeidelHalfStep", "relaxation weight", half, omega);
+		}
+
+		assertEquals(16, values(jacobi.apply(1.0)).length);
+		assertEquals(16, values(jacobi.apply(2.0 / 3.0)).length);
+		assertEquals(16, values(sweep.apply(1.5)).length);
+		assertEquals(16, values(half.apply(1.0)).length);
+	}
+
+	/**
+	 * Asserts that {@code build.apply(value)} rejects the given value of a scalar parameter at
+	 * graph-construction time rather than building a producer that evaluates to infinities or
+	 * {@code NaN}.
+	 */
+	private void assertRejects(String operator, String parameter,
+							   DoubleFunction<CollectionProducer> build, double value) {
 		boolean rejected = false;
 		try {
-			CollectionProducer unused = build.apply(spacing);
+			CollectionProducer unused = build.apply(value);
 		} catch (IllegalArgumentException expected) {
 			rejected = true;
 		}
 
-		assertTrue(operator + " should reject grid spacing " + spacing, rejected);
+		assertTrue(operator + " should reject " + parameter + " " + value, rejected);
 	}
 
 	/**
@@ -383,11 +416,11 @@ public class FieldCalculusTests extends TestSuiteBase {
 		double[] invalid = { 0.0, -1.0, Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY };
 
 		for (double h : invalid) {
-			assertPrimitiveRejectsSpacing("forwardDifference", s -> forwardDifference(field, 0, s, periodic), h);
-			assertPrimitiveRejectsSpacing("backwardDifference", s -> backwardDifference(field, 0, s, periodic), h);
-			assertPrimitiveRejectsSpacing("centralDifference", s -> centralDifference(field, 0, s, periodic), h);
-			assertPrimitiveRejectsSpacing("secondDifference", s -> secondDifference(field, 0, s, periodic), h);
-			assertPrimitiveRejectsSpacing("ninePointLaplacian", s -> ninePointLaplacian(field, periodic, s), h);
+			assertRejects("forwardDifference", "grid spacing", s -> forwardDifference(field, 0, s, periodic), h);
+			assertRejects("backwardDifference", "grid spacing", s -> backwardDifference(field, 0, s, periodic), h);
+			assertRejects("centralDifference", "grid spacing", s -> centralDifference(field, 0, s, periodic), h);
+			assertRejects("secondDifference", "grid spacing", s -> secondDifference(field, 0, s, periodic), h);
+			assertRejects("ninePointLaplacian", "grid spacing", s -> ninePointLaplacian(field, periodic, s), h);
 		}
 
 		assertEquals(16, values(forwardDifference(field, 0, 0.5, periodic)).length);
