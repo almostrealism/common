@@ -19,7 +19,6 @@ package org.almostrealism.rayshade;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.Light;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.color.ShadableSurface;
@@ -135,7 +134,6 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 		p.addReflection();
 		
 		List<ShadableSurface> allSurfaces = p.getAllSurfaces();
-		List<Light> allLights = p.getAllLights();
 
 		Producer<PackedCollection> r = getReflectiveColor();
 		if (size() > 0) {
@@ -151,11 +149,11 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 
 		// TODO Should surface color be factored in to reflection?
 		if (p.getSurface() == null || p.getSurface().getShadeFront()) {
-			tc = reflection(point, viewer, n, Arrays.asList(p.getOtherSurfaces()), allLights, p, fr);
+			tc = reflection(point, viewer, n, Arrays.asList(p.getOtherSurfaces()), p, fr);
 		}
 
 		if (p.getSurface() == null || p.getSurface().getShadeBack()) {
-			Producer<PackedCollection> back = reflection(point, viewer, minus(n), allSurfaces, allLights, p, fr);
+			Producer<PackedCollection> back = reflection(point, viewer, minus(n), allSurfaces, p, fr);
 			tc = tc == null ? back : add(tc, back);
 		}
 
@@ -171,14 +169,16 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 	 *
 	 * <p>The colour seen along the reflected ray is the closest hit among the given surfaces,
 	 * selected on the device by {@link LightingEngineAggregator#getClosestColor()}, so the
-	 * whole reflection compiles into the kernel of the surface being shaded.</p>
+	 * whole reflection compiles into the kernel of the surface being shaded. That hit is lit
+	 * only by the light this shader is invoked for ({@link ShaderContext#getLight()}), the same
+	 * light whose colour {@link #shade} multiplies the reflection by; the aggregator therefore
+	 * builds one candidate per surface rather than one per (surface, light) pair.</p>
 	 *
 	 * @param point    the intersection point
 	 * @param viewer   the unit vector from the intersection point toward the viewer
 	 * @param normal   the surface normal on the side being shaded
 	 * @param surfaces the surfaces the reflected ray may hit
-	 * @param lights   the lights illuminating those surfaces
-	 * @param context  the shader context, carrying the reflection depth
+	 * @param context  the shader context, carrying the current light and the reflection depth
 	 * @param tint     the reflective colour, including any nested shaders
 	 * @return a producer of the reflected colour
 	 */
@@ -186,14 +186,13 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 													Producer<PackedCollection> viewer,
 													Producer<PackedCollection> normal,
 													Iterable<ShadableSurface> surfaces,
-													Iterable<Light> lights, ShaderContext context,
+													ShaderContext context,
 													Producer<PackedCollection> tint) {
 		Producer<PackedCollection> reflectedRay = new ReflectedRay(point, viewer, normal, blur);
 
 		// A reflected ray that misses every surface contributes black: the environment map is not
 		// yet consulted (a known limitation in docs/internals/ray-traced-reflection-and-refraction.md)
-		// TODO(review): aggregator picks one (surface, light) pair, so a hit is lit by the first light only
-		CollectionProducer color = new LightingEngineAggregator(reflectedRay, surfaces, lights, context)
+		CollectionProducer color = new LightingEngineAggregator(reflectedRay, surfaces, List.of(context.getLight()), context)
 				.getClosestColor();
 
 		CollectionProducer cosine = dotProduct(normal, viewer).divide(length(normal).multiply(length(viewer)));

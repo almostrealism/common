@@ -55,9 +55,9 @@ import java.util.List;
  *       so that it does not intersect the surface at the point it leaves.</li>
  *   <li>The colour seen along the ray leaving the material is the closest hit among the other
  *       surfaces, selected on the device by {@link LightingEngineAggregator#getClosestColor()}.
- *       The shader is invoked once for each light, so that hit is lit only by the context's
- *       current light ({@link ShaderContext#getLight()}); the per-light results add up to the
- *       colour under every light instead of repeating it once per light.</li>
+ *       That hit is lit only by the light this shader is invoked for
+ *       ({@link ShaderContext#getLight()}), so the aggregator builds one candidate per surface
+ *       rather than one per (surface, light) pair.</li>
  *   <li>The colour is weighted by the transmitted fraction {@code 1 - R}, where {@code R} is
  *       Schlick's approximation of the Fresnel reflectance at the entry point,
  *       {@code R0 + (1 - R0)(1 - cos(theta))^5} with {@code R0 = ((n - 1) / (n + 1))^2}, and by
@@ -157,8 +157,7 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 		CollectionProducer outside = refract(inside.minus(), direction(exit.get(0)), indexOfRefraction);
 		CollectionProducer refractedRay = ray(origin(exit.get(0)), outside, RAY_OFFSET);
 
-		// The shader runs once for each light, so the ray leaving the material is lit only by
-		// the current light; summed over the lights, the passes give the colour under all of them
+		// The ray leaving the material is lit only by the light this shader is invoked for
 		List<ShadableSurface> surfaces = Arrays.asList(p.getOtherSurfaces());
 		CollectionProducer color = new LightingEngineAggregator(refractedRay, surfaces, List.of(p.getLight()), p)
 				.getClosestColor();

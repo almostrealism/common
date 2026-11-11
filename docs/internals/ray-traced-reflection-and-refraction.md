@@ -78,7 +78,9 @@ sphere.setShaders(new Shader[] { mirror });
    direction, the layout of a `Ray`) whose direction is
    `GeometryFeatures.reflect(viewer, normal, blur)`;
 2. a `LightingEngineAggregator` over the other surfaces (front side) or all surfaces (back
-   side) for that ray, whose `getClosestColor()` is the colour seen in the mirror;
+   side) for that ray, whose `getClosestColor()` is the colour seen in the mirror. The
+   aggregator is given only the context's current light, the light the shader is invoked
+   for, so it builds one candidate per surface;
 3. that colour weighted by the tint and by Schlick's approximation
    `R0 + (1 - R0)(1 - cos(theta))^5`, with `cos(theta)` the cosine between the viewer and the
    normal on the shaded side.
@@ -115,9 +117,9 @@ sphere.setShaders(new Shader[] { glass });
    `ShadableSurface`, so `intersectAt` is available without a cast) to find where it
    leaves, and refracted again there, out of the material.
 3. The ray leaving the material is traced against the other surfaces with
-   `LightingEngineAggregator.getClosestColor()`. The shader runs once per light, so that ray
-   is lit only by the context's current light; the per-light results add up to the colour
-   under every light rather than repeating it once per light.
+   `LightingEngineAggregator.getClosestColor()`. That ray is lit only by the context's current
+   light, the light the shader is invoked for, so the aggregator builds one candidate per
+   surface.
 4. The colour is weighted by the transmitted fraction `1 - R` (Schlick, with
    `R0 = ((n - 1) / (n + 1))^2`) and the attenuation factors.
 
@@ -148,6 +150,10 @@ Metal, most of it compiling. Keep test images small and recursion limits low.
 - Each per-light lighting engine traces its own secondary rays, and the reflected colour is
   multiplied by that light's colour; with several lights the secondary rays are traced once
   per light.
+- The primary `LightingEngineAggregator` built by `RayIntersectionEngine` holds one candidate
+  per (surface, light) pair and selects the closest one rather than summing the lights of the
+  closest surface. Candidates for the same surface tie, and a tie goes to the first, so a
+  scene with several lights is rendered under its first light only.
 - `RefractionShader` assumes a closed surface. An open surface (such as a `Plane`) gives no
   exit point for the ray inside it.
 - `ReflectionShader`'s environment map (`setEnvironmentMap`) is not used: a reflected ray
