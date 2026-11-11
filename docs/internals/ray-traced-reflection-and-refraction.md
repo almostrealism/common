@@ -53,7 +53,8 @@ the epsilon threshold by evaluating every rank on the host. The same selection a
 
 - each candidate's key is `-rank` when `rank >= e`, otherwise a large negative miss key;
 - the selection starts from a blank (all zero) value whose key lies between the two, so it is
-  kept only when nothing is hit;
+  kept only when nothing is hit (both keys are finite so that they survive single precision,
+  which means a rank of `1e29` or more is treated as a miss);
 - an element-wise fold over the candidates replaces the selected value with a candidate's
   only when that candidate's key is strictly greater (so the first one wins a tie, like
   `evaluate`), and carries the larger key forward.

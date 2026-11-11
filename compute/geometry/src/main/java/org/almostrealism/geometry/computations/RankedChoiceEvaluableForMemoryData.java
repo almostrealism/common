@@ -92,6 +92,11 @@ public abstract class RankedChoiceEvaluableForMemoryData<T extends MemoryData> e
 	 * {@link #evaluate(Object[])}, a missing selection yields the blank value regardless of
 	 * {@link #tolerateNull}.</p>
 	 *
+	 * <p>The blank value's key is finite ({@code -1.0e29}), so a candidate whose rank is
+	 * {@code 1.0e29} or more keys no higher than the blank value and is treated as a miss.
+	 * Ranks are distances along a ray, so this bound is far beyond any meaningful hit; it
+	 * exists because the keys must stay finite in single precision.</p>
+	 *
 	 * @param memLength the number of elements of each candidate's value
 	 * @return a producer of the closest candidate's value
 	 */
