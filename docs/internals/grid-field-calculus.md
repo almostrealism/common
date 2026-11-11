@@ -123,7 +123,7 @@ one-sided difference, so the operator reduces to the compact `laplacian`, which 
 |--------|--------|
 | `jacobiStep(p, f, b, omega, h...)` | weighted Jacobi: `(1-ω) p + ω (Σ_k (p[+k]+p[-k])/h_k² - f) / Σ_k 2/h_k²` |
 | `redBlackGaussSeidelStep(p, f, b, omega, h...)` | one full red-black Gauss–Seidel sweep (SOR for `ω > 1`) |
-| `gaussSeidelHalfStep(p, f, b, omega, parity, h...)` | relax only the cells with coordinate-sum parity `parity` |
+| `gaussSeidelHalfStep(p, f, b, omega, parity, h...)` | relax only the cells with coordinate-sum parity `parity` (`0` or `1`) |
 | `poissonPointUpdate(p, f, b, h...)` | the value each cell would need to satisfy the equation given its neighbours |
 | `poissonResidual(p, f, b, h...)` | `f - laplacian(p)` |
 | `poissonResidualNorm(p, f, b, h...)` | RMS residual, shape `(1)` |

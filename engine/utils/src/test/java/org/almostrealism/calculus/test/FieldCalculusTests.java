@@ -402,6 +402,69 @@ public class FieldCalculusTests extends TestSuiteBase {
 	}
 
 	/**
+	 * The red mask is {@code 1} exactly where the coordinate sum is even and the black mask is its
+	 * complement, on a grid with an odd axis length; any parity other than {@code 0} or {@code 1}
+	 * is rejected by both {@code checkerboard} and {@code gaussSeidelHalfStep}.
+	 */
+	@Test(timeout = 120000)
+	public void checkerboardColoursGrid() {
+		int n0 = 3;
+		int n1 = 4;
+		TraversalPolicy shape = shape(n0, n1);
+		double[] red = values(checkerboard(shape, 0));
+		double[] black = values(checkerboard(shape, 1));
+
+		for (int i = 0; i < n0; i++) {
+			for (int j = 0; j < n1; j++) {
+				double expected = (i + j) % 2 == 0 ? 1.0 : 0.0;
+				assertEquals("red at " + i + "," + j, expected, red[i * n1 + j]);
+				assertEquals("black at " + i + "," + j, 1.0 - expected, black[i * n1 + j]);
+			}
+		}
+
+		PackedCollection p = new PackedCollection(shape);
+		PackedCollection f = new PackedCollection(shape);
+		for (int parity : new int[] { -1, 2, 3 }) {
+			assertRejects("checkerboard", "parity", v -> checkerboard(shape, (int) v), parity);
+			assertRejects("gaussSeidelHalfStep", "parity",
+					v -> gaussSeidelHalfStep(cp(p), cp(f), GridBoundary.periodic(), 1.0, (int) v, 1.0), parity);
+		}
+	}
+
+	/**
+	 * A Gauss-Seidel half sweep with {@code omega = 1} replaces every cell of its colour by the
+	 * {@code poissonPointUpdate} computed from the unmodified estimate and leaves every cell of the
+	 * other colour unchanged, and a weight {@code omega} moves its colour that fraction of the way.
+	 */
+	@Test(timeout = 120000)
+	public void gaussSeidelHalfStepRelaxesOneColour() {
+		int n = 4;
+		TraversalPolicy shape = shape(n, n);
+		GridBoundary boundary = GridBoundary.fixed(0.0);
+		PackedCollection p = integers(0, n * n).reshape(shape).multiply(0.25).evaluate();
+		PackedCollection f = integers(0, n * n).reshape(shape).multiply(-0.5).add(1.0).evaluate();
+
+		double[] estimate = p.toArray(0, n * n);
+		double[] update = values(poissonPointUpdate(cp(p), cp(f), boundary, 0.5));
+
+		for (int parity = 0; parity < 2; parity++) {
+			double[] full = values(gaussSeidelHalfStep(cp(p), cp(f), boundary, 1.0, parity, 0.5));
+			double[] over = values(gaussSeidelHalfStep(cp(p), cp(f), boundary, 1.5, parity, 0.5));
+
+			for (int i = 0; i < n; i++) {
+				for (int j = 0; j < n; j++) {
+					int k = i * n + j;
+					boolean relaxed = (i + j) % 2 == parity;
+					double target = relaxed ? update[k] : estimate[k];
+					double weighted = relaxed ? estimate[k] + 1.5 * (update[k] - estimate[k]) : estimate[k];
+					assertEquals("parity " + parity + " omega 1 at " + i + "," + j, target, full[k]);
+					assertEquals("parity " + parity + " omega 1.5 at " + i + "," + j, weighted, over[k]);
+				}
+			}
+		}
+	}
+
+	/**
 	 * The public single-spacing stencil primitives ({@code forwardDifference}, {@code backwardDifference},
 	 * {@code centralDifference}, {@code secondDifference}) and the {@code ninePointLaplacian} embed the
 	 * reciprocal of their spacing in a coefficient, so they must reject a spacing that is not finite and

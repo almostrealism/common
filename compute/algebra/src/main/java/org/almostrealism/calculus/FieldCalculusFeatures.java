@@ -458,7 +458,8 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * @param parity   {@code 0} to relax the red cells, {@code 1} to relax the black cells
 	 * @param spacing  the grid spacing per axis, or one spacing for every axis
 	 * @return the partly relaxed estimate, with the shape of {@code p}
-	 * @throws IllegalArgumentException if {@code omega} is not in {@code (0, 2)}
+	 * @throws IllegalArgumentException if {@code omega} is not in {@code (0, 2)}, or if the parity
+	 *         is neither {@code 0} nor {@code 1}
 	 */
 	default CollectionProducer gaussSeidelHalfStep(Producer<PackedCollection> p, Producer<PackedCollection> f,
 												   GridBoundary boundary, double omega, int parity,
@@ -536,15 +537,20 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * @param shape  the shape of the grid
 	 * @param parity {@code 0} or {@code 1}
 	 * @return the mask, with the given shape
+	 * @throws IllegalArgumentException if the parity is neither {@code 0} nor {@code 1}
 	 */
 	default CollectionProducer checkerboard(TraversalPolicy shape, int parity) {
+		if (parity != 0 && parity != 1) {
+			throw new IllegalArgumentException("checkerboard parity must be 0 or 1, not " + parity);
+		}
+
 		CollectionProducer coordinateSum = gridIndex(shape, 0);
 		for (int k = 1; k < shape.getDimensions(); k++) {
 			coordinateSum = coordinateSum.add(gridIndex(shape, k));
 		}
 
 		CollectionProducer odd = coordinateSum.mod(2.0);
-		return parity % 2 == 0 ? odd.minus().add(1.0) : odd;
+		return parity == 0 ? odd.minus().add(1.0) : odd;
 	}
 
 	/**
