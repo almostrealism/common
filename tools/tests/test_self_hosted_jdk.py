@@ -316,12 +316,15 @@ class SelectJdkActionBehaviorTest(unittest.TestCase):
                          "the wrong-major JAVA_HOME must never be selected")
 
     def test_fails_nonzero_without_exporting_when_no_jdk_of_the_expected_major(self):
-        """With only a wrong-major JAVA_HOME and no matching java on PATH, the
-        action exits non-zero, names the runner, and writes nothing to
-        GITHUB_ENV/GITHUB_PATH so no later step runs on an unverified JDK."""
+        """With no JDK of the expected major anywhere — not in JAVA_HOME, nor the
+        java on PATH — the action exits non-zero, names the runner, and writes
+        nothing to GITHUB_ENV/GITHUB_PATH so no later step runs on an unverified
+        JDK. The expected major is an impossible one (999) so that the host's own
+        `java` on /usr/bin:/bin (which `_run` always leaves on PATH for coreutils)
+        can never accidentally satisfy the match and hide the no-match branch."""
         with tempfile.TemporaryDirectory() as parent:
             wrong_home = _fake_jdk_home(parent, "21")
-            result, env_out, path_out = self._run("17", java_home=wrong_home)
+            result, env_out, path_out = self._run("999", java_home=wrong_home)
         self.assertNotEqual(0, result.returncode,
                             "a run with no JDK of the expected major must fail")
         self.assertIn("test-runner", result.stdout + result.stderr,
