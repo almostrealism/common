@@ -840,7 +840,6 @@ cmd_install() {
 
     # The tools runner.sh and the jobs need, looked up the way the daemon
     # will look them up: as the runner account, with the daemon's PATH.
-    # TODO(review): test_ci_macos_fleet_sh.py:239 still asserts the old "jdk17+" printf below; update it to the exact-major text.
     local missing
     missing="$(sudo -u "${RUNNER_USER}" env -i HOME="${RUNNER_HOME}" PATH="${RUNNER_PATH}" \
         EXPECTED_JDK_MAJOR="${EXPECTED_JDK_MAJOR}" /bin/bash -c '
