@@ -561,8 +561,7 @@ plans to fix.
 
 ### 2026-10-25 — Expose nucleus (top-p) sampling through the autoregressive generators (condensed)
 
-**Category:** Proof of Value (self-hosted LM generation) · **Branch:** `project/plan-20261025-022810` ·
-**Plan:** [`PLAN-20261025-nucleus-sampling-generators.md`](PLAN-20261025-nucleus-sampling-generators.md)
+**Category:** Proof of Value (self-hosted LM generation) · **Branch:** `project/plan-20261025-022810`
 
 `AutoregressiveModel.sampleToken` already implemented nucleus filtering, but no public API could set
 `topP`, and `AutoregressiveModel.of(...)` applied a redundant second softmax that flattened the
