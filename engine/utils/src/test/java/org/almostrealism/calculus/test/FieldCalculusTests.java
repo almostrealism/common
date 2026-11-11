@@ -606,6 +606,43 @@ public class FieldCalculusTests extends TestSuiteBase {
 	}
 
 	/**
+	 * The gradient of a one-dimensional scalar field keeps the leading component axis, so it is a
+	 * vector field of shape {@code (1, n)} rather than a bare {@code (n)} field: the single-axis
+	 * special case does not collapse the documented component dimension. Both {@link #component}
+	 * and {@link #divergence} therefore accept it, reproducing the field's central difference and
+	 * the central difference of that difference.
+	 */
+	@Test(timeout = 120000)
+	public void gradientOfOneDimensionalFieldKeepsComponentAxis() {
+		int n = 8;
+		double h = 2 * Math.PI / n;
+		TraversalPolicy shape = shape(n);
+		GridBoundary boundary = GridBoundary.periodic();
+
+		PackedCollection field = sin(coordinate(shape, 0, 0.0, h)).evaluate();
+
+		CollectionProducer grad = gradient(cp(field), boundary, h);
+		assertEquals(2, grad.getShape().getDimensions());
+		assertEquals(1, grad.getShape().length(0));
+		assertEquals(n, grad.getShape().length(1));
+
+		double[] expectedComponent = values(centralDifference(cp(field), 0, h, boundary));
+		double[] component = values(component(grad, 0));
+		assertEquals(n, component.length);
+		for (int i = 0; i < n; i++) {
+			assertEquals("component at " + i, expectedComponent[i], component[i]);
+		}
+
+		double[] expectedDivergence =
+				values(centralDifference(centralDifference(cp(field), 0, h, boundary), 0, h, boundary));
+		double[] divergence = values(divergence(grad, boundary, h));
+		assertEquals(n, divergence.length);
+		for (int i = 0; i < n; i++) {
+			assertEquals("divergence at " + i, expectedDivergence[i], divergence[i]);
+		}
+	}
+
+	/**
 	 * Under grid refinement the error of the 5-point and 9-point Laplacians, the divergence of a
 	 * gradient, and the curvature of a smooth height field falls by a factor of about four per
 	 * halving of the spacing: the operators are second-order accurate.
