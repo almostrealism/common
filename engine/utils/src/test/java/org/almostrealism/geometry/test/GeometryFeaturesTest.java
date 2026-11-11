@@ -21,6 +21,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.ReflectedRay;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -158,5 +159,33 @@ public class GeometryFeaturesTest extends TestSuiteBase {
 		Ray r = new Ray(ray(vector(1.0, 2.0, 3.0), vector(0.0, 2.0, -4.0), 0.5).get().evaluate(), 0);
 		assertVector("origin", new Vector(1.0, 3.0, 1.0), r.getOrigin());
 		assertVector("direction", new Vector(0.0, 2.0, -4.0), r.getDirection());
+	}
+
+	/**
+	 * A {@link ReflectedRay} evaluated over a batch assembles every ray from its own hit point
+	 * and its own mirror direction: the second ray's origin is the second point and its
+	 * direction is the reflection of the second viewer, not elements of the first ray's
+	 * operands or of operands past the end of the batch.
+	 */
+	@Test(timeout = 60000)
+	public void reflectedRayBatchAssemblesEachRay() {
+		Producer<PackedCollection> points = v(shape(-1, 3), 0);
+		Producer<PackedCollection> viewers = v(shape(-1, 3), 1);
+		Producer<PackedCollection> normals = v(shape(-1, 3), 2);
+
+		PackedCollection pointData = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0).reshape(shape(2, 3).traverse(1));
+		PackedCollection viewerData = pack(0.6, 0.0, 0.8, 0.0, 0.8, 0.6).reshape(shape(2, 3).traverse(1));
+		PackedCollection normalData = pack(0.0, 0.0, 1.0, 0.0, 0.0, 1.0).reshape(shape(2, 3).traverse(1));
+
+		PackedCollection result = new PackedCollection(shape(2, 6).traverse(1));
+		new ReflectedRay(points, viewers, normals, 0.0).into(result.each())
+				.evaluate(pointData, viewerData, normalData);
+
+		Ray first = new Ray(result, 0);
+		Ray second = new Ray(result, 6);
+		assertVector("first origin", new Vector(1.0, 2.0, 3.0), first.getOrigin());
+		assertVector("first direction", new Vector(-0.6, 0.0, 0.8), first.getDirection());
+		assertVector("second origin", new Vector(4.0, 5.0, 6.0), second.getOrigin());
+		assertVector("second direction", new Vector(0.0, -0.8, 0.6), second.getDirection());
 	}
 }

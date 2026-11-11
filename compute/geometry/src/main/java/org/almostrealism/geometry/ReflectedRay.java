@@ -21,6 +21,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Conditional;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
@@ -91,15 +92,22 @@ public class ReflectedRay extends TraversableExpressionComputation {
 	 * Lays out the ray: elements 0 to 2 are the origin and elements 3 to 5 are the reflected
 	 * direction.
 	 *
+	 * <p>The index is the flattened output index, so when the computation is evaluated over a
+	 * batch it addresses ray {@code idx / 6} at element {@code idx % 6}; that ray's origin and
+	 * direction are the vectors starting at element {@code 3 * (idx / 6)} of each operand.</p>
+	 *
 	 * @param args the output followed by the origin and the reflected direction
 	 * @return the expression for the reflected ray
 	 */
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
-		return CollectionExpression.create(getShape(), idx ->
-				Conditional.of(idx.lessThan(3),
-						args[1].getValueAt(idx),
-						args[2].getValueAt(idx.subtract(new IntegerConstant(3)))));
+		return CollectionExpression.create(getShape(), idx -> {
+			Expression<?> element = idx.imod(6);
+			Expression<?> vector = idx.divide(6).multiply(3);
+			return Conditional.of(element.lessThan(3),
+					args[1].getValueAt(vector.add(element)),
+					args[2].getValueAt(vector.add(element).subtract(new IntegerConstant(3))));
+		});
 	}
 
 	/**

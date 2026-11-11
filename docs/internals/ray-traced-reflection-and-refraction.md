@@ -115,7 +115,9 @@ sphere.setShaders(new Shader[] { glass });
    `ShadableSurface`, so `intersectAt` is available without a cast) to find where it
    leaves, and refracted again there, out of the material.
 3. The ray leaving the material is traced against the other surfaces with
-   `LightingEngineAggregator.getClosestColor()`.
+   `LightingEngineAggregator.getClosestColor()`. The shader runs once per light, so that ray
+   is lit only by the context's current light; the per-light results add up to the colour
+   under every light rather than repeating it once per light.
 4. The colour is weighted by the transmitted fraction `1 - R` (Schlick, with
    `R0 = ((n - 1) / (n + 1))^2`) and the attenuation factors.
 

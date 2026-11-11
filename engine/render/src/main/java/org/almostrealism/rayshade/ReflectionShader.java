@@ -192,6 +192,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 
 		// A reflected ray that misses every surface contributes black: the environment map is not
 		// yet consulted (a known limitation in docs/internals/ray-traced-reflection-and-refraction.md)
+		// TODO(review): aggregator picks one (surface, light) pair, so a hit is lit by the first light only
 		CollectionProducer color = new LightingEngineAggregator(reflectedRay, surfaces, lights, context)
 				.getClosestColor();
 
