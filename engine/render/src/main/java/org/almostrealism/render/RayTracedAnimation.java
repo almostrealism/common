@@ -78,6 +78,21 @@ public class RayTracedAnimation<T extends ShadableSurface> extends Animation<T> 
 	public RayTracedAnimation() { }
 
 	/**
+	 * Runs the animation, resetting the frame-sequence output first so each run starts a fresh
+	 * sequence. {@link Animation#run()} has no one-shot contract, so without this reset a second run
+	 * would keep the first run's {@link ImageSequence} — whose frame count was fixed on the first run
+	 * — and continue the frame counter past it, making {@link ImageSequence#writeFrame} reject the
+	 * next frame. Clearing both here rebinds the sequence to the current output directory, instance
+	 * and {@link Animation#getFrameCount() frame count} on the next rendered frame.
+	 */
+	@Override
+	public void run() {
+		sequence = null;
+		frame = 0;
+		super.run();
+	}
+
+	/**
 	 * Sets the dimensions of each rendered frame.
 	 *
 	 * @param w the width in pixels
@@ -105,10 +120,21 @@ public class RayTracedAnimation<T extends ShadableSurface> extends Animation<T> 
 	 */
 	@Override
 	public void writeImage(int i, String instance) {
-		RenderParameters p = new RenderParameters(imageWidth, imageHeight, 1, 1);
-
-		image = new RayTracedScene(this, new FogParameters(), p).render();
+		image = renderFrame();
 		frameSequence(instance).writeFrame(frame++, image);
+	}
+
+	/**
+	 * Renders the current state of the scene to a frame of pixels. This is the render step of a
+	 * frame; it is the template-method hook a subclass overrides to render with a different engine or
+	 * to produce the frame without a lit ray trace. The surrounding frame naming, tracking, encode
+	 * and encode script are the {@link ImageSequence}'s and are independent of it.
+	 *
+	 * @return the rendered pixels, indexed by column then row
+	 */
+	protected RGB[][] renderFrame() {
+		RenderParameters p = new RenderParameters(imageWidth, imageHeight, 1, 1);
+		return new RayTracedScene(this, new FogParameters(), p).render();
 	}
 
 	/**
