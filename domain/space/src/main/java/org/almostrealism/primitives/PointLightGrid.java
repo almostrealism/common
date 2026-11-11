@@ -25,6 +25,7 @@ import org.almostrealism.color.PointLight;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.SurfaceLight;
 import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.space.AbstractSurface;
 
 /**
@@ -38,7 +39,10 @@ public class PointLightGrid extends AbstractSurface implements SurfaceLight {
 	/** The colour applied to every light in the grid. */
 	private RGB color;
 
-	/** The flat array of {@link PointLight}s arranged in row-major order. */
+	/**
+	 * The flat array of {@link PointLight}s, where the light at grid cell (x, y)
+	 * is at index {@code x * height + y}.
+	 */
 	private PointLight[] lights;
 
 	/**
@@ -82,13 +86,14 @@ public class PointLightGrid extends AbstractSurface implements SurfaceLight {
 	 */
 	public void updateGrid(int width, int height, double xSpace, double ySpace, PointLight prototype) {
 		this.lights = new PointLight[width * height];
-		
+		TransformMatrix transform = super.getTransform(true);
+
 		for (int i = 0; i < width; i++) {
 			for (int j = 0; j < height; j++) {
 				Vector location = new Vector(i * xSpace, j * ySpace, 0.0);
-				location = super.getTransform(true).transformAsLocation(location);
+				if (transform != null) location = transform.transformAsLocation(location);
 				
-				this.lights[i * width + j] = new PointLight(location, prototype.getIntensity(), new RGB(prototype.getColor().getRed(), prototype.getColor().getGreen(), prototype.getColor().getBlue()));
+				this.lights[i * height + j] = new PointLight(location, prototype.getIntensity(), new RGB(prototype.getColor().getRed(), prototype.getColor().getGreen(), prototype.getColor().getBlue()));
 			}
 		}
 		

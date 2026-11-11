@@ -35,13 +35,11 @@ import java.util.List;
 /**
  * Pins the behavior of {@link ShaderContext#getAllSurfaces()} and
  * {@link org.almostrealism.color.LightingContext#getAllLights()}, the shared
- * implementations that {@code ReflectionShader} now delegates to for both
+ * implementations that {@code ReflectionShader} delegates to for both
  * surface and light assembly, and that {@code RefractionShader} delegates to
- * for light assembly only — {@code RefractionShader} still assembles its
- * surface candidate list locally, in primary-last order, because its tie-break
- * requirement is the opposite of what {@code getAllSurfaces()} provides (see
- * {@code RefractionShader#shade(Vector, Vector, Producer, Light, Iterable,
- * Curve, Curve[], Vector, ShaderContext)} for why).
+ * for light assembly only — {@code RefractionShader} traces the ray leaving
+ * the material against {@link ShaderContext#getOtherSurfaces()} alone, since
+ * the primary surface is the one the ray is exiting.
  *
  * <p>The manual copies these tests replaced added the primary surface/light
  * first, followed by the other surfaces/lights, so these tests assert that
