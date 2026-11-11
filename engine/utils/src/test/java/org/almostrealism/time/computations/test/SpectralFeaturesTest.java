@@ -906,6 +906,37 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	}
 
 	/**
+	 * A radial power spectrum of a permuted power grid matches that of the same values stored
+	 * without an ordering: each cell's power is read through the grid's ordering, so it is
+	 * averaged into the shell of its logical wavenumber rather than of its physical position.
+	 * The same values read in their physical order give a different spectrum, so the comparison
+	 * would detect an ordering that was dropped.
+	 */
+	@Test(timeout = 120000)
+	public void orderedPowerRadialSpectrum() {
+		TraversalPolicy grid = shape(8, 16);
+		int size = grid.getTotalSize();
+
+		PackedCollection logical = testSignal(grid).evaluate();
+		PackedCollection ordered = reversedCopy(grid, size);
+
+		PackedCollection expected = radialPowerSpectrum(cp(logical), 0.5, 0.25).evaluate();
+		PackedCollection actual = radialPowerSpectrum(cp(ordered), 0.5, 0.25).evaluate();
+		Assert.assertEquals(radialBinCount(grid, 0.5, 0.25), actual.getShape().getTotalSize());
+
+		double error = maxDifference(expected, actual);
+		log("orderedPowerRadialSpectrum maxError=" + error);
+		Assert.assertTrue("ordered radial spectrum error " + error, error < ROUND_TRIP_TOLERANCE);
+
+		PackedCollection physical = testSignalAt(cp(reversedIndices(size))).reshape(grid).evaluate();
+		double physicalDifference = maxDifference(expected,
+				radialPowerSpectrum(cp(physical), 0.5, 0.25).evaluate());
+		log("orderedPowerRadialSpectrum physicalOrderDifference=" + physicalDifference);
+		Assert.assertTrue("reading the physical order should move cells between shells",
+				physicalDifference > 100 * ROUND_TRIP_TOLERANCE);
+	}
+
+	/**
 	 * Returns a collection of the given shape whose values are those of the
 	 * {@link #testSignal(TraversalPolicy) test signal}, stored in reverse physical order under an
 	 * {@link ExplicitIndexTraversalOrdering} that maps each logical index back to its position.
@@ -915,11 +946,22 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	 * @return the ordered collection
 	 */
 	protected PackedCollection reversedCopy(TraversalPolicy shape, int size) {
-		PackedCollection reversed = integers(0, size).multiply(c(-1.0)).add(c(size - 1.0)).evaluate();
+		PackedCollection reversed = reversedIndices(size);
 		PackedCollection physical = testSignalAt(cp(reversed)).evaluate();
 		PackedCollection ordered = new PackedCollection(shape, shape.getDimensions() - 1, physical, 0,
 				new ExplicitIndexTraversalOrdering(reversed));
 		Assert.assertNotNull("the input should carry its ordering", ordered.getShape().getOrder());
 		return ordered;
+	}
+
+	/**
+	 * Returns the flat indices {@code size - 1, ..., 1, 0}: the physical position of each logical
+	 * index of a {@link #reversedCopy reversed copy}.
+	 *
+	 * @param size the number of indices
+	 * @return the reversed indices
+	 */
+	protected PackedCollection reversedIndices(int size) {
+		return integers(0, size).multiply(c(-1.0)).add(c(size - 1.0)).evaluate();
 	}
 }
