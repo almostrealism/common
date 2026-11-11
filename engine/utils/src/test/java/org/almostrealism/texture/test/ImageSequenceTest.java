@@ -161,6 +161,29 @@ public class ImageSequenceTest extends TextureTestBase {
 	}
 
 	/**
+	 * When a reused output directory already holds an {@code encode.sh} from a prior run, a run that
+	 * writes no contiguous frames removes that stale script, so the directory never retains a script
+	 * that would encode frames this run did not write.
+	 */
+	@Test(timeout = 30000)
+	public void emptyRunRemovesStaleEncodeScript() throws IOException {
+		File dir = Files.createTempDirectory("image-sequence-stale").toFile();
+
+		File encode = new File(dir, "encode.sh");
+		Files.write(encode.toPath(), "#!/bin/sh\nffmpeg -i frame_%02d.png output.mp4\n"
+				.getBytes(StandardCharsets.UTF_8));
+		Assert.assertTrue("stale script was not staged", encode.isFile());
+
+		ImageSequence sequence = new ImageSequence(dir, 3);
+		sequence.prepare();
+
+		Assert.assertEquals(0, sequence.writtenFrameCount());
+		sequence.writeEncodeScript();
+
+		Assert.assertFalse("stale encode script should have been removed", encode.exists());
+	}
+
+	/**
 	 * A frame whose encode fails is reported and skipped rather than aborting the sequence: it is not
 	 * tracked, the remaining frames are still written, and the gap bounds the encode script.
 	 */

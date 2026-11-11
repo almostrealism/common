@@ -43,7 +43,8 @@ import java.util.Set;
  * A frame that cannot be written is reported as a warning and the sequence continues, leaving a gap.
  * Because the encode script's {@code ffmpeg} pattern consumes frames contiguously from {@code 0}, a
  * gap bounds the sequence: the script covers only the {@link #writtenFrameCount() leading run of
- * frames written from frame 0}, and no script is written when that run is empty.</p>
+ * frames written from frame 0}, and no script is written when that run is empty (any stale script
+ * from a prior run of a reused output directory is removed in that case).</p>
  *
  * @author Michael Murray
  * @see ImageCanvas#encodeImageFile(RGB[][], File, int)
@@ -238,10 +239,13 @@ public class ImageSequence implements ConsoleFeatures {
 	 * the frame list matches the files on disk. The {@code ffmpeg} pattern consumes frames
 	 * contiguously from {@code 0}, so a frame that failed to write bounds the sequence: the script
 	 * covers only the {@link #writtenFrameCount() leading run of frames that were written}, and no
-	 * script is written when that run is empty.
+	 * script is written when that run is empty. When the run is empty any {@code encode.sh} already
+	 * present from a prior run of a reused output directory is removed, so a stale script never
+	 * survives a run that wrote nothing.
 	 */
 	public void writeEncodeScript() {
 		int available = writtenFrameCount();
+		File script = new File(outputDirectory, "encode.sh");
 
 		if (available < frameCount) {
 			warn("Only " + available + " of " + frameCount + " frames were written; the encode " +
@@ -249,11 +253,14 @@ public class ImageSequence implements ConsoleFeatures {
 		}
 
 		if (available <= 0) {
-			warn("No contiguous frames were written; skipping encode script");
+			if (script.isFile() && !script.delete()) {
+				warn("Could not remove stale encode script " + script);
+			}
+
+			warn("No contiguous frames were written; wrote no encode script");
 			return;
 		}
 
-		File script = new File(outputDirectory, "encode.sh");
 		String pattern = namePrefix + "%0" + indexWidth + "d.png";
 
 		try (PrintWriter out = new PrintWriter(new FileWriter(script))) {
