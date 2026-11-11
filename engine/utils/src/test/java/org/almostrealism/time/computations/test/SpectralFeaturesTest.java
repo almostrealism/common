@@ -233,6 +233,76 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		Assert.assertTrue("Forward transform differs from the DFT by " + worst, worst < 1e-3);
 	}
 
+	/**
+	 * Compares the forward transform of a generic, non-separable {@code [8, 16]} complex grid
+	 * along each axis alone, and along both, against a direct evaluation of the DFT. The
+	 * transform along axis 1 runs 8 contiguous lines and the transform along axis 0 runs 16
+	 * strided lines, so this pins down which samples each kernel thread reads and writes. A
+	 * round trip cannot: a line that read its neighbour's samples, or wrote its result to the
+	 * wrong place, would be undone by an inverse with the same addressing, and a power spectrum
+	 * discards the phase shift such a mistake introduces.
+	 */
+	@Test(timeout = 120000)
+	public void forwardAxesMatchDirectDft() {
+		int rows = 8;
+		int cols = 16;
+		PackedCollection input = testSignal(shape(rows, cols, 2)).evaluate();
+
+		assertMatchesDirectDft("axis 0", input, fftAxis(cp(input), 0, false).evaluate(), true, false);
+		assertMatchesDirectDft("axis 1", input, fftAxis(cp(input), 1, false).evaluate(), false, true);
+		assertMatchesDirectDft("both axes", input, fft2d(cp(input)).evaluate(), true, true);
+	}
+
+	/**
+	 * Asserts that {@code spectrum} is the forward DFT of the {@code [rows, cols, 2]} complex grid
+	 * {@code input} along the selected axes, evaluated directly from the definition.
+	 *
+	 * @param label         what is being compared, for the failure message
+	 * @param input         the complex grid that was transformed
+	 * @param spectrum      the transform result, with the shape of {@code input}
+	 * @param transformRows whether the transform runs along axis 0
+	 * @param transformCols whether the transform runs along axis 1
+	 */
+	protected void assertMatchesDirectDft(String label, PackedCollection input, PackedCollection spectrum,
+										  boolean transformRows, boolean transformCols) {
+		int rows = input.getShape().length(0);
+		int cols = input.getShape().length(1);
+		Assert.assertEquals(input.getShape().getTotalSize(), spectrum.getShape().getTotalSize());
+
+		double[] x = input.toArray(0, input.getShape().getTotalSize());
+		double[] actual = spectrum.toArray(0, spectrum.getShape().getTotalSize());
+
+		double worst = 0;
+		for (int k0 = 0; k0 < rows; k0++) {
+			for (int k1 = 0; k1 < cols; k1++) {
+				double re = 0;
+				double im = 0;
+
+				for (int n0 = 0; n0 < rows; n0++) {
+					if (!transformRows && n0 != k0) continue;
+
+					for (int n1 = 0; n1 < cols; n1++) {
+						if (!transformCols && n1 != k1) continue;
+
+						double angle = -2 * Math.PI * ((transformRows ? (double) k0 * n0 / rows : 0)
+								+ (transformCols ? (double) k1 * n1 / cols : 0));
+						double xr = x[2 * (n0 * cols + n1)];
+						double xi = x[2 * (n0 * cols + n1) + 1];
+						re += xr * Math.cos(angle) - xi * Math.sin(angle);
+						im += xr * Math.sin(angle) + xi * Math.cos(angle);
+					}
+				}
+
+				int cell = 2 * (k0 * cols + k1);
+				worst = Math.max(worst, Math.abs(re - actual[cell]));
+				worst = Math.max(worst, Math.abs(im - actual[cell + 1]));
+			}
+		}
+
+		log("forwardAxesMatchDirectDft " + label + " maxError=" + worst);
+		Assert.assertTrue(label + " transform differs from the DFT by " + worst, worst < 1e-3);
+	}
+
 	/** Two-dimensional round trip of a non-square grid on the CPU. */
 	@Test(timeout = 120000)
 	public void roundTrip2dCpu() {
