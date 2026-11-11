@@ -160,22 +160,33 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	public double getFrameDuration() { return this.fdt; }
 
 	/**
+	 * Returns the number of physics iterations that elapse per rendered frame,
+	 * {@code getFrameDuration() / getTickDuration()} truncated to an integer, but never fewer than
+	 * one: when a frame is shorter than a physics tick (so the ratio would truncate to zero) a frame
+	 * is written every iteration. This is the divisor {@link #run()} uses to decide frame boundaries
+	 * and {@link #getFrameCount()} uses to count frames, so both agree.
+	 *
+	 * @return the number of physics iterations per rendered frame, at least one
+	 */
+	private int iterationsPerFrame() {
+		return Math.max(1, (int) (this.fdt / this.dt));
+	}
+
+	/**
 	 * Returns the number of frames a {@link #run() run} writes. A frame is written every
-	 * {@code getFrameDuration() / getTickDuration()} iterations, so the frame count is fewer than
-	 * {@link #getIterations() the iteration count} whenever several physics ticks elapse per frame.
-	 * When a velocity-dependent time step is configured a frame is written every iteration, so the
-	 * frame count equals the iteration count.
+	 * {@link #iterationsPerFrame() iterations-per-frame} iterations, so the frame count is fewer than
+	 * {@link #getIterations() the iteration count} whenever several physics ticks elapse per frame,
+	 * and equal to it when a frame is written every iteration — either because a velocity-dependent
+	 * time step is configured, or because a frame is shorter than a physics tick.
 	 *
 	 * @return the number of frames written by a run
 	 */
 	public int getFrameCount() {
-		int iterationsPerFrame = (int) (this.fdt / this.dt);
-
-		if (this.vdt > 0.0 || iterationsPerFrame <= 0) {
+		if (this.vdt > 0.0) {
 			return this.itr;
 		}
 
-		return this.itr / iterationsPerFrame;
+		return this.itr / iterationsPerFrame();
 	}
 
 	/**
@@ -313,7 +324,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 			log("Error reading instance file. Zero will be used.");
 		}
 
-		int iterationsPerFrame = (int) (this.fdt / this.dt);
+		int iterationsPerFrame = iterationsPerFrame();
 
 		for (int i = 0; i < this.itr; i++) {
 			try {

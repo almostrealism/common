@@ -27,6 +27,10 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+
 /**
  * Behavioral tests for {@link Animation}'s configuration accessors, clock management,
  * scene cloning, and the empty-scene average-velocity edge case.
@@ -83,6 +87,41 @@ public class AnimationTest extends TestSuiteBase {
 
 		anim.setVDT(0.5);
 		Assert.assertEquals(103, anim.getFrameCount());
+	}
+
+	/**
+	 * When a frame is shorter than a physics tick ({@code frameDuration < tickDuration}) the
+	 * iterations-per-frame ratio truncates to zero, and a frame is then written every iteration, so
+	 * the frame count equals the iteration count. {@code 0.25} and {@code 1.0} are exact in IEEE-754,
+	 * so {@code 0.25 / 1.0} is exactly {@code 0.25} and the assertion needs no tolerance.
+	 */
+	@Test(timeout = 10000)
+	public void frameCountWhenFrameShorterThanTick() {
+		TickAnimation anim = new TickAnimation(1.0);
+		anim.setFPS(4.0);
+		anim.setIterations(7);
+		Assert.assertEquals(7, anim.getFrameCount());
+	}
+
+	/**
+	 * A {@link Animation#run() run} configured with a frame shorter than a physics tick
+	 * ({@code frameDuration < tickDuration}, no velocity-dependent step) completes without an
+	 * {@link ArithmeticException}: the iterations-per-frame divisor is clamped to at least one, so the
+	 * frame-boundary modulo in {@code run()} never divides by zero. The run writes its state snapshots
+	 * into a temporary directory so the working directory is left untouched.
+	 */
+	@Test(timeout = 10000)
+	public void runDoesNotDivideByZeroWhenFrameShorterThanTick() throws IOException {
+		File dir = Files.createTempDirectory("animation-run").toFile();
+
+		TickAnimation anim = new TickAnimation(1.0);
+		anim.setFPS(4.0);
+		anim.setIterations(3);
+		anim.setOutputDirectory(dir.getAbsolutePath() + File.separator);
+
+		anim.run();
+
+		Assert.assertEquals(3, anim.getFrameCount());
 	}
 
 	/** The boolean rendering/logging/sleep flags round-trip. */

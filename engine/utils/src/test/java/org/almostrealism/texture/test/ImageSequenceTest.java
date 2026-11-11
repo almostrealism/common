@@ -267,6 +267,39 @@ public class ImageSequenceTest extends TextureTestBase {
 	}
 
 	/**
+	 * A frame index outside the declared {@code [0, frameCount)} range is rejected, so the sequence
+	 * never tracks a file that its fixed frame count — and therefore its encode script — can never
+	 * reference. Indices within the range, including the last one, are accepted.
+	 */
+	@Test(timeout = 30000)
+	public void rejectsOutOfRangeFrameIndex() throws IOException {
+		File dir = Files.createTempDirectory("image-sequence-range").toFile();
+		ImageSequence sequence = new ImageSequence(dir, 3);
+		sequence.prepare();
+
+		try {
+			sequence.writeFrame(-1, redImage());
+			Assert.fail("expected an IndexOutOfBoundsException for a negative frame index");
+		} catch (IndexOutOfBoundsException expected) {
+			// expected
+		}
+
+		try {
+			sequence.writeFrame(3, redImage());
+			Assert.fail("expected an IndexOutOfBoundsException for a frame index at the frame count");
+		} catch (IndexOutOfBoundsException expected) {
+			// expected
+		}
+
+		Assert.assertTrue("a rejected frame must not be tracked", sequence.getFrameFiles().isEmpty());
+
+		// The last in-range index is accepted and tracked
+		sequence.writeFrame(2, redImage());
+		Assert.assertEquals(1, sequence.getFrameFiles().size());
+		Assert.assertTrue("in-range frame was not written", new File(dir, "frame_2.png").isFile());
+	}
+
+	/**
 	 * Asserts that {@code action} throws {@link IllegalArgumentException}.
 	 *
 	 * @param action the action expected to throw

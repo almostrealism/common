@@ -195,10 +195,19 @@ public class ImageSequence implements ConsoleFeatures {
 	 * PNG through {@link ImageCanvas}, then tracks it. A frame that cannot be written is reported as
 	 * a warning and the sequence continues.
 	 *
-	 * @param frameIndex the index of the frame
+	 * @param frameIndex the index of the frame; must be in {@code [0, frameCount)}, since the
+	 *                   sequence holds a fixed number of frames and only a contiguous run from frame
+	 *                   {@code 0} within that range is ever encoded
 	 * @param image      the image producer for the frame
+	 * @throws IndexOutOfBoundsException if {@code frameIndex} is negative or not less than the frame
+	 *                                   count the sequence was created with
 	 */
 	public void writeFrame(int frameIndex, Evaluable<RGB[][]> image) {
+		if (frameIndex < 0 || frameIndex >= frameCount) {
+			throw new IndexOutOfBoundsException("frameIndex " + frameIndex +
+					" is outside [0, " + frameCount + ")");
+		}
+
 		File file = frameFile(frameIndex);
 
 		try {
