@@ -36,9 +36,6 @@ public class PointLightGrid extends AbstractSurface implements SurfaceLight {
 	/** The total intensity shared across all lights in the grid. */
 	private double intensity;
 
-	/** The colour applied to every light in the grid. */
-	private RGB color;
-
 	/**
 	 * The flat array of {@link PointLight}s, where the light at grid cell (x, y)
 	 * is at index {@code x * height + y}.
@@ -76,7 +73,9 @@ public class PointLightGrid extends AbstractSurface implements SurfaceLight {
 	
 	/**
 	 * Rebuilds the light grid with the specified dimensions and spacing, copying
-	 * intensity and colour from the given prototype {@link PointLight}.
+	 * intensity and colour from the given prototype {@link PointLight}. The colour of
+	 * the grid becomes a copy of the prototype colour, shared by every light, so a
+	 * later change to the prototype does not affect the grid.
 	 *
 	 * @param width     number of lights along the X axis
 	 * @param height    number of lights along the Y axis
@@ -93,16 +92,14 @@ public class PointLightGrid extends AbstractSurface implements SurfaceLight {
 				Vector location = new Vector(i * xSpace, j * ySpace, 0.0);
 				if (transform != null) location = transform.transformAsLocation(location);
 				
-				this.lights[i * height + j] = new PointLight(location, prototype.getIntensity(), new RGB(prototype.getColor().getRed(), prototype.getColor().getGreen(), prototype.getColor().getBlue()));
+				this.lights[i * height + j] = new PointLight(location, prototype.getIntensity(), prototype.getColor());
 			}
 		}
-		
+
 		this.intensity = prototype.getIntensity() * width * height;
-		
-		if (this.color != null)
-			this.setColor(color);
-		else
-			this.setColor(new RGB(1.0, 1.0, 1.0));
+
+		RGB c = prototype.getColor();
+		this.setColor(new RGB(c.getRed(), c.getGreen(), c.getBlue()));
 	}
 	
 	/**

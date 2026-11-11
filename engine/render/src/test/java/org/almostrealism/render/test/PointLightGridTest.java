@@ -197,6 +197,33 @@ public class PointLightGridTest extends TestSuiteBase implements RGBFeatures {
 	}
 
 	/**
+	 * A grid built from a coloured prototype takes the prototype colour rather than white,
+	 * holds its own copy of it, and a grid built without a prototype is white.
+	 */
+	@Test(timeout = 30000)
+	public void gridTakesPrototypeColor() {
+		RGB prototypeColor = new RGB(0.2, 0.4, 0.6);
+		PointLightGrid grid = new PointLightGrid(2, 3, 1.0, 1.0, new PointLight(0.5, prototypeColor));
+
+		Assert.assertNotSame(prototypeColor, grid.getColor());
+		Assert.assertEquals(0.2, grid.getColor().getRed(), 1e-6);
+		Assert.assertEquals(0.4, grid.getColor().getGreen(), 1e-6);
+		Assert.assertEquals(0.6, grid.getColor().getBlue(), 1e-6);
+
+		for (PointLight light : grid.getSamples()) {
+			Assert.assertSame(grid.getColor(), light.getColor());
+		}
+
+		prototypeColor.setRed(0.9);
+		Assert.assertEquals(0.2, grid.getColor().getRed(), 1e-6);
+
+		RGB white = new PointLightGrid(2, 2, 1.0, 1.0).getColor();
+		Assert.assertEquals(1.0, white.getRed(), 1e-6);
+		Assert.assertEquals(1.0, white.getGreen(), 1e-6);
+		Assert.assertEquals(1.0, white.getBlue(), 1e-6);
+	}
+
+	/**
 	 * The default lighting calculation of a {@link SurfaceLight} sums the contribution of
 	 * every sample, and gives each sample its own copy of the context with that sample as the
 	 * light, leaving the caller's context untouched.
