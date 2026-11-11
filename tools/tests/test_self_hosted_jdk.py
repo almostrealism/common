@@ -24,7 +24,11 @@ import yaml
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
-_VERIFY_STEP = "Verify JDK version"
+# The self-hosted lanes select and verify the JDK through one shared composite
+# action rather than an inline run step duplicated per job, so the robust
+# parsing and the JAVA_HOME export cannot drift between copies.
+_SELECT_JDK_ACTION = "./.github/actions/select-jdk"
+_ACTION = os.path.join(_REPO_ROOT, ".github", "actions", "select-jdk", "action.yml")
 
 
 def _workflow():
@@ -47,10 +51,6 @@ def _is_self_hosted(job):
 
 def _steps_using(job, action):
     return [s for s in job.get("steps", []) if str(s.get("uses", "")).startswith(action)]
-
-
-def _step_named(job, name):
-    return [s for s in job.get("steps", []) if s.get("name") == name]
 
 
 class SelfHostedJdkTest(unittest.TestCase):
@@ -83,26 +83,31 @@ class SelfHostedJdkTest(unittest.TestCase):
                 self.assertEqual([], _steps_using(job, "actions/setup-java"))
 
     def test_every_self_hosted_job_verifies_the_jdk_against_the_expected_major(self):
-        """Each self-hosted lane must actually inspect the installed java and
-        fail on a mismatch, not merely mention the variable. A step that only
-        echoed EXPECTED_JDK_MAJOR would satisfy a token check while running an
-        arbitrary JDK, so this asserts the step probes `java -version`, compares
-        the detected major against EXPECTED_JDK_MAJOR, and exits non-zero on a
-        mismatch."""
+        """Each self-hosted lane must select and verify its JDK through the one
+        shared composite action, passing the workflow-level EXPECTED_JDK_MAJOR.
+        Inlining the JDK handling per job is what let the previous shape break —
+        it parsed the first line of `java -version`, which on these runners is the
+        `Picked up _JAVA_OPTIONS:` notice, and it never exported JAVA_HOME, so the
+        macOS Maven launcher ran on a different JDK. Routing every lane through one
+        action keeps the robust parsing and the JAVA_HOME export from drifting, and
+        the action's own behaviour is pinned by SelectJdkActionTest below. A lane
+        that re-inlined its own `run` step would bypass the fix, so this also fails
+        on any self-hosted job that carries an inline JDK-probing run step."""
         for name, job in _jobs().items():
             if not _is_self_hosted(job):
                 continue
             with self.subTest(job=name):
-                verify = _step_named(job, _VERIFY_STEP)
-                self.assertEqual(1, len(verify),
-                                 f"{name} must have exactly one '{_VERIFY_STEP}' step")
-                run = str(verify[0].get("run", ""))
-                self.assertIn("java -version", run,
-                              f"{name} '{_VERIFY_STEP}' must probe the installed java")
-                self.assertIn("EXPECTED_JDK_MAJOR", run,
-                              f"{name} '{_VERIFY_STEP}' must compare against EXPECTED_JDK_MAJOR")
-                self.assertIn("exit 1", run,
-                              f"{name} '{_VERIFY_STEP}' must fail the job on a mismatch")
+                uses = [s for s in job.get("steps", [])
+                        if str(s.get("uses", "")).rstrip("/") == _SELECT_JDK_ACTION]
+                self.assertEqual(1, len(uses),
+                                 f"{name} must use the shared {_SELECT_JDK_ACTION} action exactly once")
+                major = str(uses[0].get("with", {}).get("expected-major", ""))
+                self.assertIn("env.EXPECTED_JDK_MAJOR", major,
+                              f"{name} must pass expected-major from env.EXPECTED_JDK_MAJOR")
+                inline = [s for s in job.get("steps", [])
+                          if "java -version" in str(s.get("run", ""))]
+                self.assertEqual([], inline,
+                                 f"{name} must not inline a JDK probe; use the shared action")
 
     def test_setup_java_only_appears_on_hosted_jobs(self):
         for name, job in _jobs().items():
@@ -141,6 +146,71 @@ class SelfHostedJdkTest(unittest.TestCase):
                     self.assertNotRegex(str(step.get("name", "")), r"JDK\s+\d",
                                         f"{name} has a step name with a hard-coded "
                                         "JDK major; use ${{ env.EXPECTED_JDK_MAJOR }}")
+
+
+def _action():
+    with open(_ACTION) as f:
+        return yaml.safe_load(f)
+
+
+def _action_run():
+    steps = _action()["runs"]["steps"]
+    return "\n".join(str(s.get("run", "")) for s in steps)
+
+
+class SelectJdkActionTest(unittest.TestCase):
+    """The shared composite action every self-hosted lane uses. These pin the
+    two properties the inline step got wrong: the major version is read robustly
+    (never from the first line of `java -version`, which is the `Picked up
+    _JAVA_OPTIONS:` notice on these runners), and JAVA_HOME is exported so the
+    Maven launcher — on macOS especially, where it otherwise falls back to the
+    newest /usr/libexec/java_home — runs on exactly the verified JDK."""
+
+    def test_is_a_composite_action_taking_the_expected_major(self):
+        action = _action()
+        self.assertEqual("composite", action["runs"]["using"],
+                         "select-jdk must be a composite action")
+        self.assertIn("expected-major", action.get("inputs", {}),
+                      "select-jdk must take an expected-major input")
+        self.assertTrue(action["inputs"]["expected-major"].get("required"),
+                        "expected-major must be required")
+
+    def test_does_not_parse_the_first_line_of_java_version(self):
+        """head -1 of `java -version` is the bug being fixed: it is the
+        `Picked up _JAVA_OPTIONS:` line when that variable is set."""
+        run = _action_run()
+        self.assertNotIn("-version 2>&1 | head -1", run,
+                         "must not read the first line of java -version")
+
+    def test_reads_the_version_robustly(self):
+        """The major comes from the JDK's release metadata or the reported
+        java.specification.version, with the `version \"` line (selected by
+        content, not position) as the only `java -version` fallback."""
+        run = _action_run()
+        self.assertIn("java.specification.version", run,
+                      "should read java.specification.version from -XshowSettings")
+        self.assertIn('version "', run,
+                      "the java -version fallback must select the line containing 'version \"'")
+
+    def test_resolves_macos_java_home_for_the_expected_major(self):
+        run = _action_run()
+        self.assertIn('/usr/libexec/java_home -v "${expected}"', run,
+                      "macOS must resolve the JDK via java_home for the expected major")
+
+    def test_exports_java_home_and_path_so_the_launcher_uses_the_jdk(self):
+        run = _action_run()
+        self.assertIn('>> "${GITHUB_ENV}"', run, "must export JAVA_HOME to GITHUB_ENV")
+        self.assertIn("JAVA_HOME=", run, "must export JAVA_HOME")
+        self.assertIn('>> "${GITHUB_PATH}"', run, "must prepend the JDK bin to GITHUB_PATH")
+
+    def test_prints_the_maven_banner(self):
+        self.assertIn("mvn -v", _action_run(),
+                      "must print the Maven version banner so the log shows the JDK")
+
+    def test_fails_naming_the_runner_when_no_matching_jdk(self):
+        run = _action_run()
+        self.assertIn("exit 1", run, "must fail when no JDK of the expected major is found")
+        self.assertIn("RUNNER_NAME", run, "the failure message must name the runner")
 
 
 _FLEET = os.path.join(_REPO_ROOT, "tools", "ci", "macos", "fleet.sh")
