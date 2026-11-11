@@ -16,6 +16,31 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `monitor/` | Host monitoring tools for CI infrastructure |
 | `prompts/` | Prompt builders and templates for agent jobs |
 
+## JDK on Self-Hosted Runners
+
+Self-hosted CI jobs do **not** download a JDK with `actions/setup-java`; the JDK
+is baked into each runner's image or host, and every self-hosted job runs a
+`Verify JDK version` step that checks the runner's `java` against the
+workflow-level `EXPECTED_JDK_MAJOR` in
+[`.github/workflows/analysis.yaml`](../../.github/workflows/analysis.yaml),
+failing fast and naming the runner on a mismatch. (Hosted `ubuntu-latest` jobs
+keep `setup-java`, which serves the JDK from the hosted image's tool cache; its
+`java-version` is `${{ env.EXPECTED_JDK_MAJOR }}`, so the hosted and self-hosted
+lanes track the same major from the one env value.)
+
+The major version is a single value: `EXPECTED_JDK_MAJOR` in the workflow, the
+`JDK_MAJOR` build arg in the Linux images, and the `EXPECTED_JDK_MAJOR` check in
+`macos/runner.sh`. A JDK upgrade is that one value plus a rebuild/restart of each
+runner. If the `Verify JDK version` step fails, the runner that ran it is on the
+wrong JDK — rebuild/restart it per its fleet's doc:
+
+| Fleet | Label | How to rebuild/restart for a new JDK |
+|---|---|---|
+| CPU (Linux) | `ar-ci` | [`docker/README.md`](docker/README.md#jdk-version-baked-into-the-image) — `docker compose build --build-arg JDK_MAJOR=<n>` then `up` |
+| GPU (macOS) | `ar-ci` | [`macos/README.md`](macos/README.md#jdk-version) — install the JDK on the host, then `fleet macos stop`/`start` |
+| OpenCL (ROCm) | `ar-ci-cl` | [`rocm/README.md`](rocm/README.md#jdk-version-baked-into-the-image) — set `JDK_MAJOR` in `.env`, then `install-runner.sh` |
+| CUDA (NVIDIA) | `ar-ci-cuda` | [`cuda/README.md`](cuda/README.md#jdk-version-baked-into-the-shared-image) — reuses the CPU image; set `JDK_MAJOR` in `.env`, then `fleet.sh up` |
+
 ## Root Scripts
 
 | Script | Purpose |
