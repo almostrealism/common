@@ -441,17 +441,22 @@ public interface CollectionFeatures extends GradientFeatures {
 	 * consumer. Where isolation is not permitted (see {@link Process#isolationPermitted}), the
 	 * producer is returned unchanged. A producer that is not a {@link Process} is never embedded
 	 * in the expressions of its consumers, so it is already isolated and is also returned
-	 * unchanged.</p>
+	 * unchanged. The same holds for a {@link Process} whose {@link Process#isolate()} does not
+	 * yield a {@link Producer}: the default implementation only wraps the process in a generic
+	 * {@link Process#of} delegate, which isolates nothing and cannot be read as a producer.</p>
 	 *
 	 * @param producer the producer to isolate
 	 * @return the isolated producer, with the same shape
 	 */
 	default CollectionProducer isolated(Producer<PackedCollection> producer) {
-		if (!(producer instanceof Process)) {
-			return c(producer);
+		if (producer instanceof Process) {
+			Supplier<?> isolated = Process.isolated(producer);
+			if (isolated instanceof Producer) {
+				return c((Producer<PackedCollection>) isolated);
+			}
 		}
 
-		return c((Producer<PackedCollection>) Process.isolated(producer));
+		return c(producer);
 	}
 
 	/**

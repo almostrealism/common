@@ -28,6 +28,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Collection;
+import java.util.Collections;
+
 /**
  * Tests for {@link CollectionFeatures#isolated(Producer)}, for producers that are
  * {@link Process processes} and for producers that are not.
@@ -69,6 +72,48 @@ public class CollectionIsolatedTest extends TestSuiteBase {
 		@Override
 		public Producer<PackedCollection> traverse(int axis) {
 			return new FixedProducer(value.traverse(axis));
+		}
+	}
+
+	/**
+	 * A {@link FixedProducer} that is also a {@link Process} but keeps the default
+	 * {@link Process#isolate()}, which yields a generic {@link Process#of} delegate rather
+	 * than a {@link Producer}.
+	 */
+	private static class FixedProcessProducer extends FixedProducer
+			implements Process<Process<?, ?>, Evaluable<? extends PackedCollection>> {
+		/**
+		 * Creates a process producer of the given collection.
+		 *
+		 * @param value the collection to produce
+		 */
+		FixedProcessProducer(PackedCollection value) {
+			super(value);
+		}
+
+		@Override
+		public Collection<Process<?, ?>> getChildren() {
+			return Collections.emptyList();
+		}
+	}
+
+	/**
+	 * Isolating a {@link Process} whose {@link Process#isolate()} does not yield a
+	 * {@link Producer} returns a collection producer of the same values instead of failing
+	 * to cast the generic delegate.
+	 */
+	@Test(timeout = 60000)
+	public void isolatedProcessWithDefaultIsolate() {
+		PackedCollection value = pack(1.0, 2.0, 3.0, 4.0);
+		FixedProcessProducer producer = new FixedProcessProducer(value);
+		Assert.assertFalse(producer.isolate() instanceof Producer);
+
+		CollectionProducer isolated = isolated(producer);
+		Assert.assertEquals(4, shape(isolated).getTotalSize());
+
+		PackedCollection result = isolated.add(c(1.0)).evaluate();
+		for (int i = 0; i < 4; i++) {
+			Assert.assertEquals(i + 2.0, result.toDouble(i), 1e-6);
 		}
 	}
 
