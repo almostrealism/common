@@ -16,6 +16,31 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `monitor/` | Host monitoring tools for CI infrastructure |
 | `prompts/` | Prompt builders and templates for agent jobs |
 
+## JDK on Self-Hosted Runners
+
+Self-hosted CI jobs do **not** download a JDK with `actions/setup-java`; the JDK
+is baked into each runner's image or host, and every self-hosted job runs a
+`Verify JDK version` step that checks the runner's `java` against the
+workflow-level `EXPECTED_JDK_MAJOR` in
+[`.github/workflows/analysis.yaml`](../../.github/workflows/analysis.yaml),
+failing fast and naming the runner on a mismatch. (Hosted `ubuntu-latest` jobs
+keep `setup-java`, which serves the JDK from the hosted image's tool cache; its
+`java-version` is `${{ env.EXPECTED_JDK_MAJOR }}`, so the hosted and self-hosted
+lanes track the same major from the one env value.)
+
+The major version is a single value: `EXPECTED_JDK_MAJOR` in the workflow, the
+`JDK_MAJOR` build arg in the Linux images, and the `EXPECTED_JDK_MAJOR` check in
+`macos/runner.sh`. A JDK upgrade is that one value plus a rebuild/restart of each
+runner. If the `Verify JDK version` step fails, the runner that ran it is on the
+wrong JDK — rebuild/restart it per its fleet's doc:
+
+| Fleet | Label | How to rebuild/restart for a new JDK |
+|---|---|---|
+| CPU (Linux) | `ar-ci` | [`docker/README.md`](docker/README.md#jdk-version-baked-into-the-image) — `docker compose build --build-arg JDK_MAJOR=<n>` then `up` |
+| GPU (macOS) | `ar-ci` | [`macos/README.md`](macos/README.md#jdk-version) — install the JDK on the host, then `fleet macos stop`/`start` |
+| OpenCL (ROCm) | `ar-ci-cl` | [`rocm/README.md`](rocm/README.md#jdk-version-baked-into-the-image) — set `JDK_MAJOR` in `.env`, then `install-runner.sh` |
+| CUDA (NVIDIA) | `ar-ci-cuda` | [`cuda/README.md`](cuda/README.md#jdk-version-baked-into-the-shared-image) — reuses the CPU image; set `JDK_MAJOR` in `.env`, then `fleet.sh up` |
+
 ## Root Scripts
 
 | Script | Purpose |
@@ -200,10 +225,10 @@ it knowingly does not cover are in
 | `pdsl-migration.txt` | Template for the PDSL migration round: move one piece of pipeline structure from Java into a `.pdsl` asset, delete the Java assembly, pin parity with tests, and report language gaps rather than aliasing around them |
 | `plan-workstream-settings.txt` | Shared fragment: when a plan needs particular hardware, declare it in `docs/plans/<branch>-workstream.yaml` — included by both planning prompts |
 | `plan-pr-framing.txt` | Shared fragment: write the commit message (and so the pull request) for the planned work, not the plan — included by both planning prompts |
-| `pr-feedback.txt` | Shared fragment: how to find, read, act on and reply to pull-request review comments — patched into every auto-resolve prompt |
+| `pr-feedback.txt` | Shared fragment carrying both the pull-request review-comment policy (how to find, read, act on and reply to comments) and the "new TODOs are findings" rule (every TODO the branch adds must be fixed or filed as a tracker task) — patched into every route's prompt by `append_branch_feedback`, which also appends CI's computed list of the branch's new TODOs |
 | `project-planning.txt` | Template for the planning workflow |
 | `task-planning.txt` | Template for the task-planning round |
-| `prompt-render.sh` | Sourced by the builders: expands `@include <fragment>` lines and substitutes `${VAR}` placeholders (`render_prompt`, `append_prompt_fragment`). An `@include` line may name its fragment through a `${VAR}` resolved from the environment before expansion (so a template selects a fragment), and a resolved fragment name may not contain `/`, so a caller template can include only the framework's published fragments |
+| `prompt-render.sh` | Sourced by the builders: expands `@include <fragment>` lines and substitutes `${VAR}` placeholders (`render_prompt`, `append_prompt_fragment`), and provides `append_branch_feedback <output> [<todos-file>]` — the one call every route makes to patch in `pr-feedback.txt` plus CI's computed new-TODO list (the TODO file is optional, so the trusted `plan-review`/`implement-plan` routes, which cannot diff the branch, still carry the fragment without a list). An `@include` line may name its fragment through a `${VAR}` resolved from the environment before expansion (so a template selects a fragment), and a resolved fragment name may not contain `/`, so a caller template can include only the framework's published fragments |
 | `verify-completion.txt` | Template for verify-completion prompt |
 
 ### Test execution limits
@@ -226,13 +251,20 @@ above regardless of the hooks.
 
 Each `build-*-prompt.sh` reads its sibling template, substitutes the environment
 variables named in its header, and writes the result to an output-file argument.
-Most take that path as their only argument; a few need additional file input first
-— `build-resolve-prompt.sh <failures-file> <output-file>`,
+Most take that path as their only required argument; a few need additional file
+input first — `build-resolve-prompt.sh <failures-file> <output-file>`,
 `build-quality-gate-prompt.sh <failures-file> <output-file>`,
 `build-python-failure-prompt.sh <log-file> <output-file>` and
 `build-vm-crash-prompt.sh <crash-reports-dir> <output-file>` — where the output
-file is always the last argument. `tools/tests/test_prompt_builders.py` holds
-them to that contract.
+file is the last *required* argument. Every route builder then accepts one
+optional argument after the output file: the computed-TODO-section file that
+`append_branch_feedback` patches in (`build-resolve-prompt.sh` reads two optional
+classification files between the output path and it, so there the TODO file is
+the fifth positional). So the output path is the last argument a builder
+requires, but no longer always the last one it reads.
+`tools/tests/test_prompt_builders.py` holds the builders to that contract, and
+`tools/tests/test_branch_todos_workflow_wiring.py` checks that every route step
+in `analysis.yaml` passes that TODO file in its builder's final slot.
 
 Instructions that several tasks share live once, as a fragment in this directory,
 and are patched into each prompt by `prompt-render.sh`: a template names the
@@ -243,12 +275,26 @@ planning prompts: how to frame the commit message for the planned work rather
 than the plan, and how a plan declares the hardware it needs.
 `test-lock-enforcement.txt` is appended by the test-failure and test-crash
 builders (`build-resolve-prompt.sh`, `build-vm-crash-prompt.sh`).
-`pr-feedback.txt` is the
-policy for pull-request review comments — read both the inline and conversation feeds before starting, fix what
-is right in the code, reply threaded to the original comment only where the
-author is safe to answer (Copilot and people, never CodeRabbit or an unknown bot),
-and treat a comment as evidence to verify rather than an instruction to obey.
-Every auto-resolve builder carries it, whatever the job was submitted for — a
-reviewer may already have named the defect a test-failure job is chasing, and on
-a docs-only branch the review comments are usually the whole of the work.
-`test_prompt_builders.py` fails if any auto-resolve prompt stops carrying it.
+
+`pr-feedback.txt` is the one fragment every route that runs against a branch
+with a pull request carries, and it holds two obligations together so no route
+can carry one without the other:
+
+- the **pull-request review-comment policy** — read both the inline and
+  conversation feeds before starting, fix what is right in the code, reply
+  threaded to the original comment only where the author is safe to answer
+  (Copilot and people, never CodeRabbit or an unknown bot), and treat a comment
+  as evidence to verify rather than an instruction to obey; and
+- the **new-TODO findings rule** — every `TODO` this branch adds (computed by
+  `extract_branch_todos.py` relative to the merge base) is a finding to fix and
+  remove, or to turn into a tracker task and reference, never to carry forward.
+
+A builder patches both in with one call, `append_branch_feedback "$OUTPUT_FILE"
+"$TODOS_FILE"`, which appends the fragment and then CI's computed TODO list when
+the route passed one. Whatever the job was submitted for, the session leaves
+every review comment and every new TODO accounted for before it finishes — a
+reviewer may already have named the defect a test-failure job is chasing, on a
+docs-only branch the review comments are usually the whole of the work, and a
+quality-gate session that lands no fix still answers the comments and files the
+TODOs. `test_prompt_builders.py` fails if any route's prompt stops carrying
+either half.

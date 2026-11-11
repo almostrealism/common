@@ -139,8 +139,6 @@ PROMPT_HEADER
 
 append_prompt_fragment test-lock-enforcement.txt "$OUTPUT_FILE"
 
-append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
-
 # ── Determine which modules contain failures and build CI commands ──
 # Parse class#method names from the failure list and map each class to its
 # Maven module. The CI command section names the SPECIFIC failing method via
@@ -339,5 +337,6 @@ assigned to you. Mention them in your summary and move on.
 EOF
 fi
 
-# Extend the prompt with the new-TODO findings, when CI has computed them.
-append_todo_findings "$OUTPUT_FILE" "$TODOS_FILE"
+# Append the shared branch-feedback block: the pull-request review-comment
+# policy and the new-TODO findings, with CI's computed list when it passed one.
+append_branch_feedback "$OUTPUT_FILE" "$TODOS_FILE"

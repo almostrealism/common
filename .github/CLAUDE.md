@@ -276,8 +276,14 @@ spurious "had a problem deploying" red X. `auto-resolve-submit.yaml` keeps its
 assumption, and the early jobs do not go through it. None of the remediation
 jobs is part of `all-checks`.
 
-Every prompt carries the same pull-request review-comment policy, patched in
-from `tools/ci/prompts/pr-feedback.txt` (see `tools/ci/README.md`).
+Every prompt a route builds against a branch carries the same shared
+branch-feedback block — the pull-request review-comment policy *and* the rule
+that every TODO the branch adds is a finding to fix or file — patched in from
+`tools/ci/prompts/pr-feedback.txt` by `append_branch_feedback`, which also
+appends CI's computed list of the branch's new TODOs (from
+`extract_branch_todos.py`). So whatever a remediation session was dispatched
+for, it leaves every review comment and every new TODO accounted for before it
+finishes, even when its own task needs no code change (see `tools/ci/README.md`).
 
 **`PROTECT_TEST_FILES` is on only for the jobs sent to make failing tests
 pass.** It turns on the harness's per-job test lock (`TestMethodProtection`;
