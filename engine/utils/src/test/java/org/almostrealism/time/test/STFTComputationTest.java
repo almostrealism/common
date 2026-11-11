@@ -202,7 +202,8 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 
 			int frameOffset = frame * fftSize * 2;
 			for (int i = 0; i < fftSize * 2; i++) {
-				assertEquals(expected.toDouble(i), spectrogram.toDouble(frameOffset + i));
+				assertSimilar("frame " + frame + ", element " + i,
+						expected.toDouble(i), spectrogram.toDouble(frameOffset + i));
 			}
 		}
 	}
