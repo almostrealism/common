@@ -455,6 +455,34 @@ Because runners register as ephemeral, the container exits after every job and
 systemd starts the next one. A service that keeps restarting is normal; one that
 enters `failed` is not.
 
+## JDK Version (Baked Into the Image)
+
+The image ships the JDK; the CL jobs (`test-cl`, `test-media-cl`) do **not**
+download one with `actions/setup-java`. They verify the runner's `java` against
+the workflow-level `EXPECTED_JDK_MAJOR` in `.github/workflows/analysis.yaml` and
+fail fast, naming the runner, on a mismatch. The major version is the single
+`JDK_MAJOR` build arg in the [`Dockerfile`](Dockerfile) (default `17`), and
+`JAVA_HOME`/`PATH` in the image point at it, which is what Maven and the forked
+surefire JVMs use.
+
+The runners are ephemeral, so the JDK only changes when the **image** is rebuilt.
+To move this fleet to a new major version:
+
+1. Change `EXPECTED_JDK_MAJOR` in `.github/workflows/analysis.yaml` (one value,
+   shared by every self-hosted lane), on a `ci/...` branch.
+2. On the ROCm host, as the service account, set `JDK_MAJOR` in `.env` to the
+   same number and rebuild:
+
+   ```bash
+   echo 'JDK_MAJOR=21' >> .env     # omit to keep the default (17)
+   ./install-runner.sh             # rebuilds the image and refreshes the units
+   ```
+
+`install-runner.sh` reads `JDK_MAJOR` from `.env` and passes it as a build arg
+(like `ROCM_OPENCL_LIB` and `RUNNER_VERSION`); with it unset the Dockerfile
+default is built. A host left on the old image turns the CL lane red at the
+verify step, so a missed rebuild is reported rather than running the wrong JDK.
+
 ## Troubleshooting
 
 ### "No OpenCL platform is visible inside this container"
