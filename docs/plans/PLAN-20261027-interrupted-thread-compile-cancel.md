@@ -285,7 +285,7 @@ No single test can force one for this purpose.
 
 ## Related plans
 
-- [`PLAN-20261026-collected-after-free-not-double-free.md`](PLAN-20261026-collected-after-free-not-double-free.md)
+- `PLAN-20261026-collected-after-free-not-double-free.md`
   deals with the deallocation warnings that the Motivation uses as evidence the abandoned thread
   was still running. It lists "the JUnit timeout / uninterruptible `CLProgram.compile` join" as
   out of its scope, which is the gap this plan fills. The two plans touch different code and can
