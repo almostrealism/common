@@ -231,6 +231,22 @@ public class TraversalAxisAlignmentTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A collection producer whose shape is fixed but whose count is intrinsically variable,
+	 * such as {@code integers()} whose value is the kernel index, is not repeated by
+	 * {@link CollectionTraversalAxisAlignment}: each kernel position is a distinct element
+	 * of it, so repeating it would read the same index at several positions.
+	 */
+	@Test(timeout = 30000)
+	public void doesNotRepeatIntrinsicallyVariableCountProducer() {
+		Producer<PackedCollection> indices = integers().add(c(2));
+		Producer<PackedCollection> fixed = c(6, 18, 48);
+
+		assertTrue(shape(indices).isFixedCount());
+		assertFalse(Countable.isFixedCount(indices));
+		assertEquals(1, alignedTotalSize(indices, fixed));
+	}
+
+	/**
 	 * A per-item scalar computed from a variable-count input broadcasts against that input's
 	 * vectors: each item's vector is scaled by its own first component, rather than each
 	 * element being multiplied by a different element of the unrepeated scalar.

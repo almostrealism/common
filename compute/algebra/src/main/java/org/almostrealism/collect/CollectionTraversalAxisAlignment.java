@@ -19,8 +19,10 @@ package org.almostrealism.collect;
 import io.almostrealism.collect.TraversalAxisAlignment;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Producer;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -67,7 +69,9 @@ public class CollectionTraversalAxisAlignment extends TraversalAxisAlignment<Pro
 	 * so repeating it up to the aligned size is well defined. Without the repetition, a
 	 * single-element value computed from a variable-count input (a ray's hit distance, for
 	 * example) would not broadcast against a larger one (that ray's direction) and the
-	 * product would read it at every element position instead of at its only element.</p>
+	 * product would read it at every element position instead of at its only element.
+	 * This only holds when the variable count comes from variable-shaped inputs; see
+	 * {@link #isCountFromShapes(Producer)}.</p>
 	 *
 	 * @param repeat    the number of repetitions
 	 * @param producer  the producer to expand
@@ -75,10 +79,40 @@ public class CollectionTraversalAxisAlignment extends TraversalAxisAlignment<Pro
 	 */
 	@Override
 	protected Producer<PackedCollection> expand(int repeat, Producer<PackedCollection> producer) {
-		if (enableVariableRepeat || Countable.isFixedCount(producer) || shapeOf(producer).isFixedCount()) {
+		if (enableVariableRepeat || Countable.isFixedCount(producer)
+				|| (shapeOf(producer).isFixedCount() && isCountFromShapes(producer))) {
 			return repeat(repeat, producer);
 		}
 
 		return producer;
+	}
+
+	/**
+	 * Returns whether every source of variable count in the given producer's graph is a
+	 * producer whose shape itself has a variable count (a variable-count input, for example).
+	 * A producer whose count is variable even though its shape and all of its inputs are
+	 * fixed (such as {@code integers()}, whose value is the kernel index) is intrinsically
+	 * variable: each kernel position is a distinct element of it rather than one more
+	 * evaluation of a fixed-shape value, so it must not be repeated.
+	 *
+	 * @param producer  the producer to inspect
+	 * @return {@code true} if the producer's count is fixed or follows only variable shapes
+	 */
+	protected boolean isCountFromShapes(Producer<?> producer) {
+		// TODO(review): unmemoized recursion revisits shared subgraphs; consider a visited set if graph construction slows
+		if (Countable.isFixedCount(producer)) return true;
+
+		List<Object> variable = new ArrayList<>();
+		if (producer instanceof Parent) {
+			for (Object child : ((Parent<?>) producer).getChildren()) {
+				if (!Countable.isFixedCount(child)) variable.add(child);
+			}
+		}
+
+		if (variable.isEmpty()) {
+			return !shape(producer).isFixedCount();
+		}
+
+		return variable.stream().allMatch(c -> c instanceof Producer && isCountFromShapes((Producer<?>) c));
 	}
 }
