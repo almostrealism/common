@@ -45,10 +45,54 @@ import java.util.function.IntFunction;
  * <p>The outer frame loop therefore does not drive the physics step — it only observes the state the
  * runner produces, as the simulation-loop contract requires.</p>
  *
+ * <h2>Why this is not a subclass or superclass of {@link RayTracedAnimation}</h2>
+ *
+ * <p>Both this type and {@link RayTracedAnimation} end in a ray-traced frame sequence on disk, so it
+ * is tempting to make one inherit the other. They are, however, not related by specialization in
+ * either direction; the only thing they share is the frame-output <em>collaborator</em>, and both
+ * already hold one (composition), which is the correct resolution rather than an {@code IS-A} chain.
+ * The defense, concretely:</p>
+ *
+ * <ul>
+ * <li><b>Loop ownership is the decisive, opposing axis.</b> {@link RayTracedAnimation} extends
+ * {@link org.almostrealism.space.Animation Animation}, whose {@link org.almostrealism.space.Animation#run() run()}
+ * <em>steps the physics itself</em> and calls back at frame boundaries — the animation owns its clock.
+ * This driver deliberately owns no loop: it hangs off {@link SimulationRunner#runFrames}, leaving the
+ * {@link SimulationRunner} the sole owner of the step loop, which is the whole point of the
+ * simulation-loop contract. If this class inherited {@code Animation.run()} it would reintroduce the
+ * self-driven physics loop that contract forbids. The two sit on opposite sides of the
+ * loop-ownership boundary, not on a common "kind of frame renderer" specialization axis.</li>
+ *
+ * <li><b>Neither is substitutable for the other (Liskov).</b> An {@code Animation} <em>is</em> a
+ * {@link org.almostrealism.space.Scene Scene}: it holds the rigid bodies and camera, serializes and
+ * restores its own state as {@link java.util.Properties}, and renders <em>itself</em>
+ * ({@code new RayTracedScene(this, ...)}). This driver holds no scene and has no such state — it is
+ * handed a <em>different</em> scene for every frame by the caller's {@code sceneForFrame} hook (for
+ * example a mesh reconstructed from a height field that did not exist when the driver was built).
+ * Code that holds an {@code Animation} (steps it, serializes it, adds bodies) cannot accept this
+ * driver, and code that holds this driver (a runner, a steps-per-frame count, a per-frame scene hook)
+ * cannot accept an {@code Animation}.</li>
+ *
+ * <li><b>The superclass direction is also mechanically closed.</b> {@code RayTracedAnimation} already
+ * extends {@code Animation}, so under single inheritance it cannot additionally extend this type; and
+ * inserting this type <em>above</em> {@code Animation} is impossible, because an {@code Animation} has
+ * neither a {@link SimulationRunner} nor a per-frame scene hook to supply.</li>
+ *
+ * <li><b>A shared superclass would be a forced, empty abstraction.</b> The only member the two have
+ * in common is "holds an {@link ImageSequence} and exposes a render-frame template hook" — already
+ * expressed by both composing an {@code ImageSequence}. A base class holding only that one field could
+ * not host anything that actually differs (loop ownership, scene source, frame indexing from an
+ * iteration counter versus a runner's frame index, {@code Properties} lifecycle versus a stateless
+ * binding), so it would exist solely to force a hierarchy around a single field — the very shape the
+ * rectangle/square cautionary tale warns against. No client consumes "either animation or driver"
+ * polymorphically, so there is nothing for such a supertype to serve.</li>
+ * </ul>
+ *
  * @author Michael Murray
  * @see SimulationRunner#runFrames(int, int, java.util.function.IntConsumer)
  * @see ImageSequence
  * @see RayTracedScene#render()
+ * @see RayTracedAnimation
  */
 public class RayTracedFrameSequence implements ConsoleFeatures {
 	/** The runner that owns the physics step loop. */
