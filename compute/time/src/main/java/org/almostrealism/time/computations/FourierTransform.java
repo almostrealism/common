@@ -102,12 +102,6 @@ import java.util.List;
  * @author Michael Murray
  */
 public class FourierTransform extends CollectionProducerComputationBase {
-	/**
-	 * Enables relative indexing for traversal policies.
-	 * When true, uses traverse(1) for more efficient memory access patterns.
-	 */
-	public static boolean enableRelative = true;
-
 	/** Counter used to generate unique variable names within generated kernel scopes. */
 	private int varIdx = 0;
 	/** The number of complex samples in each transformed line. */
@@ -164,10 +158,7 @@ public class FourierTransform extends CollectionProducerComputationBase {
 	 */
 	public FourierTransform(int count, int bins, int stride, boolean inverse, Producer<PackedCollection> input) {
 		super(inverse ? "fourierTransformInverse"  : "fourierTransform",
-				enableRelative ?
-						new TraversalPolicy(count, 2, bins).traverse(1) :
-						new TraversalPolicy(count, 2, bins),
-				input);
+				new TraversalPolicy(count, 2, bins).traverse(1), input);
 
 		if (bins < 1 || Integer.bitCount(bins) != 1) {
 			throw new IllegalArgumentException("FFT length " + bins + " is not a power of 2");

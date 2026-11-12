@@ -832,6 +832,38 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	}
 
 	/**
+	 * A spacing whose wavenumber is finite can still give squared wavenumbers that are not. On an
+	 * 8 x 8 grid, spacing {@code 1e-300} has a finite wavenumber of about {@code 7.9e299} per
+	 * frequency index, but the largest {@code |k|^2} overflows; spacing {@code 1e200} has a finite
+	 * extent, but {@code dk^2} underflows to zero, so the Poisson zero-mode threshold would class
+	 * every mode as zero. Both are valid grids for host metadata but are rejected by every graph that
+	 * squares wavenumbers, while spacings whose squares stay in range are accepted. Only the graph is
+	 * built; nothing is evaluated.
+	 */
+	@Test(timeout = 60000)
+	public void overflowingSquaredWavenumberIsRejected() {
+		TraversalPolicy grid = shape(8, 8);
+		Assert.assertEquals(5, new SpectralGrid(grid, 1e-300).getRadialBinCount());
+		Assert.assertEquals(5, new SpectralGrid(grid, 1e200).getRadialBinCount());
+
+		for (double spacing : new double[] { 1e-300, 1e200 }) {
+			assertRejected(() -> new SpectralGrid(grid, spacing).wavenumberSquared());
+			assertRejected(() -> new SpectralGrid(grid, spacing).radialBin());
+			assertRejected(() -> radialPowerSpectrum(zeros(grid), spacing));
+			assertRejected(() -> poissonSolve(zeros(grid), spacing));
+		}
+
+		assertRejected(() -> poissonSolve(zeros(grid), 1.0, 1e-300));
+		assertRejected(() -> new SpectralGrid(grid, 1e200, 1.0).wavenumberSquared());
+
+		for (double spacing : new double[] { 1e-150, 1e150 }) {
+			new SpectralGrid(grid, spacing).requireRepresentableWavenumbers("test");
+			Assert.assertNotNull(new SpectralGrid(grid, spacing).wavenumberSquared());
+			Assert.assertNotNull(poissonSolve(zeros(grid), spacing));
+		}
+	}
+
+	/**
 	 * Spacings at opposite ends of the representable range on the same grid cannot inflate the
 	 * radial bin count. The smallest Nyquist wavenumber belongs to the largest spacing and the bin
 	 * width to the longest extent, so their ratio is at most half the longest axis length,

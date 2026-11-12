@@ -177,6 +177,31 @@ public class SpectralGrid implements CollectionFeatures {
 	}
 
 	/**
+	 * Validates that the squared wavenumbers of this grid are representable in double precision.
+	 * A spacing can give a finite wavenumber whose square is not: a tiny spacing makes the largest
+	 * {@code |k|^2}, the sum over the axes of {@code (k_a * floor(n_a / 2))^2}, overflow to
+	 * infinity, and a huge spacing makes {@code dk^2} (the square of the
+	 * {@link #getRadialBinWidth() radial bin width}, which no nonzero mode falls below) underflow
+	 * past the normal range, so nonzero modes become indistinguishable from the zero mode. Either
+	 * would turn every spectral operator built from {@code |k|^2} into infinities or zeros.
+	 *
+	 * @param operation the operation that squares the wavenumbers, for the error message
+	 * @throws IllegalArgumentException if the largest {@code |k|^2} is not finite, or half of
+	 *                                  {@code dk^2} is below {@link Double#MIN_NORMAL}
+	 */
+	public void requireRepresentableWavenumbers(String operation) {
+		double largest = IntStream.range(0, getDimensions())
+				.mapToDouble(a -> getFundamentalWavenumber(a) * (length(a) / 2))
+				.map(k -> k * k).sum();
+		double width = getRadialBinWidth();
+
+		if (!Double.isFinite(largest) || !(0.5 * width * width >= Double.MIN_NORMAL)) {
+			throw new IllegalArgumentException(operation + " squares wavenumbers of " + this +
+					" outside the range of double precision");
+		}
+	}
+
+	/**
 	 * Returns the squared angular wavenumber {@code |k|^2} of the cells of this grid identified by
 	 * their flat (row-major) index. This is the building block of spectral operators: the Fourier
 	 * symbol of the Laplacian is {@code -|k|^2}.
@@ -186,10 +211,13 @@ public class SpectralGrid implements CollectionFeatures {
 	 *
 	 * @param cell producer of flat cell indices into this grid; any shape
 	 * @return a producer of {@code |k|^2} with the shape of {@code cell}
-	 * @throws IllegalArgumentException if the grid has more than {@link #MAX_EXACT_INDEX} cells
+	 * @throws IllegalArgumentException if the grid has more than {@link #MAX_EXACT_INDEX} cells, or
+	 *                                  its squared wavenumbers are not
+	 *                                  {@link #requireRepresentableWavenumbers representable}
 	 */
 	public CollectionProducer wavenumberSquared(Producer<PackedCollection> cell) {
 		requireExactIndices("wavenumberSquared", 1);
+		requireRepresentableWavenumbers("wavenumberSquared");
 		CollectionProducer index = c(cell);
 
 		CollectionProducer total = null;
