@@ -84,7 +84,7 @@
                     </div>
                     <div class="class-item">
                         <h4>NegativeLogLikelihood</h4>
-                        <p>NLL loss for classification. Used with softmax outputs for multi-class problems.</p>
+                        <p>NLL loss for classification. Used with log-softmax outputs (log-probabilities) and one-hot targets for multi-class problems.</p>
                     </div>
                 </div>
 
@@ -159,8 +159,8 @@
                     <tr>
                         <td>NegativeLogLikelihood</td>
                         <td>Classification</td>
-                        <td>-sum(y * log(y'))</td>
-                        <td>-y / y'</td>
+                        <td>-(1/rows) * sum(y * y'), y' the log-probabilities</td>
+                        <td>-y / rows</td>
                     </tr>
                 </table>
             </section>
@@ -171,8 +171,11 @@
                 <h3>LossProvider Interface</h3>
                 <p>The foundation for all loss functions, providing both loss computation and gradient calculation.</p>
                 <pre><code class="language-java">public interface LossProvider {
-    // Compute scalar loss value
-    double loss(PackedCollection output, PackedCollection target);
+    // The terms of the loss, whose mean is the loss
+    CollectionProducer loss(
+        Producer&lt;PackedCollection&gt; output,
+        Producer&lt;PackedCollection&gt; target
+    );
 
     // Compute gradient for backpropagation
     Producer&lt;PackedCollection&gt; gradient(
@@ -267,7 +270,7 @@ Model model = new Model(shape(784));
 model.add(dense(weights1, bias1));
 model.add(relu());
 model.add(dense(weights2, bias2));
-model.add(softmax());
+model.add(logSoftmax(shape(10)));
 
 // Create optimizer
 ModelOptimizer optimizer = new ModelOptimizer(
@@ -276,7 +279,7 @@ ModelOptimizer optimizer = new ModelOptimizer(
 );
 
 // Configure for classification
-optimizer.setLossFunction(new NegativeLogLikelihood(shape(10).traverseEach()));
+optimizer.setLossFunction(new NegativeLogLikelihood());
 optimizer.setLogFrequency(1);     // Log every epoch
 optimizer.setLossTarget(0.01);    // Early stopping threshold
 
@@ -397,27 +400,21 @@ PopulationOptimizer optimizer = new PopulationOptimizer(
 // Evolution optimizes average of all metrics</code></pre>
 
                 <h3>Custom Loss Function</h3>
-                <pre><code class="language-java">public class HuberLoss implements LossProvider {
-    private double delta;
-    private CollectionProducer&lt;?&gt; shape;
+                <pre><code class="language-java">public class HuberLoss implements LossProvider, CodeFeatures {
+    private final double delta;
 
-    public HuberLoss(CollectionProducer&lt;?&gt; shape, double delta) {
-        this.shape = shape;
+    public HuberLoss(double delta) {
         this.delta = delta;
     }
 
     @Override
-    public double loss(PackedCollection output, PackedCollection target) {
-        double totalLoss = 0.0;
-        for (int i = 0; i &lt; output.getMemLength(); i++) {
-            double diff = Math.abs(output.toDouble(i) - target.toDouble(i));
-            if (diff &lt;= delta) {
-                totalLoss += 0.5 * diff * diff;
-            } else {
-                totalLoss += delta * (diff - 0.5 * delta);
-            }
-        }
-        return totalLoss / output.getMemLength();
+    public CollectionProducer loss(Producer&lt;PackedCollection&gt; output,
+                                   Producer&lt;PackedCollection&gt; target) {
+        // Quadratic for |error| &lt;= delta, linear beyond it
+        CollectionProducer error = c(output).subtract(c(target)).abs();
+        return error.greaterThan(c(delta),
+                error.subtract(c(0.5 * delta)).multiply(c(delta)),
+                error.pow(2.0).multiply(c(0.5)));
     }
 
     @Override
