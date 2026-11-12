@@ -1,0 +1,113 @@
+/**
+ * Pre-norm residual self-attention sub-layer of a transformer block — the pre-normalization, the
+ * optional adaptive-layernorm (adaLN-Zero) modulation of the normalized activation, the
+ * self-attention, the optional adaLN gate on the attention output, and the residual connection
+ * around all of them.
+ *
+ * This file replaces the Java assembly that used to live in
+ * TransformerBlockFeatures.transformerBlock(...), which built this sub-layer as a SequentialBlock
+ * wrapped in residual(): the pre-normalization, (in adaLN conditioning) a feature-wise modulation
+ * of the normalized activation, the self-attention, (in adaLN conditioning) a feature-wise gate on
+ * the attention output, all added back to the residual stream. transformerBlock now binds the
+ * normalization weights and the conditioning producers, builds the self-attention block, and loads
+ * the layer of the normalization family and conditioning it is asked for
+ * (TransformerBlockFeatures.selfAttentionResidualSublayer), so there is one definition of the
+ * sub-layer structure and it is here.
+ *
+ * There is one layer per normalization family (LayerNorm or RMSNorm) and conditioning (plain
+ * pre-norm, or adaLN-modulated):
+ *
+ *   self_attention_sublayer_layernorm             LayerNorm, no modulation
+ *   self_attention_sublayer_layernorm_modulated   LayerNorm, then the adaLN modulation and gate
+ *   self_attention_sublayer_rmsnorm               RMSNorm, no modulation
+ *   self_attention_sublayer_rmsnorm_modulated     RMSNorm, then the adaLN modulation and gate
+ *
+ * The self-attention itself is NOT written out here: it arrives as the attention block — the
+ * self_attention sub-block transformerBlock builds (sequence attention over the normalized,
+ * modulated activation: the fused projection, the query/key normalization, the rotary embedding,
+ * the scores, the softmax and the output projection). Which attention variant it is, and the
+ * projection adapter it uses, belong to the attention build, not to this residual wiring, and the
+ * language names neither as a value a stage can select, so the attention arrives as a block,
+ * exactly as the projections and the gate activation do in feed_forward.pdsl.
+ *
+ * adaLN-Zero conditioning (see AdaptiveLayerNormFeatures): a global conditioning vector produces,
+ * per block, a scale, a shift and a gate for this sub-layer, and the modulated residual is
+ *   x = x + gate_mult ⊙ attention( scale_mult ⊙ norm(x) + shift )
+ * where scale_mult = 1 + scale and gate_mult = sigmoid(1 - gate) are formed by transformerBlock
+ * (AdaptiveLayerNormFeatures.residualScale / residualGate) and bound as the mod_scale and gate
+ * producers, so a zero-initialised to_scale_shift_gate leaves the activation unscaled and passes
+ * the attention through. mod_scale, mod_shift and gate are [batch, dim] — one value per batch entry
+ * and channel, broadcast across the sequence — and are constants of the graph refreshed before each
+ * forward pass, so no gradient reaches the conditioning through them. Without modulation the
+ * sub-layer is the plain pre-norm residual x = x + attention(norm(x)).
+ *
+ * Data flow of one forward pass over a [batch, seq_len, dim] activation (modulated form):
+ *
+ *   x                                                               [batch, seq_len, dim]
+ *   accum {                            residual: x + sub-block(x)
+ *     layernorm | rmsnorm              each position normalized over its dim features
+ *                                                                   [batch, seq_len, dim]
+ *     modulate(mod_scale, mod_shift, 2)
+ *                                      (1 + scale) ⊙ norm + shift, per channel, per batch entry
+ *                                      (modulated form only)        [batch, seq_len, dim]
+ *     attention                        the self-attention sub-block [batch, seq_len, dim]
+ *     scale(gate, 2)                   gate ⊙ attention, per channel, per batch entry
+ *                                      (modulated form only)        [batch, seq_len, dim]
+ *   }                                                               [batch, seq_len, dim]
+ */
+
+/** LayerNorm, then self-attention, added back to the stream: x -> x + attention(layernorm(x)). */
+layer self_attention_sublayer_layernorm(pre_norm_weight: weight, pre_norm_bias: weight,
+                                        epsilon: float, attention: block) {
+    accum {
+        layernorm(pre_norm_weight, pre_norm_bias, epsilon)
+        attention
+    }
+}
+
+/**
+ * LayerNorm, the adaLN modulation, self-attention, the adaLN gate, added back to the stream:
+ * x -> x + gate ⊙ attention( modulate(layernorm(x)) ). [batch, seq_len, dim] -> same.
+ */
+layer self_attention_sublayer_layernorm_modulated(batch: int, dim: int,
+                                                  pre_norm_weight: weight, pre_norm_bias: weight,
+                                                  epsilon: float,
+                                                  mod_scale: producer([batch, dim]),
+                                                  mod_shift: producer([batch, dim]),
+                                                  gate: producer([batch, dim]),
+                                                  attention: block) {
+    accum {
+        layernorm(pre_norm_weight, pre_norm_bias, epsilon)
+        modulate(mod_scale, mod_shift, 2)
+        attention
+        scale(gate, 2)
+    }
+}
+
+/** RMSNorm, then self-attention, added back to the stream: x -> x + attention(rmsnorm(x)). */
+layer self_attention_sublayer_rmsnorm(pre_norm_weight: weight, pre_norm_bias: weight,
+                                      epsilon: float, attention: block) {
+    accum {
+        rmsnorm(pre_norm_weight, pre_norm_bias, epsilon)
+        attention
+    }
+}
+
+/**
+ * RMSNorm, the adaLN modulation, self-attention, the adaLN gate, added back to the stream:
+ * x -> x + gate ⊙ attention( modulate(rmsnorm(x)) ). [batch, seq_len, dim] -> same.
+ */
+layer self_attention_sublayer_rmsnorm_modulated(batch: int, dim: int,
+                                                pre_norm_weight: weight, pre_norm_bias: weight,
+                                                epsilon: float,
+                                                mod_scale: producer([batch, dim]),
+                                                mod_shift: producer([batch, dim]),
+                                                gate: producer([batch, dim]),
+                                                attention: block) {
+    accum {
+        rmsnorm(pre_norm_weight, pre_norm_bias, epsilon)
+        modulate(mod_scale, mod_shift, 2)
+        attention
+        scale(gate, 2)
+    }
+}
