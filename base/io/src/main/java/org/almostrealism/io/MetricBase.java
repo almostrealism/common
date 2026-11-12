@@ -100,8 +100,12 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 
 	/** Callbacks invoked at the end of each time interval with the interval total and count. */
 	private List<BiConsumer<Double, Integer>> intervalListeners;
-	/** The index of the most recently reported interval, used to detect interval boundaries. */
-	private long lastReportedInterval;
+	/**
+	 * The index of the interval the most recent entry was recorded in, or {@code -1} before
+	 * the first entry. An entry in any later interval completes this one, so a boundary is
+	 * detected however many idle intervals lie between the two entries.
+	 */
+	private long lastEntryInterval;
 
 	/** Total number of values recorded across all entries. */
 	private long count = 0;
@@ -127,7 +131,7 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 		this.intervalCounts = Collections.synchronizedMap(new HashMap<>());
 
 		this.intervalListeners = new ArrayList<>();
-		this.lastReportedInterval = -1;
+		this.lastEntryInterval = -1;
 	}
 
 	/**
@@ -199,6 +203,11 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	 * Adds a named entry with the specified value.
 	 * The entry is aggregated with any existing entry of the same name.
 	 *
+	 * <p>When the entry falls in a later interval than the previous entry, the previous
+	 * entry's interval is complete and is reported to the interval listeners. This holds
+	 * regardless of how many intervals have elapsed in between, including before the
+	 * first entry, since a metric may first be used long after {@link #startingTime}.</p>
+	 *
 	 * @param <T> the entry type (must be a String or implement Named)
 	 * @param entry the entry key, or null for an unnamed entry
 	 * @param value the value to add
@@ -210,16 +219,24 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 		entries.merge(name, value, Double::sum);
 		counts.merge(name, 1, Integer::sum);
 
+		long completed = -1;
+
 		synchronized (aggregateLock) {
 			total += value;
 			count++;
+
+			if (interval > lastEntryInterval) {
+				completed = lastEntryInterval;
+				lastEntryInterval = interval;
+			}
 		}
 
+		// TODO(review): a concurrent entry in the next interval can report this interval before this merge runs, passing null to listeners
 		intervalTotals.merge(interval, value, Double::sum);
 		intervalCounts.merge(interval, 1, Integer::sum);
 
-		if (interval == lastReportedInterval + 2) {
-			reportInterval(interval - 1);
+		if (completed >= 0) {
+			reportInterval(completed);
 		}
 	}
 
@@ -293,7 +310,6 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	 * @param interval the interval index to report
 	 */
 	protected void reportInterval(long interval) {
-		lastReportedInterval = interval;
 		if (intervalListeners.isEmpty()) return;
 
 		intervalListeners.forEach(l ->
@@ -324,6 +340,7 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 		synchronized (aggregateLock) {
 			count = 0;
 			total = 0.0;
+			lastEntryInterval = -1;
 		}
 		entries.clear();
 		counts.clear();
