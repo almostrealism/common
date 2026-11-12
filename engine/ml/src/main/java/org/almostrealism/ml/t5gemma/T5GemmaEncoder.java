@@ -26,12 +26,10 @@ import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
-import org.almostrealism.model.SequentialBlock;
 
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -42,11 +40,12 @@ import java.util.Set;
  * stack. Attention is bidirectional over the whole padded sequence; padded keys are removed from
  * every softmax through the attention mask.
  *
- * <p>The structure of a layer is not assembled here: it is the {@code t5gemma_encoder_layer} of
- * {@link #ENCODER_ASSET}, where the two norm-wrapped sub-layers and their residual connections are
- * written out. This class reads each layer's weights from the dictionary, binds them with the masks
- * and builds that layer once per layer; the token embedding before the layers and the final norm
- * after them are built here.</p>
+ * <p>The structure is not assembled here: the scaled token embedding, the stack of per-layer
+ * {@code t5gemma_encoder_layer}s and the final norm are the {@code t5gemma_encoder} (or
+ * {@code t5gemma_encoder_softcapped}) layer of {@link #ENCODER_ASSET}, where each layer's two
+ * norm-wrapped sub-layers and their residual connections are also written out. This class loads and
+ * validates the weights, fills the prompt masks, binds them with the checkpoint, and builds that one
+ * layer.</p>
  *
  * <p>The weights follow the released encoder's key layout under an {@code encoder.} prefix, as
  * prepared by the T5Gemma extraction script: the query, key and value projections are fused into
@@ -211,72 +210,81 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	}
 
 	/**
-	 * Assembles the encoder graph over the token id input: the scaled token embedding, one
-	 * {@link #encoderLayer encoder layer} of {@link #ENCODER_ASSET} per configured layer, and the
-	 * final RMS norm.
+	 * Builds the encoder from the {@code t5gemma_encoder} (or {@code t5gemma_encoder_softcapped})
+	 * layer of {@link #ENCODER_ASSET}, whose body reads the scaled token embedding, the stack of
+	 * encoder layers and the final RMS norm from the checkpoint. This method validates the weights,
+	 * binds the checkpoint together with the shared rotary frequencies and prompt masks, and loads
+	 * that one layer; the soft-capped variant is selected for a configuration that soft-caps its
+	 * attention logits.
 	 *
 	 * @return the encoder block
 	 */
 	private Block buildEncoder() {
-		int hidden = config.getHiddenSize();
+		validateWeights();
+
 		int length = config.getMaxLength();
-		TraversalPolicy blockShape = shape(BATCH, length, hidden);
-
-		SequentialBlock main = new SequentialBlock(shape(BATCH, length));
-		main.add(tokenEmbedding(weight("encoder.embed_tokens.weight", config.getVocabularySize(), hidden)));
-
-		PackedCollection invFreq = weight("encoder.rotary.inv_freq", config.getHeadDim() / 2);
-		for (int i = 0; i < config.getLayers(); i++) {
-			main.add(encoderLayer(blockShape, "encoder.layers." + i, invFreq));
+		Map<String, Object> arguments = new HashMap<>();
+		arguments.put("batch", BATCH);
+		arguments.put("seq_len", length);
+		arguments.put("heads", config.getHeads());
+		arguments.put("head_dim", config.getHeadDim());
+		arguments.put("inner_dim", config.getIntermediateSize());
+		arguments.put("weights", weights);
+		arguments.put("inv_freq", weights.get("encoder.rotary.inv_freq"));
+		arguments.put("padding_mask", everyPositionValid(BATCH, length));
+		arguments.put("key_mask", cp(attentionMask));
+		arguments.put("epsilon", config.getNormEpsilon());
+		if (config.hasAttentionSoftcap()) {
+			arguments.put("softcap", config.getAttentionSoftcap());
 		}
 
-		main.add(rmsnorm(blockShape, weight("encoder.norm.weight", hidden), config.getNormEpsilon()));
-		return main;
+		return buildLayer("t5gemma_encoder" + attentionLogits(), shape(BATCH, length), arguments);
 	}
 
 	/**
-	 * The scaled token embedding: each id selects its row of the table, and the rows are scaled
-	 * by the square root of the hidden width. The row selection is a row gather, whose element
-	 * addresses are computed in integer arithmetic inside the graph; a flat element index would
-	 * be rounded once it exceeds what single precision can represent, and the table is far larger
-	 * than that.
+	 * Reads every weight the architecture requires — the embedding table, the rotary frequencies,
+	 * each layer's eight tensors and the final norm — through {@link #weight(String, int...)}, which
+	 * rejects a missing or wrongly shaped weight and marks every present weight consumed, so that
+	 * {@link #block()} reports any weight this pass did not consume. The per-layer tensors are read by
+	 * reusing the same {@link #selfAttentionArguments} and {@link #feedForwardArguments} enumerations
+	 * the sub-layer branches use; the argument maps they return are not needed here, only their
+	 * weight reads. The asset build that follows reads the same validated weights from the checkpoint.
+	 */
+	private void validateWeights() {
+		int hidden = config.getHiddenSize();
+		TraversalPolicy blockShape = shape(BATCH, config.getMaxLength(), hidden);
+		weight("encoder.embed_tokens.weight", config.getVocabularySize(), hidden);
+		PackedCollection invFreq = weight("encoder.rotary.inv_freq", config.getHeadDim() / 2);
+		for (int i = 0; i < config.getLayers(); i++) {
+			String prefix = "encoder.layers." + i;
+			selfAttentionArguments(blockShape, prefix, invFreq);
+			feedForwardArguments(blockShape, prefix);
+		}
+		weight("encoder.norm.weight", hidden);
+	}
+
+	/**
+	 * The scaled token embedding: the {@code t5gemma_token_embedding} layer of {@link #ENCODER_ASSET},
+	 * where each id selects its row of the table and the rows are scaled by the square root of the
+	 * hidden width. The row selection is a row gather whose element addresses are computed in integer
+	 * arithmetic inside the graph, so it stays exact for a vocabulary larger than single precision can
+	 * count. This method binds the table and loads that layer.
 	 *
 	 * @param table the embedding table, shape {@code [vocabulary, hiddenSize]}
 	 * @return the embedding block, {@code [batch, maxLength]} to {@code [batch, maxLength, hiddenSize]}
 	 */
 	Block tokenEmbedding(PackedCollection table) {
-		int hidden = config.getHiddenSize();
-		int length = config.getMaxLength();
-		TraversalPolicy inputShape = shape(BATCH, length);
-		TraversalPolicy outputShape = shape(BATCH, length, hidden);
-
-		return layer("tokenEmbedding", inputShape, outputShape, ids ->
-				rows(shape(BATCH * length, hidden), cp(table), c(ids).reshape(shape(BATCH * length)))
-						.multiply(Math.sqrt(hidden)).reshape(outputShape), List.of(table));
-	}
-
-	/**
-	 * One encoder layer, {@code x + norm(attention(norm(x)))} then {@code x + norm(ffn(norm(x)))}: the
-	 * {@code t5gemma_encoder_layer} of {@link #ENCODER_ASSET}, in its soft-capped form when the
-	 * configuration soft-caps the attention logits, bound with the weights of the layer at
-	 * {@code prefix}.
-	 *
-	 * @param blockShape the hidden state shape
-	 * @param prefix     the layer's weight key prefix
-	 * @param invFreq    the rotary frequencies
-	 * @return the layer
-	 */
-	Block encoderLayer(TraversalPolicy blockShape, String prefix, PackedCollection invFreq) {
-		Map<String, Object> arguments = selfAttentionArguments(blockShape, prefix, invFreq);
-		arguments.putAll(feedForwardArguments(blockShape, prefix));
-		return buildLayer("t5gemma_encoder_layer" + attentionLogits(), blockShape, arguments);
+		Map<String, Object> arguments = new HashMap<>();
+		arguments.put("embed_tokens", table);
+		arguments.put("hidden", config.getHiddenSize());
+		return buildLayer("t5gemma_token_embedding", shape(BATCH, config.getMaxLength()), arguments);
 	}
 
 	/**
 	 * The attention residual branch — RMS norm, masked self-attention, RMS norm — on its own: the
 	 * {@code t5gemma_self_attention} sub-layer of {@link #ENCODER_ASSET}, in its soft-capped form when
 	 * the configuration soft-caps the attention logits, without the residual connection
-	 * {@link #encoderLayer} adds around it.
+	 * the {@code t5gemma_encoder_layer} of {@link #ENCODER_ASSET} adds around it.
 	 *
 	 * @param blockShape the hidden state shape
 	 * @param prefix     the layer's weight key prefix
@@ -291,7 +299,7 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	/**
 	 * The feed-forward residual branch — RMS norm, GELU-gated feed-forward, RMS norm — on its own: the
 	 * {@code t5gemma_feed_forward} sub-layer of {@link #ENCODER_ASSET}, without the residual connection
-	 * {@link #encoderLayer} adds around it.
+	 * the {@code t5gemma_encoder_layer} of {@link #ENCODER_ASSET} adds around it.
 	 *
 	 * @param blockShape the hidden state shape
 	 * @param prefix     the layer's weight key prefix
@@ -388,7 +396,11 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 	}
 
 	/**
-	 * Takes a weight of the given shape from the dictionary, marking it consumed.
+	 * Takes a weight of the given shape from the dictionary, marking it consumed. The weight must
+	 * carry exactly the expected shape: the asset reads every weight from the checkpoint with the
+	 * shape the stored tensor carries, so a tensor whose rank or per-axis lengths differ from the
+	 * expected ones — even when its total element count matches — is rejected rather than silently
+	 * reinterpreted, which would feed a mis-shaped tensor into the layer's projections.
 	 *
 	 * @param key  the weight key
 	 * @param dims the expected shape
@@ -402,15 +414,14 @@ public class T5GemmaEncoder implements AttentionFeatures, Destroyable {
 
 		TraversalPolicy actual = value.getShape();
 		TraversalPolicy expected = shape(dims);
-		boolean sameRank = actual.getDimensions() == expected.getDimensions();
-		if (actual.getTotalSize() != expected.getTotalSize()
-				|| (sameRank && !Arrays.equals(actual.extent(), expected.extent()))) {
+		if (actual.getDimensions() != expected.getDimensions()
+				|| !Arrays.equals(actual.extent(), expected.extent())) {
 			throw new IllegalArgumentException("Weight " + key + " has shape " + actual
 					+ " but " + expected + " was expected");
 		}
 
 		unusedWeights.remove(key);
-		return sameRank ? value : value.reshape(expected);
+		return value;
 	}
 
 	@Override

@@ -21,6 +21,7 @@ step — and proves:
 
 import json
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -56,11 +57,15 @@ class QaRoundPromptBuildStepTests(unittest.TestCase):
         shutil.rmtree(self.caller, ignore_errors=True)
 
     def _render(self, prompt, template_vars=None, fragment="test-runner-maven.txt",
-                caller_files=None, leads=None):
+                caller_files=None, leads=None,
+                repo_url="git@github.com:example/consumer.git",
+                branch="qa/defect-20261030-000000"):
         """Runs the build step's own shell with a concrete environment, the way
         a GitHub runner would, and returns (result, prompt-or-None). When
         ``leads`` is given it is written to a LEADS_FILE the builder substitutes
-        for ${LEADS}, the way the collect step's output reaches it."""
+        for ${LEADS}, the way the collect step's output reaches it. ``repo_url``
+        and ``branch`` are the round's repository and branch — the defaults fit
+        the defect-hunt cases; the retrospective cases pass the caller's own."""
         for path, text in (caller_files or {}).items():
             full = os.path.join(self.caller, path)
             os.makedirs(os.path.dirname(full), exist_ok=True)
@@ -71,9 +76,9 @@ class QaRoundPromptBuildStepTests(unittest.TestCase):
         env.update({
             "FRAMEWORK": _REPO_ROOT,
             "GITHUB_WORKSPACE": self.caller,
-            "BRANCH": "qa/defect-20261030-000000",
+            "BRANCH": branch,
             "BASE_BRANCH": "main",
-            "REPO_URL": "git@github.com:example/consumer.git",
+            "REPO_URL": repo_url,
             "PROMPT": prompt,
             "TEMPLATE_VARS": json.dumps(template_vars or {}),
             "TEST_RUNNER_FRAGMENT": fragment,
@@ -220,6 +225,75 @@ class QaRoundPromptBuildStepTests(unittest.TestCase):
         result, prompt = self._render("defect-hunt", fragment="sub/evil.txt")
         self.assertNotEqual(0, result.returncode)
         self.assertIsNone(prompt)
+
+    def test_the_retrospective_builtin_renders_for_a_public_framework_caller(self):
+        """The retrospective is a built-in selector like defect-hunt, so this
+        framework's own round builds from it with only its template-vars. With
+        the defaults — the public visibility fragment, the framework-owner
+        finding-landing fragment, and docs/qa/retrospectives — the prompt has no
+        leftover placeholder and its survey scope names only the caller's own
+        repository."""
+        repo = "git@github.com:almostrealism/common.git"
+        result, prompt = self._render(
+            "retrospective",
+            template_vars={"REVIEW_SINCE": "14 days ago",
+                           "QA_PREFIXES": "qa/defect- qa/retro- ci/qa-"},
+            repo_url=repo,
+            branch="qa/retro-20261110-000000")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertTrue(prompt)
+        self.assertNotIn("${", prompt)
+        # The survey scope names only the caller's own repository: it is the one
+        # and only repository URL anywhere in the prompt.
+        self.assertIn(repo, prompt)
+        self.assertEqual({repo},
+                         set(re.findall(r"git@github\.com:[\w./-]+\.git", prompt)))
+        # Public visibility and the framework-owner landing are the defaults.
+        self.assertIn("This repository is public", prompt)
+        self.assertIn("ci/qa-... branch", prompt)
+        # The report and ledger default to this framework's location.
+        self.assertIn("docs/qa/retrospectives/ledger.tsv", prompt)
+        self.assertIn("qa/retro-20261110-000000", prompt)
+
+    def test_the_retrospective_builtin_renders_for_a_private_consumer_caller(self):
+        """A private repository that depends on the framework runs its own
+        retrospective by overriding the visibility, finding-landing and report
+        variables through template-vars. The survey scope still names only the
+        caller's own repository — never the framework cloned beside it — the
+        private visibility rule replaces the public one, and harness findings are
+        routed to the framework's tracker project rather than to edits the
+        consumer cannot make."""
+        repo = "git@github.com:example/consumer.git"
+        result, prompt = self._render(
+            "retrospective",
+            template_vars={"REVIEW_SINCE": "30 days ago",
+                           "QA_PREFIXES": "qa/defect- qa/docs-",
+                           "REPORT_DIR": "docs/retrospectives",
+                           "VISIBILITY_FRAGMENT": "retrospective-private.txt",
+                           "FINDINGS_FRAGMENT": "retrospective-findings-consumer.txt",
+                           "FRAMEWORK_TRACKER_PROJECT": "Common"},
+            repo_url=repo,
+            branch="qa/retro-20261110-000000")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertTrue(prompt)
+        self.assertNotIn("${", prompt)
+        # The survey scope names only the caller's own repository, and names no
+        # other repository — not even the framework it is built on.
+        self.assertIn(repo, prompt)
+        self.assertEqual({repo},
+                         set(re.findall(r"git@github\.com:[\w./-]+\.git", prompt)))
+        self.assertNotIn("almostrealism/common", prompt)
+        # Private visibility replaces the public rule.
+        self.assertIn("This repository is private", prompt)
+        self.assertNotIn("This repository is public", prompt)
+        # Harness findings are filed as tracker tasks in the framework's project.
+        self.assertIn("tracker_create_task", prompt)
+        self.assertIn("Common", prompt)
+        # The framework-owner landing (ci/qa- branches) is not what a consumer
+        # gets; it files harness findings instead of proposing edits it cannot make.
+        self.assertNotIn("ci/qa-... branch", prompt)
+        # The consumer's own report location is honored.
+        self.assertIn("docs/retrospectives/ledger.tsv", prompt)
 
 
 class QaRoundWorkflowShapeTests(unittest.TestCase):

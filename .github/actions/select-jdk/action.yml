@@ -1,0 +1,97 @@
+name: Select and verify JDK
+description: >-
+  Select the JDK with the expected major version that the runner image or host
+  already ships (no download), verify its major version robustly, and export
+  JAVA_HOME so every later step — the Maven launcher in particular — uses
+  exactly that JDK. This is the shared replacement for actions/setup-java on
+  self-hosted runners; keeping it in one place stops the eight self-hosted
+  lanes' JDK handling from drifting apart.
+inputs:
+  expected-major:
+    description: The required JDK feature (major) version, e.g. "17".
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Select and verify JDK
+      shell: bash
+      env:
+        EXPECTED_JDK_MAJOR: ${{ inputs.expected-major }}
+      run: |
+        set -eu
+
+        expected="${EXPECTED_JDK_MAJOR:?expected-major input must be set}"
+        runner="${RUNNER_NAME:-unknown}"
+
+        # Read a JDK home's feature (major) version without trusting the first
+        # line of `java -version`: on these runners _JAVA_OPTIONS is set, so
+        # stderr starts with "Picked up _JAVA_OPTIONS: ..." and the version line
+        # is second. We read the JDK's own release metadata first, then the
+        # reported java.specification.version, and only then fall back to the
+        # `java -version` line selected by the `version "` it contains.
+        jdk_major() {
+          home="$1"
+          v=""
+          if [ -r "${home}/release" ]; then
+            v="$(sed -n 's/^JAVA_VERSION="\{0,1\}\([0-9][0-9]*\).*/\1/p' "${home}/release" | head -1)"
+          fi
+          if [ -z "${v}" ] && [ -x "${home}/bin/java" ]; then
+            v="$("${home}/bin/java" -XshowSettings:properties -version 2>&1 \
+                  | sed -n 's/^[[:space:]]*java\.specification\.version = \([0-9][0-9]*\).*/\1/p' | head -1)"
+          fi
+          if [ -z "${v}" ] && [ -x "${home}/bin/java" ]; then
+            v="$("${home}/bin/java" -version 2>&1 \
+                  | sed -n 's/.*version "\([0-9][0-9]*\).*/\1/p' | head -1)"
+          fi
+          [ -n "${v}" ] && printf '%s' "${v}"
+        }
+
+        selected=""
+        selected_major=""
+
+        # Accept a candidate home if its major matches; first match wins.
+        try_select() {
+          home="$1"
+          [ -n "${home}" ] || return 1
+          [ -d "${home}" ] || return 1
+          major="$(jdk_major "${home}")" || true
+          if [ "${major}" = "${expected}" ]; then
+            selected="${home}"
+            selected_major="${major}"
+            return 0
+          fi
+          return 1
+        }
+
+        # macOS: ask java_home for the expected major explicitly, because the
+        # Maven launcher otherwise falls back to /usr/libexec/java_home, which
+        # picks the newest installed JDK rather than the one we verified.
+        if [ -z "${selected}" ] && [ "${RUNNER_OS:-}" = "macOS" ]; then
+          mac_home="$(/usr/libexec/java_home -v "${expected}" 2>/dev/null || true)"
+          try_select "${mac_home}" || true
+        fi
+        # The image's JAVA_HOME (the primary mechanism on Linux, a fallback on macOS).
+        if [ -z "${selected}" ]; then
+          try_select "${JAVA_HOME:-}" || true
+        fi
+        # The home of whatever `java` is on PATH.
+        if [ -z "${selected}" ] && command -v java >/dev/null 2>&1; then
+          path_home="$(java -XshowSettings:properties -version 2>&1 \
+                        | sed -n 's/^[[:space:]]*java\.home = \(.*\)$/\1/p' | head -1)"
+          try_select "${path_home}" || true
+        fi
+
+        if [ -z "${selected}" ]; then
+          echo "::error::Runner ${runner}: no installed JDK with major ${expected} found (checked /usr/libexec/java_home on macOS, JAVA_HOME=${JAVA_HOME:-unset}, and the java on PATH). Rebuild or restart this runner's image or host so it carries JDK ${expected} (see tools/ci/README.md)."
+          java -version 2>&1 || true
+          exit 1
+        fi
+
+        echo "Runner ${runner}: selected JDK major ${selected_major} at ${selected} (EXPECTED_JDK_MAJOR=${expected})"
+
+        # Pin every later step — and the Maven launcher it invokes — to this JDK.
+        echo "JAVA_HOME=${selected}" >> "${GITHUB_ENV}"
+        echo "${selected}/bin" >> "${GITHUB_PATH}"
+
+        # Print the Maven version banner once, so the log records which JDK Maven runs on.
+        JAVA_HOME="${selected}" PATH="${selected}/bin:${PATH}" mvn -v
