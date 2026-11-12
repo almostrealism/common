@@ -387,6 +387,57 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that when the promoted element is addressed through a declaration that
+	 * loop-invariant code motion hoists out of the loop body, that declaration is
+	 * rendered before the accumulator that reads the element. This is the shape of a
+	 * single-iteration FFT bit-reversal copy, whose destination position does not
+	 * depend on the loop index; seeding the accumulator first referenced an undeclared
+	 * position and failed native compilation.
+	 *
+	 * <p>Scope structure before simplification:</p>
+	 * <pre>
+	 * for (i = 0; i < 1; i++) {
+	 *   { int dst = _gid * 2; out[dst] = in[i]; }
+	 * }
+	 * </pre>
+	 */
+	@Test(timeout = 30000)
+	public void hoistedPositionDeclaredBeforeAccumulator() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(1));
+		loop.setName("hoistedPositionTest");
+
+		ArrayVariable<Double> out = new ArrayVariable(Double.class, "out", e(4));
+		ArrayVariable<Double> in = new ArrayVariable(Double.class, "in", e(4));
+
+		Scope<Void> body = new Scope<>("body");
+		Expression<Integer> dst = body.declareInteger("_test_dst",
+				new StaticReference<>(Integer.class, "_gid").multiply(2));
+		body.assign(new InstanceReference(out, dst, dst), inElement(in));
+		loop.getChildren().add(body);
+
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
+		Assert.assertFalse("The loop should be promoted", simplified instanceof Repeated);
+
+		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+		CPrintWriter writer = new CPrintWriter(buffer, "hoistedPositionTest", Precision.FP64);
+		simplified.write(writer);
+		writer.flush();
+		String code = buffer.toString();
+
+		int position = code.indexOf("_test_dst = ");
+		int accumulator = code.indexOf("_test_i_acc0 = out[");
+		int loopStart = code.indexOf("for (int _test_i");
+
+		Assert.assertTrue("The hoisted position should be declared:\n" + code, position >= 0);
+		Assert.assertTrue("The accumulator should be declared:\n" + code, accumulator >= 0);
+		Assert.assertTrue("The position should be declared before the accumulator reads it:\n" + code,
+				position < accumulator);
+		Assert.assertTrue("The accumulator should be declared before the loop:\n" + code,
+				accumulator < loopStart);
+	}
+
+	/**
 	 * Verifies that a real reduction computation produces identical results with
 	 * accumulator promotion enabled and disabled, and that both match the
 	 * directly computed sum. This is a differential test that catches cases

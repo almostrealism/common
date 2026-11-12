@@ -321,6 +321,13 @@ public class Repeated<T> extends Scope<T> {
 	 * the loop body addresses one of the promoted elements, and the loop condition and
 	 * interval do not reference it at all.</p>
 	 *
+	 * <p>The code this loop renders before its body, including the declarations that
+	 * loop-invariant code motion hoisted out of it, moves to the start of the result,
+	 * ahead of the accumulator declarations. It executes before the loop begins, and a
+	 * promoted element is often addressed through one of those declarations (a
+	 * destination position that does not depend on the loop index), so each seed must
+	 * follow it.</p>
+	 *
 	 * @return a new scope with accumulators promoted, or this loop if nothing qualifies
 	 */
 	public Scope<T> promoteAccumulators() {
@@ -419,8 +426,16 @@ public class Repeated<T> extends Scope<T> {
 			loop = loop.replace(promoted.get(i), accumulators.get(i));
 		}
 
-		// Seed the accumulators before the loop and store them back after it closes.
+		// The code rendered before the loop body runs before the seeds, unrewritten.
 		Scope<T> result = new Scope<>(getName(), getMetadata());
+		result.getMethods().addAll(getMethods());
+		result.getStatements().addAll(getStatements());
+		result.getStatements().addAll(getVariables());
+		loop.getMethods().clear();
+		loop.getStatements().clear();
+		loop.getVariables().clear();
+
+		// Seed the accumulators before the loop and store them back after it closes.
 		Scope<T> stores = new Scope<>(getName() + "_stores");
 
 		for (int i = 0; i < promoted.size(); i++) {

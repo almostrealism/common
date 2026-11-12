@@ -11,15 +11,19 @@ native kernels on every backend, Metal and OpenCL included; nothing is computed 
 | 2D / 3D / N-D FFT | `fft2d(complex)`, `ifft2d(spectrum)`, `fftn(complex, inverse)` |
 | Real ↔ complex | `toComplex(real)`, `realPart(complex)`, `imaginaryPart(complex)` |
 | Power, magnitude, phase | `powerSpectrum`, `complexMagnitude`, `phase`, `logMagnitude` |
-| Wavenumber of every cell | `wavenumberSquared(grid, spacing...)` |
-| Radially averaged power | `radialPowerSpectrum(power, spacing...)`, `radialBin`, `radialBinWidth`, `radialBinCount` |
+| Grid geometry (dimensions and spacing) | `new SpectralGrid(shape, spacing...)` |
+| Wavenumber of every cell | `grid.wavenumberSquared()`, `grid.wavenumberSquared(cell)` |
+| Radially averaged power | `radialPowerSpectrum(power, spacing...)`, `grid.radialBin()`, `SpectralGrid.getRadialBinWidth()`, `SpectralGrid.getRadialBinCount()` |
 | Dominant wavelength of a field | `dominantWavelength(field, spacing...)`, `dominantWavenumber(field, spacing...)` |
 | Peak of any radial spectrum | `spectralPeakBin(spectrum)`, `spectralPeak(spectrum, binWidth)` |
 | Periodic Poisson solve `∇²p = f` | `poissonSolve(f, spacing...)` |
 
 The 1-D `fft(bins, input)` and `ifft(bins, input)` are methods of `TemporalFeatures`, and
 `FourierTransform` is the computation behind every transform. Everything else in the table is a
-default method of `SpectralFeatures` (`org.almostrealism.time`). `TemporalFeatures` extends
+default method of `SpectralFeatures` (`org.almostrealism.time`), except the grid geometry, which is a
+`SpectralGrid`: its constructor validates the spacing, it derives the radial bin width and
+count on the host from the dimensions and spacing alone, and it builds the per-cell graphs that
+depend on nothing but the grid (`wavenumberSquared` and `radialBin`). `TemporalFeatures` extends
 `SpectralFeatures`, so any class that implements `TemporalFeatures` (including every
 `TestSuiteBase` test) has all of them.
 
@@ -62,7 +66,7 @@ kernel per stage) would parallelise single long transforms better. It has not be
 `radialPowerSpectrum(power, spacing...)` averages a power spectrum over shells of constant `|k|`.
 Bin `b` is the mean power of the cells whose `|k| / dk` rounds to `b`, where
 `dk = 2π / max(n_a · d_a)` is the fundamental wavenumber of the longest grid extent. There are
-`radialBinCount` bins, enough to reach the smallest Nyquist wavenumber `min(π / d_a)`: `n/2 + 1`
+`SpectralGrid.getRadialBinCount()` bins, enough to reach the smallest Nyquist wavenumber `min(π / d_a)`: `n/2 + 1`
 for an `n × n` grid. Cells beyond the last bin (the spectrum's corners) are ignored. Bin `b`
 represents wavenumber `b·dk`, i.e. wavelength `2π / (b·dk)`.
 
@@ -143,9 +147,9 @@ the grid puts its power in exact cells, and the estimate is then exact to roundi
 
 ## Size limits
 
-- **Flat indices are decoded in floating point.** `wavenumberSquared` turns a flat cell index
+- **Flat indices are decoded in floating point.** `SpectralGrid.wavenumberSquared` turns a flat cell index
   into per-axis coordinates with `mod` and `divide`, which are exact in FP32 only for indices
-  below `2^24` (`SpectralFeatures.MAX_EXACT_INDEX`). A grid with more cells is rejected with an
+  below `2^24` (`SpectralGrid.MAX_EXACT_INDEX`). A grid with more cells is rejected with an
   `IllegalArgumentException`, not left to compute wrong wavenumbers. `poissonSolve` decodes one
   index per interleaved complex element, so its limit is `2^23` cells.
 - **The radial spectrum uses a dense membership matrix.** `radialPowerSpectrum` averages shells
@@ -181,6 +185,7 @@ the grid puts its power in exact cells, and the estimate is then exact to roundi
 |------|----------|
 | `compute/time/.../time/computations/FourierTransform.java` | Iterative strided FFT kernel |
 | `compute/time/.../time/SpectralFeatures.java` | N-D FFT, spectra, wavelength, Poisson |
+| `compute/time/.../time/SpectralGrid.java` | Grid dimensions and spacing, radial bin width and count |
 | `compute/algebra/.../collect/CollectionFeatures.java` | `isolated(producer)` |
 | `engine/utils/src/test/.../time/computations/test/SpectralFeaturesTest.java` | Tests above |
 | `engine/utils/src/test/.../time/computations/test/FourierTransformTests.java` | 1-D tests, incl. `compileGpu` |

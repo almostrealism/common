@@ -34,11 +34,10 @@ import java.util.stream.IntStream;
  * power, magnitude and phase) that they are built from.
  *
  * <p>Every operation on data returns a {@link CollectionProducer}; nothing is evaluated on the
- * host. The exceptions are {@link #radialBinWidth} and {@link #radialBinCount}, which return
- * scalar metadata computed on the host from the grid shape and spacing alone, because they
- * size the graph (the number of radial bins) or parameterise it (the bin width). They never
- * read the grid's data. {@link TemporalFeatures} extends this interface, so every type with the
- * temporal operations also has these.</p>
+ * host. The geometry of a grid (its dimensions and sample spacing, and the radial bin width and
+ * count derived from them) is a {@link SpectralGrid}, which sizes and parameterises the graphs
+ * built here without reading any grid data. {@link TemporalFeatures} extends this interface, so
+ * every type with the temporal operations also has these.</p>
  *
  * <h2>Conventions</h2>
  * <ul>
@@ -47,7 +46,7 @@ import java.util.stream.IntStream;
  *       transformed axis length must be a power of 2.</li>
  *   <li>{@code spacing} gives the physical distance between samples along each axis, in axis order
  *       (for a {@code [rows, cols]} grid where rows run along y, {@code spacing = (dy, dx)}). A single
- *       value applies to every axis.</li>
+ *       value applies to every axis. See {@link SpectralGrid}.</li>
  *   <li>Forward transforms are unnormalised, {@code X[k] = sum_n x[n] e^(-2 pi i k.n / N)}; the inverse
  *       carries the full {@code 1 / (n0 * n1 * ...)} factor, so {@code inverse(forward(x)) == x}.</li>
  *   <li>Frequency index {@code m} along an axis of length {@code n} is the signed index
@@ -59,14 +58,6 @@ import java.util.stream.IntStream;
  * @author Michael Murray
  */
 public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
-
-	/**
-	 * The number of consecutive integers, starting at zero, that a single precision float
-	 * represents exactly ({@code 2^24}). Cell indices are decoded into per-axis coordinates with
-	 * floating-point arithmetic, so any index a spectral operation decodes must be below this
-	 * limit for the decoded coordinates to be exact on an FP32 backend.
-	 */
-	int MAX_EXACT_INDEX = 1 << 24;
 
 	/**
 	 * Transforms a complex grid along one axis, with no transposition: every line along the
@@ -257,99 +248,9 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	}
 
 	/**
-	 * Returns the squared angular wavenumber {@code |k|^2} of the cells of a grid identified by
-	 * their flat (row-major) index. This is the building block of spectral operators: the Fourier
-	 * symbol of the Laplacian is {@code -|k|^2}.
-	 *
-	 * <p>The index is decoded with floating-point arithmetic, so the grid may have at most
-	 * {@link #MAX_EXACT_INDEX} cells.</p>
-	 *
-	 * @param cell    producer of flat cell indices into {@code grid}; any shape
-	 * @param grid    the grid shape
-	 * @param spacing the sample spacing along each axis (or one value for all axes)
-	 * @return a producer of {@code |k|^2} with the shape of {@code cell}
-	 * @throws IllegalArgumentException if the grid has more than {@link #MAX_EXACT_INDEX} cells,
-	 *                                  or the spacing is invalid
-	 */
-	default CollectionProducer wavenumberSquared(Producer<PackedCollection> cell,
-												 TraversalPolicy grid, double... spacing) {
-		double[] d = gridSpacing(grid, spacing);
-		requireExactIndices("wavenumberSquared", grid.getTotalSize());
-		CollectionProducer index = c(cell);
-
-		CollectionProducer total = null;
-		int stride = grid.getTotalSize();
-
-		for (int axis = 0; axis < grid.getDimensions(); axis++) {
-			int n = grid.length(axis);
-			stride /= n;
-
-			CollectionProducer position = stride == 1 ? index :
-					index.subtract(index.mod((double) stride)).divide(c(stride));
-			CollectionProducer m = position.mod((double) n);
-			CollectionProducer signed = m.subtract(greaterThan(m, c(n / 2.0 - 0.5), c(n), c(0.0)));
-			CollectionProducer k = signed.multiply(c(2 * Math.PI / (n * d[axis])));
-
-			total = total == null ? k.sq() : total.add(k.sq());
-		}
-
-		return total;
-	}
-
-	/**
-	 * Returns the squared angular wavenumber {@code |k|^2} of every cell of a grid. Only the
-	 * dimensions of {@code grid} are used: the result is dense and in row-major order, so any
-	 * {@link io.almostrealism.collect.TraversalOrdering} the grid shape carries is not applied to it.
-	 *
-	 * @param grid    the grid shape
-	 * @param spacing the sample spacing along each axis (or one value for all axes)
-	 * @return a producer of {@code |k|^2} with the dimensions of {@code grid} and no ordering
-	 */
-	default CollectionProducer wavenumberSquared(TraversalPolicy grid, double... spacing) {
-		return wavenumberSquared(integers(0, grid.getTotalSize()), grid, spacing).reshape(grid.withOrder(null));
-	}
-
-	/**
-	 * Returns the width, in angular wavenumber, of the bins of a
-	 * {@link #radialPowerSpectrum radial power spectrum}: the fundamental wavenumber
-	 * {@code 2 pi / L} of the longest grid extent {@code L = max(n_a * d_a)}.
-	 *
-	 * @param grid    the grid shape
-	 * @param spacing the sample spacing along each axis (or one value for all axes)
-	 * @return the radial bin width
-	 */
-	default double radialBinWidth(TraversalPolicy grid, double... spacing) {
-		double[] d = gridSpacing(grid, spacing);
-		double extent = IntStream.range(0, d.length).mapToDouble(a -> grid.length(a) * d[a]).max().orElseThrow();
-		return 2 * Math.PI / extent;
-	}
-
-	/**
-	 * Returns the number of bins of a {@link #radialPowerSpectrum radial power spectrum}: enough
-	 * to reach the smallest Nyquist wavenumber {@code min(pi / d_a)} of the grid. For an
-	 * {@code n x n} grid with equal spacing this is {@code n / 2 + 1}.
-	 *
-	 * <p>The last bin is the last one whose centre is at or below that Nyquist wavenumber; cells
-	 * that round into the bin beyond it lie past Nyquist and are ignored. Every counted bin holds
-	 * at least one cell: the axis of the longest extent {@code L = n_L d_L} has wavenumbers at
-	 * every multiple of the bin width up to {@code n_L / 2}, and since the smallest Nyquist
-	 * wavenumber belongs to the axis of the largest spacing, the bin count never exceeds
-	 * {@code n_L / 2 + 1}.</p>
-	 *
-	 * @param grid    the grid shape
-	 * @param spacing the sample spacing along each axis (or one value for all axes)
-	 * @return the radial bin count
-	 */
-	default int radialBinCount(TraversalPolicy grid, double... spacing) {
-		double[] d = gridSpacing(grid, spacing);
-		double nyquist = IntStream.range(0, d.length).mapToDouble(a -> Math.PI / d[a]).min().orElseThrow();
-		return (int) Math.floor(nyquist / radialBinWidth(grid, d) + 1e-9) + 1;
-	}
-
-	/**
 	 * Averages a power spectrum over shells of constant {@code |k|}. Bin {@code b} holds the mean
 	 * power of the cells whose wavenumber magnitude is nearest to {@code b * dk}, where {@code dk} is
-	 * the {@link #radialBinWidth radial bin width}; cells beyond the last bin (the corners of the
+	 * the {@link SpectralGrid#getRadialBinWidth() radial bin width}; cells beyond the last bin (the corners of the
 	 * spectrum) are ignored. Bin {@code b} therefore represents angular wavenumber {@code b * dk},
 	 * i.e. wavelength {@code 2 pi / (b * dk)}.
 	 *
@@ -361,14 +262,15 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 *                {@link #powerSpectrum(Producer) powerSpectrum} of an {@link #fftn fftn}), shaped
 	 *                like the grid
 	 * @param spacing the sample spacing along each axis (or one value for all axes)
-	 * @return a producer of the {@link #radialBinCount} radially averaged powers
+	 * @return a producer of the {@link SpectralGrid#getRadialBinCount() radial bin count}
+	 *         radially averaged powers
 	 * @throws IllegalArgumentException if {@code bins * cells} exceeds {@link Integer#MAX_VALUE},
-	 *                                  or the grid has more than {@link #MAX_EXACT_INDEX} cells
+	 *                                  or the grid has more than {@link SpectralGrid#MAX_EXACT_INDEX} cells
 	 */
 	default CollectionProducer radialPowerSpectrum(Producer<PackedCollection> power, double... spacing) {
-		TraversalPolicy grid = gridShape(power);
-		int cells = grid.getTotalSize();
-		int bins = radialBinCount(grid, spacing);
+		SpectralGrid grid = new SpectralGrid(shape(power), spacing);
+		int cells = grid.getCellCount();
+		int bins = grid.getRadialBinCount();
 
 		// Tracked as a follow-up task: replace the dense membership matrix with a segmented reduction
 		if ((long) bins * cells > Integer.MAX_VALUE) {
@@ -376,7 +278,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 					cells + " membership matrix, which exceeds the addressable size");
 		}
 
-		CollectionProducer binOfCell = repeat(bins, isolated(radialBin(grid, spacing).reshape(cells))).reshape(bins, cells);
+		CollectionProducer binOfCell = repeat(bins, isolated(grid.radialBin().reshape(cells))).reshape(bins, cells);
 		CollectionProducer bin = repeat(1, cells, integers(0, bins).reshape(bins, 1)).reshape(bins, cells);
 		CollectionProducer membership = greaterThan(abs(binOfCell.subtract(bin)), c(0.5), c(0.0), c(1.0));
 
@@ -384,20 +286,6 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 		CollectionProducer total = isolated(weighted.sum(1).reshape(bins));
 		CollectionProducer count = isolated(membership.sum(1).reshape(bins));
 		return total.divide(count);
-	}
-
-	/**
-	 * Returns the {@link #radialPowerSpectrum radial bin} of every cell of a grid: the integer
-	 * nearest to {@code |k| / dk}, where {@code dk} is the {@link #radialBinWidth radial bin width}.
-	 *
-	 * @param grid    the grid shape
-	 * @param spacing the sample spacing along each axis (or one value for all axes)
-	 * @return a producer of bin indices, shaped {@code [cells]} in row-major cell order
-	 */
-	default CollectionProducer radialBin(TraversalPolicy grid, double... spacing) {
-		double dk = radialBinWidth(grid, spacing);
-		CollectionProducer k = sqrt(wavenumberSquared(integers(0, grid.getTotalSize()), grid, spacing));
-		return floor(k.divide(c(dk)).add(c(0.5)));
 	}
 
 	/**
@@ -433,7 +321,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * accurate, because it uses the exact wavenumber of every cell rather than the bin centres.</p>
 	 *
 	 * @param radialSpectrum a radial spectrum, shaped {@code [bins]}
-	 * @param binWidth       the wavenumber represented by one bin (see {@link #radialBinWidth})
+	 * @param binWidth       the wavenumber represented by one bin (see {@link SpectralGrid#getRadialBinWidth()})
 	 * @return a single-element producer of the peak wavenumber, {@code (b + delta) * binWidth}
 	 * @throws IllegalArgumentException if {@code binWidth} is not positive and finite
 	 */
@@ -490,20 +378,20 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * @return a single-element producer of the dominant wavenumber, in radians per unit length
 	 */
 	default CollectionProducer dominantWavenumber(Producer<PackedCollection> field, double... spacing) {
-		TraversalPolicy grid = gridShape(field);
-		int cells = grid.getTotalSize();
-		double dk = radialBinWidth(grid, spacing);
+		SpectralGrid grid = new SpectralGrid(shape(field), spacing);
+		int cells = grid.getCellCount();
+		double dk = grid.getRadialBinWidth();
 
 		CollectionProducer values = c(field).reshape(cells);
 		CollectionProducer mean = isolated(isolated(values.sum()).divide(c(cells)));
 		CollectionProducer deviation = values.subtract(mean);
 		CollectionProducer extent = isolated(max(abs(deviation)));
-		CollectionProducer centred = deviation.divide(extent).reshape(grid);
+		CollectionProducer centred = deviation.divide(extent).reshape(grid.getShape());
 		CollectionProducer power = isolated(powerSpectrum(fftn(toComplex(centred), false)).reshape(cells));
-		CollectionProducer peak = spectralPeakBin(radialPowerSpectrum(power.reshape(grid), spacing));
+		CollectionProducer peak = spectralPeakBin(radialPowerSpectrum(power.reshape(grid.getShape()), spacing));
 
-		CollectionProducer k = isolated(sqrt(wavenumberSquared(integers(0, cells), grid, spacing)).reshape(cells));
-		CollectionProducer bin = radialBin(grid, spacing).reshape(cells);
+		CollectionProducer k = isolated(sqrt(grid.wavenumberSquared(integers(0, cells))).reshape(cells));
+		CollectionProducer bin = grid.radialBin().reshape(cells);
 		CollectionProducer first = powerCentroid(power, k,
 				greaterThan(abs(bin.subtract(peak)), c(1.5), c(0.0), c(1.0)));
 		return powerCentroid(power, k,
@@ -544,28 +432,29 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * and any mean in {@code f} is discarded.
 	 *
 	 * <p>The symbol is computed per interleaved complex element, whose flat index is decoded with
-	 * floating-point arithmetic, so the grid may have at most {@code MAX_EXACT_INDEX / 2} cells.</p>
+	 * floating-point arithmetic, so the grid may have at most
+	 * {@code SpectralGrid.MAX_EXACT_INDEX / 2} cells.</p>
 	 *
 	 * @param source  the right-hand side {@code f}, shaped like a grid
 	 * @param spacing the sample spacing along each axis (or one value for all axes)
 	 * @return a producer of the zero-mean solution {@code p}, shaped like {@code source}
-	 * @throws IllegalArgumentException if the grid has more than {@code MAX_EXACT_INDEX / 2} cells
+	 * @throws IllegalArgumentException if the grid has more than {@code SpectralGrid.MAX_EXACT_INDEX / 2} cells
 	 */
 	default CollectionProducer poissonSolve(Producer<PackedCollection> source, double... spacing) {
-		TraversalPolicy grid = gridShape(source);
-		int cells = grid.getTotalSize();
-		requireExactIndices("poissonSolve", 2L * cells);
+		SpectralGrid grid = new SpectralGrid(shape(source), spacing);
+		int cells = grid.getCellCount();
+		grid.requireExactIndices("poissonSolve", 2);
 
 		CollectionProducer element = integers(0, 2 * cells);
 		CollectionProducer cell = element.subtract(element.mod(2.0)).divide(c(2.0));
-		CollectionProducer k2 = wavenumberSquared(cell, grid, spacing);
+		CollectionProducer k2 = grid.wavenumberSquared(cell);
 
-		double smallest = 0.5 * Math.pow(radialBinWidth(grid, spacing), 2);
+		double smallest = 0.5 * Math.pow(grid.getRadialBinWidth(), 2);
 		CollectionProducer nonzero = greaterThan(k2, c(smallest), c(1.0), c(0.0));
 		CollectionProducer symbol = nonzero.minus().divide(k2.add(c(1.0)).subtract(nonzero));
 
 		CollectionProducer spectrum = fftn(toComplex(source), false)
-				.multiply(symbol.reshape(grid.appendDimension(2)));
+				.multiply(symbol.reshape(grid.getShape().appendDimension(2)));
 		return realPart(fftn(spectrum, true));
 	}
 
@@ -637,49 +526,5 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 		TraversalPolicy result = dims == 1 ? shape(1) :
 				shape(IntStream.range(0, dims - 1).map(shape::length).toArray());
 		return subset(shape(count, 1), reshape(shape(count, 2), complex), 0, component).reshape(result);
-	}
-
-	/**
-	 * Validates that every index in {@code [0, count)} is represented exactly by a single
-	 * precision float, so that decoding it with floating-point arithmetic is exact.
-	 *
-	 * @param operation the operation that decodes the indices, for the error message
-	 * @param count     the number of indices decoded
-	 * @throws IllegalArgumentException if {@code count} exceeds {@link #MAX_EXACT_INDEX}
-	 */
-	private static void requireExactIndices(String operation, long count) {
-		if (count > MAX_EXACT_INDEX) {
-			throw new IllegalArgumentException(operation + " decodes " + count +
-					" flat indices, but only " + MAX_EXACT_INDEX + " are exact in single precision");
-		}
-	}
-
-	/**
-	 * Expands a spacing argument to one value per grid axis.
-	 *
-	 * @param grid    the grid shape
-	 * @param spacing one value per axis, or a single value for every axis
-	 * @return one spacing per axis
-	 * @throws IllegalArgumentException if the number of values matches neither 1 nor the grid rank,
-	 *                                  any spacing is not positive and finite, or any axis extent
-	 *                                  {@code n_a * d_a} or wavenumber {@code 2 pi / d_a} overflows
-	 */
-	private double[] gridSpacing(TraversalPolicy grid, double... spacing) {
-		int dims = grid.getDimensions();
-		if (spacing.length != 1 && spacing.length != dims) {
-			throw new IllegalArgumentException("Expected 1 or " + dims + " spacings, not " + spacing.length);
-		}
-
-		double[] d = IntStream.range(0, dims).mapToDouble(a -> spacing[spacing.length == 1 ? 0 : a]).toArray();
-		if (IntStream.range(0, dims).anyMatch(a -> !(d[a] > 0) || !Double.isFinite(d[a]))) {
-			throw new IllegalArgumentException("Grid spacing must be positive and finite");
-		}
-
-		if (IntStream.range(0, dims).anyMatch(a ->
-				!Double.isFinite(grid.length(a) * d[a]) || !Double.isFinite(2 * Math.PI / d[a]))) {
-			throw new IllegalArgumentException("Grid spacing must give a finite extent and wavenumber on " + grid);
-		}
-
-		return d;
 	}
 }

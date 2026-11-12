@@ -27,6 +27,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DefaultComputer;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.time.SpectralFeatures;
+import org.almostrealism.time.SpectralGrid;
 import org.almostrealism.time.computations.FourierTransform;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -424,8 +425,8 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		double spacing = 0.5;
 		TraversalPolicy grid = shape(n, n);
 
-		Assert.assertEquals(n / 2 + 1, radialBinCount(grid, spacing));
-		assertRelative("bin width", 2 * Math.PI / (n * spacing), radialBinWidth(grid, spacing), 1e-12);
+		Assert.assertEquals(n / 2 + 1, new SpectralGrid(grid, spacing).getRadialBinCount());
+		assertRelative("bin width", 2 * Math.PI / (n * spacing), new SpectralGrid(grid, spacing).getRadialBinWidth(), 1e-12);
 
 		PackedCollection radial = radialPowerSpectrum(c(3.0).repeat(n * n).reshape(grid), spacing).evaluate();
 		Assert.assertEquals(n / 2 + 1, radial.getShape().getTotalSize());
@@ -443,9 +444,9 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		TraversalPolicy grid = shape(64, 8);
 		double[] spacing = {1.0, 1.48};
 
-		Assert.assertEquals(22, radialBinCount(grid, spacing));
+		Assert.assertEquals(22, new SpectralGrid(grid, spacing).getRadialBinCount());
 
-		PackedCollection bins = radialBin(grid, spacing).evaluate();
+		PackedCollection bins = new SpectralGrid(grid, spacing).radialBin().evaluate();
 		for (int b = 0; b < 22; b++) {
 			double bin = b;
 			Assert.assertTrue("bin " + b + " is empty", bins.doubleStream().anyMatch(v -> v == bin));
@@ -470,7 +471,7 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 
 		CollectionProducer field = cos(coordinate(n, n, 1).multiply(c(2 * Math.PI * 4 / n)));
 		PackedCollection power = powerSpectrum(fft2d(toComplex(field))).evaluate();
-		PackedCollection shellCells = radialBin(grid, spacing).evaluate();
+		PackedCollection shellCells = new SpectralGrid(grid, spacing).radialBin().evaluate();
 		PackedCollection radial = radialPowerSpectrum(cp(power), spacing).evaluate();
 
 		long cellsInShell = shellCells.doubleStream().filter(b -> b == 4.0).count();
@@ -624,7 +625,7 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		double dy = 0.5;
 		double dx = 0.25;
 
-		PackedCollection k2 = wavenumberSquared(shape(rows, cols), dy, dx).evaluate();
+		PackedCollection k2 = new SpectralGrid(shape(rows, cols), dy, dx).wavenumberSquared().evaluate();
 		Assert.assertEquals(rows * cols, k2.getShape().getTotalSize());
 
 		for (int r = 0; r < rows; r++) {
@@ -652,10 +653,10 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		TraversalPolicy ordered = reversedCopy(plain, plain.getTotalSize()).getShape();
 		Assert.assertNotNull("the grid should carry an ordering", ordered.getOrder());
 
-		CollectionProducer k2 = wavenumberSquared(ordered, 0.5, 0.25);
+		CollectionProducer k2 = new SpectralGrid(ordered, 0.5, 0.25).wavenumberSquared();
 		Assert.assertNull("|k|^2 should not carry the grid ordering", k2.getShape().getOrder());
 
-		PackedCollection expected = wavenumberSquared(plain, 0.5, 0.25).evaluate();
+		PackedCollection expected = new SpectralGrid(plain, 0.5, 0.25).wavenumberSquared().evaluate();
 		PackedCollection actual = k2.evaluate();
 		double error = maxDifference(expected, actual);
 		log("wavenumberSquaredIgnoresGridOrdering maxError=" + error);
@@ -722,13 +723,13 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 
 	/**
 	 * Flat cell indices are decoded in floating point, so a grid of more than
-	 * {@link SpectralFeatures#MAX_EXACT_INDEX} cells is rejected, while one of exactly that
+	 * {@link SpectralGrid#MAX_EXACT_INDEX} cells is rejected, while one of exactly that
 	 * many cells is accepted. Only the graph is built; nothing is evaluated.
 	 */
 	@Test(timeout = 60000)
 	public void wavenumberSquaredRejectsInexactIndices() {
-		Assert.assertNotNull(wavenumberSquared(shape(4096, 4096), 1.0));
-		assertRejected(() -> wavenumberSquared(shape(4096, 8192), 1.0));
+		Assert.assertNotNull(new SpectralGrid(shape(4096, 4096), 1.0).wavenumberSquared());
+		assertRejected(() -> new SpectralGrid(shape(4096, 8192), 1.0).wavenumberSquared());
 	}
 
 	/**
@@ -749,7 +750,7 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	@Test(timeout = 60000)
 	public void radialPowerSpectrumRejectsOversizedGrid() {
 		TraversalPolicy grid = shape(256, 256, 256);
-		Assert.assertEquals(129, radialBinCount(grid, 1.0));
+		Assert.assertEquals(129, new SpectralGrid(grid, 1.0).getRadialBinCount());
 		assertRejected(() -> radialPowerSpectrum(zeros(grid), 1.0));
 	}
 
@@ -763,9 +764,9 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		assertRejected(() -> fft2d(zeros(shape(4, 8, 8, 2))));
 		assertRejected(() -> ifft2d(zeros(shape(8, 2))));
 		assertRejected(() -> realPart(zeros(shape(4, 3))));
-		assertRejected(() -> wavenumberSquared(shape(8, 8), 1.0, 1.0, 1.0));
-		assertRejected(() -> wavenumberSquared(shape(8, 8), 0.0));
-		assertRejected(() -> radialBinWidth(shape(8, 8), 1.0, -1.0));
+		assertRejected(() -> new SpectralGrid(shape(8, 8), 1.0, 1.0, 1.0).wavenumberSquared());
+		assertRejected(() -> new SpectralGrid(shape(8, 8), 0.0).wavenumberSquared());
+		assertRejected(() -> new SpectralGrid(shape(8, 8), 1.0, -1.0).getRadialBinWidth());
 	}
 
 	/**
@@ -778,13 +779,13 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	public void nonFiniteSpacingIsRejected() {
 		TraversalPolicy grid = shape(8, 8);
 		double inf = Double.POSITIVE_INFINITY;
-		assertRelative("large spacing bin width", 2 * Math.PI / 8e300, radialBinWidth(grid, 1e300), 1e-12);
-		Assert.assertEquals(5, radialBinCount(grid, 1.0, 1e300));
+		assertRelative("large spacing bin width", 2 * Math.PI / 8e300, new SpectralGrid(grid, 1e300).getRadialBinWidth(), 1e-12);
+		Assert.assertEquals(5, new SpectralGrid(grid, 1.0, 1e300).getRadialBinCount());
 
-		assertRejected(() -> wavenumberSquared(grid, inf));
-		assertRejected(() -> wavenumberSquared(grid, 1.0, Double.NaN));
-		assertRejected(() -> radialBinWidth(grid, inf, 1.0));
-		assertRejected(() -> radialBinCount(grid, Double.NaN));
+		assertRejected(() -> new SpectralGrid(grid, inf).wavenumberSquared());
+		assertRejected(() -> new SpectralGrid(grid, 1.0, Double.NaN).wavenumberSquared());
+		assertRejected(() -> new SpectralGrid(grid, inf, 1.0).getRadialBinWidth());
+		assertRejected(() -> new SpectralGrid(grid, Double.NaN).getRadialBinCount());
 		assertRejected(() -> radialPowerSpectrum(zeros(grid), inf));
 		assertRejected(() -> dominantWavelength(zeros(grid), 1.0, inf));
 		assertRejected(() -> poissonSolve(zeros(grid), inf));
@@ -818,13 +819,13 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		TraversalPolicy grid = shape(8, 8);
 		double largest = Double.MAX_VALUE / 8;
 		assertRelative("largest spacing bin width", 2 * Math.PI / Double.MAX_VALUE,
-				radialBinWidth(grid, largest), 1e-12);
-		assertRelative("tiny spacing bin width", 2 * Math.PI / 8e-300, radialBinWidth(grid, 1e-300), 1e-12);
-		Assert.assertEquals(5, radialBinCount(grid, 1e-300));
+				new SpectralGrid(grid, largest).getRadialBinWidth(), 1e-12);
+		assertRelative("tiny spacing bin width", 2 * Math.PI / 8e-300, new SpectralGrid(grid, 1e-300).getRadialBinWidth(), 1e-12);
+		Assert.assertEquals(5, new SpectralGrid(grid, 1e-300).getRadialBinCount());
 
-		assertRejected(() -> radialBinWidth(grid, 1e308));
-		assertRejected(() -> radialBinCount(grid, 1.0, 1e308));
-		assertRejected(() -> wavenumberSquared(grid, Double.MIN_VALUE));
+		assertRejected(() -> new SpectralGrid(grid, 1e308).getRadialBinWidth());
+		assertRejected(() -> new SpectralGrid(grid, 1.0, 1e308).getRadialBinCount());
+		assertRejected(() -> new SpectralGrid(grid, Double.MIN_VALUE).wavenumberSquared());
 		assertRejected(() -> radialPowerSpectrum(zeros(grid), 1.0, Double.MIN_VALUE));
 		assertRejected(() -> dominantWavelength(zeros(grid), 1e308));
 		assertRejected(() -> poissonSolve(zeros(grid), Double.MIN_VALUE, 1.0));
@@ -839,10 +840,10 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	 */
 	@Test(timeout = 60000)
 	public void extremeSpacingRatioKeepsBinCountBounded() {
-		Assert.assertEquals(1, radialBinCount(shape(1, 1), 1e308, 1e-300));
-		Assert.assertEquals(1, radialBinCount(shape(1, 1), 1e-300, 1e308));
-		Assert.assertEquals(5, radialBinCount(shape(8, 1024), 1e300, 1e-300));
-		Assert.assertEquals(513, radialBinCount(shape(1024, 8), 1e-300, 1e-300));
+		Assert.assertEquals(1, new SpectralGrid(shape(1, 1), 1e308, 1e-300).getRadialBinCount());
+		Assert.assertEquals(1, new SpectralGrid(shape(1, 1), 1e-300, 1e308).getRadialBinCount());
+		Assert.assertEquals(5, new SpectralGrid(shape(8, 1024), 1e300, 1e-300).getRadialBinCount());
+		Assert.assertEquals(513, new SpectralGrid(shape(1024, 8), 1e-300, 1e-300).getRadialBinCount());
 	}
 
 	/** A permuted input is transformed in its logical order on the CPU. */
@@ -1001,7 +1002,7 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 
 		PackedCollection expected = radialPowerSpectrum(cp(logical), 0.5, 0.25).evaluate();
 		PackedCollection actual = radialPowerSpectrum(cp(ordered), 0.5, 0.25).evaluate();
-		Assert.assertEquals(radialBinCount(grid, 0.5, 0.25), actual.getShape().getTotalSize());
+		Assert.assertEquals(new SpectralGrid(grid, 0.5, 0.25).getRadialBinCount(), actual.getShape().getTotalSize());
 
 		double error = maxDifference(expected, actual);
 		log("orderedPowerRadialSpectrum maxError=" + error);
