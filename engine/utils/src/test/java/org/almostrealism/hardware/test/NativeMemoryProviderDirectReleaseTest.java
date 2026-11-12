@@ -102,6 +102,35 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that released bytes are kept when the collection pass does not complete because
+	 * the thread is interrupted, so that the next allocation requests the collection again.
+	 */
+	@Test(timeout = 30_000)
+	public void interruptedCollectionKeepsReleasedBytes() {
+		CountingProvider provider = new CountingProvider();
+		provider.release(TestNativeBuffer.create(null, 1000L, 128));
+		provider.release(TestNativeBuffer.create(null, 2000L, 128));
+		Assert.assertEquals(2048, provider.getReleasedDirectBytes());
+
+		boolean collected;
+
+		try {
+			Thread.currentThread().interrupt();
+			collected = provider.collect();
+		} finally {
+			Thread.interrupted();
+		}
+
+		Assert.assertFalse(collected);
+		Assert.assertEquals(1, provider.collections);
+		Assert.assertEquals(2048, provider.getReleasedDirectBytes());
+
+		Assert.assertTrue(provider.collect());
+		Assert.assertEquals(2, provider.collections);
+		Assert.assertEquals(0, provider.getReleasedDirectBytes());
+	}
+
+	/**
 	 * A direct-mode provider that counts the collections it requests instead of running them,
 	 * and can release a buffer through its own deallocation path.
 	 */

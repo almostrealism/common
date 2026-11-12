@@ -295,15 +295,23 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * operating system instead of accumulating until {@code -XX:MaxDirectMemorySize} forces a
 	 * collection. Concurrent callers share a single collection pass.
 	 *
-	 * @return whether a collection was requested
+	 * <p>The released bytes are taken off the count only by the caller that runs the collection,
+	 * and are restored when that collection does not complete (because the thread was
+	 * interrupted), so that no released memory drops out of the count without having been
+	 * collected.</p>
+	 *
+	 * @return whether a collection was requested and completed
 	 */
 	protected boolean collectReleasedDirectMemory() {
-		long threshold = getDirectCollectionThreshold();
-		if (releasedDirectBytes.get() < threshold) return false;
-		if (releasedDirectBytes.getAndSet(0) < threshold) return false;
+		long released = releasedDirectBytes.get();
+		if (released < getDirectCollectionThreshold()) return false;
+		if (!releasedDirectBytes.compareAndSet(released, 0)) return false;
 
-		reclaim(() -> true);
-		return true;
+		if (reclaim(() -> true)) return true;
+
+		// TODO(review): collectGarbage() already ran before the interrupted sleep, so restoring makes each allocation on a still-interrupted thread request another full GC.
+		releasedDirectBytes.addAndGet(released);
+		return false;
 	}
 
 	/**
