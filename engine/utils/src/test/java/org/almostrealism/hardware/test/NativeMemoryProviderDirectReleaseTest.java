@@ -75,6 +75,33 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that a provider whose allocation ceiling is below
+	 * {@link NativeMemoryProvider#directCollectionThreshold} requests a collection once released
+	 * bytes reach that ceiling, and that a provider with a higher ceiling keeps the global value.
+	 */
+	@Test(timeout = 30_000)
+	public void thresholdIsBoundedByMemoryMax() {
+		NativeMemoryProvider.directCollectionThreshold = Long.MAX_VALUE;
+
+		CountingProvider bounded = new CountingProvider(1024);
+		Assert.assertEquals(1024, bounded.getDirectCollectionThreshold());
+
+		bounded.release(TestNativeBuffer.create(null, 3000L, 128));
+		Assert.assertTrue(bounded.collect());
+		Assert.assertEquals(1, bounded.collections);
+		Assert.assertEquals(0, bounded.getReleasedDirectBytes());
+
+		NativeMemoryProvider.directCollectionThreshold = 4096;
+		CountingProvider unbounded = new CountingProvider(Long.MAX_VALUE);
+		Assert.assertEquals(4096, unbounded.getDirectCollectionThreshold());
+
+		unbounded.release(TestNativeBuffer.create(null, 4000L, 128));
+		Assert.assertFalse(unbounded.collect());
+		Assert.assertEquals(0, unbounded.collections);
+		Assert.assertEquals(1024, unbounded.getReleasedDirectBytes());
+	}
+
+	/**
 	 * A direct-mode provider that counts the collections it requests instead of running them,
 	 * and can release a buffer through its own deallocation path.
 	 */
@@ -82,9 +109,18 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 		/** Number of collections requested. */
 		private int collections;
 
-		/** Creates a private (non-shared) direct-mode provider. */
+		/** Creates a private (non-shared) direct-mode provider with no practical ceiling. */
 		CountingProvider() {
-			super(Precision.FP32, Long.MAX_VALUE, false, null, true);
+			this(Long.MAX_VALUE);
+		}
+
+		/**
+		 * Creates a private (non-shared) direct-mode provider.
+		 *
+		 * @param memoryMax the provider's allocation ceiling in bytes
+		 */
+		CountingProvider(long memoryMax) {
+			super(Precision.FP32, memoryMax, false, null, true);
 		}
 
 		/**

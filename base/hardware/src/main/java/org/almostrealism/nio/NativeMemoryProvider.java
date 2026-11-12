@@ -142,6 +142,10 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * reached. A workload that allocates and destroys large blocks would therefore commit that much
 	 * memory, however little of it is live, which on a host whose physical memory is close to that
 	 * limit gets the process killed.</p>
+	 *
+	 * <p>A provider whose own allocation ceiling is lower uses that ceiling instead
+	 * (see {@link #getDirectCollectionThreshold()}), since its live allocations alone never exceed
+	 * it and released memory should not be allowed to build up to many times that much.</p>
 	 */
 	public static long directCollectionThreshold = 4L * 1024 * 1024 * 1024;
 
@@ -287,15 +291,16 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 
 	/**
 	 * Requests a collection once the bytes of released direct buffers reach
-	 * {@link #directCollectionThreshold}, so that their committed memory is returned to the
+	 * {@link #getDirectCollectionThreshold()}, so that their committed memory is returned to the
 	 * operating system instead of accumulating until {@code -XX:MaxDirectMemorySize} forces a
 	 * collection. Concurrent callers share a single collection pass.
 	 *
 	 * @return whether a collection was requested
 	 */
 	protected boolean collectReleasedDirectMemory() {
-		if (releasedDirectBytes.get() < directCollectionThreshold) return false;
-		if (releasedDirectBytes.getAndSet(0) < directCollectionThreshold) return false;
+		long threshold = getDirectCollectionThreshold();
+		if (releasedDirectBytes.get() < threshold) return false;
+		if (releasedDirectBytes.getAndSet(0) < threshold) return false;
 
 		reclaim(() -> true);
 		return true;
@@ -308,6 +313,17 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * @return the released direct bytes awaiting collection
 	 */
 	public long getReleasedDirectBytes() { return releasedDirectBytes.get(); }
+
+	/**
+	 * Returns how many bytes of released direct buffers may await the JVM's cleaner before this
+	 * provider requests a collection: {@link #directCollectionThreshold}, or this provider's
+	 * allocation ceiling when that is lower.
+	 *
+	 * @return the released direct bytes at which a collection is requested
+	 */
+	public long getDirectCollectionThreshold() {
+		return Math.min(directCollectionThreshold, memoryMax);
+	}
 
 	/**
 	 * Allocates a block under this provider's monitor; see {@link #allocate(int)}.
@@ -403,7 +419,8 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 				unmapSharedMemory(bufferRef.getRootBuffer(), bufferRef.getRootBuffer().capacity());
 			}
 
-			// TODO(review): GC-driven releases are counted too, though the GC that found them already queued their cleaner; consider counting only explicit releases (ReleaseOrigin)
+			// Collected releases count as well: the reference holds the root buffer strongly, so the
+			// collection that enqueued it could not free the buffer, and only a later one will.
 			if (bufferRef.getSharedLocation() == null) {
 				releasedDirectBytes.addAndGet(ref.getSize());
 			}
