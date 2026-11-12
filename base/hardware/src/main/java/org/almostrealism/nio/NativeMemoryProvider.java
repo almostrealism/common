@@ -300,16 +300,22 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * interrupted), so that no released memory drops out of the count without having been
 	 * collected.</p>
 	 *
+	 * <p>A caller whose thread is already interrupted requests no collection and leaves the count
+	 * as it is. A collection pass re-asserts the interrupt it was cut short by, so without this
+	 * check a thread that keeps allocating while interrupted would request a full collection on
+	 * every allocation, each one interrupted and its released bytes restored. The bytes stay
+	 * counted for the next caller that is not interrupted.</p>
+	 *
 	 * @return whether a collection was requested and completed
 	 */
 	protected boolean collectReleasedDirectMemory() {
 		long released = releasedDirectBytes.get();
 		if (released < getDirectCollectionThreshold()) return false;
+		if (Thread.currentThread().isInterrupted()) return false;
 		if (!releasedDirectBytes.compareAndSet(released, 0)) return false;
 
 		if (reclaim(() -> true)) return true;
 
-		// TODO(review): collectGarbage() already ran before the interrupted sleep, so restoring makes each allocation on a still-interrupted thread request another full GC.
 		releasedDirectBytes.addAndGet(released);
 		return false;
 	}

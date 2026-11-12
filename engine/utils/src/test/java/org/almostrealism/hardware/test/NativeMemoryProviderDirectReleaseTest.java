@@ -102,8 +102,10 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that released bytes are kept when the collection pass does not complete because
-	 * the thread is interrupted, so that the next allocation requests the collection again.
+	 * Verifies that released bytes are kept when the collection pass is interrupted after the
+	 * garbage collection was requested, that the still-interrupted thread then requests no
+	 * further collection however often it allocates, and that the bytes are collected once the
+	 * interrupt is cleared.
 	 */
 	@Test(timeout = 30_000)
 	public void interruptedCollectionKeepsReleasedBytes() {
@@ -111,6 +113,43 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 		provider.release(TestNativeBuffer.create(null, 1000L, 128));
 		provider.release(TestNativeBuffer.create(null, 2000L, 128));
 		Assert.assertEquals(2048, provider.getReleasedDirectBytes());
+
+		provider.interruptOnCollect = true;
+		boolean collected;
+		boolean retried = false;
+		boolean interrupted;
+
+		try {
+			collected = provider.collect();
+			for (int i = 0; i < 3; i++) {
+				retried |= provider.collect();
+			}
+		} finally {
+			interrupted = Thread.interrupted();
+		}
+
+		Assert.assertTrue(interrupted);
+		Assert.assertFalse(collected);
+		Assert.assertFalse(retried);
+		Assert.assertEquals(1, provider.collections);
+		Assert.assertEquals(2048, provider.getReleasedDirectBytes());
+
+		provider.interruptOnCollect = false;
+		Assert.assertTrue(provider.collect());
+		Assert.assertEquals(2, provider.collections);
+		Assert.assertEquals(0, provider.getReleasedDirectBytes());
+	}
+
+	/**
+	 * Verifies that a caller whose thread is already interrupted requests no collection and
+	 * leaves the released bytes counted, and that a caller below the threshold is unaffected by
+	 * the interrupt.
+	 */
+	@Test(timeout = 30_000)
+	public void interruptedCallerRequestsNoCollection() {
+		CountingProvider provider = new CountingProvider();
+		provider.release(TestNativeBuffer.create(null, 1000L, 128));
+		provider.release(TestNativeBuffer.create(null, 2000L, 128));
 
 		boolean collected;
 
@@ -122,12 +161,25 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 		}
 
 		Assert.assertFalse(collected);
-		Assert.assertEquals(1, provider.collections);
+		Assert.assertEquals(0, provider.collections);
 		Assert.assertEquals(2048, provider.getReleasedDirectBytes());
 
 		Assert.assertTrue(provider.collect());
-		Assert.assertEquals(2, provider.collections);
+		Assert.assertEquals(1, provider.collections);
 		Assert.assertEquals(0, provider.getReleasedDirectBytes());
+
+		provider.release(TestNativeBuffer.create(null, 3000L, 128));
+
+		try {
+			Thread.currentThread().interrupt();
+			collected = provider.collect();
+		} finally {
+			Thread.interrupted();
+		}
+
+		Assert.assertFalse(collected);
+		Assert.assertEquals(1, provider.collections);
+		Assert.assertEquals(1024, provider.getReleasedDirectBytes());
 	}
 
 	/**
@@ -137,6 +189,12 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 	private static class CountingProvider extends NativeMemoryProvider {
 		/** Number of collections requested. */
 		private int collections;
+
+		/**
+		 * If true, each requested collection interrupts the calling thread, so that the wait
+		 * which follows it is cut short.
+		 */
+		private boolean interruptOnCollect;
 
 		/** Creates a private (non-shared) direct-mode provider with no practical ceiling. */
 		CountingProvider() {
@@ -173,6 +231,7 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 		@Override
 		protected void collectGarbage() {
 			collections++;
+			if (interruptOnCollect) Thread.currentThread().interrupt();
 		}
 	}
 }
