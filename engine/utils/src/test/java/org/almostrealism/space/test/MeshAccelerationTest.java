@@ -16,13 +16,14 @@
 
 package org.almostrealism.space.test;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.graph.mesh.TriangleFeatures;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.space.BoundingVolumeHierarchy;
 import org.almostrealism.space.CachedMeshIntersectionKernel;
@@ -33,8 +34,6 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Random;
 
 /**
@@ -45,19 +44,6 @@ import java.util.Random;
 public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeatures {
 	/** Node spacing used for the test surface. */
 	private static final double SPACING = 0.5;
-
-	/**
-	 * Builds a bumpy height field as a device Producer graph, indexing the grid with
-	 * {@code integers()} so no host-computed values are staged.
-	 *
-	 * @param nx the number of nodes along X
-	 * @param ny the number of nodes along Z
-	 * @return a producer for the {@code (nx*ny)} height field in row-major order
-	 */
-	private CollectionProducer bumpyHeights(int nx, int ny) {
-		CollectionProducer[] ij = gridIndices(nx, ny);
-		return sin(ij[0].multiply(0.6)).multiply(0.6).add(cos(ij[1].multiply(0.5)).multiply(0.3));
-	}
 
 	/**
 	 * Builds a two-triangle mesh in the {@code z = 0} plane: a small triangle far along X
@@ -138,13 +124,16 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		// Eight coplanar-footprint triangles stacked along Z, with list index deliberately
 		// shuffled relative to height so the BVH's internal median split reorders them.
 		int[] zByIndex = { 5, 2, 7, 0, 4, 1, 6, 3 };
-		List<Vector[]> triangles = new ArrayList<>();
-		for (int z : zByIndex) {
-			triangles.add(new Vector[] {
-					new Vector(0.0, 0.0, z), new Vector(1.0, 0.0, z), new Vector(0.0, 1.0, z) });
+		DefaultVertexData data = new DefaultVertexData(3 * zByIndex.length, zByIndex.length);
+		for (int t = 0; t < zByIndex.length; t++) {
+			int z = zByIndex[t];
+			data.getVertices().set(3 * t, new Vector(0.0, 0.0, z));
+			data.getVertices().set(3 * t + 1, new Vector(1.0, 0.0, z));
+			data.getVertices().set(3 * t + 2, new Vector(0.0, 1.0, z));
+			data.setTriangle(t, 3 * t, 3 * t + 1, 3 * t + 2);
 		}
 
-		BoundingVolumeHierarchy bvh = BoundingVolumeHierarchy.build(triangles);
+		BoundingVolumeHierarchy bvh = new Mesh(data).getMeshData().getBoundingVolumeHierarchy();
 
 		// A ray dropping straight down through the shared XY footprint pierces every box.
 		int[] candidates = bvh.candidates(0.25, 0.25, 100.0, 0.0, 0.0, -1.0);
@@ -226,5 +215,94 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 
 		Assert.assertEquals("miss distance", -1.0, accelMiss.toDouble(0), 1e-9);
 		Assert.assertEquals("miss triangle", -1.0, accelMiss.toDouble(1), 1e-9);
+	}
+
+	/**
+	 * Intersecting a whole batch of rays in one evaluation of
+	 * {@link TriangleFeatures#closestMeshIntersection} gives, ray by ray, the same closest hit as
+	 * intersecting each ray on its own, including rays that miss the surface entirely.
+	 */
+	@Test(timeout = 180000)
+	public void batchedClosestHitMatchesPerRay() {
+		int nx = 8;
+		int ny = 8;
+		Vector origin = new Vector(0.0, 0.0, 0.0);
+		MeshData md = MeshData.gridSurface(bumpyHeights(nx, ny), nx, ny, origin, SPACING, SPACING);
+
+		int rays = 12;
+		double extent = (nx - 1) * SPACING;
+		Random random = new Random(42);
+		PackedCollection bank = Ray.bank(rays);
+		Ray[] values = new Ray[rays];
+		for (int r = 0; r < rays; r++) {
+			// Every fourth ray starts beyond the surface edge and so misses it
+			double x = r % 4 == 3 ? extent + 10.0 : (0.1 + 0.8 * random.nextDouble()) * extent;
+			double z = (0.1 + 0.8 * random.nextDouble()) * extent;
+			values[r] = new Ray(new Vector(x, 5.0, z), new Vector(0.0, -1.0, 0.0));
+			bank.setFrom(r * 6, values[r], 0, 6);
+		}
+
+		PackedCollection hits = Process.optimized(TriangleFeatures.getInstance()
+				.closestMeshIntersection(cp(md), md.getCount(), cp(bank))).get().evaluate();
+		Assert.assertEquals(rays * 2, hits.getMemLength());
+
+		int misses = 0;
+		for (int r = 0; r < rays; r++) {
+			Ray value = values[r];
+			Pair single = md.evaluateIntersection(args -> value, new Object[0]);
+			Assert.assertEquals("distance for ray " + r, single.getA(), hits.toDouble(r * 2), 1e-4);
+			Assert.assertEquals("triangle for ray " + r, single.getB(), hits.toDouble(r * 2 + 1), 1e-9);
+			if (hits.toDouble(r * 2 + 1) < 0) misses++;
+		}
+
+		Assert.assertEquals("rays beyond the surface edge must miss", rays / 4, misses);
+	}
+
+	/**
+	 * {@link TriangleFeatures#meshNormalAt} gathers the face normal of the triangle each hit
+	 * reports, and the zero vector for a miss.
+	 */
+	@Test(timeout = 60000)
+	public void meshNormalAtGathersHitTriangleNormal() {
+		MeshData md = twoTriangleMesh();
+		TriangleFeatures tf = TriangleFeatures.getInstance();
+
+		PackedCollection bank = Ray.bank(2);
+		bank.setFrom(0, new Ray(new Vector(0.0, 1.0, 1.0), new Vector(0.0, 0.0, -1.0)), 0, 6);
+		bank.setFrom(6, new Ray(new Vector(0.0, 1.0, 1.0), new Vector(0.0, 0.0, 1.0)), 0, 6);
+
+		PackedCollection hits = Process.optimized(
+				tf.closestMeshIntersection(cp(md), md.getCount(), cp(bank))).get().evaluate();
+		PackedCollection normals = tf.meshNormalAt(cp(md), cp(hits)).evaluate();
+
+		Assert.assertEquals("hit triangle", 1.0, hits.toDouble(1), 1e-9);
+		Assert.assertEquals("hit normal x", 0.0, normals.toDouble(0), 1e-6);
+		Assert.assertEquals("hit normal y", 0.0, normals.toDouble(1), 1e-6);
+		Assert.assertEquals("hit normal |z|", 1.0, Math.abs(normals.toDouble(2)), 1e-6);
+
+		Assert.assertEquals("miss triangle", -1.0, hits.toDouble(3), 1e-9);
+		for (int k = 0; k < 3; k++) {
+			Assert.assertEquals("miss normal " + k, 0.0, normals.toDouble(3 + k), 0.0);
+		}
+	}
+
+	/** {@link TriangleFeatures#meshTriangleBounds} bounds each triangle's three vertices exactly. */
+	@Test(timeout = 60000)
+	public void meshTriangleBoundsCoverVertices() {
+		MeshData md = twoTriangleMesh();
+		PackedCollection bounds = TriangleFeatures.getInstance()
+				.meshTriangleBounds(cp(md), md.getCount()).evaluate();
+
+		double[][] expected = {
+				{ 99.0, -1.0, 0.0, 101.0, 1.0, 0.0 },
+				{ -100.0, -100.0, 0.0, 100.0, 100.0, 0.0 }
+		};
+
+		for (int t = 0; t < expected.length; t++) {
+			for (int k = 0; k < 6; k++) {
+				Assert.assertEquals("triangle " + t + " bound " + k,
+						expected[t][k], bounds.toDouble(t * 6 + k), 1e-4);
+			}
+		}
 	}
 }

@@ -45,6 +45,19 @@ public interface GridIndexFeatures extends TestFeatures {
 	}
 
 	/**
+	 * Builds a bumpy (non-planar) height field as a device Producer graph over the grid
+	 * indices, for tests that need a non-planar grid surface fixture.
+	 *
+	 * @param nx the number of nodes along X
+	 * @param ny the number of nodes along Z
+	 * @return a producer for the {@code (nx*ny)} height field in row-major order
+	 */
+	default CollectionProducer bumpyHeights(int nx, int ny) {
+		CollectionProducer[] ij = gridIndices(nx, ny);
+		return sin(ij[0].multiply(0.6)).multiply(0.6).add(cos(ij[1].multiply(0.5)).multiply(0.3));
+	}
+
+	/**
 	 * Returns a triangle's vertex indices as a set, since a format or tessellation may
 	 * change the winding.
 	 *

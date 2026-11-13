@@ -22,7 +22,6 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.space.BoundingVolumeHierarchy;
-import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
@@ -41,7 +40,7 @@ import org.junit.Test;
  * mesh grows. The test asserts the accelerated work grows sub-linearly against the triangle count,
  * and additionally logs the measured device wall time of each path at one resolution.</p>
  */
-public class MeshIntersectionScalingTest extends TestSuiteBase {
+public class MeshIntersectionScalingTest extends TestSuiteBase implements GridIndexFeatures {
 	/** Node spacing, held fixed so triangle count grows with grid extent. */
 	private static final double SPACING = 0.3;
 
@@ -60,8 +59,8 @@ public class MeshIntersectionScalingTest extends TestSuiteBase {
 
 		for (int r = 0; r < resolutions.length; r++) {
 			int n = resolutions[r];
-			BoundingVolumeHierarchy bvh = BoundingVolumeHierarchy.build(
-					Mesh.gridSurfaceTriangles(GridSurfaceTessellationTest.bumpy(n, n), origin, SPACING, SPACING));
+			BoundingVolumeHierarchy bvh = MeshData.gridSurface(bumpyHeights(n, n),
+					n, n, origin, SPACING, SPACING).getBoundingVolumeHierarchy();
 			int triangles = bvh.getTriangleCount();
 			double extent = (n - 1) * SPACING;
 
