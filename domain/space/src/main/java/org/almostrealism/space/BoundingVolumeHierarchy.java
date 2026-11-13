@@ -16,7 +16,7 @@
 
 package org.almostrealism.space;
 
-import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.BoundingSolid;
 
 import java.util.ArrayList;
@@ -38,7 +38,7 @@ import java.util.List;
  * scan over all triangles. Boxes are inflated by a small epsilon at construction so that
  * a grazing hit on a box face is never excluded by floating-point error.</p>
  *
- * <p>The tree is constructed once from host-side vertex positions and is immutable.
+ * <p>The tree is constructed once from per-triangle bounds (computed by a kernel) and is immutable.
  * Traversal runs on the host, which mirrors the existing per-ray loop in
  * {@link MeshData#evaluateIntersectionKernel}; the exact triangle math is still a compiled
  * kernel (see {@link MeshData#evaluateIntersectionAccelerated(io.almostrealism.relation.Evaluable,
@@ -48,7 +48,7 @@ import java.util.List;
  *
  * <h3>Usage Example:</h3>
  * <pre>{@code
- * BoundingVolumeHierarchy bvh = BoundingVolumeHierarchy.build(mesh);
+ * BoundingVolumeHierarchy bvh = meshData.getBoundingVolumeHierarchy();
  * int[] candidates = bvh.candidates(ox, oy, oz, dx, dy, dz);
  * }</pre>
  *
@@ -120,29 +120,24 @@ public class BoundingVolumeHierarchy {
 	}
 
 	/**
-	 * Builds a hierarchy from the triangles of the given mesh, reading their vertex
-	 * positions from the host.
+	 * Builds a hierarchy from per-triangle axis-aligned bounds, such as those computed for a
+	 * packed mesh by {@link org.almostrealism.graph.mesh.TriangleFeatures#meshTriangleBounds}.
 	 *
-	 * @param mesh the mesh whose triangles are indexed
-	 * @return a new hierarchy whose triangle indices match the mesh's triangle order
-	 */
-	public static BoundingVolumeHierarchy build(Mesh mesh) {
-		List<Vector[]> triangles = new ArrayList<>();
-		for (Triangle t : mesh.triangles()) triangles.add(t.getVertices());
-		return build(triangles);
-	}
-
-	/**
-	 * Builds a hierarchy from explicit triangle vertex positions.
+	 * <p>The bounds are read from the host once, here, because the tree itself is a host
+	 * structure; every per-triangle quantity has already been computed by the kernel that
+	 * produced them.</p>
 	 *
-	 * @param triangles a list of triangles, each a three-element array of vertex positions
-	 * @return a new hierarchy whose triangle indices match the list order
+	 * @param triangleBounds the bounds, shaped {@code (T, 6)} as the minimum X, Y and Z of each
+	 *                       triangle followed by its maximum X, Y and Z
+	 * @return a new hierarchy whose triangle indices match the row order of the bounds
 	 */
-	public static BoundingVolumeHierarchy build(List<Vector[]> triangles) {
-		BoundingSolid[] bounds = new BoundingSolid[triangles.size()];
+	public static BoundingVolumeHierarchy build(PackedCollection triangleBounds) {
+		double[] b = triangleBounds.toArray();
+		BoundingSolid[] bounds = new BoundingSolid[b.length / 6];
 		for (int i = 0; i < bounds.length; i++) {
-			Vector[] v = triangles.get(i);
-			bounds[i] = BoundingSolid.of(v[0], v[1], v[2]).expand(BOX_EPSILON);
+			int o = i * 6;
+			bounds[i] = new BoundingSolid(b[o], b[o + 3], b[o + 1], b[o + 4], b[o + 2], b[o + 5])
+					.expand(BOX_EPSILON);
 		}
 		return new BoundingVolumeHierarchy(bounds);
 	}

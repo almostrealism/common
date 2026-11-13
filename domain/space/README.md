@@ -301,14 +301,16 @@ import org.almostrealism.space.BoundingVolumeHierarchy;
 // Accelerated closest hit — identical result to the linear scan, far fewer triangles tested.
 Pair hit = meshData.evaluateIntersectionAccelerated(ray, args);
 
-// A standalone hierarchy over explicit triangles, e.g. for host-side analysis:
-BoundingVolumeHierarchy bvh = BoundingVolumeHierarchy.build(mesh);
+// A standalone hierarchy from (T, 6) per-triangle bounds, e.g. for host-side analysis:
+BoundingVolumeHierarchy bvh = BoundingVolumeHierarchy.build(
+        meshTriangleBounds(cp(meshData), meshData.getCount()).evaluate());
 ```
 
 `candidates(ox, oy, oz, dx, dy, dz)` returns the triangles a ray could hit (conservative, so
-it always contains the truly-closest triangle). The accelerated path runs the same compiled
-`meshIntersectAt` kernel as the linear scan over only those candidates, so results match
-bit-for-bit. `CachedMeshIntersectionKernel` takes an `accelerated` flag, and `Mesh.intersectAt`
+it always contains the truly-closest triangle). The linear scan is a Producer graph,
+`TriangleFeatures.closestMeshIntersection`, that intersects a whole `(R, 6)` ray batch with every
+triangle and reduces to the `(R, 2)` closest hits in one evaluation; the accelerated path runs the
+same graph over only a ray's candidates, so results match bit-for-bit. `CachedMeshIntersectionKernel` takes an `accelerated` flag, and `Mesh.intersectAt`
 routes through `MeshData`'s hierarchy when `Mesh.enableAcceleratedIntersection` is set (off by
 default, keeping the linear scan the reference). See
 [regular-grid-surface-and-mesh-acceleration.md](../../docs/internals/regular-grid-surface-and-mesh-acceleration.md).
@@ -319,8 +321,9 @@ default, keeping the linear scan the reference). See
 // Tessellate a height field into renderable geometry on the device, in one kernel.
 MeshData md = MeshData.gridSurface(heights, nx, ny, origin, spacingX, spacingZ);
 
-// Host mesh for inspection / GTS export.
-Mesh mesh = Mesh.gridSurface(hostHeights, origin, spacingX, spacingZ);
+// Vertex-list mesh for inspection / GTS export; heights is an (nx, ny) PackedCollection and
+// the node positions are computed by one kernel into an (nx*ny, 3) tensor.
+Mesh mesh = Mesh.gridSurface(heightCollection, origin, spacingX, spacingZ);
 ```
 
 A single-valued height field `h(x, z)` maps to a regular triangle grid (two triangles per cell).

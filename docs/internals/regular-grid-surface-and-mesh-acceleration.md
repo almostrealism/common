@@ -48,43 +48,58 @@ single `gridSurface` call — no host loop over cells.
 with a central difference in the interior and a one-sided difference at the edges, so for a
 tilted plane the normals are exact at every node.
 
-### Host path (inspection and GTS export)
+### Mesh path (inspection and GTS export)
 
-`Mesh.gridSurface(double[][] heights, Vector origin, spacingX, spacingZ)` builds a host,
-vertex-list `Mesh` with the same node layout and winding. This is the path for inspection,
+`Mesh.gridSurface(PackedCollection heights, Vector origin, spacingX, spacingZ)` builds a
+vertex-list `Mesh` with the same node layout and winding. Its node positions are computed by
+one kernel, `TriangleFeatures.regularGridSurfaceNodes(...)`, into a single `(nx*ny, 3)` tensor
+whose rows become the mesh's vertices (as `Vector` views, not copies); only the triangle
+connectivity is built on the host. This is the path for inspection,
 for use as a test fixture, and for GTS export (`GtsResource.MeshTranscoder`), which reads a
 mesh's vertex list and triangles. Use the device `MeshData.gridSurface` for the intersection
 and per-frame path; use the host `Mesh.gridSurface` when a `Mesh` object is wanted.
 
 ## 2. Accelerated intersection
 
-### Batched intersection kernel
+### Intersection as a Producer graph
 
-`TriangleFeatures.meshIntersectAt(mesh, triangleCount, ray)` computes the Möller–Trumbore
-intersection distance of a single ray against **every** triangle of a packed `(T, 4, 3)` mesh
-in one kernel, returning a `(T, 1)` column of distances (`-1` where a triangle is missed). The
-closest hit is then selected with `RankedChoiceEvaluable.highestRank`. `MeshData` builds this
-kernel once per mesh and reuses it across rays; `evaluateIntersection` and
-`evaluateIntersectionKernel` are the linear-scan entry points, with
-`evaluateIntersectionAccelerated` / `evaluateIntersectionKernelAccelerated` the hierarchy-pruned
-counterparts.
+Mesh intersection is expressed entirely as `CollectionProducer` compositions in
+`TriangleFeatures`, so a batch of rays is intersected with a whole mesh in one evaluation, with
+no host loop over rays or triangles:
+
+- `meshIntersectAt(mesh, triangleCount, rays)` — the Möller–Trumbore distance of every ray
+  against every triangle of a packed `(T, 4, 3)` mesh, as an `(R, T)` grid (`-1` where a ray
+  misses a triangle). Rays are `(R, 6)` (origin, direction), or a single `(6)` ray.
+- `closestMeshIntersection(mesh, triangleCount, rays)` — the closest hit per ray as `(R, 2)`
+  (distance, triangle index), or `(-1, -1)` for a miss. Each (ray, triangle) pair is scored with
+  its negated distance (a miss scores far below any hit), and the per-ray `max` and `indexOfMax`
+  reductions over the triangle axis pick the closest; ties resolve to the lowest triangle index.
+- `meshNormalAt(mesh, hits)` — gathers the face normal of each hit triangle, `(R, 3)`, with the
+  zero vector for a miss.
+- `meshTriangleBounds(mesh, triangleCount)` — the `(T, 6)` axis-aligned bounds of every triangle
+  (minimum X, Y, Z then maximum X, Y, Z), the input to the hierarchy below.
+
+`MeshData` compiles `closestMeshIntersection` against itself once per ray-batch size and
+evaluates it; `evaluateIntersection` (one ray) and `evaluateIntersectionKernel` (a whole ray
+bank, one dispatch) are the linear-scan entry points, with `evaluateIntersectionAccelerated` /
+`evaluateIntersectionKernelAccelerated` the hierarchy-pruned counterparts.
 
 ### Bounding volume hierarchy
 
 `BoundingVolumeHierarchy` is a host-built binary tree of axis-aligned boxes over a set of
-triangles. Build it from a `Mesh` (`BoundingVolumeHierarchy.build(mesh)`) or from explicit
-triangle vertex positions (`BoundingVolumeHierarchy.build(List<Vector[]>)`). A `MeshData` owns a
-hierarchy over its own triangles and builds it on demand via `MeshData.getBoundingVolumeHierarchy()`,
-reconstructing the triangle vertices from its packed edge data so the hierarchy's indices map
-straight back to the mesh's rows. For a ray, `candidates(ox, oy, oz, dx, dy, dz)` returns the
+triangles, built from a `(T, 6)` tensor of per-triangle bounds
+(`BoundingVolumeHierarchy.build(PackedCollection)`). A `MeshData` owns a hierarchy over its own
+triangles and builds it on demand via `MeshData.getBoundingVolumeHierarchy()`, computing the
+bounds with the `meshTriangleBounds` kernel, so the hierarchy's indices map straight back to the
+mesh's rows. For a ray, `candidates(ox, oy, oz, dx, dy, dz)` returns the
 indices of every triangle whose box the ray pierces (slab test, boxes inflated by a small
 epsilon). The result is **conservative**: it always contains the truly-closest triangle, so
 intersecting only the candidates reproduces the closest hit of a full scan.
 
 `MeshData.evaluateIntersectionAccelerated(ray, args)` runs the accelerated query against the
 mesh's own hierarchy: it gathers the ray's candidates, copies those triangle rows into a reusable
-compact buffer, and runs the same `meshIntersectAt` kernel over the candidates. Because the
-triangle math is the identical compiled kernel, the accelerated closest hit is bit-for-bit the
+compact buffer, and runs the same `closestMeshIntersection` graph over the candidates. Because
+the triangle math is the identical compiled graph, the accelerated closest hit is bit-for-bit the
 linear scan's closest hit — but far fewer triangles are tested. `CachedMeshIntersectionKernel`
 takes an `accelerated` flag, and `Mesh.intersectAt` routes through the mesh data's hierarchy when
 `Mesh.enableAcceleratedIntersection` is set (off by default, so the linear scan remains the
@@ -100,7 +115,8 @@ as a `20x20` grid (722 triangles, 24 rays) both paths take tens of milliseconds,
 triangle-test count is the measure that shows the gap widening as the mesh grows.
 
 Every batched kernel here (`triangle`, `regularGridSurfacePoints`, `regularGridSurfaceNormals`,
-`meshIntersectAt`) declares an output shape traversed per triangle or per node, for example
+`regularGridSurfaceNodes`, `meshIntersectAt`, `meshNormalAt`, `meshTriangleBounds`) declares an
+output shape traversed per element, per triangle or per node, for example
 `new TraversalPolicy(t, 4, 3).traverse(1)`. Without the traversal axis the output has a count of
 one, so the whole `t * 12` element buffer is unrolled into a single kernel body and compile time
 grows linearly with the triangle count.
@@ -108,18 +124,14 @@ grows linearly with the triangle count.
 ## Worked example
 
 ```java
-// Define a height field (host array for the fixture; a device Producer for per-frame use).
+// An (nx, ny) height field, for example written by a simulation step each frame.
 int nx = 64, ny = 64;
-double[][] h = new double[nx][ny];
-for (int i = 0; i < nx; i++)
-    for (int j = 0; j < ny; j++)
-        h[i][j] = 0.3 * Math.sin(0.5 * i) * Math.cos(0.4 * j);
+PackedCollection heights = new PackedCollection(shape(nx, ny));
 
 Vector origin = new Vector(0, 0, 0);
 double spacing = 0.1;
 
 // Device tessellation -> MeshData for intersection (one kernel; rebuildable per frame).
-PackedCollection heights = PackedCollection.of(flatten(h)).reshape(shape(nx, ny));
 MeshData md = MeshData.gridSurface(cp(heights), nx, ny, origin, spacing, spacing);
 
 // Closest hit, accelerated and (reference) unaccelerated — identical result. The mesh data
@@ -130,28 +142,40 @@ Pair linear      = md.evaluateIntersection(r, new Object[0]);
 // accelerated.getA() == linear.getA()  (distance)
 // accelerated.getB() == linear.getB()  (triangle index)
 
+// A whole batch of rays (shape (R, 6)) in one evaluation -> (R, 2) closest hits and (R, 3) normals.
+CollectionProducer hits = closestMeshIntersection(cp(md), md.getCount(), cp(rayBank));
+CollectionProducer normals = meshNormalAt(cp(md), hits);
+
 // Export a host mesh of the same surface for inspection.
-Mesh mesh = Mesh.gridSurface(h, origin, spacing, spacing);
+Mesh mesh = Mesh.gridSurface(heights, origin, spacing, spacing);
 GtsResource gts = new GtsResource.MeshTranscoder().transcode(new MeshResource(mesh));
 ```
 
 ## Scope and follow-up
 
-The BVH is host-built and its traversal runs on the host (per ray), mirroring the existing
-per-ray loop in the mesh intersection path; the triangle math itself is a compiled kernel. A
-fully device-resident traversal is a possible future refinement. Separately, the existing
-`SpacePartition` BSP traversal remains a stub — the acceleration here is a BVH rather than a
-repair of that tree.
+The linear scan is fully device-side for a whole ray batch. The BVH is host-built and its
+traversal runs on the host (per ray); the triangle math itself is the compiled graph. A
+device-resident traversal is a possible future refinement, as is routing `Mesh.intersectAt`
+straight through the Producer graph (distance and normal as producers of the ray, the way
+`Sphere` does) so that `CachedMeshIntersectionKernel` is no longer needed.
+
+The hierarchy is deliberately not a `SpacePartition`. `SpacePartition` is a `SurfaceGroup` — a
+container of `ShadableSurface` objects that are intersected one by one — organised as a BSP tree
+whose nodes split space with axis-aligned planes and store surfaces that span a plane. The BVH
+instead indexes rows of a packed triangle tensor and partitions the *triangles*, not space: sibling
+boxes may overlap, so there is no splitting plane to classify a ray against, and a ray must visit
+every child box it pierces. Its traversal yields candidate row indices for the batched kernel
+rather than intersecting surfaces itself. The existing `SpacePartition` traversal remains a stub.
 
 ## Related files
 
 | File | Role |
 |---|---|
-| `domain/graph/.../graph/mesh/TriangleFeatures.java` | `regularGridSurfacePoints`, `regularGridSurfaceNormals`, `meshIntersectAt` |
+| `domain/graph/.../graph/mesh/TriangleFeatures.java` | `regularGridSurfacePoints`, `regularGridSurfaceNodes`, `regularGridSurfaceNormals`, `meshIntersectAt`, `closestMeshIntersection`, `meshNormalAt`, `meshTriangleBounds` |
 | `domain/space/.../space/MeshData.java` | `gridSurface`, linear + accelerated intersection, `getBoundingVolumeHierarchy` |
 | `domain/space/.../space/Mesh.java` | host `gridSurface`, `calculateBoundingSolid` |
 | `domain/space/.../space/BoundingVolumeHierarchy.java` | the acceleration structure |
 | `compute/geometry/.../geometry/BoundingSolid.java` | AABB with `of`, `expand`, `longestAxis`, `intersectsRay` |
 | `engine/utils/.../space/test/GridSurfaceTessellationTest.java` | tessellation, normals, GTS round trip |
-| `engine/utils/.../space/test/MeshAccelerationTest.java` | accelerated == linear closest hit |
+| `engine/utils/.../space/test/MeshAccelerationTest.java` | accelerated == linear closest hit, batched == per-ray, normal gather, bounds |
 | `engine/utils/.../space/test/MeshIntersectionScalingTest.java` | sub-linear scaling benchmark |
