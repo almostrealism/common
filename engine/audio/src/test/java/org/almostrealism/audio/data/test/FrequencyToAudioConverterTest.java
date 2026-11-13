@@ -191,6 +191,52 @@ public class FrequencyToAudioConverterTest implements TestFeatures {
 	}
 
 	/**
+	 * Stereo frequency data, laid out as (channels, frames, bins, 1) the way
+	 * {@code WaveDetailsFactory} stores the analysis of a stereo file, must convert
+	 * to the same mono audio as a single channel holding the average magnitudes.
+	 */
+	@Test(timeout = 120000)
+	public void stereoFrequencyDataMatchesItsMonoAverage() {
+		WaveDetails mono = tonalDetails();
+
+		PackedCollection stereoData = new PackedCollection(shape(2, FRAMES, BINS, 1));
+		for (int f = 0; f < FRAMES; f++) {
+			stereoData.setMem(f * BINS + 3, 0.5);
+			stereoData.setMem((FRAMES + f) * BINS + 3, 1.5);
+		}
+
+		WaveDetails stereo = tonalDetails();
+		stereo.setFreqData(stereoData);
+		stereo.setFreqChannelCount(2);
+
+		new FrequencyToAudioConverter(new Random(1234)).convert(mono);
+		new FrequencyToAudioConverter(new Random(1234)).convert(stereo);
+
+		Assert.assertEquals(1, stereo.getChannelCount());
+		Assert.assertEquals(mono.getData().getMemLength(), stereo.getData().getMemLength());
+		Assert.assertEquals("Stereo input should reconstruct the average of its channels",
+				0.0, largestDeviation(mono.getData(), stereo.getData()), 1e-6);
+	}
+
+	/**
+	 * Frequency data whose size does not match the declared channels, frames
+	 * and bins must be rejected with a message naming the mismatch.
+	 */
+	@Test(timeout = 120000)
+	public void mismatchedChannelCountIsRejected() {
+		WaveDetails details = tonalDetails();
+		details.setFreqChannelCount(2);
+
+		try {
+			new FrequencyToAudioConverter(new Random(1234)).convert(details);
+			Assert.fail("Frequency data smaller than the declared channels was accepted");
+		} catch (IllegalArgumentException e) {
+			assertTrue("Unexpected message: " + e.getMessage(),
+					e.getMessage().contains("2 channels"));
+		}
+	}
+
+	/**
 	 * Frequency data that is entirely zero should stay silent rather than being
 	 * scaled by a division that has no meaningful peak to divide by.
 	 */

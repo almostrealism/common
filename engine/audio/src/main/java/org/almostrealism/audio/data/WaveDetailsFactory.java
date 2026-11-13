@@ -213,6 +213,11 @@ public class WaveDetailsFactory implements CodeFeatures {
 	 *       only needed as an intermediate step for autoencoder encoding.</li>
 	 * </ul>
 	 *
+	 * <p>Frequency data already present is kept, except that multi-channel audio
+	 * lacking features for the current feature model has its frequency data
+	 * recomputed: data stored before each channel was analyzed into its own block
+	 * is corrupt, and it is always older than the current model's features.</p>
+	 *
 	 * @param existing the WaveDetails to complete (modified in place)
 	 * @return the same WaveDetails instance with missing fields populated,
 	 *         or null if the input is null
@@ -234,7 +239,10 @@ public class WaveDetailsFactory implements CodeFeatures {
 
 		WaveData data = existing.getWaveData();
 
-		if (existing.getFreqFrameCount() <= 1) {
+		boolean predatesFeatureModel = featureProvider != null &&
+				existing.getFeatures(featureProvider.getModelIdentifier()) == null;
+
+		if (existing.getFreqFrameCount() <= 1 || (predatesFeatureModel && data.getChannelCount() > 1)) {
 			PackedCollection fft = null;
 
 			for (int c = 0; c < data.getChannelCount(); c++) {
@@ -247,7 +255,7 @@ public class WaveDetailsFactory implements CodeFeatures {
 					fft = new PackedCollection(data.getChannelCount(), count, freqBins, 1);
 				}
 
-				processFft(df, fft.range(shape(count, freqBins, 1), c * freqBins));
+				processFft(df, fft.range(shape(count, freqBins, 1), c * count * freqBins));
 			}
 
 			if (fft != null) {
