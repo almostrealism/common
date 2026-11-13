@@ -724,6 +724,47 @@ public class FieldCalculusTests extends TestSuiteBase {
 	}
 
 	/**
+	 * The curvature of a height field depends only on the derivatives of the height, so a nonzero
+	 * Dirichlet (fixed-value) boundary must contribute a zero tangential slope at the boundary faces
+	 * - the constant ghost layer varies by zero along a face - rather than reusing the fixed height
+	 * value as a slope. This checks the two consequences at the boundary faces, where the fixed value
+	 * enters: for a nonzero fixed value {@code v}, {@code heightFieldCurvature(h, fixed(v))} equals
+	 * {@code heightFieldCurvature(h - v, fixed(0))}, and in the small-slope limit the curvature
+	 * reduces to the {@link FieldCalculusFeatures#laplacian} everywhere, including the edge cells.
+	 */
+	@Test(timeout = 120000)
+	public void heightFieldCurvatureFixedBoundary() {
+		int n = 16;
+		double h = 2 * Math.PI / n;
+		double v = 0.7;
+		TraversalPolicy shape = shape(n, n);
+
+		// Invariance: adding a constant to both the height and its Dirichlet value leaves the curvature unchanged.
+		double amplitude = 0.3;
+		CollectionProducer base = sin(coordinate(shape, 0, 0.0, h))
+				.multiply(sin(coordinate(shape, 1, 0.0, h))).multiply(amplitude);
+		PackedCollection height = base.evaluate();
+		PackedCollection raised = base.add(v).evaluate();
+
+		double[] fixedV = values(heightFieldCurvature(cp(raised), GridBoundary.fixed(v), h));
+		double[] fixedZero = values(heightFieldCurvature(cp(height), GridBoundary.fixed(0.0), h));
+		double invariance = maxError(fixedZero, fixedV, n, n, 0);
+		log("fixed(v) on h vs fixed(0) on h - v max error=" + invariance);
+		assertTrue("curvature must not depend on the Dirichlet constant: " + invariance, invariance < 1e-4);
+
+		// Small-slope limit at the boundary faces: a nearly flat field has curvature equal to its Laplacian.
+		double small = 1e-3;
+		CollectionProducer flat = sin(coordinate(shape, 0, 0.0, h))
+				.multiply(sin(coordinate(shape, 1, 0.0, h))).multiply(small).add(v);
+		PackedCollection nearlyFlat = flat.evaluate();
+		double[] curvature = values(heightFieldCurvature(cp(nearlyFlat), GridBoundary.fixed(v), h));
+		double[] laplacian = values(laplacian(cp(nearlyFlat), GridBoundary.fixed(v), h));
+		double limit = maxError(laplacian, curvature, n, n, 0);
+		log("small-slope curvature vs Laplacian (including boundary) max error=" + limit);
+		assertTrue("curvature must reduce to the Laplacian at the boundary faces: " + limit, limit < 1e-6);
+	}
+
+	/**
 	 * A manufactured Dirichlet problem: {@code laplacian(p) = -2 pi^2 sin(pi x) sin(pi y)} on the
 	 * unit square with {@code p = 0} on the boundary, whose solution is
 	 * {@code sin(pi x) sin(pi y)}. Weighted Jacobi and red-black Gauss-Seidel are each run as the

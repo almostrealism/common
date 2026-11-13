@@ -61,6 +61,32 @@ public abstract class GridBoundary implements CollectionFeatures {
 	public abstract CollectionProducer ghost(Producer<PackedCollection> field, int axis, int depth, boolean upper);
 
 	/**
+	 * Returns the boundary condition that governs a <em>tangential derivative</em> of a field to which
+	 * this boundary condition applies - the ghost cells of {@code d(field)/dx_j} when the field is
+	 * extended along a different axis {@code k != j}.
+	 *
+	 * <p>Shifting a field across an edge and then differentiating it along a tangential axis is not the
+	 * same as differentiating first and then shifting the derivative with this same boundary, because
+	 * the ghost layer the boundary supplies has its own tangential variation. For the
+	 * {@link #periodic()} boundary the ghost layer is a wrapped copy of the field, so its tangential
+	 * derivative is the wrapped derivative and the derivative boundary is again periodic. For the
+	 * {@link #clamped()} boundary the ghost layer repeats the edge cells, so its tangential derivative
+	 * is the edge cells' derivative and the derivative boundary is again clamped. For the
+	 * {@link #fixed(double)} boundary the ghost layer is a constant, so its tangential derivative is
+	 * zero regardless of the fixed value, and the derivative boundary is {@code fixed(0)}.</p>
+	 *
+	 * <p>Operators that shift a derivative field across an edge - such as the tangential slopes
+	 * averaged across a face in {@link FieldCalculusFeatures#heightFieldCurvature} - must use this
+	 * boundary for that shift rather than reusing the boundary of the undifferentiated field, which
+	 * would otherwise inject the fixed value as a spurious tangential slope.</p>
+	 *
+	 * @return the boundary condition for a tangential derivative of a field with this boundary
+	 */
+	public GridBoundary derivative() {
+		return this;
+	}
+
+	/**
 	 * Returns a description of this boundary condition for diagnostics.
 	 *
 	 * @return the name of the boundary condition
@@ -125,6 +151,11 @@ public abstract class GridBoundary implements CollectionFeatures {
 			@Override
 			public CollectionProducer ghost(Producer<PackedCollection> field, int axis, int depth, boolean upper) {
 				return constant(shape(field).replaceDimension(axis, depth).withOrder(null), value);
+			}
+
+			@Override
+			public GridBoundary derivative() {
+				return value == 0.0 ? this : fixed(0.0);
 			}
 
 			@Override

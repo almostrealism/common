@@ -308,6 +308,15 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * face. The result is second-order accurate, and in the small-slope limit it reduces to
 	 * {@link #laplacian} (see {@link #linearizedHeightFieldCurvature}).</p>
 	 *
+	 * <p>Across a boundary face the neighbouring cell's tangential slope is read with the
+	 * {@link GridBoundary#derivative() tangential-derivative} boundary rather than {@code boundary}
+	 * itself, so a {@link GridBoundary#fixed(double) fixed(v)} height boundary contributes a zero
+	 * tangential slope (the constant ghost layer varies by zero along the face) instead of the fixed
+	 * value {@code v}. This preserves the small-slope/{@link #laplacian} limit at the boundary faces
+	 * for every Dirichlet value, and makes {@code heightFieldCurvature(h, fixed(v))} equal to
+	 * {@code heightFieldCurvature(h - v, fixed(0))}, consistent with the curvature depending only on
+	 * the derivatives of the height.</p>
+	 *
 	 * <p>The flux shifts the central differences, so the operator nests shifts of shifts like
 	 * {@link #divergence}({@link #gradient}); on a 3D grid its index-expression simplification is
 	 * correspondingly slow to compile (tested only in 2D). See the 3D nesting note on
@@ -327,13 +336,14 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 			central[j] = centralDifference(height, j, gridSpacing(spacing, j, d), boundary);
 		}
 
+		GridBoundary tangentialBoundary = boundary.derivative();
 		CollectionProducer result = null;
 		for (int k = 0; k < d; k++) {
 			double h = gridSpacing(spacing, k, d);
 			CollectionProducer upper = faceFlux(central, k,
-					forwardDifference(height, k, h, boundary), 1, boundary);
+					forwardDifference(height, k, h, boundary), 1, tangentialBoundary);
 			CollectionProducer lower = faceFlux(central, k,
-					backwardDifference(height, k, h, boundary), -1, boundary);
+					backwardDifference(height, k, h, boundary), -1, tangentialBoundary);
 			CollectionProducer term = upper.subtract(lower).multiply(1.0 / h);
 			result = result == null ? term : result.add(term);
 		}
@@ -364,7 +374,8 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * @param k        the axis normal to the face
 	 * @param normal   the one-sided difference of the height field across the face
 	 * @param side     {@code 1} for the face towards the next cell, {@code -1} for the previous
-	 * @param boundary the boundary condition, used to read the neighbouring cell's tangential slope
+	 * @param boundary the {@link GridBoundary#derivative() tangential-derivative} boundary, used to
+	 *                 read the neighbouring cell's tangential slope across the face
 	 * @return the flux through the face
 	 */
 	private CollectionProducer faceFlux(CollectionProducer[] central, int k, CollectionProducer normal,
