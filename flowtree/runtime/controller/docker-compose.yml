@@ -61,11 +61,28 @@ services:
       - AR_MEMORY_DATA_DIR=/data
       - AR_MEMORY_HTTP_PORT=8020
       - AR_MEMORY_AUTH_TOKEN=${AR_MEMORY_AUTH_TOKEN:-}
+      # Keep the embedding model on the persistent volume. Without this every
+      # recreated container downloads it again before it can serve requests.
+      - AR_MEMORY_CACHE_DIR=/data/model-cache
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+    # Overrides the image's healthcheck to allow a long start period: the
+    # service loads its embedding model and store before it listens, and the
+    # image's 15s start period let Docker mark a slow first start unhealthy,
+    # which makes `up` abort every service that waits on service_healthy.
+    # A passing check ends the start period early, so a fast start is not
+    # delayed.
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8020/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 300s
+      start_interval: 5s
+      retries: 3
     restart: unless-stopped
 
   flowtree-controller:
