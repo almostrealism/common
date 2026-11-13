@@ -288,6 +288,13 @@ absent() {
   ! grep -qF -- "$1" "$MOCK_DOCKER_LOG"
 }
 
+# preflight_starts SERVICES: the preflight's `up` names exactly SERVICES
+# (space-separated, in order) and nothing else.
+preflight_starts() {
+  grep -F -- "${PREFLIGHT_UP}" "$MOCK_DOCKER_LOG" | grep -F -- " up -d " \
+    | grep -qE -- "--wait-timeout [0-9]+ $1\$"
+}
+
 SWAP_UP="up -d --force-recreate --wait"
 PREFLIGHT_UP="-p controller-preflight"
 AGENT_ENV_ARGS=(FLOWTREE_AGENT_ENV=/nonexistent/agent.env
@@ -313,6 +320,15 @@ run_case "a failed preflight stops the deploy with the running stack untouched" 
 check_docker_log "nothing running is replaced when the preflight fails" absent "${SWAP_UP}"
 check_docker_log "the preflight project is removed when it fails" \
     in_order "${PREFLIGHT_UP}" "down -v --remove-orphans"
+
+run_case "a single-service rebuild preflights only that service" 0 \
+    "Preflight passed: ar-manager" "Preflight passed: ar-memory" \
+    ar-manager -- \
+    FLEET_BIND_ADDR=100.64.1.2
+check_docker_log "the preflight starts only the selected service" preflight_starts ar-manager
+check_docker_log "the swap of the selected service follows the preflight" \
+    in_order "${PREFLIGHT_UP} -f flowtree/runtime/controller/docker-compose.yml" \
+        "${SWAP_UP} --wait-timeout 6000 ar-manager"
 
 run_case "a fleet-only rebuild has nothing to preflight" 0 \
     "" "Preflight" \
