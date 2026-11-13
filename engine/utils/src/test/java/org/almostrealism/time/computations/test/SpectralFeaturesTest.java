@@ -20,6 +20,8 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalOrdering;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.relation.Delegated;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
@@ -938,6 +940,55 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		} catch (IllegalArgumentException expected) {
 			log("unshapedInputRejected message=" + expected.getMessage());
 		}
+	}
+
+	/**
+	 * An input that is not itself a {@link Shape} but delegates to a shaped producer declares the
+	 * shape of its delegate (see {@link Shape#shapeOf(Object)}), so the transform accepts it and
+	 * reads it by value through that shape. Its spectrum must match the spectrum of the delegate.
+	 */
+	@Test(timeout = 120000)
+	public void delegatedShapedInputAccepted() {
+		int bins = 16;
+
+		PackedCollection logical = testSignal(shape(bins, 2)).evaluate();
+		CollectionProducer shaped = cp(logical);
+		DelegatingProducer delegating = new DelegatingProducer(shaped);
+		Assert.assertFalse("the delegating input should not be a shape itself",
+				delegating instanceof Shape);
+		Assert.assertSame("the delegating input should declare its delegate's shape",
+				shaped, Shape.shapeOf(delegating));
+
+		PackedCollection expected = new FourierTransform(1, bins, false, shaped).get().evaluate();
+		PackedCollection actual = new FourierTransform(1, bins, false, delegating).get().evaluate();
+
+		double error = maxDifference(expected, actual);
+		log("delegatedShapedInput maxError=" + error);
+		Assert.assertTrue("delegated input error " + error, error < ROUND_TRIP_TOLERANCE);
+	}
+
+	/**
+	 * A producer that declares no shape of its own and evaluates through a delegate, as a
+	 * {@link Delegated} wrapper around a shaped producer does.
+	 */
+	protected static class DelegatingProducer implements Producer<PackedCollection>, Delegated<Producer<PackedCollection>> {
+		/** The producer this one evaluates through. */
+		private final Producer<PackedCollection> delegate;
+
+		/**
+		 * Creates a producer that evaluates through the given delegate.
+		 *
+		 * @param delegate the producer to evaluate through
+		 */
+		protected DelegatingProducer(Producer<PackedCollection> delegate) {
+			this.delegate = delegate;
+		}
+
+		@Override
+		public Evaluable<PackedCollection> get() { return delegate.get(); }
+
+		@Override
+		public Producer<PackedCollection> getDelegate() { return delegate; }
 	}
 
 	/**
