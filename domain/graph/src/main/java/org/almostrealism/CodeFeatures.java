@@ -33,6 +33,7 @@ import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.Switch;
+import org.almostrealism.calculus.FieldCalculusFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
@@ -121,7 +122,7 @@ import java.util.function.Supplier;
  */
 public interface CodeFeatures extends LayerRoutingFeatures,
 								TriangleFeatures, TransformMatrixFeatures,
-								TemporalFeatures, ComputerFeatures {
+								TemporalFeatures, FieldCalculusFeatures, ComputerFeatures {
 	/** When {@code true}, constant {@link PackedCollection} instances are embedded as fixed data in the expression tree. */
 	boolean enableFixedCollections = true;
 
