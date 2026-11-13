@@ -259,6 +259,10 @@ public class WaveDetailsFactory implements CodeFeatures {
 			}
 
 			if (fft != null) {
+				// The reanalysis path replaces a stale frequency buffer that
+				// WaveDetails owns; release it so the superseded native memory
+				// does not leak when the new buffer takes its place.
+				existing.releaseFreqData();
 				existing.setFreqSampleRate(fftSampleRate / scaleTime);
 				existing.setFreqChannelCount(fft.getShape().length(0));
 				existing.setFreqFrameCount(fft.getShape().length(1));

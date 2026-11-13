@@ -104,6 +104,26 @@ public class WaveDetailsFactoryTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Reanalyzing stale multi-channel frequency data replaces the stored buffer,
+	 * so the superseded one must be released rather than leaked. Its native memory
+	 * is potentially GPU-resident and finalization is disabled by default, so
+	 * dropping the Java reference alone would hold it until the collector runs.
+	 */
+	@Test(timeout = 120000)
+	public void staleFrequencyBufferIsReleasedWhenReanalyzed() {
+		WaveDetails details = stereoDetails();
+		storeStaleFrequencyData(details);
+		PackedCollection stale = details.getFreqData();
+
+		WaveDetailsFactory factory = new WaveDetailsFactory(SAMPLE_RATE);
+		factory.setFeatureProvider(new FixedFeatureProvider());
+		factory.forExisting(details);
+
+		Assert.assertNotSame("Stale frequency buffer was kept", stale, details.getFreqData());
+		Assert.assertTrue("Superseded frequency buffer was not released", stale.isDestroyed());
+	}
+
+	/**
 	 * Creates details for two seconds of stereo audio carrying a 440 Hz tone in
 	 * the left channel and silence in the right, with no frequency analysis.
 	 *
