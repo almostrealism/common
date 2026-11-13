@@ -32,5 +32,10 @@
  * The matrix operations that delta implementations compose (for example
  * {@link org.almostrealism.algebra.MatrixFeatures#expandAndMultiply}) live on
  * {@link org.almostrealism.algebra.MatrixFeatures}.</p>
+ *
+ * <p>The package also holds finite-difference calculus on structured grids:
+ * {@link org.almostrealism.calculus.FieldCalculusFeatures} provides neighbour shifts, gradient,
+ * divergence, Laplacian, height-field curvature and Poisson relaxation steps as producers, with
+ * the cells beyond the grid supplied by a {@link org.almostrealism.calculus.GridBoundary}.</p>
  */
 package org.almostrealism.calculus;
