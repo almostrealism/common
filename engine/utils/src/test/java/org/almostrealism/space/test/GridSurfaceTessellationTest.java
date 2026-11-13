@@ -30,6 +30,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -54,21 +55,32 @@ public class GridSurfaceTessellationTest extends TestSuiteBase implements GridIn
 	private static final double POSITION_TOLERANCE = 1e-5;
 
 	/**
-	 * Builds a small bumpy height field, shared with other tests in this package that need a
-	 * non-planar grid surface fixture.
+	 * Evaluates a height-field producer into an {@code (nx, ny)} collection, the input
+	 * {@link Mesh#gridSurface} expects.
 	 *
-	 * @param nx the number of nodes along X
-	 * @param ny the number of nodes along Z
-	 * @return the height field indexed {@code [i][j]}
+	 * @param heights the {@code (nx*ny)} height field in row-major order
+	 * @param nx      the number of nodes along X
+	 * @param ny      the number of nodes along Z
+	 * @return the evaluated height field
 	 */
-	static double[][] bumpy(int nx, int ny) {
-		double[][] h = new double[nx][ny];
-		for (int i = 0; i < nx; i++) {
-			for (int j = 0; j < ny; j++) {
-				h[i][j] = 0.3 * Math.sin(0.7 * i) * Math.cos(0.5 * j) + 0.1 * Math.sin(0.2 * i * j);
-			}
+	private PackedCollection heightField(CollectionProducer heights, int nx, int ny) {
+		return heights.evaluate().reshape(shape(nx, ny));
+	}
+
+	/**
+	 * Returns the three corner positions of every triangle of a mesh, in triangle order, as
+	 * the host reference against which the device tessellation is compared.
+	 *
+	 * @param mesh the mesh
+	 * @return one three-element corner array per triangle
+	 */
+	private static List<Vector[]> triangleCorners(Mesh mesh) {
+		Vector[] v = mesh.getVectors();
+		List<Vector[]> triangles = new ArrayList<>();
+		for (int[] t : mesh.getTriangleData()) {
+			triangles.add(new Vector[] { v[t[0]], v[t[1]], v[t[2]] });
 		}
-		return h;
+		return triangles;
 	}
 
 	/**
@@ -93,7 +105,7 @@ public class GridSurfaceTessellationTest extends TestSuiteBase implements GridIn
 	public void vertexPositionsMatchHeights() {
 		int nx = 5;
 		int ny = 7;
-		double[][] h = bumpy(nx, ny);
+		PackedCollection h = heightField(bumpyHeights(nx, ny), nx, ny);
 		Mesh mesh = Mesh.gridSurface(h, ORIGIN, SPACING_X, SPACING_Z);
 
 		Vector[] v = mesh.getVectors();
@@ -103,7 +115,7 @@ public class GridSurfaceTessellationTest extends TestSuiteBase implements GridIn
 			for (int j = 0; j < ny; j++) {
 				Vector node = v[i * ny + j];
 				Assert.assertEquals(ORIGIN.getX() + i * SPACING_X, node.getX(), POSITION_TOLERANCE);
-				Assert.assertEquals(ORIGIN.getY() + h[i][j], node.getY(), POSITION_TOLERANCE);
+				Assert.assertEquals(ORIGIN.getY() + h.toDouble(i * ny + j), node.getY(), POSITION_TOLERANCE);
 				Assert.assertEquals(ORIGIN.getZ() + j * SPACING_Z, node.getZ(), POSITION_TOLERANCE);
 			}
 		}
@@ -114,37 +126,15 @@ public class GridSurfaceTessellationTest extends TestSuiteBase implements GridIn
 	public void triangleCountIsTwoPerCell() {
 		int nx = 5;
 		int ny = 7;
-		double[][] h = bumpy(nx, ny);
 		int expected = 2 * (nx - 1) * (ny - 1);
 
-		Mesh mesh = Mesh.gridSurface(h, ORIGIN, SPACING_X, SPACING_Z);
+		Mesh mesh = Mesh.gridSurface(heightField(bumpyHeights(nx, ny), nx, ny), ORIGIN, SPACING_X, SPACING_Z);
 		Assert.assertEquals(expected, mesh.getTriangleData().length);
 
 		// The triangle count is independent of the height values, so a flat field suffices.
 		MeshData md = MeshData.gridSurface(cp(new PackedCollection(shape(nx, ny))),
 				nx, ny, ORIGIN, SPACING_X, SPACING_Z);
 		Assert.assertEquals(expected, md.getCount());
-	}
-
-	/**
-	 * Builds the host height field of the same tilted plane as
-	 * {@link #planeHeights(int, int, double, double, double)}, indexed {@code [i][j]}.
-	 *
-	 * @param nx the number of nodes along X
-	 * @param ny the number of nodes along Z
-	 * @param a  the X slope
-	 * @param b  the Z slope
-	 * @param c  the constant offset
-	 * @return the height field
-	 */
-	private static double[][] planeHeightField(int nx, int ny, double a, double b, double c) {
-		double[][] h = new double[nx][ny];
-		for (int i = 0; i < nx; i++) {
-			for (int j = 0; j < ny; j++) {
-				h[i][j] = a * i * SPACING_X + b * j * SPACING_Z + c;
-			}
-		}
-		return h;
 	}
 
 	/**
@@ -164,8 +154,8 @@ public class GridSurfaceTessellationTest extends TestSuiteBase implements GridIn
 				.regularGridSurfacePoints(heights, nx, ny,
 						ORIGIN.getX(), ORIGIN.getY(), ORIGIN.getZ(), SPACING_X, SPACING_Z)
 				.evaluate();
-		List<Vector[]> expected = Mesh.gridSurfaceTriangles(
-				planeHeightField(nx, ny, a, b, c), ORIGIN, SPACING_X, SPACING_Z);
+		List<Vector[]> expected = triangleCorners(Mesh.gridSurface(
+				heightField(planeHeights(nx, ny, a, b, c), nx, ny), ORIGIN, SPACING_X, SPACING_Z));
 
 		Assert.assertEquals(2 * (nx - 1) * (ny - 1), expected.size());
 		Assert.assertEquals(expected.size() * 9, points.getMemLength());
@@ -221,8 +211,8 @@ public class GridSurfaceTessellationTest extends TestSuiteBase implements GridIn
 
 		MeshData md = MeshData.gridSurface(planeHeights(nx, ny, a, b, c), nx, ny,
 				ORIGIN, SPACING_X, SPACING_Z);
-		List<Vector[]> expected = Mesh.gridSurfaceTriangles(
-				planeHeightField(nx, ny, a, b, c), ORIGIN, SPACING_X, SPACING_Z);
+		List<Vector[]> expected = triangleCorners(Mesh.gridSurface(
+				heightField(planeHeights(nx, ny, a, b, c), nx, ny), ORIGIN, SPACING_X, SPACING_Z));
 		Assert.assertEquals(expected.size(), md.getCount());
 
 		double len = Math.sqrt(a * a + 1.0 + b * b);
@@ -289,8 +279,7 @@ public class GridSurfaceTessellationTest extends TestSuiteBase implements GridIn
 	public void gtsRoundTripPreservesMesh() throws IOException {
 		int nx = 4;
 		int ny = 4;
-		double[][] h = bumpy(nx, ny);
-		Mesh mesh = Mesh.gridSurface(h, ORIGIN, SPACING_X, SPACING_Z);
+		Mesh mesh = Mesh.gridSurface(heightField(bumpyHeights(nx, ny), nx, ny), ORIGIN, SPACING_X, SPACING_Z);
 
 		GtsResource gts = new GtsResource.MeshTranscoder().transcode(new MeshResource(mesh));
 		Mesh back = new GtsResource.MeshReader().transcode(gts).getMesh();
