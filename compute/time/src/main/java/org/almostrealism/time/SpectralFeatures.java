@@ -254,8 +254,9 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * spectrum) are ignored. Bin {@code b} therefore represents angular wavenumber {@code b * dk},
 	 * i.e. wavelength {@code 2 pi / (b * dk)}.
 	 *
-	 * <p>The shell averages are computed from the grid's dense
-	 * {@link SpectralGrid#radialMembership() membership matrix}, so the intermediate size grows as
+	 * <p>The shell averages are the grid's {@link SpectralGrid#radialAverage radial average},
+	 * computed from its dense {@link SpectralGrid#radialMembership() membership matrix}, so the
+	 * intermediate size grows as
 	 * {@code bins * cells}; a grid whose membership matrix cannot be addressed with an {@code int}
 	 * index is rejected rather than allowed to overflow.</p>
 	 *
@@ -269,15 +270,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 *                                  or the grid has more than {@link SpectralGrid#MAX_EXACT_INDEX} cells
 	 */
 	default CollectionProducer radialPowerSpectrum(Producer<PackedCollection> power, double... spacing) {
-		SpectralGrid grid = new SpectralGrid(shape(power), spacing);
-		int cells = grid.getCellCount();
-		int bins = grid.getRadialBinCount();
-
-		CollectionProducer membership = grid.radialMembership();
-		CollectionProducer weighted = membership.multiply(repeat(bins, reshape(shape(cells), power)).reshape(bins, cells));
-		CollectionProducer total = isolated(weighted.sum(1).reshape(bins));
-		CollectionProducer count = isolated(membership.sum(1).reshape(bins));
-		return total.divide(count);
+		return new SpectralGrid(shape(power), spacing).radialAverage(power);
 	}
 
 	/**
@@ -380,7 +373,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 		CollectionProducer extent = isolated(max(abs(deviation)));
 		CollectionProducer centred = deviation.divide(extent).reshape(grid.getShape());
 		CollectionProducer power = isolated(powerSpectrum(fftn(toComplex(centred), false)).reshape(cells));
-		CollectionProducer peak = spectralPeakBin(radialPowerSpectrum(power.reshape(grid.getShape()), spacing));
+		CollectionProducer peak = spectralPeakBin(grid.radialAverage(power));
 
 		CollectionProducer k = isolated(grid.wavenumber().reshape(cells));
 		CollectionProducer bin = grid.radialBin().reshape(cells);

@@ -13,7 +13,7 @@ native kernels on every backend, Metal and OpenCL included; nothing is computed 
 | Power, magnitude, phase | `powerSpectrum`, `complexMagnitude`, `phase`, `logMagnitude` |
 | Grid geometry (dimensions and spacing) | `new SpectralGrid(shape, spacing...)` |
 | Wavenumber of every cell | `grid.wavenumberSquared()`, `grid.wavenumber()` |
-| Radially averaged power | `radialPowerSpectrum(power, spacing...)`, `grid.radialBin()`, `grid.radialMembership()`, `SpectralGrid.getRadialBinWidth()`, `SpectralGrid.getRadialBinCount()` |
+| Radially averaged power | `radialPowerSpectrum(power, spacing...)`, `grid.radialAverage(values)`, `grid.radialBin()`, `grid.radialMembership()`, `SpectralGrid.getRadialBinWidth()`, `SpectralGrid.getRadialBinCount()` |
 | Dominant wavelength of a field | `dominantWavelength(field, spacing...)`, `dominantWavenumber(field, spacing...)` |
 | Peak of any radial spectrum | `spectralPeakBin(spectrum)`, `spectralPeak(spectrum, binWidth)` |
 | Periodic Poisson solve `∇²p = f` | `poissonSolve(f, spacing...)`, `grid.inverseLaplacian()` |

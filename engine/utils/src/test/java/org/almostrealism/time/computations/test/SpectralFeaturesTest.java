@@ -919,12 +919,12 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	}
 
 	/**
-	 * A producer that reports no shape is compiled to a plain array argument rather than a
-	 * collection variable; the transform must still read it, in its physical order, and agree
-	 * with the transform of the same values supplied through a shaped producer.
+	 * The transform reads its input by value, through the collection variable of its shape, so a
+	 * producer that reports no shape is rejected when the transform is constructed, with a clear
+	 * error, rather than failing when the kernel is compiled.
 	 */
 	@Test(timeout = 120000)
-	public void unshapedInput() {
+	public void unshapedInputRejected() {
 		int bins = 16;
 
 		PackedCollection input = testSignal(shape(bins, 2)).evaluate();
@@ -932,12 +932,12 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		Assert.assertFalse("the input should report no shape",
 				unshaped instanceof Shape);
 
-		PackedCollection expected = new FourierTransform(1, bins, false, cp(input)).get().evaluate();
-		PackedCollection actual = new FourierTransform(1, bins, false, unshaped).get().evaluate();
-
-		double error = maxDifference(expected, actual);
-		log("unshapedInput maxError=" + error);
-		Assert.assertTrue("unshaped input error " + error, error < ROUND_TRIP_TOLERANCE);
+		try {
+			new FourierTransform(1, bins, false, unshaped);
+			Assert.fail("an input without a shape should be rejected");
+		} catch (IllegalArgumentException expected) {
+			log("unshapedInputRejected message=" + expected.getMessage());
+		}
 	}
 
 	/**

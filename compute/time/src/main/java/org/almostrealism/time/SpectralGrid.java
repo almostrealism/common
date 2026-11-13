@@ -303,6 +303,35 @@ public class SpectralGrid implements CollectionFeatures {
 	}
 
 	/**
+	 * Averages per-cell values of this grid over every
+	 * {@link SpectralFeatures#radialPowerSpectrum radial bin}: bin {@code b} holds the mean of
+	 * the values of the cells whose {@link #radialBin() radial bin} is {@code b}. Cells beyond the
+	 * last bin are ignored. The averages are computed from the dense
+	 * {@link #radialMembership() membership matrix}, so the intermediate size grows as
+	 * {@code bins * cells}.
+	 *
+	 * @param values one value per cell of this grid, in row-major cell order; any shape with
+	 *               {@link #getCellCount()} elements
+	 * @return a producer of the {@link #getRadialBinCount() radial bin count} averages
+	 * @throws IllegalArgumentException if {@code values} does not hold one value per cell, or
+	 *                                  {@link #radialMembership()} rejects this grid
+	 */
+	public CollectionProducer radialAverage(Producer<PackedCollection> values) {
+		int cells = getCellCount();
+		if (shape(values).getTotalSize() != cells) {
+			throw new IllegalArgumentException("Expected " + cells + " values for " + this +
+					", not " + shape(values).getTotalSize());
+		}
+
+		int bins = getRadialBinCount();
+		CollectionProducer membership = radialMembership();
+		CollectionProducer weighted = membership.multiply(repeat(bins, reshape(shape(cells), values)).reshape(bins, cells));
+		CollectionProducer total = isolated(weighted.sum(1).reshape(bins));
+		CollectionProducer count = isolated(membership.sum(1).reshape(bins));
+		return total.divide(count);
+	}
+
+	/**
 	 * Returns the Fourier symbol of the inverse Laplacian on this grid, {@code -1 / |k|^2}, for
 	 * every interleaved (real, imaginary) element of a complex spectrum of the grid, so that
 	 * multiplying an {@link SpectralFeatures#fftn FFT} by it solves the periodic Poisson equation.

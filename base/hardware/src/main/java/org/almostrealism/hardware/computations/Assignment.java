@@ -336,7 +336,8 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			Expression index = new KernelIndex(context);
 			if (len > 1) index = index.multiply(len).add(i);
 
-			Expression<?> value = getArgument(1).getTraversedValueAt(index);
+			TraversableExpression exp = getArgument(1).getTraversableExpression();
+			Expression<Double> value = exp == null ? getArgument(1).reference(index) : exp.getValueAt(index);
 			if (value == null) {
 				throw new UnsupportedOperationException();
 			}

@@ -276,22 +276,6 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	}
 
 	/**
-	 * Returns an expression for the value of this variable at a logical index, read through its
-	 * {@link #getTraversableExpression() traversable expression}, so the read honours the shape
-	 * and ordering of the variable, and its producer when that producer is visible to the kernel.
-	 * A variable with no traversable form carries neither, and is read as a plain array with
-	 * {@link #valueAt(Expression)}. This is the read for a kernel that addresses its output
-	 * explicitly but must still take its inputs by value, whatever layout they carry.
-	 *
-	 * @param index the logical index of the element to read
-	 * @return an expression for the value at that index
-	 */
-	public Expression<?> getTraversedValueAt(Expression<?> index) {
-		TraversableExpression<?> traversable = getTraversableExpression();
-		return traversable == null ? valueAt(index) : traversable.getValueAt(index);
-	}
-
-	/**
 	 * Sets the offset expression used when accessing the delegate array.
 	 *
 	 * @param delegateOffset an expression representing the offset into the delegate array

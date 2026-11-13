@@ -349,10 +349,10 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 
 	/**
 	 * Factory method to create an appropriate array variable for the given producer.
-	 * If the producer implements {@link Shape}, or it is {@link Delegated} and its
-	 * {@link Delegated#getDelegate() delegate} implements {@link Shape}, creates a
-	 * {@code CollectionVariable} with the corresponding shape. Otherwise, creates a
-	 * standard {@link ArrayVariable}.
+	 * If the producer declares a {@link Shape#shapeOf(Object) shape} (it implements
+	 * {@link Shape}, or it is {@link Delegated} and its {@link Delegated#getDelegate() delegate}
+	 * implements {@link Shape}), creates a {@code CollectionVariable} with the corresponding
+	 * shape. Otherwise, creates a standard {@link ArrayVariable}.
 	 *
 	 * @param name the name identifier for the variable
 	 * @param p    the supplier that produces evaluable instances
@@ -362,9 +362,9 @@ public class CollectionVariable<T extends Collection<Double, ? extends Collectio
 	 */
 	public static <T> ArrayVariable<T> create(String name,
 											  Supplier<Evaluable<? extends Multiple<T>>> p) {
-		Object shaped = p instanceof Delegated && !(p instanceof Shape) ? ((Delegated<?>) p).getDelegate() : p;
-		return shaped instanceof Shape
-				? new CollectionVariable(name, (Shape<?>) shaped, p)
+		Shape<?> shape = Shape.shapeOf(p);
+		return shape != null
+				? new CollectionVariable(name, shape, p)
 				: new ArrayVariable<>(name, p);
 	}
 }

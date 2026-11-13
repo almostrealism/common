@@ -16,6 +16,8 @@
 
 package org.almostrealism.time.computations;
 
+import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
@@ -94,6 +96,7 @@ import java.util.List;
  *   <li>The bin count must be a power of 2</li>
  *   <li>Parallelism is across lines; a single line is transformed by one thread</li>
  *   <li>Input must be in complex (real, imaginary) interleaved format</li>
+ *   <li>Input must declare a {@link Shape}, through whose ordering it is read</li>
  * </ul>
  *
  * @see TemporalFeatures#fft(int, Producer, io.almostrealism.compute.ComputeRequirement...)
@@ -153,8 +156,9 @@ public class FourierTransform extends CollectionProducerComputationBase {
 	 * @param stride  Distance, in complex elements, between consecutive samples of a line
 	 * @param inverse If true, performs inverse FFT; if false, performs forward FFT
 	 * @param input   Producer providing {@code count * bins} interleaved complex values
-	 * @throws IllegalArgumentException if {@code bins} is not a power of 2, or {@code count} is not
-	 *                                  a positive multiple of {@code stride}
+	 * @throws IllegalArgumentException if {@code bins} is not a power of 2, {@code count} is not
+	 *                                  a positive multiple of {@code stride}, or {@code input} does
+	 *                                  not declare a {@link Shape}
 	 */
 	public FourierTransform(int count, int bins, int stride, boolean inverse, Producer<PackedCollection> input) {
 		super(inverse ? "fourierTransformInverse"  : "fourierTransform",
@@ -162,6 +166,11 @@ public class FourierTransform extends CollectionProducerComputationBase {
 
 		if (bins < 1 || Integer.bitCount(bins) != 1) {
 			throw new IllegalArgumentException("FFT length " + bins + " is not a power of 2");
+		}
+
+		if (Shape.shapeOf(input) == null) {
+			throw new IllegalArgumentException("FFT input " + input.getClass().getName() +
+					" does not declare a shape, so it cannot be read by value");
 		}
 
 		if (stride < 1 || count < 1 || count % stride != 0) {
@@ -190,7 +199,11 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "FourierTransform"));
 
 		ArrayVariable<Double> output = getArgument(0);
-		ArrayVariable<Double> input = getArgument(1);
+		CollectionVariable<?> input = getCollectionArgumentVariable(1);
+		if (input == null) {
+			throw new IllegalStateException("FFT input of " + getFunctionName() +
+					" is not a collection variable, so it cannot be read by value");
+		}
 
 		Expression<Integer> line = kernel(context);
 		Expression first = stride == 1 ?
@@ -242,9 +255,10 @@ public class FourierTransform extends CollectionProducerComputationBase {
 
 	/**
 	 * Generates the loop that copies the input line into the output in bit-reversed order,
-	 * which is the starting arrangement of the in-place iterative FFT. The input is read through
-	 * {@link ArrayVariable#getTraversedValueAt(Expression)}, so it is read by value, through whatever
-	 * ordering and producer the argument carries; only the output is addressed directly, as the
+	 * which is the starting arrangement of the in-place iterative FFT. The input is read by value,
+	 * with {@link CollectionVariable#getValueAt(Expression)}, so the read honours whatever ordering
+	 * the input's shape carries, and whether the input's producer is embedded in this kernel is
+	 * decided by process isolation, not here. Only the output is addressed directly, as the
 	 * destination of the copy.
 	 *
 	 * @param output the output argument
@@ -252,7 +266,7 @@ public class FourierTransform extends CollectionProducerComputationBase {
 	 * @param first  the complex element index of the first sample of this thread's line
 	 * @return the copy loop
 	 */
-	protected Repeated bitReversedCopy(ArrayVariable<Double> output, ArrayVariable<Double> input,
+	protected Repeated bitReversedCopy(ArrayVariable<Double> output, CollectionVariable<?> input,
 										  Expression first) {
 		InstanceReference i = Variable.integer("i_" + varIdx++).ref();
 		Repeated copy = new Repeated<>(i.getReferent(), i.lessThan(e(bins)));
@@ -260,8 +274,8 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		Scope body = new Scope<>();
 		Expression src = position(first, i);
 		Expression dst = body.declareInteger("dst_" + varIdx++, position(first, reverseBits(i)));
-		body.assign(output.reference(dst), input.getTraversedValueAt(src));
-		body.assign(output.reference(dst.add(1)), input.getTraversedValueAt(src.add(1)));
+		body.assign(output.reference(dst), input.getValueAt(src));
+		body.assign(output.reference(dst.add(1)), input.getValueAt(src.add(1)));
 		copy.add(body);
 		return copy;
 	}
