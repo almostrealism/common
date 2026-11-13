@@ -69,11 +69,13 @@ no host loop over rays or triangles:
 
 - `meshIntersectAt(mesh, triangleCount, rays)` — the Möller–Trumbore distance of every ray
   against every triangle of a packed `(T, 4, 3)` mesh, as an `(R, T)` grid (`-1` where a ray
-  misses a triangle). Rays are `(R, 6)` (origin, direction), or a single `(6)` ray.
+  misses a triangle or would cross it only behind its origin). Rays are `(R, 6)` (origin, direction), or a single `(6)` ray.
 - `closestMeshIntersection(mesh, triangleCount, rays)` — the closest hit per ray as `(R, 2)`
   (distance, triangle index), or `(-1, -1)` for a miss. Each (ray, triangle) pair is scored with
   its negated distance (a miss scores far below any hit), and the per-ray `max` and `indexOfMax`
   reductions over the triangle axis pick the closest; ties resolve to the lowest triangle index.
+  Whether a ray hit anything comes from a separate per-(ray, triangle) hit mask reduced with its
+  own `max`, not from a distance threshold, so a hit at any distance is reported.
 - `meshNormalAt(mesh, hits)` — gathers the face normal of each hit triangle, `(R, 3)`, with the
   zero vector for a miss.
 - `meshTriangleBounds(mesh, triangleCount)` — the `(T, 6)` axis-aligned bounds of every triangle

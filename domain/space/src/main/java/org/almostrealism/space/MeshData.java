@@ -258,13 +258,14 @@ public class MeshData extends PackedCollection {
 	/**
 	 * Ensures the reusable candidate buffer can hold at least {@code required} triangles,
 	 * reallocating (and so compiling the closest-hit graph for the new size) only when it
-	 * must grow.
+	 * must grow. The buffer being replaced is destroyed, releasing its memory.
 	 *
 	 * @param required the number of candidate triangles the current query needs to hold
 	 */
 	private void ensureCandidateCapacity(int required) {
 		if (candidateBuffer != null && candidateBuffer.getCount() >= required) return;
 
+		destroyCandidateBuffer();
 		candidateBuffer = new MeshData(required);
 		candidateGlobal = new int[required];
 		Arrays.fill(candidateGlobal, -1);
@@ -324,5 +325,39 @@ public class MeshData extends PackedCollection {
 		int slot = (int) hit.toDouble(1);
 		double global = slot < 0 ? -1.0 : candidateGlobal[slot];
 		return new Pair(hit.toDouble(0), global);
+	}
+
+	/**
+	 * Returns the number of triangles the reusable candidate buffer of the accelerated path can
+	 * currently hold, or {@code 0} if no accelerated query has allocated it yet.
+	 *
+	 * @return the candidate buffer capacity in triangles
+	 */
+	public synchronized int getCandidateCapacity() {
+		return candidateBuffer == null ? 0 : candidateBuffer.getCount();
+	}
+
+	/**
+	 * Destroys the reusable candidate buffer, if one has been allocated, together with the
+	 * closest-hit graphs compiled against it.
+	 */
+	private void destroyCandidateBuffer() {
+		if (candidateBuffer == null) return;
+
+		candidateBuffer.destroy();
+		candidateBuffer = null;
+		candidateGlobal = null;
+		candidateActive = 0;
+	}
+
+	/**
+	 * Destroys this mesh's memory together with the candidate buffer the accelerated path
+	 * allocates separately, and discards the closest-hit graphs compiled against this mesh.
+	 */
+	@Override
+	public synchronized void destroy() {
+		destroyCandidateBuffer();
+		closest.clear();
+		super.destroy();
 	}
 }

@@ -254,6 +254,75 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		}
 	}
 
+	/**
+	 * {@link TriangleFeatures#meshIntersectAt} reports the distance to a triangle in front of the
+	 * ray, and {@code -1} both for a triangle the ray misses and for one it would cross only
+	 * behind its origin, which must never be reported as a negative-distance hit.
+	 */
+	@Test(timeout = 60000)
+	public void meshIntersectAtRejectsBehindOrigin() {
+		MeshData md = twoTriangleMesh();
+
+		PackedCollection bank = Ray.bank(2);
+		bank.setFrom(0, new Ray(new Vector(0.0, 1.0, 2.0), new Vector(0.0, 0.0, -1.0)), 0, 6);
+		bank.setFrom(6, new Ray(new Vector(0.0, 1.0, 3.0), new Vector(0.0, 0.0, 1.0)), 0, 6);
+
+		PackedCollection distances = TriangleFeatures.getInstance()
+				.meshIntersectAt(cp(md), md.getCount(), cp(bank)).evaluate();
+		Assert.assertEquals(4, distances.getMemLength());
+
+		Assert.assertEquals("front ray, missed triangle", -1.0, distances.toDouble(0), 1e-9);
+		Assert.assertEquals("front ray, hit triangle", 2.0, distances.toDouble(1), 1e-4);
+		Assert.assertEquals("back ray, missed triangle", -1.0, distances.toDouble(2), 1e-9);
+		Assert.assertEquals("back ray, triangle behind origin", -1.0, distances.toDouble(3), 1e-9);
+	}
+
+	/**
+	 * A hit farther away than half of {@link TriangleFeatures#MESH_MISS_SCORE} is still a hit:
+	 * whether a ray hit anything must not be inferred from a distance threshold.
+	 */
+	@Test(timeout = 60000)
+	public void closestHitBeyondMissScoreThreshold() {
+		double z = 0.6 * TriangleFeatures.MESH_MISS_SCORE;
+		DefaultVertexData data = new DefaultVertexData(3, 1);
+		data.getVertices().set(0, new Vector(0.0, 0.0, z));
+		data.getVertices().set(1, new Vector(1.0, 0.0, z));
+		data.getVertices().set(2, new Vector(0.0, 1.0, z));
+		data.setTriangle(0, 0, 1, 2);
+		MeshData md = new Mesh(data).getMeshData();
+
+		PackedCollection bank = Ray.bank(2);
+		bank.setFrom(0, new Ray(new Vector(0.25, 0.25, 0.0), new Vector(0.0, 0.0, 1.0)), 0, 6);
+		bank.setFrom(6, new Ray(new Vector(5.0, 5.0, 0.0), new Vector(0.0, 0.0, 1.0)), 0, 6);
+
+		PackedCollection hits = Process.optimized(TriangleFeatures.getInstance()
+				.closestMeshIntersection(cp(md), md.getCount(), cp(bank))).get().evaluate();
+
+		Assert.assertEquals("far hit distance", 1.0, hits.toDouble(0) / z, 1e-3);
+		Assert.assertEquals("far hit triangle", 0.0, hits.toDouble(1), 1e-9);
+		Assert.assertEquals("miss distance", -1.0, hits.toDouble(2), 1e-9);
+		Assert.assertEquals("miss triangle", -1.0, hits.toDouble(3), 1e-9);
+	}
+
+	/**
+	 * The candidate buffer the accelerated path allocates is owned by the mesh: it exists after
+	 * an accelerated query and is released when the mesh is destroyed.
+	 */
+	@Test(timeout = 60000)
+	public void candidateBufferReleasedWithMesh() {
+		MeshData md = twoTriangleMesh();
+		Assert.assertEquals(0, md.getCandidateCapacity());
+
+		Ray value = new Ray(new Vector(0.0, 1.0, 1.0), new Vector(0.0, 0.0, -1.0));
+		Pair hit = md.evaluateIntersectionAccelerated(args -> value, new Object[0]);
+		Assert.assertEquals("accelerated distance", 1.0, hit.getA(), 1e-4);
+		Assert.assertEquals("accelerated triangle", 1.0, hit.getB(), 1e-9);
+		Assert.assertTrue("candidate buffer allocated", md.getCandidateCapacity() >= 1);
+
+		md.destroy();
+		Assert.assertEquals("candidate buffer released", 0, md.getCandidateCapacity());
+	}
+
 	/** {@link TriangleFeatures#meshTriangleBounds} bounds each triangle's three vertices exactly. */
 	@Test(timeout = 60000)
 	public void meshTriangleBoundsCoverVertices() {

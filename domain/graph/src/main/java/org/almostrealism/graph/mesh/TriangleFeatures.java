@@ -28,6 +28,8 @@ import org.almostrealism.collect.computations.DefaultTraversableExpressionComput
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.geometry.Intersection;
 
+import java.util.function.UnaryOperator;
+
 /**
  * Feature interface for triangle mesh operations in 3D geometry.
  *
@@ -400,8 +402,9 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * <p>Unlike {@link TriangleIntersectAt}, which tests one triangle, this tests a whole
 	 * {@code (T, 4, 3)} mesh (rows {@code abc}, {@code def}, {@code jkl}, normal per triangle)
 	 * against a batch of {@code R} rays and returns an {@code (R, T)} grid of distances — the
-	 * parametric distance along ray {@code r} to triangle {@code t}'s plane where the ray passes
-	 * through the triangle, or {@code -1} where it misses. A single six-element ray is a batch of
+	 * parametric distance along ray {@code r} to triangle {@code t} where the ray hits the
+	 * triangle at a distance of at least {@link Intersection#e}, or {@code -1} where it misses
+	 * (including a crossing behind the ray origin). A single six-element ray is a batch of
 	 * one. Every (ray, triangle) pair is one element of the kernel, so neither rays nor
 	 * triangles are looped on the host; {@link #closestMeshIntersection} reduces this grid to the
 	 * closest hit per ray.</p>
@@ -414,11 +417,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	 */
 	default CollectionProducer meshIntersectAt(Producer<PackedCollection> mesh, int triangleCount,
 											   Producer<PackedCollection> rays) {
-		TraversalPolicy outputShape = new TraversalPolicy(rayCount(rays), triangleCount).traverseEach();
-		return new DefaultTraversableExpressionComputation("meshIntersectAt", outputShape, args ->
-			CollectionExpression.create(outputShape, idx ->
-				mollerTrumbore(args[1], idx.imod(triangleCount), args[2], idx.divide(e(triangleCount)), false)),
-			mesh, rays);
+		return meshIntersectionGrid("meshIntersectAt", mesh, triangleCount, rays, t -> t, -1.0);
 	}
 
 	/**
@@ -434,7 +433,9 @@ public interface TriangleFeatures extends VectorFeatures {
 	 *
 	 * <p>Each (ray, triangle) pair is scored with its negated distance, so the closest hit has
 	 * the largest score and the reduction is a maximum; a miss scores
-	 * {@code -MESH_MISS_SCORE}, below every hit, and is reported only when nothing is hit.</p>
+	 * {@code -MESH_MISS_SCORE}, below every hit. Whether a ray hit anything is decided by a
+	 * separate per-(ray, triangle) hit mask reduced with its own maximum, not by comparing the
+	 * best score against a threshold, so a hit at any distance is reported as a hit.</p>
 	 *
 	 * <p>Optimize the result ({@code Process.optimized(...)}) before compiling it: the two
 	 * reductions iterate over every triangle, and optimization isolates them into loops of
@@ -449,21 +450,19 @@ public interface TriangleFeatures extends VectorFeatures {
 	default CollectionProducer closestMeshIntersection(Producer<PackedCollection> mesh, int triangleCount,
 													   Producer<PackedCollection> rays) {
 		int rayCount = rayCount(rays);
-		TraversalPolicy scoreShape = new TraversalPolicy(rayCount, triangleCount).traverseEach();
-
-		CollectionProducer scores = new DefaultTraversableExpressionComputation(
-				"meshIntersectionScore", scoreShape, args ->
-			CollectionExpression.create(scoreShape, idx ->
-				mollerTrumbore(args[1], idx.imod(triangleCount), args[2], idx.divide(e(triangleCount)), true)),
-			mesh, rays);
+		CollectionProducer scores = meshIntersectionGrid("meshIntersectionScore",
+				mesh, triangleCount, rays, Expression::minus, -MESH_MISS_SCORE);
+		CollectionProducer hitMask = meshIntersectionGrid("meshIntersectionHit",
+				mesh, triangleCount, rays, t -> e(1.0), 0.0);
 
 		CollectionProducer best = max(traverse(1, scores)).reshape(rayCount, 1);
 		CollectionProducer index = indexOfMax(traverse(1, scores)).reshape(rayCount, 1);
-		CollectionProducer missThreshold = c(-MESH_MISS_SCORE / 2);
+		CollectionProducer anyHit = max(traverse(1, hitMask)).reshape(rayCount, 1);
+		CollectionProducer half = c(0.5);
 
 		return concat(shape(rayCount, 2),
-				greaterThan(best, missThreshold, best.minus(), c(-1.0)),
-				greaterThan(best, missThreshold, index, c(-1.0)));
+				greaterThan(anyHit, half, best.minus(), c(-1.0)),
+				greaterThan(anyHit, half, index, c(-1.0)));
 	}
 
 	/**
@@ -537,20 +536,45 @@ public interface TriangleFeatures extends VectorFeatures {
 	}
 
 	/**
-	 * Builds the Moller-Trumbore test of one ray against one triangle of a packed mesh.
+	 * Builds an {@code (R, T)} grid with one element per (ray, triangle) pair of a packed mesh,
+	 * holding a value derived from the Moller-Trumbore distance where the ray hits the triangle
+	 * and a fixed value where it misses.
+	 *
+	 * @param name          the name of the computation
+	 * @param mesh          the packed mesh, shaped {@code (T, 4, 3)}
+	 * @param triangleCount the number of triangles {@code T}
+	 * @param rays          the rays, shaped {@code (R, 6)} or {@code (6)} for a single ray
+	 * @param hitValue      maps the hit distance to the element's value
+	 * @param miss          the element's value where the ray misses the triangle
+	 * @return producer for the {@code (R, T)} grid
+	 */
+	private CollectionProducer meshIntersectionGrid(String name, Producer<PackedCollection> mesh,
+													int triangleCount, Producer<PackedCollection> rays,
+													UnaryOperator<Expression> hitValue, double miss) {
+		TraversalPolicy outputShape = new TraversalPolicy(rayCount(rays), triangleCount).traverseEach();
+		return new DefaultTraversableExpressionComputation(name, outputShape, args ->
+			CollectionExpression.create(outputShape, idx ->
+				mollerTrumbore(args[1], idx.imod(triangleCount), args[2], idx.divide(e(triangleCount)),
+						hitValue, e(miss))),
+			mesh, rays);
+	}
+
+	/**
+	 * Builds the Moller-Trumbore test of one ray against one triangle of a packed mesh. A hit
+	 * requires the ray to pass through the triangle at a distance of at least
+	 * {@link Intersection#e}, so a crossing behind the ray origin is a miss.
 	 *
 	 * @param mesh     the packed mesh, {@code (T, 4, 3)}
 	 * @param triangle the index of the triangle
 	 * @param rays     the rays, six elements each
 	 * @param ray      the index of the ray
-	 * @param score    {@code false} for the distance to the triangle's plane where the ray passes
-	 *                 through the triangle, or {@code -1} on a miss; {@code true} for the negated
-	 *                 distance where the ray hits the triangle at a distance of at least
-	 *                 {@link Intersection#e}, or {@code -MESH_MISS_SCORE} otherwise
-	 * @return the expression for the distance or score
+	 * @param hitValue maps the hit distance to the value of the expression on a hit
+	 * @param miss     the value of the expression on a miss
+	 * @return the expression for the hit or miss value
 	 */
 	private Expression mollerTrumbore(TraversableExpression mesh, Expression triangle,
-									  TraversableExpression rays, Expression ray, boolean score) {
+									  TraversableExpression rays, Expression ray,
+									  UnaryOperator<Expression> hitValue, Expression miss) {
 		double eps = Intersection.e;
 		Expression base = triangle.multiply(e(12));
 		Expression abc0 = mesh.getValueAt(base);
@@ -592,11 +616,7 @@ public interface TriangleFeatures extends VectorFeatures {
 				.and(v.greaterThanOrEqual(e(0.0)))
 				.and(u.add(v).lessThanOrEqual(e(1.0)));
 
-		Expression miss = e(score ? -MESH_MISS_SCORE : -1.0);
-		Expression hit = score
-				? bary.and(t.greaterThanOrEqual(e(eps))).conditional(t.minus(), miss)
-				: bary.conditional(t, miss);
-
+		Expression hit = bary.and(t.greaterThanOrEqual(e(eps))).conditional(hitValue.apply(t), miss);
 		return f.greaterThan(e(eps)).conditional(hit,
 				f.lessThan(e(-eps)).conditional(hit, miss));
 	}
