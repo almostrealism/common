@@ -16,6 +16,7 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Graph;
 import io.almostrealism.relation.Producer;
@@ -842,7 +843,10 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 		int nx = heights.length;
 		int ny = heights[0].length;
 
-		Vector[] points = gridSurfaceNodes(heights, origin, spacingX, spacingZ);
+		PackedCollection nodes = gridSurfaceNodes(heights, origin, spacingX, spacingZ);
+		Vector[] points = new Vector[nx * ny];
+		for (int n = 0; n < points.length; n++) points[n] = new Vector(nodes.get(n, new TraversalPolicy(3)), 0);
+
 		int[][] triangles = gridSurfaceTriangleIndices(nx, ny);
 		return new Mesh(points, triangles);
 	}
@@ -864,38 +868,51 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 		int nx = heights.length;
 		int ny = heights[0].length;
 
-		Vector[] nodes = gridSurfaceNodes(heights, origin, spacingX, spacingZ);
+		PackedCollection nodes = gridSurfaceNodes(heights, origin, spacingX, spacingZ);
 		int[][] indices = gridSurfaceTriangleIndices(nx, ny);
 
 		List<Vector[]> triangles = new ArrayList<>(indices.length);
 		for (int[] tri : indices) {
-			triangles.add(new Vector[] { nodes[tri[0]], nodes[tri[1]], nodes[tri[2]] });
+			triangles.add(new Vector[] {
+					new Vector(nodes.get(tri[0], new TraversalPolicy(3)), 0),
+					new Vector(nodes.get(tri[1], new TraversalPolicy(3)), 0),
+					new Vector(nodes.get(tri[2], new TraversalPolicy(3)), 0) });
 		}
 		return triangles;
 	}
 
 	/**
 	 * Computes the node positions of a regular grid surface, node {@code (i, j)} at
-	 * {@code (origin.x + i*spacingX, origin.y + heights[i][j], origin.z + j*spacingZ)}.
+	 * {@code (origin.x + i*spacingX, origin.y + heights[i][j], origin.z + j*spacingZ)}, as a
+	 * genuine {@code (nx*ny, 3)} tensor built by the kernelised
+	 * {@link TriangleFeatures#regularGridSurfaceNodes} producer rather than a host loop that
+	 * assembles {@link Vector} objects. The host height field is packed once at the input
+	 * boundary; the node arithmetic is the same Producer graph the device tessellation uses, so
+	 * the two paths cannot drift apart. Individual {@link Vector}s are read back from the tensor
+	 * with {@link PackedCollection#get(int, TraversalPolicy)} where host geometry is needed.
 	 *
 	 * @param heights  the height field, indexed {@code [i][j]} over {@code nx} by {@code ny} nodes
 	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
 	 * @param spacingX the node spacing along X
 	 * @param spacingZ the node spacing along Z
-	 * @return the node positions, flattened in row-major order ({@code i*ny+j})
+	 * @return the node positions as a {@code (nx*ny, 3)} collection, row-major by {@code i*ny+j}
 	 */
-	private static Vector[] gridSurfaceNodes(double[][] heights, Vector origin, double spacingX, double spacingZ) {
+	private static PackedCollection gridSurfaceNodes(double[][] heights, Vector origin, double spacingX, double spacingZ) {
 		int nx = heights.length;
 		int ny = heights[0].length;
 
-		Vector[] nodes = new Vector[nx * ny];
+		TriangleFeatures tf = TriangleFeatures.getInstance();
+
+		double[] flat = new double[nx * ny];
 		for (int i = 0; i < nx; i++) {
 			for (int j = 0; j < ny; j++) {
-				nodes[i * ny + j] = new Vector(origin.getX() + i * spacingX,
-						origin.getY() + heights[i][j], origin.getZ() + j * spacingZ);
+				flat[i * ny + j] = heights[i][j];
 			}
 		}
-		return nodes;
+
+		PackedCollection heightField = tf.pack(new TraversalPolicy(nx, ny), flat);
+		return (PackedCollection) tf.regularGridSurfaceNodes(tf.cp(heightField), nx, ny,
+				origin.getX(), origin.getY(), origin.getZ(), spacingX, spacingZ).evaluate();
 	}
 
 	/**

@@ -47,11 +47,15 @@ import java.util.List;
  *   <li>One row for the precomputed face normal</li>
  * </ul>
  *
- * <p>The class provides ray intersection evaluation methods for both single rays and
- * batches. Each ray is tested against the whole mesh in one compiled {@code meshIntersectAt}
- * kernel and the closest hit is selected; the batch methods loop the rays on the host. An
- * optional {@link BoundingVolumeHierarchy} path ({@link #evaluateIntersectionAccelerated})
- * restricts each ray to its candidate triangles while running the same per-triangle kernel.
+ * <p>The class provides ray intersection evaluation methods for both single rays and batches.
+ * A single ray is tested against the whole mesh in one compiled {@code meshIntersectAt} kernel
+ * with the closest hit selected. The non-accelerated batch path
+ * ({@link #evaluateIntersectionKernel}) tests the whole ray batch against the whole mesh in one
+ * {@code meshClosestHit} dispatch — the {@code (R, T)} ray-triangle distance grid reduced to the
+ * closest hit per ray on-device — with no host loop over rays. An optional
+ * {@link BoundingVolumeHierarchy} path ({@link #evaluateIntersectionAccelerated}) restricts each
+ * ray to its candidate triangles while running the same per-triangle kernel, looping rays on the
+ * host to gather their (differently sized) candidate sets.
  *
  * <h3>Usage Example:</h3>
  * <pre>{@code
@@ -91,6 +95,12 @@ public class MeshData extends PackedCollection {
 
 	/** Compiled whole-mesh intersection kernel, built on first use. */
 	private Evaluable<PackedCollection> intersection;
+
+	/** Compiled batched closest-hit kernel (all rays in one dispatch), rebuilt when the batch size changes. */
+	private Evaluable<PackedCollection> batchedClosestHit;
+
+	/** The ray-batch size {@link #batchedClosestHit} was compiled for, or {@code -1} if not yet built. */
+	private int batchedRayCount = -1;
 
 	/** Compiled candidate-buffer intersection kernel, rebuilt when the buffer grows. */
 	private Evaluable<PackedCollection> candidateIntersection;
@@ -186,43 +196,35 @@ public class MeshData extends PackedCollection {
 	 * Evaluates ray-mesh intersections for multiple rays in batch, storing both
 	 * distance and triangle index information.
 	 *
-	 * <p>Each ray is tested against the whole mesh in one {@code meshIntersectAt} kernel and
-	 * the closest hit is selected; the rays are looped on the host.
+	 * <p>The whole batch is intersected in one dispatch: a single {@code meshClosestHit} kernel
+	 * tests every ray against the whole mesh and reduces over the triangle axis to the closest
+	 * {@code (distance, triangleIndex)} per ray, with no host loop over rays. The result matches
+	 * the per-ray {@link #evaluateIntersection(Evaluable, Object[])} scan exactly.</p>
 	 *
 	 * @param ray         the ray evaluable to test for intersection
 	 * @param destination collection to receive intersection results (distance, triangle index pairs)
 	 * @param args        additional arguments passed to the ray evaluable
 	 */
 	public synchronized void evaluateIntersectionKernel(Evaluable<Ray> ray, PackedCollection destination, MemoryData[] args) {
-		ensureIntersection();
+		int rayCount = destination.getCount();
+		ensureBatchedClosestHit(rayCount);
 
 		long startTime = System.currentTimeMillis();
-		PackedCollection rays = Ray.bank(destination.getCount());
+		PackedCollection rays = Ray.bank(rayCount);
 		ray.into(rays).evaluate(args);
 
 		if (HardwareOperator.enableVerboseLog) {
 			log("Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
 		}
 
-		PackedCollection in = Ray.bank(1);
-		PackedCollection out = Pair.bank(1);
-
-		PackedCollection conf = Pair.bank(1);
-		conf.setFrom(0, new Pair(getCount(), Intersection.e), 0, 2);
-
-		for (int i = 0; i < rays.getCount(); i++) {
-			in.setFrom(0, rays, i * 6, 6);
-			intersection.into(distances).evaluate(this, in);
-			RankedChoiceEvaluable.highestRank.into(out).evaluate(distances, conf);
-			destination.setFrom(i * 2, out, 0, 2);
-		}
+		batchedClosestHit.into(destination).evaluate(rays, this);
 
 		if (HardwareOperator.enableVerboseLog)
-			log(rays.getCountLong() + " intersection kernels evaluated");
+			log(rays.getCountLong() + " intersections evaluated in one dispatch");
 	}
 
 	/**
-	 * Builds the whole-mesh intersection kernel on first use.
+	 * Builds the whole-mesh single-ray intersection kernel on first use.
 	 */
 	private void ensureIntersection() {
 		if (intersection == null) {
@@ -230,6 +232,23 @@ public class MeshData extends PackedCollection {
 					Input.value(new TraversalPolicy(getCount(), 4, 3), 0), getCount(),
 					Input.value(new TraversalPolicy(false, false, 6), 1)).get();
 		}
+	}
+
+	/**
+	 * Builds the batched closest-hit kernel for the given ray-batch size, recompiling only when
+	 * that size changes. The kernel reduces the whole {@code (R, T)} ray-triangle distance grid to
+	 * one closest {@code (distance, triangleIndex)} per ray on-device; see
+	 * {@link TriangleFeatures#meshClosestHit}.
+	 *
+	 * @param rayCount the number of rays in the batch
+	 */
+	private void ensureBatchedClosestHit(int rayCount) {
+		if (batchedClosestHit != null && batchedRayCount == rayCount) return;
+
+		batchedRayCount = rayCount;
+		batchedClosestHit = TriangleFeatures.getInstance().meshClosestHit(
+				Input.value(new TraversalPolicy(false, false, rayCount, 6), 0), rayCount,
+				Input.value(new TraversalPolicy(getCount(), 4, 3), 1), getCount()).get();
 	}
 
 	/**

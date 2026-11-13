@@ -29,6 +29,7 @@ import org.almostrealism.space.CachedMeshIntersectionKernel;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
+import org.almostrealism.graph.mesh.TriangleFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -126,6 +127,44 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		Assert.assertEquals("partial triangle", 1.0, dest.toDouble(1), 1e-9);
 		Assert.assertEquals("single distance", 1.0, single.getA(), 1e-4);
 		Assert.assertEquals("single triangle", 1.0, single.getB(), 1e-9);
+	}
+
+	/**
+	 * The fully on-device batched closest-hit path ({@link TriangleFeatures#meshClosestHit}, which
+	 * backs {@link MeshData#evaluateIntersectionKernel}) must report, for every ray of a batch, the
+	 * same {@code (distance, triangleIndex)} as the per-ray {@link MeshData#evaluateIntersection}
+	 * scan — including {@code (-1, -1)} for a ray that misses the whole mesh — with no host loop
+	 * over rays.
+	 */
+	@Test(timeout = 120000)
+	public void batchedClosestHitMatchesPerRayScan() {
+		MeshData md = twoTriangleMesh();
+		int triangleCount = md.getCount();
+
+		Vector[][] raySpecs = {
+				{ new Vector(0.0, 1.0, 1.0), new Vector(0.0, 0.0, -1.0) },    // hits the origin triangle (1)
+				{ new Vector(100.0, 0.5, 1.0), new Vector(0.0, 0.0, -1.0) },  // hits the far triangle (0)
+				{ new Vector(0.0, 1.0, 1.0), new Vector(0.0, 0.0, 1.0) },     // misses (points away)
+				{ new Vector(0.0, 50.0, 1.0), new Vector(0.0, 0.0, -1.0) },   // hits the origin triangle (1)
+				{ new Vector(500.0, 0.0, 1.0), new Vector(0.0, 0.0, -1.0) } };// misses (off the mesh)
+		int rayCount = raySpecs.length;
+
+		PackedCollection rays = Ray.bank(rayCount);
+		for (int i = 0; i < rayCount; i++) {
+			rays.setFrom(i * 6, new Ray(raySpecs[i][0], raySpecs[i][1]), 0, 6);
+		}
+
+		PackedCollection result = (PackedCollection) TriangleFeatures.getInstance()
+				.meshClosestHit(cp(rays), rayCount, cp(md), triangleCount).evaluate();
+
+		for (int i = 0; i < rayCount; i++) {
+			Ray value = new Ray(raySpecs[i][0], raySpecs[i][1]);
+			Evaluable<Ray> re = args -> value;
+			Pair single = md.evaluateIntersection(re, new Object[0]);
+
+			Assert.assertEquals("distance for ray " + i, single.getA(), result.toDouble(i * 2), 1e-4);
+			Assert.assertEquals("triangle for ray " + i, single.getB(), result.toDouble(i * 2 + 1), 1e-9);
+		}
 	}
 
 	/**

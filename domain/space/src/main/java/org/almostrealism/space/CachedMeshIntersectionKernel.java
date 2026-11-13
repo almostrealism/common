@@ -187,15 +187,27 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	@Override
 	public PackedCollection evaluate(Object[] args) {
 		if (cache == null) {
-			Pair hit = accelerated ? data.evaluateIntersectionAccelerated(ray, args)
-					: data.evaluateIntersection(ray, args);
-			return Ops.o().pack(hit.getA());
+			return Ops.o().pack(intersect(args).getA());
 		}
 
 		Pair pos = (Pair) args[0];
 		int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
 		double cached = cache.toDouble(n * 2);
 		return Ops.o().pack(cached);
+	}
+
+	/**
+	 * Intersects a single ray against the mesh, routing through the mesh's acceleration
+	 * structure when {@link #accelerated} is set and falling back to a linear scan otherwise.
+	 * This is the uncached single-ray path shared by {@link #evaluate(Object[])} and
+	 * {@link #getClosestNormal()}.
+	 *
+	 * @param args arguments passed to the ray evaluable
+	 * @return the closest hit as a {@link Pair} of (distance, triangle index)
+	 */
+	private Pair intersect(Object[] args) {
+		return accelerated ? data.evaluateIntersectionAccelerated(ray, args)
+				: data.evaluateIntersection(ray, args);
 	}
 
 	/**
@@ -212,9 +224,7 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 			closestNormal = new HardwareEvaluable<Vector>(() -> args -> {
 				int a;
 				if (cache == null) {
-					Pair hit = accelerated ? data.evaluateIntersectionAccelerated(ray, args)
-							: data.evaluateIntersection(ray, args);
-					a = (int) hit.getB();
+					a = (int) intersect(args).getB();
 				} else {
 					Pair pos = (Pair) args[0];
 					int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);

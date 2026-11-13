@@ -46,6 +46,21 @@ import java.util.List;
  * {@link MeshData#getBoundingVolumeHierarchy()}; a fully device-resident traversal is a
  * possible future refinement.</p>
  *
+ * <h3>Relationship to {@link SpacePartition}</h3>
+ * <p>This is intentionally <em>not</em> a {@link SpacePartition}. A {@link SpacePartition} is a
+ * <em>space</em> partition: a BSP tree over a {@link org.almostrealism.color.ShadableSurface}
+ * group ({@code SpacePartition extends SurfaceGroup}) that splits space by axis-aligned planes
+ * into disjoint half-spaces and answers {@code intersectAt(Producer)} with a
+ * {@link org.almostrealism.geometry.ContinuousField} — the host, per-surface intersection path.
+ * A BVH is an <em>object</em> partition: it groups the triangles of a single mesh into
+ * bounding boxes that may overlap and are <em>not</em> separated by shared planes, so a pair of
+ * sibling boxes defines no splitting plane between them. It does not intersect or return a field;
+ * it returns the indices of a mesh's packed triangle rows whose boxes a ray pierces, to restrict
+ * the one compiled Moller-Trumbore kernel that does the exact math. The two therefore sit at
+ * different levels (scene-level surface grouping vs. intra-mesh triangle pruning) and expose
+ * different contracts; a BVH cannot satisfy the {@link SpacePartition} plane/field contract
+ * without discarding what makes it a BVH.</p>
+ *
  * <h3>Usage Example:</h3>
  * <pre>{@code
  * BoundingVolumeHierarchy bvh = BoundingVolumeHierarchy.build(mesh);
@@ -55,6 +70,7 @@ import java.util.List;
  * @author Michael Murray
  * @see MeshData
  * @see Mesh
+ * @see SpacePartition
  */
 public class BoundingVolumeHierarchy {
 	/** Maximum number of triangles stored in a leaf node before it is split. */
