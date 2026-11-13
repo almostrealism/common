@@ -417,7 +417,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	 */
 	default CollectionProducer meshIntersectAt(Producer<PackedCollection> mesh, int triangleCount,
 											   Producer<PackedCollection> rays) {
-		return meshIntersectionGrid("meshIntersectAt", mesh, triangleCount, rays, t -> t, -1.0);
+		return meshIntersectionGrid("meshIntersectAt", mesh, triangleCount, rays, t -> t, e(-1.0));
 	}
 
 	/**
@@ -432,10 +432,11 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * in one evaluation, with no host loop over rays or triangles.</p>
 	 *
 	 * <p>Each (ray, triangle) pair is scored with its negated distance, so the closest hit has
-	 * the largest score and the reduction is a maximum; a miss scores
-	 * {@code -MESH_MISS_SCORE}, below every hit. Whether a ray hit anything is decided by a
-	 * separate per-(ray, triangle) hit mask reduced with its own maximum, not by comparing the
-	 * best score against a threshold, so a hit at any distance is reported as a hit.</p>
+	 * the largest score and the reduction is a maximum; a miss scores the most negative finite
+	 * value of the target precision ({@link #minValue()}), which no finite hit distance can fall
+	 * below, so a hit at any distance outranks every miss. Whether a ray hit anything is decided
+	 * by a separate per-(ray, triangle) hit mask reduced with its own maximum, not by comparing
+	 * the best score against a threshold.</p>
 	 *
 	 * <p>Optimize the result ({@code Process.optimized(...)}) before compiling it: the two
 	 * reductions iterate over every triangle, and optimization isolates them into loops of
@@ -451,9 +452,9 @@ public interface TriangleFeatures extends VectorFeatures {
 													   Producer<PackedCollection> rays) {
 		int rayCount = rayCount(rays);
 		CollectionProducer scores = meshIntersectionGrid("meshIntersectionScore",
-				mesh, triangleCount, rays, Expression::minus, -MESH_MISS_SCORE);
+				mesh, triangleCount, rays, Expression::minus, minValue());
 		CollectionProducer hitMask = meshIntersectionGrid("meshIntersectionHit",
-				mesh, triangleCount, rays, t -> e(1.0), 0.0);
+				mesh, triangleCount, rays, t -> e(1.0), e(0.0));
 
 		CollectionProducer best = max(traverse(1, scores)).reshape(rayCount, 1);
 		CollectionProducer index = indexOfMax(traverse(1, scores)).reshape(rayCount, 1);
@@ -519,13 +520,6 @@ public interface TriangleFeatures extends VectorFeatures {
 	}
 
 	/**
-	 * The score given to a (ray, triangle) pair that does not intersect, by
-	 * {@link #closestMeshIntersection}. It is far below the negated distance of any hit, so a
-	 * miss is never chosen over a hit, and it is representable at single precision.
-	 */
-	double MESH_MISS_SCORE = 1e30;
-
-	/**
 	 * Returns the number of six-element rays in a ray producer of shape {@code (R, 6)} or {@code (6)}.
 	 *
 	 * @param rays the rays
@@ -550,12 +544,12 @@ public interface TriangleFeatures extends VectorFeatures {
 	 */
 	private CollectionProducer meshIntersectionGrid(String name, Producer<PackedCollection> mesh,
 													int triangleCount, Producer<PackedCollection> rays,
-													UnaryOperator<Expression> hitValue, double miss) {
+													UnaryOperator<Expression> hitValue, Expression miss) {
 		TraversalPolicy outputShape = new TraversalPolicy(rayCount(rays), triangleCount).traverseEach();
 		return new DefaultTraversableExpressionComputation(name, outputShape, args ->
 			CollectionExpression.create(outputShape, idx ->
 				mollerTrumbore(args[1], idx.imod(triangleCount), args[2], idx.divide(e(triangleCount)),
-						hitValue, e(miss))),
+						hitValue, miss)),
 			mesh, rays);
 	}
 

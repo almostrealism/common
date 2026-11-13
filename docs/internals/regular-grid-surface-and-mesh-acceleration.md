@@ -72,7 +72,8 @@ no host loop over rays or triangles:
   misses a triangle or would cross it only behind its origin). Rays are `(R, 6)` (origin, direction), or a single `(6)` ray.
 - `closestMeshIntersection(mesh, triangleCount, rays)` — the closest hit per ray as `(R, 2)`
   (distance, triangle index), or `(-1, -1)` for a miss. Each (ray, triangle) pair is scored with
-  its negated distance (a miss scores far below any hit), and the per-ray `max` and `indexOfMax`
+  its negated distance (a miss scores the most negative finite value of the target precision,
+  which no finite hit falls below), and the per-ray `max` and `indexOfMax`
   reductions over the triangle axis pick the closest; ties resolve to the lowest triangle index.
   Whether a ray hit anything comes from a separate per-(ray, triangle) hit mask reduced with its
   own `max`, not from a distance threshold, so a hit at any distance is reported.

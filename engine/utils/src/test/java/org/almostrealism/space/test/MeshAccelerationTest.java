@@ -278,17 +278,24 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 	}
 
 	/**
-	 * A hit farther away than half of {@link TriangleFeatures#MESH_MISS_SCORE} is still a hit:
-	 * whether a ray hit anything must not be inferred from a distance threshold.
+	 * A hit at an extreme, but representable, distance is still reported as that hit, with its
+	 * own distance and triangle index: neither the hit decision nor the choice of triangle may
+	 * depend on a fixed distance sentinel that a legitimate hit could exceed. A miss score of
+	 * {@code -1e30} would outrank this hit and report the missed slot instead.
 	 */
 	@Test(timeout = 60000)
-	public void closestHitBeyondMissScoreThreshold() {
-		double z = 0.6 * TriangleFeatures.MESH_MISS_SCORE;
-		DefaultVertexData data = new DefaultVertexData(3, 1);
-		data.getVertices().set(0, new Vector(0.0, 0.0, z));
-		data.getVertices().set(1, new Vector(1.0, 0.0, z));
-		data.getVertices().set(2, new Vector(0.0, 1.0, z));
+	public void closestHitAtExtremeDistance() {
+		double z = 2e30;
+		DefaultVertexData data = new DefaultVertexData(6, 2);
+		// Triangle 0 lies off to the side and is missed by both rays
+		data.getVertices().set(0, new Vector(100.0, 0.0, 1.0));
+		data.getVertices().set(1, new Vector(101.0, 0.0, 1.0));
+		data.getVertices().set(2, new Vector(100.0, 1.0, 1.0));
 		data.setTriangle(0, 0, 1, 2);
+		data.getVertices().set(3, new Vector(0.0, 0.0, z));
+		data.getVertices().set(4, new Vector(1.0, 0.0, z));
+		data.getVertices().set(5, new Vector(0.0, 1.0, z));
+		data.setTriangle(1, 3, 4, 5);
 		MeshData md = new Mesh(data).getMeshData();
 
 		PackedCollection bank = Ray.bank(2);
@@ -299,7 +306,7 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 				.closestMeshIntersection(cp(md), md.getCount(), cp(bank))).get().evaluate();
 
 		Assert.assertEquals("far hit distance", 1.0, hits.toDouble(0) / z, 1e-3);
-		Assert.assertEquals("far hit triangle", 0.0, hits.toDouble(1), 1e-9);
+		Assert.assertEquals("far hit triangle", 1.0, hits.toDouble(1), 1e-9);
 		Assert.assertEquals("miss distance", -1.0, hits.toDouble(2), 1e-9);
 		Assert.assertEquals("miss triangle", -1.0, hits.toDouble(3), 1e-9);
 	}
