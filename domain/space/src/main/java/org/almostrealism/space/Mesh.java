@@ -842,7 +842,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 		int nx = heights.length;
 		int ny = heights[0].length;
 
-		Vector[] points = gridSurfaceNodes(heights, origin, spacingX, spacingZ);
+		Vector[] points = nodeVectors(gridSurfaceNodes(heights, origin, spacingX, spacingZ));
 		int[][] triangles = gridSurfaceTriangleIndices(nx, ny);
 		return new Mesh(points, triangles);
 	}
@@ -864,7 +864,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 		int nx = heights.length;
 		int ny = heights[0].length;
 
-		Vector[] nodes = gridSurfaceNodes(heights, origin, spacingX, spacingZ);
+		Vector[] nodes = nodeVectors(gridSurfaceNodes(heights, origin, spacingX, spacingZ));
 		int[][] indices = gridSurfaceTriangleIndices(nx, ny);
 
 		List<Vector[]> triangles = new ArrayList<>(indices.length);
@@ -876,26 +876,50 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 
 	/**
 	 * Computes the node positions of a regular grid surface, node {@code (i, j)} at
-	 * {@code (origin.x + i*spacingX, origin.y + heights[i][j], origin.z + j*spacingZ)}.
+	 * {@code (origin.x + i*spacingX, origin.y + heights[i][j], origin.z + j*spacingZ)}, as a
+	 * genuine {@code (nx*ny, 3)} position tensor built by a single
+	 * {@link TriangleFeatures#regularGridSurfaceNodes} Producer graph rather than a host loop
+	 * over {@link Vector} objects. Individual node vectors are recovered on demand with
+	 * {@link #nodeVectors(PackedCollection)} where the list-based {@link Mesh} API needs them.
 	 *
 	 * @param heights  the height field, indexed {@code [i][j]} over {@code nx} by {@code ny} nodes
 	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
 	 * @param spacingX the node spacing along X
 	 * @param spacingZ the node spacing along Z
-	 * @return the node positions, flattened in row-major order ({@code i*ny+j})
+	 * @return the node positions as a {@code (nx*ny, 3)} collection in row-major order ({@code i*ny+j})
 	 */
-	private static Vector[] gridSurfaceNodes(double[][] heights, Vector origin, double spacingX, double spacingZ) {
+	private static PackedCollection gridSurfaceNodes(double[][] heights, Vector origin, double spacingX, double spacingZ) {
 		int nx = heights.length;
 		int ny = heights[0].length;
 
-		Vector[] nodes = new Vector[nx * ny];
+		double[] flat = new double[nx * ny];
 		for (int i = 0; i < nx; i++) {
 			for (int j = 0; j < ny; j++) {
-				nodes[i * ny + j] = new Vector(origin.getX() + i * spacingX,
-						origin.getY() + heights[i][j], origin.getZ() + j * spacingZ);
+				flat[i * ny + j] = heights[i][j];
 			}
 		}
-		return nodes;
+
+		TriangleFeatures tf = TriangleFeatures.getInstance();
+		return (PackedCollection) tf.regularGridSurfaceNodes(tf.cp(tf.pack(flat)), nx, ny,
+				origin.getX(), origin.getY(), origin.getZ(), spacingX, spacingZ).evaluate();
+	}
+
+	/**
+	 * Extracts each node of a {@code (count, 3)} position tensor as a {@link Vector}, using
+	 * {@link PackedCollection#get(int)} to view one row at a time, for the list-based
+	 * {@link Mesh} and {@link BoundingVolumeHierarchy} APIs that take explicit vectors.
+	 *
+	 * @param nodes the {@code (count, 3)} node position tensor
+	 * @return one {@link Vector} per node, in row order
+	 */
+	private static Vector[] nodeVectors(PackedCollection nodes) {
+		int count = nodes.getShape().length(0);
+
+		Vector[] vectors = new Vector[count];
+		for (int n = 0; n < count; n++) {
+			vectors[n] = new Vector(nodes.traverse(1).get(n), 0);
+		}
+		return vectors;
 	}
 
 	/**
