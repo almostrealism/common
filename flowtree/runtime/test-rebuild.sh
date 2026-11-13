@@ -41,6 +41,9 @@ cat > "$MOCK_BIN/docker" <<'EOF'
 if [ -n "${MOCK_DOCKER_FAIL_ON:-}" ] && [[ "$*" == *"${MOCK_DOCKER_FAIL_ON}"* ]]; then
   exit 1
 fi
+if [ -n "${MOCK_DOCKER_FAIL_ON_2:-}" ] && [[ "$*" == *"${MOCK_DOCKER_FAIL_ON_2}"* ]]; then
+  exit 1
+fi
 # A running stack, for the snapshot a swap restores on failure.
 case "$*" in
   *" ps -q"*) [ -z "${MOCK_DOCKER_PS_IDS:-}" ] || echo "${MOCK_DOCKER_PS_IDS}" ;;
@@ -326,6 +329,14 @@ run_case "a swap that does not become healthy restores the previous images" 1 \
 check_docker_log "the previous image is re-tagged and started without a rebuild" \
     in_order "${SWAP_UP}" "ARGS tag sha256:previous controller-flowtree-controller" \
         "up -d --force-recreate --no-build --wait"
+
+run_case "a rollback whose re-tag fails does not claim the previous stack is running" 1 \
+    "needs manual attention" "The previous controller stack is running again." \
+    flowtree-controller -- \
+    MOCK_DOCKER_FAIL_ON="--force-recreate --wait" \
+    MOCK_DOCKER_FAIL_ON_2="tag sha256:previous" \
+    MOCK_DOCKER_PS_IDS=0123abcd \
+    MOCK_DOCKER_INSPECT="flowtree-controller controller-flowtree-controller sha256:previous"
 
 run_case "a failed swap with nothing previously running reports there is nothing to restore" 1 \
     "no previous version to restore" "Pruning superseded images" \

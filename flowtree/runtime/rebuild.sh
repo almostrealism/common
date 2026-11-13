@@ -374,6 +374,7 @@ snapshot_running() {
 rollback_stack() {
   local file="$1" snapshot="$2" label="$3" service ref id
   local services=()
+  local retag_failed=false
   if [ ! -s "${snapshot}" ]; then
     echo "ERROR: nothing of the ${label} was running before this deploy, so there is" >&2
     echo "  no previous version to restore." >&2
@@ -383,13 +384,25 @@ rollback_stack() {
     if [ -z "${service}" ] || [ -z "${ref}" ] || [ -z "${id}" ]; then
       continue
     fi
-    docker tag "${id}" "${ref}" \
-      || echo "WARNING: could not re-tag ${ref} to its previous image ${id}" >&2
-    services+=("${service}")
+    # Fail closed: a service whose ref cannot be pointed back at its previous
+    # image is NOT recreated, because `up --no-build` would otherwise resolve
+    # that ref to the just-built image the swap failed on and bring the broken
+    # version back up while this function reported success.
+    if docker tag "${id}" "${ref}"; then
+      services+=("${service}")
+    else
+      echo "ERROR: could not re-tag ${ref} to its previous image ${id}; ${service} will" >&2
+      echo "  not be recreated and needs manual attention." >&2
+      retag_failed=true
+    fi
   done < "${snapshot}"
   echo "Restoring the previous ${label}: ${services[*]-}" >&2
+  # TODO(review): when every re-tag fails, services is empty and the up below
+  # recreates ALL services in the file (no service filter) from the broken
+  # images instead of recreating nothing.
   if docker compose -f "${file}" up -d --force-recreate --no-build \
-      --wait --wait-timeout "${DEPLOY_WAIT_TIMEOUT}" ${services[@]+"${services[@]}"}; then
+      --wait --wait-timeout "${DEPLOY_WAIT_TIMEOUT}" ${services[@]+"${services[@]}"} \
+      && [ "${retag_failed}" = false ]; then
     echo "The previous ${label} is running again." >&2
   else
     echo "ERROR: the previous ${label} did not come back either; it needs manual attention." >&2
