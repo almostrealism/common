@@ -843,10 +843,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 		int nx = heights.length;
 		int ny = heights[0].length;
 
-		PackedCollection nodes = gridSurfaceNodes(heights, origin, spacingX, spacingZ);
-		Vector[] points = new Vector[nx * ny];
-		for (int n = 0; n < points.length; n++) points[n] = new Vector(nodes.get(n, new TraversalPolicy(3)), 0);
-
+		Vector[] points = nodeVectors(gridSurfaceNodes(heights, origin, spacingX, spacingZ));
 		int[][] triangles = gridSurfaceTriangleIndices(nx, ny);
 		return new Mesh(points, triangles);
 	}
@@ -868,15 +865,12 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 		int nx = heights.length;
 		int ny = heights[0].length;
 
-		PackedCollection nodes = gridSurfaceNodes(heights, origin, spacingX, spacingZ);
+		Vector[] nodes = nodeVectors(gridSurfaceNodes(heights, origin, spacingX, spacingZ));
 		int[][] indices = gridSurfaceTriangleIndices(nx, ny);
 
 		List<Vector[]> triangles = new ArrayList<>(indices.length);
 		for (int[] tri : indices) {
-			triangles.add(new Vector[] {
-					new Vector(nodes.get(tri[0], new TraversalPolicy(3)), 0),
-					new Vector(nodes.get(tri[1], new TraversalPolicy(3)), 0),
-					new Vector(nodes.get(tri[2], new TraversalPolicy(3)), 0) });
+			triangles.add(new Vector[] { nodes[tri[0]], nodes[tri[1]], nodes[tri[2]] });
 		}
 		return triangles;
 	}
@@ -884,24 +878,22 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 	/**
 	 * Computes the node positions of a regular grid surface, node {@code (i, j)} at
 	 * {@code (origin.x + i*spacingX, origin.y + heights[i][j], origin.z + j*spacingZ)}, as a
-	 * genuine {@code (nx*ny, 3)} tensor built by the kernelised
-	 * {@link TriangleFeatures#regularGridSurfaceNodes} producer rather than a host loop that
-	 * assembles {@link Vector} objects. The host height field is packed once at the input
-	 * boundary; the node arithmetic is the same Producer graph the device tessellation uses, so
-	 * the two paths cannot drift apart. Individual {@link Vector}s are read back from the tensor
-	 * with {@link PackedCollection#get(int, TraversalPolicy)} where host geometry is needed.
+	 * genuine {@code (nx*ny, 3)} position tensor built by a single
+	 * {@link TriangleFeatures#regularGridSurfaceNodes} Producer graph rather than a host loop
+	 * over {@link Vector} objects. The node arithmetic is the same Producer graph the device
+	 * tessellation uses, so the two paths cannot drift apart. Individual node vectors are
+	 * recovered on demand with {@link #nodeVectors(PackedCollection)} where the list-based
+	 * {@link Mesh} API needs them.
 	 *
 	 * @param heights  the height field, indexed {@code [i][j]} over {@code nx} by {@code ny} nodes
 	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
 	 * @param spacingX the node spacing along X
 	 * @param spacingZ the node spacing along Z
-	 * @return the node positions as a {@code (nx*ny, 3)} collection, row-major by {@code i*ny+j}
+	 * @return the node positions as a {@code (nx*ny, 3)} collection in row-major order ({@code i*ny+j})
 	 */
 	private static PackedCollection gridSurfaceNodes(double[][] heights, Vector origin, double spacingX, double spacingZ) {
 		int nx = heights.length;
 		int ny = heights[0].length;
-
-		TriangleFeatures tf = TriangleFeatures.getInstance();
 
 		double[] flat = new double[nx * ny];
 		for (int i = 0; i < nx; i++) {
@@ -910,9 +902,28 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 			}
 		}
 
+		TriangleFeatures tf = TriangleFeatures.getInstance();
 		PackedCollection heightField = tf.pack(new TraversalPolicy(nx, ny), flat);
 		return (PackedCollection) tf.regularGridSurfaceNodes(tf.cp(heightField), nx, ny,
 				origin.getX(), origin.getY(), origin.getZ(), spacingX, spacingZ).evaluate();
+	}
+
+	/**
+	 * Extracts each node of a {@code (count, 3)} position tensor as a {@link Vector}, using
+	 * {@link PackedCollection#get(int)} to view one row at a time, for the list-based
+	 * {@link Mesh} and {@link BoundingVolumeHierarchy} APIs that take explicit vectors.
+	 *
+	 * @param nodes the {@code (count, 3)} node position tensor
+	 * @return one {@link Vector} per node, in row order
+	 */
+	private static Vector[] nodeVectors(PackedCollection nodes) {
+		int count = nodes.getShape().length(0);
+
+		Vector[] vectors = new Vector[count];
+		for (int n = 0; n < count; n++) {
+			vectors[n] = new Vector(nodes.traverse(1).get(n), 0);
+		}
+		return vectors;
 	}
 
 	/**

@@ -279,9 +279,10 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * <p>The surface spans {@code nx} by {@code ny} nodes. Node {@code (i, j)} — flattened in
 	 * row-major order as {@code i*ny + j} — sits at {@code (originX + i*spacingX, originY + h,
 	 * originZ + j*spacingZ)}, where {@code h} is {@code heights[i*ny + j]}; height is the Y axis
-	 * and the grid lies in the XZ plane, matching {@link #regularGridSurfacePoints}. The result
-	 * has shape {@code (nx*ny, 3)} — one position per unique node — and a single
-	 * {@link org.almostrealism.algebra.Vector} can be read back from it with
+	 * and the grid lies in the XZ plane, matching {@link #regularGridSurfacePoints} and
+	 * {@link #regularGridSurfaceNormals}. The result has shape {@code (nx*ny, 3)} — one position
+	 * per unique node — and a single {@link org.almostrealism.algebra.Vector} can be read back
+	 * from it with {@link org.almostrealism.collect.PackedCollection#get(int)} or
 	 * {@link org.almostrealism.collect.PackedCollection#get(int, TraversalPolicy)} where host
 	 * geometry is needed.</p>
 	 *
