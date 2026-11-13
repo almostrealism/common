@@ -90,6 +90,9 @@ public class MeshData extends PackedCollection {
 	/** Acceleration structure over this mesh's own triangles, built on first use. */
 	private BoundingVolumeHierarchy boundingVolumeHierarchy;
 
+	/** Reusable {@code (1, 2)} destination of single-ray closest-hit evaluations, allocated on first use. */
+	private PackedCollection hitBuffer;
+
 	/**
 	 * Constructs a new {@link MeshData} instance with capacity for the specified
 	 * number of triangles.
@@ -150,13 +153,17 @@ public class MeshData extends PackedCollection {
 	}
 
 	/**
-	 * Intersects a single ray with this mesh using its compiled closest-hit graph.
+	 * Intersects a single ray with this mesh using its compiled closest-hit graph, writing
+	 * into a destination this mesh reuses across calls so that no memory is allocated per ray.
+	 * The returned collection is overwritten by the next call, so callers read it immediately.
 	 *
 	 * @param ray the ray's six components (origin, direction)
 	 * @return the {@code (1, 2)} closest hit as (distance, triangle index)
 	 */
 	private PackedCollection closestHit(PackedCollection ray) {
-		return closestIntersection(1).evaluate(this, ray);
+		if (hitBuffer == null) hitBuffer = Pair.bank(1);
+		closestIntersection(1).into(hitBuffer).evaluate(this, ray);
+		return hitBuffer;
 	}
 
 	/**
@@ -354,11 +361,16 @@ public class MeshData extends PackedCollection {
 
 	/**
 	 * Destroys this mesh's memory together with the candidate buffer the accelerated path
-	 * allocates separately, and discards the closest-hit graphs compiled against this mesh.
+	 * and the hit buffer single-ray intersection allocate separately, and discards the
+	 * closest-hit graphs compiled against this mesh.
 	 */
 	@Override
 	public synchronized void destroy() {
 		destroyCandidateBuffer();
+		if (hitBuffer != null) {
+			hitBuffer.destroy();
+			hitBuffer = null;
+		}
 		closest.clear();
 		super.destroy();
 	}

@@ -239,8 +239,9 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 	/**
 	 * Constructs a new {@link Mesh} whose vertices are the rows of a position tensor.
 	 *
-	 * <p>Each vertex is a {@link Vector} view of one row of {@code points}, so the positions
-	 * are not copied.</p>
+	 * <p>Each row of {@code points} is copied into a {@link Vertex}, so the mesh does not
+	 * retain {@code points}: later changes to it do not move the mesh, and the caller may
+	 * release it once the mesh is constructed.</p>
 	 *
 	 * @param points    the vertex positions, shaped {@code (N, 3)}
 	 * @param triangles the node indices of each triangle, three per triangle, into the rows
@@ -860,9 +861,10 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 		int ny = heights.getShape().length(1);
 
 		TriangleFeatures tf = TriangleFeatures.getInstance();
-		PackedCollection nodes = tf.regularGridSurfaceNodes(tf.cp(heights), nx, ny,
-				origin.getX(), origin.getY(), origin.getZ(), spacingX, spacingZ).evaluate();
-		return new Mesh(nodes, tf.regularGridSurfaceTriangles(nx, ny));
+		try (PackedCollection nodes = tf.regularGridSurfaceNodes(tf.cp(heights), nx, ny,
+				origin.getX(), origin.getY(), origin.getZ(), spacingX, spacingZ).evaluate()) {
+			return new Mesh(nodes, tf.regularGridSurfaceTriangles(nx, ny));
+		}
 	}
 
 	/**
