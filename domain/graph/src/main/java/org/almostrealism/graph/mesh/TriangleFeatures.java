@@ -303,6 +303,54 @@ public interface TriangleFeatures extends VectorFeatures {
 	}
 
 	/**
+	 * Computes the node positions of a regular grid height field as a single Producer graph,
+	 * producing a genuine {@code (nx*ny, 3)} position tensor rather than a host array of
+	 * vectors.
+	 *
+	 * <p>Node {@code (i, j)} sits at {@code (originX + i*spacingX, originY + h, originZ +
+	 * j*spacingZ)}, where {@code h} is {@code heights[i*ny + j]} — height is the Y axis and the
+	 * grid lies in the XZ plane, matching {@link #regularGridSurfacePoints} and
+	 * {@link #regularGridSurfaceNormals}. The rows are in row-major node order ({@code i*ny + j}),
+	 * so an individual node vector can be recovered with {@link PackedCollection#get(int)} where a
+	 * {@link org.almostrealism.algebra.Vector} is needed.</p>
+	 *
+	 * @param heights  the height field, shaped {@code (nx, ny)} (or any shape with
+	 *                 {@code nx*ny} elements in row-major order)
+	 * @param nx       the number of grid nodes along X
+	 * @param ny       the number of grid nodes along Z
+	 * @param originX  the X coordinate of node {@code (0, 0)}
+	 * @param originY  the base height added to every node's height value
+	 * @param originZ  the Z coordinate of node {@code (0, 0)}
+	 * @param spacingX the node spacing along X
+	 * @param spacingZ the node spacing along Z
+	 * @return producer for the {@code (nx*ny, 3)} node positions
+	 * @throws IllegalArgumentException if {@code nx} or {@code ny} is less than two
+	 */
+	default CollectionProducer regularGridSurfaceNodes(
+			Producer<PackedCollection> heights, int nx, int ny,
+			double originX, double originY, double originZ,
+			double spacingX, double spacingZ) {
+		requireGridNodes(nx, ny);
+		int nodeCount = nx * ny;
+		TraversalPolicy outputShape = new TraversalPolicy(false, false, nodeCount, 3).traverse(1);
+
+		return new DefaultTraversableExpressionComputation("regularGridSurfaceNodes", outputShape, args ->
+			CollectionExpression.create(outputShape, idx -> {
+				// Integer arithmetic only; see regularGridSurfacePoints on why not conditionals
+				Expression node = idx.divide(e(3));
+				Expression comp = idx.imod(3);
+				Expression ni = node.divide(e(ny));
+				Expression nj = node.imod(ny);
+
+				Expression x = e(originX).add(ni.multiply(e(spacingX)));
+				Expression z = e(originZ).add(nj.multiply(e(spacingZ)));
+				Expression y = e(originY).add(args[1].getValueAt(node));
+
+				return conditional(comp.eq(e(0)), x, conditional(comp.eq(e(2)), z, y));
+			}), heights);
+	}
+
+	/**
 	 * Computes a per-vertex unit normal for every node of a regular grid height field,
 	 * derived from the height gradient, as a single Producer graph.
 	 *

@@ -866,6 +866,109 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 	}
 
 	/**
+	 * Builds the per-triangle vertex positions of a regular grid surface directly, with the
+	 * same node layout and winding as {@link #gridSurface(PackedCollection, Vector, double, double)},
+	 * without constructing a {@link Mesh}. Useful for building a host-only triangle list, for
+	 * example to feed {@link BoundingVolumeHierarchy#build(List)}.
+	 *
+	 * @param heights  the height field, indexed {@code [i][j]} over {@code nx} by {@code ny} nodes
+	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
+	 * @param spacingX the node spacing along X
+	 * @param spacingZ the node spacing along Z
+	 * @return the triangles, each a three-element array of vertex positions
+	 */
+	public static List<Vector[]> gridSurfaceTriangles(double[][] heights, Vector origin,
+														double spacingX, double spacingZ) {
+		int nx = heights.length;
+		int ny = heights[0].length;
+
+		Vector[] nodes = nodeVectors(gridSurfaceNodes(heights, origin, spacingX, spacingZ));
+		int[][] indices = gridSurfaceTriangleIndices(nx, ny);
+
+		List<Vector[]> triangles = new ArrayList<>(indices.length);
+		for (int[] tri : indices) {
+			triangles.add(new Vector[] { nodes[tri[0]], nodes[tri[1]], nodes[tri[2]] });
+		}
+		return triangles;
+	}
+
+	/**
+	 * Computes the node positions of a regular grid surface, node {@code (i, j)} at
+	 * {@code (origin.x + i*spacingX, origin.y + heights[i][j], origin.z + j*spacingZ)}, as a
+	 * genuine {@code (nx*ny, 3)} position tensor built by a single
+	 * {@link TriangleFeatures#regularGridSurfaceNodes} Producer graph rather than a host loop
+	 * over {@link Vector} objects. Individual node vectors are recovered on demand with
+	 * {@link #nodeVectors(PackedCollection)} where the list-based {@link Mesh} API needs them.
+	 *
+	 * @param heights  the height field, indexed {@code [i][j]} over {@code nx} by {@code ny} nodes
+	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
+	 * @param spacingX the node spacing along X
+	 * @param spacingZ the node spacing along Z
+	 * @return the node positions as a {@code (nx*ny, 3)} collection in row-major order ({@code i*ny+j})
+	 */
+	private static PackedCollection gridSurfaceNodes(double[][] heights, Vector origin, double spacingX, double spacingZ) {
+		int nx = heights.length;
+		int ny = heights[0].length;
+
+		double[] flat = new double[nx * ny];
+		for (int i = 0; i < nx; i++) {
+			for (int j = 0; j < ny; j++) {
+				flat[i * ny + j] = heights[i][j];
+			}
+		}
+
+		TriangleFeatures tf = TriangleFeatures.getInstance();
+		return (PackedCollection) tf.regularGridSurfaceNodes(tf.cp(tf.pack(flat)), nx, ny,
+				origin.getX(), origin.getY(), origin.getZ(), spacingX, spacingZ).evaluate();
+	}
+
+	/**
+	 * Extracts each node of a {@code (count, 3)} position tensor as a {@link Vector}, using
+	 * {@link PackedCollection#get(int)} to view one row at a time, for the list-based
+	 * {@link Mesh} and {@link BoundingVolumeHierarchy} APIs that take explicit vectors.
+	 *
+	 * @param nodes the {@code (count, 3)} node position tensor
+	 * @return one {@link Vector} per node, in row order
+	 */
+	private static Vector[] nodeVectors(PackedCollection nodes) {
+		int count = nodes.getShape().length(0);
+
+		Vector[] vectors = new Vector[count];
+		for (int n = 0; n < count; n++) {
+			vectors[n] = new Vector(nodes.traverse(1).get(n), 0);
+		}
+		return vectors;
+	}
+
+	/**
+	 * Computes, for each cell of an {@code nx} by {@code ny} grid, the node indices of its two
+	 * triangles with the winding used by the grid surface tessellation: {@code {v00,v11,v10}}
+	 * and {@code {v00,v01,v11}}.
+	 *
+	 * @param nx the number of grid nodes along X
+	 * @param ny the number of grid nodes along Z
+	 * @return the triangle node-index arrays, two per cell
+	 */
+	private static int[][] gridSurfaceTriangleIndices(int nx, int ny) {
+		int cellsX = nx - 1;
+		int cellsZ = ny - 1;
+		int[][] triangles = new int[2 * cellsX * cellsZ][];
+
+		int t = 0;
+		for (int i = 0; i < cellsX; i++) {
+			for (int j = 0; j < cellsZ; j++) {
+				int v00 = i * ny + j;
+				int v10 = (i + 1) * ny + j;
+				int v01 = i * ny + (j + 1);
+				int v11 = (i + 1) * ny + (j + 1);
+				triangles[t++] = new int[] { v00, v11, v10 };
+				triangles[t++] = new int[] { v00, v01, v11 };
+			}
+		}
+		return triangles;
+	}
+
+	/**
 	 * @return  this.
 	 */
 	@Override
