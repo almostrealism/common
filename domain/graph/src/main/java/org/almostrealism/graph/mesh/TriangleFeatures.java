@@ -434,14 +434,16 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * <p>Each (ray, triangle) pair is scored with its negated distance, so the closest hit has
 	 * the largest score and the reduction is a maximum; a miss scores the most negative finite
 	 * value of the target precision ({@link #minValue()}), which no finite hit distance can fall
-	 * below, so a hit at any distance outranks every miss. Whether a ray hit anything is decided
-	 * by a separate per-(ray, triangle) hit mask reduced with its own maximum, not by comparing
-	 * the best score against a threshold.</p>
+	 * below, so a hit at any distance outranks every miss. A ray hit something iff its best score
+	 * rose above that same miss sentinel: the maximum reduction's identity is the sentinel too, so
+	 * an all-miss row keeps it, and no finite hit distance scores that low. This reuses the single
+	 * score grid rather than materializing and reducing a second per-(ray, triangle) hit mask,
+	 * which halves the intermediate {@code (R, T)} device memory this graph allocates.</p>
 	 *
-	 * <p>Optimize the result ({@code Process.optimized(...)}) before compiling it: the two
-	 * reductions iterate over every triangle, and optimization isolates them into loops of
-	 * their own; compiled unoptimized, they are unrolled into the kernel that assembles the
-	 * result, which fails for all but the smallest meshes.</p>
+	 * <p>Optimize the result ({@code Process.optimized(...)}) before compiling it: the reductions
+	 * iterate over every triangle, and optimization isolates them into loops of their own;
+	 * compiled unoptimized, they are unrolled into the kernel that assembles the result, which
+	 * fails for all but the smallest meshes.</p>
 	 *
 	 * @param mesh          the packed mesh, shaped {@code (T, 4, 3)}
 	 * @param triangleCount the number of triangles {@code T}
@@ -453,17 +455,18 @@ public interface TriangleFeatures extends VectorFeatures {
 		int rayCount = rayCount(rays);
 		CollectionProducer scores = meshIntersectionGrid("meshIntersectionScore",
 				mesh, triangleCount, rays, Expression::minus, minValue());
-		CollectionProducer hitMask = meshIntersectionGrid("meshIntersectionHit",
-				mesh, triangleCount, rays, t -> e(1.0), e(0.0));
 
 		CollectionProducer best = max(traverse(1, scores)).reshape(rayCount, 1);
 		CollectionProducer index = indexOfMax(traverse(1, scores)).reshape(rayCount, 1);
-		CollectionProducer anyHit = max(traverse(1, hitMask)).reshape(rayCount, 1);
-		CollectionProducer half = c(0.5);
+
+		// The best score exceeds the miss sentinel exactly when some triangle was hit; the
+		// sentinel is the same most-negative finite value every missed pair was scored with.
+		CollectionProducer miss = compute("meshMissSentinel",
+				CollectionExpression.create(shape(1), idx -> minValue()));
 
 		return concat(shape(rayCount, 2),
-				greaterThan(anyHit, half, best.minus(), c(-1.0)),
-				greaterThan(anyHit, half, index, c(-1.0)));
+				greaterThan(best, miss, best.minus(), c(-1.0)),
+				greaterThan(best, miss, index, c(-1.0)));
 	}
 
 	/**

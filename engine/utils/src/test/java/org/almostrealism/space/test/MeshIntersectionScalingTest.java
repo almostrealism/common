@@ -59,8 +59,8 @@ public class MeshIntersectionScalingTest extends TestSuiteBase implements GridIn
 
 		for (int r = 0; r < resolutions.length; r++) {
 			int n = resolutions[r];
-			BoundingVolumeHierarchy bvh = MeshData.gridSurface(bumpyHeights(n, n),
-					n, n, origin, SPACING, SPACING).getBoundingVolumeHierarchy();
+			MeshData mesh = MeshData.gridSurface(bumpyHeights(n, n), n, n, origin, SPACING, SPACING);
+			BoundingVolumeHierarchy bvh = mesh.getBoundingVolumeHierarchy();
 			int triangles = bvh.getTriangleCount();
 			double extent = (n - 1) * SPACING;
 
@@ -71,6 +71,10 @@ public class MeshIntersectionScalingTest extends TestSuiteBase implements GridIn
 				candidates += bvh.candidates(origin.getX() + fx * extent, 5.0,
 						origin.getZ() + fz * extent, 0.0, -1.0, 0.0).length;
 			}
+
+			// The hierarchy keeps its own host-side bounds, so the device mesh buffer and the
+			// graphs it compiled can be released now rather than accumulating across resolutions.
+			mesh.destroy();
 
 			log("triangles=" + triangles + " linearTested=" + ((long) rayCount * triangles)
 					+ " candidatesTested=" + candidates);
@@ -135,5 +139,9 @@ public class MeshIntersectionScalingTest extends TestSuiteBase implements GridIn
 
 		log("deviceTiming triangles=" + md.getCount() + " rays=" + rayCount
 				+ " linearMs=" + linearMs + " accelMs=" + accelMs + " lastHit=" + (last == null ? -1 : last.getB()));
+
+		// Release the device mesh and its compiled intersection graphs so they do not linger
+		// for the rest of the test fork.
+		md.destroy();
 	}
 }
