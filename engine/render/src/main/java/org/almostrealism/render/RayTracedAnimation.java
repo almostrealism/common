@@ -37,7 +37,6 @@ import org.almostrealism.rayshade.ReflectionShader;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.Animation;
 import org.almostrealism.space.StandardLightingRigs;
-import org.almostrealism.texture.ImageCanvas;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -49,7 +48,7 @@ import java.util.Properties;
 
 /**
  * An {@link Animation} that ray traces each frame with {@link RayTracedScene} and writes it to
- * the output directory as a JPEG, and writes a script that encodes the frames as a video.
+ * the output directory as a PNG, and writes a script that encodes the frames as a video.
  *
  * <p>Its state can be stored as and restored from {@link Properties}: the camera, and the rigid
  * spheres and planes of the scene with their lights, shaders and physical state. Each body is
@@ -96,21 +95,21 @@ public class RayTracedAnimation<T extends ShadableSurface> extends Animation<T> 
 
 	/**
 	 * Renders the current state of the scene and writes it to the output directory as
-	 * {@code frame_<instance>.<i>.jpeg}. A frame that cannot be written is reported as a
-	 * warning, and the animation continues.
+	 * {@code frame_<instance>.<i>.png}. The render and write share
+	 * {@link RayTracedScene#renderToFile(File)} with every other frame-sequence
+	 * writer. A frame that cannot be written is reported as a warning, and the animation continues.
 	 *
 	 * @param i        the iteration number of the frame
 	 * @param instance the instance identifier of the animation
 	 */
 	@Override
 	public void writeImage(int i, String instance) {
-		File f = outputFile("frame_" + instance + "." + i + ".jpeg");
+		File f = outputFile("frame_" + instance + "." + i + ".png");
 
 		RenderParameters p = new RenderParameters(imageWidth, imageHeight, 1, 1);
-		image = new RayTracedScene(this, new FogParameters(), p).realize(p).get().evaluate();
 
 		try {
-			ImageCanvas.encodeImageFile(image, f, ImageCanvas.JPEGEncoding);
+			image = new RayTracedScene(this, new FogParameters(), p).renderToFile(f);
 			frameFiles.add(f);
 			log("Wrote frame " + i + "/" + getIterations() + ": " + f);
 		} catch (IOException e) {
@@ -137,7 +136,7 @@ public class RayTracedAnimation<T extends ShadableSurface> extends Animation<T> 
 			out.println("#!/bin/sh");
 			out.println("mencoder mf://" + String.join(",", names) +
 					" -mf w=" + imageWidth + ":h=" + imageHeight + ":fps=" + fps +
-					":type=jpg -ovc lavc -lavcopts vcodec=mpeg4 -oac copy -o output.avi");
+					":type=png -ovc lavc -lavcopts vcodec=mpeg4 -oac copy -o output.avi");
 		} catch (IOException e) {
 			warn("Could not write encode script " + script, e);
 		}
