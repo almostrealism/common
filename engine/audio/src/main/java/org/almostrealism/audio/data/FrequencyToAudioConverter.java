@@ -93,8 +93,9 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	 * is not among them and survives a successful conversion.</p>
 	 *
 	 * @param details the WaveDetails to convert
-	 * @throws IllegalArgumentException if required frequency data is missing, or its
-	 *                                  size does not match the declared channels, frames and bins
+	 * @throws IllegalArgumentException if required frequency data is missing, the declared
+	 *                                  channel count is negative, or the data size does not
+	 *                                  match the declared channels, frames and bins
 	 */
 	public void convert(WaveDetails details) {
 		PackedCollection freqData = details.getFreqData();
@@ -112,7 +113,12 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 					freqBins + " bins, " + freqFrames + " frames");
 		}
 
-		int freqChannels = Math.max(1, details.getFreqChannelCount());
+		int declaredChannels = details.getFreqChannelCount();
+		if (declaredChannels < 0) {
+			throw new IllegalArgumentException("Frequency channel count cannot be negative: " + declaredChannels);
+		}
+
+		int freqChannels = Math.max(1, declaredChannels);
 		long expectedSize = (long) freqChannels * freqFrames * freqBins;
 		if (freqData.getMemLength() != expectedSize) {
 			throw new IllegalArgumentException("Frequency data holds " + freqData.getMemLength() +

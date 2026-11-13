@@ -237,6 +237,24 @@ public class FrequencyToAudioConverterTest implements TestFeatures {
 	}
 
 	/**
+	 * A negative declared channel count is malformed metadata and must be rejected
+	 * rather than silently treated as a single channel.
+	 */
+	@Test(timeout = 120000)
+	public void negativeChannelCountIsRejected() {
+		WaveDetails details = tonalDetails();
+		details.setFreqChannelCount(-1);
+
+		try {
+			new FrequencyToAudioConverter(new Random(1234)).convert(details);
+			Assert.fail("Negative declared channel count was accepted");
+		} catch (IllegalArgumentException e) {
+			assertTrue("Unexpected message: " + e.getMessage(),
+					e.getMessage().contains("negative"));
+		}
+	}
+
+	/**
 	 * Frequency data that is entirely zero should stay silent rather than being
 	 * scaled by a division that has no meaningful peak to divide by.
 	 */
