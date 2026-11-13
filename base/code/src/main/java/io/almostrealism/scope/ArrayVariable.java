@@ -276,6 +276,22 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	}
 
 	/**
+	 * Returns an expression for the value of this variable at a logical index, read through its
+	 * {@link #getTraversableExpression() traversable expression}, so the read honours the shape
+	 * and ordering of the variable, and its producer when that producer is visible to the kernel.
+	 * A variable with no traversable form carries neither, and is read as a plain array with
+	 * {@link #valueAt(Expression)}. This is the read for a kernel that addresses its output
+	 * explicitly but must still take its inputs by value, whatever layout they carry.
+	 *
+	 * @param index the logical index of the element to read
+	 * @return an expression for the value at that index
+	 */
+	public Expression<?> getTraversedValueAt(Expression<?> index) {
+		TraversableExpression<?> traversable = getTraversableExpression();
+		return traversable == null ? valueAt(index) : traversable.getValueAt(index);
+	}
+
+	/**
 	 * Sets the offset expression used when accessing the delegate array.
 	 *
 	 * @param delegateOffset an expression representing the offset into the delegate array
@@ -359,21 +375,6 @@ public class ArrayVariable<T> extends Variable<Multiple<T>, ArrayVariable<T>> im
 	public InstanceReference<Multiple<T>, T> ref(Expression<Integer> offset) {
 		if (destroyed) throw new UnsupportedOperationException();
 		return new InstanceReference<>(new ArrayVariable<>(this, offset));
-	}
-
-	/**
-	 * Returns an expression reading the element at a logical index of this variable's own
-	 * memory. A plain array variable carries no traversal ordering, so the logical index is the
-	 * physical position and this is {@link #reference(Expression)}; subclasses whose values are
-	 * laid out through an ordering override it to read through that ordering. A kernel that
-	 * addresses an argument's data explicitly uses this read, so it respects whatever layout the
-	 * argument carries, whether or not the argument has a shape.
-	 *
-	 * @param index the logical index of the element
-	 * @return an expression for the element at that index
-	 */
-	public Expression<T> getOrderedReference(Expression<Integer> index) {
-		return reference(index);
 	}
 
 	/**

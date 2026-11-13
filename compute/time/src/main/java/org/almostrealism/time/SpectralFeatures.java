@@ -254,9 +254,10 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * spectrum) are ignored. Bin {@code b} therefore represents angular wavenumber {@code b * dk},
 	 * i.e. wavelength {@code 2 pi / (b * dk)}.
 	 *
-	 * <p>The shell averages are computed from a dense {@code [bins, cells]} membership matrix,
-	 * so the intermediate size grows as {@code bins * cells}; a grid whose membership matrix
-	 * cannot be addressed with an {@code int} index is rejected rather than allowed to overflow.</p>
+	 * <p>The shell averages are computed from the grid's dense
+	 * {@link SpectralGrid#radialMembership() membership matrix}, so the intermediate size grows as
+	 * {@code bins * cells}; a grid whose membership matrix cannot be addressed with an {@code int}
+	 * index is rejected rather than allowed to overflow.</p>
 	 *
 	 * @param power   a power spectrum in FFT order (as produced by
 	 *                {@link #powerSpectrum(Producer) powerSpectrum} of an {@link #fftn fftn}), shaped
@@ -272,16 +273,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 		int cells = grid.getCellCount();
 		int bins = grid.getRadialBinCount();
 
-		// Tracked as a follow-up task: replace the dense membership matrix with a segmented reduction
-		if ((long) bins * cells > Integer.MAX_VALUE) {
-			throw new IllegalArgumentException("radialPowerSpectrum of " + grid + " needs a " + bins + " x " +
-					cells + " membership matrix, which exceeds the addressable size");
-		}
-
-		CollectionProducer binOfCell = repeat(bins, isolated(grid.radialBin().reshape(cells))).reshape(bins, cells);
-		CollectionProducer bin = repeat(1, cells, integers(0, bins).reshape(bins, 1)).reshape(bins, cells);
-		CollectionProducer membership = greaterThan(abs(binOfCell.subtract(bin)), c(0.5), c(0.0), c(1.0));
-
+		CollectionProducer membership = grid.radialMembership();
 		CollectionProducer weighted = membership.multiply(repeat(bins, reshape(shape(cells), power)).reshape(bins, cells));
 		CollectionProducer total = isolated(weighted.sum(1).reshape(bins));
 		CollectionProducer count = isolated(membership.sum(1).reshape(bins));
@@ -390,7 +382,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 		CollectionProducer power = isolated(powerSpectrum(fftn(toComplex(centred), false)).reshape(cells));
 		CollectionProducer peak = spectralPeakBin(radialPowerSpectrum(power.reshape(grid.getShape()), spacing));
 
-		CollectionProducer k = isolated(sqrt(grid.wavenumberSquared(integers(0, cells))).reshape(cells));
+		CollectionProducer k = isolated(grid.wavenumber().reshape(cells));
 		CollectionProducer bin = grid.radialBin().reshape(cells);
 		CollectionProducer first = powerCentroid(power, k,
 				greaterThan(abs(bin.subtract(peak)), c(1.5), c(0.0), c(1.0)));
@@ -431,8 +423,8 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * so the solution has zero mean; a periodic solution exists only when {@code f} has zero mean,
 	 * and any mean in {@code f} is discarded.
 	 *
-	 * <p>The symbol is computed per interleaved complex element, whose flat index is decoded with
-	 * floating-point arithmetic, so the grid may have at most
+	 * <p>The symbol is the grid's {@link SpectralGrid#inverseLaplacian() inverse Laplacian},
+	 * computed per interleaved complex element, so the grid may have at most
 	 * {@code SpectralGrid.MAX_EXACT_INDEX / 2} cells.</p>
 	 *
 	 * @param source  the right-hand side {@code f}, shaped like a grid
@@ -442,19 +434,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 */
 	default CollectionProducer poissonSolve(Producer<PackedCollection> source, double... spacing) {
 		SpectralGrid grid = new SpectralGrid(shape(source), spacing);
-		int cells = grid.getCellCount();
-		grid.requireExactIndices("poissonSolve", 2);
-
-		CollectionProducer element = integers(0, 2 * cells);
-		CollectionProducer cell = element.subtract(element.mod(2.0)).divide(c(2.0));
-		CollectionProducer k2 = grid.wavenumberSquared(cell);
-
-		double smallest = 0.5 * Math.pow(grid.getRadialBinWidth(), 2);
-		CollectionProducer nonzero = greaterThan(k2, c(smallest), c(1.0), c(0.0));
-		CollectionProducer symbol = nonzero.minus().divide(k2.add(c(1.0)).subtract(nonzero));
-
-		CollectionProducer spectrum = fftn(toComplex(source), false)
-				.multiply(symbol.reshape(grid.getShape().appendDimension(2)));
+		CollectionProducer spectrum = fftn(toComplex(source), false).multiply(grid.inverseLaplacian());
 		return realPart(fftn(spectrum, true));
 	}
 

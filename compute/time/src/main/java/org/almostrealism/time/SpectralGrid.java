@@ -38,9 +38,11 @@ import java.util.stream.IntStream;
  * spectral operation derives from a grid is dense and in plain row-major order, so an ordering
  * on the shape this grid is constructed from is dropped.</p>
  *
- * <p>The per-cell quantities a grid defines on its own, the squared wavenumber and the radial
- * bin of every cell, are graphs built by the grid ({@link #wavenumberSquared()},
- * {@link #radialBin()}); nothing about them depends on any field sampled on the grid.</p>
+ * <p>The per-cell quantities a grid defines on its own, the wavenumber and radial bin of every
+ * cell, the membership of cells in radial bins and the Fourier symbol of the inverse Laplacian,
+ * are graphs built by the grid ({@link #wavenumberSquared()}, {@link #wavenumber()},
+ * {@link #radialBin()}, {@link #radialMembership()}, {@link #inverseLaplacian()}); nothing about
+ * them depends on any field sampled on the grid.</p>
  *
  * @see SpectralFeatures
  * @author Michael Murray
@@ -168,7 +170,7 @@ public class SpectralGrid implements CollectionFeatures {
 	 * @param indicesPerCell the number of flat indices the operation decodes per cell
 	 * @throws IllegalArgumentException if the number of decoded indices exceeds {@link #MAX_EXACT_INDEX}
 	 */
-	public void requireExactIndices(String operation, int indicesPerCell) {
+	protected void requireExactIndices(String operation, int indicesPerCell) {
 		long count = (long) indicesPerCell * getCellCount();
 		if (count > MAX_EXACT_INDEX) {
 			throw new IllegalArgumentException(operation + " decodes " + count +
@@ -215,7 +217,7 @@ public class SpectralGrid implements CollectionFeatures {
 	 *                                  its squared wavenumbers are not
 	 *                                  {@link #requireRepresentableWavenumbers representable}
 	 */
-	public CollectionProducer wavenumberSquared(Producer<PackedCollection> cell) {
+	protected CollectionProducer wavenumberSquared(Producer<PackedCollection> cell) {
 		requireExactIndices("wavenumberSquared", 1);
 		requireRepresentableWavenumbers("wavenumberSquared");
 		CollectionProducer index = c(cell);
@@ -257,8 +259,72 @@ public class SpectralGrid implements CollectionFeatures {
 	 * @return a producer of bin indices, shaped {@code [cells]} in row-major cell order
 	 */
 	public CollectionProducer radialBin() {
-		CollectionProducer k = sqrt(wavenumberSquared(integers(0, getCellCount())));
-		return floor(k.divide(c(getRadialBinWidth())).add(c(0.5)));
+		return floor(wavenumber().divide(c(getRadialBinWidth())).add(c(0.5)));
+	}
+
+	/**
+	 * Returns the angular wavenumber magnitude {@code |k|} of every cell of this grid.
+	 *
+	 * @return a producer of {@code |k|}, shaped {@code [cells]} in row-major cell order
+	 * @throws IllegalArgumentException if the grid has more than {@link #MAX_EXACT_INDEX} cells, or
+	 *                                  its squared wavenumbers are not
+	 *                                  {@link #requireRepresentableWavenumbers representable}
+	 */
+	public CollectionProducer wavenumber() {
+		return sqrt(wavenumberSquared(integers(0, getCellCount())));
+	}
+
+	/**
+	 * Returns the membership of every cell of this grid in every
+	 * {@link SpectralFeatures#radialPowerSpectrum radial bin}: element {@code [b, c]} is 1 when
+	 * the {@link #radialBin() radial bin} of cell {@code c} is {@code b}, and 0 otherwise. Cells
+	 * beyond the last bin belong to no bin.
+	 *
+	 * <p>The matrix is dense, so its size grows as {@code bins * cells}; a grid whose matrix
+	 * cannot be addressed with an {@code int} index is rejected rather than allowed to overflow.</p>
+	 *
+	 * @return a producer of the membership matrix, shaped
+	 *         {@code [}{@link #getRadialBinCount() bins}{@code , cells]}
+	 * @throws IllegalArgumentException if {@code bins * cells} exceeds {@link Integer#MAX_VALUE}
+	 */
+	public CollectionProducer radialMembership() {
+		int cells = getCellCount();
+		int bins = getRadialBinCount();
+
+		// Tracked as a follow-up task: replace the dense membership matrix with a segmented reduction
+		if ((long) bins * cells > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("Radial membership of " + this + " needs a " + bins + " x " +
+					cells + " matrix, which exceeds the addressable size");
+		}
+
+		CollectionProducer binOfCell = repeat(bins, isolated(radialBin().reshape(cells))).reshape(bins, cells);
+		CollectionProducer bin = repeat(1, cells, integers(0, bins).reshape(bins, 1)).reshape(bins, cells);
+		return greaterThan(abs(binOfCell.subtract(bin)), c(0.5), c(0.0), c(1.0));
+	}
+
+	/**
+	 * Returns the Fourier symbol of the inverse Laplacian on this grid, {@code -1 / |k|^2}, for
+	 * every interleaved (real, imaginary) element of a complex spectrum of the grid, so that
+	 * multiplying an {@link SpectralFeatures#fftn FFT} by it solves the periodic Poisson equation.
+	 * The {@code k = 0} mode, for which the symbol is undefined, is set to zero, so the solution
+	 * has zero mean.
+	 *
+	 * <p>The symbol is computed per interleaved element, whose flat index is decoded with
+	 * floating-point arithmetic, so the grid may have at most {@code MAX_EXACT_INDEX / 2} cells.</p>
+	 *
+	 * @return a producer of the symbol, shaped like a complex grid {@code [n0, ..., nk, 2]}
+	 * @throws IllegalArgumentException if the grid has more than {@code MAX_EXACT_INDEX / 2} cells
+	 */
+	public CollectionProducer inverseLaplacian() {
+		requireExactIndices("inverseLaplacian", 2);
+
+		CollectionProducer element = integers(0, 2 * getCellCount());
+		CollectionProducer cell = element.subtract(element.mod(2.0)).divide(c(2.0));
+		CollectionProducer k2 = wavenumberSquared(cell);
+
+		double smallest = 0.5 * Math.pow(getRadialBinWidth(), 2);
+		CollectionProducer nonzero = greaterThan(k2, c(smallest), c(1.0), c(0.0));
+		return nonzero.minus().divide(k2.add(c(1.0)).subtract(nonzero)).reshape(shape.appendDimension(2));
 	}
 
 	@Override

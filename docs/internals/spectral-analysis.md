@@ -12,18 +12,19 @@ native kernels on every backend, Metal and OpenCL included; nothing is computed 
 | Real ↔ complex | `toComplex(real)`, `realPart(complex)`, `imaginaryPart(complex)` |
 | Power, magnitude, phase | `powerSpectrum`, `complexMagnitude`, `phase`, `logMagnitude` |
 | Grid geometry (dimensions and spacing) | `new SpectralGrid(shape, spacing...)` |
-| Wavenumber of every cell | `grid.wavenumberSquared()`, `grid.wavenumberSquared(cell)` |
-| Radially averaged power | `radialPowerSpectrum(power, spacing...)`, `grid.radialBin()`, `SpectralGrid.getRadialBinWidth()`, `SpectralGrid.getRadialBinCount()` |
+| Wavenumber of every cell | `grid.wavenumberSquared()`, `grid.wavenumber()` |
+| Radially averaged power | `radialPowerSpectrum(power, spacing...)`, `grid.radialBin()`, `grid.radialMembership()`, `SpectralGrid.getRadialBinWidth()`, `SpectralGrid.getRadialBinCount()` |
 | Dominant wavelength of a field | `dominantWavelength(field, spacing...)`, `dominantWavenumber(field, spacing...)` |
 | Peak of any radial spectrum | `spectralPeakBin(spectrum)`, `spectralPeak(spectrum, binWidth)` |
-| Periodic Poisson solve `∇²p = f` | `poissonSolve(f, spacing...)` |
+| Periodic Poisson solve `∇²p = f` | `poissonSolve(f, spacing...)`, `grid.inverseLaplacian()` |
 
 The 1-D `fft(bins, input)` and `ifft(bins, input)` are methods of `TemporalFeatures`, and
 `FourierTransform` is the computation behind every transform. Everything else in the table is a
 default method of `SpectralFeatures` (`org.almostrealism.time`), except the grid geometry, which is a
 `SpectralGrid`: its constructor validates the spacing, it derives the radial bin width and
 count on the host from the dimensions and spacing alone, and it builds the per-cell graphs that
-depend on nothing but the grid (`wavenumberSquared` and `radialBin`). `TemporalFeatures` extends
+depend on nothing but the grid (`wavenumberSquared`, `wavenumber`, `radialBin`,
+`radialMembership` and `inverseLaplacian`). `TemporalFeatures` extends
 `SpectralFeatures`, so any class that implements `TemporalFeatures` (including every
 `TestSuiteBase` test) has all of them.
 
@@ -94,7 +95,8 @@ quadratic spectrum.
 
 `poissonSolve(f, spacing...)` solves `∇²p = f` on the periodic grid: `fftn(f)` is multiplied by
 the Laplacian's inverse symbol `-1/|k|²` and transformed back. The `k = 0` mode is set to zero
-explicitly (a periodic solution exists only for zero-mean `f`), so the result has zero mean and
+explicitly (a periodic solution exists only for zero-mean `f`; the symbol is
+`SpectralGrid.inverseLaplacian()`), so the result has zero mean and
 any mean in `f` is discarded. `|k|²` is the exact continuous symbol, so the solve is spectrally
 accurate for band-limited data. It is not the inverse of a finite-difference Laplacian stencil.
 
@@ -151,9 +153,9 @@ the grid puts its power in exact cells, and the estimate is then exact to roundi
   into per-axis coordinates with `mod` and `divide`, which are exact in FP32 only for indices
   below `2^24` (`SpectralGrid.MAX_EXACT_INDEX`). A grid with more cells is rejected with an
   `IllegalArgumentException`, not left to compute wrong wavenumbers. `poissonSolve` decodes one
-  index per interleaved complex element, so its limit is `2^23` cells.
+  index per interleaved complex element (`SpectralGrid.inverseLaplacian`), so its limit is `2^23` cells.
 - **The radial spectrum uses a dense membership matrix.** `radialPowerSpectrum` averages shells
-  through `[bins, cells]` intermediates, so memory grows as `bins * cells`. A grid whose matrix
+  through `[bins, cells]` intermediates (`SpectralGrid.radialMembership()`), so memory grows as `bins * cells`. A grid whose matrix
   cannot be addressed with an `int` index (for example `256^3`, which has 129 bins) is rejected.
   A segmented reduction would remove this limit; it is tracked as a follow-up.
 
@@ -185,7 +187,7 @@ the grid puts its power in exact cells, and the estimate is then exact to roundi
 |------|----------|
 | `compute/time/.../time/computations/FourierTransform.java` | Iterative strided FFT kernel |
 | `compute/time/.../time/SpectralFeatures.java` | N-D FFT, spectra, wavelength, Poisson |
-| `compute/time/.../time/SpectralGrid.java` | Grid dimensions and spacing, radial bin width and count |
+| `compute/time/.../time/SpectralGrid.java` | Grid dimensions and spacing, radial bin width and count, per-cell wavenumber, bin and inverse-Laplacian graphs |
 | `compute/algebra/.../collect/CollectionFeatures.java` | `isolated(producer)` |
 | `engine/utils/src/test/.../time/computations/test/SpectralFeaturesTest.java` | Tests above |
 | `engine/utils/src/test/.../time/computations/test/FourierTransformTests.java` | 1-D tests, incl. `compileGpu` |

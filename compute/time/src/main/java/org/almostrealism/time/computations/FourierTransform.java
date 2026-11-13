@@ -243,9 +243,9 @@ public class FourierTransform extends CollectionProducerComputationBase {
 	/**
 	 * Generates the loop that copies the input line into the output in bit-reversed order,
 	 * which is the starting arrangement of the in-place iterative FFT. The input is read through
-	 * {@link ArrayVariable#getOrderedReference(Expression)}, so an input whose shape carries a
-	 * {@link io.almostrealism.collect.TraversalOrdering} is transformed in its logical order, and
-	 * an input without a shape is read in its physical order.
+	 * {@link ArrayVariable#getTraversedValueAt(Expression)}, so it is read by value, through whatever
+	 * ordering and producer the argument carries; only the output is addressed directly, as the
+	 * destination of the copy.
 	 *
 	 * @param output the output argument
 	 * @param input  the input argument
@@ -258,10 +258,10 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		Repeated copy = new Repeated<>(i.getReferent(), i.lessThan(e(bins)));
 
 		Scope body = new Scope<>();
-		Expression src = body.declareInteger("src_" + varIdx++, position(first, i));
+		Expression src = position(first, i);
 		Expression dst = body.declareInteger("dst_" + varIdx++, position(first, reverseBits(i)));
-		body.assign(output.reference(dst), input.getOrderedReference(src));
-		body.assign(output.reference(dst.add(1)), input.getOrderedReference(src.add(1)));
+		body.assign(output.reference(dst), input.getTraversedValueAt(src));
+		body.assign(output.reference(dst.add(1)), input.getTraversedValueAt(src.add(1)));
 		copy.add(body);
 		return copy;
 	}
