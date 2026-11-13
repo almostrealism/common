@@ -135,6 +135,30 @@ a `CollectionSlotUpdateComputation` replacing row `index` of the buffer, assigne
 buffer, then an index advance. A write costs `O(capacity * width)`. A run that would exceed the
 capacity fails before any step runs.
 
+## Frame Sequences
+
+`runFrames(stepsPerFrame, frameCount, frame)` drives the simulation into a sequence of frames: it
+registers a boundary listener at interval `stepsPerFrame` that maps the step index to a frame index,
+then runs `frameCount * stepsPerFrame` steps. A boundary listener is due before steps `0,
+stepsPerFrame, 2 * stepsPerFrame, ...`, so the hook sees frame `0` at the initial condition and frame
+`f` after `f * stepsPerFrame` steps, for exactly `frameCount` frames. The hook is a plain
+`IntConsumer` — it is render-agnostic, so it can rebuild and render geometry, write a field
+visualisation, or checkpoint — and it must not advance the simulation itself, which is what keeps the
+runner the sole owner of the step loop.
+
+```java
+runner.runFrames(stepsPerFrame, frameCount, frameIndex -> {
+    Scene scene = reconstructFrom(state);   // host boundary: rebuild geometry from the state
+    render(scene, frameIndex);              // the outer frame loop observes, never steps
+});
+```
+
+This is the host boundary between the fluid step and reconstruction: the state is read on the host
+once per frame. For the ray-traced implementation (reconstruct → ray trace → write a zero-padded PNG
+→ emit an `ffmpeg` encode script) see `RayTracedFrameSequence` in `engine/render`, and for a
+colour-mapped field visualisation of a 2D state see `RGBFeatures.saveHeatmap`. Both are described in
+[Rendering a Simulation Frame Sequence](simulation-frame-rendering.md).
+
 ## Inherited Entry Points
 
 `SimulationRunner` is also a `Supplier<Runnable>`, a `Temporal` and a `Setup`. The inherited
@@ -204,3 +228,6 @@ node was available for this measurement.
 - [Simulating a Spiking Neural Population](neural-population-simulation.md): a worked example of
   stepping `LeakyIntegrateAndFirePopulation`s with `SimulationRunner`, including the two-population
   tick order and the recording-cost arithmetic
+- [Rendering a Simulation Frame Sequence](simulation-frame-rendering.md): driving a simulation into a
+  ray-traced frame sequence with `runFrames` and `RayTracedFrameSequence`, and writing a
+  colour-mapped field heatmap with `RGBFeatures.saveHeatmap`

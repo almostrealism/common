@@ -152,13 +152,26 @@ The per-round differences are inputs: `branch-prefix`, `min-interval-days`,
 settings (`protect-test-files`, `enforce-changes`, `max-enforce-changes-retries`,
 `phase-configs`, `required-labels`, `required-labels-json`, `description`), and
 the prompt. The `prompt` input is either a built-in template selector
-(`defect-hunt` | `doc-qa` | `consolidation` | `flaky-hunt`, rendered from the
-framework checkout) or a path to a template the caller supplies in its own
-checkout, read as *data* by `tools/ci/prompts/build-qa-round-prompt.sh` and
-rendered but never executed. `template-vars` is a JSON map of extra `${NAME}`
-substitutions, and `test-runner-fragment` chooses the language-specific tooling
+(`defect-hunt` | `doc-qa` | `consolidation` | `flaky-hunt` | `retrospective`,
+rendered from the framework checkout) or a path to a template the caller
+supplies in its own checkout, read as *data* by
+`tools/ci/prompts/build-qa-round-prompt.sh` and rendered but never executed.
+`template-vars` is a JSON map of extra `${NAME}` substitutions, and
+`test-runner-fragment` chooses the language-specific tooling
 guidance a built-in template includes (default `test-runner-maven.txt`; a
-non-Maven consumer passes `test-runner-generic.txt`). The trust rule is the same
+non-Maven consumer passes `test-runner-generic.txt`).
+
+The `retrospective` selector surveys a repository's recent automated work and
+proposes how its QA process should improve. It is generalised through
+`template-vars` so each consuming repository runs its own, scoped to its own
+`REPO_URL` and written into its own tree, and never reading or quoting another
+repository: `REVIEW_SINCE` and `QA_PREFIXES` set the survey window and the QA
+branch prefixes; `REPORT_DIR` is where the report and ledger live (default
+`docs/qa/retrospectives`); `VISIBILITY_FRAGMENT` selects the public rule
+(default) or a private variant; and `FINDINGS_FRAGMENT` with
+`FRAMEWORK_TRACKER_PROJECT` routes a consumer's shared-harness findings to the
+framework's tracker project as tasks, since a consumer cannot edit harness
+files it does not own. The trust rule is the same
 as the other reusable workflows: no input is interpolated into a `run:` script,
 the controller URL and client ID are inputs, and the client secret is the
 declared `workflow_call` secret `FLOWTREE_CF_ACCESS_CLIENT_SECRET`.
