@@ -19,7 +19,7 @@ package org.almostrealism.audio.data.test;
 import org.almostrealism.audio.data.FrequencyToAudioConverter;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -31,7 +31,7 @@ import java.util.Random;
  * signal that is actually present, and amplitude held inside the headroom the
  * normalization stage is supposed to leave.
  */
-public class FrequencyToAudioConverterTest implements TestFeatures {
+public class FrequencyToAudioConverterTest extends TestSuiteBase {
 	/** Frequency bins per analysis frame. */
 	private static final int BINS = 16;
 
