@@ -227,6 +227,58 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 	}
 
 	/**
+	 * The accelerated batch path, {@link MeshData#evaluateIntersectionKernelAccelerated}, writes
+	 * the same (distance, triangle index) pair for every ray as the linear batch path
+	 * {@link MeshData#evaluateIntersectionKernel}. Rays alternate between hits with differing
+	 * candidate counts and misses with none, so the reused candidate buffer is both refilled and
+	 * cleared between rays.
+	 */
+	@Test(timeout = 180000)
+	public void acceleratedBatchMatchesLinearBatch() {
+		int nx = 8;
+		int ny = 8;
+		Vector origin = new Vector(0.0, 0.0, 0.0);
+		MeshData md = MeshData.gridSurface(bumpyHeights(nx, ny), nx, ny, origin, SPACING, SPACING);
+
+		int rays = 12;
+		double extent = (nx - 1) * SPACING;
+		Random random = new Random(7);
+		PackedCollection bank = Ray.bank(rays);
+		for (int r = 0; r < rays; r++) {
+			// Every third ray starts beyond the surface edge and so misses it; the others are
+			// slanted by varying amounts so that their candidate sets differ in size
+			double x = r % 3 == 2 ? extent + 10.0 : (0.1 + 0.8 * random.nextDouble()) * extent;
+			double z = (0.1 + 0.8 * random.nextDouble()) * extent;
+			double slant = (r % 3) * 0.04;
+			bank.setFrom(r * 6, new Ray(new Vector(x, 5.0, z), new Vector(slant, -1.0, 0.0)), 0, 6);
+		}
+
+		// The batch ray evaluable must support into(), as the render pipeline's does
+		Evaluable<Ray> batch = (Evaluable) cp(bank).multiply(c(1.0)).get();
+
+		PackedCollection linear = Pair.bank(rays);
+		md.evaluateIntersectionKernel(batch, linear, new MemoryData[0]);
+		PackedCollection accelerated = Pair.bank(rays);
+		md.evaluateIntersectionKernelAccelerated(batch, accelerated, new MemoryData[0]);
+
+		int misses = 0;
+		for (int r = 0; r < rays; r++) {
+			Assert.assertEquals("distance for ray " + r,
+					linear.toDouble(r * 2), accelerated.toDouble(r * 2), 1e-4);
+			Assert.assertEquals("triangle for ray " + r,
+					linear.toDouble(r * 2 + 1), accelerated.toDouble(r * 2 + 1), 1e-9);
+			if (accelerated.toDouble(r * 2 + 1) < 0) {
+				misses++;
+				Assert.assertEquals("miss distance for ray " + r, -1.0, accelerated.toDouble(r * 2), 1e-9);
+			} else {
+				Assert.assertTrue("hit distance for ray " + r, accelerated.toDouble(r * 2) > 0.0);
+			}
+		}
+
+		Assert.assertEquals("rays beyond the surface edge must miss", rays / 3, misses);
+	}
+
+	/**
 	 * {@link TriangleFeatures#meshNormalAt} gathers the face normal of the triangle each hit
 	 * reports, and the zero vector for a miss.
 	 */

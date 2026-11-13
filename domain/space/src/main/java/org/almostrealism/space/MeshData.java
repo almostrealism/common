@@ -206,10 +206,10 @@ public class MeshData extends PackedCollection {
 	public synchronized void evaluateIntersectionKernel(Evaluable<Ray> ray, PackedCollection destination, MemoryData[] args) {
 		long startTime = System.currentTimeMillis();
 		int count = destination.getCount();
-		PackedCollection rays = Ray.bank(count);
-		ray.into(rays).evaluate(args);
-
-		closestIntersection(count).into(destination).evaluate(this, rays);
+		try (PackedCollection rays = Ray.bank(count)) {
+			ray.into(rays).evaluate(args);
+			closestIntersection(count).into(destination).evaluate(this, rays);
+		}
 
 		if (HardwareOperator.enableVerboseLog) {
 			log(count + " rays intersected in " + (System.currentTimeMillis() - startTime) + " msec");
@@ -250,9 +250,10 @@ public class MeshData extends PackedCollection {
 	 *         with index {@code -1} when the ray misses
 	 */
 	public synchronized Pair evaluateIntersectionAccelerated(Evaluable<Ray> ray, Object[] args) {
-		PackedCollection raySix = Ray.bank(1);
-		raySix.setFrom(0, ray.evaluate(args), 0, 6);
-		return queryAccelerated(raySix);
+		try (PackedCollection raySix = Ray.bank(1)) {
+			raySix.setFrom(0, ray.evaluate(args), 0, 6);
+			return queryAccelerated(raySix);
+		}
 	}
 
 	/**
@@ -286,13 +287,14 @@ public class MeshData extends PackedCollection {
 	 */
 	public synchronized void evaluateIntersectionKernelAccelerated(Evaluable<Ray> ray, PackedCollection destination,
 										   MemoryData[] args) {
-		PackedCollection rays = Ray.bank(destination.getCount());
-		ray.into(rays).evaluate(args);
+		try (PackedCollection rays = Ray.bank(destination.getCount());
+			 PackedCollection raySix = Ray.bank(1)) {
+			ray.into(rays).evaluate(args);
 
-		PackedCollection raySix = Ray.bank(1);
-		for (int i = 0; i < rays.getCount(); i++) {
-			raySix.setFrom(0, rays, i * 6, 6);
-			destination.setFrom(i * 2, queryAccelerated(raySix), 0, 2);
+			for (int i = 0; i < rays.getCount(); i++) {
+				raySix.setFrom(0, rays, i * 6, 6);
+				destination.setFrom(i * 2, queryAccelerated(raySix), 0, 2);
+			}
 		}
 	}
 
