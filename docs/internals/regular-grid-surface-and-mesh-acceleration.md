@@ -75,8 +75,11 @@ no host loop over rays or triangles:
   its negated distance (a miss scores the most negative finite value of the target precision,
   which no finite hit falls below), and the per-ray `max` and `indexOfMax`
   reductions over the triangle axis pick the closest; ties resolve to the lowest triangle index.
-  Whether a ray hit anything comes from a separate per-(ray, triangle) hit mask reduced with its
-  own `max`, not from a distance threshold, so a hit at any distance is reported.
+  Whether a ray hit anything comes from that same single score grid: a ray hit something exactly
+  when its best score rose above the miss sentinel, which is also the `max` reduction's identity,
+  so an all-miss row keeps the sentinel and no finite hit distance scores that low. This reuses the
+  one score grid rather than materializing and reducing a second per-(ray, triangle) hit mask, so
+  a hit at any distance is still reported.
 - `meshNormalAt(mesh, hits)` — gathers the face normal of each hit triangle, `(R, 3)`, with the
   zero vector for a miss.
 - `meshTriangleBounds(mesh, triangleCount)` — the `(T, 6)` axis-aligned bounds of every triangle
