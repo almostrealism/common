@@ -396,12 +396,19 @@ rollback_stack() {
       retag_failed=true
     fi
   done < "${snapshot}"
-  echo "Restoring the previous ${label}: ${services[*]-}" >&2
-  # TODO(review): when every re-tag fails, services is empty and the up below
-  # recreates ALL services in the file (no service filter) from the broken
-  # images instead of recreating nothing.
+  # With no service successfully re-tagged there is nothing to restore, and an
+  # empty service list would make `up` recreate EVERY service in the file from
+  # the just-built broken images. Stop here instead and report it, exactly as
+  # the retag_failed branch below would.
+  if [ "${#services[@]}" -eq 0 ]; then
+    echo "ERROR: none of the previous ${label} images could be restored; the stack" >&2
+    echo "  needs manual attention." >&2
+    docker compose -f "${file}" ps -a >&2 || true
+    return 0
+  fi
+  echo "Restoring the previous ${label}: ${services[*]}" >&2
   if docker compose -f "${file}" up -d --force-recreate --no-build \
-      --wait --wait-timeout "${DEPLOY_WAIT_TIMEOUT}" ${services[@]+"${services[@]}"} \
+      --wait --wait-timeout "${DEPLOY_WAIT_TIMEOUT}" "${services[@]}" \
       && [ "${retag_failed}" = false ]; then
     echo "The previous ${label} is running again." >&2
   else

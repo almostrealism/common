@@ -337,6 +337,8 @@ run_case "a rollback whose re-tag fails does not claim the previous stack is run
     MOCK_DOCKER_FAIL_ON_2="tag sha256:previous" \
     MOCK_DOCKER_PS_IDS=0123abcd \
     MOCK_DOCKER_INSPECT="flowtree-controller controller-flowtree-controller sha256:previous"
+check_docker_log "a rollback whose only re-tag fails recreates nothing rather than every service" \
+    absent "up -d --force-recreate --no-build"
 
 run_case "a failed swap with nothing previously running reports there is nothing to restore" 1 \
     "no previous version to restore" "Pruning superseded images" \
