@@ -142,8 +142,14 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 
 	/**
 	 * Starts the producer thread and blocks until at least {@code prefill} buffers have been
-	 * rendered, so the first ticks find their input ready. A render failure during prefill is
-	 * rethrown to the caller.
+	 * rendered, so the first ticks find their input ready. A render failure that prevents the
+	 * prefill from completing is rethrown to the caller.
+	 *
+	 * <p>A failure of a render <em>beyond</em> the prefill is not reported here, even when the
+	 * producer reaches it before this method returns: whether it does is a matter of thread
+	 * timing, and the outcome of {@code start} must not depend on that. Such a failure belongs
+	 * to the buffer that could not be rendered, and is reported by {@link #awaitSlot()} when
+	 * that buffer is awaited.</p>
 	 *
 	 * @param prefill number of buffers to render before returning (clamped to {@link #slots})
 	 */
@@ -158,13 +164,12 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 		producer.setDaemon(true);
 		producer.start();
 
+		// The producer records its failure before clearing running, so once this loop exits
+		// a failure that stopped the prefill short is visible below.
 		while (running && writeIndex.get() < target) {
-			if (producerError != null) {
-				throw new HardwareException("Pattern render-ahead failed during prefill", new RuntimeException(producerError));
-			}
 			Thread.onSpinWait();
 		}
-		if (producerError != null) {
+		if (producerError != null && writeIndex.get() < target) {
 			throw new HardwareException("Pattern render-ahead failed during prefill", new RuntimeException(producerError));
 		}
 	}
@@ -227,8 +232,12 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 	 *
 	 * <p>A stream that is not running (never started, or {@link #stop() stopped} — for
 	 * instance because the scene it renders from was torn down or reloaded) has no producer
-	 * to fill a slot, so the call is rejected rather than left waiting forever. A producer
-	 * that failed reports its failure on every later call, not only the first.</p>
+	 * to fill a slot, so the call is rejected rather than left waiting forever.</p>
+	 *
+	 * <p>A producer failure belongs to the buffer whose render failed. Every buffer rendered
+	 * before the failure is still returned, and every await of the failed buffer or a later
+	 * one reports the failure, never blocking. This holds whenever the failure happens relative
+	 * to the await, so the result of each call does not depend on thread timing.</p>
 	 *
 	 * <p>The running check and the wait are not one atomic step: a consumer can pass the
 	 * check and then have {@link #stop()} run — setting {@code running} false, joining the
@@ -243,11 +252,11 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 	 * @throws HardwareException if the producer failed
 	 */
 	public PackedCollection awaitSlot() {
-		if (producerError != null) {
-			throw new HardwareException("Pattern render-ahead failed", new RuntimeException(producerError));
+		if (producerError != null && !isRendered(readIndex.get())) {
+			throw producerFailure();
 		}
 
-		if (!running) {
+		if (!running && producerError == null) {
 			throw new IllegalStateException("Render-ahead stream is not running; it was never"
 					+ " started or was stopped, and must be started before slots are awaited");
 		}
@@ -258,14 +267,51 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 			Thread.currentThread().interrupt();
 			throw new HardwareException("Interrupted awaiting rendered pattern buffer");
 		}
+		long r = readIndex.get();
 		if (producerError != null) {
-			throw new HardwareException("Pattern render-ahead failed", new RuntimeException(producerError));
+			if (isRendered(r)) {
+				return slotView(r);
+			}
+
+			// This permit was the producer's failure wake-up; pass it on so any other
+			// waiter observes the failure too rather than blocking forever.
+			filled.release();
+			throw producerFailure();
 		}
 		if (!running) {
 			throw new IllegalStateException("Render-ahead stream was stopped while a rendered"
 					+ " buffer was awaited; it must be running for a slot to be returned");
 		}
-		return ring.range(slotShape, (int) (readIndex.get() % slots) * sliceSize);
+		return slotView(r);
+	}
+
+	/**
+	 * Returns whether the buffer at the given read position was rendered by the producer.
+	 *
+	 * @param read a consumer read position
+	 * @return {@code true} if the producer completed that buffer's render
+	 */
+	private boolean isRendered(long read) {
+		return read < writeIndex.get();
+	}
+
+	/**
+	 * Returns the ring slot view that holds the buffer at the given read position.
+	 *
+	 * @param read a consumer read position
+	 * @return a {@code [inputChannels, bufferSize]} view of that buffer
+	 */
+	private PackedCollection slotView(long read) {
+		return ring.range(slotShape, (int) (read % slots) * sliceSize);
+	}
+
+	/**
+	 * Returns the exception that reports the producer's render failure to a consumer.
+	 *
+	 * @return the failure report, carrying the producer's error as its cause's cause
+	 */
+	private HardwareException producerFailure() {
+		return new HardwareException("Pattern render-ahead failed", new RuntimeException(producerError));
 	}
 
 	/**
