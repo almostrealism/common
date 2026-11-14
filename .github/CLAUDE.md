@@ -86,6 +86,123 @@ tools                 → ml
 
 ---
 
+## Validate and Test Runs
+
+"Build and Test" (`analysis.yaml`) runs in one of two modes, decided by the
+event that started it. The `changes` job publishes the mode as `run_tests`.
+
+| | Validate run | Test run |
+|-|--------------|----------|
+| Started by | `pull_request` (every push to a PR branch) | `deployment` of the branch to the `test` environment; `push` to master; `workflow_dispatch` |
+| Runs | `changes`, `build`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test`, `test-media`, `test-mac`, `test-media-mac`, `test-cl`, `test-media-cl`, `test-cuda`, `test-media-cuda`, `test-flowtree` and `analysis` |
+| Remediation | `auto-review`, `auto-resolve-python` | `auto-resolve-python`, and `auto-resolve` after the flaky-test retries |
+| Gate check | **All Checks** | **Test Checks** |
+| `run_tests` | `false` | `true` |
+
+Why: an agent's review loop pushes many commits before it reaches a stopping
+point, and each push used to start the full suite on the self-hosted fleet,
+only to have the next push cancel it. Validate runs use hosted runners only
+and finish in minutes. The long-running lanes run once, after the loop has
+settled.
+
+**Both `All Checks` and `Test Checks` are required status checks for master.**
+A validate run never reports `Test Checks` in any state, so a PR cannot merge
+until a test run has passed on its head commit. That rests on four rules:
+
+- **The gate job's name is the only thing that differs.** `all-checks` is named
+  ```
+  ${{ github.event_name == 'pull_request' && 'All Checks'
+  || (github.event_name != 'deployment' || github.event.deployment.environment == 'test') && 'Test Checks'
+  || 'Not a test deployment' }}
+  ```
+  Keep this text and the expression in `analysis.yaml` identical. Never add
+  another job named `Test Checks`. Never give a job a name that
+  becomes `Test Checks` in a validate run and is then skipped by an `if`:
+  GitHub counts a skipped required check as passing.
+- **Only a deployment to the `test` environment is a test run.** Every
+  deployment in the repository fires the `deployment` event (`production`,
+  `worker`, `start-tests`). For any other environment, `changes`, and with it
+  every job, is skipped. The gate is skipped too and reports as
+  `Not a test deployment`, never as `Test Checks`. `analysis`, which does
+  not need `changes`, carries the same environment condition itself.
+- **The gate runs on `always()`.** A cancelled run then reports the gate as
+  failed. With `!cancelled()` it would report it as skipped.
+- **A test run is started by a `deployment`, never by `workflow_dispatch`.**
+  Checks from a `workflow_dispatch` run on a PR head branch do not satisfy a
+  required status check. GitHub evaluates only `push`, `pull_request`,
+  `pull_request_review`, `pull_request_target`, `deployment` and
+  `deployment_status` runs for that. `workflow_dispatch` remains for master and
+  for manual full runs; their `Test Checks` gate nothing.
+
+### Starting a test run
+
+Something creates a deployment of the branch to the `test` environment. That
+deployment must be created with a token other than a workflow's `GITHUB_TOKEN`:
+GitHub does not start workflows from events that `GITHUB_TOKEN` creates. Three
+ways, none of which CI depends on:
+
+1. **The FlowTree controller.** A workstream can name the CI action to take when
+   one of its jobs finishes with nothing to commit, i.e. when the review loop
+   has ended. Starting a test run is that action.
+2. **The `Start Tests` workflow** (`start-tests.yaml`). Dispatch it on master and
+   name the branch. It creates the deployment with the `START_TESTS_TOKEN`
+   secret of the `start-tests` environment: a fine-grained token with
+   Deployments read/write. Restrict that environment's deployment branches to
+   master, because `workflow_dispatch` runs the file from the dispatched ref.
+   It resolves the `branch` input against `refs/heads/` (with the workflow's own
+   `GITHUB_TOKEN`, `contents: read`) and refuses a raw SHA or a pull ref before
+   deploying, so this manual button cannot create a test deployment of
+   fork-controlled code — the trust rule below, enforced at the button.
+3. **One REST call** with your own token:
+   ```bash
+   echo '{"ref":"<branch>","environment":"test","auto_merge":false,
+          "required_contexts":[],"transient_environment":true}' |
+     gh api --method POST repos/almostrealism/common/deployments --input -
+   ```
+   `auto_merge` must be `false`: the default merges master into the branch
+   first. `required_contexts` must be empty: the default refuses to deploy until
+   every commit status has passed.
+
+A deployment run tests the branch head itself, not the pull request's trial
+merge with master. Master's own test run after the merge covers the
+combination. Layer gating in a test run diffs against the merge base with
+`origin/master`, which is what the PR diff shows. At the end the gate posts
+`success` or `failure` on the deployment, so the PR shows the outcome. That
+status is informational only.
+
+The `deployment` trigger runs `analysis.yaml` **from the branch**, so a branch
+created before this split must merge master before it can have a test run.
+It also means a test run carries the same trust as a `pull_request` run of a
+branch in this repository: both execute the branch's own workflow file with
+the repository's secrets, so the deployment trigger grants a branch nothing
+its pull request does not already have. Only a token with deployment write
+access can start one. **Never create a test deployment of a fork's commit**
+(a SHA or `refs/pull/N/head`): that would run fork-controlled workflow code
+with secrets that a fork's `pull_request` run never receives. Every supported
+way of starting a test run names a branch of this repository.
+
+### Concurrency across the two modes
+
+The workflow's concurrency group is keyed by branch name **and mode**
+(`build-and-test-<head repo>-<branch>-validate` / `-test`; the head
+repository keeps same-named branches of two forks apart). The two modes must not share
+a group. If they did, starting a test run would cancel the validate run of
+the same commit, and a cancelled validate run reports `All Checks` as failed,
+which blocks the merge until validation is re-run. (This happened on the
+first live test run.) The group uses the branch name, not `github.ref`,
+because a `pull_request` run's ref is `refs/pull/N/merge`.
+
+A new push must still stop a test run working on the commit it replaced. The
+validate run's `cancel-superseded-test-runs` job does that: it cancels the
+branch's queued and in-progress `deployment` runs whose head SHA is not its
+own. It runs only for pull requests from this repository: a fork's branch has
+no test runs, and a fork PR that shares a name with one of this repository's
+branches must not cancel that branch's test run. It is the only job in the pipeline with `actions: write`. For that
+reason it runs its few API calls inline from the workflow file and checks
+out no branch code. Master queues as before.
+
+---
+
 ## How Layer-Gating Works
 
 The `changes` job detects which top-level directories changed and sets flags:
@@ -173,8 +290,8 @@ conflicting edits and at least one of them fails.
 | Job | When | Prompts | Submission |
 |-----|------|---------|------------|
 | `auto-resolve-python` | `python-tests` or `python-evals` failed | Python test failure | At once, from this run |
-| `auto-review` | attempt 1 only, `python-tests` and `python-evals` not failed | build failure → code policy → quality gates → docs-only review → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
-| `auto-resolve` | attempt ≥ 3, `python-tests` and `python-evals` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
+| `auto-review` | validate runs (`pull_request`) only, attempt 1 only, `python-tests` and `python-evals` not failed | build failure → code policy → quality gates → docs-only review → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
+| `auto-resolve` | test runs only (`run_tests`), attempt ≥ 3, `python-tests` and `python-evals` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
 
 The docs-only review (`docs-review.txt`) reviews and improves documents and
 **never implements a plan**, and it keeps its edits under `docs/` so the branch
@@ -193,8 +310,9 @@ cannot reach the implementation prompt.
 The early two exist so that an agent reaches a stopping point — gates green, no
 simple fixes or review comments outstanding — before anyone pays for the
 long-running suites. The quality gates are deterministic, so there is nothing to
-retry before acting on them; `auto-review` submits while the test jobs are still
-running, and its prompts say that test results are not yet known. The
+retry before acting on them. `auto-review` runs in validate runs, where the
+long-running lanes do not run at all (see "Validate and Test Runs"), and its
+prompts say that test results are not yet known. The
 long-running jobs (`test`, `test-flowtree`, `test-media`, the mac and CL lanes)
 are flaky, so their failures are only handed to an agent once
 `rerun-flaky-tests.sh` has spent its retries.
@@ -917,6 +1035,23 @@ step so a failed deploy cannot leave the controller permanently quiesced.
 `concurrency` does **not** cancel in progress: interrupting a half-finished
 container rebuild is worse than queueing behind it.
 
+**A deploy never takes the stack down on a guess.** `rebuild.sh` builds every
+image — controller stack and agent pool — before it stops any container, so a
+failed build changes nothing. It then starts the new controller-stack images
+(`ar-memory`, `ar-tracker`, `flowtree-controller`, `ar-manager`) in an isolated
+compose project, `<project>-preflight`, with no published ports, throwaway
+state and an empty workstream list (so no Slack connection, no agent
+connections, no live data), and requires every healthcheck to pass; on
+failure it exits with the running stack untouched. Only then does it replace
+the live containers, with `up --wait`. A replacement that does not become
+healthy is rolled back: the images that were running are re-tagged and
+started again, and the step fails. `fleet-db` and `fleet-grafana` are never
+preflighted — a second Postgres on the live data directory would corrupt it.
+The preflight cannot prove the new images work against the live
+configuration and data; the rollback covers that. `test-rebuild.sh` (run by
+`python-tests` through `tools/tests/test_rebuild_sh.py`) pins the ordering,
+the preflight and the rollback.
+
 **The agent pool is part of the deploy.** `flowtree-agent-1` and
 `flowtree-agent-2` run their own image, which bundles the flowtree JARs — a
 change under `flowtree/agents` (the tool policy a coding-agent session runs
@@ -1064,20 +1199,24 @@ differences travel as inputs: `branch-prefix`, `min-interval-days`,
 `ignore-interval` (passed as `${{ github.event.inputs.ignore_interval_<job> ||
 'false' }}`), `max-open-prs` (the same literal `MAX_OPEN_PRS` holds, since a
 called workflow cannot read the caller's `env`), the `prompt` (a built-in
-selector — `defect-hunt`, `doc-qa`, `consolidation`, `flaky-hunt` — or a path to
-the caller's own template), `template-vars`, and the submission settings
-(`protect-test-files`, `phase-configs`, `required-labels`, `enforce-changes`).
+selector — `defect-hunt`, `doc-qa`, `consolidation`, `flaky-hunt`,
+`retrospective` — or a path to the caller's own template), `template-vars`, and
+the submission settings (`protect-test-files`, `phase-configs`,
+`required-labels`, `enforce-changes`).
 `coverage-qa` stays inline: its target selection runs before branch creation and
 gates the whole round, it interleaves an exclusion commit with branch creation,
 and it needs `actions: read` to reuse master's coverage artifact — none of which
-fit the single-job generic shape. The templates of `performance-qa`, `pdsl-qa`
-and `qa-retrospective` are about this framework's own concerns (Metal, PDSL, the
-retrospective's ledger and branch conventions), so those rounds call
-`qa-round.yaml` but pass their own local template by path rather than a built-in
-selector; they are not offered to consumers. Of the built-in templates only the
-defect hunt is generalised today (its tooling guidance is a selectable
-`TEST_RUNNER_FRAGMENT`); `doc-qa` and `consolidation` remain this repository's
-own until a concrete non-Maven consumer appears.
+fit the single-job generic shape. The templates of `performance-qa` and
+`pdsl-qa` are about this framework's own concerns (Metal, PDSL), so those rounds
+call `qa-round.yaml` but pass their own local template by path rather than a
+built-in selector; they are not offered to consumers. Of the built-in templates
+the defect hunt is generalised (its tooling guidance is a selectable
+`TEST_RUNNER_FRAGMENT`) and so is the retrospective (its report location,
+visibility and finding-landing travel as template variables and `@include`
+fragments, so a consumer runs its own retrospective scoped to its own
+`REPO_URL`; see the `qa-retrospective` section below); `doc-qa` and
+`consolidation` remain this repository's own until a concrete non-Maven consumer
+appears.
 
 A new QA job for this repository adds a caller of `qa-round.yaml` (or, for a
 coverage-shaped round, a new inline job); either way it still gets its own
@@ -1219,7 +1358,22 @@ measurement, and the merged tests run on every backend the pipeline covers.
 
 `qa-retrospective` is the round that looks back at the others: it surveys the
 repository's recent automated work and proposes, with evidence, how the agent
-harness and the QA jobs should improve — it only proposes. Its output is
+harness and the QA jobs should improve — it only proposes. It is a **built-in
+`qa-round.yaml` template** (`prompt: retrospective`), generalised with template
+variables so each consuming repository runs its own, scoped to its own
+`REPO_URL` and written into its own tree, rather than passing a Common-specific
+template by path. This caller sets `template-vars` `REVIEW_SINCE` and
+`QA_PREFIXES` and leaves the rest at the built-in defaults, which describe this
+public, framework-owned repository: `REPORT_DIR` is `docs/qa/retrospectives`,
+`VISIBILITY_FRAGMENT` is the public rule (name no private product), and
+`FINDINGS_FRAGMENT` lands findings on `ci/qa-…`/ordinary/person-only branches. A
+private consumer overrides those through its own `template-vars` (the private
+visibility fragment, the consumer finding-landing fragment, and
+`FRAMEWORK_TRACKER_PROJECT` so harness findings are filed as tracker tasks it
+can land rather than edits it cannot); the adoption example is in the header of
+`.github/workflows/qa-round.yaml`. The privacy rule is unchanged for every
+caller: a retrospective never reads, quotes or counts another repository, so
+each repository's history stays private to it. Its output is
 docs-only (a report under `docs/qa/retrospectives/` and a row in that
 directory's ledger), so `PROTECT_TEST_FILES` costs nothing. That scope is the
 prompt's contract, not a harness restriction — no submission setting confines a
@@ -1406,9 +1560,9 @@ controller secret** — no `framework-ref` input and no `secrets:` block.
   branch, register, build prompt, submit, summary — all parameterised by the
   caller's inputs. The branch prefix, interval and submission settings are
   inputs; the `prompt` input is a built-in template selector (`defect-hunt`,
-  `doc-qa`, `consolidation`, `flaky-hunt`) or a path to the caller's own
-  template, read as data by `build-qa-round-prompt.sh` and rendered but never
-  executed. Its job's `concurrency` group keys on the calling repository and the
+  `doc-qa`, `consolidation`, `flaky-hunt`, `retrospective`) or a path to the
+  caller's own template, read as data by `build-qa-round-prompt.sh` and rendered
+  but never executed. Its job's `concurrency` group keys on the calling repository and the
   round name, so two merges to one repository cannot both pass a round's gate
   while different rounds do not serialize against each other. This repository's
   `master-agent-dispatch.yaml` calls it for every QA round except `coverage-qa`.
@@ -1546,8 +1700,8 @@ jobs that build PR code is how `pull_request_target` becomes a token-exfiltratio
 vector. Never add a `ref:` to that checkout, and never move this job into
 `analysis.yaml`.
 
-Scope is `event=pull_request` runs of `analysis.yaml` matching the PR's head
-branch **and** head repository. The event filter is load-bearing: under a
+Scope is `event=pull_request` (validate) and `event=deployment` (test) runs of
+`analysis.yaml` matching the PR's head branch **and** head repository. The event filter is load-bearing: under a
 fast-forward or rebase merge, master's new head can be the same SHA as the PR
 head, so a SHA-based filter would cancel the master pipeline. The
 head-repository match keeps a fork's branch from matching a same-named branch
@@ -1637,6 +1791,9 @@ hook below is a partial backstop, not yet a closed surface (see its own entry):
 ### Adding a new test job
 
 - Identify exactly which modules the job tests.
+- Decide its mode (see "Validate and Test Runs"). A job that runs on the
+  self-hosted fleet, takes long, or is retry-eligible belongs in test runs:
+  put `needs.changes.outputs.run_tests == 'true' &&` at the start of its `if`.
 - Trace which layer flags those modules depend on (using the graph above).
 - Gate the job on the correct `*_changed` flags.
 - Add the job to `analysis`'s `needs` list.

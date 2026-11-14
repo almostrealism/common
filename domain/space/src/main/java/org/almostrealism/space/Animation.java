@@ -160,6 +160,36 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	public double getFrameDuration() { return this.fdt; }
 
 	/**
+	 * Returns the number of physics iterations that elapse per rendered frame,
+	 * {@code getFrameDuration() / getTickDuration()} truncated to an integer, but never fewer than
+	 * one: when a frame is shorter than a physics tick (so the ratio would truncate to zero) a frame
+	 * is written every iteration. This is the divisor {@link #run()} uses to decide frame boundaries
+	 * and {@link #getFrameCount()} uses to count frames, so both agree.
+	 *
+	 * @return the number of physics iterations per rendered frame, at least one
+	 */
+	private int iterationsPerFrame() {
+		return Math.max(1, (int) (this.fdt / this.dt));
+	}
+
+	/**
+	 * Returns the number of frames a {@link #run() run} writes. A frame is written every
+	 * {@link #iterationsPerFrame() iterations-per-frame} iterations, so the frame count is fewer than
+	 * {@link #getIterations() the iteration count} whenever several physics ticks elapse per frame,
+	 * and equal to it when a frame is written every iteration — either because a velocity-dependent
+	 * time step is configured, or because a frame is shorter than a physics tick.
+	 *
+	 * @return the number of frames written by a run
+	 */
+	public int getFrameCount() {
+		if (this.vdt > 0.0) {
+			return this.itr;
+		}
+
+		return this.itr / iterationsPerFrame();
+	}
+
+	/**
 	 * If the value of vdt is set to anything greater than 0.0, the time interval for each
 	 * iteration will be set so that it is the value of vdt divided by the average velocity
 	 * of the objects in the screen.
@@ -294,7 +324,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 			log("Error reading instance file. Zero will be used.");
 		}
 
-		int iterationsPerFrame = (int) (this.fdt / this.dt);
+		int iterationsPerFrame = iterationsPerFrame();
 
 		for (int i = 0; i < this.itr; i++) {
 			try {

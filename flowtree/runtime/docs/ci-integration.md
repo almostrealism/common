@@ -152,13 +152,26 @@ The per-round differences are inputs: `branch-prefix`, `min-interval-days`,
 settings (`protect-test-files`, `enforce-changes`, `max-enforce-changes-retries`,
 `phase-configs`, `required-labels`, `required-labels-json`, `description`), and
 the prompt. The `prompt` input is either a built-in template selector
-(`defect-hunt` | `doc-qa` | `consolidation` | `flaky-hunt`, rendered from the
-framework checkout) or a path to a template the caller supplies in its own
-checkout, read as *data* by `tools/ci/prompts/build-qa-round-prompt.sh` and
-rendered but never executed. `template-vars` is a JSON map of extra `${NAME}`
-substitutions, and `test-runner-fragment` chooses the language-specific tooling
+(`defect-hunt` | `doc-qa` | `consolidation` | `flaky-hunt` | `retrospective`,
+rendered from the framework checkout) or a path to a template the caller
+supplies in its own checkout, read as *data* by
+`tools/ci/prompts/build-qa-round-prompt.sh` and rendered but never executed.
+`template-vars` is a JSON map of extra `${NAME}` substitutions, and
+`test-runner-fragment` chooses the language-specific tooling
 guidance a built-in template includes (default `test-runner-maven.txt`; a
-non-Maven consumer passes `test-runner-generic.txt`). The trust rule is the same
+non-Maven consumer passes `test-runner-generic.txt`).
+
+The `retrospective` selector surveys a repository's recent automated work and
+proposes how its QA process should improve. It is generalised through
+`template-vars` so each consuming repository runs its own, scoped to its own
+`REPO_URL` and written into its own tree, and never reading or quoting another
+repository: `REVIEW_SINCE` and `QA_PREFIXES` set the survey window and the QA
+branch prefixes; `REPORT_DIR` is where the report and ledger live (default
+`docs/qa/retrospectives`); `VISIBILITY_FRAGMENT` selects the public rule
+(default) or a private variant; and `FINDINGS_FRAGMENT` with
+`FRAMEWORK_TRACKER_PROJECT` routes a consumer's shared-harness findings to the
+framework's tracker project as tasks, since a consumer cannot edit harness
+files it does not own. The trust rule is the same
 as the other reusable workflows: no input is interpolated into a `run:` script,
 the controller URL and client ID are inputs, and the client secret is the
 declared `workflow_call` secret `FLOWTREE_CF_ACCESS_CLIENT_SECRET`.
@@ -214,6 +227,35 @@ The agent receives the job, clones or updates the repository, runs Claude Code w
 ### Step 6: New CI Run
 
 The push triggers a new CI run. If the fix resolves the failure, the pipeline succeeds. If not, the cycle can repeat (subject to concurrency limits and budget constraints).
+
+### Settled CI: starting the long-running tests when the review loop ends
+
+A push to a pull request only starts a *validate* run of "Build and Test".
+The long-running test lanes run in a separate *test* run, which a deployment
+of the branch starts. "Validate and Test Runs" in `.github/CLAUDE.md`
+describes that design.
+
+The controller starts the test run when the review loop ends. A workstream's
+`settledCiTrigger` names the CI to start when one of its coding jobs finishes
+successfully with nothing to commit (`JobCompletionEvent.isSuccessWithoutChanges()`).
+That is how the loop ends: the review that finds nothing to fix.
+
+| Value | Effect |
+|-------|--------|
+| `deployment:<environment>` | Creates a deployment of the branch to that environment. `deployment:test` starts this repository's test run, whose `Test Checks` gate is a required status check. |
+| `workflow:<file>` | Dispatches that workflow on the branch. Checks from a dispatched run do not satisfy required status checks. |
+| empty | Nothing (the default). |
+
+`CiTrigger.start` checks whether the branch's head commit already has a
+deployment to that environment, or a run of that workflow, and does nothing if
+it does. That makes it safe to fire on every change-free job. The trigger never
+fires for the workstream's base branch.
+
+Set it with `workstream_update_config(settled_ci_trigger="deployment:test")`,
+or at registration. The controller uses the workstream organisation's GitHub
+token, and that token must be able to create deployments. CI does not depend on
+the controller for this: when the controller is down, a person starts the same
+test run with the `Start Tests` workflow or one REST call.
 
 ---
 

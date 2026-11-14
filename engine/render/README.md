@@ -172,11 +172,13 @@ public class RayTracedScene extends Realization<RealizableImage, RenderParameter
 
 ### RayTracedAnimation
 
-An `Animation` (from `ar-space`) that ray traces each frame with `RayTracedScene` and writes it to
-the output directory as a PNG, plus an `encode.sh` that encodes the frames as a video. Its camera
-and rigid bodies can be stored as and loaded from `Properties`. Set the frame size with
-`setImageDimensions` and turn on `setRenderEachFrame`; `Animation.run()` then writes a frame
-each time a frame duration of simulated time has passed.
+An `Animation` (from `ar-space`) that ray traces each frame with `RayTracedScene` and hands it to an
+`ImageSequence` (from `ar-color`), the single frame-sequence writer that owns the zero-padded PNG
+naming, written-frame tracking, and the `ffmpeg` `encode.sh`. Its camera and rigid bodies can be
+stored as and loaded from `Properties`. Set the frame size with `setImageDimensions` and turn on
+`setRenderEachFrame`; `Animation.run()` then writes a frame each time a frame duration of simulated
+time has passed. The `SimulationRunner`-driven `RayTracedFrameSequence` shares the same
+`ImageSequence`; the two differ only in what advances time between frames.
 
 `PhotonFieldAnimation` extends it with a `DefaultPhotonField` on the animation's clock: every
 member that is also an `Absorber` is kept in the field's `AbsorberHashSet`, however it is added to

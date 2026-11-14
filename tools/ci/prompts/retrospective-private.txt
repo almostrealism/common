@@ -1,0 +1,4 @@
+This repository is private. Your report may describe this repository's own work
+freely — its code, its products, and its own workstreams. The boundary that still
+holds is the one between repositories: never read, quote, or count anything that
+belongs to another repository, whether public or private.

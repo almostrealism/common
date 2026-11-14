@@ -267,6 +267,28 @@ public class WaveDetails implements CodeFeatures, Node {
 	}
 
 	/**
+	 * Releases the native memory backing the frequency data, if any, and clears
+	 * the reference.
+	 *
+	 * <p>The frequency {@link PackedCollection} is potentially GPU-resident, and
+	 * dropping the Java reference alone leaves that memory held until the collector
+	 * runs a finalizer — the same reason {@link #releaseData()} destroys the raw
+	 * samples rather than nulling them. This is the deterministic release to use
+	 * before replacing the frequency data with a freshly computed buffer, so the
+	 * superseded one does not leak.</p>
+	 *
+	 * <p>Call this only on a WaveDetails whose frequency data is not shared with
+	 * anything else. Afterwards {@link #getFreqData()} is {@code null}, and any
+	 * collection it previously returned can no longer be read.</p>
+	 */
+	public void releaseFreqData() {
+		if (freqData == null) return;
+
+		freqData.destroy();
+		freqData = null;
+	}
+
+	/**
 	 * Returns whether this sample contains only silence.
 	 *
 	 * @return true if silent

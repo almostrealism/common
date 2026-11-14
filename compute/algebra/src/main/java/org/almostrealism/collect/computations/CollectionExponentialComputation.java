@@ -222,16 +222,8 @@ public class CollectionExponentialComputation extends TraversableExpressionCompu
 			return super.deltaDependent(target, axis, weight);
 		}
 
-		TraversalPolicy targetShape = shape(target);
-		TraversalPolicy shape = getShape().append(targetShape);
 		CollectionProducer input = (CollectionProducer) getInputs().get(1);
-
-		CollectionProducer d = input.delta(target);
-		d = d.reshape(getShape().getTotalSize(), -1).traverse(0);
-
-		CollectionProducer scale = isIgnoreZero() ? expIgnoreZero(input) : exp(input);
-		scale = scale.flatten();
-
-		return expandAndMultiply(scale, d).reshape(shape);
+		return chainRuleDelta(target, input,
+				isIgnoreZero() ? expIgnoreZero(input) : exp(input));
 	}
 }

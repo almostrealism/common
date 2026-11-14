@@ -1,6 +1,6 @@
 # Implementation of the sparse matrix–vector product must verify parity and
 # measure throughput on the Metal backend, which only macOS FlowTree nodes
-# provide (see docs/plans/PLAN-20261026-sparse-matrix-spmv.md, "Success
-# criteria" and "Dependencies").
+# provide (the completed sparse-matrix plan's success criteria and
+# dependencies required both on Metal).
 requiredLabels:
   platform: macos
