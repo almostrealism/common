@@ -143,7 +143,13 @@ ways, none of which CI depends on:
 
 1. **The FlowTree controller.** A workstream can name the CI action to take when
    one of its jobs finishes with nothing to commit, i.e. when the review loop
-   has ended. Starting a test run is that action.
+   has ended. Starting a test run is that action. `register-workstream` sets
+   it (`SETTLED_CI_TRIGGER`, default `deployment:test`) on every branch's
+   workstream, including one that already exists. `auto-review-submit` and
+   `auto-resolve-python-submit` pass it for a workstream their submission
+   creates, which is how a docs-only branch gets it. A workstream without it
+   leaves its PR unmergeable until someone starts the test run by hand.
+   `tools/tests/test_settled_ci_registration.py` pins this.
 2. **The `Start Tests` workflow** (`start-tests.yaml`). Dispatch it on master and
    name the branch. It creates the deployment with the `START_TESTS_TOKEN`
    secret of the `start-tests` environment: a fine-grained token with

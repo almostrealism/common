@@ -257,6 +257,16 @@ token, and that token must be able to create deployments. CI does not depend on
 the controller for this: when the controller is down, a person starts the same
 test run with the `Start Tests` workflow or one REST call.
 
+In this repository CI sets it on every branch's workstream, so nothing has to
+be done by hand. The `register-workstream` job passes
+`SETTLED_CI_TRIGGER` (the `SETTLED_CI_TRIGGER` repository variable, default
+`deployment:test`) to `register-workstream.sh`, which sends it on registration
+and re-applies it to a workstream that already exists, however that workstream
+was created. A docs-only branch has no `register-workstream` run, so the early
+submit jobs pass the same value to `submit-agent-job.sh`. When that submission
+creates the workstream, the controller gives the new workstream the trigger
+too. It is the one submission field that becomes a workstream setting.
+
 ---
 
 ## Failure Detection
