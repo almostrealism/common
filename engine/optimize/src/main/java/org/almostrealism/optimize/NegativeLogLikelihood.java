@@ -16,38 +16,41 @@
 
 package org.almostrealism.optimize;
 
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-
-import java.util.stream.IntStream;
 
 /**
  * Negative Log Likelihood (NLL) loss function for classification tasks.
  * <p>
- * NLL computes the negative log probability of the correct class. When used with
- * log-softmax outputs, this is equivalent to cross-entropy loss. The loss is computed as:
+ * NLL computes the negative log probability of the correct class. The outputs are already
+ * log-probabilities (from log-softmax), so no further logarithm is taken, and the loss is
+ * equivalent to cross-entropy loss. The term of each row {@code r} is computed as:
  * </p>
  * <pre>
- * NLL = -log(output[target_class])
+ * NLL[r] = -sum(output[r] * target[r])
  * </pre>
  * <p>
- * For batched inputs, the average NLL across all samples is returned.
+ * For a one-hot target row this is {@code -output[r, target_class]}. For batched inputs, the
+ * loss is the average of the row terms.
  * </p>
  *
  * <h2>Gradient</h2>
  * <p>
  * The gradient is that of the averaged loss: for an output with {@code rows} rows (the
- * leading dimension after padding to two dimensions, the same rows {@link #loss} averages
- * over), it is {@code -1 / rows} at the target class of each row and 0 elsewhere.
+ * leading dimension after padding to two dimensions, the same rows the {@link #loss} terms
+ * are computed for), it is {@code -1 / rows} at the target class of each row and 0 elsewhere.
  * </p>
  * <pre>
  * dL/dOutput[r, i] = -1 / rows if i == target_class(r), 0 otherwise
  * </pre>
  * <p>
- * For a single-row output this is -1 at the target class. The loss and the gradient agree
- * only for one-hot targets: the loss scores the argmax of each target row, while the gradient
- * is {@code -target / rows} over every non-zero target position.
+ * For a single-row output this is -1 at the target class. In general, the loss weighs the
+ * output by the target, {@code -sum(output * target) / rows}, and the gradient is
+ * {@code -target / rows}, which is exactly its derivative.
  * </p>
  *
  * <h2>When to Use</h2>
@@ -68,8 +71,9 @@ import java.util.stream.IntStream;
  * // Create NLL loss
  * NegativeLogLikelihood nll = new NegativeLogLikelihood();
  *
- * // Compute loss (assumes softmax outputs and one-hot targets)
- * double loss = nll.loss(predictions, oneHotTargets);
+ * // Compute loss (assumes log-softmax outputs and one-hot targets): the mean over rows
+ * double loss = nll.loss(cp(predictions), cp(oneHotTargets))
+ *     .evaluate().doubleStream().average().orElse(0);
  *
  * // Get gradient for backpropagation
  * Producer<PackedCollection> grad = nll.gradient(outputProducer, targetProducer);
@@ -83,52 +87,64 @@ import java.util.stream.IntStream;
  */
 public class NegativeLogLikelihood implements LossProvider, CollectionFeatures {
 	/**
-	 * Computes the negative log likelihood loss.
-	 * <p>
-	 * For each sample in the batch, extracts the log-probability at the target class
-	 * index (determined by argmax of the target) and negates it. Returns the average
-	 * loss across all samples.
-	 * </p>
+	 * Returns the negative log likelihood of each row of the output: for an output with
+	 * {@code rows} rows (the leading dimension after padding its shape to two dimensions), the
+	 * term of row {@code r} is {@code -sum(output[r] * target[r])}, which for a one-hot target row is
+	 * the negated log-probability at the target class. The mean of the terms is the loss.
 	 *
-	 * @param output the model's log-probability outputs
-	 * @param target the one-hot encoded target labels
-	 * @return the average negative log likelihood
-	 * @throws IllegalArgumentException if batch sizes don't match
+	 * @param output producer for the model's log-probability outputs
+	 * @param target producer for the one-hot encoded target labels, of the same size as the output
+	 * @return a producer of the negative log likelihood of each row
+	 * @throws IllegalArgumentException if the output or the target does not have a shape, from
+	 *                                  which the rows are determined, or if the target, padded to
+	 *                                  two dimensions, does not have as many rows as the output
 	 */
 	@Override
-	public double loss(PackedCollection output, PackedCollection target) {
-		PackedCollection o = output.reshape(padDimensions(output.getShape(), 2)).traverse(1);
-		PackedCollection t = target.reshape(padDimensions(target.getShape(), 2)).traverse(1);
-
-		int bs = o.getShape().length(0);
-		if (bs != t.getShape().length(0)) {
-			throw new IllegalArgumentException("Batch size mismatch");
+	public CollectionProducer loss(Producer<PackedCollection> output,
+								   Producer<PackedCollection> target) {
+		TraversalPolicy rows = rows(output);
+		int targetRows = rows(target).length(0);
+		if (targetRows != rows.length(0)) {
+			throw new IllegalArgumentException("Batch size mismatch: the output has " + rows.length(0)
+					+ " rows and the target has " + targetRows);
 		}
 
-		return IntStream.range(0, bs).mapToDouble(i -> {
-			PackedCollection v = t.get(i);
-			return -o.get(i).toDouble(v.argmax());
-		}).average().orElse(0.0);
+		// The sum is the last operation, so it is computed as a reduction loop; an operation
+		// applied to its result would inline the sum as one term for every column of the row
+		return c(output).reshape(rows).multiply(c(target).reshape(rows).minus()).sum(1);
 	}
 
 	/**
-	 * Computes the gradient of the averaged NLL loss reported by {@link #loss}.
+	 * Computes the gradient of the averaged NLL loss whose terms are given by {@link #loss}.
 	 * <p>
 	 * For the one-hot encoded targets this loss requires, the gradient of the mean over
 	 * {@code rows} rows is {@code -target / rows}, where {@code rows} is the leading dimension of
-	 * the output after padding its shape to two dimensions (the rows {@link #loss} averages
-	 * over). It is produced on the device rather than assembled on the host.
+	 * the output after padding its shape to two dimensions (the rows the {@link #loss} terms are
+	 * computed for). It is produced on the device rather than assembled on the host.
 	 * </p>
 	 *
 	 * @param output producer for the model's log-probability outputs, whose shape determines
 	 *               the number of rows
 	 * @param target producer for the one-hot encoded target labels
 	 * @return a producer for the gradient ({@code -1 / rows} at each row's target index)
+	 * @throws IllegalArgumentException if the output does not have a shape, from which the rows
+	 *                                  are determined
 	 */
 	@Override
 	public Producer<PackedCollection> gradient(Producer<PackedCollection> output,
 												  Producer<PackedCollection> target) {
-		int rows = padDimensions(shape(output), 2).length(0);
-		return c(target).multiply(-1.0 / rows);
+		return c(target).multiply(-1.0 / rows(output).length(0));
+	}
+
+	/**
+	 * Returns the shape of the given producer padded to two dimensions, whose leading dimension
+	 * is the number of rows the loss terms and the gradient are computed for.
+	 *
+	 * @param producer the output or target producer
+	 * @return the shape of the producer padded to two dimensions
+	 * @throws IllegalArgumentException if the producer does not have a shape
+	 */
+	private TraversalPolicy rows(Producer<PackedCollection> producer) {
+		return padDimensions(Shape.requireShape("Negative Log Likelihood", producer), 2);
 	}
 }

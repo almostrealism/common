@@ -185,7 +185,6 @@ public interface ModelTestFeatures extends TestFeatures {
 	 * @param minLoss    the fallback minimum loss value if initial convergence is quick
 	 * @throws FileNotFoundException if the results directory cannot be written to
 	 * @throws RuntimeException      if training fails to converge after all retry attempts
-	 * @deprecated TODO: Merge with the simpler train method above
 	 */
 	default void train(String name, Model model, Supplier<Dataset<?>> data, int epochs, int steps,
 								double lossTarget, double minLoss) throws FileNotFoundException {

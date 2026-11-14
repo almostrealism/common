@@ -58,6 +58,33 @@ When this host replaces a CPU fleet (`docker compose down` in `../docker`), coun
 the CPU lane in the runner count and the memory limit: `test` runs as a single
 job (no matrix), and so does `test-media`, so one runner holds each stage at once.
 
+## JDK Version (Baked Into the Shared Image)
+
+This fleet has no image of its own — it builds the Linux CPU fleet's image
+(`../docker`) unchanged, so it inherits that image's JDK. The CUDA jobs
+(`test-cuda`, `test-media-cuda`) do **not** download a JDK with
+`actions/setup-java`; they verify the runner's `java` against the workflow-level
+`EXPECTED_JDK_MAJOR` in `.github/workflows/analysis.yaml` and fail fast, naming
+the runner, on a mismatch. The major version is the single `JDK_MAJOR` build arg
+in [`../docker/Dockerfile`](../docker/Dockerfile) (default `17`), passed through
+this fleet's [`docker-compose.yml`](docker-compose.yml) as `JDK_MAJOR`.
+
+The runners are ephemeral, so the JDK changes only on an image rebuild. To move
+this fleet to a new major version:
+
+1. Change `EXPECTED_JDK_MAJOR` in `.github/workflows/analysis.yaml` (one value,
+   shared by every self-hosted lane), on a `ci/...` branch.
+2. On the DGX host, set `JDK_MAJOR` in `.env` to the same number and rebuild:
+
+   ```bash
+   echo 'JDK_MAJOR=21' >> .env     # omit to keep the default (17)
+   ./fleet.sh up                   # rebuilds the shared image and restarts the runner
+   ```
+
+With `JDK_MAJOR` unset the compose default (`17`) is built. A host left on the
+old image turns the CUDA lane red at the verify step, so a missed rebuild is
+reported rather than running the wrong JDK.
+
 ## Design: Nothing Installed on the Host
 
 The target host is an NVIDIA DGX Spark (GB10, aarch64) running NVIDIA's own OS
