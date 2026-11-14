@@ -98,6 +98,10 @@ public class NetworkTreeNodeTest extends TestSuiteBase {
 		Assert.assertEquals("a leaf has no children", 0, leaf.getChildCount());
 		Assert.assertNull("a leaf has no child at any index", leaf.getChildAt(0));
 		Assert.assertNull("a label-only node has no parent", leaf.getParent());
+
+		Enumeration children = leaf.children();
+		Assert.assertFalse("a leaf's child enumeration is empty, not a null dereference",
+				children.hasMoreElements());
 	}
 
 	/**
