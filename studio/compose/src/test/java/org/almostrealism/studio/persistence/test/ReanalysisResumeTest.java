@@ -29,6 +29,7 @@ import org.almostrealism.studio.persistence.test.support.SineWaveFiles;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Assert;
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -288,6 +289,48 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 			Assert.assertEquals("the re-analysis must not fail: " + errors, 0, errors.size());
 			Assert.assertEquals("each distinct audio content is encoded once", count, provider.started.get());
 			Assert.assertEquals("every item is complete", count, library.allDetails().count());
+		}
+	}
+
+	/**
+	 * Files that cannot be read have no content identifier. They are not one item,
+	 * so the refresh queues each of them rather than only the first, alongside every
+	 * readable item that is stale for the new model.
+	 *
+	 * @throws Exception if the library fails
+	 */
+	@Test(timeout = 300000)
+	public void everyFileWithoutAnIdentifierIsQueued() throws Exception {
+		int count = 4;
+		List<File> wavFiles = generateSineWaves(count, SAMPLE_DURATION);
+		writePreviousReleaseStore(wavFiles);
+
+		// Fresh paths, never hashed, so no identifier is cached for them.
+		Path locked = Files.createDirectories(samplesDir.resolve("locked"));
+		List<File> unreadable = List.of(
+				Files.copy(wavFiles.get(0).toPath(), locked.resolve("first.wav")).toFile(),
+				Files.copy(wavFiles.get(1).toPath(), locked.resolve("second.wav")).toFile());
+		for (File f : unreadable) {
+			Assert.assertTrue("cannot make " + f + " unreadable", f.setReadable(false, false));
+		}
+
+		try {
+			for (File f : unreadable) {
+				Assume.assumeTrue("the file is still readable (running as root?)", !Files.isReadable(f.toPath()));
+			}
+
+			List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
+			GatedProvider provider = new GatedProvider(Integer.MAX_VALUE);
+			try (Launch launch = new Launch()) {
+				AudioLibrary library = launch.open(provider, errors);
+				int before = library.getTotalJobs();
+				library.refresh().get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
+
+				Assert.assertEquals("every file, readable or not, is queued", count + unreadable.size(),
+						library.getTotalJobs() - before);
+			}
+		} finally {
+			for (File f : unreadable) f.setReadable(true, false);
 		}
 	}
 

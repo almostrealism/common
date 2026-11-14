@@ -1486,7 +1486,7 @@ public class AudioLibrary implements ConsoleFeatures {
 			// visits every provider and asks each for its identifier.
 			Map<String, File> index = new HashMap<>();
 			List<WaveDataProvider> recompute = new ArrayList<>();
-			// Content under several paths is one item, queued once, so "n of N" counts items.
+			// Content under several paths is queued once, so "n of N" counts items; unreadable files (null id) each count.
 			Set<String> queued = new HashSet<>();
 
 			root.children().forEach(f -> {
@@ -1495,7 +1495,7 @@ public class AudioLibrary implements ConsoleFeatures {
 
 				String identifier = provider.getIdentifier();
 				record(index, identifier, provider);
-				if (!completeIdentifiers.contains(identifier) && queued.add(identifier)) recompute.add(provider);
+				if (!completeIdentifiers.contains(identifier) && (identifier == null || queued.add(identifier))) recompute.add(provider);
 			});
 
 			fileIndex.replace(index);
