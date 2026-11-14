@@ -869,7 +869,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 	 * Builds the per-triangle vertex positions of a regular grid surface directly, with the
 	 * same node layout and winding as {@link #gridSurface(PackedCollection, Vector, double, double)},
 	 * without constructing a {@link Mesh}. Useful for building a host-only triangle list, for
-	 * example to feed {@link BoundingVolumeHierarchy#build(List)}.
+	 * example to derive the per-triangle bounds consumed by {@link BoundingVolumeHierarchy}.
 	 *
 	 * @param heights  the height field, indexed {@code [i][j]} over {@code nx} by {@code ny} nodes
 	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height

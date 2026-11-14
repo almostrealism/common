@@ -650,45 +650,6 @@ public interface TriangleFeatures extends VectorFeatures {
 	}
 
 	/**
-	 * Computes the node positions of a regular grid height field as a single Producer graph.
-	 *
-	 * <p>The result has shape {@code (nx*ny, 3)}: node {@code (i, j)}, at flat index
-	 * {@code i*ny + j}, sits at {@code (originX + i*spacingX, originY + h, originZ + j*spacingZ)},
-	 * where {@code h} is {@code heights[i*ny + j]}. This is the same node layout that
-	 * {@link #regularGridSurfacePoints} tessellates.</p>
-	 *
-	 * @param heights  the height field, shaped {@code (nx, ny)} (or any shape with
-	 *                 {@code nx*ny} elements in row-major order)
-	 * @param nx       the number of grid nodes along X
-	 * @param ny       the number of grid nodes along Z
-	 * @param originX  the X coordinate of node {@code (0, 0)}
-	 * @param originY  the base height added to every node's height value
-	 * @param originZ  the Z coordinate of node {@code (0, 0)}
-	 * @param spacingX the node spacing along X
-	 * @param spacingZ the node spacing along Z
-	 * @return producer for the {@code (nx*ny, 3)} node positions
-	 * @throws IllegalArgumentException if {@code nx} or {@code ny} is less than two
-	 */
-	default CollectionProducer regularGridSurfaceNodes(
-			Producer<PackedCollection> heights, int nx, int ny,
-			double originX, double originY, double originZ,
-			double spacingX, double spacingZ) {
-		requireGridNodes(nx, ny);
-		TraversalPolicy outputShape = new TraversalPolicy(false, false, nx * ny, 3).traverse(1);
-
-		return new DefaultTraversableExpressionComputation("regularGridSurfaceNodes", outputShape, args ->
-			CollectionExpression.create(outputShape, idx -> {
-				// Integer arithmetic only; see regularGridSurfacePoints on why not conditionals
-				Expression node = idx.divide(e(3));
-				Expression comp = idx.imod(3);
-				Expression x = e(originX).add(node.divide(e(ny)).multiply(e(spacingX)));
-				Expression z = e(originZ).add(node.imod(ny).multiply(e(spacingZ)));
-				Expression y = e(originY).add(args[1].getValueAt(node));
-				return conditional(comp.eq(e(0)), x, conditional(comp.eq(e(2)), z, y));
-			}), heights);
-	}
-
-	/**
 	 * Extracts a vertex from a packed collection of points.
 	 *
 	 *
