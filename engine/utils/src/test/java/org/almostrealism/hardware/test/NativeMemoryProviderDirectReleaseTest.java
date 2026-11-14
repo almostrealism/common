@@ -201,6 +201,32 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that a provider destroyed while an allocation is running its collection pass,
+	 * which runs outside the provider's monitor, does not hand out the block that allocation then
+	 * creates: the allocation fails, and nothing is left registered with the destroyed provider.
+	 */
+	@Test(timeout = 30_000)
+	public void destroyDuringCollectionRejectsAllocation() {
+		CountingProvider provider = new CountingProvider();
+		provider.release(TestNativeBuffer.create(null, 1000L, 128));
+		provider.release(TestNativeBuffer.create(null, 2000L, 128));
+		provider.destroyOnCollect = true;
+
+		boolean rejected = false;
+
+		try {
+			provider.allocate(16);
+		} catch (IllegalStateException e) {
+			rejected = true;
+		}
+
+		Assert.assertTrue(rejected);
+		Assert.assertEquals(1, provider.collections);
+		Assert.assertTrue(provider.isDestroyed());
+		Assert.assertEquals(0, provider.getAllocatedCount());
+	}
+
+	/**
 	 * A direct-mode provider that counts the collections it requests instead of running them,
 	 * and can release a buffer through its own deallocation path.
 	 */
@@ -219,6 +245,12 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 		 * which follows it is cut short.
 		 */
 		private boolean interruptOnCollect;
+
+		/**
+		 * If true, each requested collection destroys this provider, which stands in for a
+		 * {@link #destroy()} on another thread while an allocation is collecting.
+		 */
+		private boolean destroyOnCollect;
 
 		/** Creates a private (non-shared) direct-mode provider with no practical ceiling. */
 		CountingProvider() {
@@ -268,6 +300,7 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 		protected void collectGarbage() {
 			collections++;
 			if (interruptOnCollect) Thread.currentThread().interrupt();
+			if (destroyOnCollect) destroy();
 		}
 	}
 }
