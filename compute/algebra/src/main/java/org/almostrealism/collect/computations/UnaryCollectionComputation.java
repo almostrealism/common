@@ -148,16 +148,8 @@ public abstract class UnaryCollectionComputation extends TraversableExpressionCo
 			return super.deltaDependent(target, axis, weight);
 		}
 
-		TraversalPolicy targetShape = shape(target);
-		TraversalPolicy shape = getShape().append(targetShape);
-
 		// Chain rule: g'(f) * f'(x)
-		CollectionProducer d = c(getInputs().get(1)).delta(target);
-		d = d.reshape(getShape().getTotalSize(), -1).traverse(0);
-
-		CollectionProducer cofactor = getCofactor().flatten();
-
-		return expandAndMultiply(cofactor, d).reshape(shape);
+		return chainRuleDelta(target, c(getInputs().get(1)), getCofactor());
 	}
 
 	/**

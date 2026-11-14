@@ -19,20 +19,29 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 ## JDK on Self-Hosted Runners
 
 Self-hosted CI jobs do **not** download a JDK with `actions/setup-java`; the JDK
-is baked into each runner's image or host, and every self-hosted job runs a
-`Verify JDK version` step that checks the runner's `java` against the
-workflow-level `EXPECTED_JDK_MAJOR` in
-[`.github/workflows/analysis.yaml`](../../.github/workflows/analysis.yaml),
-failing fast and naming the runner on a mismatch. (Hosted `ubuntu-latest` jobs
-keep `setup-java`, which serves the JDK from the hosted image's tool cache; its
-`java-version` is `${{ env.EXPECTED_JDK_MAJOR }}`, so the hosted and self-hosted
-lanes track the same major from the one env value.)
+is baked into each runner's image or host, and every self-hosted job runs the
+shared [`select-jdk`](../../.github/actions/select-jdk/action.yml) composite
+action as its `Select and verify JDK` step. The action selects the installed JDK
+whose major matches the workflow-level `EXPECTED_JDK_MAJOR` in
+[`.github/workflows/analysis.yaml`](../../.github/workflows/analysis.yaml) (on
+macOS via `/usr/libexec/java_home`, otherwise the image's `JAVA_HOME` or the home
+of the `java` on `PATH`), verifies that major robustly — reading the JDK's
+`release` metadata or `java.specification.version`, never the first line of
+`java -version`, which is the `Picked up _JAVA_OPTIONS:` notice on these runners —
+and **exports `JAVA_HOME`** (and prepends its `bin` to `PATH`) so every later
+step, the Maven launcher in particular, runs on exactly that JDK rather than
+whatever `java_home` would otherwise pick. It fails fast and names the runner
+when no JDK of the expected major is installed. Keeping this in one composite
+action stops the eight self-hosted lanes' JDK handling from drifting apart.
+(Hosted `ubuntu-latest` jobs keep `setup-java`, which serves the JDK from the
+hosted image's tool cache; its `java-version` is `${{ env.EXPECTED_JDK_MAJOR }}`,
+so the hosted and self-hosted lanes track the same major from the one env value.)
 
 The major version is a single value: `EXPECTED_JDK_MAJOR` in the workflow, the
 `JDK_MAJOR` build arg in the Linux images, and the `EXPECTED_JDK_MAJOR` check in
 `macos/runner.sh`. A JDK upgrade is that one value plus a rebuild/restart of each
-runner. If the `Verify JDK version` step fails, the runner that ran it is on the
-wrong JDK — rebuild/restart it per its fleet's doc:
+runner. If the `Select and verify JDK` step fails, the runner that ran it has no
+JDK of the expected major — rebuild/restart it per its fleet's doc:
 
 | Fleet | Label | How to rebuild/restart for a new JDK |
 |---|---|---|

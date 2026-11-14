@@ -359,6 +359,22 @@ the three `ReduceAxis` values and their shapes, the computation extension points
 overrides, the expression-level Jacobian, and how a gradient becomes a backward pass — see
 [Automatic Differentiation](../../docs/internals/automatic-differentiation.md).
 
+#### Finite Differences on Grids
+
+`FieldCalculusFeatures` (package `org.almostrealism.calculus`) adds stencil operators over fields
+on structured grids — `shift` with periodic, clamped or fixed-value boundaries (`GridBoundary`),
+`gradient`, `divergence`, `laplacian` (5/7-point) and `ninePointLaplacian`,
+`heightFieldCurvature`, and `jacobiStep` / `redBlackGaussSeidelStep` / `poissonResidualNorm` for
+Poisson relaxation — each a `CollectionProducer` that compiles to one kernel:
+
+```java
+CollectionProducer kappa = heightFieldCurvature(cp(height), GridBoundary.periodic(), dx, dy);
+CollectionProducer relaxed = jacobiStep(cp(p), cp(rhs), GridBoundary.fixed(0.0), 1.0, h);
+```
+
+See [Grid Field Calculus](../../docs/internals/grid-field-calculus.md) for layout conventions,
+boundary and precision behaviour, and a worked Poisson solve driven by `SimulationRunner`.
+
 ---
 
 ### CollectionFeatures - Factory Methods
