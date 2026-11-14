@@ -163,8 +163,8 @@ public record CiTrigger(Kind kind, String target) implements ConsoleFeatures {
             log("Settled CI " + subject + " started for " + sha);
             return Outcome.STARTED;
         }
-        warn("Settled CI " + subject + " failed: GitHub refused the request"
-                + " (the organisation token needs "
+        warn("Settled CI " + subject + " failed: GitHub did not accept the request"
+                + " (verify GitHub is reachable and the organisation token has "
                 + (kind == Kind.DEPLOYMENT ? "Deployments" : "Actions") + " write)");
         return Outcome.FAILED;
     }
