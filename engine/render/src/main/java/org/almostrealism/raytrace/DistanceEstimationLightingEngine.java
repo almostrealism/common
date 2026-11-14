@@ -24,10 +24,10 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.Shadable;
+import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.color.ShaderSet;
 import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.geometry.Curve;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.space.DistanceEstimator;
 
@@ -100,8 +100,8 @@ public class DistanceEstimationLightingEngine extends LightingEngine {
 	 * @param estimator      The signed distance function (SDF) evaluator
 	 * @param shaders        The shaders to apply at intersection points
 	 */
-	public DistanceEstimationLightingEngine(Evaluable<Ray> ray, Curve<PackedCollection> surface,
-											Collection<? extends Curve<PackedCollection>> otherSurfaces,
+	public DistanceEstimationLightingEngine(Evaluable<Ray> ray, ShadableSurface surface,
+											Collection<? extends ShadableSurface> otherSurfaces,
 											Light light, Iterable<Light> otherLights,
 											ShaderContext p, DistanceEstimator estimator, ShaderSet shaders) {
 		// TODO

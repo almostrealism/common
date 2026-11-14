@@ -19,9 +19,9 @@ package org.almostrealism.physics;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
+import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.geometry.Curve;
 
 import java.util.Collection;
 
@@ -64,12 +64,12 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 	/**
 	 * Constructs a photon field context with a surface and light.
 	 *
-	 * @param surface the surface curve for this context
+	 * @param surface the surface being shaded in this context
 	 * @param l       the light source
 	 * @param field   the photon field
 	 * @param film    the film/absorber for capturing photons
 	 */
-	public PhotonFieldContext(Curve<PackedCollection> surface, Light l, T field, F film) {
+	public PhotonFieldContext(ShadableSurface surface, Light l, T field, F film) {
 		super(surface, l);
 		this.field = field;
 		this.film = film;
@@ -88,7 +88,7 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 	 */
 	public PhotonFieldContext(ContinuousField intersection, Producer<PackedCollection> lightDirection,
 							  Light light, Iterable<Light> otherLights,
-							  Collection<Curve<PackedCollection>> otherSurfaces,
+							  Collection<? extends ShadableSurface> otherSurfaces,
 							  T field, F film) {
 		super(intersection, lightDirection, light, otherLights, otherSurfaces);
 		this.field = field;
@@ -109,7 +109,7 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 	 */
 	public PhotonFieldContext(ContinuousField intersection, Producer<PackedCollection> lightDirection,
 							  Light light, Iterable<Light> otherLights,
-							  Curve<PackedCollection> surface, Curve<PackedCollection>[] otherSurfaces,
+							  ShadableSurface surface, ShadableSurface[] otherSurfaces,
 							  T field, F film) {
 		super(intersection, lightDirection, light, otherLights, surface, otherSurfaces);
 		this.field = field;

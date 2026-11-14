@@ -21,21 +21,25 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.Light;
 import org.almostrealism.color.PointLight;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.SurfaceLight;
 import org.almostrealism.geometry.ShadableIntersection;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.space.AbstractSurface;
 
-/** A {@link PointLightGrid} stores a grid of {@link PointLight}s. */
-public class PointLightGrid extends AbstractSurface implements Light {
+/**
+ * A {@link PointLightGrid} stores a grid of {@link PointLight}s. As a {@link SurfaceLight},
+ * its samples are the lights of the grid.
+ */
+public class PointLightGrid extends AbstractSurface implements SurfaceLight {
 	/** The total intensity shared across all lights in the grid. */
 	private double intensity;
 
-	/** The colour applied to every light in the grid. */
-	private RGB color;
-
-	/** The flat array of {@link PointLight}s arranged in row-major order. */
+	/**
+	 * The flat array of {@link PointLight}s, where the light at grid cell (x, y)
+	 * is at index {@code x * height + y}.
+	 */
 	private PointLight[] lights;
 
 	/**
@@ -69,7 +73,9 @@ public class PointLightGrid extends AbstractSurface implements Light {
 	
 	/**
 	 * Rebuilds the light grid with the specified dimensions and spacing, copying
-	 * intensity and colour from the given prototype {@link PointLight}.
+	 * intensity and colour from the given prototype {@link PointLight}. The colour of
+	 * the grid becomes a copy of the prototype colour, shared by every light, so a
+	 * later change to the prototype does not affect the grid.
 	 *
 	 * @param width     number of lights along the X axis
 	 * @param height    number of lights along the Y axis
@@ -79,22 +85,21 @@ public class PointLightGrid extends AbstractSurface implements Light {
 	 */
 	public void updateGrid(int width, int height, double xSpace, double ySpace, PointLight prototype) {
 		this.lights = new PointLight[width * height];
-		
+		TransformMatrix transform = super.getTransform(true);
+
 		for (int i = 0; i < width; i++) {
 			for (int j = 0; j < height; j++) {
 				Vector location = new Vector(i * xSpace, j * ySpace, 0.0);
-				location = super.getTransform(true).transformAsLocation(location);
+				if (transform != null) location = transform.transformAsLocation(location);
 				
-				this.lights[i * width + j] = new PointLight(location, prototype.getIntensity(), new RGB(prototype.getColor().getRed(), prototype.getColor().getGreen(), prototype.getColor().getBlue()));
+				this.lights[i * height + j] = new PointLight(location, prototype.getIntensity(), prototype.getColor());
 			}
 		}
-		
+
 		this.intensity = prototype.getIntensity() * width * height;
-		
-		if (this.color != null)
-			this.setColor(color);
-		else
-			this.setColor(new RGB(1.0, 1.0, 1.0));
+
+		RGB c = prototype.getColor();
+		this.setColor(new RGB(c.getRed(), c.getGreen(), c.getBlue()));
 	}
 	
 	/**
@@ -135,6 +140,20 @@ public class PointLightGrid extends AbstractSurface implements Light {
 	
 	/** Returns the array of {@link PointLight}s stored by this {@link PointLightGrid}. */
 	public PointLight[] getLights() { return this.lights; }
+
+	/**
+	 * Returns the lights of this grid. The grid is a fixed, discrete set of lights,
+	 * so every light is returned regardless of the requested total.
+	 *
+	 * @param total  ignored
+	 * @return the lights of this grid
+	 */
+	@Override
+	public PointLight[] getSamples(int total) { return getSamples(); }
+
+	/** Returns the lights of this grid. */
+	@Override
+	public PointLight[] getSamples() { return this.lights; }
 	
 	/** Returns a zero vector. */
 	@Override

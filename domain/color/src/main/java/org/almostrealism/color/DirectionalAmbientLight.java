@@ -121,7 +121,7 @@ public class DirectionalAmbientLight extends AmbientLight implements VectorFeatu
 	 *           etc.) (null is accepted).
 	 */
 	public Producer<PackedCollection> lightingCalculation(ContinuousField intersection, Curve<PackedCollection> surface,
-											 Collection<Curve<PackedCollection>> otherSurfaces,
+											 Collection<? extends ShadableSurface> otherSurfaces,
 											 List<Light> otherLights, ShaderContext p) {
 		Producer<PackedCollection> color;
 
@@ -140,6 +140,21 @@ public class DirectionalAmbientLight extends AmbientLight implements VectorFeatu
 		}
 
 		return color;
+	}
+
+	/**
+	 * Sets the light direction of the context to the reverse of the normalized direction
+	 * of this {@link DirectionalAmbientLight}, then asks the surface to shade.
+	 *
+	 * @param surface  the surface being lit
+	 * @param context  the shading context carrying the intersection being lit
+	 * @return a {@link Producer} yielding the shaded {@link RGB} color
+	 */
+	@Override
+	public Producer<PackedCollection> lightingCalculation(ShadableSurface surface, ShaderContext context) {
+		Vector l = (getDirection().divide(getDirection().length())).minus();
+		context.setLightDirection(v(l));
+		return surface.shade(context);
 	}
 
 	/**

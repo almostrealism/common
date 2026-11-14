@@ -163,6 +163,12 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	/**
 	 * Transforms a vector by a matrix with control over translation inclusion.
 	 *
+	 * <p>Each output element {@code i} is the weighted sum of row {@code i % 3} of the
+	 * matrix with the homogeneous vector of item {@code i / 3}. For a single vector the item
+	 * is always 0; when the vector depends on a variable-count input (one vector per kernel
+	 * item, such as a ray per pixel), every item reads its own vector and the one shared
+	 * matrix.</p>
+	 *
 	 * @param matrix a producer for the transformation matrix
 	 * @param vector the vector to transform
 	 * @param includeTranslation if true, includes translation (for points); if false, excludes it (for directions)
@@ -179,9 +185,9 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 						new WeightedSumExpression(shape, includeTranslation ? 4 : 3, args[1], args[2],
 								(groupIndex, operandIndex) -> outputIndex -> {
 									if (operandIndex == 0) {
-										return e(groupIndex);
+										return (Expression) outputIndex.divide(3).multiply(4).add(e(groupIndex));
 									} else if (operandIndex == 1) {
-										return (Expression) outputIndex.multiply(4).add(e(groupIndex));
+										return (Expression) outputIndex.imod(3).multiply(4).add(e(groupIndex));
 									} else {
 										throw new IllegalArgumentException();
 									}

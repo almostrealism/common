@@ -20,6 +20,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.geometry.Curve;
+import org.almostrealism.geometry.RayFeatures;
 
 /**
  * Represents an ambient light that illuminates all surfaces uniformly regardless of position.
@@ -58,7 +59,7 @@ import org.almostrealism.geometry.Curve;
  * @see DirectionalAmbientLight
  * @author Michael Murray
  */
-public class AmbientLight implements Light, RGBFeatures {
+public class AmbientLight implements Light, RayFeatures, RGBFeatures {
 	/** The intensity of this ambient light, applied as a scalar multiplier to the color. */
 	private double intensity;
 
@@ -127,6 +128,19 @@ public class AmbientLight implements Light, RGBFeatures {
 	public Producer<PackedCollection> lightingCalculation(Curve<PackedCollection> surface, Producer<PackedCollection> point) {
 		Producer<PackedCollection> color = multiply(v(getColor()), c(getIntensity()));
 		return multiply(color, surface.getValueAt(point));
+	}
+
+	/**
+	 * Scales the surface color at the intersection point held by the context by the
+	 * color and intensity of this {@link AmbientLight}.
+	 *
+	 * @param surface  the surface being lit
+	 * @param context  the shading context carrying the intersection being lit
+	 * @return a {@link Producer} yielding the lit {@link RGB} color
+	 */
+	@Override
+	public Producer<PackedCollection> lightingCalculation(ShadableSurface surface, ShaderContext context) {
+		return lightingCalculation(surface, origin(context.getIntersection().get(0)));
 	}
 	
 	/** Returns "Ambient Light". */
