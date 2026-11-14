@@ -401,4 +401,44 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 			}
 		}
 	}
+
+	/**
+	 * {@link MeshData} cannot be constructed without triangles, so no empty mesh ever reaches
+	 * the closest-hit graph; only a caller that builds that graph directly can pass a zero
+	 * triangle count, which the graph builders reject (see the two tests below).
+	 */
+	@Test(timeout = 60000)
+	public void meshDataRequiresTriangles() {
+		try {
+			new MeshData(0);
+			Assert.fail("MeshData accepted zero triangles");
+		} catch (IllegalArgumentException e) {
+			Assert.assertNotNull(e);
+		}
+	}
+
+	/**
+	 * The closest-hit graph needs at least one triangle: building it over an empty mesh is
+	 * rejected up front rather than producing a modulo-by-zero index expression.
+	 */
+	@Test(timeout = 60000)
+	public void closestMeshIntersectionRejectsEmptyMesh() {
+		try {
+			TriangleFeatures.getInstance().closestMeshIntersection(cp(new MeshData(1)), 0, cp(Ray.bank(1)));
+			Assert.fail("closestMeshIntersection accepted a mesh with no triangles");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("at least one triangle"));
+		}
+	}
+
+	/** The per-pair distance grid is likewise rejected for a mesh with no triangles. */
+	@Test(timeout = 60000)
+	public void meshIntersectAtRejectsEmptyMesh() {
+		try {
+			TriangleFeatures.getInstance().meshIntersectAt(cp(new MeshData(1)), 0, cp(Ray.bank(1)));
+			Assert.fail("meshIntersectAt accepted a mesh with no triangles");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("at least one triangle"));
+		}
+	}
 }

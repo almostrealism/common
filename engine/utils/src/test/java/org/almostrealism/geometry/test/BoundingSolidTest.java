@@ -225,4 +225,23 @@ public class BoundingSolidTest extends TestSuiteBase {
 		// Starts below the box in z with a minuscule positive z slope; it does reach the box.
 		Assert.assertTrue(bounds.intersectsRay(0.5, 0.5, -1.0, 0.0, 0.0, 1e-13));
 	}
+
+	/**
+	 * A ray that starts exactly on a slab boundary with a direction component so small that
+	 * its reciprocal overflows to infinity still enters the box. Scaling the boundary offset
+	 * of zero by an infinite reciprocal yields {@code NaN}, which would wrongly prune the box
+	 * and break the hierarchy's conservative-candidate guarantee.
+	 */
+	@Test(timeout = 10000)
+	public void intersectsRayFromSlabBoundaryWithSubnormalDirection() {
+		BoundingSolid bounds = new BoundingSolid(0.0, 1.0, 0.0, 1.0, 0.0, 1.0);
+		Assert.assertTrue("origin on minZ heading in",
+				bounds.intersectsRay(0.5, 0.5, 0.0, 0.0, 0.0, Double.MIN_VALUE));
+		Assert.assertTrue("origin on maxZ heading in",
+				bounds.intersectsRay(0.5, 0.5, 1.0, 0.0, 0.0, -Double.MIN_VALUE));
+		Assert.assertTrue("origin on minX heading in along x and y",
+				bounds.intersectsRay(0.0, 0.5, 0.5, Double.MIN_VALUE, 1.0, 0.0));
+		Assert.assertFalse("origin on maxZ heading out",
+				bounds.intersectsRay(0.5, 0.5, 1.0 + 1e-9, 0.0, 0.0, Double.MIN_VALUE));
+	}
 }

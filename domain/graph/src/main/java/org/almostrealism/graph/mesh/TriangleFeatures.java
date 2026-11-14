@@ -414,6 +414,8 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param rays          the rays, six elements each (origin then direction), shaped
 	 *                      {@code (R, 6)} or {@code (6)} for a single ray
 	 * @return producer for the {@code (R, T)} per-ray, per-triangle intersection distances
+	 * @throws IllegalArgumentException if {@code triangleCount} is less than one, for which the
+	 *                                  per-triangle index would be taken modulo zero
 	 */
 	default CollectionProducer meshIntersectAt(Producer<PackedCollection> mesh, int triangleCount,
 											   Producer<PackedCollection> rays) {
@@ -449,6 +451,8 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param triangleCount the number of triangles {@code T}
 	 * @param rays          the rays, shaped {@code (R, 6)} or {@code (6)} for a single ray
 	 * @return producer for the {@code (R, 2)} (distance, triangle index) closest hits
+	 * @throws IllegalArgumentException if {@code triangleCount} is less than one, for which the
+	 *                                  per-triangle index would be taken modulo zero
 	 */
 	default CollectionProducer closestMeshIntersection(Producer<PackedCollection> mesh, int triangleCount,
 													   Producer<PackedCollection> rays) {
@@ -544,10 +548,16 @@ public interface TriangleFeatures extends VectorFeatures {
 	 * @param hitValue      maps the hit distance to the element's value
 	 * @param miss          the element's value where the ray misses the triangle
 	 * @return producer for the {@code (R, T)} grid
+	 * @throws IllegalArgumentException if {@code triangleCount} is less than one
 	 */
 	private CollectionProducer meshIntersectionGrid(String name, Producer<PackedCollection> mesh,
 													int triangleCount, Producer<PackedCollection> rays,
 													UnaryOperator<Expression> hitValue, Expression miss) {
+		if (triangleCount < 1) {
+			throw new IllegalArgumentException(
+					"A mesh intersection needs at least one triangle, got " + triangleCount);
+		}
+
 		TraversalPolicy outputShape = new TraversalPolicy(rayCount(rays), triangleCount).traverseEach();
 		return new DefaultTraversableExpressionComputation(name, outputShape, args ->
 			CollectionExpression.create(outputShape, idx ->
