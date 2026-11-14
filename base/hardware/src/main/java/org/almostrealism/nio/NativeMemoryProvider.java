@@ -293,7 +293,16 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * Requests a collection once the bytes of released direct buffers reach
 	 * {@link #getDirectCollectionThreshold()}, so that their committed memory is returned to the
 	 * operating system instead of accumulating until {@code -XX:MaxDirectMemorySize} forces a
-	 * collection. Concurrent callers share a single collection pass.
+	 * collection.
+	 *
+	 * <p>Of concurrent callers that find the threshold reached, exactly one takes the count and
+	 * runs the collection; a release that changes the count while a caller is taking it does not
+	 * make that caller give up. The other callers proceed with their allocations without waiting
+	 * for the pass. That is deliberate: the threshold bounds how much released memory may stay
+	 * committed, not how much may be allocated, and memory released while the pass runs simply
+	 * counts towards the next one. The hard limit remains the JVM's own handling of
+	 * {@code -XX:MaxDirectMemorySize}, which collects and waits for the cleaner before it fails an
+	 * allocation.</p>
 	 *
 	 * <p>The released bytes are taken off the count only by the caller that runs the collection,
 	 * and are restored when that collection does not complete (because the thread was
@@ -309,10 +318,13 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * @return whether a collection was requested and completed
 	 */
 	protected boolean collectReleasedDirectMemory() {
-		long released = releasedDirectBytes.get();
-		if (released < getDirectCollectionThreshold()) return false;
-		if (Thread.currentThread().isInterrupted()) return false;
-		if (!releasedDirectBytes.compareAndSet(released, 0)) return false;
+		long released;
+
+		do {
+			released = releasedDirectBytes.get();
+			if (released < getDirectCollectionThreshold()) return false;
+			if (Thread.currentThread().isInterrupted()) return false;
+		} while (!releasedDirectBytes.compareAndSet(released, 0));
 
 		if (reclaim(() -> true)) return true;
 

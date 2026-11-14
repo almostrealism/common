@@ -183,12 +183,36 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that a release which changes the count while a caller is taking it does not make
+	 * that caller give up: the caller still requests the collection, and every released byte,
+	 * including the concurrent release, is taken off the count by it.
+	 */
+	@Test(timeout = 30_000)
+	public void concurrentReleaseDoesNotCancelCollection() {
+		CountingProvider provider = new CountingProvider();
+		provider.release(TestNativeBuffer.create(null, 1000L, 128));
+		provider.release(TestNativeBuffer.create(null, 2000L, 128));
+		provider.releaseOnThresholdQuery = TestNativeBuffer.create(null, 3000L, 128);
+
+		Assert.assertTrue(provider.collect());
+		Assert.assertNull(provider.releaseOnThresholdQuery);
+		Assert.assertEquals(1, provider.collections);
+		Assert.assertEquals(0, provider.getReleasedDirectBytes());
+	}
+
+	/**
 	 * A direct-mode provider that counts the collections it requests instead of running them,
 	 * and can release a buffer through its own deallocation path.
 	 */
 	private static class CountingProvider extends NativeMemoryProvider {
 		/** Number of collections requested. */
 		private int collections;
+
+		/**
+		 * A buffer to release the next time the collection threshold is queried, which stands in
+		 * for a release on another thread between the caller reading the count and taking it.
+		 */
+		private NativeBuffer releaseOnThresholdQuery;
 
 		/**
 		 * If true, each requested collection interrupts the calling thread, so that the wait
@@ -226,6 +250,18 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 		 */
 		boolean collect() {
 			return collectReleasedDirectMemory();
+		}
+
+		@Override
+		public long getDirectCollectionThreshold() {
+			NativeBuffer buffer = releaseOnThresholdQuery;
+
+			if (buffer != null) {
+				releaseOnThresholdQuery = null;
+				release(buffer);
+			}
+
+			return super.getDirectCollectionThreshold();
 		}
 
 		@Override
