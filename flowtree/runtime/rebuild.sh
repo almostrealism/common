@@ -43,7 +43,16 @@ Environment variables consulted by --agents / --agents-only:
   CLAUDE_CODE_OAUTH_TOKEN
                          agent OAuth token, when not supplied by that file
 
+Every image is built before any running container is replaced. The new
+controller-stack images must then pass a preflight in an isolated compose
+project, and a replacement that does not become healthy is rolled back to
+the images that were running before.
+
 Environment variables consulted on every run:
+  DEPLOY_WAIT_TIMEOUT    seconds the preflight, the swap and a rollback each
+                         wait for services to become healthy (default: 6000)
+  PREFLIGHT_TMP_ROOT     directory for the preflight's throwaway state
+                         (default: /tmp)
   BUILD_CACHE_MAX_USED_SPACE
                          Docker build cache kept after the post-deploy prune
                          (default: 20gb). Superseded untagged images are
@@ -306,6 +315,210 @@ if [ "${NEEDS_BUILD}" = true ]; then
       -DoutputDirectory="$(pwd)/flowtree/runtime/target/dependency"
 fi
 
+# ── Safe replacement of running containers ─────────────────────────
+#
+# A deploy must not take the running stack down until it is as sure as it
+# can be that the new one will come up. Three things provide that:
+#
+#   1. Every image — controller stack and agent pool — is built before any
+#      container is stopped, so a failed build leaves everything running.
+#   2. The new controller-stack images are started first in an isolated
+#      compose project (preflight_controller_stack): no published ports,
+#      throwaway state, and an empty workstream configuration, so it cannot
+#      reach Slack, take agent connections, or touch live data. It must pass
+#      every healthcheck before the real stack is touched.
+#   3. The real swap waits for every service to be running and healthy
+#      (`up --wait`). If it is not, the images that were running before the
+#      deploy are re-tagged and started again (swap_stack/rollback_stack).
+#
+# The preflight cannot prove the new images work against the live
+# configuration and data; the rollback covers what it cannot.
+
+CONTROLLER_COMPOSE="flowtree/runtime/controller/docker-compose.yml"
+AGENT_COMPOSE="flowtree/runtime/agent/docker-compose.yml"
+# Seconds `up --wait` allows every service to become healthy, for the
+# preflight, the swap and a rollback alike.
+DEPLOY_WAIT_TIMEOUT="${DEPLOY_WAIT_TIMEOUT:-6000}"
+# The controller-stack services built from this repository. fleet-db and
+# fleet-grafana run pinned public images and are never preflighted: a second
+# Postgres on the live data directory would corrupt it.
+PREFLIGHT_SERVICES=(ar-memory ar-tracker flowtree-controller ar-manager)
+# Host paths the preflight shares read-only (or, for the model cache, as a
+# download cache only). They match the mounts in ${CONTROLLER_COMPOSE}.
+HOST_FLOWTREE_DIR="/Users/Shared/flowtree"
+
+# compose_project FILE: the compose project name FILE runs under, which is
+# also the prefix of the image names compose gives the services it builds.
+compose_project() {
+  local name
+  name="$(docker compose -f "$1" config 2>/dev/null | sed -n 's/^name: *//p' | head -1 || true)"
+  echo "${name:-$(basename "$(dirname "$1")")}"
+}
+
+# snapshot_running FILE OUT [SERVICES...]: record "<service> <image ref>
+# <image id>" for every running container of FILE (or of the named
+# services) in OUT, so swap_stack can restore exactly what was running.
+snapshot_running() {
+  local file="$1" out="$2" id
+  shift 2
+  : > "${out}"
+  for id in $(docker compose -f "${file}" ps -q ${@+"$@"} 2>/dev/null || true); do
+    docker inspect -f '{{index .Config.Labels "com.docker.compose.service"}} {{.Config.Image}} {{.Image}}' \
+      "${id}" >> "${out}" 2>/dev/null || true
+  done
+}
+
+# rollback_stack FILE SNAPSHOT LABEL: point each image ref recorded in
+# SNAPSHOT back at the image it named before the deploy, and recreate those
+# services from it.
+rollback_stack() {
+  local file="$1" snapshot="$2" label="$3" service ref id
+  local services=()
+  local retag_failed=false
+  if [ ! -s "${snapshot}" ]; then
+    echo "ERROR: nothing of the ${label} was running before this deploy, so there is" >&2
+    echo "  no previous version to restore." >&2
+    return 0
+  fi
+  while read -r service ref id; do
+    if [ -z "${service}" ] || [ -z "${ref}" ] || [ -z "${id}" ]; then
+      continue
+    fi
+    # Fail closed: a service whose ref cannot be pointed back at its previous
+    # image is NOT recreated, because `up --no-build` would otherwise resolve
+    # that ref to the just-built image the swap failed on and bring the broken
+    # version back up while this function reported success.
+    if docker tag "${id}" "${ref}"; then
+      services+=("${service}")
+    else
+      echo "ERROR: could not re-tag ${ref} to its previous image ${id}; ${service} will" >&2
+      echo "  not be recreated and needs manual attention." >&2
+      retag_failed=true
+    fi
+  done < "${snapshot}"
+  # With no service successfully re-tagged there is nothing to restore, and an
+  # empty service list would make `up` recreate EVERY service in the file from
+  # the just-built broken images. Stop here instead and report it, exactly as
+  # the retag_failed branch below would.
+  if [ "${#services[@]}" -eq 0 ]; then
+    echo "ERROR: none of the previous ${label} images could be restored; the stack" >&2
+    echo "  needs manual attention." >&2
+    docker compose -f "${file}" ps -a >&2 || true
+    return 0
+  fi
+  echo "Restoring the previous ${label}: ${services[*]}" >&2
+  if docker compose -f "${file}" up -d --force-recreate --no-build \
+      --wait --wait-timeout "${DEPLOY_WAIT_TIMEOUT}" "${services[@]}" \
+      && [ "${retag_failed}" = false ]; then
+    echo "The previous ${label} is running again." >&2
+  else
+    echo "ERROR: the previous ${label} did not come back either; it needs manual attention." >&2
+    docker compose -f "${file}" ps -a >&2 || true
+  fi
+}
+
+# swap_stack FILE SNAPSHOT LABEL [UP ARGS...]: recreate FILE's containers
+# from the new images and wait until they are running and healthy. On
+# failure, print their state and logs, restore SNAPSHOT, and exit non-zero.
+swap_stack() {
+  local file="$1" snapshot="$2" label="$3"
+  shift 3
+  if docker compose -f "${file}" up -d --force-recreate \
+      --wait --wait-timeout "${DEPLOY_WAIT_TIMEOUT}" ${@+"$@"}; then
+    return 0
+  fi
+  echo "ERROR: the new ${label} did not become healthy within ${DEPLOY_WAIT_TIMEOUT}s." >&2
+  docker compose -f "${file}" ps -a >&2 || true
+  docker compose -f "${file}" logs --no-color --tail 100 >&2 || true
+  rollback_stack "${file}" "${snapshot}" "${label}"
+  exit 1
+}
+
+# preflight_controller_stack: start the newly built controller-stack images
+# (those of PREFLIGHT_SERVICES that this run selected) in an isolated compose
+# project and require every one to pass its healthcheck. The project is torn
+# down whatever the outcome. On failure the deploy stops here, with nothing
+# running replaced.
+preflight_controller_stack() {
+  local selected=() service
+  for service in "${PREFLIGHT_SERVICES[@]}"; do
+    if [ ${#SERVICES[@]} -eq 0 ] || printf '%s\n' "${SERVICES[@]}" | grep -qx "${service}"; then
+      selected+=("${service}")
+    fi
+  done
+  if [ ${#selected[@]} -eq 0 ]; then
+    return 0
+  fi
+
+  local project preflight_project dir status=0
+  project="$(compose_project "${CONTROLLER_COMPOSE}")"
+  preflight_project="${project}-preflight"
+  dir="$(mktemp -d "${PREFLIGHT_TMP_ROOT:-/tmp}/flowtree-preflight.XXXXXX")"
+  mkdir -p "${dir}/memory-data" "${dir}/tracker" "${dir}/controller" "${dir}/manager-state"
+  # An empty workstream list: the controller starts with no Slack
+  # workspaces, no GitHub organisations and nothing to schedule.
+  printf 'workstreams: []\n' > "${dir}/controller/workstreams.yaml"
+
+  # Each service runs the image just built for the real project, never
+  # rebuilds or pulls, publishes nothing, and keeps its writable state in
+  # ${dir}. `!reset`/`!override` replace the base file's lists instead of
+  # merging into them.
+  cat > "${dir}/override.yml" <<EOF
+services:
+  ar-memory:
+    image: ${project}-ar-memory
+    pull_policy: never
+    restart: "no"
+    ports: !reset []
+    volumes: !override
+      - ${dir}/memory-data:/data
+      - ${HOST_FLOWTREE_DIR}/memory-data/model-cache:/data/model-cache
+  ar-tracker:
+    image: ${project}-ar-tracker
+    pull_policy: never
+    restart: "no"
+    ports: !reset []
+    volumes: !override
+      - ${dir}/tracker:/data
+  flowtree-controller:
+    image: ${project}-flowtree-controller
+    pull_policy: never
+    restart: "no"
+    ports: !reset []
+    volumes: !override
+      - ${dir}/controller:/config
+      - ${HOST_FLOWTREE_DIR}/secrets:/secrets:ro
+  ar-manager:
+    image: ${project}-ar-manager
+    pull_policy: never
+    restart: "no"
+    ports: !reset []
+    volumes: !override
+      - ${HOST_FLOWTREE_DIR}/manager:/config:ro
+      - ${HOST_FLOWTREE_DIR}/secrets:/secrets:ro
+      - ${dir}/manager-state:/state
+EOF
+
+  local preflight=(docker compose -p "${preflight_project}" -f "${CONTROLLER_COMPOSE}" -f "${dir}/override.yml")
+  echo "Preflight: starting the new images in the isolated project ${preflight_project}: ${selected[*]}"
+  "${preflight[@]}" up -d --no-build --wait --wait-timeout "${DEPLOY_WAIT_TIMEOUT}" "${selected[@]}" \
+    || status=$?
+  if [ "${status}" -ne 0 ]; then
+    "${preflight[@]}" ps -a >&2 || true
+    "${preflight[@]}" logs --no-color --tail 100 >&2 || true
+  fi
+  "${preflight[@]}" down -v --remove-orphans >/dev/null 2>&1 \
+    || echo "WARNING: could not remove the preflight project ${preflight_project}" >&2
+  rm -rf "${dir}" 2>/dev/null || true
+
+  if [ "${status}" -ne 0 ]; then
+    echo "ERROR: the new controller-stack images did not pass the preflight." >&2
+    echo "  Nothing running was stopped or replaced; the current stack is untouched." >&2
+    exit 1
+  fi
+  echo "Preflight passed: ${selected[*]}"
+}
+
 # ── Controller stack ───────────────────────────────────────────────
 #
 # `build --no-cache` followed by `up --force-recreate` is the only
@@ -327,14 +540,15 @@ if [ "${AGENTS_ONLY}" = false ]; then
     CORPUS_COMMIT="$(git rev-parse HEAD 2>/dev/null || true)"
   fi
   export CORPUS_COMMIT
+  # Build only. Nothing running is stopped until every image of this deploy
+  # (the agent pool's too) has been built and the new controller images have
+  # passed the preflight — see "Swap" below.
   if [ ${#SERVICES[@]} -eq 0 ]; then
-    echo "Rebuilding all controller-stack containers (cache=${USE_CACHE})..."
-    docker compose -f flowtree/runtime/controller/docker-compose.yml build ${NO_CACHE_FLAG} --pull
-    docker compose -f flowtree/runtime/controller/docker-compose.yml up -d --force-recreate
+    echo "Building all controller-stack images (cache=${USE_CACHE})..."
+    docker compose -f "${CONTROLLER_COMPOSE}" build ${NO_CACHE_FLAG} --pull
   else
-    echo "Rebuilding (cache=${USE_CACHE}): ${SERVICES[*]}"
-    docker compose -f flowtree/runtime/controller/docker-compose.yml build ${NO_CACHE_FLAG} --pull "${SERVICES[@]}"
-    docker compose -f flowtree/runtime/controller/docker-compose.yml up -d --force-recreate "${SERVICES[@]}"
+    echo "Building (cache=${USE_CACHE}): ${SERVICES[*]}"
+    docker compose -f "${CONTROLLER_COMPOSE}" build ${NO_CACHE_FLAG} --pull "${SERVICES[@]}"
   fi
 fi
 
@@ -494,18 +708,47 @@ if [ "${AGENTS}" = true ] || [ "${AGENTS_ONLY}" = true ]; then
   # Pre-create the per-agent transcript subdirectories on the host so the
   # bind mounts resolve. Each agent gets a DISTINCT subdir (never shared)
   # — see the volume policy in flowtree/runtime/agent/docker-compose.yml.
-  AGENT_COMPOSE="flowtree/runtime/agent/docker-compose.yml"
   TRANSCRIPT_DIR_HOST="${TRANSCRIPT_DIR_HOST:-/Users/Shared/flowtree/agent-transcripts}"
   for sub in $(grep -oE '/agent-[A-Za-z0-9_-]+:/agent-transcripts:rw' "${AGENT_COMPOSE}" | cut -d: -f1); do
     mkdir -p "${TRANSCRIPT_DIR_HOST}${sub}"
   done
 
-  echo "Rebuilding agent pool (cache=${USE_CACHE}); transcripts at ${TRANSCRIPT_DIR_HOST}/<agent>/..."
+  echo "Building agent pool images (cache=${USE_CACHE}); transcripts at ${TRANSCRIPT_DIR_HOST}/<agent>/..."
   docker compose -f "${AGENT_COMPOSE}" build ${NO_CACHE_FLAG} --pull
+fi
+
+# ── Preflight ──────────────────────────────────────────────────────
+#
+# Every image is built. Before anything running is stopped, prove the new
+# controller-stack images start and pass their healthchecks.
+
+if [ "${AGENTS_ONLY}" = false ]; then
+  preflight_controller_stack
+fi
+
+# ── Swap ───────────────────────────────────────────────────────────
+#
+# Only now is anything running replaced. Each swap waits for its services
+# to be running and healthy, and on failure restores the images that were
+# running before this deploy (see swap_stack).
+
+if [ "${AGENTS_ONLY}" = false ]; then
+  CONTROLLER_SNAPSHOT="$(mktemp)"
+  snapshot_running "${CONTROLLER_COMPOSE}" "${CONTROLLER_SNAPSHOT}" ${SERVICES[@]+"${SERVICES[@]}"}
+  echo "Replacing the controller stack..."
+  swap_stack "${CONTROLLER_COMPOSE}" "${CONTROLLER_SNAPSHOT}" "controller stack" ${SERVICES[@]+"${SERVICES[@]}"}
+  rm -f "${CONTROLLER_SNAPSHOT}"
+fi
+
+if [ "${AGENTS}" = true ] || [ "${AGENTS_ONLY}" = true ]; then
+  AGENT_SNAPSHOT="$(mktemp)"
+  snapshot_running "${AGENT_COMPOSE}" "${AGENT_SNAPSHOT}"
+  echo "Replacing the agent pool..."
   # --remove-orphans clears containers from services no longer in the compose
   # file — notably the flowtree-agent-1/-2 containers left by the old `agent`
   # replica service, whose names the explicit agent-N services now reuse.
-  docker compose -f "${AGENT_COMPOSE}" up -d --force-recreate --remove-orphans
+  swap_stack "${AGENT_COMPOSE}" "${AGENT_SNAPSHOT}" "agent pool" --remove-orphans
+  rm -f "${AGENT_SNAPSHOT}"
 fi
 
 # ── Reclaim superseded images and build cache ──────────────────────
