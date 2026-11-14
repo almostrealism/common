@@ -58,8 +58,8 @@ def workstream_register(
     default_use_tmux: bool = False,
     max_wall_clock_hours: int = -1,
     kind: str = "",
-    settled_ci_trigger: str = "",
     slack_workspace_id: str = "",
+    settled_ci_trigger: str = "",
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
     # captured here for a clear rejection error.
