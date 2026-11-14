@@ -114,8 +114,10 @@ public class NetworkTreeNode implements MutableTreeNode {
 	@Override
 	public Enumeration children() {
 		final NetworkTreeNode[] c;
-		
-		if (this.node instanceof NodeGroup) {
+
+		if (this.node == null) {
+			c = new NetworkTreeNode[0];
+		} else if (this.node instanceof NodeGroup) {
 			Node[] n = ((NodeGroup)this.node).getNodes();
 			c = new NetworkTreeNode[n.length];
 			for (int i = 0; i < c.length; i++) c[i] = new NetworkTreeNode(n[i]);

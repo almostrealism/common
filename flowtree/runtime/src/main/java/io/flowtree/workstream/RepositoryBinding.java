@@ -17,6 +17,8 @@
 package io.flowtree.workstream;
 
 import io.flowtree.git.RepositoryUrl;
+import io.flowtree.github.CiTrigger;
+import io.flowtree.github.GitHubProxyHandler;
 
 import java.util.List;
 
@@ -45,6 +47,9 @@ final class RepositoryBinding {
 
     /** Additional repository URLs to clone alongside the primary repo. */
     private List<String> dependentRepos;
+
+    /** CI started on the primary repository when a review loop settles; see {@link #getSettledCiTrigger()}. */
+    private CiTrigger settledCiTrigger;
 
     /**
      * Returns the primary git repository URL for automatic checkout.
@@ -116,5 +121,63 @@ final class RepositoryBinding {
             if (new RepositoryUrl(dependent).isSameRepository(new RepositoryUrl(repoUrl))) return true;
         }
         return false;
+    }
+
+    /**
+     * Returns the CI started on the primary repository when the workstream's
+     * review loop settles, or {@code null} for none.
+     *
+     * <p>A coding job that finishes successfully with nothing to commit is how
+     * a review loop ends: each review that found something pushed a fix, which
+     * started another validation and another review, until one found nothing.
+     * That is when the expensive CI is worth running, so the controller starts
+     * this trigger for the branch then. The trigger does nothing for a commit
+     * that already has it, so the controller fires it on every such job
+     * without tracking earlier ones. CI never depends on this: when the
+     * controller is down the same CI can be started by hand.</p>
+     *
+     * @return the trigger, or {@code null}
+     */
+    CiTrigger getSettledCiTrigger() {
+        return settledCiTrigger;
+    }
+
+    /**
+     * Sets the CI started on the primary repository when a review loop settles.
+     *
+     * @param settledCiTrigger the trigger, or {@code null} for none
+     */
+    void setSettledCiTrigger(CiTrigger settledCiTrigger) {
+        this.settledCiTrigger = settledCiTrigger;
+    }
+
+    /**
+     * Starts the {@link #getSettledCiTrigger() settled CI} for {@code branch} of
+     * the primary repository, when there is one.
+     *
+     * <p>Does nothing for the base branch, which has its own CI on every push
+     * and no review loop, and nothing when the primary repository is not on
+     * GitHub or no token is configured for its organisation.</p>
+     *
+     * @param github     the GitHub operations, holding the per-organisation tokens
+     * @param githubOrg  the organisation whose token to use; {@code null} to
+     *                   derive it from the repository URL
+     * @param baseBranch the workstream's base branch; {@code null} for {@code master}
+     * @param branch     the branch whose review loop settled
+     * @return the outcome, or {@code null} when nothing was attempted
+     */
+    CiTrigger.Outcome startSettledCi(GitHubProxyHandler github, String githubOrg,
+                                     String baseBranch, String branch) {
+        if (settledCiTrigger == null || branch == null || branch.isEmpty()
+                || branch.equals(baseBranch != null ? baseBranch : "master")) {
+            return null;
+        }
+        String ownerRepo = GitHubProxyHandler.extractOwnerRepo(repoUrl);
+        if (ownerRepo == null) {
+            return null;
+        }
+        String token = github.resolveGithubToken(githubOrg != null && !githubOrg.isEmpty()
+                ? githubOrg : GitHubProxyHandler.extractOrgFromRepoUrl(repoUrl));
+        return token == null ? null : settledCiTrigger.start(github, ownerRepo, branch, token);
     }
 }

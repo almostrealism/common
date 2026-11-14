@@ -178,12 +178,32 @@ total, per-runner utilization over the range, and hours per workflow step.
   DELETE FROM job_event WHERE started_at < created_at;
   COMMIT;
   ```
-- **`job_event.labels`, and so `lane`/`platform`, are the executing
-  runner's actual label set, not the job's requested `runs-on:` set.** A
-  runner can carry extra/custom labels beyond what a job asked for, so a
-  lane measures jobs that ran on a runner carrying that `ar-*` label. The
-  two coincide as long as every runner carries exactly one `ar-*` label —
-  the fleet's convention. The set is JSON-encoded
+- **`job_event.labels`, and so `lane`/`platform`, are the labels the jobs
+  API reports for the job, which GitHub documents as the job's `runs-on:`
+  labels.** A job therefore has a lane even when it never ran: every
+  validate run skips each self-hosted test lane, and a skipped job carries
+  that lane with timestamps a second apart. **Only a job that got a runner
+  waited for one**, so the poller records no `queue_wait_seconds` for a job
+  that completed with no `runner_name` (skipped, or cancelled while
+  queued), and every wait panel also filters on `runner_name <> ''`, which
+  covers rows stored before that rule. Counting those jobs made every
+  lane's median wait zero while its p90 read hours. The requested and
+  executing label sets coincide as long as every runner carries exactly one
+  `ar-*` label — the fleet's convention.
+- **A job the poll window lost is refreshed by id.** Each cycle reads the
+  newest runs only, and a long test run is pushed out of that window before
+  it finishes. Its jobs then kept no `completed_at`, and the panels that
+  counted an open job as running until now only ever went up. The
+  scheduled poller now re-reads up to 100 unfinished jobs a cycle, oldest
+  first, through `GET /repos/{repo}/actions/jobs/{id}`, and marks one the
+  API no longer serves `gone`. The running-jobs and utilization panels also
+  count an unfinished record for at most 6 hours after it started, the
+  default job timeout, so a lost record cannot dominate them while the
+  backlog drains.
+- **Host panels plot at most 200 points, each at least 5 minutes wide.**
+  The collector samples every 15 seconds and its CPU figure covers a
+  100 ms window, so plotting a point per few samples drew a band as wide as
+  the host's min-to-max range instead of a line. The set is JSON-encoded
   (`json.dumps(sorted(labels))`), not comma-joined — a comma-joined encoding
   cannot distinguish `["a,b", "c"]` from `["a", "b,c"]`; a caller filtering
   `pre_start_latency_by_label(labels=...)` on an exact set must encode it

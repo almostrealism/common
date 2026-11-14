@@ -59,6 +59,7 @@ def workstream_register(
     max_wall_clock_hours: int = -1,
     kind: str = "",
     slack_workspace_id: str = "",
+    settled_ci_trigger: str = "",
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
     # captured here for a clear rejection error.
@@ -212,6 +213,10 @@ def workstream_register(
             ``orchestrator`` and ``standing`` rows out of the ``merged`` /
             ``abandoned`` / ``idle`` verdicts so an archival scan never
             proposes archiving them.
+        settled_ci_trigger: The GitHub CI the controller starts when a job
+            on this workstream finishes with nothing to commit; see
+            ``workstream_update_config``. ``"deployment:test"`` starts this
+            repository's test run. Empty (the default) for none.
 
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
@@ -345,6 +350,8 @@ def workstream_register(
     # boolean directly is simpler and the controller's extractBoolean
     # helper handles a missing field identically.
     payload["dispatchCapable"] = bool(dispatch_capable)
+    if settled_ci_trigger:
+        payload["settledCiTrigger"] = settled_ci_trigger
     if tracker_capabilities:
         caps, err = _parse_tracker_capabilities(tracker_capabilities)
         if err:
@@ -433,6 +440,7 @@ def workstream_update_config(
     default_use_tmux: Optional[bool] = None,
     max_wall_clock_hours: Optional[int] = None,
     kind: str = "",
+    settled_ci_trigger: Optional[str] = None,
     # Removed legacy config parameters — see _reject_removed_config_params.
     # Untyped so they stay out of the declared tool schema while still being
     # captured here for a clear rejection error.
@@ -517,6 +525,15 @@ def workstream_update_config(
             of ``"feature"``, ``"orchestrator"``, ``"standing"``. Empty
             string leaves the existing classification untouched; an
             unknown value is rejected by the controller.
+        settled_ci_trigger: The GitHub CI the controller starts when a job
+            on this workstream finishes with nothing to commit — the end of
+            the review loop. ``"deployment:<environment>"`` creates a
+            deployment of the branch (for this repository,
+            ``"deployment:test"`` starts the test run of "Build and Test",
+            which gates the merge); ``"workflow:<file>"`` dispatches that
+            workflow. Started at most once per head commit. ``""`` clears
+            it; omitted (``None``) leaves it unchanged. An unparseable value
+            is rejected by the controller.
         model: REMOVED. The legacy ``model`` parameter is no longer accepted;
             passing it fails with a 400-style error. Use
             ``default_phase_config`` or ``phase_configs`` to set models.
@@ -630,6 +647,9 @@ def workstream_update_config(
     # at the call site rather than as a silently broken lifecycle verdict.
     if kind:
         payload["kind"] = kind
+    # settled_ci_trigger: presence signal; "" clears, None leaves it unchanged.
+    if settled_ci_trigger is not None:
+        payload["settledCiTrigger"] = settled_ci_trigger
 
     if not payload:
         return {
