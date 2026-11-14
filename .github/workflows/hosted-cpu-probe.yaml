@@ -1,0 +1,142 @@
+# Measures whether the native CPU test lanes (`test` and `test-media` in
+# analysis.yaml) can run on a GitHub-hosted runner instead of the lab's
+# self-hosted ar-ci machines. A hosted runner costs nothing for a public
+# repository but has 4 vCPUs and 16 GB of RAM, while the suites allow up to
+# 16 GB of direct memory on top of the heap. This workflow runs the same
+# module commands with the same hardware flags, samples memory throughout,
+# and reports per module whether the suite passed, how long it took and the
+# peak memory in use, so the lane can be moved on evidence.
+#
+# It gates nothing: it is not a required check and it is not part of
+# analysis.yaml. It runs on a push to a ci/hosted-cpu-* branch, or by hand.
+name: Hosted CPU Lane Probe
+
+on:
+  push:
+    branches:
+      - 'ci/hosted-cpu-*'
+  workflow_dispatch:
+
+concurrency:
+  group: hosted-cpu-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  EXPECTED_JDK_MAJOR: "17"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The modules `test` runs, in its order.
+          - lane: test
+            modules: "base/hardware engine/utils engine/ml engine/render base/io,engine/utils-http"
+            pipeline_profile: "engine/ml"
+          # The modules `test-media` runs, in its order.
+          - lane: test-media
+            modules: "engine/audio studio/music studio/compose studio/spatial extern/ml-onnx,studio/experiments studio/bioscience"
+            pipeline_profile: "engine/audio studio/music studio/compose studio/spatial extern/ml-onnx,studio/experiments studio/bioscience"
+    env:
+      _JAVA_OPTIONS: -XX:MaxDirectMemorySize=16g
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.EXPECTED_JDK_MAJOR }}
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Describe the runner
+        run: |
+          nproc
+          free -m
+          df -h "$RUNNER_TEMP"
+
+      - name: Build
+        run: mvn install -DskipTests -Dcheckstyle.skip=true -q
+
+      - name: Start memory sampler
+        # One line every 5 seconds: epoch seconds and MB in use (total minus
+        # available), which counts the page cache the JVMs cannot reclaim.
+        run: |
+          nohup bash -c 'while true; do
+            echo "$(date +%s) $(free -m | awk "/^Mem:/ {print \$2 - \$7}")"
+            sleep 5
+          done' > "$RUNNER_TEMP/memory.log" 2>&1 &
+
+      - name: Run the lane's modules
+        # Every module runs even when an earlier one fails, so one run reports
+        # on the whole lane. The step fails at the end when any module did.
+        run: |
+          set -o pipefail
+          results="$RUNNER_TEMP/results.tsv"
+          : > "$results"
+          status=0
+          for module in ${{ matrix.modules }}; do
+            profile=""
+            case " ${{ matrix.pipeline_profile }} " in
+              *" $module "*) profile="-DAR_TEST_PROFILE=pipeline" ;;
+            esac
+            log="$RUNNER_TEMP/mvn-$(echo "$module" | tr '/,' '--').log"
+            start=$(date +%s)
+            if LD_LIBRARY_PATH="$RUNNER_TEMP/ar_libs" mvn test -Dcheckstyle.skip=true -pl "$module" \
+                -DAR_HARDWARE_DRIVER=native \
+                -DAR_HARDWARE_MEMORY_SCALE=7 \
+                -DAR_HARDWARE_NATIVE_DIRECT_BUFFERS=disabled \
+                -DAR_HARDWARE_LIBS="$RUNNER_TEMP/ar_libs" \
+                $profile > "$log" 2>&1; then
+              outcome=passed
+            else
+              outcome=failed
+              status=1
+            fi
+            end=$(date +%s)
+            peak=$(awk -v s="$start" -v e="$end" '$1 >= s && $1 <= e && $2 > p {p = $2} END {print p + 0}' "$RUNNER_TEMP/memory.log")
+            tests=$(grep -E "^\[(INFO|ERROR|WARNING)\] Tests run:" "$log" | tail -1 | sed 's/^\[[A-Z]*\] //')
+            printf '%s\t%s\t%s\t%s\t%s\n' "$module" "$outcome" "$(( (end - start) / 60 ))" "$peak" "$tests" >> "$results"
+          done
+          exit $status
+
+      - name: Report
+        if: always()
+        run: |
+          {
+            echo "### ${{ matrix.lane }} on ubuntu-latest ($(nproc) vCPU, $(free -g | awk '/^Mem:/ {print $2}') GB)"
+            echo
+            echo "| Module | Outcome | Minutes | Peak memory in use (MB) | Tests |"
+            echo "|---|---|---|---|---|"
+            awk -F'\t' '{printf "| %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5}' "$RUNNER_TEMP/results.tsv"
+            echo
+            echo "Peak over the whole job: $(awk '$2 > p {p = $2} END {print p + 0}' "$RUNNER_TEMP/memory.log") MB"
+            if grep -l -E "OutOfMemoryError|Cannot allocate memory|terminated without saying goodbye|Killed" "$RUNNER_TEMP"/mvn-*.log > /dev/null 2>&1; then
+              echo
+              echo "Memory-related failures appear in:"
+              grep -l -E "OutOfMemoryError|Cannot allocate memory|terminated without saying goodbye|Killed" "$RUNNER_TEMP"/mvn-*.log | sed 's|.*/|- |'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload logs and reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hosted-cpu-probe-${{ matrix.lane }}
+          path: |
+            ${{ runner.temp }}/memory.log
+            ${{ runner.temp }}/results.tsv
+            ${{ runner.temp }}/mvn-*.log
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 14
+          if-no-files-found: ignore
