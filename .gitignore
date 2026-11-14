@@ -75,3 +75,4 @@ graphpersistdb**
 
 # Agent session captures written beside a job working directory
 .flowtree/
+*.iml

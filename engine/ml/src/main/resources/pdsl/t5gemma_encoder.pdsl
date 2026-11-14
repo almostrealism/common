@@ -7,10 +7,12 @@
  *
  * This file replaces the Java assembly that used to live in T5GemmaEncoder.attentionBranch,
  * T5GemmaEncoder.feedForwardBranch and T5GemmaEncoder.buildEncoder, which built each sub-layer as a
- * SequentialBlock (RMS norm, sub-layer, RMS norm) and wrapped it in residual(...). T5GemmaEncoder now
- * reads one layer's weights from the checkpoint, binds them and builds t5gemma_encoder_layer once per
- * layer; the token embedding before the layers, the final RMS norm after them and the loop over the
- * layers stay in Java.
+ * SequentialBlock (RMS norm, sub-layer, RMS norm) and wrapped it in residual(...), and assembled the
+ * whole encoder — the scaled token embedding, the loop over the layers and the final RMS norm — as an
+ * outer SequentialBlock. T5GemmaEncoder now binds the checkpoint, the rotary frequencies and the
+ * prompt masks and builds t5gemma_encoder (or t5gemma_encoder_softcapped) in one call; only loading
+ * and validating the weights, filling the prompt masks and composing the encoder into a larger model
+ * stay in Java.
  *
  * The sub-layers are layers of two other assets, which this file imports:
  *
@@ -176,4 +178,76 @@ layer t5gemma_encoder_layer(batch: int, seq_len: int, heads: int, head_dim: int,
                              pre_feedforward_layernorm, mlp_proj, down_proj,
                              post_feedforward_layernorm, epsilon)
     }
+}
+
+/**
+ * The scaled token embedding that opens the encoder: [batch, seq_len] token ids ->
+ * [batch, seq_len, hidden], with hidden the width of the embedding table's rows.
+ *
+ *   embedding(embed_tokens)   each id replaced by its row of the [vocabulary, hidden] table, an
+ *                             integer-addressed gather that stays exact for a vocabulary larger
+ *                             than single precision can count            [batch, seq_len, hidden]
+ *   scale(sqrt(hidden))       every feature multiplied by the square root of the hidden width,
+ *                             the input scaling Gemma applies to its embeddings
+ *                                                                        [batch, seq_len, hidden]
+ *
+ * The table is a weight of the stage, so training accumulates each position's gradient into the
+ * row that position selected.
+ */
+layer t5gemma_token_embedding(embed_tokens: weight, hidden: int) {
+    embedding(embed_tokens)
+    scale(sqrt(hidden))
+}
+
+/**
+ * The whole encoder with soft-capped attention logits (the released base encoder):
+ * [batch, seq_len] token ids -> [batch, seq_len, hidden] hidden states, with hidden = heads * head_dim.
+ *
+ *   t5gemma_token_embedding             the scaled token embedding       [batch, seq_len, hidden]
+ *   stack weights.encoder.layers        one t5gemma_encoder_layer_softcapped per checkpoint layer,
+ *                                       each adding its sandwich-normalized residual attention and
+ *                                       feed-forward to the stream       [batch, seq_len, hidden]
+ *   rmsnorm(norm)                       the final RMS norm closing the stack
+ *                                                                        [batch, seq_len, hidden]
+ *
+ * weights is the checkpoint. encoder.embed_tokens.weight is the embedding table, encoder.layers the
+ * group stack repeats over (one member per layer, numeric names sorted numerically) and
+ * encoder.norm.weight the final norm scale. The rotary frequencies and masks are shared by every
+ * layer: inv_freq the rotary frequencies, key_mask the prompt mask [batch, seq_len] (one at a prompt
+ * position, zero at padding) and padding_mask the all-ones value mask. softcap is the attention
+ * logit soft-cap and epsilon the RMS-norm epsilon every norm uses.
+ */
+layer t5gemma_encoder_softcapped(batch: int, seq_len: int, heads: int, head_dim: int, inner_dim: int,
+                                 weights: checkpoint, inv_freq: weight, padding_mask: weight,
+                                 key_mask: weight, softcap: float, epsilon: float) {
+    t5gemma_token_embedding(weights.encoder.embed_tokens.weight, heads * head_dim)
+    stack weights.encoder.layers as block {
+        t5gemma_encoder_layer_softcapped(batch, seq_len, heads, head_dim, inner_dim,
+                                         block.pre_self_attn_layernorm.weight, block.self_attn.to_qkv.weight,
+                                         block.self_attn.o_proj.weight, block.post_self_attn_layernorm.weight,
+                                         block.pre_feedforward_layernorm.weight, block.mlp.proj.weight,
+                                         block.mlp.down_proj.weight, block.post_feedforward_layernorm.weight,
+                                         inv_freq, padding_mask, key_mask, softcap, epsilon)
+    }
+    rmsnorm(weights.encoder.norm.weight, epsilon)
+}
+
+/**
+ * The whole encoder with plain attention logits, for a configuration without the soft-cap:
+ * [batch, seq_len] token ids -> [batch, seq_len, hidden]. As t5gemma_encoder_softcapped, with
+ * t5gemma_encoder_layer in place of t5gemma_encoder_layer_softcapped and no soft-cap argument.
+ */
+layer t5gemma_encoder(batch: int, seq_len: int, heads: int, head_dim: int, inner_dim: int,
+                      weights: checkpoint, inv_freq: weight, padding_mask: weight,
+                      key_mask: weight, epsilon: float) {
+    t5gemma_token_embedding(weights.encoder.embed_tokens.weight, heads * head_dim)
+    stack weights.encoder.layers as block {
+        t5gemma_encoder_layer(batch, seq_len, heads, head_dim, inner_dim,
+                              block.pre_self_attn_layernorm.weight, block.self_attn.to_qkv.weight,
+                              block.self_attn.o_proj.weight, block.post_self_attn_layernorm.weight,
+                              block.pre_feedforward_layernorm.weight, block.mlp.proj.weight,
+                              block.mlp.down_proj.weight, block.post_feedforward_layernorm.weight,
+                              inv_freq, padding_mask, key_mask, epsilon)
+    }
+    rmsnorm(weights.encoder.norm.weight, epsilon)
 }
