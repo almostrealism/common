@@ -104,11 +104,20 @@ on:
 # stops a test run working on the commit it replaced: the validate run's
 # cancel-superseded-test-runs job cancels it. Branch name rather than
 # github.ref, because a pull_request run's ref is refs/pull/N/merge.
+#
+# A deployment to any environment other than `test` (production, worker,
+# start-tests) also starts this workflow, as a run that skips every job. It
+# gets a group of its own, keyed by run id. In the branch's group it would
+# take the single pending slot and so cancel the run queued there: on master
+# each `worker` deployment that Auto-Resolve Submit creates cancelled the
+# queued push run of the latest merge.
 concurrency:
   group: >-
     build-and-test-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{
     github.head_ref || github.ref_name }}-${{
     github.event_name == 'pull_request' && 'validate' || 'test' }}${{
+    github.event_name == 'deployment' && github.event.deployment.environment != 'test'
+    && format('-not-a-test-{0}', github.run_id) || '' }}${{
     github.ref == 'refs/heads/master' && github.run_attempt != '1'
     && format('-rerun-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
@@ -1595,6 +1604,11 @@ jobs:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           REPO_URL: git@github.com:${{ github.repository }}.git
+          # The test run gates the merge but never starts on its own: the
+          # controller starts it when a job on this workstream ends with
+          # nothing to commit. Set on every registration, existing workstream
+          # included, so no branch's workstream is left without it.
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -4046,6 +4060,10 @@ jobs:
           # Marked explicitly, not inferred from `automated` (every CI job sets
           # that) — a QA, planning or implementation job is the work reviewed.
           REMEDIATION_PASS: "true"
+          # Given to the workstream when this submission has to create it (a
+          # docs-only branch has no register-workstream run), so its test run
+          # still starts once the review loop settles.
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -4466,6 +4484,10 @@ jobs:
           # Marked explicitly, not inferred from `automated` (every CI job sets
           # that) — a QA, planning or implementation job is the work reviewed.
           REMEDIATION_PASS: "true"
+          # Given to the workstream when this submission has to create it (a
+          # docs-only branch has no register-workstream run), so its test run
+          # still starts once the review loop settles.
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}

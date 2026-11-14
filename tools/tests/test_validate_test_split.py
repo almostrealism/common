@@ -89,7 +89,7 @@ def _evaluate(expression, context, cancelled=False):
 
     ``&&`` and ``||`` return an operand, as Python's ``and``/``or`` do, and a
     missing context property is null, which compares unequal to any string.
-    ``format`` is not supported; callers evaluate only expressions without it.
+    ``format`` substitutes ``{0}``-style placeholders, as GitHub's does.
     """
     python = _strip_braces(expression)
     python = re.sub(r"\b((?:github|needs)(?:\.[A-Za-z_][\w-]*)+)", r'ctx("\1")', python)
@@ -101,6 +101,7 @@ def _evaluate(expression, context, cancelled=False):
         "cancelled": lambda: cancelled,
         "always": lambda: True,
         "fromJSON": int,
+        "format": lambda template, *args: template.format(*args),
     }
     return eval(python, namespace)  # noqa: S307 - the input is this repository's workflow
 
@@ -255,6 +256,22 @@ class ConcurrencyTest(unittest.TestCase):
     def test_forks_have_separate_groups(self):
         fork = self._group(_context("pull_request", head_repo="someone/common"))
         self.assertEqual("build-and-test-someone/common-feature-validate", fork)
+
+    def test_a_non_test_deployment_has_a_group_of_its_own(self):
+        # A worker or production deployment of master starts a run that skips
+        # every job. In master's group it would take the pending slot and
+        # cancel the push run queued there.
+        push = self._group(_context("push", ref="refs/heads/master"))
+        self.assertEqual("build-and-test-almostrealism/common-master-test", push)
+        for environment in ("worker", "production", "start-tests"):
+            deployment = self._group(
+                _context("deployment", environment, ref="refs/heads/master"))
+            self.assertEqual("build-and-test-almostrealism/common-master-test-not-a-test-42",
+                             deployment, environment)
+
+    def test_a_test_deployment_shares_the_branch_test_group(self):
+        self.assertEqual(self._group(_context("push")),
+                         self._group(_context("deployment", "test")))
 
 
 class CancelSupersededTestRunsTest(unittest.TestCase):
