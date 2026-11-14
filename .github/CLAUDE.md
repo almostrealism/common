@@ -1015,6 +1015,23 @@ step so a failed deploy cannot leave the controller permanently quiesced.
 `concurrency` does **not** cancel in progress: interrupting a half-finished
 container rebuild is worse than queueing behind it.
 
+**A deploy never takes the stack down on a guess.** `rebuild.sh` builds every
+image — controller stack and agent pool — before it stops any container, so a
+failed build changes nothing. It then starts the new controller-stack images
+(`ar-memory`, `ar-tracker`, `flowtree-controller`, `ar-manager`) in an isolated
+compose project, `<project>-preflight`, with no published ports, throwaway
+state and an empty workstream list (so no Slack connection, no agent
+connections, no live data), and requires every healthcheck to pass; on
+failure it exits with the running stack untouched. Only then does it replace
+the live containers, with `up --wait`. A replacement that does not become
+healthy is rolled back: the images that were running are re-tagged and
+started again, and the step fails. `fleet-db` and `fleet-grafana` are never
+preflighted — a second Postgres on the live data directory would corrupt it.
+The preflight cannot prove the new images work against the live
+configuration and data; the rollback covers that. `test-rebuild.sh` (run by
+`python-tests` through `tools/tests/test_rebuild_sh.py`) pins the ordering,
+the preflight and the rollback.
+
 **The agent pool is part of the deploy.** `flowtree-agent-1` and
 `flowtree-agent-2` run their own image, which bundles the flowtree JARs — a
 change under `flowtree/agents` (the tool policy a coding-agent session runs
