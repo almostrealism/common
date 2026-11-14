@@ -75,10 +75,14 @@ changes between frames.
 
 A signed distance (`L = 1`). The distance is its only abstract method, so a lambda over the
 position is a signed distance function; a surface with an analytic normal implements the
-interface and overrides `normal`:
+interface and overrides `normal`. A lambda body does not see the interface's own default
+methods, so `length` and `c` in the lambda below come from the enclosing class, which must
+implement `VectorFeatures` (as every `TestSuiteBase` subclass does, through `CodeFeatures`);
+the class implementing the interface inherits them from `ImplicitSurface`:
 
 ```java
 // the unit sphere, with normals estimated from the gradient of the distance
+// (written inside a class that implements VectorFeatures)
 SignedDistanceFunction sphere = p -> length(p).subtract(c(1.0));
 
 // the unit sphere, with its analytic normal

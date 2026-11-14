@@ -27,9 +27,12 @@ import org.almostrealism.collect.PackedCollection;
  * itself.
  *
  * <p>The distance is the only abstract operation, so any distance that can be written with
- * producers is a signed distance function, and a lambda over the position is enough:</p>
+ * producers is a signed distance function, and a lambda over the position is enough. A
+ * lambda body does not see this interface's default methods, so the producer operations it
+ * uses must come from the enclosing class, for example one implementing
+ * {@link org.almostrealism.algebra.VectorFeatures}:</p>
  * <pre>{@code
- * // A unit sphere at the origin
+ * // A unit sphere at the origin, inside a class that implements VectorFeatures
  * SignedDistanceFunction sphere = p -> length(p).subtract(c(1.0));
  * }</pre>
  *
