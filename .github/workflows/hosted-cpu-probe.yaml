@@ -38,7 +38,7 @@ jobs:
           # The modules `test` runs, in its order.
           - lane: test
             modules: "base/hardware engine/utils engine/ml engine/render base/io,engine/utils-http"
-            pipeline_profile: "engine/ml"
+            pipeline_profile: "engine/ml base/io,engine/utils-http"
           # The modules `test-media` runs, in its order.
           - lane: test-media
             modules: "engine/audio studio/music studio/compose studio/spatial extern/ml-onnx,studio/experiments studio/bioscience"
@@ -70,18 +70,24 @@ jobs:
       - name: Start memory sampler
         # One line every 5 seconds: epoch seconds and MB in use (total minus
         # available), which counts the page cache the JVMs cannot reclaim.
+        # The log is opened for appending because the module loop also writes
+        # a sample at each module's start and end.
         run: |
           nohup bash -c 'while true; do
             echo "$(date +%s) $(free -m | awk "/^Mem:/ {print \$2 - \$7}")"
             sleep 5
-          done' > "$RUNNER_TEMP/memory.log" 2>&1 &
+          done' >> "$RUNNER_TEMP/memory.log" 2>&1 &
 
       - name: Run the lane's modules
         # Every module runs even when an earlier one fails, so one run reports
         # on the whole lane. The step fails at the end when any module did.
+        # A sample is taken at each module's start and end, so even a module
+        # shorter than the sampler's interval has a measured peak.
         run: |
           set -o pipefail
           results="$RUNNER_TEMP/results.tsv"
+          memory="$RUNNER_TEMP/memory.log"
+          sample() { echo "$(date +%s) $(free -m | awk '/^Mem:/ {print $2 - $7}')" >> "$memory"; }
           : > "$results"
           status=0
           for module in ${{ matrix.modules }}; do
@@ -91,6 +97,7 @@ jobs:
             esac
             log="$RUNNER_TEMP/mvn-$(echo "$module" | tr '/,' '--').log"
             start=$(date +%s)
+            sample
             if LD_LIBRARY_PATH="$RUNNER_TEMP/ar_libs" mvn test -Dcheckstyle.skip=true -pl "$module" \
                 -DAR_HARDWARE_DRIVER=native \
                 -DAR_HARDWARE_MEMORY_SCALE=7 \
@@ -102,9 +109,13 @@ jobs:
               outcome=failed
               status=1
             fi
+            sample
             end=$(date +%s)
-            peak=$(awk -v s="$start" -v e="$end" '$1 >= s && $1 <= e && $2 > p {p = $2} END {print p + 0}' "$RUNNER_TEMP/memory.log")
-            tests=$(grep -E "^\[(INFO|ERROR|WARNING)\] Tests run:" "$log" | tail -1 | sed 's/^\[[A-Z]*\] //')
+            peak=$(awk -v s="$start" -v e="$end" '$1 >= s && $1 <= e && (n == 0 || $2 > p) {p = $2; n++} END {print (n ? p : "n/a")}' "$memory")
+            # A module killed before Surefire's summary has no "Tests run:"
+            # line; that must not end the step before its row is written.
+            tests=$(grep -E "^\[(INFO|ERROR|WARNING)\] Tests run:" "$log" | tail -1 | sed 's/^\[[A-Z]*\] //' || true)
+            [ -n "$tests" ] || tests="no Surefire summary"
             printf '%s\t%s\t%s\t%s\t%s\n' "$module" "$outcome" "$(( (end - start) / 60 ))" "$peak" "$tests" >> "$results"
           done
           exit $status
@@ -132,6 +143,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          # A re-run job uploads again under the same name in the same run,
+          # which upload-artifact@v4 refuses unless overwriting is allowed.
+          overwrite: true
           name: hosted-cpu-probe-${{ matrix.lane }}
           path: |
             ${{ runner.temp }}/memory.log
