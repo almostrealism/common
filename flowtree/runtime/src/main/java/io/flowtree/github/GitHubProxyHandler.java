@@ -336,44 +336,20 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      */
     public String createGitHubPullRequest(String ownerRepo, String head, String base,
                                    String title, String body, boolean draft, String token) {
-        try {
-            String apiUrl = apiRoot + "/repos/" + ownerRepo + "/pulls";
-            String payload = pullRequestPayload(title, head, base, body, draft);
-
-            URL url = URI.create(apiUrl).toURL();
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
-            conn.setRequestProperty("Accept", "application/vnd.github+json");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(15000);
-            conn.setDoOutput(true);
-            OutputStream os = conn.getOutputStream();
-            os.write(payload.getBytes(StandardCharsets.UTF_8));
-            os.close();
-
-            int status = conn.getResponseCode();
-            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
-            String responseBody = is != null
-                    ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "";
-            if (is != null) is.close();
-
-            if (status == 201) {
-                Matcher m = Pattern.compile("\"html_url\"\\s*:\\s*\"([^\"]+)\"").matcher(responseBody);
-                if (m.find()) {
-                    String prUrl = m.group(1);
-                    log("Auto-created PR: " + prUrl);
-                    return prUrl;
-                }
-            }
-
-            log("GitHub PR creation returned HTTP " + status + ": "
-                + responseBody.substring(0, Math.min(200, responseBody.length())));
-        } catch (IOException e) {
-            log("GitHub PR creation failed: " + e.getMessage());
+        ApiResponse response = apiPost(apiRoot + "/repos/" + ownerRepo + "/pulls",
+                pullRequestPayload(title, head, base, body, draft), token);
+        if (response == null) {
+            return null;
         }
+        if (response.status() == 201) {
+            Matcher m = Pattern.compile("\"html_url\"\\s*:\\s*\"([^\"]+)\"").matcher(response.body());
+            if (m.find()) {
+                String prUrl = m.group(1);
+                log("Auto-created PR: " + prUrl);
+                return prUrl;
+            }
+        }
+        log("GitHub PR creation returned HTTP " + response.status() + ": " + response.excerpt());
         return null;
     }
 
@@ -661,34 +637,154 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     public boolean commentOnPullRequest(String ownerRepo, int number, String body, String token) {
         String url = apiRoot + "/repos/" + ownerRepo + "/issues/" + number + "/comments";
         String payload = "{\"body\":\"" + JsonFieldExtractor.escapeJson(body) + "\"}";
-        try {
-            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
-            conn.setRequestProperty("Accept", "application/vnd.github+json");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(15000);
-            conn.setDoOutput(true);
-            OutputStream os = conn.getOutputStream();
-            os.write(payload.getBytes(StandardCharsets.UTF_8));
-            os.close();
-
-            int status = conn.getResponseCode();
-            if (status == 201) {
-                return true;
-            }
-            InputStream is = conn.getErrorStream();
-            String responseBody = is != null
-                    ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "";
-            if (is != null) is.close();
-            log("GitHub comment on PR #" + number + " returned HTTP " + status + ": "
-                + responseBody.substring(0, Math.min(200, responseBody.length())));
-        } catch (IOException e) {
-            log("GitHub comment on PR #" + number + " failed: " + e.getMessage());
+        ApiResponse response = apiPost(url, payload, token);
+        if (response == null) {
+            return false;
         }
+        if (response.status() == 201) {
+            return true;
+        }
+        log("GitHub comment on PR #" + number + " returned HTTP " + response.status()
+                + ": " + response.excerpt());
         return false;
+    }
+
+    /**
+     * Returns the commit SHA at the head of {@code branch}.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param branch    the branch name
+     * @param token     the GitHub API bearer token
+     * @return the head commit SHA, or {@code null} when it cannot be read
+     */
+    public String fetchHeadSha(String ownerRepo, String branch, String token) {
+        JsonNode root = apiGet(commitApiUrl(apiRoot, ownerRepo, branch), token);
+        return root == null ? null : root.path("sha").asText(null);
+    }
+
+    /**
+     * Reports whether a deployment of commit {@code sha} to {@code environment}
+     * already exists. A deployment that exists has already started whatever
+     * workflow the {@code deployment} event triggers for that commit, so a
+     * caller that wants one run per commit creates no second deployment.
+     *
+     * @param ownerRepo   the {@code owner/repo} path component
+     * @param sha         the commit SHA
+     * @param environment the deployment environment name
+     * @param token       the GitHub API bearer token
+     * @return {@code true} when GitHub lists at least one such deployment;
+     *         {@code false} when it lists none or the listing could not be read
+     */
+    public boolean hasDeployment(String ownerRepo, String sha, String environment, String token) {
+        JsonNode root = apiGet(apiRoot + "/repos/" + ownerRepo + "/deployments?sha=" + encodeQuery(sha)
+                + "&environment=" + encodeQuery(environment) + "&per_page=1", token);
+        return root != null && root.isArray() && root.size() > 0;
+    }
+
+    /**
+     * Creates a deployment of {@code ref} to {@code environment}, which starts
+     * every workflow the repository triggers on the {@code deployment} event.
+     *
+     * <p>The deployment never merges the default branch into {@code ref}
+     * ({@code auto_merge} off) and does not wait for the commit's statuses
+     * ({@code required_contexts} empty): what it deploys is the branch head as
+     * it is, and deciding whether that head is good is the triggered
+     * workflow's job. The environment is transient, so an older deployment of
+     * the same branch goes inactive when a newer one succeeds.</p>
+     *
+     * <p>Must be called with a personal or app token: GitHub does not start
+     * workflows from a deployment created with a workflow's own token.</p>
+     *
+     * @param ownerRepo   the {@code owner/repo} path component
+     * @param ref         the branch (or SHA) to deploy
+     * @param environment the deployment environment name
+     * @param description a short description recorded on the deployment
+     * @param token       the GitHub API bearer token
+     * @return {@code true} when GitHub created the deployment
+     */
+    public boolean createDeployment(String ownerRepo, String ref, String environment,
+                                    String description, String token) {
+        String payload = "{\"ref\":\"" + JsonFieldExtractor.escapeJson(ref)
+                + "\",\"environment\":\"" + JsonFieldExtractor.escapeJson(environment)
+                + "\",\"description\":\"" + JsonFieldExtractor.escapeJson(description)
+                + "\",\"auto_merge\":false,\"required_contexts\":[]"
+                + ",\"transient_environment\":true,\"production_environment\":false}";
+        ApiResponse response = apiPost(apiRoot + "/repos/" + ownerRepo + "/deployments", payload, token);
+        if (response == null) {
+            return false;
+        }
+        if (response.status() == 201) {
+            log("Created " + environment + " deployment of " + ownerRepo + "@" + ref);
+            return true;
+        }
+        log("GitHub deployment of " + ownerRepo + "@" + ref + " returned HTTP "
+                + response.status() + ": " + response.excerpt());
+        return false;
+    }
+
+    /**
+     * Reports whether {@code workflowFile} already has a run for commit
+     * {@code sha}, in any state.
+     *
+     * @param ownerRepo    the {@code owner/repo} path component
+     * @param workflowFile the workflow file name, e.g. {@code tests.yaml}
+     * @param sha          the commit SHA
+     * @param token        the GitHub API bearer token
+     * @return {@code true} when GitHub lists at least one run; {@code false}
+     *         when it lists none or the listing could not be read
+     */
+    public boolean hasWorkflowRun(String ownerRepo, String workflowFile, String sha, String token) {
+        JsonNode root = apiGet(workflowApiUrl(ownerRepo, workflowFile) + "/runs?head_sha="
+                + encodeQuery(sha) + "&per_page=1", token);
+        return root != null && root.path("total_count").asInt(0) > 0;
+    }
+
+    /**
+     * Starts {@code workflowFile} on {@code ref} through its
+     * {@code workflow_dispatch} trigger.
+     *
+     * @param ownerRepo    the {@code owner/repo} path component
+     * @param workflowFile the workflow file name, e.g. {@code tests.yaml}
+     * @param ref          the branch to run the workflow on
+     * @param token        the GitHub API bearer token
+     * @return {@code true} when GitHub accepted the dispatch
+     */
+    public boolean dispatchWorkflow(String ownerRepo, String workflowFile, String ref, String token) {
+        String payload = "{\"ref\":\"" + JsonFieldExtractor.escapeJson(ref) + "\"}";
+        ApiResponse response = apiPost(workflowApiUrl(ownerRepo, workflowFile) + "/dispatches",
+                payload, token);
+        if (response == null) {
+            return false;
+        }
+        if (response.status() == 204) {
+            log("Dispatched " + workflowFile + " on " + ownerRepo + "@" + ref);
+            return true;
+        }
+        log("GitHub dispatch of " + workflowFile + " on " + ownerRepo + "@" + ref
+                + " returned HTTP " + response.status() + ": " + response.excerpt());
+        return false;
+    }
+
+    /**
+     * Builds the REST URL of a workflow, addressed by its file name.
+     *
+     * @param ownerRepo    the {@code owner/repo} path component
+     * @param workflowFile the workflow file name
+     * @return the workflow's API URL (no trailing slash)
+     */
+    private String workflowApiUrl(String ownerRepo, String workflowFile) {
+        return apiRoot + "/repos/" + ownerRepo + "/actions/workflows/"
+                + URLEncoder.encode(workflowFile, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    /**
+     * Percent-encodes a query parameter value.
+     *
+     * @param value the raw value
+     * @return the encoded value
+     */
+    private static String encodeQuery(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
     /**
@@ -823,6 +919,66 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             log("GitHub GraphQL failed: " + e.getMessage());
         }
         return null;
+    }
+
+    /**
+     * The status and body of a REST call that completed with any HTTP status.
+     *
+     * @param status the HTTP status code
+     * @param body   the response body, empty when there was none
+     */
+    private record ApiResponse(int status, String body) {
+
+        /**
+         * Returns the start of the body, for a log line about an unexpected
+         * status.
+         *
+         * @return at most the first 200 characters of the body
+         */
+        String excerpt() {
+            return body.substring(0, Math.min(200, body.length()));
+        }
+    }
+
+    /**
+     * Sends a JSON {@code POST} to the GitHub REST API. Shared by the typed
+     * write operations so each reads as what it changes rather than repeating
+     * the connection boilerplate.
+     *
+     * @param url     the fully-built request URL
+     * @param payload the JSON request body
+     * @param token   the GitHub API bearer token
+     * @return the response, whatever its status; {@code null} on a transport
+     *         failure, which is logged
+     */
+    private ApiResponse apiPost(String url, String payload, String token) {
+        try {
+            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+            conn.setDoOutput(true);
+            try (OutputStream os = conn.getOutputStream()) {
+                os.write(payload.getBytes(StandardCharsets.UTF_8));
+            }
+
+            int status = conn.getResponseCode();
+            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String responseBody = "";
+            if (is != null) {
+                try (InputStream in = is) {
+                    responseBody = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+            return new ApiResponse(status, responseBody);
+        } catch (IOException e) {
+            log("GitHub POST " + url + " failed: " + e.getMessage());
+            return null;
+        }
     }
 
     /**
