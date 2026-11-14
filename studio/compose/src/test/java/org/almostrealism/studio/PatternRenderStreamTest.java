@@ -23,6 +23,8 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -294,6 +296,52 @@ public class PatternRenderStreamTest extends TestSuiteBase {
 							expected.getCause().getCause() instanceof IllegalStateException);
 				}
 			}
+		} finally {
+			stream.destroy();
+			workingInput.destroy();
+		}
+	}
+
+	/**
+	 * A failure belongs to the buffer whose render failed: buffers rendered before it are still
+	 * returned, even when the failure has already been recorded by the time they are awaited,
+	 * and the failed buffer's await reports it. A failure of a render beyond the prefill does
+	 * not fail {@link PatternRenderStream#start(int)}.
+	 */
+	@Test(timeout = 60000)
+	public void buffersRenderedBeforeFailureAreStillReturned() throws InterruptedException {
+		AtomicInteger renders = new AtomicInteger();
+		CountDownLatch failing = new CountDownLatch(1);
+		Runnable failingRender = () -> {
+			if (renders.incrementAndGet() > SLOTS) {
+				failing.countDown();
+				throw new IllegalStateException("render failure under test");
+			}
+		};
+
+		PackedCollection workingInput = new PackedCollection(shape(1, BUFFER_SIZE));
+		PatternRenderStream stream = new PatternRenderStream(failingRender, new long[1],
+				workingInput, SLOTS, 1, BUFFER_SIZE);
+
+		try {
+			stream.start(SLOTS);
+			Assert.assertNotNull("the first prefilled buffer is returned", stream.awaitSlot());
+			stream.release();
+
+			Assert.assertTrue("the render after the prefill is attempted",
+					failing.await(30, TimeUnit.SECONDS));
+			Assert.assertNotNull("the second buffer, rendered before the failure, is returned",
+					stream.awaitSlot());
+			stream.release();
+
+			try {
+				stream.awaitSlot();
+				Assert.fail("the await of the buffer whose render failed must report the failure");
+			} catch (HardwareException expected) {
+				Assert.assertTrue("the report carries the render failure",
+						expected.getCause().getCause() instanceof IllegalStateException);
+			}
+			Assert.assertEquals("no render is attempted after the failure", SLOTS + 1, renders.get());
 		} finally {
 			stream.destroy();
 			workingInput.destroy();
