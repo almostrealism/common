@@ -315,10 +315,10 @@ Raised in review of this plan, for the person deciding whether it goes ahead.
 - `PLAN-20261025-spiking-lif-population.md` (status `in-progress`) delivered
   `LeakyIntegrateAndFirePopulation` and its test; its Brian2 parity criterion is still open, so
   the page must not claim parity. This plan does not duplicate any of its deliverables.
-- `PLAN-20261025-simulation-loop-owner.md` delivered `SimulationRunner`,
+- Completed simulation-loop work delivered `SimulationRunner`,
   `simulation-loop-examples.md` and the `compute/time/README.md` section, which this page links
   rather than repeats.
-- `PLAN-20261023-counter-based-random.md` delivered `CounterRandom`/`RandomProducer`; its
+- Completed counter-based random work delivered `CounterRandom`/`RandomProducer`; its
   durable documentation is Javadoc only, which is the gap section 6 fills.
 - The open sparse-matrix branch adds a "Gather with a Segmented Reduction (Sparse
   Matrix–Vector Product)" section to `dynamic-indexing.md`; the open rate-model branch adds a
