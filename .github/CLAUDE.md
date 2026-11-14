@@ -149,6 +149,10 @@ ways, none of which CI depends on:
    secret of the `start-tests` environment: a fine-grained token with
    Deployments read/write. Restrict that environment's deployment branches to
    master, because `workflow_dispatch` runs the file from the dispatched ref.
+   It resolves the `branch` input against `refs/heads/` (with the workflow's own
+   `GITHUB_TOKEN`, `contents: read`) and refuses a raw SHA or a pull ref before
+   deploying, so this manual button cannot create a test deployment of
+   fork-controlled code — the trust rule below, enforced at the button.
 3. **One REST call** with your own token:
    ```bash
    echo '{"ref":"<branch>","environment":"test","auto_merge":false,

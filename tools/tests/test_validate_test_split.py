@@ -294,8 +294,57 @@ class StartTestsWorkflowTest(unittest.TestCase):
     def test_runs_from_master_in_the_protected_environment(self):
         self.assertEqual("github.ref == 'refs/heads/master'", self.job["if"])
         self.assertEqual("start-tests", self.job["environment"])
-        self.assertEqual({}, self.job["permissions"])
+        # Only contents:read, for resolving the branch input; the deployment is
+        # created with the START_TESTS_TOKEN secret, not github.token.
+        self.assertEqual({"contents": "read"}, self.job["permissions"])
         self.assertIn("workflow_dispatch", self.workflow[True])
+
+    def _gh_stub(self, directory, git_ref_exit):
+        """Write a fake ``gh`` that fails the branch lookup with ``git_ref_exit``."""
+        gh = os.path.join(directory, "gh")
+        with open(gh, "w") as f:
+            f.write(
+                "#!/usr/bin/env bash\n"
+                "for a in \"$@\"; do\n"
+                "  case \"$a\" in\n"
+                "    */git/ref/heads/*) exit %d;;\n"
+                "  esac\n"
+                "done\n"
+                "echo 'Created deployment 1'\n" % git_ref_exit
+            )
+        os.chmod(gh, 0o755)
+        return gh
+
+    def test_rejects_a_ref_that_is_not_a_branch(self):
+        """A pull ref or raw SHA (fork-controlled code) is refused, not deployed."""
+        bash = shutil.which("bash")
+        self.assertIsNotNone(bash)
+        with tempfile.TemporaryDirectory() as tmp:
+            self._gh_stub(tmp, git_ref_exit=1)
+            env = dict(os.environ, PATH=tmp + os.pathsep + os.environ["PATH"],
+                       GH_TOKEN="deploy-token", VALIDATE_TOKEN="validate-token",
+                       REPO=_REPO, BRANCH="refs/pull/5/head")
+            result = subprocess.run([bash, "-e", "-c", self.job["steps"][0]["run"]], env=env,
+                                    cwd=tmp, capture_output=True, text=True)
+            self.assertEqual(1, result.returncode)
+            self.assertIn("is not a branch", result.stdout)
+            self.assertNotIn("Created deployment", result.stdout)
+
+    def test_deploys_a_branch_that_resolves(self):
+        """A ref that resolves under refs/heads is deployed."""
+        bash = shutil.which("bash")
+        self.assertIsNotNone(bash)
+        if shutil.which("jq") is None:
+            self.skipTest("jq is required to build the deployment request")
+        with tempfile.TemporaryDirectory() as tmp:
+            self._gh_stub(tmp, git_ref_exit=0)
+            env = dict(os.environ, PATH=tmp + os.pathsep + os.environ["PATH"],
+                       GH_TOKEN="deploy-token", VALIDATE_TOKEN="validate-token",
+                       REPO=_REPO, BRANCH="feature")
+            result = subprocess.run([bash, "-e", "-c", self.job["steps"][0]["run"]], env=env,
+                                    cwd=tmp, capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertIn("Created deployment", result.stdout)
 
     def test_deployment_request_body(self):
         jq = shutil.which("jq")

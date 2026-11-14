@@ -48,16 +48,30 @@ jobs:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     environment: start-tests
-    permissions: {}
+    permissions:
+      contents: read
     steps:
       - name: Create the test deployment
         env:
           GH_TOKEN: ${{ secrets.START_TESTS_TOKEN }}
+          VALIDATE_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           BRANCH: ${{ inputs.branch }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::error::START_TESTS_TOKEN is not set in the start-tests environment. Create the deployment with your own token instead (see this workflow's header)."
+            exit 1
+          fi
+          # A test deployment must name a branch in this repository. The
+          # deployments API would also accept a raw SHA or a pull ref
+          # (refs/pull/N/head), and deploying one would run fork-controlled
+          # workflow code with this repository's secrets — access a fork's own
+          # pull_request run never receives, and which .github/CLAUDE.md forbids.
+          # Resolve the input as a branch and reject anything else. The lookup
+          # uses the workflow's own GITHUB_TOKEN (contents: read), not the
+          # deployment token, whose only scope is Deployments.
+          if ! GH_TOKEN="$VALIDATE_TOKEN" gh api "repos/${REPO}/git/ref/heads/${BRANCH}" >/dev/null 2>&1; then
+            echo "::error::\"${BRANCH}\" is not a branch in ${REPO}. Name a branch of this repository (not a SHA or a pull ref); see this workflow's header."
             exit 1
           fi
           jq -n --arg ref "$BRANCH" '{
