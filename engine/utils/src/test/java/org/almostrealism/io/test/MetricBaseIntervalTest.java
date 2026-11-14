@@ -22,7 +22,9 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Tests for the interval listeners of {@link org.almostrealism.io.MetricBase}.
@@ -191,5 +193,57 @@ public class MetricBaseIntervalTest extends TestSuiteBase {
 
 		Assert.assertEquals("interval 0 reported once despite the late entry", 1, reports.size());
 		Assert.assertArrayEquals(new double[] { 1.0, 1 }, reports.get(0), 0.0);
+	}
+
+	/**
+	 * Entries crossing interval boundaries concurrently with {@code clear()} must never deliver
+	 * a {@code null} total or count to an interval listener. Reporting used to read the interval
+	 * maps when the listeners ran, so a {@code clear()} emptying those maps between an entry
+	 * recording a boundary and the report reading it passed {@code null} to the listeners, which
+	 * fails when a listener unboxes the payload. Capturing the total and count under the aggregate
+	 * lock at the moment the interval completes removes that window entirely, so the listener here
+	 * — which unboxes both values — is never handed a {@code null}.
+	 */
+	@Test(timeout = 30000)
+	public void concurrentClearNeverDeliversNullToListeners() throws InterruptedException {
+		SteppedMetric metric = new SteppedMetric();
+		List<Throwable> failures = Collections.synchronizedList(new ArrayList<>());
+
+		metric.addIntervalListener((total, count) -> {
+			double unboxedTotal = total;
+			int unboxedCount = count;
+			if (unboxedCount < 0 || unboxedTotal < 0.0) {
+				failures.add(new AssertionError("unexpected negative interval payload"));
+			}
+		});
+
+		AtomicBoolean stop = new AtomicBoolean(false);
+
+		Thread writer = new Thread(() -> {
+			try {
+				for (long i = 0; i < 200000 && !stop.get(); i++) {
+					metric.setInterval(i);
+					metric.addEntry("a", 1.0);
+				}
+			} catch (Throwable t) {
+				failures.add(t);
+			} finally {
+				stop.set(true);
+			}
+		});
+
+		Thread clearer = new Thread(() -> {
+			while (!stop.get()) {
+				metric.clear();
+			}
+		});
+
+		writer.start();
+		clearer.start();
+		writer.join();
+		clearer.join();
+
+		Assert.assertTrue("no listener received a null interval payload: " + failures,
+				failures.isEmpty());
 	}
 }

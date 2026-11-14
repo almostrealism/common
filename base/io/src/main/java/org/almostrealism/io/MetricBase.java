@@ -212,11 +212,15 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	 * of interval order under concurrent use: an entry recorded for an interval below the
 	 * highest one already seen reports that interval immediately rather than losing it.</p>
 	 *
-	 * <p>The interval data is recorded and the completion decision made while holding the
-	 * aggregate lock, so a concurrent entry advancing the interval boundary can never report
-	 * an interval whose totals have not yet been merged. A later entry that lands in an
-	 * already-reported interval is not reported again; its value still accumulates, but it
-	 * arrives too late to be included in that interval's completed report.</p>
+	 * <p>The interval data is recorded, the completion decision made, and the completed
+	 * interval's total and count snapshotted while holding the aggregate lock; only the listener
+	 * notification happens outside it. A concurrent entry advancing the interval boundary can
+	 * therefore never report an interval whose totals have not yet been merged, and because the
+	 * reported figures are the snapshot taken when the boundary was crossed, a concurrent
+	 * {@link #clear()} or a late entry cannot erase or mutate them before the listeners run. A
+	 * later entry that lands in an already-reported interval is not reported again; its value
+	 * still accumulates, but it arrives too late to be included in that interval's completed
+	 * report.</p>
 	 *
 	 * @param <T> the entry type (must be a String or implement Named)
 	 * @param entry the entry key, or null for an unnamed entry
@@ -230,6 +234,8 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 		counts.merge(name, 1, Integer::sum);
 
 		long completed = -1;
+		double completedTotal = 0.0;
+		int completedCount = 0;
 
 		synchronized (aggregateLock) {
 			total += value;
@@ -245,10 +251,15 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 			} else if (interval < lastEntryInterval && firstInInterval) {
 				completed = interval;
 			}
+
+			if (completed >= 0) {
+				completedTotal = intervalTotals.get(completed);
+				completedCount = intervalCounts.get(completed);
+			}
 		}
 
 		if (completed >= 0) {
-			reportInterval(completed);
+			reportInterval(completedTotal, completedCount);
 		}
 	}
 
@@ -317,16 +328,22 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	}
 
 	/**
-	 * Reports the specified interval to all registered listeners.
+	 * Reports a completed interval's total and count to all registered listeners.
 	 *
-	 * @param interval the interval index to report
+	 * <p>The snapshot is captured by {@link #addEntry} under the aggregate lock at the moment
+	 * the interval is recognized as complete, so the values delivered here are exactly those
+	 * accumulated when the boundary was crossed. Taking the snapshot at decision time — rather
+	 * than reading the mutable interval maps when the listeners run — keeps the report immune to
+	 * a concurrent {@link #clear()} erasing the interval and to a late entry mutating its totals
+	 * before the callbacks fire. Listeners are notified outside the lock.</p>
+	 *
+	 * @param total the total accumulated in the completed interval
+	 * @param count the number of entries recorded in the completed interval
 	 */
-	protected void reportInterval(long interval) {
+	protected void reportInterval(double total, int count) {
 		if (intervalListeners.isEmpty()) return;
 
-		// TODO(review): a concurrent clear() (which clears the interval maps outside aggregateLock) can make these gets return null, passing null to listeners
-		intervalListeners.forEach(l ->
-				l.accept(intervalTotals.get(interval), intervalCounts.get(interval)));
+		intervalListeners.forEach(l -> l.accept(total, count));
 	}
 
 	/**
@@ -354,10 +371,10 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 			count = 0;
 			total = 0.0;
 			lastEntryInterval = -1;
+			intervalTotals.clear();
+			intervalCounts.clear();
 		}
 		entries.clear();
 		counts.clear();
-		intervalTotals.clear();
-		intervalCounts.clear();
 	}
 }
