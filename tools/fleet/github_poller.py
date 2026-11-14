@@ -54,12 +54,10 @@ callback for exactly that caller — see its docstring — so
 production poll path, just NULL whenever no
 resolver is supplied or it does not know a given job's dependency graph.
 
-**Labels.** The ``labels`` persisted per job are the *executing runner's*
-actual label set (the workflow-jobs API's own ``labels`` field), not the
-workflow's requested ``runs-on:`` set — a runner can carry extra/custom
-labels beyond what a job asked for. Resolving the requested set would need
-the job matched to its ``runs-on:`` in the workflow YAML, which this module
-does not do. Two projections of the set are persisted beside it so a
+**Labels.** The ``labels`` persisted per job are the workflow-jobs API's
+own ``labels`` field, which GitHub documents as the job's ``runs-on:``
+labels. A job that never ran (skipped, or cancelled while queued) therefore
+still has them; see :func:`never_had_a_runner`. Two projections of the set are persisted beside it so a
 dashboard never parses it: ``lane``, the fleet's own ``ar-*`` label (what
 kind of work the runner is for), and ``platform`` (macos / linux / windows)
 — see :func:`classify_labels`.
@@ -172,6 +170,12 @@ def compute_job_metrics(
             queue-wait calculation. Ignored when ``needs`` is empty or
             ``None``.
 
+    A job that finished without ever being assigned a runner (see
+    :func:`never_had_a_runner`) gets no ``queue_wait_seconds``: it did not
+    wait for a runner. A skipped job's ``started_at`` is the moment its
+    condition was evaluated, so measuring it would add a wait of about zero
+    seconds for every lane a run skipped.
+
     Returns:
         dict with ``pre_start_latency_seconds`` (float or None),
         ``is_entry_point`` (bool or None), ``queue_wait_seconds`` (float or
@@ -187,7 +191,9 @@ def compute_job_metrics(
     is_entry_point = None if needs is None else (len(needs) == 0)
 
     queue_wait_seconds = None
-    if is_entry_point:
+    if never_had_a_runner(job):
+        pass
+    elif is_entry_point:
         queue_wait_seconds = pre_start_latency_seconds
     elif is_entry_point is False and started_at is not None:
         dep_completed = _parse_github_timestamp(dependency_completed_at)
@@ -200,6 +206,19 @@ def compute_job_metrics(
         "is_entry_point": is_entry_point,
         "queue_wait_seconds": queue_wait_seconds,
     }
+
+
+def never_had_a_runner(job: Dict) -> bool:
+    """Whether *job* finished without being assigned a runner.
+
+    A skipped job, and one cancelled while still queued, completes with no
+    ``runner_name``. The jobs API's ``labels`` are the job's requested
+    ``runs-on:`` labels, so such a job still carries its lane, and every
+    validate run skips each self-hosted test lane. Its timestamps describe
+    when its condition was evaluated or when it was cancelled, not a wait
+    for a runner.
+    """
+    return job.get("status") == "completed" and not job.get("runner_name")
 
 
 def is_carried_over(job: Dict) -> bool:
@@ -387,6 +406,61 @@ def fetch_run_jobs(
     )
 
 
+def fetch_job(repo: str, job_id: str, token: str) -> Optional[Dict]:
+    """Fetch one workflow job by id, or ``None`` when the API no longer has it.
+
+    A job id stays valid for every attempt of its run, so this answers for a
+    job the run list no longer reaches. A 404 (the run was deleted) is
+    ``None``; any other failure raises.
+    """
+    url = "%s/repos/%s/actions/jobs/%s" % (GITHUB_API_BASE, repo, job_id)
+    try:
+        return _get_json(url, token)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise
+
+
+DEFAULT_RECONCILE_LIMIT = 100
+
+
+def reconcile_open_jobs(
+    repo: str,
+    token: str,
+    store: FleetStore,
+    exclude: List[str],
+    limit: int = DEFAULT_RECONCILE_LIMIT,
+) -> int:
+    """Refresh up to *limit* jobs the store still records as unfinished.
+
+    :func:`poll_and_store` reads only the newest runs. A run that is still
+    going when newer runs push it out of that window never has its jobs'
+    completion recorded, and they would count as running for good. This
+    re-reads such jobs one by one (see :meth:`FleetStore.open_job_ids`),
+    skipping *exclude*, the jobs the cycle has just stored. A job the API no
+    longer serves is marked :data:`FleetStore.GONE_STATUS` so it is not asked
+    about again. Returns the number of jobs refreshed.
+    """
+    refreshed = 0
+    for job_id in store.open_job_ids(limit, exclude=exclude):
+        job = fetch_job(repo, job_id, token)
+        if job is None:
+            store.update_job_progress(job_id, status=FleetStore.GONE_STATUS)
+        else:
+            store.update_job_progress(
+                job_id,
+                status=job.get("status") or "",
+                conclusion=job.get("conclusion") or "",
+                started_at=job.get("started_at"),
+                completed_at=job.get("completed_at"),
+                runner_name=job.get("runner_name") or "",
+                runner_id=job.get("runner_id"),
+            )
+        refreshed += 1
+    return refreshed
+
+
 def fetch_runners(
     repo: str,
     token: str,
@@ -532,10 +606,18 @@ def poll_and_store(
     resolve_dependency_completed_at: Optional[DependencyCompletionResolver] = None,
     runners_org: Optional[str] = None,
     record_runners: bool = False,
+    reconcile_limit: int = 0,
 ) -> int:
     """One poll cycle: fetch recent runs and their jobs for *repo*, compute
     job metrics, and upsert every job/step into *store*; then record the
     fleet's registered runners.
+
+    With *reconcile_limit*, the cycle then refreshes up to that many jobs the
+    store still records as unfinished but this cycle's window did not reach
+    (see :func:`reconcile_open_jobs`). A failure there is reported on stderr
+    and leaves the jobs already stored intact. The scheduled entry point
+    (:func:`run_poll_loop`) asks for it; it is off here by default so a caller
+    driving one cycle against a fixture makes no per-job requests unasked.
 
     This is the entry point that actually populates ``job_event``/
     ``job_step`` — :func:`fetch_runs`, :func:`fetch_run_jobs`, and
@@ -679,12 +761,8 @@ def poll_and_store(
             # `pre_start_latency_by_label(labels=...)` on an exact set must
             # encode it the same way (`json.dumps(sorted(label_list))`).
             #
-            # These are the *executing runner's* labels (the workflow-jobs
-            # API's own `labels` field), not the job's requested `runs-on:`
-            # set — a runner can carry extra/custom labels beyond what a job
-            # asked for. Resolving the requested set would require parsing
-            # the run's workflow YAML, which this module does not do (see
-            # `FleetStore.upsert_job_event`/`pre_start_latency_by_label`).
+            # These are the workflow-jobs API's own `labels` field, the job's
+            # `runs-on:` labels, present even for a job that never ran.
             labels = sorted(job.get("labels") or [])
             label_class = classify_labels(labels)
             store.upsert_job_event(
@@ -717,6 +795,15 @@ def poll_and_store(
                     conclusion=step.get("conclusion") or "",
                 )
             jobs_stored += 1
+
+    if reconcile_limit > 0:
+        try:
+            with store.transaction():
+                reconcile_open_jobs(repo, token, store,
+                                    exclude=[str(job.get("id")) for _, job, _ in prepared],
+                                    limit=reconcile_limit)
+        except Exception as exc:  # noqa: BLE001 — the jobs stored above are unaffected
+            print("fleet poller: could not refresh unfinished jobs (%s)" % exc, file=sys.stderr)
 
     if record_runners:
         try:
@@ -764,10 +851,13 @@ def run_poll_loop(
     *poll* and *open_store* exist so a test can drive the loop without a
     network or a database; *poll* is called as ``poll(repo, token, store,
     max_runs=...)``, and when it is left as the default it is
-    :func:`poll_and_store` with the runner inventory enabled and the
-    resolver's callbacks bound. Returns the number of cycles that stored jobs.
+    :func:`poll_and_store` with the runner inventory and the refresh of
+    unfinished jobs enabled and the resolver's callbacks bound. Returns the
+    number of cycles that stored jobs.
     """
-    poll = poll or functools.partial(poll_and_store, record_runners=True, **_poll_options(runners_org, resolver))
+    poll = poll or functools.partial(poll_and_store, record_runners=True,
+                                     reconcile_limit=DEFAULT_RECONCILE_LIMIT,
+                                     **_poll_options(runners_org, resolver))
     store: Optional[FleetStore] = None
     count = 0
     stored_cycles = 0

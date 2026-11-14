@@ -200,7 +200,7 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "SELECT\n  lane,\n  PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY queue_wait_seconds) AS p50_wait\nFROM job_event\nWHERE $__timeFilter(created_at) AND lane <> '' AND lane IN ($lane) AND queue_wait_seconds IS NOT NULL\nGROUP BY lane\nORDER BY lane",
+          "rawSql": "SELECT\n  lane,\n  PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY queue_wait_seconds) AS p50_wait\nFROM job_event\nWHERE $__timeFilter(created_at) AND lane <> '' AND lane IN ($lane) AND runner_name <> '' AND queue_wait_seconds IS NOT NULL\nGROUP BY lane\nORDER BY lane",
           "format": "table",
           "editorMode": "code"
         }
@@ -272,7 +272,7 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "SELECT 100.0 * COUNT(queue_wait_seconds) / GREATEST(COUNT(*), 1) AS coverage\nFROM job_event\nWHERE $__timeFilter(created_at) AND lane <> '' AND lane IN ($lane)",
+          "rawSql": "SELECT 100.0 * COUNT(queue_wait_seconds) / GREATEST(COUNT(*), 1) AS coverage\nFROM job_event\nWHERE $__timeFilter(created_at) AND lane <> '' AND lane IN ($lane) AND runner_name <> ''",
           "format": "table",
           "editorMode": "code"
         }
@@ -413,7 +413,7 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, $__interval),\n  lane || ' ' || q.name AS metric,\n  PERCENTILE_CONT(q.fraction) WITHIN GROUP (ORDER BY queue_wait_seconds) AS value\nFROM job_event\nCROSS JOIN (VALUES ('p50', 0.5::float8), ('p90', 0.9::float8)) AS q(name, fraction)\nWHERE $__timeFilter(created_at) AND lane <> '' AND lane IN ($lane) AND queue_wait_seconds IS NOT NULL\nGROUP BY 1, 2, q.fraction\nORDER BY 1",
+          "rawSql": "SELECT\n  $__timeGroupAlias(created_at, $__interval),\n  lane || ' ' || q.name AS metric,\n  PERCENTILE_CONT(q.fraction) WITHIN GROUP (ORDER BY queue_wait_seconds) AS value\nFROM job_event\nCROSS JOIN (VALUES ('p50', 0.5::float8), ('p90', 0.9::float8)) AS q(name, fraction)\nWHERE $__timeFilter(created_at) AND lane <> '' AND lane IN ($lane) AND runner_name <> '' AND queue_wait_seconds IS NOT NULL\nGROUP BY 1, 2, q.fraction\nORDER BY 1",
           "format": "time_series",
           "editorMode": "code"
         }
@@ -461,7 +461,10 @@
                 "id": "custom.lineStyle",
                 "value": {
                   "fill": "dash",
-                  "dash": [10, 10]
+                  "dash": [
+                    10,
+                    10
+                  ]
                 }
               }
             ]
@@ -504,7 +507,7 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "SELECT\n  b.t AS time,\n  'running' AS metric,\n  COUNT(j.job_id) AS value\nFROM generate_series($__timeFrom()::timestamptz, $__timeTo()::timestamptz,\n                     ($__interval_ms::text || ' milliseconds')::interval) AS b(t)\nLEFT JOIN job_event j\n  ON j.lane = '$lane'\n AND j.started_at IS NOT NULL\n AND j.started_at <= b.t\n AND COALESCE(j.completed_at, NOW()) > b.t\n AND j.started_at <= $__timeTo()::timestamptz\n AND COALESCE(j.completed_at, NOW()) >= $__timeFrom()::timestamptz\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT\n  b.t AS time,\n  'running' AS metric,\n  COUNT(j.job_id) AS value\nFROM generate_series($__timeFrom()::timestamptz, $__timeTo()::timestamptz,\n                     ($__interval_ms::text || ' milliseconds')::interval) AS b(t)\nLEFT JOIN job_event j\n  ON j.lane = '$lane'\n AND j.started_at IS NOT NULL\n AND j.runner_name <> ''\n AND j.started_at <= b.t\n AND COALESCE(j.completed_at, LEAST(NOW(), j.started_at + INTERVAL '6 hours')) > b.t\n AND j.started_at <= $__timeTo()::timestamptz\n AND COALESCE(j.completed_at, LEAST(NOW(), j.started_at + INTERVAL '6 hours')) >= $__timeFrom()::timestamptz\nGROUP BY 1\nORDER BY 1",
           "format": "time_series",
           "editorMode": "code"
         },
@@ -614,7 +617,8 @@
       "repeat": "lane",
       "repeatDirection": "h",
       "maxPerRow": 2,
-      "interval": "5m"
+      "interval": "5m",
+      "maxDataPoints": 300
     },
     {
       "id": 8,
@@ -747,7 +751,9 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "5m",
+      "maxDataPoints": 200
     },
     {
       "id": 10,
@@ -831,7 +837,9 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "5m",
+      "maxDataPoints": 200
     },
     {
       "id": 11,
@@ -915,7 +923,9 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "5m",
+      "maxDataPoints": 200
     },
     {
       "id": 12,
@@ -999,7 +1009,9 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "5m",
+      "maxDataPoints": 200
     },
     {
       "id": 13,
@@ -1037,7 +1049,7 @@
             "uid": "fleet-db"
           },
           "rawQuery": true,
-          "rawSql": "WITH utilization AS (\n  SELECT\n    runner_id,\n    runner_name,\n    lane,\n    ROUND(100 * SUM(EXTRACT(EPOCH FROM (\n        LEAST(COALESCE(completed_at, NOW()), $__timeTo()::timestamptz) - GREATEST(started_at, $__timeFrom()::timestamptz)\n      )))::numeric\n      / GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)), 1), 1) AS utilization_pct\n  FROM job_event\n  WHERE lane <> '' AND lane IN ($lane) AND runner_name <> ''\n    AND started_at IS NOT NULL\n    AND COALESCE(completed_at, NOW()) >= $__timeFrom()::timestamptz AND started_at <= $__timeTo()::timestamptz\n  GROUP BY runner_id, runner_name, lane\n)\nSELECT\n  runner_name || '  \u00b7  ' || lane ||\n    CASE WHEN COUNT(*) OVER (PARTITION BY runner_name, lane) > 1\n         THEN '  (' || COALESCE(runner_id::text, '?') || ')'\n         ELSE '' END AS runner,\n  utilization_pct\nFROM utilization\nORDER BY 2 DESC",
+          "rawSql": "WITH utilization AS (\n  SELECT\n    runner_id,\n    runner_name,\n    lane,\n    ROUND(100 * SUM(EXTRACT(EPOCH FROM (\n        LEAST(COALESCE(completed_at, LEAST(NOW(), started_at + INTERVAL '6 hours')), $__timeTo()::timestamptz) - GREATEST(started_at, $__timeFrom()::timestamptz)\n      )))::numeric\n      / GREATEST(EXTRACT(EPOCH FROM ($__timeTo()::timestamptz - $__timeFrom()::timestamptz)), 1), 1) AS utilization_pct\n  FROM job_event\n  WHERE lane <> '' AND lane IN ($lane) AND runner_name <> ''\n    AND started_at IS NOT NULL\n    AND COALESCE(completed_at, LEAST(NOW(), started_at + INTERVAL '6 hours')) >= $__timeFrom()::timestamptz AND started_at <= $__timeTo()::timestamptz\n  GROUP BY runner_id, runner_name, lane\n)\nSELECT\n  runner_name || '  \u00b7  ' || lane ||\n    CASE WHEN COUNT(*) OVER (PARTITION BY runner_name, lane) > 1\n         THEN '  (' || COALESCE(runner_id::text, '?') || ')'\n         ELSE '' END AS runner,\n  utilization_pct\nFROM utilization\nORDER BY 2 DESC",
           "format": "table",
           "editorMode": "code"
         }
