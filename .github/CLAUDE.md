@@ -143,7 +143,13 @@ ways, none of which CI depends on:
 
 1. **The FlowTree controller.** A workstream can name the CI action to take when
    one of its jobs finishes with nothing to commit, i.e. when the review loop
-   has ended. Starting a test run is that action.
+   has ended. Starting a test run is that action. `register-workstream` sets
+   it (`SETTLED_CI_TRIGGER`, default `deployment:test`) on every branch's
+   workstream, including one that already exists. `auto-review-submit` and
+   `auto-resolve-python-submit` pass it for a workstream their submission
+   creates, which is how a docs-only branch gets it. A workstream without it
+   leaves its PR unmergeable until someone starts the test run by hand.
+   `tools/tests/test_settled_ci_registration.py` pins this.
 2. **The `Start Tests` workflow** (`start-tests.yaml`). Dispatch it on master and
    name the branch. It creates the deployment with the `START_TESTS_TOKEN`
    secret of the `start-tests` environment: a fine-grained token with
@@ -160,7 +166,11 @@ ways, none of which CI depends on:
      gh api --method POST repos/almostrealism/common/deployments --input -
    ```
    `auto_merge` must be `false`: the default merges master into the branch
-   first. `required_contexts` must be empty: the default refuses to deploy until
+   first.
+   `tools/ci/start-pending-test-runs.sh` makes that call for every open pull
+   request whose head has no test run yet. It reports what it would do unless
+   given `--apply`, skips forks and branches without the deployment trigger, and
+   also re-runs a cancelled master push run. `required_contexts` must be empty: the default refuses to deploy until
    every commit status has passed.
 
 A deployment run tests the branch head itself, not the pull request's trial
@@ -200,6 +210,13 @@ no test runs, and a fork PR that shares a name with one of this repository's
 branches must not cancel that branch's test run. It is the only job in the pipeline with `actions: write`. For that
 reason it runs its few API calls inline from the workflow file and checks
 out no branch code. Master queues as before.
+
+A deployment to any other environment (`production`, `worker`,
+`start-tests`) starts a run that skips every job. That run gets a group of its
+own (`-not-a-test-<run id>`). In the branch's `-test` group it would take the
+one pending slot and cancel the run queued there. On master, every `worker`
+deployment from `Auto-Resolve Submit` used to cancel the queued push run of the
+latest merge.
 
 ---
 

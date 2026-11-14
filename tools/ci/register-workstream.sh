@@ -45,6 +45,13 @@
 #                       on the workstream checks out beside this one, e.g. the
 #                       framework an application builds on. Applied on
 #                       registration, and to an existing workstream too.
+#   SETTLED_CI_TRIGGER - the CI action the controller starts when one of the
+#                       workstream's jobs finishes with nothing to commit, i.e.
+#                       when the review loop has settled: "deployment:<env>" or
+#                       "workflow:<file>" (see flowtree/runtime/docs/
+#                       ci-integration.md). Applied on registration, and to an
+#                       existing workstream too, so a workstream created some
+#                       other way picks it up on its branch's next run.
 #   REPO_URL          - repository clone URL. Sent as repoUrl: it identifies
 #                       the workstream alongside the branch, and a workstream
 #                       is cloned from it — hence the SSH form, matching
@@ -141,6 +148,10 @@ if [ -n "${DEPENDENT_REPOS:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson repos "$DEPENDENT_REPOS_JSON" '. + {dependentRepos: $repos}')
 fi
 
+if [ -n "${SETTLED_CI_TRIGGER:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --arg trigger "$SETTLED_CI_TRIGGER" '. + {settledCiTrigger: $trigger}')
+fi
+
 RESPONSE=$(curl "${CURL_ARGS[@]}" -d "$PAYLOAD" "$ENDPOINT") || CURL_EXIT=$?
 
 if [ "${CURL_EXIT:-0}" -ne 0 ]; then
@@ -176,6 +187,9 @@ fi
 if [ -n "$DEPENDENT_REPOS_JSON" ]; then
     UPDATE_PAYLOAD=$(echo "$UPDATE_PAYLOAD" | jq --argjson repos "$DEPENDENT_REPOS_JSON" '. + {dependentRepos: $repos}')
 fi
+if [ -n "${SETTLED_CI_TRIGGER:-}" ]; then
+    UPDATE_PAYLOAD=$(echo "$UPDATE_PAYLOAD" | jq --arg trigger "$SETTLED_CI_TRIGGER" '. + {settledCiTrigger: $trigger}')
+fi
 if [ "$EXISTING" = "true" ] && [ "$UPDATE_PAYLOAD" != '{}' ] && [ -n "$WORKSTREAM_ID" ]; then
     echo "Workstream already exists ($WORKSTREAM_ID) — updating it"
     UPDATE_ENDPOINT="${ENDPOINT}/${WORKSTREAM_ID}/update"
@@ -188,12 +202,14 @@ if [ "$EXISTING" = "true" ] && [ "$UPDATE_PAYLOAD" != '{}' ] && [ -n "$WORKSTREA
     # needs, for instance — and a goal-decomposition agent without the
     # framework checked out beside it cannot tell where a task belongs. Either way a
     # silently-dropped update would produce a round that cannot do its job,
-    # so it fails the step rather than warning. A plan-only update stays
+    # so it fails the step rather than warning. The settled-CI trigger is
+    # required for the same reason: without it the branch's test run, which
+    # gates the merge, never starts when the review loop ends. A plan-only update stays
     # best-effort — the planning document is not load-bearing for the
     # agent's ability to work.
     REQUIRE_UPDATE=false
     if [ -n "$TRACKER_CAPABILITIES_JSON" ] || [ -n "${REQUIRED_LABELS_JSON:-}" ] \
-        || [ -n "$DEPENDENT_REPOS_JSON" ]; then
+        || [ -n "$DEPENDENT_REPOS_JSON" ] || [ -n "${SETTLED_CI_TRIGGER:-}" ]; then
         REQUIRE_UPDATE=true
     fi
 

@@ -913,6 +913,37 @@ public class SlackApiWorkstreamTest extends TestSuiteBase {
     }
 
     /**
+     * A workstream created by a submission takes the submission's
+     * {@code settledCiTrigger}: it describes the workstream, not the job, and
+     * without it a branch whose first job creates its workstream never has its
+     * test run started when the review loop settles.
+     */
+    @Test(timeout = 10000)
+    public void testApiSubmitCreatedWorkstreamTakesSettledCiTrigger() throws Exception {
+        SlackNotifier notifier = new SlackNotifier(null);
+        FlowTreeApiEndpoint endpoint = new FlowTreeApiEndpoint(0, notifier);
+        endpoint.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
+
+        try {
+            postSubmit(endpoint.getListeningPort(),
+                    "{\"prompt\":\"Do something\","
+                    + "\"targetBranch\":\"feature/settled\","
+                    + "\"baseBranch\":\"master\","
+                    + "\"repoUrl\":\"git@github.com:almostrealism/common.git\","
+                    + "\"settledCiTrigger\":\"deployment:test\","
+                    + "\"createWorkstreamIfMissing\":true}");
+
+            Workstream created = notifier.findWorkstreamByBranch("feature/settled");
+            assertNotNull("Submission should have created the missing workstream", created);
+            assertNotNull("The created workstream should carry the settled-CI trigger",
+                    created.getSettledCiTrigger());
+            assertEquals("deployment:test", created.getSettledCiTrigger().spec());
+        } finally {
+            endpoint.stop();
+        }
+    }
+
+    /**
      * A workstream created by a submission takes the branch, base branch, and
      * repository from it — and nothing else. {@code requiredLabels} on a
      * submission constrains that one job; it must not become a permanent
