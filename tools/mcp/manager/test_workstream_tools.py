@@ -566,6 +566,22 @@ class TestWorkstreamUpdateConfig(unittest.TestCase):
         self.assertEqual(payload["planInstructions"], "Build a thing that does X.")
         self.assertTrue(result["ok"])
 
+    @patch.object(server, "_controller_post")
+    def test_update_settled_ci_trigger(self, mock_post):
+        """settled_ci_trigger is forwarded as settledCiTrigger; "" (clear) is
+        forwarded too, and omitting it sends nothing."""
+        _grant_all_scopes()
+        mock_post.return_value = {"ok": True}
+        server.workstream_update_config(
+            workstream_id="ws-test", settled_ci_trigger="deployment:test")
+        self.assertEqual(mock_post.call_args[0][1]["settledCiTrigger"], "deployment:test")
+
+        server.workstream_update_config(workstream_id="ws-test", settled_ci_trigger="")
+        self.assertEqual(mock_post.call_args[0][1], {"settledCiTrigger": ""})
+
+        server.workstream_update_config(workstream_id="ws-test", kind="feature")
+        self.assertNotIn("settledCiTrigger", mock_post.call_args[0][1])
+
     def test_update_plan_instructions_rejects_oversized_content(self):
         _grant_all_scopes()
         result = server.workstream_update_config(

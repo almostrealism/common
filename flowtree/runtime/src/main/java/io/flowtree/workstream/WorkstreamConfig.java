@@ -23,6 +23,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.flowtree.github.CiTrigger;
 import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
@@ -65,6 +66,7 @@ import io.flowtree.submission.SubmissionRunnerResolver;
  *     maxBudgetUsd: 100.0
  *     gitUserName: "CI Bot"
  *     gitUserEmail: "ci-bot@example.com"
+ *     settledCiTrigger: "deployment:test"
  * </pre>
  *
  * <p>The YAML holds workstream <em>configuration</em> only. Workstream
@@ -165,6 +167,12 @@ public class WorkstreamConfig {
         private String planningDocument;
         /** GitHub organization name for org-based token selection. */
         private String githubOrg;
+        /**
+         * The CI to start when a job on this workstream finishes with nothing to
+         * commit, as a {@link CiTrigger} spec; {@code null} for none. An unparseable
+         * spec fails the load, as an unknown {@code kind} does.
+         */
+        private String settledCiTrigger;
         /** Additional repository URLs cloned alongside the primary repo. */
         private List<String> dependentRepos;
         /**
@@ -375,6 +383,11 @@ public class WorkstreamConfig {
         public String getGithubOrg() { return githubOrg; }
         /** Sets the GitHub organization name for org-based token selection. */
         public void setGithubOrg(String githubOrg) { this.githubOrg = githubOrg; }
+
+        /** Returns the CI trigger spec started when the review loop settles, or {@code null}. */
+        public String getSettledCiTrigger() { return settledCiTrigger; }
+        /** Sets the CI trigger spec started when the review loop settles. */
+        public void setSettledCiTrigger(String settledCiTrigger) { this.settledCiTrigger = settledCiTrigger; }
 
         /**
          * Returns the list of dependent repository URLs that should be
@@ -592,6 +605,7 @@ public class WorkstreamConfig {
             ws.setPlanningDocument(planningDocument);
             ws.setPlanInstructions(planInstructions);
             ws.setGithubOrg(githubOrg);
+            ws.setSettledCiTrigger(CiTrigger.parse(settledCiTrigger));
             ws.setDependentRepos(dependentRepos);
             ws.setRequiredLabels(requiredLabels);
             ws.setWorkspaceId(workspaceId);
@@ -650,6 +664,7 @@ public class WorkstreamConfig {
             setPlanningDocument(ws.getPlanningDocument());
             setPlanInstructions(includeMetadata ? ws.getPlanInstructions() : null);
             setGithubOrg(ws.getGithubOrg());
+            setSettledCiTrigger(ws.getSettledCiTrigger() != null ? ws.getSettledCiTrigger().spec() : null);
             setDependentRepos(ws.getDependentRepos());
             setRequiredLabels(ws.getRequiredLabels());
             setWorkspaceId(ws.getWorkspaceId());
