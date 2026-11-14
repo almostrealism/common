@@ -73,6 +73,9 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	/** The evaluable that generates rays for intersection testing. */
 	private Evaluable<Ray> ray;
 
+	/** When {@code true}, intersection uses the mesh's acceleration structure instead of a linear scan. */
+	private boolean accelerated;
+
 	/** Evaluable that returns the closest surface normal after intersection. */
 	private Evaluable<Vector> closestNormal;
 
@@ -98,8 +101,22 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	 * @param ray  the ray producer that generates rays for intersection testing
 	 */
 	public CachedMeshIntersectionKernel(MeshData data, Producer<Ray> ray) {
+		this(data, ray, false);
+	}
+
+	/**
+	 * Constructs a new {@link CachedMeshIntersectionKernel} that optionally prunes triangles
+	 * during intersection using the mesh data's own acceleration structure.
+	 *
+	 * @param data        the mesh data containing triangle information
+	 * @param ray         the ray producer that generates rays for intersection testing
+	 * @param accelerated {@code true} to intersect through the mesh's
+	 *                    {@link BoundingVolumeHierarchy}, {@code false} for a linear scan
+	 */
+	public CachedMeshIntersectionKernel(MeshData data, Producer<Ray> ray, boolean accelerated) {
 		this.data = data;
 		this.ray = ray.get();
+		this.accelerated = accelerated;
 	}
 
 	/**
@@ -137,7 +154,12 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	public Evaluable into(Object destination) {
 		return args -> {
 			cache = Pair.bank(((MemoryBank) destination).getCount());
-			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
+			MemoryData[] memArgs = Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new);
+			if (accelerated) {
+				data.evaluateIntersectionKernelAccelerated(ray, cache, memArgs);
+			} else {
+				data.evaluateIntersectionKernel(ray, cache, memArgs);
+			}
 			for (int i = 0; i < cache.getCountLong(); i++) {
 				PackedCollection entry = (PackedCollection) ((MemoryBank) destination).get(i);
 
@@ -165,14 +187,25 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	@Override
 	public PackedCollection evaluate(Object[] args) {
 		if (cache == null) {
-			double distance = data.evaluateIntersection(ray, args).getA();
-			return Ops.o().pack(distance);
+			return Ops.o().pack(intersect(args).getA());
 		}
 
 		Pair pos = (Pair) args[0];
 		int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
 		double cached = cache.toDouble(n * 2);
 		return Ops.o().pack(cached);
+	}
+
+	/**
+	 * Intersects the ray produced for the given arguments with the mesh directly, bypassing
+	 * the cache, through the mesh's acceleration structure when this kernel is accelerated.
+	 *
+	 * @param args the arguments passed to the ray evaluable
+	 * @return a {@link Pair} of (intersection distance, triangle index)
+	 */
+	private Pair intersect(Object[] args) {
+		return accelerated ? data.evaluateIntersectionAccelerated(ray, args)
+				: data.evaluateIntersection(ray, args);
 	}
 
 	/**
@@ -187,16 +220,17 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	public Evaluable<Vector> getClosestNormal() {
 		if (closestNormal == null) {
 			closestNormal = new HardwareEvaluable<Vector>(() -> args -> {
+				int a;
 				if (cache == null) {
-					return new Vector(data.range(new TraversalPolicy(3), ((int) data.evaluateIntersection(ray, args).getB()) * 12 + 9), 0);
+					a = (int) intersect(args).getB();
 				} else {
 					Pair pos = (Pair) args[0];
 					int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-					if (n < 0) return new Vector(ZeroVector.getEvaluable().evaluate(), 0);
-					int a = (int) cache.toDouble(n * 2 + 1);
-					if (a < 0) return new Vector(ZeroVector.getEvaluable().evaluate(), 0);
-					return new Vector(data.range(new TraversalPolicy(3), a * 12 + 9), 0);
+					a = n < 0 ? -1 : (int) cache.toDouble(n * 2 + 1);
 				}
+
+				if (a < 0) return new Vector(ZeroVector.getEvaluable().evaluate(), 0);
+				return new Vector(data.range(new TraversalPolicy(3), a * 12 + 9), 0);
 			}, new MemoryDataDestination<Vector>(size -> (MemoryBank) Vector.bank(size)), null, true);
 		}
 

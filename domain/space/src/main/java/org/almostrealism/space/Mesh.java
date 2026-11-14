@@ -41,6 +41,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.IntStream;
 
 // TODO  Add bounding solid to make intersection calc faster.
 
@@ -52,6 +53,13 @@ import java.util.List;
  * @author  Dan Chivers
  */
 public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, ConsoleFeatures {
+	/**
+	 * When {@code true}, {@link #intersectAt(Producer)} routes the mesh intersection
+	 * through a {@link BoundingVolumeHierarchy} instead of the linear scan. Off by
+	 * default so the linear scan remains the correctness reference.
+	 */
+	public static boolean enableAcceleratedIntersection = false;
+
 	/** Default white color assigned to triangles that do not have an explicit color set. */
 	private static final RGB white = new RGB(1.0, 1.0, 1.0);
 	
@@ -228,6 +236,22 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
   			this.addTriangle(triangles[i][0], triangles[i][1], triangles[i][2]);
   	}
   	
+	/**
+	 * Constructs a new {@link Mesh} whose vertices are the rows of a position tensor.
+	 *
+	 * <p>Each row of {@code points} is copied into a {@link Vertex}, so the mesh does not
+	 * retain {@code points}: later changes to it do not move the mesh, and the caller may
+	 * release it once the mesh is constructed.</p>
+	 *
+	 * @param points    the vertex positions, shaped {@code (N, 3)}
+	 * @param triangles the node indices of each triangle, three per triangle, into the rows
+	 *                  of {@code points}
+	 */
+	public Mesh(PackedCollection points, int[][] triangles) {
+		this(IntStream.range(0, points.getShape().length(0))
+				.mapToObj(i -> new Vector(points, i * 3)).toArray(Vector[]::new), triangles);
+	}
+
 	/**
 	 * Constructs a {@link Mesh} using the specified {@link VertexData} provider.
 	 *
@@ -797,17 +821,52 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Not yet implemented for {@link Mesh}.
-	 *
-	 * @throws UnsupportedOperationException always
+	 * <p>Returns the axis-aligned box bounding every triangle vertex, or a zero-sized box
+	 * for an empty mesh. Works whether the mesh is backed by a vertex list or a
+	 * {@link VertexData} provider.</p>
 	 */
 	@Override
 	public BoundingSolid calculateBoundingSolid() {
-		throw new UnsupportedOperationException();
-		// TODO
-		// return BoundingSolid.getBounds(getVectors());
+		BoundingSolid bounds = null;
+
+		for (Triangle t : triangles()) {
+			BoundingSolid b = t.calculateBoundingSolid();
+			bounds = bounds == null ? b : bounds.combine(b);
+		}
+
+		return bounds == null ? new BoundingSolid(0, 0, 0, 0, 0, 0) : bounds;
 	}
-	
+
+	/**
+	 * Builds a regular grid surface mesh from a height field, for inspection, GTS export, and
+	 * use as a test fixture.
+	 *
+	 * <p>The mesh has {@code nx*ny} vertices and {@code 2*(nx-1)*(ny-1)} triangles, with the
+	 * same node layout and winding as the device tessellation {@link MeshFeatures#gridSurface}:
+	 * node {@code (i, j)} is at
+	 * {@code (origin.x + i*spacingX, origin.y + heights[i, j], origin.z + j*spacingZ)}, height
+	 * is the Y axis, and the grid lies in the XZ plane. The node positions are computed by one
+	 * kernel ({@link TriangleFeatures#regularGridSurfaceNodes}) into a single {@code (nx*ny, 3)}
+	 * tensor whose rows are the mesh's vertices; only the triangle connectivity is built on the
+	 * host. For the per-frame intersection path use {@link MeshFeatures#gridSurface} instead.</p>
+	 *
+	 * @param heights  the height field, shaped {@code (nx, ny)}
+	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
+	 * @param spacingX the node spacing along X
+	 * @param spacingZ the node spacing along Z
+	 * @return the grid surface mesh
+	 */
+	public static Mesh gridSurface(PackedCollection heights, Vector origin, double spacingX, double spacingZ) {
+		int nx = heights.getShape().length(0);
+		int ny = heights.getShape().length(1);
+
+		TriangleFeatures tf = TriangleFeatures.getInstance();
+		try (PackedCollection nodes = tf.regularGridSurfaceNodes(tf.cp(heights), nx, ny,
+				origin.getX(), origin.getY(), origin.getZ(), spacingX, spacingZ).evaluate()) {
+			return new Mesh(nodes, tf.regularGridSurfaceTriangles(nx, ny));
+		}
+	}
+
 	/**
 	 * @return  this.
 	 */
@@ -825,7 +884,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 		Producer<Ray> tray = (Producer<Ray>) ray;
 		if (t != null) tray = (Producer) t.getInverse().transform(tray);
 
-		CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(getMeshData(), tray);
+		CachedMeshIntersectionKernel kernel =
+				new CachedMeshIntersectionKernel(getMeshData(), tray, enableAcceleratedIntersection);
 		return new ShadableIntersection(ray,
 				(Producer) () -> kernel.getClosestNormal(),
 				new DimensionAwareKernel<>(kernel));

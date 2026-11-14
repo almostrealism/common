@@ -289,6 +289,49 @@ mesh.addVector(vertex2);
 // Internally uses KdTree for efficient nearest-neighbor queries
 ```
 
+### Bounding Volume Hierarchy (BVH)
+
+```java
+import org.almostrealism.space.BoundingVolumeHierarchy;
+
+// A host-built BVH over a mesh's triangles accelerates ray-triangle intersection
+// by pruning triangles whose bounding box a ray cannot reach. MeshData owns the
+// hierarchy over its own triangles and builds it on demand.
+
+// Accelerated closest hit — identical result to the linear scan, far fewer triangles tested.
+Pair hit = meshData.evaluateIntersectionAccelerated(ray, args);
+
+// A standalone hierarchy from (T, 6) per-triangle bounds, e.g. for host-side analysis:
+BoundingVolumeHierarchy bvh = BoundingVolumeHierarchy.build(
+        meshTriangleBounds(cp(meshData), meshData.getCount()).evaluate());
+```
+
+`candidates(ox, oy, oz, dx, dy, dz)` returns the triangles a ray could hit (conservative, so
+it always contains the truly-closest triangle). The linear scan is a Producer graph,
+`TriangleFeatures.closestMeshIntersection`, that intersects a whole `(R, 6)` ray batch with every
+triangle and reduces to the `(R, 2)` closest hits in one evaluation; the accelerated path runs the
+same graph over only a ray's candidates, so results match bit-for-bit. `CachedMeshIntersectionKernel` takes an `accelerated` flag, and `Mesh.intersectAt`
+routes through `MeshData`'s hierarchy when `Mesh.enableAcceleratedIntersection` is set (off by
+default, keeping the linear scan the reference). See
+[regular-grid-surface-and-mesh-acceleration.md](../../docs/internals/regular-grid-surface-and-mesh-acceleration.md).
+
+### Regular Grid Surfaces
+
+```java
+// Tessellate a height field into renderable geometry on the device, in one kernel.
+// MeshFeatures.gridSurface(...) returns the triangle-buffer producer; evaluate it at the boundary.
+MeshData md = new MeshData(2 * (nx - 1) * (ny - 1));
+gridSurface(heights, nx, ny, origin, spacingX, spacingZ).get().into(md.traverse(1)).evaluate();
+
+// Vertex-list mesh for inspection / GTS export; heights is an (nx, ny) PackedCollection and
+// the node positions are computed by one kernel into an (nx*ny, 3) tensor.
+Mesh mesh = Mesh.gridSurface(heightCollection, origin, spacingX, spacingZ);
+```
+
+A single-valued height field `h(x, z)` maps to a regular triangle grid (two triangles per cell).
+`TriangleFeatures.regularGridSurfacePoints` / `regularGridSurfaceNormals` build the triangle
+buffer and per-vertex gradient normals as Producer graphs, so a per-frame rebuild is one kernel.
+
 ### Cached Intersection
 
 ```java

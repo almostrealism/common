@@ -1,0 +1,96 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.space.test;
+
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.space.MeshData;
+import org.almostrealism.space.MeshFeatures;
+import org.almostrealism.util.TestFeatures;
+
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+
+/**
+ * Shared fixture helper for grid-surface tests: decomposing a flat row-major grid index into
+ * {@code (i, j)} node coordinates as Producer graphs, and materializing a grid surface into
+ * {@link MeshData} at the test boundary.
+ */
+public interface GridIndexFeatures extends TestFeatures, MeshFeatures {
+	/**
+	 * Decomposes a flat row-major grid index into {@code (i, j)} node coordinates as Producer
+	 * graphs, indexing the grid with {@code integers()} rather than a host loop, so no
+	 * host-computed values are staged.
+	 *
+	 * @param nx the number of grid nodes along X
+	 * @param ny the number of grid nodes along Z
+	 * @return a two-element array {@code {i, j}}, each a producer over the {@code nx*ny} flat index
+	 */
+	default CollectionProducer[] gridIndices(int nx, int ny) {
+		CollectionProducer index = integers(0, nx * ny);
+		CollectionProducer i = floor(index.divide((double) ny));
+		CollectionProducer j = index.subtract(i.multiply((double) ny));
+		return new CollectionProducer[] { i, j };
+	}
+
+	/**
+	 * Builds a bumpy (non-planar) height field as a device Producer graph over the grid
+	 * indices, for tests that need a non-planar grid surface fixture.
+	 *
+	 * @param nx the number of nodes along X
+	 * @param ny the number of nodes along Z
+	 * @return a producer for the {@code (nx*ny)} height field in row-major order
+	 */
+	default CollectionProducer bumpyHeights(int nx, int ny) {
+		CollectionProducer[] ij = gridIndices(nx, ny);
+		return sin(ij[0].multiply(0.6)).multiply(0.6).add(cos(ij[1].multiply(0.5)).multiply(0.3));
+	}
+
+	/**
+	 * Returns a triangle's vertex indices as a set, since a format or tessellation may
+	 * change the winding.
+	 *
+	 * @param triangle the vertex indices
+	 * @return the set of indices
+	 */
+	default Set<Integer> corners(int[] triangle) {
+		return new HashSet<>(Arrays.asList(triangle[0], triangle[1], triangle[2]));
+	}
+
+	/**
+	 * Tessellates a regular grid height field and materializes it into a {@link MeshData},
+	 * evaluating the {@link MeshFeatures#gridSurface} producer graph at the test boundary.
+	 *
+	 * @param heights  the height field, shaped {@code (nx, ny)} in row-major order
+	 * @param nx       the number of grid nodes along X
+	 * @param ny       the number of grid nodes along Z
+	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
+	 * @param spacingX the node spacing along X
+	 * @param spacingZ the node spacing along Z
+	 * @return the tessellated mesh data
+	 */
+	default MeshData gridSurfaceData(Producer<PackedCollection> heights, int nx, int ny,
+									 Vector origin, double spacingX, double spacingZ) {
+		MeshData data = new MeshData(2 * (nx - 1) * (ny - 1));
+		gridSurface(heights, nx, ny, origin, spacingX, spacingZ)
+				.get().into(data.traverse(1)).evaluate();
+		return data;
+	}
+}

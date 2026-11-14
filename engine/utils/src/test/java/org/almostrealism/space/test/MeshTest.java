@@ -17,6 +17,8 @@
 package org.almostrealism.space.test;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.Triangle;
@@ -67,6 +69,28 @@ public class MeshTest extends TestSuiteBase {
 		Assert.assertEquals(-1, m.addTriangle(1, 1, 2));
 		Assert.assertEquals(-1, m.addTriangle(0, 2, 2));
 		Assert.assertEquals(-1, m.addTriangle(2, 1, 2));
+	}
+
+	/**
+	 * A mesh built from a position tensor takes one vertex per row and copies the positions,
+	 * so changing or releasing the tensor afterwards does not move the mesh.
+	 */
+	@Test(timeout = 30000)
+	public void positionTensorConstructorCopiesRows() {
+		PackedCollection points = pack(0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0, 1.0).reshape(3, 3);
+
+		Mesh m = new Mesh(points, new int[][] {{0, 1, 2}});
+		points.setMem(4, 9.0);
+		points.setMem(7, 9.0);
+		points.destroy();
+
+		Vector[] v = m.getVectors();
+		Assert.assertEquals(3, v.length);
+		Assert.assertEquals(2.0, v[1].getX(), 1e-9);
+		Assert.assertEquals(0.0, v[1].getY(), 1e-9);
+		Assert.assertEquals(3.0, v[2].getY(), 1e-9);
+		Assert.assertEquals(1.0, v[2].getZ(), 1e-9);
+		Assert.assertArrayEquals(new int[] {0, 1, 2}, m.getTriangleData()[0]);
 	}
 
 	/** Triangle connectivity is retrievable as index triples. */
@@ -178,10 +202,30 @@ public class MeshTest extends TestSuiteBase {
 		new Mesh().neighbors(new Vector(0.0, 0.0, 0.0));
 	}
 
-	/** calculateBoundingSolid is not yet implemented for meshes. */
-	@Test(timeout = 30000, expected = UnsupportedOperationException.class)
-	public void boundingSolidUnsupported() {
-		new Mesh().calculateBoundingSolid();
+	/** An empty mesh bounds to a zero-sized box at the origin rather than throwing. */
+	@Test(timeout = 30000)
+	public void boundingSolidEmptyMeshIsZeroBox() {
+		BoundingSolid bounds = new Mesh().calculateBoundingSolid();
+
+		Assert.assertEquals(0.0, bounds.minX, 1e-9);
+		Assert.assertEquals(0.0, bounds.maxX, 1e-9);
+		Assert.assertEquals(0.0, bounds.minY, 1e-9);
+		Assert.assertEquals(0.0, bounds.maxY, 1e-9);
+		Assert.assertEquals(0.0, bounds.minZ, 1e-9);
+		Assert.assertEquals(0.0, bounds.maxZ, 1e-9);
+	}
+
+	/** A mesh bounds to the axis-aligned box over all of its triangle vertices. */
+	@Test(timeout = 30000)
+	public void boundingSolidCoversAllVertices() {
+		BoundingSolid bounds = singleTriangle().calculateBoundingSolid();
+
+		Assert.assertEquals(0.0, bounds.minX, 1e-9);
+		Assert.assertEquals(1.0, bounds.maxX, 1e-9);
+		Assert.assertEquals(0.0, bounds.minY, 1e-9);
+		Assert.assertEquals(1.0, bounds.maxY, 1e-9);
+		Assert.assertEquals(0.0, bounds.minZ, 1e-9);
+		Assert.assertEquals(0.0, bounds.maxZ, 1e-9);
 	}
 
 	/** setSurfaces is a no-op and does not disturb existing state. */

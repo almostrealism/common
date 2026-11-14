@@ -43,7 +43,7 @@ import java.util.Set;
  * Tests reading, and for GTS writing, the mesh and scene formats in
  * {@code org.almostrealism.space.format}.
  */
-public class MeshFormatTest extends TestSuiteBase {
+public class MeshFormatTest extends TestSuiteBase implements GridIndexFeatures {
 	/** The corners of a unit square in the z = 0 plane. */
 	private static final double[][] SQUARE = {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}};
 
@@ -66,7 +66,7 @@ public class MeshFormatTest extends TestSuiteBase {
 	 *
 	 * @param mesh the mesh to check
 	 */
-	private static void assertSquare(Mesh mesh) {
+	private void assertSquare(Mesh mesh) {
 		Vector[] v = mesh.getVectors();
 		Assert.assertEquals(SQUARE.length, v.length);
 
@@ -80,16 +80,6 @@ public class MeshFormatTest extends TestSuiteBase {
 		for (int i = 0; i < t.length; i++) {
 			Assert.assertEquals("triangle " + i, corners(SQUARE_TRIANGLES[i]), corners(t[i]));
 		}
-	}
-
-	/**
-	 * Returns a triangle's vertex indices as a set.
-	 *
-	 * @param triangle the vertex indices
-	 * @return the set of indices
-	 */
-	private static Set<Integer> corners(int[] triangle) {
-		return new HashSet<>(Arrays.asList(triangle[0], triangle[1], triangle[2]));
 	}
 
 	/**
