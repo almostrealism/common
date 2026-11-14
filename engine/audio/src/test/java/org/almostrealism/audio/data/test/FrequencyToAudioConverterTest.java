@@ -19,7 +19,7 @@ package org.almostrealism.audio.data.test;
 import org.almostrealism.audio.data.FrequencyToAudioConverter;
 import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -31,7 +31,7 @@ import java.util.Random;
  * signal that is actually present, and amplitude held inside the headroom the
  * normalization stage is supposed to leave.
  */
-public class FrequencyToAudioConverterTest implements TestFeatures {
+public class FrequencyToAudioConverterTest extends TestSuiteBase {
 	/** Frequency bins per analysis frame. */
 	private static final int BINS = 16;
 
@@ -187,6 +187,70 @@ public class FrequencyToAudioConverterTest implements TestFeatures {
 			Assert.fail("Conversion should have been rejected");
 		} catch (IllegalArgumentException expected) {
 			// expected
+		}
+	}
+
+	/**
+	 * Stereo frequency data, laid out as (channels, frames, bins, 1) the way
+	 * {@code WaveDetailsFactory} stores the analysis of a stereo file, must convert
+	 * to the same mono audio as a single channel holding the average magnitudes.
+	 */
+	@Test(timeout = 120000)
+	public void stereoFrequencyDataMatchesItsMonoAverage() {
+		WaveDetails mono = tonalDetails();
+
+		PackedCollection stereoData = new PackedCollection(shape(2, FRAMES, BINS, 1));
+		for (int f = 0; f < FRAMES; f++) {
+			stereoData.setMem(f * BINS + 3, 0.5);
+			stereoData.setMem((FRAMES + f) * BINS + 3, 1.5);
+		}
+
+		WaveDetails stereo = tonalDetails();
+		stereo.setFreqData(stereoData);
+		stereo.setFreqChannelCount(2);
+
+		new FrequencyToAudioConverter(new Random(1234)).convert(mono);
+		new FrequencyToAudioConverter(new Random(1234)).convert(stereo);
+
+		Assert.assertEquals(1, stereo.getChannelCount());
+		Assert.assertEquals(mono.getData().getMemLength(), stereo.getData().getMemLength());
+		Assert.assertEquals("Stereo input should reconstruct the average of its channels",
+				0.0, largestDeviation(mono.getData(), stereo.getData()), 1e-6);
+	}
+
+	/**
+	 * Frequency data whose size does not match the declared channels, frames
+	 * and bins must be rejected with a message naming the mismatch.
+	 */
+	@Test(timeout = 120000)
+	public void mismatchedChannelCountIsRejected() {
+		WaveDetails details = tonalDetails();
+		details.setFreqChannelCount(2);
+
+		try {
+			new FrequencyToAudioConverter(new Random(1234)).convert(details);
+			Assert.fail("Frequency data smaller than the declared channels was accepted");
+		} catch (IllegalArgumentException e) {
+			assertTrue("Unexpected message: " + e.getMessage(),
+					e.getMessage().contains("2 channels"));
+		}
+	}
+
+	/**
+	 * A negative declared channel count is malformed metadata and must be rejected
+	 * rather than silently treated as a single channel.
+	 */
+	@Test(timeout = 120000)
+	public void negativeChannelCountIsRejected() {
+		WaveDetails details = tonalDetails();
+		details.setFreqChannelCount(-1);
+
+		try {
+			new FrequencyToAudioConverter(new Random(1234)).convert(details);
+			Assert.fail("Negative declared channel count was accepted");
+		} catch (IllegalArgumentException e) {
+			assertTrue("Unexpected message: " + e.getMessage(),
+					e.getMessage().contains("negative"));
 		}
 	}
 
