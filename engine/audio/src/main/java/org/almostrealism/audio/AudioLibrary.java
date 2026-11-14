@@ -1042,6 +1042,18 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns whether this library's stored items must be re-analysed for the
+	 * model its feature provider currently produces, as decided by
+	 * {@link WaveDetailsStore#needsReanalysis(String)}. A library without a
+	 * backing store never re-analyses stored items.
+	 *
+	 * @return {@code true} if the stored items are re-analysed for {@link #currentModelId()}
+	 */
+	public boolean isReanalysisNeeded() {
+		return store != null && store.needsReanalysis(currentModelId());
+	}
+
+	/**
 	 * Re-persists a details item, keyed by its identifier: store-backed, written
 	 * to the store with a mean-pooled embedding vector (enabling HNSW
 	 * nearest-neighbour search); otherwise returned to the in-memory cache. Used

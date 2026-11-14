@@ -20,10 +20,10 @@ import org.almostrealism.audio.AudioLibrary;
 import org.almostrealism.audio.data.FileWaveDataProviderNode;
 import org.almostrealism.audio.data.WaveData;
 import org.almostrealism.audio.data.WaveDetails;
-import org.almostrealism.audio.data.WaveDetailsFactory;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import org.almostrealism.studio.persistence.test.support.LogSpectrumFeatureProvider;
+import org.almostrealism.studio.persistence.test.support.PreviousReleaseStore;
 import org.almostrealism.studio.persistence.test.support.SineWaveFiles;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
@@ -169,26 +169,9 @@ public class FeatureModelUpgradeTest extends TestSuiteBase {
 	 * embedding, so the saved HNSW index has the old width.
 	 */
 	private void writePreviousReleaseStore(List<File> wavFiles) {
-		WaveDetailsFactory factory = new WaveDetailsFactory(SAMPLE_RATE);
-		LogSpectrumFeatureProvider oldModel = new LogSpectrumFeatureProvider(
-				FEATURE_FRAMES, OLD_BINS, SAMPLE_RATE, SAMPLE_DURATION);
-
-		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
-		for (File wav : wavFiles) {
-			WaveDetails details = factory.forFile(wav.getAbsolutePath());
-			PackedCollection features = oldModel.computeFeatures(details.getWaveData());
-			details.setFeatureSampleRate(oldModel.getFeatureSampleRate());
-			details.setFeatureChannelCount(1);
-			details.setFeatureBinCount(features.getShape().length(1));
-			details.setFeatureFrameCount(features.getShape().length(0));
-			details.setFeatureData(features);
-
-			store.put(details.getIdentifier(), details, details.meanPooledEmbedding());
-		}
-
-		Assert.assertEquals("the previous release indexed every item",
-				wavFiles.size(), store.indexedEmbeddingCount());
-		store.close();
+		Assert.assertEquals("the previous release indexed every item", wavFiles.size(),
+				PreviousReleaseStore.write(storeDir, wavFiles, SAMPLE_RATE,
+						FEATURE_FRAMES, OLD_BINS, SAMPLE_DURATION));
 	}
 
 	/** Opens the store with a library analysing through the given provider. */
