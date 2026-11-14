@@ -133,6 +133,54 @@ public class SelfAttentionSublayerAssetTest extends TestSuiteBase implements Tra
 	}
 
 	/**
+	 * The three adaLN conditioning producers must be supplied all together or all absent: a partial
+	 * combination is rejected, rather than silently building an unmodulated block (when only
+	 * {@code modScale} is null) or deferring the failure to producer binding (when only {@code modScale}
+	 * is supplied). This pins the all-or-none validation of {@link #selfAttentionResidualSublayer}.
+	 */
+	@Test(timeout = 240000)
+	public void partialConditioningIsRejected() {
+		TraversalPolicy blockShape = shape(BATCH, SEQ_LEN, DIM);
+		Weights w = new Weights();
+		PackedCollection mod = new PackedCollection(shape(BATCH, DIM)).fill(1.0);
+
+		// modScale supplied, modShift and gate absent — would select a modulated layer and fail at binding.
+		assertTrue("partial conditioning (only modScale supplied) must be rejected",
+				rejectsConditioning(blockShape, w, mod, null, null));
+
+		// modScale absent, gate supplied — would silently build an unmodulated block, dropping the gate.
+		assertTrue("partial conditioning (only gate supplied) must be rejected",
+				rejectsConditioning(blockShape, w, null, null, mod));
+	}
+
+	/**
+	 * Builds the sub-layer with the given (possibly partial) conditioning and reports whether it is
+	 * rejected with an {@link IllegalArgumentException}, as the all-or-none validation requires.
+	 *
+	 * @param blockShape the sub-layer shape
+	 * @param w          the shared synthetic weights
+	 * @param modScale   the adaLN scale modulation, or {@code null}
+	 * @param modShift   the adaLN shift modulation, or {@code null}
+	 * @param gate       the adaLN output gate, or {@code null}
+	 * @return whether the builder rejected the combination
+	 */
+	private boolean rejectsConditioning(TraversalPolicy blockShape, Weights w,
+										PackedCollection modScale, PackedCollection modShift,
+										PackedCollection gate) {
+		try {
+			selfAttentionResidualSublayer(blockShape, NormalizationType.LAYER,
+					w.preNormWeight, w.preNormBias,
+					modScale == null ? null : cp(modScale),
+					modShift == null ? null : cp(modShift),
+					gate == null ? null : cp(gate),
+					w.attention());
+			return false;
+		} catch (IllegalArgumentException expected) {
+			return true;
+		}
+	}
+
+	/**
 	 * Builds the self-attention residual sub-layer both through the asset loader and as the Java
 	 * composition it replaced, and asserts the two forward passes agree.
 	 *
@@ -180,6 +228,12 @@ public class SelfAttentionSublayerAssetTest extends TestSuiteBase implements Tra
 	 * Compiles a single block into a model and runs one forward pass over a {@code [batch, seqLen, dim]}
 	 * input.
 	 *
+	 * <p>The forward result is cloned into a host-owned collection before the compiled model is
+	 * destroyed, because {@link CompiledModel#forward} returns the collection owned by the model and
+	 * that memory is released on {@link CompiledModel#destroy()}. Both the {@link Model} and the
+	 * {@link CompiledModel} are destroyed here so the five tests sharing this helper do not accumulate
+	 * native activation and kernel resources across the suite.</p>
+	 *
 	 * @param block the block under test
 	 * @param input the model input
 	 * @return the forward-pass output
@@ -188,7 +242,12 @@ public class SelfAttentionSublayerAssetTest extends TestSuiteBase implements Tra
 		Model model = new Model(shape(BATCH, SEQ_LEN, DIM));
 		model.sequential().add(block);
 		CompiledModel compiled = model.compile(false);
-		return compiled.forward(input);
+		try {
+			return compiled.forward(input).clone();
+		} finally {
+			compiled.destroy();
+			model.destroy();
+		}
 	}
 
 	/**
@@ -199,6 +258,7 @@ public class SelfAttentionSublayerAssetTest extends TestSuiteBase implements Tra
 	private final class Weights {
 		/** Self-attention pre-normalization scale. */
 		private final PackedCollection preNormWeight = new PackedCollection(shape(DIM)).fill(1.0);
+		// TODO(review): no parity test exercises a null preNormBias (the typical RMSNorm/no-bias production path through the asset).
 		/** Self-attention pre-normalization bias. */
 		private final PackedCollection preNormBias = new PackedCollection(shape(DIM)).randnFill();
 		/** Fused {@code [3*dim, dim]} self-attention QKV projection. */

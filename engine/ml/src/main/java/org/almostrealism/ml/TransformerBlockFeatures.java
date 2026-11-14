@@ -85,6 +85,8 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 	 *                       or {@code null} for no modulation
 	 * @param attention      the self-attention sub-block, mapping {@code blockShape} to {@code blockShape}
 	 * @return the residual self-attention sub-layer block
+	 * @throws IllegalArgumentException if the {@code modScale}, {@code modShift} and {@code gate}
+	 *                                  producers are not either all supplied or all {@code null}
 	 */
 	default Block selfAttentionResidualSublayer(TraversalPolicy blockShape, NormalizationType normType,
 												PackedCollection preNormWeight, PackedCollection preNormBias,
@@ -93,6 +95,10 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 												Producer<PackedCollection> gate,
 												Block attention) {
 		boolean modulated = modScale != null;
+		if (modulated != (modShift != null) || modulated != (gate != null)) {
+			throw new IllegalArgumentException("adaLN conditioning producers (modScale, modShift, gate) " +
+					"must be either all present (adaLN-Zero modulation) or all null (plain pre-norm residual)");
+		}
 
 		Map<String, Object> args = new HashMap<>();
 		args.put("pre_norm_weight", preNormWeight);
