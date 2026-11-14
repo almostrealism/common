@@ -228,6 +228,35 @@ The agent receives the job, clones or updates the repository, runs Claude Code w
 
 The push triggers a new CI run. If the fix resolves the failure, the pipeline succeeds. If not, the cycle can repeat (subject to concurrency limits and budget constraints).
 
+### Settled CI: starting the long-running tests when the review loop ends
+
+A push to a pull request only starts a *validate* run of "Build and Test".
+The long-running test lanes run in a separate *test* run, which a deployment
+of the branch starts. "Validate and Test Runs" in `.github/CLAUDE.md`
+describes that design.
+
+The controller starts the test run when the review loop ends. A workstream's
+`settledCiTrigger` names the CI to start when one of its coding jobs finishes
+successfully with nothing to commit (`JobCompletionEvent.isSuccessWithoutChanges()`).
+That is how the loop ends: the review that finds nothing to fix.
+
+| Value | Effect |
+|-------|--------|
+| `deployment:<environment>` | Creates a deployment of the branch to that environment. `deployment:test` starts this repository's test run, whose `Test Checks` gate is a required status check. |
+| `workflow:<file>` | Dispatches that workflow on the branch. Checks from a dispatched run do not satisfy required status checks. |
+| empty | Nothing (the default). |
+
+`CiTrigger.start` checks whether the branch's head commit already has a
+deployment to that environment, or a run of that workflow, and does nothing if
+it does. That makes it safe to fire on every change-free job. The trigger never
+fires for the workstream's base branch.
+
+Set it with `workstream_update_config(settled_ci_trigger="deployment:test")`,
+or at registration. The controller uses the workstream organisation's GitHub
+token, and that token must be able to create deployments. CI does not depend on
+the controller for this: when the controller is down, a person starts the same
+test run with the `Start Tests` workflow or one REST call.
+
 ---
 
 ## Failure Detection

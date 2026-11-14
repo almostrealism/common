@@ -80,7 +80,7 @@ services:
              "import urllib.request; urllib.request.urlopen('http://localhost:8020/api/health', timeout=3)"]
       interval: 30s
       timeout: 5s
-      start_period: 300s
+      start_period: 3000s
       start_interval: 5s
       retries: 3
     restart: unless-stopped
