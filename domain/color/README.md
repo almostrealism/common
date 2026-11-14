@@ -154,6 +154,22 @@ Color awtColor = GraphicsConverter.convertToAWTColor(rgb);
 PackedCollection channels = channels(new File("image.png"));
 ```
 
+To write a whole **frame sequence** to disk (several frames plus the `ffmpeg` script that encodes
+them as a video), use `ImageSequence` rather than calling `ImageCanvas.encodeImageFile` per frame
+yourself. It is the single owner of frame-sequence output — zero-padded (optionally prefixed) frame
+naming, the per-frame PNG encode, written-frame tracking, and an `encode.sh` bounded to the
+contiguous run of frames present — and is renderer-agnostic, so a caller hands it an `RGB[][]` (or
+image producer) however it was produced:
+
+```java
+import org.almostrealism.texture.ImageSequence;
+
+ImageSequence sequence = new ImageSequence(new File("out"), frameCount);
+sequence.prepare();                       // create the output directory
+sequence.writeFrame(frameIndex, pixels);  // RGB[][] or Evaluable<RGB[][]>, warn-and-continue
+sequence.writeEncodeScript();             // encode.sh over the frames written
+```
+
 ## Key Interfaces
 
 ### RGB and RGBA
