@@ -158,11 +158,14 @@ fi
 # ─── 3. Required status checks on master ────────────────────────────
 echo
 echo "== 3. Required status checks on $BASE =="
-REQUIRED=$(gh api "repos/$REPO/branches/$BASE/protection/required_status_checks" \
-    --jq '[(.contexts // [])[], ((.checks // [])[] | .context)] | unique | .[]' 2>/dev/null || true)
-if [ -z "$REQUIRED" ]; then
-    echo "  Could not read branch protection (it needs admin access), or none is set."
-else
+# Keep the API's success apart from its content: an empty result from a
+# successful read (branch protection with zero required contexts) still means
+# `--require-test-checks` should add "Test Checks", whereas a failed read (no
+# protection object, or no admin access) has nothing to add a context to. A
+# bare `-z "$REQUIRED"` conflated the two and never reached the POST.
+if PROTECTION=$(gh api "repos/$REPO/branches/$BASE/protection/required_status_checks" 2>/dev/null); then
+    REQUIRED=$(printf '%s' "$PROTECTION" \
+        | jq -r '[(.contexts // [])[], ((.checks // [])[] | .context)] | unique | .[]')
     for check in "All Checks" "Test Checks"; do
         if printf '%s\n' "$REQUIRED" | grep -qx "$check"; then
             echo "  $check: required"
@@ -179,6 +182,8 @@ else
             fi
         fi
     done
+else
+    echo "  Could not read branch protection (it needs admin access), or none is set."
 fi
 
 # ─── 4. Steps outside GitHub ────────────────────────────────────────

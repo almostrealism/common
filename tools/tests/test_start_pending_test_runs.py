@@ -178,6 +178,31 @@ class StartPendingTestRunsTest(unittest.TestCase):
         self.assertEqual(1, len(added))
         self.assertIn("contexts[]=Test Checks", added[0])
 
+    def test_empty_protection_still_adds_the_test_check(self):
+        # Branch protection exists but requires no contexts: a successful read
+        # with empty arrays, not a failure. --require-test-checks must still
+        # add "Test Checks" rather than report it as unreadable.
+        fixtures = self._fixtures([], required=())
+        result, calls = self._run(fixtures, "--apply", "--require-test-checks")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("Test Checks: NOT required", result.stdout)
+        self.assertNotIn("Could not read branch protection", result.stdout)
+        added = [c["args"] for c in calls if any(a.endswith("/contexts") for a in c["args"])]
+        self.assertEqual(1, len(added))
+        self.assertIn("contexts[]=Test Checks", added[0])
+
+    def test_an_unreadable_protection_adds_nothing(self):
+        # The read itself fails (no protection object, or no admin access):
+        # there is nothing to add a context to, so even with the flag the
+        # script reports it and makes no POST.
+        fixtures = self._fixtures([])
+        fixtures = [f for f in fixtures if f[0] != "required_status_checks"]
+        fixtures.append(["required_status_checks", None])
+        result, calls = self._run(fixtures, "--apply", "--require-test-checks")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("Could not read branch protection", result.stdout)
+        self.assertFalse(any(any(a.endswith("/contexts") for a in c["args"]) for c in calls))
+
 
 if __name__ == "__main__":
     unittest.main()
