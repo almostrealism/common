@@ -99,7 +99,8 @@ plan.
 
 ### Is mixed-precision calloc a supported configuration?
 
-Verified against source — it is not:
+Verified against source — no code builds one, though the public API reaches it (see the
+distinction below):
 
 - Production constructions of `NativeMemoryProvider` all use the single hardware precision:
   `Hardware.java` (`new NativeMemoryProvider(getPrecision(), ...)`) and
@@ -114,9 +115,27 @@ Verified against source — it is not:
   `nativeToNativeMixedPrecision`), `ScopedContextMemoryRetentionTest` and
   `NativeBufferScalarReadTest` all build their FP64/FP32 providers with `direct == true`.
 
-So the task's own conditional — "the [unique-per-precision] option is preferred *if*
-mixed-precision native providers are a supported configuration" — resolves to: they are not,
-therefore fail-fast is the appropriate primary fix.
+So no code — production or test — actually constructs a calloc provider at a precision other
+than the hardware precision.
+
+**A distinction the fail-fast choice turns on, called out explicitly:** "no caller constructs
+it" is not the same as "the public API forbids it." It does not. `NativeDataContext` exposes a
+public constructor `(String name, Precision precision, long maxReservation, boolean clMemory,
+boolean direct)`, and its `getMemoryProvider()` passes that `direct` flag and the context's
+precision straight into `new NativeMemoryProvider(getPrecision(), ..., false, compiler,
+direct)`. A caller can therefore stand up an FP32 and an FP64 `direct == false` context in one
+JVM through the documented API, which is exactly the hazard configuration. What that path does
+*today*, however, is not "work": it is the SIGSEGV this plan describes — the second precision's
+`NativeRead`/`NativeWrite` binds to the first's already-loaded native code and overruns the
+buffer. So fail-fast does **not** remove a working configuration; it replaces an unrecoverable
+crash on that public-API path with a clear, catchable `HardwareException` at the point of
+misuse. Narrowing the `NativeDataContext` contract from "permits any precision, then crashes"
+to "permits any precision, fails fast on the second" is the actual decision the approver is
+making, and it is recorded as Open Question 1. The task's own conditional — "the
+[unique-per-precision] option is preferred *if* mixed-precision native providers are a
+*supported* configuration" — resolves to: they are reachable but not supported (they crash
+today), so fail-fast is the appropriate primary fix unless the approver wants to make them
+genuinely supported now.
 
 ### Recommended fix — fail-fast on cross-precision rebinding
 
@@ -126,11 +145,22 @@ Add, in `BaseNative`:
   `NativeArrayCopy` overrides it to `true`, so the guard applies to `NativeRead` and
   `NativeWrite` but not to `Malloc`/`Free` (which keep the default and stay unguarded).
 - A JVM-wide `static Map<Class, Precision>` recording the precision under which each
-  precision-dependent class was first loaded, written and read under the same lock that
-  `loadNative` already holds.
-- In the load path: when `isPrecisionDependent()`, read the operation's precision from
-  `getNativeCompiler().getPrecision()`; if the class was previously loaded under a
-  *different* precision, throw a `HardwareException`
+  precision-dependent class was first loaded.
+- A JVM-wide lock guarding the load path. **`loadNative` as it stands cannot provide it:**
+  the method is `protected synchronized`, so it locks on the *instance* (`this`), yet the
+  `libs` cache it reads and writes is `static`. Two `NativeRead` (or two `NativeWrite`)
+  instances constructed concurrently therefore synchronize on different monitors while
+  sharing the one static cache, so the existing synchronization does not serialize access
+  to `libs` at all — a latent data race that predates this plan. The new precision map has
+  the same scope as `libs` and must be guarded the same way, so the fix introduces a single
+  JVM-wide lock (a private `static final Object`, or the class-level monitor) and moves both
+  the `libs` check/update and the precision check/record inside it. This both closes the
+  cross-precision hazard and corrects the pre-existing instance-level locking of the static
+  cache. The method's `synchronized` modifier is replaced by that explicit static lock
+  rather than left in place, so there is exactly one monitor in the load path.
+- In the load path, under that lock: when `isPrecisionDependent()`, read the operation's
+  precision from `getNativeCompiler().getPrecision()`; if the class was previously loaded
+  under a *different* precision, throw a `HardwareException`
   (`org.almostrealism.hardware.HardwareException`, same module) whose message names the
   concrete class and both precisions; otherwise record the precision on first load. A second
   construction at the *same* precision continues to be a cache hit, unchanged.
@@ -167,7 +197,9 @@ A reviewer can confirm the task is done when:
 - The chosen mechanism lands in `base/hardware` (recommended: the `BaseNative`
   `isPrecisionDependent()` hook + per-class precision record + `HardwareException` on
   cross-precision rebind; `NativeArrayCopy` overrides the hook), with `Malloc`/`Free` left
-  unguarded.
+  unguarded. The `libs` cache and the precision record are checked and updated under one
+  JVM-wide lock, so a concurrent first load of the same class cannot race past the precision
+  check (see Approach).
 - A new test in `engine/utils`
   (`engine/utils/src/test/java/org/almostrealism/hardware/test/`, beside
   `NativeMemoryCopyTest`, extending `TestSuiteBase`, every `@Test` carrying a `timeout`)
@@ -204,13 +236,21 @@ A reviewer can confirm the task is done when:
 
 ## Open questions
 
-1. **Design choice (for the approver): fail-fast vs. per-precision subclasses.** This plan
-   recommends fail-fast on the evidence that mixed-precision calloc is not a supported
-   configuration today. If the platform intends to *support* mixed-precision calloc providers
-   in one JVM in the near term, the subclass approach is the right investment instead and the
-   test's success criterion becomes the "both orders round-trip without corruption" branch.
-   The two branches imply materially different test shapes, so the approver should settle this
-   before implementation starts.
+1. **Design choice (for the approver): fail-fast vs. per-precision subclasses — and it is a
+   public-API contract decision.** This plan recommends fail-fast on the evidence that no
+   caller builds a mixed-precision calloc configuration today and that the one public path
+   that *could* (`NativeDataContext`'s 5-argument constructor with `direct == false`, see
+   Approach) currently crashes with a SIGSEGV rather than working. Adopting fail-fast narrows
+   that public `NativeDataContext` contract from "accepts any precision, then crashes on the
+   second calloc provider" to "accepts any precision, throws `HardwareException` on the
+   second" — a strictly safer contract, but a deliberate change to documented public
+   behaviour that the approver is endorsing, and `NativeDataContext`'s Javadoc should be
+   updated to state it. If instead the platform intends to genuinely *support* mixed-precision
+   calloc providers in one JVM in the near term, the subclass approach is the right investment:
+   it makes the same public path round-trip correctly in both orders, and the test's success
+   criterion becomes the "both orders round-trip without corruption" branch. The two branches
+   imply materially different test shapes, so the approver should settle this before
+   implementation starts.
 2. **Exception type and message contract.** `HardwareException` is proposed for the
    fail-fast error. The approver should confirm that is the intended type and that naming the
    concrete class and both precisions in the message is the contract the new test may assert
