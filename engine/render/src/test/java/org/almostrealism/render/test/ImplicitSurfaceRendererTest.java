@@ -404,6 +404,50 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 	}
 
 	/**
+	 * The renderer rejects march parameters that would silently turn every ray into a miss
+	 * (a non-positive or non-finite distance, no march steps, a negative number of
+	 * bisections), and accepts the smallest valid value of each.
+	 */
+	@Test(timeout = 60000)
+	public void rendererRejectsInvalidMarchParameters() {
+		ImplicitSurfaceRenderer renderer = renderer(unitSphere(), sphereCamera(), 2);
+		try {
+			for (double invalid : new double[] { 0.0, -1.0, Double.NaN,
+					Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY }) {
+				assertRejected("maximumDistance=" + invalid, () -> renderer.setMaximumDistance(invalid));
+				assertRejected("minimumStep=" + invalid, () -> renderer.setMinimumStep(invalid));
+			}
+
+			assertRejected("marchSteps=0", () -> renderer.setMarchSteps(0));
+			assertRejected("marchSteps=-1", () -> renderer.setMarchSteps(-1));
+			assertRejected("refinementSteps=-1", () -> renderer.setRefinementSteps(-1));
+
+			renderer.setMaximumDistance(Double.MIN_VALUE);
+			renderer.setMinimumStep(Double.MAX_VALUE);
+			renderer.setMarchSteps(1);
+			renderer.setRefinementSteps(0);
+		} finally {
+			renderer.destroy();
+		}
+	}
+
+	/**
+	 * Asserts that a setter call is rejected with an {@link IllegalArgumentException}.
+	 *
+	 * @param description the call, for the failure message
+	 * @param call the setter call
+	 */
+	private void assertRejected(String description, Runnable call) {
+		try {
+			call.run();
+		} catch (IllegalArgumentException expected) {
+			return;
+		}
+
+		throw new AssertionError(description + " should be rejected");
+	}
+
+	/**
 	 * The normal of a planar height field with slopes 0.5 along {@code x} and 0.25 along
 	 * {@code z} follows both slopes inside
 	 * the grid, and outside the grid, where the height is clamped to the nearest edge, the

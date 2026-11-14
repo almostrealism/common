@@ -274,30 +274,67 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 	/**
 	 * Sets the number of march steps along each ray.
 	 *
-	 * @param marchSteps the number of steps
+	 * @param marchSteps the number of steps, at least 1
+	 * @throws IllegalArgumentException if {@code marchSteps} is less than 1
 	 */
-	public void setMarchSteps(int marchSteps) { this.marchSteps = marchSteps; }
+	public void setMarchSteps(int marchSteps) {
+		if (marchSteps < 1) {
+			throw new IllegalArgumentException("marchSteps must be at least 1, but was " + marchSteps);
+		}
+
+		this.marchSteps = marchSteps;
+	}
 
 	/**
 	 * Sets the number of bisections of the bracket around each hit.
 	 *
-	 * @param refinementSteps the number of bisections
+	 * @param refinementSteps the number of bisections, not negative
+	 * @throws IllegalArgumentException if {@code refinementSteps} is negative
 	 */
-	public void setRefinementSteps(int refinementSteps) { this.refinementSteps = refinementSteps; }
+	public void setRefinementSteps(int refinementSteps) {
+		if (refinementSteps < 0) {
+			throw new IllegalArgumentException("refinementSteps must not be negative, but was " + refinementSteps);
+		}
+
+		this.refinementSteps = refinementSteps;
+	}
 
 	/**
 	 * Sets the smallest step along a ray, which keeps the march advancing near the surface.
 	 *
-	 * @param minimumStep the smallest step
+	 * @param minimumStep the smallest step, positive and finite
+	 * @throws IllegalArgumentException if {@code minimumStep} is not positive and finite
 	 */
-	public void setMinimumStep(double minimumStep) { this.minimumStep = minimumStep; }
+	public void setMinimumStep(double minimumStep) {
+		this.minimumStep = requirePositiveFinite("minimumStep", minimumStep);
+	}
 
 	/**
-	 * Sets the distance along a ray beyond which it misses the surface.
+	 * Sets the distance along a ray beyond which it misses the surface. It must be positive
+	 * and finite, since a bracket that never closes is marked with a distance beyond it.
 	 *
-	 * @param maximumDistance the largest distance
+	 * @param maximumDistance the largest distance, positive and finite
+	 * @throws IllegalArgumentException if {@code maximumDistance} is not positive and finite
 	 */
-	public void setMaximumDistance(double maximumDistance) { this.maximumDistance = maximumDistance; }
+	public void setMaximumDistance(double maximumDistance) {
+		this.maximumDistance = requirePositiveFinite("maximumDistance", maximumDistance);
+	}
+
+	/**
+	 * Returns a march distance after checking that it is positive and finite.
+	 *
+	 * @param name the name of the parameter, for the error message
+	 * @param value the distance
+	 * @return {@code value}
+	 * @throws IllegalArgumentException if {@code value} is not positive and finite
+	 */
+	private static double requirePositiveFinite(String name, double value) {
+		if (!(value > 0.0) || Double.isInfinite(value)) {
+			throw new IllegalArgumentException(name + " must be positive and finite, but was " + value);
+		}
+
+		return value;
+	}
 
 	/** Returns the width of the image, in pixels. */
 	public int getWidth() { return width; }
@@ -393,6 +430,7 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 	 * @return the far end of an unclosed bracket
 	 */
 	protected double unclosedDistance() {
+		// TODO(review): overflows to Infinity for maximumDistance above ~Double.MAX_VALUE / 2, which setMaximumDistance accepts
 		return 2.0 * maximumDistance + 1.0;
 	}
 
