@@ -12,13 +12,15 @@
 # merged pull request's head branch.
 #
 # Scope: only runs of WORKFLOW, only those triggered by the `pull_request`
-# event, only those whose head branch and head repository match the merged
-# pull request. In this repository the main pipeline's `push` trigger is
-# restricted to the base branch, so a feature branch's only runs are the ones
-# the pull request itself launched — the branch filter is therefore already
-# limited to pipelines that exist because of this pull request. Matching the
-# head repository as well keeps a fork's branch from matching a same-named
-# branch in the base repository.
+# event (validate runs) or the `deployment` event (test runs started for the
+# branch — see "Validate runs and test runs" in analysis.yaml), only those
+# whose head branch and head repository match the merged pull request. In this
+# repository the main pipeline's `push` trigger is restricted to the base
+# branch, so a feature branch's only runs are the ones started for its pull
+# request — the branch filter is therefore already limited to pipelines that
+# exist because of this pull request. Matching the head repository as well
+# keeps a fork's branch from matching a same-named branch in the base
+# repository.
 #
 # The merge commit's pipeline is never affected: it is a `push` event on the
 # base branch, which the event filter excludes even when a fast-forward or
@@ -60,11 +62,12 @@ FAILED_QUERIES=0
 # A listing that fails (auth, rate limit, API outage) is reported rather than
 # read as an empty result: "no runs to cancel" and "could not find out" lead to
 # the same inaction but want different responses from whoever reads the log.
+for event in pull_request deployment; do
 for status in in_progress queued waiting; do
     if ! RUN_IDS=$(gh api --paginate \
-        "/repos/$REPO/actions/workflows/$WORKFLOW/runs?event=pull_request&branch=$HEAD_BRANCH&status=$status" \
+        "/repos/$REPO/actions/workflows/$WORKFLOW/runs?event=$event&branch=$HEAD_BRANCH&status=$status" \
         --jq ".workflow_runs[] | select(.head_repository.full_name == \"$HEAD_REPO\") | .id" 2>/dev/null); then
-        echo "::warning::Could not list $status runs of $WORKFLOW for $HEAD_REPO@$HEAD_BRANCH; any are left running"
+        echo "::warning::Could not list $status $event runs of $WORKFLOW for $HEAD_REPO@$HEAD_BRANCH; any are left running"
         FAILED_QUERIES=$((FAILED_QUERIES + 1))
         continue
     fi
@@ -80,14 +83,15 @@ for status in in_progress queued waiting; do
         fi
     done
 done
+done
 
 if [ "$CANCELLED" -eq 0 ] && [ "$FAILED_QUERIES" -gt 0 ]; then
-    echo "::warning::Cancelled nothing for merged PR #$PR_NUMBER: $FAILED_QUERIES of 3 run listings failed"
+    echo "::warning::Cancelled nothing for merged PR #$PR_NUMBER: $FAILED_QUERIES of 6 run listings failed"
 elif [ "$CANCELLED" -eq 0 ]; then
     echo "::notice::No active $WORKFLOW runs for merged PR #$PR_NUMBER ($HEAD_REPO@$HEAD_BRANCH)"
 else
     echo "::notice::Cancelled $CANCELLED run(s) for merged PR #$PR_NUMBER"
     if [ "$FAILED_QUERIES" -gt 0 ]; then
-        echo "::warning::$FAILED_QUERIES of 3 run listings failed; some runs may still be active"
+        echo "::warning::$FAILED_QUERIES of 6 run listings failed; some runs may still be active"
     fi
 fi

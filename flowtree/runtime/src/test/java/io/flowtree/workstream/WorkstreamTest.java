@@ -16,12 +16,17 @@
 
 package io.flowtree.workstream;
 
+import io.flowtree.github.CiTrigger;
+import io.flowtree.github.GitHubProxyHandler;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
 import java.util.List;
+import java.util.Map;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -95,5 +100,35 @@ public class WorkstreamTest extends TestSuiteBase {
 
         assertTrue(ws.dependsOnRepo("git@github.com:almostrealism/common.git"));
         assertFalse(ws.dependsOnRepo("git@github.com:almostrealism/ringsdesktop.git"));
+    }
+
+    /**
+     * {@code startSettledCi} gates before touching GitHub: it does nothing when
+     * no trigger is configured and nothing for the base branch (which has its
+     * own CI on every push), but for a feature branch it reaches the configured
+     * trigger — which, pointed at an unreachable API, reports {@code FAILED}
+     * rather than being skipped. That distinguishes the branch guard (null)
+     * from the trigger actually running (not null).
+     */
+    @Test(timeout = 15000)
+    public void testStartSettledCiGatesOnTriggerAndBranch() {
+        // A closed loopback port makes every GitHub read fail fast, so a trigger
+        // that is reached reports FAILED without a fake server standing in.
+        GitHubProxyHandler github = new GitHubProxyHandler(Map.of("almostrealism", "tok"),
+                "http://127.0.0.1:1");
+        Workstream ws = workstreamOn("https://github.com/almostrealism/common.git");
+        ws.setBaseBranch("master");
+
+        assertNull("no trigger, nothing to start",
+                ws.startSettledCi(github, "feature/shared"));
+
+        ws.setSettledCiTrigger(CiTrigger.parse("deployment:test"));
+        assertNull("the base branch has its own CI and no review loop",
+                ws.startSettledCi(github, "master"));
+        assertEquals(CiTrigger.Outcome.FAILED, ws.startSettledCi(github, "feature/shared"));
+
+        GitHubProxyHandler tokenless = new GitHubProxyHandler(Map.of(), "http://127.0.0.1:1");
+        assertNull("no org token, nothing to start",
+                ws.startSettledCi(tokenless, "feature/shared"));
     }
 }
