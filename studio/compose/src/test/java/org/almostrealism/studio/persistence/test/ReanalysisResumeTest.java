@@ -179,6 +179,32 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 		AudioLibrary firstLaunch = openLibrary(firstStore, firstLaunchModel, new ArrayList<>());
 		CompletableFuture<Void> firstRefresh = firstLaunch.refresh();
 
+		try {
+			verifyInterruptedReanalysisResumes(count, saved, firstStore, firstLaunchModel);
+		} finally {
+			// Let the first launch's worker, which stands in for the dead process, drain
+			// (every remaining encode fails), then stop that library and close its store
+			// so no worker or file handle outlives the test.
+			firstLaunchModel.dead = true;
+			firstLaunchModel.permits.release(count);
+			firstRefresh.get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
+			firstLaunch.stop();
+			firstStore.close();
+		}
+	}
+
+	/**
+	 * Drives the interrupted first launch to its simulated quit, then relaunches over
+	 * the same store and checks that the resume re-encodes only the unsaved items.
+	 *
+	 * @param count            the number of items in the library
+	 * @param saved            the number of items saved before the quit
+	 * @param firstStore       the store of the first launch
+	 * @param firstLaunchModel the provider of the first launch
+	 * @throws Exception if the library fails
+	 */
+	private void verifyInterruptedReanalysisResumes(int count, int saved, ProtobufWaveDetailsStore firstStore,
+													GatedProvider firstLaunchModel) throws Exception {
 		// Items 1..4 are encoded and persisted; item 5 is mid-encode. The app's
 		// periodic save then writes what the store holds to disk.
 		awaitCondition(() -> firstLaunchModel.started.get() == saved + 1);
@@ -222,11 +248,6 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 
 		relaunch.stop();
 		relaunchStore.close();
-
-		// Let the first launch's worker, which stands in for the dead process, drain
-		// (every remaining encode fails) so nothing outlives the test.
-		firstLaunchModel.permits.release(count);
-		firstRefresh.get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
 	}
 
 	/**
