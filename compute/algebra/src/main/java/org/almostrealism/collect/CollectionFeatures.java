@@ -351,12 +351,23 @@ public interface CollectionFeatures extends GradientFeatures {
 	 * (the output is longer than the inputs' total, leaving a zero tail), inputs are
 	 * zero-padded to the output shape and summed.</p>
 	 *
+	 * <p>An input with fewer dimensions than {@code shape} is a single item, repeated over
+	 * the leading dimensions of {@code shape} it lacks (see
+	 * {@link #repeatItems(TraversalPolicy, Producer)}), so a shared value can be concatenated
+	 * with a batch of values.</p>
+	 *
 	 * @param shape the shape of the concatenated output
-	 * @param producers the producers to concatenate
+	 * @param inputs the producers to concatenate
 	 * @return a producer computing the concatenation
 	 * @throws IllegalArgumentException if inputs cannot be concatenated into the given shape
 	 */
-	default CollectionProducer concat(TraversalPolicy shape, Producer<PackedCollection>... producers) {
+	default CollectionProducer concat(TraversalPolicy shape, Producer<PackedCollection>... inputs) {
+		// Inputs with fewer dimensions than the output are single items,
+		// repeated for every item of a batched output
+		Producer<PackedCollection>[] producers = Stream.of(inputs)
+				.map(p -> repeatItems(shape, p))
+				.toArray(Producer[]::new);
+
 		List<TraversalPolicy> shapes = Stream.of(producers)
 				.map(this::shape)
 				.filter(s -> s.getDimensions() == shape.getDimensions())

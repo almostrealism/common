@@ -117,6 +117,45 @@ for batch inputs where the batch dimension is not known until evaluation.
 
 ---
 
+## Batches of Items
+
+Many operations are written for one item — a `(2)` pair, a `(3)` vector, a `(6)` ray — and
+are applied to a fixed-count batch of them by giving them an `(n, 2)`, `(n, 3)` or `(n, 6)`
+collection instead. The batch reaches the kernel only if every shape along the way carries
+the leading `n` and traverses it (count `n`); a `(1)` result of count 1 cannot be written to
+an `n`-element destination ("The destination count (n) must match the count for the
+process (1)").
+
+**Lower-rank subsets are taken from every item.** When the shape given to
+`subset(shape, collection, pos...)` has fewer dimensions than the collection, the
+collection's leading dimensions enumerate items and its trailing dimensions (one per
+dimension of the subset) form each item. The result has the leading dimensions prepended to
+the subset shape and traverses them:
+
+```java
+// (n, 2) pixel positions -> the (n, 1) first component of every position
+CollectionProducer x = subset(shape(1), positions, 0);
+// (n, 6) rays -> the (n, 3) origin of every ray (RayFeatures.origin)
+CollectionProducer o = subset(shape(3), rays, 0);
+```
+
+A subset with as many dimensions as its collection is unchanged: it is taken from the
+collection as a whole.
+
+**Constructors of items follow their inputs.** `SlicingFeatures.batchShape(item, inputs...)`
+returns `item` with the leading dimensions of the input that has more dimensions than
+`item` prepended, and `concat(shape, inputs...)` repeats any input with fewer dimensions
+than `shape` over the missing leading dimensions (`SlicingFeatures.repeatItems`). So
+`pair(x, y)`, `vector(x, y, z)`, `rgb(r, g, b)` and `ray(origin, direction)` build an
+`(n, 2)`, `(n, 3)` or `(n, 6)` batch from `(n, 1)` (or `(n, 3)`) inputs, and a single shared
+input — a constant origin, say — is repeated for every item. `VectorFeatures.scale(vectors,
+scalars)` multiplies each vector of an `(n, 3)` batch by its own `(n, 1)` scalar.
+
+Together these let a graph written for one item, such as `PinholeCamera.rayAt`, evaluate an
+entire batch in one kernel (see [Per-Pixel Kernel Rendering](per-pixel-rendering.md)).
+
+---
+
 ## The Traversable Interface
 
 `Traversable<T>` is the minimal interface for axis-based traversal:

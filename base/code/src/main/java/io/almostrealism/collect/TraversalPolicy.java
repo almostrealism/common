@@ -1181,32 +1181,6 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	}
 
 	/**
-	 * Create a new {@link TraversalPolicy} which has the same dimensions,
-	 * but with a {@link #getTraversalAxis() traversal axis} which results
-	 * in a {@link #getSizeLong() size} that matches that of the specified
-	 * {@link TraversalPolicy}.
-	 */
-	public TraversalPolicy alignSize(TraversalPolicy alt) {
-		return alignSize(alt.getSizeLong());
-	}
-
-	/**
-	 * Create a new {@link TraversalPolicy} which has the same dimensions,
-	 * but with a {@link #getTraversalAxis() traversal axis} which results
-	 * in a {@link #getSizeLong() size} that matches the specified value
-	 * (if possible).
-	 */
-	public TraversalPolicy alignSize(long size) {
-		int axis = 0;
-
-		while (traverse(axis).getSizeLong() > size && axis < getDimensions()) {
-			axis++;
-		}
-
-		return getTraversalAxis() != axis ? traverse(axis) : this;
-	}
-
-	/**
 	 * Returns {@code true} if this {@link TraversalPolicy} has a fixed count,
 	 * {@code false} if it has a variable count that may not be known until
 	 * it is used in computation.

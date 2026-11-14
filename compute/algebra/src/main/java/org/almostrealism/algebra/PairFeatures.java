@@ -92,7 +92,8 @@ public interface PairFeatures extends CollectionFeatures {
 
 	/**
 	 * Creates a {@link CollectionProducer} for a dynamic pair by concatenating two component producers.
-	 * Each component producer should produce a single scalar value.
+	 * Each component producer should produce a single scalar value, or a batch of them with
+	 * shape {@code (n, 1)}, in which case the result is the {@code (n, 2)} batch of pairs.
 	 *
 	 * @param x  producer for the first component
 	 * @param y  producer for the second component
@@ -100,7 +101,7 @@ public interface PairFeatures extends CollectionFeatures {
 	 */
 	default CollectionProducer pair(Producer<PackedCollection> x,
 									Producer<PackedCollection> y) {
-		return concat(shape(2), x, y);
+		return concat(batchShape(shape(2), x, y), x, y);
 	}
 
 	/**
