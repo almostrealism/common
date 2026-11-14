@@ -391,7 +391,12 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 		} else if (valueAt(0) instanceof Long) {
 			return longValues().min().orElseThrow();
 		} else {
-			return (long) Math.ceil(doubleValues().min().orElseThrow());
+			// Round the minimum down so the result is a lower bound that never
+			// exceeds any element, mirroring max()'s use of Math.ceil for an
+			// upper bound. Using Math.ceil here would report a "minimum" that is
+			// greater than an actual fractional element (e.g. -2 for a sequence
+			// containing -2.5).
+			return (long) Math.floor(doubleValues().min().orElseThrow());
 		}
 	}
 
