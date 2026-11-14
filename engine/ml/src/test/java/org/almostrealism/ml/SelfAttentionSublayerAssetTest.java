@@ -106,6 +106,29 @@ public class SelfAttentionSublayerAssetTest extends TestSuiteBase implements Tra
 	}
 
 	/**
+	 * The asset's RMSNorm adaLN-modulated sub-layer must match the Java composition when the
+	 * pre-normalization bias is {@code null} — the production RMSNorm checkpoint layout, where
+	 * {@link org.almostrealism.ml.audio.DiffusionTransformer} supplies a {@code null} shift (its
+	 * {@code normShift} returns {@code null} for {@link NormalizationType#RMS}). This exercises the
+	 * asset's optional-bias binding and the bias-free RMSNorm execution path, which the random-bias
+	 * cases never reach.
+	 */
+	@Test(timeout = 240000)
+	public void rmsnormModulatedNullBiasMatchesJavaComposition() {
+		assertParity(NormalizationType.RMS, true, true);
+	}
+
+	/**
+	 * The asset's RMSNorm plain pre-norm sub-layer (no modulation) must match the Java composition when
+	 * the pre-normalization bias is {@code null} — the {@code modulation == null} path with the bias-free
+	 * RMSNorm layout production supplies.
+	 */
+	@Test(timeout = 240000)
+	public void rmsnormUnmodulatedNullBiasMatchesJavaComposition() {
+		assertParity(NormalizationType.RMS, false, true);
+	}
+
+	/**
 	 * With the adaLN gate driven fully closed (gate multiplier zero) the sub-layer's residual branch
 	 * contributes nothing and the sub-layer must reduce to the identity, regardless of the attention
 	 * weights. This pins the residual-with-gate wiring against a direct algebraic reference rather than
@@ -188,8 +211,22 @@ public class SelfAttentionSublayerAssetTest extends TestSuiteBase implements Tra
 	 * @param modulated whether to apply the adaLN modulation and gate
 	 */
 	private void assertParity(NormalizationType normType, boolean modulated) {
+		assertParity(normType, modulated, false);
+	}
+
+	/**
+	 * Builds the self-attention residual sub-layer both through the asset loader and as the Java
+	 * composition it replaced, and asserts the two forward passes agree.
+	 *
+	 * @param normType  the normalization family
+	 * @param modulated whether to apply the adaLN modulation and gate
+	 * @param nullBias  whether the pre-normalization bias is {@code null} (the bias-free layout
+	 *                  production supplies for RMSNorm) rather than a random tensor
+	 */
+	private void assertParity(NormalizationType normType, boolean modulated, boolean nullBias) {
 		TraversalPolicy blockShape = shape(BATCH, SEQ_LEN, DIM);
 		Weights w = new Weights();
+		PackedCollection preNormBias = nullBias ? null : w.preNormBias;
 		PackedCollection input = new PackedCollection(blockShape).randnFill();
 
 		PackedCollection modScale = modulated ? new PackedCollection(shape(BATCH, DIM)).randnFill() : null;
@@ -198,7 +235,7 @@ public class SelfAttentionSublayerAssetTest extends TestSuiteBase implements Tra
 
 		// Reference: the exact Java composition the migration replaced.
 		SequentialBlock sub = new SequentialBlock(blockShape);
-		sub.add(norm(normType, w.preNormWeight, w.preNormBias));
+		sub.add(norm(normType, w.preNormWeight, preNormBias));
 		if (modulated) {
 			sub.add(adaptiveModulate(blockShape, cp(modScale), cp(modShift)));
 		}
@@ -210,7 +247,7 @@ public class SelfAttentionSublayerAssetTest extends TestSuiteBase implements Tra
 
 		// Migrated asset, with the same weights and conditioning.
 		Block asset = selfAttentionResidualSublayer(blockShape, normType,
-				w.preNormWeight, w.preNormBias,
+				w.preNormWeight, preNormBias,
 				modulated ? cp(modScale) : null,
 				modulated ? cp(modShift) : null,
 				modulated ? cp(gate) : null,
@@ -258,8 +295,7 @@ public class SelfAttentionSublayerAssetTest extends TestSuiteBase implements Tra
 	private final class Weights {
 		/** Self-attention pre-normalization scale. */
 		private final PackedCollection preNormWeight = new PackedCollection(shape(DIM)).fill(1.0);
-		// TODO(review): no parity test exercises a null preNormBias (the typical RMSNorm/no-bias production path through the asset).
-		/** Self-attention pre-normalization bias. */
+		/** Self-attention pre-normalization bias used by the random-bias parity cases. */
 		private final PackedCollection preNormBias = new PackedCollection(shape(DIM)).randnFill();
 		/** Fused {@code [3*dim, dim]} self-attention QKV projection. */
 		private final PackedCollection qkv = new PackedCollection(shape(3 * DIM, DIM)).randnFill();
