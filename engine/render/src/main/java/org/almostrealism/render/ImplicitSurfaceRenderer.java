@@ -95,6 +95,13 @@ import java.util.stream.Stream;
  * @author Michael Murray
  */
 public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destroyable {
+	/**
+	 * The largest accepted {@link #setMaximumDistance(double) maximumDistance}. It keeps
+	 * {@link #unclosedDistance()} finite even when the kernel computes in single precision,
+	 * so the sentinel never becomes an infinite constant in the generated code.
+	 */
+	public static final double MAXIMUM_DISTANCE_LIMIT = Float.MAX_VALUE / 4.0;
+
 	/** The surface to render. */
 	private final ImplicitSurface surface;
 
@@ -311,13 +318,23 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 
 	/**
 	 * Sets the distance along a ray beyond which it misses the surface. It must be positive
-	 * and finite, since a bracket that never closes is marked with a distance beyond it.
+	 * and no larger than {@link #MAXIMUM_DISTANCE_LIMIT}, since a bracket that never closes
+	 * is marked with a distance beyond it, {@link #unclosedDistance()}, which must remain
+	 * finite.
 	 *
-	 * @param maximumDistance the largest distance, positive and finite
-	 * @throws IllegalArgumentException if {@code maximumDistance} is not positive and finite
+	 * @param maximumDistance the largest distance, positive and at most
+	 *                        {@link #MAXIMUM_DISTANCE_LIMIT}
+	 * @throws IllegalArgumentException if {@code maximumDistance} is not positive, or exceeds
+	 *                                  {@link #MAXIMUM_DISTANCE_LIMIT}
 	 */
 	public void setMaximumDistance(double maximumDistance) {
-		this.maximumDistance = requirePositiveFinite("maximumDistance", maximumDistance);
+		requirePositiveFinite("maximumDistance", maximumDistance);
+		if (maximumDistance > MAXIMUM_DISTANCE_LIMIT) {
+			throw new IllegalArgumentException("maximumDistance must be at most "
+					+ MAXIMUM_DISTANCE_LIMIT + ", but was " + maximumDistance);
+		}
+
+		this.maximumDistance = maximumDistance;
 	}
 
 	/**
@@ -430,7 +447,6 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 	 * @return the far end of an unclosed bracket
 	 */
 	protected double unclosedDistance() {
-		// TODO(review): overflows to Infinity for maximumDistance above ~Double.MAX_VALUE / 2, which setMaximumDistance accepts
 		return 2.0 * maximumDistance + 1.0;
 	}
 

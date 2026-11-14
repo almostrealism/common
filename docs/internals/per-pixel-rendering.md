@@ -129,7 +129,8 @@ PackedCollection fresnel = renderer.getReflectance(); // (height, width), 0 for 
 Configuration (all optional): `setAmbientLight`, `setBaseColor`, `setEnvironment(horizon,
 zenith)`, `setNormalReflectance` (F0, default 0.04), `setSpecular(strength, shininess)`,
 `setMarchSteps` (64), `setRefinementSteps` (8), `setMinimumStep` (1e-3),
-`setMaximumDistance` (100). Configure before calling `frame()`: the operations capture the
+`setMaximumDistance` (100, at most `MAXIMUM_DISTANCE_LIMIT` so the unclosed-bracket
+sentinel stays finite in single precision). Configure before calling `frame()`: the operations capture the
 configuration, lights and colors when they are built, so call `frame()` again (and compile
 the result) after changing them. The surface data, by contrast, is read when each frame
 runs.

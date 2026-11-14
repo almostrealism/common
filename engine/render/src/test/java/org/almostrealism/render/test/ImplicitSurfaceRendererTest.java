@@ -432,6 +432,33 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 	}
 
 	/**
+	 * The renderer accepts a maximum distance equal to
+	 * {@link ImplicitSurfaceRenderer#MAXIMUM_DISTANCE_LIMIT}, whose unclosed-bracket sentinel
+	 * is still finite in single precision, and rejects any larger distance, including the
+	 * largest finite double, for which the sentinel would overflow to infinity.
+	 */
+	@Test(timeout = 60000)
+	public void rendererRejectsMaximumDistanceAboveLimit() {
+		ImplicitSurfaceRenderer renderer = renderer(unitSphere(), sphereCamera(), 2);
+		try {
+			double limit = ImplicitSurfaceRenderer.MAXIMUM_DISTANCE_LIMIT;
+			if (!(2.0 * limit + 1.0 < Float.MAX_VALUE)) {
+				throw new AssertionError("The sentinel for the limit " + limit
+						+ " is not finite in single precision");
+			}
+
+			for (double invalid : new double[] { Math.nextUp(limit), 2.0 * limit,
+					Float.MAX_VALUE, Double.MAX_VALUE / 2.0, Double.MAX_VALUE }) {
+				assertRejected("maximumDistance=" + invalid, () -> renderer.setMaximumDistance(invalid));
+			}
+
+			renderer.setMaximumDistance(limit);
+		} finally {
+			renderer.destroy();
+		}
+	}
+
+	/**
 	 * Asserts that a setter call is rejected with an {@link IllegalArgumentException}.
 	 *
 	 * @param description the call, for the failure message
