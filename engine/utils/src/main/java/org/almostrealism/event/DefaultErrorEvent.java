@@ -99,18 +99,24 @@ public class DefaultErrorEvent extends DefaultEvent {
 	 * Adds the exception type, the exception message and one
 	 * {@code stacktrace_<i>} entry per stack frame to the metadata
 	 * of {@link DefaultEvent#toMetadata()}.
+	 * <p>
+	 * Optional entries whose value is {@code null} are omitted rather than
+	 * emitted as null, since analytics batch serializers commonly reject null
+	 * metadata values and would fail delivery of the whole event.
+	 * </p>
 	 *
 	 * @return a new mutable map describing this event
 	 */
 	@Override
 	public Map<String, String> toMetadata() {
 		Map<String, String> metadata = super.toMetadata();
-		metadata.put("exceptionType", exceptionType);
-		metadata.put("exceptionMessage", exceptionMessage);
+		if (exceptionType != null) metadata.put("exceptionType", exceptionType);
+		if (exceptionMessage != null) metadata.put("exceptionMessage", exceptionMessage);
 
 		if (stackTrace != null) {
 			for (int i = 0; i < stackTrace.size(); i++) {
-				metadata.put("stacktrace_" + i, stackTrace.get(i));
+				String frame = stackTrace.get(i);
+				if (frame != null) metadata.put("stacktrace_" + i, frame);
 			}
 		}
 
