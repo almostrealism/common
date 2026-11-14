@@ -1114,6 +1114,24 @@ For the dense step of a rate population over an 11,751-type connectome (`CellTyp
 a 552 MB FP32 matrix), a step took 836 microseconds instead of 3,211 on an M1 Ultra, and the
 10,000-step stability run 9.3 seconds instead of 32.7.
 
+### 10. Waits Between Command Buffers (Metal)
+
+`MetalCommandRunner` orders a dispatch after one in an earlier command buffer by encoding a GPU
+wait for that dispatch's timeline value. It does so only while the earlier buffer may still be
+running: once a host wait has seen the buffer complete and drained it, the dependency is
+honored with no command at all. A
+wait for a value already reached does not hold the GPU back, but encoded between two dispatches
+it splits the buffer's work. On an M1 Ultra, a buffer of 32 dependent single-thread kernels took
+about 350 microseconds to commit and complete, and about 815 with one such wait in its middle.
+
+Every loop that waits once per step and chains its next step on the last completion
+(`ModelOptimizer` is one) used to pay that in every step, for each dependency of the new step on
+the one before it, including the earlier value a merged completion carries
+(`MetalSemaphore.getPriorBufferValue()`). With the waits left out,
+`SyntheticDenseTrainingTest#denseClassification`, 60,000 steps of about 46 dispatches each, ran in
+46 seconds instead of 59 on that machine. `getOrderingWaitCount()` reports the waits a runner
+still encodes and `getFinishedDependencyCount()` the dependencies it honored without one.
+
 ## Advanced Topics
 
 ### Custom ComputeRequirements
