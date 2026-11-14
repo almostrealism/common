@@ -15,6 +15,7 @@
     "block-git-worktree.ts",
     "warn-git-log.ts",
     "block-checkstyle-edit.ts",
+    "require-own-upstream.ts",
     "memory-reminder.ts",
     "_lib/command_pattern.ts"
   ]
