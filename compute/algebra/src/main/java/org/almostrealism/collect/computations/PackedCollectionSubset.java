@@ -178,16 +178,35 @@ public class PackedCollectionSubset
 	 * @throws IllegalArgumentException if collection doesn't implement Shape interface
 	 */
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Expression... pos) {
-		super("subset", Shape.requireShape("Subset", collection).itemwise(shape), null, collection);
+		super("subset", subsetShape(Shape.requireShape("Subset", collection), shape), null, collection);
 
 		this.pos = itemPosition(shape, pos);
 		init();
 	}
 
 	/**
+	 * Returns the shape of the subset taken from every item of a collection. The leading
+	 * dimensions of {@code collection} that {@code item} does not have enumerate the items:
+	 * the collection is traversed at that depth and its item dimensions are replaced by
+	 * {@code item}. The result carries no ordering, since it describes a new collection
+	 * rather than a view of the source collection.
+	 *
+	 * @param collection the shape of the source collection
+	 * @param item the shape of the subset of a single item
+	 * @return the shape of the subset, or {@code item} when the collection has no more
+	 *         dimensions than it
+	 */
+	private static TraversalPolicy subsetShape(TraversalPolicy collection, TraversalPolicy item) {
+		int depth = collection.getDimensions() - item.getDimensions();
+		if (depth <= 0) return item;
+
+		return collection.traverse(depth).replace(item).withOrder(null);
+	}
+
+	/**
 	 * Returns the position of the subset of every item within the collection: the given
 	 * position within one item, preceded by a zero for each leading dimension that
-	 * {@link TraversalPolicy#itemwise(TraversalPolicy)} added to the shape of this subset.
+	 * {@link #subsetShape(TraversalPolicy, TraversalPolicy)} added to the shape of this subset.
 	 * When the subset has as many dimensions as {@code item}, the position is returned as
 	 * given.
 	 *

@@ -1038,23 +1038,6 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	}
 
 	/**
-	 * Returns the shape of a batch of items of this shape: the trailing dimensions of this
-	 * shape (one per dimension of {@code item}) are replaced by {@code item}, and its leading
-	 * dimensions are kept and traversed, so the count of the result is the number of items.
-	 * The result carries no ordering, since it describes a new collection rather than a view
-	 * of a collection of this shape.
-	 *
-	 * @param item the shape of a single item
-	 * @return the shape of the batch, or {@code item} if this shape has no more dimensions
-	 */
-	public TraversalPolicy itemwise(TraversalPolicy item) {
-		int depth = getDimensions() - item.getDimensions();
-		if (depth <= 0) return item;
-
-		return traverse(depth).replace(item).withOrder(null);
-	}
-
-	/**
 	 * Returns a copy of this policy with trailing dimensions of size {@code 1} removed.
 	 * A policy traversed past the removed dimension (a fully traversed policy) remains
 	 * fully traversed after it is removed.

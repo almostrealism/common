@@ -331,7 +331,10 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 			}
 		}
 
-		return batch == null ? item : batch.itemwise(item);
+		if (batch == null) return item;
+
+		int depth = batch.getDimensions() - item.getDimensions();
+		return batch.traverse(depth).replace(item).withOrder(null);
 	}
 
 	/**
@@ -348,7 +351,7 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 		int depth = shape.getDimensions() - itemShape.getDimensions();
 		if (depth <= 0) return item;
 
-		TraversalPolicy batch = shape.itemwise(itemShape).traverse(depth);
+		TraversalPolicy batch = shape.traverse(depth).replace(itemShape).withOrder(null);
 		return repeat(0, Math.toIntExact(batch.getCountLong()), item).reshape(batch);
 	}
 

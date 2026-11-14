@@ -439,7 +439,7 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 		CollectionProducer fresnel = c(normalReflectance).add(
 				c(1.0 - normalReflectance).multiply(c(1.0).subtract(cosine).pow(c(5.0))));
 
-		CollectionProducer diffuse = constant(baseColor.multiply(ambient.getColor()).multiply(ambient.getIntensity()));
+		CollectionProducer diffuse = constant(baseColor.multiply(ambient.getRadiance()));
 		CollectionProducer highlights = constant(new RGB(0.0, 0.0, 0.0));
 
 		for (PointLight light : lights) {
@@ -448,10 +448,8 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 			CollectionProducer lambert = max(dotProduct(n, l), c(0.0));
 			CollectionProducer phong = max(dotProduct(n, h), c(0.0)).pow(c(shininess));
 
-			diffuse = diffuse.add(scale(constant(baseColor.multiply(light.getColor())
-					.multiply(light.getIntensity())), lambert));
-			highlights = highlights.add(scale(constant(light.getColor()
-					.multiply(specular * light.getIntensity())), phong));
+			diffuse = diffuse.add(scale(constant(baseColor.multiply(light.getRadiance())), lambert));
+			highlights = highlights.add(scale(constant(light.getRadiance().multiply(specular)), phong));
 		}
 
 		CollectionProducer reflected = subtract(d, scale(n, dotProduct(d, n).multiply(c(2.0))));

@@ -201,8 +201,7 @@ public class PointLight implements Light, Positioned, RayFeatures, RGBFeatures {
 	public Producer<PackedCollection> getColorAt(Producer<PackedCollection> point) {
 		Producer<PackedCollection> d = lengthSq(add(point, minus(v(location))));
 
-		RGB color = getColor().multiply(getIntensity());
-		return GeneratedColorProducer.fromProducer(this, attenuation(da, db, dc, v(color), d));
+		return GeneratedColorProducer.fromProducer(this, attenuation(da, db, dc, v(getRadiance()), d));
 	}
 
 	/** Returns the location of this {@link PointLight} as a {@link Vector}. */
