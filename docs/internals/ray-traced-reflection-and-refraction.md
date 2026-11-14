@@ -92,7 +92,9 @@ sphere.setShaders(new Shader[] { mirror });
    `R0 + (1 - R0)(1 - cos(theta))^5`, with `cos(theta)` the cosine between the viewer and the
    normal on the shaded side.
 
-The result is multiplied by the light's colour at the point, as for every per-light shader.
+The result is not multiplied by the light's colour at the mirror: the hit seen along the
+reflected ray is shaded by the current light at the point it reaches, which already applies
+that light's colour once. `RefractionShader` follows the same rule.
 Recursion is bounded by `ReflectionShader.maxReflections`: past that many bounces of the
 `ShaderContext`, the shader returns the reflective colour times the surface colour.
 
@@ -154,9 +156,8 @@ Metal, most of it compiling. Keep test images small and recursion limits low.
   simplification"); a unit sphere at the origin and a `Plane` both work.
 - `SimpleRenderTest#renderTwoSpheres` (two diffuse spheres) still exceeds its 30 second
   timeout while compiling, so scenes with many surfaces remain expensive to compile.
-- Each per-light lighting engine traces its own secondary rays, and the reflected colour is
-  multiplied by that light's colour; with several lights the secondary rays are traced once
-  per light.
+- Each per-light lighting engine traces its own secondary rays, lit by that light only; with
+  several lights the secondary rays are traced once per light.
 - The primary `LightingEngineAggregator` built by `RayIntersectionEngine` holds one candidate
   per (surface, light) pair and selects the closest one rather than summing the lights of the
   closest surface. Candidates for the same surface tie, and a tie goes to the first, so a

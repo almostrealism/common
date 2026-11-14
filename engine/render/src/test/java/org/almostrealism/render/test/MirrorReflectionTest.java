@@ -70,6 +70,15 @@ public class MirrorReflectionTest extends TestSuiteBase implements RGBFeatures {
 	/** The location of the camera, which looks down the negative z axis. */
 	private static final Vector CAMERA = new Vector(0.0, 0.0, 10.0);
 
+	/** The value {@link #trace} gives a mirror pixel whose reflected ray misses the red plane. */
+	private static final double REFLECTS_NOTHING = -1.0;
+
+	/**
+	 * The smallest diffuse factor at which a point of the red plane counts as well lit. Points
+	 * below it are dark, so they are not expected to read as red.
+	 */
+	private static final double WELL_LIT = 0.2;
+
 	/**
 	 * Returns the distance along a ray to its nearest intersection with a sphere in front of
 	 * its origin, or a negative value when it misses.
@@ -95,10 +104,13 @@ public class MirrorReflectionTest extends TestSuiteBase implements RGBFeatures {
 	}
 
 	/**
-	 * A mirror reflects the red plane exactly where an analytic trace says it should.
+	 * Renders the mirror sphere and the red plane under a white point light of the given
+	 * intensity.
+	 *
+	 * @param lightIntensity the intensity of the point light
+	 * @return the rendered image, indexed by x and then y
 	 */
-	@Test(timeout = 300000)
-	public void reflectionAppearsWhereGeometryPredicts() {
+	private RGB[][] render(double lightIntensity) {
 		Scene<ShadableSurface> scene = new Scene<>();
 
 		Sphere mirror = new Sphere(new Vector(0.0, 0.0, 0.0), MIRROR_RADIUS, new RGB(0.0, 0.0, 0.0));
@@ -113,13 +125,9 @@ public class MirrorReflectionTest extends TestSuiteBase implements RGBFeatures {
 		red.setShaders(new Shader[] { DiffuseShader.defaultDiffuseShader });
 		scene.add(red);
 
-		scene.addLight(new PointLight(LIGHT, 1.0, new RGB(1.0, 1.0, 1.0)));
+		scene.addLight(new PointLight(LIGHT, lightIntensity, new RGB(1.0, 1.0, 1.0)));
 
-		PinholeCamera camera = new PinholeCamera();
-		camera.setLocation(CAMERA);
-		camera.setViewDirection(new Vector(0.0, 0.0, -1.0));
-		camera.setFocalLength(0.05);
-		camera.setProjectionDimensions(0.02, 0.02);
+		PinholeCamera camera = camera();
 		scene.setCamera(camera);
 
 		RenderParameters params = new RenderParameters();
@@ -130,12 +138,36 @@ public class MirrorReflectionTest extends TestSuiteBase implements RGBFeatures {
 		params.ssWidth = 1;
 		params.ssHeight = 1;
 
-		RGB[][] image = new RayTracedScene(new RayIntersectionEngine(scene, new FogParameters()), camera, params)
+		return new RayTracedScene(new RayIntersectionEngine(scene, new FogParameters()), camera, params)
 				.realize(params).get().evaluate();
+	}
 
-		Evaluable<PackedCollection> rays = camera.rayAt(v(shape(-1, 2), 0), pair(SIZE, SIZE)).get();
+	/**
+	 * Returns the camera that looks at the mirror from {@link #CAMERA} down the negative z axis.
+	 *
+	 * @return a new camera
+	 */
+	private static PinholeCamera camera() {
+		PinholeCamera camera = new PinholeCamera();
+		camera.setLocation(CAMERA);
+		camera.setViewDirection(new Vector(0.0, 0.0, -1.0));
+		camera.setFocalLength(0.05);
+		camera.setProjectionDimensions(0.02, 0.02);
+		return camera;
+	}
 
-		int expectedRed = 0, matchedRed = 0, expectedOther = 0, matchedOther = 0;
+	/**
+	 * Traces every pixel of the image analytically and returns, for each, what its camera ray
+	 * should show: {@link Double#NaN} when the ray misses the mirror, {@link #REFLECTS_NOTHING}
+	 * when the reflected ray misses the red plane, and otherwise the diffuse factor (the cosine
+	 * between the plane's normal and the direction to the light) of the point of the red plane
+	 * the reflected ray reaches.
+	 *
+	 * @return the analytic expectation, indexed by x and then y
+	 */
+	private double[][] trace() {
+		Evaluable<PackedCollection> rays = camera().rayAt(v(shape(-1, 2), 0), pair(SIZE, SIZE)).get();
+		double[][] expected = new double[SIZE][SIZE];
 
 		for (int x = 0; x < SIZE; x++) {
 			for (int y = 0; y < SIZE; y++) {
@@ -143,23 +175,48 @@ public class MirrorReflectionTest extends TestSuiteBase implements RGBFeatures {
 				Vector direction = new Vector(ray.toDouble(3), ray.toDouble(4), ray.toDouble(5));
 
 				double t = hitDistance(CAMERA, direction, new Vector(0.0, 0.0, 0.0), MIRROR_RADIUS);
-				if (t < 0) continue;
+				if (t < 0) {
+					expected[x][y] = Double.NaN;
+					continue;
+				}
 
 				Vector point = CAMERA.add(direction.multiply(t));
 				Vector normal = point.divide(point.length());
 				Vector reflected = direction.subtract(normal.multiply(2.0 * direction.dotProduct(normal)));
 
-				RGB c = image[x][y];
-				boolean isRed = c.getRed() > 0.05 && c.getRed() > 4 * c.getGreen() && c.getRed() > 4 * c.getBlue();
-
 				if (reflected.getZ() > 0) {
 					Vector q = point.add(reflected.multiply((RED_PLANE_Z - point.getZ()) / reflected.getZ()));
 					Vector toLight = LIGHT.subtract(q);
-					double diffuse = -toLight.getZ() / toLight.length();
+					expected[x][y] = -toLight.getZ() / toLight.length();
+				} else {
+					expected[x][y] = REFLECTS_NOTHING;
+				}
+			}
+		}
 
-					// Points of the red plane that are barely lit are dark,
-					// so they are not expected to read as red
-					if (diffuse < 0.2) continue;
+		return expected;
+	}
+
+	/**
+	 * A mirror reflects the red plane exactly where an analytic trace says it should.
+	 */
+	@Test(timeout = 300000)
+	public void reflectionAppearsWhereGeometryPredicts() {
+		RGB[][] image = render(1.0);
+		double[][] expected = trace();
+
+		int expectedRed = 0, matchedRed = 0, expectedOther = 0, matchedOther = 0;
+
+		for (int x = 0; x < SIZE; x++) {
+			for (int y = 0; y < SIZE; y++) {
+				double diffuse = expected[x][y];
+				if (Double.isNaN(diffuse)) continue;
+
+				RGB c = image[x][y];
+				boolean isRed = c.getRed() > 0.05 && c.getRed() > 4 * c.getGreen() && c.getRed() > 4 * c.getBlue();
+
+				if (diffuse != REFLECTS_NOTHING) {
+					if (diffuse < WELL_LIT) continue;
 
 					expectedRed++;
 					if (isRed) {
@@ -183,5 +240,43 @@ public class MirrorReflectionTest extends TestSuiteBase implements RGBFeatures {
 				matchedRed >= 0.9 * expectedRed);
 		assertTrue("Pixels predicted to reflect empty space must not be red",
 				matchedOther >= 0.9 * expectedOther);
+	}
+
+	/**
+	 * The reflection of a diffuse surface is lit by the light exactly once: with a perfect,
+	 * untinted mirror (reflectance 1, white tint) under a light of intensity one half, every
+	 * mirror pixel that reflects a well-lit point of the red plane has a red channel equal to
+	 * that point's own diffuse shading, {@code 0.5 * cos(theta)}. Applying the light's colour a
+	 * second time at the mirror would halve it.
+	 */
+	@Test(timeout = 300000)
+	public void reflectionIsLitOnce() {
+		double intensity = 0.5;
+		RGB[][] image = render(intensity);
+		double[][] expected = trace();
+
+		int checked = 0, matched = 0;
+
+		for (int x = 0; x < SIZE; x++) {
+			for (int y = 0; y < SIZE; y++) {
+				double diffuse = expected[x][y];
+				if (Double.isNaN(diffuse) || diffuse == REFLECTS_NOTHING || diffuse < WELL_LIT) continue;
+
+				double red = image[x][y].getRed();
+				double target = intensity * diffuse;
+				checked++;
+
+				if (Math.abs(red - target) <= 0.1 * target) {
+					matched++;
+				} else {
+					log("Expected red " + target + " at " + x + ", " + y + " but found " + image[x][y]);
+				}
+			}
+		}
+
+		log("Mirror pixels with the expected brightness: " + matched + " of " + checked);
+
+		assertTrue("Some of the mirror should reflect a well-lit part of the red plane", checked > 4);
+		assertTrue("Reflected pixels must be lit by the light exactly once", matched >= 0.9 * checked);
 	}
 }

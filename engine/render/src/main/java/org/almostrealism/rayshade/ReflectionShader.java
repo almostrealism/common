@@ -157,9 +157,9 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 			tc = tc == null ? back : add(tc, back);
 		}
 
-		Producer<PackedCollection> lightColor = p.getLight().getColorAt(point);
-		Producer<PackedCollection> ftc = tc;
-		return GeneratedColorProducer.fromProducer(this, multiply(ftc, lightColor));
+		// The colour seen along the reflected ray is already lit by the current light at the
+		// point it hits, so the light's colour is not applied again at the mirror
+		return GeneratedColorProducer.fromProducer(this, tc);
 	}
 	
 	/**
@@ -170,9 +170,10 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 	 * <p>The colour seen along the reflected ray is the closest hit among the given surfaces,
 	 * selected on the device by {@link LightingEngineAggregator#getClosestColor()}, so the
 	 * whole reflection compiles into the kernel of the surface being shaded. That hit is lit
-	 * only by the light this shader is invoked for ({@link ShaderContext#getLight()}), the same
-	 * light whose colour {@link #shade} multiplies the reflection by; the aggregator therefore
-	 * builds one candidate per surface rather than one per (surface, light) pair.</p>
+	 * only by the light this shader is invoked for ({@link ShaderContext#getLight()}), so the
+	 * aggregator builds one candidate per surface rather than one per (surface, light) pair.
+	 * The hit's own shading applies that light's colour at the point it reaches, so the
+	 * returned colour is not scaled by the light again.</p>
 	 *
 	 * @param point    the intersection point
 	 * @param viewer   the unit vector from the intersection point toward the viewer
