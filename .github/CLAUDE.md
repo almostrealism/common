@@ -114,6 +114,11 @@ until a test run has passed on its head commit. That rests on three rules:
   Never add another job named `Test Checks`. Never give a job a name that
   becomes `Test Checks` in a validate run and is then skipped by an `if`:
   GitHub counts a skipped required check as passing.
+- **Only a deployment to the `test` environment is a test run.** Every
+  deployment in the repository fires the `deployment` event (`production`,
+  `worker`, `start-tests`). For any other environment, `changes`, and with it
+  every job, is skipped. The gate is skipped too and reports as
+  `Not a test deployment`, never as `Test Checks`.
 - **The gate runs on `always()`.** A cancelled run then reports the gate as
   failed. With `!cancelled()` it would report it as skipped.
 - **A test run is started by a `deployment`, never by `workflow_dispatch`.**
@@ -160,13 +165,21 @@ created before this split must merge master before it can have a test run.
 
 ### Concurrency across the two modes
 
-The workflow's concurrency group is keyed by branch name
-(`github.head_ref || github.ref_name`), not `github.ref`. The reason is that a
-`pull_request` run's ref is `refs/pull/N/merge` while a deployment run's is
-`refs/heads/<branch>`, and the two must share a group. The effect is that a new
-push cancels a test run still working on the commit it replaced. In the other
-direction, starting a test run cancels a validate run still in progress on that
-branch. Master queues as before.
+The workflow's concurrency group is keyed by branch name **and mode**
+(`build-and-test-<head repo>-<branch>-validate` / `-test`; the head
+repository keeps same-named branches of two forks apart). The two modes must not share
+a group. If they did, starting a test run would cancel the validate run of
+the same commit, and a cancelled validate run reports `All Checks` as failed,
+which blocks the merge until validation is re-run. (This happened on the
+first live test run.) The group uses the branch name, not `github.ref`,
+because a `pull_request` run's ref is `refs/pull/N/merge`.
+
+A new push must still stop a test run working on the commit it replaced. The
+validate run's `cancel-superseded-test-runs` job does that: it cancels the
+branch's queued and in-progress `deployment` runs whose head SHA is not its
+own. It is the only job in the pipeline with `actions: write`. For that
+reason it runs its few API calls inline from the workflow file and checks
+out no branch code. Master queues as before.
 
 ---
 

@@ -26,7 +26,9 @@ on:
     branches:
       - master
   # Starts a TEST run for a branch head. See "Validate runs and test runs"
-  # below and "Validate and Test Runs" in .github/CLAUDE.md.
+  # below and "Validate and Test Runs" in .github/CLAUDE.md. Every deployment
+  # in the repository fires this event; only one to the "test" environment
+  # starts a test run (see the `changes` and `all-checks` conditions).
   deployment:
 
 # ─── Validate runs and test runs ──────────────────────────
@@ -95,16 +97,18 @@ on:
 # To compare two commits on a branch other than master, push the older
 # commit to a scratch branch — a distinct ref is a distinct group.
 #
-# The group is keyed by branch name, not github.ref: a pull_request run's
-# ref is refs/pull/N/merge while a deployment run's is refs/heads/<branch>,
-# and both kinds of run for one branch must share a group so that a new push
-# cancels a test run still working on the commit it replaced. The cost is
-# that starting a test run cancels a validate run still in progress on the
-# same branch; the controller starts tests only after the review loop has
-# ended, when validation has long finished.
+# Validate runs and test runs (see "Validate runs and test runs" above) have
+# separate groups, keyed by branch name and mode, so starting a test run
+# never cancels the validation of the same commit — a cancelled validate
+# run reports "All Checks" as failed and blocks the merge. A new push still
+# stops a test run working on the commit it replaced: the validate run's
+# cancel-superseded-test-runs job cancels it. Branch name rather than
+# github.ref, because a pull_request run's ref is refs/pull/N/merge.
 concurrency:
   group: >-
-    build-and-test-${{ github.head_ref || github.ref_name }}${{
+    build-and-test-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{
+    github.head_ref || github.ref_name }}-${{
+    github.event_name == 'pull_request' && 'validate' || 'test' }}${{
     github.ref == 'refs/heads/master' && github.run_attempt != '1'
     && format('-rerun-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
@@ -129,6 +133,10 @@ jobs:
   # files were modified, downstream test jobs are skipped to save CI
   # compute. workflow_dispatch always runs the full pipeline.
   changes:
+    # A deployment to any environment but "test" (production, worker,
+    # start-tests) is not a request for a test run: skipping this job skips
+    # every job, since all of them need it.
+    if: github.event_name != 'deployment' || github.event.deployment.environment == 'test'
     runs-on: ubuntu-latest
     outputs:
       code_changed: ${{ steps.filter.outputs.code }}
@@ -434,6 +442,41 @@ jobs:
             exit 1
           fi
           bash "$LOCK" origin/master
+
+  # ─── Superseded test runs ─────────────────────────────────────────
+  # A push makes any test run still working on an older commit of the branch
+  # pointless: that commit can no longer merge. Test runs have their own
+  # concurrency group, so the validate run cancels them here. Inline rather
+  # than a checked-out script, because this is the only job in the pipeline
+  # holding actions: write and it must not execute branch code. A failure
+  # here (e.g. a fork's read-only token) only leaves the old run running.
+  cancel-superseded-test-runs:
+    needs: changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Cancel test runs of older commits on this branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          HEAD_SHA: ${{ needs.changes.outputs.head_sha }}
+        run: |
+          for status in in_progress queued waiting; do
+            if ! ids=$(gh api -X GET "repos/${REPO}/actions/workflows/analysis.yaml/runs" \
+                -f event=deployment -f status="$status" -f branch="$BRANCH" \
+                --jq ".workflow_runs[] | select(.head_sha != \"${HEAD_SHA}\") | .id"); then
+              echo "::warning::Could not list $status test runs of this branch"
+              continue
+            fi
+            for id in $ids; do
+              if gh api -X POST "repos/${REPO}/actions/runs/${id}/cancel" >/dev/null 2>&1; then
+                echo "::notice::Cancelled test run $id of an older commit"
+              fi
+            done
+          done
 
   build:
     needs: changes
@@ -5107,7 +5150,12 @@ jobs:
   # still reports, as a failure, instead of being skipped — GitHub counts a
   # skipped required check as passing.
   all-checks:
-    name: ${{ github.event_name == 'pull_request' && 'All Checks' || 'Test Checks' }}
+    # A deployment to another environment reports under a third name, so a
+    # run that tested nothing can never be read as a passing "Test Checks".
+    name: >-
+      ${{ github.event_name == 'pull_request' && 'All Checks'
+      || (github.event_name != 'deployment' || github.event.deployment.environment == 'test') && 'Test Checks'
+      || 'Not a test deployment' }}
     needs:
       - changes
       - build
@@ -5134,7 +5182,7 @@ jobs:
       - test-cuda
       - test-media-cuda
       - analysis
-    if: ${{ always() }}
+    if: ${{ always() && (github.event_name != 'deployment' || github.event.deployment.environment == 'test') }}
     runs-on: ubuntu-latest
     # deployments: write lets a test run started by a deployment report its
     # outcome on that deployment. Nothing else in this job uses the token.
