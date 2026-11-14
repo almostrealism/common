@@ -1,0 +1,73 @@
+name: "Start Tests"
+
+# Starts a TEST run of "Build and Test" for a branch: the long-running test
+# lanes, their flaky-test retries and auto-resolve, reported as the
+# "Test Checks" required status check. A pull request's own pipeline is a
+# VALIDATE run that skips those lanes; see "Validate runs and test runs" at the
+# top of analysis.yaml and "Validate and Test Runs" in .github/CLAUDE.md.
+#
+# A test run is started by creating a GitHub deployment of the branch to the
+# "test" environment; analysis.yaml runs on the resulting `deployment` event.
+# The FlowTree controller does that itself when a workstream's review loop
+# ends. This workflow is the button for doing it by hand, from the Actions tab,
+# when the controller is down or a person wants tests now. The same thing with
+# no workflow at all, from any machine with a token that can write
+# deployments:
+#
+#   echo '{"ref":"<branch>","environment":"test","auto_merge":false,
+#          "required_contexts":[],"transient_environment":true}' |
+#     gh api --method POST repos/<owner>/<repo>/deployments --input -
+#
+# auto_merge must be false (otherwise GitHub merges master into the branch
+# first) and required_contexts empty (otherwise GitHub refuses to deploy a
+# commit whose validate run has not passed).
+#
+# Why a token secret: a deployment created with this run's GITHUB_TOKEN would
+# not start a workflow (GitHub suppresses events made with GITHUB_TOKEN), so
+# the deployment is created with START_TESTS_TOKEN, a fine-grained token with
+# Deployments: read and write on this repository. The secret belongs to the
+# "start-tests" environment, which should allow only the master branch to
+# deploy: workflow_dispatch runs this file from the ref it is dispatched on,
+# and the restriction keeps a branch's edited copy from reaching the token.
+# Dispatch it on master and name the branch to test.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to test (its current head commit)"
+        required: true
+        type: string
+
+concurrency:
+  group: start-tests-${{ inputs.branch }}
+  cancel-in-progress: false
+
+jobs:
+  start:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    environment: start-tests
+    permissions: {}
+    steps:
+      - name: Create the test deployment
+        env:
+          GH_TOKEN: ${{ secrets.START_TESTS_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ inputs.branch }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::START_TESTS_TOKEN is not set in the start-tests environment. Create the deployment with your own token instead (see this workflow's header)."
+            exit 1
+          fi
+          jq -n --arg ref "$BRANCH" '{
+              ref: $ref,
+              environment: "test",
+              auto_merge: false,
+              required_contexts: [],
+              transient_environment: true,
+              production_environment: false,
+              description: "Start Tests"
+            }' > deployment.json
+          gh api --method POST "repos/${REPO}/deployments" --input deployment.json \
+            --jq '"Created deployment \(.id) of \(.sha) — the test run starts on it"'

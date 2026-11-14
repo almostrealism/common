@@ -86,6 +86,90 @@ tools                 → ml
 
 ---
 
+## Validate and Test Runs
+
+"Build and Test" (`analysis.yaml`) runs in one of two modes, decided by the
+event that started it. The `changes` job publishes the mode as `run_tests`.
+
+| | Validate run | Test run |
+|-|--------------|----------|
+| Started by | `pull_request` (every push to a PR branch) | `deployment` of the branch to the `test` environment; `push` to master; `workflow_dispatch` |
+| Runs | `changes`, `build`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test`, `test-media`, `test-mac`, `test-media-mac`, `test-cl`, `test-media-cl`, `test-cuda`, `test-media-cuda`, `test-flowtree` and `analysis` |
+| Remediation | `auto-review`, `auto-resolve-python` | `auto-resolve-python`, and `auto-resolve` after the flaky-test retries |
+| Gate check | **All Checks** | **Test Checks** |
+| `run_tests` | `false` | `true` |
+
+Why: an agent's review loop pushes many commits before it reaches a stopping
+point, and each push used to start the full suite on the self-hosted fleet,
+only to have the next push cancel it. Validate runs use hosted runners only
+and finish in minutes. The long-running lanes run once, after the loop has
+settled.
+
+**Both `All Checks` and `Test Checks` are required status checks for master.**
+A validate run never reports `Test Checks` in any state, so a PR cannot merge
+until a test run has passed on its head commit. That rests on three rules:
+
+- **The gate job's name is the only thing that differs.** `all-checks` is named
+  `${{ github.event_name == 'pull_request' && 'All Checks' || 'Test Checks' }}`.
+  Never add another job named `Test Checks`. Never give a job a name that
+  becomes `Test Checks` in a validate run and is then skipped by an `if`:
+  GitHub counts a skipped required check as passing.
+- **The gate runs on `always()`.** A cancelled run then reports the gate as
+  failed. With `!cancelled()` it would report it as skipped.
+- **A test run is started by a `deployment`, never by `workflow_dispatch`.**
+  Checks from a `workflow_dispatch` run on a PR head branch do not satisfy a
+  required status check. GitHub evaluates only `push`, `pull_request`,
+  `pull_request_review`, `pull_request_target`, `deployment` and
+  `deployment_status` runs for that. `workflow_dispatch` remains for master and
+  for manual full runs; their `Test Checks` gate nothing.
+
+### Starting a test run
+
+Something creates a deployment of the branch to the `test` environment. That
+deployment must be created with a token other than a workflow's `GITHUB_TOKEN`:
+GitHub does not start workflows from events that `GITHUB_TOKEN` creates. Three
+ways, none of which CI depends on:
+
+1. **The FlowTree controller.** A workstream can name the CI action to take when
+   one of its jobs finishes with nothing to commit, i.e. when the review loop
+   has ended. Starting a test run is that action.
+2. **The `Start Tests` workflow** (`start-tests.yaml`). Dispatch it on master and
+   name the branch. It creates the deployment with the `START_TESTS_TOKEN`
+   secret of the `start-tests` environment: a fine-grained token with
+   Deployments read/write. Restrict that environment's deployment branches to
+   master, because `workflow_dispatch` runs the file from the dispatched ref.
+3. **One REST call** with your own token:
+   ```bash
+   echo '{"ref":"<branch>","environment":"test","auto_merge":false,
+          "required_contexts":[],"transient_environment":true}' |
+     gh api --method POST repos/almostrealism/common/deployments --input -
+   ```
+   `auto_merge` must be `false`: the default merges master into the branch
+   first. `required_contexts` must be empty: the default refuses to deploy until
+   every commit status has passed.
+
+A deployment run tests the branch head itself, not the pull request's trial
+merge with master. Master's own test run after the merge covers the
+combination. Layer gating in a test run diffs against the merge base with
+`origin/master`, which is what the PR diff shows. At the end the gate posts
+`success` or `failure` on the deployment, so the PR shows the outcome. That
+status is informational only.
+
+The `deployment` trigger runs `analysis.yaml` **from the branch**, so a branch
+created before this split must merge master before it can have a test run.
+
+### Concurrency across the two modes
+
+The workflow's concurrency group is keyed by branch name
+(`github.head_ref || github.ref_name`), not `github.ref`. The reason is that a
+`pull_request` run's ref is `refs/pull/N/merge` while a deployment run's is
+`refs/heads/<branch>`, and the two must share a group. The effect is that a new
+push cancels a test run still working on the commit it replaced. In the other
+direction, starting a test run cancels a validate run still in progress on that
+branch. Master queues as before.
+
+---
+
 ## How Layer-Gating Works
 
 The `changes` job detects which top-level directories changed and sets flags:
@@ -173,8 +257,8 @@ conflicting edits and at least one of them fails.
 | Job | When | Prompts | Submission |
 |-----|------|---------|------------|
 | `auto-resolve-python` | `python-tests` or `python-evals` failed | Python test failure | At once, from this run |
-| `auto-review` | attempt 1 only, `python-tests` and `python-evals` not failed | build failure → code policy → quality gates → docs-only review → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
-| `auto-resolve` | attempt ≥ 3, `python-tests` and `python-evals` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
+| `auto-review` | validate runs (`pull_request`) only, attempt 1 only, `python-tests` and `python-evals` not failed | build failure → code policy → quality gates → docs-only review → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
+| `auto-resolve` | test runs only (`run_tests`), attempt ≥ 3, `python-tests` and `python-evals` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
 
 The docs-only review (`docs-review.txt`) reviews and improves documents and
 **never implements a plan**, and it keeps its edits under `docs/` so the branch
@@ -193,8 +277,9 @@ cannot reach the implementation prompt.
 The early two exist so that an agent reaches a stopping point — gates green, no
 simple fixes or review comments outstanding — before anyone pays for the
 long-running suites. The quality gates are deterministic, so there is nothing to
-retry before acting on them; `auto-review` submits while the test jobs are still
-running, and its prompts say that test results are not yet known. The
+retry before acting on them. `auto-review` runs in validate runs, where the
+long-running lanes do not run at all (see "Validate and Test Runs"), and its
+prompts say that test results are not yet known. The
 long-running jobs (`test`, `test-flowtree`, `test-media`, the mac and CL lanes)
 are flaky, so their failures are only handed to an agent once
 `rerun-flaky-tests.sh` has spent its retries.
@@ -1565,8 +1650,8 @@ jobs that build PR code is how `pull_request_target` becomes a token-exfiltratio
 vector. Never add a `ref:` to that checkout, and never move this job into
 `analysis.yaml`.
 
-Scope is `event=pull_request` runs of `analysis.yaml` matching the PR's head
-branch **and** head repository. The event filter is load-bearing: under a
+Scope is `event=pull_request` (validate) and `event=deployment` (test) runs of
+`analysis.yaml` matching the PR's head branch **and** head repository. The event filter is load-bearing: under a
 fast-forward or rebase merge, master's new head can be the same SHA as the PR
 head, so a SHA-based filter would cancel the master pipeline. The
 head-repository match keeps a fork's branch from matching a same-named branch
@@ -1656,6 +1741,9 @@ hook below is a partial backstop, not yet a closed surface (see its own entry):
 ### Adding a new test job
 
 - Identify exactly which modules the job tests.
+- Decide its mode (see "Validate and Test Runs"). A job that runs on the
+  self-hosted fleet, takes long, or is retry-eligible belongs in test runs:
+  put `needs.changes.outputs.run_tests == 'true' &&` at the start of its `if`.
 - Trace which layer flags those modules depend on (using the graph above).
 - Gate the job on the correct `*_changed` flags.
 - Add the job to `analysis`'s `needs` list.

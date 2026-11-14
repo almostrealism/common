@@ -25,7 +25,39 @@ on:
   pull_request:
     branches:
       - master
+  # Starts a TEST run for a branch head. See "Validate runs and test runs"
+  # below and "Validate and Test Runs" in .github/CLAUDE.md.
+  deployment:
 
+# ─── Validate runs and test runs ──────────────────────────
+# One workflow, two kinds of run, decided by the triggering event:
+#
+#   VALIDATE (pull_request): change detection, build, the static and
+#   integrity checks, python-tests/python-evals, agent-e2e-faults, docker
+#   images, auto-review and auto-resolve-python. It starts on every push to
+#   a PR branch and finishes in minutes on hosted runners. Its gate job is
+#   reported as "All Checks". It runs NONE of the long-running test lanes
+#   (test, test-media, test-mac, test-cl, test-cuda, test-media-*,
+#   test-flowtree), so it never occupies the self-hosted fleet.
+#
+#   TEST (deployment, push to master, workflow_dispatch): everything above
+#   except auto-review, plus every long-running test lane, the flaky-test
+#   retries and auto-resolve. Its gate job is reported as "Test Checks".
+#   A test run does not start on its own for a PR branch: something must
+#   create a GitHub deployment for the branch (environment "test"). The
+#   FlowTree controller does so when a workstream's review loop ends; a
+#   person does so with the "Start Tests" workflow or one REST call (see
+#   .github/CLAUDE.md). CI never waits on the controller.
+#
+# Why a deployment and not workflow_dispatch: checks from a
+# workflow_dispatch run on a PR head branch do not satisfy a required
+# status check, while checks from a deployment-triggered run do (GitHub
+# evaluates push, pull_request, pull_request_review, pull_request_target,
+# deployment and deployment_status runs). Requiring BOTH "All Checks" and
+# "Test Checks" therefore blocks a merge until a test run has passed on the
+# PR's head commit. "Test Checks" is never reported by a validate run — not
+# even as skipped, which GitHub would count as passing — because the gate
+# job takes that name only in a test run.
 # ─── Per-branch pipeline concurrency ──────────────────────
 # CI capacity is limited, and the dominant source of backlog is several
 # full pipelines for the same branch running at once after rapid pushes.
@@ -62,9 +94,17 @@ on:
 #
 # To compare two commits on a branch other than master, push the older
 # commit to a scratch branch — a distinct ref is a distinct group.
+#
+# The group is keyed by branch name, not github.ref: a pull_request run's
+# ref is refs/pull/N/merge while a deployment run's is refs/heads/<branch>,
+# and both kinds of run for one branch must share a group so that a new push
+# cancels a test run still working on the commit it replaced. The cost is
+# that starting a test run cancels a validate run still in progress on the
+# same branch; the controller starts tests only after the review loop has
+# ended, when validation has long finished.
 concurrency:
   group: >-
-    build-and-test-${{ github.ref }}${{
+    build-and-test-${{ github.head_ref || github.ref_name }}${{
     github.ref == 'refs/heads/master' && github.run_attempt != '1'
     && format('-rerun-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
@@ -113,7 +153,24 @@ jobs:
       branch: ${{ github.head_ref || github.ref_name }}
       base_branch: ${{ github.base_ref || 'master' }}
       head_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+      # 'true' in a test run (every event but pull_request): gates the
+      # long-running test lanes, the analysis job and auto-resolve. See
+      # "Validate runs and test runs" at the top of this file.
+      run_tests: ${{ steps.kind.outputs.run_tests }}
     steps:
+      - name: Decide the kind of run
+        id: kind
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "run_tests=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Validate run — the long-running test lanes run in a separate test run (see Start Tests)"
+          else
+            echo "run_tests=true" >> "$GITHUB_OUTPUT"
+          fi
+
+
       - name: Record pipeline start time
         id: timing
         run: echo "started_at=$(date +%s000)" >> "$GITHUB_OUTPUT"
@@ -155,9 +212,28 @@ jobs:
             exit 0
           fi
 
-          # ── Below here: pull_request events only ──
+          # ── Below here: pull_request and deployment events ──
 
-          BASE="${{ github.event.pull_request.base.sha }}"
+          if [ "${{ github.event_name }}" = "deployment" ]; then
+            # A test run for a branch head. Layer gating applies exactly as
+            # it does to the branch's pull request, measured from the merge
+            # base with master (what the PR diff shows). A deployment of
+            # master itself has no such base and runs everything.
+            if [ "${{ github.ref }}" = "refs/heads/master" ]; then
+              set_all_flags_true
+              echo "::notice::Test run for master — running full pipeline (no layer skipping)"
+              exit 0
+            fi
+            git fetch --no-tags origin master:refs/remotes/origin/master || true
+            BASE=$(git merge-base origin/master HEAD || true)
+            if [ -z "$BASE" ]; then
+              set_all_flags_true
+              echo "::notice::No merge base with master — running full pipeline"
+              exit 0
+            fi
+          else
+            BASE="${{ github.event.pull_request.base.sha }}"
+          fi
 
           # If BASE is all zeros (initial push / new branch), run full pipeline
           if echo "$BASE" | grep -qE '^0+$'; then
@@ -1922,6 +1998,7 @@ jobs:
     # by an upstream failure, so its `skipped` is unambiguous and tolerated. `!cancelled()`
     # is required for that tolerance to take effect — see test-media.
     if: >-
+      needs.changes.outputs.run_tests == 'true' &&
       !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
@@ -2116,6 +2193,7 @@ jobs:
     needs: [changes, build, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check]
     # Layer gate: engine tests only run when engine-or-below layers are modified
     if: >-
+      needs.changes.outputs.run_tests == 'true' &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -2329,6 +2407,7 @@ jobs:
     # this job before the `needs.test.result == 'skipped'` clause below is ever evaluated. That
     # silently dropped studio tests on exactly the studio-only PRs the clause was written for.
     if: >-
+      needs.changes.outputs.run_tests == 'true' &&
       !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
@@ -2533,6 +2612,7 @@ jobs:
     # validation checks directly (it no longer inherits them by depending on `test`).
     # Layer gate: engine tests only run when engine-or-below layers are modified.
     if: >-
+      needs.changes.outputs.run_tests == 'true' &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -2695,6 +2775,7 @@ jobs:
     # NOT gate on the macOS GPU lane either: test-cl runs alongside test-mac, and test-media-cl
     # alongside test-media-mac.
     if: >-
+      needs.changes.outputs.run_tests == 'true' &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -2853,6 +2934,7 @@ jobs:
     # Required, like every other test lane: it is in analysis.needs, all-checks and
     # auto-resolve, which tools/tests/test_auto_resolve_test_job_coverage.py checks.
     if: >-
+      needs.changes.outputs.run_tests == 'true' &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -2993,6 +3075,7 @@ jobs:
     # Layer gate: studio tests run when any layer is modified.
     # `!cancelled()` is required for that tolerance to take effect — see test-media.
     if: >-
+      needs.changes.outputs.run_tests == 'true' &&
       !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
@@ -3190,6 +3273,7 @@ jobs:
     # can only mean its own (narrower) layer gate. `!cancelled()` is required for that
     # tolerance to take effect — see test-media.
     if: >-
+      needs.changes.outputs.run_tests == 'true' &&
       !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
@@ -3395,6 +3479,7 @@ jobs:
     #
     # Required, like test-cuda: in analysis.needs, all-checks and auto-resolve.
     if: >-
+      needs.changes.outputs.run_tests == 'true' &&
       !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
@@ -3574,8 +3659,11 @@ jobs:
     # decide all-checks has reported — the input to analysis is not narrower than the input
     # to all-checks. The accelerator jobs upload no coverage; they are here for ordering
     # only, and `if: !cancelled()` keeps analysis running when any of them fail or skip.
+    # Test runs only: a validate run has no test lane to analyse. Keyed on
+    # the event (the same rule `changes` uses for run_tests) rather than on
+    # needs.changes, so this list stays exactly the merge gate's test jobs.
     needs: [build, test, test-flowtree, test-media, test-mac, test-media-mac, test-cl, test-media-cl, test-cuda, test-media-cuda]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -3917,9 +4005,12 @@ jobs:
   auto-review:
     needs: [changes, build, python-tests, python-evals, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, deception-audit, agent-commit-validation, checkstyle]
     # Attempt 1 only — see "Remediation Jobs" above. A python-tests or
-    # python-evals failure belongs to auto-resolve-python.
+    # python-evals failure belongs to auto-resolve-python. Validate runs
+    # only: the review loop iterates on validation, and a test run (which
+    # repeats validation for the same commit) must not start another round.
     if: >-
       !cancelled() &&
+      github.event_name == 'pull_request' &&
       github.ref != 'refs/heads/master' &&
       fromJSON(github.run_attempt) == 1 &&
       needs.changes.result == 'success' &&
@@ -4361,6 +4452,7 @@ jobs:
     needs: [changes, build, python-tests, python-evals, test, test-flowtree, test-media, test-mac, test-media-mac, test-cl, test-media-cl, test-cuda, test-media-cuda, code-policy-check, test-timeout-check, duplicate-code-check, test-integrity-check, analysis]
     if: >-
       !cancelled() &&
+      needs.changes.outputs.run_tests == 'true' &&
       github.ref != 'refs/heads/master' &&
       fromJSON(github.run_attempt) >= 3 &&
       needs.build.result == 'success' &&
@@ -5003,11 +5095,19 @@ jobs:
   # the *-submit jobs) are intentionally excluded — they are background
   # automation, not quality signals.
   #
-  # Configure this as the ONLY required status check under:
-  #   Settings → Branches → Branch protection rules → Require status checks
-  #   Status check name: "All Checks"
+  # The job reports under a name that depends on the kind of run (see
+  # "Validate runs and test runs" at the top of this file):
+  #   "All Checks"  — a validate run (pull_request)
+  #   "Test Checks" — a test run (deployment, push, workflow_dispatch)
+  # Both are required status checks for master. A validate run never
+  # reports "Test Checks" in any state, so a PR cannot merge until a test
+  # run has passed on its head commit.
+  #
+  # `always()` rather than `!cancelled()`: when a run is cancelled the gate
+  # still reports, as a failure, instead of being skipped — GitHub counts a
+  # skipped required check as passing.
   all-checks:
-    name: All Checks
+    name: ${{ github.event_name == 'pull_request' && 'All Checks' || 'Test Checks' }}
     needs:
       - changes
       - build
@@ -5034,10 +5134,15 @@ jobs:
       - test-cuda
       - test-media-cuda
       - analysis
-    if: ${{ !cancelled() }}
+    if: ${{ always() }}
     runs-on: ubuntu-latest
+    # deployments: write lets a test run started by a deployment report its
+    # outcome on that deployment. Nothing else in this job uses the token.
+    permissions:
+      deployments: write
     steps:
       - name: Evaluate pipeline results
+        id: evaluate
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
           BUILD_RESULT: ${{ needs.build.result }}
@@ -5151,3 +5256,23 @@ jobs:
           echo "| test-cuda | ${{ needs.test-cuda.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| test-media-cuda | ${{ needs.test-media-cuda.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| analysis | ${{ needs.analysis.result }} |" >> "$GITHUB_STEP_SUMMARY"
+
+      # Closes the deployment that started this test run, so the PR shows
+      # whether the tests it asked for passed and the deployment is not
+      # left pending. Informational only: the merge is gated by the
+      # "Test Checks" check, not by this status.
+      - name: Report the test run on its deployment
+        if: ${{ always() && github.event_name == 'deployment' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          DEPLOYMENT_ID: ${{ github.event.deployment.id }}
+          OUTCOME: ${{ steps.evaluate.outcome }}
+          LOG_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "$OUTCOME" = "success" ]; then STATE=success; else STATE=failure; fi
+          gh api --method POST "repos/${REPO}/deployments/${DEPLOYMENT_ID}/statuses" \
+            -f state="$STATE" -f log_url="$LOG_URL" \
+            -f description="Test Checks: ${STATE}" >/dev/null \
+            || echo "::warning::Could not report ${STATE} on deployment ${DEPLOYMENT_ID}"
+
