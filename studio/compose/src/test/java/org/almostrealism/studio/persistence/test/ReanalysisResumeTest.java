@@ -175,21 +175,19 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 		writePreviousReleaseStore(generateSineWaves(count, SAMPLE_DURATION));
 
 		GatedProvider firstLaunchModel = new GatedProvider(saved);
-		ProtobufWaveDetailsStore firstStore = new ProtobufWaveDetailsStore(storeDir.toFile());
-		AudioLibrary firstLaunch = openLibrary(firstStore, firstLaunchModel, new ArrayList<>());
-		CompletableFuture<Void> firstRefresh = firstLaunch.refresh();
+		try (Launch first = new Launch()) {
+			CompletableFuture<Void> firstRefresh = first.open(firstLaunchModel, new ArrayList<>()).refresh();
 
-		try {
-			verifyInterruptedReanalysisResumes(count, saved, firstStore, firstLaunchModel);
-		} finally {
-			// Let the first launch's worker, which stands in for the dead process, drain
-			// (every remaining encode fails), then stop that library and close its store
-			// so no worker or file handle outlives the test.
-			firstLaunchModel.dead = true;
-			firstLaunchModel.permits.release(count);
-			firstRefresh.get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
-			firstLaunch.stop();
-			firstStore.close();
+			try {
+				verifyInterruptedReanalysisResumes(count, saved, first.store, firstLaunchModel);
+			} finally {
+				// Let the first launch's worker, which stands in for the dead process, drain
+				// (every remaining encode fails) before the launch is stopped and closed, so
+				// no worker or file handle outlives the test.
+				firstLaunchModel.dead = true;
+				firstLaunchModel.permits.release(count);
+				firstRefresh.get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
+			}
 		}
 	}
 
@@ -218,7 +216,25 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 
 		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
 		GatedProvider relaunchModel = new GatedProvider(Integer.MAX_VALUE);
-		ProtobufWaveDetailsStore relaunchStore = new ProtobufWaveDetailsStore(storeDir.toFile());
+		try (Launch launch = new Launch()) {
+			verifyResumedRelaunch(count, saved, launch, relaunchModel, errors);
+		}
+	}
+
+	/**
+	 * Checks the relaunch after the simulated quit: the store holds exactly the saved
+	 * items, and the resume re-encodes only the rest and completes every item.
+	 *
+	 * @param count         the number of items in the library
+	 * @param saved         the number of items saved before the quit
+	 * @param launch        the relaunch, whose library is not yet opened
+	 * @param relaunchModel the provider of the relaunch
+	 * @param errors        the errors the relaunch reports
+	 * @throws Exception if the library fails
+	 */
+	private void verifyResumedRelaunch(int count, int saved, Launch launch, GatedProvider relaunchModel,
+									   List<Exception> errors) throws Exception {
+		ProtobufWaveDetailsStore relaunchStore = launch.store;
 
 		long onDisk = relaunchStore.allIdentifiers().stream()
 				.map(relaunchStore::get)
@@ -229,7 +245,7 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 		Assert.assertEquals("the quit leaves no record missing or unreadable",
 				count, relaunchStore.allIdentifiers().stream().map(relaunchStore::get).filter(d -> d != null).count());
 
-		AudioLibrary relaunch = openLibrary(relaunchStore, relaunchModel, errors);
+		AudioLibrary relaunch = launch.open(relaunchModel, errors);
 		relaunch.refresh().get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
 
 		Assert.assertEquals("the relaunch must not fail: " + errors, 0, errors.size());
@@ -245,9 +261,6 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 		}
 		Assert.assertEquals("the finished resume records the model, so the next launch does not rescan",
 				NEW_MODEL, relaunchStore.getValidatedModel());
-
-		relaunch.stop();
-		relaunchStore.close();
 	}
 
 	/**
@@ -268,16 +281,14 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 
 		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
 		GatedProvider provider = new GatedProvider(Integer.MAX_VALUE);
-		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
-		AudioLibrary library = openLibrary(store, provider, errors);
-		library.refresh().get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
+		try (Launch launch = new Launch()) {
+			AudioLibrary library = launch.open(provider, errors);
+			library.refresh().get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
 
-		Assert.assertEquals("the re-analysis must not fail: " + errors, 0, errors.size());
-		Assert.assertEquals("each distinct audio content is encoded once", count, provider.started.get());
-		Assert.assertEquals("every item is complete", count, library.allDetails().count());
-
-		library.stop();
-		store.close();
+			Assert.assertEquals("the re-analysis must not fail: " + errors, 0, errors.size());
+			Assert.assertEquals("each distinct audio content is encoded once", count, provider.started.get());
+			Assert.assertEquals("every item is complete", count, library.allDetails().count());
+		}
 	}
 
 	/**
@@ -301,35 +312,30 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 
 		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
 		GatedProvider provider = new GatedProvider(Integer.MAX_VALUE);
-		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
-		AudioLibrary library = openLibrary(store, provider, errors);
-		library.refresh().get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
+		try (Launch launch = new Launch()) {
+			AudioLibrary library = launch.open(provider, errors);
+			library.refresh().get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
 
-		log("First launch: " + provider.started.get() + " encode(s), " + errors.size() +
-				" reported error(s), " + library.allDetails().count() + " complete item(s), validated model " +
-				store.getValidatedModel() + ", errors " + errors);
+			log("First launch: " + provider.started.get() + " encode(s), " + errors.size() +
+					" reported error(s), " + library.allDetails().count() + " complete item(s), validated model " +
+					launch.store.getValidatedModel() + ", errors " + errors);
 
-		for (File readable : wavFiles.subList(2, count)) {
-			Assert.assertTrue("every readable file completes for the new model: " + readable,
-					library.getAllIdentifiers().contains(
-							new FileWaveDataProvider(readable.getPath()).getIdentifier()));
+			for (File readable : wavFiles.subList(2, count)) {
+				Assert.assertTrue("every readable file completes for the new model: " + readable,
+						library.getAllIdentifiers().contains(
+								new FileWaveDataProvider(readable.getPath()).getIdentifier()));
+			}
 		}
-
-		library.stop();
-		store.close();
 
 		List<Exception> relaunchErrors = Collections.synchronizedList(new ArrayList<>());
 		GatedProvider relaunchModel = new GatedProvider(Integer.MAX_VALUE);
-		ProtobufWaveDetailsStore reopened = new ProtobufWaveDetailsStore(storeDir.toFile());
-		AudioLibrary relaunch = openLibrary(reopened, relaunchModel, relaunchErrors);
-		relaunch.refresh().get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
+		try (Launch launch = new Launch()) {
+			launch.open(relaunchModel, relaunchErrors).refresh().get(WAIT_MILLIS, TimeUnit.MILLISECONDS);
 
-		log("Relaunch: " + relaunchModel.started.get() + " encode(s), " + relaunchErrors.size() +
-				" reported error(s), validated model " + reopened.getValidatedModel());
-		Assert.assertEquals("the next launch encodes nothing again", 0, relaunchModel.started.get());
-
-		relaunch.stop();
-		reopened.close();
+			log("Relaunch: " + relaunchModel.started.get() + " encode(s), " + relaunchErrors.size() +
+					" reported error(s), validated model " + launch.store.getValidatedModel());
+			Assert.assertEquals("the next launch encodes nothing again", 0, relaunchModel.started.get());
+		}
 	}
 
 	/**
@@ -346,8 +352,23 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 
 		List<Exception> errors = Collections.synchronizedList(new ArrayList<>());
 		GatedProvider provider = new GatedProvider(1);
-		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
-		AudioLibrary library = openLibrary(store, provider, errors);
+		try (Launch launch = new Launch()) {
+			verifyAddedSampleIsEncodedNext(count, launch.open(provider, errors), provider, errors);
+		}
+	}
+
+	/**
+	 * Adds a sample while the library's backlog is mid-encode and checks that it is
+	 * encoded right after the in-flight item.
+	 *
+	 * @param count    the number of backlog items
+	 * @param library  the library working through the backlog
+	 * @param provider the provider of the library
+	 * @param errors   the errors the library reports
+	 * @throws Exception if the library fails
+	 */
+	private void verifyAddedSampleIsEncodedNext(int count, AudioLibrary library, GatedProvider provider,
+												List<Exception> errors) throws Exception {
 		CompletableFuture<Void> refresh = library.refresh();
 
 		// The worker is mid-encode on the second backlog item when the sample is added.
@@ -369,9 +390,6 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 				2, provider.clipFrames.indexOf(addedFrames));
 		Assert.assertEquals("every backlog item and the added sample complete",
 				count + 1, library.allDetails().count());
-
-		library.stop();
-		store.close();
 	}
 
 	/** Writes the previous release's store for the given files. */
@@ -381,14 +399,42 @@ public class ReanalysisResumeTest extends TestSuiteBase {
 						FEATURE_FRAMES, OLD_BINS, SAMPLE_DURATION));
 	}
 
-	/** Opens the store with a library analysing through the given provider. */
-	private AudioLibrary openLibrary(ProtobufWaveDetailsStore store, GatedProvider provider,
-									 List<Exception> errors) {
-		AudioLibrary library = new AudioLibrary(
-				new FileWaveDataProviderNode(samplesDir.toFile()), SAMPLE_RATE, store);
-		library.getWaveDetailsFactory().setFeatureProvider(provider);
-		library.setErrorListener(errors::add);
-		return library;
+	/**
+	 * One launch of the app over the test's store: the store, opened on creation, and
+	 * the library opened over it. Closing the launch stops the library and closes the
+	 * store, so a launch used in try-with-resources leaves no worker or file handle
+	 * behind even when an assertion fails part way.
+	 */
+	private final class Launch implements AutoCloseable {
+		/** The store of this launch. */
+		private final ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(storeDir.toFile());
+
+		/** The library of this launch, once opened. */
+		private AudioLibrary library;
+
+		/**
+		 * Opens this launch's library over its store, analysing through the given provider.
+		 *
+		 * @param provider the feature provider of the library
+		 * @param errors   the list the library reports its errors to
+		 * @return the library
+		 */
+		AudioLibrary open(GatedProvider provider, List<Exception> errors) {
+			library = new AudioLibrary(new FileWaveDataProviderNode(samplesDir.toFile()), SAMPLE_RATE, store);
+			library.getWaveDetailsFactory().setFeatureProvider(provider);
+			library.setErrorListener(errors::add);
+			return library;
+		}
+
+		/** Stops the library, if opened, and closes the store. */
+		@Override
+		public void close() {
+			try {
+				if (library != null) library.stop();
+			} finally {
+				store.close();
+			}
+		}
 	}
 
 	/** Generates the library's sample files. */
