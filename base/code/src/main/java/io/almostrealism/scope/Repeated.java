@@ -329,8 +329,10 @@ public class Repeated<T> extends Scope<T> {
 	 * follow it.</p>
 	 *
 	 * <p>The result replaces this loop wherever it appears, including as the root scope of
-	 * a kernel, so it carries this loop's name, metadata, compute requirements, lane count
-	 * and parameters.</p>
+	 * a kernel, so it carries this loop's name, metadata, compute requirements, lane count,
+	 * parameters and required scopes. This loop's metrics move to the result as well, so
+	 * they are still rendered after the loop, now following the final stores. Kernel index
+	 * children stay on the rewritten loop, which renders them exactly as this loop did.</p>
 	 *
 	 * @return a new scope with accumulators promoted, or this loop if nothing qualifies
 	 */
@@ -430,17 +432,19 @@ public class Repeated<T> extends Scope<T> {
 			loop = loop.replace(promoted.get(i), accumulators.get(i));
 		}
 
-		// The result stands in for this loop, possibly as the root of a kernel, so it keeps
-		// the loop's configuration and parameters. The code rendered before the loop body
-		// runs before the seeds, unrewritten.
+		// The result stands in for this loop; see the method documentation for what moves.
 		Scope<T> result = (Scope<T>) super.generate(new ArrayList<>());
 		result.getParameters().addAll(getParameters());
+		result.getRequiredScopes().addAll(getRequiredScopes());
 		result.getMethods().addAll(getMethods());
 		result.getStatements().addAll(getStatements());
 		result.getStatements().addAll(getVariables());
+		result.getMetrics().addAll(getMetrics());
+		loop.getRequiredScopes().clear();
 		loop.getMethods().clear();
 		loop.getStatements().clear();
 		loop.getVariables().clear();
+		loop.getMetrics().clear();
 
 		// Seed the accumulators before the loop and store them back after it closes.
 		Scope<T> stores = new Scope<>(getName() + "_stores");

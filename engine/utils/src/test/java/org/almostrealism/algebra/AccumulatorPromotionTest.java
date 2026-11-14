@@ -29,6 +29,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Cases;
 import io.almostrealism.scope.ExplicitScope;
 import io.almostrealism.scope.HybridScope;
+import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
@@ -172,6 +173,50 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 		Assert.assertEquals(List.of(ComputeRequirement.CPU), simplified.getComputeRequirements());
 		Assert.assertEquals(4, simplified.getLaneCount());
 		Assert.assertEquals(List.of(parameter), simplified.getParameters());
+	}
+
+	/**
+	 * Verifies that the scope a promoted loop is replaced by carries the loop's required
+	 * scopes and metrics, and that the rewritten loop inside it no longer does, so each
+	 * is contributed to the kernel exactly once. A required scope supplies the arguments
+	 * and helper functions the loop depends on, and dropping it would remove that
+	 * dependency from the compiled kernel.
+	 */
+	@Test(timeout = 30000)
+	public void promotedLoopKeepsRequiredScopesAndMetrics() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(64));
+		loop.setName("requiredReduction");
+
+		Scope<Void> required = new Scope<>("requiredHelper");
+		loop.getRequiredScopes().add(required);
+
+		Metric metric = new Metric(new StaticReference<>(Integer.class, "_test_counter"), 100);
+		loop.getMetrics().add(metric);
+
+		ArrayVariable<Double> out = new ArrayVariable(Double.class, "out", e(4));
+		ArrayVariable<Double> in = new ArrayVariable(Double.class, "in", e(64));
+
+		Scope<Void> body = new Scope<>("body");
+		body.getStatements().add(new ExpressionAssignment(
+				outElement(out), outElement(out).add(inElement(in))));
+		loop.getChildren().add(body);
+
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		Assert.assertFalse("The loop should be promoted", simplified instanceof Repeated);
+		Assert.assertEquals("The promoted result should carry the loop's required scope",
+				1, simplified.getRequiredScopes().size());
+		Assert.assertEquals("requiredHelper", simplified.getRequiredScopes().get(0).getName());
+		Assert.assertEquals("The promoted result should carry the loop's metric",
+				List.of(metric), simplified.getMetrics());
+
+		Scope<Void> rewrittenLoop = simplified.getChildren().get(0);
+		Assert.assertTrue("The first child should be the rewritten loop", rewrittenLoop instanceof Repeated);
+		Assert.assertTrue("The rewritten loop should not repeat the required scope",
+				rewrittenLoop.getRequiredScopes().isEmpty());
+		Assert.assertTrue("The rewritten loop should not repeat the metric",
+				rewrittenLoop.getMetrics().isEmpty());
 	}
 
 	/**
