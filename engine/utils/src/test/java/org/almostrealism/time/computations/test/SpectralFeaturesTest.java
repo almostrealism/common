@@ -134,13 +134,20 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	}
 
 	/**
-	 * Returns the largest absolute difference between two collections.
+	 * Returns the largest absolute difference between two collections, or positive infinity if
+	 * either holds a non-finite element. The device {@code max} skips NaN elements (and yields
+	 * {@code -Float.MAX_VALUE} when every element is NaN), so without that check a NaN or
+	 * infinite result would satisfy every {@code error < tolerance} assertion.
 	 *
 	 * @param a the first collection
 	 * @param b the second collection
-	 * @return the maximum absolute element-wise difference
+	 * @return the maximum absolute element-wise difference, or positive infinity
 	 */
 	protected double maxDifference(PackedCollection a, PackedCollection b) {
+		if (!a.doubleStream().allMatch(Double::isFinite) || !b.doubleStream().allMatch(Double::isFinite)) {
+			return Double.POSITIVE_INFINITY;
+		}
+
 		return max(abs(cp(a).reshape(a.getShape().getTotalSize())
 				.subtract(cp(b).reshape(b.getShape().getTotalSize())))).evaluate().toDouble(0);
 	}
@@ -597,22 +604,46 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	 */
 	@Test(timeout = 120000)
 	public void poissonManufacturedSolution() {
-		int n = 64;
-		double spacing = 2 * Math.PI / n;
+		assertPoissonManufacturedSolution(64, 1.0);
+	}
 
-		CollectionProducer x = coordinate(n, n, 1).multiply(c(spacing));
-		CollectionProducer y = coordinate(n, n, 0).multiply(c(spacing));
+	/**
+	 * The same manufactured solution on a domain stretched by {@code 1e8}, so the smallest
+	 * nonzero {@code |k|^2} is about {@code 1e-16}. That is far above the representability guard,
+	 * but small enough that {@code (k^2 + 1) - 1} rounds to zero in single and double precision,
+	 * so an inverse symbol formed that way divides the nonzero modes by zero.
+	 */
+	@Test(timeout = 120000)
+	public void poissonManufacturedSolutionLargeSpacing() {
+		assertPoissonManufacturedSolution(32, 1e8);
+	}
+
+	/**
+	 * Solves {@code laplacian(p) = f} on the periodic square {@code [0, 2 pi scale)^2} for
+	 * {@code p = sin(x / scale) cos(2y / scale) + 0.5 cos(3x / scale)}, whose source is
+	 * {@code f = (-5 sin(x / scale) cos(2y / scale) - 4.5 cos(3x / scale)) / scale^2}, and checks
+	 * the solution against {@code p}.
+	 *
+	 * @param n     the number of cells along each axis
+	 * @param scale the length scale of the domain
+	 */
+	private void assertPoissonManufacturedSolution(int n, double scale) {
+		double phaseStep = 2 * Math.PI / n;
+
+		CollectionProducer x = coordinate(n, n, 1).multiply(c(phaseStep));
+		CollectionProducer y = coordinate(n, n, 0).multiply(c(phaseStep));
 		CollectionProducer mode = sin(x).multiply(cos(y.multiply(c(2.0))));
 		CollectionProducer ripple = cos(x.multiply(c(3.0)));
 
 		PackedCollection expected = mode.add(ripple.multiply(c(0.5))).evaluate();
-		CollectionProducer source = mode.multiply(c(-5.0)).add(ripple.multiply(c(-4.5)));
-		PackedCollection solution = poissonSolve(source, spacing).evaluate();
+		CollectionProducer source = mode.multiply(c(-5.0)).add(ripple.multiply(c(-4.5)))
+				.multiply(c(1.0 / (scale * scale)));
+		PackedCollection solution = poissonSolve(source, phaseStep * scale).evaluate();
 
 		Assert.assertEquals(n * n, solution.getShape().getTotalSize());
 		double error = maxDifference(expected, solution);
-		log("poissonManufacturedSolution maxError=" + error);
-		Assert.assertTrue("Poisson solution error " + error, error < 1e-4);
+		log("poissonManufacturedSolution scale=" + scale + " maxError=" + error);
+		Assert.assertTrue("Poisson solution error " + error + " at scale " + scale, error < 1e-4);
 	}
 
 	/**

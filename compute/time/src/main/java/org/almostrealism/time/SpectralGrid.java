@@ -352,8 +352,9 @@ public class SpectralGrid implements CollectionFeatures {
 		CollectionProducer k2 = wavenumberSquared(cell);
 
 		double smallest = 0.5 * Math.pow(getRadialBinWidth(), 2);
-		CollectionProducer nonzero = greaterThan(k2, c(smallest), c(1.0), c(0.0));
-		return nonzero.minus().divide(k2.add(c(1.0)).subtract(nonzero)).reshape(shape.appendDimension(2));
+		CollectionProducer numerator = greaterThan(k2, c(smallest), c(-1.0), c(0.0));
+		CollectionProducer denominator = greaterThan(k2, c(smallest), k2, c(1.0));
+		return numerator.divide(denominator).reshape(shape.appendDimension(2));
 	}
 
 	@Override
