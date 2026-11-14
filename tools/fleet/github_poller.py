@@ -441,24 +441,31 @@ def reconcile_open_jobs(
     skipping *exclude*, the jobs the cycle has just stored. A job the API no
     longer serves is marked :data:`FleetStore.GONE_STATUS` so it is not asked
     about again. Returns the number of jobs refreshed.
+
+    Every GitHub request is made before the writes are committed: the ids and
+    their refreshed state are gathered first, and only then is a single short
+    transaction opened for the ``update_job_progress`` writes. Holding the
+    store's write lock across up to *limit* network calls would block every
+    collector and reader for the whole reconciliation window, against the
+    poller's rule of doing network work before opening a transaction.
     """
-    refreshed = 0
-    for job_id in store.open_job_ids(limit, exclude=exclude):
-        job = fetch_job(repo, job_id, token)
-        if job is None:
-            store.update_job_progress(job_id, status=FleetStore.GONE_STATUS)
-        else:
-            store.update_job_progress(
-                job_id,
-                status=job.get("status") or "",
-                conclusion=job.get("conclusion") or "",
-                started_at=job.get("started_at"),
-                completed_at=job.get("completed_at"),
-                runner_name=job.get("runner_name") or "",
-                runner_id=job.get("runner_id"),
-            )
-        refreshed += 1
-    return refreshed
+    refreshed = [(job_id, fetch_job(repo, job_id, token))
+                 for job_id in store.open_job_ids(limit, exclude=exclude)]
+    with store.transaction():
+        for job_id, job in refreshed:
+            if job is None:
+                store.update_job_progress(job_id, status=FleetStore.GONE_STATUS)
+            else:
+                store.update_job_progress(
+                    job_id,
+                    status=job.get("status") or "",
+                    conclusion=job.get("conclusion") or "",
+                    started_at=job.get("started_at"),
+                    completed_at=job.get("completed_at"),
+                    runner_name=job.get("runner_name") or "",
+                    runner_id=job.get("runner_id"),
+                )
+    return len(refreshed)
 
 
 def fetch_runners(
@@ -798,10 +805,9 @@ def poll_and_store(
 
     if reconcile_limit > 0:
         try:
-            with store.transaction():
-                reconcile_open_jobs(repo, token, store,
-                                    exclude=[str(job.get("id")) for _, job, _ in prepared],
-                                    limit=reconcile_limit)
+            reconcile_open_jobs(repo, token, store,
+                                exclude=[str(job.get("id")) for _, job, _ in prepared],
+                                limit=reconcile_limit)
         except Exception as exc:  # noqa: BLE001 — the jobs stored above are unaffected
             print("fleet poller: could not refresh unfinished jobs (%s)" % exc, file=sys.stderr)
 
