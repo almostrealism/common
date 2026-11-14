@@ -19,6 +19,7 @@ package org.almostrealism.algebra;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.Precision;
 import io.almostrealism.code.Statement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.StaticReference;
@@ -131,6 +132,74 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 		// The input array is still read inside the loop
 		Assert.assertTrue("The loop body should still read the input array",
 				bodyReferencesArray(storedLoop, in));
+	}
+
+	/**
+	 * Verifies that the scope a promoted loop is replaced by keeps the loop's
+	 * configuration. A loop is often the root scope of a kernel (for example the
+	 * scope of a {@code RepeatedProducerComputation} or a {@code Loop}), and the
+	 * compiled kernel's compute requirements, lane count and parameters are read
+	 * from whatever scope simplification returns.
+	 */
+	@Test(timeout = 30000)
+	public void promotedLoopKeepsConfiguration() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		OperationMetadata metadata = new OperationMetadata("configuredReduction", "Configured reduction");
+		Repeated<Void> loop = new Repeated<>("configuredReduction", metadata);
+		loop.setIndex(idx);
+		loop.setInterval(e(1));
+		loop.setCondition(idx.ref().lessThan(64));
+		loop.setComputeRequirements(List.of(ComputeRequirement.CPU));
+		loop.setLaneCount(4);
+
+		Variable<Integer, ?> parameter = Variable.integer("_test_param");
+		loop.getParameters().add(parameter);
+
+		ArrayVariable<Double> out = new ArrayVariable(Double.class, "out", e(4));
+		ArrayVariable<Double> in = new ArrayVariable(Double.class, "in", e(64));
+
+		Scope<Void> body = new Scope<>("body");
+		body.getStatements().add(new ExpressionAssignment(
+				outElement(out), outElement(out).add(inElement(in))));
+		loop.getChildren().add(body);
+
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		Assert.assertFalse("The loop should be promoted", simplified instanceof Repeated);
+		Assert.assertEquals("configuredReduction", simplified.getName());
+		Assert.assertEquals("configuredReduction", simplified.getMetadata().getDisplayName());
+		Assert.assertEquals("Configured reduction", simplified.getMetadata().getShortDescription());
+		Assert.assertEquals(List.of(ComputeRequirement.CPU), simplified.getComputeRequirements());
+		Assert.assertEquals(4, simplified.getLaneCount());
+		Assert.assertEquals(List.of(parameter), simplified.getParameters());
+	}
+
+	/**
+	 * Verifies that a loop which is not promoted keeps its configuration through
+	 * simplification, the counterpart of {@link #promotedLoopKeepsConfiguration()}.
+	 */
+	@Test(timeout = 30000)
+	public void unpromotedLoopKeepsConfiguration() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(64));
+		loop.setName("configuredVariantLoop");
+		loop.setComputeRequirements(List.of(ComputeRequirement.GPU));
+		loop.setLaneCount(2);
+
+		ArrayVariable<Double> out = new ArrayVariable(Double.class, "out", e(64));
+		Expression<Integer> pos = new StaticReference<>(Integer.class, "_test_i");
+		Expression<Double> element = new InstanceReference(out, pos, pos);
+
+		Scope<Void> body = new Scope<>("body");
+		body.getStatements().add(new ExpressionAssignment(element, element.add(e(1.0))));
+		loop.getChildren().add(body);
+
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		Assert.assertTrue("A loop with a variant position should not be promoted",
+				simplified instanceof Repeated);
+		Assert.assertEquals(List.of(ComputeRequirement.GPU), simplified.getComputeRequirements());
+		Assert.assertEquals(2, simplified.getLaneCount());
 	}
 
 	/**

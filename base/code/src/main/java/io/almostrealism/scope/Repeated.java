@@ -328,6 +328,10 @@ public class Repeated<T> extends Scope<T> {
 	 * destination position that does not depend on the loop index), so each seed must
 	 * follow it.</p>
 	 *
+	 * <p>The result replaces this loop wherever it appears, including as the root scope of
+	 * a kernel, so it carries this loop's name, metadata, compute requirements, lane count
+	 * and parameters.</p>
+	 *
 	 * @return a new scope with accumulators promoted, or this loop if nothing qualifies
 	 */
 	public Scope<T> promoteAccumulators() {
@@ -426,8 +430,11 @@ public class Repeated<T> extends Scope<T> {
 			loop = loop.replace(promoted.get(i), accumulators.get(i));
 		}
 
-		// The code rendered before the loop body runs before the seeds, unrewritten.
-		Scope<T> result = new Scope<>(getName(), getMetadata());
+		// The result stands in for this loop, possibly as the root of a kernel, so it keeps
+		// the loop's configuration and parameters. The code rendered before the loop body
+		// runs before the seeds, unrewritten.
+		Scope<T> result = (Scope<T>) super.generate(new ArrayList<>());
+		result.getParameters().addAll(getParameters());
 		result.getMethods().addAll(getMethods());
 		result.getStatements().addAll(getStatements());
 		result.getStatements().addAll(getVariables());
@@ -904,13 +911,16 @@ public class Repeated<T> extends Scope<T> {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Creates a new {@link Repeated} scope with the same name, metadata, and index,
-	 * then populates it with the provided child scopes.</p>
+	 * <p>Creates a new {@link Repeated} scope with the same name, metadata, index,
+	 * compute requirements and lane count, then populates it with the provided child
+	 * scopes.</p>
 	 */
 	@Override
 	public Repeated<T> generate(List<Scope<T>> children) {
 		Repeated<T> scope = getMetadata() == null ? new Repeated<>(getName()) : new Repeated<>(getName(), getMetadata());
 		scope.setIndex(getIndex());
+		scope.setComputeRequirements(getComputeRequirements());
+		scope.setLaneCount(getLaneCount());
 		scope.getChildren().addAll(children);
 		return scope;
 	}
