@@ -1346,6 +1346,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             autoPrPublisher.discard(jobId);
         }
 
+        // A job that changed nothing ends the review loop: start the workstream's settled CI.
+        Workstream settled = event.isSuccessWithoutChanges() ? notifiers.workstreamFor(workstreamId) : null;
+        if (settled != null) settled.startSettledCi(githubProxyHandler, event.getTargetBranch());
+
         // Every status event is also a liveness signal, so the stuck-job
         // scanner sees progress without the agent posting anything extra.
         if (jobId != null) {

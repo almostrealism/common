@@ -20,6 +20,7 @@ import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.github.CiTrigger;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 
 import java.util.List;
@@ -48,7 +49,8 @@ import java.util.Map;
  * <p>Both endpoints share the same field surface ({@code defaultBranch},
  * {@code baseBranch}, {@code repoUrl}, {@code planningDocument},
  * {@code planInstructions}, {@code channelName}, {@code requiredLabels},
- * {@code dependentRepos}, {@code defaultPhaseConfig}, {@code phaseConfigs}).
+ * {@code dependentRepos}, {@code settledCiTrigger}, {@code defaultPhaseConfig},
+ * {@code phaseConfigs}).
  * Registration additionally derives the target workspace from
  * {@code workspaceId}, the GitHub org of {@code repoUrl}, or the
  * primary notifier in single-workspace mode, then auto-creates a Slack
@@ -511,8 +513,10 @@ final class WorkstreamRegistrationHandler {
         List<String> completionListeners = extractCompletionListeners(body);
         boolean dispatchCapable = JsonFieldExtractor.extractBoolean(body, "dispatchCapable");
         List<String> trackerCapabilities;
+        CiTrigger settledCiTrigger;
         try {
             trackerCapabilities = readTrackerCapabilities(body);
+            settledCiTrigger = CiTrigger.parse(JsonFieldExtractor.extractString(body, "settledCiTrigger"));
         } catch (IllegalArgumentException e) {
             return Registration.failed(errorResponse.apply(e.getMessage()));
         }
@@ -616,6 +620,8 @@ final class WorkstreamRegistrationHandler {
         if (planInstructions != null && !planInstructions.isEmpty()) {
             workstream.setPlanInstructions(planInstructions);
         }
+
+        workstream.setSettledCiTrigger(settledCiTrigger);
 
         if (!requiredLabels.isEmpty()) {
             workstream.setRequiredLabels(requiredLabels);
@@ -729,7 +735,7 @@ final class WorkstreamRegistrationHandler {
      * <p>Supports updating any combination of: {@code channelId}, {@code channelName},
      * {@code defaultBranch}, {@code baseBranch}, {@code repoUrl},
      * {@code planningDocument}, {@code planInstructions}, {@code requiredLabels},
-     * {@code dependentRepos},
+     * {@code dependentRepos}, {@code settledCiTrigger} (an empty string clears it),
      * {@code defaultPhaseConfig}, {@code phaseConfigs}.</p>
      *
      * <p>Runner / model / effort defaults are configured through
@@ -773,9 +779,12 @@ final class WorkstreamRegistrationHandler {
         // unknown role rejects the whole update rather than leaving another
         // field's change applied to a workstream whose update was refused.
         boolean hasTrackerCapabilities = JsonFieldExtractor.hasField(body, "trackerCapabilities");
+        boolean hasSettledCiTrigger = JsonFieldExtractor.hasField(body, "settledCiTrigger");
         List<String> trackerCapabilities;
+        CiTrigger settledCiTrigger;
         try {
             trackerCapabilities = readTrackerCapabilities(body);
+            settledCiTrigger = CiTrigger.parse(JsonFieldExtractor.extractString(body, "settledCiTrigger"));
         } catch (IllegalArgumentException e) {
             return errorResponse.apply(e.getMessage());
         }
@@ -834,6 +843,11 @@ final class WorkstreamRegistrationHandler {
         // setter ran.
         if (hasTrackerCapabilities) {
             workstream.setTrackerCapabilities(trackerCapabilities);
+        }
+        // Settled CI trigger: same presence signal; an empty string clears it.
+        // Validated above before any setter ran.
+        if (hasSettledCiTrigger) {
+            workstream.setSettledCiTrigger(settledCiTrigger);
         }
         // Workstream-level tmux default: same presence-signal pattern as
         // dispatch_capable so an unrelated update does not silently flip

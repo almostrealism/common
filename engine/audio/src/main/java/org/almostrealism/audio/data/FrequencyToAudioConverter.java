@@ -71,6 +71,11 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	 * already set. After conversion, {@code data} and {@code frameCount}
 	 * will be populated.</p>
 	 *
+	 * <p>{@code freqData} may hold several channels, laid out as (channels, frames,
+	 * bins) according to {@code freqChannelCount}; an unset channel count is read as a
+	 * single channel. The reconstruction is always mono, with each bin's magnitude
+	 * averaged across the channels.</p>
+	 *
 	 * <p>Every frame's spectrum is built by one computation, but the inverse
 	 * transform runs a frame at a time and reads from a buffer that stays in the
 	 * same place. An operation compiled against a particular offset into a larger
@@ -88,7 +93,9 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	 * is not among them and survives a successful conversion.</p>
 	 *
 	 * @param details the WaveDetails to convert
-	 * @throws IllegalArgumentException if required frequency data is missing
+	 * @throws IllegalArgumentException if required frequency data is missing, the declared
+	 *                                  channel count is negative, or the data size does not
+	 *                                  match the declared channels, frames and bins
 	 */
 	public void convert(WaveDetails details) {
 		PackedCollection freqData = details.getFreqData();
@@ -104,6 +111,19 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 		if (freqBins <= 0 || freqFrames <= 0) {
 			throw new IllegalArgumentException("Invalid frequency dimensions: " +
 					freqBins + " bins, " + freqFrames + " frames");
+		}
+
+		int declaredChannels = details.getFreqChannelCount();
+		if (declaredChannels < 0) {
+			throw new IllegalArgumentException("Frequency channel count cannot be negative: " + declaredChannels);
+		}
+
+		int freqChannels = Math.max(1, declaredChannels);
+		long expectedSize = (long) freqChannels * freqFrames * freqBins;
+		if (freqData.getMemLength() != expectedSize) {
+			throw new IllegalArgumentException("Frequency data holds " + freqData.getMemLength() +
+					" values, but " + freqChannels + " channels of " + freqFrames + " frames of " +
+					freqBins + " bins require " + expectedSize);
 		}
 
 		// FFT size is 2x frequency bins for real signals
@@ -133,7 +153,7 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 		try {
 			accumulated = new PackedCollection(accumulatedLength);
 			window = createHannWindow(fftSize);
-			spectra = createComplexSpectra(freqData, freqFrames, freqBins);
+			spectra = createComplexSpectra(freqData, freqChannels, freqFrames, freqBins);
 			frameSpectrum = new PackedCollection(shape(fftSize, 2));
 
 			// Fixed-position buffers for the inverse transform, so one compiled operation serves every frame
@@ -192,13 +212,19 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 	 * extension do not depend on each other across frames, and running them once
 	 * for the whole sequence avoids paying for a separate evaluation per frame.</p>
 	 *
-	 * @param freqData the magnitude spectrum for every frame, shaped (frames, bins)
+	 * <p>The output is a single channel. When the magnitudes describe more than one
+	 * channel, the magnitude of each bin is averaged across the channels before the
+	 * phase is applied, so a multi-channel analysis yields a mono reconstruction.</p>
+	 *
+	 * @param freqData the magnitude spectrum for every frame of every channel,
+	 *                 laid out as (channels, frames, bins)
+	 * @param channels the number of channels in {@code freqData}
 	 * @param frames   the number of frames
 	 * @param bins     the number of magnitude values per frame
 	 * @return the spectra, shaped (frames, 2 * bins, 2), each in interleaved
 	 *         format [re0, im0, re1, im1, ...]
 	 */
-	private PackedCollection createComplexSpectra(PackedCollection freqData, int frames, int bins) {
+	private PackedCollection createComplexSpectra(PackedCollection freqData, int channels, int frames, int bins) {
 		// Zero phase for the DC bin of each frame, random phase elsewhere. The draw
 		// is realized once, so the real and imaginary parts describe the same angle.
 		PackedCollection angle = rand(shape(frames, bins), random)
@@ -207,7 +233,9 @@ public class FrequencyToAudioConverter implements TemporalFeatures, ConsoleFeatu
 						c(0.5), c(1.0), c(0.0)).reshape(shape(frames, bins)))
 				.evaluate();
 
-		CollectionProducer magnitude = cp(freqData).reshape(shape(frames, bins, 1));
+		CollectionProducer magnitude = channels == 1 ? cp(freqData).reshape(shape(frames, bins, 1)) :
+				cp(freqData).reshape(shape(channels, frames * bins)).permute(1, 0)
+						.sum(1).divide(channels).reshape(shape(frames, bins, 1));
 		CollectionProducer phase = cp(angle).reshape(shape(frames, bins, 1));
 
 		CollectionProducer half = concat(2,
