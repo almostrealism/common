@@ -458,6 +458,24 @@ public class JobCompletionEvent {
     public boolean isPushed() { return pushed; }
 
     /**
+     * Returns whether this is a successful completion of a job on a branch
+     * that left the branch exactly as it found it: no commit, nothing staged,
+     * nothing held back by the staging guardrails, nothing pushed to any
+     * repository. A held-back file counts as a change, because the job did
+     * edit the tree; the guardrails only kept the edit out of the commit.
+     *
+     * @return {@code true} for a successful, change-free job with a target branch
+     */
+    public boolean isSuccessWithoutChanges() {
+        return status == Status.SUCCESS
+                && targetBranch != null && !targetBranch.isEmpty()
+                && commitHash == null && !pushed
+                && (stagedFiles == null || stagedFiles.isEmpty())
+                && (skippedFiles == null || skippedFiles.isEmpty())
+                && dependentRepoPushes.isEmpty();
+    }
+
+    /**
      * Returns the URL of the GitHub pull request opened by this job.
      *
      * @return the PR URL, or {@code null} if no PR was created
