@@ -24,6 +24,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.collect.UniformCollectionExpression;
 import io.almostrealism.expression.ArcCosine;
+import io.almostrealism.expression.Atan2;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Cosine;
@@ -458,6 +459,20 @@ public interface ExpressionFeatures {
 	 */
 	default CollectionExpression acos(TraversalPolicy shape, TraversableExpression<Double> input) {
 		return new UniformCollectionExpression("acos", shape, args -> ArcCosine.of(args[0]), input);
+	}
+
+	/**
+	 * Creates a collection expression that applies the two-argument arctangent
+	 * {@code atan2(y, x)} element-wise, giving angles in {@code [-pi, pi]}.
+	 *
+	 * @param shape the traversal policy defining the output shape
+	 * @param y     the y-coordinate expression
+	 * @param x     the x-coordinate expression
+	 * @return a two-argument arctangent collection expression
+	 */
+	default CollectionExpression atan2(TraversalPolicy shape, TraversableExpression<Double> y,
+									   TraversableExpression<Double> x) {
+		return new UniformCollectionExpression("atan2", shape, args -> Atan2.of(args[0], args[1]), y, x);
 	}
 
 	/**

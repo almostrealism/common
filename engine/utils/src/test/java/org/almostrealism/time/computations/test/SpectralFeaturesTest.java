@@ -1,0 +1,1211 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.time.computations.test;
+
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalOrdering;
+import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.relation.Delegated;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.DefaultComputer;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.time.SpectralFeatures;
+import org.almostrealism.time.SpectralGrid;
+import org.almostrealism.time.computations.FourierTransform;
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
+import org.junit.Test;
+
+import java.util.List;
+import java.util.function.Supplier;
+
+/**
+ * Tests for the iterative {@link FourierTransform} kernel and the multidimensional spectral
+ * tools of {@link SpectralFeatures}: round trips on CPU and GPU, agreement with a direct DFT,
+ * plane wave bin placement, dominant wavelength recovery and the spectral Poisson solve.
+ *
+ * <p>Tolerances are chosen for FP32 execution (the precision of Metal, and of every backend on a
+ * host configured for FP32): they are several times the error observed in FP32 and remain valid,
+ * with a wide margin, under FP64.</p>
+ */
+public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatures {
+
+	/** Round trip tolerance, absolute, for signals of unit amplitude. */
+	private static final double ROUND_TRIP_TOLERANCE = 1e-4;
+
+	/**
+	 * Relative tolerance for recovering a planted wavelength. The planted waves are deliberately
+	 * not harmonics of the grid, so their power leaks into neighbouring wavevectors; the observed
+	 * error is about 1% for the noisy plane wave and 2% for the hexagonal pattern (in FP32), and
+	 * half a radial bin is 6-8% at the planted wavelengths.
+	 */
+	private static final double WAVELENGTH_TOLERANCE = 0.03;
+
+	/**
+	 * Evaluates a producer with the given compute requirement active for both compilation and
+	 * execution.
+	 *
+	 * @param requirement the requirement to apply
+	 * @param producer    the producer to evaluate
+	 * @return the evaluated result
+	 */
+	protected PackedCollection evaluate(ComputeRequirement requirement, Supplier<Producer<PackedCollection>> producer) {
+		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+		computer.pushRequirements(List.of(requirement));
+
+		try {
+			return producer.get().get().evaluate();
+		} finally {
+			computer.popRequirements();
+		}
+	}
+
+	/**
+	 * Returns the coordinate of every cell of a {@code [rows, cols]} grid along one axis, in
+	 * sample units: the row index for axis 0 and the column index for axis 1.
+	 *
+	 * @param rows the number of rows
+	 * @param cols the number of columns
+	 * @param axis 0 for rows, 1 for columns
+	 * @return a producer shaped {@code [rows, cols]}
+	 */
+	protected CollectionProducer coordinate(int rows, int cols, int axis) {
+		CollectionProducer index = integers(0, rows * cols);
+		CollectionProducer col = index.mod((double) cols);
+		CollectionProducer value = axis == 0 ? index.subtract(col).divide(c(cols)) : col;
+		return value.reshape(rows, cols);
+	}
+
+	/**
+	 * Returns a deterministic, non-trivial complex test signal of the given shape: a sum of
+	 * incommensurate sinusoids of the flat element index.
+	 *
+	 * @param shape the complex shape, ending in 2
+	 * @return a producer of the signal
+	 */
+	protected CollectionProducer testSignal(TraversalPolicy shape) {
+		return testSignalAt(integers(0, shape.getTotalSize())).reshape(shape);
+	}
+
+	/**
+	 * Returns the value of the {@link #testSignal(TraversalPolicy) test signal} at each of the
+	 * given flat element indices.
+	 *
+	 * @param n the flat element indices at which to evaluate the signal
+	 * @return a producer of the signal values, one per index
+	 */
+	protected CollectionProducer testSignalAt(CollectionProducer n) {
+		return sin(n.multiply(c(0.37))).multiply(c(0.6))
+				.add(cos(n.multiply(c(1.913))).multiply(c(0.3)))
+				.add(sin(n.multiply(c(0.0071))).multiply(c(0.1)));
+	}
+
+	/**
+	 * Returns deterministic pseudo-random noise, uniform in {@code [-amplitude / 2, amplitude / 2)},
+	 * computed on the device from the fractional part of a rapidly oscillating sinusoid of the
+	 * element index.
+	 *
+	 * @param size      the number of values
+	 * @param amplitude the peak-to-peak amplitude
+	 * @return a producer of {@code size} noise values
+	 */
+	protected CollectionProducer noise(int size, double amplitude) {
+		CollectionProducer hash = sin(integers(0, size).multiply(c(12.9898))).multiply(c(43758.5453));
+		return hash.subtract(floor(hash)).subtract(c(0.5)).multiply(c(amplitude));
+	}
+
+	/**
+	 * Returns the largest absolute difference between two collections, or positive infinity if
+	 * either holds a non-finite element. The device {@code max} skips NaN elements (and yields
+	 * {@code -Float.MAX_VALUE} when every element is NaN), so without that check a NaN or
+	 * infinite result would satisfy every {@code error < tolerance} assertion.
+	 *
+	 * @param a the first collection
+	 * @param b the second collection
+	 * @return the maximum absolute element-wise difference, or positive infinity
+	 */
+	protected double maxDifference(PackedCollection a, PackedCollection b) {
+		if (!a.doubleStream().allMatch(Double::isFinite) || !b.doubleStream().allMatch(Double::isFinite)) {
+			return Double.POSITIVE_INFINITY;
+		}
+
+		return max(abs(cp(a).reshape(a.getShape().getTotalSize())
+				.subtract(cp(b).reshape(b.getShape().getTotalSize())))).evaluate().toDouble(0);
+	}
+
+	/**
+	 * Asserts that {@code actual} is within {@code tolerance} of {@code expected}, relative to
+	 * {@code expected}. Unlike {@code assertSimilar}, a NaN result fails.
+	 *
+	 * @param label     what is being compared, for the failure message
+	 * @param expected  the expected value
+	 * @param actual    the actual value
+	 * @param tolerance the relative tolerance
+	 */
+	protected void assertRelative(String label, double expected, double actual, double tolerance) {
+		Assert.assertEquals(label, expected, actual, tolerance * Math.abs(expected));
+	}
+
+	/**
+	 * Asserts that building a graph is rejected with an {@link IllegalArgumentException}.
+	 *
+	 * @param construction the graph construction expected to be rejected
+	 */
+	protected void assertRejected(Runnable construction) {
+		try {
+			construction.run();
+		} catch (IllegalArgumentException expected) {
+			return;
+		}
+
+		Assert.fail("Expected an IllegalArgumentException");
+	}
+
+	/** One-dimensional batched round trip on the CPU. */
+	@Test(timeout = 120000)
+	public void roundTrip1dCpu() {
+		assertRoundTrip1d(ComputeRequirement.CPU);
+	}
+
+	/** One-dimensional batched round trip on the GPU (Metal or OpenCL where present). */
+	@Test(timeout = 120000)
+	public void roundTrip1dGpu() {
+		assertRoundTrip1d(ComputeRequirement.GPU);
+	}
+
+	/**
+	 * Checks that {@code inverse(forward(x)) == x} for 8 lines of 512 complex samples.
+	 *
+	 * @param requirement the compute requirement to run under
+	 */
+	protected void assertRoundTrip1d(ComputeRequirement requirement) {
+		int count = 8;
+		int bins = 512;
+
+		PackedCollection input = testSignal(shape(count, 2, bins)).evaluate();
+		PackedCollection forward = evaluate(requirement,
+				() -> new FourierTransform(count, bins, false, cp(input).traverse(1)));
+		PackedCollection reversed = evaluate(requirement,
+				() -> new FourierTransform(count, bins, true, cp(forward).traverse(1)));
+
+		double error = maxDifference(input, reversed);
+		log("roundTrip1d requirement=" + requirement + " maxError=" + error);
+		Assert.assertTrue("1-D round trip error " + error, error < ROUND_TRIP_TOLERANCE);
+	}
+
+	/**
+	 * Compares the forward transform against a direct evaluation of the DFT definition
+	 * {@code X[k] = sum_n x[n] e^(-2 pi i k n / N)}, which pins down the sign and normalisation
+	 * convention.
+	 */
+	@Test(timeout = 120000)
+	public void forwardMatchesDirectDft() {
+		int bins = 64;
+		PackedCollection input = testSignal(shape(bins, 2)).evaluate();
+		PackedCollection spectrum = new FourierTransform(bins, cp(input)).get().evaluate();
+
+		double worst = 0;
+		for (int k = 0; k < bins; k++) {
+			double re = 0;
+			double im = 0;
+			for (int n = 0; n < bins; n++) {
+				double angle = -2 * Math.PI * k * n / bins;
+				double xr = input.toDouble(2 * n);
+				double xi = input.toDouble(2 * n + 1);
+				re += xr * Math.cos(angle) - xi * Math.sin(angle);
+				im += xr * Math.sin(angle) + xi * Math.cos(angle);
+			}
+
+			worst = Math.max(worst, Math.abs(re - spectrum.toDouble(2 * k)));
+			worst = Math.max(worst, Math.abs(im - spectrum.toDouble(2 * k + 1)));
+		}
+
+		log("forwardMatchesDirectDft maxError=" + worst);
+		Assert.assertTrue("Forward transform differs from the DFT by " + worst, worst < 1e-3);
+	}
+
+	/**
+	 * Compares the forward transform of a generic, non-separable {@code [8, 16]} complex grid
+	 * along each axis alone, and along both, against a direct evaluation of the DFT. The
+	 * transform along axis 1 runs 8 contiguous lines and the transform along axis 0 runs 16
+	 * strided lines, so this pins down which samples each kernel thread reads and writes. A
+	 * round trip cannot: a line that read its neighbour's samples, or wrote its result to the
+	 * wrong place, would be undone by an inverse with the same addressing, and a power spectrum
+	 * discards the phase shift such a mistake introduces.
+	 */
+	@Test(timeout = 120000)
+	public void forwardAxesMatchDirectDft() {
+		int rows = 8;
+		int cols = 16;
+		PackedCollection input = testSignal(shape(rows, cols, 2)).evaluate();
+
+		assertMatchesDirectDft("axis 0", input, fftAxis(cp(input), 0, false).evaluate(), true, false);
+		assertMatchesDirectDft("axis 1", input, fftAxis(cp(input), 1, false).evaluate(), false, true);
+		assertMatchesDirectDft("both axes", input, fft2d(cp(input)).evaluate(), true, true);
+	}
+
+	/**
+	 * Asserts that {@code spectrum} is the forward DFT of the {@code [rows, cols, 2]} complex grid
+	 * {@code input} along the selected axes, evaluated directly from the definition.
+	 *
+	 * @param label         what is being compared, for the failure message
+	 * @param input         the complex grid that was transformed
+	 * @param spectrum      the transform result, with the shape of {@code input}
+	 * @param transformRows whether the transform runs along axis 0
+	 * @param transformCols whether the transform runs along axis 1
+	 */
+	protected void assertMatchesDirectDft(String label, PackedCollection input, PackedCollection spectrum,
+										  boolean transformRows, boolean transformCols) {
+		int rows = input.getShape().length(0);
+		int cols = input.getShape().length(1);
+		Assert.assertEquals(input.getShape().getTotalSize(), spectrum.getShape().getTotalSize());
+
+		double[] x = input.toArray(0, input.getShape().getTotalSize());
+		double[] actual = spectrum.toArray(0, spectrum.getShape().getTotalSize());
+
+		double worst = 0;
+		for (int k0 = 0; k0 < rows; k0++) {
+			for (int k1 = 0; k1 < cols; k1++) {
+				double re = 0;
+				double im = 0;
+
+				for (int n0 = 0; n0 < rows; n0++) {
+					if (!transformRows && n0 != k0) continue;
+
+					for (int n1 = 0; n1 < cols; n1++) {
+						if (!transformCols && n1 != k1) continue;
+
+						double angle = -2 * Math.PI * ((transformRows ? (double) k0 * n0 / rows : 0)
+								+ (transformCols ? (double) k1 * n1 / cols : 0));
+						double xr = x[2 * (n0 * cols + n1)];
+						double xi = x[2 * (n0 * cols + n1) + 1];
+						re += xr * Math.cos(angle) - xi * Math.sin(angle);
+						im += xr * Math.sin(angle) + xi * Math.cos(angle);
+					}
+				}
+
+				int cell = 2 * (k0 * cols + k1);
+				worst = Math.max(worst, Math.abs(re - actual[cell]));
+				worst = Math.max(worst, Math.abs(im - actual[cell + 1]));
+			}
+		}
+
+		log("forwardAxesMatchDirectDft " + label + " maxError=" + worst);
+		Assert.assertTrue(label + " transform differs from the DFT by " + worst, worst < 1e-3);
+	}
+
+	/**
+	 * Compares the forward transform along the middle axis of a {@code [3, 8, 4]} complex grid
+	 * against a direct evaluation of the DFT. That transform runs 12 lines of 8 samples with a
+	 * stride of 4, so consecutive groups of 4 lines begin in different outer slabs. In the
+	 * two-dimensional case every strided line begins in the first slab, so this is the only test
+	 * that pins down the slab offset {@code (line / stride) * bins * stride} of a strided line.
+	 */
+	@Test(timeout = 120000)
+	public void forwardMiddleAxisMatchesDirectDft() {
+		int outer = 3;
+		int bins = 8;
+		int inner = 4;
+		PackedCollection input = testSignal(shape(outer, bins, inner, 2)).evaluate();
+		PackedCollection spectrum = fftAxis(cp(input), 1, false).evaluate();
+		Assert.assertEquals(input.getShape().getTotalSize(), spectrum.getShape().getTotalSize());
+
+		double[] x = input.toArray(0, input.getShape().getTotalSize());
+		double[] actual = spectrum.toArray(0, spectrum.getShape().getTotalSize());
+
+		double worst = 0;
+		for (int o = 0; o < outer; o++) {
+			for (int i = 0; i < inner; i++) {
+				for (int k = 0; k < bins; k++) {
+					double re = 0;
+					double im = 0;
+
+					for (int n = 0; n < bins; n++) {
+						double angle = -2 * Math.PI * k * n / bins;
+						int sample = 2 * ((o * bins + n) * inner + i);
+						re += x[sample] * Math.cos(angle) - x[sample + 1] * Math.sin(angle);
+						im += x[sample] * Math.sin(angle) + x[sample + 1] * Math.cos(angle);
+					}
+
+					int cell = 2 * ((o * bins + k) * inner + i);
+					worst = Math.max(worst, Math.abs(re - actual[cell]));
+					worst = Math.max(worst, Math.abs(im - actual[cell + 1]));
+				}
+			}
+		}
+
+		log("forwardMiddleAxisMatchesDirectDft maxError=" + worst);
+		Assert.assertTrue("Middle axis transform differs from the DFT by " + worst, worst < 1e-3);
+	}
+
+	/** Two-dimensional round trip of a non-square grid on the CPU. */
+	@Test(timeout = 120000)
+	public void roundTrip2dCpu() {
+		assertRoundTrip2d(ComputeRequirement.CPU);
+	}
+
+	/** Two-dimensional round trip of a non-square grid on the GPU (Metal or OpenCL where present). */
+	@Test(timeout = 120000)
+	public void roundTrip2dGpu() {
+		assertRoundTrip2d(ComputeRequirement.GPU);
+	}
+
+	/**
+	 * Checks that {@code ifft2d(fft2d(x)) == x} for a {@code [64, 128]} complex grid, which
+	 * exercises both the contiguous (columns) and strided (rows) passes.
+	 *
+	 * @param requirement the compute requirement to run under
+	 */
+	protected void assertRoundTrip2d(ComputeRequirement requirement) {
+		PackedCollection input = testSignal(shape(64, 128, 2)).evaluate();
+		PackedCollection spectrum = evaluate(requirement, () -> fft2d(cp(input)));
+		PackedCollection reversed = evaluate(requirement, () -> ifft2d(cp(spectrum)));
+
+		Assert.assertEquals(input.getShape().getTotalSize(), reversed.getShape().getTotalSize());
+		double error = maxDifference(input, reversed);
+		log("roundTrip2d requirement=" + requirement + " maxError=" + error);
+		Assert.assertTrue("2D round trip error " + error, error < ROUND_TRIP_TOLERANCE);
+	}
+
+	/** Three-dimensional round trip, showing that the N-dimensional transform needs no new code. */
+	@Test(timeout = 120000)
+	public void roundTrip3d() {
+		PackedCollection input = testSignal(shape(8, 16, 32, 2)).evaluate();
+		PackedCollection reversed = fftn(fftn(cp(input), false), true).evaluate();
+
+		double error = maxDifference(input, reversed);
+		log("roundTrip3d maxError=" + error);
+		Assert.assertTrue("3D round trip error " + error, error < ROUND_TRIP_TOLERANCE);
+	}
+
+	/**
+	 * The 2D FFT of {@code cos(2 pi (3 x / cols + 5 y / rows))} on a {@code [32, 64]} grid puts all
+	 * of its energy in the bins {@code (5, 3)} and {@code (rows - 5, cols - 3)}, each with
+	 * amplitude {@code rows * cols / 2}.
+	 */
+	@Test(timeout = 120000)
+	public void planeWaveEnergyBin() {
+		int rows = 32;
+		int cols = 64;
+
+		CollectionProducer phase = coordinate(rows, cols, 1).multiply(c(2 * Math.PI * 3 / cols))
+				.add(coordinate(rows, cols, 0).multiply(c(2 * Math.PI * 5 / rows)));
+		PackedCollection power = powerSpectrum(fft2d(toComplex(cos(phase)))).evaluate();
+		Assert.assertEquals(rows * cols, power.getShape().getTotalSize());
+
+		double total = power.doubleStream().sum();
+		double expected = Math.pow(rows * cols / 2.0, 2);
+		double positive = power.toDouble(5 * cols + 3);
+		double negative = power.toDouble((rows - 5) * cols + (cols - 3));
+
+		log("planeWaveEnergyBin positive=" + positive + " negative=" + negative + " total=" + total);
+		assertRelative("positive bin", expected, positive, 1e-3);
+		assertRelative("negative bin", expected, negative, 1e-3);
+		Assert.assertTrue((positive + negative) / total > 0.9999);
+	}
+
+	/**
+	 * A constant power spectrum has a constant radial average, and the radial bin layout of an
+	 * {@code n x n} grid with spacing {@code d} has {@code n / 2 + 1} bins of width
+	 * {@code 2 pi / (n d)}.
+	 */
+	@Test(timeout = 120000)
+	public void radialSpectrumOfConstantPower() {
+		int n = 32;
+		double spacing = 0.5;
+		TraversalPolicy grid = shape(n, n);
+
+		Assert.assertEquals(n / 2 + 1, new SpectralGrid(grid, spacing).getRadialBinCount());
+		assertRelative("bin width", 2 * Math.PI / (n * spacing), new SpectralGrid(grid, spacing).getRadialBinWidth(), 1e-12);
+
+		PackedCollection radial = radialPowerSpectrum(c(3.0).repeat(n * n).reshape(grid), spacing).evaluate();
+		Assert.assertEquals(n / 2 + 1, radial.getShape().getTotalSize());
+		radial.doubleStream().forEach(v -> assertRelative("radial bin", 3.0, v, 1e-5));
+	}
+
+	/**
+	 * On an anisotropic grid whose smallest Nyquist wavenumber is not a whole number of bins
+	 * ({@code [64, 8]} with spacing {@code (1, 1.48)}: Nyquist / dk = 21.62), the bins end at the
+	 * last bin centre at or below Nyquist, and every one of them holds at least one cell, so the
+	 * radial average of a constant power is that constant in every bin rather than NaN.
+	 */
+	@Test(timeout = 120000)
+	public void radialSpectrumOfNonIntegerNyquist() {
+		TraversalPolicy grid = shape(64, 8);
+		double[] spacing = {1.0, 1.48};
+
+		Assert.assertEquals(22, new SpectralGrid(grid, spacing).getRadialBinCount());
+
+		PackedCollection bins = new SpectralGrid(grid, spacing).radialBin().evaluate();
+		for (int b = 0; b < 22; b++) {
+			double bin = b;
+			Assert.assertTrue("bin " + b + " is empty", bins.doubleStream().anyMatch(v -> v == bin));
+		}
+
+		PackedCollection radial = radialPowerSpectrum(c(3.0).repeat(64 * 8).reshape(grid), spacing).evaluate();
+		Assert.assertEquals(22, radial.getShape().getTotalSize());
+		radial.doubleStream().forEach(v -> assertRelative("radial bin", 3.0, v, 1e-5));
+	}
+
+	/**
+	 * The radial spectrum of {@code cos(2 pi 4 x / n)} on an {@code n x n} grid holds all of its
+	 * power in bin 4, the average over that shell of the two cells at {@code (0, +-4)}; every
+	 * other bin, including bin 0, is empty. This checks the shell membership, which a constant
+	 * spectrum cannot.
+	 */
+	@Test(timeout = 120000)
+	public void radialSpectrumOfPlaneWave() {
+		int n = 32;
+		double spacing = 0.5;
+		TraversalPolicy grid = shape(n, n);
+
+		CollectionProducer field = cos(coordinate(n, n, 1).multiply(c(2 * Math.PI * 4 / n)));
+		PackedCollection power = powerSpectrum(fft2d(toComplex(field))).evaluate();
+		PackedCollection shellCells = new SpectralGrid(grid, spacing).radialBin().evaluate();
+		PackedCollection radial = radialPowerSpectrum(cp(power), spacing).evaluate();
+
+		long cellsInShell = shellCells.doubleStream().filter(b -> b == 4.0).count();
+		double expected = 2 * Math.pow(n * n / 2.0, 2) / cellsInShell;
+		log("radialSpectrumOfPlaneWave cellsInShell=" + cellsInShell + " radial=" + radial.toArrayString());
+
+		for (int b = 0; b < radial.getShape().getTotalSize(); b++) {
+			if (b == 4) {
+				assertRelative("shell 4", expected, radial.toDouble(b), 1e-4);
+			} else {
+				Assert.assertEquals("shell " + b, 0.0, radial.toDouble(b), 1e-3 * expected);
+			}
+		}
+	}
+
+	/**
+	 * The parabolic peak of a radial spectrum sampled from {@code 10 - (b - 3.3)^2} is at bin 3.3
+	 * exactly, and bin 0 is excluded from the search even when it is the largest.
+	 */
+	@Test(timeout = 60000)
+	public void spectralPeakOfParabola() {
+		CollectionProducer bin = integers(0, 8);
+		CollectionProducer parabola = c(10.0).subtract(bin.subtract(c(3.3)).sq());
+		CollectionProducer spectrum = parabola.add(greaterThan(c(0.5), bin, c(100.0), c(0.0)));
+
+		double binWidth = 0.25;
+		PackedCollection peak = spectralPeak(spectrum, binWidth).evaluate();
+		log("spectralPeakOfParabola peak=" + peak.toDouble(0));
+		assertRelative("parabolic peak", 3.3 * binWidth, peak.toDouble(0), 1e-5);
+	}
+
+	/**
+	 * A single plane wave at a non-integer bin plus uniform noise of comparable amplitude: the
+	 * dominant wavelength is recovered within {@link #WAVELENGTH_TOLERANCE} in physical units.
+	 */
+	@Test(timeout = 120000)
+	public void dominantWavelengthWithNoise() {
+		int n = 128;
+		double spacing = 0.5;
+		double wavelength = 7.3;
+		double angle = Math.toRadians(30);
+
+		CollectionProducer x = coordinate(n, n, 1).multiply(c(spacing));
+		CollectionProducer y = coordinate(n, n, 0).multiply(c(spacing));
+		double k = 2 * Math.PI / wavelength;
+		CollectionProducer wave = cos(x.multiply(c(k * Math.cos(angle))).add(y.multiply(c(k * Math.sin(angle)))));
+		PackedCollection field = wave.add(noise(n * n, 1.5).reshape(n, n)).evaluate();
+
+		PackedCollection result = dominantWavelength(cp(field), spacing).evaluate();
+		log("dominantWavelengthWithNoise planted=" + wavelength + " recovered=" + result.toDouble(0));
+		assertRelative("wavelength", wavelength, result.toDouble(0), WAVELENGTH_TOLERANCE);
+	}
+
+	/**
+	 * A plane wave of amplitude {@code 1e-25}: the dominant wavelength does not depend on the
+	 * amplitude of the field, so it is recovered as for a unit wave. The power of such a field is
+	 * far below the smallest single-precision value, so on an FP32 backend this fails unless the
+	 * field is normalised before its power is formed. The same holds for a constant offset, which
+	 * the mean removal must discard.
+	 */
+	@Test(timeout = 120000)
+	public void dominantWavelengthOfTinyAmplitude() {
+		int n = 64;
+		double spacing = 0.5;
+		double wavelength = 5.3;
+		double k = 2 * Math.PI / wavelength;
+
+		CollectionProducer x = coordinate(n, n, 1).multiply(c(spacing));
+		CollectionProducer y = coordinate(n, n, 0).multiply(c(spacing));
+		CollectionProducer wave = cos(x.multiply(c(k * 0.6)).add(y.multiply(c(k * 0.8))));
+		PackedCollection field = wave.multiply(c(1e-25)).add(c(1e-24)).evaluate();
+
+		PackedCollection result = dominantWavelength(cp(field), spacing).evaluate();
+		log("dominantWavelengthOfTinyAmplitude planted=" + wavelength + " recovered=" + result.toDouble(0));
+		assertRelative("wavelength", wavelength, result.toDouble(0), WAVELENGTH_TOLERANCE);
+	}
+
+	/**
+	 * A constant field has no spectral power away from {@code k = 0}, so it has no dominant
+	 * wavenumber: the estimate is {@code NaN} rather than an arbitrary finite value.
+	 */
+	@Test(timeout = 120000)
+	public void dominantWavenumberOfConstantField() {
+		PackedCollection result = dominantWavenumber(c(2.5).repeat(16 * 16).reshape(16, 16), 1.0).evaluate();
+		log("dominantWavenumberOfConstantField result=" + result.toDouble(0));
+		Assert.assertTrue("Expected NaN, got " + result.toDouble(0), Double.isNaN(result.toDouble(0)));
+	}
+
+	/**
+	 * A hexagonal pattern (three plane waves 120 degrees apart, as produced by a regular
+	 * spike array) on a rectangular grid with different spacing per axis: the dominant
+	 * wavelength is recovered within {@link #WAVELENGTH_TOLERANCE}.
+	 */
+	@Test(timeout = 120000)
+	public void dominantWavelengthHexagonal() {
+		int rows = 128;
+		int cols = 128;
+		double dy = 0.25;
+		double dx = 0.3;
+		double wavelength = 6.0;
+		double k = 2 * Math.PI / wavelength;
+
+		CollectionProducer x = coordinate(rows, cols, 1).multiply(c(dx));
+		CollectionProducer y = coordinate(rows, cols, 0).multiply(c(dy));
+
+		CollectionProducer field = null;
+		for (int i = 0; i < 3; i++) {
+			double theta = Math.toRadians(10 + 120 * i);
+			CollectionProducer wave = cos(x.multiply(c(k * Math.cos(theta))).add(y.multiply(c(k * Math.sin(theta)))));
+			field = field == null ? wave : field.add(wave);
+		}
+
+		PackedCollection result = dominantWavelength(field, dy, dx).evaluate();
+		log("dominantWavelengthHexagonal planted=" + wavelength + " recovered=" + result.toDouble(0));
+		assertRelative("wavelength", wavelength, result.toDouble(0), WAVELENGTH_TOLERANCE);
+	}
+
+	/**
+	 * Manufactured solution of {@code laplacian(p) = f} on the periodic square {@code [0, 2 pi)^2}:
+	 * {@code p = sin(x) cos(2y) + 0.5 cos(3x)}, so {@code f = -5 sin(x) cos(2y) - 4.5 cos(3x)}.
+	 */
+	@Test(timeout = 120000)
+	public void poissonManufacturedSolution() {
+		assertPoissonManufacturedSolution(64, 1.0);
+	}
+
+	/**
+	 * The same manufactured solution on a domain stretched by {@code 1e8}, so the smallest
+	 * nonzero {@code |k|^2} is about {@code 1e-16}. That is far above the representability guard,
+	 * but small enough that {@code (k^2 + 1) - 1} rounds to zero in single and double precision,
+	 * so an inverse symbol formed that way divides the nonzero modes by zero.
+	 */
+	@Test(timeout = 120000)
+	public void poissonManufacturedSolutionLargeSpacing() {
+		assertPoissonManufacturedSolution(32, 1e8);
+	}
+
+	/**
+	 * Solves {@code laplacian(p) = f} on the periodic square {@code [0, 2 pi scale)^2} for
+	 * {@code p = sin(x / scale) cos(2y / scale) + 0.5 cos(3x / scale)}, whose source is
+	 * {@code f = (-5 sin(x / scale) cos(2y / scale) - 4.5 cos(3x / scale)) / scale^2}, and checks
+	 * the solution against {@code p}.
+	 *
+	 * @param n     the number of cells along each axis
+	 * @param scale the length scale of the domain
+	 */
+	private void assertPoissonManufacturedSolution(int n, double scale) {
+		double phaseStep = 2 * Math.PI / n;
+
+		CollectionProducer x = coordinate(n, n, 1).multiply(c(phaseStep));
+		CollectionProducer y = coordinate(n, n, 0).multiply(c(phaseStep));
+		CollectionProducer mode = sin(x).multiply(cos(y.multiply(c(2.0))));
+		CollectionProducer ripple = cos(x.multiply(c(3.0)));
+
+		PackedCollection expected = mode.add(ripple.multiply(c(0.5))).evaluate();
+		CollectionProducer source = mode.multiply(c(-5.0)).add(ripple.multiply(c(-4.5)))
+				.multiply(c(1.0 / (scale * scale)));
+		PackedCollection solution = poissonSolve(source, phaseStep * scale).evaluate();
+
+		Assert.assertEquals(n * n, solution.getShape().getTotalSize());
+		double error = maxDifference(expected, solution);
+		log("poissonManufacturedSolution scale=" + scale + " maxError=" + error);
+		Assert.assertTrue("Poisson solution error " + error + " at scale " + scale, error < 1e-4);
+	}
+
+	/**
+	 * The squared wavenumber of every cell of a non-square grid with different spacing per axis
+	 * matches the signed-frequency definition, including the Nyquist index, which maps to
+	 * {@code -n / 2}.
+	 */
+	@Test(timeout = 60000)
+	public void wavenumberSquaredMatchesDefinition() {
+		int rows = 4;
+		int cols = 8;
+		double dy = 0.5;
+		double dx = 0.25;
+
+		PackedCollection k2 = new SpectralGrid(shape(rows, cols), dy, dx).wavenumberSquared().evaluate();
+		Assert.assertEquals(rows * cols, k2.getShape().getTotalSize());
+
+		for (int r = 0; r < rows; r++) {
+			for (int col = 0; col < cols; col++) {
+				int my = r < rows / 2 ? r : r - rows;
+				int mx = col < cols / 2 ? col : col - cols;
+				double ky = 2 * Math.PI * my / (rows * dy);
+				double kx = 2 * Math.PI * mx / (cols * dx);
+				double expected = ky * ky + kx * kx;
+				Assert.assertEquals("cell (" + r + ", " + col + ")", expected,
+						k2.toDouble(r * cols + col), 1e-4 * Math.max(1.0, expected));
+			}
+		}
+	}
+
+	/**
+	 * A grid shape that carries a {@link TraversalOrdering} (such as the shape of a permuted
+	 * field) describes only the grid's dimensions to the wavenumber overload: the dense
+	 * {@code |k|^2} it produces is in plain row-major order and must not be read through that
+	 * ordering, so it matches the result for the same dimensions without one.
+	 */
+	@Test(timeout = 60000)
+	public void wavenumberSquaredIgnoresGridOrdering() {
+		TraversalPolicy plain = shape(4, 8);
+		TraversalPolicy ordered = reversedCopy(plain, plain.getTotalSize()).getShape();
+		Assert.assertNotNull("the grid should carry an ordering", ordered.getOrder());
+
+		CollectionProducer k2 = new SpectralGrid(ordered, 0.5, 0.25).wavenumberSquared();
+		Assert.assertNull("|k|^2 should not carry the grid ordering", k2.getShape().getOrder());
+
+		PackedCollection expected = new SpectralGrid(plain, 0.5, 0.25).wavenumberSquared().evaluate();
+		PackedCollection actual = k2.evaluate();
+		double error = maxDifference(expected, actual);
+		log("wavenumberSquaredIgnoresGridOrdering maxError=" + error);
+		Assert.assertTrue("ordered grid wavenumber error " + error, error < 1e-4);
+	}
+
+	/** Real and imaginary parts are the even and odd elements of interleaved complex data. */
+	@Test(timeout = 60000)
+	public void complexParts() {
+		PackedCollection complex = pack(1.0, -2.0, 3.0, 4.0, -5.0, 6.0).reshape(3, 2);
+		PackedCollection re = realPart(cp(complex)).evaluate();
+		PackedCollection im = imaginaryPart(cp(complex)).evaluate();
+
+		Assert.assertEquals(3, re.getShape().getTotalSize());
+		Assert.assertEquals(3, im.getShape().getTotalSize());
+		Assert.assertArrayEquals(new double[] { 1.0, 3.0, -5.0 }, re.toArray(), 1e-6);
+		Assert.assertArrayEquals(new double[] { -2.0, 4.0, 6.0 }, im.toArray(), 1e-6);
+	}
+
+	/**
+	 * Power, magnitude, log magnitude and phase are computed for every element of interleaved
+	 * complex data, not only the first, and phase covers all four quadrants and both axes.
+	 */
+	@Test(timeout = 60000)
+	public void complexElementwiseOperations() {
+		double[] re = { 3.0, -1.0, -2.0, 0.5, 0.0, -4.0 };
+		double[] im = { 4.0, 1.0, -2.0, -0.5, 2.0, 0.0 };
+		PackedCollection complex = pack(3.0, 4.0, -1.0, 1.0, -2.0, -2.0,
+				0.5, -0.5, 0.0, 2.0, -4.0, 0.0).reshape(2, 3, 2);
+
+		PackedCollection power = powerSpectrum(cp(complex)).evaluate();
+		PackedCollection magnitude = complexMagnitude(cp(complex)).evaluate();
+		PackedCollection decibels = logMagnitude(cp(complex)).evaluate();
+		PackedCollection angle = phase(cp(complex)).evaluate();
+
+		Assert.assertEquals(shape(2, 3).toString(), power.getShape().toString());
+		Assert.assertEquals(shape(2, 3).toString(), angle.getShape().toString());
+
+		for (int i = 0; i < re.length; i++) {
+			double p = re[i] * re[i] + im[i] * im[i];
+			Assert.assertEquals("power " + i, p, power.toDouble(i), ROUND_TRIP_TOLERANCE);
+			Assert.assertEquals("magnitude " + i, Math.sqrt(p), magnitude.toDouble(i), ROUND_TRIP_TOLERANCE);
+			Assert.assertEquals("logMagnitude " + i, 10 * Math.log10(p + 1e-10), decibels.toDouble(i), ROUND_TRIP_TOLERANCE);
+			Assert.assertEquals("phase " + i, Math.atan2(im[i], re[i]), angle.toDouble(i), ROUND_TRIP_TOLERANCE);
+		}
+	}
+
+	/** The two-argument arctangent is applied element-wise with the y argument first. */
+	@Test(timeout = 60000)
+	public void atan2Elementwise() {
+		double[] y = { 1.0, 1.0, -1.0, -1.0, 0.0, 2.0 };
+		double[] x = { 1.0, -1.0, -1.0, 1.0, -3.0, 0.0 };
+
+		PackedCollection yc = pack(1.0, 1.0, -1.0, -1.0, 0.0, 2.0);
+		PackedCollection xc = pack(1.0, -1.0, -1.0, 1.0, -3.0, 0.0);
+
+		PackedCollection result = atan2(cp(yc), cp(xc)).evaluate();
+		Assert.assertEquals(y.length, result.getShape().getTotalSize());
+
+		for (int i = 0; i < y.length; i++) {
+			Assert.assertEquals("atan2 " + i, Math.atan2(y[i], x[i]), result.toDouble(i), ROUND_TRIP_TOLERANCE);
+		}
+	}
+
+	/**
+	 * Flat cell indices are decoded in floating point, so a grid of more than
+	 * {@link SpectralGrid#MAX_EXACT_INDEX} cells is rejected, while one of exactly that
+	 * many cells is accepted. Only the graph is built; nothing is evaluated.
+	 */
+	@Test(timeout = 60000)
+	public void wavenumberSquaredRejectsInexactIndices() {
+		Assert.assertNotNull(new SpectralGrid(shape(4096, 4096), 1.0).wavenumberSquared());
+		assertRejected(() -> new SpectralGrid(shape(4096, 8192), 1.0).wavenumberSquared());
+	}
+
+	/**
+	 * The Poisson solve decodes two indices per cell, so a grid of
+	 * {@code MAX_EXACT_INDEX / 2} cells is accepted and one of {@code MAX_EXACT_INDEX} cells is
+	 * rejected. Only the graph is built; nothing is evaluated.
+	 */
+	@Test(timeout = 60000)
+	public void poissonSolveRejectsInexactIndices() {
+		Assert.assertNotNull(poissonSolve(zeros(shape(2048, 4096)), 1.0));
+		assertRejected(() -> poissonSolve(zeros(shape(4096, 4096)), 1.0));
+	}
+
+	/**
+	 * A {@code 256^3} grid has 129 radial bins, whose dense membership matrix exceeds the
+	 * addressable size, so the radial spectrum is rejected instead of overflowing.
+	 */
+	@Test(timeout = 60000)
+	public void radialPowerSpectrumRejectsOversizedGrid() {
+		TraversalPolicy grid = shape(256, 256, 256);
+		Assert.assertEquals(129, new SpectralGrid(grid, 1.0).getRadialBinCount());
+		assertRejected(() -> radialPowerSpectrum(zeros(grid), 1.0));
+	}
+
+	/** Malformed transform and grid arguments are rejected while the graph is built. */
+	@Test(timeout = 60000)
+	public void invalidArgumentsAreRejected() {
+		assertRejected(() -> fftAxis(zeros(shape(8, 8)), 0, false));
+		assertRejected(() -> fftAxis(zeros(shape(8, 8, 2)), 2, false));
+		assertRejected(() -> fftAxis(zeros(shape(8, 8, 2)), -1, false));
+		assertRejected(() -> fftAxis(zeros(shape(8, 6, 2)), 1, false));
+		assertRejected(() -> fft2d(zeros(shape(4, 8, 8, 2))));
+		assertRejected(() -> ifft2d(zeros(shape(8, 2))));
+		assertRejected(() -> realPart(zeros(shape(4, 3))));
+		assertRejected(() -> new SpectralGrid(shape(8, 8), 1.0, 1.0, 1.0).wavenumberSquared());
+		assertRejected(() -> new SpectralGrid(shape(8, 8), 0.0).wavenumberSquared());
+		assertRejected(() -> new SpectralGrid(shape(8, 8), 1.0, -1.0).getRadialBinWidth());
+	}
+
+	/**
+	 * A grid spacing is a positive, finite length. An infinite spacing would make the bin width
+	 * and every wavenumber zero, so each operation that takes a spacing rejects infinite and NaN
+	 * values, on one axis or all of them, while a large finite spacing is accepted.
+	 * Only the graphs are built; nothing is evaluated.
+	 */
+	@Test(timeout = 60000)
+	public void nonFiniteSpacingIsRejected() {
+		TraversalPolicy grid = shape(8, 8);
+		double inf = Double.POSITIVE_INFINITY;
+		assertRelative("large spacing bin width", 2 * Math.PI / 8e300, new SpectralGrid(grid, 1e300).getRadialBinWidth(), 1e-12);
+		Assert.assertEquals(5, new SpectralGrid(grid, 1.0, 1e300).getRadialBinCount());
+
+		assertRejected(() -> new SpectralGrid(grid, inf).wavenumberSquared());
+		assertRejected(() -> new SpectralGrid(grid, 1.0, Double.NaN).wavenumberSquared());
+		assertRejected(() -> new SpectralGrid(grid, inf, 1.0).getRadialBinWidth());
+		assertRejected(() -> new SpectralGrid(grid, Double.NaN).getRadialBinCount());
+		assertRejected(() -> radialPowerSpectrum(zeros(grid), inf));
+		assertRejected(() -> dominantWavelength(zeros(grid), 1.0, inf));
+		assertRejected(() -> poissonSolve(zeros(grid), inf));
+		assertRejected(() -> poissonSolve(zeros(grid), Double.NEGATIVE_INFINITY));
+	}
+
+	/**
+	 * A radial bin width is a positive, finite wavenumber, so {@link SpectralFeatures#spectralPeak}
+	 * rejects zero, negative, NaN and infinite widths while a small positive width is accepted.
+	 * Only the graph is built; nothing is evaluated.
+	 */
+	@Test(timeout = 60000)
+	public void spectralPeakRejectsInvalidBinWidth() {
+		CollectionProducer spectrum = integers(0, 8);
+		Assert.assertNotNull(spectralPeak(spectrum, Double.MIN_VALUE));
+		assertRejected(() -> spectralPeak(spectrum, 0.0));
+		assertRejected(() -> spectralPeak(spectrum, -0.25));
+		assertRejected(() -> spectralPeak(spectrum, Double.NaN));
+		assertRejected(() -> spectralPeak(spectrum, Double.POSITIVE_INFINITY));
+	}
+
+	/**
+	 * A finite spacing can still overflow the quantities derived from it: a huge spacing makes
+	 * the axis extent {@code n * d} infinite (so the bin width and every wavenumber collapse to
+	 * zero), and a subnormal spacing makes the wavenumber {@code 2 pi / d} infinite. Both are
+	 * rejected, while spacings at the edge of the representable range are accepted with exact
+	 * bin widths and counts. Only the graph is built; nothing is evaluated.
+	 */
+	@Test(timeout = 60000)
+	public void overflowingSpacingIsRejected() {
+		TraversalPolicy grid = shape(8, 8);
+		double largest = Double.MAX_VALUE / 8;
+		assertRelative("largest spacing bin width", 2 * Math.PI / Double.MAX_VALUE,
+				new SpectralGrid(grid, largest).getRadialBinWidth(), 1e-12);
+		assertRelative("tiny spacing bin width", 2 * Math.PI / 8e-300, new SpectralGrid(grid, 1e-300).getRadialBinWidth(), 1e-12);
+		Assert.assertEquals(5, new SpectralGrid(grid, 1e-300).getRadialBinCount());
+
+		assertRejected(() -> new SpectralGrid(grid, 1e308).getRadialBinWidth());
+		assertRejected(() -> new SpectralGrid(grid, 1.0, 1e308).getRadialBinCount());
+		assertRejected(() -> new SpectralGrid(grid, Double.MIN_VALUE).wavenumberSquared());
+		assertRejected(() -> radialPowerSpectrum(zeros(grid), 1.0, Double.MIN_VALUE));
+		assertRejected(() -> dominantWavelength(zeros(grid), 1e308));
+		assertRejected(() -> poissonSolve(zeros(grid), Double.MIN_VALUE, 1.0));
+	}
+
+	/**
+	 * A spacing whose wavenumber is finite can still give squared wavenumbers that are not. On an
+	 * 8 x 8 grid, spacing {@code 1e-300} has a finite wavenumber of about {@code 7.9e299} per
+	 * frequency index, but the largest {@code |k|^2} overflows; spacing {@code 1e200} has a finite
+	 * extent, but {@code dk^2} underflows to zero, so the Poisson zero-mode threshold would class
+	 * every mode as zero. Both are valid grids for host metadata but are rejected by every graph that
+	 * squares wavenumbers, while spacings whose squares stay in range are accepted. Only the graph is
+	 * built; nothing is evaluated.
+	 */
+	@Test(timeout = 60000)
+	public void overflowingSquaredWavenumberIsRejected() {
+		TraversalPolicy grid = shape(8, 8);
+		Assert.assertEquals(5, new SpectralGrid(grid, 1e-300).getRadialBinCount());
+		Assert.assertEquals(5, new SpectralGrid(grid, 1e200).getRadialBinCount());
+
+		for (double spacing : new double[] { 1e-300, 1e200 }) {
+			assertRejected(() -> new SpectralGrid(grid, spacing).wavenumberSquared());
+			assertRejected(() -> new SpectralGrid(grid, spacing).radialBin());
+			assertRejected(() -> radialPowerSpectrum(zeros(grid), spacing));
+			assertRejected(() -> poissonSolve(zeros(grid), spacing));
+		}
+
+		assertRejected(() -> poissonSolve(zeros(grid), 1.0, 1e-300));
+		assertRejected(() -> new SpectralGrid(grid, 1e200, 1.0).wavenumberSquared());
+
+		for (double spacing : new double[] { 1e-150, 1e150 }) {
+			new SpectralGrid(grid, spacing).requireRepresentableWavenumbers("test");
+			Assert.assertNotNull(new SpectralGrid(grid, spacing).wavenumberSquared());
+			Assert.assertNotNull(poissonSolve(zeros(grid), spacing));
+		}
+	}
+
+	/**
+	 * Spacings at opposite ends of the representable range on the same grid cannot inflate the
+	 * radial bin count. The smallest Nyquist wavenumber belongs to the largest spacing and the bin
+	 * width to the longest extent, so their ratio is at most half the longest axis length,
+	 * whatever the spacings are. A one-cell grid therefore has exactly one bin, and a grid whose
+	 * long axis has the tiny spacing still gets the count set by the axis with the huge spacing.
+	 */
+	@Test(timeout = 60000)
+	public void extremeSpacingRatioKeepsBinCountBounded() {
+		Assert.assertEquals(1, new SpectralGrid(shape(1, 1), 1e308, 1e-300).getRadialBinCount());
+		Assert.assertEquals(1, new SpectralGrid(shape(1, 1), 1e-300, 1e308).getRadialBinCount());
+		Assert.assertEquals(5, new SpectralGrid(shape(8, 1024), 1e300, 1e-300).getRadialBinCount());
+		Assert.assertEquals(513, new SpectralGrid(shape(1024, 8), 1e-300, 1e-300).getRadialBinCount());
+	}
+
+	/** A permuted input is transformed in its logical order on the CPU. */
+	@Test(timeout = 120000)
+	public void orderedInputCpu() {
+		assertOrderedInput(ComputeRequirement.CPU);
+	}
+
+	/** A permuted input is transformed in its logical order on the GPU (Metal or OpenCL where present). */
+	@Test(timeout = 120000)
+	public void orderedInputGpu() {
+		assertOrderedInput(ComputeRequirement.GPU);
+	}
+
+	/**
+	 * Checks that the transform reads an input whose shape carries a {@link TraversalOrdering}
+	 * through that ordering. The input stores 16 complex samples in reverse physical order, and
+	 * its explicit ordering maps each logical index back to its physical position, so its logical
+	 * values are those of the plain test signal; the transform of both must agree. Reading the
+	 * physical memory directly would transform the reversed sequence (with real and imaginary
+	 * parts exchanged) instead.
+	 *
+	 * @param requirement the compute requirement to run under
+	 */
+	protected void assertOrderedInput(ComputeRequirement requirement) {
+		int bins = 16;
+		int size = 2 * bins;
+		TraversalPolicy shape = shape(bins, 2);
+
+		PackedCollection logical = testSignal(shape).evaluate();
+		PackedCollection ordered = reversedCopy(shape, size);
+
+		PackedCollection expected = evaluate(requirement,
+				() -> new FourierTransform(1, bins, false, cp(logical)));
+		PackedCollection actual = evaluate(requirement,
+				() -> new FourierTransform(1, bins, false, cp(ordered)));
+
+		double error = maxDifference(expected, actual);
+		log("orderedInput requirement=" + requirement + " maxError=" + error);
+		Assert.assertTrue("ordered input error " + error, error < ROUND_TRIP_TOLERANCE);
+	}
+
+	/**
+	 * The transform reads its input by value, through the collection variable of its shape, so a
+	 * producer that reports no shape is rejected when the transform is constructed, with a clear
+	 * error, rather than failing when the kernel is compiled.
+	 */
+	@Test(timeout = 120000)
+	public void unshapedInputRejected() {
+		int bins = 16;
+
+		PackedCollection input = testSignal(shape(bins, 2)).evaluate();
+		Producer<PackedCollection> unshaped = () -> args -> input;
+		Assert.assertFalse("the input should report no shape",
+				unshaped instanceof Shape);
+
+		try {
+			new FourierTransform(1, bins, false, unshaped);
+			Assert.fail("an input without a shape should be rejected");
+		} catch (IllegalArgumentException expected) {
+			log("unshapedInputRejected message=" + expected.getMessage());
+		}
+	}
+
+	/**
+	 * An input whose shape holds fewer values than the requested lines need is rejected when the
+	 * transform is constructed: reading it by value would wrap around its shape and silently
+	 * repeat samples into the missing part of each line.
+	 */
+	@Test(timeout = 120000)
+	public void undersizedInputRejected() {
+		int bins = 16;
+
+		PackedCollection input = testSignal(shape(bins, 2)).evaluate();
+
+		try {
+			new FourierTransform(2, bins, false, cp(input));
+			Assert.fail("an input holding one line should be rejected for two lines");
+		} catch (IllegalArgumentException expected) {
+			log("undersizedInputRejected message=" + expected.getMessage());
+			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("64"));
+		}
+
+		try {
+			new FourierTransform(1, 2 * bins, false, cp(input));
+			Assert.fail("an input holding " + bins + " samples should be rejected for " + 2 * bins);
+		} catch (IllegalArgumentException expected) {
+			log("undersizedInputRejected message=" + expected.getMessage());
+		}
+	}
+
+	/**
+	 * An input holding exactly the values the requested lines need, and one holding more, are
+	 * both accepted; only the first {@code 2 * count * bins} values are transformed, so the
+	 * spectrum of a longer input's leading line matches that of the line on its own.
+	 */
+	@Test(timeout = 120000)
+	public void sufficientInputAccepted() {
+		int bins = 16;
+
+		PackedCollection line = testSignal(shape(bins, 2)).evaluate();
+		PackedCollection longer = testSignal(shape(2 * bins, 2)).evaluate();
+		PackedCollection leading = subset(shape(bins, 2), cp(longer), 0, 0).evaluate();
+
+		PackedCollection expected = new FourierTransform(1, bins, false, cp(leading)).get().evaluate();
+		PackedCollection actual = new FourierTransform(1, bins, false, cp(longer)).get().evaluate();
+		PackedCollection exact = new FourierTransform(1, bins, false, cp(line)).get().evaluate();
+
+		Assert.assertEquals(2 * bins, exact.getShape().getTotalSize());
+		double error = maxDifference(expected, actual);
+		log("sufficientInputAccepted maxError=" + error);
+		Assert.assertTrue("leading line error " + error, error < ROUND_TRIP_TOLERANCE);
+	}
+
+	/**
+	 * An input that is not itself a {@link Shape} but delegates to a shaped producer declares the
+	 * shape of its delegate (see {@link Shape#shapeOf(Object)}), so the transform accepts it and
+	 * reads it by value through that shape. Its spectrum must match the spectrum of the delegate.
+	 */
+	@Test(timeout = 120000)
+	public void delegatedShapedInputAccepted() {
+		int bins = 16;
+
+		PackedCollection logical = testSignal(shape(bins, 2)).evaluate();
+		CollectionProducer shaped = cp(logical);
+		DelegatingProducer delegating = new DelegatingProducer(shaped);
+		Assert.assertFalse("the delegating input should not be a shape itself",
+				delegating instanceof Shape);
+		Assert.assertSame("the delegating input should declare its delegate's shape",
+				shaped, Shape.shapeOf(delegating));
+
+		PackedCollection expected = new FourierTransform(1, bins, false, shaped).get().evaluate();
+		PackedCollection actual = new FourierTransform(1, bins, false, delegating).get().evaluate();
+
+		double error = maxDifference(expected, actual);
+		log("delegatedShapedInput maxError=" + error);
+		Assert.assertTrue("delegated input error " + error, error < ROUND_TRIP_TOLERANCE);
+	}
+
+	/**
+	 * A producer that declares no shape of its own and evaluates through a delegate, as a
+	 * {@link Delegated} wrapper around a shaped producer does.
+	 */
+	protected static class DelegatingProducer implements Producer<PackedCollection>, Delegated<Producer<PackedCollection>> {
+		/** The producer this one evaluates through. */
+		private final Producer<PackedCollection> delegate;
+
+		/**
+		 * Creates a producer that evaluates through the given delegate.
+		 *
+		 * @param delegate the producer to evaluate through
+		 */
+		protected DelegatingProducer(Producer<PackedCollection> delegate) {
+			this.delegate = delegate;
+		}
+
+		@Override
+		public Evaluable<PackedCollection> get() { return delegate.get(); }
+
+		@Override
+		public Producer<PackedCollection> getDelegate() { return delegate; }
+	}
+
+	/**
+	 * A 2D transform of a permuted complex grid applies the input ordering once: the second
+	 * (column) pass reads the dense result of the first pass in plain order, so the spectrum
+	 * matches that of the same values stored without an ordering.
+	 */
+	@Test(timeout = 120000)
+	public void orderedInput2d() {
+		TraversalPolicy shape = shape(4, 8, 2);
+		int size = shape.getTotalSize();
+
+		PackedCollection logical = testSignal(shape).evaluate();
+		PackedCollection ordered = reversedCopy(shape, size);
+
+		PackedCollection expected = fft2d(cp(logical)).evaluate();
+		PackedCollection actual = fft2d(cp(ordered)).evaluate();
+		Assert.assertNull("the spectrum should not carry the input ordering",
+				fft2d(cp(ordered)).getShape().getOrder());
+
+		double error = maxDifference(expected, actual);
+		log("orderedInput2d maxError=" + error);
+		Assert.assertTrue("ordered 2D input error " + error, error < ROUND_TRIP_TOLERANCE * 4);
+	}
+
+	/**
+	 * Converting a permuted real grid to complex form produces a dense interleaved grid that no
+	 * longer carries the real grid's ordering, so its real part and its spectrum match those of
+	 * the same values stored without an ordering.
+	 */
+	@Test(timeout = 120000)
+	public void orderedRealToComplex() {
+		TraversalPolicy grid = shape(4, 8);
+		int size = grid.getTotalSize();
+
+		PackedCollection logical = testSignal(grid).evaluate();
+		PackedCollection ordered = reversedCopy(grid, size);
+
+		CollectionProducer complex = toComplex(cp(ordered));
+		Assert.assertNull("the complex grid should not carry the real ordering", complex.getShape().getOrder());
+		Assert.assertEquals(shape(4, 8, 2).getTotalSize(), complex.getShape().getTotalSize());
+
+		double partError = maxDifference(logical, realPart(complex).evaluate());
+		log("orderedRealToComplex realPartError=" + partError);
+		Assert.assertTrue("ordered real part error " + partError, partError < ROUND_TRIP_TOLERANCE);
+
+		PackedCollection expected = fft2d(toComplex(cp(logical))).evaluate();
+		PackedCollection actual = fft2d(complex).evaluate();
+		double error = maxDifference(expected, actual);
+		log("orderedRealToComplex spectrumError=" + error);
+		Assert.assertTrue("ordered real spectrum error " + error, error < ROUND_TRIP_TOLERANCE * 4);
+	}
+
+	/**
+	 * The grid-level analyses of a permuted real field (the spectral Poisson solve and the
+	 * dominant wavelength) match those of the same values stored without an ordering: the
+	 * symbol, centred field and power spectrum they build are dense and must not be read through
+	 * the field's ordering.
+	 */
+	@Test(timeout = 120000)
+	public void orderedFieldAnalysis() {
+		TraversalPolicy grid = shape(8, 8);
+		int size = grid.getTotalSize();
+
+		PackedCollection logical = testSignal(grid).evaluate();
+		PackedCollection ordered = reversedCopy(grid, size);
+
+		PackedCollection expectedSolution = poissonSolve(cp(logical), 0.5).evaluate();
+		PackedCollection actualSolution = poissonSolve(cp(ordered), 0.5).evaluate();
+		double solutionError = maxDifference(expectedSolution, actualSolution);
+		log("orderedFieldAnalysis poissonError=" + solutionError);
+		Assert.assertTrue("ordered Poisson error " + solutionError, solutionError < ROUND_TRIP_TOLERANCE * 4);
+
+		double expectedWavelength = dominantWavelength(cp(logical), 0.5).evaluate().toDouble(0);
+		double actualWavelength = dominantWavelength(cp(ordered), 0.5).evaluate().toDouble(0);
+		log("orderedFieldAnalysis wavelength expected=" + expectedWavelength + " actual=" + actualWavelength);
+		assertRelative("ordered dominant wavelength", expectedWavelength, actualWavelength, 1e-4);
+	}
+
+	/**
+	 * A radial power spectrum of a permuted power grid matches that of the same values stored
+	 * without an ordering: each cell's power is read through the grid's ordering, so it is
+	 * averaged into the shell of its logical wavenumber rather than of its physical position.
+	 * The same values read in their physical order give a different spectrum, so the comparison
+	 * would detect an ordering that was dropped.
+	 */
+	@Test(timeout = 120000)
+	public void orderedPowerRadialSpectrum() {
+		TraversalPolicy grid = shape(8, 16);
+		int size = grid.getTotalSize();
+
+		PackedCollection logical = testSignal(grid).evaluate();
+		PackedCollection ordered = reversedCopy(grid, size);
+
+		PackedCollection expected = radialPowerSpectrum(cp(logical), 0.5, 0.25).evaluate();
+		PackedCollection actual = radialPowerSpectrum(cp(ordered), 0.5, 0.25).evaluate();
+		Assert.assertEquals(new SpectralGrid(grid, 0.5, 0.25).getRadialBinCount(), actual.getShape().getTotalSize());
+
+		double error = maxDifference(expected, actual);
+		log("orderedPowerRadialSpectrum maxError=" + error);
+		Assert.assertTrue("ordered radial spectrum error " + error, error < ROUND_TRIP_TOLERANCE);
+
+		PackedCollection physical = testSignalAt(cp(reversedIndices(size))).reshape(grid).evaluate();
+		double physicalDifference = maxDifference(expected,
+				radialPowerSpectrum(cp(physical), 0.5, 0.25).evaluate());
+		log("orderedPowerRadialSpectrum physicalOrderDifference=" + physicalDifference);
+		Assert.assertTrue("reading the physical order should move cells between shells",
+				physicalDifference > 100 * ROUND_TRIP_TOLERANCE);
+	}
+
+	/**
+	 * Returns a collection of the given shape whose values are those of the
+	 * {@link #testSignal(TraversalPolicy) test signal}, stored in reverse physical order under an
+	 * {@link ExplicitIndexTraversalOrdering} that maps each logical index back to its position.
+	 *
+	 * @param shape the logical shape
+	 * @param size  the total number of elements of {@code shape}
+	 * @return the ordered collection
+	 */
+	protected PackedCollection reversedCopy(TraversalPolicy shape, int size) {
+		PackedCollection reversed = reversedIndices(size);
+		PackedCollection physical = testSignalAt(cp(reversed)).evaluate();
+		PackedCollection ordered = new PackedCollection(shape, shape.getDimensions() - 1, physical, 0,
+				new ExplicitIndexTraversalOrdering(reversed));
+		Assert.assertNotNull("the input should carry its ordering", ordered.getShape().getOrder());
+		return ordered;
+	}
+
+	/**
+	 * Returns the flat indices {@code size - 1, ..., 1, 0}: the physical position of each logical
+	 * index of a {@link #reversedCopy reversed copy}.
+	 *
+	 * @param size the number of indices
+	 * @return the reversed indices
+	 */
+	protected PackedCollection reversedIndices(int size) {
+		return integers(0, size).multiply(c(-1.0)).add(c(size - 1.0)).evaluate();
+	}
+}

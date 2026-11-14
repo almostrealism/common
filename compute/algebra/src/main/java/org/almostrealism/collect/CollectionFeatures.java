@@ -21,6 +21,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Absolute;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Countable;
@@ -428,6 +429,34 @@ public interface CollectionFeatures extends GradientFeatures {
 		} else {
 			throw new UnsupportedOperationException();
 		}
+	}
+
+	/**
+	 * Returns the {@linkplain Process#isolated isolated} form of a producer: one that is
+	 * computed once, as its own kernel, and read from memory by every consumer instead of
+	 * being embedded in their expressions.
+	 *
+	 * <p>Isolate a value that is read by several consumers, or a reduction whose compiled form
+	 * is a loop (a sum or maximum over many elements), which embedding would unroll into each
+	 * consumer. Where isolation is not permitted (see {@link Process#isolationPermitted}), the
+	 * producer is returned unchanged. A producer that is not a {@link Process} is never embedded
+	 * in the expressions of its consumers, so it is already isolated and is also returned
+	 * unchanged. The same holds for a {@link Process} whose {@link Process#isolate()} does not
+	 * yield a {@link Producer}: the default implementation only wraps the process in a generic
+	 * {@link Process#of} delegate, which isolates nothing and cannot be read as a producer.</p>
+	 *
+	 * @param producer the producer to isolate
+	 * @return the isolated producer, with the same shape
+	 */
+	default CollectionProducer isolated(Producer<PackedCollection> producer) {
+		if (producer instanceof Process) {
+			Supplier<?> isolated = Process.isolated(producer);
+			if (isolated instanceof Producer) {
+				return c((Producer<PackedCollection>) isolated);
+			}
+		}
+
+		return c(producer);
 	}
 
 	/**

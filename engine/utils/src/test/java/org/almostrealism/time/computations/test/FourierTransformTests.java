@@ -46,11 +46,6 @@ public class FourierTransformTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 60000)
 	public void compileGpu() {
-		if (FourierTransform.enableRecursion) {
-			if (skipKnownIssues) return;
-			throw new UnsupportedOperationException("Recursion is not supported on the GPU");
-		}
-
 		compile(ComputeRequirement.GPU);
 	}
 

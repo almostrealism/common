@@ -34,6 +34,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 /**
@@ -82,7 +83,9 @@ import java.util.function.Supplier;
  *   <li>A {@link NativeBuffer}'s native memory is owned by the JVM's own {@code DirectByteBuffer}
  *       cleaner, which frees it when the buffer is collected. This provider therefore does
  *       <em>not</em> free it in {@link #deallocate(NativeRef)} — it only releases any shared-memory
- *       mapping and runs bookkeeping.</li>
+ *       mapping and runs bookkeeping. Because a released buffer stays committed until the next
+ *       collection, the provider requests one itself once enough released memory has built up
+ *       (see {@link #directCollectionThreshold}).</li>
  *   <li>A {@link NativeMemory} block is owned by this provider, which frees it explicitly via JNI
  *       {@link Free} once the referent is collected.</li>
  * </ul>
@@ -128,6 +131,24 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	/** Distribution metric tracking native memory deallocation sizes in bytes. */
 	public static DistributionMetric deallocationSizes = Hardware.console.distribution("nativeDeallocationSizes", 1024 * 1024);
 
+	/**
+	 * How many bytes of released direct buffers may await the JVM's cleaner before the next
+	 * direct allocation requests a collection to free them.
+	 *
+	 * <p>{@link ByteBuffer#allocateDirect} zero-fills the buffer, so all of its memory is
+	 * committed, and that memory is returned only when a collection finds the buffer unreachable.
+	 * The Java objects that own large buffers are small, so heap pressure rarely causes that
+	 * collection; left to itself the JVM forces one only when {@code -XX:MaxDirectMemorySize} is
+	 * reached. A workload that allocates and destroys large blocks would therefore commit that much
+	 * memory, however little of it is live, which on a host whose physical memory is close to that
+	 * limit gets the process killed.</p>
+	 *
+	 * <p>A provider whose own allocation ceiling is lower uses that ceiling instead
+	 * (see {@link #getDirectCollectionThreshold()}), since its live allocations alone never exceed
+	 * it and released memory should not be allowed to build up to many times that much.</p>
+	 */
+	public static long directCollectionThreshold = 4L * 1024 * 1024 * 1024;
+
 	/** Numeric precision for element storage in this provider's memory. */
 	private final Precision precision;
 	/** Maximum number of bytes that may be allocated by this provider at any one time. */
@@ -164,6 +185,12 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 
 	/** Total bytes currently allocated across all active memory in this provider. */
 	private long memoryUsed;
+
+	/**
+	 * Bytes of private direct buffers released since this provider last requested a collection,
+	 * whose native memory the JVM's cleaner may not have freed yet.
+	 */
+	private final AtomicLong releasedDirectBytes = new AtomicLong();
 
 	/**
 	 * Creates the shared-memory bridge provider — a single host provider shared across backends when
@@ -250,9 +277,87 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * initialization the calloc path performs on first use — there is no {@link NativeRef} for
 	 * that path to unwind through, so {@link #allocateBackend(long, Supplier)} rolls back the
 	 * increment directly in that case.</p>
+	 *
+	 * <p>In direct mode, released buffers whose memory still awaits the JVM's cleaner are first
+	 * {@link #collectReleasedDirectMemory() collected} when enough of them have built up. That
+	 * happens before this provider's monitor is taken, since the collection waits for releases
+	 * that may need it.</p>
 	 */
 	@Override
-	public synchronized RAM allocate(int size) {
+	public RAM allocate(int size) {
+		if (direct) collectReleasedDirectMemory();
+		return allocateNow(size);
+	}
+
+	/**
+	 * Requests a collection once the bytes of released direct buffers reach
+	 * {@link #getDirectCollectionThreshold()}, so that their committed memory is returned to the
+	 * operating system instead of accumulating until {@code -XX:MaxDirectMemorySize} forces a
+	 * collection.
+	 *
+	 * <p>Of concurrent callers that find the threshold reached, exactly one takes the count and
+	 * runs the collection; a release that changes the count while a caller is taking it does not
+	 * make that caller give up. The other callers proceed with their allocations without waiting
+	 * for the pass. That is deliberate: the threshold bounds how much released memory may stay
+	 * committed, not how much may be allocated, and memory released while the pass runs simply
+	 * counts towards the next one. The hard limit remains the JVM's own handling of
+	 * {@code -XX:MaxDirectMemorySize}, which collects and waits for the cleaner before it fails an
+	 * allocation.</p>
+	 *
+	 * <p>The released bytes are taken off the count only by the caller that runs the collection,
+	 * and are restored when that collection does not complete (because the thread was
+	 * interrupted), so that no released memory drops out of the count without having been
+	 * collected.</p>
+	 *
+	 * <p>A caller whose thread is already interrupted requests no collection and leaves the count
+	 * as it is. A collection pass re-asserts the interrupt it was cut short by, so without this
+	 * check a thread that keeps allocating while interrupted would request a full collection on
+	 * every allocation, each one interrupted and its released bytes restored. The bytes stay
+	 * counted for the next caller that is not interrupted.</p>
+	 *
+	 * @return whether a collection was requested and completed
+	 */
+	protected boolean collectReleasedDirectMemory() {
+		long released;
+
+		do {
+			released = releasedDirectBytes.get();
+			if (released < getDirectCollectionThreshold()) return false;
+			if (Thread.currentThread().isInterrupted()) return false;
+		} while (!releasedDirectBytes.compareAndSet(released, 0));
+
+		if (reclaim(() -> true)) return true;
+
+		releasedDirectBytes.addAndGet(released);
+		return false;
+	}
+
+	/**
+	 * Returns the bytes of private direct buffers released since this provider last requested a
+	 * collection.
+	 *
+	 * @return the released direct bytes awaiting collection
+	 */
+	public long getReleasedDirectBytes() { return releasedDirectBytes.get(); }
+
+	/**
+	 * Returns how many bytes of released direct buffers may await the JVM's cleaner before this
+	 * provider requests a collection: {@link #directCollectionThreshold}, or this provider's
+	 * allocation ceiling when that is lower.
+	 *
+	 * @return the released direct bytes at which a collection is requested
+	 */
+	public long getDirectCollectionThreshold() {
+		return Math.min(directCollectionThreshold, memoryMax);
+	}
+
+	/**
+	 * Allocates a block under this provider's monitor; see {@link #allocate(int)}.
+	 *
+	 * @param size the number of elements to allocate
+	 * @return the allocated memory
+	 */
+	private synchronized RAM allocateNow(int size) {
 		if (memoryUsed + (long) getNumberSize() * size > memoryMax) {
 			throw new HardwareException("Memory max reached");
 		}
@@ -327,7 +432,9 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 *
 	 * <p>A direct-buffer allocation (tracked by a {@link NativeBufferRef}) is <em>not</em> freed
 	 * here: its native memory is owned by the JVM's {@code DirectByteBuffer} cleaner. Only its
-	 * shared-memory mapping is released and its deallocation listeners are notified. A calloc
+	 * shared-memory mapping is released and its deallocation listeners are notified; a private
+	 * buffer's size is added to the bytes awaiting that cleaner, which
+	 * {@link #collectReleasedDirectMemory()} uses to decide when to request a collection. A calloc
 	 * allocation is freed explicitly via JNI {@link Free}.</p>
 	 */
 	@Override
@@ -336,6 +443,12 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 		if (tracked instanceof NativeBufferRef bufferRef) {
 			if (bufferRef.getSharedLocation() != null && bufferRef.getRootBuffer() != null) {
 				unmapSharedMemory(bufferRef.getRootBuffer(), bufferRef.getRootBuffer().capacity());
+			}
+
+			// Collected releases count as well: the reference holds the root buffer strongly, so the
+			// collection that enqueued it could not free the buffer, and only a later one will.
+			if (bufferRef.getSharedLocation() == null) {
+				releasedDirectBytes.addAndGet(ref.getSize());
 			}
 
 			bufferRef.getDeallocationListeners().forEach(l -> l.accept(null));

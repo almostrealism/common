@@ -32,7 +32,7 @@ import org.almostrealism.collect.computations.CollectionSineComputation;
  *
  * <p>Key capabilities include:</p>
  * <ul>
- *   <li>Trigonometric functions (sin, cos, tan, tanh)</li>
+ *   <li>Trigonometric functions (sin, cos, acos, atan2, tan, tanh)</li>
  *   <li>Sinusoidal wave functions with wavelength and amplitude parameters</li>
  *   <li>Vector reflection calculations</li>
  *   <li>All ray manipulation utilities from {@link RayFeatures}</li>
@@ -92,6 +92,20 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	default CollectionProducer acos(Producer<PackedCollection> input) {
 		return compute("acos",
 				shape -> args -> acos(shape, args[1]), input);
+	}
+
+	/**
+	 * Computes the two-argument arctangent {@code atan2(y, x)} element-wise. This
+	 * handles all four quadrants and produces angles in {@code [-pi, pi]}; it is,
+	 * for example, the phase of the complex value {@code x + iy}.
+	 *
+	 * @param y the y-coordinates
+	 * @param x the x-coordinates
+	 * @return a producer for the angle of each {@code (x, y)} pair
+	 */
+	default CollectionProducer atan2(Producer<PackedCollection> y, Producer<PackedCollection> x) {
+		return compute("atan2",
+				shape -> args -> atan2(shape, args[1], args[2]), y, x);
 	}
 
 	/**
