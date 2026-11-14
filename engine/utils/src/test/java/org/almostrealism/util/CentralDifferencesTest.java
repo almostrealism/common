@@ -49,6 +49,33 @@ public class CentralDifferencesTest extends TestSuiteBase {
 	}
 
 	/**
+	 * For the sum of fourth powers, whose derivative is {@code 4 x^3}, a central difference with
+	 * step {@code h} is off by {@code h^2 f'''/6 = h^2 (24 x)/6}, which is {@code x} for
+	 * {@code h = 0.5}; the extrapolated difference cancels that term and, the fifth derivative being
+	 * zero, is exact up to rounding. The collection holds its original values afterwards.
+	 */
+	@Test(timeout = 60000)
+	public void extrapolatedDifferencesCancelTheSecondOrderError() {
+		PackedCollection values = PackedCollection.of(1.0, -2.0, 3.0);
+		Evaluable<PackedCollection> sumOfFourthPowers = cp(values).pow(c(4.0)).sum().get();
+		double[] x = {1.0, -2.0, 3.0};
+
+		double[] central = centralDifferences(values, 0.5,
+				() -> sumOfFourthPowers.evaluate().toDouble(0));
+		double[] extrapolated = extrapolatedDifferences(values, 0.5,
+				() -> sumOfFourthPowers.evaluate().toDouble(0));
+
+		Assert.assertEquals(3, extrapolated.length);
+		for (int i = 0; i < x.length; i++) {
+			double derivative = 4 * x[i] * x[i] * x[i];
+			Assert.assertEquals(derivative + x[i], central[i], 1e-3);
+			Assert.assertEquals(derivative, extrapolated[i], 1e-3);
+		}
+		Assert.assertArrayEquals(x, values.toArray(), 0.0);
+		values.destroy();
+	}
+
+	/**
 	 * When the function throws while an element is perturbed, the failure reaches the caller
 	 * unchanged and the collection still holds its original values rather than the perturbed
 	 * copy that was being evaluated.
