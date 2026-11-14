@@ -268,6 +268,9 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 			throw new HardwareException("Interrupted awaiting rendered pattern buffer");
 		}
 		long r = readIndex.get();
+		// Read running before producerError: the producer writes them in the opposite order,
+		// so a stream seen as stopped by a failure is also seen with that failure recorded.
+		boolean stopped = !running;
 		if (producerError != null) {
 			if (isRendered(r)) {
 				return slotView(r);
@@ -278,7 +281,7 @@ public class PatternRenderStream implements Destroyable, CollectionFeatures, Con
 			filled.release();
 			throw producerFailure();
 		}
-		if (!running) {
+		if (stopped) {
 			throw new IllegalStateException("Render-ahead stream was stopped while a rendered"
 					+ " buffer was awaited; it must be running for a slot to be returned");
 		}
