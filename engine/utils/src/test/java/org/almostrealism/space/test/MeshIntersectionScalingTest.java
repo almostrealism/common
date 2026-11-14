@@ -59,7 +59,7 @@ public class MeshIntersectionScalingTest extends TestSuiteBase implements GridIn
 
 		for (int r = 0; r < resolutions.length; r++) {
 			int n = resolutions[r];
-			MeshData mesh = MeshData.gridSurface(bumpyHeights(n, n), n, n, origin, SPACING, SPACING);
+			MeshData mesh = gridSurfaceData(bumpyHeights(n, n), n, n, origin, SPACING, SPACING);
 			BoundingVolumeHierarchy bvh = mesh.getBoundingVolumeHierarchy();
 			int triangles = bvh.getTriangleCount();
 			double extent = (n - 1) * SPACING;
@@ -111,7 +111,7 @@ public class MeshIntersectionScalingTest extends TestSuiteBase implements GridIn
 	private void logDeviceTiming(Vector origin, int n, int rayCount) {
 		// A flat field is enough to time the paths; the sub-linearity assertion above uses the
 		// bumpy surface. The mesh data builds its own hierarchy over this flat field.
-		MeshData md = MeshData.gridSurface(cp(new PackedCollection(shape(n, n))),
+		MeshData md = gridSurfaceData(cp(new PackedCollection(shape(n, n))),
 				n, n, origin, SPACING, SPACING);
 		double extent = (n - 1) * SPACING;
 

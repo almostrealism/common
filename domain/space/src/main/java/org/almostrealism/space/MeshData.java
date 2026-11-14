@@ -19,10 +19,7 @@ package org.almostrealism.space;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.TriangleFeatures;
@@ -102,35 +99,6 @@ public class MeshData extends PackedCollection {
 	public MeshData(int triangles) {
 		super(new TraversalPolicy(triangles, 4, 3), 1, delegateSpec ->
 				new PackedCollection(new TraversalPolicy(4, 3), 1, delegateSpec.getDelegate(), delegateSpec.getOffset()));
-	}
-
-	/**
-	 * Tessellates a regular grid height field into {@link MeshData} ready for the ray
-	 * intersection path, building the triangle buffer in a single kernel so the surface
-	 * can be rebuilt each frame without a host loop.
-	 *
-	 * <p>Height is the Y axis and the grid lies in the XZ plane; see
-	 * {@link TriangleFeatures#regularGridSurfacePoints} for the node layout and winding.
-	 * The returned buffer holds {@code 2*(nx-1)*(ny-1)} triangles.</p>
-	 *
-	 * @param heights  the height field, shaped {@code (nx, ny)} in row-major order
-	 * @param nx       the number of grid nodes along X
-	 * @param ny       the number of grid nodes along Z
-	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
-	 * @param spacingX the node spacing along X
-	 * @param spacingZ the node spacing along Z
-	 * @return the tessellated mesh data
-	 */
-	public static MeshData gridSurface(Producer<PackedCollection> heights, int nx, int ny,
-									   Vector origin, double spacingX, double spacingZ) {
-		int triangleCount = 2 * (nx - 1) * (ny - 1);
-		MeshData data = new MeshData(triangleCount);
-
-		TriangleFeatures tf = TriangleFeatures.getInstance();
-		CollectionProducer points = tf.regularGridSurfacePoints(heights, nx, ny,
-				origin.getX(), origin.getY(), origin.getZ(), spacingX, spacingZ);
-		tf.triangle(points).get().into(data.traverse(1)).evaluate();
-		return data;
 	}
 
 	/**
@@ -235,8 +203,9 @@ public class MeshData extends PackedCollection {
 	public synchronized BoundingVolumeHierarchy getBoundingVolumeHierarchy() {
 		if (boundingVolumeHierarchy == null) {
 			TriangleFeatures tf = TriangleFeatures.getInstance();
-			boundingVolumeHierarchy = BoundingVolumeHierarchy.build(
-					tf.meshTriangleBounds(tf.cp(this), getCount()).evaluate());
+			try (PackedCollection bounds = tf.meshTriangleBounds(tf.cp(this), getCount()).evaluate()) {
+				boundingVolumeHierarchy = BoundingVolumeHierarchy.build(bounds);
+			}
 		}
 
 		return boundingVolumeHierarchy;

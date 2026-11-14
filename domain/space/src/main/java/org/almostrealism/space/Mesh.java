@@ -842,13 +842,13 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector>, Con
 	 * use as a test fixture.
 	 *
 	 * <p>The mesh has {@code nx*ny} vertices and {@code 2*(nx-1)*(ny-1)} triangles, with the
-	 * same node layout and winding as the device tessellation {@link MeshData#gridSurface}:
+	 * same node layout and winding as the device tessellation {@link MeshFeatures#gridSurface}:
 	 * node {@code (i, j)} is at
 	 * {@code (origin.x + i*spacingX, origin.y + heights[i, j], origin.z + j*spacingZ)}, height
 	 * is the Y axis, and the grid lies in the XZ plane. The node positions are computed by one
 	 * kernel ({@link TriangleFeatures#regularGridSurfaceNodes}) into a single {@code (nx*ny, 3)}
 	 * tensor whose rows are the mesh's vertices; only the triangle connectivity is built on the
-	 * host. For the per-frame intersection path use {@link MeshData#gridSurface} instead.</p>
+	 * host. For the per-frame intersection path use {@link MeshFeatures#gridSurface} instead.</p>
 	 *
 	 * @param heights  the height field, shaped {@code (nx, ny)}
 	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height

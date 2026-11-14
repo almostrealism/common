@@ -152,7 +152,7 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		Vector origin = new Vector(0.0, 0.0, 0.0);
 
 		PackedCollection heights = bumpyHeights(nx, ny).evaluate();
-		MeshData md = MeshData.gridSurface(cp(heights), nx, ny, origin, SPACING, SPACING);
+		MeshData md = gridSurfaceData(cp(heights), nx, ny, origin, SPACING, SPACING);
 
 		double extentX = (nx - 1) * SPACING;
 		double extentZ = (ny - 1) * SPACING;
@@ -195,7 +195,7 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		int nx = 8;
 		int ny = 8;
 		Vector origin = new Vector(0.0, 0.0, 0.0);
-		MeshData md = MeshData.gridSurface(bumpyHeights(nx, ny), nx, ny, origin, SPACING, SPACING);
+		MeshData md = gridSurfaceData(bumpyHeights(nx, ny), nx, ny, origin, SPACING, SPACING);
 
 		int rays = 12;
 		double extent = (nx - 1) * SPACING;
@@ -238,7 +238,7 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		int nx = 8;
 		int ny = 8;
 		Vector origin = new Vector(0.0, 0.0, 0.0);
-		MeshData md = MeshData.gridSurface(bumpyHeights(nx, ny), nx, ny, origin, SPACING, SPACING);
+		MeshData md = gridSurfaceData(bumpyHeights(nx, ny), nx, ny, origin, SPACING, SPACING);
 
 		int rays = 12;
 		double extent = (nx - 1) * SPACING;
