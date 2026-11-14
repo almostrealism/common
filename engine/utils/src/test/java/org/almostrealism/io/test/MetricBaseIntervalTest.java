@@ -151,4 +151,45 @@ public class MetricBaseIntervalTest extends TestSuiteBase {
 		Assert.assertEquals("only interval 1 completed after the clear", 1, reports.size());
 		Assert.assertArrayEquals(new double[] { 2.0, 1 }, reports.get(0), 0.0);
 	}
+
+	/**
+	 * When an entry is recorded for an interval below the highest one already seen — as can
+	 * happen when concurrent entries straddling a boundary acquire the aggregate lock out of
+	 * order — the lower interval is already complete and must be reported immediately rather
+	 * than lost. Tracking only the maximum interval and requiring a strictly greater one to
+	 * report used to drop it.
+	 */
+	@Test(timeout = 10000)
+	public void outOfOrderLowerIntervalIsReported() {
+		SteppedMetric metric = new SteppedMetric();
+		List<double[]> reports = metric.listen();
+
+		metric.setInterval(7);
+		metric.addEntry("a", 1.0);
+		metric.setInterval(5);
+		metric.addEntry("a", 2.0);
+
+		Assert.assertEquals("interval 5 completed since interval 7 was already seen", 1, reports.size());
+		Assert.assertArrayEquals(new double[] { 2.0, 1 }, reports.get(0), 0.0);
+	}
+
+	/**
+	 * A completed interval is reported exactly once. A later entry that lands in an interval
+	 * whose report has already fired must not report it a second time, even though its value
+	 * still accumulates into that interval's totals.
+	 */
+	@Test(timeout = 10000)
+	public void completedIntervalIsNotReportedTwice() {
+		SteppedMetric metric = new SteppedMetric();
+		List<double[]> reports = metric.listen();
+
+		metric.addEntry("a", 1.0);
+		metric.setInterval(1);
+		metric.addEntry("a", 2.0);
+		metric.setInterval(0);
+		metric.addEntry("a", 5.0);
+
+		Assert.assertEquals("interval 0 reported once despite the late entry", 1, reports.size());
+		Assert.assertArrayEquals(new double[] { 1.0, 1 }, reports.get(0), 0.0);
+	}
 }
