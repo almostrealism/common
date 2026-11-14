@@ -449,10 +449,18 @@ jobs:
   # concurrency group, so the validate run cancels them here. Inline rather
   # than a checked-out script, because this is the only job in the pipeline
   # holding actions: write and it must not execute branch code. A failure
-  # here (e.g. a fork's read-only token) only leaves the old run running.
+  # here only leaves the old run running.
+  #
+  # Pull requests from this repository only. A deployment's ref is a branch
+  # of this repository, so a fork's branch never has a test run of its own;
+  # a fork PR named like one of this repository's branches would otherwise
+  # match that branch's test runs (and its read-only token could not cancel
+  # them anyway). The head-repository filter below says the same per run.
   cancel-superseded-test-runs:
     needs: changes
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -467,7 +475,7 @@ jobs:
           for status in in_progress queued waiting; do
             if ! ids=$(gh api -X GET "repos/${REPO}/actions/workflows/analysis.yaml/runs" \
                 -f event=deployment -f status="$status" -f branch="$BRANCH" \
-                --jq ".workflow_runs[] | select(.head_sha != \"${HEAD_SHA}\") | .id"); then
+                --jq ".workflow_runs[] | select(.head_repository.full_name == \"${REPO}\" and .head_sha != \"${HEAD_SHA}\") | .id"); then
               echo "::warning::Could not list $status test runs of this branch"
               continue
             fi
@@ -3702,11 +3710,16 @@ jobs:
     # decide all-checks has reported — the input to analysis is not narrower than the input
     # to all-checks. The accelerator jobs upload no coverage; they are here for ordering
     # only, and `if: !cancelled()` keeps analysis running when any of them fail or skip.
-    # Test runs only: a validate run has no test lane to analyse. Keyed on
-    # the event (the same rule `changes` uses for run_tests) rather than on
-    # needs.changes, so this list stays exactly the merge gate's test jobs.
+    # Test runs only: a validate run has no test lane to analyse, and neither
+    # does a deployment to an environment other than "test" (every job,
+    # `changes` included, is skipped for one, but `!cancelled()` alone would
+    # still start this job). Keyed on the event (the same rules `changes` and
+    # `all-checks` use) rather than on needs.changes, so this list stays
+    # exactly the merge gate's test jobs.
     needs: [build, test, test-flowtree, test-media, test-mac, test-media-mac, test-cl, test-media-cl, test-cuda, test-media-cuda]
-    if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+    if: >-
+      ${{ !cancelled() && github.event_name != 'pull_request' &&
+      (github.event_name != 'deployment' || github.event.deployment.environment == 'test') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

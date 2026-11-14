@@ -107,18 +107,24 @@ settled.
 
 **Both `All Checks` and `Test Checks` are required status checks for master.**
 A validate run never reports `Test Checks` in any state, so a PR cannot merge
-until a test run has passed on its head commit. That rests on three rules:
+until a test run has passed on its head commit. That rests on four rules:
 
 - **The gate job's name is the only thing that differs.** `all-checks` is named
-  `${{ github.event_name == 'pull_request' && 'All Checks' || 'Test Checks' }}`.
-  Never add another job named `Test Checks`. Never give a job a name that
+  ```
+  ${{ github.event_name == 'pull_request' && 'All Checks'
+  || (github.event_name != 'deployment' || github.event.deployment.environment == 'test') && 'Test Checks'
+  || 'Not a test deployment' }}
+  ```
+  Keep this text and the expression in `analysis.yaml` identical. Never add
+  another job named `Test Checks`. Never give a job a name that
   becomes `Test Checks` in a validate run and is then skipped by an `if`:
   GitHub counts a skipped required check as passing.
 - **Only a deployment to the `test` environment is a test run.** Every
   deployment in the repository fires the `deployment` event (`production`,
   `worker`, `start-tests`). For any other environment, `changes`, and with it
   every job, is skipped. The gate is skipped too and reports as
-  `Not a test deployment`, never as `Test Checks`.
+  `Not a test deployment`, never as `Test Checks`. `analysis`, which does
+  not need `changes`, carries the same environment condition itself.
 - **The gate runs on `always()`.** A cancelled run then reports the gate as
   failed. With `!cancelled()` it would report it as skipped.
 - **A test run is started by a `deployment`, never by `workflow_dispatch`.**
@@ -162,6 +168,14 @@ status is informational only.
 
 The `deployment` trigger runs `analysis.yaml` **from the branch**, so a branch
 created before this split must merge master before it can have a test run.
+It also means a test run carries the same trust as a `pull_request` run of a
+branch in this repository: both execute the branch's own workflow file with
+the repository's secrets, so the deployment trigger grants a branch nothing
+its pull request does not already have. Only a token with deployment write
+access can start one. **Never create a test deployment of a fork's commit**
+(a SHA or `refs/pull/N/head`): that would run fork-controlled workflow code
+with secrets that a fork's `pull_request` run never receives. Every supported
+way of starting a test run names a branch of this repository.
 
 ### Concurrency across the two modes
 
@@ -177,7 +191,9 @@ because a `pull_request` run's ref is `refs/pull/N/merge`.
 A new push must still stop a test run working on the commit it replaced. The
 validate run's `cancel-superseded-test-runs` job does that: it cancels the
 branch's queued and in-progress `deployment` runs whose head SHA is not its
-own. It is the only job in the pipeline with `actions: write`. For that
+own. It runs only for pull requests from this repository: a fork's branch has
+no test runs, and a fork PR that shares a name with one of this repository's
+branches must not cancel that branch's test run. It is the only job in the pipeline with `actions: write`. For that
 reason it runs its few API calls inline from the workflow file and checks
 out no branch code. Master queues as before.
 
