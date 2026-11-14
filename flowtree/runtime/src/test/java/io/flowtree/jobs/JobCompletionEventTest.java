@@ -70,6 +70,27 @@ public class JobCompletionEventTest extends TestSuiteBase {
 		assertTrue(event.isPushed());
 	}
 
+	/**
+	 * A successful job whose git info shows no commit, nothing staged and
+	 * nothing held back is "without changes"; any one of those, a failure, or
+	 * a missing branch makes it not.
+	 */
+	@Test(timeout = 30000)
+	public void successWithoutChangesRequiresAnUntouchedBranch() {
+		assertTrue(JobCompletionEvent.success("j", "review")
+				.withGitInfo("feature/x", null, null, null, false).isSuccessWithoutChanges());
+
+		assertFalse("a commit is a change", JobCompletionEvent.success("j", "review")
+				.withGitInfo("feature/x", "abc", Arrays.asList("A.java"), null, true).isSuccessWithoutChanges());
+		assertFalse("a held-back file is a change", JobCompletionEvent.success("j", "review")
+				.withGitInfo("feature/x", null, null, Arrays.asList("pom.xml (blocked)"), false)
+				.isSuccessWithoutChanges());
+		assertFalse("no branch, no review loop", JobCompletionEvent.success("j", "review")
+				.withGitInfo(null, null, null, null, false).isSuccessWithoutChanges());
+		assertFalse("a failure is not a settled loop", JobCompletionEvent.failed("j", "review", "boom", null)
+				.withGitInfo("feature/x", null, null, null, false).isSuccessWithoutChanges());
+	}
+
 	/** Verifies that withPullRequestUrl stores the URL on the event. */
 	@Test(timeout = 30000)
 	public void withPullRequestUrlSetsUrl() {

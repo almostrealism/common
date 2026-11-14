@@ -531,7 +531,7 @@ recording), drift-guarded by `NeuralPopulationSimulationExamplesTest`, and broug
 ### 2026-10-26 (later) — Teach PDSL model authoring with a worked tutorial (condensed)
 
 **Category:** Documentation · **Branch:** `project/plan-20261026-165814` ·
-**Plan:** [`PLAN-20261026-pdsl-authoring-tutorial.md`](PLAN-20261026-pdsl-authoring-tutorial.md)
+**Plan:** `PLAN-20261026-pdsl-authoring-tutorial.md`
 
 The reference corpus was excellent and current (40+ internals pages; `pdsl-language.md` the complete
 normative PDSL reference), but the tutorial series (`01`–`09`) taught no PDSL — the declarative

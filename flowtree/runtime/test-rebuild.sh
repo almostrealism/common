@@ -41,6 +41,14 @@ cat > "$MOCK_BIN/docker" <<'EOF'
 if [ -n "${MOCK_DOCKER_FAIL_ON:-}" ] && [[ "$*" == *"${MOCK_DOCKER_FAIL_ON}"* ]]; then
   exit 1
 fi
+if [ -n "${MOCK_DOCKER_FAIL_ON_2:-}" ] && [[ "$*" == *"${MOCK_DOCKER_FAIL_ON_2}"* ]]; then
+  exit 1
+fi
+# A running stack, for the snapshot a swap restores on failure.
+case "$*" in
+  *" ps -q"*) [ -z "${MOCK_DOCKER_PS_IDS:-}" ] || echo "${MOCK_DOCKER_PS_IDS}" ;;
+  inspect*)   [ -z "${MOCK_DOCKER_INSPECT:-}" ] || echo "${MOCK_DOCKER_INSPECT}" ;;
+esac
 exit 0
 EOF
 chmod +x "$MOCK_BIN/docker"
@@ -103,7 +111,7 @@ run_case() {
       FLEET_COMPOSE_ENV_FILE="$tmp_compose_env" \
       MOCK_DOCKER_LOG="$MOCK_DOCKER_LOG" \
       "$@" \
-      bash "$SCRIPT" "${services[@]}" >"$out" 2>&1
+      bash "$SCRIPT" ${services[@]+"${services[@]}"} >"$out" 2>&1
   actual_exit=$?
 
   local ok=true
@@ -209,7 +217,7 @@ check_docker_log() {
 
 # first_line TEXT: line number of TEXT's first occurrence in the mock log.
 first_line() {
-  grep -nF "$1" "$MOCK_DOCKER_LOG" | head -1 | cut -d: -f1
+  grep -nF -- "$1" "$MOCK_DOCKER_LOG" | head -1 | cut -d: -f1
 }
 
 # prunes_follow_restart: both prunes ran, and only after the containers were
@@ -260,6 +268,114 @@ run_case "a failed image prune is reported without failing a deploy that worked"
     MOCK_DOCKER_FAIL_ON="image prune"
 check_docker_log "the build cache is still trimmed when the image prune fails" \
     prunes_follow_restart 20gb
+
+# ── Safe replacement ────────────────────────────────────────────────
+
+# in_order TEXT...: each TEXT occurs in the mock log, and the first
+# occurrence of each comes before the first occurrence of the next.
+in_order() {
+  local previous=0 line text
+  for text in "$@"; do
+    line="$(first_line "${text}")"
+    if [ -z "${line}" ] || [ "${line}" -le "${previous}" ]; then
+      return 1
+    fi
+    previous="${line}"
+  done
+}
+
+absent() {
+  ! grep -qF -- "$1" "$MOCK_DOCKER_LOG"
+}
+
+# preflight_starts SERVICES: the preflight's `up` names exactly SERVICES
+# (space-separated, in order) and nothing else.
+preflight_starts() {
+  grep -F -- "${PREFLIGHT_UP}" "$MOCK_DOCKER_LOG" | grep -F -- " up -d " \
+    | grep -qE -- "--wait-timeout [0-9]+ $1\$"
+}
+
+SWAP_UP="up -d --force-recreate --wait"
+PREFLIGHT_UP="-p controller-preflight"
+AGENT_ENV_ARGS=(FLOWTREE_AGENT_ENV=/nonexistent/agent.env
+    FLOWTREE_ROOT_HOST=controller.example CLAUDE_CODE_OAUTH_TOKEN=placeholder)
+
+echo ""
+echo "rebuild.sh safe replacement tests"
+
+run_case "a full deploy preflights the new images before replacing anything" 0 \
+    "Preflight passed: ar-memory ar-tracker flowtree-controller ar-manager" "" \
+    -- \
+    FLEET_BIND_ADDR=100.64.1.2
+check_docker_log "images are built, then preflighted, then swapped, then pruned" \
+    in_order "compose -f flowtree/runtime/controller/docker-compose.yml build" \
+        "${PREFLIGHT_UP}" "${SWAP_UP}" "ARGS image prune -f"
+check_docker_log "the preflight project is removed after it passes" \
+    in_order "${PREFLIGHT_UP}" "down -v --remove-orphans" "${SWAP_UP}"
+
+run_case "a failed preflight stops the deploy with the running stack untouched" 1 \
+    "the current stack is untouched" "Pruning superseded images" \
+    flowtree-controller -- \
+    MOCK_DOCKER_FAIL_ON="--no-build --wait"
+check_docker_log "nothing running is replaced when the preflight fails" absent "${SWAP_UP}"
+check_docker_log "the preflight project is removed when it fails" \
+    in_order "${PREFLIGHT_UP}" "down -v --remove-orphans"
+
+run_case "a single-service rebuild preflights only that service" 0 \
+    "Preflight passed: ar-manager" "Preflight passed: ar-memory" \
+    ar-manager -- \
+    FLEET_BIND_ADDR=100.64.1.2
+check_docker_log "the preflight starts only the selected service" preflight_starts ar-manager
+check_docker_log "the swap of the selected service follows the preflight" \
+    in_order "${PREFLIGHT_UP} -f flowtree/runtime/controller/docker-compose.yml" \
+        "${SWAP_UP} --wait-timeout 6000 ar-manager"
+
+run_case "a fleet-only rebuild has nothing to preflight" 0 \
+    "" "Preflight" \
+    fleet-db -- \
+    FLEET_BIND_ADDR=100.64.1.2
+check_docker_log "no preflight project is started for fleet services" absent "${PREFLIGHT_UP}"
+
+run_case "a swap that does not become healthy restores the previous images" 1 \
+    "The previous controller stack is running again." "Pruning superseded images" \
+    flowtree-controller -- \
+    MOCK_DOCKER_FAIL_ON="--force-recreate --wait" \
+    MOCK_DOCKER_PS_IDS=0123abcd \
+    MOCK_DOCKER_INSPECT="flowtree-controller controller-flowtree-controller sha256:previous"
+check_docker_log "the previous image is re-tagged and started without a rebuild" \
+    in_order "${SWAP_UP}" "ARGS tag sha256:previous controller-flowtree-controller" \
+        "up -d --force-recreate --no-build --wait"
+
+run_case "a rollback whose re-tag fails does not claim the previous stack is running" 1 \
+    "needs manual attention" "The previous controller stack is running again." \
+    flowtree-controller -- \
+    MOCK_DOCKER_FAIL_ON="--force-recreate --wait" \
+    MOCK_DOCKER_FAIL_ON_2="tag sha256:previous" \
+    MOCK_DOCKER_PS_IDS=0123abcd \
+    MOCK_DOCKER_INSPECT="flowtree-controller controller-flowtree-controller sha256:previous"
+check_docker_log "a rollback whose only re-tag fails recreates nothing rather than every service" \
+    absent "up -d --force-recreate --no-build"
+
+run_case "a failed swap with nothing previously running reports there is nothing to restore" 1 \
+    "no previous version to restore" "Pruning superseded images" \
+    flowtree-controller -- \
+    MOCK_DOCKER_FAIL_ON="--force-recreate --wait"
+
+run_case "an agent deploy builds the agent images before replacing the controller stack" 0 \
+    "Replacing the agent pool" "" \
+    flowtree-controller --agents -- \
+    "${AGENT_ENV_ARGS[@]}" TRANSCRIPT_DIR_HOST="$(mktemp -d)"
+check_docker_log "every image is built before any container is replaced" \
+    in_order "compose -f flowtree/runtime/agent/docker-compose.yml build" "${PREFLIGHT_UP}" \
+        "compose -f flowtree/runtime/controller/docker-compose.yml ${SWAP_UP}" \
+        "compose -f flowtree/runtime/agent/docker-compose.yml ${SWAP_UP} --wait-timeout 6000 --remove-orphans"
+
+run_case "a failed agent build leaves the controller stack running" 1 \
+    "" "Replacing the controller stack" \
+    flowtree-controller --agents -- \
+    "${AGENT_ENV_ARGS[@]}" TRANSCRIPT_DIR_HOST="$(mktemp -d)" \
+    MOCK_DOCKER_FAIL_ON="agent/docker-compose.yml build"
+check_docker_log "no container is replaced when an agent image fails to build" absent "${SWAP_UP}"
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
