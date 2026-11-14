@@ -104,11 +104,20 @@ on:
 # stops a test run working on the commit it replaced: the validate run's
 # cancel-superseded-test-runs job cancels it. Branch name rather than
 # github.ref, because a pull_request run's ref is refs/pull/N/merge.
+#
+# A deployment to any environment other than `test` (production, worker,
+# start-tests) also starts this workflow, as a run that skips every job. It
+# gets a group of its own, keyed by run id. In the branch's group it would
+# take the single pending slot and so cancel the run queued there: on master
+# each `worker` deployment that Auto-Resolve Submit creates cancelled the
+# queued push run of the latest merge.
 concurrency:
   group: >-
     build-and-test-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{
     github.head_ref || github.ref_name }}-${{
     github.event_name == 'pull_request' && 'validate' || 'test' }}${{
+    github.event_name == 'deployment' && github.event.deployment.environment != 'test'
+    && format('-not-a-test-{0}', github.run_id) || '' }}${{
     github.ref == 'refs/heads/master' && github.run_attempt != '1'
     && format('-rerun-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
