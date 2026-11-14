@@ -28,6 +28,10 @@ services:
       dockerfile: Dockerfile
       args:
         RUNNER_VERSION: ${RUNNER_VERSION:?Run ./fleet.sh up, which resolves RUNNER_VERSION}
+        # The JDK baked into the shared ../docker image. Defaults to 17; set
+        # JDK_MAJOR in .env to upgrade, keeping it equal to EXPECTED_JDK_MAJOR in
+        # .github/workflows/analysis.yaml (the CUDA jobs verify, never download).
+        JDK_MAJOR: ${JDK_MAJOR:-17}
     image: ar-ci-cuda-runner:latest
     # The GPU preflight runs first and only then hands over to the shared
     # entrypoint, so a runner that cannot see the GPU never registers.

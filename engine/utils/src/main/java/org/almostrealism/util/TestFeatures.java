@@ -41,6 +41,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.SystemUtils;
+import org.almostrealism.time.Temporal;
 import org.junit.Assert;
 import org.junit.Assume;
 
@@ -361,12 +362,20 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * both collections back to the host and lets one large difference hide among many
 	 * small ones; this reports the worst element and leaves the data where it was computed.</p>
 	 *
+	 * <p>Both collections are supplied to the reduction as kernel arguments rather than
+	 * captured with {@code cp(...)}. A captured collection's memory offset is part of the
+	 * kernel's signature, so comparing successive rows of one collection would compile a
+	 * new kernel for every row; as arguments, every comparison of the same shapes reuses
+	 * a single compiled reduction.</p>
+	 *
 	 * @param expected the expected collection values
 	 * @param actual   the actual collection values
 	 * @return the largest absolute difference between corresponding elements
 	 */
 	default double largestDeviation(PackedCollection expected, PackedCollection actual) {
-		return max(cp(actual).subtract(cp(expected)).abs()).evaluate().toDouble(0);
+		Producer<PackedCollection> act = v(actual.getShape(), 0);
+		Producer<PackedCollection> exp = v(expected.getShape(), 1);
+		return max(subtract(act, exp).abs()).get().evaluate(actual, expected).toDouble(0);
 	}
 
 	/**
@@ -1056,6 +1065,28 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		} else {
 			r.run();
 		}
+	}
+
+	/**
+	 * Builds a {@link Temporal} test double that steps {@code state <- operator @ state} by a
+	 * {@code matmul} into a next-state buffer followed by a copy back, so every element reads every
+	 * other element of the state (the step is globally coupled, not element-local, which is why it
+	 * cannot update the state in place).
+	 *
+	 * @param label    the name given to the step's {@link OperationList} and its {@code matmul}
+	 *                 operation (e.g. {@code "Ring Diffusion"})
+	 * @param operator the coupling matrix, shape {@code (n, n)}
+	 * @param state    the state vector, shape {@code (n)}, updated in place as the system steps
+	 * @return the coupled system
+	 */
+	default Temporal coupledMatmulStep(String label, PackedCollection operator, PackedCollection state) {
+		PackedCollection next = new PackedCollection(state.getShape());
+		return () -> {
+			OperationList tick = new OperationList(label);
+			tick.add(a(label, cp(next), matmul(cp(operator), cp(state))));
+			tick.add(a("copyBack", cp(state), cp(next)));
+			return tick;
+		};
 	}
 
 	/**

@@ -917,6 +917,23 @@ step so a failed deploy cannot leave the controller permanently quiesced.
 `concurrency` does **not** cancel in progress: interrupting a half-finished
 container rebuild is worse than queueing behind it.
 
+**A deploy never takes the stack down on a guess.** `rebuild.sh` builds every
+image — controller stack and agent pool — before it stops any container, so a
+failed build changes nothing. It then starts the new controller-stack images
+(`ar-memory`, `ar-tracker`, `flowtree-controller`, `ar-manager`) in an isolated
+compose project, `<project>-preflight`, with no published ports, throwaway
+state and an empty workstream list (so no Slack connection, no agent
+connections, no live data), and requires every healthcheck to pass; on
+failure it exits with the running stack untouched. Only then does it replace
+the live containers, with `up --wait`. A replacement that does not become
+healthy is rolled back: the images that were running are re-tagged and
+started again, and the step fails. `fleet-db` and `fleet-grafana` are never
+preflighted — a second Postgres on the live data directory would corrupt it.
+The preflight cannot prove the new images work against the live
+configuration and data; the rollback covers that. `test-rebuild.sh` (run by
+`python-tests` through `tools/tests/test_rebuild_sh.py`) pins the ordering,
+the preflight and the rollback.
+
 **The agent pool is part of the deploy.** `flowtree-agent-1` and
 `flowtree-agent-2` run their own image, which bundles the flowtree JARs — a
 change under `flowtree/agents` (the tool policy a coding-agent session runs
@@ -1064,20 +1081,24 @@ differences travel as inputs: `branch-prefix`, `min-interval-days`,
 `ignore-interval` (passed as `${{ github.event.inputs.ignore_interval_<job> ||
 'false' }}`), `max-open-prs` (the same literal `MAX_OPEN_PRS` holds, since a
 called workflow cannot read the caller's `env`), the `prompt` (a built-in
-selector — `defect-hunt`, `doc-qa`, `consolidation`, `flaky-hunt` — or a path to
-the caller's own template), `template-vars`, and the submission settings
-(`protect-test-files`, `phase-configs`, `required-labels`, `enforce-changes`).
+selector — `defect-hunt`, `doc-qa`, `consolidation`, `flaky-hunt`,
+`retrospective` — or a path to the caller's own template), `template-vars`, and
+the submission settings (`protect-test-files`, `phase-configs`,
+`required-labels`, `enforce-changes`).
 `coverage-qa` stays inline: its target selection runs before branch creation and
 gates the whole round, it interleaves an exclusion commit with branch creation,
 and it needs `actions: read` to reuse master's coverage artifact — none of which
-fit the single-job generic shape. The templates of `performance-qa`, `pdsl-qa`
-and `qa-retrospective` are about this framework's own concerns (Metal, PDSL, the
-retrospective's ledger and branch conventions), so those rounds call
-`qa-round.yaml` but pass their own local template by path rather than a built-in
-selector; they are not offered to consumers. Of the built-in templates only the
-defect hunt is generalised today (its tooling guidance is a selectable
-`TEST_RUNNER_FRAGMENT`); `doc-qa` and `consolidation` remain this repository's
-own until a concrete non-Maven consumer appears.
+fit the single-job generic shape. The templates of `performance-qa` and
+`pdsl-qa` are about this framework's own concerns (Metal, PDSL), so those rounds
+call `qa-round.yaml` but pass their own local template by path rather than a
+built-in selector; they are not offered to consumers. Of the built-in templates
+the defect hunt is generalised (its tooling guidance is a selectable
+`TEST_RUNNER_FRAGMENT`) and so is the retrospective (its report location,
+visibility and finding-landing travel as template variables and `@include`
+fragments, so a consumer runs its own retrospective scoped to its own
+`REPO_URL`; see the `qa-retrospective` section below); `doc-qa` and
+`consolidation` remain this repository's own until a concrete non-Maven consumer
+appears.
 
 A new QA job for this repository adds a caller of `qa-round.yaml` (or, for a
 coverage-shaped round, a new inline job); either way it still gets its own
@@ -1219,7 +1240,22 @@ measurement, and the merged tests run on every backend the pipeline covers.
 
 `qa-retrospective` is the round that looks back at the others: it surveys the
 repository's recent automated work and proposes, with evidence, how the agent
-harness and the QA jobs should improve — it only proposes. Its output is
+harness and the QA jobs should improve — it only proposes. It is a **built-in
+`qa-round.yaml` template** (`prompt: retrospective`), generalised with template
+variables so each consuming repository runs its own, scoped to its own
+`REPO_URL` and written into its own tree, rather than passing a Common-specific
+template by path. This caller sets `template-vars` `REVIEW_SINCE` and
+`QA_PREFIXES` and leaves the rest at the built-in defaults, which describe this
+public, framework-owned repository: `REPORT_DIR` is `docs/qa/retrospectives`,
+`VISIBILITY_FRAGMENT` is the public rule (name no private product), and
+`FINDINGS_FRAGMENT` lands findings on `ci/qa-…`/ordinary/person-only branches. A
+private consumer overrides those through its own `template-vars` (the private
+visibility fragment, the consumer finding-landing fragment, and
+`FRAMEWORK_TRACKER_PROJECT` so harness findings are filed as tracker tasks it
+can land rather than edits it cannot); the adoption example is in the header of
+`.github/workflows/qa-round.yaml`. The privacy rule is unchanged for every
+caller: a retrospective never reads, quotes or counts another repository, so
+each repository's history stays private to it. Its output is
 docs-only (a report under `docs/qa/retrospectives/` and a row in that
 directory's ledger), so `PROTECT_TEST_FILES` costs nothing. That scope is the
 prompt's contract, not a harness restriction — no submission setting confines a
@@ -1406,9 +1442,9 @@ controller secret** — no `framework-ref` input and no `secrets:` block.
   branch, register, build prompt, submit, summary — all parameterised by the
   caller's inputs. The branch prefix, interval and submission settings are
   inputs; the `prompt` input is a built-in template selector (`defect-hunt`,
-  `doc-qa`, `consolidation`, `flaky-hunt`) or a path to the caller's own
-  template, read as data by `build-qa-round-prompt.sh` and rendered but never
-  executed. Its job's `concurrency` group keys on the calling repository and the
+  `doc-qa`, `consolidation`, `flaky-hunt`, `retrospective`) or a path to the
+  caller's own template, read as data by `build-qa-round-prompt.sh` and rendered
+  but never executed. Its job's `concurrency` group keys on the calling repository and the
   round name, so two merges to one repository cannot both pass a round's gate
   while different rounds do not serialize against each other. This repository's
   `master-agent-dispatch.yaml` calls it for every QA round except `coverage-qa`.

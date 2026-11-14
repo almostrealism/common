@@ -133,6 +133,31 @@ public class T5GemmaEncoderTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * A weight whose total element count matches but whose rank differs (a checkpoint stored flat
+	 * rather than as the expected matrix) is rejected rather than silently accepted: the asset reads
+	 * every weight from the checkpoint with its stored shape, so a flat tensor would be fed into the
+	 * projection with the wrong shape instead of being reinterpreted as the expected matrix.
+	 */
+	@Test(timeout = 120000)
+	public void weightWithWrongRankIsRejected() {
+		T5GemmaConfig config = smallConfig(8);
+		Map<String, PackedCollection> weights = syntheticWeights(config, 3);
+
+		// to_qkv.weight is declared [3 * hidden, hidden] = [48, 16] = 768 elements; substitute a
+		// flat, same-total-size tensor of a different rank shaped [768] instead.
+		PackedCollection flat = weights.get("encoder.layers.0.self_attn.to_qkv.weight");
+		weights.put("encoder.layers.0.self_attn.to_qkv.weight",
+				new PackedCollection(shape(flat.getShape().getTotalSizeLong())).fill(1.0));
+
+		try {
+			new T5GemmaEncoder(config, new StateDictionary(weights)).block();
+			throw new AssertionError("a weight with a mismatched rank must be rejected");
+		} catch (IllegalArgumentException e) {
+			assertTrue(e.getMessage().contains("to_qkv"));
+		}
+	}
+
 	/** {@link T5GemmaEncoder#destroy()} releases the weight dictionary, not just the compiled graph. */
 	@Test(timeout = 120000)
 	public void destroyReleasesWeightDictionary() {
