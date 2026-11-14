@@ -157,8 +157,10 @@ public class FourierTransform extends CollectionProducerComputationBase {
 	 * @param inverse If true, performs inverse FFT; if false, performs forward FFT
 	 * @param input   Producer providing {@code count * bins} interleaved complex values
 	 * @throws IllegalArgumentException if {@code bins} is not a power of 2, {@code count} is not
-	 *                                  a positive multiple of {@code stride}, or {@code input} does
-	 *                                  not declare a {@link Shape}
+	 *                                  a positive multiple of {@code stride}, {@code input} does
+	 *                                  not declare a {@link Shape}, or that shape has a fixed count
+	 *                                  and holds fewer than {@code 2 * count * bins} values (a read
+	 *                                  by value would otherwise wrap and silently repeat samples)
 	 */
 	public FourierTransform(int count, int bins, int stride, boolean inverse, Producer<PackedCollection> input) {
 		super(inverse ? "fourierTransformInverse"  : "fourierTransform",
@@ -168,7 +170,8 @@ public class FourierTransform extends CollectionProducerComputationBase {
 			throw new IllegalArgumentException("FFT length " + bins + " is not a power of 2");
 		}
 
-		if (Shape.shapeOf(input) == null) {
+		Shape<?> inputShape = Shape.shapeOf(input);
+		if (inputShape == null) {
 			throw new IllegalArgumentException("FFT input " + input.getClass().getName() +
 					" does not declare a shape, so it cannot be read by value");
 		}
@@ -176,6 +179,14 @@ public class FourierTransform extends CollectionProducerComputationBase {
 		if (stride < 1 || count < 1 || count % stride != 0) {
 			throw new IllegalArgumentException("Line count " + count +
 					" is not a positive multiple of stride " + stride);
+		}
+
+		TraversalPolicy declared = inputShape.getShape();
+		long required = 2L * count * bins;
+		if (declared.isFixedCount() && declared.getTotalSizeLong() < required) {
+			throw new IllegalArgumentException("FFT input of shape " + declared + " holds " +
+					declared.getTotalSizeLong() + " values, fewer than the " + required +
+					" needed for " + count + " lines of " + bins + " complex samples");
 		}
 
 		this.bins = bins;

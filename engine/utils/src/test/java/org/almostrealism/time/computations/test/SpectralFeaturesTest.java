@@ -943,6 +943,56 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	}
 
 	/**
+	 * An input whose shape holds fewer values than the requested lines need is rejected when the
+	 * transform is constructed: reading it by value would wrap around its shape and silently
+	 * repeat samples into the missing part of each line.
+	 */
+	@Test(timeout = 120000)
+	public void undersizedInputRejected() {
+		int bins = 16;
+
+		PackedCollection input = testSignal(shape(bins, 2)).evaluate();
+
+		try {
+			new FourierTransform(2, bins, false, cp(input));
+			Assert.fail("an input holding one line should be rejected for two lines");
+		} catch (IllegalArgumentException expected) {
+			log("undersizedInputRejected message=" + expected.getMessage());
+			Assert.assertTrue(expected.getMessage(), expected.getMessage().contains("64"));
+		}
+
+		try {
+			new FourierTransform(1, 2 * bins, false, cp(input));
+			Assert.fail("an input holding " + bins + " samples should be rejected for " + 2 * bins);
+		} catch (IllegalArgumentException expected) {
+			log("undersizedInputRejected message=" + expected.getMessage());
+		}
+	}
+
+	/**
+	 * An input holding exactly the values the requested lines need, and one holding more, are
+	 * both accepted; only the first {@code 2 * count * bins} values are transformed, so the
+	 * spectrum of a longer input's leading line matches that of the line on its own.
+	 */
+	@Test(timeout = 120000)
+	public void sufficientInputAccepted() {
+		int bins = 16;
+
+		PackedCollection line = testSignal(shape(bins, 2)).evaluate();
+		PackedCollection longer = testSignal(shape(2 * bins, 2)).evaluate();
+		PackedCollection leading = subset(shape(bins, 2), cp(longer), 0, 0).evaluate();
+
+		PackedCollection expected = new FourierTransform(1, bins, false, cp(leading)).get().evaluate();
+		PackedCollection actual = new FourierTransform(1, bins, false, cp(longer)).get().evaluate();
+		PackedCollection exact = new FourierTransform(1, bins, false, cp(line)).get().evaluate();
+
+		Assert.assertEquals(2 * bins, exact.getShape().getTotalSize());
+		double error = maxDifference(expected, actual);
+		log("sufficientInputAccepted maxError=" + error);
+		Assert.assertTrue("leading line error " + error, error < ROUND_TRIP_TOLERANCE);
+	}
+
+	/**
 	 * An input that is not itself a {@link Shape} but delegates to a shaped producer declares the
 	 * shape of its delegate (see {@link Shape#shapeOf(Object)}), so the transform accepts it and
 	 * reads it by value through that shape. Its spectrum must match the spectrum of the delegate.
