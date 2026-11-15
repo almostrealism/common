@@ -387,8 +387,11 @@ Exclusivity is structural, not a handoff between jobs:
   gates on python-tests success-or-skipped), and either is never
   retried by `rerun-flaky-tests.sh`, so `auto-resolve-python` is its only
   submission.
-- Retries only happen when a long-running test job (`test`, `test (N)`,
-  `test-*`) failed, i.e. the pipeline got past the gates to the slow stage.
+- Retries happen when a long-running test job (`test`, `test (N)`,
+  `test-*`) failed, i.e. the pipeline got past the gates to the slow stage, or
+  when any other failed job's log matches `INFRA_SIGNATURES` (an infrastructure
+  failure, not a defect in the commit). A gate that fails on the code itself is
+  never retried.
 
 `tools/tests/test_remediation_job_exclusivity.py` pins all of this.
 

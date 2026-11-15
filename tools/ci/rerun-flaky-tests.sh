@@ -9,12 +9,13 @@
 # handed to auto-resolve.
 #
 # When the completed run failed, its failed set contains at least one flaky-
-# eligible test job, and the run has had fewer than MAX_ATTEMPTS total
-# attempts, this re-runs the failed jobs (GitHub re-runs the failed jobs and
-# their dependents, producing a new attempt) and reports retried=true. Only a
-# failure that survives MAX_ATTEMPTS attempts — or a failure with no flaky
-# test job in it — reports retried=false, letting the caller proceed to submit
-# whatever request the `auto-resolve` job staged.
+# eligible test job or one job whose log shows an infrastructure failure (see
+# below), and the run has had fewer than MAX_ATTEMPTS total attempts, this
+# re-runs the failed jobs (GitHub re-runs the failed jobs and their dependents,
+# producing a new attempt) and reports retried=true. Only a failure that
+# survives MAX_ATTEMPTS attempts — or a failure with neither a flaky test job
+# nor an infrastructure failure in it — reports retried=false, letting the
+# caller proceed to submit whatever request the `auto-resolve` job staged.
 #
 # A retry is spent only on a failure that might not happen again. The
 # `auto-resolve` job classifies a test run's failures on every attempt, and when
@@ -32,8 +33,9 @@
 # or the general review) on attempt 1 only. `auto-resolve` stages its request
 # only on attempt MAX_ATTEMPTS or later, so the only thing a retry can lead to
 # is that slow-path request. Retrying therefore requires that the pipeline got
-# as far as the long-running test jobs (a failed flaky-eligible job, below),
-# and is refused outright when python-tests or python-evals failed: that run's
+# as far as the long-running test jobs (a failed flaky-eligible job, below) or
+# that a job failed on infrastructure rather than on the commit, and is refused
+# outright when python-tests or python-evals failed: that run's
 # remediation has already been submitted by auto-resolve-python, and
 # auto-resolve is skipped for it, so another attempt would only spend test
 # capacity.
@@ -166,7 +168,7 @@ JOBS=$(gh api --paginate \
 # see the header.
 for python_job in python-tests python-evals; do
     CONCLUSION=$(printf '%s\n' "$JOBS" | awk -F '\t' -v job="$python_job" '$2 == job { print $1 }')
-    if [ "$CONCLUSION" = "failure" ]; then
+    if [ "$CONCLUSION" = "failure" ] || [ "$CONCLUSION" = "timed_out" ]; then
         echo "::notice::${python_job} failed in run $RUN_ID attempt $RUN_ATTEMPT — auto-resolve-python already submitted a remediation, so the run is not retried"
         emit false
         exit 0
@@ -174,14 +176,18 @@ for python_job in python-tests python-evals; do
 done
 
 # Failed jobs for the attempt. Cancelled/skipped jobs are not "failures"
-# here — only a job that ran and failed counts.
-FAILED_JOBS=$(printf '%s\n' "$JOBS" | awk -F '\t' '$1 == "failure" { print $2 "\t" $3 }')
+# here — only a job that ran and failed (or hit its timeout) counts.
+FAILED_JOBS=$(printf '%s\n' "$JOBS" | awk -F '\t' '$1 == "failure" || $1 == "timed_out" { print $2 "\t" $3 }')
 
 # is_infra_failure <job-id>: the job's log shows an infrastructure failure. A log
-# that cannot be read shows nothing, so the job stays deterministic.
+# that cannot be read shows nothing, so the job stays deterministic. The log is
+# captured before matching: piping it into `grep -q` would let grep exit on the
+# first match and, under pipefail, report the SIGPIPE'd `gh` as a non-match.
 is_infra_failure() {
     [ -n "$1" ] || return 1
-    gh api "/repos/$REPO/actions/jobs/$1/logs" 2>/dev/null | grep -Eiq "$INFRA_SIGNATURES"
+    local log
+    log=$(gh api "/repos/$REPO/actions/jobs/$1/logs" 2>/dev/null) || return 1
+    grep -Eiq "$INFRA_SIGNATURES" <<< "$log"
 }
 
 if [ -z "$FAILED_JOBS" ]; then

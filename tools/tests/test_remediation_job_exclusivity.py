@@ -625,6 +625,13 @@ exit 0
         self.assertEqual("false", outputs["retried"])
         self.assertFalse(posted)
 
+    def test_a_run_whose_python_tests_timed_out_is_never_retried(self):
+        """A timed-out job is a failed job (``needs.*.result`` is ``failure``), so
+        auto-resolve-python submitted for it as well."""
+        outputs, posted = self._run([("timed_out", "python-tests"), ("failure", "test (0)")])
+        self.assertEqual("false", outputs["retried"])
+        self.assertFalse(posted)
+
     def test_a_gate_only_failure_is_not_retried(self):
         outputs, posted = self._run([("failure", "checkstyle"), ("failure", "test-timeout-check"),
                                      ("skipped", "test (0)")])
@@ -644,6 +651,28 @@ exit 0
         outputs, posted = self._run(
             [("failure", "build")],
             logs={0: "Caused by: java.net.SocketException: Connection reset\n"})
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_a_timed_out_job_with_an_infrastructure_failure_is_retried(self):
+        """``timed_out`` is a failed conclusion: its log is read like a failure's."""
+        outputs, posted = self._run(
+            [("timed_out", "build")],
+            logs={0: "##[error]The runner has received a shutdown signal.\n"})
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_a_timed_out_test_job_is_retried(self):
+        outputs, posted = self._run([("timed_out", "test-media")])
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_an_early_signature_in_a_large_log_is_found(self):
+        """grep stops at the first match; that must not turn the match into a miss."""
+        outputs, posted = self._run(
+            [("failure", "test-integrity-check")],
+            logs={0: "Connection reset by peer\n"
+                     + ("filler line of an ordinary build log\n" * 200000)})
         self.assertEqual("true", outputs["retried"])
         self.assertTrue(posted)
 
