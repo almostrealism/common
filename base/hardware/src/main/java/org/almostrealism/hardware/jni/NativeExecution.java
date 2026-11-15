@@ -237,6 +237,19 @@ public class NativeExecution extends HardwareOperator {
 	}
 
 	/**
+	 * The number of {@link #executor} worker threads currently running a dispatch's kernel. It is
+	 * zero when no native dispatch is in flight &mdash; including on a GPU host, where dispatches
+	 * run on the device rather than on this pool &mdash; and rises to the worker count of a running
+	 * dispatch while it executes. This lets a caller observe that a dispatch has begun occupying the
+	 * pool rather than infer it from elapsed time.
+	 *
+	 * @return the count of worker threads actively executing a kernel
+	 */
+	public static int getActiveWorkerCount() {
+		return executor instanceof ThreadPoolExecutor ? ((ThreadPoolExecutor) executor).getActiveCount() : 0;
+	}
+
+	/**
 	 * Permits for single-worker kernels, which run on their coordinating thread rather than on
 	 * the {@link #executor} (see {@link #coordinate}). Coordinating threads come from unbounded
 	 * pools, so without these permits any number of such kernels could run at once; there are as

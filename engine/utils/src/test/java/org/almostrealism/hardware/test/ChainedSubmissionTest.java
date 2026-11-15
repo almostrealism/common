@@ -21,6 +21,7 @@ import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -77,12 +78,14 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	private static final int LONG_DEPTH = 500;
 
 	/**
-	 * How long to wait, in milliseconds, after issuing the long-running dispatch in
-	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} before issuing the independent
-	 * one, so that the long one is already occupying the worker pool &mdash; much shorter than the
-	 * long dispatch runs, so it is still running when the independent one is issued.
+	 * The longest, in milliseconds, that
+	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} waits to observe the
+	 * long-running dispatch occupying the worker pool before it issues the independent one anyway.
+	 * On the native path the workers appear within a few milliseconds and the wait ends at once; a
+	 * backend that does not use the pool (a GPU host) never shows them, so this bounds how long the
+	 * test waits for a signal that will not arrive there, where it is not needed.
 	 */
-	private static final long LONG_HEAD_START_MS = 30;
+	private static final long WORKER_OCCUPANCY_TIMEOUT_MS = 2000;
 
 	/**
 	 * The number of elements of the independent operation in
@@ -238,6 +241,8 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 		Submittable longDispatch = Submittable.of(a(cp(values), product).get());
 		Submittable independentDispatch = Submittable.of(a(cp(independent), cp(independent).add(1.0)).get());
 
+		boolean bothSettled = false;
+
 		try {
 			// Warm up both kernels (native compilation) and time the long one.
 			long warmStart = System.nanoTime();
@@ -250,22 +255,45 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 			CountDownLatch bothCompleted = new CountDownLatch(2);
 
 			Semaphore longPending = longDispatch.submit(null);
-			Thread.sleep(LONG_HEAD_START_MS);
+			awaitWorkerPoolOccupied(KernelPreferences.getCpuParallelism());
 			Semaphore independentPending = independentDispatch.submit(null);
 
 			record("long", firstCompleted, bothCompleted, longPending);
 			record("independent", firstCompleted, bothCompleted, independentPending);
 
-			Assert.assertTrue("both dispatches should have completed",
-					bothCompleted.await(120, TimeUnit.SECONDS));
+			bothSettled = bothCompleted.await(120, TimeUnit.SECONDS);
 
 			log("longMillis=" + longMillis + " firstCompleted=" + firstCompleted.get());
+			Assert.assertTrue("both dispatches should have completed", bothSettled);
 			Assert.assertEquals("the independent dispatch was serialized behind the long-running " +
 					"one on the worker pool instead of completing while it ran",
 					"independent", firstCompleted.get());
 		} finally {
-			values.destroy();
-			independent.destroy();
+			// A timed-out dispatch may still be reading this memory, so free it only once both settle.
+			if (bothSettled) {
+				values.destroy();
+				independent.destroy();
+			}
+		}
+	}
+
+	/**
+	 * Waits until {@code expected} worker threads of the native pool are running a kernel, so the
+	 * independent dispatch in {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} is
+	 * issued only once the long-running one already occupies the pool &mdash; an explicit
+	 * observation of worker start (via {@link NativeExecution#getActiveWorkerCount()}) rather than a
+	 * fixed delay a loaded runner could outlast. Returns as soon as that many workers are seen, or
+	 * after {@value #WORKER_OCCUPANCY_TIMEOUT_MS} milliseconds on a backend that does not use the
+	 * pool (a GPU host), where the workers never appear and the readiness is not needed.
+	 *
+	 * @param expected the number of running worker threads that marks the pool as occupied
+	 */
+	private static void awaitWorkerPoolOccupied(int expected) throws InterruptedException {
+		long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(WORKER_OCCUPANCY_TIMEOUT_MS);
+
+		while (System.nanoTime() < deadline) {
+			if (NativeExecution.getActiveWorkerCount() >= expected) return;
+			Thread.sleep(1);
 		}
 	}
 
