@@ -24,6 +24,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -801,6 +802,16 @@ class GitCommitHandler implements ConsoleFeatures {
      * are from the primary repo's. No-op when the setup cloned no dependent
      * repos.
      *
+     * <p>Two protections mirror the primary path. The index is reset before the
+     * allowlist is applied, so an artifact the agent staged directly cannot be
+     * committed by slipping past a filter that only governs what this method
+     * adds. And each dependent message is run through
+     * {@link OperatorGrants#applyToMessage} before it reaches {@code git commit},
+     * stripping any agent-forged {@code Sensitive-File-Bypass} or
+     * {@code Merge-Resolution-Accepted} trailer the agent wrote into the
+     * dependent {@code commit.txt}; a dependent commit accepts no merge
+     * resolution, so none is appended.
+     *
      * <p>Takes the {@link GitRepositorySetup} rather than a bare list of paths
      * so each repo's clone URL is recoverable: a push records a
      * {@link DependentRepoPush} carrying the URL, branch, and pushed HEAD, which
@@ -818,6 +829,10 @@ class GitCommitHandler implements ConsoleFeatures {
     void handleDependentRepos(GitRepositorySetup repoSetup) throws IOException, InterruptedException {
         for (String depPath : repoSetup.getDependentRepoPaths()) {
             GitOperations gitOps = job.gitOperations(depPath);
+
+            // Unstage whatever the agent staged directly, as the primary path
+            // does, so the allowlist below gates the index and not only the adds.
+            gitOps.execute("reset", "HEAD");
 
             String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
             List<String> changedFiles = new ArrayList<>();
@@ -863,7 +878,10 @@ class GitCommitHandler implements ConsoleFeatures {
                 continue;
             }
 
-            int commitExitCode = gitOps.execute("commit", "-m", job.getCommitMessage(depPath));
+            // Normalize controller-grant trailers as the primary path does.
+            String depMessage = job.operatorGrants().applyToMessage(
+                    job.getCommitMessage(depPath), job.getTaskId(), Collections.emptyList());
+            int commitExitCode = gitOps.execute("commit", "-m", depMessage);
             if (commitExitCode != 0) {
                 log("Commit failed in dependent repo: " + depPath + " (exit code " + commitExitCode + ")");
                 dependentRepoFailures.add(depPath + " (commit exited " + commitExitCode + ")");
