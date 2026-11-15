@@ -247,6 +247,20 @@ public class CiTriggerTest extends TestSuiteBase {
     }
 
     /**
+     * A refused workflow dispatch names the Actions permission, not the
+     * Deployments one: the hint is keyed to the trigger kind, so the workflow
+     * path must report {@code Actions write}.
+     */
+    @Test(timeout = 30000)
+    public void refusedDispatchReportsActionsWrite() {
+        github.dispatchStatus = 403;
+
+        assertEquals(CiTrigger.Outcome.FAILED,
+                CiTrigger.parse("workflow:tests.yaml").start(handler, "acme/app", "feature/x", "tok"));
+        assertReported("workflow:tests.yaml", "acme/app", "feature/x", "failed", "Actions write");
+    }
+
+    /**
      * A minimal fake of the GitHub REST endpoints {@link CiTrigger} uses.
      * Deployments are stored with the SHA the branch head had when they were
      * created, which is what the real API records.
@@ -264,6 +278,8 @@ public class CiTriggerTest extends TestSuiteBase {
         private int runsForHead;
         /** The status a deployment creation returns; non-201 models GitHub refusing it. */
         private int deploymentPostStatus = 201;
+        /** The status a workflow dispatch returns; non-204 models GitHub refusing it. */
+        private int dispatchStatus = 204;
 
         /** Binds the server to a free loopback port and starts it. */
         private void start() throws IOException {
@@ -310,9 +326,14 @@ public class CiTriggerTest extends TestSuiteBase {
                 reply = "{\"total_count\":" + runsForHead + "}";
             } else if (path.endsWith("/dispatches")) {
                 String file = path.split("/actions/workflows/")[1].split("/")[0];
-                dispatches.add(file + "@" + MAPPER.readTree(read(exchange)).path("ref").asText());
-                status = 204;
-                reply = null;
+                String ref = MAPPER.readTree(read(exchange)).path("ref").asText();
+                status = dispatchStatus;
+                if (status == 204) {
+                    dispatches.add(file + "@" + ref);
+                    reply = null;
+                } else {
+                    reply = "{\"message\":\"refused\"}";
+                }
             }
             if (reply == null) {
                 exchange.sendResponseHeaders(status, -1);
