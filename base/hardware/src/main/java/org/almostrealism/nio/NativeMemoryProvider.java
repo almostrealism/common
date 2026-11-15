@@ -34,6 +34,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
@@ -193,6 +194,13 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	private final AtomicLong releasedDirectBytes = new AtomicLong();
 
 	/**
+	 * Whether a thread is already requesting a direct collection, so that no second thread joins
+	 * an in-flight collection pass while clearing its own released bytes (see
+	 * {@link #collectReleasedDirectMemory()}).
+	 */
+	private final AtomicBoolean directCollecting = new AtomicBoolean();
+
+	/**
 	 * Creates the shared-memory bridge provider — a single host provider shared across backends when
 	 * {@code AR_HARDWARE_NIO_MEMORY} is enabled.
 	 *
@@ -295,14 +303,21 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * operating system instead of accumulating until {@code -XX:MaxDirectMemorySize} forces a
 	 * collection.
 	 *
-	 * <p>Of concurrent callers that find the threshold reached, exactly one takes the count and
-	 * runs the collection; a release that changes the count while a caller is taking it does not
-	 * make that caller give up. The other callers proceed with their allocations without waiting
-	 * for the pass. That is deliberate: the threshold bounds how much released memory may stay
-	 * committed, not how much may be allocated, and memory released while the pass runs simply
-	 * counts towards the next one. The hard limit remains the JVM's own handling of
-	 * {@code -XX:MaxDirectMemorySize}, which collects and waits for the cleaner before it fails an
-	 * allocation.</p>
+	 * <p>Of concurrent callers that find the threshold reached, exactly one requests the
+	 * collection; a release that changes the count while that caller is taking it does not make it
+	 * give up. The other callers proceed with their allocations without waiting for the pass. That
+	 * is deliberate: the threshold bounds how much released memory may stay committed, not how much
+	 * may be allocated, and memory released while the pass runs simply counts towards the next one.
+	 * The hard limit remains the JVM's own handling of {@code -XX:MaxDirectMemorySize}, which
+	 * collects and waits for the cleaner before it fails an allocation.</p>
+	 *
+	 * <p>Only one thread requests a collection at a time. {@link #reclaim(java.util.function.BooleanSupplier)}
+	 * shares a collection pass with a concurrent reclaimer rather than starting its own, so a second
+	 * caller that joined an in-flight pass could clear its released bytes against a collection that
+	 * had already run before those buffers were released, leaving them committed but no longer
+	 * counted. With a single collector in this path the pass {@code reclaim} runs always follows the
+	 * releases it is clearing, and a caller that cannot take the collection leaves its bytes for the
+	 * next one.</p>
 	 *
 	 * <p>The released bytes are taken off the count only by the caller that runs the collection,
 	 * and are restored when that collection does not complete (because the thread was
@@ -318,18 +333,25 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 * @return whether a collection was requested and completed
 	 */
 	protected boolean collectReleasedDirectMemory() {
-		long released;
+		if (releasedDirectBytes.get() < getDirectCollectionThreshold()) return false;
+		if (Thread.currentThread().isInterrupted()) return false;
+		if (!directCollecting.compareAndSet(false, true)) return false;
 
-		do {
-			released = releasedDirectBytes.get();
-			if (released < getDirectCollectionThreshold()) return false;
-			if (Thread.currentThread().isInterrupted()) return false;
-		} while (!releasedDirectBytes.compareAndSet(released, 0));
+		try {
+			long released;
 
-		if (reclaim(() -> true)) return true;
+			do {
+				released = releasedDirectBytes.get();
+				if (released < getDirectCollectionThreshold()) return false;
+			} while (!releasedDirectBytes.compareAndSet(released, 0));
 
-		releasedDirectBytes.addAndGet(released);
-		return false;
+			if (reclaim(() -> true)) return true;
+
+			releasedDirectBytes.addAndGet(released);
+			return false;
+		} finally {
+			directCollecting.set(false);
+		}
 	}
 
 	/**
