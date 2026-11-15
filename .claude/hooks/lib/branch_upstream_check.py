@@ -19,6 +19,12 @@ blocked except a Bash command made only of:
     ``git rev-parse``, ``git config --get``, ``git remote -v``;
   - ``cd``.
 
+with no command substitution, process substitution, redirection or
+here-document anywhere in it, no git ``-c``, ``--config-env``, ``--exec-path``
+or ``--help`` option, and no push option other than ``-u``/``--set-upstream``
+(so ``--receive-pack``/``--exec`` cannot ride along), since each of those acts
+outside the git words this check reads.
+
 So the session fixes the branch before it does anything else. A detached HEAD,
 a branch with no upstream, a local (``.``) upstream, and a directory that is not
 a git repository are all allowed: the check fails open on anything it cannot
@@ -126,7 +132,13 @@ def _is_fix_or_inspection(sub, args, state):
                 return value.rsplit("/", 1)[-1] not in PROTECTED_BRANCHES
         return all(a in _BRANCH_LIST_ARGS for a in args)
     if sub == "push":
-        if not any(a in ("-u", "--set-upstream") for a in args):
+        options = [a for a in args if a.startswith("-")]
+        if not any(a in ("-u", "--set-upstream") for a in options):
+            return False
+        # A remedy push carries only the set-upstream flag. Any other option is
+        # refused, so push options that name a command for git to run --
+        # ``--receive-pack``/``--exec`` above all -- cannot ride along on it.
+        if any(a not in ("-u", "--set-upstream") for a in options):
             return False
         positionals = [a for a in args if not a.startswith("-")]
         if len(positionals) != 2:
@@ -137,9 +149,29 @@ def _is_fix_or_inspection(sub, args, state):
     return False
 
 
+# Shell syntax no remedy needs, each of which acts outside the words the check
+# reads: a command or process substitution (``$(...)``, ``${ ...; }``,
+# backticks, ``<(...)``, ``>(...)``) runs a command of its own, and a redirection or here-document
+# writes or reads a file. A command containing any of them is never a remedy,
+# whatever its git words say, quoted or not: telling quoted text from live
+# syntax is what the shell does, and a check that gets it wrong lets a blocked
+# session run anything.
+_NON_REMEDY_SYNTAX = ("$(", "${", "`", "<", ">")
+
+# git options that make git itself run something the words do not show: ``-c``
+# and ``--config-env`` set configuration such as ``core.fsmonitor`` or
+# ``core.pager`` that names a command for ``git status`` to run, ``--exec-path``
+# chooses where git finds the programs it runs, and ``--help`` on any subcommand
+# launches the external man/help viewer. No remedy needs any of them, so a word
+# that begins with one is never part of a remedy.
+_NON_REMEDY_GIT_OPTIONS = ("-c", "--config-env", "--exec-path", "--help")
+
+
 def command_is_remedy(command, state):
     """Whether a Bash command consists only of fixes, inspection and ``cd``."""
     if not command or not command.strip():
+        return False
+    if any(syntax in command for syntax in _NON_REMEDY_SYNTAX):
         return False
     saw_git = False
     for segment in _segments(command):
@@ -148,6 +180,8 @@ def command_is_remedy(command, state):
             continue
         if words[0] == "cd":
             continue
+        if any(word.startswith(_NON_REMEDY_GIT_OPTIONS) for word in words):
+            return False
         calls = _git_calls(segment)
         if not calls or words[0].rsplit("/", 1)[-1] != "git":
             return False
