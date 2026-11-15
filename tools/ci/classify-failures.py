@@ -212,22 +212,31 @@ def is_timeout(failure):
 
 
 def confirmed(regressions, backends):
-    """The regressions that failed on two or more backends and did not time out.
+    """The regressions that failed on two or more backends and never timed out.
 
     The failure list holds one block per failing report, so a test that failed
-    on several lanes appears several times; it is confirmed once, by its first
-    block. ``backends`` is :func:`failing_backends`' map.
+    on several lanes appears several times. A test is confirmed when two or more
+    backends saw it fail and *none* of its blocks is a timeout: a timeout in any
+    lane means load, which a retry can clear, and vetoes confirmation even when
+    another lane's block for the same test is an ordinary assertion failure.
+    Confirmation is represented by the test's first block. ``backends`` is
+    :func:`failing_backends`' map.
     """
-    result = []
-    seen = set()
+    order = []
+    first_block = {}
+    timed_out = set()
     for failure in regressions:
-        if failure.name in seen:
-            continue
-        seen.add(failure.name)
+        if failure.name not in first_block:
+            first_block[failure.name] = failure
+            order.append(failure.name)
         if is_timeout(failure):
+            timed_out.add(failure.name)
+    result = []
+    for name in order:
+        if name in timed_out:
             continue
-        if len(backends.get(failure.name, ())) >= 2:
-            result.append(failure)
+        if len(backends.get(name, ())) >= 2:
+            result.append(first_block[name])
     return result
 
 

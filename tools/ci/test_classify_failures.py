@@ -182,6 +182,21 @@ class TestConfirmation(unittest.TestCase):
         self.assertEqual([], classify_failures.confirmed(
             regressions, classify_failures.failing_backends("")))
 
+    def test_a_timeout_block_vetoes_confirmation_of_a_mixed_test(self):
+        # One lane reports an ordinary assertion failure for a test, another
+        # lane times the same test out. A timeout in any lane means load, so
+        # the test must not be confirmed even though the first block seen is an
+        # assertion failure on two backends.
+        mixed_timeout = _REGRESSION_BLOCK.replace(
+            "- org.example.FooTest#computesSum\n"
+            "  Exception: java.lang.AssertionError: expected:<5> but was:<3>",
+            "- org.example.FooTest#computesSum\n"
+            "  Exception: org.junit.runners.model.TestTimedOutException: "
+            "test timed out after 600 seconds")
+        regressions = _parse(_REGRESSION_BLOCK + mixed_timeout)
+        backends = {"org.example.FooTest#computesSum": {"native", "metal"}}
+        self.assertEqual([], classify_failures.confirmed(regressions, backends))
+
 
 class TestCli(unittest.TestCase):
     def test_cli_writes_three_files_and_counts(self):
