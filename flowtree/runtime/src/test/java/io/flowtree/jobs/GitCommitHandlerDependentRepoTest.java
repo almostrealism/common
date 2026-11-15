@@ -196,7 +196,7 @@ public class GitCommitHandlerDependentRepoTest extends TestSuiteBase {
         handler.handleDependentRepos(setup);
 
         assertTrue("a failed reset must push nothing", handler.getDependentRepoPushes().isEmpty());
-        assertEquals("a failed reset must leave the dependent HEAD untouched",
+        Assert.assertEquals("a failed reset must leave the dependent HEAD untouched",
                 headBefore, git(dependent, "rev-parse", "HEAD").trim());
         List<String> failures = handler.getDependentRepoFailures();
         assertEquals(1, failures.size());
