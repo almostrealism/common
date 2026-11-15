@@ -5034,6 +5034,36 @@ jobs:
             fi
           fi
 
+          # The Metal lane (test-mac, test-media-mac) waits for no other lane, exactly like
+          # the CPU lane above. A pull request's test run runs the Metal lane alone (the other
+          # backends are left to master), so it is the only backend coverage there: an
+          # unexplained skip of test-mac means no backend was tested, and SUBSET_RUN never
+          # excuses it — the subset is these very lanes.
+          if [ "$MAC_RESULT" = "cancelled" ] || [ "$MAC_RESULT" = "skipped" ]; then
+            if [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test-mac job was ${MAC_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
+              echo "::notice::test-mac job was ${MAC_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
+            else
+              echo "::warning::test-mac job was ${MAC_RESULT} without an upstream failure"
+              INCOMPLETE="true"
+            fi
+          fi
+          if [ "$MEDIA_MAC_RESULT" = "cancelled" ] || [ "$MEDIA_MAC_RESULT" = "skipped" ]; then
+            # A skipped test-mac is NOT an excuse, for the same reason as test-media above:
+            # test-media-mac has the wider layer gate and runs on studio/extern-only changes.
+            if [ "$MAC_RESULT" = "failure" ] || [ "$MAC_RESULT" = "cancelled" ]; then
+              echo "::notice::test-media-mac job was ${MEDIA_MAC_RESULT} because its lane's first stage failed — not treating as incomplete"
+            elif [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test-media-mac job was ${MEDIA_MAC_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
+              echo "::notice::test-media-mac job was ${MEDIA_MAC_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
+            else
+              echo "::warning::test-media-mac job was ${MEDIA_MAC_RESULT} without an upstream failure"
+              INCOMPLETE="true"
+            fi
+          fi
+
           # Every lane is two stages, and each second stage waits only for its own lane's
           # first stage: test-media-cl for test-cl, test-media-cuda for test-cuda. Such a
           # stage skipped or cancelled after its own first stage failed or was cancelled is

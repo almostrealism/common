@@ -291,6 +291,25 @@ class RunKindTest(unittest.TestCase):
                 self.assertIn("::notice::%s job was ${" % lane, script)
                 self.assertIn("because a pull request's test run leaves it to master", script)
 
+    def test_the_sole_backend_lane_of_a_subset_run_is_checked_for_incompleteness(self):
+        # A pull request's test run runs the Metal lane alone, so an unexplained
+        # skip of test-mac or test-media-mac means no backend was tested. Unlike
+        # the six lanes left to master, the Metal lanes must NOT be excused as a
+        # subset skip — they are the subset — so their blocks flag it incomplete.
+        step = next(s for s in self.jobs["auto-resolve"]["steps"]
+                    if s.get("id") == "test-completeness")
+        script = step["run"]
+        for result in ("MAC_RESULT", "MEDIA_MAC_RESULT"):
+            with self.subTest(result=result):
+                opener = 'if [ "$%s" = "cancelled" ]' % result
+                start = script.find(opener)
+                self.assertNotEqual(-1, start,
+                                    "%s has no cancelled/skipped completeness block" % result)
+                block = script[start:script.find("\nfi\n", start)]
+                self.assertIn('INCOMPLETE="true"', block)
+                self.assertNotIn("SUBSET_RUN", block)
+                self.assertNotIn("leaves it to master", block)
+
     def test_long_running_lanes_are_test_run_only(self):
         for job in _TEST_RUN_ONLY:
             with self.subTest(job=job):
