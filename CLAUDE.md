@@ -263,8 +263,9 @@ call comes before any framework `log()` probe you add yourself.
 A compile that is **slow, too deep, or failing** (a multi-minute build, an `Expression too deep`
 error, an `OutOfMemoryError` during compilation) is a different question, and it starts with
 **"is this graph being optimized?"** `Producer.evaluate()` and `Producer.get()` do not optimize, so
-a composite graph that contains a reduction embeds that reduction in each of its readers and builds
-an exponentially large expression. Answer the question by evaluating the graph once through
+a composite graph with a reduction that several consumers read embeds that reduction in each of
+those readers and builds an exponentially large expression. Answer the question by evaluating the
+graph once through
 `evaluateOptimized()` (equivalently `Process.optimized(producer).get()`) — `Process.optimize`
 isolates the reductions that `isIsolationTarget` marks, and the same graph compiles in about a
 second. Do this **before** restructuring the graph: do not split it by hand or add a manual
