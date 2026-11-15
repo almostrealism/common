@@ -48,6 +48,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
@@ -283,8 +284,9 @@ class GitHubClient:
             data = response.read()
         return data if raw else json.loads(data.decode("utf-8"))
 
-    def list_workflow_runs(self, max_runs, workflow_file=WORKFLOW_FILE):
-        """The most recent Build and Test runs, newest first, across every branch.
+    def list_workflow_runs(self, max_runs, workflow_file=WORKFLOW_FILE, branch=""):
+        """The most recent Build and Test runs, newest first, across every
+        branch, or on ``branch`` alone when one is given.
 
         Scoped to the ``workflow_file`` workflow so ``max_runs`` bounds that
         workflow's runs directly; listing ``/actions/runs`` for the whole
@@ -292,11 +294,12 @@ class GitHubClient:
         discard recent Build-and-Test retries before they are seen."""
         runs = []
         page = 1
+        branch_filter = "&branch=%s" % urllib.parse.quote(branch, safe="") if branch else ""
         while len(runs) < max_runs:
             per_page = min(100, max_runs - len(runs))
             payload = self._request(
-                "/repos/%s/actions/workflows/%s/runs?per_page=%d&page=%d"
-                % (self.repo, workflow_file, per_page, page))
+                "/repos/%s/actions/workflows/%s/runs?per_page=%d&page=%d%s"
+                % (self.repo, workflow_file, per_page, page, branch_filter))
             batch = payload.get("workflow_runs", [])
             if not batch:
                 break
@@ -320,6 +323,19 @@ class GitHubClient:
                 break
             page += 1
         return jobs
+
+    def list_closed_pulls(self, base, limit=100):
+        """The most recently updated closed pull requests against ``base``,
+        merged or not."""
+        return self._request(
+            "/repos/%s/pulls?state=closed&base=%s&sort=updated&direction=desc&per_page=%d"
+            % (self.repo, urllib.parse.quote(base, safe=""), min(100, limit)))
+
+    def compare(self, base_sha, head_sha):
+        """GitHub's comparison of two commits; its ``status`` is ``ahead`` or
+        ``identical`` when ``head_sha`` contains ``base_sha``."""
+        return self._request(
+            "/repos/%s/compare/%s...%s" % (self.repo, base_sha, head_sha))
 
     def job_log(self, job_id):
         """One job's plain-text log (the attempt-scoped job id, so the right
