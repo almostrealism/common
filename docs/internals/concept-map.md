@@ -149,11 +149,12 @@ How the other families root here:
 
 ### Gaps
 
-- **`Mesh` declares `Graph<Vector>` (vertices as nodes), but does not implement it.**
-  `Mesh.neighbors(Vector)` currently throws `UnsupportedOperationException`, so the vertex graph
-  is a declared relationship whose required operation is missing; any code written against
-  `Graph` fails on a `Mesh`. Implementing it needs vertex adjacency derived from the triangle
-  index data, which is within `domain/space` and needs no new dependency.
+- **`Mesh` implements `Graph<Vector>` (vertices as nodes), but leaves `neighbors` unsupported.**
+  `Mesh.countNodes()` returns the vertex count, but `Mesh.neighbors(Vector)` currently throws
+  `UnsupportedOperationException`, so the vertex graph is a declared relationship whose adjacency
+  operation fails at runtime; any code that calls `neighbors` on a `Mesh` throws. Supplying it
+  needs vertex adjacency derived from the triangle index data, which is within `domain/space` and
+  needs no new dependency.
 - **Triangle-level adjacency is not expressed through the graph hierarchy.** A `Triangle` is
   already a `Node` transitively (`Triangle` → `AbstractSurface` → `ShadableSurface` →
   `ShadableCurve` → `Curve` → `Node`), and the triangles of a mesh are already held in a
