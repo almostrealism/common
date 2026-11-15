@@ -688,6 +688,23 @@ public abstract class CollectionProducerComputationBase
 
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The {@link #getDependentLifecycles() dependent lifecycles} are prepared along with this
+	 * computation without being positions of its process tree, so every argument preparing them
+	 * obtains, as {@link ScopeLifecycle#getPreparedArgumentBound(Stream, int)} counts it, is
+	 * reported here.</p>
+	 */
+	@Override
+	public int getScopeArgumentCount(int cap) {
+		int own = super.getScopeArgumentCount(cap);
+		if (dependentLifecycles == null || own > cap) return own;
+
+		return (int) Math.min(Integer.MAX_VALUE,
+				(long) own + ScopeLifecycle.getPreparedArgumentBound(dependentLifecycles.stream(), cap - own));
+	}
+
+	/**
 	 * Resets the computation arguments and invalidates cached evaluables.
 	 * This method should be called when argument values change to ensure
 	 * that subsequent evaluations use the updated arguments.

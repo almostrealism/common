@@ -378,38 +378,42 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	/**
-	 * Verifies that a kernel compiled without folding declares no more arguments than its
-	 * {@link ComputeContext}'s argument limit, when that limit is known.
+	 * Verifies that a compiled kernel declares no more arguments than its {@link ComputeContext}'s
+	 * argument limit, when that limit is known.
 	 *
-	 * <p>A kernel folds nothing either because its {@link #getArgumentBound(int) structural
-	 * argument bound} fits the limit, or because folding is unavailable to it (aggregation is
-	 * disabled, or the operation does not support it). In the first case the bound relies on every
-	 * argument scope preparation obtains being reported, either as a leaf of the process tree or
-	 * through a {@link ScopeLifecycle#getScopeArgumentCount() scope argument count}, and a component
-	 * that obtains an argument without reporting it lets the bound fall below the real count. In
-	 * either case the kernel would otherwise reach the backend with more arguments than it
-	 * accepts, failing there far from the cause. A kernel that
-	 * {@link #isArgumentFoldingEnabled() folds}, or one compiled for a context with no known limit,
-	 * is not verified.</p>
+	 * <p>A kernel can exceed the limit in three ways, and each is reported with its cause rather
+	 * than left to fail at the backend far from it. A kernel that
+	 * {@link #isArgumentFoldingEnabled() folds} may still be over the limit when too few of its
+	 * arguments are small enough to fold. A kernel that folds nothing because folding is
+	 * unavailable to it (aggregation is disabled, or the operation does not support it) is over
+	 * whenever its arguments are. A kernel that folds nothing because its
+	 * {@link #getArgumentBound(int) structural argument bound} fits the limit is over only when a
+	 * component obtains an argument during scope preparation that is neither a leaf of the process
+	 * tree nor reported by its {@link ScopeLifecycle#getScopeArgumentCount(int) scope argument
+	 * count}, so the bound fell below the real count. A kernel compiled for a context with no
+	 * known limit is not verified.</p>
 	 *
 	 * @param argumentCount the number of arguments the compiled kernel declares
-	 * @throws HardwareException if the kernel folds nothing but declares more arguments than the
-	 *         known limit
+	 * @throws HardwareException if the kernel declares more arguments than the known limit
 	 */
 	protected void verifyArgumentLimit(int argumentCount) {
 		OptionalInt limit = getComputeContext().getArgumentLimit();
-		if (limit.isEmpty() || isArgumentFoldingEnabled()) return;
+		if (limit.isEmpty() || argumentCount <= limit.getAsInt()) return;
 
-		if (argumentCount > limit.getAsInt()) {
-			String cause = isArgumentFoldingRequired()
-					? "its structural argument bound exceeds the limit but argument folding is" +
-						" disabled or unsupported for it"
-					: "its structural argument bound " + getArgumentBound(limit.getAsInt()) +
-						" fits the limit, so a component obtains an argument during scope preparation" +
-						" that its scope argument count does not report";
-			throw new HardwareException(getName() + " folds none of its arguments, but its kernel declares " +
-					argumentCount + " arguments, past the argument limit " + limit.getAsInt() + ": " + cause);
+		String cause;
+		if (isArgumentFoldingEnabled()) {
+			cause = "argument folding is enabled for it, but too few of its arguments are small enough to fold";
+		} else if (isArgumentFoldingRequired()) {
+			cause = "its structural argument bound exceeds the limit but argument folding is" +
+					" disabled or unsupported for it";
+		} else {
+			cause = "its structural argument bound " + getArgumentBound(limit.getAsInt()) +
+					" fits the limit, so a component obtains an argument during scope preparation" +
+					" that its scope argument count does not report";
 		}
+
+		throw new HardwareException(getName() + " declares " + argumentCount +
+				" kernel arguments, past the argument limit " + limit.getAsInt() + ": " + cause);
 	}
 
 	/**

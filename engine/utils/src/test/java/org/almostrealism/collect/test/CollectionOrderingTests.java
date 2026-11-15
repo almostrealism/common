@@ -255,8 +255,8 @@ public class CollectionOrderingTests extends TestSuiteBase {
 		PackedCollection plain = pack(1.0, 2.0, 3.0, 4.0);
 		PackedCollection masked = new PackedCollection(shape(4), 0, pack(2.0, 3.0), 0,
 				new IndexMaskTraversalOrdering(pack(0, 3)));
-		assertEquals(0, new CollectionProviderProducer<>(plain).getScopeArgumentCount());
-		assertEquals(1, new CollectionProviderProducer<>(masked).getScopeArgumentCount());
+		assertEquals(0, new CollectionProviderProducer<>(plain).getScopeArgumentCount(Integer.MAX_VALUE));
+		assertEquals(1, new CollectionProviderProducer<>(masked).getScopeArgumentCount(Integer.MAX_VALUE));
 	}
 
 	/**

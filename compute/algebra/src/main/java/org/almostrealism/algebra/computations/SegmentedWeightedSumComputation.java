@@ -180,8 +180,8 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 * ordering of the matrix obtains.</p>
 	 */
 	@Override
-	public int getScopeArgumentCount() {
-		return super.getScopeArgumentCount() + order.getArgumentCount();
+	public int getScopeArgumentCount(int cap) {
+		return (int) Math.min(Integer.MAX_VALUE, (long) super.getScopeArgumentCount(cap) + order.getArgumentCount());
 	}
 
 	/**

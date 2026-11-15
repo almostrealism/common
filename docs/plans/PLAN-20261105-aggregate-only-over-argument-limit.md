@@ -496,7 +496,7 @@ What changed:
   `SegmentedWeightedSumComputation`. These have no leaf position either, so a leaf count alone
   under-counted them. A 29-leaf kernel with an indexed ordering could then compile unfolded with
   30 or more arguments. Each such node now reports them through
-  `ScopeLifecycle.getScopeArgumentCount()`, and the orderings through
+  `ScopeLifecycle.getScopeArgumentCount(int)`, and the orderings through
   `TraversalOrdering.getArgumentCount()`. The bound adds them up over every position of the tree
   (`Tree.sumByPosition`). `ArgumentLimitFoldTest.boundCountsArgumentsOrderedInputsBind` pins this.
 - Docs: the "Argument Aggregation" section of `base/hardware/README.md` (which also had the

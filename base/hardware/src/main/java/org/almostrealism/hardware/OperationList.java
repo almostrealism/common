@@ -1001,7 +1001,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	 * leaves the abort scope out of its kernel and reports nothing.</p>
 	 */
 	@Override
-	public int getScopeArgumentCount() {
+	public int getScopeArgumentCount(int cap) {
 		return getDepth() > abortableDepth ? 1 : 0;
 	}
 

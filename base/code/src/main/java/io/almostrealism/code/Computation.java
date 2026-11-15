@@ -102,7 +102,7 @@ public interface Computation<T> extends
 	/**
 	 * Returns an upper bound on the kernel arguments preparing this computation's scope obtains,
 	 * excluding its output: the leaf positions of its {@link Process} tree plus the
-	 * {@link ScopeLifecycle#getScopeArgumentCount() scope argument count} of every position of
+	 * {@link ScopeLifecycle#getScopeArgumentCount(int) scope argument count} of every position of
 	 * that tree. Both are counted by position, before any de-duplication by value or by shared
 	 * memory, so the real count can only be lower. The tree is what the computation's signature
 	 * describes, so the bound is the same for every computation sharing a compiled kernel.
@@ -121,8 +121,9 @@ public interface Computation<T> extends
 		int leaves = process.countLeaves(cap);
 		if (leaves > cap) return leaves;
 
-		return (int) Math.min(Integer.MAX_VALUE,
-				(long) leaves + process.sumByPosition(ScopeLifecycle::getScopeArgumentCount, cap - leaves));
+		int remaining = cap - leaves;
+		return (int) Math.min(Integer.MAX_VALUE, (long) leaves +
+				process.sumByPosition(node -> ScopeLifecycle.getScopeArgumentCount(node, remaining), remaining));
 	}
 
 	/**

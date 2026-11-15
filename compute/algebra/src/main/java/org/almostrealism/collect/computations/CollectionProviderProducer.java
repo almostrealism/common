@@ -287,7 +287,7 @@ public class CollectionProviderProducer<T extends Shape>
 	 * {@link TraversalOrdering#getArgumentCount() arguments the ordering reads}.</p>
 	 */
 	@Override
-	public int getScopeArgumentCount() {
+	public int getScopeArgumentCount(int cap) {
 		TraversalOrdering order = getShape().getOrder();
 		return order == null ? 0 : order.getArgumentCount();
 	}

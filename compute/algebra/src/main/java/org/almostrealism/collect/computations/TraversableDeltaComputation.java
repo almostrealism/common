@@ -270,8 +270,8 @@ public class TraversableDeltaComputation
 	 * this computation.</p>
 	 */
 	@Override
-	public int getScopeArgumentCount() {
-		return super.getScopeArgumentCount() + 1;
+	public int getScopeArgumentCount(int cap) {
+		return (int) Math.min(Integer.MAX_VALUE, (long) super.getScopeArgumentCount(cap) + 1);
 	}
 
 	/**

@@ -332,7 +332,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 *
 	 * <p>The bound is one for the output plus the computation's
 	 * {@link Computation#getInputArgumentBound(int) input argument bound}: the leaf positions of
-	 * its process tree plus the {@link ScopeLifecycle#getScopeArgumentCount() scope argument
+	 * its process tree plus the {@link ScopeLifecycle#getScopeArgumentCount(int) scope argument
 	 * count} of every position of that tree. Every argument the computation's own inputs
 	 * contribute is reached through a leaf of that tree, and every argument a node obtains while
 	 * its scope is prepared for a value that is not one of its inputs (a derivative's target, a

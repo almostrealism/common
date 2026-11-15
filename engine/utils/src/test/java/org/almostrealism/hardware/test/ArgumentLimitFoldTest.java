@@ -16,11 +16,13 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.code.AdaptProducer;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.DefaultCollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -30,12 +32,15 @@ import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.streams.Semaphore;
+import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
 import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 import org.almostrealism.collect.computations.TraversableDeltaComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -52,6 +57,7 @@ import org.junit.Test;
 
 import java.util.List;
 import java.util.OptionalInt;
+import java.util.stream.Stream;
 
 /**
  * Pins the policy that decides whether a kernel folds its small arguments into an aggregate
@@ -265,7 +271,7 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 				shape(SIZE), shape(SIZE),
 				args -> DefaultCollectionExpression.create(shape(SIZE), idx -> args[1].getValueAt(idx)),
 				cp(target), cp(source));
-		Assert.assertEquals(1, delta.getScopeArgumentCount());
+		Assert.assertEquals(1, delta.getScopeArgumentCount(Integer.MAX_VALUE));
 
 		MaskedSumProbe probe = new MaskedSumProbe(new LimitedComputeContext(OptionalInt.empty()), delta);
 		Assert.assertEquals(1 + delta.countLeaves(Integer.MAX_VALUE - 1) + 1,
@@ -295,7 +301,8 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 	/**
 	 * A kernel compiled without folding is verified against the limit it was judged to fit, so a
 	 * bound that under-counts fails at compilation with a cause rather than at the backend; a
-	 * kernel that folds, or one compiled with no known limit, is never verified.
+	 * kernel that folds is verified against the same limit, and one compiled with no known limit
+	 * is never verified.
 	 */
 	@Test(timeout = 60000)
 	public void unfoldedKernelIsVerifiedAgainstTheLimit() {
@@ -312,10 +319,36 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 			Assert.fail("An argument count past the limit of an unfolded kernel was accepted");
 		} catch (HardwareException e) {
 			Assert.assertTrue(e.getMessage(), e.getMessage().contains(String.valueOf(bound + 1)));
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("does not report"));
 		}
 
 		FoldProbe overflows = run(new LimitedComputeContext(OptionalInt.of(bound - 1)));
-		overflows.verify(Integer.MAX_VALUE);
+		Assert.assertTrue("arguments=" + overflows.getArgumentCount() + " limit=" + (bound - 1),
+				overflows.getArgumentCount() <= bound - 1);
+		overflows.verify(overflows.getArgumentCount());
+	}
+
+	/**
+	 * A kernel that folds can still exceed the limit when too few of its arguments are small
+	 * enough to fold, so it is verified too: a count within the limit passes and one past it fails
+	 * at compilation, naming folding as insufficient rather than missing.
+	 */
+	@Test(timeout = 60000)
+	public void foldingKernelIsVerifiedAgainstTheLimit() {
+		int bound = run(new LimitedComputeContext(OptionalInt.empty())).getBound(Integer.MAX_VALUE - 1);
+		Computation<Void> computation = a(cp(new PackedCollection(SIZE)).each(), sumOfInputs(inputs(INPUTS)).each());
+		FoldProbe overflows = new FoldProbe(new LimitedComputeContext(OptionalInt.of(bound - 1)), computation);
+		Assert.assertTrue(overflows.isFoldingEnabled());
+
+		overflows.verify(bound - 1);
+
+		try {
+			overflows.verify(bound);
+			Assert.fail("An argument count past the limit of a folding kernel was accepted");
+		} catch (HardwareException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains(String.valueOf(bound)));
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("too few of its arguments"));
+		}
 	}
 
 	/**
@@ -330,7 +363,7 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 
 		OperationList list = new OperationList();
 		list.add(a(cp(out).each(), cp(in).each()));
-		Assert.assertEquals(0, list.getScopeArgumentCount());
+		Assert.assertEquals(0, list.getScopeArgumentCount(Integer.MAX_VALUE));
 
 		for (int depth = 1; depth <= ABORTABLE_DEPTH; depth++) {
 			OperationList outer = new OperationList();
@@ -339,7 +372,7 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 		}
 
 		Assert.assertEquals(ABORTABLE_DEPTH + 1, list.getDepth());
-		Assert.assertEquals(1, list.getScopeArgumentCount());
+		Assert.assertEquals(1, list.getScopeArgumentCount(Integer.MAX_VALUE));
 	}
 
 	/**
@@ -364,7 +397,7 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 		int twiceBound = twice.getInputArgumentBound(Integer.MAX_VALUE);
 		Assert.assertTrue("copy=" + copyBound, copyBound >= 2);
 		Assert.assertTrue("twice=" + twiceBound + " copy=" + copyBound, twiceBound > copyBound);
-		Assert.assertEquals(copyBound + twiceBound, choice.getScopeArgumentCount());
+		Assert.assertEquals(copyBound + twiceBound, choice.getScopeArgumentCount(Integer.MAX_VALUE));
 
 		FoldProbe unknown = new FoldProbe(new LimitedComputeContext(OptionalInt.empty()), choice);
 		int bound = unknown.getBound(Integer.MAX_VALUE - 1);
@@ -390,6 +423,91 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 	}
 
 	/**
+	 * A computation prepares its dependent lifecycles along with itself without their being
+	 * positions of its process tree, so it reports every argument they obtain; the bound counts
+	 * them on top of its own leaves. A limit equal to the bound without them, which the tree alone
+	 * would judge to fit, folds instead; a limit equal to the full bound folds nothing, stays
+	 * within it, and computes the right values.
+	 */
+	@Test(timeout = 60000)
+	public void boundCountsTheArgumentsOfDependentLifecycles() {
+		PackedCollection a = new PackedCollection(SIZE).fill(1.0);
+		PackedCollection b = new PackedCollection(SIZE).fill(2.0);
+		PackedCollection c = new PackedCollection(SIZE).fill(3.0);
+		PackedCollection d = new PackedCollection(SIZE).fill(4.0);
+
+		CollectionProducer plainSum = cp(a).add(cp(b));
+		int plainBound = new FoldProbe(new LimitedComputeContext(OptionalInt.empty()),
+				a(cp(new PackedCollection(SIZE)).each(), plainSum.each())).getBound(Integer.MAX_VALUE - 1);
+
+		Computation<?> dependent = (Computation<?>) cp(c).multiply(cp(d));
+		int dependentBound = dependent.getInputArgumentBound(Integer.MAX_VALUE);
+		Assert.assertTrue("dependent=" + dependentBound, dependentBound >= 3);
+
+		CollectionProducer sum = cp(a).add(cp(b));
+		int own = ((Computation<?>) sum).getScopeArgumentCount(Integer.MAX_VALUE);
+		((CollectionProducerComputationBase) sum).addDependentLifecycle(dependent);
+		Assert.assertEquals(own + dependentBound, ((Computation<?>) sum).getScopeArgumentCount(Integer.MAX_VALUE));
+		Assert.assertTrue(((Computation<?>) sum).getScopeArgumentCount(1) > 1);
+
+		PackedCollection out = new PackedCollection(SIZE).fill(-1.0);
+		Computation<Void> assignment = a(cp(out).each(), sum.each());
+		int bound = new FoldProbe(new LimitedComputeContext(OptionalInt.empty()), assignment)
+				.getBound(Integer.MAX_VALUE - 1);
+		Assert.assertEquals(plainBound + dependentBound, bound);
+		Assert.assertTrue("bound=" + bound, bound < MetalOperator.MAX_ARGUMENTS);
+
+		FoldProbe treeOnly = new FoldProbe(new LimitedComputeContext(OptionalInt.of(plainBound)), assignment);
+		Assert.assertEquals(Integer.MAX_VALUE, treeOnly.getAllowance());
+
+		FoldProbe fits = new FoldProbe(new LimitedComputeContext(OptionalInt.of(bound)), assignment);
+		fits.run();
+		Assert.assertEquals(0, fits.getFolded());
+		Assert.assertTrue("arguments=" + fits.getArgumentCount() + " bound=" + bound,
+				fits.getArgumentCount() <= bound);
+
+		double[] values = out.toArray();
+		for (int i = 0; i < SIZE; i++) {
+			assertEquals(3.0, values[i]);
+		}
+	}
+
+	/**
+	 * A lifecycle that is a leaf of its process tree but prepares other producers along with
+	 * itself reports every argument preparing them obtains: an adapted producer reports those of
+	 * the producer it adapts and of each argument producer, and a producer with a rank reports
+	 * those of the producer and of the rank. Producers that are not computations and obtain
+	 * nothing out of the tree add nothing, and the count stops once it passes the cap.
+	 */
+	@Test(timeout = 30000)
+	public void wrappingLifecyclesReportTheArgumentsOfWhatTheyPrepare() {
+		PackedCollection a = new PackedCollection(SIZE).fill(1.0);
+		PackedCollection b = new PackedCollection(SIZE).fill(2.0);
+
+		Computation<?> sum = (Computation<?>) cp(a).add(cp(b));
+		Computation<?> product = (Computation<?>) cp(a).multiply(cp(b)).multiply(cp(a));
+		int sumBound = sum.getInputArgumentBound(Integer.MAX_VALUE);
+		int productBound = product.getInputArgumentBound(Integer.MAX_VALUE);
+		Assert.assertTrue("sum=" + sumBound, sumBound >= 3);
+		Assert.assertTrue("product=" + productBound + " sum=" + sumBound, productBound > sumBound);
+
+		Assert.assertEquals(0, ScopeLifecycle.getPreparedArgumentBound(Stream.of(cp(a), "not a lifecycle"),
+				Integer.MAX_VALUE));
+		Assert.assertEquals(sumBound + productBound,
+				ScopeLifecycle.getPreparedArgumentBound(Stream.of(sum, cp(a), product), Integer.MAX_VALUE));
+
+		AdaptProducer<?> adapted = new AdaptProducer<>((Producer) sum, (Producer) product, cp(b));
+		Assert.assertEquals(sumBound + productBound, adapted.getScopeArgumentCount(Integer.MAX_VALUE));
+		int capped = adapted.getScopeArgumentCount(1);
+		Assert.assertTrue("capped=" + capped, capped > 1);
+		Assert.assertTrue("capped=" + capped, capped <= sumBound);
+
+		ProducerWithRankAdapter<?> ranked = new ProducerWithRankAdapter<>((Producer) product, (Producer) sum);
+		Assert.assertEquals(productBound + sumBound, ranked.getScopeArgumentCount(Integer.MAX_VALUE));
+		Assert.assertEquals(0, new ProducerWithRankAdapter<>(cp(a), cp(b)).getScopeArgumentCount(Integer.MAX_VALUE));
+	}
+
+	/**
 	 * A kernel whose bound exceeds the limit folds only while aggregation is enabled; with
 	 * aggregation disabled it folds nothing, so it is verified against the limit and an argument
 	 * count past it fails at compilation naming the cause, while a count within it passes.
@@ -401,7 +519,6 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 		FoldProbe overflows = new FoldProbe(new LimitedComputeContext(OptionalInt.of(bound - 1)), computation);
 
 		Assert.assertTrue(overflows.isFoldingEnabled());
-		overflows.verify(Integer.MAX_VALUE);
 
 		boolean previous = MemoryDataArgumentMap.enableArgumentAggregation;
 		MemoryDataArgumentMap.enableArgumentAggregation = false;
