@@ -222,11 +222,24 @@ and returns `encode()` unchanged when that codec is the string codec, so every
 existing type stays byte-identical. Otherwise it returns the rendered
 `WireEnvelope`. `JobFactory.decode` stays the single factory decoder, and
 `Server.instantiateJobClass` the single job decoder. Both parse the envelope,
-pick the codec, and verify that the named class declares that format before
-decoding. A class that does not declare the format is rejected, never decoded
-with the wrong codec.
+pick the codec, and verify that the codec accepts the named class before
+decoding. A class the codec does not accept is rejected, never decoded with the
+wrong codec.
 
-<!-- TODO(review): getWireFormat() is per-instance and set by the controller (§3.3), so a receiver's fresh instance reports "string"; the "class declares that format" check needs a per-class supported-formats declaration instead. -->
+**What a sender chooses is separate from what a receiver accepts.**
+`getWireFormat()` is the *sender's* choice. For coding jobs it is a per-instance
+value that the controller assigns and that is never serialized (§3.3), so a
+receiver's freshly constructed instance always reports `string`. It therefore
+cannot be what the receiver checks. The acceptance check is per class and lives
+on the codec: `JobCodec` gains `boolean supports(Class<?> type)`.
+`StringJobCodec.supports` returns `true` for every `JobFactory` and `Job` class.
+`CodingAgentJobProtoCodec.supports` returns `true` for `CodingAgentJobFactory`
+and its subclasses (including the `CodingAgentJob.Factory` alias) and for
+`CodingAgentJob`. The decoders call it after `Class.forName` and before
+instantiating anything, so a mismatched payload never constructs an object. A
+`toWire()` whose `getWireFormat()` names a codec that does not `supports` the
+sending class throws `UnsupportedWireFormatException` on the sender, so a
+misconfigured format fails at the controller and not on the agent.
 
 **Send sites switch from `encode()` to `toWire()`:** `CodingAgentClient.trySendToAgent`,
 `NodeGroup.sendTask(JobFactory, int)`, `Message.setJob`, `Node`'s failed-job
@@ -281,9 +294,18 @@ not alter that.
 understand, so the controller decides when to send the new format. It holds a
 controller setting, `codingJobWireFormat`, set to `string` or `coding-pb1`, with
 `string` as the default. `CodingAgentJobFactory.getWireFormat()` returns the
-value the controller assigned through `setWireFormat`, and the setting reaches
-the controller through `FlowTreeController`/`controller_update_config` like
-other controller settings. `setWireFormat` is a transport choice, not a property
+value the controller assigned through `setWireFormat`. There is no general
+controller-settings mechanism to reuse. `controller_update_config`
+(`tools/mcp/manager/server.py`) handles exactly one setting today,
+`accept_automated_jobs`. It maps to `POST`/`GET /api/config/accept-automated-jobs`
+on `FlowTreeApiEndpoint`, which holds the value in a `volatile` field that
+resets to its default on restart. The proposal is to declare
+`codingJobWireFormat` as a top-level key in `workstreams.yaml` (read by
+`FlowTreeController.loadConfig` through `WorkstreamConfig`), so the value
+survives a controller restart and a restart's `recoverPendingJobs` re-dispatch
+uses it. A runtime toggle through `controller_update_config` and a matching
+`/api/config/...` endpoint is optional; open question 8 asks whether it is
+wanted. `setWireFormat` is a transport choice, not a property
 of the workload, so it is never itself serialized. The jobs a factory produces
 inherit its format for any later relay. The upgrade order is: every agent node
 first, then the controller setting. A rejected job stays `SUBMITTED` and never
@@ -456,6 +478,11 @@ message Evidence {
   bool truncated = 7;
 }
 
+// Carries evidence under the string codec as one Base64 `evidence` key (section 6).
+message EvidenceList {
+  repeated Evidence items = 1;
+}
+
 message CodingAgentJobFactoryMessage {
   string task_id = 1;
   repeated string prompts = 2;
@@ -500,12 +527,30 @@ Notes on the mapping:
   the string codec, `PhaseConfigBundle.fromWire` and `applyRunnerEntry` skip
   unknown phases. The protobuf codec instead follows the "fail clearly" rule of
   §3.3.
-- **Field coverage is enforced by a test, not by review.** The phase (b) test
-  builds a factory with every setter in §1.4 set to a non-default value,
-  round-trips it through both codecs, and asserts that the two decoded factories
-  re-encode to the same string-codec property map. A property added to the
-  string codec later without a protobuf field fails that test.
-  <!-- TODO(review): this only holds if the test enumerates properties from the string codec itself; a hand-written setter list misses properties added later. -->
+- **Field coverage is enforced by a test, not by review.** A round trip alone
+  is not enough. A test that sets a hand-written list of setters never sets a
+  property added later, so that property's absence from the schema would go
+  unnoticed. The phase (b) test therefore has three parts, for the factory and for
+  the job:
+  1. *Completeness of the fixture.* Build the fully populated fixture (every
+     property set to a non-default value), string-encode it, and assert that the
+     set of wire keys in `encode()` equals a pinned set: the keys listed in
+     §1.4, with `req.<label>` represented by one fixture label. A key that is
+     added to `CodingAgentJobFactory.set`/`CodingAgentJobCodec` and set in the
+     fixture changes the encoded key set and fails this assertion.
+  2. *Equivalence of the codecs.* Round-trip the fixture through both codecs
+     and assert that the two decoded objects re-encode to the same string-codec
+     property map.
+  3. *No unset keys.* For each key in the pinned set, assert that the fixture's
+     encoded value differs from the value a freshly constructed object encodes
+     (or is absent from it). A new key added to the pinned set without a
+     fixture value then fails.
+
+  The pinned set is the point. Anyone adding a string-codec key has to edit it,
+  and the same test then fails until the schema and the fixture carry the key.
+  This is a convention backed by a test, not a guarantee. A key that a
+  developer adds to the codec and to neither the fixture nor the pinned set
+  escapes it. Open question 7 asks whether that residue is acceptable.
 
 ---
 
@@ -592,7 +637,7 @@ format switch.
 | ar-manager submit tool, `tools/mcp/manager/workstream_submit_tools.py` | New `evidence` parameter: a list of `{kind, label, mediaType, text}`, documented in the docstring and written to `payload["evidence"]`. Client-side checks on label pattern and size caps, mirroring the controller's. The prompt linters stay unchanged and run on the prompt. |
 | HTTP submit, `FlowTreeApiEndpoint#handleSubmit` | When `JsonFieldExtractor.hasField(body, "evidence")` is true, the `evidence` array is parsed with protobuf-java-util `JsonFormat.parser()` into the `Evidence` message, so the JSON field names come from the schema and nothing is hand-mapped. Labels and caps are validated, and the result goes to `factory.setEvidence(...)`. The rest of the body keeps its current `JsonFieldExtractor` handling. `handleSubmit` is near the `FileLength` cap, so evidence parsing goes into a collaborator alongside `ShellCommandSubmissionHandler` and `TestExecutionLimitsSubmissionValidator`, as a submission-parsing class, not a helper. |
 | Job record, submit response | The response gains `"evidence":[{"kind":..,"label":..,"bytes":..,"truncated":..}]`, which is metadata only. `JobStatsStore.job_timing` gains no evidence content. If the listing should show that a job had evidence, add an `evidence_count` column through the store's existing `ALTER TABLE job_timing ADD COLUMN` migration list. |
-| Factory, `CodingAgentJobFactory` | `List<Evidence>` field with accessors. Under the string codec the field travels as one `evidence` key whose value is Base64 of the serialized `EvidenceList`. This keeps evidence end to end even before the protobuf switch, and keeps the property-store model. `configure` copies the field to the job. |
+| Factory, `CodingAgentJobFactory` | `List<Evidence>` field with accessors. Under the string codec the field travels as one `evidence` key whose value is Base64 of the serialized `EvidenceList`. This keeps evidence end to end even before the protobuf switch, and keeps the property-store model. `configure` copies the field to the job. Note the consequence: from phase (c) on, the *string* codec for coding jobs also needs the generated protobuf classes, so phase (c) cannot land before phase (b) and its pom edits. An agent from before phase (c) keeps an `evidence` key it does not recognise in the property map (§3.3) and runs the job without the evidence, silently. The rollout order (agents first) is what prevents this, and it applies to phase (c) even when `codingJobWireFormat` stays `string`. |
 | Job, `CodingAgentJob` | Field and accessors. It writes the `.flowtree/evidence` files and passes the manifest to `InstructionPromptBuilder`. |
 | Wire | String codec: the `evidence` key in `CodingAgentJobCodec` and the factory `set`. Protobuf codec: the `evidence` field. |
 | Worker | `CodingAgentJob` materializes the files before the first session and deletes `.flowtree/evidence` when the job finishes, whatever the outcome, so a later job in the same working directory never sees a previous job's evidence. |
@@ -674,7 +719,10 @@ with named classes.
   marked parse and render round-trip; malformed markers are rejected.
 - New `JobCodecRegistryTest`: decoding an envelope whose format id is
   unregistered raises `UnsupportedWireFormatException` naming the id, and
-  `JobFactory.decode` returns `null` without instantiating the class.
+  `JobFactory.decode` returns `null` without instantiating the class. A
+  registered test codec whose `supports` rejects the named class also yields
+  `null` without instantiation, and `toWire()` on a class its chosen codec does
+  not support throws on the sender.
 - `JobClassLoaderTest` gains a case for a payload with no `::`, which must
   return `null` rather than throw.
 - **Older-node rejection test:** feed `@wire=test-fmt::io.flowtree.jobs.CodingAgentJob$Factory::AAAA`
@@ -808,3 +856,31 @@ named `ci/...`.
    (`flowtree/CLAUDE.md`), and dropping an unknown field is the silent property
    loss that rule exists to prevent. Reject the job and let the rollout order in
    §3.3 avoid the case.
+
+7. **Is a pinned key set strong enough as the field-coverage guard (§4.2)?**
+   *Proposed answer:* yes, for now. The string codec has no list of its keys
+   that a test could enumerate. `CodingAgentJobFactory.set` is a `switch`, and
+   the job keys are written imperatively in `CodingAgentJobCodec`/`GitManagedJobCodec`.
+   The pinned set forces an edit, and that edit points at the schema. Making the
+   key set enumerable (a declared key list per `WireConfig`) would close the
+   residual gap, but it refactors the string codec, which this plan otherwise
+   leaves byte-identical. If it is wanted, it should be its own task.
+
+8. **Where should `codingJobWireFormat` live?**
+   *Proposed answer:* in `workstreams.yaml`, as §3.3 describes. It is a fleet
+   rollout switch, changed rarely and deliberately, so a persisted value suits
+   it better than the in-memory runtime toggle that `accept_automated_jobs`
+   uses. Extending `controller_update_config` is optional. If it is added, it
+   needs a decision on whether a runtime change writes back to
+   `workstreams.yaml` through `WorkstreamConfig.saveToYaml` (today the
+   controller rewrites the file that way for generated workstream ids, for
+   `WorkstreamConfig.syncAndSave` and for `attachMetadataStore`) or lapses on
+   restart.
+   <!-- TODO(review): every saveToYaml rewrite must round-trip a new top-level codingJobWireFormat key, or a workstream sync silently drops it; say so in §3.3. -->
+
+9. **Is phase (c) blocked on phase (b) even if only the string codec is used?**
+   Yes, as written (§6, factory row): the string codec carries evidence as a
+   serialized `EvidenceList`. If the owner wants evidence before the protobuf
+   pom work, the alternative is a string-codec-only encoding of evidence (for
+   example Base64 of a JSON array). That adds a second evidence encoding to
+   keep in step with the schema, which is why the plan does not propose it.
