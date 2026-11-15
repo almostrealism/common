@@ -280,6 +280,54 @@ class GatherTest(unittest.TestCase):
         self.assertIsNone(facts["test_run"])
         self.assertEqual(facts["validate_run"]["id"], 14)
 
+    def test_reads_every_page_of_check_runs_and_jobs(self):
+        # 100 shard check runs on page 1; the newest gates are on page 2.
+        def checks(path):
+            if path.endswith("page=1"):
+                return {"check_runs": [dict(check("shard", "success"), id=n)
+                                       for n in range(100)]}
+            return {"check_runs": [dict(check("All Checks", "success"),
+                                        id=500),
+                                   dict(check("Test Checks", "failure"),
+                                        id=501)]}
+
+        def jobs(path):
+            if path.endswith("page=1"):
+                return {"jobs": [job("shard %d" % n) for n in range(100)]}
+            return {"jobs": [job("auto-resolve-python-submit")]}
+
+        test_run = dict(run("deployment", conclusion="failure", attempt=3),
+                        id=11)
+        validate = dict(run("pull_request"), id=14)
+        client = FakeClient([
+            ("pulls/7", {"number": 7}),
+            ("actions/workflows/", {"workflow_runs": [test_run, validate]}),
+            ("commits/abc/check-runs", checks),
+            ("actions/runs/14/jobs", jobs),
+            ("actions/runs/11/attempts/3/jobs", jobs),
+            ("actions/runs/11/artifacts", {"artifacts": []}),
+        ])
+        facts = labels.gather(client, PR)
+        self.assertEqual(len(facts["check_runs"]), 102)
+        self.assertEqual(labels.check_conclusion(facts["check_runs"],
+                                                 "Test Checks"), "failure")
+        self.assertEqual(len(facts["validate_jobs"]), 101)
+        self.assertEqual(len(facts["test_jobs"]), 101)
+        self.assertEqual(labels.derive(facts, NOW)[0], labels.AUTO_FIX)
+        self.assertIn("commits/abc/check-runs?per_page=100&page=2",
+                      client.requested)
+        self.assertIn("actions/runs/14/jobs?filter=all&per_page=100&page=2",
+                      client.requested)
+        self.assertIn("actions/runs/11/attempts/3/jobs?per_page=100&page=2",
+                      client.requested)
+
+    def test_a_short_wrapped_page_ends_the_read(self):
+        client = FakeClient([("commits/abc/check-runs", {})])
+        self.assertEqual(client.get_all("commits/abc/check-runs",
+                                        "check_runs"), [])
+        self.assertEqual(client.requested,
+                         ["commits/abc/check-runs?per_page=100&page=1"])
+
     def test_open_pulls_skips_forks(self):
         fork = {"number": 8, "head": {"ref": "x", "repo": {"full_name": "f/r"}}}
         client = FakeClient([("pulls?", [PR, fork])])

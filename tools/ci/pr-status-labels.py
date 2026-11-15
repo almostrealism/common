@@ -215,14 +215,20 @@ class StatusClient(flakes.GitHubClient):
         """GET a repository-relative path."""
         return self._request("/repos/%s/%s" % (self.repo, path))
 
-    def get_all(self, path):
-        """Every item of a repository-relative list endpoint that answers with
-        a bare JSON array, following its pages 100 at a time."""
+    def get_all(self, path, key=None):
+        """Every item of a repository-relative list endpoint, following its
+        pages 100 at a time.
+
+        ``key`` names the field holding the list for an endpoint that wraps
+        each page in an object (``check_runs``, ``jobs``); without it the
+        endpoint must answer with a bare JSON array."""
         separator = "&" if "?" in path else "?"
         items = []
         page = 1
         while True:
-            batch = self.get("%s%sper_page=100&page=%d" % (path, separator, page))
+            payload = self.get("%s%sper_page=100&page=%d"
+                               % (path, separator, page))
+            batch = payload.get(key, []) if key else payload
             items.extend(batch)
             if len(batch) < 100:
                 return items
@@ -266,21 +272,21 @@ def gather(client, pr):
         "pr": detail,
         "validate_run": newest([r for r in runs if r["event"] == "pull_request"]),
         "test_run": newest([r for r in runs if r["event"] == "deployment"]),
-        # TODO(review): check-runs (and the run's jobs) are read from one page of 100; a commit with matrix shards over several attempts can exceed that and hide the newest gate.
-        "check_runs": client.get(
-            "commits/%s/check-runs?per_page=100" % sha).get("check_runs", []),
+        # Every page: matrix shards over several attempts can put a commit
+        # past 100 check runs, and the newest gate may be on a later page.
+        "check_runs": client.get_all(
+            "commits/%s/check-runs" % sha, "check_runs"),
     }
     validate = facts["validate_run"]
     if validate and validate.get("status") == "completed":
-        facts["validate_jobs"] = client.get(
-            "actions/runs/%d/jobs?filter=all&per_page=100"
-            % validate["id"]).get("jobs", [])
+        facts["validate_jobs"] = client.get_all(
+            "actions/runs/%d/jobs?filter=all" % validate["id"], "jobs")
     test = facts["test_run"]
     if test and test.get("status") == "completed" \
             and test.get("conclusion") != "success":
-        facts["test_jobs"] = client.get(
-            "actions/runs/%d/attempts/%d/jobs?per_page=100"
-            % (test["id"], test.get("run_attempt", 1))).get("jobs", [])
+        facts["test_jobs"] = client.get_all(
+            "actions/runs/%d/attempts/%d/jobs"
+            % (test["id"], test.get("run_attempt", 1)), "jobs")
         artifacts = client.get(
             "actions/runs/%d/artifacts?name=%s"
             % (test["id"], STAGED_REQUEST)).get("artifacts", [])
