@@ -16,6 +16,8 @@
 
 package io.flowtree.github;
 
+import org.almostrealism.io.ConsoleFeatures;
+
 /**
  * A way of starting GitHub Actions CI for the head commit of a branch, at most
  * once per commit.
@@ -41,7 +43,7 @@ package io.flowtree.github;
  * @param kind   how CI is started
  * @param target the environment name or workflow file name
  */
-public record CiTrigger(Kind kind, String target) {
+public record CiTrigger(Kind kind, String target) implements ConsoleFeatures {
 
     /** How a {@link CiTrigger} starts CI. */
     public enum Kind {
@@ -140,21 +142,31 @@ public record CiTrigger(Kind kind, String target) {
      * @return what happened
      */
     public Outcome start(GitHubProxyHandler github, String ownerRepo, String branch, String token) {
+        String subject = spec() + " for " + ownerRepo + " " + branch;
         String sha = github.fetchHeadSha(ownerRepo, branch, token);
         if (sha == null) {
+            warn("Settled CI " + subject + " failed: the branch head could not be read");
             return Outcome.FAILED;
         }
         boolean started = kind == Kind.DEPLOYMENT
                 ? github.hasDeployment(ownerRepo, sha, target, token)
                 : github.hasWorkflowRun(ownerRepo, target, sha, token);
         if (started) {
+            log("Settled CI " + subject + " already started for " + sha);
             return Outcome.ALREADY_STARTED;
         }
         boolean ok = kind == Kind.DEPLOYMENT
                 ? github.createDeployment(ownerRepo, branch, target,
                         "Review loop settled; starting CI", token)
                 : github.dispatchWorkflow(ownerRepo, target, branch, token);
-        return ok ? Outcome.STARTED : Outcome.FAILED;
+        if (ok) {
+            log("Settled CI " + subject + " started for " + sha);
+            return Outcome.STARTED;
+        }
+        warn("Settled CI " + subject + " failed: GitHub did not accept the request"
+                + " (verify GitHub is reachable and the organisation token has "
+                + (kind == Kind.DEPLOYMENT ? "Deployments" : "Actions") + " write)");
+        return Outcome.FAILED;
     }
 
     @Override

@@ -21,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import org.almostrealism.io.Console;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
 import org.junit.Before;
@@ -33,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -58,18 +60,51 @@ public class CiTriggerTest extends TestSuiteBase {
     /** The handler under test's collaborator, pointed at the fake API. */
     private GitHubProxyHandler handler;
 
-    /** Starts the fake GitHub API. */
+    /**
+     * Every line {@link CiTrigger} writes to {@link Console#root()}, so a test
+     * can assert the outcome it reported.
+     */
+    private final List<String> messages = new ArrayList<>();
+
+    /** The listener recording {@link #messages}; removed on teardown. */
+    private Consumer<String> listener;
+
+    /** Starts the fake GitHub API and captures {@link Console#root()} output. */
     @Before
     public void setUp() throws IOException {
         github = new FakeGitHub();
         github.start();
         handler = new GitHubProxyHandler(Map.of("acme", "tok"), github.root());
+        listener = msg -> {
+            if (msg != null) messages.add(msg);
+        };
+        Console.root().addListener(listener);
     }
 
-    /** Stops the fake GitHub API. */
+    /** Stops the fake GitHub API and removes the console listener. */
     @After
     public void tearDown() {
         if (github != null) github.stop();
+        if (listener != null) Console.root().removeListener(listener);
+    }
+
+    /**
+     * Asserts at least one captured line contains every one of {@code fragments}.
+     *
+     * @param fragments the substrings a single reported line must all contain
+     */
+    private void assertReported(String... fragments) {
+        for (String line : messages) {
+            boolean all = true;
+            for (String fragment : fragments) {
+                if (!line.contains(fragment)) {
+                    all = false;
+                    break;
+                }
+            }
+            if (all) return;
+        }
+        fail("no reported line contained all of " + List.of(fragments) + "; saw " + messages);
     }
 
     /** Both spec forms parse, round-trip through {@link CiTrigger#spec()}, and blank means none. */
@@ -168,6 +203,63 @@ public class CiTriggerTest extends TestSuiteBase {
         assertTrue(github.deployments.isEmpty());
     }
 
+    /** Starting CI reports the started commit, naming the trigger, repository and branch. */
+    @Test(timeout = 30000)
+    public void startedIsReportedWithTheCommit() {
+        CiTrigger.parse("workflow:tests.yaml").start(handler, "acme/app", "feature/x", "tok");
+
+        assertReported("workflow:tests.yaml", "acme/app", "feature/x", "started", github.headSha);
+    }
+
+    /** A commit that already has CI reports that nothing was done, naming the commit. */
+    @Test(timeout = 30000)
+    public void alreadyStartedIsReported() {
+        CiTrigger trigger = CiTrigger.parse("deployment:test");
+        trigger.start(handler, "acme/app", "feature/x", "tok");
+        messages.clear();
+
+        assertEquals(CiTrigger.Outcome.ALREADY_STARTED,
+                trigger.start(handler, "acme/app", "feature/x", "tok"));
+        assertReported("deployment:test", "acme/app", "feature/x", "already started", github.headSha);
+    }
+
+    /** An unreadable branch head is reported as a failure naming the cause. */
+    @Test(timeout = 30000)
+    public void unreadableHeadIsReported() {
+        github.headSha = null;
+
+        CiTrigger.parse("deployment:test").start(handler, "acme/app", "gone", "tok");
+        assertReported("deployment:test", "acme/app", "gone", "failed", "branch head could not be read");
+    }
+
+    /**
+     * When GitHub does not accept the request the failure is reported as a
+     * verification hint rather than an assertion that the token lacks the
+     * permission, since a non-success can equally be a transport error.
+     */
+    @Test(timeout = 30000)
+    public void refusedRequestIsReportedAsAHint() {
+        github.deploymentPostStatus = 403;
+
+        assertEquals(CiTrigger.Outcome.FAILED,
+                CiTrigger.parse("deployment:test").start(handler, "acme/app", "feature/x", "tok"));
+        assertReported("deployment:test", "acme/app", "feature/x", "failed", "Deployments write");
+    }
+
+    /**
+     * A refused workflow dispatch names the Actions permission, not the
+     * Deployments one: the hint is keyed to the trigger kind, so the workflow
+     * path must report {@code Actions write}.
+     */
+    @Test(timeout = 30000)
+    public void refusedDispatchReportsActionsWrite() {
+        github.dispatchStatus = 403;
+
+        assertEquals(CiTrigger.Outcome.FAILED,
+                CiTrigger.parse("workflow:tests.yaml").start(handler, "acme/app", "feature/x", "tok"));
+        assertReported("workflow:tests.yaml", "acme/app", "feature/x", "failed", "Actions write");
+    }
+
     /**
      * A minimal fake of the GitHub REST endpoints {@link CiTrigger} uses.
      * Deployments are stored with the SHA the branch head had when they were
@@ -184,6 +276,10 @@ public class CiTriggerTest extends TestSuiteBase {
         private final List<String> dispatches = new ArrayList<>();
         /** The {@code total_count} every workflow-runs listing reports. */
         private int runsForHead;
+        /** The status a deployment creation returns; non-201 models GitHub refusing it. */
+        private int deploymentPostStatus = 201;
+        /** The status a workflow dispatch returns; non-204 models GitHub refusing it. */
+        private int dispatchStatus = 204;
 
         /** Binds the server to a free loopback port and starts it. */
         private void start() throws IOException {
@@ -217,18 +313,27 @@ public class CiTriggerTest extends TestSuiteBase {
                 reply = deploymentsMatching(query);
             } else if (path.endsWith("/deployments") && method.equals("POST")) {
                 ObjectNode body = (ObjectNode) MAPPER.readTree(read(exchange));
-                body.put("sha", headSha);
-                deployments.add(body);
-                status = 201;
-                reply = "{\"id\":" + deployments.size() + "}";
+                status = deploymentPostStatus;
+                if (status == 201) {
+                    body.put("sha", headSha);
+                    deployments.add(body);
+                    reply = "{\"id\":" + deployments.size() + "}";
+                } else {
+                    reply = "{\"message\":\"refused\"}";
+                }
             } else if (path.endsWith("/runs")) {
                 status = 200;
                 reply = "{\"total_count\":" + runsForHead + "}";
             } else if (path.endsWith("/dispatches")) {
                 String file = path.split("/actions/workflows/")[1].split("/")[0];
-                dispatches.add(file + "@" + MAPPER.readTree(read(exchange)).path("ref").asText());
-                status = 204;
-                reply = null;
+                String ref = MAPPER.readTree(read(exchange)).path("ref").asText();
+                status = dispatchStatus;
+                if (status == 204) {
+                    dispatches.add(file + "@" + ref);
+                    reply = null;
+                } else {
+                    reply = "{\"message\":\"refused\"}";
+                }
             }
             if (reply == null) {
                 exchange.sendResponseHeaders(status, -1);
