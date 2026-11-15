@@ -301,9 +301,26 @@ controller-settings mechanism to reuse. `controller_update_config`
 on `FlowTreeApiEndpoint`, which holds the value in a `volatile` field that
 resets to its default on restart. The proposal is to declare
 `codingJobWireFormat` as a top-level key in `workstreams.yaml` (read by
-`FlowTreeController.loadConfig` through `WorkstreamConfig`), so the value
-survives a controller restart and a restart's `recoverPendingJobs` re-dispatch
-uses it. A runtime toggle through `controller_update_config` and a matching
+`FlowTreeController.loadConfig` through `WorkstreamConfig.loadFromYaml`), so the
+value survives a controller restart and a restart's `recoverPendingJobs`
+re-dispatch uses it.
+
+This key must be a **modeled field on `WorkstreamConfig`** — a declared field
+with a getter and setter — not merely a key that happens to appear in the file.
+`WorkstreamConfig` is annotated `@JsonIgnoreProperties(ignoreUnknown = true)`,
+and `saveToYaml` re-serializes the `WorkstreamConfig` object itself with Jackson
+(emitting only modeled, non-empty fields). The controller rewrites
+`workstreams.yaml` through `saveToYaml` on several ordinary paths —
+`sanitizeAndPersist` (generated workstream ids), `attachMetadataStore`, and
+`WorkstreamConfig.syncAndSave` (workstream sync, e.g. archiving a workstream) —
+and each rewrite round-trips only the modeled fields. An unmodeled top-level
+key would be read back as unknown, ignored on load, and dropped the first time
+any of those rewrites runs, silently reverting the fleet to the `string`
+default. Modeling the field (with `JsonInclude.Include.NON_EMPTY`, matching the
+other top-level fields, so an unset value writes nothing) is what makes it
+survive every sync.
+
+A runtime toggle through `controller_update_config` and a matching
 `/api/config/...` endpoint is optional; open question 8 asks whether it is
 wanted. `setWireFormat` is a transport choice, not a property
 of the workload, so it is never itself serialized. The jobs a factory produces
@@ -875,8 +892,8 @@ named `ci/...`.
    `workstreams.yaml` through `WorkstreamConfig.saveToYaml` (today the
    controller rewrites the file that way for generated workstream ids, for
    `WorkstreamConfig.syncAndSave` and for `attachMetadataStore`) or lapses on
-   restart.
-   <!-- TODO(review): every saveToYaml rewrite must round-trip a new top-level codingJobWireFormat key, or a workstream sync silently drops it; say so in §3.3. -->
+   restart. Either way the persisted key must be a modeled `WorkstreamConfig`
+   field so those rewrites round-trip it (§3.3).
 
 9. **Is phase (c) blocked on phase (b) even if only the string codec is used?**
    Yes, as written (§6, factory row): the string codec carries evidence as a
