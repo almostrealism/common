@@ -61,7 +61,9 @@ import java.util.stream.Stream;
  * pixel whose bracket never closes before {@link #setMaximumDistance(double) maximumDistance}
  * misses the surface. So does a pixel whose ray starts inside the surface (where the value
  * at distance zero is not positive): there is no bracket with a positive near end, so the
- * pixel shows the environment rather than a hit at distance zero.</p>
+ * pixel shows the environment rather than a hit at distance zero. The bracket of a miss is
+ * collapsed onto its near end before refinement, so the surface is only ever evaluated at
+ * distances between zero and {@code maximumDistance}.</p>
  *
  * <h2>Shading</h2>
  * <p>With {@code n} the surface normal, {@code d} the ray direction and {@code r} the
@@ -161,7 +163,8 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 
 	/**
 	 * The far end of the bracket of every ray, where the surface value is not positive, or
-	 * {@link #unclosedDistance()} while the bracket has not closed.
+	 * {@link #unclosedDistance()} while the bracket has not closed. After the march, the far
+	 * end of a miss is moved to its near end.
 	 */
 	private final PackedCollection far;
 
@@ -392,6 +395,11 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 
 		pixels.add(a(cp(hit), greaterThan(cp(far), c(0.0),
 				lessThan(cp(far), c(unclosedDistance()), c(1.0), c(0.0)), c(0.0))));
+
+		// Collapse the bracket of a miss onto its near end, so that refinement and the
+		// secant step evaluate the surface only at distances the march reached, never at
+		// the unclosed sentinel far beyond maximumDistance
+		pixels.add(a(cp(far), greaterThan(cp(hit), c(0.5), cp(far), cp(near))));
 
 		for (int i = 0; i < refinementSteps; i++) {
 			addBisection(pixels);

@@ -44,8 +44,8 @@ concept, and the type system does not say so. Shapes it takes:
 2. **Parallel hierarchy.** Two families that mirror each other: a host-valued one
    (`double intersect(Vector, Vector)` on `Volume`, `double estimateDistance(Ray)` on
    `DistanceEstimator`) and a producer-valued one (`Intersectable.intersectAt`). Often the
-   older one is a migration that stopped halfway; a `// TODO Replace with intersectable`
-   comment is a strong signal.
+   older one is a migration that stopped halfway; a leftover comment asking for the older
+   type to be replaced with `Intersectable` is a strong signal.
 3. **Missing specialization.** A type that is, conceptually, a special case of an existing
    interface (a mesh is a graph; a height field is a 2D grid field; a grid field is a
    discrete field) but does not implement it.

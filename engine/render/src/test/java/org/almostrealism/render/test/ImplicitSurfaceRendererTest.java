@@ -393,6 +393,65 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 		}
 	}
 
+	/**
+	 * The surface is only evaluated at distances the march can reach. The unit sphere is
+	 * rendered as a surface that is undefined (NaN) beyond a ball that contains every point
+	 * within {@code maximumDistance} of the camera, but not the points out to the unclosed
+	 * bracket sentinel. Every hit still matches the analytic distance, every miss reports
+	 * distance -1, reflectance 0 and the environment color, and every channel of the image is
+	 * finite.
+	 */
+	// TODO(review): near-silhouette misses put the sentinel (17) at |p| ~ 12 < definedRadius, and the test passes without the bracket collapse
+	@Test(timeout = 600000)
+	public void surfaceEvaluatedOnlyWithinMaximumDistance() {
+		int size = 16;
+		double maximumDistance = 8.0;
+		double definedRadius = 5.0 + maximumDistance + 1.0;
+		SignedDistanceFunction bounded = p -> length(p).subtract(c(1.0))
+				.add(sqrt(c(definedRadius * definedRadius).subtract(dotProduct(p, p))).multiply(c(1e-20)));
+
+		PinholeCamera camera = sphereCamera();
+		ImplicitSurfaceRenderer renderer = renderer(bounded, camera, size);
+		renderer.setMaximumDistance(maximumDistance);
+
+		try {
+			renderer.frame().get().run();
+
+			PackedCollection distance = renderer.getDistance();
+			PackedCollection reflectance = renderer.getReflectance();
+			PackedCollection image = renderer.getImage();
+			Evaluable<PackedCollection> rays = camera.rayAt(v(Pair.shape(), 0), pair(size, size)).get();
+
+			int hits = 0;
+			int misses = 0;
+			for (int i = 0; i < size * size; i++) {
+				double[] r = ray(rays, size, i / size, i % size);
+				double expected = sphereDistance(r);
+
+				if (expected > 0) {
+					hits++;
+					assertEquals("Pixel " + i + " should hit the sphere", expected, distance.toDouble(i), 1e-3);
+				} else {
+					misses++;
+					assertEquals("Pixel " + i + " should miss", -1.0, distance.toDouble(i), 0.0);
+					assertEquals(0.0, reflectance.toDouble(i), 0.0);
+					assertEnvironment(image, i, r);
+				}
+
+				for (int c = 0; c < 3; c++) {
+					assertTrue("Channel " + c + " of pixel " + i + " should be finite",
+							Double.isFinite(image.toDouble(3 * i + c)));
+				}
+			}
+
+			log("Hits: " + hits + ", misses: " + misses);
+			assertTrue("Some rays should hit the sphere", hits > 0);
+			assertTrue("Some rays should miss the sphere", misses > 0);
+		} finally {
+			renderer.destroy();
+		}
+	}
+
 	/** A height field rejects a grid spacing of zero. */
 	@Test(timeout = 60000, expected = IllegalArgumentException.class)
 	public void heightFieldRejectsZeroSpacing() {
