@@ -18,14 +18,24 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Computation;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.DefaultCollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Mask;
+import io.almostrealism.expression.Sum;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
@@ -45,12 +55,21 @@ import java.util.OptionalInt;
  * folds every eligible argument exactly as before. The limit is supplied by wrapping the local
  * compute context, never by changing global state, so every case runs on any backend.</p>
  */
-public class ArgumentLimitFoldTest extends TestSuiteBase {
+public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFeatures {
 	/** Number of elements in each input; well under the aggregation size limit. */
 	private static final int SIZE = 8;
 
 	/** Number of small inputs summed by the probe computation. */
 	private static final int INPUTS = 6;
+
+	/**
+	 * Number of terms in the masked sum, and of elements it is assigned to; past the width at
+	 * which the traversal generator reorders a sum.
+	 */
+	private static final int MASKED_SUM_WIDTH = 24;
+
+	/** Room left under the limit, beyond the bound, for the masked sum kernel's structure arguments. */
+	private static final int MASKED_SUM_ROOM = 4;
 
 	/**
 	 * The decision itself: with no known limit every kernel folds, and with a known limit only a
@@ -143,17 +162,98 @@ public class ArgumentLimitFoldTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A kernel compiled with no room left under the limit still evaluates correctly: the kernel
-	 * structure resources simply add nothing to it.
+	 * A kernel compiled with no room left under the limit folds nothing and is allowed nothing
+	 * further, and still evaluates correctly.
 	 */
 	@Test(timeout = 60000)
 	public void kernelWithNoAllowanceEvaluatesCorrectly() {
-		// TODO(review): probe expression likely never triggers series/traversal resources; zero-allowance compile path is not exercised end-to-end
 		int bound = run(new LimitedComputeContext(OptionalInt.empty())).getBound(Integer.MAX_VALUE - 1);
 
 		FoldProbe exact = run(new LimitedComputeContext(OptionalInt.of(bound)));
 		Assert.assertEquals(0, exact.getFolded());
 		Assert.assertEquals(0, exact.getAllowance());
+	}
+
+	/**
+	 * End to end through the real compile pipeline, with a kernel whose expression is a masked sum
+	 * wide enough that the traversal generator reorders it into a lookup table, which is a kernel
+	 * argument that is not a leaf of the computation. With no known limit, or with room under the
+	 * limit, the table is created, so the kernel declares more arguments than with no room; with no
+	 * room it is not, the sum is compiled inline, and the kernel stays within its bound. Every
+	 * kernel under a limit stays within it and folds nothing, and every kernel computes the same
+	 * values.
+	 */
+	@Test(timeout = 120000)
+	public void structureArgumentsStayWithinTheLimit() {
+		boolean previousReorder = Sum.enableGenerateReordering;
+		Sum.enableGenerateReordering = true;
+
+		try {
+			MaskedSumProbe unlimited = runMaskedSum("unlimited", new LimitedComputeContext(OptionalInt.empty()));
+			int bound = unlimited.getBound(Integer.MAX_VALUE - 1);
+			Assert.assertTrue("bound=" + bound, bound < MetalOperator.MAX_ARGUMENTS);
+
+			MaskedSumProbe none = runMaskedSum("none", new LimitedComputeContext(OptionalInt.of(bound)));
+			Assert.assertEquals(0, none.getAllowance());
+			Assert.assertEquals(0, none.getFolded());
+			Assert.assertTrue("arguments=" + none.getArgumentCount() + " bound=" + bound,
+					none.getArgumentCount() <= bound);
+			Assert.assertTrue("arguments=" + unlimited.getArgumentCount() + " without room=" + none.getArgumentCount(),
+					unlimited.getArgumentCount() > none.getArgumentCount());
+
+			int limit = bound + MASKED_SUM_ROOM;
+			MaskedSumProbe room = runMaskedSum("room", new LimitedComputeContext(OptionalInt.of(limit)));
+			Assert.assertEquals(MASKED_SUM_ROOM, room.getAllowance());
+			Assert.assertEquals(0, room.getFolded());
+			Assert.assertTrue("arguments=" + room.getArgumentCount() + " limit=" + limit,
+					room.getArgumentCount() <= limit);
+			Assert.assertTrue("arguments=" + room.getArgumentCount() + " without room=" + none.getArgumentCount(),
+					room.getArgumentCount() > none.getArgumentCount());
+		} finally {
+			Sum.enableGenerateReordering = previousReorder;
+		}
+	}
+
+	/**
+	 * Evaluates a computation whose element at each kernel index is the
+	 * {@link #maskedSum(Expression, int) masked sum} under the given context, and checks that
+	 * element {@code i} is {@code i + 1}.
+	 *
+	 * @param tag     a name suffix distinguishing this variant, so that no compiled kernel is
+	 *                shared with another variant
+	 * @param context the context to compile and run under
+	 * @return the evaluable that ran
+	 */
+	private MaskedSumProbe runMaskedSum(String tag, LimitedComputeContext context) {
+		TraversalPolicy shape = shape(MASKED_SUM_WIDTH);
+		CollectionExpression expression =
+				DefaultCollectionExpression.create(shape, idx -> maskedSum(new KernelIndex(), MASKED_SUM_WIDTH));
+
+		MaskedSumProbe op = new MaskedSumProbe(context,
+				new DefaultTraversableExpressionComputation("argumentLimitMaskedSum_" + tag, shape, expression));
+		double[] values = op.evaluate().toArray();
+		for (int i = 0; i < MASKED_SUM_WIDTH; i++) {
+			assertEquals(i + 1.0, values[i]);
+		}
+
+		return op;
+	}
+
+	/**
+	 * Builds a {@link Sum} of {@code n} single-index-masked terms: term {@code j} is {@code j + 1}
+	 * where {@code index} is {@code j}, and {@code 0} elsewhere.
+	 *
+	 * @param index the index of the element whose value the sum is
+	 * @param n     the number of masked terms
+	 * @return the sum
+	 */
+	private Expression<?> maskedSum(Expression<?> index, int n) {
+		Expression<?>[] terms = new Expression[n];
+		for (int j = 0; j < n; j++) {
+			terms[j] = Mask.of(index.eq(j), e((double) (j + 1)));
+		}
+
+		return Sum.of(terms);
 	}
 
 	/**
@@ -265,6 +365,47 @@ public class ArgumentLimitFoldTest extends TestSuiteBase {
 		 */
 		int getBound(int cap) {
 			return getArgumentBound(cap);
+		}
+
+		/** Returns the arguments compilation may add to this operation's kernel. */
+		int getAllowance() {
+			return getArgumentAllowance();
+		}
+	}
+
+	/**
+	 * An evaluable that reports how many arguments its kernel declares and folded, its structural
+	 * argument bound, and the allowance that bound leaves under the limit.
+	 */
+	private static class MaskedSumProbe extends AcceleratedComputationEvaluable<PackedCollection> {
+		/**
+		 * Creates the probe for the given computation under the given context.
+		 *
+		 * @param context     the compute context
+		 * @param computation the computation
+		 */
+		MaskedSumProbe(ComputeContext<MemoryData> context, Computation<PackedCollection> computation) {
+			super(context, computation);
+		}
+
+		/** Returns the number of arguments folded into this operation's aggregate. */
+		int getFolded() {
+			return argumentMap == null ? 0 : argumentMap.getFoldedArgumentCount();
+		}
+
+		/**
+		 * Returns this operation's structural argument bound.
+		 *
+		 * @param cap the cap passed to the bound
+		 * @return the bound
+		 */
+		int getBound(int cap) {
+			return getArgumentBound(cap);
+		}
+
+		/** Returns the number of arguments this operation's compiled kernel declares. */
+		int getArgumentCount() {
+			return getArgumentVariables().size();
 		}
 
 		/** Returns the arguments compilation may add to this operation's kernel. */
