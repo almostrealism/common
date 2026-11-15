@@ -5,14 +5,17 @@ mathematically related, so that a reader (or an agent about to introduce a new t
 find the interface that already expresses a concept before writing a parallel one. For each
 family it lists the interfaces and classes, their declared supertypes **as they are in the
 source today**, the module each lives in, and the **known gaps**: places where two types
-represent the same (or a specializing) concept and the type system does not yet say so, with
-the reason each gap is still open.
+represent the same (or a specializing) concept and the type system does not yet say so — or
+where it does say so but the declared contract is not yet honoured — with the reason each gap
+is still open.
 
 A relationship here is only what the source declares (`extends`/`implements`). A gap is only
 listed when closing it would not require a new module dependency *and* every member of the
 proposed supertype would be correct for the subtype; where a link would need a new dependency
-or cannot honour the contract, that is said explicitly. When something is unclear it is
-written as unclear rather than guessed.
+or cannot honour the contract, that is said explicitly. A gap may instead be a relationship the
+source already declares whose contract is not yet honoured at runtime (for example an
+implemented interface method that throws); such a gap names the unmet contract rather than a
+missing supertype. When something is unclear it is written as unclear rather than guessed.
 
 The families below are the seed set. Later concept-alignment work extends this map as it
 surveys further families and as gaps are closed.
