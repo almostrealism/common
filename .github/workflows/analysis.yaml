@@ -44,7 +44,7 @@ on:
 #
 #   TEST (deployment, push to master, workflow_dispatch): everything above
 #   except auto-review, plus the long-running test lanes (all of them on
-#   master; one backend's in a pull request's run, see "Backend subset"
+#   master; one backend in a pull request's run, see "Backend subset"
 #   below), the flaky-test retries and auto-resolve. Its gate job is
 #   reported as "Test Checks".
 #   A test run does not start on its own for a PR branch: something must
