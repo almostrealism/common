@@ -219,21 +219,22 @@ public class NativeExecution extends HardwareOperator {
 	private static ExecutorService executor = newWorkerPool();
 
 	/**
-	 * Creates the {@link #executor} worker pool: {@link KernelPreferences#getCpuParallelism()} warm
-	 * threads that are never reclaimed, growing without bound when all of them are busy and
-	 * reclaiming the extra threads after they fall idle. The {@link SynchronousQueue} hands each
-	 * submitted worker to an idle thread or, when none is idle, to a newly created one rather than
-	 * queuing it, which is what lets a dispatch run even while another holds every resting thread.
+	 * Creates the {@link #executor} worker pool: up to {@link KernelPreferences#getCpuParallelism()}
+	 * resting threads created on demand and then never reclaimed, growing without bound when all of
+	 * them are busy and reclaiming the extra threads after they fall idle. The threads are created
+	 * lazily on the first dispatches rather than eagerly, so merely loading this class does not
+	 * start any &mdash; a backend that never dispatches natively (a GPU host, a tool) keeps no idle
+	 * worker alive. The {@link SynchronousQueue} hands each submitted worker to an idle thread or,
+	 * when none is idle, to a newly created one rather than queuing it, which is what lets a dispatch
+	 * run even while another holds every resting thread.
 	 *
 	 * @return the worker pool
 	 */
 	private static ExecutorService newWorkerPool() {
-		ThreadPoolExecutor pool = new ThreadPoolExecutor(
+		return new ThreadPoolExecutor(
 				KernelPreferences.getCpuParallelism(), Integer.MAX_VALUE,
 				60L, TimeUnit.SECONDS, new SynchronousQueue<>(),
 				r -> new Thread(r, "NativeExecution worker"));
-		pool.prestartAllCoreThreads();
-		return pool;
 	}
 
 	/**
