@@ -384,7 +384,17 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * @return the minimum value as a {@code long}
 	 */
 	default long min() {
-		if (isConstant()) return valueAt(0).longValue();
+		if (isConstant()) {
+			Number value = valueAt(0);
+			if (value instanceof Integer || value instanceof Long) {
+				return value.longValue();
+			}
+
+			// A constant fractional value must still be floored so the result
+			// is a lower bound: longValue() truncates toward zero (e.g. -2 for
+			// -2.5), which is greater than the element actually present.
+			return (long) Math.floor(value.doubleValue());
+		}
 
 		if (valueAt(0) instanceof Integer) {
 			return intValues().min().orElseThrow();

@@ -18,6 +18,7 @@ package io.almostrealism.sequence.test;
 
 import io.almostrealism.sequence.ArrayIndexSequence;
 import io.almostrealism.sequence.IndexSequence;
+import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -34,7 +35,7 @@ import org.junit.Test;
  * rounds up with {@code Math.ceil}; the symmetric choice for {@code min()} is
  * {@code Math.floor}.</p>
  */
-public class IndexSequenceMinTest {
+public class IndexSequenceMinTest extends TestSuiteBase {
 
 	/**
 	 * A floating-point sequence whose minimum is {@code -2.5}. {@code min()} must not
@@ -72,5 +73,26 @@ public class IndexSequenceMinTest {
 			Assert.assertTrue("min() == " + min + " is not <= element " + v, min <= v);
 			Assert.assertTrue("max() == " + max + " is not >= element " + v, max >= v);
 		}
+	}
+
+	/**
+	 * A constant fractional sequence takes the {@code isConstant()} short-circuit in
+	 * {@link IndexSequence#min()}. That path must also floor: for a sequence whose only
+	 * value is {@code -2.5}, {@code min()} must be {@code <= -2.5}. Returning
+	 * {@code valueAt(0).longValue()} truncates toward zero to {@code -2}, which is greater
+	 * than the single element present and so violates the lower-bound contract.
+	 */
+	@Test(timeout = 10000)
+	public void constantFractionalMinimumIsALowerBound() {
+		IndexSequence seq = ArrayIndexSequence.of(Double.valueOf(-2.5), 4);
+
+		Assert.assertTrue(seq.isConstant());
+
+		long min = seq.min();
+
+		Assert.assertTrue(
+				"min() == " + min + " but the constant sequence value is -2.5, so the "
+						+ "reported minimum is greater than the only element",
+				min <= -2.5);
 	}
 }
