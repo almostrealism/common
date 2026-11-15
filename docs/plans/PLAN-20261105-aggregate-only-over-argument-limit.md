@@ -490,6 +490,15 @@ What changed:
   if the allowance covers it, and caps the generator's operations at what remains. An
   expression the generator does not reorder compiles unreordered. A folding kernel is not
   capped.
+- Some nodes obtain arguments while their scope is prepared for values that are not their
+  inputs. A derivative's target (`TraversableDeltaComputation`, `ConstantRepeatedDeltaComputation`)
+  is one. So is a collection that an ordering binds, through `CollectionProviderProducer` and
+  `SegmentedWeightedSumComputation`. These have no leaf position either, so a leaf count alone
+  under-counted them. A 29-leaf kernel with an indexed ordering could then compile unfolded with
+  30 or more arguments. Each such node now reports them through
+  `ScopeLifecycle.getScopeArgumentCount()`, and the orderings through
+  `TraversalOrdering.getArgumentCount()`. The bound adds them up over every position of the tree
+  (`Tree.sumByPosition`). `ArgumentLimitFoldTest.boundCountsArgumentsOrderedInputsBind` pins this.
 - Docs: the "Argument Aggregation" section of `base/hardware/README.md` (which also had the
   size threshold wrong: it is 1024 elements, not 1MB), `docs/internals/argument-binding-lifecycle.md`,
   and the Javadoc of `enableArgumentAggregation`, `maxAggregateLength`,

@@ -42,7 +42,10 @@ regression guard is `ProcessDetailsFactoryRecoveryTest`.
 A compute context that knows its argument limit reports it through
 `ComputeContext.getArgumentLimit()` (Metal: `MetalOperator.MAX_ARGUMENTS`, 29). An operation
 folds its small arguments into the aggregate only when its structural argument bound — the
-leaf positions of its `Process` tree plus the output, counted before any de-duplication —
+leaf positions of its `Process` tree plus the output, plus the arguments each position obtains
+while its scope is prepared for a value that is not one of its inputs
+(`ScopeLifecycle.getScopeArgumentCount`: a derivative's target, or the collections an ordering
+binds, `TraversalOrdering.getArgumentCount`), counted before any de-duplication —
 exceeds that limit (`ComputeContext.fitsArgumentLimit`); a kernel that provably fits
 takes every argument directly. The kernel structure resources (the series cache and the
 traversal operations) create arguments while such a kernel is generated, which are not leaves,

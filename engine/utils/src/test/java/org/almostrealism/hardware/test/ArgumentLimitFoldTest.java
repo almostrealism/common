@@ -33,8 +33,10 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
+import org.almostrealism.collect.computations.TraversableDeltaComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
@@ -215,6 +217,112 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 	}
 
 	/**
+	 * An input whose ordering reads a collection binds that collection as a kernel argument with
+	 * no position in the process tree, so the bound counts it on top of the leaves. A limit equal
+	 * to the bound without it, which a leaf count alone would judge to fit, folds instead; a limit
+	 * equal to the full bound folds nothing and the kernel stays within it. Both compute the same
+	 * values.
+	 */
+	@Test(timeout = 60000)
+	public void boundCountsArgumentsOrderedInputsBind() {
+		LimitedComputeContext unknown = new LimitedComputeContext(OptionalInt.empty());
+		int plainBound = new FoldProbe(unknown, orderedSum(new PackedCollection(shape(2, 2)), false))
+				.getBound(Integer.MAX_VALUE - 1);
+		int orderedBound = new FoldProbe(unknown, orderedSum(new PackedCollection(shape(2, 2)), true))
+				.getBound(Integer.MAX_VALUE - 1);
+		Assert.assertEquals(plainBound + 1, orderedBound);
+
+		FoldProbe fits = runOrderedSum(new LimitedComputeContext(OptionalInt.of(orderedBound)));
+		Assert.assertEquals(0, fits.getFolded());
+		Assert.assertEquals(0, fits.getAllowance());
+		Assert.assertTrue("arguments=" + fits.getArgumentCount() + " bound=" + orderedBound,
+				fits.getArgumentCount() <= orderedBound);
+
+		FoldProbe leavesOnly = runOrderedSum(new LimitedComputeContext(OptionalInt.of(plainBound)));
+		Assert.assertEquals(Integer.MAX_VALUE, leavesOnly.getAllowance());
+		Assert.assertTrue("folded=" + leavesOnly.getFolded(), leavesOnly.getFolded() > 0);
+	}
+
+	/**
+	 * The target of a derivative is bound as a kernel argument without being an input of the
+	 * derivative, so the derivative reports it as a scope argument and its bound is one more
+	 * than its output and leaves.
+	 */
+	@Test(timeout = 30000)
+	public void boundCountsTheTargetOfADerivative() {
+		PackedCollection source = new PackedCollection(SIZE).fill(1.0);
+		PackedCollection target = new PackedCollection(SIZE).fill(2.0);
+
+		TraversableDeltaComputation delta = TraversableDeltaComputation.create("argumentLimitDelta",
+				shape(SIZE), shape(SIZE),
+				args -> DefaultCollectionExpression.create(shape(SIZE), idx -> args[1].getValueAt(idx)),
+				cp(target), cp(source));
+		Assert.assertEquals(1, delta.getScopeArgumentCount());
+
+		MaskedSumProbe probe = new MaskedSumProbe(new LimitedComputeContext(OptionalInt.empty()), delta);
+		Assert.assertEquals(1 + delta.countLeaves(Integer.MAX_VALUE - 1) + 1,
+				probe.getBound(Integer.MAX_VALUE - 1));
+	}
+
+	/**
+	 * Weights are summed over every position of the tree, the root included, and the sum stops
+	 * once it passes the cap.
+	 */
+	@Test(timeout = 30000)
+	public void sumByPositionCountsEveryPositionAndIsCapped() {
+		PackedCollection a = new PackedCollection(SIZE).fill(1.0);
+		Process<?, ?> shared = (Process<?, ?>) cp(a).add(cp(a));
+
+		int nodes = shared.sumByPosition(node -> 1, 1000);
+		Assert.assertTrue("nodes=" + nodes, nodes >= 3);
+		Assert.assertEquals(shared.countLeaves(1000), shared.sumByPosition(node ->
+				node.getChildren() == null || node.getChildren().isEmpty() ? 1 : 0, 1000));
+		Assert.assertEquals(0, shared.sumByPosition(node -> 0, 0));
+
+		int capped = shared.sumByPosition(node -> 1, 1);
+		Assert.assertTrue("capped=" + capped, capped > 1);
+		Assert.assertTrue("capped=" + capped + " nodes=" + nodes, capped < nodes);
+	}
+
+	/**
+	 * Assigns to the given output the sum of {@code [[1, 2], [3, 4]]} and {@code [[2, 0], [0, 3]]},
+	 * the second either dense or stored compactly through a mask ordering.
+	 *
+	 * @param out     the 2 x 2 output
+	 * @param ordered whether the second input is stored through a mask ordering
+	 * @return the assignment
+	 */
+	private Computation<Void> orderedSum(PackedCollection out, boolean ordered) {
+		PackedCollection plain = pack(1.0, 2.0, 3.0, 4.0).reshape(shape(2, 2));
+		PackedCollection second = ordered
+				? new PackedCollection(shape(2, 2), 1, pack(2.0, 3.0), 0, new IndexMaskTraversalOrdering(pack(0, 3)))
+				: pack(2.0, 0.0, 0.0, 3.0).reshape(shape(2, 2));
+		return a(cp(out).each(), cp(plain).add(cp(second)).each());
+	}
+
+	/**
+	 * Runs the {@link #orderedSum(PackedCollection, boolean) ordered sum} under the given context and checks its
+	 * output.
+	 *
+	 * @param context the context to compile and run under
+	 * @return the operation that ran
+	 */
+	private FoldProbe runOrderedSum(LimitedComputeContext context) {
+		PackedCollection out = new PackedCollection(shape(2, 2)).fill(-1.0);
+
+		FoldProbe op = new FoldProbe(context, orderedSum(out, true));
+		op.run();
+
+		double[] expected = { 3.0, 2.0, 3.0, 7.0 };
+		double[] values = out.toArray();
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals(expected[i], values[i]);
+		}
+
+		return op;
+	}
+
+	/**
 	 * Evaluates a computation whose element at each kernel index is the
 	 * {@link #maskedSum(Expression, int) masked sum} under the given context, and checks that
 	 * element {@code i} is {@code i + 1}.
@@ -370,6 +478,11 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 		/** Returns the arguments compilation may add to this operation's kernel. */
 		int getAllowance() {
 			return getArgumentAllowance();
+		}
+
+		/** Returns the number of arguments this operation's compiled kernel declares. */
+		int getArgumentCount() {
+			return getArgumentVariables().size();
 		}
 	}
 

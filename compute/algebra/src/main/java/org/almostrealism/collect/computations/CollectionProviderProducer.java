@@ -281,6 +281,18 @@ public class CollectionProviderProducer<T extends Shape>
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Preparing this producer binds the ordering of the value's shape, which obtains the
+	 * {@link TraversalOrdering#getArgumentCount() arguments the ordering reads}.</p>
+	 */
+	@Override
+	public int getScopeArgumentCount() {
+		TraversalOrdering order = getShape().getOrder();
+		return order == null ? 0 : order.getArgumentCount();
+	}
+
+	/**
 	 * Discards the ordering bound by {@link #prepareScope(ArgumentProvider, KernelStructureContext)},
 	 * since it refers to the arguments of the compilation that prepared it.
 	 */

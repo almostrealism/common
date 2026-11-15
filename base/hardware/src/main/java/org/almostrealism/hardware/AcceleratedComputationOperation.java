@@ -21,6 +21,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.NamedFunction;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
@@ -330,10 +331,14 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * {@inheritDoc}
 	 *
 	 * <p>For a computation that is a {@link Process}, the bound is the number of leaf positions of
-	 * its process tree, plus one for the output. Every argument the computation's own inputs
-	 * contribute is reached through a leaf of that tree, and leaves are counted by position,
-	 * before any de-duplication by value or by the memory they share, so de-duplication can only
-	 * lower the real count below the bound. The arguments the kernel structure resources add
+	 * its process tree, plus one for the output, plus the
+	 * {@link ScopeLifecycle#getScopeArgumentCount() scope argument count} of every position of
+	 * that tree. Every argument the computation's own inputs contribute is reached through a leaf
+	 * of that tree, and every argument a node obtains while its scope is prepared for a value that
+	 * is not one of its inputs (a derivative's target, a collection an ordering reads) is reported
+	 * by that node's scope argument count. Both are counted by position, before any
+	 * de-duplication by value or by the memory they share, so de-duplication can only lower the
+	 * real count below the bound. The arguments the kernel structure resources add
 	 * while the kernel is generated are not leaves; {@link #prepareScope(ArgumentProvider)} keeps
 	 * them within the {@link #getArgumentAllowance() allowance} the bound leaves under the limit.
 	 * The tree is what the computation's signature describes, so the bound is the same for every
@@ -346,7 +351,10 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 			return Integer.MAX_VALUE;
 		}
 
-		return 1 + process.countLeaves(cap);
+		int bound = 1 + process.countLeaves(cap);
+		if (bound > cap) return bound;
+
+		return bound + process.sumByPosition(ScopeLifecycle::getScopeArgumentCount, cap - bound);
 	}
 
 	/**

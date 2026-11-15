@@ -178,6 +178,17 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Also counts the argument obtained for the target, which is not an input of this
+	 * computation.</p>
+	 */
+	@Override
+	public int getScopeArgumentCount() {
+		return super.getScopeArgumentCount() + 1;
+	}
+
+	/**
 	 * Resets the computation arguments and clears the target variable.
 	 * This method should be called when argument values change to ensure
 	 * subsequent evaluations use updated arguments.

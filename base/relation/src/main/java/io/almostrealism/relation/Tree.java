@@ -158,16 +158,38 @@ public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>,
 	 *         {@code cap}
 	 */
 	default int countLeaves(int cap) {
-		Collection<T> children = getChildren();
-		if (children == null || children.isEmpty()) return 1;
+		return sumByPosition(node -> {
+			Collection<?> children = node.getChildren();
+			return children == null || children.isEmpty() ? 1 : 0;
+		}, cap);
+	}
 
-		int count = 0;
+	/**
+	 * Sums {@code weight} over the nodes of this tree, including this node, stopping once the
+	 * sum exceeds {@code cap}.
+	 *
+	 * <p>Nodes are visited by position: a node reachable along several paths contributes its
+	 * weight once for each, so the result is a sum over the node slots of the tree, not over
+	 * its distinct node objects. The traversal ends as soon as the sum exceeds {@code cap}, so
+	 * a large or heavily shared tree costs no more than reaching that sum.</p>
+	 *
+	 * @param weight the non-negative weight of each node
+	 * @param cap    the sum past which the traversal stops; must not be negative
+	 * @return the sum if it is at most {@code cap}, otherwise a value greater than {@code cap}
+	 */
+	default int sumByPosition(ToIntFunction<? super T> weight, int cap) {
+		int sum = weight.applyAsInt((T) this);
+		if (sum > cap) return sum;
+
+		Collection<T> children = getChildren();
+		if (children == null) return sum;
+
 		for (T child : children) {
-			count += child.countLeaves(cap - count);
-			if (count > cap) return count;
+			sum += child.sumByPosition(weight, cap - sum);
+			if (sum > cap) return sum;
 		}
 
-		return count;
+		return sum;
 	}
 
 	/**

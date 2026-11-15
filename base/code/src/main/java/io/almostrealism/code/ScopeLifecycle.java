@@ -56,6 +56,24 @@ public interface ScopeLifecycle {
 	default void prepareScope(ArgumentProvider manager, KernelStructureContext context) { }
 
 	/**
+	 * Returns the most kernel arguments {@link #prepareScope(ArgumentProvider, KernelStructureContext)}
+	 * obtains from its manager for values that are not inputs of this component: a target a
+	 * derivative is taken with respect to, or the collection an ordering reads to map an index.
+	 *
+	 * <p>The arguments of a component's inputs are reached through the leaves of the process
+	 * tree it belongs to, so a structural bound on a kernel's arguments counts them there. The
+	 * arguments this method reports have no position in that tree, so the bound adds them
+	 * explicitly; an implementation that obtains such an argument and does not report it lets a
+	 * kernel judged to fit its context's argument limit exceed it. The count must depend only on
+	 * the component's structure, never on the data it reads, so every computation sharing a
+	 * compiled kernel reaches the same bound. The default is zero.</p>
+	 *
+	 * @return the most arguments preparing this component adds beyond those of its inputs
+	 */
+	// TODO(review): nothing enforces this count; consider checking compiled argument count <= limit for unfolded kernels
+	default int getScopeArgumentCount() { return 0; }
+
+	/**
 	 * Resets argument state after scope execution.
 	 *
 	 * <p>Called to clean up cached argument state, allowing the component
@@ -76,6 +94,18 @@ public interface ScopeLifecycle {
 				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
 				.filter(Objects::nonNull)
 				.forEach(sl -> sl.prepareScope(manager, context));
+	}
+
+	/**
+	 * Returns the {@link #getScopeArgumentCount() scope argument count} of an object that may
+	 * implement {@link ScopeLifecycle}, or zero for an object that does not, since such an
+	 * object is never prepared and so obtains no arguments.
+	 *
+	 * @param potentialLifecycle an object that may implement ScopeLifecycle
+	 * @return the most arguments preparing the object adds beyond those of its inputs
+	 */
+	static int getScopeArgumentCount(Object potentialLifecycle) {
+		return potentialLifecycle instanceof ScopeLifecycle lifecycle ? lifecycle.getScopeArgumentCount() : 0;
 	}
 
 	/**
