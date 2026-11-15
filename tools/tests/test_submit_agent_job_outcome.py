@@ -66,18 +66,40 @@ class SubmitAgentJobOutcomeTest(unittest.TestCase):
         self.assertIn("submitted=false", self.outputs())
         self.assertNotIn("submitted=true", self.outputs())
 
-    def _stub_gh(self):
-        """A gh stand-in that records its arguments in a file."""
+    def _stub_gh(self, exit_code=0):
+        """A gh stand-in that records its arguments in a file and exits with
+        ``exit_code``."""
         self.gh_log = os.path.join(self.dir.name, "gh.log")
         bin_gh = os.path.join(self.dir.name, "gh")
         with open(bin_gh, "w") as f:
-            f.write('#!/usr/bin/env bash\necho "$*" >> "%s"\n' % self.gh_log)
+            f.write('#!/usr/bin/env bash\necho "$*" >> "%s"\nexit %d\n'
+                    % (self.gh_log, exit_code))
         os.chmod(bin_gh, os.stat(bin_gh).st_mode | stat.S_IXUSR)
 
-    def submit_marking_the_cap(self, body):
-        self._stub_gh()
-        return self.submit(body, CAP_STATUS_SHA="abc123", GH_TOKEN="t",
+    def submit_marking_the_cap(self, body, gh_exit_code=0, sha="abc123"):
+        self._stub_gh(gh_exit_code)
+        return self.submit(body, CAP_STATUS_SHA=sha, GH_TOKEN="t",
                            GITHUB_REPOSITORY="o/r")
+
+    _CAP_BODY = ('{"ok":true,"skipped":true,"reason":"Per-PR remediation cap of 8 '
+                 'passes reached; auto-dispatch paused pending a person"}')
+
+    def test_a_cap_skip_without_a_head_commit_marks_nothing(self):
+        """A submitter that passes no CAP_STATUS_SHA (a non-remediation job)
+        gets the plain skip, with no status call."""
+        result = self.submit_marking_the_cap(self._CAP_BODY, sha="")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("submitted=false", self.outputs())
+        self.assertFalse(os.path.exists(self.gh_log))
+
+    def test_a_failed_status_post_is_a_warning_not_a_failure(self):
+        result = self.submit_marking_the_cap(self._CAP_BODY, gh_exit_code=1)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("submitted=false", self.outputs())
+        self.assertTrue(os.path.exists(self.gh_log))
+        self.assertIn("::warning::Could not set the remediation-cap status on abc123",
+                      result.stdout)
+        self.assertNotIn("::notice::Marked", result.stdout)
 
     def test_a_cap_skip_marks_the_head_commit(self):
         result = self.submit_marking_the_cap(

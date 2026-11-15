@@ -37,6 +37,8 @@ What decides each state (``derive``), for the pull request's head commit:
       run, or finds nothing left to change, which starts the test run. When
       the controller refused it because the pull request reached the per-PR
       remediation cap: ``ci: review limit``.
+    - otherwise: ``ci: needs attention``
+- no run yet: ``ci: validating``
 
 The cap is read from the ``remediation-cap`` commit status that
 ``submit-agent-job.sh`` sets on the head commit when the controller refuses a
@@ -45,8 +47,6 @@ Auto-Resolve Submit runs belong to the default branch rather than the pull
 request, so the status is the record on the pull request that the loop
 stopped. A new commit from a person resets the controller's count and carries
 no such status, so the label clears by itself.
-    - otherwise: ``ci: needs attention``
-- no run yet: ``ci: validating``
 
 Usage:
     pr-status-labels.py [--branch BRANCH] [--dry-run]
