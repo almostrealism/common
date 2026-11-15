@@ -35,7 +35,7 @@ extensions of `Curve`, and `SignedDistanceFunction` and `HeightField` specialize
 | Type | Declared as | Module (package) | Members |
 |---|---|---|---|
 | `Differentiable<T>` | interface (no supertype) | `compute/algebra` (`org.almostrealism.algebra`) | none — marker |
-| `Gradient<T>` | `extends Differentiable<T>` | `compute/algebra` (`org.almostrealism.algebra`) | `getNormalAt(Producer)` |
+| `Gradient<T>` | `extends Differentiable<T>` | `compute/algebra` (`org.almostrealism.algebra`) | `getNormalAt(Producer) : Producer<PackedCollection>` (fixed type, independent of `T`) |
 | `Curve<T>` | `extends Gradient<T>, Node` | `compute/geometry` (`org.almostrealism.geometry`) | `getValueAt(Producer)` |
 | `ImplicitSurface` | `extends Curve<PackedCollection>, VectorFeatures` | `compute/geometry` (`org.almostrealism.geometry`) | `lipschitzBound()`, covariant `getValueAt`/`getNormalAt` returning `CollectionProducer`, default `partialDerivative` |
 | `SignedDistanceFunction` | `extends ImplicitSurface` (`@FunctionalInterface`) | `compute/geometry` (`org.almostrealism.geometry`) | `getValueAt(Producer)`; `lipschitzBound()` fixed at `1` |
@@ -49,8 +49,8 @@ Notes on the declarations:
   continuous derivatives) and points at `Gradient`. The operations that actually realize the
   concept — `getNormalAt`, `getValueAt` — are declared one and two levels down, on `Gradient`
   and `Curve`.
-- `ImplicitSurface` narrows `getValueAt`/`getNormalAt` covariantly from `Producer<T>` to
-  `CollectionProducer` and adds `lipschitzBound()`, a bound on the rate of change of the value
+- `ImplicitSurface` narrows `getValueAt` (declared on `Curve` as `Producer<T>`) and `getNormalAt`
+  (declared on `Gradient` as `Producer<PackedCollection>`) covariantly to `CollectionProducer` and adds `lipschitzBound()`, a bound on the rate of change of the value
   (not itself a distance): dividing the value by the bound gives a safe ray marching step. Its
   javadoc states the realignment that motivated this map: an implicit
   surface *is* a `Curve` of scalar values whose normal is the normalized gradient.
@@ -138,9 +138,9 @@ their javadoc explains why one does not extend the other.
 | `NodeList<T extends Node>` | `extends NodeGroup<T>, List<T>` | `base/relation` (`io.almostrealism.relation`) | default `children()` over `List.stream()` |
 | `Graph<T extends Node>` | interface (no supertype) | `base/relation` (`io.almostrealism.relation`) | `neighbors(T)`, `countNodes()` |
 | `Tree<T extends Tree>` | `extends Graph<T>, NodeGroup<T>, Parent<T>, Node` | `base/relation` (`io.almostrealism.relation`) | tree traversal and depth defaults |
-| `WeightedGraph<T extends Node>` | `extends Graph<T>, Group<T>` | `base/relation` (`io.almostrealism.relation`) | enumerable graph |
-| `IndexedGraph<T extends Node>` | `extends WeightedGraph<T>` | `base/relation` (`io.almostrealism.relation`) | indexed enumerable graph |
-| `Parent<T>` | interface (no supertype) | `base/relation` (`io.almostrealism.relation`) | children-holding marker |
+| `WeightedGraph<T extends Node>` | `extends Graph<T>, Group<T>` | `base/relation` (`io.almostrealism.relation`) | `edgeWeight(T, T)`, defaults `weightedNeighbors`/`weightedDegree`; enumerable through `Group` |
+| `IndexedGraph<T extends Node>` | `extends WeightedGraph<T>` | `base/relation` (`io.almostrealism.relation`) | `nodeAt(int)`, `indexOf(T)`, defaults `neighborIndices`/`edgeWeight(int, int)` |
+| `Parent<T>` | interface (no supertype) | `base/relation` (`io.almostrealism.relation`) | `getChildren() : Collection<T>`, default `generate(List<T>)` |
 | `Path` | `extends Plural<Node>` | `base/relation` (`io.almostrealism.relation`) | an ordered run of nodes |
 | `TreeRef<T extends Tree>` | `class implements Tree<T>` | `base/relation` (`io.almostrealism.relation`) | a reference-backed `Tree` |
 | `Mesh` | `extends SpacePartition<Triangle> implements Graph<Vector>, ConsoleFeatures` | `domain/space` (`org.almostrealism.space`) | a graph whose nodes are vertices |
