@@ -306,6 +306,56 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	}
 
 	/**
+	 * Returns the shape of a batch of items, for an operation whose inputs may be single items
+	 * or batches of them. An input is a batch when it has more dimensions than {@code item}:
+	 * its trailing dimensions (one per dimension of {@code item}) form each of its items and
+	 * its leading dimensions enumerate them. The result is {@code item} with the leading
+	 * dimensions of the input that has the most of them prepended, traversed so that its
+	 * count is the number of items; it is {@code item} itself when no input is a batch.
+	 *
+	 * <p>For example, the batch shape of a {@code (3)} vector built from three {@code (n, 1)}
+	 * components is {@code (n, 3)}.</p>
+	 *
+	 * @param item the shape of the result for a single item
+	 * @param inputs the inputs, each a single item or a batch of them
+	 * @return the shape of the result for the batch
+	 */
+	default TraversalPolicy batchShape(TraversalPolicy item, Producer<?>... inputs) {
+		TraversalPolicy batch = null;
+
+		for (Producer<?> input : inputs) {
+			TraversalPolicy shape = shape(input);
+			if (shape.getDimensions() > item.getDimensions() &&
+					(batch == null || shape.getDimensions() > batch.getDimensions())) {
+				batch = shape;
+			}
+		}
+
+		if (batch == null) return item;
+
+		int depth = batch.getDimensions() - item.getDimensions();
+		return batch.traverse(depth).replace(item).withOrder(null);
+	}
+
+	/**
+	 * Repeats an item over the leading dimensions of {@code shape} that it does not have, so
+	 * that a single item can be combined with a batch of them. An input that already has as
+	 * many dimensions as {@code shape} is returned unchanged.
+	 *
+	 * @param shape the shape of the batch, whose trailing dimensions form each item
+	 * @param item the item, or a batch that already has the dimensions of {@code shape}
+	 * @return the item repeated once for every item of the batch
+	 */
+	default Producer<PackedCollection> repeatItems(TraversalPolicy shape, Producer<PackedCollection> item) {
+		TraversalPolicy itemShape = shape(item);
+		int depth = shape.getDimensions() - itemShape.getDimensions();
+		if (depth <= 0) return item;
+
+		TraversalPolicy batch = shape.traverse(depth).replace(itemShape).withOrder(null);
+		return repeat(0, Math.toIntExact(batch.getCountLong()), item).reshape(batch);
+	}
+
+	/**
 	 * Creates an enumeration of a collection along a specific axis with specified length.
 	 * This operation extracts consecutive elements along the specified axis, creating
 	 * sliding windows or sequential patterns. The stride defaults to the sequence length,

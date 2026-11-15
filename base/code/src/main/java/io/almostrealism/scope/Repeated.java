@@ -321,6 +321,19 @@ public class Repeated<T> extends Scope<T> {
 	 * the loop body addresses one of the promoted elements, and the loop condition and
 	 * interval do not reference it at all.</p>
 	 *
+	 * <p>The code this loop renders before its body, including the declarations that
+	 * loop-invariant code motion hoisted out of it, moves to the start of the result,
+	 * ahead of the accumulator declarations. It executes before the loop begins, and a
+	 * promoted element is often addressed through one of those declarations (a
+	 * destination position that does not depend on the loop index), so each seed must
+	 * follow it.</p>
+	 *
+	 * <p>The result replaces this loop wherever it appears, including as the root scope of
+	 * a kernel, so it carries this loop's name, metadata, compute requirements, lane count,
+	 * parameters and required scopes. This loop's metrics move to the result as well, so
+	 * they are still rendered after the loop, now following the final stores. Kernel index
+	 * children stay on the rewritten loop, which renders them exactly as this loop did.</p>
+	 *
 	 * @return a new scope with accumulators promoted, or this loop if nothing qualifies
 	 */
 	public Scope<T> promoteAccumulators() {
@@ -419,8 +432,21 @@ public class Repeated<T> extends Scope<T> {
 			loop = loop.replace(promoted.get(i), accumulators.get(i));
 		}
 
+		// The result stands in for this loop; see the method documentation for what moves.
+		Scope<T> result = (Scope<T>) super.generate(new ArrayList<>());
+		result.getParameters().addAll(getParameters());
+		result.getRequiredScopes().addAll(getRequiredScopes());
+		result.getMethods().addAll(getMethods());
+		result.getStatements().addAll(getStatements());
+		result.getStatements().addAll(getVariables());
+		result.getMetrics().addAll(getMetrics());
+		loop.getRequiredScopes().clear();
+		loop.getMethods().clear();
+		loop.getStatements().clear();
+		loop.getVariables().clear();
+		loop.getMetrics().clear();
+
 		// Seed the accumulators before the loop and store them back after it closes.
-		Scope<T> result = new Scope<>(getName(), getMetadata());
 		Scope<T> stores = new Scope<>(getName() + "_stores");
 
 		for (int i = 0; i < promoted.size(); i++) {
@@ -889,13 +915,16 @@ public class Repeated<T> extends Scope<T> {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Creates a new {@link Repeated} scope with the same name, metadata, and index,
-	 * then populates it with the provided child scopes.</p>
+	 * <p>Creates a new {@link Repeated} scope with the same name, metadata, index,
+	 * compute requirements and lane count, then populates it with the provided child
+	 * scopes.</p>
 	 */
 	@Override
 	public Repeated<T> generate(List<Scope<T>> children) {
 		Repeated<T> scope = getMetadata() == null ? new Repeated<>(getName()) : new Repeated<>(getName(), getMetadata());
 		scope.setIndex(getIndex());
+		scope.setComputeRequirements(getComputeRequirements());
+		scope.setLaneCount(getLaneCount());
 		scope.getChildren().addAll(children);
 		return scope;
 	}

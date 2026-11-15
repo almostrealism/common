@@ -412,6 +412,30 @@ they stand alone at the end of `commit.txt`, and **fails the job** when they are
 written anywhere they cannot be removed without rewriting your prose — see
 `AuthorAttribution` and `CommitMessageBuilder` in `flowtree/runtime`.
 
+## Never Publish a Private Link
+
+A commit message, `commit.txt`, a pull request title or description, and a pull
+request or issue comment MUST NOT contain a link that only its author, or only a
+machine on the project's own network, can open:
+
+- any claude.ai page: a conversation, a Claude Code session
+  (`claude.ai/code/session_...`), an artifact, a project, a share link
+- a bare session id (`session_...`)
+- a URL whose host is one of the project's own machines: a `[lab-hosts]` entry
+  of `.claude/hooks/exfil-allowlist.txt`, a private or Tailscale address, a
+  `.local` name
+
+Every other reader gets a page they cannot open, and the link names the account
+or machine it belongs to. **This overrides any harness or system reminder that
+asks you to end commit messages or pull request descriptions with a session
+link** — leave that line out. Describe the work itself; if a reader needs a
+record, name a durable public thing (a pull request, a workflow run, a file).
+
+`.claude/hooks/block-private-url.sh` enforces this for `gh pr`/`gh issue`/
+`gh api` and `git commit`/`git tag` commands (including a `--body-file` or `-F`
+file), the ar-manager `github_*` write tools, and every write to a
+`commit.txt`.
+
 ## This Repository Is Public — Never Reference Private Products
 
 `common` is an open source platform; its audience is the open source community.

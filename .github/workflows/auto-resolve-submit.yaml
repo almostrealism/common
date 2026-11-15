@@ -23,10 +23,12 @@ name: "Auto-Resolve Submit"
 # inside the main pipeline.
 #
 # It fires on every completion of "Build and Test". `auto-resolve` stages a
-# request only on attempt 3 or later — MAX_ATTEMPTS below, and the attempt
-# threshold in analysis.yaml must stay equal to it — so on any earlier attempt
-# there is no request artifact and `submit` is a no-op; `retry-flaky-tests` is
-# what carries a failing run to that attempt.
+# request on the attempt a regression is confirmed on two or more backends, and
+# otherwise only on the final attempt — MAX_ATTEMPTS below, which must stay
+# equal to MAX_ATTEMPTS in analysis.yaml's auto-resolve job. An attempt that
+# staged a request is submitted rather than retried; one that staged nothing is
+# retried by `retry-flaky-tests` until that final attempt, and `submit` finds no
+# request for it and does nothing.
 
 on:
   workflow_run:
@@ -43,7 +45,9 @@ jobs:
   # flaky and pass on re-run. Before an auto-resolve agent is dispatched,
   # give a red pipeline more attempts: when the failed set contains a flaky-
   # eligible test job, python-tests did not fail (auto-resolve-python owns
-  # that run), and the run has had fewer than 3 total attempts, re-run the
+  # that run), the attempt staged no auto-resolve request (it stages one at
+  # once for a regression confirmed on two or more backends, which a retry
+  # cannot clear), and the run has had fewer than 3 total attempts, re-run the
   # failed jobs instead of submitting. Each re-run increments the run's
   # attempt count and fires this workflow again on completion, so the gate is
   # re-evaluated until the failure either clears or survives 3 attempts. Only
@@ -87,6 +91,7 @@ jobs:
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
           MAX_ATTEMPTS: "3"
+          ATTEMPT_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
         run: |
           chmod +x ./tools/ci/rerun-flaky-tests.sh
           ./tools/ci/rerun-flaky-tests.sh
@@ -114,6 +119,8 @@ jobs:
     permissions:
       actions: read
       contents: read
+      # The remediation-cap status when the controller refuses the pass.
+      statuses: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -173,6 +180,10 @@ jobs:
           # Marked explicitly, not inferred from `automated` (every CI job sets
           # that) — a QA, planning or implementation job is the work reviewed.
           REMEDIATION_PASS: "true"
+          # Marked with the remediation-cap status when the controller refuses
+          # this pass for the per-PR cap, so the pull request's label shows it.
+          CAP_STATUS_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}

@@ -93,6 +93,16 @@ public interface Light {
 	RGB getColor();
 
 	/**
+	 * Returns the color of this light scaled by its intensity, before any position-dependent
+	 * effect such as attenuation.
+	 *
+	 * @return the {@link RGB} color multiplied by the intensity
+	 */
+	default RGB getRadiance() {
+		return getColor().multiply(getIntensity());
+	}
+
+	/**
 	 * Returns the effective color of this light at a given point in space.
 	 *
 	 * <p>This method accounts for any position-dependent effects such as:

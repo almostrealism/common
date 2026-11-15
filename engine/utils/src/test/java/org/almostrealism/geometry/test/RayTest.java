@@ -83,6 +83,52 @@ public class RayTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link org.almostrealism.geometry.RayFeatures#unitRay} keeps the origin of a single ray
+	 * and scales its direction to unit length, leaving an already unit direction unchanged.
+	 */
+	@Test(timeout = 10000)
+	public void unitRay() {
+		PackedCollection r = unitRay(ray(1.0, 2.0, 3.0, 0.0, 3.0, -4.0)).get().evaluate();
+		double[] expected = { 1.0, 2.0, 3.0, 0.0, 0.6, -0.8 };
+		for (int i = 0; i < expected.length; i++) {
+			Assert.assertEquals("Component " + i, expected[i], r.toDouble(i), 1e-6);
+		}
+
+		PackedCollection unit = unitRay(ray(-1.0, 0.5, 2.0, 0.0, 0.0, 1.0)).get().evaluate();
+		double[] unchanged = { -1.0, 0.5, 2.0, 0.0, 0.0, 1.0 };
+		for (int i = 0; i < unchanged.length; i++) {
+			Assert.assertEquals("Component " + i, unchanged[i], unit.toDouble(i), 1e-6);
+		}
+	}
+
+	/**
+	 * {@link org.almostrealism.geometry.RayFeatures#unitRay} normalizes the direction of every
+	 * ray of a batch independently, keeping each origin.
+	 */
+	@Test(timeout = 10000)
+	public void unitRays() {
+		PackedCollection rays = new PackedCollection(shape(3, 6).traverse(1));
+		rays.set(0, new Ray(new Vector(1, 2, 3), new Vector(2, 0, 0)));
+		rays.set(1, new Ray(new Vector(4, 5, 6), new Vector(0, -0.5, 0)));
+		rays.set(2, new Ray(new Vector(7, 8, 9), new Vector(1, 2, 2)));
+
+		PackedCollection result = unitRay(cp(rays)).get().evaluate();
+		double[][] expected = {
+				{ 1, 2, 3, 1, 0, 0 },
+				{ 4, 5, 6, 0, -1, 0 },
+				{ 7, 8, 9, 1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0 }
+		};
+
+		Assert.assertEquals(18, result.getMemLength());
+		for (int k = 0; k < expected.length; k++) {
+			for (int i = 0; i < 6; i++) {
+				Assert.assertEquals("Ray " + k + " component " + i,
+						expected[k][i], result.toDouble(6 * k + i), 1e-6);
+			}
+		}
+	}
+
+	/**
 	 * Tests various dot product operations on rays.
 	 */
 	@Test(timeout = 10000)

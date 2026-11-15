@@ -43,13 +43,29 @@ on:
 #   test-flowtree), so it never occupies the self-hosted fleet.
 #
 #   TEST (deployment, push to master, workflow_dispatch): everything above
-#   except auto-review, plus every long-running test lane, the flaky-test
-#   retries and auto-resolve. Its gate job is reported as "Test Checks".
+#   except auto-review, plus the long-running test lanes (all of them on
+#   master; one backend in a pull request's run, see "Backend subset"
+#   below), the flaky-test retries and auto-resolve. Its gate job is
+#   reported as "Test Checks".
 #   A test run does not start on its own for a PR branch: something must
 #   create a GitHub deployment for the branch (environment "test"). The
 #   FlowTree controller does so when a workstream's review loop ends; a
 #   person does so with the "Start Tests" workflow or one REST call (see
 #   .github/CLAUDE.md). CI never waits on the controller.
+#
+# Backend subset. A pull request's test run (a deployment) runs the lanes of
+# one backend: Metal (test-mac, test-media-mac), which covers every module the
+# native, OpenCL and CUDA lanes do, plus test-flowtree. The native CPU, OpenCL
+# and CUDA lanes (test, test-media, test-cl, test-media-cl, test-cuda,
+# test-media-cuda) skip there, which Test Checks counts as passing, and run in
+# master's test run after the merge, where every backend runs. Several merges
+# then share one full run instead of each paying for every backend before it.
+# A failure only another backend shows is caught on master, and Master Failure
+# Dispatch sends one capped fix round after it. The `changes` job decides it
+# (outputs.full_matrix); setting the repository variable PR_FULL_TEST_MATRIX
+# to "true" runs every backend on pull requests again. A deployment that names
+# master (a manual "Start Tests" run of master) is master's own test run, not a
+# pull request's, and runs every backend like a push to master does.
 #
 # Why a deployment and not workflow_dispatch: checks from a
 # workflow_dispatch run on a PR head branch do not satisfy a required
@@ -104,11 +120,20 @@ on:
 # stops a test run working on the commit it replaced: the validate run's
 # cancel-superseded-test-runs job cancels it. Branch name rather than
 # github.ref, because a pull_request run's ref is refs/pull/N/merge.
+#
+# A deployment to any environment other than `test` (production, worker,
+# start-tests) also starts this workflow, as a run that skips every job. It
+# gets a group of its own, keyed by run id. In the branch's group it would
+# take the single pending slot and so cancel the run queued there: on master
+# each `worker` deployment that Auto-Resolve Submit creates cancelled the
+# queued push run of the latest merge.
 concurrency:
   group: >-
     build-and-test-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{
     github.head_ref || github.ref_name }}-${{
     github.event_name == 'pull_request' && 'validate' || 'test' }}${{
+    github.event_name == 'deployment' && github.event.deployment.environment != 'test'
+    && format('-not-a-test-{0}', github.run_id) || '' }}${{
     github.ref == 'refs/heads/master' && github.run_attempt != '1'
     && format('-rerun-{0}', github.run_id) || '' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
@@ -165,17 +190,32 @@ jobs:
       # long-running test lanes, the analysis job and auto-resolve. See
       # "Validate runs and test runs" at the top of this file.
       run_tests: ${{ steps.kind.outputs.run_tests }}
+      # 'true' when a test run runs every backend's lanes; 'false' in a pull
+      # request's test run (a deployment), which runs one backend. See
+      # "Backend subset" at the top of this file.
+      full_matrix: ${{ steps.kind.outputs.full_matrix }}
     steps:
       - name: Decide the kind of run
         id: kind
         env:
           EVENT_NAME: ${{ github.event_name }}
+          PR_FULL_TEST_MATRIX: ${{ vars.PR_FULL_TEST_MATRIX }}
+          # The branch a deployment names (empty for every other event). A
+          # deployment of master is master's own test run and runs every
+          # backend, so only a deployment of some other branch is the subset.
+          DEPLOY_REF: ${{ github.event.deployment.ref }}
         run: |
           if [ "$EVENT_NAME" = "pull_request" ]; then
             echo "run_tests=false" >> "$GITHUB_OUTPUT"
+            echo "full_matrix=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Validate run — the long-running test lanes run in a separate test run (see Start Tests)"
+          elif [ "$EVENT_NAME" = "deployment" ] && [ "$PR_FULL_TEST_MATRIX" != "true" ] && [ "$DEPLOY_REF" != "master" ] && [ "$DEPLOY_REF" != "refs/heads/master" ]; then
+            echo "run_tests=true" >> "$GITHUB_OUTPUT"
+            echo "full_matrix=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Pull request test run — the Metal and flowtree lanes only; master runs every backend after the merge"
           else
             echo "run_tests=true" >> "$GITHUB_OUTPUT"
+            echo "full_matrix=true" >> "$GITHUB_OUTPUT"
           fi
 
 
@@ -1595,6 +1635,11 @@ jobs:
           BRANCH: ${{ steps.ctx.outputs.branch }}
           BASE_BRANCH: ${{ steps.ctx.outputs.base }}
           REPO_URL: git@github.com:${{ github.repository }}.git
+          # The test run gates the merge but never starts on its own: the
+          # controller starts it when a job on this workstream ends with
+          # nothing to commit. Set on every registration, existing workstream
+          # included, so no branch's workstream is left without it.
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -1813,6 +1858,7 @@ jobs:
           python3 -m unittest discover -v -s tools/ci -p "test_classify_failures.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s tools/ci -p "test_classify_job_failures.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s tools/ci -p "test_collect_observed_flakes.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s tools/ci -p "test_collect_master_failures.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s tools/ci -p "test_copilot_review_status.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s tools/ci -p "test_extract_branch_todos.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
@@ -1836,6 +1882,17 @@ jobs:
         run: |
           python3 -m unittest discover -v -s .claude/hooks/lib -p "test_git_command_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s .claude/hooks/lib -p "test_job_worktree_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # The private-link hook refuses a commit message or pull request that
+      # carries a claude.ai page, a session id or a lab-host URL; these also
+      # pin its registration in .claude/settings.json.
+      - name: Run private link hook tests
+        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_private_url_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # A branch that tracks master blocks every tool call until it is fixed;
+      # these cover what such a session may still run.
+      - name: Run branch upstream hook tests
+        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_branch_upstream_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       - name: Run exfiltration guard CI-verifier tests
         run: bash tools/ci/agent-protection/test-verify-exfiltration-guard.sh 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
@@ -2245,6 +2302,7 @@ jobs:
     # Layer gate: engine tests only run when engine-or-below layers are modified
     if: >-
       needs.changes.outputs.run_tests == 'true' &&
+      needs.changes.outputs.full_matrix == 'true' &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -2459,6 +2517,7 @@ jobs:
     # silently dropped studio tests on exactly the studio-only PRs the clause was written for.
     if: >-
       needs.changes.outputs.run_tests == 'true' &&
+      needs.changes.outputs.full_matrix == 'true' &&
       !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
@@ -2472,7 +2531,15 @@ jobs:
        needs.changes.outputs.domain_changed == 'true' ||
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
-    runs-on: [self-hosted, linux, ar-ci]
+    # A GitHub-hosted runner, like test-flowtree: free for a public repository,
+    # so the native media suite no longer occupies the self-hosted ar-ci fleet.
+    # Measured on ubuntu-latest (4 vCPU, 16 GB) with exactly these commands and
+    # flags: every module passed, peak memory in use was about 12 GB (in
+    # studio/compose; no other module passed 5.3 GB), and the job took 36
+    # minutes including setup, against 44 on ar-ci. The native `test` suite was
+    # measured too and does not fit (engine/utils ran for hours on 4 vCPUs), so
+    # `test` stays self-hosted.
+    runs-on: ubuntu-latest
     # actions: read lets "Download build artifacts" use the REST route.
     permissions:
       contents: read
@@ -2490,25 +2557,14 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Select and verify JDK
-        # The runner image or host ships the JDK (see tools/ci/README.md), so this
-        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job
-        # and was timing out. The shared action selects the JDK of the expected major,
-        # verifies it robustly, and exports JAVA_HOME and PATH so every later step —
-        # the Maven launcher in particular — runs on exactly that JDK.
-        uses: ./.github/actions/select-jdk
+      # A hosted runner starts clean, so the JDK and the Maven dependency cache
+      # come from actions/setup-java, as in test-flowtree.
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
+        uses: actions/setup-java@v5
         with:
-          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
-
-      - name: Cache Maven dependencies
-        # Restores the dependency cache actions/setup-java's `cache: maven` provided on
-        # this lane before it was removed; the Linux ar-ci runners are ephemeral, so each
-        # job otherwise starts with an empty ~/.m2 and re-resolves every dependency.
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-maven-
+          java-version: ${{ env.EXPECTED_JDK_MAJOR }}
+          distribution: 'temurin'
+          cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -2827,6 +2883,7 @@ jobs:
     # alongside test-media-mac.
     if: >-
       needs.changes.outputs.run_tests == 'true' &&
+      needs.changes.outputs.full_matrix == 'true' &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -2986,6 +3043,7 @@ jobs:
     # auto-resolve, which tools/tests/test_auto_resolve_test_job_coverage.py checks.
     if: >-
       needs.changes.outputs.run_tests == 'true' &&
+      needs.changes.outputs.full_matrix == 'true' &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -3325,6 +3383,7 @@ jobs:
     # tolerance to take effect — see test-media.
     if: >-
       needs.changes.outputs.run_tests == 'true' &&
+      needs.changes.outputs.full_matrix == 'true' &&
       !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
@@ -3531,6 +3590,7 @@ jobs:
     # Required, like test-cuda: in analysis.needs, all-checks and auto-resolve.
     if: >-
       needs.changes.outputs.run_tests == 'true' &&
+      needs.changes.outputs.full_matrix == 'true' &&
       !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
@@ -3876,23 +3936,29 @@ jobs:
   #                        gates report, from inside this run, while the
   #                        long-running test jobs are still going. The gates
   #                        are deterministic, so there is nothing to retry.
-  #   auto-resolve         The slow path: long-running test jobs (test,
-  #                        test-flowtree, test-media, the mac and CL lanes)
-  #                        still failing after the flaky-test retries. Runs
-  #                        only on attempt 3 or later, and only STAGES its
-  #                        request; "Auto-Resolve Submit"
+  #   auto-resolve         The slow path: failures of the long-running test
+  #                        jobs (test, test-flowtree, test-media, the mac, CL
+  #                        and CUDA lanes), in a test run. Runs on every
+  #                        attempt and only STAGES its request. It stages a
+  #                        regression confirmed on two or more backends on the
+  #                        attempt it appears, and every other failure on the
+  #                        final attempt (MAX_ATTEMPTS), after the flaky-test
+  #                        retries. "Auto-Resolve Submit"
   #                        (.github/workflows/auto-resolve-submit.yaml)
-  #                        submits it once the run completes and the retries
-  #                        are spent.
+  #                        retries a run with nothing staged and submits a
+  #                        staged request once the run completes.
   #
   # Exclusivity comes from two facts rather than from a handoff between jobs:
-  #   - auto-review and auto-resolve are split by attempt number: auto-review
-  #     runs on attempt 1 only, auto-resolve on attempt 3 or later, and
-  #     attempt 2 submits nothing. 3 is MAX_ATTEMPTS in
-  #     auto-resolve-submit.yaml: rerun-flaky-tests.sh re-runs a failed run
-  #     until attempt 3, so attempt 3 is the first one whose test failures
-  #     are handed to an agent. tools/tests/test_remediation_job_exclusivity.py
-  #     holds the two numbers together.
+  #   - auto-review and auto-resolve never run in the same run: auto-review
+  #     runs only for a pull_request event (a validate run), and auto-resolve
+  #     only when the long-running test lanes run (changes.outputs.run_tests),
+  #     which is never for a pull_request event (a test run is a deployment,
+  #     push or dispatch; see Start Tests). Within a test run, auto-resolve
+  #     stages at most once, and the retry gate submits the attempt that
+  #     staged instead of retrying it. MAX_ATTEMPTS here and in
+  #     auto-resolve-submit.yaml must be equal: the final attempt is the one
+  #     whose unconfirmed failures are handed to an agent.
+  #     tools/tests/test_remediation_job_exclusivity.py holds these together.
   #     auto-review is held to attempt 1 because a retry re-runs it whenever
   #     one of its inputs failed (checkstyle, say) — and its agent, submitted
   #     minutes into attempt 1, is very likely still working when a test
@@ -4012,6 +4078,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # The remediation-cap status when the controller refuses the pass.
+      statuses: write
     steps:
       - name: Checkout trusted scripts
         uses: actions/checkout@v4
@@ -4046,6 +4114,14 @@ jobs:
           # Marked explicitly, not inferred from `automated` (every CI job sets
           # that) — a QA, planning or implementation job is the work reviewed.
           REMEDIATION_PASS: "true"
+          # Marked with the remediation-cap status when the controller refuses
+          # this pass for the per-PR cap, so the pull request's label shows it.
+          CAP_STATUS_SHA: ${{ needs.changes.outputs.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Given to the workstream when this submission has to create it (a
+          # docs-only branch has no register-workstream run), so its test run
+          # still starts once the review loop settles.
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -4130,7 +4206,7 @@ jobs:
       # that the failure is not the agent's to chase. Nothing else would pick
       # it up — auto-resolve only handles long-running test failures. The
       # long-running test jobs play no part here; their failures are
-      # auto-resolve's, on attempt 3.
+      # auto-resolve's, in the test run.
       - name: Select prompt
         id: route
         env:
@@ -4426,6 +4502,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # The remediation-cap status when the controller refuses the pass.
+      statuses: write
     steps:
       - name: Checkout trusted scripts
         uses: actions/checkout@v4
@@ -4466,6 +4544,14 @@ jobs:
           # Marked explicitly, not inferred from `automated` (every CI job sets
           # that) — a QA, planning or implementation job is the work reviewed.
           REMEDIATION_PASS: "true"
+          # Marked with the remediation-cap status when the controller refuses
+          # this pass for the per-PR cap, so the pull request's label shows it.
+          CAP_STATUS_SHA: ${{ needs.changes.outputs.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Given to the workstream when this submission has to create it (a
+          # docs-only branch has no register-workstream run), so its test run
+          # still starts once the review loop settles.
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -4489,9 +4575,13 @@ jobs:
   # ─── Auto-Resolve Job ─────────────────────────────────────────────────
   # The slow path: downloads Surefire reports from the long-running test jobs,
   # parses them for failures, and STAGES a request as the
-  # `auto-resolve-request` artifact. Runs only on attempt 3 or later (see
-  # "Remediation Jobs" above); "Auto-Resolve Submit" submits the request once
-  # the run completes, if rerun-flaky-tests.sh has no retry left to spend.
+  # `auto-resolve-request` artifact. Runs on any attempt of a test run in which
+  # a job it needs failed (and, as before, on the final attempt whatever the
+  # results, which is where an incomplete run is detected), and
+  # stages a confirmed regression at once and anything else on the final
+  # attempt (see "Remediation Jobs" above and "Decide whether this attempt
+  # hands off" below); "Auto-Resolve Submit" submits the request once the run
+  # completes, and rerun-flaky-tests.sh retries a run that staged nothing.
   # Stages nothing when no test failed — the review for this commit was
   # auto-review's, on attempt 1. Its requests carry no STARTED_AFTER: the
   # submit workflow sets it to the start of this attempt, since the pipeline
@@ -4510,7 +4600,7 @@ jobs:
       !cancelled() &&
       needs.changes.outputs.run_tests == 'true' &&
       github.ref != 'refs/heads/master' &&
-      fromJSON(github.run_attempt) >= 3 &&
+      (contains(needs.*.result, 'failure') || fromJSON(github.run_attempt) >= 3) &&
       needs.build.result == 'success' &&
       needs.python-tests.result != 'failure' &&
       needs.python-evals.result != 'failure'
@@ -4521,6 +4611,12 @@ jobs:
     permissions:
       contents: read
       actions: read
+    env:
+      # The attempt the flaky-test retries stop at; it must equal MAX_ATTEMPTS
+      # in auto-resolve-submit.yaml. On this attempt every remaining failure is
+      # handed to an agent. Before it, only a confirmed regression is (see
+      # "Decide whether this attempt hands off").
+      MAX_ATTEMPTS: "3"
 
     steps:
       - name: Checkout Code
@@ -4559,8 +4655,8 @@ jobs:
           find . -path "*/target/surefire-reports" -type d -exec rm -rf {} + 2>/dev/null || true
           rm -rf all-surefire-reports
 
-      # auto-resolve runs only on attempt 3 or later, so the reports of every
-      # test job that did not re-run were uploaded in an earlier attempt; the
+      # On a retry attempt, the reports of every test job that did not re-run
+      # were uploaded in an earlier attempt; the
       # REST route is the one that can fetch those (see the coverage download
       # in `analysis`).
       - name: Download Surefire Reports
@@ -4648,13 +4744,14 @@ jobs:
           if [ -f ./tools/ci/classify-failures.py ]; then
             BASELINE="${{ runner.temp }}/master-failures.txt"
             [ -f "$BASELINE" ] || BASELINE=""
-            if CLASSIFICATION=$(python3 ./tools/ci/classify-failures.py "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}" "$BASELINE"); then
+            if CLASSIFICATION=$(python3 ./tools/ci/classify-failures.py "${{ runner.temp }}/test-failures.txt" "${{ runner.temp }}" "$BASELINE" all-surefire-reports); then
               # The classifier runs from the pull request's checkout, so its
               # stdout is branch-controlled and must never be eval'd as shell.
               # Read only the expected numeric *_count assignments.
               regression_count=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^regression_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
               preexisting_count=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^preexisting_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
               environmental_count=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^environmental_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
+              confirmed_count=$(printf '%s\n' "$CLASSIFICATION" | sed -n 's/^confirmed_count=\([0-9][0-9]*\)$/\1/p' | head -n1)
               # Accept the classification only when all three counts are
               # present and partition the failures exactly: the classifier
               # sorts every failure into one of the three buckets, so the sum
@@ -4689,13 +4786,46 @@ jobs:
             regression_count="${{ steps.failures.outputs.failure_count }}"
             preexisting_count=0
             environmental_count=0
+            confirmed_count=0
+          fi
+          # Confirmation is a subset of the regressions. A missing count, or
+          # one above the regression count, confirms nothing: confirmation
+          # only ever skips retries, so a doubtful count leaves them in place.
+          if [ -z "${confirmed_count:-}" ] || [ "$confirmed_count" -gt "$regression_count" ]; then
+            confirmed_count=0
           fi
           {
             echo "regression_count=${regression_count}"
             echo "preexisting_count=${preexisting_count}"
             echo "environmental_count=${environmental_count}"
+            echo "confirmed_count=${confirmed_count}"
           } >> "$GITHUB_OUTPUT"
-          echo "::notice::classified failures: ${regression_count} regression(s), ${preexisting_count} pre-existing, ${environmental_count} environmental"
+          echo "::notice::classified failures: ${regression_count} regression(s) (${confirmed_count} confirmed on two or more backends), ${preexisting_count} pre-existing, ${environmental_count} environmental"
+
+      # Whether this attempt stages a request, or leaves the run to the
+      # flaky-test retries in auto-resolve-submit.yaml. A retry can only help
+      # a failure that might not happen again, so a regression confirmed on two
+      # or more backends is handed to an agent on the attempt it appeared, and
+      # the retry gate, finding the staged request, does not retry. Every other
+      # failure (one backend, a timeout, a crash or incomplete run, which are
+      # most often the runner) waits for the final attempt, as before. A run
+      # that stages nothing on an earlier attempt is retried; one that stages
+      # nothing on the final attempt is reported in the Summary.
+      - name: Decide whether this attempt hands off
+        id: handoff
+        env:
+          ATTEMPT: ${{ github.run_attempt }}
+          CONFIRMED: ${{ steps.classify.outputs.confirmed_count }}
+        run: |
+          final=false
+          [ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ] && final=true
+          tests=$final
+          [ "${CONFIRMED:-0}" -gt 0 ] && tests=true
+          {
+            echo "final=$final"
+            echo "tests=$tests"
+          } >> "$GITHUB_OUTPUT"
+          echo "::notice::attempt ${ATTEMPT} of ${MAX_ATTEMPTS}: final=${final}, test failures handed off=${tests}"
 
       - name: Check for incomplete test execution
         if: steps.failures.outputs.has_failures != 'true'
@@ -4859,6 +4989,14 @@ jobs:
             VALIDATION_FAILED="true"
           fi
 
+          # A pull request's test run runs the Metal and flowtree lanes only
+          # (see "Backend subset" at the top of this file), so every other lane
+          # is skipped by design there.
+          SUBSET_RUN="false"
+          if [ "${{ needs.changes.outputs.full_matrix }}" = "false" ]; then
+            SUBSET_RUN="true"
+          fi
+
           # Determine whether layer-based filtering explains a skipped test job.
           # Engine tests (test, test-mac) only run when engine-or-below layers change.
           ENGINE_LAYERS_CHANGED="false"
@@ -4882,6 +5020,8 @@ jobs:
           if [ "$TEST_RESULT" = "cancelled" ] || [ "$TEST_RESULT" = "skipped" ]; then
             if [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test job was ${TEST_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$SUBSET_RUN" = "true" ]; then
+              echo "::notice::test job was ${TEST_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
             elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
               echo "::notice::test job was ${TEST_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
             else
@@ -4898,12 +5038,44 @@ jobs:
             if [ "$TEST_RESULT" != "failure" ] && [ "$TEST_RESULT" != "cancelled" ]; then
               if [ "$VALIDATION_FAILED" = "true" ]; then
                 echo "::notice::test-media job was ${MEDIA_RESULT} because an upstream validation check failed — not treating as incomplete"
+              elif [ "$SUBSET_RUN" = "true" ]; then
+                echo "::notice::test-media job was ${MEDIA_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
               elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
                 echo "::notice::test-media job was ${MEDIA_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
               else
                 echo "::warning::test-media job was ${MEDIA_RESULT} without test job failure"
                 INCOMPLETE="true"
               fi
+            fi
+          fi
+
+          # The Metal lane (test-mac, test-media-mac) waits for no other lane, exactly like
+          # the CPU lane above. A pull request's test run runs the Metal lane alone (the other
+          # backends are left to master), so it is the only backend coverage there: an
+          # unexplained skip of test-mac means no backend was tested, and SUBSET_RUN never
+          # excuses it — the subset is these very lanes.
+          if [ "$MAC_RESULT" = "cancelled" ] || [ "$MAC_RESULT" = "skipped" ]; then
+            if [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test-mac job was ${MAC_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
+              echo "::notice::test-mac job was ${MAC_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
+            else
+              echo "::warning::test-mac job was ${MAC_RESULT} without an upstream failure"
+              INCOMPLETE="true"
+            fi
+          fi
+          if [ "$MEDIA_MAC_RESULT" = "cancelled" ] || [ "$MEDIA_MAC_RESULT" = "skipped" ]; then
+            # A skipped test-mac is NOT an excuse, for the same reason as test-media above:
+            # test-media-mac has the wider layer gate and runs on studio/extern-only changes.
+            if [ "$MAC_RESULT" = "failure" ] || [ "$MAC_RESULT" = "cancelled" ]; then
+              echo "::notice::test-media-mac job was ${MEDIA_MAC_RESULT} because its lane's first stage failed — not treating as incomplete"
+            elif [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test-media-mac job was ${MEDIA_MAC_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
+              echo "::notice::test-media-mac job was ${MEDIA_MAC_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
+            else
+              echo "::warning::test-media-mac job was ${MEDIA_MAC_RESULT} without an upstream failure"
+              INCOMPLETE="true"
             fi
           fi
 
@@ -4918,6 +5090,8 @@ jobs:
             # lane's failure does not explain its skip.
             if [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test-cl job was ${CL_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$SUBSET_RUN" = "true" ]; then
+              echo "::notice::test-cl job was ${CL_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
             elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
               echo "::notice::test-cl job was ${CL_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
             else
@@ -4932,6 +5106,8 @@ jobs:
               echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} because its lane's first stage failed — not treating as incomplete"
             elif [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$SUBSET_RUN" = "true" ]; then
+              echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
             elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
               echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
             else
@@ -4944,6 +5120,8 @@ jobs:
             # failure does not explain its skip.
             if [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test-cuda job was ${CUDA_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$SUBSET_RUN" = "true" ]; then
+              echo "::notice::test-cuda job was ${CUDA_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
             elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
               echo "::notice::test-cuda job was ${CUDA_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
             else
@@ -4957,6 +5135,8 @@ jobs:
               echo "::notice::test-media-cuda job was ${MEDIA_CUDA_RESULT} because its lane's first stage failed — not treating as incomplete"
             elif [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test-media-cuda job was ${MEDIA_CUDA_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$SUBSET_RUN" = "true" ]; then
+              echo "::notice::test-media-cuda job was ${MEDIA_CUDA_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
             elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
               echo "::notice::test-media-cuda job was ${MEDIA_CUDA_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
             else
@@ -4982,7 +5162,7 @@ jobs:
       # "you broke these", and lists the pre-existing and environmental
       # failures in their own non-blaming sections.
       - name: Build prompt (test failures)
-        if: steps.failures.outputs.has_failures == 'true' && steps.classify.outputs.regression_count != '0' && steps.classify.outputs.regression_count != ''
+        if: steps.failures.outputs.has_failures == 'true' && steps.classify.outputs.regression_count != '0' && steps.classify.outputs.regression_count != '' && steps.handoff.outputs.tests == 'true'
         env:
           FAILURE_COUNT: ${{ steps.classify.outputs.regression_count }}
           BRANCH: ${{ needs.changes.outputs.branch }}
@@ -4999,7 +5179,7 @@ jobs:
             "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (test failures)
-        if: steps.failures.outputs.has_failures == 'true' && steps.classify.outputs.regression_count != '0' && steps.classify.outputs.regression_count != ''
+        if: steps.failures.outputs.has_failures == 'true' && steps.classify.outputs.regression_count != '0' && steps.classify.outputs.regression_count != '' && steps.handoff.outputs.tests == 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -5018,7 +5198,7 @@ jobs:
       # crash-specific prompt with Maven output and dumpstream details.
 
       - name: Build prompt (test job crash)
-        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
+        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true' && steps.handoff.outputs.final == 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
@@ -5026,7 +5206,7 @@ jobs:
           ./tools/ci/prompts/build-vm-crash-prompt.sh all-crash-reports "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (test job crash)
-        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true'
+        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests == 'true' && steps.handoff.outputs.final == 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -5046,7 +5226,7 @@ jobs:
       # are NOT considered incomplete — that's expected fail-fast.
 
       - name: Build prompt (incomplete tests)
-        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'
+        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true' && steps.handoff.outputs.final == 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           COMMIT_SHA: ${{ needs.changes.outputs.head_sha }}
@@ -5054,7 +5234,7 @@ jobs:
           ./tools/ci/prompts/build-build-failure-prompt.sh "${{ runner.temp }}/agent-prompt.txt" "${{ runner.temp }}/branch-todos.txt"
 
       - name: Stage submit request (incomplete tests)
-        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true'
+        if: steps.failures.outputs.has_failures != 'true' && steps.test-completeness.outputs.build_failed_in_tests != 'true' && steps.test-completeness.outputs.incomplete == 'true' && steps.handoff.outputs.final == 'true'
         env:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
@@ -5081,7 +5261,14 @@ jobs:
           REGRESSION_COUNT: ${{ steps.classify.outputs.regression_count }}
           PREEXISTING_COUNT: ${{ steps.classify.outputs.preexisting_count }}
           ENVIRONMENTAL_COUNT: ${{ steps.classify.outputs.environmental_count }}
+          CONFIRMED_COUNT: ${{ steps.classify.outputs.confirmed_count }}
+          HANDOFF_TESTS: ${{ steps.handoff.outputs.tests }}
+          HANDOFF_FINAL: ${{ steps.handoff.outputs.final }}
+          ATTEMPT: ${{ github.run_attempt }}
         run: |
+          # What this attempt staged for each kind of failure. Before the final
+          # attempt an unconfirmed failure is left to the flaky-test retry.
+          RETRY_NOTE="Nothing was staged on attempt ${ATTEMPT} of ${MAX_ATTEMPTS}: the failure is not confirmed on two or more backends, so the run is retried first."
           echo "## Auto-Resolve" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "_Any request below is staged as an artifact; the \`Auto-Resolve Submit\` workflow submits it once this run completes and no flaky-test retry is left._" >> "$GITHUB_STEP_SUMMARY"
@@ -5091,7 +5278,11 @@ jobs:
               echo "Found **${{ steps.failures.outputs.failure_count }}** test failure(s): **${REGRESSION_COUNT:-?}** regression(s), **${PREEXISTING_COUNT:-0}** pre-existing (fail on master too), **${ENVIRONMENTAL_COUNT:-0}** environmental (hardware/native)."
               echo ""
               if [ -n "$REGRESSION_COUNT" ] && [ "$REGRESSION_COUNT" != "0" ]; then
-                echo "A FlowTree coding agent job was staged to resolve the **${REGRESSION_COUNT}** regression(s) this branch introduced."
+                if [ "$HANDOFF_TESTS" = "true" ]; then
+                  echo "A FlowTree coding agent job was staged to resolve the **${REGRESSION_COUNT}** regression(s) this branch introduced (**${CONFIRMED_COUNT:-0}** confirmed on two or more backends)."
+                else
+                  echo "$RETRY_NOTE"
+                fi
                 echo ""
                 echo "### Regressions (this branch's to fix)"
                 echo '```'
@@ -5119,10 +5310,18 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           elif [ "${{ steps.test-completeness.outputs.build_failed_in_tests }}" = "true" ]; then
             echo "**Test job failed** without producing surefire results (JVM crash, OOM, or build error within test step)." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was staged to resolve the failure." >> "$GITHUB_STEP_SUMMARY"
+            if [ "$HANDOFF_FINAL" = "true" ]; then
+              echo "A FlowTree coding agent job was staged to resolve the failure." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "$RETRY_NOTE" >> "$GITHUB_STEP_SUMMARY"
+            fi
           elif [ "${{ steps.test-completeness.outputs.incomplete }}" = "true" ]; then
             echo "**Test execution incomplete** — some test jobs were cancelled or skipped without an upstream failure to explain it." >> "$GITHUB_STEP_SUMMARY"
-            echo "A FlowTree coding agent job was staged to investigate." >> "$GITHUB_STEP_SUMMARY"
+            if [ "$HANDOFF_FINAL" = "true" ]; then
+              echo "A FlowTree coding agent job was staged to investigate." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "$RETRY_NOTE" >> "$GITHUB_STEP_SUMMARY"
+            fi
           elif [ "${{ steps.test-completeness.outputs.environmental_setup_failed }}" = "true" ]; then
             echo "**No test failure to resolve** — the only failing test job(s) failed in a setup step (environmental); nothing was staged." >> "$GITHUB_STEP_SUMMARY"
           else

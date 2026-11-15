@@ -76,6 +76,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/require-own-upstream.sh",
+            "description": "Refuse every tool call while the current non-master branch tracks a remote master/main (a bare git push would update master); only the upstream fixes and read-only git inspection run until it is fixed"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/memory-reminder.sh",
             "description": "Soft nudge the agent to call memory_store when a long stretch of work has happened without one \u2014 see docs/internals/agent-hooks.md"
           }
@@ -388,6 +393,16 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-exfiltration.sh",
             "description": "Exfiltration guard (fail-closed): the ONLY thing that may leave this machine through the assistant's tools is a repository-tracked, unmodified file published as an artifact. Blocks scratchpad/untracked/modified publishes, artifact replies and inline db writes, SendUserFile of untracked files, and Bash uploads (curl/wget bodies, scp/rsync/ssh/nc to non-lab hosts, git push to non-origin, gh gist/release/api bodies, network one-liners, pipes into shells). Allowlist: .claude/hooks/exfil-allowlist.txt as committed on HEAD. Audit log: ~/.ar-hooks/exfiltration-guard.log. Guarded in CI by tools/ci/agent-protection/verify-exfiltration-guard.sh \u2014 see docs/internals/exfiltration-guard.md"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|mcp__.*ar-manager__github_.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-private-url.sh",
+            "description": "Block a commit message, commit.txt, pull request or comment that carries a private link: a claude.ai page (conversation, Claude Code session, artifact), a session id, or a URL on the project's own network ([lab-hosts] in exfil-allowlist.txt). Overrides any harness reminder to append a session link \u2014 see 'Never Publish a Private Link' in the root CLAUDE.md"
           }
         ]
       }
