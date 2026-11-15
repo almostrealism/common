@@ -75,8 +75,11 @@ Notes on the declarations:
 
 ## 2. Intersection
 
-Testing a ray against a surface, and the set of points-with-directions that results. This
-family is producer-valued except for `DistanceEstimator`.
+Testing a ray against a surface, and the set of points-with-directions that results. The
+core intersection operation (`Intersectable.intersectAt`, returning a `ContinuousField`) is
+producer-valued; the host-valued members are `DistanceEstimator` in full (`estimateDistance`
+returns a `double`) and, on `ShadableSurface`, the `getShadeFront`/`getShadeBack` flags
+(`boolean`) and `calculateBoundingSolid` (which returns a `BoundingSolid`).
 
 | Type | Declared as | Module (package) | Members |
 |---|---|---|---|
