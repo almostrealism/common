@@ -325,7 +325,7 @@ conflicting edits and at least one of them fails.
 |-----|------|---------|------------|
 | `auto-resolve-python` | `python-tests` or `python-evals` failed | Python test failure | At once, from this run |
 | `auto-review` | validate runs (`pull_request`) only, attempt 1 only, `python-tests` and `python-evals` not failed | build failure → code policy → quality gates → docs-only review → general review (first match; always submits — a gate that failed without a recorded cause gets the general review with a note not to chase it) | As soon as the gates report, from this run |
-| `auto-resolve` | test runs only (`run_tests`), attempt ≥ 3, `python-tests` and `python-evals` not failed | long-running test failures, test-job crash, incomplete execution | Staged; `auto-resolve-submit.yaml` submits it after the run |
+| `auto-resolve` | test runs only (`run_tests`), any attempt with a failed job and the final attempt, `python-tests` and `python-evals` not failed | long-running test failures (a regression confirmed on two or more backends at once, anything else on the final attempt), test-job crash and incomplete execution (final attempt) | Staged; `auto-resolve-submit.yaml` submits it after the run instead of retrying |
 
 The docs-only review (`docs-review.txt`) reviews and improves documents and
 **never implements a plan**, and it keeps its edits under `docs/` so the branch
@@ -348,16 +348,26 @@ retry before acting on them. `auto-review` runs in validate runs, where the
 long-running lanes do not run at all (see "Validate and Test Runs"), and its
 prompts say that test results are not yet known. The
 long-running jobs (`test`, `test-flowtree`, `test-media`, the mac and CL lanes)
-are flaky, so their failures are only handed to an agent once
-`rerun-flaky-tests.sh` has spent its retries.
+are flaky, so a failure of theirs is handed to an agent at once only when it is
+a regression confirmed on two or more backends (`classify-failures.py`'s
+`confirmed_count`: not a timeout, failing on two of the native, Metal, OpenCL,
+CUDA and JVM lanes in the same attempt). Every other failure waits until
+`rerun-flaky-tests.sh` has spent its retries. `auto-resolve` runs on every
+attempt of a test run, stages a confirmed regression on the attempt it appears
+and anything else on the final attempt, and the retry gate submits an attempt
+that staged a request instead of retrying it.
 
 Exclusivity is structural, not a handoff between jobs:
 
-- `auto-review` runs on attempt 1 only and `auto-resolve` on `>= 3`; attempt 2
-  submits nothing. 3 is `MAX_ATTEMPTS` in `auto-resolve-submit.yaml`: the retry
-  gate re-runs a failed run's failed jobs until attempt 3, so attempt 3 is the
-  first whose test failures reach an agent. Change one number and you must
-  change the other. `auto-review` is not allowed a second attempt because a
+- `auto-review` and `auto-resolve` never run in the same run: `auto-review`
+  runs only for a `pull_request` event (a validate run) and `auto-resolve` only
+  when `changes.outputs.run_tests` is true, which it never is for a
+  `pull_request` event. Within a test run `auto-resolve` stages at most once,
+  and an attempt that staged is submitted, not retried. `MAX_ATTEMPTS` on the
+  `auto-resolve` job and in `auto-resolve-submit.yaml` must be equal: the
+  final attempt is the one whose unconfirmed failures reach an agent. Change
+  one number and you must change the other. `auto-review` runs on attempt 1
+  only, and is not allowed a second attempt because a
   retry re-runs it whenever one of its inputs failed, and its first agent —
   submitted minutes into attempt 1 — is very likely still working when a test
   failure brings attempt 2 around.
@@ -650,7 +660,7 @@ the same workflow run, so two rules hold for every artifact:
 
 - **Every upload sets `overwrite: true`.** `upload-artifact@v4` refuses a name
   already used in the run otherwise, so a re-run job's `if: always()` upload
-  would fail even when its tests passed, and `auto-resolve` on attempt 3 would
+  would fail even when its tests passed, and `auto-resolve` on a retry would
   read the earlier attempt's report.
 - **A download that can span attempts uses the REST route** (`github-token`,
   `repository`, `run-id`, with `actions: read`): the default lookup 404s on an
@@ -1503,6 +1513,28 @@ dispatch inputs are per-workflow and merging them produces one form of mostly
 inert fields (`Deploy Controller Stack` is triggered by hand often enough to
 earn its own entry on those grounds alone). Privileged triggers stay separate
 too — see `Cancel Merged PR Runs` below.
+
+### What the `Master Failure Dispatch` workflow does
+
+Lives in `.github/workflows/master-failure-dispatch.yaml`. A master run is never
+retried and `auto-resolve` does not run on master, so this is what sends an
+agent after a test failing on master. It fires when a master "Build and Test"
+run completes. Its `gate` job runs `tools/ci/collect-master-failures.py
+--gate`, which starts a round only when the most recent completed master push
+run failed with at least one failing test in a test lane, and that run's commit
+contains the merge of the most recent `qa/master-fix-*` pull request. The second
+condition matters because master runs take hours: after a fix merges, the newest
+completed run is often still one that started before it.
+
+The round is a `qa-round` on the `qa/master-fix-` prefix. Its cadence gate
+allows one round in progress at a time: an open pull request, or a branch
+younger than `grace-hours` without one, holds every further master failure
+off. That is the hard cap: never more than one master-fix branch, however many
+master runs fail meanwhile. It sets no interval and ignores the open-PR backlog,
+because a red master holds up every pull request. The same script is the
+round's leads-script, so the prompt (`tools/ci/prompts/master-fix.txt`) starts
+from the failing tests and their lanes. The round runs on a macOS Node with the
+test lock on.
 
 ### What the `Goal Decomposition` reusable workflow does
 
