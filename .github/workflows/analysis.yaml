@@ -4072,6 +4072,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # The remediation-cap status when the controller refuses the pass.
+      statuses: write
     steps:
       - name: Checkout trusted scripts
         uses: actions/checkout@v4
@@ -4106,6 +4108,10 @@ jobs:
           # Marked explicitly, not inferred from `automated` (every CI job sets
           # that) — a QA, planning or implementation job is the work reviewed.
           REMEDIATION_PASS: "true"
+          # Marked with the remediation-cap status when the controller refuses
+          # this pass for the per-PR cap, so the pull request's label shows it.
+          CAP_STATUS_SHA: ${{ needs.changes.outputs.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Given to the workstream when this submission has to create it (a
           # docs-only branch has no register-workstream run), so its test run
           # still starts once the review loop settles.
@@ -4490,6 +4496,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # The remediation-cap status when the controller refuses the pass.
+      statuses: write
     steps:
       - name: Checkout trusted scripts
         uses: actions/checkout@v4
@@ -4530,6 +4538,10 @@ jobs:
           # Marked explicitly, not inferred from `automated` (every CI job sets
           # that) — a QA, planning or implementation job is the work reviewed.
           REMEDIATION_PASS: "true"
+          # Marked with the remediation-cap status when the controller refuses
+          # this pass for the per-PR cap, so the pull request's label shows it.
+          CAP_STATUS_SHA: ${{ needs.changes.outputs.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Given to the workstream when this submission has to create it (a
           # docs-only branch has no register-workstream run), so its test run
           # still starts once the review loop settles.

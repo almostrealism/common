@@ -171,6 +171,34 @@ class DeriveTest(unittest.TestCase):
         state = self.derive(test_run=run("deployment", conclusion="cancelled"))
         self.assertEqual(state[0], labels.NEEDS_ATTENTION)
 
+    def test_a_review_the_controller_refused_for_the_cap_is_the_review_limit(self):
+        state = self.derive(
+            validate_run=run("pull_request"),
+            validate_jobs=[job("auto-review-submit")],
+            capped=stamp(4))
+        self.assertEqual(state[0], labels.REVIEW_LIMIT)
+        self.assertEqual(state[1], stamp(4))
+
+    def test_a_fix_the_controller_refused_for_the_cap_is_the_review_limit(self):
+        state = self.derive(test_run=run("deployment", conclusion="failure",
+                                         attempt=3),
+                            staged=True, capped=stamp(1))
+        self.assertEqual(state[0], labels.REVIEW_LIMIT)
+
+    def test_the_cap_does_not_hide_a_running_or_passing_test_run(self):
+        running = self.derive(test_run=run("deployment", status="in_progress"),
+                              capped=stamp(30))
+        self.assertEqual(running[0], labels.FULL_TESTS)
+        passed = self.derive(
+            pr={"number": 7, "mergeable_state": "clean"},
+            test_run=run("deployment"), capped=stamp(30),
+            check_runs=[check("All Checks", "success"),
+                        check("Test Checks", "success")])
+        self.assertEqual(passed[0], labels.READY)
+
+    def test_the_review_limit_never_stalls(self):
+        self.assertFalse(labels.is_stalled(labels.REVIEW_LIMIT, stamp(10 ** 5), NOW))
+
 
 class StallTest(unittest.TestCase):
 
@@ -223,6 +251,9 @@ class FakeClient:
         for prefix, answer in self.answers:
             if path.startswith(prefix):
                 return answer(path) if callable(answer) else answer
+        # A head commit with no commit statuses, unless a test says otherwise.
+        if "/statuses" in path:
+            return []
         raise AssertionError("unexpected GET " + path)
 
     get_all = labels.StatusClient.get_all
@@ -360,6 +391,72 @@ class GatherTest(unittest.TestCase):
         self.assertEqual(client.requested[0], "labels?per_page=100&page=1")
 
 
+class CapStatusTest(unittest.TestCase):
+    """The remediation-cap commit status, from the submitters to the label."""
+
+    def test_only_the_newest_cap_status_counts(self):
+        self.assertEqual(labels.capped_at([
+            {"context": "ci/other", "state": "failure", "created_at": stamp(1)},
+            {"context": labels.CAP_STATUS, "state": "failure",
+             "created_at": stamp(5)},
+            {"context": labels.CAP_STATUS, "state": "success",
+             "created_at": stamp(9)}]), stamp(5))
+        self.assertIsNone(labels.capped_at([
+            {"context": labels.CAP_STATUS, "state": "success",
+             "created_at": stamp(1)},
+            {"context": labels.CAP_STATUS, "state": "failure",
+             "created_at": stamp(5)}]))
+        self.assertIsNone(labels.capped_at([]))
+
+    def test_gather_reads_the_head_commits_statuses(self):
+        validate = dict(run("pull_request"), id=14)
+        client = FakeClient([
+            ("pulls/7", {"number": 7}),
+            ("actions/workflows/", {"workflow_runs": [validate]}),
+            ("commits/abc/check-runs", {"check_runs": []}),
+            ("commits/abc/statuses", [{"context": labels.CAP_STATUS,
+                                       "state": "failure",
+                                       "created_at": stamp(2)}]),
+            ("actions/runs/14/jobs", {"jobs": [job("auto-review-submit")]}),
+        ])
+        facts = labels.gather(client, PR)
+        self.assertEqual(facts["capped"], stamp(2))
+        self.assertEqual(labels.derive(facts, NOW)[0], labels.REVIEW_LIMIT)
+
+    def test_the_status_name_matches_the_submit_script(self):
+        with open(os.path.join(ROOT, "tools", "ci", "submit-agent-job.sh")) as handle:
+            self.assertIn("context=%s" % labels.CAP_STATUS, handle.read())
+
+    def test_the_submit_script_recognises_the_controllers_cap_reason(self):
+        """submit-agent-job.sh matches "remediation cap" in the skip reason."""
+        guard = os.path.join(ROOT, "flowtree", "runtime", "src", "main", "java",
+                             "io", "flowtree", "controller",
+                             "RemediationBudgetGuard.java")
+        with open(guard) as handle:
+            self.assertIn('"Per-PR remediation cap of "', handle.read())
+        with open(os.path.join(ROOT, "tools", "ci", "submit-agent-job.sh")) as handle:
+            self.assertIn('*"remediation cap"*)', handle.read())
+
+    def test_every_remediation_submitter_can_mark_the_cap(self):
+        """Each job that submits a remediation pass passes the head commit and
+        may write commit statuses."""
+        found = 0
+        for name in ("analysis.yaml", "auto-resolve-submit.yaml"):
+            with open(os.path.join(ROOT, ".github", "workflows", name)) as handle:
+                workflow = yaml.safe_load(handle)
+            for job_id, body in workflow["jobs"].items():
+                for step in body.get("steps", []):
+                    env = step.get("env", {})
+                    if env.get("REMEDIATION_PASS") != "true":
+                        continue
+                    found += 1
+                    self.assertIn("CAP_STATUS_SHA", env, job_id)
+                    self.assertIn("GH_TOKEN", env, job_id)
+                    self.assertEqual(body["permissions"].get("statuses"), "write",
+                                     job_id)
+        self.assertEqual(found, 3)
+
+
 class WorkflowTest(unittest.TestCase):
     """The workflow runs no pull request code and has only what it needs."""
 
@@ -384,7 +481,7 @@ class WorkflowTest(unittest.TestCase):
     def test_permissions(self):
         self.assertEqual(self.job["permissions"], {
             "actions": "read", "checks": "read", "contents": "read",
-            "issues": "write", "pull-requests": "write"})
+            "issues": "write", "pull-requests": "write", "statuses": "read"})
 
     def test_max_attempts_matches_the_retry_gate(self):
         with open(os.path.join(ROOT, ".github", "workflows",

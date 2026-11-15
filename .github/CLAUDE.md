@@ -1811,6 +1811,7 @@ gives every open pull request from this repository one label for its stage:
 | `ci: auto-fix` | The test run failed and an agent was sent: `auto-resolve` staged a request in the latest attempt, or `auto-resolve-python-submit` succeeded |
 | `ci: ready for review` | The head commit's newest test run succeeded, the newest `Test Checks` and `All Checks` check runs (by id, so a queued one counts) both passed, and the pull request has no merge conflict |
 | `ci: needs attention` | CI stopped with no agent working on it: a run failed or was cancelled without a submission, a test run passed while `All Checks` did not, or a merge conflict |
+| `ci: review limit` | Shown in place of `ci: auto-review` or `ci: auto-fix` when the controller refused the pass because the pull request reached the per-PR remediation cap (`RemediationBudgetGuard`, 8 passes by default). Auto-dispatch is paused until a commit no pass produced lands; a person needs to look. Never stalls |
 | `ci: stalled` | Added beside the stage label when the stage has lasted longer than `LABELS` in the script allows (1 h validating, 4 h auto-review or auto-fix, 10 h full tests) |
 
 `tools/ci/pr-status-labels.py` derives the stage from the API on every run:
@@ -1823,6 +1824,18 @@ pull request; an `Auto-Resolve Submit` completion (a retry or a submission),
 the half-hourly schedule and a manual dispatch update every open pull request.
 The schedule is what notices a stalled stage. Labels outside `ci: ` are left
 alone.
+
+A cap refusal leaves the submit step green: the controller answers `skipped`,
+and `submit-agent-job.sh` exits 0. Each remediation submitter
+(`auto-review-submit`, `auto-resolve-python-submit` and Auto-Resolve Submit's
+`submit`) passes the pull request's head commit as `CAP_STATUS_SHA` and holds
+`statuses: write`. On that refusal the script sets a failing
+`remediation-cap` commit status on the head commit, which the labeller reads
+as `ci: review limit`. The status is needed because Auto-Resolve Submit runs
+belong to the default branch, not the pull request, so nothing else on the
+pull request records that the loop stopped. A new commit has no such status,
+and a commit no pass produced also resets the controller's count, so the label
+clears by itself.
 
 It runs from the default branch with `issues: write` and `pull-requests: write`
 and executes no pull request code: it checks out the default branch's

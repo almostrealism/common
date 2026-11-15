@@ -39,12 +39,13 @@ class SubmitAgentJobOutcomeTest(unittest.TestCase):
         self.output = os.path.join(self.dir.name, "github_output")
         self.summary = os.path.join(self.dir.name, "step_summary")
 
-    def submit(self, body):
+    def submit(self, body, **extra_env):
         env = {k: v for k, v in os.environ.items()}
         env.update(PATH=self.dir.name + os.pathsep + env.get("PATH", ""),
                    FAKE_BODY=body, BRANCH="qa/defect-x", BASE_BRANCH="master",
                    CONTROLLER_URL="http://controller.invalid",
                    GITHUB_OUTPUT=self.output, GITHUB_STEP_SUMMARY=self.summary)
+        env.update(extra_env)
         return subprocess.run(["bash", _SCRIPT, self.prompt], env=env,
                               capture_output=True, text=True, timeout=60)
 
@@ -64,6 +65,36 @@ class SubmitAgentJobOutcomeTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("submitted=false", self.outputs())
         self.assertNotIn("submitted=true", self.outputs())
+
+    def _stub_gh(self):
+        """A gh stand-in that records its arguments in a file."""
+        self.gh_log = os.path.join(self.dir.name, "gh.log")
+        bin_gh = os.path.join(self.dir.name, "gh")
+        with open(bin_gh, "w") as f:
+            f.write('#!/usr/bin/env bash\necho "$*" >> "%s"\n' % self.gh_log)
+        os.chmod(bin_gh, os.stat(bin_gh).st_mode | stat.S_IXUSR)
+
+    def submit_marking_the_cap(self, body):
+        self._stub_gh()
+        return self.submit(body, CAP_STATUS_SHA="abc123", GH_TOKEN="t",
+                           GITHUB_REPOSITORY="o/r")
+
+    def test_a_cap_skip_marks_the_head_commit(self):
+        result = self.submit_marking_the_cap(
+            '{"ok":true,"skipped":true,"reason":"Per-PR remediation cap of 8 passes '
+            'reached; auto-dispatch paused pending a person"}')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("submitted=false", self.outputs())
+        with open(self.gh_log) as f:
+            call = f.read()
+        self.assertIn("/repos/o/r/statuses/abc123", call)
+        self.assertIn("state=failure", call)
+        self.assertIn("context=remediation-cap", call)
+
+    def test_another_skip_does_not_mark_the_head_commit(self):
+        result = self.submit_marking_the_cap('{"skipped":true,"reason":"a newer job exists"}')
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertFalse(os.path.exists(self.gh_log))
 
     def test_a_rejected_automated_submission_reports_submitted_false(self):
         result = self.submit('{"automated":true,"ok":false}')
