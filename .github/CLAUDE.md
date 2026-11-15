@@ -741,8 +741,8 @@ change. Uploads `coverage-cpu`.
 ### What the `test-media` job covers
 
 Runs `engine/audio`, `studio/music`, `studio/compose`, `studio/spatial`,
-`extern/ml-onnx,studio/experiments` and `studio/bioscience` on a self-hosted runner as a single
-(non-matrix) job, like `test`. Runs after `test` (CPU lane, below). Skipped when
+`extern/ml-onnx,studio/experiments` and `studio/bioscience` on a GitHub-hosted
+`ubuntu-latest` runner as a single (non-matrix) job, like `test`. Runs after `test` (CPU lane, below). Skipped when
 none of studio/extern/engine/domain/compute/base change. Uploads `coverage-media`.
 
 ### Tests excluded from the pipeline profile
@@ -977,14 +977,14 @@ CUDA jobs require it, and only the CUDA fleet carries it, after its preflight ha
 proved the GPU. A Linux host without an NVIDIA GPU therefore never receives a CUDA
 job. Unlike the ROCm fleet, a CUDA fleet may *additionally* carry `ar-ci`
 (`RUNNER_EXTRA_LABELS` in `tools/ci/cuda/.env`), so one GPU host can serve the CPU
-lane as well instead of running a separate CPU fleet beside it. That is safe
-because `test` and `test-media` run every step with `AR_HARDWARE_DRIVER=native` on
-the same image (the CUDA bridge tests in `base/hardware` still use the GPU
+lane's self-hosted stage (`test`; `test-media` is GitHub-hosted) as well instead
+of running a separate CPU fleet beside it. That is safe because `test` runs every
+step with `AR_HARDWARE_DRIVER=native` on the same image (the CUDA bridge tests in `base/hardware` still use the GPU
 directly when one is present, so on such a host they run in `test` too, and the
 fleet's preflight guarantees a complete CUDA environment for them). Sharing
 costs queueing, not correctness: `test-cuda` starts alongside `test` and `test-mac`,
 so within one pipeline it can queue beside the CPU lane on a shared host
-(as can `test-media-cuda` beside `test-media`), and across concurrent
+(as can `test-media-cuda` beside `test`), and across concurrent
 pipelines CUDA jobs can queue behind CPU jobs as the `ar-ci-cl` caveat above
 describes.
 
