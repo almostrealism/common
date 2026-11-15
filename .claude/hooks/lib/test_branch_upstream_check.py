@@ -144,6 +144,62 @@ class RemedyTest(RepoTestCase):
         self.assertBlocked("cd /repo")
         self.assertBlocked("")
 
+    def test_substitution_and_redirection_are_blocked(self):
+        """A remedy word list says nothing about what the shell runs or writes
+        around it: a substitution runs a command of its own, and a redirection
+        writes or reads a file. No remedy needs either."""
+        self.assertBlocked("git status $(touch /tmp/escaped)")
+        self.assertBlocked("git status ${ touch /tmp/escaped; git branch --unset-upstream }")
+        self.assertBlocked("git status ${| touch /tmp/escaped; }")
+        self.assertBlocked("git status `touch /tmp/escaped`")
+        self.assertBlocked("git config --get x <(cat /tmp/secret)")
+        self.assertBlocked("git status >(sh)")
+        self.assertBlocked("git status > /tmp/escaped")
+        self.assertBlocked("git status >> /tmp/escaped")
+        self.assertBlocked("git status < /tmp/input")
+        self.assertBlocked("git branch -vv 2>/tmp/escaped")
+        self.assertBlocked("git branch --unset-upstream <<EOF\nx\nEOF")
+
+    def test_git_options_that_run_commands_are_blocked(self):
+        """Configuration given on the command line can name a command for git
+        to run, so a read-only subcommand is no longer read-only with it."""
+        self.assertBlocked("git -c core.fsmonitor='touch /tmp/escaped' status")
+        self.assertBlocked("git -c core.pager=sh branch -vv")
+        self.assertBlocked("git -C /repo -c core.fsmonitor=sh status")
+        self.assertBlocked("git --config-env=core.fsmonitor=EVIL status")
+        self.assertBlocked("git --exec-path=/tmp/evil branch --unset-upstream")
+        self.assertBlocked("git status && git -c alias.x=!sh branch --unset-upstream")
+        self.assertAllowed("git -C /repo status")
+        self.assertAllowed("git -C /repo branch --unset-upstream")
+        self.assertAllowed("git branch --color -vv")
+
+    def test_help_option_launches_a_viewer_and_is_blocked(self):
+        """``--help`` on any subcommand makes git launch the external
+        man/help viewer, so a command carrying it is not read-only inspection
+        however safe the subcommand itself would be."""
+        self.assertBlocked("git status --help")
+        self.assertBlocked("git branch --help")
+        self.assertBlocked("git --help")
+        self.assertBlocked("git -C /repo status --help")
+        self.assertBlocked("git status && git branch --help")
+        self.assertAllowed("git status")
+        self.assertAllowed("git branch -vv")
+
+    def test_push_options_that_run_commands_are_blocked(self):
+        """``git push`` options such as ``--receive-pack``/``--exec`` name a
+        command for git to run, so a set-upstream push carrying one is not a
+        remedy; only ``-u``/``--set-upstream`` may ride along."""
+        self.assertBlocked("git push -u --receive-pack=/tmp/evil origin feature/x")
+        self.assertBlocked("git push -u --exec=/tmp/evil origin feature/x")
+        self.assertBlocked("git push --receive-pack=/tmp/evil -u origin feature/x")
+        self.assertBlocked("git push --set-upstream --receive-pack sh origin feature/x")
+        self.assertAllowed("git push -u origin feature/x")
+        self.assertAllowed("git push --set-upstream origin feature/x")
+
+    def test_a_second_line_is_held_to_the_same_rule(self):
+        self.assertBlocked("git status\nrm -rf build")
+        self.assertAllowed("git status\ngit branch --unset-upstream")
+
     def test_unsetting_the_upstream_clears_the_block(self):
         git(self.work, "branch", "--unset-upstream")
         self.assertEqual("allow", check.decide("Read", "", self.work)["action"])
