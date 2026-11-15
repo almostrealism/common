@@ -2492,7 +2492,15 @@ jobs:
        needs.changes.outputs.domain_changed == 'true' ||
        needs.changes.outputs.compute_changed == 'true' ||
        needs.changes.outputs.base_changed == 'true')
-    runs-on: [self-hosted, linux, ar-ci]
+    # A GitHub-hosted runner, like test-flowtree: free for a public repository,
+    # so the native media suite no longer occupies the self-hosted ar-ci fleet.
+    # Measured on ubuntu-latest (4 vCPU, 16 GB) with exactly these commands and
+    # flags: every module passed, peak memory in use was about 12 GB (in
+    # studio/compose; no other module passed 5.3 GB), and the job took 36
+    # minutes including setup, against 44 on ar-ci. The native `test` suite was
+    # measured too and does not fit (engine/utils ran for hours on 4 vCPUs), so
+    # `test` stays self-hosted.
+    runs-on: ubuntu-latest
     # actions: read lets "Download build artifacts" use the REST route.
     permissions:
       contents: read
@@ -2510,25 +2518,14 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - name: Select and verify JDK
-        # The runner image or host ships the JDK (see tools/ci/README.md), so this
-        # replaces actions/setup-java, which downloaded a JDK on every ephemeral job
-        # and was timing out. The shared action selects the JDK of the expected major,
-        # verifies it robustly, and exports JAVA_HOME and PATH so every later step —
-        # the Maven launcher in particular — runs on exactly that JDK.
-        uses: ./.github/actions/select-jdk
+      # A hosted runner starts clean, so the JDK and the Maven dependency cache
+      # come from actions/setup-java, as in test-flowtree.
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
+        uses: actions/setup-java@v5
         with:
-          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
-
-      - name: Cache Maven dependencies
-        # Restores the dependency cache actions/setup-java's `cache: maven` provided on
-        # this lane before it was removed; the Linux ar-ci runners are ephemeral, so each
-        # job otherwise starts with an empty ~/.m2 and re-resolves every dependency.
-        uses: actions/cache@v4
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-maven-
+          java-version: ${{ env.EXPECTED_JDK_MAJOR }}
+          distribution: 'temurin'
+          cache: 'maven'
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.

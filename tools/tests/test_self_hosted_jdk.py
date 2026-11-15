@@ -136,6 +136,44 @@ class SelfHostedJdkTest(unittest.TestCase):
         self.assertGreater(seen, 0,
                            "expected at least one hosted setup-java step to guard")
 
+    def test_hosted_maven_jobs_get_jdk_and_cache_from_setup_java(self):
+        """A hosted runner starts clean and is not provisioned like the
+        self-hosted images, so a hosted job that runs Maven must take its JDK
+        and its dependency cache from setup-java (``cache: maven``), and must
+        not use the self-hosted select-jdk action, which only selects a JDK the
+        runner already carries. Moving a lane from self-hosted to hosted (as
+        test-media was) without swapping these steps would either fail to find
+        the JDK or re-resolve every dependency on each run."""
+        seen = 0
+        for name, job in _jobs().items():
+            if _is_self_hosted(job):
+                continue
+            runs_mvn = any(re.search(r"(^|\s)mvn\s", str(s.get("run", "")))
+                           for s in job.get("steps", []))
+            if not runs_mvn:
+                continue
+            seen += 1
+            with self.subTest(job=name):
+                self.assertEqual([], [s for s in job.get("steps", [])
+                                      if str(s.get("uses", "")).rstrip("/") == _SELECT_JDK_ACTION],
+                                 f"{name} is hosted and must not use {_SELECT_JDK_ACTION}")
+                setup = _steps_using(job, "actions/setup-java")
+                self.assertEqual(1, len(setup),
+                                 f"{name} is hosted and runs Maven, so it needs one setup-java step")
+                self.assertEqual("maven", str(setup[0].get("with", {}).get("cache", "")),
+                                 f"{name} setup-java must restore the Maven cache")
+        self.assertGreater(seen, 0, "expected at least one hosted Maven job to guard")
+
+    def test_test_media_runs_hosted_while_test_stays_self_hosted(self):
+        """The CPU lane is split across fleets: test-media fits a hosted runner
+        and runs there, while test does not fit one (engine/utils ran for hours
+        on 4 vCPUs) and stays on the self-hosted ar-ci fleet. test-media still
+        follows test, so the lane keeps its two-stage order."""
+        jobs = _jobs()
+        self.assertEqual(["ubuntu-latest"], _runs_on(jobs["test-media"]))
+        self.assertEqual(["self-hosted", "linux", "ar-ci"], _runs_on(jobs["test"]))
+        self.assertIn("test", jobs["test-media"].get("needs", []))
+
     def test_no_step_name_hard_codes_a_jdk_major(self):
         """A step name such as 'Set up JDK 17' would keep advertising the old
         major in the run log after EXPECTED_JDK_MAJOR is upgraded, so names
