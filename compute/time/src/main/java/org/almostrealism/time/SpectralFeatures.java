@@ -268,12 +268,12 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * @param spacing the sample spacing along each axis (or one value for all axes)
 	 * @return a producer of the {@link SpectralGrid#getRadialBinCount() radial bin count}
 	 *         radially averaged powers
-	 * @throws IllegalArgumentException if {@code bins * cells} exceeds {@link Integer#MAX_VALUE},
+	 * @throws IllegalArgumentException if {@code power} is a view that permutes its axes,
+	 *                                  {@code bins * cells} exceeds {@link Integer#MAX_VALUE},
 	 *                                  or the grid has more than {@link SpectralGrid#MAX_EXACT_INDEX} cells
 	 */
 	default CollectionProducer radialPowerSpectrum(Producer<PackedCollection> power, double... spacing) {
-		// TODO(review): a permuted view of power is not rejected here (SpectralGrid drops the permutation silently); consider gridShape(power)
-		return new SpectralGrid(shape(power), spacing).radialAverage(power);
+		return new SpectralGrid(gridShape(power), spacing).radialAverage(power);
 	}
 
 	/**
@@ -368,10 +368,10 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * @param field   the real field, shaped like a grid
 	 * @param spacing the sample spacing along each axis (or one value for all axes)
 	 * @return a single-element producer of the dominant wavenumber, in radians per unit length
+	 * @throws IllegalArgumentException if {@code field} is a view that permutes its axes
 	 */
 	default CollectionProducer dominantWavenumber(Producer<PackedCollection> field, double... spacing) {
-		// TODO(review): a permuted view of field is not rejected here, though c(field) reads its backing memory; consider gridShape(field)
-		SpectralGrid grid = new SpectralGrid(shape(field), spacing);
+		SpectralGrid grid = new SpectralGrid(gridShape(field), spacing);
 		int cells = grid.getCellCount();
 		double dk = grid.getRadialBinWidth();
 

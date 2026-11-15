@@ -770,6 +770,40 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	}
 
 	/**
+	 * The field analyses build their grid directly from the input rather than through a
+	 * transform, so they validate the input themselves: a permuted view passed to
+	 * {@code radialPowerSpectrum} or {@code dominantWavenumber} would otherwise be read in
+	 * backing order against the logical grid geometry, giving a silently wrong result.
+	 */
+	@Test(timeout = 60000)
+	public void fieldAnalysisOfPermutedViewRejected() {
+		PackedCollection real = testSignalAt(integers(0, 32)).reshape(8, 4).evaluate();
+		PackedCollection view = real.reshape(real.getShape().permute(1, 0));
+		Assert.assertTrue("the input should be a permuted view", view.getShape().isPermuted());
+
+		try {
+			radialPowerSpectrum(cp(view), 1.0);
+			Assert.fail("a permuted power spectrum should be rejected by radialPowerSpectrum");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains("permute"));
+		}
+
+		try {
+			dominantWavenumber(cp(view), 1.0);
+			Assert.fail("a permuted field should be rejected by dominantWavenumber");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains("permute"));
+		}
+
+		try {
+			dominantWavelength(cp(view), 1.0);
+			Assert.fail("a permuted field should be rejected by dominantWavelength");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains("permute"));
+		}
+	}
+
+	/**
 	 * A permuting computation, unlike a permuted view, produces dense data, so it is transformed
 	 * normally: the 2D transform of a transposed grid is the transpose of the grid's transform.
 	 * Rejecting the view therefore leaves a working route to its transform.
