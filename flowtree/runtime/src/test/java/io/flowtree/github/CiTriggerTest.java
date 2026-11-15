@@ -89,7 +89,7 @@ public class CiTriggerTest extends TestSuiteBase {
     }
 
     /**
-     * Asserts exactly one captured line contains every one of {@code fragments}.
+     * Asserts at least one captured line contains every one of {@code fragments}.
      *
      * @param fragments the substrings a single reported line must all contain
      */

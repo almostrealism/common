@@ -162,7 +162,7 @@ public class WorkstreamTest extends TestSuiteBase {
         for (String line : messages) {
             if (line.contains("deployment:test") && line.contains("almostrealism/common")
                     && line.contains("feature/shared") && line.contains("no GitHub token")
-                    && line.contains("almostrealism")) {
+                    && line.contains("configured for almostrealism")) {
                 reported = true;
                 break;
             }
