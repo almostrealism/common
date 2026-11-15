@@ -1254,7 +1254,7 @@ Consult the linked references before writing related code.
 
 **Code Policy Enforcement:** `CodePolicyViolationDetector` enforces the GPU memory model in CI. Do not circumvent it by extracting code to helpers, naming methods to match the whitelist, or adding suppression comments. Fix the violating code.
 
-**Process Isolation:** Only `IsolatedProcess` breaks expression embedding. Never return null from `getValueAt()`. Call `Process.optimize()` before `Process.get()`.
+**Process Isolation:** Only `Process.optimize` decides kernel boundaries. Graph-building code never calls `Process.isolated`, `isolate()` or a wrapper of them; a computation that needs its own kernel says so through `isIsolationTarget`. Never return null from `getValueAt()`. Call `Process.optimize()` before `Process.get()`.
 
 **StateDictionary** for all model weight management.
 
