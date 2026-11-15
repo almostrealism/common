@@ -302,6 +302,14 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 
 			bothSettled = bothCompleted.await(120, TimeUnit.SECONDS);
 
+			// Surface a dispatch failure as its own cause rather than as the latch timing out:
+			// whenSettled counts the latch down on the failure path too, so a failed dispatch does
+			// not block the await, and waitFor rethrows the actual failure at once for settled work.
+			if (bothSettled) {
+				if (longPending != null) longPending.waitFor();
+				if (independentPending != null) independentPending.waitFor();
+			}
+
 			long longElapsed = (longCompletedAt.get() - issuedAt) / 1_000_000;
 			long independentElapsed = (independentCompletedAt.get() - issuedAt) / 1_000_000;
 			log("longMillis=" + longMillis + " firstCompleted=" + firstCompleted.get() +
@@ -401,6 +409,12 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	 * recorded yet), and counts {@code bothCompleted} down. A {@code null} completion stands for
 	 * work that has already finished and is recorded at once.
 	 *
+	 * <p>The callback runs on the failure path as well as the ordinary one (via
+	 * {@link Semaphore#whenSettled(Runnable)}), so a dispatch that <em>fails</em> still counts the
+	 * latch down rather than leaving the caller's {@code await} to time out and report the failure
+	 * as a mere non-completion; the failure itself is surfaced by the caller, which calls
+	 * {@link Semaphore#waitFor()} on the settled completions to rethrow it as its actual cause.</p>
+	 *
 	 * @param name           the label for this dispatch
 	 * @param firstCompleted holds the label of whichever dispatch settles first
 	 * @param completedAt    receives the time at which this dispatch settled
@@ -418,7 +432,7 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 		if (pending == null) {
 			mark.run();
 		} else {
-			pending.whenComplete(mark);
+			pending.whenSettled(mark);
 		}
 	}
 }
