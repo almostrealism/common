@@ -76,6 +76,13 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 	private static final int INPUTS = 6;
 
 	/**
+	 * The argument limit, and the structural bound an under-counting probe reports, at which the
+	 * probe computation is judged to fit and compiled unfolded although it declares far more
+	 * arguments (an output and {@link #INPUTS} inputs).
+	 */
+	private static final int UNDER_COUNTED_BOUND = 2;
+
+	/**
 	 * Number of terms in the masked sum, and of elements it is assigned to; past the width at
 	 * which the traversal generator reorders a sum.
 	 */
@@ -326,6 +333,43 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 		Assert.assertTrue("arguments=" + overflows.getArgumentCount() + " limit=" + (bound - 1),
 				overflows.getArgumentCount() <= bound - 1);
 		overflows.verify(overflows.getArgumentCount());
+	}
+
+	/**
+	 * A kernel that fails verification at compilation is discarded rather than kept as compiled:
+	 * when a bound under-reports, so that an unfolded kernel is compiled past its limit, the
+	 * failure leaves the operation uncompiled with no arguments, and compiling it again fails
+	 * again rather than returning the rejected scope.
+	 */
+	@Test(timeout = 60000)
+	public void kernelFailingVerificationIsNotLeftCompiled() {
+		PackedCollection out = new PackedCollection(SIZE);
+		Computation<Void> computation = a(cp(out).each(), sumOfInputs(inputs(INPUTS)).each());
+
+		FoldProbe underCounted = new FoldProbe(new LimitedComputeContext(OptionalInt.of(UNDER_COUNTED_BOUND)), computation) {
+			@Override
+			protected int getArgumentBound(int cap) {
+				return UNDER_COUNTED_BOUND;
+			}
+		};
+
+		Assert.assertFalse(underCounted.isFoldingEnabled());
+		Assert.assertEquals(0, underCounted.getAllowance());
+		underCounted.getInstructionSetManager();
+
+		for (int attempt = 1; attempt <= 2; attempt++) {
+			try {
+				underCounted.compile();
+				Assert.fail("attempt=" + attempt + ": a kernel past its limit compiled without folding");
+			} catch (HardwareException e) {
+				Assert.assertTrue(e.getMessage(), e.getMessage().contains("limit " + UNDER_COUNTED_BOUND));
+				Assert.assertTrue(e.getMessage(), e.getMessage().contains("does not report"));
+			}
+
+			Assert.assertFalse("attempt=" + attempt, underCounted.getCompiler().isCompiled());
+			Assert.assertNull("attempt=" + attempt, underCounted.getArguments());
+			Assert.assertEquals("attempt=" + attempt, 0, underCounted.getFolded());
+		}
 	}
 
 	/**

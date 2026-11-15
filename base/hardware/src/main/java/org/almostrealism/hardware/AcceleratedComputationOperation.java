@@ -739,11 +739,26 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 *
 	 * <p>The compilation is then reported to the {@link #bindingListener}, if there is one.</p>
 	 *
+	 * <p>The compiled scope is first {@link #verifyArgumentLimit(int) verified} against the
+	 * compute context's argument limit. A scope that fails the check is discarded together with
+	 * the arguments prepared for it before the failure propagates, so the operation is left
+	 * uncompiled: a later {@link #compile()} compiles and verifies again rather than returning the
+	 * rejected scope as though it had compiled.</p>
+	 *
 	 * <p>This method is synchronized to ensure thread-safe argument setup.</p>
+	 *
+	 * @throws HardwareException if the compiled scope declares more arguments than the limit
 	 */
 	public synchronized void postCompile() {
+		try {
+			verifyArgumentLimit(getCompiler().getScope().getArguments().size());
+		} catch (HardwareException e) {
+			resetArguments();
+			getCompiler().destroy();
+			throw e;
+		}
+
 		setupArguments(getCompiler().getScope());
-		verifyArgumentLimit(getArgumentVariables().size());
 		getCompiler().postCompile();
 
 		if (instructions != null && argumentMap != null) {
