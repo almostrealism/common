@@ -26,6 +26,9 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.IntUnaryOperator;
 import java.util.function.LongUnaryOperator;
@@ -385,15 +388,10 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 */
 	default long min() {
 		if (isConstant()) {
-			Number value = valueAt(0);
-			if (value instanceof Integer || value instanceof Long) {
-				return value.longValue();
-			}
-
 			// A constant fractional value must still be floored so the result
 			// is a lower bound: longValue() truncates toward zero (e.g. -2 for
 			// -2.5), which is greater than the element actually present.
-			return (long) Math.floor(value.doubleValue());
+			return floorToLong(valueAt(0));
 		}
 
 		if (valueAt(0) instanceof Integer) {
@@ -408,6 +406,39 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 			// containing -2.5).
 			return (long) Math.floor(doubleValues().min().orElseThrow());
 		}
+	}
+
+	/**
+	 * Floors a constant {@link Number} value to a {@code long} lower bound without
+	 * losing precision for exact numeric representations.
+	 *
+	 * <p>{@link ArrayIndexSequence} accepts arbitrary {@link Number} values, so a
+	 * plain {@code (long) Math.floor(value.doubleValue())} is not safe: converting a
+	 * large integral value such as {@link BigInteger} to {@code double} loses
+	 * precision, and converting a {@link BigDecimal} to {@code double} can round it
+	 * <em>upward</em> before flooring, both of which can produce a result that is no
+	 * longer a true lower bound. This method therefore preserves integral values
+	 * exactly, floors {@link BigDecimal} with exact decimal arithmetic, and only
+	 * falls back to {@link Math#floor} for genuinely floating-point types.</p>
+	 *
+	 * @param value  the constant value to floor
+	 * @return the largest {@code long} that does not exceed {@code value}
+	 */
+	static long floorToLong(Number value) {
+		if (value instanceof BigDecimal) {
+			return ((BigDecimal) value).setScale(0, RoundingMode.FLOOR).longValue();
+		}
+
+		if (value instanceof BigInteger || value instanceof Long || value instanceof Integer
+				|| value instanceof Short || value instanceof Byte) {
+			// Integral values are already lower bounds; longValue() is exact,
+			// whereas a double round-trip would lose precision for large magnitudes.
+			return value.longValue();
+		}
+
+		// Float/Double (and any other fractional representation) must be floored so
+		// the result never exceeds the element: longValue() truncates toward zero.
+		return (long) Math.floor(value.doubleValue());
 	}
 
 	/**

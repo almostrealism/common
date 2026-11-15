@@ -22,6 +22,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+
 /**
  * Tests the bounding contract of {@link IndexSequence#min()} and
  * {@link IndexSequence#max()} for floating-point sequences.
@@ -50,10 +53,13 @@ public class IndexSequenceMinTest extends TestSuiteBase {
 
 		long min = seq.min();
 
-		Assert.assertTrue(
-				"min() == " + min + " but the sequence contains -2.5, so the reported "
-						+ "minimum is greater than an actual element",
-				min <= -2.5);
+		// -2.5 floors to -3; assert the exact rounded value rather than a mere
+		// inequality so the test pins the Math.floor behaviour (a value such as
+		// Long.MIN_VALUE would satisfy a lower-bound inequality but is not the
+		// intended result).
+		Assert.assertEquals(
+				"min() == " + min + " but the sequence minimum -2.5 must floor to -3",
+				-3, min);
 	}
 
 	/**
@@ -90,9 +96,35 @@ public class IndexSequenceMinTest extends TestSuiteBase {
 
 		long min = seq.min();
 
-		Assert.assertTrue(
-				"min() == " + min + " but the constant sequence value is -2.5, so the "
-						+ "reported minimum is greater than the only element",
-				min <= -2.5);
+		// The constant -2.5 floors to -3; assert the exact value so the test
+		// verifies the intended rounding rather than only an inequality.
+		Assert.assertEquals(
+				"min() == " + min + " but the constant value -2.5 must floor to -3",
+				-3, min);
+	}
+
+	/**
+	 * A constant sequence may hold an exact numeric type (such as {@link BigInteger} or
+	 * {@link BigDecimal}) whose magnitude cannot be represented exactly as a
+	 * {@code double}. {@link IndexSequence#min()} must preserve that precision rather
+	 * than rounding the value through a {@code double} conversion, which would both
+	 * perturb large integral values and round a {@link BigDecimal} upward before
+	 * flooring, breaking the lower-bound contract.
+	 */
+	@Test(timeout = 10000)
+	public void constantPreservesExactNumericPrecision() {
+		// 2^53 + 1: the smallest positive long not exactly representable as a double.
+		long inexactAsDouble = 9007199254740993L;
+		Assert.assertNotEquals(inexactAsDouble, (long) (double) inexactAsDouble);
+
+		IndexSequence integral = ArrayIndexSequence.of(BigInteger.valueOf(inexactAsDouble), 3);
+		Assert.assertTrue(integral.isConstant());
+		Assert.assertEquals(inexactAsDouble, integral.min());
+
+		// A BigDecimal just above the same value must floor down to it, not round up.
+		IndexSequence decimal = ArrayIndexSequence.of(
+				new BigDecimal(BigInteger.valueOf(inexactAsDouble)).add(new BigDecimal("0.5")), 3);
+		Assert.assertTrue(decimal.isConstant());
+		Assert.assertEquals(inexactAsDouble, decimal.min());
 	}
 }
