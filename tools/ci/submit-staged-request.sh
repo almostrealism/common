@@ -51,9 +51,27 @@
 #   Without CF_ACCESS_CLIENT_SECRET (a fork's pull request gets no secrets)
 #   nothing is submitted.
 #
+#   REMEDIATION_KIND - a label for the remediation route this submission is for
+#                      (e.g. "auto-resolve-python"), used only in the rejection
+#                      alert below. Falls back to GITHUB_JOB, then "remediation".
+#
+# ─── Making a rejected submission visible ──────────────────────────────
+#
+# When the controller rejects the submission (a non-2xx response, or a 2xx that
+# created no job), submit-agent-job.sh prints the reason and exits non-zero —
+# which on its own leaves only a red submit job with nothing pointing at the
+# branch it was for. Before propagating that failure, this script posts a short
+# message to the branch's workstream (POST /api/workstreams/{id}/messages, the
+# same endpoint ar-manager's send_message uses) naming the remediation kind, the
+# branch and workflow run, the HTTP status, and the controller's error text, and
+# writes the same summary to $GITHUB_STEP_SUMMARY. The alert is best-effort: if
+# it cannot be delivered (no workstream for the branch, an unreachable
+# controller) it logs a warning and the original submission failure still fails
+# the job. The alert path never turns a rejection into success.
+#
 # Exit codes:
 #   0 - submitted, or nothing to do (no request, or no credentials)
-#   1 - the submission failed
+#   1 - the submission failed (the rejection is alerted first)
 
 set -euo pipefail
 
@@ -130,5 +148,131 @@ while IFS= read -r line || [ -n "$line" ]; do
     esac
 done < "$REQUEST_DIR/submit.env"
 
+# Resolve the controller endpoint the same way submit-agent-job.sh does, so the
+# rejection alert reaches the same controller the submission did.
+if [ -n "${CONTROLLER_URL:-}" ]; then
+    CONTROLLER_BASE="${CONTROLLER_URL%/}"
+else
+    CONTROLLER_BASE="http://${CONTROLLER_HOST:-localhost}:${CONTROLLER_PORT:-7780}"
+fi
+
+# Post a short message to the branch's workstream naming why its remediation
+# submission was rejected. Best-effort: every failure here is a warning and the
+# caller's original submission failure is what fails the job. $1 is the HTTP
+# status (or a short phrase when there was no response), $2 the error text.
+post_rejection_alert() {
+    status="$1"
+    error="$2"
+
+    kind="${REMEDIATION_KIND:-${GITHUB_JOB:-remediation}}"
+
+    if [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
+        run_ref="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+    else
+        run_ref="(run unknown)"
+    fi
+
+    message=$(printf 'Remediation submission rejected: %s\nbranch %s, run %s\nHTTP %s: %s' \
+        "$kind" "$BRANCH" "$run_ref" "$status" "$error")
+
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        printf '%s\n' "$message" >> "$GITHUB_STEP_SUMMARY"
+    fi
+
+    # The repository is the other half of the (repository, branch) pair that
+    # identifies the workstream; derive it the way submit-agent-job.sh does.
+    repo="${REPO_URL:-}"
+    if [ -z "$repo" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
+        repo="git@github.com:${GITHUB_REPOSITORY}.git"
+    fi
+
+    alert_curl_args=(-sS -w "\n%{http_code}")
+    if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
+        alert_curl_args+=(-H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}")
+        alert_curl_args+=(-H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}")
+    fi
+
+    list_response=$(curl "${alert_curl_args[@]}" "${CONTROLLER_BASE}/api/workstreams") || {
+        echo "::warning::Could not reach the controller to post the rejection alert for ${BRANCH}"
+        return 1
+    }
+    list_code=$(printf '%s' "$list_response" | tail -1)
+    list_body=$(printf '%s' "$list_response" | sed '$d')
+    if [ "$list_code" != "200" ]; then
+        echo "::warning::Could not list workstreams to post the rejection alert for ${BRANCH} (HTTP ${list_code})"
+        return 1
+    fi
+
+    # Prefer the workstream on this repository; fall back to the branch alone
+    # when the repository URL form does not match (still better than no alert).
+    ws_id=$(printf '%s' "$list_body" | jq -r --arg b "$BRANCH" --arg r "$repo" \
+        '[ .[] | select(.defaultBranch == $b) | select($r == "" or .repoUrl == $r) ] | .[0].workstreamId // empty' 2>/dev/null || true)
+    if [ -z "$ws_id" ]; then
+        ws_id=$(printf '%s' "$list_body" | jq -r --arg b "$BRANCH" \
+            '[ .[] | select(.defaultBranch == $b) ] | .[0].workstreamId // empty' 2>/dev/null || true)
+    fi
+    if [ -z "$ws_id" ]; then
+        echo "::warning::No workstream registered for ${BRANCH}; cannot post the rejection alert"
+        return 1
+    fi
+
+    payload=$(jq -n --arg t "$message" '{text: $t}')
+    post_response=$(curl "${alert_curl_args[@]}" -X POST \
+        -H "Content-Type: application/json" \
+        -d "$payload" \
+        "${CONTROLLER_BASE}/api/workstreams/${ws_id}/messages") || {
+        echo "::warning::Could not post the rejection alert to workstream ${ws_id}"
+        return 1
+    }
+    post_code=$(printf '%s' "$post_response" | tail -1)
+    if [ "$post_code" != "200" ]; then
+        echo "::warning::Posting the rejection alert to workstream ${ws_id} failed (HTTP ${post_code})"
+        return 1
+    fi
+    echo "::notice::Posted a rejection alert to workstream ${ws_id} for ${BRANCH}"
+    return 0
+}
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-exec "${SCRIPT_DIR}/submit-agent-job.sh" "$REQUEST_DIR/agent-prompt.txt"
+
+# Run the submission, streaming its output live while capturing it, so a
+# rejection can be read back and alerted. (This is why the submission is no
+# longer exec'd: the script has to regain control to post the alert.)
+SUBMIT_LOG="$(mktemp)"
+trap 'rm -f "$SUBMIT_LOG"' EXIT
+
+set +e
+"${SCRIPT_DIR}/submit-agent-job.sh" "$REQUEST_DIR/agent-prompt.txt" 2>&1 | tee "$SUBMIT_LOG"
+SUBMIT_STATUS=${PIPESTATUS[0]}
+set -e
+
+if [ "$SUBMIT_STATUS" -eq 0 ]; then
+    exit 0
+fi
+
+# The submission failed. Read the HTTP status and the controller's error text
+# back out of submit-agent-job.sh's output. It prints "Response (<code>): <body>"
+# for every response it received; a curl failure (unreachable controller) prints
+# no such line, only an ::error:: line.
+RESPONSE_LINE=$(grep -E '^Response \([0-9]+\): ' "$SUBMIT_LOG" | tail -1 || true)
+if [ -n "$RESPONSE_LINE" ]; then
+    HTTP_STATUS=$(printf '%s' "$RESPONSE_LINE" | sed -E 's/^Response \(([0-9]+)\): .*/\1/')
+    RESPONSE_BODY=$(printf '%s' "$RESPONSE_LINE" | sed -E 's/^Response \([0-9]+\): //')
+    ERROR_TEXT=$(printf '%s' "$RESPONSE_BODY" | jq -r '.error // empty' 2>/dev/null || true)
+    if [ -z "$ERROR_TEXT" ]; then
+        ERROR_TEXT="$RESPONSE_BODY"
+    fi
+else
+    HTTP_STATUS="no response"
+    ERROR_TEXT=$(grep -E '^::error::' "$SUBMIT_LOG" | tail -1 | sed -E 's/^::error:://' || true)
+fi
+
+# Trim surrounding whitespace and keep the alert short.
+ERROR_TEXT=$(printf '%s' "$ERROR_TEXT" | tr -d '\r' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+ERROR_TEXT="${ERROR_TEXT:0:400}"
+[ -z "$ERROR_TEXT" ] && ERROR_TEXT="(no error text)"
+
+post_rejection_alert "$HTTP_STATUS" "$ERROR_TEXT" || \
+    echo "::warning::The rejection alert could not be delivered; the submission failure stands"
+
+exit "$SUBMIT_STATUS"
