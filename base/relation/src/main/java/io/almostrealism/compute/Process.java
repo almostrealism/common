@@ -199,8 +199,27 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	}
 
 	/**
-	 * Collects the descendants of this process that report themselves as
-	 * {@link #isIsolationTarget(ProcessContext) isolation targets} in the given
+	 * Determines whether optimization isolates this process in the given context.
+	 * This is the effective isolation policy: when {@link #explicitIsolationTargets}
+	 * are configured, only a process they permit is isolated, regardless of what
+	 * {@link #isIsolationTarget(ProcessContext)} reports; otherwise the process's own
+	 * {@link #isIsolationTarget(ProcessContext)} decides.
+	 *
+	 * @param context the process context
+	 * @return {@code true} if optimization isolates this process
+	 * @see ParallelProcess#optimize(ProcessContext, Process)
+	 */
+	default boolean isIsolatedByOptimization(ProcessContext context) {
+		if (Process.isExplicitIsolation()) {
+			return Process.isolationPermitted(this);
+		}
+
+		return isIsolationTarget(context);
+	}
+
+	/**
+	 * Collects the descendants of this process that optimization would isolate
+	 * (see {@link #isIsolatedByOptimization(ProcessContext)}) in the given
 	 * context yet have not been isolated. This process itself is excluded, since
 	 * a process evaluated as the root of a tree is already its own dispatch; only
 	 * targets embedded within the tree are of interest. Any subtree that is
@@ -229,8 +248,9 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	}
 
 	/**
-	 * Appends this process, if it is an un-isolated
-	 * {@link #isIsolationTarget(ProcessContext) isolation target}, and then every
+	 * Appends this process, if optimization would isolate it
+	 * (see {@link #isIsolatedByOptimization(ProcessContext)}) but it has not been
+	 * isolated, and then every
 	 * such descendant, to the given list. A subtree that is already {@link Isolated}
 	 * contributes nothing and is not descended into.
 	 *
@@ -240,7 +260,7 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 	 */
 	default void appendUnisolatedIsolationTargets(ProcessContext context, List<Process<?, ?>> targets) {
 		if (this instanceof Isolated) return;
-		if (isIsolationTarget(context)) targets.add(this);
+		if (isIsolatedByOptimization(context)) targets.add(this);
 
 		for (P child : getChildren()) {
 			if (child != null) child.appendUnisolatedIsolationTargets(context, targets);

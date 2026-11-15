@@ -137,16 +137,7 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 	 */
 	default Process<P, T> optimize(ProcessContext ctx, Process<P, T> process) {
 		process = process.optimize(ctx);
-
-		boolean isolate;
-
-		if (Process.isExplicitIsolation()) {
-			isolate = Process.isolationPermitted(process);
-		} else {
-			isolate = process.isIsolationTarget(ctx);
-		}
-
-		return isolate ? isolate(process) : process;
+		return process.isIsolatedByOptimization(ctx) ? isolate(process) : process;
 	}
 
 	/**

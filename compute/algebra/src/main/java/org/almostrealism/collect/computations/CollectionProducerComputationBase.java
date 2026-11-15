@@ -1026,11 +1026,11 @@ public abstract class CollectionProducerComputationBase
 	 * {@link #enableUnoptimizedIsolationGuard} is set, the process tree rooted at this
 	 * computation is walked once (see
 	 * {@link Process#collectUnisolatedIsolationTargets(ProcessContext)}); any descendant
-	 * that reports itself as an {@link Process#isIsolationTarget(ProcessContext) isolation
-	 * target} in the {@link ProcessContext#base() base context} yet was not isolated is
-	 * reported. Such a target was reached without {@link Process#optimize(ProcessContext)
-	 * optimization}, so it is embedded in each of its readers instead of being compiled as
-	 * its own kernel.
+	 * that optimization would isolate in the {@link ProcessContext#base() base context}
+	 * (see {@link Process#isIsolatedByOptimization(ProcessContext)}, which honors
+	 * {@link Process#explicitIsolationTargets}) yet was not isolated is reported. Such a
+	 * target was reached without {@link Process#optimize(ProcessContext) optimization},
+	 * so it is embedded in each of its readers instead of being compiled as its own kernel.
 	 *
 	 * <p>The report names this unoptimized computation and the alternative: evaluate at the
 	 * top of the call stack through

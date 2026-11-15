@@ -25,6 +25,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.List;
+import java.util.function.Predicate;
+
 /**
  * Verifies the guard on the unoptimized evaluation path, which
  * {@link CollectionProducerComputationBase#checkUnoptimizedIsolation()} applies when a
@@ -44,6 +47,17 @@ public class UnoptimizedIsolationGuardTest extends TestSuiteBase {
 	private Producer<PackedCollection> reductionConsumedByReader() {
 		PackedCollection input = new PackedCollection(shape(64)).randFill();
 		return add(max(cp(input)), c(1.0));
+	}
+
+	/**
+	 * Locates the single embedded reduction of a graph built by
+	 * {@link #reductionConsumedByReader()}, while no explicit isolation targets are set.
+	 */
+	private static Process<?, ?> embeddedReduction(Producer<PackedCollection> graph) {
+		List<Process<?, ?>> targets = ((Process<?, ?>) graph)
+				.collectUnisolatedIsolationTargets(ProcessContext.base());
+		Assert.assertEquals(1, targets.size());
+		return targets.get(0);
 	}
 
 	/**
@@ -101,6 +115,56 @@ public class UnoptimizedIsolationGuardTest extends TestSuiteBase {
 		} finally {
 			CollectionProducerComputationBase.unoptimizedIsolationGuardFails = fails;
 		}
+	}
+
+	/**
+	 * When {@link Process#explicitIsolationTargets} are configured and none of them permits
+	 * the reduction, optimization leaves the reduction embedded even though its own
+	 * {@link Process#isIsolationTarget(ProcessContext)} still reports {@code true} through
+	 * the count threshold. The guard follows the effective policy, so an explicitly
+	 * requested {@code evaluateOptimized()} must not trip it even in its failing mode, and
+	 * the tree-walk must not report the reduction.
+	 */
+	@Test(timeout = 60000)
+	public void silentWhenExplicitTargetsExcludeReduction() {
+		boolean fails = CollectionProducerComputationBase.unoptimizedIsolationGuardFails;
+		Predicate<Process> permitsNothing = p -> false;
+
+		try {
+			CollectionProducerComputationBase.unoptimizedIsolationGuardFails = true;
+
+			Producer<PackedCollection> graph = reductionConsumedByReader();
+			Process<?, ?> reduction = embeddedReduction(graph);
+
+			Process.explicitIsolationTargets.add(permitsNothing);
+
+			Assert.assertTrue(reduction.isIsolationTarget(ProcessContext.base()));
+			Assert.assertFalse(reduction.isIsolatedByOptimization(ProcessContext.base()));
+			Assert.assertTrue(((Process) graph)
+					.collectUnisolatedIsolationTargets(ProcessContext.base()).isEmpty());
+
+			PackedCollection result = graph.evaluateOptimized();
+			Assert.assertNotNull(result);
+		} finally {
+			Process.explicitIsolationTargets.remove(permitsNothing);
+			CollectionProducerComputationBase.unoptimizedIsolationGuardFails = fails;
+		}
+	}
+
+	/**
+	 * Without explicit isolation targets, the effective policy is the process's own
+	 * {@link Process#isIsolationTarget(ProcessContext)}: the reduction is isolated by
+	 * optimization and the element-wise reader is not.
+	 */
+	@Test(timeout = 60000)
+	public void effectivePolicyFollowsOwnTargetWithoutExplicitTargets() {
+		Assert.assertFalse(Process.isExplicitIsolation());
+
+		Producer<PackedCollection> graph = reductionConsumedByReader();
+		Process<?, ?> reduction = embeddedReduction(graph);
+
+		Assert.assertTrue(reduction.isIsolatedByOptimization(ProcessContext.base()));
+		Assert.assertFalse(((Process<?, ?>) graph).isIsolatedByOptimization(ProcessContext.base()));
 	}
 
 	/**
