@@ -94,7 +94,7 @@ event that started it. The `changes` job publishes the mode as `run_tests`.
 | | Validate run | Test run |
 |-|--------------|----------|
 | Started by | `pull_request` (every push to a PR branch) | `deployment` of the branch to the `test` environment; `push` to master; `workflow_dispatch` |
-| Runs | `changes`, `build`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test`, `test-media`, `test-mac`, `test-media-mac`, `test-cl`, `test-media-cl`, `test-cuda`, `test-media-cuda`, `test-flowtree` and `analysis` |
+| Runs | `changes`, `build`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test-mac`, `test-media-mac`, `test-flowtree` and `analysis`; and, when `full_matrix` is `true` (master, `workflow_dispatch`), also `test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda` and `test-media-cuda` (see below) |
 | Remediation | `auto-review`, `auto-resolve-python` | `auto-resolve-python`, and `auto-resolve` after the flaky-test retries |
 | Gate check | **All Checks** | **Test Checks** |
 | `run_tests` | `false` | `true` |

@@ -43,8 +43,10 @@ on:
 #   test-flowtree), so it never occupies the self-hosted fleet.
 #
 #   TEST (deployment, push to master, workflow_dispatch): everything above
-#   except auto-review, plus every long-running test lane, the flaky-test
-#   retries and auto-resolve. Its gate job is reported as "Test Checks".
+#   except auto-review, plus the long-running test lanes (all of them on
+#   master; one backend's in a pull request's run, see "Backend subset"
+#   below), the flaky-test retries and auto-resolve. Its gate job is
+#   reported as "Test Checks".
 #   A test run does not start on its own for a PR branch: something must
 #   create a GitHub deployment for the branch (environment "test"). The
 #   FlowTree controller does so when a workstream's review loop ends; a

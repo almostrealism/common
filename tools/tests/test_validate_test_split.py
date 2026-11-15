@@ -6,8 +6,10 @@
 * a VALIDATE run (``pull_request``) runs the static and integrity checks and
   reports its gate as ``All Checks``;
 * a TEST run (a ``deployment`` to the ``test`` environment, a push to master,
-  ``workflow_dispatch``) also runs every long-running test lane and reports
-  its gate as ``Test Checks``.
+  ``workflow_dispatch``) also runs the long-running test lanes and reports
+  its gate as ``Test Checks``; a pull request's test run (a deployment of a
+  non-master branch) runs only the Metal and flowtree lanes, while master
+  runs every backend (``full_matrix``).
 
 Both names are required checks, so the merge gate rests on a handful of
 expressions: the gate's dynamic name, the ``if:`` of ``changes``, ``analysis``
