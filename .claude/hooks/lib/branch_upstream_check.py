@@ -19,6 +19,10 @@ blocked except a Bash command made only of:
     ``git rev-parse``, ``git config --get``, ``git remote -v``;
   - ``cd``.
 
+with no command substitution, process substitution, redirection or
+here-document anywhere in it, since each of those acts outside the git words
+this check reads.
+
 So the session fixes the branch before it does anything else. A detached HEAD,
 a branch with no upstream, a local (``.``) upstream, and a directory that is not
 a git repository are all allowed: the check fails open on anything it cannot
@@ -137,9 +141,21 @@ def _is_fix_or_inspection(sub, args, state):
     return False
 
 
+# Shell syntax no remedy needs, each of which acts outside the words the check
+# reads: a command or process substitution (``$(...)``, backticks, ``<(...)``,
+# ``>(...)``) runs a command of its own, and a redirection or here-document
+# writes or reads a file. A command containing any of them is never a remedy,
+# whatever its git words say, quoted or not: telling quoted text from live
+# syntax is what the shell does, and a check that gets it wrong lets a blocked
+# session run anything.
+_NON_REMEDY_SYNTAX = ("$(", "`", "<", ">")
+
+
 def command_is_remedy(command, state):
     """Whether a Bash command consists only of fixes, inspection and ``cd``."""
     if not command or not command.strip():
+        return False
+    if any(syntax in command for syntax in _NON_REMEDY_SYNTAX):
         return False
     saw_git = False
     for segment in _segments(command):

@@ -144,6 +144,24 @@ class RemedyTest(RepoTestCase):
         self.assertBlocked("cd /repo")
         self.assertBlocked("")
 
+    def test_substitution_and_redirection_are_blocked(self):
+        """A remedy word list says nothing about what the shell runs or writes
+        around it: a substitution runs a command of its own, and a redirection
+        writes or reads a file. No remedy needs either."""
+        self.assertBlocked("git status $(touch /tmp/escaped)")
+        self.assertBlocked("git status `touch /tmp/escaped`")
+        self.assertBlocked("git config --get x <(cat /tmp/secret)")
+        self.assertBlocked("git status >(sh)")
+        self.assertBlocked("git status > /tmp/escaped")
+        self.assertBlocked("git status >> /tmp/escaped")
+        self.assertBlocked("git status < /tmp/input")
+        self.assertBlocked("git branch -vv 2>/tmp/escaped")
+        self.assertBlocked("git branch --unset-upstream <<EOF\nx\nEOF")
+
+    def test_a_second_line_is_held_to_the_same_rule(self):
+        self.assertBlocked("git status\nrm -rf build")
+        self.assertAllowed("git status\ngit branch --unset-upstream")
+
     def test_unsetting_the_upstream_clears_the_block(self):
         git(self.work, "branch", "--unset-upstream")
         self.assertEqual("allow", check.decide("Read", "", self.work)["action"])
