@@ -225,14 +225,19 @@ final class AutoPullRequestPublisher implements ConsoleFeatures {
             return null;
         }
 
+        String suffix = primaryUrl != null
+                ? "Companion to the primary pull request: " + primaryUrl : "";
+
         PullRequest existing = github.findOpenPullRequest(ownerRepo, push.branch());
         if (existing != null) {
             log("Reusing open companion PR for " + ownerRepo + " branch " + push.branch());
+            // Follow the dependent repo's own commit: a reused PR keeps whatever
+            // title it was first opened with, so refresh it from the new commit.
+            github.refreshPullRequestFromCommit(ownerRepo, existing, push.commitHash(),
+                    prCtx.description, suffix, token);
             return existing.htmlUrl();
         }
 
-        String suffix = primaryUrl != null
-                ? "Companion to the primary pull request: " + primaryUrl : "";
         String companionUrl = github.createPullRequestFromCommit(ownerRepo, push.branch(),
                 defaultBranch, push.commitHash(), prCtx.description, prCtx.draft, token, suffix);
         if (companionUrl == null) {

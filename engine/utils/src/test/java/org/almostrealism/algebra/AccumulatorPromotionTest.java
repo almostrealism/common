@@ -19,6 +19,7 @@ package org.almostrealism.algebra;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.Precision;
 import io.almostrealism.code.Statement;
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.StaticReference;
@@ -28,6 +29,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Cases;
 import io.almostrealism.scope.ExplicitScope;
 import io.almostrealism.scope.HybridScope;
+import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.ScopeSettings;
@@ -131,6 +133,118 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 		// The input array is still read inside the loop
 		Assert.assertTrue("The loop body should still read the input array",
 				bodyReferencesArray(storedLoop, in));
+	}
+
+	/**
+	 * Verifies that the scope a promoted loop is replaced by keeps the loop's
+	 * configuration. A loop is often the root scope of a kernel (for example the
+	 * scope of a {@code RepeatedProducerComputation} or a {@code Loop}), and the
+	 * compiled kernel's compute requirements, lane count and parameters are read
+	 * from whatever scope simplification returns.
+	 */
+	@Test(timeout = 30000)
+	public void promotedLoopKeepsConfiguration() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		OperationMetadata metadata = new OperationMetadata("configuredReduction", "Configured reduction");
+		Repeated<Void> loop = new Repeated<>("configuredReduction", metadata);
+		loop.setIndex(idx);
+		loop.setInterval(e(1));
+		loop.setCondition(idx.ref().lessThan(64));
+		loop.setComputeRequirements(List.of(ComputeRequirement.CPU));
+		loop.setLaneCount(4);
+
+		Variable<Integer, ?> parameter = Variable.integer("_test_param");
+		loop.getParameters().add(parameter);
+
+		ArrayVariable<Double> out = new ArrayVariable(Double.class, "out", e(4));
+		ArrayVariable<Double> in = new ArrayVariable(Double.class, "in", e(64));
+
+		Scope<Void> body = new Scope<>("body");
+		body.getStatements().add(new ExpressionAssignment(
+				outElement(out), outElement(out).add(inElement(in))));
+		loop.getChildren().add(body);
+
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		Assert.assertFalse("The loop should be promoted", simplified instanceof Repeated);
+		Assert.assertEquals("configuredReduction", simplified.getName());
+		Assert.assertEquals("configuredReduction", simplified.getMetadata().getDisplayName());
+		Assert.assertEquals("Configured reduction", simplified.getMetadata().getShortDescription());
+		Assert.assertEquals(List.of(ComputeRequirement.CPU), simplified.getComputeRequirements());
+		Assert.assertEquals(4, simplified.getLaneCount());
+		Assert.assertEquals(List.of(parameter), simplified.getParameters());
+	}
+
+	/**
+	 * Verifies that the scope a promoted loop is replaced by carries the loop's required
+	 * scopes and metrics, and that the rewritten loop inside it no longer does, so each
+	 * is contributed to the kernel exactly once. A required scope supplies the arguments
+	 * and helper functions the loop depends on, and dropping it would remove that
+	 * dependency from the compiled kernel.
+	 */
+	@Test(timeout = 30000)
+	public void promotedLoopKeepsRequiredScopesAndMetrics() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(64));
+		loop.setName("requiredReduction");
+
+		Scope<Void> required = new Scope<>("requiredHelper");
+		loop.getRequiredScopes().add(required);
+
+		Metric metric = new Metric(new StaticReference<>(Integer.class, "_test_counter"), 100);
+		loop.getMetrics().add(metric);
+
+		ArrayVariable<Double> out = new ArrayVariable(Double.class, "out", e(4));
+		ArrayVariable<Double> in = new ArrayVariable(Double.class, "in", e(64));
+
+		Scope<Void> body = new Scope<>("body");
+		body.getStatements().add(new ExpressionAssignment(
+				outElement(out), outElement(out).add(inElement(in))));
+		loop.getChildren().add(body);
+
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		Assert.assertFalse("The loop should be promoted", simplified instanceof Repeated);
+		Assert.assertEquals("The promoted result should carry the loop's required scope",
+				1, simplified.getRequiredScopes().size());
+		Assert.assertEquals("requiredHelper", simplified.getRequiredScopes().get(0).getName());
+		Assert.assertEquals("The promoted result should carry the loop's metric",
+				List.of(metric), simplified.getMetrics());
+
+		Scope<Void> rewrittenLoop = simplified.getChildren().get(0);
+		Assert.assertTrue("The first child should be the rewritten loop", rewrittenLoop instanceof Repeated);
+		Assert.assertTrue("The rewritten loop should not repeat the required scope",
+				rewrittenLoop.getRequiredScopes().isEmpty());
+		Assert.assertTrue("The rewritten loop should not repeat the metric",
+				rewrittenLoop.getMetrics().isEmpty());
+	}
+
+	/**
+	 * Verifies that a loop which is not promoted keeps its configuration through
+	 * simplification, the counterpart of {@link #promotedLoopKeepsConfiguration()}.
+	 */
+	@Test(timeout = 30000)
+	public void unpromotedLoopKeepsConfiguration() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(64));
+		loop.setName("configuredVariantLoop");
+		loop.setComputeRequirements(List.of(ComputeRequirement.GPU));
+		loop.setLaneCount(2);
+
+		ArrayVariable<Double> out = new ArrayVariable(Double.class, "out", e(64));
+		Expression<Integer> pos = new StaticReference<>(Integer.class, "_test_i");
+		Expression<Double> element = new InstanceReference(out, pos, pos);
+
+		Scope<Void> body = new Scope<>("body");
+		body.getStatements().add(new ExpressionAssignment(element, element.add(e(1.0))));
+		loop.getChildren().add(body);
+
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		Assert.assertTrue("A loop with a variant position should not be promoted",
+				simplified instanceof Repeated);
+		Assert.assertEquals(List.of(ComputeRequirement.GPU), simplified.getComputeRequirements());
+		Assert.assertEquals(2, simplified.getLaneCount());
 	}
 
 	/**
@@ -384,6 +498,57 @@ public class AccumulatorPromotionTest extends TestSuiteBase {
 		Assert.assertTrue("The final store should follow the loop", store > loopEnd);
 		Assert.assertFalse("The loop body should not reference the array",
 				code.substring(loopStart, loopEnd).contains("out["));
+	}
+
+	/**
+	 * Verifies that when the promoted element is addressed through a declaration that
+	 * loop-invariant code motion hoists out of the loop body, that declaration is
+	 * rendered before the accumulator that reads the element. This is the shape of a
+	 * single-iteration FFT bit-reversal copy, whose destination position does not
+	 * depend on the loop index; seeding the accumulator first referenced an undeclared
+	 * position and failed native compilation.
+	 *
+	 * <p>Scope structure before simplification:</p>
+	 * <pre>
+	 * for (i = 0; i < 1; i++) {
+	 *   { int dst = _gid * 2; out[dst] = in[i]; }
+	 * }
+	 * </pre>
+	 */
+	@Test(timeout = 30000)
+	public void hoistedPositionDeclaredBeforeAccumulator() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(1));
+		loop.setName("hoistedPositionTest");
+
+		ArrayVariable<Double> out = new ArrayVariable(Double.class, "out", e(4));
+		ArrayVariable<Double> in = new ArrayVariable(Double.class, "in", e(4));
+
+		Scope<Void> body = new Scope<>("body");
+		Expression<Integer> dst = body.declareInteger("_test_dst",
+				new StaticReference<>(Integer.class, "_gid").multiply(2));
+		body.assign(new InstanceReference(out, dst, dst), inElement(in));
+		loop.getChildren().add(body);
+
+		Scope<Void> simplified = loop.simplify(new NoOpKernelStructureContext(), 0);
+		Assert.assertFalse("The loop should be promoted", simplified instanceof Repeated);
+
+		ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+		CPrintWriter writer = new CPrintWriter(buffer, "hoistedPositionTest", Precision.FP64);
+		simplified.write(writer);
+		writer.flush();
+		String code = buffer.toString();
+
+		int position = code.indexOf("_test_dst = ");
+		int accumulator = code.indexOf("_test_i_acc0 = out[");
+		int loopStart = code.indexOf("for (int _test_i");
+
+		Assert.assertTrue("The hoisted position should be declared:\n" + code, position >= 0);
+		Assert.assertTrue("The accumulator should be declared:\n" + code, accumulator >= 0);
+		Assert.assertTrue("The position should be declared before the accumulator reads it:\n" + code,
+				position < accumulator);
+		Assert.assertTrue("The accumulator should be declared before the loop:\n" + code,
+				accumulator < loopStart);
 	}
 
 	/**

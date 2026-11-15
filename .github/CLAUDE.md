@@ -1795,6 +1795,55 @@ event metadata, the controller cancels only a workstream that names the event's
 head repository (`REPO_URL`, the head repo's clone URL). A branch name alone,
 or a workstream that names no repository, is never enough.
 
+### What the `PR Status Labels` workflow does
+
+Lives in `.github/workflows/pr-status-labels.yaml`. A pull request passes
+through a validate run, an agent's review loop, the test run with its retries,
+possibly an agent fixing what the test run found, and back again, so a running
+or green check no longer says whether anything is still to come. This workflow
+gives every open pull request from this repository one label for its stage:
+
+| Label | Meaning |
+|-------|---------|
+| `ci: validating` | The head commit's validate run is running, or none has started yet |
+| `ci: auto-review` | The validate run finished and sent a review agent (`auto-review-submit` or `auto-resolve-python-submit` succeeded). The agent either pushes, which starts a new validate run, or finds nothing to change, which starts the test run |
+| `ci: full tests` | The head commit's test run is running, including a re-run attempt, or failed within the last 15 minutes on an attempt before `MAX_ATTEMPTS`, so the retry gate may still re-run it |
+| `ci: auto-fix` | The test run failed and an agent was sent: `auto-resolve` staged a request in the latest attempt, or `auto-resolve-python-submit` succeeded |
+| `ci: ready for review` | The head commit's newest test run succeeded, the newest `Test Checks` and `All Checks` check runs (by id, so a queued one counts) both passed, and the pull request has no merge conflict |
+| `ci: needs attention` | CI stopped with no agent working on it: a run failed or was cancelled without a submission, a test run passed while `All Checks` did not, or a merge conflict |
+| `ci: review limit` | Shown in place of `ci: auto-review` or `ci: auto-fix` when the controller refused the pass because the pull request reached the per-PR remediation cap (`RemediationBudgetGuard`, 8 passes by default). Auto-dispatch is paused until a commit no pass produced lands; a person needs to look. Never stalls |
+| `ci: stalled` | Added beside the stage label when the stage has lasted longer than `LABELS` in the script allows (1 h validating, 4 h auto-review or auto-fix, 10 h full tests) |
+
+`tools/ci/pr-status-labels.py` derives the stage from the API on every run:
+the head commit's newest `pull_request` and `deployment` runs of
+`analysis.yaml`, their jobs, the `auto-resolve-request` artifact and the
+commit's check runs. It never reads the labels already present or relies on
+the triggering event, so a missed or out-of-order event is corrected by the
+next run. A `Build and Test` run starting or completing updates its branch's
+pull request; an `Auto-Resolve Submit` completion (a retry or a submission),
+the half-hourly schedule and a manual dispatch update every open pull request.
+The schedule is what notices a stalled stage. Labels outside `ci: ` are left
+alone.
+
+A cap refusal leaves the submit step green: the controller answers `skipped`,
+and `submit-agent-job.sh` exits 0. Each remediation submitter
+(`auto-review-submit`, `auto-resolve-python-submit` and Auto-Resolve Submit's
+`submit`) passes the pull request's head commit as `CAP_STATUS_SHA` and holds
+`statuses: write`. On that refusal the script sets a failing
+`remediation-cap` commit status on the head commit, which the labeller reads
+as `ci: review limit`. The status is needed because Auto-Resolve Submit runs
+belong to the default branch, not the pull request, so nothing else on the
+pull request records that the loop stopped. A new commit has no such status,
+and a commit no pass produced also resets the controller's count, so the label
+clears by itself.
+
+It runs from the default branch with `issues: write` and `pull-requests: write`
+and executes no pull request code: it checks out the default branch's
+`tools/ci` and only reads the API and writes labels. Keep it that way. The
+script's `MAX_ATTEMPTS` must equal `auto-resolve-submit.yaml`'s;
+`tools/tests/test_pr_status_labels.py` pins that, the workflow's permissions
+and checkout, and each state.
+
 ### What the `analysis` job does
 
 Waits for `build`, `test`, `test-flowtree`, `test-media`, `test-mac`,

@@ -134,6 +134,17 @@
 #                       the work only makes sense on a particular machine
 #                       (a GPU-backed performance measurement, a toolchain
 #                       that exists on one platform).
+#   CAP_STATUS_SHA    - the pull request's head commit. When the controller
+#                       skips a remediation pass because the per-PR cap is
+#                       reached, a failing `remediation-cap` commit status is
+#                       set on this commit, which tools/ci/pr-status-labels.py
+#                       turns into the `ci: review limit` label: the skip
+#                       leaves the step green, so nothing else on the pull
+#                       request records that the loop stopped. Needs GH_TOKEN
+#                       (statuses: write) and GITHUB_REPOSITORY; a failed post
+#                       is a warning. A commit nobody's pass produced resets the
+#                       controller's count and has no such status, so the label
+#                       clears by itself.
 #
 # Exit codes:
 #   0 - submission succeeded, OR the controller skipped/rejected it (both leave
@@ -164,6 +175,21 @@ PROMPT_FILE="${1:-}"
 emit_submitted() {
     if [ -n "${GITHUB_OUTPUT:-}" ]; then
         echo "submitted=$1" >> "$GITHUB_OUTPUT"
+    fi
+}
+
+# Record on the pull request's head commit that the per-PR remediation cap
+# stopped the loop; see CAP_STATUS_SHA above.
+mark_remediation_cap() {
+    if [ -z "${CAP_STATUS_SHA:-}" ] || [ -z "${GH_TOKEN:-}" ] || [ -z "${GITHUB_REPOSITORY:-}" ]; then
+        return 0
+    fi
+    if gh api -X POST "/repos/${GITHUB_REPOSITORY}/statuses/${CAP_STATUS_SHA}" \
+            -f state=failure -f context=remediation-cap \
+            -f description="${1:0:140}" > /dev/null; then
+        echo "::notice::Marked ${CAP_STATUS_SHA} with the remediation-cap status"
+    else
+        echo "::warning::Could not set the remediation-cap status on ${CAP_STATUS_SHA}"
     fi
 }
 
@@ -371,6 +397,10 @@ if [ "$SKIPPED" = "true" ]; then
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
         echo "Agent job for \`$BRANCH\` was not submitted — the controller skipped it: $REASON" >> "$GITHUB_STEP_SUMMARY"
     fi
+    # RemediationBudgetGuard's cap reason; see CAP_STATUS_SHA above.
+    case "$REASON" in
+        *"remediation cap"*) mark_remediation_cap "$REASON" ;;
+    esac
     emit_submitted false
     exit 0
 fi
