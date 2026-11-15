@@ -214,7 +214,7 @@ class IsolatedProcess extends DelegatedCollectionProducer {
 }
 ```
 
-**This is the ONLY proper way to break expression embedding.** Never return null from `getValueAt()` to force isolation.
+**This is how `isolate()` breaks expression embedding — and `Process.optimize`, not graph-building code, decides when to call it** (for a computation that reports `isIsolationTarget`). Never return null from `getValueAt()` to force isolation.
 
 ### When optimize() MUST Be Called
 

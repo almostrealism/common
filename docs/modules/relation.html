@@ -371,7 +371,7 @@ class IsolatedProcess extends DelegatedCollectionProducer {
                 </div>
 
                 <div class="warning">
-                    <strong>Critical Rule:</strong> <code>IsolatedProcess</code> is the ONLY proper way to break expression embedding.<br>
+                    <strong>Critical Rule:</strong> Only <code>Process.optimize</code> decides kernel boundaries. Graph-building code never calls <code>Process.isolated</code>, <code>isolate()</code> or a wrapper of them; a computation that needs its own kernel says so through <code>isIsolationTarget</code>. <code>IsolatedProcess</code> is the only thing that breaks expression embedding, but it is produced by the optimizer calling <code>isolate()</code> during <code>Process.optimize()</code> — not by application code.<br>
                     <strong>NEVER</strong> return null from <code>getValueAt()</code> to force isolation - this violates the architecture.
                 </div>
 
