@@ -15,6 +15,7 @@
 ## Core Modules
 
 ### base/ — Foundation
+- [Concept Map](base/concept-map.md): the foundational describe-then-execute spine and how meta→io→relation→code→collect→hardware build on one another
 - [meta](base/meta/README.md): Foundational interfaces — Named, Signature, Destroyable, Lifecycle, Setup, Multiple, Plural | [Details](docs/modules/meta.html)
 - [io](base/io/README.md): Console logging, metrics, alerts, file output utilities | [Details](docs/modules/io.html)
 - [relation](base/relation/README.md): Producer/Evaluable/Process model — relational computation, deferred execution, process optimization | [Details](docs/modules/relation.html)
@@ -23,12 +24,14 @@
 - [hardware](base/hardware/README.md): Hardware acceleration backends (JNI, OpenCL, Metal), memory management | [Details](docs/modules/hardware.html)
 
 ### compute/ — Mathematical Domains
+- [Concept Map](compute/concept-map.md): how the math layer wraps `PackedCollection`/`Producer` into `Vector`/`Ray`/distributions/`Temporal`, and the concepts each module adds
 - [algebra](compute/algebra/README.md): Vector, Matrix, Scalar, Pair types; PackedCollection; CollectionProducer with 40+ operations | [Details](docs/modules/algebra.html)
 - [geometry](compute/geometry/README.md): Ray, TransformMatrix, intersection testing, camera systems | [Details](docs/modules/geometry.html)
 - [time](compute/time/README.md): Temporal operations, FFT/IFFT, FIR filtering, signal processing | [Details](docs/modules/time.html)
 - [stats](compute/stats/README.md): Probability distributions, statistical sampling | [Details](docs/modules/stats.html)
 
 ### domain/ — Domain Models
+- [Concept Map](domain/concept-map.md): the Cell/Receptor/Transmitter and Block/Model keystone and how color/space/physics/chemistry/heredity/biology relate
 - [graph](domain/graph/README.md): Cell-Receptor-Transmitter pattern, neural network layers, backpropagation, the PDSL language core (`org.almostrealism.dsl`), neural population dynamics (LIF and rate populations) | [Details](docs/modules/graph.html)
 - [color](domain/color/README.md): RGB/RGBA, lighting, shaders, textures | [Details](docs/modules/color.html)
 - [physics](domain/physics/README.md): Rigid body dynamics, absorbers, photon fields, physical constants | [Details](docs/modules/physics.html)
@@ -38,6 +41,7 @@
 - [biology](domain/biology/README.md): Neurons, synapses, cell types, connectomes and their dynamics
 
 ### engine/ — Applications & Training
+- [Concept Map](engine/concept-map.md): the loop-owning classes (ModelOptimizer, DiffusionSampler, AutoregressiveModel) and how render/ml/audio/utils assemble domain models
 - [ml](engine/ml/README.md): Transformer models (Qwen3), StateDictionary, attention, diffusion; protobuf disk store and HNSW vector similarity search (`org.almostrealism.persist.index`: `HnswIndex`, `ProtobufDiskStore`, `SimilarityMetric`) | [Details](docs/modules/ml.html)
 - [optimize](engine/optimize/README.md): ModelOptimizer, loss functions, Adam, evolutionary algorithms | [Details](docs/modules/optimize.html)
 - [render](engine/render/README.md): Ray tracing engine, lighting, image output | [Details](docs/modules/render.html)
@@ -46,11 +50,13 @@
 - [utils-http](engine/utils-http/README.md): HTTP authentication, event delivery
 
 ### extern/ — External Integrations
+- [Concept Map](extern/concept-map.md): the thin-adapter pattern that satisfies AR contracts (`Tokenizer`, models) with external runtimes
 - [ml-djl](extern/ml-djl/README.md): DJL-backed SentencePiece tokenization — `SentencePieceTokenizer` wraps DJL's native `SpTokenizer` and a `.model` file, and is distinct from `engine/ml`'s own `SentencePieceBPETokenizer` (see [Text Tokenization](docs/internals/text-tokenization.md))
 - [ml-onnx](extern/ml-onnx/README.md): ONNX Runtime inference
 - [ml-script](extern/ml-script/README.md): Groovy scripting for model definition
 
 ### studio/ — Multimedia Composition
+- [Concept Map](studio/concept-map.md): how composition arranges engine/audio and ML into complete pipelines (PatternSystemManager, AudioScene, ConnectomeNetwork)
 - [music](studio/music/README.md): Pattern-based music composition, notes, arrangements | [Details](docs/modules/music.html)
 - [compose](studio/compose/README.md): Audio scene orchestration, generative audio, ML integration | [Details](docs/modules/compose.html)
 - [spatial](studio/spatial/README.md): Spatial audio visualization | [Details](docs/modules/music.html)
@@ -74,7 +80,8 @@
 - [PackedCollection Examples](docs/internals/packed-collection-examples.md): Creating, operating on, and managing PackedCollection — the fundamental data type
 - [CollectionProducer Operations](docs/internals/collection-producer-operations.md): The fluent API for composing hardware-accelerated operations (add, multiply, reshape, reduce, etc.)
 - [StateDictionary](docs/internals/state-dictionary.md): Model weight management — loading, saving, key naming conventions, HuggingFace compatibility
-- [Concept Map](docs/internals/concept-map.md): The concept families whose members are mathematically related and how the type system expresses them — spatial functions (`Differentiable`/`Gradient`/`Curve`/`ImplicitSurface`/`ShadableCurve`/`Volume`), intersection (`Intersectable`/`ContinuousField`/`DiscreteField`/`DistanceEstimator`/`ShadableSurface`), graphs (`Node`/`NodeList`/`Graph`/`Tree`, and `Mesh`), and fields on grids (`FieldCalculusFeatures`/`GridBoundary`, `HeightField`), with the declared supertypes, modules and known alignment gaps
+- [Concept Map](docs/internals/concept-map.md): The platform's concept map, in two parts. Part I — a layered concept overview placing every module's core concept in the stack (`base`→`compute`→`domain`→`engine`→`extern`/`studio`), starting from the foundational spine (`Producer`/`Evaluable`, `Process`, `TraversalPolicy`, `MemoryData`, `PackedCollection`, `CollectionProducer`) and the fact that both `MemoryData` and `Producer` `extend Node`, with links to each layer's own concept map. Part II — the source-verified type-alignment families and known gaps: spatial functions (`Differentiable`/`Gradient`/`Curve`/`ImplicitSurface`/`ShadableCurve`/`Volume`), intersection (`Intersectable`/`ContinuousField`/`DiscreteField`/`DistanceEstimator`/`ShadableSurface`), graphs (`Node`/`NodeList`/`Graph`/`Tree`, and `Mesh`), and fields on grids (`FieldCalculusFeatures`/`GridBoundary`, `HeightField`)
+- Per-layer concept maps (how each layer builds on the one below, and the concepts each module contributes): [base](base/concept-map.md), [compute](compute/concept-map.md), [domain](domain/concept-map.md), [engine](engine/concept-map.md), [extern](extern/concept-map.md), [studio](studio/concept-map.md)
 
 ### Compilation Pipeline
 - [End-to-End Computation](docs/internals/end-to-end-computation.md): How cp(a).multiply(cp(b)).evaluate() flows from expression to hardware execution

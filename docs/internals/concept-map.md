@@ -1,26 +1,96 @@
 # Concept Map
 
-This document records the concept families in the platform whose members are
-mathematically related, so that a reader (or an agent about to introduce a new type) can
-find the interface that already expresses a concept before writing a parallel one. For each
-family it lists the interfaces and classes, their declared supertypes **as they are in the
-source today**, the module each lives in, and the **known gaps**: places where two types
-represent the same (or a specializing) concept and the type system does not yet say so — or
-where it does say so but the declared contract is not yet honoured — with the reason each gap
-is still open.
+This document is the platform's concept map: it situates the core concept of every module in
+the layered architecture and records where mathematically-related concepts are — and are not —
+connected in the type system. A reader (or an agent about to introduce a new type) uses it to
+find the concept that already expresses an idea, in the layer it lives in, before writing a
+parallel one.
 
-A relationship here is only what the source declares (`extends`/`implements`). A gap is only
-listed when closing it would not require a new module dependency *and* every member of the
-proposed supertype would be correct for the subtype; where a link would need a new dependency
-or cannot honour the contract, that is said explicitly. A gap may instead be a relationship the
-source already declares whose contract is not yet honoured at runtime (for example an
-implemented interface method that throws); such a gap names the unmet contract rather than a
-missing supertype. When something is unclear it is written as unclear rather than guessed.
+It has two parts:
 
-The families below are the seed set. Later concept-alignment work extends this map as it
+- **Part I — Layered concept overview** situates every module's core concepts in the layered
+  architecture, starting from the foundational type system (`Producer`/`Evaluable`,
+  `PackedCollection`, `CollectionProducer`) that all the rest is built on. Each layer also has
+  its own, fuller concept map next to its modules (`base/concept-map.md`, `compute/concept-map.md`,
+  …), linked below. Part I is for orientation: *where does a concept live, and what does it build
+  on?*
+- **Part II — Type-alignment families and known gaps** is the detailed, source-verified record
+  the concept-alignment round maintains: for a set of mathematically-related families it lists
+  the declared supertypes, the modules, and the places where the type system does **not** yet
+  express a relationship it could. Part II is for alignment: *before I add a type, which existing
+  interface already expresses this concept?*
+
+The families in Part II are the seed set. Later concept-alignment work extends them as it
 surveys further families and as gaps are closed.
 
 ---
+
+# Part I — Layered concept overview
+
+The framework is a stack of six module layers, each building on the one below:
+
+```
+base → compute → domain → engine → extern / studio
+```
+
+The governing idea runs through all of them: **Java describes a computation graph; native code
+executes it.** Every concept below is either part of that description machinery, a typed value
+that flows through it, or an application assembled from it.
+
+## The foundational spine
+
+These are the concepts the entire framework speaks, introduced in `base` and made concrete in
+`compute/algebra`. They are the ones a reader most needs and the ones this map previously
+omitted.
+
+| Concept | Where | What it is | Deeper reference |
+|---|---|---|---|
+| `Producer<T>` | `base/relation` | A *described* computation — the recipe, not the result. `extends Supplier<Evaluable<? extends T>>, Computable, Node, Destroyable`. | [Producer/Evaluable Pattern](producer-evaluable-pattern.md) |
+| `Evaluable<T>` | `base/relation` | The compiled, executable form; `producer.get()` compiles, `evaluate(args)` runs. | [Producer/Evaluable Pattern](producer-evaluable-pattern.md) |
+| `Process<P, T>` | `base/relation` | A node in the optimizable tree a producer graph becomes; `optimize()` before `get()` decides isolation and parallelism. | [Process Optimization Pipeline](process-optimization-pipeline.md) |
+| `Expression<T>`, `Scope<T>`, `Computation<T>` | `base/code` | The typed expression tree, the code-generation container, and a computation that emits a `Scope`. | [Expression Evaluation](expression-evaluation.md) |
+| `TraversalPolicy` (`Shape`, `Traversable`) | `base/code` | The *shape*: N-dimensional structure imposed on flat memory, plus the fixed/variable count that sizes a kernel. | [Shape and Traversal](shape-and-traversal.md) |
+| `MemoryData` | `base/hardware` | A handle to possibly device-resident memory. `extends TraversableExpression<Double>, Delegated<MemoryData>, Destroyable, Node`. | [Native Runtime Lifecycle](native-runtime-lifecycle.md) |
+| `PackedCollection` | `compute/algebra` | The concrete N-dimensional tensor; `extends MemoryDataAdapter` (so it **is** a `MemoryData`, and a `Node`). | [PackedCollection Examples](packed-collection-examples.md) |
+| `CollectionProducer` | `compute/algebra` | The fluent, lazy API over collections (`add`, `multiply`, `reshape`, `sum`, `delta`, …); it is a `Producer`, so also a `Node`. | [CollectionProducer Operations](collection-producer-operations.md) |
+| `CollectionFeatures` (and the `*Features` mixins) | `compute/algebra` | The factory mixin that hands out producer-construction methods without inheritance. | [Features Pattern](features-pattern.md) |
+
+**The cross-link that ties the stack together:** both `MemoryData` and `Producer` `extend Node`
+(the graph marker from `base/relation`). Therefore every `PackedCollection`-backed value —
+`Vector`, `RGB`, `Ray`, `TransformMatrix` — and every producer is a **graph node**. This is why
+the graph vocabulary (Part II, family 3) reaches every numeric type: a `Mesh` can bind
+`Graph<Vector>` and a `Curve` can `extend Node` because `Vector` and the collections underneath
+a `Curve` already are nodes.
+
+## The layers and their per-layer maps
+
+Each layer's own concept map covers its modules in full. This table is the index.
+
+| Layer | Builds on | Core concepts it contributes | Per-layer map |
+|---|---|---|---|
+| **base** | — | `Producer`/`Evaluable`, `Process`, `Expression`/`Scope`, `TraversalPolicy`, `MemoryData`, the `Node`/`Graph` vocabulary, hardware backends. | [base/concept-map.md](../../base/concept-map.md) |
+| **compute** | base | `PackedCollection`, `CollectionProducer`, `Vector`/`Pair`; `Ray`/`TransformMatrix`/`Camera` and the spatial-function & intersection hierarchies; distributions; `Temporal`/FFT/`SimulationRunner`. | [compute/concept-map.md](../../compute/concept-map.md) |
+| **domain** | base, compute | `Cell`/`Receptor`/`Transmitter`, `Block`/`Model` and the PDSL core; `RGB`/`Light`/`Shader`; `Scene`/`Mesh`/surfaces; genes/genomes; atoms/photons/rigid bodies; elements; neurons/connectomes. | [domain/concept-map.md](../../domain/concept-map.md) |
+| **engine** | domain, compute, base | The loop owners — `ModelOptimizer`, `DiffusionSampler`, `AutoregressiveModel`; `RayTracedScene`/`LightingEngine`; `StateDictionary`/`AttentionFeatures`/`Tokenizer`; audio `Cell`/`CellList`; `TestSuiteBase`. | [engine/concept-map.md](../../engine/concept-map.md) |
+| **extern** | engine, domain | Thin adapters to external runtimes — `SentencePieceTokenizer` (DJL), `Onnx*` models, the Groovy `Ops` DSL — converting at the AR-type boundary. | [extern/concept-map.md](../../extern/concept-map.md) |
+| **studio** | engine, compute, domain | Composition and arrangement — `PatternSystemManager`, `AudioScene`/`MixdownManager`, `TemporalSpatialContext`, `ConnectomeNetwork`. | [studio/concept-map.md](../../studio/concept-map.md) |
+
+For the module-by-module reference behind each row, see the layer READMEs
+([base](../../base/README.md), [compute](../../compute/README.md), [domain](../../domain/README.md),
+[engine](../../engine/README.md), [extern](../../extern/README.md), [studio](../../studio/README.md)).
+
+---
+
+# Part II — Type-alignment families and known gaps
+
+The remainder of this document is the source-verified alignment record. A relationship here is
+only what the source declares (`extends`/`implements`). A gap is only listed when closing it would
+not require a new module dependency *and* every member of the proposed supertype would be correct
+for the subtype; where a link would need a new dependency or cannot honour the contract, that is
+said explicitly. A gap may instead be a relationship the source already declares whose contract is
+not yet honoured at runtime (for example an implemented interface method that throws); such a gap
+names the unmet contract rather than a missing supertype. When something is unclear it is written
+as unclear rather than guessed.
 
 ## 1. Spatial functions
 
@@ -213,6 +283,10 @@ join unrelated meanings.
 ---
 
 ## How to use this map
+
+To find where a concept lives and what it builds on, start from Part I and follow the link to the
+relevant layer's own concept map. To decide whether a *new* type should extend an existing one,
+use Part II as follows.
 
 Before introducing a type with a `value`/`normal`/`getValueAt`/`getNormalAt` pair, a
 ray-`intersect`, or a `neighbors`/node structure, find the family above and extend the
