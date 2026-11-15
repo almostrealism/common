@@ -199,15 +199,19 @@ class RunKindTest(unittest.TestCase):
                 return step
         self.fail("changes has no step with id 'kind'")
 
-    def _run_kind(self, event_name, pr_full_test_matrix=""):
-        """The kind step's outputs for a run started by ``event_name``, as a dict."""
+    def _run_kind(self, event_name, pr_full_test_matrix="", deploy_ref=""):
+        """The kind step's outputs for a run started by ``event_name``, as a dict.
+
+        ``deploy_ref`` is the branch a deployment names; it is empty for every
+        other event.
+        """
         bash = shutil.which("bash")
         self.assertIsNotNone(bash, "bash is required to run the kind step")
         with tempfile.TemporaryDirectory() as tmp:
             output = os.path.join(tmp, "output")
             open(output, "w").close()
             env = dict(os.environ, EVENT_NAME=event_name, GITHUB_OUTPUT=output,
-                       PR_FULL_TEST_MATRIX=pr_full_test_matrix)
+                       PR_FULL_TEST_MATRIX=pr_full_test_matrix, DEPLOY_REF=deploy_ref)
             subprocess.run([bash, "-e", "-c", self._kind_step()["run"]], env=env, check=True,
                            capture_output=True)
             with open(output) as f:
@@ -230,15 +234,25 @@ class RunKindTest(unittest.TestCase):
         self.assertEqual("${{ steps.kind.outputs.full_matrix }}", outputs["full_matrix"])
 
     def test_a_pull_requests_test_run_runs_one_backend(self):
-        self.assertEqual("false", self._run_kind("deployment")["full_matrix"])
+        self.assertEqual("false",
+                         self._run_kind("deployment", deploy_ref="feature/some-branch")["full_matrix"])
 
     def test_master_and_a_dispatch_run_every_backend(self):
         for event in ("push", "workflow_dispatch"):
             with self.subTest(event=event):
                 self.assertEqual("true", self._run_kind(event)["full_matrix"])
 
+    def test_a_master_deployment_runs_every_backend(self):
+        # A manual "Start Tests" of master is master's own test run, not a pull
+        # request's, so it runs the full matrix however the branch is named.
+        for ref in ("master", "refs/heads/master"):
+            with self.subTest(deploy_ref=ref):
+                self.assertEqual("true",
+                                 self._run_kind("deployment", deploy_ref=ref)["full_matrix"])
+
     def test_the_repository_variable_restores_every_backend_on_pull_requests(self):
-        self.assertEqual("true", self._run_kind("deployment", "true")["full_matrix"])
+        self.assertEqual("true",
+                         self._run_kind("deployment", "true", "feature/some-branch")["full_matrix"])
 
     def test_only_the_metal_and_flowtree_lanes_run_in_a_subset_run(self):
         subset = dict(_context("deployment", environment="test", run_tests="true"),

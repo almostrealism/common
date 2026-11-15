@@ -61,7 +61,9 @@ on:
 # A failure only another backend shows is caught on master, and Master Failure
 # Dispatch sends one capped fix round after it. The `changes` job decides it
 # (outputs.full_matrix); setting the repository variable PR_FULL_TEST_MATRIX
-# to "true" runs every backend on pull requests again.
+# to "true" runs every backend on pull requests again. A deployment that names
+# master (a manual "Start Tests" run of master) is master's own test run, not a
+# pull request's, and runs every backend like a push to master does.
 #
 # Why a deployment and not workflow_dispatch: checks from a
 # workflow_dispatch run on a PR head branch do not satisfy a required
@@ -196,12 +198,16 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           PR_FULL_TEST_MATRIX: ${{ vars.PR_FULL_TEST_MATRIX }}
+          # The branch a deployment names (empty for every other event). A
+          # deployment of master is master's own test run and runs every
+          # backend, so only a deployment of some other branch is the subset.
+          DEPLOY_REF: ${{ github.event.deployment.ref }}
         run: |
           if [ "$EVENT_NAME" = "pull_request" ]; then
             echo "run_tests=false" >> "$GITHUB_OUTPUT"
             echo "full_matrix=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Validate run — the long-running test lanes run in a separate test run (see Start Tests)"
-          elif [ "$EVENT_NAME" = "deployment" ] && [ "$PR_FULL_TEST_MATRIX" != "true" ]; then
+          elif [ "$EVENT_NAME" = "deployment" ] && [ "$PR_FULL_TEST_MATRIX" != "true" ] && [ "$DEPLOY_REF" != "master" ] && [ "$DEPLOY_REF" != "refs/heads/master" ]; then
             echo "run_tests=true" >> "$GITHUB_OUTPUT"
             echo "full_matrix=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Pull request test run — the Metal and flowtree lanes only; master runs every backend after the merge"

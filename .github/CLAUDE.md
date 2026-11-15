@@ -111,13 +111,15 @@ the other backends do, plus `test-flowtree`. The native CPU, OpenCL and CUDA
 lanes (`test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda`,
 `test-media-cuda`) skip there and run in master's test run after the merge,
 so several merges share one full run. `changes` publishes the choice as
-`full_matrix` (`false` for a deployment, `true` for `push` and
-`workflow_dispatch`). Each of those six lanes carries
-`needs.changes.outputs.full_matrix == 'true'`, and `auto-resolve`'s incomplete-run
-check does not count their skip as incomplete. A failure only another backend
-shows is found on master, and `Master Failure Dispatch` sends one capped fix
-round after it. Set the repository variable `PR_FULL_TEST_MATRIX` to `true` to
-run every backend on pull requests again.
+`full_matrix` (`false` for a deployment of a non-master branch, `true` for
+`push`, `workflow_dispatch`, and a deployment of master). Each of those six
+lanes carries `needs.changes.outputs.full_matrix == 'true'`, and
+`auto-resolve`'s incomplete-run check does not count their skip as incomplete.
+A failure only another backend shows is found on master, and `Master Failure
+Dispatch` sends one capped fix round after it. Set the repository variable
+`PR_FULL_TEST_MATRIX` to `true` to run every backend on pull requests again.
+A deployment that names master (a manual `Start Tests` run of master) is
+master's own test run, so it runs every backend as a push to master would.
 `tools/tests/test_validate_test_split.py` pins all of this.
 
 **Both `All Checks` and `Test Checks` are required status checks for master.**
