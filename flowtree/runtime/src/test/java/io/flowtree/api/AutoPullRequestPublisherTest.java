@@ -152,6 +152,30 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
         assertEquals(List.of(existing.htmlUrl), event.getCompanionPullRequestUrls());
     }
 
+    /**
+     * A reused open companion PR whose title is a stale prompt-fallback is
+     * refreshed from the dependent repo's own commit, so a truncated prompt
+     * title does not stick to the PR forever.
+     */
+    @Test(timeout = 30000)
+    public void reusedCompanionPrIsRetitledFromItsCommit() {
+        FakePr existing = github.seedOpenPr("widgets/lib", "feature/x",
+                "You are hunting for a real defect in this codebase...", "prompt body");
+        github.messageByRef.put("dep123", "Move the helper into lib\n\nShared by both repos.");
+        publisher.register("job-1", context(false));
+
+        JobCompletionEvent event = eventWithPush("abc", "dep123");
+        publisher.publish(event);
+
+        assertTrue("no new companion PR may be created",
+                github.requests.stream().noneMatch(r -> r.equals("POST /repos/widgets/lib/pulls")));
+        assertEquals(List.of(existing.htmlUrl), event.getCompanionPullRequestUrls());
+        FakePr refreshed = github.prByNumber(existing.number);
+        assertEquals("Move the helper into lib", refreshed.title);
+        assertTrue("the refreshed body comes from the commit",
+                refreshed.body.contains("Shared by both repos."));
+    }
+
     /** A branch that is not ahead of the default branch opens nothing. */
     @Test(timeout = 30000)
     public void branchEqualToDefaultCreatesNothing() {
@@ -232,10 +256,10 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
         private final String head;
         /** The base branch. */
         private final String base;
-        /** The PR title. */
-        private final String title;
-        /** The PR body. */
-        private final String body;
+        /** The PR title (mutable so a PATCH can refresh it). */
+        private String title;
+        /** The PR body (mutable so a PATCH can refresh it). */
+        private String body;
         /** Whether the PR is open. */
         private final boolean open;
         /** The PR's HTML URL. */
@@ -333,11 +357,37 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
          * @return the seeded pull request
          */
         private FakePr seedOpenPr(String ownerRepo, String head) {
+            return seedOpenPr(ownerRepo, head, "existing", "existing");
+        }
+
+        /**
+         * Seeds an already-open pull request with a specific title and body.
+         *
+         * @param ownerRepo the {@code owner/repo}
+         * @param head      the head branch
+         * @param title     the PR title
+         * @param body      the PR body
+         * @return the seeded pull request
+         */
+        private FakePr seedOpenPr(String ownerRepo, String head, String title, String body) {
             int n = nextNumber.getAndIncrement();
-            FakePr pr = new FakePr(ownerRepo, n, head, defaultBranch, "existing", "existing",
+            FakePr pr = new FakePr(ownerRepo, n, head, defaultBranch, title, body,
                     true, root() + "/" + ownerRepo + "/pull/" + n);
             prs.add(pr);
             return pr;
+        }
+
+        /**
+         * Returns the stored pull request with the given number.
+         *
+         * @param number the PR number
+         * @return the matching pull request, or {@code null}
+         */
+        private FakePr prByNumber(int number) {
+            for (FakePr pr : prs) {
+                if (pr.number == number) return pr;
+            }
+            return null;
         }
 
         /**
@@ -415,6 +465,10 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
             if (seg.length >= 3 && seg[2].equals("pulls") && method.equals("POST")) {
                 return createPull(ownerRepo, body(exchange));
             }
+            if (seg.length >= 4 && seg[2].equals("pulls") && seg[3].matches("\\d+")
+                    && method.equals("PATCH")) {
+                return updatePull(ownerRepo, Integer.parseInt(seg[3]), body(exchange));
+            }
             if (seg.length >= 4 && seg[2].equals("issues") && seg[3].matches("\\d+")) {
                 comments.add(new FakeComment(ownerRepo, Integer.parseInt(seg[3]),
                         MAPPER.readTree(body(exchange)).path("body").asText("")));
@@ -453,6 +507,8 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
                 sb.append("{\"number\":").append(pr.number)
                         .append(",\"state\":\"").append(pr.open ? "open" : "closed")
                         .append("\",\"html_url\":").append(quote(pr.htmlUrl))
+                        .append(",\"title\":").append(quote(pr.title))
+                        .append(",\"body\":").append(quote(pr.body))
                         .append(",\"head\":{\"ref\":").append(quote(pr.head)).append("}}");
             }
             return sb.append("]").toString();
@@ -473,6 +529,26 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
                     node.path("base").asText(""), node.path("title").asText(""),
                     node.path("body").asText(""), true, url));
             return "{\"number\":" + n + ",\"html_url\":" + quote(url) + "}";
+        }
+
+        /**
+         * Applies a PATCH to a stored pull request's title and body.
+         *
+         * @param ownerRepo the {@code owner/repo}
+         * @param number    the PR number
+         * @param body      the update request body
+         * @return the JSON response, or {@code null} when the PR is unknown
+         */
+        private String updatePull(String ownerRepo, int number, String body) throws IOException {
+            JsonNode node = MAPPER.readTree(body);
+            for (FakePr pr : prs) {
+                if (pr.ownerRepo.equals(ownerRepo) && pr.number == number) {
+                    if (node.has("title")) pr.title = node.path("title").asText(pr.title);
+                    if (node.has("body")) pr.body = node.path("body").asText(pr.body);
+                    return "{\"number\":" + number + ",\"html_url\":" + quote(pr.htmlUrl) + "}";
+                }
+            }
+            return null;
         }
 
         /** Reads the request body as a UTF-8 string. */

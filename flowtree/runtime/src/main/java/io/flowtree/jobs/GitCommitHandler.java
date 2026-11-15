@@ -603,7 +603,7 @@ class GitCommitHandler implements ConsoleFeatures {
 
     /**
      * Commits the staged changes using the message from
-     * {@link GitManagedJob#getCommitMessage()}.
+     * {@link GitManagedJob#getCommitMessage(String)}.
      *
      * <p>When {@link GitManagedJob#getGitUserName()} and/or
      * {@link GitManagedJob#getGitUserEmail()} are set, they are forwarded as
@@ -617,7 +617,7 @@ class GitCommitHandler implements ConsoleFeatures {
      * @throws RuntimeException if the commit fails (non-zero exit code)
      */
     private void commit() throws IOException, InterruptedException {
-        String message = job.getCommitMessage();
+        String message = job.getCommitMessage(job.getWorkingDirectory());
 
         // Strip-then-replace: any agent-supplied copy of a controller-signed
         // trailer is removed before the grants append their own; see
@@ -794,8 +794,12 @@ class GitCommitHandler implements ConsoleFeatures {
 
     /**
      * Handles git operations (stage, commit, push) for all dependent repos.
-     * Uses the same commit message as the primary repo. No-op when the setup
-     * cloned no dependent repos.
+     * Each dependent repo commits with the message the agent wrote to the
+     * {@code commit.txt} at its own root (see
+     * {@link GitManagedJob#getCommitMessage(String)}), and harness artifacts
+     * such as {@code commit.txt} are excluded from its commit exactly as they
+     * are from the primary repo's. No-op when the setup cloned no dependent
+     * repos.
      *
      * <p>Takes the {@link GitRepositorySetup} rather than a bare list of paths
      * so each repo's clone URL is recoverable: a push records a
@@ -828,11 +832,21 @@ class GitCommitHandler implements ConsoleFeatures {
                 log("No changes in dependent repo: " + depPath);
                 continue;
             }
-            log("Committing " + changedFiles.size() + " changes in dependent repo: " + depPath);
 
-            boolean anyStagedInDep = false;
-            List<String> skippedInDep = new ArrayList<>();
+            // commit.txt and other harness artifacts never belong in a commit.
+            List<String> committable = new ArrayList<>();
             for (String file : changedFiles) {
+                if (!GitOperations.isExcludedPath(file)) committable.add(file);
+            }
+            if (committable.isEmpty()) {
+                log("No committable changes in dependent repo (only harness artifacts): " + depPath);
+                continue;
+            }
+            log("Committing " + committable.size() + " changes in dependent repo: " + depPath);
+
+            List<String> stagedInDep = new ArrayList<>();
+            List<String> skippedInDep = new ArrayList<>();
+            for (String file : committable) {
                 File f = new File(depPath, file);
                 if (f.exists() && f.length() > job.getMaxFileSizeBytes()) {
                     log("Skipping (size) in dependent repo: " + file);
@@ -840,16 +854,16 @@ class GitCommitHandler implements ConsoleFeatures {
                     continue;
                 }
                 gitOps.execute("add", file);
-                anyStagedInDep = true;
+                stagedInDep.add(file);
             }
-            if (!anyStagedInDep) {
+            if (stagedInDep.isEmpty()) {
                 log("No files staged in dependent repo (all skipped): " + depPath);
                 dependentRepoFailures.add(depPath + " (every changed file was skipped: "
                         + String.join(", ", skippedInDep) + ")");
                 continue;
             }
 
-            int commitExitCode = gitOps.execute("commit", "-m", job.getCommitMessage());
+            int commitExitCode = gitOps.execute("commit", "-m", job.getCommitMessage(depPath));
             if (commitExitCode != 0) {
                 log("Commit failed in dependent repo: " + depPath + " (exit code " + commitExitCode + ")");
                 dependentRepoFailures.add(depPath + " (commit exited " + commitExitCode + ")");

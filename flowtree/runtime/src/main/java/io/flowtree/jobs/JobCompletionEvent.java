@@ -476,6 +476,29 @@ public class JobCompletionEvent {
     }
 
     /**
+     * Returns whether this job pushed the primary repository's changed files to
+     * its branch.
+     *
+     * @return {@code true} when the primary repository had staged files and they
+     *         were pushed
+     */
+    public boolean isPrimaryPushed() {
+        return !stagedFiles.isEmpty() && pushed;
+    }
+
+    /**
+     * Returns whether this job pushed work to any repository — the primary
+     * repository or a dependent one. A job whose only change landed in a
+     * dependent repository has still pushed work.
+     *
+     * @return {@code true} when the primary repository or any dependent
+     *         repository was pushed
+     */
+    public boolean hasPushedWork() {
+        return isPrimaryPushed() || !dependentRepoPushes.isEmpty();
+    }
+
+    /**
      * Returns the URL of the GitHub pull request opened by this job.
      *
      * @return the PR URL, or {@code null} if no PR was created

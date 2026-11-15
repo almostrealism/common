@@ -1476,7 +1476,8 @@ public class CodingAgentJob extends GitManagedJob {
 
     /**
      * Returns how the commit message was produced ({@code "agent"}, {@code "prompt_fallback"},
-     * or {@code "commit_rule_recovered"}). Populated on the first call to {@link #getCommitMessage()}.
+     * or {@code "commit_rule_recovered"}). Populated on the first call to
+     * {@link #getCommitMessage(String)} for the primary repository.
      *
      * @return the source tag, or {@code null} if no commit has been made yet
      */
@@ -1485,8 +1486,8 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     @Override
-    protected String getCommitMessage() {
-        return commitMessageBuilder.resolve(this);
+    protected String getCommitMessage(String repoRoot) {
+        return commitMessageBuilder.resolveForRepo(this, repoRoot);
     }
 
     /** Returns the builder that resolves this job's commit message and its fallbacks. */

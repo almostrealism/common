@@ -20,6 +20,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -31,19 +33,20 @@ import java.util.Set;
  * of changes made across all sessions.  Its sole job is to verify and (if
  * needed) recover a usable commit message.</p>
  *
- * <p>An absent {@code commit.txt} is a violation only when the working tree
- * actually holds uncommitted changes. A session that deliberately changed
- * nothing — a review that found no defect, an investigation that only reported
- * — has nothing to describe, and demanding a message from it would both waste
- * a correction session and destroy the file's value as a signal: an authored
- * message with no commit behind it is what tells
+ * <p>The rule checks every repository the job changed — the primary working
+ * directory and each dependent checkout beside it — and is violated when any
+ * of them holds uncommitted changes without a valid {@code commit.txt} at its
+ * own root. A repository the agent left untouched is not checked: a session
+ * that deliberately changed nothing — a review that found no defect, an
+ * investigation that only reported — has nothing to describe, and demanding a
+ * message from it would both waste a correction session and destroy the file's
+ * value as a signal: an authored message with no commit behind it is what tells
  * {@link JobWorkOutcome#describeUnpublishedWork()} that a job's changes went
  * missing, and that only holds if a message means the agent had changes.</p>
  *
  * <h3>Violation conditions</h3>
  * <ul>
- *   <li>{@code commit.txt} is absent or empty <em>and</em> the working tree
- *       holds uncommitted changes.</li>
+ *   <li>a changed repository's {@code commit.txt} is absent or empty.</li>
  *   <li>{@code commit.txt} is a verbatim copy of the task prompt (the
  *       harness prompt-fallback case).</li>
  *   <li>{@code commit.txt} echoes the rule's own previous correction prompt
@@ -87,52 +90,113 @@ class CommitMessageRule implements EnforcementRule {
 
     @Override
     public boolean isViolated(CodingAgentJob job) {
-        String content = readCommitTxt(job);
+        return !repositoriesNeedingMessage(job).isEmpty();
+    }
+
+    /**
+     * Returns the root path of every repository the job changed that still
+     * lacks a valid {@code commit.txt} — the primary working directory and each
+     * dependent checkout beside it. A repository is checked only when it holds
+     * uncommitted changes (fail-closed: a tree that cannot be read is treated
+     * as changed, so it still owes a message), because a repository the agent
+     * left untouched has nothing to describe.
+     *
+     * @param job the orchestrator whose repositories are checked
+     * @return the repository roots missing a valid message, in primary-first order
+     */
+    private List<String> repositoriesNeedingMessage(CodingAgentJob job) {
+        List<String> missing = new ArrayList<>();
+        JobWorkOutcome outcome = job.workOutcome();
+        addIfMissing(job, outcome, job.getWorkingDirectory(), missing);
+        for (String dep : job.getDependentRepoPaths()) {
+            addIfMissing(job, outcome, dep, missing);
+        }
+        return missing;
+    }
+
+    /**
+     * Adds {@code repoRoot} to {@code missing} when it holds uncommitted changes
+     * but its {@code commit.txt} is absent, empty, a copy of the task prompt or
+     * correction prompt, or carries un-removable author attribution.
+     *
+     * @param job      the orchestrator (for its prompt and work outcome)
+     * @param outcome  the job's work outcome, queried per repository
+     * @param repoRoot the repository root to check, or {@code null}
+     * @param missing  the collection that receives a repository needing a message
+     */
+    private void addIfMissing(CodingAgentJob job, JobWorkOutcome outcome, String repoRoot,
+            List<String> missing) {
+        if (repoRoot == null || !outcome.hasUncommittedChanges(repoRoot)) {
+            return;
+        }
+        if (!isValidMessage(job, readCommitTxt(repoRoot))) {
+            missing.add(repoRoot);
+        }
+    }
+
+    /**
+     * Returns whether {@code content} is a usable, agent-authored commit message:
+     * non-empty, not a verbatim copy of the task prompt, not an echo of the
+     * rule's own last correction prompt, and free of un-removable attribution.
+     *
+     * @param job     the orchestrator whose prompt the content is compared against
+     * @param content the raw {@code commit.txt} content, or {@code null}
+     * @return {@code true} when the content is a valid commit message
+     */
+    private boolean isValidMessage(CodingAgentJob job, String content) {
         if (content == null || content.trim().isEmpty()) {
-            // A session that changed nothing has nothing to describe, and an
-            // absent commit.txt is how it says so. Fail-closed: a tree that
-            // cannot be read still owes a message -- see the class javadoc.
-            return job.workOutcome().mayHaveUncommittedChanges();
+            return false;
         }
         String trimmed = content.trim();
-        // Detect verbatim copy of task prompt
         String taskPrompt = job.getPrompt();
         if (taskPrompt != null && trimmed.equals(taskPrompt.trim())) {
-            return true;
+            return false;
         }
-        // Detect agent echoing the correction prompt back
         if (lastCorrectionPrompt != null && trimmed.equals(lastCorrectionPrompt.trim())) {
-            return true;
+            return false;
         }
-        return AuthorAttribution.sanitize(trimmed) == null;
+        return AuthorAttribution.sanitize(trimmed) != null;
     }
 
     @Override
     public String buildCorrectionPrompt(CodingAgentJob job) {
-        String content = readCommitTxt(job);
-        String trimmed = content == null ? "" : content.trim();
-        if (!trimmed.isEmpty() && AuthorAttribution.sanitize(trimmed) == null) {
-            return buildAttributionCorrectionPrompt(trimmed);
+        List<String> missing = repositoriesNeedingMessage(job);
+        String primary = job.getWorkingDirectory();
+
+        // A repository whose commit.txt carries un-removable attribution needs
+        // the rewrite guidance; the common case is simply a missing message.
+        for (String repoRoot : missing) {
+            String content = readCommitTxt(repoRoot);
+            String trimmed = content == null ? "" : content.trim();
+            if (!trimmed.isEmpty() && AuthorAttribution.sanitize(trimmed) == null) {
+                return buildAttributionCorrectionPrompt(repoRoot, trimmed);
+            }
         }
 
         StringBuilder sb = new StringBuilder();
         sb.append("Your changes still need a commit message.\n\n");
-        sb.append("Please write a `commit.txt` file at the repo root containing the commit ");
-        sb.append("message for your changes. Follow this format:\n\n");
+        sb.append("Write a `commit.txt` file at the root of EACH repository below that you ");
+        sb.append("changed, containing that repository's own commit message:\n");
+        for (String repoRoot : missing) {
+            sb.append("  - `").append(repoRoot).append("`");
+            sb.append(repoRoot.equals(primary) ? " (the primary repository)\n" : " (a dependent repository)\n");
+        }
+        sb.append("\nFollow this format for each file:\n");
         sb.append("  - **First line:** a short summary of what changed, under 72 characters.\n");
         sb.append("  - **Optionally:** a blank line followed by a short body explaining what ");
         sb.append("you changed and why.\n\n");
         sb.append("**Rules:**\n");
-        sb.append("- Do NOT copy the task description into `commit.txt`.\n");
-        sb.append("- Do NOT copy these instructions into `commit.txt`.\n");
-        sb.append("- Do NOT leave `commit.txt` empty.\n");
+        sb.append("- Each `commit.txt` describes the changes in ITS OWN repository, not another's.\n");
+        sb.append("- Do NOT copy the task description into any `commit.txt`.\n");
+        sb.append("- Do NOT copy these instructions into any `commit.txt`.\n");
+        sb.append("- Do NOT leave any `commit.txt` empty.\n");
         sb.append("- Do NOT add author attribution of any kind — no `Co-Authored-By` ");
         sb.append("trailer, no \"Generated with\" or \"Created by\" tool credit, no ");
         sb.append("agent name, e-mail address, or product URL. The commit is authored ");
         sb.append("by the configured git identity; you are not a co-author of it.\n");
         sb.append("- The message must describe the actual work you did — the code or ");
         sb.append("configuration that changed, not the steps you took to do it.\n\n");
-        sb.append("Write ONLY `commit.txt`. Do not make any other file changes.");
+        sb.append("Write ONLY the `commit.txt` files named above. Do not make any other file changes.");
         String prompt = sb.toString();
         lastCorrectionPrompt = prompt;
         return prompt;
@@ -144,12 +208,14 @@ class CommitMessageRule implements EnforcementRule {
      * delete on its own. Names the offending lines so the agent rewrites the
      * message rather than guessing at what was rejected.
      *
+     * @param repoRoot the repository root whose {@code commit.txt} is offending
      * @param message the current (trimmed) {@code commit.txt} content
      * @return the correction prompt
      */
-    private String buildAttributionCorrectionPrompt(String message) {
+    private String buildAttributionCorrectionPrompt(String repoRoot, String message) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Your `commit.txt` attributes authorship of the commit. ");
+        sb.append("The `commit.txt` at `").append(repoRoot);
+        sb.append("` attributes authorship of the commit. ");
         sb.append("That is not permitted, and it is written in a way the harness ");
         sb.append("cannot strip automatically, so you must rewrite it.\n\n");
         sb.append("The offending content:\n");
@@ -178,16 +244,15 @@ class CommitMessageRule implements EnforcementRule {
     }
 
     /**
-     * Reads and returns the current {@code commit.txt} content relative to the
-     * job's working directory, or {@code null} if it does not exist.
+     * Reads and returns the {@code commit.txt} content at the root of the
+     * repository {@code repoRoot}, or {@code null} if it does not exist.
      *
-     * @param job the job whose working directory is used
+     * @param repoRoot the repository root whose {@code commit.txt} is read
      * @return raw file content, or {@code null}
      */
-    private String readCommitTxt(CodingAgentJob job) {
-        String workDir = job.getWorkingDirectory();
-        Path commitFile = workDir != null
-                ? Path.of(workDir, "commit.txt")
+    private static String readCommitTxt(String repoRoot) {
+        Path commitFile = repoRoot != null
+                ? Path.of(repoRoot, "commit.txt")
                 : Path.of("commit.txt");
         if (!Files.exists(commitFile)) {
             return null;

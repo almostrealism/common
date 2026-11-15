@@ -43,7 +43,7 @@ import java.util.Set;
  * is {@code MERGE_HEAD}, so a rescued merge resolution is itself a merge
  * commit, and accepting it is one fast-forward push of the rescue commit to
  * the target branch. The commit message is the agent's own (from
- * {@link GitManagedJob#getCommitMessage()}) followed by a note of the failure
+ * {@link GitManagedJob#getCommitMessage(String)}) followed by a note of the failure
  * and of every finding below.</p>
  *
  * <h2>What is withheld, and why rescue does not skip the protections</h2>
@@ -376,7 +376,8 @@ class WorkingTreeRescue implements ConsoleFeatures {
     private String commitMessage(String failure, String mergeHead, List<String> notes) {
         String agentMessage;
         try {
-            agentMessage = OperatorGrants.stripGrantTrailers(job.getCommitMessage()).trim();
+            agentMessage = OperatorGrants.stripGrantTrailers(
+                    job.getCommitMessage(job.getWorkingDirectory())).trim();
         } catch (RuntimeException e) {
             agentMessage = "";
         }
