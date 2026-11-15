@@ -92,16 +92,29 @@ def _evaluate(expression, context, cancelled=False):
     ``format`` substitutes ``{0}``-style placeholders, as GitHub's does.
     """
     python = _strip_braces(expression)
+    # ``needs.*.<prop>`` is the array of that property across every need; it must
+    # be rewritten before the single-object ``ctx`` substitution below, whose
+    # pattern does not span the ``*``.
+    python = re.sub(r"\bneeds\.\*\.([A-Za-z_][\w-]*)", r'needs_star("\1")', python)
     python = re.sub(r"\b((?:github|needs)(?:\.[A-Za-z_][\w-]*)+)", r'ctx("\1")', python)
     python = python.replace("'", '"')
     python = python.replace("&&", " and ").replace("||", " or ")
     python = re.sub(r"!(?!=)", " not ", python)
+
+    def needs_star(prop):
+        pattern = re.compile(r"needs\.[^.]+\." + re.escape(prop) + r"$")
+        return [value for name, value in context.items() if pattern.match(name)]
+
     namespace = {
         "ctx": lambda name: context.get(name),
         "cancelled": lambda: cancelled,
         "always": lambda: True,
         "fromJSON": int,
         "format": lambda template, *args: template.format(*args),
+        "needs_star": needs_star,
+        # GitHub's ``contains`` searches an array for an element, or a string
+        # for a substring; a missing (null) search value contains nothing.
+        "contains": lambda search, item: item in search if search else False,
     }
     return eval(python, namespace)  # noqa: S307 - the input is this repository's workflow
 
