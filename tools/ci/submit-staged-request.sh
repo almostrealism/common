@@ -216,7 +216,7 @@ post_rejection_alert() {
         return 1
     fi
 
-    payload=$(jq -n --arg t "$message" '{text: $t}')
+    payload=$(jq -cn --arg t "$message" '{text: $t}')
     post_response=$(curl "${alert_curl_args[@]}" -X POST \
         -H "Content-Type: application/json" \
         -d "$payload" \
