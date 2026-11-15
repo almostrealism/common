@@ -1883,6 +1883,12 @@ jobs:
           python3 -m unittest discover -v -s .claude/hooks/lib -p "test_git_command_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
           python3 -m unittest discover -v -s .claude/hooks/lib -p "test_job_worktree_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
+      # The private-link hook refuses a commit message or pull request that
+      # carries a claude.ai page, a session id or a lab-host URL; these also
+      # pin its registration in .claude/settings.json.
+      - name: Run private link hook tests
+        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_private_url_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
       # A branch that tracks master blocks every tool call until it is fixed;
       # these cover what such a session may still run.
       - name: Run branch upstream hook tests
