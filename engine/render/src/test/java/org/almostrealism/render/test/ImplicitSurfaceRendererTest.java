@@ -395,22 +395,25 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 
 	/**
 	 * The surface is only evaluated at distances the march can reach. The unit sphere is
-	 * rendered as a surface that is undefined (NaN) beyond a ball that contains every point
-	 * within {@code maximumDistance} of the camera, but not the points out to the unclosed
-	 * bracket sentinel. Every hit still matches the analytic distance, every miss reports
-	 * distance -1, reflectance 0 and the environment color, and every channel of the image is
-	 * finite.
+	 * rendered as a surface that is undefined (NaN) beyond a ball around the camera whose
+	 * radius is just beyond {@code maximumDistance}, so every point out at the unclosed
+	 * bracket sentinel, on every ray, is undefined. The far end of every refined bracket stays
+	 * within {@code maximumDistance}: refining a miss towards the sentinel would move it
+	 * beyond, since a NaN value is not positive. Every hit still matches the analytic
+	 * distance, every miss reports distance -1, reflectance 0 and the environment color, and
+	 * every channel of the image is finite.
 	 */
-	// TODO(review): near-silhouette misses put the sentinel (17) at |p| ~ 12 < definedRadius, and the test passes without the bracket collapse
 	@Test(timeout = 600000)
 	public void surfaceEvaluatedOnlyWithinMaximumDistance() {
 		int size = 16;
 		double maximumDistance = 8.0;
-		double definedRadius = 5.0 + maximumDistance + 1.0;
-		SignedDistanceFunction bounded = p -> length(p).subtract(c(1.0))
-				.add(sqrt(c(definedRadius * definedRadius).subtract(dotProduct(p, p))).multiply(c(1e-20)));
-
+		double definedRadius = maximumDistance + 1.0;
 		PinholeCamera camera = sphereCamera();
+		// |p - camera|^2 = p.p - 10 z + 25, for the camera at (0, 0, 5)
+		SignedDistanceFunction bounded = p -> length(p).subtract(c(1.0)).add(
+				sqrt(c(definedRadius * definedRadius - 25.0).subtract(dotProduct(p, p))
+						.add(z(p).multiply(c(10.0)))).multiply(c(1e-20)));
+
 		ImplicitSurfaceRenderer renderer = renderer(bounded, camera, size);
 		renderer.setMaximumDistance(maximumDistance);
 
@@ -420,6 +423,7 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 			PackedCollection distance = renderer.getDistance();
 			PackedCollection reflectance = renderer.getReflectance();
 			PackedCollection image = renderer.getImage();
+			PackedCollection bracketEnd = renderer.getBracketEnd();
 			Evaluable<PackedCollection> rays = camera.rayAt(v(Pair.shape(), 0), pair(size, size)).get();
 
 			int hits = 0;
@@ -427,6 +431,10 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 			for (int i = 0; i < size * size; i++) {
 				double[] r = ray(rays, size, i / size, i % size);
 				double expected = sphereDistance(r);
+
+				double end = bracketEnd.toDouble(i);
+				assertTrue("The bracket of pixel " + i + " should end within the maximum distance, but ends at "
+						+ end, end >= 0.0 && end <= maximumDistance);
 
 				if (expected > 0) {
 					hits++;

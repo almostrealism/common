@@ -91,8 +91,8 @@ import java.util.stream.Stream;
  *
  * <p>The renderer owns the per-pixel state and the image it writes, and releases them when
  * it is {@link #destroy() destroyed}; the collections returned by {@link #getImage()},
- * {@link #getDistance()} and {@link #getReflectance()} are views of that state and are no
- * longer valid afterwards.</p>
+ * {@link #getDistance()}, {@link #getReflectance()} and {@link #getBracketEnd()} are views
+ * of that state and are no longer valid afterwards.</p>
  *
  * @author Michael Murray
  */
@@ -375,6 +375,17 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 	public PackedCollection getReflectance() { return reflectance.reshape(shape(height, width)); }
 
 	/**
+	 * Returns the far end of the refined bracket of every pixel, {@code (height, width)},
+	 * written by the last frame: the distance along the ray, at most
+	 * {@link #setMaximumDistance(double) maximumDistance}, at which the surface value is not
+	 * positive for a hit. The bracket of a miss is collapsed onto its near end, so for a miss
+	 * this is the furthest distance the march reached.
+	 *
+	 * @return the far ends of the brackets
+	 */
+	public PackedCollection getBracketEnd() { return far.reshape(shape(height, width)); }
+
+	/**
 	 * Returns the operations that render one frame into {@link #getImage()},
 	 * {@link #getDistance()} and {@link #getReflectance()}: the Lipschitz bound of the
 	 * surface, followed by the march, refinement and shading of every pixel as one list of
@@ -564,8 +575,8 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 
 	/**
 	 * Releases the per-pixel state and the image owned by this renderer. The views returned
-	 * by {@link #getImage()}, {@link #getDistance()} and {@link #getReflectance()} are no
-	 * longer valid afterwards.
+	 * by {@link #getImage()}, {@link #getDistance()}, {@link #getReflectance()} and
+	 * {@link #getBracketEnd()} are no longer valid afterwards.
 	 */
 	@Override
 	public void destroy() {

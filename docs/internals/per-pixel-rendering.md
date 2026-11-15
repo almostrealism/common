@@ -157,6 +157,7 @@ frame.run();                               // render a frame
 PackedCollection image = renderer.getImage();         // (height, width, 3), row 0 at the top
 PackedCollection distance = renderer.getDistance();   // (height, width), -1 for a miss
 PackedCollection fresnel = renderer.getReflectance(); // (height, width), 0 for a miss
+PackedCollection end = renderer.getBracketEnd();      // (height, width), at most maximumDistance
 ```
 
 Configuration (all optional): `setAmbientLight`, `setBaseColor`, `setEnvironment(horizon,
@@ -170,7 +171,7 @@ runs.
 
 The renderer owns its per-pixel state and image and is `Destroyable`: `destroy()` (or
 try-with-resources) releases them, after which the views returned by `getImage`,
-`getDistance` and `getReflectance` are no longer valid.
+`getDistance`, `getReflectance` and `getBracketEnd` are no longer valid.
 
 ### The per-pixel program
 
