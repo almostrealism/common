@@ -467,6 +467,31 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 	}
 
 	/**
+	 * A switch's bound depends on its choices, which are not inputs, so two switches over the same
+	 * decision may reach different folding decisions. That is safe only because a switch has no
+	 * signature, so no compiled scope is ever shared between switches: the operation it compiles
+	 * to reports no signature either, whichever choices it holds. A signature introduced for
+	 * switches must describe the choices before this may change.
+	 */
+	@Test(timeout = 30000)
+	public void switchSharesNoCompiledScope() {
+		PackedCollection decision = new PackedCollection(1);
+		PackedCollection in = new PackedCollection(SIZE).fill(3.0);
+		PackedCollection out = new PackedCollection(SIZE);
+
+		Switch small = new Switch(cp(decision), List.of(a(cp(out).each(), cp(in).each())));
+		Switch large = new Switch(cp(decision),
+				List.of(a(cp(out).each(), cp(in).add(cp(in)).multiply(cp(in)).each())));
+		Assert.assertNotEquals(small.getScopeArgumentCount(Integer.MAX_VALUE),
+				large.getScopeArgumentCount(Integer.MAX_VALUE));
+
+		Assert.assertNull(small.signature());
+		Assert.assertNull(large.signature());
+		Assert.assertNull(small.getMetadata().getSignature());
+		Assert.assertNull(large.getMetadata().getSignature());
+	}
+
+	/**
 	 * A computation prepares its dependent lifecycles along with itself without their being
 	 * positions of its process tree, so it reports every argument they obtain; the bound counts
 	 * them on top of its own leaves. A limit equal to the bound without them, which the tree alone
