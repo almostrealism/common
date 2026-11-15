@@ -17,7 +17,9 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.concurrent.Submittable;
+import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.streams.Semaphore;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -25,6 +27,9 @@ import org.junit.Test;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Validates that a long chain of dependent submissions is ordered by the backend that runs it,
@@ -53,6 +58,41 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 
 	/** The number of independent single-element dispatches submitted at once. */
 	private static final int INDEPENDENT = 256;
+
+	/**
+	 * The number of elements a single worker of the long-running dispatch in
+	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} processes. Sized per worker so
+	 * the dispatch takes a comparable time however many cores it is split across (its size, and so
+	 * its memory, scales with the worker count), while {@link #LONG_DEPTH} supplies the duration
+	 * independently of the element count.
+	 */
+	private static final int LONG_WORK_PER_WORKER = 512 * 1024;
+
+	/**
+	 * The number of multiplications applied to every element of the long-running dispatch in
+	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()}. The duration comes from this
+	 * depth rather than from the element count, so the dispatch occupies the worker pool long enough
+	 * to observe a wedge without allocating a large amount of memory.
+	 */
+	private static final int LONG_DEPTH = 500;
+
+	/**
+	 * How long to wait, in milliseconds, after issuing the long-running dispatch in
+	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} before issuing the independent
+	 * one, so that the long one is already occupying the worker pool &mdash; much shorter than the
+	 * long dispatch runs, so it is still running when the independent one is issued.
+	 */
+	private static final long LONG_HEAD_START_MS = 30;
+
+	/**
+	 * The number of elements of the independent operation in
+	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()}. Well above the work
+	 * subdivision minimum ({@link io.almostrealism.kernel.KernelPreferences#getWorkSubdivisionMinimum()})
+	 * so the operation is split across more than one worker and therefore runs on the shared worker
+	 * pool (an operation at or below that size runs inline on its coordinating thread instead, never
+	 * reaching it), yet small enough that it finishes at once once it has a worker thread.
+	 */
+	private static final int INDEPENDENT_WORK = 256 * 1024;
 
 	/**
 	 * Submits {@value #SUBMISSIONS} increments of a counter, each chained on the completion of
@@ -160,6 +200,96 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 			for (PackedCollection counter : counters) {
 				counter.destroy();
 			}
+		}
+	}
+
+	/**
+	 * Issues one long-running dispatch and then an independent, unrelated short one, and checks
+	 * that the short one finishes first rather than waiting for the long one.
+	 *
+	 * <p>A dispatch is split across as many workers as the backend runs in parallel, which is also
+	 * the resting size of the pool those workers run on, so a single long-running dispatch occupies
+	 * every resting worker thread for its whole duration. A native kernel cannot be preempted once
+	 * it has started. If the pool merely queued further work behind its resting threads, the short
+	 * dispatch &mdash; which has no data dependency on the long one, and which the asynchronous
+	 * model lets a caller issue while the long one is still running &mdash; could not complete until
+	 * the long one did, however long that took. A pool that grows a thread instead gives the short
+	 * dispatch its own worker, so it completes at once, while the long one is still running.</p>
+	 *
+	 * <p>The long dispatch is issued first and given a brief head start so that it is occupying the
+	 * pool before the independent dispatch is issued behind it; the one that completes first is then
+	 * recorded. The independent dispatch does a few hundred elements of work and the long one
+	 * applies hundreds of multiplications to every element, so the independent one is by far the
+	 * quicker of the two and completes first on any machine &mdash; unless it was queued behind the
+	 * long one, in which case the long one completes first. The check is therefore of their order,
+	 * not of any absolute duration.</p>
+	 */
+	@Test(timeout = 300000)
+	public void independentDispatchIsNotWedgedBehindALongRunningOne() throws InterruptedException {
+		int longSize = KernelPreferences.getCpuParallelism() * LONG_WORK_PER_WORKER;
+		PackedCollection values = new PackedCollection(longSize);
+		PackedCollection independent = new PackedCollection(INDEPENDENT_WORK);
+
+		CollectionProducer product = cp(values);
+		for (int i = 0; i < LONG_DEPTH; i++) {
+			product = product.multiply(cp(values));
+		}
+
+		Submittable longDispatch = Submittable.of(a(cp(values), product).get());
+		Submittable independentDispatch = Submittable.of(a(cp(independent), cp(independent).add(1.0)).get());
+
+		try {
+			// Warm up both kernels (native compilation) and time the long one.
+			long warmStart = System.nanoTime();
+			longDispatch.submit(null).waitFor();
+			long longMillis = (System.nanoTime() - warmStart) / 1_000_000;
+			Semaphore warm = independentDispatch.submit(null);
+			if (warm != null) warm.waitFor();
+
+			AtomicReference<String> firstCompleted = new AtomicReference<>();
+			CountDownLatch bothCompleted = new CountDownLatch(2);
+
+			Semaphore longPending = longDispatch.submit(null);
+			Thread.sleep(LONG_HEAD_START_MS);
+			Semaphore independentPending = independentDispatch.submit(null);
+
+			record("long", firstCompleted, bothCompleted, longPending);
+			record("independent", firstCompleted, bothCompleted, independentPending);
+
+			Assert.assertTrue("both dispatches should have completed",
+					bothCompleted.await(120, TimeUnit.SECONDS));
+
+			log("longMillis=" + longMillis + " firstCompleted=" + firstCompleted.get());
+			Assert.assertEquals("the independent dispatch was serialized behind the long-running " +
+					"one on the worker pool instead of completing while it ran",
+					"independent", firstCompleted.get());
+		} finally {
+			values.destroy();
+			independent.destroy();
+		}
+	}
+
+	/**
+	 * Records {@code name} as the first to complete (if nothing has been recorded yet) once
+	 * {@code pending} settles, and counts {@code bothCompleted} down. A {@code null} completion
+	 * stands for work that has already finished and is recorded at once.
+	 *
+	 * @param name          the label for this dispatch
+	 * @param firstCompleted holds the label of whichever dispatch settles first
+	 * @param bothCompleted  counted down once this dispatch has settled
+	 * @param pending        the completion of this dispatch, or {@code null} if it has finished
+	 */
+	private static void record(String name, AtomicReference<String> firstCompleted,
+							   CountDownLatch bothCompleted, Semaphore pending) {
+		Runnable mark = () -> {
+			firstCompleted.compareAndSet(null, name);
+			bothCompleted.countDown();
+		};
+
+		if (pending == null) {
+			mark.run();
+		} else {
+			pending.whenComplete(mark);
 		}
 	}
 }
