@@ -120,8 +120,9 @@ public class PatternAnalysis implements SpectralFeatures {
     }
 }
 
-// At a host boundary (once per frame, or in a test):
-double lambda = analysis.wavelength(cp(height), dy, dx).evaluate().toDouble(0);
+// At a host boundary (once per frame, or in a test). evaluateOptimized() runs Process.optimize,
+// which isolates the grid-wide reductions; plain evaluate() does not (see Gotchas below).
+double lambda = analysis.wavelength(cp(height), dy, dx).evaluateOptimized().toDouble(0);
 ```
 
 ## Precision and tolerances
