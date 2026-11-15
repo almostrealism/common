@@ -291,10 +291,13 @@ If you see these symptoms:
 - A graph that compiles for a small collection but stops compiling once the
   input is realistically sized
 
-**Ask first: is this graph being optimized?** Almost every slow, too-deep, or
-failing compile is a reduction embedded in each of its readers because
-optimization was never reached — not an isolation decision you need to make by
-hand. `Producer.evaluate()` and `Producer.get()` do not optimize (see the table
+**Ask first: is this graph being optimized?** The most common cause of a slow,
+too-deep, or failing compile is a reduction embedded in each of its readers
+because optimization was never reached — far more often than it is an isolation
+decision you need to make by hand. (A reduction is the usual case, not the only
+isolation target: `isIsolationTarget` also marks long loops and other
+high-aggregation computations, as above.) `Producer.evaluate()` and
+`Producer.get()` do not optimize (see the table
 under [When optimize() MUST Be Called](#when-optimize-must-be-called)). Answer the
 question by evaluating the graph once through `evaluateOptimized()` (equivalently
 `Process.optimized(producer).get()`); `Process.optimize` isolates the reductions
