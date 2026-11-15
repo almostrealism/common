@@ -67,8 +67,9 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * @param axis    the grid axis to transform, in {@code [0, k]}
 	 * @param inverse true for the inverse transform (which divides by the axis length)
 	 * @return a producer with the shape of {@code complex}
-	 * @throws IllegalArgumentException if {@code complex} is not a complex grid, the axis is out of
-	 *                                  range, or its length is not a power of 2
+	 * @throws IllegalArgumentException if {@code complex} is not a complex grid (including a view
+	 *                                  that permutes its axes), the axis is out of range, or its
+	 *                                  length is not a power of 2
 	 */
 	default CollectionProducer fftAxis(Producer<PackedCollection> complex, int axis, boolean inverse) {
 		TraversalPolicy shape = complexGridShape(complex);
@@ -136,6 +137,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 *
 	 * @param real the real grid, shaped {@code [n0, ..., nk]}
 	 * @return the complex grid, shaped {@code [n0, ..., nk, 2]}
+	 * @throws IllegalArgumentException if {@code real} is a view that permutes its axes
 	 */
 	default CollectionProducer toComplex(Producer<PackedCollection> real) {
 		TraversalPolicy shape = gridShape(real);
@@ -270,6 +272,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 *                                  or the grid has more than {@link SpectralGrid#MAX_EXACT_INDEX} cells
 	 */
 	default CollectionProducer radialPowerSpectrum(Producer<PackedCollection> power, double... spacing) {
+		// TODO(review): a permuted view of power is not rejected here (SpectralGrid drops the permutation silently); consider gridShape(power)
 		return new SpectralGrid(shape(power), spacing).radialAverage(power);
 	}
 
@@ -367,6 +370,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * @return a single-element producer of the dominant wavenumber, in radians per unit length
 	 */
 	default CollectionProducer dominantWavenumber(Producer<PackedCollection> field, double... spacing) {
+		// TODO(review): a permuted view of field is not rejected here, though c(field) reads its backing memory; consider gridShape(field)
 		SpectralGrid grid = new SpectralGrid(shape(field), spacing);
 		int cells = grid.getCellCount();
 		double dk = grid.getRadialBinWidth();
@@ -436,17 +440,32 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	}
 
 	/**
-	 * Returns the dimensions and traversal axis of a grid with no {@link io.almostrealism.collect.TraversalOrdering}.
-	 * An input may carry an ordering that maps its logical indices to its memory, but every
-	 * intermediate and result a spectral operation produces is dense and in plain row-major order;
-	 * reshaping one of those with the input's shape would reattach the input's ordering to data it
-	 * does not describe, so every shape derived from an input is taken from here.
+	 * Returns the dense, row-major {@linkplain TraversalPolicy#extentShape() extent} of a grid:
+	 * its logical dimensions and traversal axis, with no {@link io.almostrealism.collect.TraversalOrdering}.
+	 * An input may carry an ordering that maps its logical indices to its memory, which the
+	 * transform reads through, but every intermediate and result a spectral operation produces is
+	 * dense and in plain row-major order; reshaping one of those with the input's shape would
+	 * reattach the input's ordering to data it does not describe, so every shape derived from an
+	 * input is taken from here.
+	 *
+	 * <p>A shape that permutes its axes or traverses them at a rate other than one is a view
+	 * whose kernel argument is the backing memory of another layout, which a kernel reading the
+	 * grid would see in that memory's order rather than the view's, so it is rejected; the view
+	 * can be transformed once it is made dense by a computation such as
+	 * {@code cp(collection).permute(...)}.</p>
 	 *
 	 * @param grid the grid, which may carry an ordering
-	 * @return its shape without an ordering
+	 * @return its dense extent shape
+	 * @throws IllegalArgumentException if the shape permutes its axes or has a traversal rate
 	 */
 	private TraversalPolicy gridShape(Producer<PackedCollection> grid) {
-		return shape(grid).withOrder(null);
+		TraversalPolicy shape = shape(grid);
+		if (shape.isPermuted() || !shape.withOrder(null).isRegular()) {
+			throw new IllegalArgumentException("A spectral grid must not permute its axes or have a traversal rate, not " +
+					shape + "; make the view dense with a computation such as permute first");
+		}
+
+		return shape.extentShape();
 	}
 
 	/**

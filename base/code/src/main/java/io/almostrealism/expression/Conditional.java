@@ -205,7 +205,9 @@ public class Conditional<T extends Number> extends Expression<T> {
 	 * only a floating-point branch makes it floating-point. An integer branch is routinely
 	 * replaced by a {@link Long} reference to a declared common subexpression, so treating any
 	 * type mismatch as floating-point would turn an integer index computation into a
-	 * floating-point one, which an integer {@link Mod} around it cannot accept.</p>
+	 * floating-point one, which an integer {@link Mod} around it cannot accept. A non-numeric
+	 * branch mixed with a branch of another type gives a floating-point conditional; see
+	 * {@link #branchType}.</p>
 	 *
 	 * @param condition the boolean guard expression
 	 * @param positive  the branch used when the condition is true
@@ -250,13 +252,33 @@ public class Conditional<T extends Number> extends Expression<T> {
 			return Mask.of(condition.not(), negative);
 		}
 
+		return new Conditional(branchType(positive, negative), condition, positive, negative);
+	}
+
+	/**
+	 * Determines the type of a conditional selecting between the given branches.
+	 *
+	 * <p>Branches of the same type give that type. Numeric branches of different types give
+	 * their {@linkplain NAryExpression#promotedType promoted} type. A branch whose type is not
+	 * a {@link Number} (a {@link Boolean} comparison, for example) has no numeric promotion,
+	 * so a conditional mixing it with a branch of any other type is floating-point, which is
+	 * the type every generated language can represent both branches in.</p>
+	 *
+	 * @param positive the branch used when the condition is true
+	 * @param negative the branch used when the condition is false
+	 * @return the type of the conditional
+	 */
+	private static Class<?> branchType(Expression<?> positive, Expression<?> negative) {
 		if (positive.getType() == negative.getType()) {
-			return new Conditional(positive.getType(), condition, positive, negative);
-		} else {
-			// TODO(review): promotedType throws for a non-Number branch (e.g. Boolean vs Integer), where this previously fell back to Double
-			return new Conditional(NAryExpression.promotedType(List.of(positive, negative)),
-					condition, positive, negative);
+			return positive.getType();
 		}
+
+		if (Number.class.isAssignableFrom(positive.getType())
+				&& Number.class.isAssignableFrom(negative.getType())) {
+			return NAryExpression.promotedType(List.of(positive, negative));
+		}
+
+		return Double.class;
 	}
 
 	/**

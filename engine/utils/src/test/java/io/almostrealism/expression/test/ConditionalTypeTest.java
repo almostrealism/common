@@ -57,6 +57,46 @@ public class ConditionalTypeTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A {@link Boolean} branch has no numeric promotion, so mixing it with an integer branch
+	 * gives a floating-point conditional rather than failing to construct one.
+	 */
+	@Test(timeout = 30000)
+	public void booleanAndIntegerBranchesAreDouble() {
+		KernelIndex index = new KernelIndex().withLimit(8);
+		Expression<Boolean> condition = index.greaterThan(new IntegerConstant(2));
+		Expression<?> selected = Conditional.of(condition,
+				index.greaterThan(new IntegerConstant(5)), new IntegerConstant(3));
+
+		Assert.assertEquals(Double.class, selected.getType());
+		Assert.assertTrue(selected.isFP());
+
+		Expression<?> reversed = Conditional.of(condition,
+				new IntegerConstant(3), index.greaterThan(new IntegerConstant(5)));
+		Assert.assertEquals(Double.class, reversed.getType());
+	}
+
+	/** Two {@link Boolean} branches keep their common type. */
+	@Test(timeout = 30000)
+	public void booleanBranchesAreBoolean() {
+		KernelIndex index = new KernelIndex().withLimit(8);
+		Expression<?> selected = Conditional.of(index.greaterThan(new IntegerConstant(2)),
+				index.greaterThan(new IntegerConstant(5)), index.greaterThan(new IntegerConstant(1)));
+
+		Assert.assertEquals(Boolean.class, selected.getType());
+	}
+
+	/** Two {@link Integer} branches stay {@link Integer}. */
+	@Test(timeout = 30000)
+	public void integerBranchesAreInteger() {
+		Expression<Boolean> condition = new KernelIndex().withLimit(8).greaterThan(new IntegerConstant(2));
+		Expression<?> selected = Conditional.of(condition,
+				new IntegerConstant(3), new IntegerConstant(7));
+
+		Assert.assertEquals(Integer.class, selected.getType());
+		Assert.assertFalse(selected.isFP());
+	}
+
+	/**
 	 * An integer modulus of a nested integer conditional, such as the wrapped index of a
 	 * maximum search, survives replacing the inner conditional with a reference of its
 	 * declaration type. That type is {@link Long} for anything that depends on the kernel

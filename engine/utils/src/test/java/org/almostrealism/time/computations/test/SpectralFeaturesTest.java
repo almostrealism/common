@@ -696,6 +696,101 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		Assert.assertTrue("ordered grid wavenumber error " + error, error < 1e-4);
 	}
 
+	/**
+	 * A grid shape whose axes are permuted describes only the grid's logical dimensions: the grid
+	 * keeps its dense extent, so its shape is neither permuted nor ordered and its {@code |k|^2}
+	 * matches the result for the same logical dimensions without a permutation.
+	 */
+	@Test(timeout = 60000)
+	public void wavenumberSquaredIgnoresGridPermutation() {
+		TraversalPolicy permuted = shape(8, 4).permute(1, 0);
+		Assert.assertTrue("the grid shape should be permuted", permuted.isPermuted());
+
+		SpectralGrid grid = new SpectralGrid(permuted, 0.5, 0.25);
+		Assert.assertFalse("the grid should not keep the permutation", grid.getShape().isPermuted());
+		Assert.assertTrue("the grid should be regular", grid.getShape().isRegular());
+		Assert.assertEquals(4, grid.getShape().length(0));
+		Assert.assertEquals(8, grid.getShape().length(1));
+
+		PackedCollection expected = new SpectralGrid(shape(4, 8), 0.5, 0.25).wavenumberSquared().evaluate();
+		PackedCollection actual = grid.wavenumberSquared().evaluate();
+		double error = maxDifference(expected, actual);
+		log("wavenumberSquaredIgnoresGridPermutation maxError=" + error);
+		Assert.assertTrue("permuted grid wavenumber error " + error, error < 1e-4);
+	}
+
+	/**
+	 * A permuted view (a transposed [cols, rows] buffer viewed as [rows, cols]) is rejected by the
+	 * transform with a clear error. A kernel reads such a view's backing memory, not its logical
+	 * order, so transforming it would silently transform the transposed data.
+	 */
+	@Test(timeout = 60000)
+	public void fft2dOfPermutedViewRejected() {
+		PackedCollection memory = testSignal(shape(8, 4, 2)).evaluate();
+		PackedCollection view = memory.reshape(memory.getShape().permute(1, 0, 2));
+		Assert.assertTrue("the input should be a permuted view", view.getShape().isPermuted());
+
+		try {
+			fft2d(cp(view));
+			Assert.fail("a permuted view should be rejected");
+		} catch (IllegalArgumentException expected) {
+			log("fft2dOfPermutedViewRejected message=" + expected.getMessage());
+			Assert.assertTrue(expected.getMessage().contains("permute"));
+		}
+	}
+
+	/**
+	 * A square permuted view has the same logical and backing dimensions, so only its axis
+	 * permutation distinguishes it from a dense grid; it is rejected all the same, by both the
+	 * transform and the conversion of a real grid to a complex one.
+	 */
+	@Test(timeout = 60000)
+	public void squarePermutedViewRejected() {
+		PackedCollection complex = testSignal(shape(4, 4, 2)).evaluate();
+		PackedCollection complexView = complex.reshape(complex.getShape().permute(1, 0, 2));
+		Assert.assertTrue("the complex input should be a permuted view", complexView.getShape().isPermuted());
+
+		try {
+			fftAxis(cp(complexView), 1, false);
+			Assert.fail("a square permuted complex view should be rejected");
+		} catch (IllegalArgumentException expected) {
+			log("squarePermutedViewRejected complex message=" + expected.getMessage());
+		}
+
+		PackedCollection real = testSignalAt(integers(0, 16)).reshape(4, 4).evaluate();
+		PackedCollection realView = real.reshape(real.getShape().permute(1, 0));
+		Assert.assertTrue("the real input should be a permuted view", realView.getShape().isPermuted());
+
+		try {
+			toComplex(cp(realView));
+			Assert.fail("a square permuted real view should be rejected");
+		} catch (IllegalArgumentException expected) {
+			log("squarePermutedViewRejected real message=" + expected.getMessage());
+		}
+	}
+
+	/**
+	 * A permuting computation, unlike a permuted view, produces dense data, so it is transformed
+	 * normally: the 2D transform of a transposed grid is the transpose of the grid's transform.
+	 * Rejecting the view therefore leaves a working route to its transform.
+	 */
+	@Test(timeout = 120000)
+	public void fft2dOfPermutedComputation() {
+		PackedCollection memory = testSignal(shape(8, 4, 2)).evaluate();
+
+		PackedCollection spectrum = fft2d(cp(memory)).evaluate();
+		PackedCollection expected = cp(spectrum).permute(1, 0, 2).evaluate();
+		PackedCollection actual = fft2d(cp(memory).permute(1, 0, 2)).evaluate();
+
+		Assert.assertEquals(4, actual.getShape().length(0));
+		Assert.assertEquals(8, actual.getShape().length(1));
+		Assert.assertFalse("the result should not be permuted", actual.getShape().isPermuted());
+
+		double error = maxDifference(expected, actual);
+		log("fft2dOfPermutedComputation maxError=" + error);
+		Assert.assertTrue("permuted computation transform error " + error, error < ROUND_TRIP_TOLERANCE);
+	}
+
 	/** Real and imaginary parts are the even and odd elements of interleaved complex data. */
 	@Test(timeout = 60000)
 	public void complexParts() {

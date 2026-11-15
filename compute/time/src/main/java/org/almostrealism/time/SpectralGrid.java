@@ -65,14 +65,15 @@ public class SpectralGrid implements CollectionFeatures {
 	/**
 	 * Creates a grid with the dimensions of {@code shape} and the given sample spacing.
 	 *
-	 * @param shape   the grid dimensions; any ordering it carries is dropped
+	 * @param shape   the grid dimensions; only its {@linkplain TraversalPolicy#extentShape() dense extent}
+	 *                is kept, so any ordering, axis permutation or traversal rate it carries is dropped
 	 * @param spacing one spacing per axis, or a single value for every axis
 	 * @throws IllegalArgumentException if the number of values matches neither 1 nor the grid rank,
 	 *                                  any spacing is not positive and finite, or any axis extent
 	 *                                  {@code n_a * d_a} or wavenumber {@code 2 pi / d_a} overflows
 	 */
 	public SpectralGrid(TraversalPolicy shape, double... spacing) {
-		this.shape = shape.withOrder(null);
+		this.shape = shape.extentShape();
 
 		int dims = this.shape.getDimensions();
 		if (spacing.length != 1 && spacing.length != dims) {
@@ -92,7 +93,7 @@ public class SpectralGrid implements CollectionFeatures {
 		this.spacing = d;
 	}
 
-	/** Returns the dimensions of this grid, which carry no ordering. */
+	/** Returns the dense, row-major dimensions of this grid, which carry no ordering, permutation or rate. */
 	public TraversalPolicy getShape() { return shape; }
 
 	/** Returns the number of axes of this grid. */
