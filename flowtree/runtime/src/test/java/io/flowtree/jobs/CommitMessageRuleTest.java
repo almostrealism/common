@@ -18,6 +18,7 @@ package io.flowtree.jobs;
 
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -105,6 +106,42 @@ public class CommitMessageRuleTest extends TestSuiteBase {
                 "hunt for a defect".getBytes(StandardCharsets.UTF_8));
         CodingAgentJob job = job(Set.of(primaryDir.toString()));
         assertTrue(new CommitMessageRule().isViolated(job));
+    }
+
+    /**
+     * Recovering the primary repository's missing message tags the job's commit
+     * message source {@link CommitMessageRule#SOURCE_RECOVERED}.
+     */
+    @Test(timeout = 30000)
+    public void recoveringThePrimaryMessageTagsRecovered() throws IOException {
+        CodingAgentJob job = job(Set.of(primaryDir.toString()));
+        CommitMessageRule rule = new CommitMessageRule();
+        rule.buildCorrectionPrompt(job);
+        Files.write(primaryDir.resolve("commit.txt"),
+                "Fix the inverted guard".getBytes(StandardCharsets.UTF_8));
+        rule.onCorrectionAttempted(job);
+        Assert.assertEquals(CommitMessageRule.SOURCE_RECOVERED, job.getCommitMessageSource());
+    }
+
+    /**
+     * Recovering only a dependent checkout's message, while the primary already
+     * carries its own, must NOT tag the primary source as recovered: the source
+     * describes the primary message, which the agent authored in its own session.
+     */
+    @Test(timeout = 30000)
+    public void recoveringOnlyADependentMessageDoesNotTagThePrimaryRecovered() throws IOException {
+        Files.write(primaryDir.resolve("commit.txt"),
+                "Primary work the agent authored".getBytes(StandardCharsets.UTF_8));
+        CodingAgentJob job = job(Set.of(primaryDir.toString(), depDir.toString()));
+        CommitMessageRule rule = new CommitMessageRule();
+        assertTrue("the dependent repo still owes a message", rule.isViolated(job));
+        rule.buildCorrectionPrompt(job);
+        Files.write(depDir.resolve("commit.txt"),
+                "Move the helper into lib".getBytes(StandardCharsets.UTF_8));
+        rule.onCorrectionAttempted(job);
+        assertFalse("the job is fully satisfied after the dependent recovers", rule.isViolated(job));
+        Assert.assertNull("a dependent-only recovery must not be tagged as a primary recovery",
+                job.getCommitMessageSource());
     }
 
     /**

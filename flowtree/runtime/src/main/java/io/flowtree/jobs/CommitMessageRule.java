@@ -78,6 +78,16 @@ class CommitMessageRule implements EnforcementRule {
     /** The last correction prompt sent, used to detect agent echoing. */
     private String lastCorrectionPrompt;
 
+    /**
+     * Whether the primary working directory was among the repositories needing a
+     * message when the most recent correction prompt was built. The commit
+     * message source tag describes the <em>primary</em> repository's message, so
+     * {@link #onCorrectionAttempted(CodingAgentJob)} tags it recovered only when
+     * the primary itself was recovered — not when a correction supplied only a
+     * dependent checkout's message.
+     */
+    private boolean primaryNeededMessage;
+
     @Override
     public String getName() { return "commit-message"; }
 
@@ -162,6 +172,7 @@ class CommitMessageRule implements EnforcementRule {
     public String buildCorrectionPrompt(CodingAgentJob job) {
         List<String> missing = repositoriesNeedingMessage(job);
         String primary = job.getWorkingDirectory();
+        primaryNeededMessage = primary != null && missing.contains(primary);
 
         // A repository whose commit.txt carries un-removable attribution needs
         // the rewrite guidance; the common case is simply a missing message.
@@ -234,11 +245,24 @@ class CommitMessageRule implements EnforcementRule {
         return prompt;
     }
 
+    /**
+     * Tags the job's commit message source {@link #SOURCE_RECOVERED} when the
+     * correction supplied the <em>primary</em> repository's message.
+     *
+     * <p>The source tag describes how the primary repository's message was
+     * produced, so a correction that recovered only a dependent checkout's
+     * {@code commit.txt} must not be misreported as recovering the primary one.
+     * The tag is set only when the primary itself needed a message at prompt
+     * time ({@link #primaryNeededMessage}) and no longer does.</p>
+     *
+     * @param job the orchestrator whose message source may be tagged
+     */
     @Override
     public void onCorrectionAttempted(CodingAgentJob job) {
-        // If the violation is now resolved, mark the job's commit message source
-        // so the telemetry can distinguish recovered messages from primary-session ones.
-        if (!isViolated(job)) {
+        String primary = job.getWorkingDirectory();
+        boolean primaryStillMissing = primary != null
+                && repositoriesNeedingMessage(job).contains(primary);
+        if (primaryNeededMessage && !primaryStillMissing) {
             job.commitMessageBuilder().setSource(SOURCE_RECOVERED);
         }
     }
