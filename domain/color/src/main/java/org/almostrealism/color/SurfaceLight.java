@@ -28,7 +28,7 @@ import org.almostrealism.collect.PackedCollection;
  * 
  * @author Michael Murray
  */
-public interface SurfaceLight extends Light {
+public interface SurfaceLight extends Light, RGBFeatures {
 	/**
 	 * Returns an array containing samples for this SurfaceLight instance.
 	 *
@@ -61,9 +61,9 @@ public interface SurfaceLight extends Light {
 			sampleContext.setLight(sample);
 
 			Producer<PackedCollection> c = sample.lightingCalculation(surface, sampleContext);
-			color = color == null ? c : RGBFeatures.getInstance().add(color, c);
+			color = color == null ? c : add(color, c);
 		}
 
-		return color == null ? RGBFeatures.getInstance().black() : color;
+		return color == null ? black() : color;
 	}
 }

@@ -50,7 +50,7 @@ public class PointLightGridTest extends TestSuiteBase implements RGBFeatures {
 	 * A {@link Light} whose contribution is a constant colour, recording each context it is
 	 * asked to light so that the per-sample context handling can be checked.
 	 */
-	private static final class ConstantLight implements Light {
+	private static final class ConstantLight implements Light, RGBFeatures {
 		/** The colour this light contributes. */
 		private final RGB color;
 		/** The contexts this light was asked to light, in order. */
@@ -72,13 +72,13 @@ public class PointLightGridTest extends TestSuiteBase implements RGBFeatures {
 
 		@Override
 		public Producer<PackedCollection> getColorAt(Producer<PackedCollection> point) {
-			return RGBFeatures.getInstance().value(color);
+			return value(color);
 		}
 
 		@Override
 		public Producer<PackedCollection> lightingCalculation(ShadableSurface surface, ShaderContext context) {
 			contexts.add(context);
-			return RGBFeatures.getInstance().value(color);
+			return value(color);
 		}
 	}
 

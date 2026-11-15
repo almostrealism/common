@@ -45,7 +45,8 @@ import java.util.function.BiFunction;
  * @see RankedChoiceEvaluable
  * @see MemoryData
  */
-public abstract class RankedChoiceEvaluableForMemoryData<T extends MemoryData> extends RankedChoiceEvaluable<T> implements Evaluable<T> {
+public abstract class RankedChoiceEvaluableForMemoryData<T extends MemoryData> extends RankedChoiceEvaluable<T>
+		implements Evaluable<T>, ScalarFeatures {
 	/**
 	 * The selection key of a candidate whose rank is below the epsilon threshold. It is
 	 * lower than {@link #BLANK_KEY}, so such a candidate is never chosen. Both keys are
@@ -101,18 +102,16 @@ public abstract class RankedChoiceEvaluableForMemoryData<T extends MemoryData> e
 	 * @return a producer of the closest candidate's value
 	 */
 	public CollectionProducer getClosestChoice(int memLength) {
-		ScalarFeatures f = ScalarFeatures.getInstance();
-
-		CollectionProducer bestKey = f.c(BLANK_KEY);
-		CollectionProducer best = f.zeros(new TraversalPolicy(memLength));
+		CollectionProducer bestKey = c(BLANK_KEY);
+		CollectionProducer best = zeros(new TraversalPolicy(memLength));
 
 		for (int i = 0; i < size(); i++) {
-			CollectionProducer rank = f.c(get(i).getRank());
-			CollectionProducer key = f.greaterThan(rank, f.c(e), rank.minus(), f.c(MISS_KEY), true);
+			CollectionProducer rank = c(get(i).getRank());
+			CollectionProducer key = greaterThan(rank, c(e), rank.minus(), c(MISS_KEY), true);
 
 			// Strictly greater, so that a tie keeps the earlier candidate
-			best = f.greaterThan(key, bestKey, (Producer) get(i).getProducer(), best);
-			bestKey = f.max(key, bestKey);
+			best = greaterThan(key, bestKey, (Producer) get(i).getProducer(), best);
+			bestKey = max(key, bestKey);
 		}
 
 		return best;
