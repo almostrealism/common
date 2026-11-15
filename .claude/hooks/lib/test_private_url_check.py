@@ -75,6 +75,29 @@ class DecideTests(unittest.TestCase):
                     "https://box.example-tailnet.ts.net/x", "http://10.0.0.5/", "http://amd-halo.local"):
             self.assertAction(bash('gh pr create --body "runs at %s"' % url), "block")
 
+    def test_an_unlisted_local_host_blocks(self):
+        """Any ``.local`` name is a private machine, even one not in [lab-hosts]."""
+        self.assertAction(bash('gh pr create --body "runs at http://unlisted.local/x"'), "block")
+
+    def test_url_userinfo_does_not_evade_the_private_ip_check(self):
+        """Userinfo before the host must not hide the private address it precedes."""
+        for url in ("http://user:pass@10.0.0.5/", "http://user@192.168.8.14/jobs"):
+            self.assertAction(bash('gh pr create --body "see %s"' % url), "block")
+
+    def test_a_public_host_behind_userinfo_is_still_allowed(self):
+        self.assertAction(bash('gh pr create --body "https://user:pass@github.com/x/y"'), "allow")
+
+    def test_gh_global_options_before_the_subcommand_are_detected(self):
+        """``gh --repo owner/repo pr create`` still publishes its body and body file."""
+        self.assertAction(
+            bash('gh --repo owner/repo pr create --title T --body "Fix.\n\n%s"' % SESSION_LINK),
+            "block")
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "body.md"), "w") as handle:
+                handle.write('Fix.\n\n%s\n' % SESSION_LINK)
+            self.assertAction(
+                bash('gh --repo owner/repo pr create --title T --body-file body.md', tmp), "block")
+
     def test_loopback_and_public_urls_are_allowed(self):
         self.assertAction(bash('gh pr create --body "http://localhost:8080 and '
                                'https://github.com/almostrealism/common/pull/7"'), "allow")

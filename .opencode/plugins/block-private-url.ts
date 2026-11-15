@@ -25,9 +25,39 @@ function toPayload(tool: string, args: Record<string, unknown>, cwd: string): ob
   if (tool === "edit") {
     return { tool_name: "Edit", tool_input: { file_path: args.filePath, new_string: args.newString } }
   }
+  if (tool === "apply_patch") {
+    const content = patchCommitTxtContent(typeof args.patchText === "string" ? args.patchText : "")
+    if (content === null) return null
+    return { tool_name: "Write", tool_input: { file_path: "commit.txt", content } }
+  }
   const github = /^ar-manager_(github_.+)$/.exec(tool)
   if (github) return { tool_name: `mcp__ar-manager__${github[1]}`, tool_input: args }
   return null
+}
+
+/**
+ * The content a patch would leave in `commit.txt`, or null when the patch does
+ * not touch it. opencode's `apply_patch` uses `*** Update File:` /
+ * `*** Add File:` / `*** Delete File:` headers; within a file section the lines
+ * that remain in the file are the added (`+`) and unchanged (` `) ones. Only
+ * `commit.txt` is a published route, so only its section is returned, in the
+ * Claude Code `Write` shape the shared core reads.
+ */
+function patchCommitTxtContent(patchText: string): string | null {
+  let inCommit = false
+  let touched = false
+  const content: string[] = []
+  for (const line of patchText.split(/\r?\n/)) {
+    const header = /^\*\*\*\s+(?:Update|Add|Delete)\s+File:\s*(\S+)/.exec(line)
+    if (header) {
+      inCommit = path.basename(header[1]) === "commit.txt"
+      if (inCommit) touched = true
+      continue
+    }
+    if (!inCommit || line.startsWith("-")) continue
+    content.push(line.replace(/^[+ ]/, ""))
+  }
+  return touched ? content.join("\n") : null
 }
 
 /**

@@ -18,9 +18,11 @@ A private link is one of:
   lab host          a URL whose host is a machine on the project's own network:
                     an entry of the ``[lab-hosts]`` section of
                     ``.claude/hooks/exfil-allowlist.txt`` (a name, a ``*.``
-                    wildcard or a CIDR range), or any other private, link-local
-                    or shared-address IP. Loopback (``localhost``,
-                    ``127.0.0.1``, ``::1``) names no machine and is allowed.
+                    wildcard or a CIDR range), any ``.local`` name, or any other
+                    private, link-local or shared-address IP. A URL's userinfo
+                    (``user:pass@``) is stripped first, so the host after it is
+                    what is checked. Loopback (``localhost``, ``127.0.0.1``,
+                    ``::1``) names no machine and is allowed.
 
 It looks only at text that is about to be published:
 
@@ -58,8 +60,11 @@ CLAUDE_AI_LINK = re.compile(
 
 SESSION_ID = re.compile(r"\bsession_[A-Za-z0-9]{16,}\b")
 
-# The host of a URL with a scheme, IPv6 hosts in brackets.
-URL_HOST = re.compile(r"\b[a-z][a-z0-9+.-]*://(\[[0-9a-f:]+\]|[^/\s:)\]\"'<>`?#]+)", re.I)
+# The host of a URL with a scheme, IPv6 hosts in brackets. Optional userinfo
+# (``user`` or ``user:pass@``) is skipped so the host after it, not the login,
+# is what the private-address check sees.
+URL_HOST = re.compile(
+    r"\b[a-z][a-z0-9+.-]*://(?:[^/\s@]+@)?(\[[0-9a-f:]+\]|[^/\s:)\]\"'<>`?#]+)", re.I)
 
 LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 
@@ -68,7 +73,7 @@ GIT_PUBLISHING = {"commit", "tag", "notes", "merge"}
 BODY_FILE_FLAGS = {"--body-file", "--file", "-F", "--message-file"}
 
 PUBLISHING_MENTION = re.compile(
-    r"\bgh\s+(?:" + "|".join(sorted(GH_PUBLISHING)) + r")\b"
+    r"\bgh\b[^\n;&|]*\b(?:" + "|".join(sorted(GH_PUBLISHING)) + r")\b"
     r"|\bgit\b[^\n;&|]*\b(?:" + "|".join(sorted(GIT_PUBLISHING)) + r")\b")
 
 # ar-manager GitHub tools that write to GitHub.
@@ -113,6 +118,8 @@ def is_lab_host(host, entries):
     address = _as_ip(host)
     if address is not None and address.is_loopback:
         return False
+    if address is None and host.endswith(".local"):
+        return True
     for entry in entries:
         if "/" in entry:
             if address is not None:
@@ -183,7 +190,7 @@ def _publishing_commands(command):
             continue
         tool = os.path.basename(names[0])
         rest = [w for w in names[1:] if not w.startswith("-")]
-        if tool == "gh" and rest and rest[0] in GH_PUBLISHING:
+        if tool == "gh" and any(word in GH_PUBLISHING for word in rest):
             publishing.append(names)
         elif tool == "git" and set(rest[:3]) & GIT_PUBLISHING:
             publishing.append(names)
