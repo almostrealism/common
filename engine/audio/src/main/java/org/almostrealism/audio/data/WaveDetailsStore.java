@@ -176,6 +176,21 @@ public interface WaveDetailsStore extends Closeable {
 	}
 
 	/**
+	 * Return whether this store's records must be re-analysed for the given
+	 * feature model: it holds records, and it was not last fully validated
+	 * against that model (see {@link #getValidatedModel()}) — as after upgrading
+	 * from a release whose features came from another model, or after such a
+	 * re-analysis was interrupted. An empty store (a first install) and a
+	 * {@code null} model never need re-analysis.
+	 *
+	 * @param modelIdentifier the current feature model, or {@code null} if there is none
+	 * @return {@code true} if the stored records are re-analysed for {@code modelIdentifier}
+	 */
+	default boolean needsReanalysis(String modelIdentifier) {
+		return modelIdentifier != null && size() > 0 && !modelIdentifier.equals(getValidatedModel());
+	}
+
+	/**
 	 * Record the feature model the store's contents have been fully validated
 	 * against, so a later reopen can skip the per-record completeness scan when
 	 * the model is unchanged. Callers record this once a refresh has finished
