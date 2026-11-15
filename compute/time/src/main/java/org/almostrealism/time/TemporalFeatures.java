@@ -1075,6 +1075,10 @@ public interface TemporalFeatures extends GeometryFeatures {
 	/**
 	 * Computes the STFT with specified compute requirements.
 	 *
+	 * <p>All frames are gathered into a single {@code [numFrames, fftSize]} collection,
+	 * windowed together, and transformed by one batched {@link FourierTransform}. The
+	 * number of compiled kernels therefore does not grow with the number of frames.</p>
+	 *
 	 * @param fftSize      The FFT frame size (must be power of 2)
 	 * @param hopSize      The hop size (number of samples between frames)
 	 * @param windowType   The window function type to apply
@@ -1096,38 +1100,22 @@ public interface TemporalFeatures extends GeometryFeatures {
 		}
 
 		TraversalPolicy outputShape = shape(numFrames, fftSize, 2);
-		CollectionProducer windowCoeffs = window(windowType, fftSize);
+		TraversalPolicy framesShape = shape(numFrames, fftSize);
 
-		// Process each frame using GPU operations
-		CollectionProducer[] frameResults = new CollectionProducer[numFrames];
+		CollectionProducer[] frames = new CollectionProducer[numFrames];
 
 		for (int i = 0; i < numFrames; i++) {
-			int offset = i * hopSize;
-
-			// Extract frame i from signal using subset
-			CollectionProducer frame = subset(shape(fftSize), signal, offset);
-
-			// Apply window function
-			CollectionProducer windowedFrame = multiply(frame, windowCoeffs);
-
-			// Convert to complex format for FFT [fftSize, 2]
-			CollectionProducer complexFrame = complexFromParts(
-					windowedFrame,
-					zeros(shape(fftSize))
-			);
-
-			// Perform FFT on this frame (GPU-accelerated)
-			FourierTransform frameFFT = fft(fftSize, complexFrame, requirements);
-
-			// Result shape: [1, fftSize, 2]
-			frameResults[i] = frameFFT.reshape(shape(1, fftSize, 2));
+			frames[i] = subset(shape(fftSize), signal, i * hopSize).reshape(shape(1, fftSize));
 		}
 
-		// Concatenate all frames along axis 0 to get [numFrames, fftSize, 2]
-		if (numFrames == 1) {
-			return frameResults[0].reshape(outputShape);
-		}
-		return concat(outputShape, frameResults);
+		CollectionProducer framed = numFrames == 1 ?
+				frames[0].reshape(framesShape) : concat(framesShape, frames);
+
+		TraversalPolicy samplesShape = shape(numFrames * fftSize);
+		CollectionProducer windowed = multiply(framed, repeat(0, numFrames, window(windowType, fftSize)));
+		CollectionProducer complexFrames = complexFromParts(
+				windowed.reshape(samplesShape), zeros(samplesShape)).reshape(outputShape);
+		return fft(fftSize, complexFrames, requirements).reshape(outputShape);
 	}
 
 	/**

@@ -1018,8 +1018,12 @@ jobs:
   # how the process itself should improve — it only proposes. Docs-only, so the
   # test lock costs nothing; enforce-changes with a cap of 0 reports an empty
   # result DEGRADED rather than paying for a second opus/max survey. Pins
-  # claude/opus at max effort. The survey window and the prefixes it covers reach
-  # its template (retrospective.txt, passed by path) through template-vars.
+  # claude/opus at max effort. The retrospective is a built-in qa-round.yaml
+  # template (prompt: retrospective), the same way defect-hunt and doc-qa are, so
+  # a consuming repository adopts it with a caller of its own; the survey window
+  # and the prefixes it covers reach the built-in template through template-vars.
+  # This caller sets neither VISIBILITY_FRAGMENT nor FINDINGS_FRAGMENT: the
+  # built-in defaults already describe this public, framework-owned repository.
   qa-retrospective:
     if: >-
       github.event_name != 'workflow_dispatch' ||
@@ -1043,7 +1047,7 @@ jobs:
       max-open-prs: 7
       force: ${{ github.event.inputs.force || 'false' }}
       ignore-interval: ${{ github.event.inputs.ignore_interval_retrospective || 'false' }}
-      prompt: tools/ci/prompts/retrospective.txt
+      prompt: retrospective
       template-vars: '{"REVIEW_SINCE": "14 days ago", "QA_PREFIXES": "qa/docs- qa/defect- qa/flaky- qa/coverage- qa/consolidate- qa/performance- qa/pdsl- qa/retro- ci/qa-"}'
       protect-test-files: "true"
       enforce-changes: "true"

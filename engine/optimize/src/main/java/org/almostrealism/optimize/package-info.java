@@ -76,8 +76,11 @@
  * // Mean Absolute Error for robust regression
  * LossProvider mae = new MeanAbsoluteError(traverseEach());
  *
- * // Negative Log Likelihood for classification
- * LossProvider nll = new NegativeLogLikelihood(traverseEach());
+ * // Negative Log Likelihood for classification (outputs must be log-probabilities)
+ * LossProvider nll = new NegativeLogLikelihood();
+ *
+ * // The loss is a computation of its terms, whose mean is the loss
+ * CollectionProducer terms = nll.loss(outputProducer, targetProducer);
  * }</pre>
  *
  * <h2>Integration with Other Modules</h2>

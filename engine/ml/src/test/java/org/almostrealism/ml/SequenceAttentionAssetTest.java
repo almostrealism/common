@@ -195,9 +195,13 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 	/**
 	 * The two projections are the layers of the projection factory the caller passes: a low-rank
 	 * adapter factory wraps exactly the fused query/key/value projection and the output projection,
-	 * in that order. Their {@code B} matrices start at zero, so the adapted attention first matches
-	 * the dense one; once the query/key/value adapter's {@code B} is non-zero, the same compiled
-	 * block computes a different attention, which shows the adapter's weights are read by the graph.
+	 * in that order. Their {@code B} matrices start at zero, so the adapted attention first computes
+	 * the same function as the dense one: both are held to the double-precision host reference. The
+	 * adapted block is a different program from the dense one, whose kernels group, order and fuse
+	 * their float32 multiply-adds differently, so the two agree only to within float32 rounding of
+	 * the whole attention, not to the bit-for-bit agreement of two builds of one program that
+	 * {@link #ASSEMBLY_TOLERANCE} checks. Once the query/key/value adapter's {@code B} is non-zero,
+	 * the same compiled block computes a different attention, which shows the adapter's weights are read by the graph.
 	 */
 	@Test(timeout = 300000)
 	public void adaptedProjectionsComeFromTheProjectionFactory() {
@@ -217,7 +221,9 @@ public class SequenceAttentionAssetTest extends TestSuiteBase implements Attenti
 			PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
 			double[] untrained = compiled.forward(input).doubleStream().toArray();
 			double[] dense = run(w.feature(ProjectionFactory.dense(), null, null, 0.0), input);
-			assertClose("adapters with zero B", dense, untrained, ASSEMBLY_TOLERANCE);
+			double[] host = w.hostReference(input.doubleStream().toArray(), null, null, 0.0);
+			assertClose("dense projections vs host reference", host, dense, HOST_TOLERANCE);
+			assertClose("adapters with zero B vs host reference", host, untrained, HOST_TOLERANCE);
 
 			adapters.get(0).getLoraB().fill(0.05);
 			double[] trained = compiled.forward(input).doubleStream().toArray();

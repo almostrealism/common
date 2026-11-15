@@ -61,4 +61,24 @@ public abstract class TextureTestBase extends TestSuiteBase {
 		Assert.assertEquals(g, actual.getGreen(), COLOR_TOL);
 		Assert.assertEquals(b, actual.getBlue(), COLOR_TOL);
 	}
+
+	/**
+	 * Builds an image of the given dimensions filled with a single color, for tests that only need
+	 * a trivial fixture to encode or write.
+	 *
+	 * @param width  the image width
+	 * @param height the image height
+	 * @param color  the color of every pixel
+	 * @return the image pixels, indexed by column then row
+	 */
+	protected RGB[][] solidColorImage(int width, int height, RGB color) {
+		RGB[][] image = new RGB[width][height];
+		for (int i = 0; i < width; i++) {
+			for (int j = 0; j < height; j++) {
+				image[i][j] = color;
+			}
+		}
+
+		return image;
+	}
 }

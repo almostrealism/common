@@ -59,6 +59,11 @@
 #   CREATE_WORKSTREAM - create a workstream when none is registered for this
 #                       repository and branch (default: true). Set to false to
 #                       have the controller reject such a submission instead.
+#   SETTLED_CI_TRIGGER - the settled-CI trigger ("deployment:<env>" or
+#                       "workflow:<file>") of a workstream this submission
+#                       creates. It describes the workstream, not the job, and
+#                       is not applied to a workstream that already exists;
+#                       register-workstream.sh does that.
 #   MAX_TURNS         - agent turn budget             (omitted → workstream default)
 #   MAX_BUDGET_USD    - agent dollar budget           (omitted → workstream default)
 #   PROTECT_TEST_FILES - have the harness keep every test method that exists
@@ -236,6 +241,10 @@ PAYLOAD=$(jq -n \
 
 if [ -n "${REPO_URL:-}" ]; then
     PAYLOAD=$(echo "$PAYLOAD" | jq --arg r "$REPO_URL" '. + {repoUrl: $r}')
+fi
+
+if [ -n "${SETTLED_CI_TRIGGER:-}" ]; then
+    PAYLOAD=$(echo "$PAYLOAD" | jq --arg t "$SETTLED_CI_TRIGGER" '. + {settledCiTrigger: $t}')
 fi
 
 if [ -n "${DESCRIPTION:-}" ]; then

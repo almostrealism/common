@@ -14,7 +14,7 @@
 #
 # It provides:
 #   - GitHub Actions runner agent (org- or repo-scoped registration)
-#   - JDK 17 (Eclipse Temurin) + Maven
+#   - JDK (Eclipse Temurin), major version from the JDK_MAJOR build arg, + Maven
 #   - OpenCL ICD loader, clinfo, and an ICD entry naming the ROCm runtime
 #   - build-essential, required by the `native` JNI backend that the CL jobs also
 #     exercise via AR_HARDWARE_DRIVER=native,cl
@@ -104,24 +104,25 @@ RUN mkdir -p /etc/OpenCL/vendors && \
 ENV PATH="/opt/rocm/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/opt/rocm/lib:/opt/rocm/lib/opencl:${LD_LIBRARY_PATH:-}"
 
-# ---------- JDK 17 (Eclipse Temurin / Adoptium) ----------
+# ---------- JDK (Eclipse Temurin / Adoptium) ----------
+# JDK_MAJOR is the single source of truth for the JDK major version baked into
+# this image, matching tools/ci/docker/Dockerfile. The CL jobs verify the
+# runner's java against the workflow-level EXPECTED_JDK_MAJOR in
+# .github/workflows/analysis.yaml instead of downloading a JDK with
+# actions/setup-java, so a JDK upgrade is this build arg plus a rebuild.
+ARG JDK_MAJOR=17
 RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
         | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] \
         https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" \
         > /etc/apt/sources.list.d/adoptium.list && \
     apt-get update && \
-    apt-get install -y --no-install-recommends temurin-17-jdk && \
+    apt-get install -y --no-install-recommends "temurin-${JDK_MAJOR}-jdk" && \
     rm -rf /var/lib/apt/lists/* && \
-    ln -s /usr/lib/jvm/temurin-17-jdk-* /usr/lib/jvm/temurin-17-jdk
+    ln -s /usr/lib/jvm/temurin-${JDK_MAJOR}-jdk-* /usr/lib/jvm/temurin-${JDK_MAJOR}-jdk
 
-ENV JAVA_HOME=/usr/lib/jvm/temurin-17-jdk
+ENV JAVA_HOME=/usr/lib/jvm/temurin-${JDK_MAJOR}-jdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
-
-# Both CL jobs run actions/setup-java@v5 with java-version 17. setup-java honours
-# JAVA_HOME_<version>_<arch> for a pre-installed JDK, so advertising the image's
-# Temurin here keeps every job from downloading its own copy.
-ENV JAVA_HOME_17_X64=/usr/lib/jvm/temurin-17-jdk
 
 # ---------- Maven ----------
 RUN curl -fsSL "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz" \

@@ -96,6 +96,26 @@ working rules:
 Soft reminders still have a place where blocking would be the wrong force. The memory
 reminder below is the example.
 
+## A branch that tracks master
+
+`block-branch-track-master` (core `git_command_check.py`) refuses the commands that would
+make a feature branch track a remote master/main: `git checkout -b <name> origin/master`
+without `--no-track`, `git branch -u origin/master`, and pushes onto master from another
+ref. It reads only command text, so it cannot see the state when it arises some other way,
+such as a branch created in a person's own terminal, by a script, or before the guard
+existed. On such a branch a bare `git push` updates master.
+
+`require-own-upstream.sh` / `require-own-upstream.ts` (core `branch_upstream_check.py`)
+check the state itself, before **every** tool call. While the current branch is not
+master/main and its configured upstream (`branch.<name>.merge` on a real remote) is
+master/main, every call is blocked except a Bash command made only of the fixes
+(`git branch --unset-upstream`, `git branch -u <remote>/<not master>`,
+`git push -u <remote> <branch>`), read-only git inspection (`git status`, the `git branch`
+listing forms, `git rev-parse`, `git config --get`, `git remote -v`) and `cd`. The session
+has to fix the branch before it can do anything else. A detached HEAD, a branch with no
+upstream or a local one, and a directory that is not a repository are allowed; the check
+fails open on anything it cannot read.
+
 ## The memory reminder
 
 `memory-reminder.sh` / `memory-reminder.ts` (core `memory_reminder_check.py`) nudge an

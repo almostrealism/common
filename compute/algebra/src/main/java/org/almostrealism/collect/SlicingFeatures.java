@@ -96,6 +96,40 @@ public interface SlicingFeatures extends CollectionCreationFeatures {
 	}
 
 	/**
+	 * Extracts {@code length} consecutive layers of a collection along one axis, starting at
+	 * layer {@code start}; every other axis is kept whole. This is a {@link #subset} whose shape
+	 * is the collection's shape with the length of {@code axis} replaced by {@code length}.
+	 *
+	 * <pre>{@code
+	 * // Rows 2 and 3 of a (5, 7) matrix, as a (2, 7) collection
+	 * CollectionProducer rows = slice(0, 2, 2, p(matrix));
+	 * }</pre>
+	 *
+	 * @param axis       the axis along which layers are taken, in {@code [0, dimensions)}
+	 * @param start      the index of the first layer
+	 * @param length     the number of layers, at least one
+	 * @param collection the source collection
+	 * @return a computation producing the layers, without the ordering of the source
+	 * @throws IllegalArgumentException if the axis is out of range, or the half-open range
+	 *                                  {@code [start, start + length)} is not within the axis
+	 */
+	default CollectionProducerComputation slice(int axis, int start, int length, Producer<?> collection) {
+		TraversalPolicy shape = shape(collection);
+		if (axis < 0 || axis >= shape.getDimensions()) {
+			throw new IllegalArgumentException("axis " + axis + " is not an axis of " + shape);
+		}
+
+		if (length < 1 || start < 0 || start + (long) length > shape.length(axis)) {
+			throw new IllegalArgumentException("slice [" + start + ", " + (start + (long) length)
+					+ ") is out of range for axis " + axis + " of " + shape);
+		}
+
+		int[] position = new int[shape.getDimensions()];
+		position[axis] = start;
+		return subset(shape.replaceDimension(axis, length).withOrder(null), collection, position);
+	}
+
+	/**
 	 * Creates a subset computation that extracts a sub-collection using expression-based positions.
 	 * This method allows for more complex position calculations that may involve runtime expressions,
 	 * mathematical operations, or computed offsets.

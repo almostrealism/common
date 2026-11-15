@@ -76,6 +76,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/require-own-upstream.sh",
+            "description": "Refuse every tool call while the current non-master branch tracks a remote master/main (a bare git push would update master); only the upstream fixes and read-only git inspection run until it is fixed"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/memory-reminder.sh",
             "description": "Soft nudge the agent to call memory_store when a long stretch of work has happened without one \u2014 see docs/internals/agent-hooks.md"
           }

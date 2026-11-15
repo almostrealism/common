@@ -2,7 +2,7 @@
 #
 # This image provides:
 #   - GitHub Actions runner agent
-#   - JDK 17 (Eclipse Temurin)
+#   - JDK (Eclipse Temurin), major version from the JDK_MAJOR build arg
 #   - Maven (with settings for local repo caching)
 #   - AR environment variables pre-configured
 #
@@ -35,18 +35,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         sudo \
     && rm -rf /var/lib/apt/lists/*
 
-# ---------- JDK 17 (Eclipse Temurin / Adoptium) ----------
+# ---------- JDK (Eclipse Temurin / Adoptium) ----------
+# JDK_MAJOR is the single source of truth for the JDK major version baked into
+# this image. The self-hosted CI jobs verify the runner's java against it (the
+# workflow-level EXPECTED_JDK_MAJOR in .github/workflows/analysis.yaml), so a
+# JDK upgrade is this build arg plus a rebuild. The CUDA fleet reuses this image
+# unchanged (tools/ci/cuda), so it inherits this version too.
+ARG JDK_MAJOR=17
 RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
         | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] \
         https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" \
         > /etc/apt/sources.list.d/adoptium.list && \
     apt-get update && \
-    apt-get install -y --no-install-recommends temurin-17-jdk && \
+    apt-get install -y --no-install-recommends "temurin-${JDK_MAJOR}-jdk" && \
     rm -rf /var/lib/apt/lists/* && \
-    ln -s /usr/lib/jvm/temurin-17-jdk-* /usr/lib/jvm/temurin-17-jdk
+    ln -s /usr/lib/jvm/temurin-${JDK_MAJOR}-jdk-* /usr/lib/jvm/temurin-${JDK_MAJOR}-jdk
 
-ENV JAVA_HOME=/usr/lib/jvm/temurin-17-jdk
+ENV JAVA_HOME=/usr/lib/jvm/temurin-${JDK_MAJOR}-jdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
 # ---------- Maven ----------

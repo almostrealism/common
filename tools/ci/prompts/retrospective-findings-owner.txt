@@ -1,0 +1,6 @@
+- It names where its proposal would land:
+  - a ci/qa-... branch — anything under .github/workflows/, tools/ci/ (prompts,
+    builders, gates) or .claude/hooks/;
+  - an ordinary branch — harness Java under flowtree/, MCP tools under tools/mcp/,
+    or documentation;
+  - person-only — secrets, the runner fleet, or controller configuration.

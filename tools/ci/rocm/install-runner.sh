@@ -131,6 +131,16 @@ if [ "${DO_BUILD}" = 1 ]; then
         BUILD_ARGS+=(--build-arg "ROCM_OPENCL_LIB=${ROCM_OPENCL_LIB}")
         echo "  ICD will name: ${ROCM_OPENCL_LIB}"
     fi
+    # JDK_MAJOR is a build argument because the JDK is baked into the image; the CL
+    # jobs verify it against EXPECTED_JDK_MAJOR in analysis.yaml rather than
+    # downloading one. Omit it from .env to build the Dockerfile's default (17);
+    # set it there to upgrade the fleet, then rebuild. Keep it equal to the
+    # workflow's EXPECTED_JDK_MAJOR or the CL jobs' verify step fails.
+    JDK_MAJOR=$(sed -n 's/^JDK_MAJOR=//p' "${SCRIPT_DIR}/.env" | tail -1)
+    if [ -n "${JDK_MAJOR}" ]; then
+        BUILD_ARGS+=(--build-arg "JDK_MAJOR=${JDK_MAJOR}")
+        echo "  JDK major: ${JDK_MAJOR}"
+    fi
     # The runner release is resolved HERE and passed in, not left to the
     # Dockerfile's own lookup. The Dockerfile can resolve it, but that lookup
     # lives inside a RUN step whose inputs never change, so podman's layer cache

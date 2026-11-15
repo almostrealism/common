@@ -14,7 +14,7 @@
 - [Execution Keys](#execution-keys)
   - [ScopeSignatureExecutionKey](#scopesignatureexecutionkey)
   - [DefaultExecutionKey](#defaultexecutionkey)
-  - [ProcessTreePositionKey](#processtreepositionkey-deprecated)
+  - [ProcessTreePositionKey](#processtreepositionkey)
 - [Core Components](#core-components)
   - [InstructionSetManager](#instructionsetmanager)
   - [ScopeInstructionsManager](#scopeinstructionsmanager)
@@ -96,7 +96,7 @@ ExecutionKey (marker interface)
     |
     +-- ScopeSignatureExecutionKey    -- Key by signature string (primary)
     +-- DefaultExecutionKey           -- Key by function name + arg count (fallback)
-    +-- ProcessTreePositionKey        -- Key by tree position (deprecated)
+    +-- ProcessTreePositionKey        -- Key by tree position (used by ProcessArgumentMap)
 
 InstructionSetManager<K extends ExecutionKey> (interface)
     |
@@ -325,7 +325,7 @@ Fallback key type used when signature-based caching is disabled or unavailable.
 
 Used by `ComputationInstructionsManager` for multi-function scopes where operations are identified by name rather than signature.
 
-### ProcessTreePositionKey (Deprecated)
+### ProcessTreePositionKey
 
 Identifies operations by their position in a Process tree hierarchy.
 
@@ -333,7 +333,7 @@ Identifies operations by their position in a Process tree hierarchy.
 |-------|------|-------------|
 | `position` | `int[]` | Path from root (e.g., `[0, 1]` = second child of first child) |
 
-Primarily used by `ProcessArgumentMap` for mapping Process tree positions to scope arguments during argument substitution. The key type itself is deprecated for use as an `ExecutionKey`.
+Originally paired with the now-removed `ProcessTreeInstructionsManager`. Instruction caching keys off `ScopeSignatureExecutionKey` instead, but this key type remains the live position identifier that `ProcessArgumentMap` uses to map Process tree nodes to their scope arguments and substitutions during argument substitution.
 
 ---
 

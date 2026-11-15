@@ -65,6 +65,41 @@ Each runner container:
 Each container has its own Maven repository to avoid concurrency
 issues when multiple runners build in parallel.
 
+## JDK Version (Baked Into the Image)
+
+The image ships the JDK; the CI jobs do **not** download one with
+`actions/setup-java`. The `test` and `test-media` jobs instead verify the
+runner's `java` against the workflow-level `EXPECTED_JDK_MAJOR` in
+`.github/workflows/analysis.yaml` and fail fast, naming the runner, if it does
+not match. The major version is the single `JDK_MAJOR` build arg in the
+[`Dockerfile`](Dockerfile) (default `17`); `JAVA_HOME` and `PATH` in the image
+point at that JDK, which is what Maven and the forked surefire JVMs use.
+
+Because the runners are ephemeral (one job per container, then a fresh one),
+the JDK only changes when the **image** is rebuilt. To move the fleet to a new
+major version:
+
+1. Change `EXPECTED_JDK_MAJOR` in `.github/workflows/analysis.yaml` (one value,
+   used by every self-hosted job and lane) and open that as its own `ci/...`
+   pull request, since CI files are locked to `ci/` branches.
+2. On each host running this fleet, rebuild the image and restart the runners
+   so the new container carries the new JDK:
+
+   ```bash
+   cd tools/ci/docker
+   docker compose down                               # deregister the old runners
+   docker compose build --build-arg JDK_MAJOR=21     # or omit the arg for the default (17)
+   docker compose up -d --scale runner=5
+   ```
+
+   With no `--build-arg`, the image builds the default (`17`). A plain
+   `docker compose up -d --build` also works once the default is the version you
+   want. The verify step turns red on any host still running an old image, so a
+   missed host is reported rather than silently running the wrong JDK.
+
+A single `JDK_MAJOR` value and the workflow's `EXPECTED_JDK_MAJOR` must agree;
+a mismatch is exactly what the verify step exists to catch.
+
 ## Sharing Runners Across Repositories (Org-Level)
 
 By default each container registers against the single repository named by

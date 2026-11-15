@@ -52,7 +52,7 @@ import java.util.stream.Collectors;
  * @see NoteAudioSource
  * @see NoteAudioSourceBase
  */
-public class TreeNoteSource extends NoteAudioSourceBase implements Named, ConsoleFeatures {
+public class TreeNoteSource extends NoteAudioSourceBase implements ConsoleFeatures {
 
 	/** The source file tree from which providers are built. */
 	private FileWaveDataProviderTree<? extends Supplier<FileWaveDataProvider>> tree;

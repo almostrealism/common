@@ -90,14 +90,19 @@ import org.almostrealism.optimize.*;
 
 // Mean Squared Error (regression)
 LossProvider mse = new MeanSquaredError(traverseEach());
-double loss = mse.loss(output, target);
-Producer<PackedCollection<?>> gradient = mse.gradient(outputProducer, targetProducer);
+Producer<PackedCollection> gradient = mse.gradient(outputProducer, targetProducer);
+
+// The loss is a computation of its terms (here the squared differences), whose mean is the
+// loss; a CollectionProducer, so the shape of the terms is known before they are computed
+CollectionProducer terms = mse.loss(outputProducer, targetProducer);
+double loss = terms.evaluate().doubleStream().average().orElse(0);
 
 // Mean Absolute Error (robust regression)
 LossProvider mae = new MeanAbsoluteError(traverseEach());
 
 // Negative Log Likelihood (classification)
-LossProvider nll = new NegativeLogLikelihood(traverseEach());
+// (its rows come from the output's shape; the output must be log-probabilities)
+LossProvider nll = new NegativeLogLikelihood();
 ```
 
 ### 4. Adam Optimizer
@@ -233,14 +238,25 @@ public class ModelOptimizer {
 
 ```java
 public interface LossProvider {
-    double loss(PackedCollection<?> output, PackedCollection<?> target);
+    // The terms of the loss: the values whose mean is the loss
+    CollectionProducer loss(
+        Producer<PackedCollection> output,
+        Producer<PackedCollection> target
+    );
 
-    Producer<PackedCollection<?>> gradient(
-        Producer<PackedCollection<?>> output,
-        Producer<PackedCollection<?>> target
+    Producer<PackedCollection> gradient(
+        Producer<PackedCollection> output,
+        Producer<PackedCollection> target
     );
 }
 ```
+
+`ModelOptimizer` submits the terms of the loss with each sample's forward pass and loss
+gradient, so a single wait for the sample covers all three, and takes the sample's loss as
+their mean; `evaluate` and `accuracy` submit them with each sample's forward pass in the same
+way. `MeanSquaredError` and `MeanAbsoluteError` have one term for each element of the output;
+`NegativeLogLikelihood` has one term for each row, the negated log-probability at the row's
+target class.
 
 ### HealthComputation
 
@@ -279,7 +295,7 @@ Model model = new Model(shape(784));
 model.add(dense(weights1, bias1));
 model.add(relu());
 model.add(dense(weights2, bias2));
-model.add(softmax());
+model.add(logSoftmax(shape(10)));
 
 // Create optimizer
 ModelOptimizer optimizer = new ModelOptimizer(
@@ -288,7 +304,7 @@ ModelOptimizer optimizer = new ModelOptimizer(
 );
 
 // Configure for classification
-optimizer.setLossFunction(new NegativeLogLikelihood(shape(10).traverseEach()));
+optimizer.setLossFunction(new NegativeLogLikelihood());
 optimizer.setLogFrequency(1);
 optimizer.setLossTarget(0.01);
 
@@ -355,36 +371,33 @@ for (int gen = 0; gen < 100; gen++) {
 ### Pattern 3: Custom Loss Function
 
 ```java
-public class HuberLoss implements LossProvider {
-    private double delta;
-    private final CollectionProducer<?> shape;
+public class HuberLoss implements LossProvider, CodeFeatures {
+    private final double delta;
 
-    public HuberLoss(CollectionProducer<?> shape, double delta) {
-        this.shape = shape;
+    public HuberLoss(double delta) {
         this.delta = delta;
     }
 
     @Override
-    public double loss(PackedCollection<?> output, PackedCollection<?> target) {
-        double totalLoss = 0.0;
-        for (int i = 0; i < output.getMemLength(); i++) {
-            double diff = Math.abs(output.toDouble(i) - target.toDouble(i));
-            if (diff <= delta) {
-                totalLoss += 0.5 * diff * diff;
-            } else {
-                totalLoss += delta * (diff - 0.5 * delta);
-            }
-        }
-        return totalLoss / output.getMemLength();
+    public CollectionProducer loss(Producer<PackedCollection> output,
+                                   Producer<PackedCollection> target) {
+        // Quadratic for |error| <= delta, linear beyond it
+        CollectionProducer error = c(output).subtract(c(target)).abs();
+        return error.greaterThan(c(delta),
+                error.subtract(c(0.5 * delta)).multiply(c(delta)),
+                error.pow(2.0).multiply(c(0.5)));
     }
 
     @Override
-    public Producer<PackedCollection<?>> gradient(...) {
+    public Producer<PackedCollection> gradient(...) {
         // Huber gradient: linear for |error| > delta, quadratic otherwise
         // Implementation details...
     }
 }
 ```
+
+Computing the terms with producers, rather than reading the collections element by element
+on the host, keeps the loss on the device and lets `ModelOptimizer` submit it with each sample.
 
 ### Pattern 4: Train/Validation Split
 

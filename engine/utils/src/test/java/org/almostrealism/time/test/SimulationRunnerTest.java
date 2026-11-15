@@ -561,6 +561,114 @@ public class SimulationRunnerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A coupled diffusion of a bump on a small ring grid, driven into a frame sequence by
+	 * {@link SimulationRunner#runFrames(int, int, java.util.function.IntConsumer)}: the hook is
+	 * called once per frame with the frame index in order, the device advances exactly
+	 * {@code frames * stepsPerFrame} steps, the state is identical to a reference run of the same
+	 * length (so nothing but the runner advanced it), and a second identical run reproduces the
+	 * per-frame observations exactly.
+	 */
+	@Test(timeout = 120000)
+	public void runFrames() {
+		int n = 4;
+		int stepsPerFrame = 20;
+		int frames = 5;
+		int center = 0;
+
+		PackedCollection state = pack(1.0, 0.0, 0.0, 0.0);
+		SimulationRunner runner = new SimulationRunner(ringDiffusion(state), DT);
+
+		List<Integer> indices = new ArrayList<>();
+		List<Double> centerHistory = new ArrayList<>();
+		runner.runFrames(stepsPerFrame, frames, f -> {
+			indices.add(f);
+			centerHistory.add(state.toDouble(center));
+		});
+
+		assertEquals(List.of(0, 1, 2, 3, 4), indices);
+		assertEquals((long) frames * stepsPerFrame, runner.getStepCount());
+
+		PackedCollection reference = pack(1.0, 0.0, 0.0, 0.0);
+		SimulationRunner referenceRunner = new SimulationRunner(ringDiffusion(reference), DT);
+		referenceRunner.run((long) frames * stepsPerFrame);
+		for (int i = 0; i < n; i++) {
+			assertEquals(reference.toDouble(i), state.toDouble(i), 1e-9);
+		}
+
+		PackedCollection repeat = pack(1.0, 0.0, 0.0, 0.0);
+		SimulationRunner repeatRunner = new SimulationRunner(ringDiffusion(repeat), DT);
+		List<Double> repeatHistory = new ArrayList<>();
+		repeatRunner.runFrames(stepsPerFrame, frames, f -> repeatHistory.add(repeat.toDouble(center)));
+		assertEquals(centerHistory, repeatHistory);
+
+		assertTrue(state.toDouble(center) < 1.0);
+		assertTrue(state.toDouble(1) > 0.0);
+
+		runner.destroy();
+		referenceRunner.destroy();
+		repeatRunner.destroy();
+	}
+
+	/**
+	 * A zero-frame {@code runFrames} call is a no-op that advances nothing and, crucially, registers
+	 * no boundary listener: a later {@link SimulationRunner#run(long)} on the same runner must not
+	 * observe a frame from a stale listener. A non-positive {@code stepsPerFrame} is rejected with
+	 * {@link IllegalArgumentException} before any listener is registered, and a negative
+	 * {@code frameCount} is rejected too.
+	 */
+	@Test(timeout = 120000)
+	public void runFramesZeroFramesAndInvalid() {
+		CountedSystem system = new CountedSystem();
+		SimulationRunner runner = new SimulationRunner(system, DT);
+		AtomicInteger calls = new AtomicInteger();
+
+		runner.runFrames(4, 0, f -> calls.incrementAndGet());
+		assertEquals(0, calls.get());
+		assertEquals(0, runner.getStepCount());
+
+		// The zero-frame call must not have left a boundary listener behind
+		runner.run(8);
+		assertEquals(0, calls.get());
+		assertEquals(8, runner.getStepCount());
+
+		assertThrowsIllegalArgument(() -> runner.runFrames(0, 3, f -> calls.incrementAndGet()));
+		assertThrowsIllegalArgument(() -> runner.runFrames(-1, 3, f -> calls.incrementAndGet()));
+		assertThrowsIllegalArgument(() -> runner.runFrames(4, -1, f -> calls.incrementAndGet()));
+
+		// A rejected call must not have registered a listener either
+		runner.run(8);
+		assertEquals(0, calls.get());
+		assertEquals(16, runner.getStepCount());
+
+		runner.destroy();
+	}
+
+	/**
+	 * A completed {@code runFrames} drive is one-shot: the boundary listener it registers is
+	 * removed when the call returns, so a later {@link SimulationRunner#run(long)} on the same
+	 * runner observes no further frame. Without the removal the frame hook would fire again at the
+	 * next frame boundary of the later run.
+	 */
+	@Test(timeout = 120000)
+	public void runFramesRemovesListener() {
+		CountedSystem system = new CountedSystem();
+		SimulationRunner runner = new SimulationRunner(system, DT);
+		AtomicInteger calls = new AtomicInteger();
+
+		runner.runFrames(4, 3, f -> calls.incrementAndGet());
+		assertEquals(3, calls.get());
+		assertEquals(12, runner.getStepCount());
+
+		// The completed drive must not leave a frame listener behind: steps 12..19 cross the
+		// boundaries 12 and 16, yet the hook must not be called again.
+		runner.run(8);
+		assertEquals(3, calls.get());
+		assertEquals(20, runner.getStepCount());
+
+		runner.destroy();
+	}
+
+	/**
 	 * Invalid arguments are rejected with {@link IllegalArgumentException} before they can affect
 	 * the simulation: a counter that is not a single element, a negative step count, and a
 	 * non-positive interval or capacity for an input, listener or recording.
@@ -733,6 +841,23 @@ public class SimulationRunnerTest extends TestSuiteBase {
 
 		runner.destroy();
 		Destroyable.releaseAll(List.of(matrix::destroy, state::destroy, next::destroy));
+	}
+
+	/**
+	 * A coupled diffusion step {@code x <- D x} on a 4-cell ring with a symmetric
+	 * nearest-neighbour stencil (each row sums to one, conserving the field), so each cell mixes
+	 * with its neighbours (the step is globally coupled, not element-local).
+	 *
+	 * @param state the state vector, shape {@code (4)}
+	 * @return the diffusion system
+	 */
+	private Temporal ringDiffusion(PackedCollection state) {
+		PackedCollection operator = pack(
+				0.70, 0.15, 0.00, 0.15,
+				0.15, 0.70, 0.15, 0.00,
+				0.00, 0.15, 0.70, 0.15,
+				0.15, 0.00, 0.15, 0.70).reshape(shape(4, 4));
+		return coupledMatmulStep("Ring Diffusion", operator, state);
 	}
 
 	/**

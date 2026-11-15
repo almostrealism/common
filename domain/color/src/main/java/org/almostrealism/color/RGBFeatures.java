@@ -16,6 +16,7 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.ScalarFeatures;
@@ -249,6 +250,107 @@ public interface RGBFeatures extends ScalarFeatures {
 					throw new RuntimeException(e);
 				}
 			};
+		};
+	}
+
+	/**
+	 * Maps a 2D scalar field to a colour-mapped heatmap, using the default colour map from blue
+	 * (the low end) to red (the high end).
+	 *
+	 * @param field a 2D field, shape {@code (height, width)}
+	 * @param min   the field value mapped to the low colour
+	 * @param max   the field value mapped to the high colour; must be greater than {@code min}
+	 * @return a producer of the heatmap, shape {@code (height, width, 3)}
+	 * @throws IllegalArgumentException if {@code field} is not 2D or {@code max} is not greater than
+	 *                                  {@code min}
+	 * @see #heatmap(Producer, double, double, RGB, RGB)
+	 */
+	default CollectionProducer heatmap(Producer<PackedCollection> field, double min, double max) {
+		return heatmap(field, min, max, new RGB(0.0, 0.0, 1.0), new RGB(1.0, 0.0, 0.0));
+	}
+
+	/**
+	 * Maps a 2D scalar field to a colour-mapped heatmap. Each field value is normalised to
+	 * {@code (value - min) / (max - min)}, clamped to {@code [0, 1]}, and linearly interpolated
+	 * between {@code low} and {@code high} per channel. Supplying the same {@code min}/{@code max}
+	 * for every frame of a sequence gives the frames a shared colour scale.
+	 *
+	 * <p>The colour mapping is a single {@link CollectionProducer} graph; the host read happens only
+	 * when a caller evaluates or {@link #saveHeatmap(File, String, Producer, double, double) saves}
+	 * the result.</p>
+	 *
+	 * @param field a 2D field, shape {@code (height, width)}
+	 * @param min   the field value mapped to {@code low}
+	 * @param max   the field value mapped to {@code high}; must be greater than {@code min}
+	 * @param low   the colour at the low end of the range
+	 * @param high  the colour at the high end of the range
+	 * @return a producer of the heatmap, shape {@code (height, width, 3)}
+	 * @throws IllegalArgumentException if {@code field} is not 2D or {@code max} is not greater than
+	 *                                  {@code min}
+	 */
+	default CollectionProducer heatmap(Producer<PackedCollection> field, double min, double max,
+									   RGB low, RGB high) {
+		if (max <= min) {
+			throw new IllegalArgumentException("max (" + max + ") must be greater than min (" + min + ")");
+		}
+
+		TraversalPolicy fieldShape = shape(field);
+		if (fieldShape.getDimensions() != 2) {
+			throw new IllegalArgumentException("field must be 2D, but was " + fieldShape);
+		}
+
+		int height = fieldShape.length(0);
+		int width = fieldShape.length(1);
+		TraversalPolicy channel = shape(height, width, 1);
+
+		CollectionProducer t = bound(c(field).add(-min).multiply(1.0 / (max - min)), 0.0, 1.0);
+		CollectionProducer r = t.multiply(high.getRed() - low.getRed()).add(low.getRed()).reshape(channel);
+		CollectionProducer g = t.multiply(high.getGreen() - low.getGreen()).add(low.getGreen()).reshape(channel);
+		CollectionProducer b = t.multiply(high.getBlue() - low.getBlue()).add(low.getBlue()).reshape(channel);
+
+		return concat(shape(height, width, 3), r, g, b);
+	}
+
+	/**
+	 * Creates a runnable that writes a 2D scalar field as a colour-mapped heatmap image, with a
+	 * fixed value range shared across frames. The PNG (or other format) write happens at the host
+	 * boundary when the runnable runs.
+	 *
+	 * @param file   the output file
+	 * @param format the image format (e.g. {@code "png"})
+	 * @param field  a 2D field, shape {@code (height, width)}
+	 * @param min    the field value mapped to the low colour
+	 * @param max    the field value mapped to the high colour; must be greater than {@code min}
+	 * @return a supplier that when invoked returns a runnable to perform the save
+	 */
+	default Supplier<Runnable> saveHeatmap(File file, String format,
+										   Producer<PackedCollection> field, double min, double max) {
+		return saveImage(file, format, false, heatmap(field, min, max));
+	}
+
+	/**
+	 * Creates a runnable that writes a 2D scalar field as a colour-mapped heatmap image, scaling the
+	 * colours to the field's own minimum and maximum. Each frame saved this way uses its own scale;
+	 * pass an explicit range to
+	 * {@link #saveHeatmap(File, String, Producer, double, double)} to share a scale across frames.
+	 *
+	 * <p>The field is evaluated once at the host boundary to find its range (a flat field is given a
+	 * unit range so it maps to the low colour), then the colour mapping is built and the image is
+	 * written.</p>
+	 *
+	 * @param file   the output file
+	 * @param format the image format (e.g. {@code "png"})
+	 * @param field  a 2D field, shape {@code (height, width)}
+	 * @return a supplier that when invoked returns a runnable to perform the save
+	 */
+	default Supplier<Runnable> saveHeatmap(File file, String format, Producer<PackedCollection> field) {
+		return () -> {
+			PackedCollection data = field.get().evaluate();
+			double max = max(cp(data)).evaluate().toDouble(0);
+			double min = -max(cp(data).multiply(-1.0)).evaluate().toDouble(0);
+			if (max <= min) max = min + 1.0;
+
+			return saveImage(file, format, false, heatmap(cp(data), min, max)).get();
 		};
 	}
 

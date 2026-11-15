@@ -642,12 +642,9 @@ class FleetStore:
     ) -> None:
         """Insert or replace one ``job_event`` row, keyed on ``job_id``.
 
-        *labels* is the executing runner's actual label set (the
-        workflow-jobs API's own ``labels`` field), not the workflow's
-        requested ``runs-on:`` set — see :data:`tools.fleet.schema.JOB_EVENT`.
-        A runner can carry extra/custom labels beyond what a job asked for,
-        so a caller grouping on this column is measuring actual-runner-label
-        demand, not per-``runs-on`` demand.
+        *labels* is the workflow-jobs API's own ``labels`` field, which GitHub
+        documents as the job's ``runs-on:`` labels, so a job that never ran
+        (skipped, or cancelled while queued) still carries its lane.
 
         *lane* and *platform* are the two projections of that label set the
         dashboard groups by (the fleet's ``ar-*`` label, and macos / linux /
@@ -691,6 +688,60 @@ class FleetStore:
             ("job_id", "number", "name", "started_at", "completed_at", "conclusion"),
             (job_id, number, name, started_at, completed_at, conclusion),
         )
+
+    #: ``job_event.status`` of a job the API no longer serves (its run was
+    #: deleted). Such a job will never report a completion, so
+    #: :meth:`open_job_ids` stops returning it.
+    GONE_STATUS = "gone"
+
+    def open_job_ids(self, limit: int, exclude: Sequence[str] = ()) -> List[str]:
+        """Up to *limit* ids of jobs still recorded as unfinished, oldest first.
+
+        A job is unfinished here while it has no ``completed_at`` and its
+        status is neither ``completed`` nor :data:`GONE_STATUS`. The poller
+        re-reads only a window of recent runs, so a job whose run leaves that
+        window before it finishes would otherwise stay unfinished forever,
+        and every panel that counts running jobs would count it for good.
+        Oldest first, so a backlog of such records drains a batch per cycle.
+        *exclude* holds ids the caller has just refreshed.
+        """
+        rows = self._rows(
+            "SELECT job_id FROM job_event WHERE completed_at IS NULL "
+            "AND status NOT IN ('completed', ?) ORDER BY created_at",
+            (self.GONE_STATUS,),
+        )
+        skip = set(exclude)
+        return [row[0] for row in rows if row[0] not in skip][:limit]
+
+    def update_job_progress(
+        self,
+        job_id: str,
+        status: str,
+        conclusion: str = "",
+        started_at: Optional[str] = None,
+        completed_at: Optional[str] = None,
+        runner_name: str = "",
+        runner_id: Optional[int] = None,
+    ) -> None:
+        """Record the current status and timestamps of a job already stored.
+
+        Leaves every other column (labels, lane, the wait figures) as they
+        were written when the job was first seen. Fields the API has since
+        filled in replace what is stored; an empty or missing value keeps the
+        stored one.
+        """
+        self._execute(
+            "UPDATE job_event SET status = ?, "
+            "conclusion = CASE WHEN ? <> '' THEN ? ELSE conclusion END, "
+            "started_at = COALESCE(?, started_at), "
+            "completed_at = COALESCE(?, completed_at), "
+            "runner_name = CASE WHEN ? <> '' THEN ? ELSE runner_name END, "
+            "runner_id = COALESCE(?, runner_id) "
+            "WHERE job_id = ?",
+            (status, conclusion, conclusion, started_at, completed_at,
+             runner_name, runner_name, runner_id, job_id),
+        )
+        self._commit_unless_batched()
 
     # ---- queries -----------------------------------------------------------
 
@@ -755,12 +806,8 @@ class FleetStore:
         rows (matching what the average is actually computed over), not
         every row in the group — a queued entry-point job has no latency yet.
 
-        ``labels`` groups by the *executing runner's* actual label set, not
-        the workflow's requested ``runs-on:`` set (see
-        :meth:`upsert_job_event`) — a caller cannot yet use this to answer
-        "how long did jobs requesting `runs-on: [self-hosted, gpu]` wait",
-        only "how long did jobs that happened to land on a runner carrying
-        this exact label set wait". This method treats ``labels`` as an
+        ``labels`` groups by the job's ``runs-on:`` label set (see
+        :meth:`upsert_job_event`). This method treats ``labels`` as an
         opaque string and does no encoding/decoding itself — it matches
         whatever encoding the producer used. ``tools.fleet.github_poller``
         writes it JSON-encoded (``json.dumps(sorted(label_list))``), so a

@@ -29,11 +29,10 @@ A review comment that asks for the plan to be implemented, or for a change
 outside `docs/`, is not something this job does. Leave it for the person
 reviewing the plan and say in your summary that you did.
 
-@include pr-feedback.txt
-
-On a branch whose changes are documents, the review feedback is usually most
-of what needs doing: a reviewer's correction to a plan is a correction to what
-it proposes, and answering it means changing the document, not only the reply.
+On a branch whose changes are documents, the review feedback — the policy for
+which is at the end of this prompt — is usually most of what needs doing: a
+reviewer's correction to a plan is a correction to what it proposes, and
+answering it means changing the document, not only the reply.
 
 ## What to review and fix
 

@@ -23,6 +23,7 @@ import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.LoRALinear;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
+import org.almostrealism.model.SequentialBlock;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.LossProvider;
 import org.almostrealism.optimize.MeanAbsoluteError;
@@ -35,6 +36,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
@@ -541,6 +543,77 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	}
 
 	/**
+	 * {@link ModelOptimizer#evaluate(Dataset)} computes the loss of each sample from the
+	 * {@link LossProvider#loss loss} terms, submitted with the sample's forward pass, and reports
+	 * their mean over the dataset: the same value as the mean squared error computed on the host
+	 * from the outputs of the model. {@link ModelOptimizer#accuracy} computes the loss the same way,
+	 * pushing the same values to the receptor, and passes the model output for each sample to the
+	 * validator.
+	 */
+	@Test(timeout = 120000)
+	public void evaluateAveragesLossTerms() {
+		List<ValueTarget<PackedCollection>> samples = regressionSamples(6);
+		Dataset<PackedCollection> data = Dataset.of(samples);
+		CompiledModel model = denseModel(initialWeights());
+		double expected = computeAverageLoss(model, data);
+
+		ModelOptimizer optimizer = new ModelOptimizer(model, () -> data);
+		optimizer.setLogFrequency(0);
+		assertEquals(expected, optimizer.evaluate(data), 1e-6);
+
+		List<Double> losses = new ArrayList<>();
+		optimizer.setReceptor(protein -> () -> () -> losses.add(protein.get().evaluate()));
+		List<Integer> outputSizes = new ArrayList<>();
+		double accuracy = optimizer.accuracy((target, output) -> outputSizes.add(output.getMemLength()));
+		Assert.assertEquals(1.0, accuracy, 0.0);
+		Assert.assertEquals(Collections.nCopies(samples.size(), 3), outputSizes);
+		Assert.assertEquals(samples.size(), losses.size());
+		assertEquals(expected, losses.stream().mapToDouble(Double::doubleValue).average().orElse(0), 1e-6);
+	}
+
+	/**
+	 * {@link ModelOptimizer#accuracy} runs each sample through the model with the sample's
+	 * additional inputs, as {@link ModelOptimizer#evaluate(Dataset)} does: for a model whose output
+	 * is offset by an auxiliary input, each sample's expected output is the output of the model for
+	 * its own auxiliary input, so the validator sees exactly that output and the loss of every
+	 * sample is zero. The auxiliary inputs differ between samples, so an output computed without
+	 * them would not match.
+	 */
+	@Test(timeout = 120000)
+	public void accuracyUsesSampleArguments() {
+		PackedCollection offset = new PackedCollection(shape(3));
+		Model model = new Model(shape(4), 1e-2);
+		SequentialBlock auxiliary = new SequentialBlock(shape(3));
+		model.addInput(auxiliary);
+		auxiliary.andThen(into(offset));
+		model.add(dense(initialWeights(), pack(0.05, -0.1, 0.02)));
+		model.add(layer("offset", shape(3), in -> c(in).add(cp(offset))));
+		CompiledModel compiled = model.compile();
+
+		List<ValueTarget<PackedCollection>> samples = new ArrayList<>();
+		for (int i = 0; i < 4; i++) {
+			PackedCollection input = new PackedCollection(shape(4));
+			input.randnFill(random);
+			PackedCollection argument = pack(i + 1.0, -2.0 * (i + 1), 3.0 * (i + 1));
+			PackedCollection expected = new PackedCollection(shape(3));
+			cp(compiled.forward(input, argument)).into(expected.traverseEach()).evaluate();
+			samples.add(ValueTarget.<PackedCollection>of(input, expected).withArguments(argument));
+		}
+
+		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> Dataset.of(samples));
+		optimizer.setLogFrequency(0);
+		List<Double> losses = new ArrayList<>();
+		optimizer.setReceptor(protein -> () -> () -> losses.add(protein.get().evaluate()));
+
+		double accuracy = optimizer.accuracy((target, output) -> compare(target, output) < 1e-5);
+		Assert.assertEquals(1.0, accuracy, 0.0);
+		Assert.assertEquals(samples.size(), losses.size());
+		for (double loss : losses) {
+			Assert.assertEquals(0.0, loss, 1e-9);
+		}
+	}
+
+	/**
 	 * Asserts that {@code action}, which issues the named {@code pass}, throws an
 	 * {@link IllegalArgumentException}.
 	 */
@@ -561,12 +634,15 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	private double blockingEpoch(CompiledModel model, LossProvider loss, List<ValueTarget<PackedCollection>> samples) {
 		Evaluable<PackedCollection> gradient = loss.gradient(
 				cv(shape(3).traverseEach(), 0), cv(shape(3).traverseEach(), 1)).get();
+		Evaluable<PackedCollection> terms = loss.loss(
+				cv(shape(3).traverseEach(), 0), cv(shape(3).traverseEach(), 1)).get();
 
 		double total = 0.0;
 		for (ValueTarget<PackedCollection> sample : samples) {
 			PackedCollection out = model.forward(sample.getInput());
 			PackedCollection grad = gradient.evaluate(out.each(), sample.getExpectedOutput().each());
-			total += loss.loss(out.each(), sample.getExpectedOutput().each());
+			total += terms.evaluate(out.each(), sample.getExpectedOutput().each())
+					.doubleStream().average().orElse(0);
 			model.backward(grad);
 		}
 

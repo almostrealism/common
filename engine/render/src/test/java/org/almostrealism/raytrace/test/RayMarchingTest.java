@@ -122,7 +122,7 @@ public class RayMarchingTest extends TestSuiteBase {
 					this.setImage(new RayTracedScene(mandel, c).realize(params));
 
 					try {
-						return "marching" + format.valueToString(POWER) + ".jpg";
+						return "marching" + format.valueToString(POWER) + ".png";
 					} catch (ParseException e) {
 						warn(e.getMessage(), e);
 						return null;
@@ -134,8 +134,8 @@ public class RayMarchingTest extends TestSuiteBase {
 		} else {
 			try {
 				ImageCanvas.encodeImageFile(new RayTracedScene(mandel, c).realize(params).get(),
-						new File("test-march.jpeg"),
-						ImageCanvas.JPEGEncoding);
+						new File("test-march.png"),
+						ImageCanvas.PNGEncoding);
 			} catch (FileNotFoundException fnf) {
 				Console.root().println("ERROR: Output file not found");
 			} catch (IOException ioe) {
