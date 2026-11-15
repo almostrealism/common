@@ -97,8 +97,11 @@ class AcceleratorLaneAdmissionTest(unittest.TestCase):
     def test_cuda_starts_with_mac(self):
         self.assertEqual(sorted(self.jobs["test-mac"]["needs"]),
                          sorted(self.jobs["test-cuda"]["needs"]))
+        # CUDA starts on exactly Metal's conditions, except that a pull
+        # request's test run leaves it to master (the backend subset).
+        subset_clause = " needs.changes.outputs.full_matrix == 'true' &&"
         self.assertEqual(self.jobs["test-mac"]["if"].strip(),
-                         self.jobs["test-cuda"]["if"].strip())
+                         self.jobs["test-cuda"]["if"].replace(subset_clause, "", 1).strip())
 
     def test_cl_matrix_matches_its_test_groups(self):
         name = "test-cl"
