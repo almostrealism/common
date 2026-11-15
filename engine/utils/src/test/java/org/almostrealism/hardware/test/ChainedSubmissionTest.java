@@ -16,11 +16,13 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.concurrent.Submittable;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -28,6 +30,7 @@ import org.junit.Test;
 
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -81,9 +84,9 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	 * The longest, in milliseconds, that
 	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} waits to observe the
 	 * long-running dispatch occupying the worker pool before it issues the independent one anyway.
-	 * On the native path the workers appear within a few milliseconds and the wait ends at once; a
-	 * backend that does not use the pool (a GPU host) never shows them, so this bounds how long the
-	 * test waits for a signal that will not arrive there, where it is not needed.
+	 * The dispatches are pinned to the native backend (see {@link #nativeDispatch}), so the workers
+	 * appear within a few milliseconds and the wait ends at once; this is a defensive upper bound so
+	 * the test proceeds rather than hanging should the occupancy signal never arrive.
 	 */
 	private static final long WORKER_OCCUPANCY_TIMEOUT_MS = 2000;
 
@@ -238,8 +241,9 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 			product = product.multiply(cp(values));
 		}
 
-		Submittable longDispatch = Submittable.of(a(cp(values), product).get());
-		Submittable independentDispatch = Submittable.of(a(cp(independent), cp(independent).add(1.0)).get());
+		Submittable longDispatch = Submittable.of(nativeDispatch(a(cp(values), product)));
+		Submittable independentDispatch =
+				Submittable.of(nativeDispatch(a(cp(independent), cp(independent).add(1.0))));
 
 		boolean bothSettled = false;
 
@@ -278,13 +282,33 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Compiles {@code assignment} pinned to the {@link ComputeRequirement#JNI native CPU backend}, so
+	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} exercises the
+	 * {@link NativeExecution} worker pool it validates on every host. Without the pin an operation
+	 * whose element count is above the work subdivision minimum selects an accelerator wherever one is
+	 * configured (a Metal or OpenCL host), where the two dispatches share a command queue and neither
+	 * reaches the worker pool &mdash; so their completion order would not reflect the pool's behaviour
+	 * and could record the long dispatch first, failing the test even though the pool is uninvolved.
+	 * {@link ComputeRequirement#CPU} is not used because it resolves to OpenCL on x86;
+	 * {@code JNI} names the native backend directly and is present on every CI lane.
+	 *
+	 * @param assignment the assignment to compile
+	 * @return the compiled runnable, pinned to the native CPU backend
+	 */
+	private static Runnable nativeDispatch(Assignment<PackedCollection> assignment) {
+		assignment.setComputeRequirements(List.of(ComputeRequirement.JNI));
+		return assignment.get();
+	}
+
+	/**
 	 * Waits until {@code expected} worker threads of the native pool are running a kernel, so the
 	 * independent dispatch in {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} is
 	 * issued only once the long-running one already occupies the pool &mdash; an explicit
 	 * observation of worker start (via {@link NativeExecution#getActiveWorkerCount()}) rather than a
-	 * fixed delay a loaded runner could outlast. Returns as soon as that many workers are seen, or
-	 * after {@value #WORKER_OCCUPANCY_TIMEOUT_MS} milliseconds on a backend that does not use the
-	 * pool (a GPU host), where the workers never appear and the readiness is not needed.
+	 * fixed delay a loaded runner could outlast. Because the dispatches are pinned to the native
+	 * backend (see {@link #nativeDispatch}) the workers do appear; this returns as soon as that many
+	 * are seen, or after {@value #WORKER_OCCUPANCY_TIMEOUT_MS} milliseconds as a defensive bound so a
+	 * missing signal makes the test proceed rather than hang.
 	 *
 	 * @param expected the number of running worker threads that marks the pool as occupied
 	 */
