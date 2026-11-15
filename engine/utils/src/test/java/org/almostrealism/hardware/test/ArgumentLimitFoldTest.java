@@ -40,7 +40,9 @@ import org.almostrealism.collect.computations.TraversableDeltaComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -72,6 +74,9 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 
 	/** Room left under the limit, beyond the bound, for the masked sum kernel's structure arguments. */
 	private static final int MASKED_SUM_ROOM = 4;
+
+	/** The default depth past which an operation list places the abort scope in its kernel. */
+	private static final int ABORTABLE_DEPTH = 1000;
 
 	/**
 	 * The decision itself: with no known limit every kernel folds, and with a known limit only a
@@ -285,6 +290,56 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 	}
 
 	/**
+	 * A kernel compiled without folding is verified against the limit it was judged to fit, so a
+	 * bound that under-counts fails at compilation with a cause rather than at the backend; a
+	 * kernel that folds, or one compiled with no known limit, is never verified.
+	 */
+	@Test(timeout = 60000)
+	public void unfoldedKernelIsVerifiedAgainstTheLimit() {
+		FoldProbe unlimited = run(new LimitedComputeContext(OptionalInt.empty()));
+		int bound = unlimited.getBound(Integer.MAX_VALUE - 1);
+		unlimited.verify(Integer.MAX_VALUE);
+
+		FoldProbe fits = run(new LimitedComputeContext(OptionalInt.of(bound)));
+		Assert.assertTrue("arguments=" + fits.getArgumentCount() + " bound=" + bound,
+				fits.getArgumentCount() <= bound);
+		fits.verify(bound);
+		try {
+			fits.verify(bound + 1);
+			Assert.fail("An argument count past the limit of an unfolded kernel was accepted");
+		} catch (HardwareException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains(String.valueOf(bound + 1)));
+		}
+
+		FoldProbe overflows = run(new LimitedComputeContext(OptionalInt.of(bound - 1)));
+		overflows.verify(Integer.MAX_VALUE);
+	}
+
+	/**
+	 * An operation list deeper than the abortable depth reads the abort flag through an argument
+	 * that is not a position of its process tree, so it reports that argument; a shallow list
+	 * includes no abort scope and reports nothing.
+	 */
+	@Test(timeout = 60000)
+	public void deepOperationListReportsTheAbortArgument() {
+		PackedCollection in = new PackedCollection(SIZE).fill(1.0);
+		PackedCollection out = new PackedCollection(SIZE);
+
+		OperationList list = new OperationList();
+		list.add(a(cp(out).each(), cp(in).each()));
+		Assert.assertEquals(0, list.getScopeArgumentCount());
+
+		for (int depth = 1; depth <= ABORTABLE_DEPTH; depth++) {
+			OperationList outer = new OperationList();
+			outer.add(list);
+			list = outer;
+		}
+
+		Assert.assertEquals(ABORTABLE_DEPTH + 1, list.getDepth());
+		Assert.assertEquals(1, list.getScopeArgumentCount());
+	}
+
+	/**
 	 * Assigns to the given output the sum of {@code [[1, 2], [3, 4]]} and {@code [[2, 0], [0, 3]]},
 	 * the second either dense or stored compactly through a mask ordering.
 	 *
@@ -483,6 +538,15 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 		/** Returns the number of arguments this operation's compiled kernel declares. */
 		int getArgumentCount() {
 			return getArgumentVariables().size();
+		}
+
+		/**
+		 * Verifies the given argument count against this operation's limit.
+		 *
+		 * @param argumentCount the argument count to verify
+		 */
+		void verify(int argumentCount) {
+			verifyArgumentLimit(argumentCount);
 		}
 	}
 

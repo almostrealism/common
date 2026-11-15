@@ -70,7 +70,6 @@ public interface ScopeLifecycle {
 	 *
 	 * @return the most arguments preparing this component adds beyond those of its inputs
 	 */
-	// TODO(review): nothing enforces this count; consider checking compiled argument count <= limit for unfolded kernels
 	default int getScopeArgumentCount() { return 0; }
 
 	/**

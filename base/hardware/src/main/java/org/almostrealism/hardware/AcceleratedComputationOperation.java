@@ -753,6 +753,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 */
 	public synchronized void postCompile() {
 		setupArguments(getCompiler().getScope());
+		verifyArgumentLimit(getArgumentVariables().size());
 		getCompiler().postCompile();
 
 		if (instructions != null && argumentMap != null) {

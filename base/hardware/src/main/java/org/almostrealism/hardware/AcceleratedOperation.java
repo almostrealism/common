@@ -364,6 +364,36 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	/**
+	 * Verifies that a kernel compiled without folding, on the strength of its
+	 * {@link #getArgumentBound(int) structural argument bound}, declares no more arguments than
+	 * its {@link ComputeContext}'s argument limit.
+	 *
+	 * <p>The bound relies on every argument scope preparation obtains being reported, either as a
+	 * leaf of the process tree or through a
+	 * {@link ScopeLifecycle#getScopeArgumentCount() scope argument count}. A component that
+	 * obtains an argument without reporting it lets the bound fall below the real count, and the
+	 * kernel would otherwise reach the backend with more arguments than it accepts, failing there
+	 * far from the cause. A kernel that folds was never judged to fit, so nothing is verified for
+	 * it.</p>
+	 *
+	 * @param argumentCount the number of arguments the compiled kernel declares
+	 * @throws HardwareException if the kernel was judged to fit its limit but declares more
+	 *         arguments than the limit
+	 */
+	protected void verifyArgumentLimit(int argumentCount) {
+		if (isArgumentFoldingRequired()) return;
+
+		int limit = getComputeContext().getArgumentLimit().getAsInt();
+		if (argumentCount > limit) {
+			throw new HardwareException(getName() + " was compiled without folding because its" +
+					" structural argument bound " + getArgumentBound(limit) + " fits the argument limit " +
+					limit + ", but its kernel declares " + argumentCount + " arguments; a component" +
+					" obtains an argument during scope preparation that its scope argument count" +
+					" does not report");
+		}
+	}
+
+	/**
 	 * Returns an upper bound on the arguments this operation's kernel declares when none of them
 	 * is folded, computed from the operation's structure alone, or any value greater than
 	 * {@code cap} once the bound is known to exceed it.
