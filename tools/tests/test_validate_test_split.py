@@ -6,8 +6,10 @@
 * a VALIDATE run (``pull_request``) runs the static and integrity checks and
   reports its gate as ``All Checks``;
 * a TEST run (a ``deployment`` to the ``test`` environment, a push to master,
-  ``workflow_dispatch``) also runs every long-running test lane and reports
-  its gate as ``Test Checks``.
+  ``workflow_dispatch``) also runs the long-running test lanes and reports
+  its gate as ``Test Checks``; a pull request's test run (a deployment of a
+  non-master branch) runs only the Metal and flowtree lanes, while master
+  runs every backend (``full_matrix``).
 
 Both names are required checks, so the merge gate rests on a handful of
 expressions: the gate's dynamic name, the ``if:`` of ``changes``, ``analysis``
@@ -212,29 +214,101 @@ class RunKindTest(unittest.TestCase):
                 return step
         self.fail("changes has no step with id 'kind'")
 
-    def _run_kind(self, event_name):
+    def _run_kind(self, event_name, pr_full_test_matrix="", deploy_ref=""):
+        """The kind step's outputs for a run started by ``event_name``, as a dict.
+
+        ``deploy_ref`` is the branch a deployment names; it is empty for every
+        other event.
+        """
         bash = shutil.which("bash")
         self.assertIsNotNone(bash, "bash is required to run the kind step")
         with tempfile.TemporaryDirectory() as tmp:
             output = os.path.join(tmp, "output")
             open(output, "w").close()
-            env = dict(os.environ, EVENT_NAME=event_name, GITHUB_OUTPUT=output)
+            env = dict(os.environ, EVENT_NAME=event_name, GITHUB_OUTPUT=output,
+                       PR_FULL_TEST_MATRIX=pr_full_test_matrix, DEPLOY_REF=deploy_ref)
             subprocess.run([bash, "-e", "-c", self._kind_step()["run"]], env=env, check=True,
                            capture_output=True)
             with open(output) as f:
-                return f.read().strip()
+                return dict(line.strip().split("=", 1) for line in f if "=" in line)
 
     def test_pull_request_is_a_validate_run(self):
-        self.assertEqual("run_tests=false", self._run_kind("pull_request"))
+        self.assertEqual("false", self._run_kind("pull_request")["run_tests"])
 
     def test_every_other_event_is_a_test_run(self):
         for event in ("deployment", "push", "workflow_dispatch"):
             with self.subTest(event=event):
-                self.assertEqual("run_tests=true", self._run_kind(event))
+                self.assertEqual("true", self._run_kind(event)["run_tests"])
 
     def test_run_tests_is_a_job_output(self):
         outputs = self.jobs["changes"]["outputs"]
         self.assertEqual("${{ steps.kind.outputs.run_tests }}", outputs["run_tests"])
+
+    def test_full_matrix_is_a_job_output(self):
+        outputs = self.jobs["changes"]["outputs"]
+        self.assertEqual("${{ steps.kind.outputs.full_matrix }}", outputs["full_matrix"])
+
+    def test_a_pull_requests_test_run_runs_one_backend(self):
+        self.assertEqual("false",
+                         self._run_kind("deployment", deploy_ref="feature/some-branch")["full_matrix"])
+
+    def test_master_and_a_dispatch_run_every_backend(self):
+        for event in ("push", "workflow_dispatch"):
+            with self.subTest(event=event):
+                self.assertEqual("true", self._run_kind(event)["full_matrix"])
+
+    def test_a_master_deployment_runs_every_backend(self):
+        # A manual "Start Tests" of master is master's own test run, not a pull
+        # request's, so it runs the full matrix however the branch is named.
+        for ref in ("master", "refs/heads/master"):
+            with self.subTest(deploy_ref=ref):
+                self.assertEqual("true",
+                                 self._run_kind("deployment", deploy_ref=ref)["full_matrix"])
+
+    def test_the_repository_variable_restores_every_backend_on_pull_requests(self):
+        self.assertEqual("true",
+                         self._run_kind("deployment", "true", "feature/some-branch")["full_matrix"])
+
+    def test_only_the_metal_and_flowtree_lanes_run_in_a_subset_run(self):
+        subset = dict(_context("deployment", environment="test", run_tests="true"),
+                      **{"needs.changes.outputs.full_matrix": "false"})
+        for job in ("test", "test-media", "test-cl", "test-media-cl", "test-cuda", "test-media-cuda"):
+            with self.subTest(job=job):
+                condition = _normalize(self.jobs[job]["if"])
+                self.assertIn("needs.changes.outputs.full_matrix == 'true' &&", condition)
+                self.assertFalse(_evaluate(condition, subset))
+        for job in ("test-mac", "test-media-mac", "test-flowtree"):
+            with self.subTest(job=job):
+                self.assertNotIn("full_matrix", _normalize(self.jobs[job]["if"]))
+
+    def test_a_lane_left_to_master_is_not_an_incomplete_run(self):
+        step = next(s for s in self.jobs["auto-resolve"]["steps"]
+                    if s.get("id") == "test-completeness")
+        script = step["run"]
+        self.assertIn('if [ "${{ needs.changes.outputs.full_matrix }}" = "false" ]; then', script)
+        for lane in ("test", "test-media", "test-cl", "test-media-cl", "test-cuda", "test-media-cuda"):
+            with self.subTest(lane=lane):
+                self.assertIn("::notice::%s job was ${" % lane, script)
+                self.assertIn("because a pull request's test run leaves it to master", script)
+
+    def test_the_sole_backend_lane_of_a_subset_run_is_checked_for_incompleteness(self):
+        # A pull request's test run runs the Metal lane alone, so an unexplained
+        # skip of test-mac or test-media-mac means no backend was tested. Unlike
+        # the six lanes left to master, the Metal lanes must NOT be excused as a
+        # subset skip — they are the subset — so their blocks flag it incomplete.
+        step = next(s for s in self.jobs["auto-resolve"]["steps"]
+                    if s.get("id") == "test-completeness")
+        script = step["run"]
+        for result in ("MAC_RESULT", "MEDIA_MAC_RESULT"):
+            with self.subTest(result=result):
+                opener = 'if [ "$%s" = "cancelled" ]' % result
+                start = script.find(opener)
+                self.assertNotEqual(-1, start,
+                                    "%s has no cancelled/skipped completeness block" % result)
+                block = script[start:script.find("\nfi\n", start)]
+                self.assertIn('INCOMPLETE="true"', block)
+                self.assertNotIn("SUBSET_RUN", block)
+                self.assertNotIn("leaves it to master", block)
 
     def test_long_running_lanes_are_test_run_only(self):
         for job in _TEST_RUN_ONLY:

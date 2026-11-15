@@ -94,7 +94,7 @@ event that started it. The `changes` job publishes the mode as `run_tests`.
 | | Validate run | Test run |
 |-|--------------|----------|
 | Started by | `pull_request` (every push to a PR branch) | `deployment` of the branch to the `test` environment; `push` to master; `workflow_dispatch` |
-| Runs | `changes`, `build`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test`, `test-media`, `test-mac`, `test-media-mac`, `test-cl`, `test-media-cl`, `test-cuda`, `test-media-cuda`, `test-flowtree` and `analysis` |
+| Runs | `changes`, `build`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test-mac`, `test-media-mac`, `test-flowtree` and `analysis`; and, when `full_matrix` is `true` (master, `workflow_dispatch`), also `test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda` and `test-media-cuda` (see below) |
 | Remediation | `auto-review`, `auto-resolve-python` | `auto-resolve-python`, and `auto-resolve` after the flaky-test retries |
 | Gate check | **All Checks** | **Test Checks** |
 | `run_tests` | `false` | `true` |
@@ -104,6 +104,23 @@ point, and each push used to start the full suite on the self-hosted fleet,
 only to have the next push cancel it. Validate runs use hosted runners only
 and finish in minutes. The long-running lanes run once, after the loop has
 settled.
+
+**A pull request's test run covers one backend.** A `deployment` test run
+runs the Metal lanes (`test-mac`, `test-media-mac`), which cover every module
+the other backends do, plus `test-flowtree`. The native CPU, OpenCL and CUDA
+lanes (`test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda`,
+`test-media-cuda`) skip there and run in master's test run after the merge,
+so several merges share one full run. `changes` publishes the choice as
+`full_matrix` (`false` for a deployment of a non-master branch, `true` for
+`push`, `workflow_dispatch`, and a deployment of master). Each of those six
+lanes carries `needs.changes.outputs.full_matrix == 'true'`, and
+`auto-resolve`'s incomplete-run check does not count their skip as incomplete.
+A failure only another backend shows is found on master, and `Master Failure
+Dispatch` sends one capped fix round after it. Set the repository variable
+`PR_FULL_TEST_MATRIX` to `true` to run every backend on pull requests again.
+A deployment that names master (a manual `Start Tests` run of master) is
+master's own test run, so it runs every backend as a push to master would.
+`tools/tests/test_validate_test_split.py` pins all of this.
 
 **Both `All Checks` and `Test Checks` are required status checks for master.**
 A validate run never reports `Test Checks` in any state, so a PR cannot merge
@@ -751,8 +768,8 @@ change. Uploads `coverage-cpu`.
 ### What the `test-media` job covers
 
 Runs `engine/audio`, `studio/music`, `studio/compose`, `studio/spatial`,
-`extern/ml-onnx,studio/experiments` and `studio/bioscience` on a self-hosted runner as a single
-(non-matrix) job, like `test`. Runs after `test` (CPU lane, below). Skipped when
+`extern/ml-onnx,studio/experiments` and `studio/bioscience` on a GitHub-hosted
+`ubuntu-latest` runner as a single (non-matrix) job, like `test`. Runs after `test` (CPU lane, below). Skipped when
 none of studio/extern/engine/domain/compute/base change. Uploads `coverage-media`.
 
 ### Tests excluded from the pipeline profile
@@ -816,7 +833,14 @@ The self-hosted test jobs run as four lanes, one per hardware driver setup, each
 two stages in order — a test stage, then a media stage — serialised internally
 so heavy suites do not contend on their fleet:
 
-- **CPU lane (linux, `ar-ci`):** `test` → `test-media`.
+- **CPU lane (linux):** `test` (self-hosted, `ar-ci`) → `test-media`
+  (GitHub-hosted `ubuntu-latest`). `test-media` fits a hosted runner: measured
+  with the lane's own commands, its peak memory in use was about 12 GB of 16
+  and it ran faster than on `ar-ci`. Moving it frees the `ar-ci` fleet for
+  `test`, which does not fit a hosted runner: on 4 vCPUs `engine/utils` ran
+  for hours. Being hosted, `test-media` sets up its JDK with
+  `actions/setup-java`, as `test-flowtree` does. It still waits for `test`, so
+  the lane keeps its two-stage order.
 - **GPU lane (macOS, `ar-ci`):** `test-mac` → `test-media-mac`.
   Only one GPU-heavy Metal suite runs on the macOS fleet at a time — this keeps
   the studio benchmark tick tails from ballooning under GPU contention (the
@@ -980,14 +1004,14 @@ CUDA jobs require it, and only the CUDA fleet carries it, after its preflight ha
 proved the GPU. A Linux host without an NVIDIA GPU therefore never receives a CUDA
 job. Unlike the ROCm fleet, a CUDA fleet may *additionally* carry `ar-ci`
 (`RUNNER_EXTRA_LABELS` in `tools/ci/cuda/.env`), so one GPU host can serve the CPU
-lane as well instead of running a separate CPU fleet beside it. That is safe
-because `test` and `test-media` run every step with `AR_HARDWARE_DRIVER=native` on
-the same image (the CUDA bridge tests in `base/hardware` still use the GPU
+lane's self-hosted stage (`test`; `test-media` is GitHub-hosted) as well instead
+of running a separate CPU fleet beside it. That is safe because `test` runs every
+step with `AR_HARDWARE_DRIVER=native` on the same image (the CUDA bridge tests in `base/hardware` still use the GPU
 directly when one is present, so on such a host they run in `test` too, and the
 fleet's preflight guarantees a complete CUDA environment for them). Sharing
 costs queueing, not correctness: `test-cuda` starts alongside `test` and `test-mac`,
 so within one pipeline it can queue beside the CPU lane on a shared host
-(as can `test-media-cuda` beside `test-media`), and across concurrent
+(as can `test-media-cuda` beside `test`), and across concurrent
 pipelines CUDA jobs can queue behind CPU jobs as the `ar-ci-cl` caveat above
 describes.
 
