@@ -342,6 +342,8 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
             String msg = job.commitMessageBuilder().resolveForRepo(job, depDir.toString());
             assertTrue("Fallback must name the dependent repo: " + msg,
                     msg.contains(depDir.getFileName().toString()));
+            assertFalse("A dependent fallback must not disclose the absolute checkout path: " + msg,
+                    msg.contains(depDir.toString()));
             assertFalse("A dependent fallback must not be the primary prompt fallback",
                     msg.startsWith("Claude Code:"));
             assertNull(job.getCommitMessageSource());

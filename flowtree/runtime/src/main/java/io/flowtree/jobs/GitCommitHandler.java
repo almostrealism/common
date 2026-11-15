@@ -805,7 +805,9 @@ class GitCommitHandler implements ConsoleFeatures {
      * <p>Two protections mirror the primary path. The index is reset before the
      * allowlist is applied, so an artifact the agent staged directly cannot be
      * committed by slipping past a filter that only governs what this method
-     * adds. And each dependent message is run through
+     * adds; a reset that cannot complete leaves the index untrusted, so the repo
+     * is recorded as a failure and skipped rather than committed. And each
+     * dependent message is run through
      * {@link OperatorGrants#applyToMessage} before it reaches {@code git commit},
      * stripping any agent-forged {@code Sensitive-File-Bypass} or
      * {@code Merge-Resolution-Accepted} trailer the agent wrote into the
@@ -832,7 +834,13 @@ class GitCommitHandler implements ConsoleFeatures {
 
             // Unstage whatever the agent staged directly, as the primary path
             // does, so the allowlist below gates the index and not only the adds.
-            gitOps.execute("reset", "HEAD");
+            int resetExitCode = gitOps.execute("reset", "HEAD");
+            if (resetExitCode != 0) {
+                log("Reset failed in dependent repo: " + depPath + " (exit code " + resetExitCode
+                        + "); skipping to avoid committing a staged index");
+                dependentRepoFailures.add(depPath + " (reset exited " + resetExitCode + ")");
+                continue;
+            }
 
             String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
             List<String> changedFiles = new ArrayList<>();

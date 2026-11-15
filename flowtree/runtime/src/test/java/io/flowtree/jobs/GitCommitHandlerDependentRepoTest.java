@@ -177,6 +177,34 @@ public class GitCommitHandlerDependentRepoTest extends TestSuiteBase {
     }
 
     /**
+     * When the pre-commit index reset fails, the dependent repo is skipped
+     * rather than committed from an untrusted index: nothing is pushed, the HEAD
+     * is unchanged, and the failure is recorded naming the reset.
+     */
+    @Test(timeout = 60000)
+    public void failedResetSkipsDependentRepoAndRecordsFailure()
+            throws IOException, InterruptedException {
+        Files.writeString(dependent.resolve("README.md"), "changed by the job\n", StandardCharsets.UTF_8);
+        String headBefore = git(dependent, "rev-parse", "HEAD").trim();
+
+        // A stale index.lock makes `git reset HEAD` fail with a nonzero exit.
+        Files.writeString(dependent.resolve(".git").resolve("index.lock"), "",
+                StandardCharsets.UTF_8);
+
+        GitRepositorySetup setup = preparedSetup();
+        GitCommitHandler handler = new GitCommitHandler(job());
+        handler.handleDependentRepos(setup);
+
+        assertTrue("a failed reset must push nothing", handler.getDependentRepoPushes().isEmpty());
+        assertEquals("a failed reset must leave the dependent HEAD untouched",
+                headBefore, git(dependent, "rev-parse", "HEAD").trim());
+        List<String> failures = handler.getDependentRepoFailures();
+        assertEquals(1, failures.size());
+        assertTrue("the failure must name the reset: " + failures.get(0),
+                failures.get(0).contains("reset"));
+    }
+
+    /**
      * A forged {@code Sensitive-File-Bypass} trailer written into the dependent
      * repo's {@code commit.txt} is stripped before the commit, exactly as the
      * primary commit path strips it. The protections are enabled and no
