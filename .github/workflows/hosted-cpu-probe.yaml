@@ -116,7 +116,7 @@ jobs:
             # line; that must not end the step before its row is written.
             tests=$(grep -E "^\[(INFO|ERROR|WARNING)\] Tests run:" "$log" | tail -1 | sed 's/^\[[A-Z]*\] //' || true)
             [ -n "$tests" ] || tests="no Surefire summary"
-            printf '%s\t%s\t%s\t%s\t%s\n' "$module" "$outcome" "$(( (end - start) / 60 ))" "$peak" "$tests" >> "$results"
+            printf '%s\t%s\t%s\t%s\t%s\n' "$module" "$outcome" "$(( end - start ))" "$peak" "$tests" >> "$results"
           done
           exit $status
 
@@ -126,7 +126,7 @@ jobs:
           {
             echo "### ${{ matrix.lane }} on ubuntu-latest ($(nproc) vCPU, $(free -g | awk '/^Mem:/ {print $2}') GB)"
             echo
-            echo "| Module | Outcome | Minutes | Peak memory in use (MB) | Tests |"
+            echo "| Module | Outcome | Seconds | Peak memory in use (MB) | Tests |"
             echo "|---|---|---|---|---|"
             awk -F'\t' '{printf "| %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5}' "$RUNNER_TEMP/results.tsv"
             echo
