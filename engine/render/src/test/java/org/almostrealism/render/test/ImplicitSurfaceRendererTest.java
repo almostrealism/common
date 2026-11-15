@@ -26,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.PointLight;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
+import org.almostrealism.geometry.Camera;
 import org.almostrealism.geometry.Curve;
 import org.almostrealism.geometry.HeightField;
 import org.almostrealism.geometry.ImplicitSurface;
@@ -341,6 +342,65 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 			}
 		} finally {
 			renderer.destroy();
+		}
+	}
+
+	/**
+	 * A {@link Camera} need not produce unit directions. Rendering through a camera whose
+	 * directions are three times as long as those of {@link #sphereCamera()} gives the same
+	 * hits, hit distances (measured in space, not in multiples of the direction), Fresnel
+	 * reflectances and image as rendering through {@link #sphereCamera()} itself. A pixel may
+	 * only change between hit and miss on the silhouette.
+	 */
+	@Test(timeout = 600000)
+	public void nonUnitCameraDirectionsMatchUnitDirections() {
+		int size = 16;
+		PinholeCamera unitCamera = sphereCamera();
+		Camera longCamera = (position, dimensions) -> {
+			CollectionProducer r = unitCamera.rayAt(position, dimensions);
+			return ray(origin(r), direction(r).multiply(c(3.0)));
+		};
+
+		ImplicitSurfaceRenderer expected = renderer(unitSphere(), unitCamera, size);
+		ImplicitSurfaceRenderer actual = new ImplicitSurfaceRenderer(unitSphere(), longCamera, size, size);
+		actual.addLight(new PointLight(new Vector(3.0, 4.0, 5.0), 1.0, new RGB(1.0, 1.0, 1.0)));
+		actual.setEnvironment(new RGB(HORIZON[0], HORIZON[1], HORIZON[2]),
+				new RGB(ZENITH[0], ZENITH[1], ZENITH[2]));
+
+		try {
+			expected.frame().get().run();
+			actual.frame().get().run();
+
+			boolean[][] expectedHits = new boolean[size][size];
+			for (int i = 0; i < size * size; i++) {
+				expectedHits[i / size][i % size] = expected.getDistance().toDouble(i) > 0;
+			}
+
+			int hits = 0;
+			for (int i = 0; i < size * size; i++) {
+				int row = i / size;
+				int col = i % size;
+				double t = actual.getDistance().toDouble(i);
+				if ((t > 0) != expectedHits[row][col]) {
+					assertTrue("Pixel " + i + " changed between hit and miss away from the silhouette",
+							onBoundary(expectedHits, row, col));
+					continue;
+				}
+
+				if (t > 0) hits++;
+				assertEquals("Distance of pixel " + i, expected.getDistance().toDouble(i), t, 1e-4);
+				assertEquals("Reflectance of pixel " + i,
+						expected.getReflectance().toDouble(i), actual.getReflectance().toDouble(i), 1e-4);
+				for (int ch = 0; ch < 3; ch++) {
+					assertEquals("Channel " + ch + " of pixel " + i,
+							expected.getImage().toDouble(3 * i + ch), actual.getImage().toDouble(3 * i + ch), 1e-4);
+				}
+			}
+
+			assertTrue("Some pixels should hit the sphere", hits > 0);
+		} finally {
+			expected.destroy();
+			actual.destroy();
 		}
 	}
 

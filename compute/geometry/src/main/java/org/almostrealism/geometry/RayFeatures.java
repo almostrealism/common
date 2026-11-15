@@ -134,6 +134,18 @@ public interface RayFeatures extends VectorFeatures {
 	}
 
 	/**
+	 * Returns the ray, or every ray of a batch, with the same origin and its direction
+	 * normalized to unit length, so that the parametric distance along it is the distance
+	 * in space.
+	 *
+	 * @param r the ray producer, {@code (6)} or {@code (n, 6)}
+	 * @return a producer for the ray with a unit direction, of the same shape
+	 */
+	default CollectionProducer unitRay(Producer<?> r) {
+		return ray(origin(r), normalize(direction(r)));
+	}
+
+	/**
 	 * Computes the point along a ray at the given parametric distance.
 	 * Calculates: {@code origin + t * direction}
 	 *

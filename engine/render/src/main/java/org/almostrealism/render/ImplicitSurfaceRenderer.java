@@ -51,7 +51,9 @@ import java.util.stream.Stream;
  * }</pre>
  *
  * <h2>Marching</h2>
- * <p>Each pixel keeps a bracket {@code [near, far]} of distances along its ray, with the
+ * <p>The direction of every camera ray is normalized first, since a {@link Camera} need not
+ * produce unit directions, so every distance below is a distance in space. Each pixel keeps
+ * a bracket {@code [near, far]} of distances along its ray, with the
  * surface value positive at {@code near}. For {@link #setMarchSteps(int) marchSteps} steps
  * the ray advances by {@code f(p) / L}, where {@code L} is the
  * {@link ImplicitSurface#lipschitzBound() Lipschitz bound} of the surface (at least
@@ -395,7 +397,9 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 	 */
 	public OperationList frame() {
 		OperationList pixels = new OperationList("Implicit Surface Pixels");
-		pixels.add(a(cp(rays), camera.rayAt(pixelPositions(), pair(width, height))));
+		// A camera need not produce unit directions, but the march, the hit distances,
+		// maximumDistance and the shading all measure along a unit direction
+		pixels.add(a(cp(rays), unitRay(camera.rayAt(pixelPositions(), pair(width, height)))));
 		pixels.add(a(cp(probe), c(0.0)));
 		pixels.add(a(cp(near), c(0.0)));
 		pixels.add(a(cp(far), c(unclosedDistance())));
