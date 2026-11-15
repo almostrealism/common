@@ -19,6 +19,7 @@ package org.almostrealism.space.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
+import org.almostrealism.geometry.BoundingSolid;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Triangle;
 import org.almostrealism.util.TestSuiteBase;
@@ -159,10 +160,31 @@ public class TriangleBehaviorTest extends TestSuiteBase {
 		Assert.assertEquals(0.6, c.toDouble(2), 1e-6);
 	}
 
-	/** calculateBoundingSolid is not yet implemented for triangles. */
-	@Test(timeout = 30000, expected = UnsupportedOperationException.class)
-	public void boundingSolidUnsupported() {
-		Triangle t = new Triangle();
-		t.calculateBoundingSolid();
+	/** A default triangle has all vertices at the origin and bounds to a zero-sized box. */
+	@Test(timeout = 30000)
+	public void boundingSolidDefaultTriangleIsZeroBox() {
+		BoundingSolid bounds = new Triangle().calculateBoundingSolid();
+
+		Assert.assertEquals(0.0, bounds.minX, 1e-9);
+		Assert.assertEquals(0.0, bounds.maxX, 1e-9);
+		Assert.assertEquals(0.0, bounds.minY, 1e-9);
+		Assert.assertEquals(0.0, bounds.maxY, 1e-9);
+		Assert.assertEquals(0.0, bounds.minZ, 1e-9);
+		Assert.assertEquals(0.0, bounds.maxZ, 1e-9);
+	}
+
+	/** A triangle bounds to the axis-aligned box over its three vertices. */
+	@Test(timeout = 30000)
+	public void boundingSolidCoversVertices() {
+		Triangle t = new Triangle(new Vector(0.0, 0.0, 0.0),
+				new Vector(2.0, 0.0, 0.0), new Vector(0.0, 3.0, 1.0));
+		BoundingSolid bounds = t.calculateBoundingSolid();
+
+		Assert.assertEquals(0.0, bounds.minX, 1e-9);
+		Assert.assertEquals(2.0, bounds.maxX, 1e-9);
+		Assert.assertEquals(0.0, bounds.minY, 1e-9);
+		Assert.assertEquals(3.0, bounds.maxY, 1e-9);
+		Assert.assertEquals(0.0, bounds.minZ, 1e-9);
+		Assert.assertEquals(1.0, bounds.maxZ, 1e-9);
 	}
 }
