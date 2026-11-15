@@ -1785,7 +1785,7 @@ gives every open pull request from this repository one label for its stage:
 | `ci: auto-review` | The validate run finished and sent a review agent (`auto-review-submit` or `auto-resolve-python-submit` succeeded). The agent either pushes, which starts a new validate run, or finds nothing to change, which starts the test run |
 | `ci: full tests` | The head commit's test run is running, including a re-run attempt, or failed within the last 15 minutes on an attempt before `MAX_ATTEMPTS`, so the retry gate may still re-run it |
 | `ci: auto-fix` | The test run failed and an agent was sent: `auto-resolve` staged a request in the latest attempt, or `auto-resolve-python-submit` succeeded |
-| `ci: ready for review` | `Test Checks` and `All Checks` both passed on the head commit and the pull request has no merge conflict |
+| `ci: ready for review` | The head commit's newest test run succeeded, the newest `Test Checks` and `All Checks` check runs (by id, so a queued one counts) both passed, and the pull request has no merge conflict |
 | `ci: needs attention` | CI stopped with no agent working on it: a run failed or was cancelled without a submission, a test run passed while `All Checks` did not, or a merge conflict |
 | `ci: stalled` | Added beside the stage label when the stage has lasted longer than `LABELS` in the script allows (1 h validating, 4 h auto-review or auto-fix, 10 h full tests) |
 

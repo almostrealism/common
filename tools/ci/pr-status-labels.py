@@ -18,7 +18,8 @@ What decides each state (``derive``), for the pull request's head commit:
 
 - a test run (a ``deployment`` run of Build and Test) exists:
     - not finished: ``ci: full tests``
-    - its ``Test Checks`` and the validate run's ``All Checks`` passed:
+    - it succeeded, and the newest ``Test Checks`` and the validate run's
+      ``All Checks`` passed:
       ``ci: ready for review`` (``ci: needs attention`` instead when the pull
       request has a merge conflict)
     - failed, and an agent was sent (``auto-resolve-python-submit`` succeeded,
@@ -123,9 +124,14 @@ def submitted(jobs, names):
 
 
 def check_conclusion(check_runs, name):
-    """The conclusion of the newest check run with this name, or None."""
-    latest = newest([run for run in check_runs if run.get("name") == name],
-                    key="started_at")
+    """The conclusion of the newest check run with this name, or None.
+
+    Newest is the highest id: check run ids increase with creation, and a
+    queued check run has no ``started_at`` yet, so ordering by start time would
+    pass over the queued gate and report an older run's result instead."""
+    named = [run for run in check_runs
+             if run.get("name") == name and run.get("id") is not None]
+    latest = max(named, key=lambda run: run["id"]) if named else None
     return latest.get("conclusion") if latest else None
 
 
@@ -146,7 +152,10 @@ def derive(facts, now):
             return FULL_TESTS, started, "test run attempt %s in progress" % (
                 test.get("run_attempt", 1))
         finished = test.get("updated_at")
-        if check_conclusion(checks, "Test Checks") == "success":
+        # Check runs belong to the commit, not to a run, so an earlier test
+        # run's passing Test Checks must not make a failed run look ready.
+        if test.get("conclusion") == "success" and \
+                check_conclusion(checks, "Test Checks") == "success":
             if check_conclusion(checks, "All Checks") != "success":
                 return NEEDS_ATTENTION, finished, \
                     "Test Checks passed but All Checks has not"
@@ -206,6 +215,19 @@ class StatusClient(flakes.GitHubClient):
         """GET a repository-relative path."""
         return self._request("/repos/%s/%s" % (self.repo, path))
 
+    def get_all(self, path):
+        """Every item of a repository-relative list endpoint that answers with
+        a bare JSON array, following its pages 100 at a time."""
+        separator = "&" if "?" in path else "?"
+        items = []
+        page = 1
+        while True:
+            batch = self.get("%s%sper_page=100&page=%d" % (path, separator, page))
+            items.extend(batch)
+            if len(batch) < 100:
+                return items
+            page += 1
+
     def send(self, method, path, body=None):
         """A write request to a repository-relative path."""
         url = "%s/repos/%s/%s" % (self.api, self.repo, path)
@@ -223,7 +245,7 @@ class StatusClient(flakes.GitHubClient):
 
 def open_pulls(client, branch=None):
     """The repository's open pull requests from its own branches."""
-    pulls = client.get("pulls?state=open&per_page=100")
+    pulls = client.get_all("pulls?state=open")
     own = [pr for pr in pulls
            if (pr.get("head", {}).get("repo") or {}).get("full_name")
            == client.repo]
@@ -244,6 +266,7 @@ def gather(client, pr):
         "pr": detail,
         "validate_run": newest([r for r in runs if r["event"] == "pull_request"]),
         "test_run": newest([r for r in runs if r["event"] == "deployment"]),
+        # TODO(review): check-runs (and the run's jobs) are read from one page of 100; a commit with matrix shards over several attempts can exceed that and hide the newest gate.
         "check_runs": client.get(
             "commits/%s/check-runs?per_page=100" % sha).get("check_runs", []),
     }
@@ -270,7 +293,7 @@ def gather(client, pr):
 
 def ensure_labels(client):
     """Create any ``ci: `` label the repository does not have yet."""
-    existing = {label["name"] for label in client.get("labels?per_page=100")}
+    existing = {label["name"] for label in client.get_all("labels")}
     for name, (colour, description, _) in LABELS.items():
         if name not in existing:
             client.send("POST", "labels", {

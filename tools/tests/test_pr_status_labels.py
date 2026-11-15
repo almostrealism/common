@@ -31,9 +31,14 @@ def run(event, status="completed", conclusion="success", attempt=1,
             "updated_at": stamp(minutes_ago), "head_branch": "feature/x"}
 
 
-def check(name, conclusion, minutes_ago=5):
-    return {"name": name, "conclusion": conclusion,
-            "started_at": stamp(minutes_ago)}
+def check(name, conclusion, minutes_ago=5, started=True):
+    """A check run; ids grow with creation, so a newer one has a larger id."""
+    result = {"id": 10 ** 6 - minutes_ago, "name": name,
+              "conclusion": conclusion,
+              "status": "completed" if conclusion else "queued"}
+    if started:
+        result["started_at"] = stamp(minutes_ago)
+    return result
 
 
 def job(name, conclusion="success"):
@@ -96,6 +101,37 @@ class DeriveTest(unittest.TestCase):
                         check("All Checks", "failure", minutes_ago=10),
                         check("Test Checks", "success")])
         self.assertEqual(state[0], labels.NEEDS_ATTENTION)
+
+    def test_a_queued_gate_hides_an_older_pass(self):
+        state = self.derive(
+            pr={"number": 7, "mergeable_state": "clean"},
+            test_run=run("deployment"),
+            check_runs=[check("All Checks", "success", minutes_ago=60),
+                        check("All Checks", None, minutes_ago=1,
+                              started=False),
+                        check("Test Checks", "success")])
+        self.assertEqual(state[0], labels.NEEDS_ATTENTION)
+
+    def test_an_earlier_runs_passing_test_checks_does_not_make_a_failure_ready(
+            self):
+        checks = [check("All Checks", "success", minutes_ago=90),
+                  check("Test Checks", "success", minutes_ago=60)]
+        for conclusion in ("failure", "cancelled"):
+            state = self.derive(
+                pr={"number": 7, "mergeable_state": "clean"},
+                test_run=run("deployment", conclusion=conclusion, attempt=3),
+                check_runs=checks)
+            self.assertEqual(state[0], labels.NEEDS_ATTENTION, conclusion)
+        state = self.derive(
+            pr={"number": 7, "mergeable_state": "clean"},
+            test_run=run("deployment", conclusion="failure", attempt=3),
+            check_runs=checks, staged=True)
+        self.assertEqual(state[0], labels.AUTO_FIX)
+
+    def test_a_check_run_without_an_id_is_ignored(self):
+        self.assertIsNone(labels.check_conclusion(
+            [{"name": "Test Checks", "conclusion": "success"}], "Test Checks"))
+        self.assertIsNone(labels.check_conclusion([], "Test Checks"))
 
     def test_a_merge_conflict_is_not_ready(self):
         state = self.derive(
@@ -180,12 +216,16 @@ class FakeClient:
     def __init__(self, answers):
         self.answers = answers
         self.sent = []
+        self.requested = []
 
     def get(self, path):
+        self.requested.append(path)
         for prefix, answer in self.answers:
             if path.startswith(prefix):
-                return answer
+                return answer(path) if callable(answer) else answer
         raise AssertionError("unexpected GET " + path)
+
+    get_all = labels.StatusClient.get_all
 
     def send(self, method, path, body=None):
         self.sent.append((method, path, body))
@@ -223,10 +263,53 @@ class GatherTest(unittest.TestCase):
         self.assertEqual(client.sent[1],
                          ("DELETE", "issues/7/labels/ci%3A%20full%20tests", None))
 
+    def test_ignores_a_deployment_run_of_another_branch(self):
+        # A deployment to another environment (worker, production,
+        # start-tests) is made from master, so its run is master's.
+        master_deploy = dict(run("deployment", minutes_ago=1), id=13,
+                             head_branch="master")
+        validate = dict(run("pull_request"), id=14)
+        client = FakeClient([
+            ("pulls/7", {"number": 7}),
+            ("actions/workflows/", {"workflow_runs": [master_deploy,
+                                                      validate]}),
+            ("commits/abc/check-runs", {"check_runs": []}),
+            ("actions/runs/14/jobs", {"jobs": []}),
+        ])
+        facts = labels.gather(client, PR)
+        self.assertIsNone(facts["test_run"])
+        self.assertEqual(facts["validate_run"]["id"], 14)
+
     def test_open_pulls_skips_forks(self):
         fork = {"number": 8, "head": {"ref": "x", "repo": {"full_name": "f/r"}}}
         client = FakeClient([("pulls?", [PR, fork])])
         self.assertEqual([p["number"] for p in labels.open_pulls(client)], [7])
+
+    def test_open_pulls_reads_every_page(self):
+        def page(path):
+            number = int(path.rsplit("page=", 1)[1])
+            if number == 1:
+                return [dict(PR, number=n) for n in range(100)]
+            return [dict(PR, number=100 + number)] if number == 2 else []
+        client = FakeClient([("pulls?", page)])
+        numbers = [p["number"] for p in labels.open_pulls(client)]
+        self.assertEqual(len(numbers), 101)
+        self.assertEqual(numbers[-1], 102)
+        self.assertEqual(client.requested,
+                         ["pulls?state=open&per_page=100&page=1",
+                          "pulls?state=open&per_page=100&page=2"])
+
+    def test_ensure_labels_sees_labels_on_a_later_page(self):
+        def page(path):
+            if path.endswith("page=1"):
+                return [{"name": "other %d" % n} for n in range(100)]
+            return [{"name": name} for name in labels.LABELS
+                    if name != labels.STALLED]
+        client = FakeClient([("labels?", page)])
+        labels.ensure_labels(client)
+        self.assertEqual([body["name"] for _, _, body in client.sent],
+                         [labels.STALLED])
+        self.assertEqual(client.requested[0], "labels?per_page=100&page=1")
 
 
 class WorkflowTest(unittest.TestCase):
