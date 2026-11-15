@@ -357,6 +357,17 @@ attempt of a test run, stages a confirmed regression on the attempt it appears
 and anything else on the final attempt, and the retry gate submits an attempt
 that staged a request instead of retrying it.
 
+A failed job outside the long-running lanes is deterministic unless its log
+shows an infrastructure failure: a dependency or plugin that could not be
+downloaded, a dropped or timed-out connection, a 5xx from a package host, a
+runner that shut down or lost contact, or a full disk (`INFRA_SIGNATURES` in
+`rerun-flaky-tests.sh`). The retry gate retries such a run up to the same
+attempt limit. It never reaches an agent, because `auto-resolve` stages nothing
+when no test job failed, so a test run still failing on infrastructure at its
+last attempt is left for a person. One failed download in
+`test-timeout-check` would otherwise skip every test lane and leave the run
+with neither a retry nor a remediation.
+
 Exclusivity is structural, not a handoff between jobs:
 
 - `auto-review` and `auto-resolve` never run in the same run: `auto-review`

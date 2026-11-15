@@ -54,6 +54,18 @@
 # test-media-mac, test-media-cl, …). The deterministic `*-check` validators
 # (test-timeout-check, test-integrity-check) are explicitly NOT flaky-eligible.
 #
+# Any other failed job — a `*-check` validator, `build`, `checkstyle` — is
+# deterministic unless its log shows an infrastructure failure: a dependency or
+# plugin that could not be downloaded, a dropped or timed-out connection, a
+# server error from a package or artifact host, a runner that shut down or lost
+# contact, or a full disk (INFRA_SIGNATURES below). Such a failure says nothing
+# about the commit, so it is retried like a flaky test, up to the same
+# MAX_ATTEMPTS. It never reaches an agent: auto-resolve stages nothing for a run
+# whose test jobs did not fail, so a run that is still failing this way on its
+# last attempt is left for a person. Without this, one failed download in
+# test-timeout-check skips every test lane, and the run is neither retried nor
+# remediated.
+#
 # This must run from a workflow_run workflow (after "Build and Test"
 # completes): rerun-failed-jobs can only act on a completed run.
 #
@@ -95,6 +107,10 @@ set -euo pipefail
 : "${HEAD_BRANCH:?HEAD_BRANCH is required}"
 : "${HEAD_REPO:?HEAD_REPO is required}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-3}"
+
+# Log lines that mark a failed job as an infrastructure failure; see the header.
+# Extended regular expression, matched case-insensitively.
+INFRA_SIGNATURES='Could not (find|resolve|transfer) artifact|Failed to (transfer|read artifact descriptor)|Could not resolve dependencies|Connection (reset|refused|timed out)|(connect|read) timed out|ETIMEDOUT|ECONNRESET|Temporary failure in name resolution|(HTTP|status code:?) ?5[0-9][0-9]|(502 Bad Gateway|503 Service Unavailable|504 Gateway Time-?out)|runner has received a shutdown signal|lost communication with the server|No space left on device'
 
 # emit <retried> [superseded]
 emit() {
@@ -141,10 +157,10 @@ if [ -n "${ATTEMPT_STARTED_AT:-}" ]; then
     done <<< "$STAGED_AT"
 fi
 
-# Every job of the attempt that just completed, as "<conclusion>\t<name>".
+# Every job of the attempt that just completed, as "<conclusion>\t<name>\t<id>".
 JOBS=$(gh api --paginate \
     "/repos/$REPO/actions/runs/$RUN_ID/attempts/$RUN_ATTEMPT/jobs" \
-    --jq '.jobs[] | "\(.conclusion)\t\(.name)"')
+    --jq '.jobs[] | "\(.conclusion)\t\(.name)\t\(.id)"')
 
 # A python-tests or python-evals failure is handled by auto-resolve-python:
 # see the header.
@@ -159,7 +175,14 @@ done
 
 # Failed jobs for the attempt. Cancelled/skipped jobs are not "failures"
 # here — only a job that ran and failed counts.
-FAILED_JOBS=$(printf '%s\n' "$JOBS" | awk -F '\t' '$1 == "failure" { print $2 }')
+FAILED_JOBS=$(printf '%s\n' "$JOBS" | awk -F '\t' '$1 == "failure" { print $2 "\t" $3 }')
+
+# is_infra_failure <job-id>: the job's log shows an infrastructure failure. A log
+# that cannot be read shows nothing, so the job stays deterministic.
+is_infra_failure() {
+    [ -n "$1" ] || return 1
+    gh api "/repos/$REPO/actions/jobs/$1/logs" 2>/dev/null | grep -Eiq "$INFRA_SIGNATURES"
+}
 
 if [ -z "$FAILED_JOBS" ]; then
     echo "::notice::No failed jobs found for run $RUN_ID attempt $RUN_ATTEMPT — proceeding to auto-resolve"
@@ -167,32 +190,39 @@ if [ -z "$FAILED_JOBS" ]; then
     exit 0
 fi
 
-# Is any failed job a flaky-eligible test-execution job?
+# Is any failed job a flaky-eligible test-execution job, or did one fail on
+# infrastructure? A deterministic failure anywhere does not stop the retry: the
+# re-run repeats it, and the last attempt hands it on.
 FLAKY_FOUND=false
-while IFS= read -r name; do
+INFRA_FOUND=false
+while IFS=$'\t' read -r name id; do
     [ -z "$name" ] && continue
     case "$name" in
-        # Deterministic validators — never flaky, never retried.
-        *-check|*-check\ *)
-            echo "::notice::Failed validation job (deterministic): $name"
-            ;;
         # test, test (N), test-flowtree, test-media, test-mac, test-cl, …
-        test|test\ *|test-*)
-            FLAKY_FOUND=true
-            echo "::notice::Failed flaky-eligible test job: $name"
-            ;;
-        *)
-            echo "::notice::Failed non-test job (deterministic): $name"
-            ;;
+        # (a *-check validator is named test-…-check, so it is matched first).
+        *-check|*-check\ *) kind=check ;;
+        test|test\ *|test-*) kind=test ;;
+        *) kind=other ;;
     esac
+    if [ "$kind" = "test" ]; then
+        FLAKY_FOUND=true
+        echo "::notice::Failed flaky-eligible test job: $name"
+    elif is_infra_failure "$id"; then
+        INFRA_FOUND=true
+        echo "::notice::Failed job with an infrastructure failure in its log: $name"
+    elif [ "$kind" = "check" ]; then
+        echo "::notice::Failed validation job (deterministic): $name"
+    else
+        echo "::notice::Failed non-test job (deterministic): $name"
+    fi
 done <<< "$FAILED_JOBS"
 
-if [ "$FLAKY_FOUND" != "true" ]; then
-    echo "::notice::No flaky-eligible test job in the failed set — deterministic failure, proceeding to auto-resolve"
+if [ "$FLAKY_FOUND" != "true" ] && [ "$INFRA_FOUND" != "true" ]; then
+    echo "::notice::No flaky-eligible test job and no infrastructure failure in the failed set — deterministic failure, proceeding to auto-resolve"
     emit false
     exit 0
 fi
 
-echo "::notice::Re-running failed jobs for run $RUN_ID (attempt $RUN_ATTEMPT of $MAX_ATTEMPTS) — a flaky test failure may not survive a re-run"
+echo "::notice::Re-running failed jobs for run $RUN_ID (attempt $RUN_ATTEMPT of $MAX_ATTEMPTS) — a flaky test or infrastructure failure may not survive a re-run"
 gh api -X POST "/repos/$REPO/actions/runs/$RUN_ID/rerun-failed-jobs"
 emit true
