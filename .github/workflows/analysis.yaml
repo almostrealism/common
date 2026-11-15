@@ -43,13 +43,29 @@ on:
 #   test-flowtree), so it never occupies the self-hosted fleet.
 #
 #   TEST (deployment, push to master, workflow_dispatch): everything above
-#   except auto-review, plus every long-running test lane, the flaky-test
-#   retries and auto-resolve. Its gate job is reported as "Test Checks".
+#   except auto-review, plus the long-running test lanes (all of them on
+#   master; one backend in a pull request's run, see "Backend subset"
+#   below), the flaky-test retries and auto-resolve. Its gate job is
+#   reported as "Test Checks".
 #   A test run does not start on its own for a PR branch: something must
 #   create a GitHub deployment for the branch (environment "test"). The
 #   FlowTree controller does so when a workstream's review loop ends; a
 #   person does so with the "Start Tests" workflow or one REST call (see
 #   .github/CLAUDE.md). CI never waits on the controller.
+#
+# Backend subset. A pull request's test run (a deployment) runs the lanes of
+# one backend: Metal (test-mac, test-media-mac), which covers every module the
+# native, OpenCL and CUDA lanes do, plus test-flowtree. The native CPU, OpenCL
+# and CUDA lanes (test, test-media, test-cl, test-media-cl, test-cuda,
+# test-media-cuda) skip there, which Test Checks counts as passing, and run in
+# master's test run after the merge, where every backend runs. Several merges
+# then share one full run instead of each paying for every backend before it.
+# A failure only another backend shows is caught on master, and Master Failure
+# Dispatch sends one capped fix round after it. The `changes` job decides it
+# (outputs.full_matrix); setting the repository variable PR_FULL_TEST_MATRIX
+# to "true" runs every backend on pull requests again. A deployment that names
+# master (a manual "Start Tests" run of master) is master's own test run, not a
+# pull request's, and runs every backend like a push to master does.
 #
 # Why a deployment and not workflow_dispatch: checks from a
 # workflow_dispatch run on a PR head branch do not satisfy a required
@@ -174,17 +190,32 @@ jobs:
       # long-running test lanes, the analysis job and auto-resolve. See
       # "Validate runs and test runs" at the top of this file.
       run_tests: ${{ steps.kind.outputs.run_tests }}
+      # 'true' when a test run runs every backend's lanes; 'false' in a pull
+      # request's test run (a deployment), which runs one backend. See
+      # "Backend subset" at the top of this file.
+      full_matrix: ${{ steps.kind.outputs.full_matrix }}
     steps:
       - name: Decide the kind of run
         id: kind
         env:
           EVENT_NAME: ${{ github.event_name }}
+          PR_FULL_TEST_MATRIX: ${{ vars.PR_FULL_TEST_MATRIX }}
+          # The branch a deployment names (empty for every other event). A
+          # deployment of master is master's own test run and runs every
+          # backend, so only a deployment of some other branch is the subset.
+          DEPLOY_REF: ${{ github.event.deployment.ref }}
         run: |
           if [ "$EVENT_NAME" = "pull_request" ]; then
             echo "run_tests=false" >> "$GITHUB_OUTPUT"
+            echo "full_matrix=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Validate run — the long-running test lanes run in a separate test run (see Start Tests)"
+          elif [ "$EVENT_NAME" = "deployment" ] && [ "$PR_FULL_TEST_MATRIX" != "true" ] && [ "$DEPLOY_REF" != "master" ] && [ "$DEPLOY_REF" != "refs/heads/master" ]; then
+            echo "run_tests=true" >> "$GITHUB_OUTPUT"
+            echo "full_matrix=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Pull request test run — the Metal and flowtree lanes only; master runs every backend after the merge"
           else
             echo "run_tests=true" >> "$GITHUB_OUTPUT"
+            echo "full_matrix=true" >> "$GITHUB_OUTPUT"
           fi
 
 
@@ -2265,6 +2296,7 @@ jobs:
     # Layer gate: engine tests only run when engine-or-below layers are modified
     if: >-
       needs.changes.outputs.run_tests == 'true' &&
+      needs.changes.outputs.full_matrix == 'true' &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -2479,6 +2511,7 @@ jobs:
     # silently dropped studio tests on exactly the studio-only PRs the clause was written for.
     if: >-
       needs.changes.outputs.run_tests == 'true' &&
+      needs.changes.outputs.full_matrix == 'true' &&
       !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
@@ -2844,6 +2877,7 @@ jobs:
     # alongside test-media-mac.
     if: >-
       needs.changes.outputs.run_tests == 'true' &&
+      needs.changes.outputs.full_matrix == 'true' &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -3003,6 +3037,7 @@ jobs:
     # auto-resolve, which tools/tests/test_auto_resolve_test_job_coverage.py checks.
     if: >-
       needs.changes.outputs.run_tests == 'true' &&
+      needs.changes.outputs.full_matrix == 'true' &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
       needs.test-timeout-check.result == 'success' &&
@@ -3342,6 +3377,7 @@ jobs:
     # tolerance to take effect — see test-media.
     if: >-
       needs.changes.outputs.run_tests == 'true' &&
+      needs.changes.outputs.full_matrix == 'true' &&
       !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
@@ -3548,6 +3584,7 @@ jobs:
     # Required, like test-cuda: in analysis.needs, all-checks and auto-resolve.
     if: >-
       needs.changes.outputs.run_tests == 'true' &&
+      needs.changes.outputs.full_matrix == 'true' &&
       !cancelled() &&
       needs.build.result == 'success' &&
       needs.code-policy-check.result == 'success' &&
@@ -4934,6 +4971,14 @@ jobs:
             VALIDATION_FAILED="true"
           fi
 
+          # A pull request's test run runs the Metal and flowtree lanes only
+          # (see "Backend subset" at the top of this file), so every other lane
+          # is skipped by design there.
+          SUBSET_RUN="false"
+          if [ "${{ needs.changes.outputs.full_matrix }}" = "false" ]; then
+            SUBSET_RUN="true"
+          fi
+
           # Determine whether layer-based filtering explains a skipped test job.
           # Engine tests (test, test-mac) only run when engine-or-below layers change.
           ENGINE_LAYERS_CHANGED="false"
@@ -4957,6 +5002,8 @@ jobs:
           if [ "$TEST_RESULT" = "cancelled" ] || [ "$TEST_RESULT" = "skipped" ]; then
             if [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test job was ${TEST_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$SUBSET_RUN" = "true" ]; then
+              echo "::notice::test job was ${TEST_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
             elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
               echo "::notice::test job was ${TEST_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
             else
@@ -4973,12 +5020,44 @@ jobs:
             if [ "$TEST_RESULT" != "failure" ] && [ "$TEST_RESULT" != "cancelled" ]; then
               if [ "$VALIDATION_FAILED" = "true" ]; then
                 echo "::notice::test-media job was ${MEDIA_RESULT} because an upstream validation check failed — not treating as incomplete"
+              elif [ "$SUBSET_RUN" = "true" ]; then
+                echo "::notice::test-media job was ${MEDIA_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
               elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
                 echo "::notice::test-media job was ${MEDIA_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
               else
                 echo "::warning::test-media job was ${MEDIA_RESULT} without test job failure"
                 INCOMPLETE="true"
               fi
+            fi
+          fi
+
+          # The Metal lane (test-mac, test-media-mac) waits for no other lane, exactly like
+          # the CPU lane above. A pull request's test run runs the Metal lane alone (the other
+          # backends are left to master), so it is the only backend coverage there: an
+          # unexplained skip of test-mac means no backend was tested, and SUBSET_RUN never
+          # excuses it — the subset is these very lanes.
+          if [ "$MAC_RESULT" = "cancelled" ] || [ "$MAC_RESULT" = "skipped" ]; then
+            if [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test-mac job was ${MAC_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
+              echo "::notice::test-mac job was ${MAC_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
+            else
+              echo "::warning::test-mac job was ${MAC_RESULT} without an upstream failure"
+              INCOMPLETE="true"
+            fi
+          fi
+          if [ "$MEDIA_MAC_RESULT" = "cancelled" ] || [ "$MEDIA_MAC_RESULT" = "skipped" ]; then
+            # A skipped test-mac is NOT an excuse, for the same reason as test-media above:
+            # test-media-mac has the wider layer gate and runs on studio/extern-only changes.
+            if [ "$MAC_RESULT" = "failure" ] || [ "$MAC_RESULT" = "cancelled" ]; then
+              echo "::notice::test-media-mac job was ${MEDIA_MAC_RESULT} because its lane's first stage failed — not treating as incomplete"
+            elif [ "$VALIDATION_FAILED" = "true" ]; then
+              echo "::notice::test-media-mac job was ${MEDIA_MAC_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
+              echo "::notice::test-media-mac job was ${MEDIA_MAC_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
+            else
+              echo "::warning::test-media-mac job was ${MEDIA_MAC_RESULT} without an upstream failure"
+              INCOMPLETE="true"
             fi
           fi
 
@@ -4993,6 +5072,8 @@ jobs:
             # lane's failure does not explain its skip.
             if [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test-cl job was ${CL_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$SUBSET_RUN" = "true" ]; then
+              echo "::notice::test-cl job was ${CL_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
             elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
               echo "::notice::test-cl job was ${CL_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
             else
@@ -5007,6 +5088,8 @@ jobs:
               echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} because its lane's first stage failed — not treating as incomplete"
             elif [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$SUBSET_RUN" = "true" ]; then
+              echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
             elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
               echo "::notice::test-media-cl job was ${MEDIA_CL_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
             else
@@ -5019,6 +5102,8 @@ jobs:
             # failure does not explain its skip.
             if [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test-cuda job was ${CUDA_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$SUBSET_RUN" = "true" ]; then
+              echo "::notice::test-cuda job was ${CUDA_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
             elif [ "$ENGINE_LAYERS_CHANGED" = "false" ]; then
               echo "::notice::test-cuda job was ${CUDA_RESULT} due to layer-based filtering (no engine-or-below changes) — not treating as incomplete"
             else
@@ -5032,6 +5117,8 @@ jobs:
               echo "::notice::test-media-cuda job was ${MEDIA_CUDA_RESULT} because its lane's first stage failed — not treating as incomplete"
             elif [ "$VALIDATION_FAILED" = "true" ]; then
               echo "::notice::test-media-cuda job was ${MEDIA_CUDA_RESULT} because an upstream validation check failed — not treating as incomplete"
+            elif [ "$SUBSET_RUN" = "true" ]; then
+              echo "::notice::test-media-cuda job was ${MEDIA_CUDA_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
             elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
               echo "::notice::test-media-cuda job was ${MEDIA_CUDA_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
             else
