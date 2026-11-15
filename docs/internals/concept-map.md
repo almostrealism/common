@@ -22,8 +22,10 @@ surveys further families and as gaps are closed.
 ## 1. Spatial functions
 
 Functions of a position in space: a value, and a normal (the normalized gradient of that
-value). The chain is linear and points from the most abstract (a marker) to the most
-concrete (a class).
+value). The hierarchy starts at a marker (`Differentiable`) and narrows through `Gradient`
+and `Curve`, then **branches**: `ImplicitSurface`, `ShadableCurve` and `Volume` are separate
+extensions of `Curve`, and `SignedDistanceFunction` and `HeightField` specialize
+`ImplicitSurface` below it.
 
 | Type | Declared as | Module (package) | Members |
 |---|---|---|---|
@@ -56,13 +58,14 @@ Notes on the declarations:
   `Differentiable` itself (a value, or a derivative, independent of "normal") has been defined,
   and adding one would reshape every implementor; it needs design, not a mechanical change.
 - **`Volume.intersect(Vector, Vector)` is host-valued and parallels the intersection family.**
-  It returns a host `double` and carries a `// TODO Replace with intersectable` comment; the
-  producer-valued counterpart is `Intersectable.intersectAt` (family 2). `Volume` is in
-  `domain/physics`, which reaches `compute/geometry` transitively through `domain/color`
-  (`physics → color → geometry`), so the link would **not** need a new dependency. It is open
-  because the signature is host-valued (`double`, and `getSurfaceCoords`/`getSpatialCoords`
-  likewise return `double[]`, with their own `// TODO Return Producer<Pair>`): the concept must
-  be moved onto producers before `Volume` can satisfy `Intersectable`.
+  It returns a host `double`, and a source comment on the method asks for it to be replaced with
+  an intersectable; the producer-valued counterpart is `Intersectable.intersectAt` (family 2).
+  `Volume` is in `domain/physics`, which reaches `compute/geometry` transitively through
+  `domain/color` (`physics → color → geometry`), so the link would **not** need a new
+  dependency. It is open because the signature is host-valued (`double`, and
+  `getSurfaceCoords`/`getSpatialCoords` likewise return `double[]`, with a source comment on
+  `getSurfaceCoords` asking for a `Producer<Pair>` return): the concept must be moved onto producers before
+  `Volume` can satisfy `Intersectable`.
 
 ---
 
@@ -82,8 +85,9 @@ family is producer-valued except for `DistanceEstimator`.
 Notes and the cross-links this family already carries:
 
 - `ContinuousField` is the join between this family and family 1: it is both a `DiscreteField`
-  (a set of sampled points) and a `Gradient` (a value evaluable anywhere). `Intersectable`
-  returns one.
+  (a set of sampled points) and a `Gradient` (whose only member, `getNormalAt`, makes the normal
+  evaluable anywhere — `Gradient` does not declare a value operation; `getValueAt` lives one
+  level down on `Curve`). `Intersectable` returns one.
 - `ShadableSurface` is the join between family 1's shading branch (`ShadableCurve`) and this
   family (`Intersectable`): a shadable, intersectable 3D surface.
 - `DiscreteField extends NodeList`, so this family is also rooted in the graph family (3).
@@ -122,8 +126,11 @@ their javadoc explains why one does not extend the other.
 | `NodeList<T extends Node>` | `extends NodeGroup<T>, List<T>` | `base/relation` (`io.almostrealism.relation`) | default `children()` over `List.stream()` |
 | `Graph<T extends Node>` | interface (no supertype) | `base/relation` (`io.almostrealism.relation`) | `neighbors(T)`, `countNodes()` |
 | `Tree<T extends Tree>` | `extends Graph<T>, NodeGroup<T>, Parent<T>, Node` | `base/relation` (`io.almostrealism.relation`) | tree traversal and depth defaults |
-| `WeightedGraph` | `extends Graph`, `Group` (see source) | `base/relation` (`io.almostrealism.relation`) | enumerable graph |
-| `IndexedGraph`, `Parent`, `Path`, `TreeRef` | see source | `base/relation` (`io.almostrealism.relation`) | — |
+| `WeightedGraph<T extends Node>` | `extends Graph<T>, Group<T>` | `base/relation` (`io.almostrealism.relation`) | enumerable graph |
+| `IndexedGraph<T extends Node>` | `extends WeightedGraph<T>` | `base/relation` (`io.almostrealism.relation`) | indexed enumerable graph |
+| `Parent<T>` | interface (no supertype) | `base/relation` (`io.almostrealism.relation`) | children-holding marker |
+| `Path` | `extends Plural<Node>` | `base/relation` (`io.almostrealism.relation`) | an ordered run of nodes |
+| `TreeRef<T extends Tree>` | `class implements Tree<T>` | `base/relation` (`io.almostrealism.relation`) | a reference-backed `Tree` |
 | `Mesh` | `extends SpacePartition<Triangle> implements Graph<Vector>, ConsoleFeatures` | `domain/space` (`org.almostrealism.space`) | a graph whose nodes are vertices |
 
 How the other families root here:
@@ -136,12 +143,15 @@ How the other families root here:
 
 ### Gaps
 
-- **`Mesh` is a `Graph<Vector>` (vertices as nodes), but its `Triangle`s are not expressed
-  through the node hierarchy.** Triangles are held by `SpacePartition<Triangle>` /
-  `SurfaceGroup`, not as a `NodeList`/`NodeGroup`, and triangle adjacency is not stated through
-  `Graph`/`neighbors`. Whether a triangle-level graph is wanted is **unclear** — it is recorded
-  here as an observation, not a prescription; a round should confirm the need before aligning,
-  because a `Graph` over triangles must honour `neighbors`/`countNodes` for every mesh.
+- **`Mesh` is a `Graph<Vector>` (vertices as nodes), but triangle-level adjacency is not
+  expressed through the graph hierarchy.** A `Triangle` is already a `Node` transitively
+  (`Triangle` → `AbstractSurface` → `ShadableSurface` → `ShadableCurve` → `Curve` → `Node`), so
+  the gap is not that triangles stand outside the node hierarchy. It is that the triangles of a
+  mesh are held by `SpacePartition<Triangle>` / `SurfaceGroup`, not as a `NodeList`/`NodeGroup`,
+  and triangle adjacency is not stated through `Graph`/`neighbors`. Whether a triangle-level
+  graph is wanted is **unclear** — it is recorded here as an observation, not a prescription; a
+  round should confirm the need before aligning, because a `Graph` over triangles must honour
+  `neighbors`/`countNodes` for every mesh.
 
 ---
 
@@ -154,18 +164,20 @@ family sits across two modules, and the word "field" is **overloaded** between i
 | Type | Declared as | Module (package) | Role |
 |---|---|---|---|
 | `FieldCalculusFeatures` | `extends CollectionFeatures` (mixin) | `compute/algebra` (`org.almostrealism.calculus`) | finite-difference operators (`shift`, `gradient`, `divergence`, Laplacians, Poisson relaxation) on a grid collection, as producers |
-| `GridBoundary` | abstract class | `compute/algebra` (`org.almostrealism.calculus`) | ghost-cell boundary conditions (`periodic`/`clamped`/`fixed`) used by the operators |
+| `GridBoundary` | `abstract class implements CollectionFeatures` | `compute/algebra` (`org.almostrealism.calculus`) | ghost-cell boundary conditions (`periodic`/`clamped`/`fixed`) used by the operators |
 | `HeightField` | `class implements ImplicitSurface` | `compute/geometry` (`org.almostrealism.geometry`) | a 2D grid of heights presented as a 3D implicit surface |
 
 ### Gaps
 
 - **`HeightField` is a 2D grid field, but does not use the grid field calculus.** It wraps an
   `[nx, nz]` height collection and, in its private `Sample`, computes slopes
-  (`dh/dx`, `dh/dz`) by hand — the same finite differences `FieldCalculusFeatures.gradient`
-  expresses. `HeightField` is in `compute/geometry`, which depends on `compute/algebra`, so a
-  link would **not** need a new dependency. The gap is not a direct is-a: `HeightField` samples
-  at arbitrary positions with sub-cell bilinear interpolation, whereas `FieldCalculusFeatures`
-  operates on whole-grid, node-aligned stencils. There is also **no interface** naming "a field
+  (`dh/dx`, `dh/dz`) by hand — a derivative-of-height operation related to, but not the same as,
+  what `FieldCalculusFeatures.gradient` expresses. `HeightField` is in `compute/geometry`, which
+  depends on `compute/algebra`, so a link would **not** need a new dependency. The gap is not a
+  direct is-a, because the two differ in sampling contract: `HeightField` differentiates its
+  bilinear interpolation of the four surrounding cell corners at arbitrary sub-cell positions,
+  whereas `FieldCalculusFeatures.gradient` applies central-difference stencils to a whole-grid,
+  node-aligned field. There is also **no interface** naming "a field
   sampled on a grid" that both a grid-calculus field and a `HeightField` implement — the two
   types share the meaning without a common interface naming it. Whether a shared abstraction is worth introducing is
   **unclear** given the different access patterns; it is recorded for a round to judge, not
