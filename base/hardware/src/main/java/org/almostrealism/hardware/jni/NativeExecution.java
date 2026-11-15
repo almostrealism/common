@@ -216,7 +216,7 @@ public class NativeExecution extends HardwareOperator {
 	 * the receiver applies at the resource that runs out, not a cap on how far ahead callers may
 	 * issue work (see {@code docs/internals/asynchronous-submission.md}).
 	 */
-	private static ExecutorService executor = newWorkerPool();
+	private static final ThreadPoolExecutor executor = newWorkerPool();
 
 	/**
 	 * Creates the {@link #executor} worker pool: up to {@link KernelPreferences#getCpuParallelism()}
@@ -230,7 +230,7 @@ public class NativeExecution extends HardwareOperator {
 	 *
 	 * @return the worker pool
 	 */
-	private static ExecutorService newWorkerPool() {
+	private static ThreadPoolExecutor newWorkerPool() {
 		return new ThreadPoolExecutor(
 				KernelPreferences.getCpuParallelism(), Integer.MAX_VALUE,
 				60L, TimeUnit.SECONDS, new SynchronousQueue<>(),
@@ -247,7 +247,7 @@ public class NativeExecution extends HardwareOperator {
 	 * @return the count of worker threads actively executing a kernel
 	 */
 	public static int getActiveWorkerCount() {
-		return executor instanceof ThreadPoolExecutor ? ((ThreadPoolExecutor) executor).getActiveCount() : 0;
+		return executor.getActiveCount();
 	}
 
 	/**

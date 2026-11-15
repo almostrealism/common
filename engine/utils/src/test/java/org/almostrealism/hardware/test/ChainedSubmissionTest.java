@@ -22,6 +22,7 @@ import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.util.TestSuiteBase;
@@ -33,6 +34,7 @@ import java.lang.management.ThreadMXBean;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -68,9 +70,11 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} processes. Sized per worker so
 	 * the dispatch takes a comparable time however many cores it is split across (its size, and so
 	 * its memory, scales with the worker count), while {@link #LONG_DEPTH} supplies the duration
-	 * independently of the element count.
+	 * independently of the element count. Large enough that each worker runs for hundreds of
+	 * milliseconds, which is far longer than the independent dispatch takes once it has threads.
 	 */
-	private static final int LONG_WORK_PER_WORKER = 512 * 1024;
+	// TODO(review): long collection is getCpuParallelism() * 2M elements (~768MB of doubles on a 96-core host); consider capping the worker count it is sized for.
+	private static final int LONG_WORK_PER_WORKER = 2 * 1024 * 1024;
 
 	/**
 	 * The number of multiplications applied to every element of the long-running dispatch in
@@ -83,12 +87,14 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	/**
 	 * The longest, in milliseconds, that
 	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} waits to observe the
-	 * long-running dispatch occupying the worker pool before it issues the independent one anyway.
-	 * The dispatches are pinned to the native backend (see {@link #nativeDispatch}), so the workers
-	 * appear within a few milliseconds and the wait ends at once; this is a defensive upper bound so
-	 * the test proceeds rather than hanging should the occupancy signal never arrive.
+	 * long-running dispatch occupying the worker pool. The dispatches are pinned to the native
+	 * backend (see {@link #nativeDispatch}), so the workers normally appear within a few
+	 * milliseconds and the wait ends at once; the bound is generous so a loaded runner's slow
+	 * coordinator or thread start-up is still observed. If the occupancy is not observed within it
+	 * the test fails, because issuing the independent dispatch before the pool is occupied would no
+	 * longer establish the condition the test is about.
 	 */
-	private static final long WORKER_OCCUPANCY_TIMEOUT_MS = 2000;
+	private static final long WORKER_OCCUPANCY_TIMEOUT_MS = 30000;
 
 	/**
 	 * The number of elements of the independent operation in
@@ -222,13 +228,22 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	 * the long one did, however long that took. A pool that grows a thread instead gives the short
 	 * dispatch its own worker, so it completes at once, while the long one is still running.</p>
 	 *
-	 * <p>The long dispatch is issued first and given a brief head start so that it is occupying the
-	 * pool before the independent dispatch is issued behind it; the one that completes first is then
-	 * recorded. The independent dispatch does a few hundred elements of work and the long one
-	 * applies hundreds of multiplications to every element, so the independent one is by far the
-	 * quicker of the two and completes first on any machine &mdash; unless it was queued behind the
-	 * long one, in which case the long one completes first. The check is therefore of their order,
-	 * not of any absolute duration.</p>
+	 * <p>The long dispatch is issued first, and the independent one is issued only once the long one
+	 * is observed occupying every resting worker thread (the test fails if that is never observed);
+	 * the time each takes to complete, measured from when the long one was issued, is then
+	 * recorded. The independent dispatch does a single addition per element and the long one
+	 * applies hundreds of multiplications to every element of a larger collection, so the
+	 * independent one is by far the quicker of the two.</p>
+	 *
+	 * <p>Checking only which completes first would not detect the wedge: a queuing pool starts the
+	 * independent dispatch's workers as soon as the <em>first</em> of the long dispatch's workers
+	 * finishes, and they can then finish before the <em>last</em> of them does, because the long
+	 * dispatch's workers do not all finish at once. The test therefore also requires the independent
+	 * dispatch to complete before the long one is half done. Every one of the long dispatch's
+	 * workers processes the same amount of work, so none of them finishes that early, and a queued
+	 * independent dispatch cannot meet the bound; one with its own threads meets it by a wide
+	 * margin. Both checks compare the two dispatches with each other, not with any absolute
+	 * duration, so they hold on any machine.</p>
 	 */
 	@Test(timeout = 300000)
 	public void independentDispatchIsNotWedgedBehindALongRunningOne() throws InterruptedException {
@@ -256,22 +271,34 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 			if (warm != null) warm.waitFor();
 
 			AtomicReference<String> firstCompleted = new AtomicReference<>();
+			AtomicLong longCompletedAt = new AtomicLong();
+			AtomicLong independentCompletedAt = new AtomicLong();
 			CountDownLatch bothCompleted = new CountDownLatch(2);
 
+			long issuedAt = System.nanoTime();
 			Semaphore longPending = longDispatch.submit(null);
-			awaitWorkerPoolOccupied(KernelPreferences.getCpuParallelism());
+			Assert.assertTrue("the long-running dispatch was not observed occupying the worker pool " +
+							"before the independent dispatch was issued",
+					awaitWorkerPoolOccupied(KernelPreferences.getCpuParallelism()));
 			Semaphore independentPending = independentDispatch.submit(null);
 
-			record("long", firstCompleted, bothCompleted, longPending);
-			record("independent", firstCompleted, bothCompleted, independentPending);
+			record("long", firstCompleted, longCompletedAt, bothCompleted, longPending);
+			record("independent", firstCompleted, independentCompletedAt, bothCompleted, independentPending);
 
 			bothSettled = bothCompleted.await(120, TimeUnit.SECONDS);
 
-			log("longMillis=" + longMillis + " firstCompleted=" + firstCompleted.get());
+			long longElapsed = (longCompletedAt.get() - issuedAt) / 1_000_000;
+			long independentElapsed = (independentCompletedAt.get() - issuedAt) / 1_000_000;
+			log("longMillis=" + longMillis + " firstCompleted=" + firstCompleted.get() +
+					" longElapsed=" + longElapsed + " independentElapsed=" + independentElapsed);
 			Assert.assertTrue("both dispatches should have completed", bothSettled);
 			Assert.assertEquals("the independent dispatch was serialized behind the long-running " +
 					"one on the worker pool instead of completing while it ran",
 					"independent", firstCompleted.get());
+			Assert.assertTrue("the independent dispatch completed after " + independentElapsed +
+					"ms, not before the long-running one (" + longElapsed + "ms) was half done, so " +
+					"it waited for a worker of the long-running one to finish",
+					2 * independentElapsed < longElapsed);
 		} finally {
 			// A timed-out dispatch may still be reading this memory, so free it only once both settle.
 			if (bothSettled) {
@@ -292,12 +319,27 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	 * {@link ComputeRequirement#CPU} is not used because it resolves to OpenCL on x86;
 	 * {@code JNI} names the native backend directly and is present on every CI lane.
 	 *
+	 * <p>The requirement is both recorded on the assignment (so it reaches the compiled scope and the
+	 * operation's signature, and is re-applied whenever the operation is dispatched) and pushed onto
+	 * the computer's requirements while it compiles, because the backend a computation compiles for
+	 * is chosen from the requirements active on the compiling thread
+	 * ({@link org.almostrealism.hardware.DefaultComputer#getContext}); recording it on the assignment
+	 * alone leaves the compilation free to select an accelerator.</p>
+	 *
 	 * @param assignment the assignment to compile
 	 * @return the compiled runnable, pinned to the native CPU backend
 	 */
 	private static Runnable nativeDispatch(Assignment<PackedCollection> assignment) {
-		assignment.setComputeRequirements(List.of(ComputeRequirement.JNI));
-		return assignment.get();
+		List<ComputeRequirement> requirements = List.of(ComputeRequirement.JNI);
+		assignment.setComputeRequirements(requirements);
+
+		Hardware.getLocalHardware().getComputer().pushRequirements(requirements);
+
+		try {
+			return assignment.get();
+		} finally {
+			Hardware.getLocalHardware().getComputer().popRequirements();
+		}
 	}
 
 	/**
@@ -306,34 +348,40 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	 * issued only once the long-running one already occupies the pool &mdash; an explicit
 	 * observation of worker start (via {@link NativeExecution#getActiveWorkerCount()}) rather than a
 	 * fixed delay a loaded runner could outlast. Because the dispatches are pinned to the native
-	 * backend (see {@link #nativeDispatch}) the workers do appear; this returns as soon as that many
-	 * are seen, or after {@value #WORKER_OCCUPANCY_TIMEOUT_MS} milliseconds as a defensive bound so a
-	 * missing signal makes the test proceed rather than hang.
+	 * backend (see {@link #nativeDispatch}) the workers do appear; this returns {@code true} as soon
+	 * as that many are seen, or {@code false} once {@value #WORKER_OCCUPANCY_TIMEOUT_MS} milliseconds
+	 * pass without seeing them, so the caller can fail rather than run the check unestablished.
 	 *
 	 * @param expected the number of running worker threads that marks the pool as occupied
+	 * @return whether the pool was observed occupied within the bound
 	 */
-	private static void awaitWorkerPoolOccupied(int expected) throws InterruptedException {
+	private static boolean awaitWorkerPoolOccupied(int expected) throws InterruptedException {
 		long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(WORKER_OCCUPANCY_TIMEOUT_MS);
 
 		while (System.nanoTime() < deadline) {
-			if (NativeExecution.getActiveWorkerCount() >= expected) return;
+			if (NativeExecution.getActiveWorkerCount() >= expected) return true;
 			Thread.sleep(1);
 		}
+
+		return NativeExecution.getActiveWorkerCount() >= expected;
 	}
 
 	/**
-	 * Records {@code name} as the first to complete (if nothing has been recorded yet) once
-	 * {@code pending} settles, and counts {@code bothCompleted} down. A {@code null} completion
-	 * stands for work that has already finished and is recorded at once.
+	 * Once {@code pending} settles, records the {@link System#nanoTime() time} it did in
+	 * {@code completedAt}, records {@code name} as the first to complete (if nothing has been
+	 * recorded yet), and counts {@code bothCompleted} down. A {@code null} completion stands for
+	 * work that has already finished and is recorded at once.
 	 *
-	 * @param name          the label for this dispatch
+	 * @param name           the label for this dispatch
 	 * @param firstCompleted holds the label of whichever dispatch settles first
+	 * @param completedAt    receives the time at which this dispatch settled
 	 * @param bothCompleted  counted down once this dispatch has settled
 	 * @param pending        the completion of this dispatch, or {@code null} if it has finished
 	 */
-	private static void record(String name, AtomicReference<String> firstCompleted,
+	private static void record(String name, AtomicReference<String> firstCompleted, AtomicLong completedAt,
 							   CountDownLatch bothCompleted, Semaphore pending) {
 		Runnable mark = () -> {
+			completedAt.set(System.nanoTime());
 			firstCompleted.compareAndSet(null, name);
 			bothCompleted.countDown();
 		};
