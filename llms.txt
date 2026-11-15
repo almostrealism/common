@@ -74,6 +74,7 @@
 - [PackedCollection Examples](docs/internals/packed-collection-examples.md): Creating, operating on, and managing PackedCollection — the fundamental data type
 - [CollectionProducer Operations](docs/internals/collection-producer-operations.md): The fluent API for composing hardware-accelerated operations (add, multiply, reshape, reduce, etc.)
 - [StateDictionary](docs/internals/state-dictionary.md): Model weight management — loading, saving, key naming conventions, HuggingFace compatibility
+- [Concept Map](docs/internals/concept-map.md): The concept families whose members are mathematically related and how the type system expresses them — spatial functions (`Differentiable`/`Gradient`/`Curve`/`ImplicitSurface`/`ShadableCurve`/`Volume`), intersection (`Intersectable`/`ContinuousField`/`DiscreteField`/`DistanceEstimator`/`ShadableSurface`), graphs (`Node`/`NodeList`/`Graph`/`Tree`, and `Mesh`), and fields on grids (`FieldCalculusFeatures`/`GridBoundary`, `HeightField`), with the declared supertypes, modules and known alignment gaps
 
 ### Compilation Pipeline
 - [End-to-End Computation](docs/internals/end-to-end-computation.md): How cp(a).multiply(cp(b)).evaluate() flows from expression to hardware execution
