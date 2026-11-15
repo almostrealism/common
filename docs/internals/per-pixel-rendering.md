@@ -63,9 +63,38 @@ item needs no changes beyond receiving the batch.
 
 | Method | Result | Meaning |
 |---|---|---|
-| `value(position)` | `(n, 1)` | `f(p)` |
+| `getValueAt(position)` | `(n, 1)` | `f(p)` |
 | `lipschitzBound()` | `(1)` | `L` with `|f(a) - f(b)| <= L |a - b|`; `1` for a `SignedDistanceFunction` |
-| `normal(position)` | `(n, 3)` | unit outward normal; default: normalized central-difference gradient |
+| `getNormalAt(position)` | `(n, 3)` | unit outward normal; default: normalized central-difference gradient |
+
+### Place in the field hierarchy
+
+An implicit surface is not a new kind of object; it is a scalar `Curve` with two extra
+guarantees. The existing hierarchy is:
+
+```
+Differentiable<T>                 marker: a function of position with derivatives
+  └─ Gradient<T>                  getNormalAt(position)
+       ├─ Curve<T>                getValueAt(position)   (also a Node)
+       │    ├─ ImplicitSurface    Curve<PackedCollection> + lipschitzBound(), batch-capable
+       │    │    ├─ SignedDistanceFunction
+       │    │    └─ HeightField
+       │    ├─ ShadableCurve      (color)  ── ShadableSurface also adds Intersectable
+       │    └─ Volume<T>          (physics) a region bounded by a Curve
+       └─ ContinuousField         a DiscreteField of hits that is also a Gradient
+```
+
+`ImplicitSurface` therefore extends `Curve<PackedCollection>`: its `getValueAt` is `f(p)`
+and its `getNormalAt` is the normalized gradient of `f`, which is exactly what the
+`Gradient` contract describes. Code that only needs a `Curve` or a `Gradient` accepts an
+implicit surface unchanged. The two methods are narrowed to return `CollectionProducer`,
+so a renderer can compose them without casts.
+
+The hierarchy suggests further connections that this branch does not make: an implicit
+surface bounds the region `f(p) < 0`, which is what a `Volume` is, and marching an implicit
+surface along a ray is a way to answer `Intersectable.intersectAt`. Both of those
+interfaces currently take host values (`Volume.intersect(Vector, Vector)` returns a
+`double`), so the connection is a matter of moving them onto producers first.
 
 `f(p) / L` is a distance a ray can always advance without crossing the surface, which is
 what makes marching conservative. The bound is a producer so that it can follow data that
@@ -75,7 +104,7 @@ changes between frames.
 
 A signed distance (`L = 1`). The distance is its only abstract method, so a lambda over the
 position is a signed distance function; a surface with an analytic normal implements the
-interface and overrides `normal`. A lambda body does not see the interface's own default
+interface and overrides `getNormalAt`. A lambda body does not see the interface's own default
 methods, so `length` and `c` in the lambda below come from the enclosing class, which must
 implement `VectorFeatures` (as every `TestSuiteBase` subclass does, through `CodeFeatures`);
 the class implementing the interface inherits them from `ImplicitSurface`:
@@ -87,8 +116,8 @@ SignedDistanceFunction sphere = p -> length(p).subtract(c(1.0));
 
 // the unit sphere, with its analytic normal
 class UnitSphere implements SignedDistanceFunction {
-    public CollectionProducer value(Producer<PackedCollection> p) { return length(p).subtract(c(1.0)); }
-    public CollectionProducer normal(Producer<PackedCollection> p) { return normalize(p); }
+    public CollectionProducer getValueAt(Producer<PackedCollection> p) { return length(p).subtract(c(1.0)); }
+    public CollectionProducer getNormalAt(Producer<PackedCollection> p) { return normalize(p); }
 }
 ```
 
@@ -304,8 +333,8 @@ repeated per item, and `scale` applied to each vector.
   the footprint where the skirts do not matter.
 - **Bilinear sampling** follows the samples, not the function they came from: between
   nodes the surface is within about `|h''| dx^2 / 8` of a smooth function.
-- **Normal estimate.** The default `ImplicitSurface.normal` evaluates the function six
-  times per pixel; override `normal` in a `SignedDistanceFunction` whose normal is known analytically.
+- **Normal estimate.** The default `ImplicitSurface.getNormalAt` evaluates the function six
+  times per pixel; override `getNormalAt` in a `SignedDistanceFunction` whose normal is known analytically.
 - **No shadows, inter-reflection or light attenuation**, and the environment is a gradient,
   not a map. The reflection term samples only the environment.
 - **One surface.** Combine several surfaces in one `SignedDistanceFunction` with `min`

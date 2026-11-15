@@ -25,10 +25,20 @@ import org.almostrealism.collect.PackedCollection;
  * A surface defined implicitly as the zero set {@code f(p) = 0} of a function of position,
  * with {@code f(p) > 0} outside the surface and {@code f(p) < 0} inside it.
  *
+ * <p>An implicit surface is a {@link Curve} of scalar values: a function of position whose
+ * {@link #getValueAt(Producer) value} is {@code f(p)} and whose
+ * {@link #getNormalAt(Producer) normal} is the normalized gradient of {@code f}, which is the
+ * {@link org.almostrealism.algebra.Gradient} contract. It is therefore
+ * {@link org.almostrealism.algebra.Differentiable} in the sense that hierarchy describes, and
+ * anything written against {@link Curve} or {@link org.almostrealism.algebra.Gradient} (for
+ * example code that only needs normals) accepts an implicit surface. What it adds is the
+ * {@link #lipschitzBound()}, which turns the value into a safe marching distance, and the
+ * guarantee that every operation works on a batch of positions.</p>
+ *
  * <p>Every operation is a producer graph over a position, or a batch of positions: given an
- * {@code (n, 3)} batch of positions, {@link #value(Producer)} produces the {@code (n, 1)} batch
- * of values and {@link #normal(Producer)} the {@code (n, 3)} batch of normals. A single
- * {@code (3)} position works the same way with a single result.</p>
+ * {@code (n, 3)} batch of positions, {@link #getValueAt(Producer)} produces the {@code (n, 1)}
+ * batch of values and {@link #getNormalAt(Producer)} the {@code (n, 3)} batch of normals. A
+ * single {@code (3)} position works the same way with a single result.</p>
  *
  * <p>The function need not be a distance. A ray marcher steps along a ray by
  * {@code f(p) / L}, where {@code L} is the {@link #lipschitzBound()}: no point of the surface
@@ -36,13 +46,15 @@ import org.almostrealism.collect.PackedCollection;
  * distance function has {@code L = 1}; the height field {@code y - h(x, z)} has
  * {@code L = sqrt(1 + slope^2)}, where {@code slope} bounds the gradient of {@code h}.</p>
  *
+ * @see Curve
+ * @see org.almostrealism.algebra.Gradient
  * @see SignedDistanceFunction
  * @see HeightField
  * @author Michael Murray
  */
-public interface ImplicitSurface extends VectorFeatures {
+public interface ImplicitSurface extends Curve<PackedCollection>, VectorFeatures {
 	/**
-	 * The distance between the samples that {@link #normal(Producer)} uses to estimate the
+	 * The distance between the samples that {@link #getNormalAt(Producer)} uses to estimate the
 	 * gradient of the function, when an implementation does not compute it analytically.
 	 */
 	double GRADIENT_DELTA = 1e-3;
@@ -54,10 +66,11 @@ public interface ImplicitSurface extends VectorFeatures {
 	 * @param position a {@code (3)} position, or an {@code (n, 3)} batch of positions
 	 * @return the {@code (1)} value, or the {@code (n, 1)} batch of values
 	 */
-	CollectionProducer value(Producer<PackedCollection> position);
+	@Override
+	CollectionProducer getValueAt(Producer<PackedCollection> position);
 
 	/**
-	 * Returns a bound {@code L} on the rate of change of {@link #value(Producer)} with
+	 * Returns a bound {@code L} on the rate of change of {@link #getValueAt(Producer)} with
 	 * position, so that {@code |f(a) - f(b)| <= L |a - b|}. Dividing the value by this bound
 	 * gives a distance that a ray can safely advance without crossing the surface.
 	 *
@@ -70,14 +83,15 @@ public interface ImplicitSurface extends VectorFeatures {
 
 	/**
 	 * Returns the unit outward normal of the surface at the given position, the normalized
-	 * gradient of {@link #value(Producer)}. The default estimates the gradient by central
+	 * gradient of {@link #getValueAt(Producer)}. The default estimates the gradient by central
 	 * differences with spacing {@link #GRADIENT_DELTA}; implementations that know the gradient
 	 * analytically override this.
 	 *
 	 * @param position a {@code (3)} position, or an {@code (n, 3)} batch of positions
 	 * @return the {@code (3)} normal, or the {@code (n, 3)} batch of normals
 	 */
-	default CollectionProducer normal(Producer<PackedCollection> position) {
+	@Override
+	default CollectionProducer getNormalAt(Producer<PackedCollection> position) {
 		return normalize(vector(
 				partialDerivative(position, vector(GRADIENT_DELTA, 0.0, 0.0)),
 				partialDerivative(position, vector(0.0, GRADIENT_DELTA, 0.0)),
@@ -85,7 +99,7 @@ public interface ImplicitSurface extends VectorFeatures {
 	}
 
 	/**
-	 * Estimates the derivative of {@link #value(Producer)} along an offset, up to the
+	 * Estimates the derivative of {@link #getValueAt(Producer)} along an offset, up to the
 	 * constant factor {@code 2 |offset|}, as the central difference
 	 * {@code f(p + offset) - f(p - offset)}.
 	 *
@@ -96,6 +110,6 @@ public interface ImplicitSurface extends VectorFeatures {
 	default CollectionProducer partialDerivative(Producer<PackedCollection> position,
 												 Producer<PackedCollection> offset) {
 		Producer<PackedCollection> o = repeatItems(shape(position), offset);
-		return value(add(position, o)).subtract(value(subtract(position, o)));
+		return getValueAt(add(position, o)).subtract(getValueAt(subtract(position, o)));
 	}
 }

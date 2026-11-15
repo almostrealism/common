@@ -102,7 +102,7 @@ public class HeightField implements ImplicitSurface {
 	 * @return the {@code (1)} value, or the {@code (n, 1)} batch of values
 	 */
 	@Override
-	public CollectionProducer value(Producer<PackedCollection> position) {
+	public CollectionProducer getValueAt(Producer<PackedCollection> position) {
 		return subset(shape(1), position, 1).subtract(new Sample(position).height());
 	}
 
@@ -131,7 +131,7 @@ public class HeightField implements ImplicitSurface {
 	 * @return the {@code (3)} normal, or the {@code (n, 3)} batch of normals
 	 */
 	@Override
-	public CollectionProducer normal(Producer<PackedCollection> position) {
+	public CollectionProducer getNormalAt(Producer<PackedCollection> position) {
 		Sample s = new Sample(position);
 		return normalize(vector(s.slopeX().minus(), c(1.0), s.slopeZ().minus()));
 	}

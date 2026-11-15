@@ -18,6 +18,7 @@ package org.almostrealism.render.test;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Gradient;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
@@ -25,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.PointLight;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
+import org.almostrealism.geometry.Curve;
 import org.almostrealism.geometry.HeightField;
 import org.almostrealism.geometry.ImplicitSurface;
 import org.almostrealism.geometry.SignedDistanceFunction;
@@ -76,13 +78,13 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 	private static class UnitSphere implements SignedDistanceFunction {
 		/** Returns the distance from the position to the sphere, {@code |p| - 1}. */
 		@Override
-		public CollectionProducer value(Producer<PackedCollection> position) {
+		public CollectionProducer getValueAt(Producer<PackedCollection> position) {
 			return length(position).subtract(c(1.0));
 		}
 
 		/** Returns the analytic normal of the sphere, {@code p / |p|}. */
 		@Override
-		public CollectionProducer normal(Producer<PackedCollection> position) {
+		public CollectionProducer getNormalAt(Producer<PackedCollection> position) {
 			return normalize(position);
 		}
 	}
@@ -499,7 +501,7 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 
 		try {
 			HeightField surface = new HeightField(cp(heights), 4.0, 4.0, 1.0, 1.0);
-			PackedCollection normals = surface.normal(cp(positions.reshape(shape(6, 3)))).evaluate();
+			PackedCollection normals = surface.getNormalAt(cp(positions.reshape(shape(6, 3)))).evaluate();
 
 			for (int p = 0; p < slopes.length; p++) {
 				double sx = slopes[p][0];
@@ -541,7 +543,7 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 
 		try {
 			HeightField surface = new HeightField(cp(heights), 4.0, 4.0, 1.0, 1.0);
-			PackedCollection values = surface.value(cp(positions.reshape(shape(7, 3)))).evaluate();
+			PackedCollection values = surface.getValueAt(cp(positions.reshape(shape(7, 3)))).evaluate();
 
 			for (int p = 0; p < expected.length; p++) {
 				assertEquals("Value at position " + p, -expected[p], values.toDouble(p), 1e-6);
@@ -549,6 +551,39 @@ public class ImplicitSurfaceRendererTest extends TestSuiteBase implements RGBFea
 		} finally {
 			positions.destroy();
 			heights.destroy();
+		}
+	}
+
+	/**
+	 * An implicit surface is a {@link Curve} of scalar values and a {@link Gradient}: code
+	 * written against those interfaces alone reads the value and the normal of the unit
+	 * sphere at a batch of positions outside and inside it.
+	 */
+	@Test(timeout = 120000)
+	public void implicitSurfaceIsCurveAndGradient() {
+		SignedDistanceFunction sphere = p -> length(p).subtract(c(1.0));
+		Curve<PackedCollection> curve = sphere;
+		Gradient<PackedCollection> gradient = sphere;
+
+		PackedCollection positions = pack(
+				2.0, 0.0, 0.0,
+				0.0, 0.0, 0.5);
+		double[] expectedValues = { 1.0, -0.5 };
+		double[][] expectedNormals = { { 1.0, 0.0, 0.0 }, { 0.0, 0.0, 1.0 } };
+
+		try {
+			PackedCollection values = curve.getValueAt(cp(positions.reshape(shape(2, 3)))).get().evaluate();
+			PackedCollection normals = gradient.getNormalAt(cp(positions.reshape(shape(2, 3)))).get().evaluate();
+
+			for (int p = 0; p < expectedValues.length; p++) {
+				assertEquals("Value at position " + p, expectedValues[p], values.toDouble(p), 1e-5);
+				for (int i = 0; i < 3; i++) {
+					assertEquals("Component " + i + " of the normal at position " + p,
+							expectedNormals[p][i], normals.toDouble(3 * p + i), 1e-3);
+				}
+			}
+		} finally {
+			positions.destroy();
 		}
 	}
 

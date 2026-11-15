@@ -313,7 +313,11 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 	 * @throws IllegalArgumentException if {@code minimumStep} is not positive and finite
 	 */
 	public void setMinimumStep(double minimumStep) {
-		this.minimumStep = requirePositiveFinite("minimumStep", minimumStep);
+		if (!(minimumStep > 0.0) || Double.isInfinite(minimumStep)) {
+			throw new IllegalArgumentException("minimumStep must be positive and finite, but was " + minimumStep);
+		}
+
+		this.minimumStep = minimumStep;
 	}
 
 	/**
@@ -328,29 +332,12 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 	 *                                  {@link #MAXIMUM_DISTANCE_LIMIT}
 	 */
 	public void setMaximumDistance(double maximumDistance) {
-		requirePositiveFinite("maximumDistance", maximumDistance);
-		if (maximumDistance > MAXIMUM_DISTANCE_LIMIT) {
-			throw new IllegalArgumentException("maximumDistance must be at most "
+		if (!(maximumDistance > 0.0) || maximumDistance > MAXIMUM_DISTANCE_LIMIT) {
+			throw new IllegalArgumentException("maximumDistance must be positive and at most "
 					+ MAXIMUM_DISTANCE_LIMIT + ", but was " + maximumDistance);
 		}
 
 		this.maximumDistance = maximumDistance;
-	}
-
-	/**
-	 * Returns a march distance after checking that it is positive and finite.
-	 *
-	 * @param name the name of the parameter, for the error message
-	 * @param value the distance
-	 * @return {@code value}
-	 * @throws IllegalArgumentException if {@code value} is not positive and finite
-	 */
-	private static double requirePositiveFinite(String name, double value) {
-		if (!(value > 0.0) || Double.isInfinite(value)) {
-			throw new IllegalArgumentException(name + " must be positive and finite, but was " + value);
-		}
-
-		return value;
 	}
 
 	/** Returns the width of the image, in pixels. */
@@ -427,7 +414,7 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 	 * @param ops the per-pixel operations
 	 */
 	protected void addMarchStep(OperationList ops) {
-		ops.add(a(cp(value), surface.value(pointAt(cp(probe)))));
+		ops.add(a(cp(value), surface.getValueAt(pointAt(cp(probe)))));
 		ops.add(a(cp(far), greaterThan(cp(value), c(0.0), cp(far), min(cp(far), cp(probe)))));
 
 		CollectionProducer open = greaterThan(cp(far), c(maximumDistance), c(1.0), c(0.0));
@@ -458,7 +445,7 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 	 */
 	protected void addBisection(OperationList ops) {
 		ops.add(a(cp(probe), add(cp(near), cp(far)).multiply(c(0.5))));
-		ops.add(a(cp(value), surface.value(pointAt(cp(probe)))));
+		ops.add(a(cp(value), surface.getValueAt(pointAt(cp(probe)))));
 		ops.add(a(cp(near), greaterThan(cp(value), c(0.0), cp(probe), cp(near))));
 		ops.add(a(cp(far), greaterThan(cp(value), c(0.0), cp(far), cp(probe))));
 	}
@@ -470,8 +457,8 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 	 * @param ops the per-pixel operations
 	 */
 	protected void addSecant(OperationList ops) {
-		ops.add(a(cp(value), surface.value(pointAt(cp(near)))));
-		ops.add(a(cp(farValue), surface.value(pointAt(cp(far)))));
+		ops.add(a(cp(value), surface.getValueAt(pointAt(cp(near)))));
+		ops.add(a(cp(farValue), surface.getValueAt(pointAt(cp(far)))));
 
 		CollectionProducer span = max(subtract(cp(value), cp(farValue)), c(1e-12));
 		ops.add(a(cp(probe), add(cp(near),
@@ -487,7 +474,7 @@ public class ImplicitSurfaceRenderer implements CodeFeatures, RGBFeatures, Destr
 	protected void addShading(OperationList ops) {
 		CollectionProducer d = direction(cp(rays));
 		CollectionProducer p = pointAt(cp(probe));
-		CollectionProducer n = surface.normal(p);
+		CollectionProducer n = surface.getNormalAt(p);
 
 		CollectionProducer cosine = max(dotProduct(d, n).minus(), c(0.0));
 		CollectionProducer fresnel = c(normalReflectance).add(

@@ -37,8 +37,8 @@ import org.almostrealism.collect.PackedCollection;
  * }</pre>
  *
  * <p>Its normals are estimated from the gradient of the distance (see
- * {@link ImplicitSurface#normal(Producer)}); a surface whose normal is known analytically
- * implements this interface and overrides {@link #normal(Producer)}.</p>
+ * {@link ImplicitSurface#getNormalAt(Producer)}); a surface whose normal is known
+ * analytically implements this interface and overrides {@link #getNormalAt(Producer)}.</p>
  *
  * <p>The distance must accept an {@code (n, 3)} batch of positions and produce the
  * {@code (n, 1)} batch of distances, as well as a single {@code (3)} position. Most
@@ -57,7 +57,7 @@ public interface SignedDistanceFunction extends ImplicitSurface {
 	 * @return the {@code (1)} distance, or the {@code (n, 1)} batch of distances
 	 */
 	@Override
-	CollectionProducer value(Producer<PackedCollection> position);
+	CollectionProducer getValueAt(Producer<PackedCollection> position);
 
 	/**
 	 * Returns {@code 1}, the Lipschitz bound of every signed distance.
