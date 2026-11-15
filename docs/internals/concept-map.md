@@ -21,8 +21,10 @@ surveys further families and as gaps are closed.
 
 ## 1. Spatial functions
 
-Functions of a position in space: a value, and a normal (the normalized gradient of that
-value). The hierarchy starts at a marker (`Differentiable`) and narrows through `Gradient`
+Functions of a position in space. `Gradient` declares only a normal (`getNormalAt`), and
+`Curve` adds a value (`getValueAt`) of an arbitrary type `T`; the specific relationship "the
+normal is the normalized gradient of the value" is the contract of scalar implicit surfaces
+(`ImplicitSurface` and below), not of every type in this family. The hierarchy starts at a marker (`Differentiable`) and narrows through `Gradient`
 and `Curve`, then **branches**: `ImplicitSurface`, `ShadableCurve` and `Volume` are separate
 extensions of `Curve`, and `SignedDistanceFunction` and `HeightField` specialize
 `ImplicitSurface` below it.
@@ -45,10 +47,12 @@ Notes on the declarations:
   concept — `getNormalAt`, `getValueAt` — are declared one and two levels down, on `Gradient`
   and `Curve`.
 - `ImplicitSurface` narrows `getValueAt`/`getNormalAt` covariantly from `Producer<T>` to
-  `CollectionProducer` and adds `lipschitzBound()`, which turns the value into a safe ray
-  marching distance. Its javadoc states the realignment that motivated this map: an implicit
+  `CollectionProducer` and adds `lipschitzBound()`, a bound on the rate of change of the value
+  (not itself a distance): dividing the value by the bound gives a safe ray marching step. Its
+  javadoc states the realignment that motivated this map: an implicit
   surface *is* a `Curve` of scalar values whose normal is the normalized gradient.
-- `Curve extends Node` (see family 3), so every spatial function is also a graph node.
+- `Curve extends Node` (see family 3), so `Curve` and every type that extends it are also graph
+  nodes. `Differentiable` and `Gradient` do not extend `Node`.
 
 ### Gaps
 
@@ -97,8 +101,10 @@ Notes and the cross-links this family already carries:
 - **`DistanceEstimator` is "Similar to `Intersectable`" (its own javadoc) but stands alone and
   is host-valued.** It returns a host `double estimateDistance(Ray r)` from a host `Ray`, while
   `Intersectable.intersectAt` is producer-valued. Conceptually its "distance that could lead to
-  an intersection" is also what `ImplicitSurface.lipschitzBound()` and `getValueAt` provide
-  (family 1): a conservative marching distance. `DistanceEstimator` is in `domain/space`, which
+  an intersection" is also what an `ImplicitSurface` yields (family 1), though neither of its
+  methods provides it alone: `getValueAt` is not in general a distance and `lipschitzBound()` is
+  a rate-of-change bound, and the conservative marching distance is the value divided by the
+  bound. `DistanceEstimator` is in `domain/space`, which
   reaches `compute/geometry` transitively, so neither link would need a new dependency; the gap
   is the host-valued signature (`double` + host `Ray`), which must be moved onto producers
   before it can align with either `Intersectable` or `ImplicitSurface`.
@@ -143,12 +149,17 @@ How the other families root here:
 
 ### Gaps
 
-- **`Mesh` is a `Graph<Vector>` (vertices as nodes), but triangle-level adjacency is not
-  expressed through the graph hierarchy.** A `Triangle` is already a `Node` transitively
-  (`Triangle` → `AbstractSurface` → `ShadableSurface` → `ShadableCurve` → `Curve` → `Node`), so
-  the gap is not that triangles stand outside the node hierarchy. It is that the triangles of a
-  mesh are held by `SpacePartition<Triangle>` / `SurfaceGroup`, not as a `NodeList`/`NodeGroup`,
-  and triangle adjacency is not stated through `Graph`/`neighbors`. Whether a triangle-level
+- **`Mesh` declares `Graph<Vector>` (vertices as nodes), but does not implement it.**
+  `Mesh.neighbors(Vector)` currently throws `UnsupportedOperationException`, so the vertex graph
+  is a declared relationship whose required operation is missing; any code written against
+  `Graph` fails on a `Mesh`. Implementing it needs vertex adjacency derived from the triangle
+  index data, which is within `domain/space` and needs no new dependency.
+- **Triangle-level adjacency is not expressed through the graph hierarchy.** A `Triangle` is
+  already a `Node` transitively (`Triangle` → `AbstractSurface` → `ShadableSurface` →
+  `ShadableCurve` → `Curve` → `Node`), and the triangles of a mesh are already held in a
+  `NodeGroup`: `SpacePartition<Triangle>` extends `SurfaceGroup<Triangle>`, which implements
+  `NodeGroup<T>`. The gap is only that triangle adjacency is not stated through
+  `Graph`/`neighbors` (and the container is not a `NodeList`). Whether a triangle-level
   graph is wanted is **unclear** — it is recorded here as an observation, not a prescription; a
   round should confirm the need before aligning, because a `Graph` over triangles must honour
   `neighbors`/`countNodes` for every mesh.
