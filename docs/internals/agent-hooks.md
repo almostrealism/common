@@ -154,6 +154,26 @@ hook blocks a run with no path, with a directory, or above 5 test files or 40 no
 They parse command text and are backstops; the enforced surfaces are job submission, the
 controller's submit endpoint and the MCP test runner.
 
+## Private-link hook
+
+`block-private-url` applies the root `CLAUDE.md` rule "Never Publish a Private Link". It
+blocks a claude.ai page (other than the public `claude.ai/api/` endpoints), a bare
+`session_...` id, or a URL whose host is a project machine (a `[lab-hosts]` entry of
+`exfil-allowlist.txt`, or a private, link-local or shared-address IP; loopback is
+allowed) in text about to be published:
+
+- a `gh pr`/`gh issue`/`gh release`/`gh api`/`gh gist` or `git commit`/`git tag`/
+  `git notes`/`git merge` command, including the file a `--body-file`, `--file`, `-F` or
+  `--message-file` names;
+- an ar-manager `github_*` tool that writes (creates a pull request, replies, comments,
+  edits);
+- a write to a file named `commit.txt`.
+
+Claude Code harnesses can be configured to remind the model to end commit messages and
+pull request descriptions with a link to its session. Such a link opens only for its
+owner, and `attribution` in `.claude/settings.json` does not suppress the reminder, so
+this hook is what keeps the link out.
+
 ## Testing a hook
 
 - Core: `python3 -m pytest .claude/hooks/lib/test_<core>.py`.

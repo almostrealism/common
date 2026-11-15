@@ -122,6 +122,8 @@ jobs:
     permissions:
       actions: read
       contents: read
+      # The remediation-cap status when the controller refuses the pass.
+      statuses: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -181,6 +183,10 @@ jobs:
           # Marked explicitly, not inferred from `automated` (every CI job sets
           # that) — a QA, planning or implementation job is the work reviewed.
           REMEDIATION_PASS: "true"
+          # Marked with the remediation-cap status when the controller refuses
+          # this pass for the per-PR cap, so the pull request's label shows it.
+          CAP_STATUS_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}

@@ -17,6 +17,7 @@
     "block-checkstyle-edit.ts",
     "require-own-upstream.ts",
     "memory-reminder.ts",
+    "block-private-url.ts",
     "_lib/command_pattern.ts"
   ]
 }
