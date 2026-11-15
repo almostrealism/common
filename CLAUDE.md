@@ -266,7 +266,7 @@ error, an `OutOfMemoryError` during compilation) is a different question, and it
 a composite graph with a reduction that several consumers read embeds that reduction in each of
 those readers and builds an exponentially large expression. Answer the question by evaluating the
 graph once through
-`evaluateOptimized()` (equivalently `Process.optimized(producer).get()`) — `Process.optimize`
+`evaluateOptimized()` (equivalently `Process.optimized(producer).get().evaluate()`) — `Process.optimize`
 isolates the reductions that `isIsolationTarget` marks, and the same graph compiles in about a
 second. Do this **before** restructuring the graph: do not split it by hand or add a manual
 `isolate()`/`Process.isolated(...)`, which moves a kernel-boundary decision out of the optimizer and
@@ -636,7 +636,7 @@ Consult the linked references before writing related code.
 
 **Process Isolation:** Only `Process.optimize` decides kernel boundaries. Graph-building code never calls `Process.isolated`, `isolate()` or a wrapper of them; a computation that needs its own kernel says so through `isIsolationTarget`. Never return null from `getValueAt()`. Call `Process.optimize()` before `Process.get()`.
 
-**Optimization before evaluation.** `Producer.evaluate()` is `get().evaluate()` and `Producer.get()` do not optimize — kernel boundaries are decided only by `Process.optimize`, which these paths never reach. The canonical `cp(source).multiply(2.0).evaluate()` is element-wise with no reduction, so plain `.evaluate()` is correct for it. But any graph that contains a reduction (a sum, mean, maximum, `indexOfMax`, or other aggregation several consumers read) must be evaluated through `evaluateOptimized()` (equivalently `Process.optimized(producer).get()`); otherwise every reduction is embedded in each of its readers and the graph builds an exponentially large expression. Do not split such a graph by hand to make it compile — that moves a kernel-boundary decision into application code.
+**Optimization before evaluation.** `Producer.evaluate()` is `get().evaluate()` and `Producer.get()` do not optimize — kernel boundaries are decided only by `Process.optimize`, which these paths never reach. The canonical `cp(source).multiply(2.0).evaluate()` is element-wise with no reduction, so plain `.evaluate()` is correct for it. But any graph that contains a reduction (a sum, mean, maximum, `indexOfMax`, or other aggregation several consumers read) must be evaluated through `evaluateOptimized()` (equivalently `Process.optimized(producer).get().evaluate()`); otherwise every reduction is embedded in each of its readers and the graph builds an exponentially large expression. Do not split such a graph by hand to make it compile — that moves a kernel-boundary decision into application code.
 
 **StateDictionary** for all model weight management.
 

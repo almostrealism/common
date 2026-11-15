@@ -300,7 +300,7 @@ high-aggregation computations, as above.) `Producer.evaluate()` and
 `Producer.get()` do not optimize (see the table
 under [When optimize() MUST Be Called](#when-optimize-must-be-called)). Answer the
 question by evaluating the graph once through `evaluateOptimized()` (equivalently
-`Process.optimized(producer).get()`); `Process.optimize` isolates the reductions
+`Process.optimized(producer).get().evaluate()`); `Process.optimize` isolates the reductions
 that `isIsolationTarget` marks, and the same graph compiles in about a second.
 
 The last two symptoms are the clearest signal. `Expression.init` rejects anything
