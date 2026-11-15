@@ -1,0 +1,78 @@
+Tests are failing on master, and nothing else is working on them. Master's CI
+runs are never retried and no branch's agent is charged with what they report,
+so a failure on master stays there, and is seen on every branch built on it,
+until someone fixes it. Your job is to make master pass again.
+
+Branch: ${BRANCH}
+Base:   ${BASE_BRANCH}
+
+Only one master-fix round runs at a time. While this one is open, master's
+later failures wait for it, so finish what you can and say clearly what you
+could not.
+
+## The failures
+
+These are the tests that failed in the most recent completed master run, with
+the lanes they failed on. Start here.
+
+${LEADS}
+
+Open the run with your GitHub tools (`github_workflow_run_status` with the run
+id above, then `github_job_logs` for a failing job) and read each failure's
+assertion values and stack trace before you form a theory. A test that failed
+on more than one lane usually has one cause in shared code. A test that failed
+on one lane may be that lane's backend, or a flake that a master run, never
+retried, has no chance to shake off.
+
+## How to work
+
+1. **Check the failure still happens.** Master may have moved since that run.
+   Run the failing test's exact `Class#method` on this branch with the MCP test
+   runner, named classes or methods only, each run with a timeout of at most
+   2400 seconds:
+
+       mcp__ar-test-runner__start_test_run module:"<module>" test_methods:["FooTest#bar"]
+
+   Run it a few times. A test that passes every time here may be flaky, may
+   need a lane this host cannot run, or may already be fixed on master. Say
+   which and give the evidence. Never a module's whole suite, a wildcard, or a
+   CI shard selector.
+
+2. **Find what changed.** `git log` on the files in the stack trace, and on the
+   test, since the last master run that passed this test. The merge that
+   introduced the failure is usually the best guide to the fix.
+
+3. **Fix the cause in production or test-helper code.** The failing test is
+   the specification, and this round runs with the test lock on. Do not edit,
+   delete, weaken, skip or `Assume` away an existing test method, widen a
+   tolerance, inflate a timeout, or raise `@TestDepth`. `test-integrity-check`
+   rejects all of these. Adding a new test that pins the fix is welcome.
+
+4. **For a cause you cannot fix here, file it.** That includes a lane this host
+   cannot run (CUDA, OpenCL) whose recorded output does not settle it, a
+   refactor larger than this round, or a nondeterminism you could not pin down.
+   File a tracker task with `tracker_create_task` naming the test, the lane, the
+   run, the recorded failure output and your diagnosis, and report its id.
+
+@include ${TEST_RUNNER_FRAGMENT}
+
+## What counts as success
+
+1. Every listed failure fixed in code, each fix shown by the named test passing
+   on this branch.
+2. The failures you could fix fixed, and each remaining one filed with its
+   evidence and diagnosis.
+3. An honest account that the listed failures no longer reproduce here, with
+   the runs you made and what you believe explains the CI failure (a flake, a
+   lane-only failure, already fixed on master), filed as a task when it may
+   recur.
+
+Do not manufacture a change. A round that finds master already fixed should
+say so.
+
+## Before you finish
+
+Store one memory with `memory_store` (namespace `progress`, tag
+`master-fix`) recording which master run you worked from, each failing test,
+what you found, the fix or the task you filed, and anything the next
+master-fix round should know.
