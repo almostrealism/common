@@ -806,7 +806,14 @@ The self-hosted test jobs run as four lanes, one per hardware driver setup, each
 two stages in order — a test stage, then a media stage — serialised internally
 so heavy suites do not contend on their fleet:
 
-- **CPU lane (linux, `ar-ci`):** `test` → `test-media`.
+- **CPU lane (linux):** `test` (self-hosted, `ar-ci`) → `test-media`
+  (GitHub-hosted `ubuntu-latest`). `test-media` fits a hosted runner: measured
+  with the lane's own commands, its peak memory in use was about 12 GB of 16
+  and it ran faster than on `ar-ci`. Moving it frees the `ar-ci` fleet for
+  `test`, which does not fit a hosted runner: on 4 vCPUs `engine/utils` ran
+  for hours. Being hosted, `test-media` sets up its JDK with
+  `actions/setup-java`, as `test-flowtree` does. It still waits for `test`, so
+  the lane keeps its two-stage order.
 - **GPU lane (macOS, `ar-ci`):** `test-mac` → `test-media-mac`.
   Only one GPU-heavy Metal suite runs on the macOS fleet at a time — this keeps
   the studio benchmark tick tails from ballooning under GPU contention (the
