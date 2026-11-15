@@ -221,6 +221,7 @@ it knowingly does not cover are in
 | `build-review-prompt.sh` | Build prompt for general code review |
 | `build-verify-prompt.sh` | Build prompt for the implement-plan workflow (called by verify-completion), the manual "implement the plan" trigger |
 | `consolidation.txt` | Template for the consolidation round: find one duplicated behavior, share it, pin it with tests |
+| `concept-alignment.txt` | Template for the pilot concept-alignment round: find one type that represents an existing abstraction's concept without extending it, make it extend that contract with every caller updated, test it through the new supertype, and record the relationship in `docs/internals/concept-map.md` |
 | `coverage.txt` | Template for the test-coverage round |
 | `defect-hunt.txt` | Template for the defect hunt. Offered to consumers through `qa-round.yaml`'s `defect-hunt` selector; its test-runner / tooling guidance is an `@include ${TEST_RUNNER_FRAGMENT}` so a non-Maven consumer can select a neutral fragment |
 | `test-runner-maven.txt` | The default `TEST_RUNNER_FRAGMENT`: this framework's tooling guidance (`ar-profile-analyzer`, the MCP test runner) a built-in template includes |

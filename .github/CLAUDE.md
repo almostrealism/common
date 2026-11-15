@@ -1190,7 +1190,7 @@ Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the agent jobs
 that fire on a merge to master: `plan-next-task` (Project Manager),
 `plan-release-task` (Task Planning), `doc-qa`
 (Quality Assurance), `defect-hunt`, `flaky-qa`, `coverage-qa`, `consolidation-qa`,
-`performance-qa`, `pdsl-qa` and `qa-retrospective`. The `plan-next-task`, `doc-qa` and `defect-hunt`
+`concept-qa`, `performance-qa`, `pdsl-qa` and `qa-retrospective`. The `plan-next-task`, `doc-qa` and `defect-hunt`
 jobs were separate workflows with byte-identical triggers; merging them keeps the
 Actions sidebar navigable without changing what any of them does, and each job
 added since — `plan-release-task` among them — lands here for the same reason.
@@ -1212,11 +1212,11 @@ the window needs a controller-side reservation that the round takes before it
 creates its branch; until one exists, this check removes the common case (a
 round that starts while intake is already closed).
 
-The eight QA-style jobs (`doc-qa`, `defect-hunt`, `flaky-qa`, `coverage-qa`,
-`consolidation-qa`, `performance-qa`, `pdsl-qa`, `qa-retrospective`) share a shape:
+The nine QA-style jobs (`doc-qa`, `defect-hunt`, `flaky-qa`, `coverage-qa`,
+`consolidation-qa`, `concept-qa`, `performance-qa`, `pdsl-qa`, `qa-retrospective`) share a shape:
 `tools/ci/qa-cadence.sh` decides whether to run from the job's own
 `BRANCH_PREFIX` (`qa/docs-`, `qa/defect-`, `qa/flaky-`, `qa/coverage-`, `qa/consolidate-`,
-`qa/performance-`, `qa/pdsl-`, `qa/retro-`), `tools/ci/archive-stale-workstreams.sh` retires
+`qa/concept-`, `qa/performance-`, `qa/pdsl-`, `qa/retro-`), `tools/ci/archive-stale-workstreams.sh` retires
 the previous rounds, then a branch is created, a prompt built from
 `tools/ci/prompts/`, a workstream registered, and a coding-agent job submitted with
 `AUTO_CREATE_PR`. A new QA job follows that sequence; it does not need new
@@ -1260,7 +1260,8 @@ and it needs `actions: read` to reuse master's coverage artifact — none of whi
 fit the single-job generic shape. The templates of `performance-qa` and
 `pdsl-qa` are about this framework's own concerns (Metal, PDSL), so those rounds
 call `qa-round.yaml` but pass their own local template by path rather than a
-built-in selector; they are not offered to consumers. Of the built-in templates
+built-in selector; they are not offered to consumers. `concept-qa` does the same with
+`concept-alignment.txt`, whose candidates and examples are this framework's own types. Of the built-in templates
 the defect hunt is generalised (its tooling guidance is a selectable
 `TEST_RUNNER_FRAGMENT`) and so is the retrospective (its report location,
 visibility and finding-landing travel as template variables and `@include`
@@ -1275,11 +1276,11 @@ coverage-shaped round, a new inline job); either way it still gets its own
 input.
 
 Each QA job's `MIN_INTERVAL_DAYS` is 2 (`defect-hunt`, `coverage-qa`,
-`consolidation-qa`, `performance-qa`), 5 (`doc-qa`, `pdsl-qa`) or 7
+`consolidation-qa`, `performance-qa`), 5 (`doc-qa`, `concept-qa`, `pdsl-qa`) or 7
 (`flaky-qa`, `qa-retrospective`). Every one of
 them also has its own boolean `workflow_dispatch` input,
 `ignore_interval_<job>` (`docs`, `defect_hunt`, `flaky`, `coverage`, `consolidation`,
-`performance`, `pdsl`, `retrospective`), passed to `qa-cadence.sh` as `IGNORE_INTERVAL`. It lifts
+`concept`, `performance`, `pdsl`, `retrospective`), passed to `qa-cadence.sh` as `IGNORE_INTERVAL`. It lifts
 only the interval: a round still in progress holds it off either way — a PR from
 the job's previous round is still open, or (via `PR_GRACE_HOURS`, set to 24 on
 every QA gate) its branch is younger than that window and has not opened one yet.
@@ -1309,16 +1310,18 @@ PRs only: a round whose agent has not opened its PR yet is not in it.
 `MAX_OPEN_PRS` is sized to the **full-cadence** QA rounds — one open PR each,
 seven of them (`doc-qa`, `defect-hunt`, `coverage-qa`, `consolidation-qa`,
 `performance-qa`, `pdsl-qa`, `qa-retrospective`) — so the value tracks that
-count and rose from 6 to 7 when `qa-retrospective` was added. `flaky-qa` is a
-**pilot**: it still participates in the backlog gate like
+count and rose from 6 to 7 when `qa-retrospective` was added. `flaky-qa` and
+`concept-qa` are **pilots**: each still participates in the backlog gate like
 every round (it will not start while the backlog is full, and its own PR counts
-toward the next round's check), but adding it deliberately did **not** raise
-`MAX_OPEN_PRS` — the eight QA jobs share the budget of seven until the pilot
-proves its yield and a person decides to promote it. Promoting the pilot to a
+toward the next round's check), but adding them deliberately did **not** raise
+`MAX_OPEN_PRS` — the nine QA jobs share the budget of seven until a pilot
+proves its yield and a person decides to promote it. Promoting a pilot to a
 full round, or adding an eighth full-cadence round, is what raises the limit;
-`test_the_flaky_pilot_does_not_raise_the_open_pr_limit` in
-`tools/tests/test_master_agent_dispatch.py` pins this so the decision is made on
-purpose rather than by surprise.
+`test_the_flaky_pilot_does_not_raise_the_open_pr_limit` and
+`test_the_concept_pilot_does_not_raise_the_open_pr_limit` in
+`tools/tests/test_master_agent_dispatch.py` (which reads the pilots from its
+`_PILOTS` list) pin this so the decision is made on purpose rather than by
+surprise.
 
 `plan-next-task` keeps **exactly one** planning round open, because every round
 rewrites the single `docs/plans/MANAGER_LOG.md` and two open at once cannot both
@@ -1485,15 +1488,43 @@ caller grants the `actions: read` the collection step needs (a reusable
 workflow's token is the caller's), which `qa-round.yaml` passes through because
 it declares no narrowing permissions block of its own.
 
+`concept-qa` is the pilot concept-alignment round
+(`tools/ci/prompts/concept-alignment.txt`). It looks for a type that represents
+an existing abstraction's concept without extending it — an orphaned interface
+that extends only `*Features` mixins while an existing contract declares the
+same members under other names, a parallel host-valued/producer-valued
+hierarchy, a missing specialization or generalization, a marker interface with
+no members — and closes one gap per round: it maps the candidate family's whole
+hierarchy, states the alignment as an "is-a" claim checked member by member and
+against the poms in both directions (no new dependency, no new module), makes
+the type extend the existing contract with every caller updated and behavior
+unchanged, adds one test that uses the type through its new supertype, and
+records the relationship in the javadoc of both types and in
+`docs/internals/concept-map.md` (creating that map, and its `llms.txt` entry, on
+the first run that finds it absent). Every further alignment it notices is
+filed with `tracker_create_task` rather than made. It only aligns new or
+orphaned types onto existing contracts: renaming a member of a long-established
+interface is filed as a task for a person to approve. `instanceof` bridges
+between the hierarchies and adapter/converter classes are prohibited, as are
+new modules, `pom.xml` edits and weakened tests. Like `flaky-qa` it is a
+**pilot** and does **not** raise `MAX_OPEN_PRS` (see "One open-PR limit"
+above). Its `MIN_INTERVAL_DAYS` is 5, because an alignment is slower to review
+than a defect fix. `PROTECT_TEST_FILES` is `"true"`, since a realignment must not
+change what existing tests assert; it pins the primary phase to `claude/opus`
+like `consolidation-qa`, deciding whether one type really is another being
+judgment; and it carries no `ENFORCE_CHANGES` (a round that rejects every
+candidate with reasons is a valid result) and no `REQUIRED_LABELS` (it needs no
+Metal). Its template is this repository's own, passed by path.
+
 Each job carries its **own** `concurrency` group (`project-manager`,
 `task-planning`, `quality-assurance`, `defect-hunt`, `flaky-qa`, `coverage-qa`, `consolidation-qa`,
-`performance-qa`, `pdsl-qa`, `qa-retrospective`, none cancelling in progress), so they serialize
+`concept-qa`, `performance-qa`, `pdsl-qa`, `qa-retrospective`, none cancelling in progress), so they serialize
 independently rather than queueing behind one another. Workflow-level
 concurrency would couple them — do not add one.
 
 A `workflow_dispatch` selects a single job via the `agent` input
 (`all` | `project-manager` | `quality-assurance` | `defect-hunt` | `flaky` | `coverage` |
-`consolidation` | `performance` | `pdsl` | `retrospective`); `force` is passed through to
+`consolidation` | `concept` | `performance` | `pdsl` | `retrospective`); `force` is passed through to
 whichever job runs, and each `ignore_interval_*` input reaches only its own job. Each job's
 `if` is written as `github.event_name != 'workflow_dispatch' || ...` so a push
 to master runs all of them. Adding a job means adding its selector to that
