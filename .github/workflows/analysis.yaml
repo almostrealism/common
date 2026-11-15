@@ -4959,8 +4959,8 @@ jobs:
             if [ "$TEST_RESULT" != "failure" ] && [ "$TEST_RESULT" != "cancelled" ]; then
               if [ "$VALIDATION_FAILED" = "true" ]; then
                 echo "::notice::test-media job was ${MEDIA_RESULT} because an upstream validation check failed — not treating as incomplete"
-            elif [ "$SUBSET_RUN" = "true" ]; then
-              echo "::notice::test-media job was ${MEDIA_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
+              elif [ "$SUBSET_RUN" = "true" ]; then
+                echo "::notice::test-media job was ${MEDIA_RESULT} because a pull request's test run leaves it to master — not treating as incomplete"
               elif [ "$ANY_LAYER_CHANGED" = "false" ]; then
                 echo "::notice::test-media job was ${MEDIA_RESULT} due to layer-based filtering (no layer changes) — not treating as incomplete"
               else
