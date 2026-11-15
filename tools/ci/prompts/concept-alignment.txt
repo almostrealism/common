@@ -50,7 +50,10 @@ the type system does not say so. The shapes it takes:
    interface (a mesh is a graph; a height field is a 2D grid field; a grid field is a discrete
    field) but does not implement it.
 4. **Missing generalization.** Several unrelated types implement the same pair of methods with
-   the same meaning, and no common interface names that meaning.
+   the same meaning, and no common interface names that meaning. Closing this gap means
+   introducing a new interface, which this round does not do: when an existing contract
+   already names the meaning, align the types onto it; otherwise file the gap as a tracker
+   task (see "File, do not do") and choose a different candidate.
 5. **Marker without members.** An interface such as `Differentiable<T>` that documents a
    concept but carries no operations, so nothing can be written against it, while the right
    members are already declared, ad hoc, on its would-be implementors.
@@ -176,9 +179,10 @@ Write the claim in one sentence: "`A` is a `B` because ...". Then check it:
 **7. File, do not do.**
 
 Every further alignment you noticed — another orphaned type, a parallel hierarchy, a rename of
-an established contract, a link that would need a new dependency — becomes a tracker task with
-`tracker_create_task` (the project id, a clear title, and a description naming the types and
-modules, the "is-a" claim, and what blocks or would be needed for it). Search with
+an established contract, a generalization that needs a new interface, a link that would need a
+new dependency — becomes a tracker task with `tracker_create_task` (the project id, a clear
+title, and a description naming the types and modules, the "is-a" claim, and what blocks or
+would be needed for it). Search with
 `tracker_search_tasks` first so you do not file a duplicate. Do not make a second alignment in
 this round: one round is one reviewable change. List every task you filed in your summary, and
 record each open gap in the concept map.
