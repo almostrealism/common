@@ -85,8 +85,14 @@ class CommitMessageRule implements EnforcementRule {
      * {@link #onCorrectionAttempted(CodingAgentJob)} tags it recovered only when
      * the primary itself was recovered — not when a correction supplied only a
      * dependent checkout's message.
+     *
+     * <p>Defaults to {@code true} so that a resolved job is treated as a primary
+     * recovery unless {@link #buildCorrectionPrompt(CodingAgentJob)} established
+     * that only a dependent checkout was missing. In the enforcement loop the
+     * prompt is always built immediately before {@code onCorrectionAttempted}, so
+     * this default governs only a direct call made without a preceding prompt.</p>
      */
-    private boolean primaryNeededMessage;
+    private boolean primaryNeededMessage = true;
 
     @Override
     public String getName() { return "commit-message"; }
