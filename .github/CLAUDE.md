@@ -94,7 +94,7 @@ event that started it. The `changes` job publishes the mode as `run_tests`.
 | | Validate run | Test run |
 |-|--------------|----------|
 | Started by | `pull_request` (every push to a PR branch) | `deployment` of the branch to the `test` environment; `push` to master; `workflow_dispatch` |
-| Runs | `changes`, `build`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test`, `test-media`, `test-mac`, `test-media-mac`, `test-cl`, `test-media-cl`, `test-cuda`, `test-media-cuda`, `test-flowtree` and `analysis` |
+| Runs | `changes`, `build`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test-mac`, `test-media-mac`, `test-flowtree` and `analysis`; and, when `full_matrix` is `true` (master, `workflow_dispatch`), also `test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda` and `test-media-cuda` (see below) |
 | Remediation | `auto-review`, `auto-resolve-python` | `auto-resolve-python`, and `auto-resolve` after the flaky-test retries |
 | Gate check | **All Checks** | **Test Checks** |
 | `run_tests` | `false` | `true` |
@@ -104,6 +104,23 @@ point, and each push used to start the full suite on the self-hosted fleet,
 only to have the next push cancel it. Validate runs use hosted runners only
 and finish in minutes. The long-running lanes run once, after the loop has
 settled.
+
+**A pull request's test run covers one backend.** A `deployment` test run
+runs the Metal lanes (`test-mac`, `test-media-mac`), which cover every module
+the other backends do, plus `test-flowtree`. The native CPU, OpenCL and CUDA
+lanes (`test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda`,
+`test-media-cuda`) skip there and run in master's test run after the merge,
+so several merges share one full run. `changes` publishes the choice as
+`full_matrix` (`false` for a deployment of a non-master branch, `true` for
+`push`, `workflow_dispatch`, and a deployment of master). Each of those six
+lanes carries `needs.changes.outputs.full_matrix == 'true'`, and
+`auto-resolve`'s incomplete-run check does not count their skip as incomplete.
+A failure only another backend shows is found on master, and `Master Failure
+Dispatch` sends one capped fix round after it. Set the repository variable
+`PR_FULL_TEST_MATRIX` to `true` to run every backend on pull requests again.
+A deployment that names master (a manual `Start Tests` run of master) is
+master's own test run, so it runs every backend as a push to master would.
+`tools/tests/test_validate_test_split.py` pins all of this.
 
 **Both `All Checks` and `Test Checks` are required status checks for master.**
 A validate run never reports `Test Checks` in any state, so a PR cannot merge
@@ -1777,6 +1794,42 @@ through `env`, never interpolated into `run:`. Because a fork supplies its own
 event metadata, the controller cancels only a workstream that names the event's
 head repository (`REPO_URL`, the head repo's clone URL). A branch name alone,
 or a workstream that names no repository, is never enough.
+
+### What the `PR Status Labels` workflow does
+
+Lives in `.github/workflows/pr-status-labels.yaml`. A pull request passes
+through a validate run, an agent's review loop, the test run with its retries,
+possibly an agent fixing what the test run found, and back again, so a running
+or green check no longer says whether anything is still to come. This workflow
+gives every open pull request from this repository one label for its stage:
+
+| Label | Meaning |
+|-------|---------|
+| `ci: validating` | The head commit's validate run is running, or none has started yet |
+| `ci: auto-review` | The validate run finished and sent a review agent (`auto-review-submit` or `auto-resolve-python-submit` succeeded). The agent either pushes, which starts a new validate run, or finds nothing to change, which starts the test run |
+| `ci: full tests` | The head commit's test run is running, including a re-run attempt, or failed within the last 15 minutes on an attempt before `MAX_ATTEMPTS`, so the retry gate may still re-run it |
+| `ci: auto-fix` | The test run failed and an agent was sent: `auto-resolve` staged a request in the latest attempt, or `auto-resolve-python-submit` succeeded |
+| `ci: ready for review` | The head commit's newest test run succeeded, the newest `Test Checks` and `All Checks` check runs (by id, so a queued one counts) both passed, and the pull request has no merge conflict |
+| `ci: needs attention` | CI stopped with no agent working on it: a run failed or was cancelled without a submission, a test run passed while `All Checks` did not, or a merge conflict |
+| `ci: stalled` | Added beside the stage label when the stage has lasted longer than `LABELS` in the script allows (1 h validating, 4 h auto-review or auto-fix, 10 h full tests) |
+
+`tools/ci/pr-status-labels.py` derives the stage from the API on every run:
+the head commit's newest `pull_request` and `deployment` runs of
+`analysis.yaml`, their jobs, the `auto-resolve-request` artifact and the
+commit's check runs. It never reads the labels already present or relies on
+the triggering event, so a missed or out-of-order event is corrected by the
+next run. A `Build and Test` run starting or completing updates its branch's
+pull request; an `Auto-Resolve Submit` completion (a retry or a submission),
+the half-hourly schedule and a manual dispatch update every open pull request.
+The schedule is what notices a stalled stage. Labels outside `ci: ` are left
+alone.
+
+It runs from the default branch with `issues: write` and `pull-requests: write`
+and executes no pull request code: it checks out the default branch's
+`tools/ci` and only reads the API and writes labels. Keep it that way. The
+script's `MAX_ATTEMPTS` must equal `auto-resolve-submit.yaml`'s;
+`tools/tests/test_pr_status_labels.py` pins that, the workflow's permissions
+and checkout, and each state.
 
 ### What the `analysis` job does
 

@@ -201,6 +201,36 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that while one thread is running a collection pass, a second request — even one
+	 * above the threshold, standing in for a concurrent allocation whose releases arrived during
+	 * the pass — is excluded rather than joining the in-flight pass, so those releases are not
+	 * cleared against a collection that ran before them but are left counted for the next
+	 * collection.
+	 */
+	@Test(timeout = 30_000)
+	public void concurrentCollectionIsExcludedAndReleasesCountTowardNext() {
+		CountingProvider provider = new CountingProvider();
+		provider.release(TestNativeBuffer.create(null, 1000L, 128));
+		provider.release(TestNativeBuffer.create(null, 2000L, 128));
+
+		provider.onCollect = () -> {
+			provider.release(TestNativeBuffer.create(null, 3000L, 128));
+			provider.release(TestNativeBuffer.create(null, 4000L, 128));
+			provider.nestedCollected = provider.collect();
+		};
+
+		Assert.assertTrue(provider.collect());
+		Assert.assertFalse(provider.nestedCollected);
+		Assert.assertEquals(1, provider.collections);
+		Assert.assertEquals(2048, provider.getReleasedDirectBytes());
+
+		provider.onCollect = null;
+		Assert.assertTrue(provider.collect());
+		Assert.assertEquals(2, provider.collections);
+		Assert.assertEquals(0, provider.getReleasedDirectBytes());
+	}
+
+	/**
 	 * Verifies that a provider destroyed while an allocation is running its collection pass,
 	 * which runs outside the provider's monitor, does not hand out the block that allocation then
 	 * creates: the allocation fails, and nothing is left registered with the destroyed provider.
@@ -252,6 +282,15 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 		 */
 		private boolean destroyOnCollect;
 
+		/**
+		 * Run during each requested collection, which stands in for other threads releasing buffers
+		 * and attempting their own collection while this one's pass is in flight.
+		 */
+		private Runnable onCollect;
+
+		/** Whether the collection attempted from {@link #onCollect} requested a collection. */
+		private boolean nestedCollected;
+
 		/** Creates a private (non-shared) direct-mode provider with no practical ceiling. */
 		CountingProvider() {
 			this(Long.MAX_VALUE);
@@ -301,6 +340,7 @@ public class NativeMemoryProviderDirectReleaseTest extends TestSuiteBase {
 			collections++;
 			if (interruptOnCollect) Thread.currentThread().interrupt();
 			if (destroyOnCollect) destroy();
+			if (onCollect != null) onCollect.run();
 		}
 	}
 }
