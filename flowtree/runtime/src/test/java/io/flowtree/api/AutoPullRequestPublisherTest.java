@@ -202,6 +202,38 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
         assertEquals("A good human-authored body", untouched.body);
     }
 
+    /**
+     * Once a reused companion PR's title and body match what its commit
+     * derives, a later completion on the same commit sends no further PATCH,
+     * so a correctly titled PR is not rewritten on every reuse.
+     */
+    @Test(timeout = 30000)
+    public void reusedCompanionPrAlreadyCurrentIsNotPatchedAgain() {
+        FakePr existing = github.seedOpenPr("widgets/lib", "feature/x",
+                "Stale prompt title", "stale body");
+        github.messageByRef.put("dep123", "Move the helper into lib\n\nShared by both repos.");
+
+        publisher.register("job-1", context(false));
+        JobCompletionEvent first = eventWithPush("abc", "dep123");
+        publisher.publish(first);
+        assertNotNull("a primary PR must be opened", first.getPullRequestUrl());
+        long firstPatches = github.requests.stream().filter(r -> r.startsWith("PATCH ")).count();
+        assertEquals("the stale PR is refreshed exactly once", 1L, firstPatches);
+        String refreshedBody = github.prByNumber(existing.number).body;
+
+        publisher.register("job-1", context(false));
+        // The primary PR now exists, so the next completion arrives carrying it.
+        JobCompletionEvent second = eventWithPush("abc", "dep123")
+                .withPullRequestUrl(first.getPullRequestUrl());
+        publisher.publish(second);
+
+        long totalPatches = github.requests.stream().filter(r -> r.startsWith("PATCH ")).count();
+        assertEquals("an already-current PR must not be patched again", 1L, totalPatches);
+        assertEquals(List.of(existing.htmlUrl), second.getCompanionPullRequestUrls());
+        assertEquals("Move the helper into lib", github.prByNumber(existing.number).title);
+        assertEquals(refreshedBody, github.prByNumber(existing.number).body);
+    }
+
     /** A branch that is not ahead of the default branch opens nothing. */
     @Test(timeout = 30000)
     public void branchEqualToDefaultCreatesNothing() {

@@ -1176,7 +1176,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         StringBuilder sb = new StringBuilder();
 
         if (event.getStatus() == JobCompletionEvent.Status.SUCCESS
-                && event.hasPushedWork() && event.getCommitHash() != null) {
+                && event.isPrimaryPushed() && event.getCommitHash() != null) {
             String shortHash = event.getCommitHash().length() > 7
                 ? event.getCommitHash().substring(0, 7)
                 : event.getCommitHash();

@@ -117,8 +117,8 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A correction session does not get the "Before You Finish" commit-message
-	 * block, so the per-repository commit list is absent there.
+	 * Without dependent repos, the prompt carries no "Dependent Repositories"
+	 * section.
 	 */
 	@Test(timeout = 30000)
 	public void dependentReposSectionAbsentWithoutDependents() {
