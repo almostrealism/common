@@ -11,6 +11,8 @@ name: "PR Status Labels"
 #   ci: auto-fix          the full test run failed and an agent is fixing it
 #   ci: ready for review  both runs passed on the head commit
 #   ci: needs attention   CI stopped with no agent working on it
+#   ci: review limit      the controller refused another auto-review or
+#                         auto-fix pass: the per-PR pass limit is reached
 #   ci: stalled           added beside the others when a stage has lasted
 #                         longer than it should
 #
@@ -56,6 +58,8 @@ jobs:
       checks: read
       contents: read
       issues: write
+      # The remediation-cap commit status (ci: review limit).
+      statuses: read
       pull-requests: write
     steps:
       - name: Checkout trusted scripts

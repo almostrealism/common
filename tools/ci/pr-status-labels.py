@@ -24,7 +24,8 @@ What decides each state (``derive``), for the pull request's head commit:
       request has a merge conflict)
     - failed, and an agent was sent (``auto-resolve-python-submit`` succeeded,
       or ``auto-resolve`` staged a request in the latest attempt):
-      ``ci: auto-fix``
+      ``ci: auto-fix``, or ``ci: review limit`` when the controller refused it
+      because the pull request reached the per-PR remediation cap
     - failed on an attempt before the last, within a few minutes of finishing:
       ``ci: full tests``, since the retry gate may be about to re-run it
     - otherwise: ``ci: needs attention``
@@ -33,16 +34,26 @@ What decides each state (``derive``), for the pull request's head commit:
     - an agent was sent (``auto-review-submit`` or
       ``auto-resolve-python-submit`` succeeded, in any attempt):
       ``ci: auto-review``. The agent either pushes, which starts a new validate
-      run, or finds nothing left to change, which starts the test run.
+      run, or finds nothing left to change, which starts the test run. When
+      the controller refused it because the pull request reached the per-PR
+      remediation cap: ``ci: review limit``.
     - otherwise: ``ci: needs attention``
 - no run yet: ``ci: validating``
+
+The cap is read from the ``remediation-cap`` commit status that
+``submit-agent-job.sh`` sets on the head commit when the controller refuses a
+remediation pass for that reason. The submit step itself stays green, and the
+Auto-Resolve Submit runs belong to the default branch rather than the pull
+request, so the status is the record on the pull request that the loop
+stopped. A new commit from a person resets the controller's count and carries
+no such status, so the label clears by itself.
 
 Usage:
     pr-status-labels.py [--branch BRANCH] [--dry-run]
 
 Environment:
-    GH_TOKEN  a token with pull-requests and issues write, actions and checks
-              read
+    GH_TOKEN  a token with pull-requests and issues write, actions, checks and
+              statuses read
     REPO      owner/name
     GITHUB_STEP_SUMMARY  when set, a table of every pull request's state is
               appended to it
@@ -80,7 +91,12 @@ FULL_TESTS = "ci: full tests"
 AUTO_FIX = "ci: auto-fix"
 READY = "ci: ready for review"
 NEEDS_ATTENTION = "ci: needs attention"
+REVIEW_LIMIT = "ci: review limit"
 STALLED = "ci: stalled"
+
+# The commit status submit-agent-job.sh sets on the head commit when the
+# controller refuses a remediation pass because the per-PR cap is reached.
+CAP_STATUS = "remediation-cap"
 
 # label -> (colour, description, hours in the state before it is stalled;
 # None never stalls).
@@ -94,6 +110,8 @@ LABELS = {
     READY: ("0e8a16", "Validate and full test runs passed on the head commit",
             None),
     NEEDS_ATTENTION: ("d93f0b", "CI stopped with no agent working on it", None),
+    REVIEW_LIMIT: ("5319e7", "The auto-review/auto-fix pass limit was reached; "
+                             "a person needs to look", None),
     STALLED: ("b60205", "In the same CI state for longer than it should take",
               None),
 }
@@ -166,6 +184,9 @@ def derive(facts, now):
             return NEEDS_ATTENTION, finished, "test run cancelled"
         if facts.get("staged") or submitted(facts.get("test_jobs", []),
                                             TEST_SUBMITTERS):
+            if facts.get("capped"):
+                return REVIEW_LIMIT, facts["capped"], \
+                    "the controller refused the fix: per-PR pass limit reached"
             return AUTO_FIX, finished, "agent sent after attempt %s" % (
                 test.get("run_attempt", 1))
         if (test.get("run_attempt", 1) < MAX_ATTEMPTS and finished and
@@ -180,6 +201,9 @@ def derive(facts, now):
                 "validate run in progress"
         finished = validate.get("updated_at")
         if submitted(facts.get("validate_jobs", []), VALIDATE_SUBMITTERS):
+            if facts.get("capped"):
+                return REVIEW_LIMIT, facts["capped"], \
+                    "the controller refused the review: per-PR pass limit reached"
             return AUTO_REVIEW, finished, "review agent sent"
         if validate.get("conclusion") == "cancelled":
             return NEEDS_ATTENTION, finished, "validate run cancelled"
@@ -260,6 +284,18 @@ def open_pulls(client, branch=None):
     return own
 
 
+def capped_at(statuses):
+    """When the head commit was marked with the remediation-cap status, or None.
+
+    Statuses are listed newest first, and only the newest of a context counts,
+    so a status later reset to success no longer marks the commit."""
+    for status in statuses:
+        if status.get("context") == CAP_STATUS:
+            return status.get("created_at") if status.get("state") == "failure" \
+                else None
+    return None
+
+
 def gather(client, pr):
     """Everything ``derive`` reads about one pull request."""
     sha = pr["head"]["sha"]
@@ -276,6 +312,7 @@ def gather(client, pr):
         # past 100 check runs, and the newest gate may be on a later page.
         "check_runs": client.get_all(
             "commits/%s/check-runs" % sha, "check_runs"),
+        "capped": capped_at(client.get_all("commits/%s/statuses" % sha)),
     }
     validate = facts["validate_run"]
     if validate and validate.get("status") == "completed":
