@@ -60,6 +60,25 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 	String SELF_ATTENTION_SUBLAYER_LAYER = "self_attention_sublayer";
 
 	/**
+	 * Classpath location of the asset describing the pre-norm residual feed-forward sub-layer. Its
+	 * {@link #FEED_FORWARD_SUBLAYER_LAYER} layers are the single definition of the sub-layer that
+	 * {@link #feedForwardResidualSublayer} builds: the pre-normalization, the optional adaptive
+	 * layer-normalization (adaLN-Zero) modulation, the gated-linear feed-forward body, the optional
+	 * adaLN gate, and the residual connection around them. It is the feed-forward sibling of
+	 * {@link #SELF_ATTENTION_SUBLAYER_ASSET}.
+	 */
+	String FEED_FORWARD_SUBLAYER_ASSET = "/pdsl/feed_forward_sublayer.pdsl";
+
+	/**
+	 * Name stem of the four {@link #FEED_FORWARD_SUBLAYER_ASSET} layers describing the residual
+	 * feed-forward sub-layer: the normalization family ({@code _layernorm} or {@code _rmsnorm}) and, in
+	 * the {@code _modulated} layers, the adaLN modulation of the normalized activation and the gate on
+	 * the feed-forward output. {@link #feedForwardResidualSublayer} builds the layer of the
+	 * normalization family and conditioning it is asked for.
+	 */
+	String FEED_FORWARD_SUBLAYER_LAYER = "feed_forward_sublayer";
+
+	/**
 	 * Builds the pre-norm residual self-attention sub-layer of a transformer block as a {@link Block}
 	 * from the {@link #SELF_ATTENTION_SUBLAYER_ASSET} asset.
 	 *
@@ -118,6 +137,68 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 				+ (modulated ? "_modulated" : "");
 		PdslLoader loader = new PdslLoader();
 		return loader.buildLayer(loader.parseResource(SELF_ATTENTION_SUBLAYER_ASSET), layer, blockShape, args);
+	}
+
+	/**
+	 * Builds the pre-norm residual feed-forward sub-layer of a transformer block as a {@link Block} from
+	 * the {@link #FEED_FORWARD_SUBLAYER_ASSET} asset.
+	 *
+	 * <p>The structure is not assembled here: the asset composes the pre-normalization of the given
+	 * family, the optional adaLN modulation {@code (1 + scale) * norm(x) + shift} of the normalized
+	 * activation, the gated-linear feed-forward body, the optional adaLN gate {@code gate * feed_forward(...)},
+	 * and the residual connection around all of them. This method binds the normalization weights and the
+	 * modulation producers, and loads the layer of the normalization family and conditioning it is asked
+	 * for. The modulation producers are either all supplied (adaLN-Zero conditioning) or all {@code null}
+	 * (the plain pre-norm residual block); they are supplied this way by {@link #transformerBlock}, which
+	 * forms {@code modScale = 1 + scale} and {@code gate = sigmoid(1 - gate)} from the packed modulation.
+	 * It is the feed-forward counterpart of {@link #selfAttentionResidualSublayer}.</p>
+	 *
+	 * @param blockShape    the sub-layer input and output shape {@code [batch, seqLen, dim]}
+	 * @param normType      the normalization family of the pre-normalization
+	 * @param ffnNormWeight the pre-normalization scale weights
+	 * @param ffnNormBias   the pre-normalization shift weights, or {@code null} for none
+	 * @param modScale      the adaLN multiplicative modulation {@code 1 + scale}, shape
+	 *                      {@code [batch, dim]}, or {@code null} for no modulation
+	 * @param modShift      the adaLN additive modulation {@code shift}, shape {@code [batch, dim]}, or
+	 *                      {@code null} for no modulation
+	 * @param gate          the adaLN output gate {@code sigmoid(1 - gate)}, shape {@code [batch, dim]}, or
+	 *                      {@code null} for no modulation
+	 * @param feedForward   the norm-free gated-linear feed-forward body, mapping {@code blockShape} to
+	 *                      {@code blockShape} (see {@link FeedForwardFeatures#gluFeedForward})
+	 * @return the residual feed-forward sub-layer block
+	 * @throws IllegalArgumentException if the {@code modScale}, {@code modShift} and {@code gate}
+	 *                                  producers are not either all supplied or all {@code null}
+	 */
+	default Block feedForwardResidualSublayer(TraversalPolicy blockShape, NormalizationType normType,
+											  PackedCollection ffnNormWeight, PackedCollection ffnNormBias,
+											  Producer<PackedCollection> modScale,
+											  Producer<PackedCollection> modShift,
+											  Producer<PackedCollection> gate,
+											  Block feedForward) {
+		boolean modulated = modScale != null;
+		if (modulated != (modShift != null) || modulated != (gate != null)) {
+			throw new IllegalArgumentException("adaLN conditioning producers (modScale, modShift, gate) " +
+					"must be either all present (adaLN-Zero modulation) or all null (plain pre-norm residual)");
+		}
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("pre_norm_weight", ffnNormWeight);
+		args.put("pre_norm_bias", ffnNormBias);
+		args.put("epsilon", normType.defaultEpsilon());
+		args.put("feed_forward", feedForward);
+		if (modulated) {
+			args.put("batch", blockShape.length(0));
+			args.put("dim", blockShape.length(2));
+			args.put("mod_scale", modScale);
+			args.put("mod_shift", modShift);
+			args.put("gate", gate);
+		}
+
+		String layer = FEED_FORWARD_SUBLAYER_LAYER
+				+ (normType == NormalizationType.RMS ? "_rmsnorm" : "_layernorm")
+				+ (modulated ? "_modulated" : "");
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(FEED_FORWARD_SUBLAYER_ASSET), layer, blockShape, args);
 	}
 
 	/**
@@ -664,17 +745,9 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 		}
 
 		// Python: x = x + sigmoid(1 - gate_ff) * ff((1 + scale_ff) * ff_norm(x) + shift_ff)
-		Block feedForward = gatedLinearFeedForward(block.getOutputShape(), normType,
-				ffnNormWeight, ffnNormBias, w1, w1Bias, w2, w2Bias,
-				scaleFf, shiftFf, silu(), projectionFactory);
-		if (modulation == null) {
-			block.add(residual(feedForward));
-		} else {
-			SequentialBlock gatedFeedForward = new SequentialBlock(block.getOutputShape());
-			gatedFeedForward.add(feedForward);
-			gatedFeedForward.add(adaptiveGate(blockShape, gateFf));
-			block.add(residual(gatedFeedForward));
-		}
+		Block feedForward = gluFeedForward(blockShape, w1, w1Bias, w2, w2Bias, silu(), projectionFactory);
+		block.add(feedForwardResidualSublayer(blockShape, normType, ffnNormWeight, ffnNormBias,
+				scaleFf, shiftFf, gateFf, feedForward));
 
 		return block;
 	}
