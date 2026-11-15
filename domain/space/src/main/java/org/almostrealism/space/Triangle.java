@@ -531,8 +531,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 
 	@Override
 	public BoundingSolid calculateBoundingSolid() {
-		throw new UnsupportedOperationException();
-		// TODO
-		// return BoundingSolid.getBounds(new Positioned[]{p1,p2,p3});
+		Vector[] v = getVertices();
+		return BoundingSolid.of(v[0], v[1], v[2]);
 	}
 }

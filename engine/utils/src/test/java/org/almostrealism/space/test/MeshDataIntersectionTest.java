@@ -78,6 +78,32 @@ public class MeshDataIntersectionTest extends TestSuiteBase {
 				result.getA() < 0.0);
 	}
 
+	/**
+	 * Successive single-ray intersections on one mesh share its reusable hit destination;
+	 * each result must reflect only its own ray, so a miss after a hit is not reported as
+	 * the earlier hit, and a later hit reports its own distance.
+	 */
+	@Test(timeout = 30000)
+	public void evaluateIntersectionRepeatedCallsAreIndependent() {
+		MeshData md = planeTriangle().getMeshData();
+
+		Producer<Ray> near = (Producer) ray(vector(0.0, 1.0, 2.5), vector(0.0, 0.0, -1.0));
+		Producer<Ray> miss = (Producer) ray(vector(500.0, 500.0, 1.0), vector(0.0, 0.0, -1.0));
+		Producer<Ray> far = (Producer) ray(vector(0.0, 1.0, 7.0), vector(0.0, 0.0, -1.0));
+
+		Pair first = md.evaluateIntersection(near.get(), new Object[0]);
+		Pair second = md.evaluateIntersection(miss.get(), new Object[0]);
+		Pair third = md.evaluateIntersection(far.get(), new Object[0]);
+
+		Assert.assertEquals(2.5, first.getA(), 1e-4);
+		Assert.assertEquals(0.0, first.getB(), 1e-9);
+		Assert.assertTrue("Missing ray should report a negative distance, was " + second.getA(),
+				second.getA() < 0.0);
+		Assert.assertEquals(-1.0, second.getB(), 1e-9);
+		Assert.assertEquals(7.0, third.getA(), 1e-4);
+		Assert.assertEquals(0.0, third.getB(), 1e-9);
+	}
+
 	/** The scalar kernel writes the intersection distance into the destination bank. */
 	@Test(timeout = 30000)
 	public void evaluateIntersectionKernelScalar() {
