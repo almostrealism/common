@@ -199,6 +199,14 @@ public class Conditional<T extends Number> extends Expression<T> {
 	 * is returned directly. If both branches are equal a single constant is returned.
 	 * If one branch is zero the expression is converted to a {@link Mask}.</p>
 	 *
+	 * <p>Branches of different types give the {@linkplain NAryExpression#promotedType promoted}
+	 * type, as the operands of an arithmetic operation do: a
+	 * conditional selecting between an {@link Integer} and a {@link Long} is a {@link Long}, and
+	 * only a floating-point branch makes it floating-point. An integer branch is routinely
+	 * replaced by a {@link Long} reference to a declared common subexpression, so treating any
+	 * type mismatch as floating-point would turn an integer index computation into a
+	 * floating-point one, which an integer {@link Mod} around it cannot accept.</p>
+	 *
 	 * @param condition the boolean guard expression
 	 * @param positive  the branch used when the condition is true
 	 * @param negative  the branch used when the condition is false
@@ -245,7 +253,9 @@ public class Conditional<T extends Number> extends Expression<T> {
 		if (positive.getType() == negative.getType()) {
 			return new Conditional(positive.getType(), condition, positive, negative);
 		} else {
-			return new Conditional(Double.class, condition, positive, negative);
+			// TODO(review): promotedType throws for a non-Number branch (e.g. Boolean vs Integer), where this previously fell back to Double
+			return new Conditional(NAryExpression.promotedType(List.of(positive, negative)),
+					condition, positive, negative);
 		}
 	}
 

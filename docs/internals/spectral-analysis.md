@@ -165,14 +165,16 @@ the grid puts its power in exact cells, and the estimate is then exact to roundi
   axis, and `sum(p)` / `mean(p)` reduce over its traversal item. For an element-wise result such
   as `floor(sqrt(...))`, the item is one element: `repeat` interleaves instead of tiling, and
   `mean` returns the input unchanged. Call `reshape(size)` first to reset the traversal axis to 0.
-- **Isolate the reduction itself.** A reduction over the whole grid (a sum, a radial spectrum,
-  an `indexOfMax`) that is embedded in a consumer is unrolled into it. Several readers multiply
-  that cost, and the generated code can become too large to compile.
-  `CollectionFeatures.isolated(producer)` computes it once, as its own kernel. Isolate the
-  reduction, not an expression that wraps it. `mean(x)` is `sum(x).divide(n)`, so
-  `isolated(mean(x))` still embeds the 16384-term sum inside the divide. On a 128 × 128 grid
-  that cost about 70 s of scope building, found with an `ar-jmx` thread dump. The fix is
-  `isolated(isolated(x.sum()).divide(c(n)))`.
+- **Evaluate composite spectral graphs through the optimizing path.** `dominantWavenumber`,
+  `dominantWavelength` and `spectralPeak` contain reductions over the whole grid (sums, a
+  radial spectrum, an `indexOfMax`) that several consumers read. Kernel boundaries are
+  decided by `Process.optimize`, which isolates each such reduction
+  (`TraversableRepeatedProducerComputation.isIsolationTarget`). `Producer.evaluate()` and
+  `Producer.get()` do not optimize, so they embed every reduction in each of its readers.
+  On a 128 × 128 grid that runs past two minutes of expression building. Use
+  `evaluateOptimized()` or `Process.optimized(producer).get()`; the same graphs then compile
+  and run in about a second. The spectral methods do not isolate anything themselves:
+  deciding kernel boundaries belongs to the optimizer, not to the code that builds the graph.
 - **`indexOfMax` of a `[B]` vector** treats each element as its own group. Reshape to
   `shape(1, B).traverse(1)` to get one group.
 - **`TestFeatures.assertSimilar` accepts NaN.** Use `Assert.assertEquals(msg, expected, actual,
@@ -188,6 +190,5 @@ the grid puts its power in exact cells, and the estimate is then exact to roundi
 | `compute/time/.../time/computations/FourierTransform.java` | Iterative strided FFT kernel |
 | `compute/time/.../time/SpectralFeatures.java` | N-D FFT, spectra, wavelength, Poisson |
 | `compute/time/.../time/SpectralGrid.java` | Grid dimensions and spacing, radial bin width and count, per-cell wavenumber, bin and inverse-Laplacian graphs |
-| `compute/algebra/.../collect/CollectionFeatures.java` | `isolated(producer)` |
 | `engine/utils/src/test/.../time/computations/test/SpectralFeaturesTest.java` | Tests above |
 | `engine/utils/src/test/.../time/computations/test/FourierTransformTests.java` | 1-D tests, incl. `compileGpu` |

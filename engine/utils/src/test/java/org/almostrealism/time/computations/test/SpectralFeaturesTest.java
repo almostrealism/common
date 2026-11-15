@@ -507,7 +507,7 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		CollectionProducer spectrum = parabola.add(greaterThan(c(0.5), bin, c(100.0), c(0.0)));
 
 		double binWidth = 0.25;
-		PackedCollection peak = spectralPeak(spectrum, binWidth).evaluate();
+		PackedCollection peak = spectralPeak(spectrum, binWidth).evaluateOptimized();
 		log("spectralPeakOfParabola peak=" + peak.toDouble(0));
 		assertRelative("parabolic peak", 3.3 * binWidth, peak.toDouble(0), 1e-5);
 	}
@@ -529,7 +529,7 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		CollectionProducer wave = cos(x.multiply(c(k * Math.cos(angle))).add(y.multiply(c(k * Math.sin(angle)))));
 		PackedCollection field = wave.add(noise(n * n, 1.5).reshape(n, n)).evaluate();
 
-		PackedCollection result = dominantWavelength(cp(field), spacing).evaluate();
+		PackedCollection result = dominantWavelength(cp(field), spacing).evaluateOptimized();
 		log("dominantWavelengthWithNoise planted=" + wavelength + " recovered=" + result.toDouble(0));
 		assertRelative("wavelength", wavelength, result.toDouble(0), WAVELENGTH_TOLERANCE);
 	}
@@ -553,7 +553,7 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		CollectionProducer wave = cos(x.multiply(c(k * 0.6)).add(y.multiply(c(k * 0.8))));
 		PackedCollection field = wave.multiply(c(1e-25)).add(c(1e-24)).evaluate();
 
-		PackedCollection result = dominantWavelength(cp(field), spacing).evaluate();
+		PackedCollection result = dominantWavelength(cp(field), spacing).evaluateOptimized();
 		log("dominantWavelengthOfTinyAmplitude planted=" + wavelength + " recovered=" + result.toDouble(0));
 		assertRelative("wavelength", wavelength, result.toDouble(0), WAVELENGTH_TOLERANCE);
 	}
@@ -564,7 +564,7 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 	 */
 	@Test(timeout = 120000)
 	public void dominantWavenumberOfConstantField() {
-		PackedCollection result = dominantWavenumber(c(2.5).repeat(16 * 16).reshape(16, 16), 1.0).evaluate();
+		PackedCollection result = dominantWavenumber(c(2.5).repeat(16 * 16).reshape(16, 16), 1.0).evaluateOptimized();
 		log("dominantWavenumberOfConstantField result=" + result.toDouble(0));
 		Assert.assertTrue("Expected NaN, got " + result.toDouble(0), Double.isNaN(result.toDouble(0)));
 	}
@@ -593,7 +593,7 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 			field = field == null ? wave : field.add(wave);
 		}
 
-		PackedCollection result = dominantWavelength(field, dy, dx).evaluate();
+		PackedCollection result = dominantWavelength(field, dy, dx).evaluateOptimized();
 		log("dominantWavelengthHexagonal planted=" + wavelength + " recovered=" + result.toDouble(0));
 		assertRelative("wavelength", wavelength, result.toDouble(0), WAVELENGTH_TOLERANCE);
 	}
@@ -1143,8 +1143,8 @@ public class SpectralFeaturesTest extends TestSuiteBase implements SpectralFeatu
 		log("orderedFieldAnalysis poissonError=" + solutionError);
 		Assert.assertTrue("ordered Poisson error " + solutionError, solutionError < ROUND_TRIP_TOLERANCE * 4);
 
-		double expectedWavelength = dominantWavelength(cp(logical), 0.5).evaluate().toDouble(0);
-		double actualWavelength = dominantWavelength(cp(ordered), 0.5).evaluate().toDouble(0);
+		double expectedWavelength = dominantWavelength(cp(logical), 0.5).evaluateOptimized().toDouble(0);
+		double actualWavelength = dominantWavelength(cp(ordered), 0.5).evaluateOptimized().toDouble(0);
 		log("orderedFieldAnalysis wavelength expected=" + expectedWavelength + " actual=" + actualWavelength);
 		assertRelative("ordered dominant wavelength", expectedWavelength, actualWavelength, 1e-4);
 	}

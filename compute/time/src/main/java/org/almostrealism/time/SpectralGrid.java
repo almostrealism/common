@@ -297,7 +297,7 @@ public class SpectralGrid implements CollectionFeatures {
 					cells + " matrix, which exceeds the addressable size");
 		}
 
-		CollectionProducer binOfCell = repeat(bins, isolated(radialBin().reshape(cells))).reshape(bins, cells);
+		CollectionProducer binOfCell = repeat(bins, radialBin().reshape(cells)).reshape(bins, cells);
 		CollectionProducer bin = repeat(1, cells, integers(0, bins).reshape(bins, 1)).reshape(bins, cells);
 		return greaterThan(abs(binOfCell.subtract(bin)), c(0.5), c(0.0), c(1.0));
 	}
@@ -326,8 +326,8 @@ public class SpectralGrid implements CollectionFeatures {
 		int bins = getRadialBinCount();
 		CollectionProducer membership = radialMembership();
 		CollectionProducer weighted = membership.multiply(repeat(bins, reshape(shape(cells), values)).reshape(bins, cells));
-		CollectionProducer total = isolated(weighted.sum(1).reshape(bins));
-		CollectionProducer count = isolated(membership.sum(1).reshape(bins));
+		CollectionProducer total = weighted.sum(1).reshape(bins);
+		CollectionProducer count = membership.sum(1).reshape(bins);
 		return total.divide(count);
 	}
 

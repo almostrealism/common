@@ -275,8 +275,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 
 	/**
 	 * Returns the index of the largest bin of a radial spectrum other than bin 0 (the mean).
-	 * The result is {@linkplain #isolated isolated}, since it is normally read by several
-	 * consumers. Bin 0 is excluded by replacing it with zero, which is below every other bin of
+	 * Bin 0 is excluded by replacing it with zero, which is below every other bin of
 	 * a power spectrum because power is never negative.
 	 *
 	 * @param radialSpectrum a radial spectrum, shaped {@code [bins]}, with non-negative values
@@ -287,7 +286,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 		CollectionProducer bin = integers(0, bins);
 		CollectionProducer candidates = c(radialSpectrum).reshape(bins)
 				.multiply(greaterThan(bin, c(0.5), c(1.0), c(0.0)));
-		return isolated(indexOfMax(candidates.reshape(shape(1, bins).traverse(1))).reshape(1));
+		return indexOfMax(candidates.reshape(shape(1, bins).traverse(1))).reshape(1);
 	}
 
 	/**
@@ -296,10 +295,10 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * interpolated offset is applied only where the three bins form a true maximum, and is clamped
 	 * to half a bin.
 	 *
-	 * <p>The spectrum is read by the maximum search and three gathers, so it is
-	 * {@linkplain #isolated isolated}: computed once, as its own kernel, rather than embedded in
-	 * every expression that reads it. Embedding a radial spectrum, which is a reduction over every
-	 * grid cell, into each of those reads makes the generated code too large to compile.</p>
+	 * <p>The spectrum is read by the maximum search and three gathers. Whether it is computed
+	 * once, as its own kernel, is decided by {@link io.almostrealism.compute.Process#optimize()},
+	 * so evaluate the result through an optimizing path such as
+	 * {@link io.almostrealism.relation.Producer#evaluateOptimized}.</p>
 	 *
 	 * <p>A parabola through bin centres is exact for a spectrum that is locally quadratic in the
 	 * bin index. For the spectrum of a field on a grid, {@link #dominantWavenumber} is more
@@ -316,7 +315,7 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 		}
 
 		int bins = shape(radialSpectrum).getTotalSize();
-		CollectionProducer spectrum = isolated(c(radialSpectrum).reshape(bins));
+		CollectionProducer spectrum = c(radialSpectrum).reshape(bins);
 		CollectionProducer peak = spectralPeakBin(spectrum);
 
 		CollectionProducer left = greaterThan(peak, c(0.5), peak.subtract(c(1.0)), peak);
@@ -357,6 +356,11 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * of a small-amplitude field (squared FFT magnitudes) underflows to zero on a single-precision
 	 * backend and the estimate becomes {@code NaN}. A constant field has no power away from
 	 * {@code k = 0} and therefore no dominant wavenumber; the result for it is {@code NaN}.</p>
+	 * <p>The graph contains several reductions over every grid cell, each read by many
+	 * consumers. {@link io.almostrealism.compute.Process#optimize()} gives each of them its own
+	 * kernel, so evaluate the result through an optimizing path such as
+	 * {@link io.almostrealism.relation.Producer#evaluateOptimized}; a path that does not
+	 * optimize embeds every reduction in each of its readers.</p>
 	 *
 	 * @param field   the real field, shaped like a grid
 	 * @param spacing the sample spacing along each axis (or one value for all axes)
@@ -368,14 +372,14 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 		double dk = grid.getRadialBinWidth();
 
 		CollectionProducer values = c(field).reshape(cells);
-		CollectionProducer mean = isolated(isolated(values.sum()).divide(c(cells)));
+		CollectionProducer mean = values.sum().divide(c(cells));
 		CollectionProducer deviation = values.subtract(mean);
-		CollectionProducer extent = isolated(max(abs(deviation)));
+		CollectionProducer extent = max(abs(deviation));
 		CollectionProducer centred = deviation.divide(extent).reshape(grid.getShape());
-		CollectionProducer power = isolated(powerSpectrum(fftn(toComplex(centred), false)).reshape(cells));
+		CollectionProducer power = powerSpectrum(fftn(toComplex(centred), false)).reshape(cells);
 		CollectionProducer peak = spectralPeakBin(grid.radialAverage(power));
 
-		CollectionProducer k = isolated(grid.wavenumber().reshape(cells));
+		CollectionProducer k = grid.wavenumber().reshape(cells);
 		CollectionProducer bin = grid.radialBin().reshape(cells);
 		CollectionProducer first = powerCentroid(power, k,
 				greaterThan(abs(bin.subtract(peak)), c(1.5), c(0.0), c(1.0)));
@@ -389,13 +393,13 @@ public interface SpectralFeatures extends GeometryFeatures, MatrixFeatures {
 	 * @param power  the power of each cell, shaped {@code [cells]}
 	 * @param k      the wavenumber magnitude of each cell, shaped {@code [cells]}
 	 * @param window 1 for selected cells and 0 elsewhere, shaped {@code [cells]}
-	 * @return an isolated single-element producer of {@code sum(P w |k|) / sum(P w)}
+	 * @return a single-element producer of {@code sum(P w |k|) / sum(P w)}
 	 */
 	private CollectionProducer powerCentroid(CollectionProducer power, CollectionProducer k,
 											 CollectionProducer window) {
 		int cells = shape(power).getTotalSize();
 		CollectionProducer weight = power.multiply(window).reshape(cells);
-		return isolated(isolated(weight.multiply(k).reshape(cells).sum()).divide(isolated(weight.sum())));
+		return weight.multiply(k).reshape(cells).sum().divide(weight.sum());
 	}
 
 	/**
