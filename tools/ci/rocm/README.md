@@ -50,7 +50,7 @@ fails to load entirely, with an error that mentions neither ROCm nor OpenCL.
 │                         GitHub Actions                            │
 │                                                                   │
 │   CPU lane (linux)      GPU lane (macOS)        CL lane (linux)    │
-│   test → test-media     test-mac                test-cl           │
+│   test → test-media*    test-mac                test-cl           │
 │                          → test-media-mac        → test-media-cl  │
 └────────┬───────────────────────┬──────────────────────┬───────────┘
          │ [self-hosted,         │ [self-hosted,        │ [self-hosted,
@@ -60,8 +60,11 @@ fails to load entirely, with an error that mentions neither ROCm nor OpenCL.
       tools/ci/docker         tools/ci/macos          tools/ci/rocm
 ```
 
+\* `test-media` runs on a GitHub-hosted `ubuntu-latest` runner; only `test`
+takes the `ar-ci` Linux fleet.
+
 The label is `ar-ci-cl`, deliberately **not** `ar-ci`. The existing Linux fleet
-carries `ar-ci` and serves `test` and `test-media`; sharing the label would pull
+carries `ar-ci` and serves `test`; sharing the label would pull
 general CPU test jobs onto this machine and put the CL lane behind an unrelated
 queue.
 
