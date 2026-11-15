@@ -44,9 +44,15 @@ import java.util.Arrays;
  *       the asset loader and once as the exact Java composition the migration replaced
  *       ({@code residual(gatedLinearFeedForward)}, with an {@code adaptiveGate} stage ahead of the
  *       residual add when modulated), binds the same weights and conditioning, and asserts the two
- *       forward passes agree to a tight tolerance. {@code gatedLinearFeedForward} and
- *       {@code adaptiveGate} are unchanged pre-migration primitives, so this is a comparison against the
- *       reference, not self-agreement.</li>
+ *       forward passes agree to a tight tolerance. The reference and the sub-layer under test build
+ *       the normalization, adaLN modulation, gate and residual <em>wrapping</em> through different
+ *       assets — the reference through the {@code gated_linear_feed_forward_*} layers of
+ *       {@code feed_forward.pdsl}, the sub-layer through the migrated {@code feed_forward_sublayer.pdsl}
+ *       — so this comparison pins that wrapping against the pre-migration assembly. The two do, however,
+ *       share the norm-free gated-linear <em>body</em> asset ({@code glu_feed_forward} of
+ *       {@code feed_forward.pdsl}), so a regression in the body alone would agree in both; the body and
+ *       the whole-sub-layer arithmetic are therefore pinned independently of any shared asset by the host
+ *       oracles below, not by this parity comparison.</li>
  *   <li><b>Independent host oracle.</b> {@link #matchesHostReference} recomputes the whole sub-layer in
  *       double precision directly from the weights — normalize, modulate, the fused projection and gated
  *       product, the down projection, the gate and the residual add — independently of both the asset and
