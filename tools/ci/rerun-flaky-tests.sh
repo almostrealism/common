@@ -16,6 +16,15 @@
 # test job in it — reports retried=false, letting the caller proceed to submit
 # whatever request the `auto-resolve` job staged.
 #
+# A retry is spent only on a failure that might not happen again. The
+# `auto-resolve` job classifies a test run's failures on every attempt, and when
+# one is a regression confirmed on two or more backends it stages its request on
+# that attempt instead of waiting for the last one. A run whose current attempt
+# staged an `auto-resolve-request` artifact is therefore not retried
+# (retried=false), so the caller submits it now: retrying cannot change a
+# failure the code makes on two accelerators, and each retry of a test run is
+# hours of runner time.
+#
 # Retries are for the slow path only. The early remediation jobs in "Build and
 # Test" submit from inside the pipeline, without waiting for this script:
 # `auto-resolve-python` when python-tests or python-evals fails, and
@@ -62,6 +71,11 @@
 #
 # Optional environment:
 #   MAX_ATTEMPTS  - retry only while RUN_ATTEMPT < MAX_ATTEMPTS (default 3)
+#   ATTEMPT_STARTED_AT - ISO-8601 start of the attempt that completed (the
+#                   workflow_run event's run_started_at). An auto-resolve request
+#                   created at or after it was staged by this attempt. Unset, the
+#                   staged-request check is skipped and the run is retried as
+#                   though nothing was staged.
 #
 # Output (appended to $GITHUB_OUTPUT, or stdout when unset):
 #   retried=true      - a re-run was requested; do NOT submit an agent job
@@ -107,6 +121,24 @@ if [ "$RUN_ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
     echo "::notice::Run $RUN_ID has reached attempt $RUN_ATTEMPT (max $MAX_ATTEMPTS) — treating the failure as genuine and proceeding to auto-resolve"
     emit false
     exit 0
+fi
+
+# A request this attempt staged means the failure is already classified as one a
+# retry cannot clear; see the header. Artifacts persist across attempts, so only
+# one created during this attempt counts. ISO-8601 UTC timestamps compare
+# correctly as strings. A failed query finds nothing and the run is retried,
+# which is the behaviour before classification.
+if [ -n "${ATTEMPT_STARTED_AT:-}" ]; then
+    STAGED_AT=$(gh api "/repos/$REPO/actions/runs/$RUN_ID/artifacts?name=auto-resolve-request" \
+        --jq '.artifacts[] | select(.expired | not) | .created_at' 2>/dev/null || true)
+    while IFS= read -r created; do
+        [ -z "$created" ] && continue
+        if [[ "$created" > "$ATTEMPT_STARTED_AT" || "$created" == "$ATTEMPT_STARTED_AT" ]]; then
+            echo "::notice::Run $RUN_ID attempt $RUN_ATTEMPT staged an auto-resolve request at $created — a confirmed failure, so it is submitted instead of retried"
+            emit false
+            exit 0
+        fi
+    done <<< "$STAGED_AT"
 fi
 
 # Every job of the attempt that just completed, as "<conclusion>\t<name>".

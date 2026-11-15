@@ -80,14 +80,37 @@ class RemediationJobConditionTests(unittest.TestCase):
         self.assertEqual(1, _attempt_threshold(_condition(_jobs()["auto-review"]), "=="))
 
     def test_auto_resolve_never_shares_an_attempt_with_auto_review(self):
-        self.assertGreater(_attempt_threshold(_condition(_jobs()["auto-resolve"]), ">="), 1)
+        """They never share a run: auto-review is for a validate run (a
+        pull_request event) and auto-resolve for a test run, whose lanes never
+        run for a pull_request event."""
+        jobs = _jobs()
+        self.assertIn("github.event_name == 'pull_request'", _condition(jobs["auto-review"]))
+        self.assertIn("needs.changes.outputs.run_tests == 'true'", _condition(jobs["auto-resolve"]))
+        kind = next(step for step in jobs["changes"]["steps"] if step.get("id") == "kind")
+        script = " ".join(kind["run"].split())
+        self.assertIn('if [ "$EVENT_NAME" = "pull_request" ]; then echo "run_tests=false"', script)
 
     def test_the_attempt_threshold_is_the_retry_limit(self):
-        """auto-resolve must be staging on exactly the attempt retries stop at."""
-        threshold = _attempt_threshold(_condition(_jobs()["auto-resolve"]), ">=")
+        """auto-resolve must hand off unconfirmed failures on exactly the
+        attempt the retries stop at."""
+        threshold = _jobs()["auto-resolve"]["env"]["MAX_ATTEMPTS"]
         retry = _load(_SUBMIT_WORKFLOW)["jobs"]["retry-flaky-tests"]
         env = next(step["env"] for step in retry["steps"] if step.get("id") == "decide")
         self.assertEqual(str(threshold), str(env["MAX_ATTEMPTS"]))
+
+    def test_only_a_confirmed_failure_is_staged_before_the_final_attempt(self):
+        """The test-failure request waits for a confirmation or the final
+        attempt; the crash and incomplete-run requests for the final attempt."""
+        steps = {step.get("name"): _condition(step) for step in _jobs()["auto-resolve"]["steps"]}
+        self.assertIn("steps.handoff.outputs.tests == 'true'", steps["Stage submit request (test failures)"])
+        for name in ("Stage submit request (test job crash)", "Stage submit request (incomplete tests)"):
+            with self.subTest(step=name):
+                self.assertIn("steps.handoff.outputs.final == 'true'", steps[name])
+
+    def test_the_retry_gate_learns_when_the_attempt_started(self):
+        retry = _load(_SUBMIT_WORKFLOW)["jobs"]["retry-flaky-tests"]
+        env = next(step["env"] for step in retry["steps"] if step.get("id") == "decide")
+        self.assertEqual("${{ github.event.workflow_run.run_started_at }}", env["ATTEMPT_STARTED_AT"])
 
     def test_a_python_failure_belongs_to_auto_resolve_python_alone(self):
         jobs = _jobs()
@@ -470,6 +493,61 @@ class ClassifyFailuresStepTests(unittest.TestCase):
         self.assertIn("FooTest.baz", regressions)
         self.assertIn("did not report all three counts", stdout)
 
+    def test_a_confirmed_count_is_passed_on(self):
+        classifier = (
+            "import os, sys\n"
+            "open(os.path.join(sys.argv[2], 'regressions.txt'), 'w').write('- FooTest.bar\\n- FooTest.baz\\n')\n"
+            "print('regression_count=2')\n"
+            "print('preexisting_count=0')\n"
+            "print('environmental_count=0')\n"
+            "print('confirmed_count=1')\n")
+        outputs, _, _ = self._run(classifier)
+        self.assertEqual("1", outputs["confirmed_count"])
+
+    def test_a_confirmed_count_above_the_regressions_confirms_nothing(self):
+        classifier = (
+            "import os, sys\n"
+            "open(os.path.join(sys.argv[2], 'regressions.txt'), 'w').write('- FooTest.bar\\n')\n"
+            "print('regression_count=1')\n"
+            "print('preexisting_count=1')\n"
+            "print('environmental_count=0')\n"
+            "print('confirmed_count=5')\n")
+        outputs, _, _ = self._run(classifier)
+        self.assertEqual("0", outputs["confirmed_count"])
+
+    def test_a_fallback_confirms_nothing(self):
+        outputs, _, _ = self._run("import sys\nsys.exit(3)\n")
+        self.assertEqual("0", outputs["confirmed_count"])
+
+
+class HandoffStepTests(unittest.TestCase):
+    """The auto-resolve "Decide whether this attempt hands off" step."""
+
+    def _run(self, attempt, confirmed):
+        step = next(s for s in _jobs()["auto-resolve"]["steps"] if s.get("id") == "handoff")
+        work = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, work)
+        output = os.path.join(work, "github_output")
+        env = dict(os.environ, GITHUB_OUTPUT=output, ATTEMPT=attempt, CONFIRMED=confirmed,
+                   MAX_ATTEMPTS=str(_jobs()["auto-resolve"]["env"]["MAX_ATTEMPTS"]))
+        proc = subprocess.run(["bash", "-e", "-c", step["run"]], env=env,
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        with open(output) as f:
+            return dict(line.strip().split("=", 1) for line in f if "=" in line)
+
+    def test_an_unconfirmed_failure_on_the_first_attempt_waits(self):
+        self.assertEqual({"final": "false", "tests": "false"}, self._run("1", "0"))
+
+    def test_a_confirmed_failure_on_the_first_attempt_is_handed_off(self):
+        self.assertEqual({"final": "false", "tests": "true"}, self._run("1", "2"))
+
+    def test_the_final_attempt_hands_everything_off(self):
+        self.assertEqual({"final": "true", "tests": "true"}, self._run("3", "0"))
+
+    def test_a_run_without_failures_has_no_confirmed_count(self):
+        self.assertEqual({"final": "false", "tests": "false"}, self._run("1", ""))
+
 
 def _write_executable(path, text):
     with open(path, "w") as f:
@@ -488,14 +566,16 @@ class RerunFlakyTestsTests(unittest.TestCase):
 case "$*" in
   *"-X POST"*) echo "$*" >> "%s" ;;
   *"/commits/"*) echo "$STUB_TIP_SHA" ;;
+  *"/artifacts"*) [ -n "${STUB_STAGED_AT:-}" ] && echo "$STUB_STAGED_AT" ;;
   *"/jobs"*) cat "%s" ;;
 esac
+exit 0
 """ % (self.posts, self.jobs_file))
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def _run(self, jobs, attempt="1", tip="abc"):
+    def _run(self, jobs, attempt="1", tip="abc", staged_at="", attempt_started_at=""):
         with open(self.jobs_file, "w") as f:
             f.write("".join("%s\t%s\n" % job for job in jobs))
         output = os.path.join(self.tmp, "output")
@@ -503,7 +583,8 @@ esac
         env = dict(os.environ, PATH=self.tmp + os.pathsep + os.environ["PATH"],
                    GH_TOKEN="t", REPO="o/r", RUN_ID="1", RUN_ATTEMPT=attempt,
                    HEAD_SHA="abc", HEAD_BRANCH="feature/x", HEAD_REPO="o/r",
-                   MAX_ATTEMPTS="3", STUB_TIP_SHA=tip, GITHUB_OUTPUT=output)
+                   MAX_ATTEMPTS="3", STUB_TIP_SHA=tip, GITHUB_OUTPUT=output,
+                   STUB_STAGED_AT=staged_at, ATTEMPT_STARTED_AT=attempt_started_at)
         result = subprocess.run(["bash", _RERUN_SCRIPT], env=env, capture_output=True, text=True)
         self.assertEqual(0, result.returncode, result.stderr)
         with open(output) as f:
@@ -551,6 +632,28 @@ esac
         self.assertEqual("false", outputs["retried"])
         self.assertEqual("true", outputs["superseded"])
         self.assertFalse(posted)
+
+    def test_an_attempt_that_staged_a_request_is_submitted_not_retried(self):
+        """auto-resolve staged at once for a confirmed regression: a retry cannot clear it."""
+        outputs, posted = self._run([("failure", "test-mac (1)"), ("failure", "test-cl (1)")],
+                                    staged_at="2026-11-15T03:10:00Z",
+                                    attempt_started_at="2026-11-15T01:00:00Z")
+        self.assertEqual("false", outputs["retried"])
+        self.assertEqual("false", outputs["superseded"])
+        self.assertFalse(posted)
+
+    def test_a_request_from_an_earlier_attempt_does_not_stop_a_retry(self):
+        outputs, posted = self._run([("failure", "test (0)")], attempt="2",
+                                    staged_at="2026-11-15T00:30:00Z",
+                                    attempt_started_at="2026-11-15T01:00:00Z")
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_without_the_attempt_start_a_staged_request_is_not_looked_for(self):
+        outputs, posted = self._run([("failure", "test (0)")],
+                                    staged_at="2026-11-15T03:10:00Z")
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
 
 
 class SubmitStagedRequestTests(unittest.TestCase):
