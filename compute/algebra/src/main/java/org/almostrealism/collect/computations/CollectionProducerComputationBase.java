@@ -26,6 +26,7 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lifecycle.Destroyable;
@@ -39,6 +40,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.io.Describable;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -137,6 +139,34 @@ public abstract class CollectionProducerComputationBase
 	 * @see CollectionProducerComputation#shapeForLength(int)
 	 */
 	public static boolean enableDestinationLogging = false;
+
+	/**
+	 * When enabled, {@link #getEvaluable()} — the path that compiles this computation
+	 * without first {@link Process#optimize(ProcessContext) optimizing} it — walks the
+	 * process tree and reports any descendant that reports itself as an
+	 * {@link Process#isIsolationTarget(ProcessContext) isolation target} yet was not
+	 * isolated. Kernel boundaries are decided only during optimization, so such a
+	 * target is embedded in each of its readers rather than compiled as its own kernel,
+	 * which is the cause behind a composite graph that is slow or impossible to compile.
+	 *
+	 * <p>The guard is off by default: its tree-walk cost on large models has not been
+	 * measured for the general evaluation path. It is enabled in the test profile, where
+	 * {@link #unoptimizedIsolationGuardFails} selects whether a detection fails or only
+	 * warns.</p>
+	 *
+	 * @see #checkUnoptimizedIsolation()
+	 */
+	public static boolean enableUnoptimizedIsolationGuard = false;
+
+	/**
+	 * When the {@link #enableUnoptimizedIsolationGuard unoptimized-path guard} detects an
+	 * un-isolated isolation target, this flag selects the response: {@code true} throws an
+	 * {@link IllegalStateException}, {@code false} logs a warning. It defaults to warning
+	 * so that enabling the guard never converts a passing evaluation into a failure.
+	 *
+	 * @see #checkUnoptimizedIsolation()
+	 */
+	public static boolean unoptimizedIsolationGuardFails = false;
 
 	/** The human-readable name of this computation, used for debugging and profiling. */
 	private String name;
@@ -992,13 +1022,54 @@ public abstract class CollectionProducerComputationBase
 	}
 
 	/**
+	 * Guards the unoptimized compilation path. When
+	 * {@link #enableUnoptimizedIsolationGuard} is set, the process tree rooted at this
+	 * computation is walked once (see
+	 * {@link Process#collectUnisolatedIsolationTargets(ProcessContext)}); any descendant
+	 * that reports itself as an {@link Process#isIsolationTarget(ProcessContext) isolation
+	 * target} in the {@link ProcessContext#base() base context} yet was not isolated is
+	 * reported. Such a target was reached without {@link Process#optimize(ProcessContext)
+	 * optimization}, so it is embedded in each of its readers instead of being compiled as
+	 * its own kernel.
+	 *
+	 * <p>The report names this unoptimized computation and the alternative: evaluate at the
+	 * top of the call stack through
+	 * {@link io.almostrealism.relation.Producer#evaluateOptimized(Object...) evaluateOptimized()}
+	 * or {@code Process.optimized(p).get()}. Depending on
+	 * {@link #unoptimizedIsolationGuardFails} the report is either a thrown
+	 * {@link IllegalStateException} or a warning.</p>
+	 */
+	protected void checkUnoptimizedIsolation() {
+		if (!enableUnoptimizedIsolationGuard) return;
+
+		List<Process<?, ?>> targets = collectUnisolatedIsolationTargets(ProcessContext.base());
+		if (targets.isEmpty()) return;
+
+		String described = targets.stream()
+				.map(Describable::describe)
+				.collect(Collectors.joining(", "));
+		String message = getName() + " was evaluated without optimization, but contains " +
+				targets.size() + " un-isolated isolation target(s) (" + described + ") that " +
+				"will be embedded in their readers; evaluate through evaluateOptimized() or " +
+				"Process.optimized(p).get()";
+
+		if (unoptimizedIsolationGuardFails) {
+			throw new IllegalStateException(message);
+		} else {
+			warn(message);
+		}
+	}
+
+	/**
 	 * Protected method to obtain the evaluable for this computation.
 	 * This method handles compute requirements setup and delegates to the
 	 * parent class implementation while ensuring proper resource management.
-	 * 
+	 *
 	 * @return The evaluable for this computation
 	 */
 	protected Evaluable<PackedCollection> getEvaluable() {
+		checkUnoptimizedIsolation();
+
 		try {
 			if (getComputeRequirements() != null) {
 				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());

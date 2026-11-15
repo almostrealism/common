@@ -16,6 +16,7 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.OutputFeatures;
@@ -68,6 +69,9 @@ public class TestUtils implements TestSettings {
 	static {
 		if (RAM.enableWarnings)
 			RAM.enableWarnings = !skipLongTests;
+
+		// Report composite graphs compiled without optimization (see the guard's javadoc).
+		CollectionProducerComputationBase.enableUnoptimizedIsolationGuard = true;
 
 		File results = new File("results");
 		if (!results.exists()) {
