@@ -215,8 +215,11 @@ join unrelated meanings.
 ## How to use this map
 
 Before introducing a type with a `value`/`normal`/`getValueAt`/`getNormalAt` pair, a
-ray-`intersect`, a `neighbors`/node structure, or a grid of sampled values, find the family
-above and extend the existing interface rather than a `*Features` mixin alone. If the
-alignment cannot be made because a member would be wrong for the new type, or because it would
-need a new module dependency, record that reason as a new gap here instead of leaving the
-concept orphaned.
+ray-`intersect`, or a `neighbors`/node structure, find the family above and extend the
+existing interface rather than a `*Features` mixin alone. A grid of sampled values is the one
+case where that advice is reversed: family 4 records that **no interface names "a field
+sampled on a grid"**, and the finite-difference calculus is delivered deliberately through the
+`FieldCalculusFeatures` mixin — so reuse that mixin rather than reimplementing its operators or
+inventing a parallel interface. If an alignment cannot be made because a member would be wrong
+for the new type, or because it would need a new module dependency, record that reason as a new
+gap here instead of leaving the concept orphaned.
