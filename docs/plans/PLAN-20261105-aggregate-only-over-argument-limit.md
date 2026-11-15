@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-05
-closed:
+closed: 2026-11-14
 tracker: [7bf0af0f-6afc-4ae1-9b61-b49587531d9c]
 ---
 
@@ -456,3 +456,85 @@ most 29 for every decode kernel, as the de-duplicated count is. Decide it this w
 
 On the last outcome, the next step is to make root sharing part of the signature. It is not to
 adopt A, which has the same dependence on root identity without a signature that carries it.
+
+## Implementation status (2026-11-14)
+
+Approved for implementation, and implemented as **Variant B**, the assessment's recommendation:
+an operation folds nothing when its structural argument bound fits its context's limit, and
+otherwise folds exactly as before. Variant A's overflow-only, smallest-first fold was not built,
+for the determinism reason given in the assessment. Scope items 2 (overflow-only) and 4
+(deferred decision) are therefore replaced by the all-or-nothing rule. Item 5's
+"exactly the *k*+1 smallest" case becomes "every eligible root, as with no limit".
+
+What changed:
+
+- `ComputeContext.getArgumentLimit()` returns an `OptionalInt`, empty by default. Metal
+  reports `MetalOperator.MAX_ARGUMENTS`, derived as `BUFFER_TABLE_ENTRIES` (31) less
+  `TRAILING_BUFFER_ENTRIES` (2), with the binding layout described once on `MetalOperator`.
+  OpenCL, CUDA and the native backend report no limit, because none has evidence for one.
+- `Tree.countLeaves(cap)` counts leaf positions, before any de-duplication, and stops once
+  the count passes `cap`.
+- `AcceleratedComputationOperation.getArgumentBound(cap)` returns 1 (the output) plus the
+  leaf count of the computation's `Process` tree. `AcceleratedOperation.getArgumentBound`
+  returns `Integer.MAX_VALUE`, so an operation with no structure to count always folds.
+- `ComputeContext.fitsArgumentLimit(bound)` makes the decision.
+  `AcceleratedOperation.createArgumentMap()` passes a `null` aggregate generator when the
+  decision is not to fold. `rebindAggregateForReuse` calls the same `createArgumentMap()`,
+  so a reusing computation reaches the same decision. `MemoryDataArgumentMap.get` and the
+  slice-copy machinery are unchanged.
+- Docs: the "Argument Aggregation" section of `base/hardware/README.md` (which also had the
+  size threshold wrong: it is 1024 elements, not 1MB), `docs/internals/argument-binding-lifecycle.md`,
+  and the Javadoc of `enableArgumentAggregation`, `maxAggregateLength`,
+  `enableStrictSideEffects` and `createArgumentMap`.
+
+Tests, all run on an Apple Silicon host with Metal available:
+
+| Module | Classes | Result |
+|---|---|---|
+| engine/utils | `ArgumentLimitFoldTest` (new), `AggregateCopyInTest`, `AggregateCopyBackTest`, `InstructionCacheCollisionEnforcementTest`, `ProcessDetailsFactoryRecoveryTest` | 47/47 pass |
+| engine/utils | `SemaphoreChainBatchingTest`, `AssignmentSemaphoreChainTest`, `MetalTimelineSignalTest`, `FixedArgumentBindingTest`, `DestinationReuseTest` (aggregation disabled, unchanged) | 41/41 pass |
+| engine/utils | `AggregationSignatureTests`, `AggregateOutputCopyTest` | 9/9 pass |
+| engine/ml | `ReadOnlyAggregateCopyTest`, `CausalLanguageModelDecodeThroughputTest#keyValueCacheDecodeThroughput`, `#slidingKeyValueCacheLongDecodeThroughput` | 10/10 pass |
+| studio/bioscience | `ConnectomeNetworkTest` | 8/8 pass |
+
+`ArgumentLimitFoldTest` supplies the limit through a delegating `ComputeContext`, not a
+global, and so runs on any backend. It pins these cases:
+
+- the decision table;
+- Metal's 29;
+- leaf counting by position, with the cap;
+- an assignment of six small inputs that folds nothing at a limit equal to its bound, and
+  folds every eligible root (as with no limit) one below it;
+- reuse under both limits, which reproduces the decision without a collision and gives
+  correct results.
+
+With the implementation removed, the "folds nothing" assertion fails.
+
+Decode measurement on Metal. "Before" is the assessment's baseline. Counts are deterministic;
+bytes/second are from one run and are noisy.
+
+| Generator | Dispatches/byte (before → after) | Commits/byte | Bytes/s |
+|---|---|---|---|
+| sliding window (context) | 123.0 → 118.0 | 7.02 → 7.02 | 194 → 201 |
+| bounded KV cache | 245.1 → 112.1 | 5.05 → 3.06 | 237 → 269 |
+| sliding window (3 × context) | 123.0 → 118.0 | 7.01 → 7.01 | 228 → 216 |
+| rolling KV cache (3 × context) | 245.0 → 112.0 | 4.65 → 3.02 | 257 → 337 |
+
+The rolling cache now issues fewer dispatches per byte than the sliding window (112 < 118),
+with fewer commits per byte, so the plan's goal is met. Both continuations and the
+within-context agreement assertion are unchanged.
+
+Per-kernel fold counts, logged once with a temporary probe in `postCompile` and then removed:
+
+- Every kernel of the rolling-cache decode has a structural bound of at most 24 and folds
+  nothing.
+- The bound was at least the real argument count for every kernel (for example 35 → 2 and
+  24 → 2), so it never under-counted.
+- One kernel still folds: the sliding window's `collectionAddComputation`, with a bound of 34,
+  5 real arguments, and 1 folded slice. That kernel is why the sliding window reaches 118
+  rather than the 114 it reaches with nothing folded. The cause is the over-count of aliased
+  roots that "Smallest experiment that decides B" anticipated. As it says, the remedy is to
+  put root sharing into the signature, filed as tracker `748afaaa`.
+
+The benchmark at seed 1729 was not rerun. The JNI context reports no limit, so its rows are
+unchanged by construction.

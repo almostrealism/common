@@ -645,8 +645,9 @@ kernel.execute(cpuMem1, cpuMem2, cpuMem3);  // 3 CPU->GPU transfers
 
 **Aggregation Rules:**
 - Enabled by default (`AR_HARDWARE_ARGUMENT_AGGREGATION=true`)
+- Folds only when the kernel needs it: a compute context that reports an argument limit (`ComputeContext.getArgumentLimit()`; Metal reports `MetalOperator.MAX_ARGUMENTS`, 29 — its 31-entry buffer table less the offsets and sizes bound after the last argument) folds nothing for a kernel whose structural argument bound fits it. The bound is the number of leaf positions of the operation's `Process` tree plus the output, counted before any de-duplication, so it is fixed by the structure the signature encodes and every operation sharing a compiled kernel reaches the same decision. A kernel whose bound exceeds the limit folds every eligible argument, as does every kernel on a context with no known limit (the native backend). The decision is `ComputeContext.fitsArgumentLimit`, applied in `AcceleratedOperation.createArgumentMap`
 - Only aggregates memory from non-kernel providers
-- Respects size threshold (default: 1MB)
+- Respects a size threshold: a root of at most `maxAggregateLength` elements (default 1024) is eligible
 - Root delegates grouped to minimize copies
 - Each root occupies, and is copied by, its physical backing length (`getDelegatedLength()`), not its logical `getMemLength()` — the two differ for a root read through a compact, sparse or gather `TraversalOrdering`
 - The copies around each dispatch are limited by what the compiled `Scope` itself reads and writes (`Scope.containsRead` / `Scope.containsAssignment`), never by anything the computation declares: only a slice the kernel may write is copied back (`getWrittenSlices`); a read-only slice the kernel does not write is copied in once; and a slice the kernel does not read (`getReadSlices`) is not copied in by a dispatch that does not copy it back. A slice that is copied back keeps its copy-in even when unread, because the copy-back moves the whole slice and the kernel is not known to write every element of it. A scope whose reads or writes cannot be enumerated copies every slice in both directions
@@ -660,8 +661,8 @@ export AR_HARDWARE_ARGUMENT_AGGREGATION=true   # Default
 # Include off-heap memory in aggregation
 export AR_HARDWARE_OFF_HEAP_AGGREGATION=false  # Default
 
-# Max size for aggregation (bytes)
-export AR_HARDWARE_AGGREGATE_MAX=1048576       # 1MB default
+# Max root size for aggregation (elements)
+export AR_HARDWARE_AGGREGATE_MAX=1024          # Default
 ```
 
 ### Memory Replacement for Kernels

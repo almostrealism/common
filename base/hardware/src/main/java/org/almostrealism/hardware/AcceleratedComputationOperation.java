@@ -327,6 +327,27 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>For a computation that is a {@link Process}, the bound is the number of leaf positions of
+	 * its process tree, plus one for the output. Every kernel argument is reached through a leaf of
+	 * that tree, and leaves are counted by position, before any de-duplication by value or by the
+	 * memory they share, so de-duplication can only lower the real count below the bound. The tree
+	 * is what the computation's signature describes, so the bound is the same for every
+	 * computation that shares a compiled kernel. A computation that is not a {@link Process} has
+	 * no structure to count and always folds.</p>
+	 */
+	@Override
+	protected int getArgumentBound(int cap) {
+		// TODO(review): bound omits args CompiledKernelStructureContext.prepareResources adds during compile
+		if (!(getComputation() instanceof Process<?, ?> process)) {
+			return Integer.MAX_VALUE;
+		}
+
+		return 1 + process.countLeaves(cap);
+	}
+
+	/**
 	 * Returns the human-readable name of this operation.
 	 *
 	 * <p>Delegates to {@link Named#nameOf(Object)} on the wrapped computation.</p>

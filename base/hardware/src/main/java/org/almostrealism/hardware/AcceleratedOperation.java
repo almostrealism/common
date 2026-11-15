@@ -42,6 +42,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
+import java.util.OptionalInt;
 
 /**
  * Abstract base class for all hardware-accelerated operations, managing compilation, argument processing, and execution.
@@ -306,11 +307,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * Creates a {@link MemoryDataArgumentMap} bound to this operation's {@link ComputeContext}.
 	 *
 	 * <p>When this operation {@link #isArgumentAggregationSupported() supports argument
-	 * aggregation}, the map is given an aggregate-buffer factory ({@link #createAggregatedInput})
-	 * so that small input arguments can be folded into a single kernel argument, keeping the
-	 * kernel's argument count under the compute context's limit; eligibility is decided per
-	 * argument by size inside the map. An operation that opts out gets a map that folds
-	 * nothing.</p>
+	 * aggregation} and {@link #isArgumentFoldingRequired() needs it}, the map is given an
+	 * aggregate-buffer factory ({@link #createAggregatedInput}) so that small input arguments can
+	 * be folded into a single kernel argument, keeping the kernel's argument count under the
+	 * compute context's limit; eligibility is decided per argument by size inside the map. An
+	 * operation that opts out, or whose kernel provably fits its context's argument limit, gets a
+	 * map that folds nothing.</p>
 	 *
 	 * <p>Every map this operation folds its arguments through comes from here, so a fold replayed
 	 * against an already compiled scope lays its aggregate out exactly as the compilation did.</p>
@@ -319,7 +321,41 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 */
 	protected MemoryDataArgumentMap createArgumentMap() {
 		return MemoryDataArgumentMap.create(getComputeContext(),
-				isArgumentAggregationSupported() ? memLength -> createAggregatedInput(memLength, memLength) : null);
+				isArgumentAggregationSupported() && isArgumentFoldingRequired()
+						? memLength -> createAggregatedInput(memLength, memLength) : null);
+	}
+
+	/**
+	 * Returns whether this operation's kernel must fold its eligible arguments into an aggregate
+	 * argument to compile under its {@link ComputeContext}: it does unless the context
+	 * {@link ComputeContext#fitsArgumentLimit(int) reports a limit} that this operation's
+	 * {@link #getArgumentBound(int) structural argument bound} does not exceed. The bound is
+	 * computed only when the context reports a limit, capped at that limit.
+	 *
+	 * @return {@code true} unless the context reports a limit that the kernel provably fits
+	 */
+	protected boolean isArgumentFoldingRequired() {
+		ComputeContext<MemoryData> context = getComputeContext();
+		OptionalInt limit = context.getArgumentLimit();
+		return limit.isEmpty() || !context.fitsArgumentLimit(getArgumentBound(limit.getAsInt()));
+	}
+
+	/**
+	 * Returns an upper bound on the arguments this operation's kernel declares when none of them
+	 * is folded, computed from the operation's structure alone, or any value greater than
+	 * {@code cap} once the bound is known to exceed it.
+	 *
+	 * <p>The bound must never be lower than the real argument count, because a kernel judged to
+	 * fit is compiled with every argument standalone. It must also depend only on structure the
+	 * operation's signature encodes, so that every operation sharing a compiled kernel reaches the
+	 * same decision. This implementation knows no structure and reports
+	 * {@link Integer#MAX_VALUE}, so an operation that does not override it always folds.</p>
+	 *
+	 * @param cap the count past which the exact bound does not matter
+	 * @return the structural argument bound, or a value greater than {@code cap}
+	 */
+	protected int getArgumentBound(int cap) {
+		return Integer.MAX_VALUE;
 	}
 
 	/**

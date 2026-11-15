@@ -145,6 +145,32 @@ public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>,
 	}
 
 	/**
+	 * Counts the leaves of this tree, stopping once the count exceeds {@code cap}.
+	 *
+	 * <p>A leaf is a node with no children. Leaves are counted by position: a node reachable
+	 * along several paths is counted once for each, so the result is the number of leaf slots
+	 * of the tree, not the number of distinct leaf objects. The traversal ends as soon as more
+	 * than {@code cap} leaves have been found, so a large or heavily shared tree costs no more
+	 * than reaching that many of its leaves.</p>
+	 *
+	 * @param cap the count past which counting stops; must not be negative
+	 * @return the number of leaves if it is at most {@code cap}, otherwise a value greater than
+	 *         {@code cap}
+	 */
+	default int countLeaves(int cap) {
+		Collection<T> children = getChildren();
+		if (children == null || children.isEmpty()) return 1;
+
+		int count = 0;
+		for (T child : children) {
+			count += child.countLeaves(cap - count);
+			if (count > cap) return count;
+		}
+
+		return count;
+	}
+
+	/**
 	 * Calculates the depth of this tree.
 	 *
 	 * <p>The depth is the length of the longest path from this node to a leaf.</p>
