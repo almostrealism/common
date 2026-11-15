@@ -149,6 +149,8 @@ class RemedyTest(RepoTestCase):
         around it: a substitution runs a command of its own, and a redirection
         writes or reads a file. No remedy needs either."""
         self.assertBlocked("git status $(touch /tmp/escaped)")
+        self.assertBlocked("git status ${ touch /tmp/escaped; git branch --unset-upstream }")
+        self.assertBlocked("git status ${| touch /tmp/escaped; }")
         self.assertBlocked("git status `touch /tmp/escaped`")
         self.assertBlocked("git config --get x <(cat /tmp/secret)")
         self.assertBlocked("git status >(sh)")
@@ -157,6 +159,19 @@ class RemedyTest(RepoTestCase):
         self.assertBlocked("git status < /tmp/input")
         self.assertBlocked("git branch -vv 2>/tmp/escaped")
         self.assertBlocked("git branch --unset-upstream <<EOF\nx\nEOF")
+
+    def test_git_options_that_run_commands_are_blocked(self):
+        """Configuration given on the command line can name a command for git
+        to run, so a read-only subcommand is no longer read-only with it."""
+        self.assertBlocked("git -c core.fsmonitor='touch /tmp/escaped' status")
+        self.assertBlocked("git -c core.pager=sh branch -vv")
+        self.assertBlocked("git -C /repo -c core.fsmonitor=sh status")
+        self.assertBlocked("git --config-env=core.fsmonitor=EVIL status")
+        self.assertBlocked("git --exec-path=/tmp/evil branch --unset-upstream")
+        self.assertBlocked("git status && git -c alias.x=!sh branch --unset-upstream")
+        self.assertAllowed("git -C /repo status")
+        self.assertAllowed("git -C /repo branch --unset-upstream")
+        self.assertAllowed("git branch --color -vv")
 
     def test_a_second_line_is_held_to_the_same_rule(self):
         self.assertBlocked("git status\nrm -rf build")

@@ -20,8 +20,9 @@ blocked except a Bash command made only of:
   - ``cd``.
 
 with no command substitution, process substitution, redirection or
-here-document anywhere in it, since each of those acts outside the git words
-this check reads.
+here-document anywhere in it, and no git ``-c``, ``--config-env`` or
+``--exec-path`` option, since each of those acts outside the git words this
+check reads.
 
 So the session fixes the branch before it does anything else. A detached HEAD,
 a branch with no upstream, a local (``.``) upstream, and a directory that is not
@@ -142,13 +143,20 @@ def _is_fix_or_inspection(sub, args, state):
 
 
 # Shell syntax no remedy needs, each of which acts outside the words the check
-# reads: a command or process substitution (``$(...)``, backticks, ``<(...)``,
-# ``>(...)``) runs a command of its own, and a redirection or here-document
+# reads: a command or process substitution (``$(...)``, ``${ ...; }``,
+# backticks, ``<(...)``, ``>(...)``) runs a command of its own, and a redirection or here-document
 # writes or reads a file. A command containing any of them is never a remedy,
 # whatever its git words say, quoted or not: telling quoted text from live
 # syntax is what the shell does, and a check that gets it wrong lets a blocked
 # session run anything.
-_NON_REMEDY_SYNTAX = ("$(", "`", "<", ">")
+_NON_REMEDY_SYNTAX = ("$(", "${", "`", "<", ">")
+
+# git options that make git itself run something the words do not show: ``-c``
+# and ``--config-env`` set configuration such as ``core.fsmonitor`` or
+# ``core.pager`` that names a command for ``git status`` to run, and
+# ``--exec-path`` chooses where git finds the programs it runs. No remedy needs
+# any of them, so a word that begins with one is never part of a remedy.
+_NON_REMEDY_GIT_OPTIONS = ("-c", "--config-env", "--exec-path")
 
 
 def command_is_remedy(command, state):
@@ -164,6 +172,8 @@ def command_is_remedy(command, state):
             continue
         if words[0] == "cd":
             continue
+        if any(word.startswith(_NON_REMEDY_GIT_OPTIONS) for word in words):
+            return False
         calls = _git_calls(segment)
         if not calls or words[0].rsplit("/", 1)[-1] != "git":
             return False
