@@ -473,6 +473,49 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 	}
 
 	/**
+	 * The arguments of dependent lifecycles count toward the structural bound that decides
+	 * whether a kernel folds, so they are part of the signature a compiled kernel is shared
+	 * under: a computation that has dependents does not share a signature with the same
+	 * computation without them, or with one whose dependents obtain a different number of
+	 * arguments, while dependents of the same structure over different data leave the
+	 * signatures equal. A computation without dependents keeps the signature it had before.
+	 */
+	@Test(timeout = 30000)
+	public void signatureDistinguishesTheArgumentsOfDependentLifecycles() {
+		PackedCollection a = new PackedCollection(SIZE).fill(1.0);
+		PackedCollection b = new PackedCollection(SIZE).fill(2.0);
+		PackedCollection c = new PackedCollection(SIZE).fill(3.0);
+		PackedCollection d = new PackedCollection(SIZE).fill(4.0);
+
+		CollectionProducerComputationBase plain = (CollectionProducerComputationBase) cp(a).add(cp(b));
+		String plainSignature = plain.signature();
+		Assert.assertNotNull(plainSignature);
+		Assert.assertFalse(plainSignature, plainSignature.contains("dependentArguments="));
+		Assert.assertEquals(plainSignature,
+				((CollectionProducerComputationBase) cp(c).add(cp(d))).signature());
+
+		Computation<?> smallDependent = (Computation<?>) cp(c).multiply(cp(d));
+		int smallBound = smallDependent.getInputArgumentBound(Integer.MAX_VALUE);
+		CollectionProducerComputationBase small = (CollectionProducerComputationBase) cp(a).add(cp(b));
+		small.addDependentLifecycle(smallDependent);
+		Assert.assertTrue(small.signature(), small.signature().startsWith(plainSignature));
+		Assert.assertTrue(small.signature(), small.signature().endsWith("{dependentArguments=" + smallBound + "}"));
+		Assert.assertNotEquals(plainSignature, small.signature());
+
+		CollectionProducerComputationBase sameShape = (CollectionProducerComputationBase) cp(c).add(cp(d));
+		sameShape.addDependentLifecycle((Computation<?>) cp(a).multiply(cp(b)));
+		Assert.assertEquals(small.signature(), sameShape.signature());
+
+		Computation<?> largeDependent = (Computation<?>) cp(c).multiply(cp(d)).multiply(cp(a));
+		int largeBound = largeDependent.getInputArgumentBound(Integer.MAX_VALUE);
+		Assert.assertTrue("large=" + largeBound + " small=" + smallBound, largeBound > smallBound);
+		CollectionProducerComputationBase large = (CollectionProducerComputationBase) cp(a).add(cp(b));
+		large.addDependentLifecycle(largeDependent);
+		Assert.assertTrue(large.signature(), large.signature().endsWith("{dependentArguments=" + largeBound + "}"));
+		Assert.assertNotEquals(small.signature(), large.signature());
+	}
+
+	/**
 	 * A lifecycle that is a leaf of its process tree but prepares other producers along with
 	 * itself reports every argument preparing them obtains: an adapted producer reports those of
 	 * the producer it adapts and of each argument producer, and a producer with a rank reports
