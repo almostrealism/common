@@ -260,6 +260,17 @@ under the relevant backend (e.g. `AR_HARDWARE_DRIVER=mtl`), and inspect the gene
 **Mechanical rule:** for a wrong-output / `0.0` / `NaN` kernel investigation, an `ar-profile-analyzer`
 call comes before any framework `log()` probe you add yourself.
 
+A compile that is **slow, too deep, or failing** (a multi-minute build, an `Expression too deep`
+error, an `OutOfMemoryError` during compilation) is a different question, and it starts with
+**"is this graph being optimized?"** `Producer.evaluate()` and `Producer.get()` do not optimize, so
+a composite graph that contains a reduction embeds that reduction in each of its readers and builds
+an exponentially large expression. Answer the question by evaluating the graph once through
+`evaluateOptimized()` (equivalently `Process.optimized(producer).get()`) — `Process.optimize`
+isolates the reductions that `isIsolationTarget` marks, and the same graph compiles in about a
+second. Do this **before** restructuring the graph: do not split it by hand or add a manual
+`isolate()`/`Process.isolated(...)`, which moves a kernel-boundary decision out of the optimizer and
+into application code.
+
 
 ## Rule 4: IF A MANDATORY TOOL IS MISSING, TELL THE USER FIRST
 
@@ -622,7 +633,9 @@ Consult the linked references before writing related code.
 
 **Code Policy Enforcement:** `CodePolicyViolationDetector` enforces the GPU memory model in CI. Do not circumvent it by extracting code to helpers, naming methods to match the whitelist, or adding suppression comments. Fix the violating code.
 
-**Process Isolation:** Only `IsolatedProcess` breaks expression embedding. Never return null from `getValueAt()`. Call `Process.optimize()` before `Process.get()`.
+**Process Isolation:** Only `Process.optimize` decides kernel boundaries. Graph-building code never calls `Process.isolated`, `isolate()` or a wrapper of them; a computation that needs its own kernel says so through `isIsolationTarget`. Never return null from `getValueAt()`. Call `Process.optimize()` before `Process.get()`.
+
+**Optimization before evaluation.** `Producer.evaluate()` is `get().evaluate()` and `Producer.get()` do not optimize — kernel boundaries are decided only by `Process.optimize`, which these paths never reach. The canonical `cp(source).multiply(2.0).evaluate()` is element-wise with no reduction, so plain `.evaluate()` is correct for it. But any graph that contains a reduction (a sum, mean, maximum, `indexOfMax`, or other aggregation several consumers read) must be evaluated through `evaluateOptimized()` (equivalently `Process.optimized(producer).get()`); otherwise every reduction is embedded in each of its readers and the graph builds an exponentially large expression. Do not split such a graph by hand to make it compile — that moves a kernel-boundary decision into application code.
 
 **StateDictionary** for all model weight management.
 
