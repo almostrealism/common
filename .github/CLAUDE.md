@@ -105,6 +105,21 @@ only to have the next push cancel it. Validate runs use hosted runners only
 and finish in minutes. The long-running lanes run once, after the loop has
 settled.
 
+**A pull request's test run covers one backend.** A `deployment` test run
+runs the Metal lanes (`test-mac`, `test-media-mac`), which cover every module
+the other backends do, plus `test-flowtree`. The native CPU, OpenCL and CUDA
+lanes (`test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda`,
+`test-media-cuda`) skip there and run in master's test run after the merge,
+so several merges share one full run. `changes` publishes the choice as
+`full_matrix` (`false` for a deployment, `true` for `push` and
+`workflow_dispatch`). Each of those six lanes carries
+`needs.changes.outputs.full_matrix == 'true'`, and `auto-resolve`'s incomplete-run
+check does not count their skip as incomplete. A failure only another backend
+shows is found on master, and `Master Failure Dispatch` sends one capped fix
+round after it. Set the repository variable `PR_FULL_TEST_MATRIX` to `true` to
+run every backend on pull requests again.
+`tools/tests/test_validate_test_split.py` pins all of this.
+
 **Both `All Checks` and `Test Checks` are required status checks for master.**
 A validate run never reports `Test Checks` in any state, so a PR cannot merge
 until a test run has passed on its head commit. That rests on four rules:

@@ -199,29 +199,68 @@ class RunKindTest(unittest.TestCase):
                 return step
         self.fail("changes has no step with id 'kind'")
 
-    def _run_kind(self, event_name):
+    def _run_kind(self, event_name, pr_full_test_matrix=""):
+        """The kind step's outputs for a run started by ``event_name``, as a dict."""
         bash = shutil.which("bash")
         self.assertIsNotNone(bash, "bash is required to run the kind step")
         with tempfile.TemporaryDirectory() as tmp:
             output = os.path.join(tmp, "output")
             open(output, "w").close()
-            env = dict(os.environ, EVENT_NAME=event_name, GITHUB_OUTPUT=output)
+            env = dict(os.environ, EVENT_NAME=event_name, GITHUB_OUTPUT=output,
+                       PR_FULL_TEST_MATRIX=pr_full_test_matrix)
             subprocess.run([bash, "-e", "-c", self._kind_step()["run"]], env=env, check=True,
                            capture_output=True)
             with open(output) as f:
-                return f.read().strip()
+                return dict(line.strip().split("=", 1) for line in f if "=" in line)
 
     def test_pull_request_is_a_validate_run(self):
-        self.assertEqual("run_tests=false", self._run_kind("pull_request"))
+        self.assertEqual("false", self._run_kind("pull_request")["run_tests"])
 
     def test_every_other_event_is_a_test_run(self):
         for event in ("deployment", "push", "workflow_dispatch"):
             with self.subTest(event=event):
-                self.assertEqual("run_tests=true", self._run_kind(event))
+                self.assertEqual("true", self._run_kind(event)["run_tests"])
 
     def test_run_tests_is_a_job_output(self):
         outputs = self.jobs["changes"]["outputs"]
         self.assertEqual("${{ steps.kind.outputs.run_tests }}", outputs["run_tests"])
+
+    def test_full_matrix_is_a_job_output(self):
+        outputs = self.jobs["changes"]["outputs"]
+        self.assertEqual("${{ steps.kind.outputs.full_matrix }}", outputs["full_matrix"])
+
+    def test_a_pull_requests_test_run_runs_one_backend(self):
+        self.assertEqual("false", self._run_kind("deployment")["full_matrix"])
+
+    def test_master_and_a_dispatch_run_every_backend(self):
+        for event in ("push", "workflow_dispatch"):
+            with self.subTest(event=event):
+                self.assertEqual("true", self._run_kind(event)["full_matrix"])
+
+    def test_the_repository_variable_restores_every_backend_on_pull_requests(self):
+        self.assertEqual("true", self._run_kind("deployment", "true")["full_matrix"])
+
+    def test_only_the_metal_and_flowtree_lanes_run_in_a_subset_run(self):
+        subset = dict(_context("deployment", environment="test", run_tests="true"),
+                      **{"needs.changes.outputs.full_matrix": "false"})
+        for job in ("test", "test-media", "test-cl", "test-media-cl", "test-cuda", "test-media-cuda"):
+            with self.subTest(job=job):
+                condition = _normalize(self.jobs[job]["if"])
+                self.assertIn("needs.changes.outputs.full_matrix == 'true' &&", condition)
+                self.assertFalse(_evaluate(condition, subset))
+        for job in ("test-mac", "test-media-mac", "test-flowtree"):
+            with self.subTest(job=job):
+                self.assertNotIn("full_matrix", _normalize(self.jobs[job]["if"]))
+
+    def test_a_lane_left_to_master_is_not_an_incomplete_run(self):
+        step = next(s for s in self.jobs["auto-resolve"]["steps"]
+                    if s.get("id") == "test-completeness")
+        script = step["run"]
+        self.assertIn('if [ "${{ needs.changes.outputs.full_matrix }}" = "false" ]; then', script)
+        for lane in ("test", "test-media", "test-cl", "test-media-cl", "test-cuda", "test-media-cuda"):
+            with self.subTest(lane=lane):
+                self.assertIn("::notice::%s job was ${" % lane, script)
+                self.assertIn("because a pull request's test run leaves it to master", script)
 
     def test_long_running_lanes_are_test_run_only(self):
         for job in _TEST_RUN_ONLY:
