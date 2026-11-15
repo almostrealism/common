@@ -66,15 +66,30 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	private static final int INDEPENDENT = 256;
 
 	/**
-	 * The number of elements a single worker of the long-running dispatch in
-	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} processes. Sized per worker so
-	 * the dispatch takes a comparable time however many cores it is split across (its size, and so
-	 * its memory, scales with the worker count), while {@link #LONG_DEPTH} supplies the duration
-	 * independently of the element count. Large enough that each worker runs for hundreds of
-	 * milliseconds, which is far longer than the independent dispatch takes once it has threads.
+	 * The number of elements the long-running dispatch in
+	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} carries per worker it is sized
+	 * for. Its total element count is this times {@link #sizedWorkerCount()}, so on a host whose
+	 * parallelism is at or below {@link #MAX_SIZED_WORKERS} every worker processes this many elements
+	 * and the dispatch takes a time that does not depend on the core count; on a higher-core host the
+	 * total is held at {@link #MAX_SIZED_WORKERS} workers' worth and divided among the (more numerous)
+	 * resting workers. {@link #LONG_DEPTH} supplies the per-element duration independently of this
+	 * count. Large enough that a worker runs long enough to be observed occupying the pool and for the
+	 * independent dispatch to finish well before it.
 	 */
-	// TODO(review): long collection is getCpuParallelism() * 2M elements (~768MB of doubles on a 96-core host); consider capping the worker count it is sized for.
 	private static final int LONG_WORK_PER_WORKER = 2 * 1024 * 1024;
+
+	/**
+	 * The most workers the long-running dispatch in
+	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} is sized for, which bounds its
+	 * allocation at {@code MAX_SIZED_WORKERS * }{@link #LONG_WORK_PER_WORKER} doubles (about 128 MiB)
+	 * on any host rather than letting it grow with {@link KernelPreferences#getCpuParallelism()}
+	 * without bound &mdash; on a 96-core host the uncapped size would be roughly 768 MiB, enough to
+	 * exhaust a test lane's memory or exceed the timeout. The dispatch still splits across every
+	 * resting worker: its total element count stays far above the core count, so it occupies the
+	 * whole pool regardless of this cap, which only stops the allocation from scaling with core
+	 * count.
+	 */
+	private static final int MAX_SIZED_WORKERS = 8;
 
 	/**
 	 * The number of multiplications applied to every element of the long-running dispatch in
@@ -247,7 +262,7 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 300000)
 	public void independentDispatchIsNotWedgedBehindALongRunningOne() throws InterruptedException {
-		int longSize = KernelPreferences.getCpuParallelism() * LONG_WORK_PER_WORKER;
+		int longSize = sizedWorkerCount() * LONG_WORK_PER_WORKER;
 		PackedCollection values = new PackedCollection(longSize);
 		PackedCollection independent = new PackedCollection(INDEPENDENT_WORK);
 
@@ -306,6 +321,20 @@ public class ChainedSubmissionTest extends TestSuiteBase {
 				independent.destroy();
 			}
 		}
+	}
+
+	/**
+	 * The number of workers the long-running dispatch in
+	 * {@link #independentDispatchIsNotWedgedBehindALongRunningOne()} is sized for: the host's
+	 * {@link KernelPreferences#getCpuParallelism() parallelism}, capped at {@link #MAX_SIZED_WORKERS}
+	 * so the allocation does not scale without bound on a high-core host. The dispatch still splits
+	 * across every resting worker because its total element count stays far above the core count; the
+	 * cap bounds only how much memory the test allocates.
+	 *
+	 * @return the number of workers the long-running dispatch is sized for
+	 */
+	private static int sizedWorkerCount() {
+		return Math.min(KernelPreferences.getCpuParallelism(), MAX_SIZED_WORKERS);
 	}
 
 	/**
