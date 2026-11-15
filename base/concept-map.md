@@ -35,10 +35,14 @@ contracts.
 
 ## How the modules build on one another
 
-The base modules form a strict dependency chain, each adding one capability to the one below:
+The base modules form a dependency graph rooted at `meta`, each adding one capability. It is a
+branch, not a single chain: `relation` and `io` depend on `meta` independently, `code` draws on
+both, and `hardware-js` branches off `code` alongside `collect`.
 
 ```
-meta → io → relation → code → collect → hardware
+        ┌─ relation ─┐
+meta ──┤             ├─ code ─┬─ collect ── hardware
+        └─ io ───────┘        └─ hardware-js
 ```
 
 - **`meta`** is the absolute floor — zero external dependencies. It names the contracts the
@@ -48,15 +52,15 @@ meta → io → relation → code → collect → hardware
 - **`io`** adds diagnostics on top of `meta`: hierarchical `Console` logging, `TimingMetric`
   and `DistributionMetric`, the alert system, and lazy initialization (`SuppliedValue`). Every
   layer uses it for output.
-- **`relation`** adds the *computational model* on top of `meta`: the `Producer`/`Evaluable`
+- **`relation`** adds the *computational model* on top of `meta` (not `io`): the `Producer`/`Evaluable`
   two-phase split, `Countable` for kernel sizing, the `Process` tree and its optimization
   (`ProcessContext`, `ParallelismTargetOptimization`, `IsolatedProcess`), and composition
   (`Factor`, `Composition`). It also defines the **graph vocabulary** — `Node`, `Group`,
   `NodeGroup`, `NodeList`, `Graph`, `Tree`, `WeightedGraph`, `IndexedGraph`, `Parent`, `Path`
   (see family 3 of the summary map). Its `frames` package is a forward-looking extension toward
   semantic relations.
-- **`code`** adds *code generation* on top of `relation`: `Expression` trees, `Scope`,
-  `Computation`, `TraversalPolicy` and the collection-expression algebra
+- **`code`** adds *code generation* on top of both `relation` and `io`: `Expression` trees,
+  `Scope`, `Computation`, `TraversalPolicy` and the collection-expression algebra
   (`CollectionExpression`, `TraversableExpression`, `Shape`), the `kernel` package (index
   sequences, kernel-series detection) and `ExpressionCache` (thread-local deduplication that
   prevents expression-tree explosion).
@@ -65,11 +69,14 @@ meta → io → relation → code → collect → hardware
   `io.almostrealism.collect` package because they are circularly coupled with `Expression`; the
   concrete `PackedCollection` and `CollectionProducer` live in `compute/algebra`, where they can
   see hardware memory. See [base/collect/README.md](collect/README.md).
-- **`hardware`** adds *execution* on top of the chain: `MemoryData` and the memory model
+- **`hardware`** adds *execution* on top of `collect`: `MemoryData` and the memory model
   (zero-copy delegation, thread-local arenas, GC-integrated native memory), kernel compilation
   and caching, and the CPU/OpenCL/Metal/CUDA backends. A native handle is always carried by a
   typed wrapper (`MTLBuffer`, `CUStream`, …), never a bare `long` — see
   [base/CLAUDE.md](CLAUDE.md).
+- **`hardware-js`** branches off `code` (not `collect`): it is the JavaScript code-generation
+  backend, an alternative emitter for the same `Scope`/`Expression` trees, so it needs the code
+  layer but none of the native memory model that `hardware` adds.
 
 ## The one rule this layer exists to enforce
 

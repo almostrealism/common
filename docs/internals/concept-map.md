@@ -1,10 +1,12 @@
 # Concept Map
 
 This document is the platform's concept map: it situates the core concept of every module in
-the layered architecture and records where mathematically-related concepts are — and are not —
-connected in the type system. A reader (or an agent about to introduce a new type) uses it to
-find the concept that already expresses an idea, in the layer it lives in, before writing a
-parallel one.
+the six-layer stack (`base` through `extern`/`studio`) and records where mathematically-related
+concepts are — and are not — connected in the type system. A reader (or an agent about to
+introduce a new type) uses it to find the concept that already expresses an idea, in the layer
+it lives in, before writing a parallel one. The standalone `flowtree` and `tools` module groups
+sit above this stack (see `llms.txt`) and are outside its scope; this map covers the layered
+platform they build on.
 
 It has two parts:
 
@@ -58,9 +60,10 @@ omitted.
 **The cross-link that ties the stack together:** both `MemoryData` and `Producer` `extend Node`
 (the graph marker from `base/relation`). Therefore every `PackedCollection`-backed value —
 `Vector`, `RGB`, `Ray`, `TransformMatrix` — and every producer is a **graph node**. This is why
-the graph vocabulary (Part II, family 3) reaches every numeric type: a `Mesh` can bind
-`Graph<Vector>` and a `Curve` can `extend Node` because `Vector` and the collections underneath
-a `Curve` already are nodes.
+the graph vocabulary (Part II, family 3) reaches the numeric types: because `Vector` is a `Node`,
+a `Mesh` can bind `Graph<Vector>`. (`Curve` is a graph node as well, but by its own declaration —
+`Curve<T> extends Gradient<T>, Node` — not inherited from the collections it evaluates over; its
+supertypes `Differentiable` and `Gradient` do not extend `Node`.)
 
 ## The layers and their per-layer maps
 

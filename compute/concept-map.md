@@ -29,7 +29,8 @@ deliberately left abstract:
 
 Because `PackedCollection` and `Vector`/`RGB`/`Ray` are all `Node`s, the numeric data types of
 the whole framework share a root with the graph vocabulary from `base/relation` — this is why a
-mesh can be a `Graph<Vector>` and why a `Curve` can `extend Node`.
+mesh can be a `Graph<Vector>`. (`Curve` is a graph node too, but by its own declaration —
+`Curve<T> extends Gradient<T>, Node` — not because the collections it evaluates over are nodes.)
 
 ## Concepts each module contributes
 
