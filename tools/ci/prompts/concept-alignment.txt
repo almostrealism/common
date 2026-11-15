@@ -151,7 +151,7 @@ Write the claim in one sentence: "`A` is a `B` because ...". Then check it:
   relationship is exercised and cannot be removed silently.
 - Run tests only through the MCP test runner (`mcp__ar-test-runner__start_test_run`) with a
   bounded selection — a class, a few classes, or named methods, never a module's whole suite,
-  and never `AR_TEST_GROUP`/`AR_TEST_GROUPS` — each with an explicit timeout of at most 2400
+  a wildcard, or a CI shard selector — each with an explicit timeout of at most 2400
   seconds. Also run `timeout 2400 mvn clean install -DskipTests` (a build, not a test run) and
   the build validator (`checkstyle`, `code_policy`, `test_timeouts`, `duplicate_code`) before
   you finish.
