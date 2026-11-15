@@ -466,10 +466,18 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * is skipped when the derived title and body already match, so a pull request
      * a human has since titled correctly is not rewritten on every reuse.</p>
      *
+     * <p>The refresh is also skipped entirely when the commit's own message
+     * cannot be fetched — a transient GitHub/API failure, or a commit that
+     * carries no message. Without that message there is nothing better than the
+     * generic fallback to refresh toward, and PATCHing the fallback would
+     * overwrite the pull request's existing title and body (including a human's
+     * edits) with a worse description; a later completion refreshes it instead.</p>
+     *
      * @param ownerRepo           the {@code owner/repo} path component
      * @param existing            the open pull request being reused
      * @param commitRef           commit SHA whose message describes the change
-     * @param fallbackDescription description to use when no commit message is available
+     * @param fallbackDescription description used when the commit message yields
+     *                            no usable title
      * @param bodySuffix          text appended to the derived body, or {@code null}
      * @param token               the GitHub API bearer token
      */
@@ -477,6 +485,11 @@ public class GitHubProxyHandler implements ConsoleFeatures {
                                    String fallbackDescription, String bodySuffix, String token) {
         String commitMessage = commitRef == null ? null
                 : fetchCommitMessage(ownerRepo, commitRef, token);
+        if (commitMessage == null) {
+            log("Not refreshing companion PR #" + existing.number() + " in " + ownerRepo
+                    + ": no commit message available for " + commitRef);
+            return;
+        }
         String desiredTitle = pullRequestTitle(commitMessage, fallbackDescription);
         String desiredBody = pullRequestBody(commitMessage, fallbackDescription);
         if (bodySuffix != null && !bodySuffix.isEmpty()) {

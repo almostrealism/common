@@ -35,8 +35,10 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
@@ -174,6 +176,30 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
         assertEquals("Move the helper into lib", refreshed.title);
         assertTrue("the refreshed body comes from the commit",
                 refreshed.body.contains("Shared by both repos."));
+    }
+
+    /**
+     * When the reused companion PR's commit message cannot be fetched (a
+     * transient GitHub/API failure), the PR is left untouched: no PATCH is sent
+     * and its existing title and body survive, rather than being overwritten
+     * with the generic fallback description. A later completion refreshes it.
+     */
+    @Test(timeout = 30000)
+    public void reusedCompanionPrIsNotClobberedWhenCommitFetchFails() {
+        FakePr existing = github.seedOpenPr("widgets/lib", "feature/x",
+                "A good human-authored title", "A good human-authored body");
+        github.unfetchableRefs.add("dep123");
+        publisher.register("job-1", context(false));
+
+        JobCompletionEvent event = eventWithPush("abc", "dep123");
+        publisher.publish(event);
+
+        assertTrue("no PATCH may be sent when the commit message cannot be fetched",
+                github.requests.stream().noneMatch(r -> r.startsWith("PATCH ")));
+        assertEquals(List.of(existing.htmlUrl), event.getCompanionPullRequestUrls());
+        FakePr untouched = github.prByNumber(existing.number);
+        assertEquals("A good human-authored title", untouched.title);
+        assertEquals("A good human-authored body", untouched.body);
     }
 
     /** A branch that is not ahead of the default branch opens nothing. */
@@ -325,6 +351,8 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
         private final List<FakeComment> comments = new ArrayList<>();
         /** Commit messages by ref. */
         private final Map<String, String> messageByRef = new HashMap<>();
+        /** Refs whose commit lookup fails (a transient GitHub/API error). */
+        private final Set<String> unfetchableRefs = new HashSet<>();
         /** The {@code ahead_by} every compare reports. */
         private int aheadBy = 3;
         /** The {@code default_branch} every repo reports. */
@@ -456,6 +484,9 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
             }
             if (seg.length >= 3 && seg[2].equals("commits")) {
                 String ref = seg[3];
+                if (unfetchableRefs.contains(ref)) {
+                    return null;
+                }
                 String message = messageByRef.getOrDefault(ref, "Default subject\n\nDefault body.");
                 return "{\"commit\":{\"message\":" + quote(message) + "}}";
             }
