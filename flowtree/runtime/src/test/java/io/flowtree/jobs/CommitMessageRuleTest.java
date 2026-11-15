@@ -145,6 +145,25 @@ public class CommitMessageRuleTest extends TestSuiteBase {
     }
 
     /**
+     * A correction reported directly, with no preceding
+     * {@link CommitMessageRule#buildCorrectionPrompt(CodingAgentJob)}, still tags
+     * the resolved primary message {@link CommitMessageRule#SOURCE_RECOVERED}:
+     * {@code primaryNeededMessage} defaults to {@code true} so that a resolved
+     * job is treated as a primary recovery unless a prompt established that only
+     * a dependent checkout was missing.
+     */
+    @Test(timeout = 30000)
+    public void correctionWithoutAPriorPromptTagsThePrimaryRecovered() throws IOException {
+        Files.write(primaryDir.resolve("commit.txt"),
+                "Fix the inverted guard".getBytes(StandardCharsets.UTF_8));
+        CodingAgentJob job = job(Set.of(primaryDir.toString()));
+        CommitMessageRule rule = new CommitMessageRule();
+        rule.onCorrectionAttempted(job);
+        Assert.assertEquals("a resolved job without a prior prompt is a primary recovery",
+                CommitMessageRule.SOURCE_RECOVERED, job.getCommitMessageSource());
+    }
+
+    /**
      * Builds a job rooted at {@code primaryDir} with {@code depDir} as a
      * dependent repo, reporting the given roots as holding uncommitted changes.
      *
