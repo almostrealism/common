@@ -44,7 +44,10 @@ A compute context that knows its argument limit reports it through
 folds its small arguments into the aggregate only when its structural argument bound — the
 leaf positions of its `Process` tree plus the output, counted before any de-duplication —
 exceeds that limit (`ComputeContext.fitsArgumentLimit`); a kernel that provably fits
-takes every argument directly. Folding therefore can no longer push a kernel past a known
+takes every argument directly. The kernel structure resources (the series cache and the
+traversal operations) create arguments while such a kernel is generated, which are not leaves,
+so `CompiledKernelStructureContext.prepareResources` keeps them within the room the bound
+leaves under the limit (`AcceleratedOperation.getArgumentAllowance`). Folding therefore can no longer push a kernel past a known
 limit. The limit checks only the arguments folding governs: a kernel whose ineligible
 arguments (larger than `maxAggregateLength`) already exceed the limit still fails to compile,
 and lowering `maxAggregateLength` still sends more raw arguments into the kernel signature.

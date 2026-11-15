@@ -330,16 +330,18 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * {@inheritDoc}
 	 *
 	 * <p>For a computation that is a {@link Process}, the bound is the number of leaf positions of
-	 * its process tree, plus one for the output. Every kernel argument is reached through a leaf of
-	 * that tree, and leaves are counted by position, before any de-duplication by value or by the
-	 * memory they share, so de-duplication can only lower the real count below the bound. The tree
-	 * is what the computation's signature describes, so the bound is the same for every
+	 * its process tree, plus one for the output. Every argument the computation's own inputs
+	 * contribute is reached through a leaf of that tree, and leaves are counted by position,
+	 * before any de-duplication by value or by the memory they share, so de-duplication can only
+	 * lower the real count below the bound. The arguments the kernel structure resources add
+	 * while the kernel is generated are not leaves; {@link #prepareScope(ArgumentProvider)} keeps
+	 * them within the {@link #getArgumentAllowance() allowance} the bound leaves under the limit.
+	 * The tree is what the computation's signature describes, so the bound is the same for every
 	 * computation that shares a compiled kernel. A computation that is not a {@link Process} has
 	 * no structure to count and always folds.</p>
 	 */
 	@Override
 	protected int getArgumentBound(int cap) {
-		// TODO(review): bound omits args CompiledKernelStructureContext.prepareResources adds during compile
 		if (!(getComputation() instanceof Process<?, ?> process)) {
 			return Integer.MAX_VALUE;
 		}
@@ -457,7 +459,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * <p>The kernel structure context belongs to the instruction set manager — the
 	 * owner of the compiled instructions and of the kernel structure resources their
 	 * generated code references. Its resources are materialized here, at the start
-	 * of compilation, through the argument provider of this compilation pass.</p>
+	 * of compilation, through the argument provider of this compilation pass, and add
+	 * no more kernel arguments than the {@link #getArgumentAllowance() allowance} left
+	 * under the compute context's argument limit.</p>
 	 *
 	 * @param manager The scope input manager
 	 */
@@ -465,7 +469,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	protected void prepareScope(ArgumentProvider manager) {
 		CompiledKernelStructureContext context =
 				getInstructionSetManager().getKernelStructureContext(getComputation());
-		context.prepareResources(manager);
+		context.prepareResources(manager, getArgumentAllowance());
 		getCompiler().prepareScope(manager, context);
 	}
 

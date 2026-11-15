@@ -341,6 +341,29 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	/**
+	 * Returns how many kernel arguments compilation may add beyond this operation's
+	 * {@link #getArgumentBound(int) structural argument bound} without the kernel exceeding its
+	 * {@link ComputeContext}'s argument limit.
+	 *
+	 * <p>A kernel that {@link #isArgumentFoldingRequired() needs no folding} is compiled with every
+	 * argument standalone on the strength of its structural bound, so any argument created while
+	 * it is generated (such as those of the kernel structure resources) must fit in the room the
+	 * bound leaves: the limit less the bound. A kernel that folds was never judged to fit, so
+	 * nothing limits what compilation adds to it, and {@link Integer#MAX_VALUE} is returned.</p>
+	 *
+	 * @return the limit less the structural bound when the kernel provably fits, otherwise
+	 *         {@link Integer#MAX_VALUE}
+	 */
+	protected int getArgumentAllowance() {
+		if (isArgumentFoldingRequired()) {
+			return Integer.MAX_VALUE;
+		}
+
+		int limit = getComputeContext().getArgumentLimit().getAsInt();
+		return limit - getArgumentBound(limit);
+	}
+
+	/**
 	 * Returns an upper bound on the arguments this operation's kernel declares when none of them
 	 * is folded, computed from the operation's structure alone, or any value greater than
 	 * {@code cap} once the bound is known to exceed it.

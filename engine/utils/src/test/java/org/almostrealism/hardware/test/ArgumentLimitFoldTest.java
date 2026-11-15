@@ -123,6 +123,40 @@ public class ArgumentLimitFoldTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A kernel that fits is allowed exactly the room its bound leaves under the limit for the
+	 * arguments compilation adds; a kernel that folds, or one compiled with no known limit, is
+	 * not limited.
+	 */
+	@Test(timeout = 60000)
+	public void allowanceIsTheRoomUnderTheLimit() {
+		int bound = run(new LimitedComputeContext(OptionalInt.empty())).getBound(Integer.MAX_VALUE - 1);
+		Computation<Void> computation = a(cp(new PackedCollection(SIZE)).each(), sumOfInputs(inputs(INPUTS)).each());
+
+		Assert.assertEquals(Integer.MAX_VALUE,
+				new FoldProbe(new LimitedComputeContext(OptionalInt.empty()), computation).getAllowance());
+		Assert.assertEquals(Integer.MAX_VALUE,
+				new FoldProbe(new LimitedComputeContext(OptionalInt.of(bound - 1)), computation).getAllowance());
+		Assert.assertEquals(0,
+				new FoldProbe(new LimitedComputeContext(OptionalInt.of(bound)), computation).getAllowance());
+		Assert.assertEquals(3,
+				new FoldProbe(new LimitedComputeContext(OptionalInt.of(bound + 3)), computation).getAllowance());
+	}
+
+	/**
+	 * A kernel compiled with no room left under the limit still evaluates correctly: the kernel
+	 * structure resources simply add nothing to it.
+	 */
+	@Test(timeout = 60000)
+	public void kernelWithNoAllowanceEvaluatesCorrectly() {
+		// TODO(review): probe expression likely never triggers series/traversal resources; zero-allowance compile path is not exercised end-to-end
+		int bound = run(new LimitedComputeContext(OptionalInt.empty())).getBound(Integer.MAX_VALUE - 1);
+
+		FoldProbe exact = run(new LimitedComputeContext(OptionalInt.of(bound)));
+		Assert.assertEquals(0, exact.getFolded());
+		Assert.assertEquals(0, exact.getAllowance());
+	}
+
+	/**
 	 * Computations sharing a signature under the same limited context share one kernel: the
 	 * reusing computation replays the fold, reaches the same decision, and reads its own inputs,
 	 * whether the shared kernel folds nothing or folds everything.
@@ -231,6 +265,11 @@ public class ArgumentLimitFoldTest extends TestSuiteBase {
 		 */
 		int getBound(int cap) {
 			return getArgumentBound(cap);
+		}
+
+		/** Returns the arguments compilation may add to this operation's kernel. */
+		int getAllowance() {
+			return getArgumentAllowance();
 		}
 	}
 

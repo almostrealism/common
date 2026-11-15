@@ -40,7 +40,7 @@ import java.util.function.Supplier;
  * and destroyed by the instruction set manager, so the resources live exactly as long
  * as the instructions.</p>
  *
- * <p>{@link #prepareResources(ArgumentProvider)} materializes the resources once, when
+ * <p>{@link #prepareResources(ArgumentProvider, int)} materializes the resources once, when
  * compilation begins; later calls are no-ops. This is what makes scope preparation safe
  * to repeat — for example, replaying an already-compiled computation's argument fold to
  * verify reuse never manufactures a second set of resources.</p>
@@ -49,6 +49,12 @@ import java.util.function.Supplier;
  * @see org.almostrealism.hardware.instructions.ComputationScopeCompiler
  */
 public class CompiledKernelStructureContext implements KernelStructureContext, Destroyable {
+	/**
+	 * The most kernel arguments the {@link KernelSeriesCache} adds to the kernel: all of its
+	 * cached sequences share one backing memory, which is one argument.
+	 */
+	public static final int SERIES_CACHE_ARGUMENTS = 1;
+
 	/** The computation the instructions were (or will be) compiled from. */
 	private final Computation<?> computation;
 
@@ -104,16 +110,36 @@ public class CompiledKernelStructureContext implements KernelStructureContext, D
 	 * how many times its scope is prepared or its argument fold is replayed. Nothing
 	 * is created when kernel structure is unsupported for the computation.</p>
 	 *
-	 * @param manager The argument provider of the compilation pass
+	 * <p>The resources add kernel arguments while the kernel is being generated, after the
+	 * decision whether to fold its arguments was made, so together they add at most
+	 * {@code argumentAllowance}: the series cache, which needs
+	 * {@link #SERIES_CACHE_ARGUMENTS}, is created only if the allowance covers it, and the
+	 * traversal generator creates no more operations than what remains. An expression the
+	 * generator does not reorder is compiled as it is, so the allowance limits the optimization,
+	 * never the result.</p>
+	 *
+	 * @param manager           The argument provider of the compilation pass
+	 * @param argumentAllowance The most kernel arguments the resources may add, or
+	 *                          {@link Integer#MAX_VALUE} for no limit; must not be negative
+	 * @throws IllegalArgumentException if {@code argumentAllowance} is negative
 	 */
-	public void prepareResources(ArgumentProvider manager) {
-		if (!isKernelStructureSupported() || seriesCache != null) {
+	public void prepareResources(ArgumentProvider manager, int argumentAllowance) {
+		if (argumentAllowance < 0) {
+			throw new IllegalArgumentException("argumentAllowance must not be negative: " + argumentAllowance);
+		}
+
+		if (!isKernelStructureSupported() || traversalGenerator != null) {
 			return;
 		}
 
-		seriesCache = KernelSeriesCache.create(computation,
-				data -> manager.argumentForInput().apply((Supplier) new KernelConstantProviderSupplier(data)));
-		traversalGenerator = KernelTraversalOperationGenerator.create(computation,
+		int remaining = argumentAllowance;
+		if (remaining >= SERIES_CACHE_ARGUMENTS) {
+			seriesCache = KernelSeriesCache.create(computation,
+					data -> manager.argumentForInput().apply((Supplier) new KernelConstantProviderSupplier(data)));
+			remaining -= SERIES_CACHE_ARGUMENTS;
+		}
+
+		traversalGenerator = KernelTraversalOperationGenerator.create(computation, remaining,
 				data -> manager.argumentForInput().apply((Supplier) data));
 	}
 

@@ -482,6 +482,14 @@ What changed:
   decision is not to fold. `rebindAggregateForReuse` calls the same `createArgumentMap()`,
   so a reusing computation reaches the same decision. `MemoryDataArgumentMap.get` and the
   slice-copy machinery are unchanged.
+- The kernel structure resources (`KernelSeriesCache`, at most one argument; traversal
+  operations from `KernelTraversalOperationGenerator`, one argument each) create arguments
+  while a kernel is generated, so they are not leaves and the bound misses them. For a kernel
+  judged to fit, `AcceleratedOperation.getArgumentAllowance()` (the limit less the bound) is
+  passed to `CompiledKernelStructureContext.prepareResources`. It creates the series cache only
+  if the allowance covers it, and caps the generator's operations at what remains. An
+  expression the generator does not reorder compiles unreordered. A folding kernel is not
+  capped.
 - Docs: the "Argument Aggregation" section of `base/hardware/README.md` (which also had the
   size threshold wrong: it is 1024 elements, not 1MB), `docs/internals/argument-binding-lifecycle.md`,
   and the Javadoc of `enableArgumentAggregation`, `maxAggregateLength`,
