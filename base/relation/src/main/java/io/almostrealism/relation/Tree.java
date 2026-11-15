@@ -171,7 +171,9 @@ public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>,
 	 * <p>Nodes are visited by position: a node reachable along several paths contributes its
 	 * weight once for each, so the result is a sum over the node slots of the tree, not over
 	 * its distinct node objects. The traversal ends as soon as the sum exceeds {@code cap}, so
-	 * a large or heavily shared tree costs no more than reaching that sum.</p>
+	 * a large or heavily shared tree costs no more than reaching that sum. The sum saturates at
+	 * {@link Integer#MAX_VALUE}, so a weight of {@link Integer#MAX_VALUE} (meaning "unbounded")
+	 * can never wrap around to a small value.</p>
 	 *
 	 * @param weight the non-negative weight of each node
 	 * @param cap    the sum past which the traversal stops; must not be negative
@@ -185,7 +187,7 @@ public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>,
 		if (children == null) return sum;
 
 		for (T child : children) {
-			sum += child.sumByPosition(weight, cap - sum);
+			sum = (int) Math.min(Integer.MAX_VALUE, (long) sum + child.sumByPosition(weight, cap - sum));
 			if (sum > cap) return sum;
 		}
 

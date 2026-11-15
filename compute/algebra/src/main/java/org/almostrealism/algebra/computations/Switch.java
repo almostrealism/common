@@ -104,6 +104,24 @@ public class Switch extends OperationComputationAdapter<PackedCollection> implem
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The choices are prepared and embedded in this switch's scope without being positions of
+	 * its process tree, whose only children are the inputs, so every argument they obtain is
+	 * reported here: the sum of their {@link Computation#getInputArgumentBound(int) input argument
+	 * bounds}, which is unbounded if any choice is not a process.</p>
+	 */
+	@Override
+	public int getScopeArgumentCount() {
+		long count = super.getScopeArgumentCount();
+		for (Computation<?> choice : choices) {
+			count += choice.getInputArgumentBound(Integer.MAX_VALUE);
+		}
+
+		return (int) Math.min(Integer.MAX_VALUE, count);
+	}
+
+	/**
 	 * Generates the scope containing the switch/case logic.
 	 *
 	 * <p>

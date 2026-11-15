@@ -32,6 +32,7 @@ import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.streams.Semaphore;
+import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
@@ -43,11 +44,13 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.List;
 import java.util.OptionalInt;
 
 /**
@@ -340,6 +343,103 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 	}
 
 	/**
+	 * A switch prepares and embeds its choices without their being positions of its process
+	 * tree, so it reports every argument the choices obtain, and its bound counts them on top of
+	 * its own leaves. Compiled under a limit equal to that bound it folds nothing, stays within
+	 * the limit, and runs only the chosen branch.
+	 */
+	@Test(timeout = 60000)
+	public void switchReportsTheArgumentsOfItsChoices() {
+		PackedCollection decision = new PackedCollection(1);
+		decision.clear();
+		PackedCollection in = new PackedCollection(SIZE).fill(3.0);
+		PackedCollection first = new PackedCollection(SIZE).fill(-1.0);
+		PackedCollection second = new PackedCollection(SIZE).fill(-1.0);
+
+		Computation<Void> copy = a(cp(first).each(), cp(in).each());
+		Computation<Void> twice = a(cp(second).each(), cp(in).add(cp(in)).each());
+		Switch choice = new Switch(cp(decision), List.of(copy, twice));
+
+		int copyBound = copy.getInputArgumentBound(Integer.MAX_VALUE);
+		int twiceBound = twice.getInputArgumentBound(Integer.MAX_VALUE);
+		Assert.assertTrue("copy=" + copyBound, copyBound >= 2);
+		Assert.assertTrue("twice=" + twiceBound + " copy=" + copyBound, twiceBound > copyBound);
+		Assert.assertEquals(copyBound + twiceBound, choice.getScopeArgumentCount());
+
+		FoldProbe unknown = new FoldProbe(new LimitedComputeContext(OptionalInt.empty()), choice);
+		int bound = unknown.getBound(Integer.MAX_VALUE - 1);
+		Assert.assertEquals(1 + choice.countLeaves(Integer.MAX_VALUE - 1) + copyBound + twiceBound, bound);
+		Assert.assertTrue("bound=" + bound, bound < MetalOperator.MAX_ARGUMENTS);
+
+		FoldProbe leavesOnly = new FoldProbe(
+				new LimitedComputeContext(OptionalInt.of(1 + choice.countLeaves(Integer.MAX_VALUE - 1))), choice);
+		Assert.assertEquals(Integer.MAX_VALUE, leavesOnly.getAllowance());
+
+		FoldProbe fits = new FoldProbe(new LimitedComputeContext(OptionalInt.of(bound)), choice);
+		fits.run();
+		Assert.assertEquals(0, fits.getFolded());
+		Assert.assertTrue("arguments=" + fits.getArgumentCount() + " bound=" + bound,
+				fits.getArgumentCount() <= bound);
+
+		double[] firstValues = first.toArray();
+		double[] secondValues = second.toArray();
+		for (int i = 0; i < SIZE; i++) {
+			assertEquals(3.0, firstValues[i]);
+			assertEquals(-1.0, secondValues[i]);
+		}
+	}
+
+	/**
+	 * A kernel whose bound exceeds the limit folds only while aggregation is enabled; with
+	 * aggregation disabled it folds nothing, so it is verified against the limit and an argument
+	 * count past it fails at compilation naming the cause, while a count within it passes.
+	 */
+	@Test(timeout = 60000)
+	public void kernelThatCannotFoldIsVerifiedAgainstTheLimit() {
+		int bound = run(new LimitedComputeContext(OptionalInt.empty())).getBound(Integer.MAX_VALUE - 1);
+		Computation<Void> computation = a(cp(new PackedCollection(SIZE)).each(), sumOfInputs(inputs(INPUTS)).each());
+		FoldProbe overflows = new FoldProbe(new LimitedComputeContext(OptionalInt.of(bound - 1)), computation);
+
+		Assert.assertTrue(overflows.isFoldingEnabled());
+		overflows.verify(Integer.MAX_VALUE);
+
+		boolean previous = MemoryDataArgumentMap.enableArgumentAggregation;
+		MemoryDataArgumentMap.enableArgumentAggregation = false;
+
+		try {
+			Assert.assertFalse(overflows.isFoldingEnabled());
+			overflows.verify(bound - 1);
+
+			try {
+				overflows.verify(bound);
+				Assert.fail("An argument count past the limit of a kernel that cannot fold was accepted");
+			} catch (HardwareException e) {
+				Assert.assertTrue(e.getMessage(), e.getMessage().contains(String.valueOf(bound)));
+				Assert.assertTrue(e.getMessage(), e.getMessage().contains("disabled or unsupported"));
+			}
+		} finally {
+			MemoryDataArgumentMap.enableArgumentAggregation = previous;
+		}
+	}
+
+	/**
+	 * A sum by position saturates rather than wrapping around, so weights whose total exceeds
+	 * the range of an int are still reported as exceeding the cap.
+	 */
+	@Test(timeout = 30000)
+	public void sumByPositionSaturatesInsteadOfOverflowing() {
+		PackedCollection a = new PackedCollection(SIZE).fill(1.0);
+		PackedCollection b = new PackedCollection(SIZE).fill(2.0);
+		Process<?, ?> pair = (Process<?, ?>) cp(a).add(cp(b));
+		Assert.assertTrue(pair.countLeaves(100) >= 2);
+
+		int half = Integer.MAX_VALUE / 2 + 1;
+		int sum = pair.sumByPosition(node ->
+				node.getChildren() == null || node.getChildren().isEmpty() ? half : 0, Integer.MAX_VALUE - 1);
+		Assert.assertEquals(Integer.MAX_VALUE, sum);
+	}
+
+	/**
 	 * Assigns to the given output the sum of {@code [[1, 2], [3, 4]]} and {@code [[2, 0], [0, 3]]},
 	 * the second either dense or stored compactly through a mask ordering.
 	 *
@@ -547,6 +647,11 @@ public class ArgumentLimitFoldTest extends TestSuiteBase implements ExpressionFe
 		 */
 		void verify(int argumentCount) {
 			verifyArgumentLimit(argumentCount);
+		}
+
+		/** Returns whether this operation's argument map folds eligible arguments. */
+		boolean isFoldingEnabled() {
+			return isArgumentFoldingEnabled();
 		}
 	}
 

@@ -321,8 +321,22 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 */
 	protected MemoryDataArgumentMap createArgumentMap() {
 		return MemoryDataArgumentMap.create(getComputeContext(),
-				isArgumentAggregationSupported() && isArgumentFoldingRequired()
-						? memLength -> createAggregatedInput(memLength, memLength) : null);
+				isArgumentFoldingEnabled() ? memLength -> createAggregatedInput(memLength, memLength) : null);
+	}
+
+	/**
+	 * Returns whether this operation's kernel actually folds its eligible arguments into an
+	 * aggregate argument: argument aggregation is
+	 * {@link MemoryDataArgumentMap#enableArgumentAggregation enabled}, this operation
+	 * {@link #isArgumentAggregationSupported() supports it}, and its kernel
+	 * {@link #isArgumentFoldingRequired() needs it}. When this is {@code false} every argument of
+	 * the kernel is declared standalone.
+	 *
+	 * @return {@code true} if the argument map of this operation folds eligible arguments
+	 */
+	protected boolean isArgumentFoldingEnabled() {
+		return MemoryDataArgumentMap.enableArgumentAggregation
+				&& isArgumentAggregationSupported() && isArgumentFoldingRequired();
 	}
 
 	/**
@@ -364,32 +378,37 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	/**
-	 * Verifies that a kernel compiled without folding, on the strength of its
-	 * {@link #getArgumentBound(int) structural argument bound}, declares no more arguments than
-	 * its {@link ComputeContext}'s argument limit.
+	 * Verifies that a kernel compiled without folding declares no more arguments than its
+	 * {@link ComputeContext}'s argument limit, when that limit is known.
 	 *
-	 * <p>The bound relies on every argument scope preparation obtains being reported, either as a
-	 * leaf of the process tree or through a
-	 * {@link ScopeLifecycle#getScopeArgumentCount() scope argument count}. A component that
-	 * obtains an argument without reporting it lets the bound fall below the real count, and the
-	 * kernel would otherwise reach the backend with more arguments than it accepts, failing there
-	 * far from the cause. A kernel that folds was never judged to fit, so nothing is verified for
-	 * it.</p>
+	 * <p>A kernel folds nothing either because its {@link #getArgumentBound(int) structural
+	 * argument bound} fits the limit, or because folding is unavailable to it (aggregation is
+	 * disabled, or the operation does not support it). In the first case the bound relies on every
+	 * argument scope preparation obtains being reported, either as a leaf of the process tree or
+	 * through a {@link ScopeLifecycle#getScopeArgumentCount() scope argument count}, and a component
+	 * that obtains an argument without reporting it lets the bound fall below the real count. In
+	 * either case the kernel would otherwise reach the backend with more arguments than it
+	 * accepts, failing there far from the cause. A kernel that
+	 * {@link #isArgumentFoldingEnabled() folds}, or one compiled for a context with no known limit,
+	 * is not verified.</p>
 	 *
 	 * @param argumentCount the number of arguments the compiled kernel declares
-	 * @throws HardwareException if the kernel was judged to fit its limit but declares more
-	 *         arguments than the limit
+	 * @throws HardwareException if the kernel folds nothing but declares more arguments than the
+	 *         known limit
 	 */
 	protected void verifyArgumentLimit(int argumentCount) {
-		if (isArgumentFoldingRequired()) return;
+		OptionalInt limit = getComputeContext().getArgumentLimit();
+		if (limit.isEmpty() || isArgumentFoldingEnabled()) return;
 
-		int limit = getComputeContext().getArgumentLimit().getAsInt();
-		if (argumentCount > limit) {
-			throw new HardwareException(getName() + " was compiled without folding because its" +
-					" structural argument bound " + getArgumentBound(limit) + " fits the argument limit " +
-					limit + ", but its kernel declares " + argumentCount + " arguments; a component" +
-					" obtains an argument during scope preparation that its scope argument count" +
-					" does not report");
+		if (argumentCount > limit.getAsInt()) {
+			String cause = isArgumentFoldingRequired()
+					? "its structural argument bound exceeds the limit but argument folding is" +
+						" disabled or unsupported for it"
+					: "its structural argument bound " + getArgumentBound(limit.getAsInt()) +
+						" fits the limit, so a component obtains an argument during scope preparation" +
+						" that its scope argument count does not report";
+			throw new HardwareException(getName() + " folds none of its arguments, but its kernel declares " +
+					argumentCount + " arguments, past the argument limit " + limit.getAsInt() + ": " + cause);
 		}
 	}
 

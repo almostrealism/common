@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.compute.Process;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Computable;
 import io.almostrealism.scope.Method;
@@ -97,6 +98,32 @@ public interface Computation<T> extends
 	 * @return {@code true} if the kernel may refer to kernel structure resources
 	 */
 	default boolean isKernelStructureSupported() { return true; }
+
+	/**
+	 * Returns an upper bound on the kernel arguments preparing this computation's scope obtains,
+	 * excluding its output: the leaf positions of its {@link Process} tree plus the
+	 * {@link ScopeLifecycle#getScopeArgumentCount() scope argument count} of every position of
+	 * that tree. Both are counted by position, before any de-duplication by value or by shared
+	 * memory, so the real count can only be lower. The tree is what the computation's signature
+	 * describes, so the bound is the same for every computation sharing a compiled kernel.
+	 *
+	 * <p>A computation that is not a {@link Process} has no structure to count and is reported
+	 * as unbounded ({@link Integer#MAX_VALUE}).</p>
+	 *
+	 * @param cap the count past which the exact bound does not matter
+	 * @return the bound if it is at most {@code cap}, otherwise a value greater than {@code cap}
+	 */
+	default int getInputArgumentBound(int cap) {
+		if (!(this instanceof Process<?, ?> process)) {
+			return Integer.MAX_VALUE;
+		}
+
+		int leaves = process.countLeaves(cap);
+		if (leaves > cap) return leaves;
+
+		return (int) Math.min(Integer.MAX_VALUE,
+				(long) leaves + process.sumByPosition(ScopeLifecycle::getScopeArgumentCount, cap - leaves));
+	}
 
 	/**
 	 * Returns the console instance for logging.
