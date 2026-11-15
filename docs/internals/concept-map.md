@@ -120,7 +120,7 @@ Notes and the cross-links this family already carries:
   specifies a `ContinuousField` of the `t` roots of `p = o + t d`, whereas marching an implicit
   surface yields a hit position, and `expect()` has no natural meaning for a signed-distance
   value. Bridging the two is a design question about the intersection contract — not an
-  `instanceof`/adapter, which this round's rules forbid.
+  `instanceof`/adapter, which the project's "honor the interface" design rule forbids.
 
 ---
 
