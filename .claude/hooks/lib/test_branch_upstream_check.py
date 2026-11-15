@@ -173,6 +173,17 @@ class RemedyTest(RepoTestCase):
         self.assertAllowed("git -C /repo branch --unset-upstream")
         self.assertAllowed("git branch --color -vv")
 
+    def test_push_options_that_run_commands_are_blocked(self):
+        """``git push`` options such as ``--receive-pack``/``--exec`` name a
+        command for git to run, so a set-upstream push carrying one is not a
+        remedy; only ``-u``/``--set-upstream`` may ride along."""
+        self.assertBlocked("git push -u --receive-pack=/tmp/evil origin feature/x")
+        self.assertBlocked("git push -u --exec=/tmp/evil origin feature/x")
+        self.assertBlocked("git push --receive-pack=/tmp/evil -u origin feature/x")
+        self.assertBlocked("git push --set-upstream --receive-pack sh origin feature/x")
+        self.assertAllowed("git push -u origin feature/x")
+        self.assertAllowed("git push --set-upstream origin feature/x")
+
     def test_a_second_line_is_held_to_the_same_rule(self):
         self.assertBlocked("git status\nrm -rf build")
         self.assertAllowed("git status\ngit branch --unset-upstream")

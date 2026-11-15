@@ -20,9 +20,10 @@ blocked except a Bash command made only of:
   - ``cd``.
 
 with no command substitution, process substitution, redirection or
-here-document anywhere in it, and no git ``-c``, ``--config-env`` or
-``--exec-path`` option, since each of those acts outside the git words this
-check reads.
+here-document anywhere in it, no git ``-c``, ``--config-env`` or
+``--exec-path`` option, and no push option other than ``-u``/``--set-upstream``
+(so ``--receive-pack``/``--exec`` cannot ride along), since each of those acts
+outside the git words this check reads.
 
 So the session fixes the branch before it does anything else. A detached HEAD,
 a branch with no upstream, a local (``.``) upstream, and a directory that is not
@@ -131,7 +132,13 @@ def _is_fix_or_inspection(sub, args, state):
                 return value.rsplit("/", 1)[-1] not in PROTECTED_BRANCHES
         return all(a in _BRANCH_LIST_ARGS for a in args)
     if sub == "push":
-        if not any(a in ("-u", "--set-upstream") for a in args):
+        options = [a for a in args if a.startswith("-")]
+        if not any(a in ("-u", "--set-upstream") for a in options):
+            return False
+        # A remedy push carries only the set-upstream flag. Any other option is
+        # refused, so push options that name a command for git to run --
+        # ``--receive-pack``/``--exec`` above all -- cannot ride along on it.
+        if any(a not in ("-u", "--set-upstream") for a in options):
             return False
         positionals = [a for a in args if not a.startswith("-")]
         if len(positionals) != 2:
