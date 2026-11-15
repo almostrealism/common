@@ -173,6 +173,18 @@ class RemedyTest(RepoTestCase):
         self.assertAllowed("git -C /repo branch --unset-upstream")
         self.assertAllowed("git branch --color -vv")
 
+    def test_help_option_launches_a_viewer_and_is_blocked(self):
+        """``--help`` on any subcommand makes git launch the external
+        man/help viewer, so a command carrying it is not read-only inspection
+        however safe the subcommand itself would be."""
+        self.assertBlocked("git status --help")
+        self.assertBlocked("git branch --help")
+        self.assertBlocked("git --help")
+        self.assertBlocked("git -C /repo status --help")
+        self.assertBlocked("git status && git branch --help")
+        self.assertAllowed("git status")
+        self.assertAllowed("git branch -vv")
+
     def test_push_options_that_run_commands_are_blocked(self):
         """``git push`` options such as ``--receive-pack``/``--exec`` name a
         command for git to run, so a set-upstream push carrying one is not a

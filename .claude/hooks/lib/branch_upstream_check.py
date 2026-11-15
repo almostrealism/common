@@ -20,8 +20,8 @@ blocked except a Bash command made only of:
   - ``cd``.
 
 with no command substitution, process substitution, redirection or
-here-document anywhere in it, no git ``-c``, ``--config-env`` or
-``--exec-path`` option, and no push option other than ``-u``/``--set-upstream``
+here-document anywhere in it, no git ``-c``, ``--config-env``, ``--exec-path``
+or ``--help`` option, and no push option other than ``-u``/``--set-upstream``
 (so ``--receive-pack``/``--exec`` cannot ride along), since each of those acts
 outside the git words this check reads.
 
@@ -160,10 +160,11 @@ _NON_REMEDY_SYNTAX = ("$(", "${", "`", "<", ">")
 
 # git options that make git itself run something the words do not show: ``-c``
 # and ``--config-env`` set configuration such as ``core.fsmonitor`` or
-# ``core.pager`` that names a command for ``git status`` to run, and
-# ``--exec-path`` chooses where git finds the programs it runs. No remedy needs
-# any of them, so a word that begins with one is never part of a remedy.
-_NON_REMEDY_GIT_OPTIONS = ("-c", "--config-env", "--exec-path")
+# ``core.pager`` that names a command for ``git status`` to run, ``--exec-path``
+# chooses where git finds the programs it runs, and ``--help`` on any subcommand
+# launches the external man/help viewer. No remedy needs any of them, so a word
+# that begins with one is never part of a remedy.
+_NON_REMEDY_GIT_OPTIONS = ("-c", "--config-env", "--exec-path", "--help")
 
 
 def command_is_remedy(command, state):
