@@ -177,7 +177,7 @@ public class CLHostReadCacheTest extends TestSuiteBase {
 	 * Returns the OpenCL memory provider of the active hardware configuration, or null when
 	 * no OpenCL backend is available.
 	 */
-	private static CLMemoryProvider clProvider() {
+	static CLMemoryProvider clProvider() {
 		try {
 			return Hardware.getLocalHardware()
 					.getComputeContexts(false, true, ComputeRequirement.CL).stream()
