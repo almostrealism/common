@@ -707,6 +707,7 @@ class GitCommitHandler implements ConsoleFeatures {
         if (stagedFiles.isEmpty()) {
             return;
         }
+        // TODO(review): a staged submodule gitlink whose own worktree is dirty (" m"/" ?") stays listed after the commit and would be flagged as dropped
         Set<String> stillChanged =
                 new LinkedHashSet<>(GitOperations.requireChangedFiles(job.getWorkingDirectory()));
         List<String> dropped = new ArrayList<>();

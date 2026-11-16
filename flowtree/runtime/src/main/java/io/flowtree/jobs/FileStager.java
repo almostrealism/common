@@ -170,6 +170,7 @@ public class FileStager implements ConsoleFeatures {
          * @throws InterruptedException if the calling thread is interrupted while waiting
          */
         default Set<String> executeForPaths(String... args) throws IOException, InterruptedException {
+            // TODO(review): the job adapter merges stderr here, so a git warning fuses with the first NUL field; read stdout only
             String output = executeOrNull(args);
             if (output == null) {
                 return null;

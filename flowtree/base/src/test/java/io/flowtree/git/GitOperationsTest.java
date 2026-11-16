@@ -552,8 +552,10 @@ public class GitOperationsTest extends TestSuiteBase {
 
     /**
      * A warning git writes to standard error while listing status — here
-     * "could not open directory" for an unreadable untracked directory — must
-     * not cost {@link GitOperations#requireStatusEntries(String)} an entry.
+     * "unable to access" for a {@code .git/info/exclude} that is a symbolic
+     * link to itself, which git reports whatever user runs it (unlike an
+     * unreadable directory, which root can still read) — must not cost
+     * {@link GitOperations#requireStatusEntries(String)} an entry.
      * When stderr is merged into the {@code -z} listing (as
      * {@link GitOperations#executeWithOutput(String...)} does) the warning
      * fuses with the first NUL field and that entry is lost; the stdout-only
@@ -572,29 +574,25 @@ public class GitOperationsTest extends TestSuiteBase {
         Files.writeString(repo.resolve("a.txt"), "modified\n", StandardCharsets.UTF_8);
         Files.createDirectories(repo.resolve("dir with space"));
         Files.writeString(repo.resolve("dir with space/b.txt"), "new\n", StandardCharsets.UTF_8);
-        Path locked = repo.resolve("locked");
-        Files.createDirectories(locked);
-        Files.writeString(locked.resolve("c.txt"), "hidden\n", StandardCharsets.UTF_8);
-        // TODO(review): as root the unreadable bit is not enforced, git emits no warning and the stderr assertion below fails; consider a non-permission way to make git warn.
-        assertTrue("the directory must be made unreadable", locked.toFile().setReadable(false, false));
-        try {
-            String merged = git.executeWithOutput("status", "--porcelain", "-z", "-uall");
-            assertTrue("git must warn on stderr for this scenario to be meaningful: " + merged,
-                    merged.contains("could not open directory"));
-            assertFalse("merging stderr loses the first entry, which is the defect guarded here",
-                    GitOperations.parseChangedFiles(merged).contains("a.txt"));
+        Path exclude = repo.resolve(".git/info/exclude");
+        Files.createDirectories(exclude.getParent());
+        Files.deleteIfExists(exclude);
+        Files.createSymbolicLink(exclude, exclude.getFileName());
 
-            Assert.assertEquals(List.of(
-                            new GitOperations.StatusEntry("AM", "a.txt"),
-                            new GitOperations.StatusEntry("??", "dir with space/b.txt")),
-                    GitOperations.requireStatusEntries(repo.toString()));
-            Assert.assertEquals(List.of("a.txt", "dir with space/b.txt"),
-                    GitOperations.requireChangedFiles(repo.toString()));
-            Assert.assertEquals(List.of("a.txt", "dir with space/b.txt"),
-                    GitOperations.getChangedFiles(repo.toString()));
-        } finally {
-            locked.toFile().setReadable(true, false);
-        }
+        String merged = git.executeWithOutput("status", "--porcelain", "-z", "-uall");
+        assertTrue("git must warn on stderr for this scenario to be meaningful: " + merged,
+                merged.contains("unable to access"));
+        assertFalse("merging stderr loses the first entry, which is the defect guarded here",
+                GitOperations.parseChangedFiles(merged).contains("a.txt"));
+
+        Assert.assertEquals(List.of(
+                        new GitOperations.StatusEntry("AM", "a.txt"),
+                        new GitOperations.StatusEntry("??", "dir with space/b.txt")),
+                GitOperations.requireStatusEntries(repo.toString()));
+        Assert.assertEquals(List.of("a.txt", "dir with space/b.txt"),
+                GitOperations.requireChangedFiles(repo.toString()));
+        Assert.assertEquals(List.of("a.txt", "dir with space/b.txt"),
+                GitOperations.getChangedFiles(repo.toString()));
     }
 
     /**
