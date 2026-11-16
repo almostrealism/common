@@ -94,12 +94,40 @@ working and the failing case.
 Paths reported for renames have the same problem on both sides of ` -> ` (and a path
 that contains the text ` -> ` is split in the wrong place).
 
+### Path listings from `diff --name-only` and `ls-tree --name-only`
+
+These commands do **not** quote a space, so they played no part in the original drop.
+They do quote a path that contains `"`, `\`, a control character or (with the default
+`core.quotePath`) a non-ASCII byte. Reproduced on git 2.50:
+
+```
+$ git diff --cached --name-only
+a b.txt
+"q\"x.txt"
+"\303\251.txt"
+```
+
+The commit path reads these listings in several places, so the `"` and non-ASCII
+cases in §Success criteria fail there even after the status parser is fixed:
+
+| Site | Effect of a quoted path |
+|---|---|
+| `FileStager.GitOperations.executeForPaths` (splits on `\n`), and through it `changedPaths`, `pathsOrNull` and the `parentChanges`/`differFromParent` listings in `FileStager.evaluateFiles` | Merge-carried checks compare a quoted name with the unquoted status name, so a file is misclassified during a merge. |
+| `GitCommitHandler.stagingCandidates` (`diff --name-only --no-renames HEAD...<merged>`) | A quoted merge candidate is added as a separate, nonexistent path, which then reaches the same silent `rm --cached --ignore-unmatch` no-op. |
+| `GitPushReconciler.conflictedFiles` (`diff --name-only --diff-filter=U`) followed by `exec.run("add", file)` | `add` runs without `--` on the quoted name and fails, so push reconciliation throws "Failed to stage resolved file". That is loud, not silent, but it is still wrong. |
+| `TestMethodProtection` merge-base file listing (`ls-tree -r --name-only`) | A protected test file whose name needs quoting is not recognized as existing on the base branch. |
+| `CodingAgentJob` branch-diff listing (`diff --name-only origin/<base>`) | Reports the quoted name. Informational only. |
+
+The fix is the same as for status: pass `-z` and split on `\0`.
+
 ## Scope
 
 In scope:
 
 1. **Parse status with `-z`.** Every caller that turns status output into paths reads
    `git status --porcelain -z`, through one shared parser.
+   Every path listing the commit and merge paths read from `diff --name-only` or
+   `ls-tree --name-only` (the second table above) passes `-z` too.
 2. **Remove the duplicates.** The dependent-repo loop and the merge-conflict scan use
    that shared parser, not their own copies.
 3. **Fail loudly on an approved file that is not committed.** On both the primary and
@@ -138,6 +166,22 @@ Out of scope:
   add cases for a path with a space, a path with `"`, a path with a leading space, a
   rename whose two sides contain spaces, and a path containing ` -> `.
 
+### 1b. NUL-delimited path listings (`flowtree/runtime`)
+
+- `FileStager.GitOperations.executeForPaths` splits its output on `\0` and drops the
+  empty trailing field. Every caller (`changedPaths`, `pathsOrNull`, the
+  `parentChanges`/`differFromParent` listings in `FileStager.evaluateFiles`,
+  `GitCommitHandler.stagingCandidates`) adds `-z` to its `diff --name-only`
+  arguments. Splitting on `\0` while a caller still omits `-z` would return the whole
+  listing as one path, so the split and the flags change together, and a test
+  covers each caller.
+- `TestMethodProtection`'s `ls-tree -r --name-only` listing gets `-z` and the same
+  split.
+- `GitPushReconciler.conflictedFiles` uses `diff --name-only -z --diff-filter=U`, and
+  `resolveConflict` stages with `--` before the path.
+- The `CodingAgentJob` branch-diff listing is informational and can follow the same
+  pattern in the same change.
+
 ### 2. Dependent repos use the shared parser and the shared stage
 
 `GitCommitHandler.handleDependentRepos`:
@@ -168,14 +212,16 @@ Two layers, since the parse fix only removes one cause:
   decision, so `stageFiles` throws a `RuntimeException` that names every such file
   and git's own message. `handle()` already lets `RuntimeException` fail the job.
 - **Post-stage verification (normal path).** After staging and before `commit()`,
-  read `git diff --cached --name-only -z --no-renames HEAD` and check that every
+  read `git diff --cached --name-only -z --no-renames` and check that every
   path in `stagedFiles` is in it. Any approved path that is missing fails the commit
   with a message listing those paths. This catches every way of losing a file between
   approval and commit, including ones not yet known. It is a read-only check through
-  `job.asGitOperations().executeForPaths(...)` (extended to accept `-z` output, or a
-  sibling that does). On an unborn `HEAD` it compares against the empty tree.
+  `job.asGitOperations().executeForPaths(...)` (after §1b it reads `-z` output). Do
+  not name `HEAD` explicitly: `git diff --cached` already compares with `HEAD`, and on
+  an unborn `HEAD` it compares with the empty tree. `git diff --cached ... HEAD` fails
+  there with "ambiguous argument 'HEAD'", checked on git 2.50.
 - **Merge path.** A merge-carried candidate may legitimately match `HEAD`, so the
-  "in `diff --cached HEAD`" check is not valid for every merge candidate. Apply it
+  "in `diff --cached`" check is not valid for every merge candidate. Apply it
   only to the merge candidates that `git status` itself reported as changed. Those
   differ from `HEAD` by definition, so once staged they must show in the cached diff.
   Merge-carried candidates keep their current check (`restoreRejected`,
@@ -229,12 +275,17 @@ scratch git repositories (the `initRepo`/`gitRun` pattern of `GitOperationsTest`
   a dependent repo is committed there, and a stage failure appears in
   `dependentRepoFailures` with no dependent commit.
 - **Conflict scan:** a merge conflict in a spaced file is reported unquoted.
+- **Name-only listings:** during a merge, a merge-carried file whose name contains `"`
+  or a non-ASCII character is classified the same way as an ASCII one
+  (`FileStagerTest` / `HarnessMergeCommitTest`). A push-reconciliation conflict in
+  such a file is staged and committed (`GitPushReconcilerTest`).
 - **Preview agrees with commit:** `previewStaging()` on a tree with a modified spaced
   file reports the unquoted path as staged, and the commit includes it.
 - Existing tests stay green: `GitOperationsTest` (with the `parseChangedFiles*` tests
   rewritten for `-z`, keeping every case they already cover), `FileStagerTest`,
   `GitManagedJobGitOperationsTest`, `GitCommitHandlerDependentRepoTest`,
-  `WorkingTreeRescueTest`.
+  `WorkingTreeRescueTest`, `HarnessMergeCommitTest`, `GitPushReconcilerTest`,
+  `TestMethodProtectionTest`.
 - `mvn clean install -DskipTests` passes and `ar-build-validator` (checkstyle,
   code_policy, test_timeouts, duplicate_code) is clean.
 
@@ -260,10 +311,27 @@ the `-z` parse is correct on every version.
    dropped is still in that job's working tree only if the workspace was not reused.
    That recovery is an operator task on the downstream repository and is not part of
    this change.
+4. **Verify before or after the commit?** §3 checks the cached diff *before*
+   `commit()`, so a miss leaves no commit to undo. Another option is to check `git status`
+   *after* the commit for any approved path that is still reported as changed. That
+   works the same for normal and merge commits and does not need §3's merge-path
+   carve-out. The cost is that the commit already exists and has to be reset or left
+   unpushed when the check fails. Recommendation: before the commit, because a failed
+   job then leaves the branch as it was. The approver should pick one and remove the
+   other from §3, since doing both adds no coverage.
+5. **Relationship to an in-flight implementation.** The branch's memory notes say an
+   implementation session on this workstream changed the parser and the listings
+   to `-z`, made `stageFiles` throw, and added an after-commit check (option 4's
+   alternative). None of that is on the branch: every change here is this document.
+   If that work is pushed later, compare it against this plan before approving. In
+   particular, check whether it includes the stricter `GitOperations.stage` (§3),
+   `GitPushReconciler` (§1b), and the dependent-repo stage failure (§2).
 
 ## Estimated complexity
 
 **Small to medium.** One parser rewrite with a small value type in `GitOperations`, a
 stricter `stage`, one verification method and two call-site changes in
-`GitCommitHandler`, and one call-site change in `GitRepositorySetup`. Most of the effort
-is the git-backed tests.
+`GitCommitHandler`, one call-site change in `GitRepositorySetup`, and adding `-z` to the
+`diff`/`ls-tree --name-only` listings in `FileStager`, `GitCommitHandler`,
+`GitPushReconciler`, `TestMethodProtection` and `CodingAgentJob`. Most of the effort is
+the git-backed tests.
