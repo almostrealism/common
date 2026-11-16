@@ -42,6 +42,7 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
+import java.util.OptionalInt;
 
 /**
  * Abstract base class for all hardware-accelerated operations, managing compilation, argument processing, and execution.
@@ -306,11 +307,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 * Creates a {@link MemoryDataArgumentMap} bound to this operation's {@link ComputeContext}.
 	 *
 	 * <p>When this operation {@link #isArgumentAggregationSupported() supports argument
-	 * aggregation}, the map is given an aggregate-buffer factory ({@link #createAggregatedInput})
-	 * so that small input arguments can be folded into a single kernel argument, keeping the
-	 * kernel's argument count under the compute context's limit; eligibility is decided per
-	 * argument by size inside the map. An operation that opts out gets a map that folds
-	 * nothing.</p>
+	 * aggregation} and {@link #isArgumentFoldingRequired() needs it}, the map is given an
+	 * aggregate-buffer factory ({@link #createAggregatedInput}) so that small input arguments can
+	 * be folded into a single kernel argument, keeping the kernel's argument count under the
+	 * compute context's limit; eligibility is decided per argument by size inside the map. An
+	 * operation that opts out, or whose kernel provably fits its context's argument limit, gets a
+	 * map that folds nothing.</p>
 	 *
 	 * <p>Every map this operation folds its arguments through comes from here, so a fold replayed
 	 * against an already compiled scope lays its aggregate out exactly as the compilation did.</p>
@@ -319,7 +321,117 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	 */
 	protected MemoryDataArgumentMap createArgumentMap() {
 		return MemoryDataArgumentMap.create(getComputeContext(),
-				isArgumentAggregationSupported() ? memLength -> createAggregatedInput(memLength, memLength) : null);
+				isArgumentFoldingEnabled() ? memLength -> createAggregatedInput(memLength, memLength) : null);
+	}
+
+	/**
+	 * Returns whether this operation's kernel actually folds its eligible arguments into an
+	 * aggregate argument: argument aggregation is
+	 * {@link MemoryDataArgumentMap#enableArgumentAggregation enabled}, this operation
+	 * {@link #isArgumentAggregationSupported() supports it}, and its kernel
+	 * {@link #isArgumentFoldingRequired() needs it}. When this is {@code false} every argument of
+	 * the kernel is declared standalone.
+	 *
+	 * @return {@code true} if the argument map of this operation folds eligible arguments
+	 */
+	protected boolean isArgumentFoldingEnabled() {
+		return MemoryDataArgumentMap.enableArgumentAggregation
+				&& isArgumentAggregationSupported() && isArgumentFoldingRequired();
+	}
+
+	/**
+	 * Returns whether this operation's kernel must fold its eligible arguments into an aggregate
+	 * argument to compile under its {@link ComputeContext}: it does unless the context
+	 * {@link ComputeContext#fitsArgumentLimit(int) reports a limit} that this operation's
+	 * {@link #getArgumentBound(int) structural argument bound} does not exceed. The bound is
+	 * computed only when the context reports a limit, capped at that limit.
+	 *
+	 * @return {@code true} unless the context reports a limit that the kernel provably fits
+	 */
+	protected boolean isArgumentFoldingRequired() {
+		ComputeContext<MemoryData> context = getComputeContext();
+		OptionalInt limit = context.getArgumentLimit();
+		return limit.isEmpty() || !context.fitsArgumentLimit(getArgumentBound(limit.getAsInt()));
+	}
+
+	/**
+	 * Returns how many kernel arguments compilation may add beyond this operation's
+	 * {@link #getArgumentBound(int) structural argument bound} without the kernel exceeding its
+	 * {@link ComputeContext}'s argument limit.
+	 *
+	 * <p>A kernel that {@link #isArgumentFoldingRequired() needs no folding} is compiled with every
+	 * argument standalone on the strength of its structural bound, so any argument created while
+	 * it is generated (such as those of the kernel structure resources) must fit in the room the
+	 * bound leaves: the limit less the bound. A kernel that folds was never judged to fit, so
+	 * nothing limits what compilation adds to it, and {@link Integer#MAX_VALUE} is returned.</p>
+	 *
+	 * @return the limit less the structural bound when the kernel provably fits, otherwise
+	 *         {@link Integer#MAX_VALUE}
+	 */
+	protected int getArgumentAllowance() {
+		if (isArgumentFoldingRequired()) {
+			return Integer.MAX_VALUE;
+		}
+
+		int limit = getComputeContext().getArgumentLimit().getAsInt();
+		return limit - getArgumentBound(limit);
+	}
+
+	/**
+	 * Verifies that a compiled kernel declares no more arguments than its {@link ComputeContext}'s
+	 * argument limit, when that limit is known.
+	 *
+	 * <p>A kernel can exceed the limit in three ways, and each is reported with its cause rather
+	 * than left to fail at the backend far from it. A kernel that
+	 * {@link #isArgumentFoldingEnabled() folds} may still be over the limit when too few of its
+	 * arguments are small enough to fold. A kernel that folds nothing because folding is
+	 * unavailable to it (aggregation is disabled, or the operation does not support it) is over
+	 * whenever its arguments are. A kernel that folds nothing because its
+	 * {@link #getArgumentBound(int) structural argument bound} fits the limit is over only when a
+	 * component obtains an argument during scope preparation that is neither a leaf of the process
+	 * tree nor reported by its {@link ScopeLifecycle#getScopeArgumentCount(int) scope argument
+	 * count}, so the bound fell below the real count. A kernel compiled for a context with no
+	 * known limit is not verified.</p>
+	 *
+	 * @param argumentCount the number of arguments the compiled kernel declares
+	 * @throws HardwareException if the kernel declares more arguments than the known limit
+	 */
+	protected void verifyArgumentLimit(int argumentCount) {
+		OptionalInt limit = getComputeContext().getArgumentLimit();
+		if (limit.isEmpty() || argumentCount <= limit.getAsInt()) return;
+
+		String cause;
+		if (isArgumentFoldingEnabled()) {
+			cause = "argument folding is enabled for it, but too few of its arguments are small enough to fold";
+		} else if (isArgumentFoldingRequired()) {
+			cause = "its structural argument bound exceeds the limit but argument folding is" +
+					" disabled or unsupported for it";
+		} else {
+			cause = "its structural argument bound " + getArgumentBound(limit.getAsInt()) +
+					" fits the limit, so a component obtains an argument during scope preparation" +
+					" that its scope argument count does not report";
+		}
+
+		throw new HardwareException(getName() + " declares " + argumentCount +
+				" kernel arguments, past the argument limit " + limit.getAsInt() + ": " + cause);
+	}
+
+	/**
+	 * Returns an upper bound on the arguments this operation's kernel declares when none of them
+	 * is folded, computed from the operation's structure alone, or any value greater than
+	 * {@code cap} once the bound is known to exceed it.
+	 *
+	 * <p>The bound must never be lower than the real argument count, because a kernel judged to
+	 * fit is compiled with every argument standalone. It must also depend only on structure the
+	 * operation's signature encodes, so that every operation sharing a compiled kernel reaches the
+	 * same decision. This implementation knows no structure and reports
+	 * {@link Integer#MAX_VALUE}, so an operation that does not override it always folds.</p>
+	 *
+	 * @param cap the count past which the exact bound does not matter
+	 * @return the structural argument bound, or a value greater than {@code cap}
+	 */
+	protected int getArgumentBound(int cap) {
+		return Integer.MAX_VALUE;
 	}
 
 	/**

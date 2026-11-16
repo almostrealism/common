@@ -260,7 +260,7 @@ On the `master` branch and on force-rebuild triggers, the job bypasses the per-d
 ### Steps
 
 1. **Checkout** — full clone of the repository
-2. **Set up Java** — Temurin distribution (version from project configuration)
+2. **Set up Java** — `actions/setup-java`, Temurin distribution, `EXPECTED_JDK_MAJOR`, Maven dependency cache (version from project configuration)
 3. **Build all modules** — `mvn install -DskipTests`
    - Builds every Maven module in the monorepo
    - Skips tests to keep the build step fast
@@ -329,13 +329,13 @@ This skip is intentional and correct. The test categories covered by this job ar
 
 ## Job Reference: test-media
 
-**Purpose**: Run tests that require physical hardware (GPU) — covering the studio and extern layers plus any layer those depend on.
+**Purpose**: Run the media test suites on the native backend (`AR_HARDWARE_DRIVER=native`) — covering the studio and extern layers plus any layer those depend on.
 
 **Needs**: `changes`
 
 **Condition**: `studio_changed OR extern_changed OR engine_changed OR domain_changed OR compute_changed OR base_changed`
 
-**Runner**: self-hosted (requires a physical GPU not available on GitHub-hosted runners)
+**Runner**: `ubuntu-latest` (GitHub-hosted)
 
 ### Steps
 
@@ -356,13 +356,15 @@ Skipped when only flowtree-family or tools/ change (no layer flag is set by thos
 - Studio and extern tests require the base-through-engine layers to function
 - If only standalone modules changed, the engine/studio/extern test infrastructure has not changed and does not need re-verification
 
-### Why self-hosted runner
+### Why a hosted runner
 
-Studio, audio, and extern-ML modules require:
-- Physical GPU (for hardware acceleration tests)
-- Potentially large model files cached on the runner
-
-GitHub-hosted runners do not provide these capabilities. The self-hosted runner is a dedicated machine with the required hardware.
+Every step runs with `AR_HARDWARE_DRIVER=native`, so the job needs no GPU, and
+tests whose assets (curated sample library, ONNX models) are absent skip or are
+excluded under the pipeline profile, so it needs no runner-cached files. Measured
+on `ubuntu-latest` (4 vCPU, 16 GB) with the job's own commands, its peak memory in
+use was about 12 GB and it finished faster than on the self-hosted `ar-ci` fleet,
+which it no longer occupies. The GPU-backed media suites run in `test-media-mac`,
+`test-media-cl` and `test-media-cuda`.
 
 ---
 

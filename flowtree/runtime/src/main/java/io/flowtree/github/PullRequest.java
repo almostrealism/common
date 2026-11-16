@@ -97,4 +97,22 @@ public record PullRequest(JsonNode json) {
     public String htmlUrl() {
         return json.path("html_url").asText(null);
     }
+
+    /**
+     * Returns the pull request's title.
+     *
+     * @return the {@code title}, or an empty string when the listing omits it
+     */
+    public String title() {
+        return json.path("title").asText("");
+    }
+
+    /**
+     * Returns the pull request's body.
+     *
+     * @return the {@code body}, or an empty string when the listing omits it
+     */
+    public String body() {
+        return json.path("body").asText("");
+    }
 }

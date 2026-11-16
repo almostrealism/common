@@ -433,7 +433,52 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * Returns the central finite difference of a scalar function with respect to every element
 	 * of {@code values}: element {@code i} of the result is
 	 * {@code (f(values + eps e_i) - f(values - eps e_i)) / (2 eps)}, where {@code e_i} is the
-	 * {@code i}-th basis vector in memory order.
+	 * {@code i}-th basis vector in memory order. The perturbation is performed, and the values
+	 * restored, as by {@link #centralDifferences(PackedCollection, DoubleSupplier, double...)}.
+	 *
+	 * @param values the collection to perturb, which {@code f} must read
+	 * @param eps    the perturbation step
+	 * @param f      evaluates the function at the current contents of {@code values}
+	 * @return the numeric derivative with respect to each element, in memory order
+	 */
+	default double[] centralDifferences(PackedCollection values, double eps, DoubleSupplier f) {
+		return centralDifferences(values, f, eps)[0];
+	}
+
+	/**
+	 * Returns the fourth-order finite difference of a scalar function with respect to every element
+	 * of {@code values}: element {@code i} of the result is
+	 * {@code (8 (f(x + eps e_i) - f(x - eps e_i)) - (f(x + 2 eps e_i) - f(x - 2 eps e_i))) / (12 eps)}.
+	 *
+	 * <p>This is the Richardson extrapolation {@code (4 D(eps) - D(2 eps)) / 3} of the
+	 * {@link #centralDifferences central differences} {@code D}. The error of a central difference
+	 * is {@code eps^2 f'''/6 + O(eps^4)}; the extrapolation cancels the {@code eps^2} term, leaving
+	 * {@code -eps^4 f'''''/30}. Where the function bends sharply on the scale of {@code eps} — a
+	 * normalization over a few nearly equal features, for instance — the central difference
+	 * misestimates the derivative by far more than rounding does, and this estimate does not.
+	 * Rounding is amplified by {@code (8 + 8 + 1 + 1) / 12 = 1.5} times as much as in a central
+	 * difference with the same {@code eps}.</p>
+	 *
+	 * @param values the collection to perturb, which {@code f} must read
+	 * @param eps    the smaller perturbation step
+	 * @param f      evaluates the function at the current contents of {@code values}
+	 * @return the numeric derivative with respect to each element, in memory order
+	 */
+	default double[] extrapolatedDifferences(PackedCollection values, double eps, DoubleSupplier f) {
+		double[][] differences = centralDifferences(values, f, eps, 2 * eps);
+		double[] result = new double[differences[0].length];
+		for (int i = 0; i < result.length; i++) {
+			result[i] = (4 * differences[0][i] - differences[1][i]) / 3;
+		}
+		return result;
+	}
+
+	/**
+	 * Returns the central finite differences of a scalar function with respect to every element of
+	 * {@code values}, for each of several perturbation steps: element {@code [s][i]} of the result is
+	 * {@code (f(values + steps[s] e_i) - f(values - steps[s] e_i)) / (2 steps[s])}. For each element
+	 * the function is evaluated at the steps in order, the positive perturbation of a step before its
+	 * negative one.
 	 *
 	 * <p>Each perturbed copy is written on the device by an assignment from a snapshot of the
 	 * unperturbed values plus a one-hot step whose position is a device-side counter, so the
@@ -442,11 +487,11 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * returning, including when {@code f} throws or a perturbation fails to compile.</p>
 	 *
 	 * @param values the collection to perturb, which {@code f} must read
-	 * @param eps    the perturbation step
 	 * @param f      evaluates the function at the current contents of {@code values}
-	 * @return the numeric derivative with respect to each element, in memory order
+	 * @param steps  the perturbation steps
+	 * @return the numeric derivatives for each step, each in memory order
 	 */
-	default double[] centralDifferences(PackedCollection values, double eps, DoubleSupplier f) {
+	default double[][] centralDifferences(PackedCollection values, DoubleSupplier f, double... steps) {
 		int n = values.getMemLength();
 		TraversalPolicy flat = shape(n);
 		PackedCollection original = new PackedCollection(flat);
@@ -457,21 +502,27 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		List<Runnable> compiled = new ArrayList<>();
 
 		try {
-			CollectionProducer step = oneHot(n, cp(position)).multiply(eps);
-			Runnable plus = a(p(values.reshape(flat)), cp(original).add(step)).get();
-			compiled.add(plus);
-			Runnable minus = a(p(values.reshape(flat)), cp(original).subtract(step)).get();
-			compiled.add(minus);
+			Runnable[] plus = new Runnable[steps.length];
+			Runnable[] minus = new Runnable[steps.length];
+			for (int s = 0; s < steps.length; s++) {
+				CollectionProducer step = oneHot(n, cp(position)).multiply(steps[s]);
+				plus[s] = a(p(values.reshape(flat)), cp(original).add(step)).get();
+				compiled.add(plus[s]);
+				minus[s] = a(p(values.reshape(flat)), cp(original).subtract(step)).get();
+				compiled.add(minus[s]);
+			}
 			Runnable advance = a(p(position), cp(position).add(1.0)).get();
 			compiled.add(advance);
 
-			double[] result = new double[n];
+			double[][] result = new double[steps.length][n];
 			for (int i = 0; i < n; i++) {
-				plus.run();
-				double up = f.getAsDouble();
-				minus.run();
-				double down = f.getAsDouble();
-				result[i] = (up - down) / (2 * eps);
+				for (int s = 0; s < steps.length; s++) {
+					plus[s].run();
+					double up = f.getAsDouble();
+					minus[s].run();
+					double down = f.getAsDouble();
+					result[s][i] = (up - down) / (2 * steps[s]);
+				}
 				advance.run();
 			}
 

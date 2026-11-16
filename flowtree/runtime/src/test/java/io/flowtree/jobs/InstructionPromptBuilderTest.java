@@ -74,6 +74,64 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * When dependent repos are present, the prompt states that the primary
+	 * repository is the target of the task and that the dependents only support
+	 * it, so the agent does not hunt for work in a dependent checkout.
+	 */
+	@Test(timeout = 30000)
+	public void dependentReposSectionStatesPrimaryIsTheTarget() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("Fix the defect")
+			.setTargetBranch("feature/x")
+			.setWorkingDirectory("/work/app")
+			.setDependentRepoPaths(Arrays.asList("/work/common"))
+			.build();
+		assertTrue("Expected the Dependent Repositories section",
+			result.contains("## Dependent Repositories"));
+		assertTrue("Expected the prompt to name the primary repository as the target",
+			result.contains("The task targets the primary repository at `/work/app`"));
+		assertTrue("Expected the prompt to say not to hunt for work in dependents",
+			result.contains("Do not go hunting for work in them"));
+		assertTrue("Expected the dependent repo path to be listed",
+			result.contains("/work/common"));
+	}
+
+	/**
+	 * When dependent repos are present, the commit-message instructions tell the
+	 * agent to write a separate commit.txt at each changed repository's root.
+	 */
+	@Test(timeout = 30000)
+	public void commitInstructionsListPerRepositoryRootsWhenDependentsPresent() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("Fix the defect")
+			.setTargetBranch("feature/x")
+			.setWorkingDirectory("/work/app")
+			.setDependentRepoPaths(Arrays.asList("/work/common"))
+			.build();
+		assertTrue("Expected the per-repository commit.txt instruction",
+			result.contains("SEPARATE"));
+		assertTrue("Expected the primary repository root to be listed under Before You Finish",
+			result.contains("`/work/app` (the primary repository)"));
+		assertTrue("Expected the dependent repository root to be listed",
+			result.contains("`/work/common` (a dependent repository)"));
+	}
+
+	/**
+	 * Without dependent repos, the prompt carries no "Dependent Repositories"
+	 * section.
+	 */
+	@Test(timeout = 30000)
+	public void dependentReposSectionAbsentWithoutDependents() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("Fix the defect")
+			.setTargetBranch("feature/x")
+			.setWorkingDirectory("/work/app")
+			.build();
+		assertFalse("No Dependent Repositories section without dependent repos",
+			result.contains("## Dependent Repositories"));
+	}
+
+	/**
 	 * InstructionPromptBuilder omits the out-of-scope review guidance when no
 	 * workstream URL is set, since the PR-review tools are unavailable then.
 	 */

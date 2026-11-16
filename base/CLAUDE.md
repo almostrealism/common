@@ -37,7 +37,7 @@ above this layer depends on it; nothing here depends on higher layers.
 - Use the Producer pattern: `cp(source).multiply(2.0).evaluate()`
 - Call `Process.optimize()` before `Process.get()` — skipping this breaks expression embedding
 - Never return null from `getValueAt()` in any Process implementation
-- Only `IsolatedProcess` should break expression embedding
+- Only `Process.optimize` decides kernel boundaries — graph-building code never calls `Process.isolated`, `isolate()` or a wrapper of them; a computation that needs its own kernel says so through `isIsolationTarget`
 
 ## Native handles are typed — using JNI is not a license to drop the type system
 

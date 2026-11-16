@@ -48,7 +48,8 @@ import java.util.stream.IntStream;
  * <ul>
  *   <li><strong>Complexity:</strong> Expression has {@code >= minimumChildren} (default: 16) nodes</li>
  *   <li><strong>Fixed count:</strong> Traversal length is known at compile time</li>
- *   <li><strong>Cache space:</strong> Fewer than {@code defaultMaxEntries} (128) operations cached</li>
+ *   <li><strong>Cache space:</strong> Fewer than the generator's maximum number of operations
+ *       (at most {@code defaultMaxEntries}, 128) cached</li>
  * </ul>
  *
  * <h2>Transformation Example</h2>
@@ -89,7 +90,7 @@ import java.util.stream.IntStream;
  * <pre>{@code
  * // Automatically used during compilation
  * KernelTraversalOperationGenerator gen =
- *     KernelTraversalOperationGenerator.create(computation, variableFactory);
+ *     KernelTraversalOperationGenerator.create(computation, maxOperations, variableFactory);
  *
  * // Transforms complex expressions transparently
  * Expression<?> optimized = gen.generateReordering(complexExpression);
@@ -104,15 +105,20 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	public static boolean enableGeneration = true;
 	/** If true, verbose diagnostic output is emitted during traversal code generation. */
 	public static boolean enableVerbose = false;
-	/** Default maximum number of lookup table entries generated per traversal operation. */
+	/** Default, and largest, maximum number of traversal operations a generator creates. */
 	public static int defaultMaxEntries = 128;
 	/** Minimum number of child expressions required before generating a traversal operation. */
 	public static int minimumChildren = 16;
 
-	/** Maximum number of traversal operations that can be generated. */
+	/** Kernel traversal length: the number of kernel indices each traversal operation covers. */
 	private int count;
 	/** If true, the count is fixed and cannot grow dynamically. */
 	private boolean fixed;
+	/**
+	 * The most traversal operations this generator creates. Each one is a kernel argument of the
+	 * kernel being compiled, so this bounds the arguments the generator adds to that kernel.
+	 */
+	private final int maxOperations;
 	/** Factory for creating array variables from producers during traversal code generation. */
 	private Function<Producer<?>, ArrayVariable<?>> variableFactory;
 	/**
@@ -126,15 +132,37 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	private Map<Expression<?>, ArrayVariable> variables;
 
 	/**
-	 * Creates a generator with the given count, fixedness, and variable factory.
+	 * Creates a generator with the given count, fixedness, and variable factory, which creates
+	 * at most {@link #defaultMaxEntries} traversal operations.
 	 *
-	 * @param count           Maximum number of traversal operations
+	 * @param count           Kernel traversal length: the number of kernel indices each operation covers
 	 * @param fixed           If true, the count is fixed
 	 * @param variableFactory Factory for creating array variables from producers
 	 */
 	protected KernelTraversalOperationGenerator(int count, boolean fixed, Function<Producer<?>, ArrayVariable<?>> variableFactory) {
+		this(count, fixed, defaultMaxEntries, variableFactory);
+	}
+
+	/**
+	 * Creates a generator with the given count, fixedness, maximum number of operations, and
+	 * variable factory.
+	 *
+	 * @param count           Kernel traversal length: the number of kernel indices each operation covers
+	 * @param fixed           If true, the count is fixed
+	 * @param maxOperations  The most traversal operations, and so kernel arguments, to create;
+	 *                        must not be negative
+	 * @param variableFactory Factory for creating array variables from producers
+	 * @throws IllegalArgumentException if {@code maxOperations} is negative
+	 */
+	protected KernelTraversalOperationGenerator(int count, boolean fixed, int maxOperations,
+												Function<Producer<?>, ArrayVariable<?>> variableFactory) {
+		if (maxOperations < 0) {
+			throw new IllegalArgumentException("maxOperations must not be negative: " + maxOperations);
+		}
+
 		this.count = count;
 		this.fixed = fixed;
+		this.maxOperations = maxOperations;
 		this.variableFactory = variableFactory;
 		this.operations = new HashMap<>();
 		this.variables = new HashMap<>();
@@ -152,7 +180,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	 *   <li>Generation is disabled ({@link #enableGeneration} = false)</li>
 	 *   <li>Count is not fixed at compile time</li>
 	 *   <li>Expression complexity is below threshold</li>
-	 *   <li>Maximum cache entries reached</li>
+	 *   <li>The maximum number of operations has been reached</li>
 	 * </ul>
 	 *
 	 * @param expression Expression to potentially optimize
@@ -169,7 +197,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 			ArrayVariable<?> variable = variables.get(expression);
 			if (variable != null) return variable.reference(new KernelIndex());
 
-			if (operations.size() >= defaultMaxEntries) {
+			if (operations.size() >= maxOperations) {
 				if (enableVerbose)
 					warn("Reached max operations");
 				return expression;
@@ -212,15 +240,21 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	 * Factory method to create a generator for a computation.
 	 *
 	 * <p>Determines traversal count and whether it's fixed, then creates
-	 * a generator configured for that computation.</p>
+	 * a generator configured for that computation, which creates at most
+	 * {@code maxOperations} traversal operations (never more than {@link #defaultMaxEntries}).</p>
 	 *
 	 * @param c Computation to create generator for
+	 * @param maxOperations The most traversal operations, and so kernel arguments, to create;
+	 *                      must not be negative
 	 * @param variableFactory Factory for creating array variables from producers
 	 * @return New traversal operation generator
+	 * @throws IllegalArgumentException if {@code maxOperations} is negative
 	 */
-	public static KernelTraversalOperationGenerator create(Computation<?> c, Function<Producer<?>, ArrayVariable<?>> variableFactory) {
+	public static KernelTraversalOperationGenerator create(Computation<?> c, int maxOperations,
+														   Function<Producer<?>, ArrayVariable<?>> variableFactory) {
 		int count = Countable.count(c);
 		boolean fixed = Countable.isFixedCount(c);
-		return new KernelTraversalOperationGenerator(count, fixed, variableFactory);
+		return new KernelTraversalOperationGenerator(count, fixed,
+				Math.min(maxOperations, defaultMaxEntries), variableFactory);
 	}
 }

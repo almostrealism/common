@@ -33,7 +33,11 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -448,6 +452,83 @@ public class GitHubProxyHandler implements ConsoleFeatures {
         }
         return createGitHubPullRequest(ownerRepo, head, base,
                 pullRequestTitle(commitMessage, fallbackDescription), body, draft, token);
+    }
+
+    /**
+     * Re-derives {@code existing}'s title and body from the commit on its head
+     * branch and updates the pull request when they have drifted — the case
+     * where a companion pull request was first opened from a prompt-fallback
+     * message, or from an older commit than the branch now carries.
+     *
+     * <p>A companion pull request is reused across a job's rounds, but its title
+     * and body are set only when it is first opened; without this, a title taken
+     * from a truncated task prompt sticks to the pull request forever. The update
+     * is skipped when the derived title and body already match, so a pull request
+     * a human has since titled correctly is not rewritten on every reuse.</p>
+     *
+     * <p>The refresh is also skipped entirely when the commit's own message
+     * cannot be fetched — a transient GitHub/API failure, or a commit that
+     * carries no message. Without that message there is nothing better than the
+     * generic fallback to refresh toward, and PATCHing the fallback would
+     * overwrite the pull request's existing title and body (including a human's
+     * edits) with a worse description; a later completion refreshes it instead.</p>
+     *
+     * @param ownerRepo           the {@code owner/repo} path component
+     * @param existing            the open pull request being reused
+     * @param commitRef           commit SHA whose message describes the change
+     * @param fallbackDescription description used when the commit message yields
+     *                            no usable title
+     * @param bodySuffix          text appended to the derived body, or {@code null}
+     * @param token               the GitHub API bearer token
+     */
+    public void refreshPullRequestFromCommit(String ownerRepo, PullRequest existing, String commitRef,
+                                   String fallbackDescription, String bodySuffix, String token) {
+        String commitMessage = commitRef == null ? null
+                : fetchCommitMessage(ownerRepo, commitRef, token);
+        if (commitMessage == null) {
+            log("Not refreshing companion PR #" + existing.number() + " in " + ownerRepo
+                    + ": no commit message available for " + commitRef);
+            return;
+        }
+        String desiredTitle = pullRequestTitle(commitMessage, fallbackDescription);
+        String desiredBody = pullRequestBody(commitMessage, fallbackDescription);
+        if (bodySuffix != null && !bodySuffix.isEmpty()) {
+            desiredBody = desiredBody + "\n\n" + bodySuffix;
+        }
+        if (desiredTitle.equals(existing.title()) && desiredBody.equals(existing.body())) {
+            return;
+        }
+        if (updatePullRequest(ownerRepo, existing.number(), desiredTitle, desiredBody, token)) {
+            log("Refreshed companion PR #" + existing.number() + " in " + ownerRepo
+                    + " from its own commit");
+        }
+    }
+
+    /**
+     * Updates the title and body of an existing pull request.
+     *
+     * @param ownerRepo the {@code owner/repo} path component
+     * @param number    the pull request number
+     * @param title     the new title
+     * @param body      the new body (Markdown)
+     * @param token     the GitHub API bearer token
+     * @return {@code true} when GitHub accepted the update
+     */
+    public boolean updatePullRequest(String ownerRepo, int number, String title, String body,
+                                   String token) {
+        String payload = "{\"title\":\"" + JsonFieldExtractor.escapeJson(title)
+                + "\",\"body\":\"" + JsonFieldExtractor.escapeJson(body) + "\"}";
+        ApiResponse response = apiPatch(apiRoot + "/repos/" + ownerRepo + "/pulls/" + number,
+                payload, token);
+        if (response == null) {
+            return false;
+        }
+        if (response.status() == 200) {
+            return true;
+        }
+        log("GitHub PR update #" + number + " returned HTTP " + response.status()
+                + ": " + response.excerpt());
+        return false;
     }
 
     /**
@@ -977,6 +1058,42 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             return new ApiResponse(status, responseBody);
         } catch (IOException e) {
             log("GitHub POST " + url + " failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** Client for the PATCH verb, which {@link HttpURLConnection} cannot send. */
+    private static final HttpClient PATCH_CLIENT = HttpClient.newHttpClient();
+
+    /**
+     * Sends a JSON {@code PATCH} to the GitHub REST API. {@link HttpURLConnection}
+     * rejects {@code PATCH} as an unsupported method, so this one write verb goes
+     * through {@link HttpClient} rather than the shared {@link #apiPost} path.
+     *
+     * @param url     the fully-built request URL
+     * @param payload the JSON request body
+     * @param token   the GitHub API bearer token
+     * @return the response, whatever its status; {@code null} on a transport
+     *         failure, which is logged
+     */
+    private ApiResponse apiPatch(String url, String payload, String token) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                    .timeout(Duration.ofSeconds(15))
+                    .header("Authorization", "Bearer " + token.trim())
+                    .header("Accept", "application/vnd.github+json")
+                    .header("Content-Type", "application/json")
+                    .header("X-GitHub-Api-Version", "2022-11-28")
+                    .method("PATCH", HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<String> response = PATCH_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            return new ApiResponse(response.statusCode(), response.body() == null ? "" : response.body());
+        } catch (IOException e) {
+            log("GitHub PATCH " + url + " failed: " + e.getMessage());
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log("GitHub PATCH " + url + " interrupted");
             return null;
         }
     }

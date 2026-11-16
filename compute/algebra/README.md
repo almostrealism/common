@@ -568,7 +568,11 @@ public boolean isIsolationTarget(ProcessContext context) {
 
 #### Critical Rule
 
-**ONLY `IsolatedProcess` is empowered to break expression embedding.**
+**Only `Process.optimize` decides kernel boundaries. Graph-building code never calls
+`Process.isolated`, `isolate()` or a wrapper of them; a computation that needs its own kernel says
+so through `isIsolationTarget`.** `IsolatedProcess` is the only thing that breaks expression
+embedding, but it is produced by the optimizer calling `isolate()` during `Process.optimize()` —
+not by application code.
 
 ```java
 // WRONG: Never return null to force isolation

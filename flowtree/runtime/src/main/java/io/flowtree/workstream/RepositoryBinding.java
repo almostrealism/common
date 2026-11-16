@@ -19,6 +19,7 @@ package io.flowtree.workstream;
 import io.flowtree.git.RepositoryUrl;
 import io.flowtree.github.CiTrigger;
 import io.flowtree.github.GitHubProxyHandler;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.List;
 
@@ -40,7 +41,7 @@ import java.util.List;
  * @author Michael Murray
  * @see Workstream
  */
-final class RepositoryBinding {
+final class RepositoryBinding implements ConsoleFeatures {
 
     /** Git remote URL of the primary repository; when set the job clones it before starting work. */
     private String repoUrl;
@@ -176,8 +177,14 @@ final class RepositoryBinding {
         if (ownerRepo == null) {
             return null;
         }
-        String token = github.resolveGithubToken(githubOrg != null && !githubOrg.isEmpty()
-                ? githubOrg : GitHubProxyHandler.extractOrgFromRepoUrl(repoUrl));
-        return token == null ? null : settledCiTrigger.start(github, ownerRepo, branch, token);
+        String org = githubOrg != null && !githubOrg.isEmpty()
+                ? githubOrg : GitHubProxyHandler.extractOrgFromRepoUrl(repoUrl);
+        String token = github.resolveGithubToken(org);
+        if (token == null) {
+            warn("Settled CI " + settledCiTrigger.spec() + " for " + ownerRepo + " " + branch
+                    + " not started: no GitHub token is configured for " + org);
+            return null;
+        }
+        return settledCiTrigger.start(github, ownerRepo, branch, token);
     }
 }

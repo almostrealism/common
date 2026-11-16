@@ -253,7 +253,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
         writeCommitTxt("Add validation for server name format");
         CodingAgentJob job = new CodingAgentJob("t1", "do something");
         job.setWorkingDirectory(tempDir.toString());
-        String msg = job.getCommitMessage();
+        String msg = job.getCommitMessage(job.getWorkingDirectory());
         assertEquals("Add validation for server name format", msg);
         assertEquals("agent", job.getCommitMessageSource());
     }
@@ -263,7 +263,7 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
     public void getCommitMessageSourceIsPromptFallbackWhenCommitTxtMissing() {
         CodingAgentJob job = new CodingAgentJob("t1", "do something");
         job.setWorkingDirectory(tempDir.toString());
-        String msg = job.getCommitMessage();
+        String msg = job.getCommitMessage(job.getWorkingDirectory());
         assertNotNull(msg);
         assertTrue("Fallback message should start with 'Claude Code:'",
                 msg.startsWith("Claude Code:"));

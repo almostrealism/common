@@ -214,7 +214,7 @@ class IsolatedProcess extends DelegatedCollectionProducer {
 }
 ```
 
-**This is the ONLY proper way to break expression embedding.** Never return null from `getValueAt()` to force isolation.
+**This is how `isolate()` breaks expression embedding — and `Process.optimize`, not graph-building code, decides when to call it** (for a computation that reports `isIsolationTarget`). Never return null from `getValueAt()` to force isolation.
 
 ### When optimize() MUST Be Called
 
@@ -280,7 +280,7 @@ ProcessOptimizationStrategy cascading = new CascadingOptimizationStrategy(
 );
 ```
 
-### Debugging Isolation Issues
+### Debugging a Slow, Too-Deep, or Failing Compile
 
 If you see these symptoms:
 - Test timeouts (60+ seconds for simple operations)
@@ -291,10 +291,22 @@ If you see these symptoms:
 - A graph that compiles for a small collection but stops compiling once the
   input is realistically sized
 
-The last two are the clearest signal. `Expression.init` rejects anything deeper
-than `ScopeSettings.maxDepth`, and the depth of an inlined child grows with its
-input size — so a size-dependent *compile* failure means a child that should have
-been isolated was embedded instead.
+**Ask first: is this graph being optimized?** The most common cause of a slow,
+too-deep, or failing compile is a reduction embedded in each of its readers
+because optimization was never reached — far more often than it is an isolation
+decision you need to make by hand. (A reduction is the usual case, not the only
+isolation target: `isIsolationTarget` also marks long loops and other
+high-aggregation computations, as above.) `Producer.evaluate()` and
+`Producer.get()` do not optimize (see the table
+under [When optimize() MUST Be Called](#when-optimize-must-be-called)). Answer the
+question by evaluating the graph once through `evaluateOptimized()` (equivalently
+`Process.optimized(producer).get().evaluate()`); `Process.optimize` isolates the reductions
+that `isIsolationTarget` marks, and the same graph compiles in about a second.
+
+The last two symptoms are the clearest signal. `Expression.init` rejects anything
+deeper than `ScopeSettings.maxDepth`, and the depth of an inlined child grows with
+its input size — so a size-dependent *compile* failure means a child that should
+have been isolated was embedded instead.
 
 Check:
 1. Is `optimize()` being called before `get()`? Note that `Producer.evaluate(...)`
@@ -303,11 +315,19 @@ Check:
 2. Does the problematic computation override `isIsolationTarget()` correctly?
 3. Is the parent process calling `optimize(ctx, child)` on its children?
 
-Reach for `optimize()` before restructuring the graph. Materialising an
-intermediate by hand (an extra `evaluate()` into a collection that is then fed
-back in via `cp(...)`) will also make it compile, but it moves a kernel-boundary
-decision out of the process tree and into application code, where the next site
-with the same shape will not have it.
+Reach for `optimize()` before restructuring the graph. Two forms of
+hand-splitting will also make it compile, and both are forbidden for the same
+reason — each moves a kernel-boundary decision out of the process tree and into
+application code, where the next site with the same shape will not have it:
+
+- Materialising an intermediate by hand: an extra `evaluate()` into a collection
+  that is then fed back in via `cp(...)`.
+- Isolating by hand: a manual `isolated(...)`, `isolate()`, or `Process.isolated(...)`
+  call, or any helper wrapping one.
+
+Only `Process.optimize` decides kernel boundaries. A computation that needs its
+own kernel says so through `isIsolationTarget`, and the optimizer calls
+`isolate()` for it; graph-building code never does.
 
 ```java
 // Debug: Log when isolation happens
