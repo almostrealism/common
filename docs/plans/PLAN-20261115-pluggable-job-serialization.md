@@ -41,7 +41,7 @@ These facts were read from the code, not from memory. Everything later in the pl
 
 | Payload | Sent by | Message type | Received by | Decoder |
 |---|---|---|---|---|
-| Encoded `JobFactory` | `CodingAgentClient.trySendToAgent`, `NodeGroup.sendTask(JobFactory, int)`, `NodeGroup.sendTask(String, int)` (used by `Server.sendTask` and `SendTaskDialog`) | `Message.Task` | `NodeGroupMessageHandler` → `NodeGroup.addTask(String)` → `NodeGroup.createTask` | `JobFactory.decode` |
+| Encoded `JobFactory` | `CodingAgentClient.trySendToAgent`, `NodeGroup.sendTask(JobFactory, int)`, `NodeGroup.sendTask(String, int)` (used by `Server.sendTask(String, int)`; the `SendTaskDialog` caller is commented out) | `Message.Task` | `NodeGroupMessageHandler` → `NodeGroup.addTask(String)` → `NodeGroup.createTask` | `JobFactory.decode` |
 | Encoded `JobFactory` (persisted) | `FlowTreeApiEndpoint#handleSubmit` → `PendingJobRecovery.persist(jobId, factory.encode())` | — (HSQLDB) | `PendingJobRecovery.recover` | `JobFactory.decode` |
 | Encoded `Job` | `Connection.sendJob` → `Message.setJob(job)` (`job.encode()`) | `Message.Job` | `Connection.recievedMessage`, `NodeGroupMessageHandler` | `JobFactory.createJob` → `Server.instantiateJobClass` → `JobClassLoader.instantiateJobClass` |
 | Encoded `Job` (retry list) | `Node` adds `j.encode()` to its failed-job list | — (in memory) | `Node` re-queues via `Server.instantiateJobClass` | `JobClassLoader.instantiateJobClass` |
@@ -207,8 +207,23 @@ The abstraction is format-agnostic and must be visible to every decode site in
   decode body is the current `JobFactory.decode` loop, and the job variant is
   `JobClassLoader.instantiateJobClass`. `JobClassLoader`'s logic moves into it,
   and the `indexOf` that throws outside the `try` is folded into the guarded
-  path. This is the one behavioural fix in phase (a): a payload with no `::`
-  returns `null` with a warning instead of throwing.
+  path, so a payload with no `::` returns `null` with a warning instead of
+  throwing.
+
+  That is not the only way the job decoder differs from `JobFactory.decode`,
+  and moving it under the `JobCodec` contract changes two more behaviours that
+  phase (a) must state rather than inherit silently. `JobClassLoader` catches
+  every `Exception` *after* the instance exists and then returns `j`, so a
+  `set` that throws part-way yields a **partially configured job**, not `null`.
+  And an entry with no `:=` is not an error: it is taken as a key whose value is
+  the rest of the payload. The contract above ("never returns a partially
+  configured object") requires the first to become `null` with a warning, and
+  the second to become a decode failure, as `JobFactory.decode` already does.
+  Both are fixes, but they are changes to what a relayed job does today, so
+  phase (a) is not strictly "no behaviour change"; open question 10 asks
+  whether to make them now. `JobClassLoader` stays as a thin delegate to
+  `StringJobCodec` (or is removed together with its callers), because
+  `Server.instantiateJobClass` and `JobClassLoaderTest` call it directly.
 - **`JobCodecRegistry`**, which maps a format id to a `JobCodec`. It always
   contains `StringJobCodec`. Further codecs register through
   `java.util.ServiceLoader` (`META-INF/services/io.flowtree.job.JobCodec`), so
@@ -244,6 +259,14 @@ misconfigured format fails at the controller and not on the agent.
 **Send sites switch from `encode()` to `toWire()`:** `CodingAgentClient.trySendToAgent`,
 `NodeGroup.sendTask(JobFactory, int)`, `Message.setJob`, `Node`'s failed-job
 list, and `FlowTreeApiEndpoint#handleSubmit`'s `PendingJobRecovery.persist` call.
+`SendTaskDialog.submit` contains the only other call-site `encode()`
+(`server.sendTask(f.encode(), index)` on a `RayTracingJobFactory`), but that code
+is commented out pending a reflective reintroduction, so the dialog sends nothing
+today and needs no change. If it is reintroduced, a `RayTracingJobFactory` stays
+on the string codec, so `encode()` and `toWire()` are equivalent there. The CLI and test entry points (`FlowTreeCliCommands.sendTask`,
+`SubmitJobMain`, `Manager`) pass the factory object to
+`Server.sendTask(JobFactory, int)`, which goes through `NodeGroup.addTask(JobFactory)`
+or `NodeGroup.sendTask(JobFactory, int)` and is covered by the latter's switch.
 `encode()` keeps its documented `classname::key:=value` contract and remains what
 the string codec emits.
 
@@ -710,7 +733,14 @@ the owner makes the following edits by hand, in **`flowtree/runtime/pom.xml` onl
 `flowtree/runtime/rebuild.sh` runs `mvn install -pl flowtree/runtime -am` and
 then `mvn dependency:copy-dependencies -pl flowtree/runtime`. The protobuf jars
 therefore reach the agent and controller images once they are declared
-dependencies, with no change to the image build.
+dependencies, with no change to the image build (both Dockerfiles copy
+`flowtree/runtime/target/dependency/*.jar` into `/app/lib/`). Native macOS
+agents are not built by `rebuild.sh`: `flowtree/runtime/agent/macos/install.sh`
+runs the same `mvn install` and `dependency:copy-dependencies` pair and copies
+the jars into the agent's `lib/`, which `run.sh` puts on the classpath with
+`-cp "${AGENT_HOME}/lib/*"`. They need no script change either, but "every
+agent node first" in §3.3 means re-running `install.sh` on each macOS agent as
+well as rebuilding the agent image.
 
 ---
 
@@ -719,7 +749,10 @@ dependencies, with no change to the image build.
 Each phase is its own PR. Tests go through `mcp__ar-test-runner__start_test_run`
 with named classes.
 
-### Phase (a): codec abstraction and format declaration, no behaviour change
+### Phase (a): codec abstraction and format declaration, no wire-format change
+
+The string format and every encoded payload stay byte-identical. The only
+behaviour changes are the decoder fixes named in §3.1 (and open question 10).
 
 - Add `JobCodec`, `WireEnvelope`, `StringJobCodec`, `JobCodecRegistry` and
   `UnsupportedWireFormatException` in `flowtree/api`.
@@ -730,8 +763,19 @@ with named classes.
 
 **Tests:**
 
-- `GitManagedJobSerializationTest` and `JobFactoryDecodeTest` pass unchanged.
-  They are the proof that the string codec is byte-identical.
+- `GitManagedJobSerializationTest`, `JobFactoryDecodeTest` and the existing
+  `JobClassLoaderTest` cases pass unchanged. Note what each proves.
+  `GitManagedJobSerializationTest`'s `roundTrip`/`roundTripFactory` helpers split
+  `encode()` on `::` by hand and call `set` on a fresh instance; they never call
+  `JobFactory.decode` or `JobClassLoader`, so they show that `encode()` and
+  `set` are unchanged and say nothing about the decoders. The decoders are
+  covered by `JobFactoryDecodeTest` and `JobClassLoaderTest`.
+- New byte-identity test: for every existing `JobFactory` and `Job` type with a
+  no-argument constructor (at least `CodingAgentJobFactory`,
+  `CodingAgentJob.Factory`, `CodingAgentJob`, `ShellCommandJob`,
+  `ExternalProcessJob.Factory`), `toWire()` equals `encode()` exactly. This,
+  not the round-trip helpers, is the proof that phase (a) leaves the string
+  format byte-identical.
 - New `WireEnvelopeTest`: an unmarked string parses as the string format;
   marked parse and render round-trip; malformed markers are rejected.
 - New `JobCodecRegistryTest`: decoding an envelope whose format id is
@@ -741,7 +785,9 @@ with named classes.
   `null` without instantiation, and `toWire()` on a class its chosen codec does
   not support throws on the sender.
 - `JobClassLoaderTest` gains a case for a payload with no `::`, which must
-  return `null` rather than throw.
+  return `null` rather than throw. If open question 10 is answered yes, it also
+  gains a case where a `set` throws part-way (must return `null`, not a
+  partially configured job) and one for an entry with no `:=`.
 - **Older-node rejection test:** feed `@wire=test-fmt::io.flowtree.jobs.CodingAgentJob$Factory::AAAA`
   to a copy of the pre-change decode loop, kept as a test fixture, and to
   `NodeGroup.addTask(String)`. Assert `null`/`false` and that no factory was
@@ -761,7 +807,11 @@ Prerequisite: the owner's pom edits (§7).
 
 - `GitManagedJobSerializationTest` gains `roundTripFactoryProto`, the protobuf
   equivalent of `roundTripFactory`. Every existing round-trip assertion runs
-  through both helpers.
+  through both helpers. Because the existing helper bypasses the real decoder
+  (see phase (a)), the protobuf helper must go through the production path,
+  `JobFactory.decode(factory.toWire())` (and `Server.instantiateJobClass(job.toWire())`
+  for the job), so it exercises the envelope parsing and `supports` check as
+  well as the codec.
 - The field-coverage test in §4.2.
 - A `CodingAgentJob` relay test: a job built by `nextJob()`, sent via
   `toWire()` and decoded via `Server.instantiateJobClass`, keeps its
@@ -901,3 +951,19 @@ named `ci/...`.
    pom work, the alternative is a string-codec-only encoding of evidence (for
    example Base64 of a JSON array). That adds a second evidence encoding to
    keep in step with the schema, which is why the plan does not propose it.
+
+10. **Should phase (a) also make the job decoder strict?**
+    `JobClassLoader.instantiateJobClass` returns a partially configured job when
+    a `set` throws, and treats an entry with no `:=` as a key holding the rest
+    of the payload (§3.1). `JobFactory.decode` rejects both.
+    *Proposed answer:* yes, align the job decoder with `JobFactory.decode` in
+    phase (a), because a relayed coding job missing part of its definition is
+    exactly what the source-of-truth rule in `flowtree/CLAUDE.md` forbids, and
+    the `JobCodec` contract would otherwise have to carve out an exception for
+    the string codec. The risk is that some existing job type relies on the
+    lenient behaviour today. That has not been audited yet; phase (a) should
+    audit every `Job.set` override for it and run the relay tests for `ShellCommandJob`,
+    `ExternalProcessJob` and `JythonJob` before landing. If the owner prefers
+    phase (a) to be strictly behaviour-preserving, keep the lenient job decode
+    inside `StringJobCodec`, document it as an exception to the contract, and
+    make the change separately.
