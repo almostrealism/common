@@ -12,10 +12,16 @@ These tests pin the three places that give a workstream the trigger:
 workstream that already exists (one created some other way);
 ``submit-agent-job.sh`` sends it for a workstream its submission creates; and
 ``analysis.yaml`` sets it on the registration step and on both early submit
-steps, which are what create the workstream of a docs-only branch.
+steps, which are what create the workstream of a docs-only branch. Every other
+workflow that registers a workstream or submits a job (the QA rounds, task
+planning, plan implementation, goal decomposition, plan review) sets it on
+those steps too, so no branch an automated workflow starts waits for a test
+run that nobody will start.
 """
 
+import glob
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -30,7 +36,12 @@ from test_task_planning_gates import _ControllerStub, _run  # noqa: E402
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
 _SUBMIT = os.path.join(_REPO_ROOT, "tools", "ci", "submit-agent-job.sh")
+_WORKFLOWS = os.path.join(_REPO_ROOT, ".github", "workflows")
 _TRIGGER = "deployment:test"
+# A step that runs one of the two scripts able to create a workstream, as
+# opposed to one that only names the script (an integrity check, a chmod).
+_CREATES_WORKSTREAM = re.compile(
+    r"(?:^|[\s;&|(])(?:bash\s+|\./)\S*tools/ci/(?:register-workstream|submit-agent-job)\.sh")
 
 
 class RegisterWorkstreamTriggerTests(unittest.TestCase):
@@ -124,6 +135,40 @@ class AnalysisWiringTests(unittest.TestCase):
     def test_the_early_submissions_set_the_trigger(self):
         self.assertSetsTrigger("auto-review-submit", "Submit agent job")
         self.assertSetsTrigger("auto-resolve-python-submit", "Submit agent job")
+
+
+class EveryWorkflowWiringTests(unittest.TestCase):
+    """Every workflow step that can create a workstream gives it the trigger."""
+
+    def _creating_steps(self):
+        """Return (file, job, step name, effective env) for each creating step."""
+        found = []
+        for path in sorted(glob.glob(os.path.join(_WORKFLOWS, "*.y*ml"))):
+            with open(path) as f:
+                workflow = yaml.safe_load(f) or {}
+            workflow_env = workflow.get("env") or {}
+            for job_name, job in (workflow.get("jobs") or {}).items():
+                job_env = job.get("env") or {}
+                for step in job.get("steps") or []:
+                    if _CREATES_WORKSTREAM.search(step.get("run") or ""):
+                        env = dict(workflow_env)
+                        env.update(job_env)
+                        env.update(step.get("env") or {})
+                        found.append((os.path.basename(path), job_name,
+                                      step.get("name"), env))
+        return found
+
+    def test_the_known_creating_workflows_are_found(self):
+        files = {step[0] for step in self._creating_steps()}
+        for expected in ("analysis.yaml", "master-agent-dispatch.yaml", "qa-round.yaml",
+                         "task-planning.yaml", "implement-plan.yaml",
+                         "goal-decomposition.yaml", "plan-review.yaml"):
+            self.assertIn(expected, files)
+
+    def test_every_creating_step_sets_the_trigger(self):
+        for name, job, step, env in self._creating_steps():
+            with self.subTest(workflow=name, job=job, step=step):
+                self.assertIn("'%s'" % _TRIGGER, str(env.get("SETTLED_CI_TRIGGER", "")))
 
 
 if __name__ == "__main__":

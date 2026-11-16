@@ -164,7 +164,11 @@ ways, none of which CI depends on:
    it (`SETTLED_CI_TRIGGER`, default `deployment:test`) on every branch's
    workstream, including one that already exists. `auto-review-submit` and
    `auto-resolve-python-submit` pass it for a workstream their submission
-   creates, which is how a docs-only branch gets it. A workstream without it
+   creates, which is how a docs-only branch gets it. Every other workflow that
+   registers a workstream or submits a job (the QA rounds, task planning, plan
+   implementation, goal decomposition, plan review) sets it on those steps
+   too, so a branch an automated workflow starts gets it from its first job,
+   before its pull request has a pipeline run. A workstream without it
    leaves its PR unmergeable until someone starts the test run by hand.
    `tools/tests/test_settled_ci_registration.py` pins this.
 2. **The `Start Tests` workflow** (`start-tests.yaml`). Dispatch it on master and
