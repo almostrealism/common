@@ -102,17 +102,33 @@ def _split_commands(script):
     and the text of a ``#`` comment is dropped. A separator inside a quoted
     string is literal text, so a script path mentioned inside quotes
     (``echo "(bash ./tools/ci/x.sh)"``) stays part of the ``echo`` command and is
-    never read as a command of its own.
+    never read as a command of its own. A backslash outside single quotes
+    escapes the next character, so an escaped quote (``"it\\"s"``, ``it\\'s``)
+    leaves the quoting state unchanged and a ``\\``-newline line continuation
+    keeps one command whole.
     """
     commands = []
     current = []
     quote = None
     in_comment = False
+    escaped = False
     prev = "\n"
     for ch in script:
         if in_comment:
             if ch == "\n":
                 in_comment = False
+            prev = ch
+            continue
+        if escaped:
+            # A backslash-escaped character is literal: an escaped quote neither
+            # opens nor closes a string, and an escaped newline continues the
+            # current command rather than ending it.
+            current.append(" " if ch == "\n" else "\\" + ch)
+            escaped = False
+            prev = ch
+            continue
+        if ch == "\\" and quote != "'":
+            escaped = True
             prev = ch
             continue
         if quote is not None:
@@ -336,6 +352,13 @@ class EveryWorkflowWiringTests(unittest.TestCase):
             "bash -lc 'cd repo && ./tools/ci/submit-agent-job.sh p'",
             'sh -c "FOO=1 ./tools/ci/register-workstream.sh"',
             "timeout 60 bash -ec 'bash ./tools/ci/submit-staged-request.sh r'",
+            # an escaped quote earlier in the step does not open a string that
+            # would swallow the invocation after it
+            'echo "it\\"s"\nbash ./tools/ci/submit-agent-job.sh p',
+            "echo it\\'s\nbash ./tools/ci/submit-agent-job.sh p",
+            # a backslash line continuation keeps the command whole
+            "bash -x \\\n  ./tools/ci/register-workstream.sh",
+            "timeout 60 \\\n  bash ./tools/ci/submit-agent-job.sh p",
         )
         named_only = (
             "chmod +x ./tools/ci/register-workstream.sh",
@@ -349,6 +372,10 @@ class EveryWorkflowWiringTests(unittest.TestCase):
             # a nested shell whose inline script only names the path
             "bash -c 'chmod +x ./tools/ci/register-workstream.sh'",
             'sh -c "echo tools/ci/submit-agent-job.sh"',
+            # an escaped quote does not close the string around the path
+            'echo "say \\"(bash ./tools/ci/register-workstream.sh)\\""',
+            # a backslash inside single quotes is literal and still closes them
+            "echo 'a\\' ; chmod +x ./tools/ci/register-workstream.sh",
         )
         for run in executed:
             with self.subTest(run=run):
