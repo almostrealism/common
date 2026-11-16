@@ -192,16 +192,14 @@ class TestMethodProtection implements ConsoleFeatures {
      */
     Set<String> resolveMergeBaseFiles(String mergeBase, FileStager.GitOperations gitOps) {
         try {
-            String output = gitOps.executeOrNull("ls-tree", "-r", "--name-only", "-z", mergeBase);
+            String output = gitOps.executeOrNull("ls-tree", "-r", "--name-only", mergeBase);
             if (output == null) {
                 warn("Could not list files at merge-base " + shortSha(mergeBase));
                 return null;
             }
-            // -z keeps spaced/quoted/non-ASCII paths raw (default ls-tree
-            // C-quotes them), so a protected file is matched by its true path.
             Set<String> files = new LinkedHashSet<>();
-            for (String path : output.split("\0", -1)) {
-                if (!path.isEmpty() && !"\n".equals(path)) files.add(path);
+            for (String line : output.split("\n", -1)) {
+                if (!line.isEmpty()) files.add(line);
             }
             return files;
         } catch (Exception e) {
