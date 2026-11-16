@@ -127,4 +127,55 @@ public class IndexSequenceMinTest extends TestSuiteBase {
 		Assert.assertTrue(decimal.isConstant());
 		Assert.assertEquals(inexactAsDouble, decimal.min());
 	}
+
+	/**
+	 * A <em>non-constant</em> sequence of exact numeric types must also floor each
+	 * element without losing precision. The earlier fix only guarded the
+	 * {@code isConstant()} short-circuit; the general path still routed every value
+	 * through {@code doubleValues()} before flooring, so large {@link BigDecimal}
+	 * elements could collapse together and report a "minimum" greater than an actual
+	 * element. Here the two distinct values {@code 2^53+1.5} and {@code 2^53+2.5}
+	 * both round to {@code 2^53+2.0} as doubles, so a double-based minimum would be
+	 * {@code 9007199254740994} — greater than the first element.
+	 */
+	@Test(timeout = 10000)
+	public void nonConstantPreservesExactNumericPrecision() {
+		// 2^53 + 1: the smallest positive long not exactly representable as a double.
+		long base = 9007199254740993L;
+		BigDecimal first = new BigDecimal(BigInteger.valueOf(base)).add(new BigDecimal("0.5"));
+		BigDecimal second = new BigDecimal(BigInteger.valueOf(base + 1)).add(new BigDecimal("0.5"));
+
+		IndexSequence seq = ArrayIndexSequence.of(new Number[] { first, second });
+
+		Assert.assertFalse(seq.isConstant());
+
+		// first floors to 2^53+1 exactly; a double round-trip would report 2^53+2.
+		Assert.assertEquals(base, seq.min());
+	}
+
+	/**
+	 * Values whose floor lies below {@link Long#MIN_VALUE} must saturate to
+	 * {@link Long#MIN_VALUE} rather than silently wrapping through
+	 * {@link java.math.BigInteger#longValue()}. An out-of-range {@link BigInteger}
+	 * such as {@code Long.MIN_VALUE - 1} wraps to {@link Long#MAX_VALUE} under the
+	 * naive conversion, which is greater than the element and so grossly violates the
+	 * lower-bound contract.
+	 */
+	@Test(timeout = 10000)
+	public void outOfRangeValuesSaturateToLongBounds() {
+		BigInteger belowRange = BigInteger.valueOf(Long.MIN_VALUE).subtract(BigInteger.ONE);
+		Assert.assertEquals(Long.MIN_VALUE, IndexSequence.floorToLong(belowRange));
+
+		BigInteger aboveRange = BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.ONE);
+		Assert.assertEquals(Long.MAX_VALUE, IndexSequence.floorToLong(aboveRange));
+
+		// A BigDecimal below the long range must floor and then saturate downward.
+		BigDecimal decimalBelowRange =
+				new BigDecimal(BigInteger.valueOf(Long.MIN_VALUE)).subtract(new BigDecimal("0.5"));
+		Assert.assertEquals(Long.MIN_VALUE, IndexSequence.floorToLong(decimalBelowRange));
+
+		// A constant sequence holding the out-of-range value must stay a lower bound.
+		IndexSequence seq = ArrayIndexSequence.of(belowRange, 2);
+		Assert.assertEquals(Long.MIN_VALUE, seq.min());
+	}
 }

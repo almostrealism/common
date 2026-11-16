@@ -399,12 +399,14 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 		} else if (valueAt(0) instanceof Long) {
 			return longValues().min().orElseThrow();
 		} else {
-			// Round the minimum down so the result is a lower bound that never
-			// exceeds any element, mirroring max()'s use of Math.ceil for an
-			// upper bound. Using Math.ceil here would report a "minimum" that is
-			// greater than an actual fractional element (e.g. -2 for a sequence
-			// containing -2.5).
-			return (long) Math.floor(doubleValues().min().orElseThrow());
+			// Floor each element individually with floorToLong rather than routing
+			// the whole sequence through double. A plain
+			// (long) Math.floor(doubleValues().min()) would lose precision for large
+			// BigInteger/BigDecimal elements and could report a "minimum" that is
+			// greater than an actual element. Because floorToLong is monotonic, the
+			// smallest floored value is also a lower bound for every element,
+			// mirroring max()'s use of an upper-bound rounding.
+			return values().mapToLong(IndexSequence::floorToLong).min().orElseThrow();
 		}
 	}
 
@@ -421,24 +423,54 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * exactly, floors {@link BigDecimal} with exact decimal arithmetic, and only
 	 * falls back to {@link Math#floor} for genuinely floating-point types.</p>
 	 *
+	 * <p>Values whose floor lies outside the {@code long} range are saturated to
+	 * {@link Long#MIN_VALUE} or {@link Long#MAX_VALUE} rather than silently wrapped,
+	 * since {@link Number#longValue()} truncates the high bits of an out-of-range
+	 * {@link BigInteger}/{@link BigDecimal} and could otherwise return a value far
+	 * greater than the element. {@link Long#MIN_VALUE} is the smallest representable
+	 * lower bound.</p>
+	 *
 	 * @param value  the constant value to floor
-	 * @return the largest {@code long} that does not exceed {@code value}
+	 * @return the largest {@code long} that does not exceed {@code value}, saturated
+	 *         to the {@code long} range
 	 */
 	static long floorToLong(Number value) {
 		if (value instanceof BigDecimal) {
-			return ((BigDecimal) value).setScale(0, RoundingMode.FLOOR).longValue();
+			return clampToLong(((BigDecimal) value).setScale(0, RoundingMode.FLOOR).toBigInteger());
 		}
 
-		if (value instanceof BigInteger || value instanceof Long || value instanceof Integer
+		if (value instanceof BigInteger) {
+			return clampToLong((BigInteger) value);
+		}
+
+		if (value instanceof Long || value instanceof Integer
 				|| value instanceof Short || value instanceof Byte) {
-			// Integral values are already lower bounds; longValue() is exact,
+			// These box types all fit within the long range, so longValue() is exact,
 			// whereas a double round-trip would lose precision for large magnitudes.
 			return value.longValue();
 		}
 
 		// Float/Double (and any other fractional representation) must be floored so
 		// the result never exceeds the element: longValue() truncates toward zero.
-		return (long) Math.floor(value.doubleValue());
+		double floored = Math.floor(value.doubleValue());
+		if (floored <= Long.MIN_VALUE) return Long.MIN_VALUE;
+		if (floored >= Long.MAX_VALUE) return Long.MAX_VALUE;
+		return (long) floored;
+	}
+
+	/**
+	 * Clamps an arbitrary-precision integral {@code value} to the {@code long} range,
+	 * saturating to {@link Long#MIN_VALUE} or {@link Long#MAX_VALUE} when it does not
+	 * fit. This avoids the silent high-bit truncation of
+	 * {@link BigInteger#longValue()} for out-of-range magnitudes.
+	 *
+	 * @param value  the integral value to clamp
+	 * @return {@code value} as a {@code long}, saturated to the representable range
+	 */
+	static long clampToLong(BigInteger value) {
+		if (value.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) return Long.MAX_VALUE;
+		if (value.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0) return Long.MIN_VALUE;
+		return value.longValue();
 	}
 
 	/**
