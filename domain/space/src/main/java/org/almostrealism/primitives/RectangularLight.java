@@ -122,8 +122,10 @@ public class RectangularLight extends Plane implements SurfaceLight {
 				z = Math.random() * this.height;
 			}
 
-			Producer<PackedCollection> p = getTransform(true).transform(vector(x, y, z),
-									TransformMatrix.TRANSFORM_AS_LOCATION);
+			// An unplaced light has no complete transform yet; treat it as the identity.
+			TransformMatrix t = getTransform(true);
+			Producer<PackedCollection> p = t == null ? vector(x, y, z)
+									: t.transform(vector(x, y, z), TransformMatrix.TRANSFORM_AS_LOCATION);
 
 			// TODO This should hand off the color producer directly
 			PackedCollection colorResult = getColorAt(vector()).get().evaluate();
