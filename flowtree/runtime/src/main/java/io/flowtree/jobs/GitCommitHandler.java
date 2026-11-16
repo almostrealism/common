@@ -908,6 +908,7 @@ class GitCommitHandler implements ConsoleFeatures {
                 continue;
             }
 
+            // TODO(review): use GitOperations.requireChangedFiles(depPath) so stderr cannot fuse with a -z field and a failed query is reported, not read as "no changes".
             String statusOutput = gitOps.executeWithOutput("status", "--porcelain", "-z");
             List<String> changedFiles = GitOperations.parseChangedFiles(statusOutput);
             if (changedFiles.isEmpty()) {

@@ -305,16 +305,11 @@ class GitRepositorySetup implements ConsoleFeatures {
             mergeConflictsDetected = true;
             mergeParent = baseHead;
 
-            String statusOutput = job.executeGitWithOutput("status", "--porcelain");
-            for (String line : statusOutput.split("\n")) {
-                if (line.startsWith("UU ") || line.startsWith("AA ")
-                        || line.startsWith("DD ") || line.startsWith("AU ")
-                        || line.startsWith("UA ") || line.startsWith("DU ")
-                        || line.startsWith("UD ")) {
-                    String file = line.substring(3).trim();
-                    if (!file.isEmpty()) {
-                        conflictFiles.add(file);
-                    }
+            // TODO(review): executeGitWithOutput merges stderr, so a git warning now fuses with the first -z field and drops that entry; read stdout only.
+            String statusOutput = job.executeGitWithOutput("status", "--porcelain", "-z");
+            for (GitOperations.StatusEntry entry : GitOperations.StatusEntry.parseAll(statusOutput)) {
+                if (entry.isUnmerged()) {
+                    conflictFiles.add(entry.path());
                 }
             }
 

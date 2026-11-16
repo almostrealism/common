@@ -458,6 +458,107 @@ public class GitOperationsTest extends TestSuiteBase {
     }
 
     /**
+     * Pins {@link GitOperations.StatusEntry#parseAll(String)}: each entry keeps
+     * its two-character status code alongside the verbatim path, a rename and a
+     * copy (in either column) each consume their trailing source-path field, and
+     * a path containing the text {@code " -> "} is not split.
+     */
+    @Test(timeout = 10000)
+    public void statusEntriesKeepCodeAndConsumeRenameAndCopySources() {
+        String statusOutput = String.join("\u0000",
+                "UU conflicted file.txt",
+                "C  copy dest.txt",
+                "copy source.txt",
+                " R worktree rename.txt",
+                "worktree source.txt",
+                "?? a -> b.txt") + "\u0000";
+
+        List<GitOperations.StatusEntry> entries = GitOperations.StatusEntry.parseAll(statusOutput);
+
+        Assert.assertEquals(List.of(
+                new GitOperations.StatusEntry("UU", "conflicted file.txt"),
+                new GitOperations.StatusEntry("C ", "copy dest.txt"),
+                new GitOperations.StatusEntry(" R", "worktree rename.txt"),
+                new GitOperations.StatusEntry("??", "a -> b.txt")), entries);
+    }
+
+    /**
+     * Pins {@link GitOperations.StatusEntry#isUnmerged()} against every status
+     * code {@code git status} documents: the seven unmerged codes are
+     * recognised, and ordinary modified, added, deleted, renamed, copied,
+     * untracked and ignored codes are not.
+     */
+    @Test(timeout = 10000)
+    public void statusEntryRecognisesExactlyTheUnmergedCodes() {
+        for (String code : List.of("DD", "AU", "UD", "UA", "DU", "AA", "UU")) {
+            assertTrue(code + " must be unmerged",
+                    new GitOperations.StatusEntry(code, "f").isUnmerged());
+        }
+        for (String code : List.of(" M", "M ", "MM", "A ", "AM", "AD", " D", "D ",
+                "R ", "C ", " R", "??", "!!")) {
+            assertFalse(code + " must not be unmerged",
+                    new GitOperations.StatusEntry(code, "f").isUnmerged());
+        }
+        assertTrue(new GitOperations.StatusEntry("R ", "f").isRenameOrCopy());
+        assertTrue(new GitOperations.StatusEntry("RM", "f").isRenameOrCopy());
+        assertTrue(new GitOperations.StatusEntry(" C", "f").isRenameOrCopy());
+        assertFalse(new GitOperations.StatusEntry("UU", "f").isRenameOrCopy());
+        assertFalse(new GitOperations.StatusEntry("??", "f").isRenameOrCopy());
+    }
+
+    /**
+     * A real merge conflict on a path containing a space is reported by
+     * {@code git status --porcelain -z} as an unmerged entry whose path is the
+     * raw, unquoted name, so the merge-conflict scan built on
+     * {@link GitOperations.StatusEntry} names the file the agent must resolve
+     * rather than a quoted string that does not exist.
+     *
+     * @throws IOException          if a git command or file write fails
+     * @throws InterruptedException if a git command is interrupted
+     */
+    @Test(timeout = 60000)
+    public void unmergedSpacedPathParsesUnquotedFromRealConflict()
+            throws IOException, InterruptedException {
+        Path repo = initRepo();
+        GitOperations git = new GitOperations(repo.toString(), "status-entry-test");
+        String spaced = "conf/My App.cfg";
+        requireGit(git, "config", "commit.gpgsign", "false");
+        Files.createDirectories(repo.resolve("conf"));
+        Files.writeString(repo.resolve(spaced), "base\n", StandardCharsets.UTF_8);
+        requireGit(git, "add", "-A");
+        requireGit(git, "commit", "-q", "-m", "base");
+        String base = requireGit(git, "rev-parse", "--abbrev-ref", "HEAD").trim();
+
+        requireGit(git, "checkout", "-q", "-b", "other");
+        Files.writeString(repo.resolve(spaced), "other side\n", StandardCharsets.UTF_8);
+        requireGit(git, "commit", "-q", "-am", "other");
+        requireGit(git, "checkout", "-q", base);
+        Files.writeString(repo.resolve(spaced), "base side\n", StandardCharsets.UTF_8);
+        requireGit(git, "commit", "-q", "-am", "base side");
+
+        GitOperations.Result merge = git.executeForResult("merge", "other", "--no-edit");
+        assertFalse("the merge must conflict: " + merge.describe(), merge.succeeded());
+
+        List<String> unmerged = new ArrayList<>();
+        for (GitOperations.StatusEntry entry : GitOperations.StatusEntry.parseAll(
+                requireGit(git, "status", "--porcelain", "-z"))) {
+            if (entry.isUnmerged()) unmerged.add(entry.path());
+        }
+        Assert.assertEquals(List.of(spaced), unmerged);
+    }
+
+    /**
+     * Runs a git sub-command through {@code git}, failing the test if it exits
+     * non-zero, and returns its output.
+     */
+    private static String requireGit(GitOperations git, String... args)
+            throws IOException, InterruptedException {
+        GitOperations.Result result = git.executeForResult(args);
+        Assert.assertEquals(result.describe(), 0, result.exitCode());
+        return result.output();
+    }
+
+    /**
      * A path already removed from both the index and the working tree, as
      * {@code git rm} leaves it, is still staged as a deletion: a bare
      * {@code git add} fails on it with "pathspec did not match any files".
