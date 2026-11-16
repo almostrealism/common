@@ -927,6 +927,9 @@ class GitCommitHandler implements ConsoleFeatures {
                     skippedInDep.add(file);
                     continue;
                 }
+                // TODO(review): dependent-repo add ignores its exit code, omits
+                // `--`, and is never verified post-commit, so a failed stage here
+                // is committed-around silently (the primary path fails loud).
                 gitOps.execute("add", file);
                 stagedInDep.add(file);
             }

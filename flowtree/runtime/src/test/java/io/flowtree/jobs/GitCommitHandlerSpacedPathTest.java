@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -119,9 +120,46 @@ public class GitCommitHandlerSpacedPathTest extends TestSuiteBase {
         assertSpecialAndNormalCommitted("notes/uniçode.txt");
     }
 
-    // TODO(review): add an end-to-end case that renames a spaced path (git mv)
-    // so GitOperations.parseChangedFiles' rename branch (new-path-first in -z)
-    // is exercised against real git, not just the hand-constructed unit case.
+    /**
+     * A staged rename of a spaced tracked path is parsed to its post-rename
+     * path, validating against real git the byte order
+     * {@link GitOperations#parseChangedFiles} relies on: {@code git status
+     * --porcelain -z} emits a rename as its destination path first, then the
+     * source path as its own NUL-terminated field. Were that order reversed,
+     * the parser would return the old (now absent) path and drop the new one —
+     * the same class of silent drop this branch fixed for quoted paths.
+     *
+     * <p>This pins the one parser branch the end-to-end commit cases above
+     * cannot reach. The normal commit path runs {@code git reset HEAD} before
+     * querying status, which unstages a {@code git mv} so git reports a plain
+     * deletion and an untracked addition rather than a rename; only a rename
+     * recorded in the index (as the merge path, which does not reset, can
+     * leave) surfaces as an {@code R} entry, so the parser's rename handling is
+     * exercised here directly against the real porcelain output.</p>
+     *
+     * @throws IOException          if a git command or file write fails
+     * @throws InterruptedException if a git command is interrupted
+     */
+    @Test(timeout = 60000)
+    public void stagedRenameOfSpacedPathParsesPostRenamePath()
+            throws IOException, InterruptedException {
+        String oldPath = ".run/Old App Config.run.xml";
+        String newPath = ".run/New App Config.run.xml";
+        writeRepoFile(oldPath, "original\n");
+        requireGit("add", "-A");
+        requireGit("commit", "-q", "-m", "seed renamable file");
+
+        // git mv stages the rename; porcelain reports an R entry only for a
+        // rename recorded in the index, and the identical content guarantees
+        // git detects it as a rename rather than a delete/add pair.
+        requireGit("mv", oldPath, newPath);
+
+        String status = requireGit("status", "--porcelain", "-z", "-uall");
+        List<String> changed = GitOperations.parseChangedFiles(status);
+
+        assertTrue("the post-rename path must be parsed: " + changed, changed.contains(newPath));
+        assertFalse("the pre-rename path must not be parsed: " + changed, changed.contains(oldPath));
+    }
 
     /**
      * Seeds {@code specialPath} and {@link #NORMAL_FILE} into a commit, modifies
