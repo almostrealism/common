@@ -111,8 +111,11 @@ public final class WireEnvelope {
      * {@link JobFactory#ENTRY_SEPARATOR}-delimited token (or {@code null} when
      * the payload carries no separator), and its payload is the whole string.
      * A payload beginning with {@link #MARKER_PREFIX} is parsed as a marked
-     * format; a marker missing either {@link JobFactory#ENTRY_SEPARATOR}, or
-     * whose format id does not match {@code [a-z0-9-]+}, is rejected.</p>
+     * format; a marker missing either {@link JobFactory#ENTRY_SEPARATOR}, whose
+     * format id does not match {@code [a-z0-9-]+}, or whose format id is the
+     * {@link StringJobCodec#FORMAT_ID string format} (which is never marked, so
+     * a marked payload claiming it would have its class name stripped and the
+     * remainder misparsed), is rejected.</p>
      *
      * @param data the serialized payload; must not be {@code null}
      * @return the parsed envelope
@@ -138,6 +141,10 @@ public final class WireEnvelope {
         if (!isValidFormatId(formatId)) {
             throw new IllegalArgumentException("malformed wire marker, invalid format id '"
                     + formatId + "': " + data);
+        }
+        if (StringJobCodec.FORMAT_ID.equals(formatId)) {
+            // The string format is never marked, so a marked one is malformed.
+            throw new IllegalArgumentException("malformed wire marker, the string format is never marked: " + data);
         }
 
         String rest = data.substring(firstSep + JobFactory.ENTRY_SEPARATOR.length());

@@ -155,4 +155,19 @@ public class WireEnvelopeTest extends TestSuiteBase {
     public void nullPayloadRejected() {
         WireEnvelope.parse(null);
     }
+
+    /**
+     * A marked payload claiming the string format is rejected rather than
+     * misparsed: {@code render()} never marks the string format, so such a
+     * marker could only strip the class name and corrupt the remaining entries.
+     */
+    @Test(timeout = 60000)
+    public void markedStringFormatRejected() {
+        try {
+            WireEnvelope.parse("@wire=string::io.flowtree.jobs.CodingAgentJob::taskId:=t7");
+            Assert.fail("expected IllegalArgumentException for a marked string format");
+        } catch (IllegalArgumentException e) {
+            Assert.assertTrue(e.getMessage().contains("string format is never marked"));
+        }
+    }
 }
