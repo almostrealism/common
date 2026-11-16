@@ -189,7 +189,8 @@ public class CLHostReadCacheTest extends TestSuiteBase {
 	 * Returns every OpenCL memory provider of the active hardware configuration, or an empty
 	 * list when no OpenCL backend is available. A configuration that exposes both an FP32 and
 	 * an FP64 context yields a provider of each precision, so a caller that iterates this list
-	 * exercises both the direct and the converting transfer paths.
+	 * exercises both the direct and the converting transfer paths. The returned list is
+	 * unmodifiable on both the populated and the empty path.
 	 */
 	static List<CLMemoryProvider> clProviders() {
 		try {
@@ -198,7 +199,7 @@ public class CLHostReadCacheTest extends TestSuiteBase {
 					.flatMap(c -> c.getDataContext().getMemoryProviders().stream())
 					.filter(CLMemoryProvider.class::isInstance)
 					.map(CLMemoryProvider.class::cast)
-					.collect(Collectors.toList());
+					.collect(Collectors.toUnmodifiableList());
 		} catch (RuntimeException e) {
 			return List.of();
 		}
