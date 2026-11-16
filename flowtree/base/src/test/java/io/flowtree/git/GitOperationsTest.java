@@ -458,7 +458,7 @@ public class GitOperationsTest extends TestSuiteBase {
     }
 
     /**
-     * Pins {@link GitOperations.StatusEntry#parseAll(String)}: each entry keeps
+     * Pins {@link StatusEntry#parseAll(String)}: each entry keeps
      * its two-character status code alongside the verbatim path, a rename and a
      * copy (in either column) each consume their trailing source-path field, and
      * a path containing the text {@code " -> "} is not split.
@@ -473,17 +473,17 @@ public class GitOperationsTest extends TestSuiteBase {
                 "worktree source.txt",
                 "?? a -> b.txt") + "\u0000";
 
-        List<GitOperations.StatusEntry> entries = GitOperations.StatusEntry.parseAll(statusOutput);
+        List<StatusEntry> entries = StatusEntry.parseAll(statusOutput);
 
         Assert.assertEquals(List.of(
-                new GitOperations.StatusEntry("UU", "conflicted file.txt"),
-                new GitOperations.StatusEntry("C ", "copy dest.txt"),
-                new GitOperations.StatusEntry(" R", "worktree rename.txt"),
-                new GitOperations.StatusEntry("??", "a -> b.txt")), entries);
+                new StatusEntry("UU", "conflicted file.txt"),
+                new StatusEntry("C ", "copy dest.txt"),
+                new StatusEntry(" R", "worktree rename.txt"),
+                new StatusEntry("??", "a -> b.txt")), entries);
     }
 
     /**
-     * Pins {@link GitOperations.StatusEntry#isUnmerged()} against every status
+     * Pins {@link StatusEntry#isUnmerged()} against every status
      * code {@code git status} documents: the seven unmerged codes are
      * recognised, and ordinary modified, added, deleted, renamed, copied,
      * untracked and ignored codes are not.
@@ -492,25 +492,25 @@ public class GitOperationsTest extends TestSuiteBase {
     public void statusEntryRecognisesExactlyTheUnmergedCodes() {
         for (String code : List.of("DD", "AU", "UD", "UA", "DU", "AA", "UU")) {
             assertTrue(code + " must be unmerged",
-                    new GitOperations.StatusEntry(code, "f").isUnmerged());
+                    new StatusEntry(code, "f").isUnmerged());
         }
         for (String code : List.of(" M", "M ", "MM", "A ", "AM", "AD", " D", "D ",
                 "R ", "C ", " R", "??", "!!")) {
             assertFalse(code + " must not be unmerged",
-                    new GitOperations.StatusEntry(code, "f").isUnmerged());
+                    new StatusEntry(code, "f").isUnmerged());
         }
-        assertTrue(new GitOperations.StatusEntry("R ", "f").isRenameOrCopy());
-        assertTrue(new GitOperations.StatusEntry("RM", "f").isRenameOrCopy());
-        assertTrue(new GitOperations.StatusEntry(" C", "f").isRenameOrCopy());
-        assertFalse(new GitOperations.StatusEntry("UU", "f").isRenameOrCopy());
-        assertFalse(new GitOperations.StatusEntry("??", "f").isRenameOrCopy());
+        assertTrue(new StatusEntry("R ", "f").isRenameOrCopy());
+        assertTrue(new StatusEntry("RM", "f").isRenameOrCopy());
+        assertTrue(new StatusEntry(" C", "f").isRenameOrCopy());
+        assertFalse(new StatusEntry("UU", "f").isRenameOrCopy());
+        assertFalse(new StatusEntry("??", "f").isRenameOrCopy());
     }
 
     /**
      * A real merge conflict on a path containing a space is reported by
      * {@code git status --porcelain -z} as an unmerged entry whose path is the
      * raw, unquoted name, so the merge-conflict scan built on
-     * {@link GitOperations.StatusEntry} names the file the agent must resolve
+     * {@link StatusEntry} names the file the agent must resolve
      * rather than a quoted string that does not exist.
      *
      * @throws IOException          if a git command or file write fails
@@ -540,13 +540,13 @@ public class GitOperationsTest extends TestSuiteBase {
         assertFalse("the merge must conflict: " + merge.describe(), merge.succeeded());
 
         List<String> unmerged = new ArrayList<>();
-        for (GitOperations.StatusEntry entry : GitOperations.StatusEntry.parseAll(
+        for (StatusEntry entry : StatusEntry.parseAll(
                 requireGit(git, "status", "--porcelain", "-z"))) {
             if (entry.isUnmerged()) unmerged.add(entry.path());
         }
         Assert.assertEquals(List.of(spaced), unmerged);
         Assert.assertEquals("the stdout-only query must report the same conflict",
-                List.of(new GitOperations.StatusEntry("UU", spaced)),
+                List.of(new StatusEntry("UU", spaced)),
                 GitOperations.requireStatusEntries(repo.toString()));
     }
 
@@ -586,8 +586,8 @@ public class GitOperationsTest extends TestSuiteBase {
                 GitOperations.parseChangedFiles(merged).contains("a.txt"));
 
         Assert.assertEquals(List.of(
-                        new GitOperations.StatusEntry("AM", "a.txt"),
-                        new GitOperations.StatusEntry("??", "dir with space/b.txt")),
+                        new StatusEntry("AM", "a.txt"),
+                        new StatusEntry("??", "dir with space/b.txt")),
                 GitOperations.requireStatusEntries(repo.toString()));
         Assert.assertEquals(List.of("a.txt", "dir with space/b.txt"),
                 GitOperations.requireChangedFiles(repo.toString()));
@@ -647,6 +647,84 @@ public class GitOperationsTest extends TestSuiteBase {
         assertFalse(git.matchesCommit("gone.txt", "HEAD"));
         assertTrue("the deletion must be staged",
                 git.executeForResult("diff", "--cached", "--name-only").output().contains("gone.txt"));
+    }
+
+    /**
+     * A path in none of the working tree, the index, and {@code HEAD} is not a
+     * deletion of anything, so staging it fails rather than passing as the
+     * no-op {@code git rm --cached --ignore-unmatch} would report. This is the
+     * silent drop behind a spaced path the non-{@code -z} porcelain quoted into
+     * a name no file carries.
+     */
+    @Test(timeout = 30000)
+    public void stageRejectsAPathUnknownToGit() throws Exception {
+        Path dir = initRepo();
+        Files.writeString(dir.resolve("real.txt"), "content\n");
+        gitRun(dir, "add", "real.txt");
+        gitRun(dir, "commit", "-q", "-m", "initial");
+        GitOperations git = new GitOperations(dir.toString(), "test");
+
+        GitOperations.Result result = git.stage("\".run/My File.run.xml\"");
+
+        assertFalse("a path git does not know must not stage as a no-op: " + result.describe(),
+                result.succeeded());
+        assertTrue(result.describe(), result.describe().contains(".run/My File.run.xml"));
+    }
+
+    /**
+     * {@link GitOperations#executeForStdout} returns standard output alone, so a
+     * warning git writes to standard error cannot fuse with the first field of a
+     * {@code -z} listing; {@link GitOperations#executeForResult} merges it in.
+     */
+    @Test(timeout = 30000)
+    public void executeForStdoutKeepsStderrOutOfTheOutput() throws Exception {
+        Path dir = initRepo();
+        Files.writeString(dir.resolve("a.txt"), "x\n", StandardCharsets.UTF_8);
+        Path exclude = dir.resolve(".git/info/exclude");
+        Files.createDirectories(exclude.getParent());
+        Files.deleteIfExists(exclude);
+        Files.createSymbolicLink(exclude, exclude.getFileName());
+        GitOperations git = new GitOperations(dir.toString(), "test");
+
+        GitOperations.Result merged = git.executeForResult("status", "--porcelain", "-z", "-uall");
+        GitOperations.Result stdoutOnly = git.executeForStdout("status", "--porcelain", "-z", "-uall");
+
+        assertTrue("git must warn on stderr for this scenario to be meaningful: " + merged.output(),
+                merged.output().contains("unable to access"));
+        assertFalse("stdout-only output must not carry the stderr warning: " + stdoutOnly.output(),
+                stdoutOnly.output().contains("unable to access"));
+        assertTrue("stdout-only output must still carry the real entry: " + stdoutOnly.output(),
+                stdoutOnly.output().contains("a.txt"));
+    }
+
+    /**
+     * A submodule reported as changed only because its own working tree is dirty
+     * — its recorded commit unchanged — is omitted by
+     * {@link GitOperations#requireChangedFilesIgnoringSubmoduleDirt} while
+     * {@link GitOperations#requireChangedFiles} still lists it. This is what
+     * keeps the commit-capture check from flagging such a submodule as a dropped
+     * change after the parent gitlink is committed.
+     */
+    @Test(timeout = 60000)
+    public void requireChangedFilesIgnoringSubmoduleDirtOmitsADirtySubmodule() throws Exception {
+        Path sub = initRepo();
+        Files.writeString(sub.resolve("inner.txt"), "one\n", StandardCharsets.UTF_8);
+        gitRun(sub, "add", "inner.txt");
+        gitRun(sub, "commit", "-q", "-m", "seed submodule");
+
+        Path dir = initRepo();
+        Files.writeString(dir.resolve("top.txt"), "top\n", StandardCharsets.UTF_8);
+        gitRun(dir, "add", "top.txt");
+        gitRun(dir, "commit", "-q", "-m", "seed super");
+        gitRun(dir, "-c", "protocol.file.allow=always", "submodule", "add", sub.toString(), "mysub");
+        gitRun(dir, "commit", "-q", "-m", "add submodule");
+
+        Files.writeString(dir.resolve("mysub/inner.txt"), "two\n", StandardCharsets.UTF_8);
+
+        assertTrue("git status must report the dirty submodule",
+                GitOperations.requireChangedFiles(dir.toString()).contains("mysub"));
+        assertFalse("a dirty-only submodule must be omitted when submodule dirt is ignored",
+                GitOperations.requireChangedFilesIgnoringSubmoduleDirt(dir.toString()).contains("mysub"));
     }
 
     /**

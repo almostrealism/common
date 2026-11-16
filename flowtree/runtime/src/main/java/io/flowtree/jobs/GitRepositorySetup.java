@@ -17,6 +17,7 @@
 package io.flowtree.jobs;
 
 import io.flowtree.git.GitOperations;
+import io.flowtree.git.StatusEntry;
 import io.flowtree.git.TransientGitException;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -305,7 +306,7 @@ class GitRepositorySetup implements ConsoleFeatures {
             mergeConflictsDetected = true;
             mergeParent = baseHead;
 
-            for (GitOperations.StatusEntry entry
+            for (StatusEntry entry
                     : GitOperations.requireStatusEntries(job.getWorkingDirectory())) {
                 if (entry.isUnmerged()) {
                     conflictFiles.add(entry.path());

@@ -704,18 +704,7 @@ class GitCommitHandler implements ConsoleFeatures {
      * @throws RuntimeException if a staged file did not reach the commit
      */
     private void verifyStagedFilesCommitted() throws IOException {
-        if (stagedFiles.isEmpty()) {
-            return;
-        }
-        // TODO(review): a staged submodule gitlink whose own worktree is dirty (" m"/" ?") stays listed after the commit and would be flagged as dropped
-        Set<String> stillChanged =
-                new LinkedHashSet<>(GitOperations.requireChangedFiles(job.getWorkingDirectory()));
-        List<String> dropped = new ArrayList<>();
-        for (String file : stagedFiles) {
-            if (stillChanged.contains(file)) {
-                dropped.add(file);
-            }
-        }
+        List<String> dropped = GitOperations.pathsStillChanged(job.getWorkingDirectory(), stagedFiles);
         if (!dropped.isEmpty()) {
             throw new RuntimeException("Commit " + TestMethodProtection.shortSha(commitHash)
                     + " did not capture " + dropped.size() + " file(s) reported as staged: "
@@ -970,6 +959,15 @@ class GitCommitHandler implements ConsoleFeatures {
             if (commitExitCode != 0) {
                 log("Commit failed in dependent repo: " + depPath + " (exit code " + commitExitCode + ")");
                 dependentRepoFailures.add(depPath + " (commit exited " + commitExitCode + ")");
+                continue;
+            }
+
+            // Abandon the repo (do not push) when the commit dropped a staged file.
+            List<String> droppedInDep = GitOperations.pathsStillChanged(depPath, stagedInDep);
+            if (!droppedInDep.isEmpty()) {
+                log("Commit dropped staged files in dependent repo: " + depPath);
+                dependentRepoFailures.add(depPath + " (committed but did not capture: "
+                        + String.join(", ", droppedInDep) + ")");
                 continue;
             }
             dependentRepoCommits.add(depPath);

@@ -149,6 +149,30 @@ public class FileStager implements ConsoleFeatures {
         }
 
         /**
+         * Runs a git command and returns its <em>standard output only</em>,
+         * keeping standard error out of the result.
+         *
+         * <p>{@link #executeWithOutput} combines stdout and stderr, which is
+         * wrong for a {@code -z} (NUL-delimited) listing: a warning git prints
+         * to stderr (for example a line-ending notice from a worktree diff)
+         * would fuse with the first NUL field and corrupt that path.
+         * {@link #executeForPaths} therefore reads through this method.</p>
+         *
+         * <p>The default delegates to {@link #executeWithOutput}, which suits a
+         * test fake whose output is already stdout only. An implementation
+         * whose {@code executeWithOutput} merges stderr (as a real git process
+         * does) must override this to read stdout alone.</p>
+         *
+         * @param args the git subcommand and its arguments
+         * @return the command's standard output
+         * @throws IOException if the process cannot be started
+         * @throws InterruptedException if the calling thread is interrupted while waiting
+         */
+        default String executeForStdout(String... args) throws IOException, InterruptedException {
+            return executeWithOutput(args);
+        }
+
+        /**
          * Runs a NUL-delimited git command that prints one path per field (such
          * as {@code diff --name-only -z}) and returns those paths, or
          * {@code null} if the command failed; see {@link #executeOrNull}.
@@ -170,11 +194,10 @@ public class FileStager implements ConsoleFeatures {
          * @throws InterruptedException if the calling thread is interrupted while waiting
          */
         default Set<String> executeForPaths(String... args) throws IOException, InterruptedException {
-            // TODO(review): the job adapter merges stderr here, so a git warning fuses with the first NUL field; read stdout only
-            String output = executeOrNull(args);
-            if (output == null) {
+            if (execute(args) != 0) {
                 return null;
             }
+            String output = executeForStdout(args);
             if (output.endsWith("\n")) {
                 output = output.substring(0, output.length() - 1);
             }

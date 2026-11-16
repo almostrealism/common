@@ -824,6 +824,36 @@ public class FileStagerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link FileStager.GitOperations#executeForPaths} reads through
+	 * {@link FileStager.GitOperations#executeForStdout}, not
+	 * {@link FileStager.GitOperations#executeWithOutput}: a warning git prints to
+	 * standard error (which a real adapter merges into {@code executeWithOutput})
+	 * would otherwise fuse with the first NUL field and corrupt that path.
+	 */
+	@Test(timeout = 30000)
+	public void executeForPathsReadsStdoutNotMergedStderr() throws IOException, InterruptedException {
+		FileStager.GitOperations ops = new FileStager.GitOperations() {
+			@Override
+			public int execute(String... args) {
+				return 0;
+			}
+
+			@Override
+			public String executeWithOutput(String... args) {
+				return "warning: in the working copy of 'a b.txt', LF will be replaced\u0000a b.txt\u0000\n";
+			}
+
+			@Override
+			public String executeForStdout(String... args) {
+				return "a b.txt\u0000\n";
+			}
+		};
+
+		Set<String> paths = ops.executeForPaths("diff", "--name-only", "-z", "HEAD");
+		assertEquals(Collections.singleton("a b.txt"), paths);
+	}
+
+	/**
 	 * Recursively deletes a directory and all its contents.
 	 */
 	private static void deleteRecursively(Path path) throws IOException {

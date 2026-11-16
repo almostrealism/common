@@ -30,6 +30,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -355,6 +356,70 @@ public class GitOperations implements ConsoleFeatures {
     }
 
     /**
+     * Returns every changed file like {@link #requireChangedFiles(String)}, but
+     * with {@code --ignore-submodules=dirty} so a submodule reported as changed
+     * only because its own working tree is dirty — its recorded commit
+     * unchanged, so the parent commit has nothing to record for it — is left
+     * out. A submodule whose recorded commit changed is still reported.
+     *
+     * <p>Used to verify a commit captured what was staged: a submodule that is
+     * merely dirty stays listed even after the parent gitlink is committed, and
+     * must not read as a staged change the commit dropped.</p>
+     *
+     * @param workingDirectory the repository root to inspect; {@code null}
+     *                         means the JVM's current working directory
+     * @return the changed file paths, excluding dirty-only submodules
+     * @throws IOException if the {@code git status} query could not be run
+     *                      or exited with a non-zero code
+     */
+    public static List<String> requireChangedFilesIgnoringSubmoduleDirt(String workingDirectory)
+            throws IOException {
+        ChangedFilesResult result = queryChangedFiles(workingDirectory, true);
+        if (!result.isQuerySucceeded()) {
+            throw new IOException("git status query failed in "
+                    + (workingDirectory != null ? workingDirectory : "."));
+        }
+        return StatusEntry.paths(result.getEntries());
+    }
+
+    /**
+     * Returns which of {@code paths} are still reported as changed in
+     * {@code workingDirectory}, ignoring a submodule that is only dirty in its
+     * own working tree (see {@link #requireChangedFilesIgnoringSubmoduleDirt}).
+     *
+     * <p>Answers whether a set of paths that something expected to be clean —
+     * for example files reported as staged, after the commit that was meant to
+     * capture them — still show as uncommitted changes. A path whose change
+     * truly landed is clean afterward whatever its name; one git handled under
+     * a different name than its real one (the historical spaced-path drop, where
+     * the non-{@code -z} porcelain quoted a real path into a name no file
+     * carries) stages as a no-op and stays changed, so it appears here.</p>
+     *
+     * @param workingDirectory the repository root to inspect; {@code null}
+     *                         means the JVM's current working directory
+     * @param paths            the paths to test against the current changes
+     * @return the members of {@code paths} still reported as changed, in the
+     *         iteration order of {@code paths}
+     * @throws IOException if the {@code git status} query could not be run
+     *                      or exited with a non-zero code
+     */
+    public static List<String> pathsStillChanged(String workingDirectory, Collection<String> paths)
+            throws IOException {
+        if (paths.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Set<String> changed = new LinkedHashSet<>(
+                requireChangedFilesIgnoringSubmoduleDirt(workingDirectory));
+        List<String> stillChanged = new ArrayList<>();
+        for (String path : paths) {
+            if (changed.contains(path)) {
+                stillChanged.add(path);
+            }
+        }
+        return stillChanged;
+    }
+
+    /**
      * Returns every {@link StatusEntry} reported by
      * {@code git status --porcelain -z -uall} in {@code workingDirectory} —
      * the status code as well as the path — for callers that act on the kind
@@ -439,9 +504,34 @@ public class GitOperations implements ConsoleFeatures {
      * @return the parsed files and whether the underlying query succeeded
      */
     private static ChangedFilesResult queryChangedFiles(String workingDirectory) {
+        return queryChangedFiles(workingDirectory, false);
+    }
+
+    /**
+     * Runs {@code git status --porcelain -z -uall} in {@code workingDirectory}
+     * and parses its output, optionally ignoring a submodule that is only dirty
+     * in its own working tree.
+     *
+     * @param workingDirectory    the repository root to inspect; {@code null}
+     *                            means the JVM's current working directory
+     * @param ignoreSubmoduleDirt when {@code true}, add
+     *                            {@code --ignore-submodules=dirty} so a submodule
+     *                            whose recorded commit is unchanged but whose own
+     *                            working tree has modified or untracked content is
+     *                            not reported (the parent commit carries nothing
+     *                            for it); a submodule with a changed recorded
+     *                            commit is still reported
+     * @return the parsed files and whether the underlying query succeeded
+     */
+    private static ChangedFilesResult queryChangedFiles(String workingDirectory,
+                                                        boolean ignoreSubmoduleDirt) {
         try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    resolveGitCommand(), "status", "--porcelain", "-z", "-uall");
+            List<String> command = new ArrayList<>(List.of(
+                    resolveGitCommand(), "status", "--porcelain", "-z", "-uall"));
+            if (ignoreSubmoduleDirt) {
+                command.add("--ignore-submodules=dirty");
+            }
+            ProcessBuilder pb = new ProcessBuilder(command);
             if (workingDirectory != null) {
                 pb.directory(new File(workingDirectory));
             }
@@ -496,85 +586,6 @@ public class GitOperations implements ConsoleFeatures {
      */
     public static List<String> parseChangedFiles(String statusOutput) {
         return StatusEntry.paths(StatusEntry.parseAll(statusOutput));
-    }
-
-    /**
-     * One entry of {@code git status --porcelain -z} output: the two-character
-     * {@code XY} status code (index column, then working-tree column) and the
-     * raw, unquoted path. For a rename or copy the path is the destination.
-     *
-     * @param code the two-character status code, such as {@code " M"} or {@code "UU"}
-     * @param path the repository-relative path, verbatim
-     */
-    public record StatusEntry(String code, String path) {
-        /**
-         * Parses the output of {@code git status --porcelain -z} into its
-         * entries, for callers that act on the kind of change as well as on
-         * the path (such as a merge-conflict scan selecting
-         * {@linkplain #isUnmerged() unmerged} entries). The field layout and
-         * filtering are exactly those described on
-         * {@link GitOperations#parseChangedFiles(String)}, which maps these
-         * entries to their paths.
-         *
-         * @param statusOutput the raw output of a
-         *                     {@code git status --porcelain -z} invocation
-         * @return the status entries, in the order git reported them
-         */
-        public static List<StatusEntry> parseAll(String statusOutput) {
-            List<StatusEntry> entries = new ArrayList<>();
-            String[] fields = statusOutput.split("\0", -1);
-            for (int i = 0; i < fields.length; i++) {
-                String field = fields[i];
-                if (field.length() <= 3) {
-                    continue;
-                }
-                StatusEntry entry = new StatusEntry(field.substring(0, 2), field.substring(3));
-                // A rename or copy carries its source path as the next NUL
-                // field; consume and discard it so only the destination is kept.
-                if (entry.isRenameOrCopy()) {
-                    i++;
-                }
-                entries.add(entry);
-            }
-            return entries;
-        }
-
-        /**
-         * Returns the paths of {@code entries}, in order.
-         *
-         * @param entries the status entries
-         * @return each entry's path, in the order given
-         */
-        public static List<String> paths(List<StatusEntry> entries) {
-            List<String> files = new ArrayList<>();
-            for (StatusEntry entry : entries) {
-                files.add(entry.path());
-            }
-            return files;
-        }
-
-        /**
-         * Returns whether this entry is a rename or copy ({@code R} or
-         * {@code C} in either column), whose source path git emits as the
-         * following NUL-terminated field.
-         *
-         * @return {@code true} for a rename or copy entry
-         */
-        public boolean isRenameOrCopy() {
-            return code.indexOf('R') >= 0 || code.indexOf('C') >= 0;
-        }
-
-        /**
-         * Returns whether this entry is an unmerged (conflicted) path: one of
-         * the codes {@code DD}, {@code AU}, {@code UD}, {@code UA},
-         * {@code DU}, {@code AA} or {@code UU} that {@code git status} uses
-         * while a merge has unresolved conflicts.
-         *
-         * @return {@code true} for an unmerged entry
-         */
-        public boolean isUnmerged() {
-            return code.indexOf('U') >= 0 || "AA".equals(code) || "DD".equals(code);
-        }
     }
 
     /**
@@ -651,15 +662,45 @@ public class GitOperations implements ConsoleFeatures {
      * index, which is the state {@code git rm} leaves, for example when a
      * modify/delete merge conflict is resolved by taking the deletion.</p>
      *
+     * <p>A path that is in none of the working tree, the index, and
+     * {@code HEAD} is not a deletion of anything, so staging it would record
+     * nothing while {@code --ignore-unmatch} reported success — the silent
+     * no-op behind the spaced-path drop, where the non-{@code -z} porcelain
+     * quoted a real path into a name no file carries. Such a path fails here
+     * with a {@linkplain Result#succeeded() failed} result naming it, rather
+     * than passing for a staged change that never enters the commit.</p>
+     *
      * @param path the path, relative to the working directory
      * @return the git invocation's result
      * @throws IOException          if the process cannot be started
      * @throws InterruptedException if the current thread is interrupted
      */
     public Result stage(String path) throws IOException, InterruptedException {
-        return existsInWorkingTree(path)
-                ? executeForResult("add", "--", path)
-                : executeForResult("rm", "--cached", "--quiet", "--ignore-unmatch", "--", path);
+        if (existsInWorkingTree(path)) {
+            return executeForResult("add", "--", path);
+        }
+        if (!isTrackedOrInHead(path)) {
+            return new Result(List.of("rm", "--cached", "--", path), 128,
+                    "fatal: pathspec '" + path + "' did not match any file in the working tree,"
+                            + " the index, or HEAD, so there is nothing to stage for it");
+        }
+        return executeForResult("rm", "--cached", "--quiet", "--ignore-unmatch", "--", path);
+    }
+
+    /**
+     * Returns whether git knows {@code path} as something it could stage a
+     * removal of: a path tracked in the index, or present in {@code HEAD}.
+     * On an unborn {@code HEAD} the {@code HEAD} lookup simply fails, leaving
+     * the index check to decide.
+     *
+     * @param path the path, relative to the working directory
+     * @return {@code true} when the path is in the index or in {@code HEAD}
+     * @throws IOException          if a process cannot be started
+     * @throws InterruptedException if the current thread is interrupted
+     */
+    private boolean isTrackedOrInHead(String path) throws IOException, InterruptedException {
+        return executeForResult("ls-files", "--error-unmatch", "--", path).succeeded()
+                || executeForResult("cat-file", "-e", "HEAD:" + path).succeeded();
     }
 
     /**
@@ -709,15 +750,58 @@ public class GitOperations implements ConsoleFeatures {
      *                              while waiting for the process
      */
     public Result executeForResult(String... args) throws IOException, InterruptedException {
+        return runGit(false, args);
+    }
+
+    /**
+     * Executes a git command and returns its exit code and <em>standard
+     * output only</em>, with standard error discarded rather than merged.
+     *
+     * <p>{@link #executeForResult} and {@link #executeWithOutput} merge stderr
+     * into the output, which is what a caller reporting <em>why</em> a command
+     * failed wants but is wrong for a {@code -z} (NUL-delimited) listing: a
+     * warning git prints to stderr would join onto the first NUL field and
+     * corrupt that path. This reads stdout as raw bytes so the NUL separators
+     * survive intact.</p>
+     *
+     * @param args the git sub-command and its arguments, typically a
+     *             {@code -z} listing such as {@code "diff", "--name-only", "-z"}
+     * @return the exit code and standard output
+     * @throws IOException          if the process cannot be started
+     * @throws InterruptedException if the current thread is interrupted
+     *                              while waiting for the process
+     */
+    public Result executeForStdout(String... args) throws IOException, InterruptedException {
+        return runGit(true, args);
+    }
+
+    /**
+     * Runs {@code git <args>} and returns its exit code and output.
+     *
+     * @param stdoutOnly when {@code true}, standard error is discarded and
+     *                   standard output is read as raw bytes so {@code -z} NUL
+     *                   separators survive; when {@code false}, standard error
+     *                   is merged into the output a caller reads to report why
+     *                   a command failed
+     * @param args       the git sub-command and its arguments
+     * @return the exit code and output
+     * @throws IOException          if the process cannot be started
+     * @throws InterruptedException if the current thread is interrupted
+     *                              while waiting for the process
+     */
+    private Result runGit(boolean stdoutOnly, String... args)
+            throws IOException, InterruptedException {
         List<String> command = new ArrayList<>();
         command.add(resolveGitCommand());
         command.addAll(Arrays.asList(args));
 
         ProcessBuilder pb = new ProcessBuilder(command);
-        configureGitProcess(pb);
+        configureGitProcess(pb, stdoutOnly);
 
         Process process = pb.start();
-        String output = readProcessOutput(process);
+        String output = stdoutOnly
+                ? new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8)
+                : readProcessOutput(process);
         return new Result(List.of(args), process.waitFor(), output);
     }
 
@@ -1070,8 +1154,19 @@ public class GitOperations implements ConsoleFeatures {
      *
      * @param pb the process builder to configure
      */
-    private void configureGitProcess(ProcessBuilder pb) {
-        configureProcess(pb);
+    private void configureGitProcess(ProcessBuilder pb, boolean stdoutOnly) {
+        if (workingDirectory != null) {
+            pb.directory(new File(workingDirectory));
+        }
+        if (stdoutOnly) {
+            // Keep stderr off stdout so a git warning cannot fuse with the first
+            // field of a -z (NUL-delimited) listing; the exit code still reports
+            // failure and these callers read only the output.
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
+        } else {
+            pb.redirectErrorStream(true);
+        }
+        augmentPath(pb);
         pb.environment().put("GIT_SSH_COMMAND", SSH_COMMAND);
         applyGitIdentity(pb);
         pb.environment().putAll(environment);
