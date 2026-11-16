@@ -402,44 +402,48 @@ public class GitOperationsTest extends TestSuiteBase {
     /**
      * Pins the shared porcelain parse {@link GitOperations#parseChangedFiles(String)}
      * that both {@link GitOperations#getChangedFiles(String)} and
-     * {@code GitRepositorySetup.getAllDirtyFiles()} now rely on: the path begins
-     * at the fourth column (after the two-character status code and its trailing
-     * space), every status kind (modified, added, deleted, untracked) is listed
-     * alike, a renamed entry yields only its post-rename path, and git's reported
-     * order is preserved.
+     * {@code GitRepositorySetup.getAllDirtyFiles()} now rely on, fed the
+     * NUL-separated {@code git status --porcelain -z} form: the path begins at
+     * the fourth column (after the two-character status code and its trailing
+     * space) and is kept verbatim, so a path containing spaces survives
+     * unquoted (the historical silent-drop bug); every status kind (modified,
+     * added, deleted, untracked) is listed alike; a renamed entry carries its
+     * original path as its own trailing NUL field, which is discarded so only
+     * the post-rename path is returned; and git's reported order is preserved.
      */
     @Test(timeout = 10000)
     public void parseChangedFilesReadsPathsAndRenamesInOrder() {
-        String statusOutput = String.join("\n",
+        String statusOutput = String.join("\u0000",
                 " M tracked.txt",
                 "A  added.txt",
                 " D deleted.txt",
                 "?? Untracked.java",
-                "R  old/name.txt -> new/name.txt");
+                " M .run/My App Config.run.xml",
+                "R  new/name.txt",
+                "old/name.txt") + "\u0000";
 
         List<String> files = GitOperations.parseChangedFiles(statusOutput);
 
         Assert.assertEquals(
                 List.of("tracked.txt", "added.txt", "deleted.txt",
-                        "Untracked.java", "new/name.txt"),
+                        "Untracked.java", ".run/My App Config.run.xml", "new/name.txt"),
                 files);
     }
 
     /**
      * Pins the filtering edges of {@link GitOperations#parseChangedFiles(String)}:
-     * lines too short to hold a path (empty lines, a bare status code, the
-     * trailing fragment left by {@code split}) are ignored, and a line whose
-     * path is blank after trimming is dropped rather than contributing an empty
-     * entry.
+     * fields too short to hold a path (an empty field, a bare status code, the
+     * trailing newline a line-buffered reader appends after the final NUL) are
+     * ignored rather than contributing an empty or whitespace entry.
      */
     @Test(timeout = 10000)
     public void parseChangedFilesIgnoresShortAndBlankLines() {
-        String statusOutput = String.join("\n",
+        String statusOutput = String.join("\u0000",
                 "",
                 "??",
                 " M kept.txt",
-                "    ",
-                " M also/kept.txt");
+                " M ",
+                " M also/kept.txt") + "\u0000\n";
 
         List<String> files = GitOperations.parseChangedFiles(statusOutput);
 

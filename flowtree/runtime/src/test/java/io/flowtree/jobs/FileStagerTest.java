@@ -267,7 +267,7 @@ public class FileStagerTest extends TestSuiteBase {
 						return "abc1234def5678901234567890abcdef1234567";
 					}
 					if (args.length >= 1 && "ls-tree".equals(args[0])) {
-						return ".github/workflows/analysis.yaml\n";
+						return ".github/workflows/analysis.yaml\u0000";
 					}
 					return "";
 				}
@@ -468,7 +468,7 @@ public class FileStagerTest extends TestSuiteBase {
 					return "abc1234def5678901234567890abcdef1234567";
 				}
 				if (args.length >= 1 && "ls-tree".equals(args[0])) {
-					return String.join("\n", files) + "\n";
+					return String.join("\u0000", files) + "\u0000";
 				}
 				return "";
 			}

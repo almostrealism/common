@@ -354,11 +354,11 @@ class GitRepositorySetup implements ConsoleFeatures {
     }
 
     /**
-     * Returns every file reported as dirty by {@code git status --porcelain},
+     * Returns every file reported as dirty by {@code git status --porcelain -z},
      * with no exclusion filtering applied.
      */
     private List<String> getAllDirtyFiles() throws IOException, InterruptedException {
-        String statusOutput = job.executeGitWithOutput("status", "--porcelain");
+        String statusOutput = job.executeGitWithOutput("status", "--porcelain", "-z");
         return GitOperations.parseChangedFiles(statusOutput);
     }
 
