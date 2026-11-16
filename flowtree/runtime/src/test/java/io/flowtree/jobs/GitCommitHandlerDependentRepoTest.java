@@ -177,6 +177,96 @@ public class GitCommitHandlerDependentRepoTest extends TestSuiteBase {
     }
 
     /**
+     * A dependent-repo file whose name begins with {@code -} is committed and
+     * pushed. The handler stages through {@link GitOperations#stage(String)},
+     * which passes the path after {@code --}, so the leading dash is read as a
+     * filename rather than a flag; a bare {@code git add -dash.md} would reject
+     * it and the file would be committed around and silently dropped.
+     */
+    @Test(timeout = 60000)
+    public void dependentRepoCommitsALeadingDashPath()
+            throws IOException, InterruptedException {
+        Files.writeString(dependent.resolve("-dash.md"), "leading dash content\n",
+                StandardCharsets.UTF_8);
+
+        GitRepositorySetup setup = preparedSetup();
+        GitCommitHandler handler = new GitCommitHandler(job());
+        handler.handleDependentRepos(setup);
+
+        assertTrue("the leading-dash file must not be recorded as a failure",
+                handler.getDependentRepoFailures().isEmpty());
+        assertEquals("the leading-dash change is committed and pushed",
+                1, handler.getDependentRepoPushes().size());
+        String committed = git(dependent, "ls-tree", "-r", "--name-only", "HEAD");
+        assertTrue("the leading-dash file must reach the dependent commit",
+                committed.lines().anyMatch(line -> line.equals("-dash.md")));
+    }
+
+    /**
+     * When git refuses to stage a changed dependent-repo file, the repo's commit
+     * is abandoned rather than committed around: nothing is pushed, the HEAD is
+     * unchanged, and the failure is recorded naming the unstageable file.
+     *
+     * <p>The failure is injected with a <em>required</em> clean filter that
+     * always exits non-zero, which makes {@code git add} of the file it applies
+     * to fail on every host — unlike a read-only directory bit, which a root or
+     * overlay-mount process ignores. The attribute lives in {@code .git/info},
+     * so it is not itself a change, and the index reset writes no blob through
+     * the filter, so it still succeeds.</p>
+     */
+    @Test(timeout = 60000)
+    public void failedStageAbandonsDependentCommitAndRecordsFailure()
+            throws IOException, InterruptedException {
+        Files.writeString(dependent.resolve(".git/info/attributes"),
+                "trigger.txt filter=boom\n", StandardCharsets.UTF_8);
+        git(dependent, "config", "filter.boom.clean", "false");
+        git(dependent, "config", "filter.boom.required", "true");
+        Files.writeString(dependent.resolve("trigger.txt"), "changed by the job\n",
+                StandardCharsets.UTF_8);
+        String headBefore = git(dependent, "rev-parse", "HEAD").trim();
+
+        GitRepositorySetup setup = preparedSetup();
+        GitCommitHandler handler = new GitCommitHandler(job());
+        handler.handleDependentRepos(setup);
+
+        assertTrue("a failed stage must push nothing", handler.getDependentRepoPushes().isEmpty());
+        Assert.assertEquals("a failed stage must leave the dependent HEAD untouched",
+                headBefore, git(dependent, "rev-parse", "HEAD").trim());
+        List<String> failures = handler.getDependentRepoFailures();
+        assertEquals(1, failures.size());
+        assertTrue("the failure must name the unstageable file: " + failures.get(0),
+                failures.get(0).contains("trigger.txt"));
+    }
+
+    /**
+     * When the dependent commit is created but leaves a staged file still
+     * reported as changed, the repo is abandoned rather than reported as pushed
+     * without the change: nothing is pushed and the failure names the dropped
+     * file. A {@code post-commit} hook re-dirtying the file stands in for any
+     * mechanism that leaves a staged change outside the commit.
+     */
+    @Test(timeout = 60000)
+    public void commitDroppingAStagedFileAbandonsDependentRepo()
+            throws IOException, InterruptedException {
+        Files.writeString(dependent.resolve("README.md"), "changed by the job\n", StandardCharsets.UTF_8);
+        Path hook = dependent.resolve(".git").resolve("hooks").resolve("post-commit");
+        Files.createDirectories(hook.getParent());
+        Files.writeString(hook, "#!/bin/sh\necho \"edited after the commit\" >> README.md\n",
+                StandardCharsets.UTF_8);
+        assertTrue("the hook must be made executable", hook.toFile().setExecutable(true, false));
+
+        GitRepositorySetup setup = preparedSetup();
+        GitCommitHandler handler = new GitCommitHandler(job());
+        handler.handleDependentRepos(setup);
+
+        assertTrue("a dropped file must push nothing", handler.getDependentRepoPushes().isEmpty());
+        List<String> failures = handler.getDependentRepoFailures();
+        assertEquals(1, failures.size());
+        assertTrue("the failure must name the dropped file: " + failures.get(0),
+                failures.get(0).contains("README.md") && failures.get(0).contains("did not capture"));
+    }
+
+    /**
      * When the pre-commit index reset fails, the dependent repo is skipped
      * rather than committed from an untrusted index: nothing is pushed, the HEAD
      * is unchanged, and the failure is recorded naming the reset.
