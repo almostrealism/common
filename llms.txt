@@ -15,7 +15,7 @@
 ## Core Modules
 
 ### base/ — Foundation
-- [Concept Map](base/concept-map.md): the foundational describe-then-execute spine and how meta→io→relation→code→collect→hardware build on one another
+- [Concept Map](base/concept-map.md): the foundational describe-then-execute spine and how the base modules branch from the `meta` root (`relation` and `io` on `meta`, `code` on both, then `collect`→`hardware`, with `hardware-js` branching off `code`)
 - [meta](base/meta/README.md): Foundational interfaces — Named, Signature, Destroyable, Lifecycle, Setup, Multiple, Plural | [Details](docs/modules/meta.html)
 - [io](base/io/README.md): Console logging, metrics, alerts, file output utilities | [Details](docs/modules/io.html)
 - [relation](base/relation/README.md): Producer/Evaluable/Process model — relational computation, deferred execution, process optimization | [Details](docs/modules/relation.html)

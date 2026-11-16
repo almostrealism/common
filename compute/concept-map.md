@@ -2,8 +2,11 @@
 
 The mathematical-domains layer. It gives higher layers a typed vocabulary — linear algebra,
 geometry, probability, time and frequency — built entirely on the base layer's `PackedCollection`
-and `Producer`. Every type here is a *semantic wrapper* over accelerated memory: it adds meaning
-(a 3-vector, a ray, a transform, a time series) without leaving the compiled-kernel model.
+and `Producer`. Its core types are *semantic wrappers* over accelerated memory — a 3-vector, a
+ray, a transform, a time series add meaning without leaving the compiled-kernel model —
+alongside the orchestration and feature-mixin APIs (`Temporal`, `SimulationRunner`,
+`DistributionFeatures`) that drive and compose those values rather than wrapping memory
+themselves.
 
 Companion to [compute/README.md](README.md) and the summary map in
 [docs/internals/concept-map.md](../docs/internals/concept-map.md). The two geometry families in

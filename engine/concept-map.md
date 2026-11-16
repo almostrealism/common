@@ -13,8 +13,10 @@ Companion to [engine/README.md](README.md) and the summary map in
 `engine` consumes the domain vocabulary wholesale: it trains `Model`s and composes `Block`s
 (`domain/graph`), renders `ShadableSurface` `Scene`s with `RGB` and `Light` (`domain/space`,
 `domain/color`), and runs audio `Cell`s over `Temporal` time (`compute/time`). Its defining
-contribution is a small set of **loop-owning classes**: the project forbids hand-written
-`for` loops around a compiled step, and this layer is where the sanctioned owners live.
+contribution is a set of **application-level loop-owning classes**: the project forbids
+hand-written `for` loops around a compiled step, and this layer owns the training, sampling and
+generation loops. (The recurrent-simulation loop owner, `SimulationRunner`, lives one layer down
+in `compute/time`.)
 
 | Loop | Owner | Reference |
 |---|---|---|
@@ -59,7 +61,7 @@ Sound generation as `Cell` graphs stepped over time.
 
 | Concept | Role |
 |---|---|
-| `Cell`, `CellFeatures`, `CellList` | The temporal processing unit, its factory mixin, and the hierarchical tick-ordered container. See [CellList Architecture](../docs/internals/celllist-architecture.md). |
+| `CellFeatures`, `CellList` | The audio factory mixin and the hierarchical tick-ordered container of `Cell`s. The `Cell` interface itself is a `domain/graph` contract this module consumes. See [CellList Architecture](../docs/internals/celllist-architecture.md). |
 | Oscillators, `AudioPassFilter`, envelopes | Signal generators and filters whose parameters are producers. |
 | `WaveData`, `KeyboardTuning` | Sample storage with frequency analysis, and semitone→frequency lookup. |
 

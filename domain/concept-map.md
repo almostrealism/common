@@ -2,8 +2,10 @@
 
 The domain-models layer. It combines the base (execution model) and compute (math) layers into
 concrete subjects: neural-network graphs, colour and lighting, 3D scenes, genetics, physics,
-chemistry and biology. A domain type is still a computation graph — it compiles to a native
-kernel like everything else — but it now carries the vocabulary of a particular field.
+chemistry and biology. Most domain types are computation graphs — they compile to native
+kernels like everything else — but now carry the vocabulary of a particular field; others are
+host-side data and structure (an `Element` of the periodic table, a `Scene`'s surface
+hierarchy) that describe or assemble those graphs rather than compiling to a kernel themselves.
 
 Companion to [domain/README.md](README.md) and the summary map in
 [docs/internals/concept-map.md](../docs/internals/concept-map.md). The graph (family 3) and
