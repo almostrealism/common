@@ -143,41 +143,43 @@ public interface JobFactory {
      */
     static JobFactory decode(String data) {
         if (data == null) return null;
-        int index = data.indexOf(ENTRY_SEPARATOR);
-        if (index < 0) return null;
-        String className = data.substring(0, index);
 
-        JobFactory j;
+        // TODO(review): a malformed @wire= marker makes parse() throw IllegalArgumentException uncaught here, unlike the UnsupportedWireFormatException path below which returns null
+        WireEnvelope envelope = WireEnvelope.parse(data);
+        String className = envelope.getClassName();
+        if (className == null) return null;
 
+        JobCodec codec;
         try {
-            j = (JobFactory) Class.forName(className).newInstance();
+            codec = JobCodecRegistry.getInstance().forFormat(envelope.getFormatId());
+        } catch (UnsupportedWireFormatException e) {
+            Console.root().warn("JobFactory: " + e.getMessage(), e);
+            return null;
+        }
 
-            boolean end = false;
-
-            while (!end) {
-                data = data.substring(index + ENTRY_SEPARATOR.length());
-                index = nextEntrySeparator(data, data.indexOf(ENTRY_SEPARATOR));
-
-                String s;
-
-                if (index <= 0) {
-                    s = data;
-                    end = true;
-                } else {
-                    s = data.substring(0, index);
-                }
-
-                int k = s.indexOf(KEY_VALUE_SEPARATOR);
-                String key = s.substring(0, k);
-                String value = s.substring(k + KEY_VALUE_SEPARATOR.length());
-
-                j.set(key, value);
-            }
+        Class<?> type;
+        try {
+            type = Class.forName(className);
         } catch (ClassNotFoundException cnf) {
             Console.root().warn("JobFactory: class not found: " + className, cnf);
             return null;
-        } catch (ClassCastException cce) {
-            Console.root().warn("JobFactory: " + className + " is not a JobFactory", cce);
+        }
+
+        if (!JobFactory.class.isAssignableFrom(type)) {
+            Console.root().warn("JobFactory: " + className + " is not a JobFactory");
+            return null;
+        }
+
+        if (!codec.supports(type)) {
+            Console.root().warn("JobFactory: codec '" + codec.getFormatId()
+                    + "' does not support " + className);
+            return null;
+        }
+
+        try {
+            return codec.decodeFactory(type.asSubclass(JobFactory.class), envelope.getPayload());
+        } catch (UnsupportedWireFormatException e) {
+            Console.root().warn("JobFactory: " + e.getMessage(), e);
             return null;
         } catch (Exception e) {
             // A factory missing the entries after the failure point (prompt,
@@ -185,8 +187,39 @@ public interface JobFactory {
             Console.root().warn("JobFactory: failed to decode factory " + className, e);
             return null;
         }
+    }
 
-        return j;
+    /**
+     * Returns the id of the wire format this factory should be serialized with.
+     * The default is {@link StringJobCodec#FORMAT_ID}, so every factory stays on
+     * the historic {@code classname::key:=value} format unless it overrides this
+     * to select another registered {@link JobCodec}.
+     *
+     * <p>This is the <em>sender's</em> choice and is never itself serialized.</p>
+     *
+     * @return the wire format id; {@link StringJobCodec#FORMAT_ID} by default
+     */
+    default String getWireFormat() {
+        return StringJobCodec.FORMAT_ID;
+    }
+
+    /**
+     * Serializes this factory for transmission, selecting the {@link JobCodec}
+     * named by {@link #getWireFormat()}.
+     *
+     * <p>When that codec is the {@link StringJobCodec} the result is
+     * {@link #encode()} unchanged, so an unmarked string payload is byte-identical
+     * to the historic form. Otherwise the result is a {@link WireEnvelope}
+     * carrying the format id, this factory's class name and the codec payload, so
+     * a receiver can pick the right codec from the payload alone.</p>
+     *
+     * @return the serialized wire payload
+     * @throws UnsupportedWireFormatException if the chosen codec does not
+     *                                        {@link JobCodec#supports(Class) support} this class
+     */
+    default String toWire() {
+        JobCodec codec = JobCodecRegistry.getInstance().forFormat(getWireFormat());
+        return codec.renderWire(getClass(), codec.encodePayload(this));
     }
 
     /**

@@ -16,6 +16,7 @@
 
 package io.flowtree.job;
 
+import org.almostrealism.io.Console;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.util.KeyValueStore;
 
@@ -126,5 +127,108 @@ public interface Job extends Runnable, KeyValueStore {
 	 */
 	default Map<String, String> getRequiredLabels() {
 		return Collections.emptyMap();
+	}
+
+	/**
+	 * Returns the id of the wire format this job should be serialized with. The
+	 * default is {@link StringJobCodec#FORMAT_ID}, so every job stays on the
+	 * historic {@code classname::key:=value} format unless it overrides this to
+	 * select another registered {@link JobCodec}.
+	 *
+	 * <p>This is the <em>sender's</em> choice and is never itself serialized.</p>
+	 *
+	 * @return the wire format id; {@link StringJobCodec#FORMAT_ID} by default
+	 */
+	default String getWireFormat() {
+		return StringJobCodec.FORMAT_ID;
+	}
+
+	/**
+	 * Serializes this job for transmission, selecting the {@link JobCodec} named
+	 * by {@link #getWireFormat()}.
+	 *
+	 * <p>When that codec is the {@link StringJobCodec} the result is
+	 * {@link #encode()} unchanged, so an unmarked string payload is byte-identical
+	 * to the historic form. Otherwise the result is a {@link WireEnvelope}
+	 * carrying the format id, this job's class name and the codec payload, so a
+	 * receiver can pick the right codec from the payload alone.</p>
+	 *
+	 * @return the serialized wire payload
+	 * @throws UnsupportedWireFormatException if the chosen codec does not
+	 *                                        {@link JobCodec#supports(Class) support} this class
+	 */
+	default String toWire() {
+		JobCodec codec = JobCodecRegistry.getInstance().forFormat(getWireFormat());
+		return codec.renderWire(getClass(), codec.encodePayload(this));
+	}
+
+	/**
+	 * Reconstructs a {@link Job} from its serialized wire form. This is the
+	 * single job-side decoder, the counterpart to {@link JobFactory#decode(String)}:
+	 * it parses the {@link WireEnvelope} format marker, selects the
+	 * {@link JobCodec} for that format, verifies the resolved class is a
+	 * {@link Job} the codec {@link JobCodec#supports(Class) supports}, and
+	 * delegates the payload parsing to the codec. An unmarked payload is the
+	 * historic {@code classname::key:=value} string form, decoded by the
+	 * {@link StringJobCodec}.
+	 *
+	 * <p>Returns {@code null} — never a misparsed or partially-decoded job — when
+	 * the payload is {@code null}, carries no class name, names an unsupported
+	 * wire format, names a class that cannot be found or is not a {@link Job}, or
+	 * names a class the selected codec does not support. A payload with no
+	 * {@link JobFactory#ENTRY_SEPARATOR} (which the historic inline parser
+	 * crashed on) is one such case and now yields {@code null}.</p>
+	 *
+	 * @param data the serialized wire payload, optionally preceded by a
+	 *             {@link WireEnvelope} format marker
+	 * @return the reconstructed job, or {@code null} if it cannot be decoded
+	 */
+	static Job decode(String data) {
+		if (data == null) return null;
+
+		// TODO(review): a malformed @wire= marker makes parse() throw IllegalArgumentException uncaught here, unlike the UnsupportedWireFormatException path below which returns null
+		WireEnvelope envelope = WireEnvelope.parse(data);
+		String className = envelope.getClassName();
+		if (className == null) {
+			Console.root().warn("Job: payload has no class name: " + data);
+			return null;
+		}
+
+		JobCodec codec;
+		try {
+			codec = JobCodecRegistry.getInstance().forFormat(envelope.getFormatId());
+		} catch (UnsupportedWireFormatException e) {
+			Console.root().warn("Job: " + e.getMessage(), e);
+			return null;
+		}
+
+		Class<?> type;
+		try {
+			type = Class.forName(className);
+		} catch (ClassNotFoundException cnf) {
+			Console.root().warn("Job: class not found: " + className, cnf);
+			return null;
+		}
+
+		if (!Job.class.isAssignableFrom(type)) {
+			Console.root().warn("Job: " + className + " is not a Job");
+			return null;
+		}
+
+		if (!codec.supports(type)) {
+			Console.root().warn("Job: codec '" + codec.getFormatId()
+					+ "' does not support " + className);
+			return null;
+		}
+
+		try {
+			return codec.decodeJob(type.asSubclass(Job.class), envelope.getPayload());
+		} catch (UnsupportedWireFormatException e) {
+			Console.root().warn("Job: " + e.getMessage(), e);
+			return null;
+		} catch (Exception e) {
+			Console.root().warn("Job: failed to decode job " + className, e);
+			return null;
+		}
 	}
 }

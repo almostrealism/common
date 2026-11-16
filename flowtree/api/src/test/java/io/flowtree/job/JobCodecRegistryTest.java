@@ -1,0 +1,195 @@
+/*
+ * Copyright 2026 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.flowtree.job;
+
+import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
+import org.junit.BeforeClass;
+import org.junit.Test;
+
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * Verifies that {@link JobCodecRegistry} selects a codec by format id and that
+ * the {@link JobFactory#decode(String)} and {@link JobFactory#toWire()} paths
+ * honour the registry: an unknown format id is rejected naming the id, a class
+ * the selected codec does not {@link JobCodec#supports(Class) support} is never
+ * instantiated, and a sender whose chosen codec does not support its class fails
+ * at the sender.
+ *
+ * @author Michael Murray
+ */
+public class JobCodecRegistryTest extends TestSuiteBase {
+
+    /** Format id of a codec that accepts nothing, used to prove the supports() gate rejects before instantiation. */
+    private static final String REJECTING_FORMAT = "reject-fac-test";
+
+    /** Registers the rejecting codec once for the whole class. */
+    @BeforeClass
+    public static void registerRejectingCodec() {
+        JobCodecRegistry.getInstance().register(new RejectingCodec());
+    }
+
+    /** The built-in string codec is always registered. */
+    @Test(timeout = 60000)
+    public void stringCodecAlwaysPresent() {
+        JobCodec codec = JobCodecRegistry.getInstance().forFormat(StringJobCodec.FORMAT_ID);
+
+        Assert.assertTrue(codec instanceof StringJobCodec);
+    }
+
+    /** An unregistered format id is rejected with a message naming the id. */
+    @Test(timeout = 60000)
+    public void unknownFormatIdRejectedNamingId() {
+        try {
+            JobCodecRegistry.getInstance().forFormat("no-such-format-xyz");
+            Assert.fail("expected UnsupportedWireFormatException");
+        } catch (UnsupportedWireFormatException e) {
+            Assert.assertTrue("message must name the format id: " + e.getMessage(),
+                    e.getMessage().contains("no-such-format-xyz"));
+        }
+    }
+
+    /** decode() of an unknown-format envelope returns null and never constructs the named class. */
+    @Test(timeout = 60000)
+    public void decodeUnknownFormatReturnsNullWithoutInstantiating() {
+        TrackingFactory.INSTANCES.set(0);
+        String payload = "@wire=no-such-format-xyz::" + TrackingFactory.class.getName() + "::QUJD";
+
+        Assert.assertNull(JobFactory.decode(payload));
+        Assert.assertEquals(0, TrackingFactory.INSTANCES.get());
+    }
+
+    /** decode() for a codec that does not support the named class returns null and never constructs it. */
+    @Test(timeout = 60000)
+    public void decodeUnsupportedClassReturnsNullWithoutInstantiating() {
+        TrackingFactory.INSTANCES.set(0);
+        String payload = "@wire=" + REJECTING_FORMAT + "::" + TrackingFactory.class.getName() + "::QUJD";
+
+        Assert.assertNull(JobFactory.decode(payload));
+        Assert.assertEquals(0, TrackingFactory.INSTANCES.get());
+    }
+
+    /** A sender whose chosen codec does not support its class fails at toWire(), not on the receiver. */
+    @Test(timeout = 60000)
+    public void toWireFailsWhenCodecRejectsSenderClass() {
+        TrackingFactory factory = new TrackingFactory();
+        factory.wireFormat = REJECTING_FORMAT;
+
+        try {
+            factory.toWire();
+            Assert.fail("expected UnsupportedWireFormatException");
+        } catch (UnsupportedWireFormatException e) {
+            Assert.assertTrue(e.getMessage().contains(REJECTING_FORMAT));
+        }
+    }
+
+    /** Under the default string format toWire() equals encode() exactly. */
+    @Test(timeout = 60000)
+    public void toWireIsByteIdenticalToEncodeForStringFormat() {
+        TrackingFactory factory = new TrackingFactory();
+
+        Assert.assertEquals(factory.encode(), factory.toWire());
+    }
+
+    /** A {@link JobCodec} that supports no type, used to exercise the supports() gate. */
+    public static class RejectingCodec implements JobCodec {
+        @Override
+        public String getFormatId() { return REJECTING_FORMAT; }
+
+        @Override
+        public boolean supports(Class<?> type) { return false; }
+
+        @Override
+        public String encodePayload(JobFactory factory) {
+            throw new UnsupportedWireFormatException(REJECTING_FORMAT + " supports nothing");
+        }
+
+        @Override
+        public String encodePayload(Job job) {
+            throw new UnsupportedWireFormatException(REJECTING_FORMAT + " supports nothing");
+        }
+
+        @Override
+        public JobFactory decodeFactory(Class<? extends JobFactory> type, String payload) {
+            throw new UnsupportedWireFormatException(REJECTING_FORMAT + " supports nothing");
+        }
+
+        @Override
+        public Job decodeJob(Class<? extends Job> type, String payload) {
+            throw new UnsupportedWireFormatException(REJECTING_FORMAT + " supports nothing");
+        }
+    }
+
+    /**
+     * A minimal {@link JobFactory} that counts how many times it is reflectively
+     * constructed, so a test can assert that a rejected payload never
+     * instantiates the named class. It must be public with a public no-argument
+     * constructor so {@link JobFactory#decode(String)} can instantiate it by name.
+     */
+    public static class TrackingFactory implements JobFactory {
+
+        /** Counts reflective constructions across the JVM. */
+        public static final AtomicInteger INSTANCES = new AtomicInteger();
+
+        /** The sender's chosen wire format; defaults to the string format. */
+        private String wireFormat = StringJobCodec.FORMAT_ID;
+
+        /** Completed, never awaited, so {@link #getCompletableFuture()} is non-null. */
+        private final CompletableFuture<Void> future = new CompletableFuture<>();
+
+        /** Public no-argument constructor required for reflective instantiation; counts each call. */
+        public TrackingFactory() { INSTANCES.incrementAndGet(); }
+
+        @Override
+        public String getWireFormat() { return wireFormat; }
+
+        @Override
+        public String getTaskId() { return "track1"; }
+
+        @Override
+        public Job nextJob() { return null; }
+
+        @Override
+        public Job createJob(String data) { return null; }
+
+        @Override
+        public void set(String key, String value) { }
+
+        @Override
+        public String encode() { return getClass().getName() + "::taskId:=track1"; }
+
+        @Override
+        public String getName() { return "TrackingFactory"; }
+
+        @Override
+        public double getCompleteness() { return 0.0; }
+
+        @Override
+        public boolean isComplete() { return false; }
+
+        @Override
+        public void setPriority(double p) { }
+
+        @Override
+        public double getPriority() { return 1.0; }
+
+        @Override
+        public CompletableFuture<Void> getCompletableFuture() { return future; }
+    }
+}

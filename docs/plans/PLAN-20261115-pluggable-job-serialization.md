@@ -346,12 +346,41 @@ survive every sync.
 A runtime toggle through `controller_update_config` and a matching
 `/api/config/...` endpoint is optional; open question 8 asks whether it is
 wanted. `setWireFormat` is a transport choice, not a property
-of the workload, so it is never itself serialized. The jobs a factory produces
-inherit its format for any later relay. The upgrade order is: every agent node
-first, then the controller setting. A rejected job stays `SUBMITTED` and never
-reports a start, so it falls to the controller's existing lost-job handling
-(`LostJobRecovery`). The node-side `warn`
-names the format, so the cause can be read from the agent log.
+of the workload, so it is never itself serialized. The upgrade order is: every
+agent node first, then the controller setting. A rejected job stays `SUBMITTED`
+and never reports a start, so it falls to the controller's existing lost-job
+handling (`LostJobRecovery`). The node-side `warn` names the format, so the cause
+can be read from the agent log.
+
+**Three propagation hops carry the configured format from the file to the wire,
+and each must be built explicitly — modeling the field alone is not enough.**
+A modeled `WorkstreamConfig.codingJobWireFormat` that never reaches a factory
+leaves `getWireFormat()` at its `string` default, so a `coding-pb1` setting would
+persist in the file yet change nothing emitted. The three hops:
+
+1. **Config → factory.** Job creation flows `WorkstreamConfig.toWorkstreams()` →
+   `Workstream.newJobFactory()`. `newJobFactory()` must call
+   `factory.setWireFormat(codingJobWireFormat)` (threading the top-level value
+   onto each `Workstream`, since the factory is built there), so a factory the
+   controller dispatches reports the configured format. A factory built by any
+   other path keeps the `string` default.
+2. **Factory → job (relay).** A relayed `CodingAgentJob` is emitted through
+   `Message.setJob`/the retry list and calls `job.toWire()`, but `CodingAgentJob`
+   has no format state today, so without a hop it silently relays as `string`.
+   `CodingAgentJob` gains a **transient** (non-serialized) wire-format field that
+   `CodingAgentJobFactory.configure`/`nextJob` sets from the factory. Transient is
+   correct: the format is re-derived at each hop from the sender's state, never
+   carried in the payload (it is not a property of the workload), so a decoded
+   job again reports `string` until its next producer sets it.
+3. **Recovery → re-dispatch.** `recoverPendingJobs` decodes the persisted factory
+   (always the unmarked string blob — the format is not serialized) and must
+   reapply the current `codingJobWireFormat` via `setWireFormat` before
+   re-dispatch, so a restart re-emits in the configured format rather than
+   reverting a `coding-pb1` fleet to `string`.
+
+Phase (b)'s tests must prove each hop: a configured `coding-pb1` value makes
+`newJobFactory()` emit a `coding-pb1` factory, a job that factory produces relays
+as `coding-pb1`, and a recovered factory re-dispatches as `coding-pb1`.
 
 ---
 
@@ -548,14 +577,20 @@ message CodingAgentJobMessage {
   RestartLimits limits = 7;
   Runners runners = 8;
   map<string, string> required_labels = 9;
-  bool auto_create_pr = 10;
-  bool create_pr_as_draft = 11;
+  reserved 10, 11;  // auto_create_pr / create_pr_as_draft are factory-only (see note)
   repeated Evidence evidence = 12;
 }
 ```
 
 Notes on the mapping:
 
+- `auto_create_pr` and `create_pr_as_draft` are on `CodingAgentJobFactoryMessage`
+  only, and `CodingAgentJobMessage` reserves their field numbers. They are
+  factory-only state: `CodingAgentJobFactory` sets them and the controller's
+  `AutoPullRequestPublisher` reads them keyed by the factory task id, so a
+  relayed `CodingAgentJob` neither carries nor applies them (matching §1.4, where
+  they are absent from the job encoding). Reserving the numbers keeps the two
+  messages aligned without implying a round-trip the job has no state for.
 - `allowed_tools` stays one string. Tool specs such as `Bash(git:*)` are
   submitter-defined, and splitting them on commas would change their meaning.
 - `prompts` is a repeated field, so `PROMPT_SEPARATOR` has no role in this
@@ -610,8 +645,17 @@ Notes on the mapping:
 ### 5.2 Delivery to the agent
 
 1. Before the primary session starts, the job writes each item to
-   `.flowtree/evidence/<index>-<label>.<ext>` in the working directory. `<ext>`
-   is derived from `media_type`. `.flowtree/` is git-ignored, and
+   `.flowtree/evidence/<index>-<label>.<ext>` in the working directory. Both
+   path components are harness-derived, never the raw submitter value: `<label>`
+   is already restricted to `[A-Za-z0-9._-]{1,64}` (so it cannot contain `/` or
+   `..`), and `<ext>` is **looked up** from `media_type` through an allowlisted
+   media-type-to-extension map (for example `text/plain → txt`,
+   `application/json → json`), not spliced from the string. `media_type` itself
+   is submitter-controlled and is therefore validated at submission against that
+   allowlist on the controller, before materialization, and a value not in the
+   map is rejected with a clear error rather than written — so a `media_type`
+   carrying a separator or `..` can neither reach the filename nor escape
+   `.flowtree/evidence`. `.flowtree/` is git-ignored, and
    `FlowtreeArtifacts.isExcludedFromCommit` already keeps it out of every
    commit, so evidence can never be staged. The file location is a constant on
    `FlowtreeArtifacts`, next to `OUTPUT_CAPTURE_DIRECTORY`.
