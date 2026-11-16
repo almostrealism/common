@@ -86,6 +86,22 @@ public interface TraversalOrdering extends IndexSet, Signature {
 	}
 
 	/**
+	 * Returns the most kernel arguments {@link #bind(ArgumentProvider)} obtains from a provider:
+	 * one for each collection this ordering reads in order to map an index.
+	 *
+	 * <p>These arguments have no position in the process tree of the computation whose kernel
+	 * reads this ordering, so a structural bound on that kernel's arguments must add them
+	 * explicitly. The count must never be lower than what {@link #bind(ArgumentProvider)}
+	 * actually obtains. The default is zero, which is correct exactly when {@link #bind}
+	 * returns this ordering without consulting the provider.</p>
+	 *
+	 * @return the most arguments binding this ordering adds to a kernel
+	 */
+	default int getArgumentCount() {
+		return 0;
+	}
+
+	/**
 	 * Returns a signature that identifies the structure of this ordering, so that two
 	 * computations reading inputs with the same structure may share a compiled kernel.
 	 *

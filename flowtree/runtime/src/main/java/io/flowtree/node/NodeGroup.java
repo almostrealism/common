@@ -778,7 +778,7 @@ public class NodeGroup extends Node implements Runnable, NodeProxy.EventListener
 
 		try {
 			Message m = new Message(Message.Task, -1, this.serverRegistry.get(server));
-			m.setString(f.encode());
+			m.setString(f.toWire());
 			m.send(-1);
 		} catch (IOException ioe) {
 			warn(String.valueOf(ioe));

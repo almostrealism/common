@@ -718,8 +718,8 @@ public class ShellCommandJob extends GitManagedJob {
 
 		/**
 		 * Not used — jobs are produced via {@link #nextJob()} and reconstructed
-		 * on remote nodes by the {@code JobClassLoader} (no-arg constructor plus
-		 * {@link ShellCommandJob#set(String, String)}).
+		 * on remote nodes by {@link io.flowtree.job.Job#decode(String)} (no-arg
+		 * constructor plus {@link ShellCommandJob#set(String, String)}).
 		 *
 		 * @param data ignored
 		 * @return always {@code null}

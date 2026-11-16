@@ -168,6 +168,11 @@ jobs:
       # retry-flaky-tests' superseded check instead.
       - name: Submit agent job
         env:
+          # Forwarded through submit-staged-request.sh to submit-agent-job.sh so
+          # a workstream this submission creates carries the trigger. This slow
+          # path follows a "Build and Test" run that normally registered the
+          # workstream already, but setting it keeps every submit path uniform.
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           # The target comes from the completed run's event, never from the
           # staged request, which pull request code wrote.
           BRANCH: ${{ github.event.workflow_run.head_branch }}

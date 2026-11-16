@@ -145,6 +145,56 @@ public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>,
 	}
 
 	/**
+	 * Counts the leaves of this tree, stopping once the count exceeds {@code cap}.
+	 *
+	 * <p>A leaf is a node with no children. Leaves are counted by position: a node reachable
+	 * along several paths is counted once for each, so the result is the number of leaf slots
+	 * of the tree, not the number of distinct leaf objects. The traversal ends as soon as more
+	 * than {@code cap} leaves have been found, so a large or heavily shared tree costs no more
+	 * than reaching that many of its leaves.</p>
+	 *
+	 * @param cap the count past which counting stops; must not be negative
+	 * @return the number of leaves if it is at most {@code cap}, otherwise a value greater than
+	 *         {@code cap}
+	 */
+	default int countLeaves(int cap) {
+		return sumByPosition(node -> {
+			Collection<?> children = node.getChildren();
+			return children == null || children.isEmpty() ? 1 : 0;
+		}, cap);
+	}
+
+	/**
+	 * Sums {@code weight} over the nodes of this tree, including this node, stopping once the
+	 * sum exceeds {@code cap}.
+	 *
+	 * <p>Nodes are visited by position: a node reachable along several paths contributes its
+	 * weight once for each, so the result is a sum over the node slots of the tree, not over
+	 * its distinct node objects. The traversal ends as soon as the sum exceeds {@code cap}, so
+	 * a large or heavily shared tree costs no more than reaching that sum. The sum saturates at
+	 * {@link Integer#MAX_VALUE}, so a weight of {@link Integer#MAX_VALUE} (meaning "unbounded")
+	 * can never wrap around to a small value.</p>
+	 *
+	 * @param weight the non-negative weight of each node
+	 * @param cap    the sum past which the traversal stops; must not be negative
+	 * @return the sum if it is at most {@code cap}, otherwise a value greater than {@code cap}
+	 */
+	default int sumByPosition(ToIntFunction<? super T> weight, int cap) {
+		int sum = weight.applyAsInt((T) this);
+		if (sum > cap) return sum;
+
+		Collection<T> children = getChildren();
+		if (children == null) return sum;
+
+		for (T child : children) {
+			sum = (int) Math.min(Integer.MAX_VALUE, (long) sum + child.sumByPosition(weight, cap - sum));
+			if (sum > cap) return sum;
+		}
+
+		return sum;
+	}
+
+	/**
 	 * Calculates the depth of this tree.
 	 *
 	 * <p>The depth is the length of the longest path from this node to a leaf.</p>

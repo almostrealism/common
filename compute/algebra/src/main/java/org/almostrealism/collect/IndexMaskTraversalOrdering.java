@@ -135,6 +135,12 @@ public class IndexMaskTraversalOrdering implements TraversalOrdering {
 		return bound == null ? this : new IndexMaskTraversalOrdering(mask, bound);
 	}
 
+	/** {@inheritDoc} Binding obtains one argument, for the mask. */
+	@Override
+	public int getArgumentCount() {
+		return 1;
+	}
+
 	/**
 	 * Returns the length of the traversal, which equals the size of the mask.
 	 *
