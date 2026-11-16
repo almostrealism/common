@@ -19,6 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -29,6 +30,7 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.List;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 /**
  * A computation that executes one of multiple computation branches based on a decision value.
@@ -101,6 +103,24 @@ public class Switch extends OperationComputationAdapter<PackedCollection> implem
 	public void prepareScope(ArgumentProvider manager, KernelStructureContext context) {
 		super.prepareScope(manager, context);
 		choices.forEach(c -> c.prepareScope(manager, context));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The choices are prepared and embedded in this switch's scope without being positions of
+	 * its process tree, whose only children are the inputs, so every argument they obtain is
+	 * reported here, as {@link ScopeLifecycle#getPreparedArgumentBound(Stream, int)} counts it:
+	 * the sum of their {@link Computation#getInputArgumentBound(int) input argument bounds},
+	 * which is unbounded if any choice is not a process.</p>
+	 */
+	@Override
+	public int getScopeArgumentCount(int cap) {
+		int own = super.getScopeArgumentCount(cap);
+		if (own > cap) return own;
+
+		return (int) Math.min(Integer.MAX_VALUE,
+				(long) own + ScopeLifecycle.getPreparedArgumentBound(choices.stream(), cap - own));
 	}
 
 	/**

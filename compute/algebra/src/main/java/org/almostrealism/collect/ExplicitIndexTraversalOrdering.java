@@ -119,4 +119,10 @@ public class ExplicitIndexTraversalOrdering extends IndexExpressionTraversalOrde
 				.apply(new CollectionProviderProducer<>(indices)).getTraversableExpression();
 		return lookup == null ? this : new ExplicitIndexTraversalOrdering(indices, lookup);
 	}
+
+	/** {@inheritDoc} Binding obtains one argument, for the index collection. */
+	@Override
+	public int getArgumentCount() {
+		return 1;
+	}
 }

@@ -113,6 +113,12 @@ public class DelegatedTraversalOrdering implements TraversalOrdering, Delegated<
 		return first == order && second == getDelegate() ? this : new DelegatedTraversalOrdering(first, second);
 	}
 
+	/** {@inheritDoc} Binding the composition binds both of the composed orderings. */
+	@Override
+	public int getArgumentCount() {
+		return order.getArgumentCount() + getDelegate().getArgumentCount();
+	}
+
 	/**
 	 * {@inheritDoc}
 	 *
