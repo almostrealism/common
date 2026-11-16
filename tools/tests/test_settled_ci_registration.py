@@ -46,21 +46,113 @@ _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
 _SUBMIT = os.path.join(_REPO_ROOT, "tools", "ci", "submit-agent-job.sh")
 _WORKFLOWS = os.path.join(_REPO_ROOT, ".github", "workflows")
 _TRIGGER = "deployment:test"
-# A step that runs one of the scripts able to create a workstream, as opposed
-# to one that only names the script (an integrity check, a chmod, a comment).
+# The scripts whose invocation creates (or can create) a branch's workstream.
 # submit-staged-request.sh is a trusted wrapper around submit-agent-job.sh: it
 # forwards SETTLED_CI_TRIGGER from its own environment (not from the untrusted
 # staged submit.env) and leaves CREATE_WORKSTREAM at submit-agent-job.sh's
 # default of true, so a staged submission can be the first to create a branch's
 # workstream and must carry the trigger just like a direct invocation.
-# The invocation must be the command itself: at the start of a line or after a
-# shell operator, so ``chmod +x ./tools/ci/...`` or ``[ -f ./tools/ci/... ]``
-# (which only name the script as an argument) are not counted.
-# TODO(review): forms like ``if bash ./tools/ci/...``, ``then ./tools/ci/...``, ``bash -x ...`` or ``"$DIR"/tools/ci/...`` are not detected.
-_CREATES_WORKSTREAM = re.compile(
-    r"(?:^|[;&|(])\s*(?:bash\s+|\./)\S*tools/ci/"
-    r"(?:register-workstream|submit-agent-job|submit-staged-request)\.sh",
-    re.MULTILINE)
+_WORKSTREAM_SCRIPT = re.compile(
+    r"tools/ci/(?:register-workstream|submit-agent-job|submit-staged-request)\.sh")
+# Shell words that may precede the real command without changing what runs:
+# keywords (``if``, ``then``, ...) and command wrappers (``timeout N``, ``env
+# VAR=v``, ``nohup``, ...), whose own arguments are skipped with them.
+_SHELL_KEYWORDS = frozenset((
+    "if", "then", "else", "elif", "do", "while", "until", "!", "time",
+    "nohup", "exec", "command", "sudo", "builtin"))
+_COMMAND_WRAPPERS = frozenset(("timeout", "env", "xargs"))
+_SHELLS = frozenset(("bash", "sh", "/bin/bash", "/bin/sh"))
+_ASSIGNMENT = re.compile(r"\w+=")
+
+
+def _split_commands(script):
+    """Yield each command in a shell ``script`` as a separate string.
+
+    The script is cut at the separators that start a new command — a newline,
+    ``;``, ``|``, ``&``, ``(`` or ``)`` — but only where they sit outside quotes,
+    and the text of a ``#`` comment is dropped. A separator inside a quoted
+    string is literal text, so a script path mentioned inside quotes
+    (``echo "(bash ./tools/ci/x.sh)"``) stays part of the ``echo`` command and is
+    never read as a command of its own.
+    """
+    commands = []
+    current = []
+    quote = None
+    in_comment = False
+    prev = "\n"
+    for ch in script:
+        if in_comment:
+            if ch == "\n":
+                in_comment = False
+            prev = ch
+            continue
+        if quote is not None:
+            current.append(ch)
+            if ch == quote:
+                quote = None
+            prev = ch
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+            current.append(ch)
+        elif ch == "#" and prev in " \t\n;|&()":
+            in_comment = True
+            commands.append("".join(current))
+            current = []
+        elif ch in "\n;|&()":
+            commands.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+        prev = ch
+    commands.append("".join(current))
+    return [command for command in commands if command.strip()]
+
+
+def _command_runs_script(command):
+    """Whether a single shell ``command`` runs a workstream-creating script.
+
+    Leading shell keywords, command wrappers (with their own arguments) and
+    ``VAR=value`` prefixes are skipped. The command runs the script when what
+    remains is the script path itself, or ``bash`` (with any flags) applied to
+    it. A command that passes the path to a different program (``chmod``,
+    ``git``, ``[``, ``echo``) does not run it.
+    """
+    words = command.split()
+    index = 0
+    while index < len(words):
+        word = words[index]
+        if word in _SHELL_KEYWORDS:
+            index += 1
+        elif word in _COMMAND_WRAPPERS:
+            index += 1
+            while index < len(words) and (words[index].startswith("-")
+                                          or words[index].lstrip("-").isdigit()
+                                          or _ASSIGNMENT.match(words[index])):
+                index += 1
+        elif _ASSIGNMENT.match(word):
+            index += 1
+        else:
+            break
+    if index >= len(words):
+        return False
+    word = words[index]
+    if word in _SHELLS:
+        index += 1
+        while index < len(words) and words[index].startswith("-"):
+            index += 1
+        if index >= len(words):
+            return False
+        word = words[index]
+    return _WORKSTREAM_SCRIPT.search(word) is not None
+
+
+def _creates_workstream(run):
+    """Whether a workflow step's ``run`` script runs a workstream-creating script
+    as a command, as opposed to only naming one as an argument, in a comment, or
+    inside a quoted string.
+    """
+    return any(_command_runs_script(command) for command in _split_commands(run))
 
 
 class RegisterWorkstreamTriggerTests(unittest.TestCase):
@@ -169,7 +261,7 @@ class EveryWorkflowWiringTests(unittest.TestCase):
             for job_name, job in (workflow.get("jobs") or {}).items():
                 job_env = job.get("env") or {}
                 for step in job.get("steps") or []:
-                    if _CREATES_WORKSTREAM.search(step.get("run") or ""):
+                    if _creates_workstream(step.get("run") or ""):
                         env = dict(workflow_env)
                         env.update(job_env)
                         env.update(step.get("env") or {})
@@ -194,6 +286,14 @@ class EveryWorkflowWiringTests(unittest.TestCase):
             "./tools/ci/register-workstream.sh 2>&1 | sed 's/x//'",
             "true && ./tools/ci/register-workstream.sh",
             "OUT=$(bash ./tools/ci/submit-agent-job.sh p)",
+            # led by a shell keyword or a command wrapper
+            "if bash ./tools/ci/submit-agent-job.sh prompt.txt; then :; fi",
+            "then ./tools/ci/register-workstream.sh",
+            "timeout 60 bash ./tools/ci/submit-agent-job.sh p",
+            # bash with flags, and a bare path given through a quoted variable
+            "bash -x ./tools/ci/register-workstream.sh",
+            '"$DIR"/tools/ci/register-workstream.sh',
+            "FOO=bar ./tools/ci/register-workstream.sh",
         )
         named_only = (
             "chmod +x ./tools/ci/register-workstream.sh",
@@ -201,13 +301,16 @@ class EveryWorkflowWiringTests(unittest.TestCase):
             "git diff --name-only -- tools/ci/register-workstream.sh",
             'echo "see tools/ci/submit-agent-job.sh"',
             "# bash ./tools/ci/register-workstream.sh",
+            # the path sits inside a quoted string, so the separators around it
+            # do not start a command of their own
+            'echo "(bash ./tools/ci/register-workstream.sh)"',
         )
         for run in executed:
             with self.subTest(run=run):
-                self.assertIsNotNone(_CREATES_WORKSTREAM.search(run))
+                self.assertTrue(_creates_workstream(run))
         for run in named_only:
             with self.subTest(run=run):
-                self.assertIsNone(_CREATES_WORKSTREAM.search(run))
+                self.assertFalse(_creates_workstream(run))
 
     def test_every_creating_step_sets_the_trigger(self):
         for name, job, step, env in self._creating_steps():
