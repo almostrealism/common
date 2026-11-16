@@ -243,10 +243,11 @@ How the other families root here:
   graph is wanted is **unclear** — it is recorded here as an observation, not a prescription; a
   round should confirm the need before aligning, because a `Graph` over triangles must honour
   `neighbors`/`countNodes` for every mesh.
-- **The neuron connectomes are weighted graphs that do not implement this hierarchy.** See
-  family 5: `NeuronConnectome`/`CellTypeConnectome` carry N nodes and E weighted edges but are
-  columnar and device-resident, so aligning them onto `WeightedGraph`/`IndexedGraph` needs a
-  node abstraction rather than a member rename.
+- **The neuron connectome is a weighted graph that does not implement this hierarchy.** See
+  family 5: `NeuronConnectome` is a neuron-level connectome — N nodes and E weighted edges stored
+  in compressed sparse rows — while `CellTypeConnectome` aggregates the same wiring to a dense
+  `[T, T]` type-by-type weight matrix. Both are columnar and device-resident, so aligning them
+  onto `WeightedGraph`/`IndexedGraph` needs a node abstraction rather than a member rename.
 
 ---
 
@@ -305,25 +306,29 @@ drives training), and a *connectome* is the weighted wiring between units. The f
 | `ExponentialSynapseNeurons` | `implements Block` | `domain/biology` (`org.almostrealism.biology.neuron`) | a pipeline-stage `Block` (input/output shape, forward/backward `Cell`) |
 | `PoissonInput` | `implements Block` | `domain/biology` (`org.almostrealism.biology.neuron`) | a `Block` that injects Poisson kicks |
 | `ConnectomeNetwork` | `implements Temporal, Setup, Destroyable, CollectionFeatures` | `studio/bioscience` (`org.almostrealism.bioscience.connectome`) | `tick()`, `setup()`, `meanRates(..)` — couples a connectome to a population |
-| `NeuronConnectome` | `implements CollectionFeatures, Destroyable` | `studio/bioscience` (`org.almostrealism.bioscience.connectome`) | `getNeuronCount`, `getEdgeCount`, `getWeights` (`[N,N]`, CSR), `getOrdering`, `indexOf(long)` |
-| `CellTypeConnectome` | `implements CollectionFeatures, Destroyable` | `studio/bioscience` (`org.almostrealism.bioscience.connectome`) | the cell-type-level counterpart of `NeuronConnectome` |
+| `NeuronConnectome` | `implements CollectionFeatures, Destroyable` | `studio/bioscience` (`org.almostrealism.bioscience.connectome`) | neuron-level: `getNeuronCount`, `getEdgeCount`, `getWeights` (`[N,N]`, CSR), `getOrdering`, `indexOf(long bodyId)` |
+| `CellTypeConnectome` | `implements CollectionFeatures, Destroyable` | `studio/bioscience` (`org.almostrealism.bioscience.connectome`) | cell-type-level aggregate: `getTypeCount`, `getWeights` (`[T,T]`, dense), `getTypeSizes`, `getOutSynapses`, `indexOf(String type)` |
 
 Notes on the declarations:
 
 - The step contract that is already aligned is `Temporal`: a population stepped by
   `SimulationRunner` with a no-argument, state-advancing `tick()` *is a* `Temporal`.
-  `RatePopulation` and `ConnectomeNetwork` declare it; they own their external drive, so their
-  step needs no argument.
+  `RatePopulation` and `ConnectomeNetwork` declare it; each binds its external drive at
+  construction — `RatePopulation` allocates and owns a `getInput()` collection, while
+  `ConnectomeNetwork` retains a caller-supplied drive (or, with none, a silent one it allocates)
+  — so their step needs no argument.
 - `ExponentialSynapseNeurons` and `PoissonInput` are single-signal pipeline stages, so they are
   `Block`s (family of `domain/graph`'s `Cell`/`Block`), not populations.
 
 ### Gaps
 
 - **`NeuronConnectome` and `CellTypeConnectome` are weighted directed graphs but do not
-  implement the graph hierarchy (family 3).** Each holds N nodes, E weighted edges in compressed
-  sparse rows (`CompressedRowTraversalOrdering`), an `[N,N]` signed weight matrix and
-  `indexOf(long bodyId)`; the CSR row offsets and columns are host-readable, so adjacency is
-  available. The blocker is **contract, not module**: `Graph<T extends Node>`/`WeightedGraph`/
+  implement the graph hierarchy (family 3).** `NeuronConnectome` holds N neuron nodes and E
+  weighted edges in compressed sparse rows (`CompressedRowTraversalOrdering`) — an `[N,N]` signed
+  weight matrix backed by only the E stored entries — with `indexOf(long bodyId)`; its CSR row
+  offsets and columns are host-readable, so adjacency is available. `CellTypeConnectome` is the
+  same wiring aggregated to a dense `[T,T]` type-by-type weight matrix with `indexOf(String type)`.
+  The blocker is **contract, not module**: `Graph<T extends Node>`/`WeightedGraph`/
   `IndexedGraph` (`base/relation`, reachable transitively from `studio/bioscience`, so no new
   dependency) are host-object based — `Collection<T> neighbors(T)`, `T nodeAt(int)`,
   `edgeWeight(T,T)` — and the connectomes are columnar and device-resident with no per-neuron
