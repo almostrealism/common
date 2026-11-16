@@ -44,6 +44,7 @@ import java.util.Set;
  * samples, so every cell must hold exactly one light at its own position, with no empty
  * entries for the lighting sum to reach.</p>
  */
+// TODO(review): grid construction/colour tests overlap master's engine/utils primitives.test.PointLightGridTest; consolidate.
 public class PointLightGridTest extends TestSuiteBase implements RGBFeatures {
 
 	/**
@@ -221,6 +222,36 @@ public class PointLightGridTest extends TestSuiteBase implements RGBFeatures {
 		Assert.assertEquals(1.0, white.getRed(), 1e-6);
 		Assert.assertEquals(1.0, white.getGreen(), 1e-6);
 		Assert.assertEquals(1.0, white.getBlue(), 1e-6);
+	}
+
+	/**
+	 * Rebuilding a grid that already has an explicit colour replaces that colour with a copy
+	 * of the new prototype's colour, shared by every rebuilt light, and a later
+	 * {@link PointLightGrid#setColor(RGB)} recolours every rebuilt light.
+	 */
+	@Test(timeout = 30000)
+	public void updateGridReplacesExplicitColor() {
+		PointLightGrid grid = new PointLightGrid(2, 2, 1.0, 1.0);
+		grid.setColor(new RGB(1.0, 0.0, 0.0));
+
+		RGB prototypeColor = new RGB(0.1, 0.3, 0.5);
+		grid.updateGrid(3, 2, 1.0, 1.0, new PointLight(0.25, prototypeColor));
+
+		Assert.assertNotSame(prototypeColor, grid.getColor());
+		Assert.assertEquals(0.1, grid.getColor().getRed(), 1e-6);
+		Assert.assertEquals(0.3, grid.getColor().getGreen(), 1e-6);
+		Assert.assertEquals(0.5, grid.getColor().getBlue(), 1e-6);
+
+		for (PointLight light : grid.getSamples()) {
+			Assert.assertSame(grid.getColor(), light.getColor());
+		}
+
+		grid.setColor(new RGB(0.0, 1.0, 0.0));
+		for (PointLight light : grid.getSamples()) {
+			Assert.assertEquals(0.0, light.getColor().getRed(), 1e-6);
+			Assert.assertEquals(1.0, light.getColor().getGreen(), 1e-6);
+			Assert.assertEquals(0.0, light.getColor().getBlue(), 1e-6);
+		}
 	}
 
 	/**

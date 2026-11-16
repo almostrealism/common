@@ -562,22 +562,31 @@ class RerunFlakyTestsTests(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="rerun-flaky-test-")
         self.posts = os.path.join(self.tmp, "posts")
         self.jobs_file = os.path.join(self.tmp, "jobs.tsv")
+        self.logs_dir = os.path.join(self.tmp, "logs")
+        os.makedirs(self.logs_dir)
         _write_executable(os.path.join(self.tmp, "gh"), """#!/usr/bin/env bash
 case "$*" in
   *"-X POST"*) echo "$*" >> "%s" ;;
   *"/commits/"*) echo "$STUB_TIP_SHA" ;;
   *"/artifacts"*) [ -n "${STUB_STAGED_AT:-}" ] && echo "$STUB_STAGED_AT" ;;
+  *"/logs"*) path="${!#}"; id="${path#*/jobs/}"; cat "%s/${id%%%%/logs*}" 2>/dev/null || exit 1 ;;
   *"/jobs"*) cat "%s" ;;
 esac
 exit 0
-""" % (self.posts, self.jobs_file))
+""" % (self.posts, self.logs_dir, self.jobs_file))
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
-    def _run(self, jobs, attempt="1", tip="abc", staged_at="", attempt_started_at=""):
+    def _run(self, jobs, attempt="1", tip="abc", staged_at="", attempt_started_at="",
+             logs=None):
+        """Runs the script; ``logs`` maps a job's position in ``jobs`` to its log."""
         with open(self.jobs_file, "w") as f:
-            f.write("".join("%s\t%s\n" % job for job in jobs))
+            f.write("".join("%s\t%s\t%d\n" % (job + (100 + i,))
+                            for i, job in enumerate(jobs)))
+        for i, text in (logs or {}).items():
+            with open(os.path.join(self.logs_dir, str(100 + i)), "w") as f:
+                f.write(text)
         output = os.path.join(self.tmp, "output")
         open(output, "w").close()
         env = dict(os.environ, PATH=self.tmp + os.pathsep + os.environ["PATH"],
@@ -616,9 +625,73 @@ exit 0
         self.assertEqual("false", outputs["retried"])
         self.assertFalse(posted)
 
+    def test_a_run_whose_python_tests_timed_out_is_never_retried(self):
+        """A timed-out job is a failed job (``needs.*.result`` is ``failure``), so
+        auto-resolve-python submitted for it as well."""
+        outputs, posted = self._run([("timed_out", "python-tests"), ("failure", "test (0)")])
+        self.assertEqual("false", outputs["retried"])
+        self.assertFalse(posted)
+
     def test_a_gate_only_failure_is_not_retried(self):
         outputs, posted = self._run([("failure", "checkstyle"), ("failure", "test-timeout-check"),
                                      ("skipped", "test (0)")])
+        self.assertEqual("false", outputs["retried"])
+        self.assertFalse(posted)
+
+    def test_a_check_that_failed_to_download_a_plugin_is_retried(self):
+        """An infrastructure failure in a validator skips every test lane: retry it."""
+        outputs, posted = self._run(
+            [("failure", "test-timeout-check"), ("skipped", "test (0)")],
+            logs={0: "[ERROR] Plugin org.jacoco:jacoco-maven-plugin could not be resolved: "
+                     "Could not find artifact org.jacoco:jacoco-maven-plugin:jar in central\n"})
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_a_build_that_lost_its_connection_is_retried(self):
+        outputs, posted = self._run(
+            [("failure", "build")],
+            logs={0: "Caused by: java.net.SocketException: Connection reset\n"})
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_a_timed_out_job_with_an_infrastructure_failure_is_retried(self):
+        """``timed_out`` is a failed conclusion: its log is read like a failure's."""
+        outputs, posted = self._run(
+            [("timed_out", "build")],
+            logs={0: "##[error]The runner has received a shutdown signal.\n"})
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_a_timed_out_test_job_is_retried(self):
+        outputs, posted = self._run([("timed_out", "test-media")])
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_an_early_signature_in_a_large_log_is_found(self):
+        """grep stops at the first match; that must not turn the match into a miss."""
+        outputs, posted = self._run(
+            [("failure", "test-integrity-check")],
+            logs={0: "Connection reset by peer\n"
+                     + ("filler line of an ordinary build log\n" * 200000)})
+        self.assertEqual("true", outputs["retried"])
+        self.assertTrue(posted)
+
+    def test_a_check_failing_on_the_code_is_not_retried(self):
+        outputs, posted = self._run(
+            [("failure", "test-timeout-check")],
+            logs={0: "FooTest.bar has @Test without a timeout\n"})
+        self.assertEqual("false", outputs["retried"])
+        self.assertFalse(posted)
+
+    def test_an_unreadable_log_leaves_the_job_deterministic(self):
+        outputs, posted = self._run([("failure", "code-policy-check")])
+        self.assertEqual("false", outputs["retried"])
+        self.assertFalse(posted)
+
+    def test_an_infrastructure_failure_on_the_last_attempt_is_not_retried(self):
+        outputs, posted = self._run(
+            [("failure", "test-timeout-check")], attempt="3",
+            logs={0: "Could not transfer artifact x:y:pom from/to central: 503 Service Unavailable\n"})
         self.assertEqual("false", outputs["retried"])
         self.assertFalse(posted)
 

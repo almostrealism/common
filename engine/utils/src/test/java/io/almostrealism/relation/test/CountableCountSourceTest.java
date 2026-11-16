@@ -14,9 +14,8 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.compute.test;
+package io.almostrealism.relation.test;
 
-import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Parent;
 import org.almostrealism.util.TestSuiteBase;
@@ -27,11 +26,11 @@ import java.util.List;
 import java.util.function.Predicate;
 
 /**
- * Tests for {@link ParallelProcess#isCountFrom(Object, Predicate)}, using plain graph nodes
+ * Tests for {@link Countable#isCountFrom(Object, Predicate)}, using plain graph nodes
  * so that which nodes are fixed, which are variable, and which are reported as sources of
  * variable count is fully determined by each test.
  */
-public class ParallelProcessCountSourceTest extends TestSuiteBase {
+public class CountableCountSourceTest extends TestSuiteBase {
 
 	/** A graph node with a chosen count kind and chosen children. */
 	private static final class Node implements Countable, Parent<Object> {
@@ -83,7 +82,7 @@ public class ParallelProcessCountSourceTest extends TestSuiteBase {
 		RecordingSource source = new RecordingSource();
 		Node root = new Node("bad", true, new Node("bad-child", false));
 
-		assertTrue(ParallelProcess.isCountFrom(root, source));
+		assertTrue(Countable.isCountFrom(root, source));
 		assertEquals(0, source.tested.size());
 	}
 
@@ -92,7 +91,7 @@ public class ParallelProcessCountSourceTest extends TestSuiteBase {
 	public void nonCountableRootIsAccepted() {
 		RecordingSource source = new RecordingSource();
 
-		assertTrue(ParallelProcess.isCountFrom("not a node", source));
+		assertTrue(Countable.isCountFrom("not a node", source));
 		assertEquals(0, source.tested.size());
 	}
 
@@ -101,12 +100,12 @@ public class ParallelProcessCountSourceTest extends TestSuiteBase {
 	public void variableLeafIsTested() {
 		RecordingSource accepted = new RecordingSource();
 		Node ok = new Node("ok", false);
-		assertTrue(ParallelProcess.isCountFrom(ok, accepted));
+		assertTrue(Countable.isCountFrom(ok, accepted));
 		assertEquals(List.of(ok), accepted.tested);
 
 		RecordingSource rejected = new RecordingSource();
 		Node bad = new Node("bad", false);
-		assertFalse(ParallelProcess.isCountFrom(bad, rejected));
+		assertFalse(Countable.isCountFrom(bad, rejected));
 		assertEquals(List.of(bad), rejected.tested);
 	}
 
@@ -119,7 +118,7 @@ public class ParallelProcessCountSourceTest extends TestSuiteBase {
 		RecordingSource source = new RecordingSource();
 		Node root = new Node("bad", false, new Node("ok-a", true), new Node("ok-b", true));
 
-		assertFalse(ParallelProcess.isCountFrom(root, source));
+		assertFalse(Countable.isCountFrom(root, source));
 		assertEquals(List.of(root), source.tested);
 	}
 
@@ -135,13 +134,13 @@ public class ParallelProcessCountSourceTest extends TestSuiteBase {
 
 		RecordingSource allPass = new RecordingSource();
 		Node passing = new Node("bad-root", false, okA, fixed, new Node("bad-mid", false, okB));
-		assertTrue(ParallelProcess.isCountFrom(passing, allPass));
+		assertTrue(Countable.isCountFrom(passing, allPass));
 		assertEquals(List.of(okA, okB), allPass.tested);
 
 		RecordingSource oneFails = new RecordingSource();
 		Node bad = new Node("bad", false);
 		Node failing = new Node("ok-root", false, okA, new Node("ok-mid", false, bad));
-		assertFalse(ParallelProcess.isCountFrom(failing, oneFails));
+		assertFalse(Countable.isCountFrom(failing, oneFails));
 		assertTrue(oneFails.tested.contains(bad));
 		assertFalse(oneFails.tested.contains(failing));
 	}
@@ -155,7 +154,7 @@ public class ParallelProcessCountSourceTest extends TestSuiteBase {
 		Node right = new Node("bad-right", false, shared);
 		Node root = new Node("bad-root", false, left, right, shared);
 
-		assertTrue(ParallelProcess.isCountFrom(root, source));
+		assertTrue(Countable.isCountFrom(root, source));
 		assertEquals(List.of(shared), source.tested);
 	}
 }

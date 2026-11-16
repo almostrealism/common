@@ -27,8 +27,7 @@ import org.almostrealism.color.ShaderContext;
 import org.almostrealism.color.ShaderSet;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.geometry.DiscreteField;
-import org.almostrealism.geometry.RayFeatures;
-import org.almostrealism.geometry.ReflectedRay;
+import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.raytrace.LightingEngineAggregator;
 import org.almostrealism.texture.Texture;
 
@@ -86,7 +85,7 @@ import java.util.List;
  * @author Michael Murray
  */
 public class ReflectionShader extends ShaderSet<ShaderContext> implements
-		Shader<ShaderContext>, RGBFeatures, RayFeatures {
+		Shader<ShaderContext>, RGBFeatures, GeometryFeatures {
 
 	/**
 	 * Maximum number of recursive reflection bounces allowed.
@@ -164,7 +163,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 	
 	/**
 	 * Returns the colour reflected toward the viewer from one side of the surface: the colour
-	 * seen along the {@link ReflectedRay}, weighted by Schlick's approximation of the Fresnel
+	 * seen along the {@link org.almostrealism.geometry.ReflectedRay}, weighted by Schlick's approximation of the Fresnel
 	 * reflectance {@code R0 + (1 - R0)(1 - cos(theta))^5} and by the reflective colour.
 	 *
 	 * <p>The colour seen along the reflected ray is the closest hit among the given surfaces,
@@ -189,7 +188,7 @@ public class ReflectionShader extends ShaderSet<ShaderContext> implements
 													Iterable<ShadableSurface> surfaces,
 													ShaderContext context,
 													Producer<PackedCollection> tint) {
-		Producer<PackedCollection> reflectedRay = new ReflectedRay(point, viewer, normal, blur);
+		Producer<PackedCollection> reflectedRay = reflectedRay(point, viewer, normal, blur);
 
 		// A reflected ray that misses every surface contributes black: the environment map is not
 		// yet consulted (a known limitation in docs/internals/ray-traced-reflection-and-refraction.md)

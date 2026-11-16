@@ -18,7 +18,6 @@ package org.almostrealism.collect;
 
 import io.almostrealism.collect.TraversalAxisAlignment;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Producer;
 
@@ -96,10 +95,10 @@ public class CollectionTraversalAxisAlignment extends TraversalAxisAlignment<Pro
 	 *
 	 * @param producer  the producer to inspect
 	 * @return {@code true} if the producer's count is fixed or follows only variable shapes
-	 * @see ParallelProcess#isCountFrom(Object, java.util.function.Predicate)
+	 * @see Countable#isCountFrom(Object, java.util.function.Predicate)
 	 */
 	protected boolean isCountFromShapes(Producer<?> producer) {
-		return ParallelProcess.isCountFrom(producer, source ->
+		return Countable.isCountFrom(producer, source ->
 				source instanceof Producer && !shape((Producer<?>) source).isFixedCount());
 	}
 }

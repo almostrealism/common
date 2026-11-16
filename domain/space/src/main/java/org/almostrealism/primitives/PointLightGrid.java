@@ -85,13 +85,16 @@ public class PointLightGrid extends AbstractSurface implements SurfaceLight {
 	 */
 	public void updateGrid(int width, int height, double xSpace, double ySpace, PointLight prototype) {
 		this.lights = new PointLight[width * height];
+
+		// An untransformed grid has no complete transform yet; treat it as the identity.
 		TransformMatrix transform = super.getTransform(true);
 
 		for (int i = 0; i < width; i++) {
 			for (int j = 0; j < height; j++) {
 				Vector location = new Vector(i * xSpace, j * ySpace, 0.0);
-				if (transform != null) location = transform.transformAsLocation(location);
-				
+				if (transform != null)
+					location = transform.transformAsLocation(location);
+
 				this.lights[i * height + j] = new PointLight(location, prototype.getIntensity(), prototype.getColor());
 			}
 		}

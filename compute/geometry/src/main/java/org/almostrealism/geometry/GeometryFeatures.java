@@ -245,11 +245,19 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	}
 
 	/**
-	 * Returns a stateless instance of {@link GeometryFeatures}.
+	 * Returns the ray reflected at an intersection point: its origin is the point and its
+	 * direction is the reflection of {@link #reflect(Producer, Producer, double)}, with the
+	 * given blur for glossy reflections.
 	 *
-	 * @return a {@link GeometryFeatures} instance
+	 * @param point  the intersection point where the reflection occurs
+	 * @param vector the vector from the intersection point toward the viewer, which is the
+	 *               negation of the incident direction of travel
+	 * @param normal the surface normal at the intersection point
+	 * @param blur   the amount of random perturbation (0.0 = perfect mirror)
+	 * @return a {@link ReflectedRay} of shape {@code (6)}, origin then direction
 	 */
-	static GeometryFeatures getInstance() {
-		return new GeometryFeatures() { };
+	default ReflectedRay reflectedRay(Producer<PackedCollection> point, Producer<PackedCollection> vector,
+									  Producer<PackedCollection> normal, double blur) {
+		return new ReflectedRay(point, reflect(vector, normal, blur));
 	}
 }

@@ -2,6 +2,8 @@
 
 The foundation layer provides the core primitives, abstractions, and execution infrastructure upon which all other layers are built. These modules have minimal external dependencies and define the fundamental programming model for the entire framework.
 
+See [concept-map.md](concept-map.md) for how these concepts fit together, and the platform-wide [Concept Map](../docs/internals/concept-map.md) for the layered overview and type-alignment families.
+
 ## Modules
 
 ### [ar-meta](meta/README.md)

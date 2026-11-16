@@ -332,7 +332,7 @@ Producer&lt;Vector&gt; normal = direction(hitNormal);</code></pre>
                 <h3>Reflection Calculation</h3>
                 <p>ReflectedRay computes specular reflections for recursive ray tracing:</p>
                 <pre><code class="language-java">// Perfect mirror reflection (blur = 0.0)
-ReflectedRay reflection = new ReflectedRay(
+ReflectedRay reflection = reflectedRay(
     hitPoint,
     incidentDirection,
     surfaceNormal,
@@ -473,7 +473,7 @@ Producer&lt;Vector&gt; hitPoint = origin(hitNormal);
 Producer&lt;Vector&gt; normal = direction(hitNormal);
 
 // 5. Compute reflection for recursive tracing
-ReflectedRay reflection = new ReflectedRay(
+ReflectedRay reflection = reflectedRay(
     hitPoint,
     direction(ray),
     normal,

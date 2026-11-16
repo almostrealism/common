@@ -21,6 +21,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.NamedFunction;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
@@ -327,6 +328,26 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The bound is one for the output plus the computation's
+	 * {@link Computation#getInputArgumentBound(int) input argument bound}: the leaf positions of
+	 * its process tree plus the {@link ScopeLifecycle#getScopeArgumentCount(int) scope argument
+	 * count} of every position of that tree. Every argument the computation's own inputs
+	 * contribute is reached through a leaf of that tree, and every argument a node obtains while
+	 * its scope is prepared for a value that is not one of its inputs (a derivative's target, a
+	 * collection an ordering reads, the branches of a switch) is reported by that node's scope
+	 * argument count. The arguments the kernel structure resources add while the kernel is
+	 * generated are not leaves; {@link #prepareScope(ArgumentProvider)} keeps them within the
+	 * {@link #getArgumentAllowance() allowance} the bound leaves under the limit. A computation
+	 * that is not a {@link Process} has no structure to count and always folds.</p>
+	 */
+	@Override
+	protected int getArgumentBound(int cap) {
+		return (int) Math.min(Integer.MAX_VALUE, 1L + getComputation().getInputArgumentBound(cap - 1));
+	}
+
+	/**
 	 * Returns the human-readable name of this operation.
 	 *
 	 * <p>Delegates to {@link Named#nameOf(Object)} on the wrapped computation.</p>
@@ -436,7 +457,9 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 * <p>The kernel structure context belongs to the instruction set manager — the
 	 * owner of the compiled instructions and of the kernel structure resources their
 	 * generated code references. Its resources are materialized here, at the start
-	 * of compilation, through the argument provider of this compilation pass.</p>
+	 * of compilation, through the argument provider of this compilation pass, and add
+	 * no more kernel arguments than the {@link #getArgumentAllowance() allowance} left
+	 * under the compute context's argument limit.</p>
 	 *
 	 * @param manager The scope input manager
 	 */
@@ -444,7 +467,7 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	protected void prepareScope(ArgumentProvider manager) {
 		CompiledKernelStructureContext context =
 				getInstructionSetManager().getKernelStructureContext(getComputation());
-		context.prepareResources(manager);
+		context.prepareResources(manager, getArgumentAllowance());
 		getCompiler().prepareScope(manager, context);
 	}
 
@@ -716,9 +739,25 @@ public class AcceleratedComputationOperation<T> extends AcceleratedOperation<Mem
 	 *
 	 * <p>The compilation is then reported to the {@link #bindingListener}, if there is one.</p>
 	 *
+	 * <p>The compiled scope is first {@link #verifyArgumentLimit(int) verified} against the
+	 * compute context's argument limit. A scope that fails the check is discarded together with
+	 * the arguments prepared for it before the failure propagates, so the operation is left
+	 * uncompiled: a later {@link #compile()} compiles and verifies again rather than returning the
+	 * rejected scope as though it had compiled.</p>
+	 *
 	 * <p>This method is synchronized to ensure thread-safe argument setup.</p>
+	 *
+	 * @throws HardwareException if the compiled scope declares more arguments than the limit
 	 */
 	public synchronized void postCompile() {
+		try {
+			verifyArgumentLimit(getCompiler().getScope().getArguments().size());
+		} catch (HardwareException e) {
+			resetArguments();
+			getCompiler().destroy();
+			throw e;
+		}
+
 		setupArguments(getCompiler().getScope());
 		getCompiler().postCompile();
 

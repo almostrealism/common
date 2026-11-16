@@ -178,7 +178,7 @@ public class GeometryFeaturesTest extends TestSuiteBase {
 		PackedCollection normalData = pack(0.0, 0.0, 1.0, 0.0, 0.0, 1.0).reshape(shape(2, 3).traverse(1));
 
 		PackedCollection result = new PackedCollection(shape(2, 6).traverse(1));
-		new ReflectedRay(points, viewers, normals, 0.0).into(result.each())
+		reflectedRay(points, viewers, normals, 0.0).into(result.each())
 				.evaluate(pointData, viewerData, normalData);
 
 		Ray first = new Ray(result, 0);

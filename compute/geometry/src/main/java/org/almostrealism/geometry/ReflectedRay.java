@@ -35,9 +35,10 @@ import java.util.List;
  * and the surface normal. This is used in ray tracing to calculate specular reflections.
  *
  * <p>The reflected direction is {@code R = I - 2(N . I)N / |N|^2}, where {@code I} is the
- * incident direction of travel (toward the surface), computed by
- * {@link GeometryFeatures#reflect(Producer, Producer, double)} from the viewer vector
- * {@code -I}.</p>
+ * incident direction of travel (toward the surface). The direction is an operand of the
+ * computation; {@link GeometryFeatures#reflectedRay(Producer, Producer, Producer, double)}
+ * computes it with {@link GeometryFeatures#reflect(Producer, Producer, double)} from the
+ * viewer vector {@code -I} and the normal.</p>
  *
  * <p>{@link ReflectedRay} is a computation of shape {@code (6)}, the layout of a
  * {@link Ray} (origin then direction), so it composes with {@link RayFeatures#origin(Producer)},
@@ -50,41 +51,28 @@ import java.util.List;
  *
  * <p>Usage example:</p>
  * <pre>{@code
- * ReflectedRay reflection = new ReflectedRay(hitPoint, viewerDirection, normal, 0.0);
+ * ReflectedRay reflection = reflectedRay(hitPoint, viewerDirection, normal, 0.0);
  * CollectionProducer bounceOrigin = origin(reflection);
  * ContinuousField hit = floor.intersectAt(reflection);
  * }</pre>
  *
  * @author Michael Murray
  * @see Ray
- * @see GeometryFeatures#reflect(Producer, Producer, double)
+ * @see GeometryFeatures#reflectedRay(Producer, Producer, Producer, double)
  */
 public class ReflectedRay extends TraversableExpressionComputation {
 	/** The shape of a ray: an origin followed by a direction. */
 	private static final TraversalPolicy RAY_SHAPE = new TraversalPolicy(6);
 
 	/**
-	 * Constructs a ReflectedRay computation.
+	 * Constructs a ReflectedRay from its origin and its reflected direction of travel, the two
+	 * operands of the computation. {@link GeometryFeatures#reflectedRay(Producer, Producer, Producer, double)}
+	 * builds one from the hit point, the viewer vector and the surface normal.
 	 *
-	 * @param point the intersection point where the reflection occurs
-	 * @param viewer the vector from the intersection point toward the viewer, which is the
-	 *               negation of the incident direction of travel
-	 * @param normal the surface normal at the intersection point
-	 * @param blur the amount of random perturbation for glossy reflections (0.0 = perfect mirror)
-	 */
-	public ReflectedRay(Producer<PackedCollection> point, Producer<PackedCollection> viewer,
-						Producer<PackedCollection> normal, double blur) {
-		this(point, GeometryFeatures.getInstance().reflect(viewer, normal, blur));
-	}
-
-	/**
-	 * Constructs a ReflectedRay from its origin and its already reflected direction, the two
-	 * operands of the computation.
-	 *
-	 * @param point     the origin of the reflected ray
+	 * @param point     the origin of the reflected ray (the intersection point)
 	 * @param direction the reflected direction of travel
 	 */
-	protected ReflectedRay(Producer<PackedCollection> point, Producer<PackedCollection> direction) {
+	public ReflectedRay(Producer<PackedCollection> point, Producer<PackedCollection> direction) {
 		super("reflectedRay", RAY_SHAPE, point, direction);
 	}
 
