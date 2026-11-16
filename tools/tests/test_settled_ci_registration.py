@@ -61,7 +61,10 @@ _SHELL_KEYWORDS = frozenset((
     "if", "then", "else", "elif", "do", "while", "until", "!", "time",
     "nohup", "exec", "command", "sudo", "builtin"))
 _COMMAND_WRAPPERS = frozenset(("timeout", "env", "xargs"))
-_SHELLS = frozenset(("bash", "sh", "/bin/bash", "/bin/sh"))
+# Programs that run the script named by their argument: a shell as a subprocess
+# (``bash``, ``sh``) or the current shell sourcing it (``source``, ``.``). Each
+# leaves the script path as the first non-flag word that follows.
+_SCRIPT_RUNNERS = frozenset(("bash", "sh", "/bin/bash", "/bin/sh", "source", "."))
 _ASSIGNMENT = re.compile(r"\w+=")
 
 
@@ -114,9 +117,9 @@ def _command_runs_script(command):
 
     Leading shell keywords, command wrappers (with their own arguments) and
     ``VAR=value`` prefixes are skipped. The command runs the script when what
-    remains is the script path itself, or ``bash`` (with any flags) applied to
-    it. A command that passes the path to a different program (``chmod``,
-    ``git``, ``[``, ``echo``) does not run it.
+    remains is the script path itself, or a script runner (``bash`` with any
+    flags, ``source``, ``.``) applied to it. A command that passes the path to a
+    different program (``chmod``, ``git``, ``[``, ``echo``) does not run it.
     """
     words = command.split()
     index = 0
@@ -137,7 +140,7 @@ def _command_runs_script(command):
     if index >= len(words):
         return False
     word = words[index]
-    if word in _SHELLS:
+    if word in _SCRIPT_RUNNERS:
         index += 1
         while index < len(words) and words[index].startswith("-"):
             index += 1
@@ -294,6 +297,9 @@ class EveryWorkflowWiringTests(unittest.TestCase):
             "bash -x ./tools/ci/register-workstream.sh",
             '"$DIR"/tools/ci/register-workstream.sh',
             "FOO=bar ./tools/ci/register-workstream.sh",
+            # sourced into the current shell rather than run as a subprocess
+            "source ./tools/ci/submit-agent-job.sh prompt.txt",
+            ". ./tools/ci/register-workstream.sh",
         )
         named_only = (
             "chmod +x ./tools/ci/register-workstream.sh",
