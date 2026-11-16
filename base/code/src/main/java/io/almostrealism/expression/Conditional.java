@@ -199,6 +199,16 @@ public class Conditional<T extends Number> extends Expression<T> {
 	 * is returned directly. If both branches are equal a single constant is returned.
 	 * If one branch is zero the expression is converted to a {@link Mask}.</p>
 	 *
+	 * <p>Branches of different types give the {@linkplain NAryExpression#promotedType promoted}
+	 * type, as the operands of an arithmetic operation do: a
+	 * conditional selecting between an {@link Integer} and a {@link Long} is a {@link Long}, and
+	 * only a floating-point branch makes it floating-point. An integer branch is routinely
+	 * replaced by a {@link Long} reference to a declared common subexpression, so treating any
+	 * type mismatch as floating-point would turn an integer index computation into a
+	 * floating-point one, which an integer {@link Mod} around it cannot accept. A non-numeric
+	 * branch mixed with a branch of another type gives a floating-point conditional; see
+	 * {@link #branchType}.</p>
+	 *
 	 * @param condition the boolean guard expression
 	 * @param positive  the branch used when the condition is true
 	 * @param negative  the branch used when the condition is false
@@ -242,11 +252,33 @@ public class Conditional<T extends Number> extends Expression<T> {
 			return Mask.of(condition.not(), negative);
 		}
 
+		return new Conditional(branchType(positive, negative), condition, positive, negative);
+	}
+
+	/**
+	 * Determines the type of a conditional selecting between the given branches.
+	 *
+	 * <p>Branches of the same type give that type. Numeric branches of different types give
+	 * their {@linkplain NAryExpression#promotedType promoted} type. A branch whose type is not
+	 * a {@link Number} (a {@link Boolean} comparison, for example) has no numeric promotion,
+	 * so a conditional mixing it with a branch of any other type is floating-point, which is
+	 * the type every generated language can represent both branches in.</p>
+	 *
+	 * @param positive the branch used when the condition is true
+	 * @param negative the branch used when the condition is false
+	 * @return the type of the conditional
+	 */
+	private static Class<?> branchType(Expression<?> positive, Expression<?> negative) {
 		if (positive.getType() == negative.getType()) {
-			return new Conditional(positive.getType(), condition, positive, negative);
-		} else {
-			return new Conditional(Double.class, condition, positive, negative);
+			return positive.getType();
 		}
+
+		if (Number.class.isAssignableFrom(positive.getType())
+				&& Number.class.isAssignableFrom(negative.getType())) {
+			return NAryExpression.promotedType(List.of(positive, negative));
+		}
+
+		return Double.class;
 	}
 
 	/**

@@ -16,7 +16,12 @@
 
 package org.almostrealism.space.test;
 
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.space.MeshData;
+import org.almostrealism.space.MeshFeatures;
 import org.almostrealism.util.TestFeatures;
 
 import java.util.Arrays;
@@ -25,9 +30,10 @@ import java.util.Set;
 
 /**
  * Shared fixture helper for grid-surface tests: decomposing a flat row-major grid index into
- * {@code (i, j)} node coordinates as Producer graphs.
+ * {@code (i, j)} node coordinates as Producer graphs, and materializing a grid surface into
+ * {@link MeshData} at the test boundary.
  */
-public interface GridIndexFeatures extends TestFeatures {
+public interface GridIndexFeatures extends TestFeatures, MeshFeatures {
 	/**
 	 * Decomposes a flat row-major grid index into {@code (i, j)} node coordinates as Producer
 	 * graphs, indexing the grid with {@code integers()} rather than a host loop, so no
@@ -66,5 +72,25 @@ public interface GridIndexFeatures extends TestFeatures {
 	 */
 	default Set<Integer> corners(int[] triangle) {
 		return new HashSet<>(Arrays.asList(triangle[0], triangle[1], triangle[2]));
+	}
+
+	/**
+	 * Tessellates a regular grid height field and materializes it into a {@link MeshData},
+	 * evaluating the {@link MeshFeatures#gridSurface} producer graph at the test boundary.
+	 *
+	 * @param heights  the height field, shaped {@code (nx, ny)} in row-major order
+	 * @param nx       the number of grid nodes along X
+	 * @param ny       the number of grid nodes along Z
+	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
+	 * @param spacingX the node spacing along X
+	 * @param spacingZ the node spacing along Z
+	 * @return the tessellated mesh data
+	 */
+	default MeshData gridSurfaceData(Producer<PackedCollection> heights, int nx, int ny,
+									 Vector origin, double spacingX, double spacingZ) {
+		MeshData data = new MeshData(2 * (nx - 1) * (ny - 1));
+		gridSurface(heights, nx, ny, origin, spacingX, spacingZ)
+				.get().into(data.traverse(1)).evaluate();
+		return data;
 	}
 }

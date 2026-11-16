@@ -257,6 +257,12 @@ public class CompressedRowTraversalOrdering implements TraversalOrdering, Orderi
 		return new CompressedRowTraversalOrdering(cols, rowOffsets.bind(provider), columns.bind(provider), maxRowLength);
 	}
 
+	/** {@inheritDoc} Binding binds both the row offsets and the columns. */
+	@Override
+	public int getArgumentCount() {
+		return rowOffsets.getArgumentCount() + columns.getArgumentCount();
+	}
+
 	/**
 	 * {@inheritDoc}
 	 *

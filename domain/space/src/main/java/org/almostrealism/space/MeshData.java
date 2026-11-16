@@ -19,10 +19,7 @@ package org.almostrealism.space;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.TriangleFeatures;
@@ -90,6 +87,9 @@ public class MeshData extends PackedCollection {
 	/** Acceleration structure over this mesh's own triangles, built on first use. */
 	private BoundingVolumeHierarchy boundingVolumeHierarchy;
 
+	/** Reusable {@code (1, 2)} destination of single-ray closest-hit evaluations, allocated on first use. */
+	private PackedCollection hitBuffer;
+
 	/**
 	 * Constructs a new {@link MeshData} instance with capacity for the specified
 	 * number of triangles.
@@ -99,35 +99,6 @@ public class MeshData extends PackedCollection {
 	public MeshData(int triangles) {
 		super(new TraversalPolicy(triangles, 4, 3), 1, delegateSpec ->
 				new PackedCollection(new TraversalPolicy(4, 3), 1, delegateSpec.getDelegate(), delegateSpec.getOffset()));
-	}
-
-	/**
-	 * Tessellates a regular grid height field into {@link MeshData} ready for the ray
-	 * intersection path, building the triangle buffer in a single kernel so the surface
-	 * can be rebuilt each frame without a host loop.
-	 *
-	 * <p>Height is the Y axis and the grid lies in the XZ plane; see
-	 * {@link TriangleFeatures#regularGridSurfacePoints} for the node layout and winding.
-	 * The returned buffer holds {@code 2*(nx-1)*(ny-1)} triangles.</p>
-	 *
-	 * @param heights  the height field, shaped {@code (nx, ny)} in row-major order
-	 * @param nx       the number of grid nodes along X
-	 * @param ny       the number of grid nodes along Z
-	 * @param origin   the position of node {@code (0, 0)}; its Y is added to every height
-	 * @param spacingX the node spacing along X
-	 * @param spacingZ the node spacing along Z
-	 * @return the tessellated mesh data
-	 */
-	public static MeshData gridSurface(Producer<PackedCollection> heights, int nx, int ny,
-									   Vector origin, double spacingX, double spacingZ) {
-		int triangleCount = 2 * (nx - 1) * (ny - 1);
-		MeshData data = new MeshData(triangleCount);
-
-		TriangleFeatures tf = TriangleFeatures.getInstance();
-		CollectionProducer points = tf.regularGridSurfacePoints(heights, nx, ny,
-				origin.getX(), origin.getY(), origin.getZ(), spacingX, spacingZ);
-		tf.triangle(points).get().into(data.traverse(1)).evaluate();
-		return data;
 	}
 
 	/**
@@ -150,13 +121,17 @@ public class MeshData extends PackedCollection {
 	}
 
 	/**
-	 * Intersects a single ray with this mesh using its compiled closest-hit graph.
+	 * Intersects a single ray with this mesh using its compiled closest-hit graph, writing
+	 * into a destination this mesh reuses across calls so that no memory is allocated per ray.
+	 * The returned collection is overwritten by the next call, so callers read it immediately.
 	 *
 	 * @param ray the ray's six components (origin, direction)
 	 * @return the {@code (1, 2)} closest hit as (distance, triangle index)
 	 */
 	private PackedCollection closestHit(PackedCollection ray) {
-		return closestIntersection(1).evaluate(this, ray);
+		if (hitBuffer == null) hitBuffer = Pair.bank(1);
+		closestIntersection(1).into(hitBuffer).evaluate(this, ray);
+		return hitBuffer;
 	}
 
 	/**
@@ -206,10 +181,10 @@ public class MeshData extends PackedCollection {
 	public synchronized void evaluateIntersectionKernel(Evaluable<Ray> ray, PackedCollection destination, MemoryData[] args) {
 		long startTime = System.currentTimeMillis();
 		int count = destination.getCount();
-		PackedCollection rays = Ray.bank(count);
-		ray.into(rays).evaluate(args);
-
-		closestIntersection(count).into(destination).evaluate(this, rays);
+		try (PackedCollection rays = Ray.bank(count)) {
+			ray.into(rays).evaluate(args);
+			closestIntersection(count).into(destination).evaluate(this, rays);
+		}
 
 		if (HardwareOperator.enableVerboseLog) {
 			log(count + " rays intersected in " + (System.currentTimeMillis() - startTime) + " msec");
@@ -228,8 +203,9 @@ public class MeshData extends PackedCollection {
 	public synchronized BoundingVolumeHierarchy getBoundingVolumeHierarchy() {
 		if (boundingVolumeHierarchy == null) {
 			TriangleFeatures tf = TriangleFeatures.getInstance();
-			boundingVolumeHierarchy = BoundingVolumeHierarchy.build(
-					tf.meshTriangleBounds(tf.cp(this), getCount()).evaluate());
+			try (PackedCollection bounds = tf.meshTriangleBounds(tf.cp(this), getCount()).evaluate()) {
+				boundingVolumeHierarchy = BoundingVolumeHierarchy.build(bounds);
+			}
 		}
 
 		return boundingVolumeHierarchy;
@@ -250,21 +226,23 @@ public class MeshData extends PackedCollection {
 	 *         with index {@code -1} when the ray misses
 	 */
 	public synchronized Pair evaluateIntersectionAccelerated(Evaluable<Ray> ray, Object[] args) {
-		PackedCollection raySix = Ray.bank(1);
-		raySix.setFrom(0, ray.evaluate(args), 0, 6);
-		return queryAccelerated(raySix);
+		try (PackedCollection raySix = Ray.bank(1)) {
+			raySix.setFrom(0, ray.evaluate(args), 0, 6);
+			return queryAccelerated(raySix);
+		}
 	}
 
 	/**
 	 * Ensures the reusable candidate buffer can hold at least {@code required} triangles,
 	 * reallocating (and so compiling the closest-hit graph for the new size) only when it
-	 * must grow.
+	 * must grow. The buffer being replaced is destroyed, releasing its memory.
 	 *
 	 * @param required the number of candidate triangles the current query needs to hold
 	 */
 	private void ensureCandidateCapacity(int required) {
 		if (candidateBuffer != null && candidateBuffer.getCount() >= required) return;
 
+		destroyCandidateBuffer();
 		candidateBuffer = new MeshData(required);
 		candidateGlobal = new int[required];
 		Arrays.fill(candidateGlobal, -1);
@@ -285,13 +263,14 @@ public class MeshData extends PackedCollection {
 	 */
 	public synchronized void evaluateIntersectionKernelAccelerated(Evaluable<Ray> ray, PackedCollection destination,
 										   MemoryData[] args) {
-		PackedCollection rays = Ray.bank(destination.getCount());
-		ray.into(rays).evaluate(args);
+		try (PackedCollection rays = Ray.bank(destination.getCount());
+			 PackedCollection raySix = Ray.bank(1)) {
+			ray.into(rays).evaluate(args);
 
-		PackedCollection raySix = Ray.bank(1);
-		for (int i = 0; i < rays.getCount(); i++) {
-			raySix.setFrom(0, rays, i * 6, 6);
-			destination.setFrom(i * 2, queryAccelerated(raySix), 0, 2);
+			for (int i = 0; i < rays.getCount(); i++) {
+				raySix.setFrom(0, rays, i * 6, 6);
+				destination.setFrom(i * 2, queryAccelerated(raySix), 0, 2);
+			}
 		}
 	}
 
@@ -324,5 +303,44 @@ public class MeshData extends PackedCollection {
 		int slot = (int) hit.toDouble(1);
 		double global = slot < 0 ? -1.0 : candidateGlobal[slot];
 		return new Pair(hit.toDouble(0), global);
+	}
+
+	/**
+	 * Returns the number of triangles the reusable candidate buffer of the accelerated path can
+	 * currently hold, or {@code 0} if no accelerated query has allocated it yet.
+	 *
+	 * @return the candidate buffer capacity in triangles
+	 */
+	public synchronized int getCandidateCapacity() {
+		return candidateBuffer == null ? 0 : candidateBuffer.getCount();
+	}
+
+	/**
+	 * Destroys the reusable candidate buffer, if one has been allocated, together with the
+	 * closest-hit graphs compiled against it.
+	 */
+	private void destroyCandidateBuffer() {
+		if (candidateBuffer == null) return;
+
+		candidateBuffer.destroy();
+		candidateBuffer = null;
+		candidateGlobal = null;
+		candidateActive = 0;
+	}
+
+	/**
+	 * Destroys this mesh's memory together with the candidate buffer the accelerated path
+	 * and the hit buffer single-ray intersection allocate separately, and discards the
+	 * closest-hit graphs compiled against this mesh.
+	 */
+	@Override
+	public synchronized void destroy() {
+		destroyCandidateBuffer();
+		if (hitBuffer != null) {
+			hitBuffer.destroy();
+			hitBuffer = null;
+		}
+		closest.clear();
+		super.destroy();
 	}
 }

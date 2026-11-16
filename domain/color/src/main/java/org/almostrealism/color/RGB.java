@@ -262,6 +262,7 @@ public class RGB extends PackedCollection implements Externalizable, Cloneable {
 	 * @param nanom the wavelength in nanometers (valid range: 350-780)
 	 */
 	public RGB(int model, double nanom) {
+		super(RGB.shape());
 		this.initColorModule(model);
 		
 		double f, r = 0.0, g = 0.0, b = 0.0;

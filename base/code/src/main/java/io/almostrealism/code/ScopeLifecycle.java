@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.kernel.KernelStructureContext;
 
+import java.util.Iterator;
 import java.util.Objects;
 import java.util.stream.Stream;
 
@@ -56,6 +57,28 @@ public interface ScopeLifecycle {
 	default void prepareScope(ArgumentProvider manager, KernelStructureContext context) { }
 
 	/**
+	 * Returns the most kernel arguments {@link #prepareScope(ArgumentProvider, KernelStructureContext)}
+	 * obtains from its manager for values that are not inputs of this component: a target a
+	 * derivative is taken with respect to, the collection an ordering reads to map an index, or
+	 * the arguments of another component this one prepares along with itself.
+	 *
+	 * <p>The arguments of a component's inputs are reached through the leaves of the process
+	 * tree it belongs to, so a structural bound on a kernel's arguments counts them there. The
+	 * arguments this method reports have no position in that tree, so the bound adds them
+	 * explicitly; an implementation that obtains such an argument and does not report it lets a
+	 * kernel judged to fit its context's argument limit exceed it. A component that prepares
+	 * other components outside of the process tree reports what preparing them obtains, as
+	 * {@link #getPreparedArgumentBound(Stream, int)} counts it. The count must depend only on the
+	 * component's structure, never on the data it reads, so every computation sharing a compiled
+	 * kernel reaches the same bound. The default is zero.</p>
+	 *
+	 * @param cap the count past which the exact number does not matter; must not be negative
+	 * @return the most arguments preparing this component adds beyond those of its inputs if
+	 *         that is at most {@code cap}, otherwise a value greater than {@code cap}
+	 */
+	default int getScopeArgumentCount(int cap) { return 0; }
+
+	/**
 	 * Resets argument state after scope execution.
 	 *
 	 * <p>Called to clean up cached argument state, allowing the component
@@ -76,6 +99,52 @@ public interface ScopeLifecycle {
 				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
 				.filter(Objects::nonNull)
 				.forEach(sl -> sl.prepareScope(manager, context));
+	}
+
+	/**
+	 * Returns the {@link #getScopeArgumentCount(int) scope argument count} of an object that may
+	 * implement {@link ScopeLifecycle}, or zero for an object that does not, since such an
+	 * object is never prepared and so obtains no arguments.
+	 *
+	 * @param potentialLifecycle an object that may implement ScopeLifecycle
+	 * @param cap                the count past which the exact number does not matter
+	 * @return the most arguments preparing the object adds beyond those of its inputs if that is
+	 *         at most {@code cap}, otherwise a value greater than {@code cap}
+	 */
+	static int getScopeArgumentCount(Object potentialLifecycle, int cap) {
+		return potentialLifecycle instanceof ScopeLifecycle lifecycle ? lifecycle.getScopeArgumentCount(cap) : 0;
+	}
+
+	/**
+	 * Returns an upper bound on the kernel arguments
+	 * {@link #prepareScope(Stream, ArgumentProvider, KernelStructureContext) preparing} every element
+	 * of the stream obtains when those elements are prepared outside of any process tree, as the
+	 * dependencies a component prepares along with itself are.
+	 *
+	 * <p>A {@link Computation} obtains the arguments of every position of its own process tree,
+	 * which its {@link Computation#getInputArgumentBound(int) input argument bound} counts; any
+	 * other lifecycle obtains its {@link #getScopeArgumentCount(int) scope argument count}; an
+	 * object that is not a lifecycle is never prepared and obtains nothing. The sum is counted by
+	 * position, saturates at {@link Integer#MAX_VALUE}, and stops once it exceeds {@code cap}.</p>
+	 *
+	 * @param potentialLifecycles a stream of objects that may implement ScopeLifecycle
+	 * @param cap                 the count past which the exact bound does not matter; must not
+	 *                            be negative
+	 * @return the bound if it is at most {@code cap}, otherwise a value greater than {@code cap}
+	 */
+	static int getPreparedArgumentBound(Stream<?> potentialLifecycles, int cap) {
+		long sum = 0;
+
+		Iterator<?> elements = potentialLifecycles.iterator();
+		while (elements.hasNext() && sum <= cap) {
+			Object element = elements.next();
+			int remaining = (int) (cap - sum);
+			sum += element instanceof Computation<?> computation
+					? computation.getInputArgumentBound(remaining)
+					: getScopeArgumentCount(element, remaining);
+		}
+
+		return (int) Math.min(Integer.MAX_VALUE, sum);
 	}
 
 	/**

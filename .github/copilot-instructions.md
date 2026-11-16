@@ -163,10 +163,13 @@ Never write `for` loops over timesteps outside of `DiffusionSampler`.
 
 ### Process Optimization and Isolation
 
-**Only `IsolatedProcess` is empowered to break expression embedding.** No other computation
-should return null from `getValueAt()` to force isolation. If expression trees grow too large,
-check that `optimize()` is being called before `get()`. Never hack `getValueAt()` - fix the
-optimization chain instead.
+**Only `Process.optimize` decides kernel boundaries. Graph-building code never calls
+`Process.isolated`, `isolate()` or a wrapper of them; a computation that needs its own kernel says
+so through `isIsolationTarget`.** `IsolatedProcess` is the only thing that breaks expression
+embedding, but it is produced by the optimizer calling `isolate()` during `Process.optimize()` —
+not by application code. No other computation should return null from `getValueAt()` to force
+isolation. If expression trees grow too large, check that `optimize()` is being called before
+`get()`. Never hack `getValueAt()` - fix the optimization chain instead.
 
 ### StateDictionary for Model Weights
 

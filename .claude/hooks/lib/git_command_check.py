@@ -188,8 +188,9 @@ WARN_GIT_LOG_CONTEXT = (
 # (segments split on shell separators, then shlex per segment) so flag order
 # and `git -C <path>` style global options do not fool it. It is still a pure
 # function of the command STRING: a bare `git push` on an already-mistracked
-# branch is not visible here and is meant to be covered by repo config
-# (push.default=current) as a second layer.
+# branch is not visible here. branch_upstream_check.py covers that: it reads
+# the branch's configured upstream before every tool call and refuses all
+# work until a mistracked upstream is fixed.
 # ---------------------------------------------------------------------------
 
 PROTECTED_BRANCHES = ("master", "main")
