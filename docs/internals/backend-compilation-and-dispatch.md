@@ -245,11 +245,14 @@ For every computation, `DefaultComputer.getContext` decides the target provider 
 So whether an operation runs on Metal vs JNI is a function of *that operation's* requirements and
 shape — it is decided when the operation/evaluable is created (`getContext` is called from
 `compileRunnable`/`compileProducer`), and there is **no cross-backend retry** afterward (see
-"Fallback Behavior"). An operation whose generated code a provider cannot express **must** carry a
-`ComputeRequirement` that keeps it on a compatible provider — e.g. `FourierTransform` emits a
-**recursive** kernel, which Metal forbids (Metal has no recursion), so it is run with a **CPU**
-requirement; if that requirement is ever lost, the selector will route it to Metal and Metal
-compilation fails ("no matching function for call to f_fourierTransform_*_radix2").
+"Fallback Behavior"). Because of that, an operation whose generated code a provider cannot express
+**must** carry a `ComputeRequirement` that keeps it on a compatible provider, since a bad choice is
+never recovered from. The usual way this is handled, though, is to generate code that *every*
+provider can express, so no pin is needed: `FourierTransform`, for instance, used to emit a
+**recursive** radix-2 kernel that Metal forbids (Metal has no recursion), so it had to be pinned to
+a **CPU** requirement. It is now an **iterative** in-kernel radix-2 FFT — log2(N) unrolled butterfly
+stages with no function calls and no recursion — so the same program compiles for every backend,
+including Metal and OpenCL, and it runs wherever the parallelism rule above places it.
 
 To observe the decision for every computation, set `-DAR_LOG_COMPUTE_TARGETING=enabled`; each
 selection logs `computeTarget <op> count=.. fixed=.. requirements=[..] available=[..] -> <context>`
