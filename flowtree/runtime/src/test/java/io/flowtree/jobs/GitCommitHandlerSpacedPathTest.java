@@ -162,6 +162,85 @@ public class GitCommitHandlerSpacedPathTest extends TestSuiteBase {
     }
 
     /**
+     * A guardrail-approved file that git refuses to add to the index fails the
+     * commit instead of being demoted to a skip: the handler throws naming the
+     * file, and no commit is made. A pre-existing {@code .git/index.lock} makes
+     * every index write ({@code git add} included) fail deterministically while
+     * read-only queries such as {@code git status} still succeed, so the file is
+     * found, approved, and then cannot be staged.
+     *
+     * @throws IOException          if a git command or file write fails
+     * @throws InterruptedException if a git command is interrupted
+     */
+    @Test(timeout = 60000)
+    public void approvedFileThatCannotBeStagedFailsTheCommit()
+            throws IOException, InterruptedException {
+        writeRepoFile(NORMAL_FILE, "original\n");
+        requireGit("add", "-A");
+        requireGit("commit", "-q", "-m", "seed file");
+        String headBefore = requireGit("rev-parse", "HEAD").trim();
+
+        writeRepoFile(NORMAL_FILE, "changed by the job\n");
+        Path lock = repo.resolve(".git").resolve("index.lock");
+        Files.writeString(lock, "", StandardCharsets.UTF_8);
+
+        GitCommitHandler handler = new GitCommitHandler(job());
+        try {
+            handler.handle(false);
+            Assert.fail("an approved file that cannot be staged must fail the commit");
+        } catch (RuntimeException expected) {
+            assertTrue("the failure must report the unstageable file: " + expected.getMessage(),
+                    expected.getMessage().contains("could not be added to the index")
+                            && expected.getMessage().contains(NORMAL_FILE));
+        } finally {
+            Files.deleteIfExists(lock);
+        }
+
+        assertFalse("an unstageable file must not be reported staged: " + handler.getStagedFiles(),
+                handler.getStagedFiles().contains(NORMAL_FILE));
+        Assert.assertEquals("no commit may be made when an approved file cannot be staged",
+                headBefore, requireGit("rev-parse", "HEAD").trim());
+    }
+
+    /**
+     * A file reported staged that is still an uncommitted change after the
+     * commit fails the job rather than letting it report success. A
+     * {@code post-commit} hook that edits the staged file again stands in for
+     * any mechanism that leaves the change outside the commit: the handler's
+     * post-commit check finds the file still dirty and throws naming it.
+     *
+     * @throws IOException          if a git command or file write fails
+     * @throws InterruptedException if a git command is interrupted
+     */
+    @Test(timeout = 60000)
+    public void stagedFileStillChangedAfterCommitFailsTheCommit()
+            throws IOException, InterruptedException {
+        writeRepoFile(NORMAL_FILE, "original\n");
+        requireGit("add", "-A");
+        requireGit("commit", "-q", "-m", "seed file");
+
+        Path hook = repo.resolve(".git").resolve("hooks").resolve("post-commit");
+        Files.createDirectories(hook.getParent());
+        Files.writeString(hook, "#!/bin/sh\necho \"edited after the commit\" >> " + NORMAL_FILE + "\n",
+                StandardCharsets.UTF_8);
+        assertTrue("the hook must be made executable", hook.toFile().setExecutable(true, false));
+
+        writeRepoFile(NORMAL_FILE, "changed by the job\n");
+
+        GitCommitHandler handler = new GitCommitHandler(job());
+        try {
+            handler.handle(false);
+            Assert.fail("a staged file left uncommitted after the commit must fail the job");
+        } catch (RuntimeException expected) {
+            assertTrue("the failure must name the dropped file: " + expected.getMessage(),
+                    expected.getMessage().contains("did not capture")
+                            && expected.getMessage().contains(NORMAL_FILE));
+        }
+        assertTrue("the file must have been reported staged before the check ran",
+                handler.getStagedFiles().contains(NORMAL_FILE));
+    }
+
+    /**
      * Seeds {@code specialPath} and {@link #NORMAL_FILE} into a commit, modifies
      * both, runs the handler's primary commit path, and asserts both the special
      * path and the ordinary file are reported staged and present in the commit.
