@@ -174,4 +174,40 @@ public class ProtobufWaveDetailsStoreTest extends TestSuiteBase {
 			reopened.close();
 		}
 	}
+
+	/**
+	 * {@link WaveDetailsStore#needsReanalysis(String)}: a store is re-analysed for
+	 * the current model when it holds items that were not last validated against
+	 * that model — a store from the previous release (no validated model) or one
+	 * validated against another model — and not when it is empty (a first
+	 * install), when there is no model, or when it is already validated for the
+	 * model (a normal relaunch).
+	 *
+	 * @throws IOException if the store directory cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void needsReanalysisFollowsTheValidatedModel() throws IOException {
+		Path tempDir = Files.createTempDirectory("protobuf-wave-store-reanalysis");
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(tempDir.toFile());
+
+		try {
+			Assert.assertFalse("an empty store is a first install", store.needsReanalysis("sa3"));
+
+			store.put("item", new WaveDetails("item", 44100));
+			Assert.assertTrue("a store never validated against the model is re-analysed",
+					store.needsReanalysis("sa3"));
+			Assert.assertFalse("without a feature model nothing is re-analysed",
+					store.needsReanalysis(null));
+
+			store.setValidatedModel("onnx", ids -> true);
+			Assert.assertTrue("a store validated against another model is re-analysed",
+					store.needsReanalysis("sa3"));
+
+			store.setValidatedModel("sa3", ids -> true);
+			Assert.assertFalse("a store validated against the model is a normal relaunch",
+					store.needsReanalysis("sa3"));
+		} finally {
+			store.close();
+		}
+	}
 }

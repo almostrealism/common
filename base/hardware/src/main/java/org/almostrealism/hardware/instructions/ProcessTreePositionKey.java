@@ -69,11 +69,13 @@ import java.util.Objects;
  * ProcessTreePositionKey grandchild = child0.append(2);  // [0, 2]
  * }</pre>
  *
- * <h2>Historical Context</h2>
+ * <h2>Current Use</h2>
  *
- * <p>This key type was primarily used with the now-removed {@code ProcessTreeInstructionsManager}
- * for traversing and compiling Process trees. Modern code should use
- * {@link ScopeSignatureExecutionKey} instead.</p>
+ * <p>This key type was originally used with the now-removed {@code ProcessTreeInstructionsManager}
+ * for traversing and compiling Process trees. Instruction caching now uses
+ * {@link ScopeSignatureExecutionKey}, but this key remains the position identifier
+ * that {@link org.almostrealism.hardware.arguments.ProcessArgumentMap} uses to map
+ * Process tree nodes to their arguments and substitutions.</p>
  *
  * <h2>Equality and Hashing</h2>
  *
@@ -89,8 +91,6 @@ import java.util.Objects;
  * key1.equals(key3);  // false - different depth
  * }</pre>
  *
- * @deprecated This key type is associated with the now-removed {@code ProcessTreeInstructionsManager}.
- *             Modern code should use {@link ScopeSignatureExecutionKey} instead.
  * @see ExecutionKey
  * @see io.almostrealism.compute.Process
  */

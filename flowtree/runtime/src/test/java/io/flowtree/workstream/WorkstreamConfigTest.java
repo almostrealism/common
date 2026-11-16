@@ -16,6 +16,7 @@
 
 package io.flowtree.workstream;
 
+import io.flowtree.github.CiTrigger;
 import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.agent.Phase;
 import io.flowtree.jobs.agent.PhaseConfig;
@@ -258,6 +259,42 @@ public class WorkstreamConfigTest extends TestSuiteBase {
         assertEquals("develop", entry.getDefaultBranch());
         assertEquals(25.0, entry.getMaxBudgetUsd(), 0.001);
         assertEquals("/new/path", entry.getWorkingDirectory());
+    }
+
+    /**
+     * Verifies that {@code settledCiTrigger} loads from YAML into a parsed
+     * {@link CiTrigger} on the runtime workstream, writes
+     * back as the same spec, is listed in the workstream summary, and that an
+     * unparseable spec fails the load rather than being dropped.
+     */
+    @Test(timeout = 10000)
+    public void testSettledCiTriggerRoundTrip() throws IOException {
+        String yaml = "workstreams:\n"
+            + "  - channelId: \"C_CI\"\n"
+            + "    channelName: \"#ci\"\n"
+            + "    defaultBranch: \"feature/ci\"\n"
+            + "    settledCiTrigger: \"deployment:test\"\n";
+        WorkstreamConfig config = WorkstreamConfig.loadFromYamlString(yaml);
+        Workstream ws = config.toWorkstreams().get(0);
+        assertEquals("deployment:test", ws.getSettledCiTrigger().spec());
+        assertTrue(ws.toSummaryJson().contains("\"settledCiTrigger\":\"deployment:test\""));
+
+        ws.setSettledCiTrigger(CiTrigger.parse("workflow:tests.yaml"));
+        config.syncFromWorkstreams(List.of(ws));
+        File file = File.createTempFile("ws-settled-ci", ".yaml");
+        file.deleteOnExit();
+        config.saveToYaml(file);
+        assertEquals("workflow:tests.yaml",
+            WorkstreamConfig.loadFromYaml(file).getWorkstreams().get(0).getSettledCiTrigger());
+
+        WorkstreamConfig invalid = WorkstreamConfig.loadFromYamlString(
+            yaml.replace("deployment:test", "deploy:test"));
+        try {
+            invalid.toWorkstreams();
+            fail("an unparseable settledCiTrigger must fail the load");
+        } catch (IllegalArgumentException expected) {
+            assertTrue(expected.getMessage().contains("deploy:test"));
+        }
     }
 
     /**

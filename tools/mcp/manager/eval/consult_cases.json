@@ -32,6 +32,7 @@
             "qa/flaky-",
             "qa/coverage-",
             "qa/consolidate-",
+            "qa/concept-",
             "qa/performance-",
             "qa/pdsl-",
             "qa/retro-",

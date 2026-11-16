@@ -17,6 +17,8 @@
 package io.flowtree.workstream;
 
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.github.CiTrigger;
+import io.flowtree.github.GitHubProxyHandler;
 import io.flowtree.jobs.CodingAgentJob;
 import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.ShellCommandJob;
@@ -651,6 +653,16 @@ public class Workstream {
      */
     public void setPlanInstructions(String planInstructions) {
         this.planInstructions = planInstructions;
+    }
+
+    /** Returns the CI started when the review loop settles; see {@link RepositoryBinding#getSettledCiTrigger()}. */
+    public CiTrigger getSettledCiTrigger() { return repositories.getSettledCiTrigger(); }
+    /** Sets the CI started when the review loop settles, {@code null} for none. */
+    public void setSettledCiTrigger(CiTrigger trigger) { repositories.setSettledCiTrigger(trigger); }
+
+    /** Starts the settled CI for {@code branch}; see {@link RepositoryBinding#startSettledCi}. */
+    public CiTrigger.Outcome startSettledCi(GitHubProxyHandler github, String branch) {
+        return repositories.startSettledCi(github, githubOrg, baseBranch, branch);
     }
 
     /**
@@ -1370,7 +1382,7 @@ public class Workstream {
      * {@code pipelineCapable}. Every other identifier and metadata field follows the
      * omission rule above: {@code channelName}, {@code defaultBranch}, {@code baseBranch},
      * {@code repoUrl}, {@code githubOrg}, {@code workspaceId}, {@code planningDocument},
-     * {@code planInstructions}, {@code dependentRepos}, {@code requiredLabels}.</p>
+     * {@code planInstructions}, {@code settledCiTrigger}, {@code dependentRepos}, {@code requiredLabels}.</p>
      *
      * <p>Capability flags (omitted when {@code false}): {@code archived},
      * {@code dispatchCapable}, {@code useTmux}, {@code dormantForCompletionListeners}.
@@ -1411,6 +1423,9 @@ public class Workstream {
         }
         if (planInstructions != null && !planInstructions.isEmpty()) {
             json.append(",\"planInstructions\":\"").append(JsonFieldExtractor.escapeJson(planInstructions)).append("\"");
+        }
+        if (getSettledCiTrigger() != null) {
+            json.append(",\"settledCiTrigger\":\"").append(JsonFieldExtractor.escapeJson(getSettledCiTrigger().spec())).append("\"");
         }
 
         boolean pipelineCapable = getRepoUrl() != null && !getRepoUrl().isEmpty();

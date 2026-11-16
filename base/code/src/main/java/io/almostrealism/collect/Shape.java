@@ -17,6 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Delegated;
 import org.almostrealism.io.Describable;
 
 import java.util.stream.IntStream;
@@ -69,6 +70,24 @@ public interface Shape<T> extends Traversable<T>, IndexSet, Describable {
 			throw new IllegalArgumentException(operation + " cannot be performed without a TraversalPolicy");
 
 		return (Shape<?>) value;
+	}
+
+	/**
+	 * Returns the {@link Shape} that describes a value, or null if it declares none: the value
+	 * itself if it implements {@link Shape}, otherwise the {@link Delegated#getDelegate() delegate}
+	 * of a {@link Delegated} value if that implements {@link Shape}. This is the rule by which a
+	 * producer is given a collection variable whose reads honour its shape and ordering, so an
+	 * operation that must read an input by value can use it to reject an unshaped input when it is
+	 * constructed.
+	 *
+	 * @param value the value whose shape is wanted
+	 * @param <T>   the declared type of {@code value}
+	 * @return the shape describing {@code value}, or null if it declares none
+	 */
+	static <T> Shape<?> shapeOf(T value) {
+		Object shaped = value instanceof Delegated && !(value instanceof Shape)
+				? ((Delegated<?>) value).getDelegate() : value;
+		return shaped instanceof Shape ? (Shape<?>) shaped : null;
 	}
 
 	/**
