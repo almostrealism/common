@@ -243,6 +243,10 @@ How the other families root here:
   graph is wanted is **unclear** — it is recorded here as an observation, not a prescription; a
   round should confirm the need before aligning, because a `Graph` over triangles must honour
   `neighbors`/`countNodes` for every mesh.
+- **The neuron connectomes are weighted graphs that do not implement this hierarchy.** See
+  family 5: `NeuronConnectome`/`CellTypeConnectome` carry N nodes and E weighted edges but are
+  columnar and device-resident, so aligning them onto `WeightedGraph`/`IndexedGraph` needs a
+  node abstraction rather than a member rename.
 
 ---
 
@@ -285,6 +289,60 @@ join unrelated meanings.
 
 ---
 
+## 5. Neural dynamics: populations and connectomes
+
+The recurrent neural-dynamics types: a *population* holds device-resident state and advances it
+one time step (the simulation-loop owner `SimulationRunner` drives the loop, as `ModelOptimizer`
+drives training), and a *connectome* is the weighted wiring between units. The family spans
+`compute/time` (the step contract `Temporal`), `domain/graph`, `domain/biology` and
+`studio/bioscience`.
+
+| Type | Declared as | Module (package) | Members |
+|---|---|---|---|
+| `Temporal` | `extends TemporalFeatures` | `compute/time` (`org.almostrealism.time`) | `tick() : Supplier<Runnable>` — one state-advancing step, no argument |
+| `RatePopulation` | `implements Temporal, LayerFeatures, Destroyable` | `domain/graph` (`org.almostrealism.graph`) | `tick()` (owns its drive `getInput()`), `couplingInput()`, `activate(..)` |
+| `LeakyIntegrateAndFirePopulation` | `implements LayerFeatures, Destroyable` | `domain/graph` (`org.almostrealism.graph`) | `step(Producer) : OperationList` (takes the step's synaptic input), `delayedSpikes()`, `reset()` |
+| `ExponentialSynapseNeurons` | `implements Block` | `domain/biology` (`org.almostrealism.biology.neuron`) | a pipeline-stage `Block` (input/output shape, forward/backward `Cell`) |
+| `PoissonInput` | `implements Block` | `domain/biology` (`org.almostrealism.biology.neuron`) | a `Block` that injects Poisson kicks |
+| `ConnectomeNetwork` | `implements Temporal, Setup, Destroyable, CollectionFeatures` | `studio/bioscience` (`org.almostrealism.bioscience.connectome`) | `tick()`, `setup()`, `meanRates(..)` — couples a connectome to a population |
+| `NeuronConnectome` | `implements CollectionFeatures, Destroyable` | `studio/bioscience` (`org.almostrealism.bioscience.connectome`) | `getNeuronCount`, `getEdgeCount`, `getWeights` (`[N,N]`, CSR), `getOrdering`, `indexOf(long)` |
+| `CellTypeConnectome` | `implements CollectionFeatures, Destroyable` | `studio/bioscience` (`org.almostrealism.bioscience.connectome`) | the cell-type-level counterpart of `NeuronConnectome` |
+
+Notes on the declarations:
+
+- The step contract that is already aligned is `Temporal`: a population stepped by
+  `SimulationRunner` with a no-argument, state-advancing `tick()` *is a* `Temporal`.
+  `RatePopulation` and `ConnectomeNetwork` declare it; they own their external drive, so their
+  step needs no argument.
+- `ExponentialSynapseNeurons` and `PoissonInput` are single-signal pipeline stages, so they are
+  `Block`s (family of `domain/graph`'s `Cell`/`Block`), not populations.
+
+### Gaps
+
+- **`NeuronConnectome` and `CellTypeConnectome` are weighted directed graphs but do not
+  implement the graph hierarchy (family 3).** Each holds N nodes, E weighted edges in compressed
+  sparse rows (`CompressedRowTraversalOrdering`), an `[N,N]` signed weight matrix and
+  `indexOf(long bodyId)`; the CSR row offsets and columns are host-readable, so adjacency is
+  available. The blocker is **contract, not module**: `Graph<T extends Node>`/`WeightedGraph`/
+  `IndexedGraph` (`base/relation`, reachable transitively from `studio/bioscience`, so no new
+  dependency) are host-object based — `Collection<T> neighbors(T)`, `T nodeAt(int)`,
+  `edgeWeight(T,T)` — and the connectomes are columnar and device-resident with no per-neuron
+  node object and no `neighbors`/`edgeWeight` members to align. Honouring the contract means
+  introducing a neuron-`Node` abstraction and materialising node objects (a design decision and a
+  feature, "can be converted to a graph" rather than "is one"), so it is filed rather than forced
+  here. This is the same host-object-vs-columnar tension as `Mesh.neighbors` in family 3.
+- **`LeakyIntegrateAndFirePopulation` and `RatePopulation` are parallel populations with no
+  common contract.** Both own device-resident state and build one compiled step driven by
+  `SimulationRunner`, but their step signatures differ: `RatePopulation` owns its drive and offers
+  the no-argument `Temporal.tick()`, whereas `LeakyIntegrateAndFirePopulation` takes the step's
+  synaptic input as a `Producer<PackedCollection>` argument to `step(Producer)` (its dual data
+  flow emits `delayedSpikes()` and the caller forms the weighted input between emit and consume).
+  So `LIF` cannot honour the no-argument `tick()` as it stands, and naming the shared "driven
+  stepped system" concept would require a **new interface** — which this round does not introduce.
+  Filed for a round to judge.
+
+---
+
 ## How to use this map
 
 To find where a concept lives and what it builds on, start from Part I and follow the link to the
@@ -292,8 +350,10 @@ relevant layer's own concept map. To decide whether a *new* type should extend a
 use Part II as follows.
 
 Before introducing a type with a `value`/`normal`/`getValueAt`/`getNormalAt` pair, a
-ray-`intersect`, or a `neighbors`/node structure, find the family above and extend the
-existing interface rather than a `*Features` mixin alone. A grid of sampled values is the one
+ray-`intersect`, a `neighbors`/node structure, or a state-advancing step the simulation loop
+owner drives (a `tick`/`step`), find the family above and extend the existing interface rather
+than a `*Features` mixin alone — a population whose step takes no argument *is a* `Temporal`
+(family 5). A grid of sampled values is the one
 case where that advice is reversed: family 4 records that **no interface names "a field
 sampled on a grid"**, and the finite-difference calculus is delivered deliberately through the
 `FieldCalculusFeatures` mixin — so reuse that mixin rather than reimplementing its operators or
