@@ -210,11 +210,15 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		Assert.assertEquals("hit distance matches linear", linearHit.toDouble(0), accelHit.toDouble(0), 1e-4);
 		Assert.assertEquals("hit triangle matches linear", linearHit.toDouble(1), accelHit.toDouble(1), 1e-9);
 
+		PackedCollection linearMiss = Pair.bank(1);
+		md.evaluateIntersectionKernel(missRay.get(), linearMiss, new MemoryData[0]);
 		PackedCollection accelMiss = Pair.bank(1);
 		md.evaluateIntersectionKernelAccelerated(missRay.get(), accelMiss, new MemoryData[0]);
 
 		Assert.assertEquals("miss distance", -1.0, accelMiss.toDouble(0), 1e-9);
 		Assert.assertEquals("miss triangle", -1.0, accelMiss.toDouble(1), 1e-9);
+		Assert.assertEquals("miss distance matches linear", linearMiss.toDouble(0), accelMiss.toDouble(0), 1e-9);
+		Assert.assertEquals("miss triangle matches linear", linearMiss.toDouble(1), accelMiss.toDouble(1), 1e-9);
 	}
 
 	/**
