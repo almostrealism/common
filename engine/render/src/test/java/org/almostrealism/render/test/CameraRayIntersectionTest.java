@@ -25,7 +25,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.primitives.Sphere;
 import org.almostrealism.projection.ProjectionFeatures;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -84,13 +83,7 @@ public class CameraRayIntersectionTest extends TestSuiteBase implements Projecti
 	/**
 	 * Evaluating every pixel in one kernel gives the same distances as evaluating each pixel
 	 * on its own.
-	 *
-	 * <p>Known issue: compiling the batched camera ray fails with "Could not obtain operator",
-	 * caused by an {@link IllegalArgumentException} from {@link TraversalPolicy#subset} when the
-	 * ray direction takes a one-dimensional subset of the two-dimensional batch of pixel
-	 * positions.</p>
 	 */
-	@TestProperties(knownIssue = true)
 	@Test(timeout = 120000)
 	public void kernelMatchesPerPixel() {
 		PackedCollection pixels = new PackedCollection(shape(WIDTH * HEIGHT, 2));

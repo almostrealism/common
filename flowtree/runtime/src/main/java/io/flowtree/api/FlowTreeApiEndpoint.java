@@ -1187,7 +1187,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         remediationGuard.dispatched(factory.getTaskId(), workstreamId, remediationPass);
         // Persist for restart recovery; cleared at the terminal choke point.
         if (pendingJobRecovery != null) {
-            pendingJobRecovery.persist(factory.getTaskId(), factory.encode());
+            pendingJobRecovery.persist(factory.getTaskId(), factory.toWire());
         }
 
         // Notify that the job has been submitted (not yet executing)

@@ -30,7 +30,8 @@ in local variables and assigns it only once it is complete. `construct(PreparedA
 Semaphore)` works only on locals.
 
 This matters because preparation can throw. One example is a kernel compile failure when
-an aggregate kernel exceeds a device's buffer-argument limit, which Metal caps at about 31.
+an aggregate kernel exceeds a device's buffer-argument limit: Metal's buffer table has 31
+entries, so a kernel may declare at most 29 arguments (see `MetalOperator`).
 An earlier design published partially built arrays before the failing step. Every later
 call with the same output and arguments then took a fast path over the half-built state
 and failed with a `NullPointerException`, permanently poisoning the shared compiled
@@ -38,9 +39,30 @@ operation and hiding the real error. Working on locals also removed a reentrancy
 where a nested invocation overwrote the outer invocation's in-progress state. The
 regression guard is `ProcessDetailsFactoryRecoveryTest`.
 
-The default `MemoryDataArgumentMap.maxAggregateLength` keeps kernels under the buffer
-limit. Lowering it sends more raw arguments into the kernel signature, and nothing yet
-checks the limit, so the failure surfaces as a driver error.
+A compute context that knows its argument limit reports it through
+`ComputeContext.getArgumentLimit()` (Metal: `MetalOperator.MAX_ARGUMENTS`, 29). An operation
+folds its small arguments into the aggregate only when its structural argument bound — the
+leaf positions of its `Process` tree plus the output, plus the arguments each position obtains
+while its scope is prepared for a value that is not one of its inputs
+(`ScopeLifecycle.getScopeArgumentCount`: a derivative's target, the collections an ordering
+binds, `TraversalOrdering.getArgumentCount`, or every argument of the components a node prepares
+along with itself — a switch's branches, a computation's dependent lifecycles, the producers an
+adapter wraps — as `ScopeLifecycle.getPreparedArgumentBound` counts them), counted before any
+de-duplication —
+exceeds that limit (`ComputeContext.fitsArgumentLimit`); a kernel that provably fits
+takes every argument directly. The kernel structure resources (the series cache and the
+traversal operations) create arguments while such a kernel is generated, which are not leaves,
+so `CompiledKernelStructureContext.prepareResources` keeps them within the room the bound
+leaves under the limit (`AcceleratedOperation.getArgumentAllowance`). Folding therefore can no longer push a kernel past a known
+limit. The limit checks only the arguments folding governs: a kernel whose ineligible
+arguments (larger than `maxAggregateLength`) already exceed the limit still fails to compile,
+and lowering `maxAggregateLength` still sends more raw arguments into the kernel signature.
+Every kernel compiled under a known limit is checked against it after compilation
+(`AcceleratedOperation.verifyArgumentLimit`), so such a kernel fails with a `HardwareException`
+naming the cause — folding insufficient, folding unavailable, or an unreported scope argument —
+rather than at the backend.
+On a context with no known limit (the native backend) every eligible argument is folded, and
+the failure, if any, still surfaces as a driver error.
 
 ### Argument evaluation is ordered after the dependency
 

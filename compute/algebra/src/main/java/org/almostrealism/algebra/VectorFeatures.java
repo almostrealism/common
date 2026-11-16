@@ -188,7 +188,9 @@ public interface VectorFeatures extends ScalarFeatures {
 
 	/**
 	 * Creates a {@link CollectionProducer} for a dynamic vector by concatenating three component producers.
-	 * Each component producer should produce a single scalar value.
+	 * Each component producer should produce a single scalar value, or a batch of them with
+	 * shape {@code (n, 1)}, in which case the result is the {@code (n, 3)} batch of vectors
+	 * (see {@link #batchShape(io.almostrealism.collect.TraversalPolicy, Producer[])}).
 	 *
 	 * @param x  producer for the x coordinate
 	 * @param y  producer for the y coordinate
@@ -199,7 +201,7 @@ public interface VectorFeatures extends ScalarFeatures {
 												Producer<PackedCollection> x,
 												Producer<PackedCollection> y,
 												Producer<PackedCollection> z) {
-		return concat(shape(3), x, y, z);
+		return concat(batchShape(shape(3), x, y, z), x, y, z);
 	}
 
 	/**
@@ -383,17 +385,29 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @return a producer for the normalized (unit) vector
 	 */
 	default CollectionProducer normalize(Producer<PackedCollection> value) {
-		TraversalPolicy valueShape = shape(value);
-		CollectionProducer invLen = length(value).pow(-1.0);
+		return scale(value, length(value).pow(-1.0));
+	}
 
-		// For batch vectors (N, M), length produces (N, 1)
-		// We need to repeat along the innermost axis to get (N, M) for proper broadcasting
-		if (valueShape.getDimensions() >= 2) {
-			int vectorDim = valueShape.length(valueShape.getDimensions() - 1);
-			invLen = repeat(vectorDim, invLen).reshape(valueShape);
+	/**
+	 * Multiplies every vector by its own scalar. For a single vector the scalar has shape
+	 * {@code (1)}; for a batch of vectors with shape {@code (N, M)} the scalars have shape
+	 * {@code (N, 1)}, one per vector, and are repeated along the innermost axis so that each
+	 * scales every component of its vector.
+	 *
+	 * @param vectors the vector, or batch of vectors, to scale
+	 * @param scalars the scale of each vector
+	 * @return a producer for the scaled vectors, with the shape of {@code vectors}
+	 */
+	default CollectionProducer scale(Producer<PackedCollection> vectors, Producer<PackedCollection> scalars) {
+		TraversalPolicy shape = shape(vectors);
+		Producer<PackedCollection> s = scalars;
+
+		if (shape.getDimensions() >= 2) {
+			int vectorDim = shape.length(shape.getDimensions() - 1);
+			s = repeat(vectorDim, s).reshape(shape);
 		}
 
-		return multiply(value, invLen);
+		return multiply(vectors, s);
 	}
 
 	/**

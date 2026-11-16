@@ -1460,14 +1460,14 @@ public class Server implements JobFactory, Runnable, ConsoleFeatures {
 	public String encode() { return this.getClass().getName(); }
 	
 	/**
-	 * Constructs a class of the type specified by full name in the first term
-	 * of the specified data string and sets other properties accordingly.
+	 * Reconstructs a {@link Job} from its encoded wire form by delegating to
+	 * {@link Job#decode(String)}, the single job-side decoder.
 	 *
-	 * @param data  Encoded job data.
+	 * @param data  Encoded job data, optionally preceded by a wire-format marker.
 	 * @return  Instance of {@link Job} created, or {@code null} if instantiation fails.
 	 */
 	public static Job instantiateJobClass(String data) {
-		return JobClassLoader.instantiateJobClass(data);
+		return Job.decode(data);
 	}
 	
 	/**

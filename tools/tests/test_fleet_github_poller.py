@@ -42,11 +42,14 @@ from tools.fleet.github_poller import (
     _rate_limit_delay_seconds,
     classify_labels,
     compute_job_metrics,
+    fetch_job,
     fetch_run_jobs,
     fetch_runners,
     fetch_runs,
     is_carried_over,
+    never_had_a_runner,
     poll_and_store,
+    reconcile_open_jobs,
     run_poll_loop,
     runner_state_of,
     store_runner_states,
@@ -984,6 +987,7 @@ class PollLoopWiringTests(unittest.TestCase):
             )
         kwargs = poll.call_args.kwargs
         self.assertTrue(kwargs["record_runners"])
+        self.assertEqual(github_poller.DEFAULT_RECONCILE_LIMIT, kwargs["reconcile_limit"])
         self.assertEqual("acme", kwargs["runners_org"])
         self.assertEqual(resolver.needs, kwargs["resolve_needs"])
         self.assertEqual(resolver.dependency_completed_at, kwargs["resolve_dependency_completed_at"])
@@ -994,7 +998,9 @@ class PollLoopWiringTests(unittest.TestCase):
                 "acme/repo", "tok", "sqlite:///:memory:", interval_seconds=0, iterations=1,
                 open_store=lambda url: FleetStore(),
             )
-        self.assertEqual({"record_runners": True, "max_runs": github_poller.DEFAULT_POLL_MAX_RUNS}, poll.call_args.kwargs)
+        self.assertEqual({"record_runners": True, "max_runs": github_poller.DEFAULT_POLL_MAX_RUNS,
+                          "reconcile_limit": github_poller.DEFAULT_RECONCILE_LIMIT},
+                         poll.call_args.kwargs)
 
     def test_build_resolver_is_none_when_disabled_or_without_yaml(self):
         self.assertIsNone(github_poller.build_resolver("acme/repo", "tok", disabled=True))
@@ -1045,6 +1051,114 @@ class BuildParserHelpTests(unittest.TestCase):
         help_text = github_poller.build_parser().format_help()
         self.assertIn(str(github_poller.DEFAULT_POLL_INTERVAL_SECONDS), help_text)
         self.assertIn(str(github_poller.DEFAULT_POLL_MAX_RUNS), help_text)
+
+
+class JobsThatNeverHadARunnerTests(unittest.TestCase):
+    """A skipped or queued-then-cancelled job records no wait for a runner.
+
+    The jobs API gives such a job its requested ``runs-on`` labels, so it
+    carries a lane. Recording its wait of about zero seconds made the median
+    wait of every lane zero, since every validate run skips each test lane.
+    """
+
+    SKIPPED = {"created_at": "2026-09-18T00:00:00Z", "started_at": "2026-09-18T00:00:00Z",
+               "status": "completed", "conclusion": "skipped", "runner_name": None}
+
+    def test_a_skipped_job_has_no_wait(self):
+        self.assertTrue(never_had_a_runner(self.SKIPPED))
+        self.assertIsNone(compute_job_metrics(self.SKIPPED, needs=[])["queue_wait_seconds"])
+        self.assertIsNone(compute_job_metrics(
+            self.SKIPPED, needs=["build"], dependency_completed_at="2026-09-18T00:00:00Z",
+        )["queue_wait_seconds"])
+
+    def test_a_job_cancelled_before_a_runner_took_it_has_no_wait(self):
+        job = dict(self.SKIPPED, conclusion="cancelled", started_at="2026-09-18T03:00:00Z")
+        self.assertIsNone(compute_job_metrics(job, needs=[])["queue_wait_seconds"])
+
+    def test_a_job_that_ran_keeps_its_wait(self):
+        job = dict(self.SKIPPED, conclusion="success", runner_name="mac-1",
+                   started_at="2026-09-18T00:10:00Z")
+        self.assertFalse(never_had_a_runner(job))
+        self.assertAlmostEqual(600.0, compute_job_metrics(job, needs=[])["queue_wait_seconds"])
+
+    def test_a_running_job_keeps_its_wait(self):
+        job = {"created_at": "2026-09-18T00:00:00Z", "started_at": "2026-09-18T00:10:00Z",
+               "status": "in_progress", "runner_name": "mac-1"}
+        self.assertAlmostEqual(600.0, compute_job_metrics(job, needs=[])["queue_wait_seconds"])
+
+
+class ReconcileOpenJobsTests(unittest.TestCase):
+    """Jobs whose run left the poll window still get their completion recorded."""
+
+    def setUp(self):
+        self.store = FleetStore()
+        self.store.init_schema()
+
+    def _open_job(self, job_id, created_at="2026-09-18T00:00:00Z"):
+        self.store.upsert_job_event(job_id=job_id, run_id="1", lane="ar-ci", created_at=created_at,
+                                    started_at=created_at, status="in_progress", runner_name="mac-1")
+
+    def _row(self, job_id):
+        return self.store._conn.execute(
+            "SELECT status, conclusion, completed_at, lane FROM job_event WHERE job_id = ?",
+            (job_id,)).fetchone()
+
+    def test_an_open_job_is_completed_from_the_api(self):
+        self._open_job("7")
+        finished = {"id": 7, "status": "completed", "conclusion": "success",
+                    "started_at": "2026-09-18T00:00:00Z", "completed_at": "2026-09-18T02:00:00Z",
+                    "runner_name": "mac-1", "runner_id": 3}
+        with mock.patch("tools.fleet.github_poller._get_json", return_value=finished) as get:
+            self.assertEqual(1, reconcile_open_jobs("acme/repo", "tok", self.store, exclude=[]))
+        self.assertTrue(get.call_args.args[0].endswith("/repos/acme/repo/actions/jobs/7"))
+        self.assertEqual(("completed", "success", "2026-09-18T02:00:00Z", "ar-ci"), self._row("7"))
+        self.assertEqual([], self.store.open_job_ids(10))
+
+    def test_a_job_the_api_no_longer_has_is_not_asked_about_again(self):
+        self._open_job("7")
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=_http_error(404)):
+            reconcile_open_jobs("acme/repo", "tok", self.store, exclude=[])
+        self.assertEqual(FleetStore.GONE_STATUS, self._row("7")[0])
+        self.assertEqual([], self.store.open_job_ids(10))
+
+    def test_other_errors_propagate(self):
+        with mock.patch("tools.fleet.github_poller._get_json", side_effect=_http_error(500)):
+            with self.assertRaises(urllib.error.HTTPError):
+                fetch_job("acme/repo", "7", "tok")
+
+    def test_the_oldest_open_jobs_come_first_and_the_limit_holds(self):
+        self._open_job("new", created_at="2026-09-18T05:00:00Z")
+        self._open_job("old", created_at="2026-09-18T01:00:00Z")
+        self._open_job("mid", created_at="2026-09-18T03:00:00Z")
+        self.assertEqual(["old", "mid"], self.store.open_job_ids(2))
+        self.assertEqual(["old", "new"], self.store.open_job_ids(5, exclude=["mid"]))
+
+    def test_the_cycle_refreshes_open_jobs_outside_its_window(self):
+        self._open_job("7")
+        finished = {"id": 7, "status": "completed", "conclusion": "failure",
+                    "completed_at": "2026-09-18T01:00:00Z"}
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[]), \
+                mock.patch("tools.fleet.github_poller._get_json", return_value=finished):
+            poll_and_store("acme/repo", "tok", self.store, reconcile_limit=10)
+        self.assertEqual("completed", self._row("7")[0])
+
+    def test_the_cycle_does_not_refresh_unless_asked(self):
+        self._open_job("7")
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[]), \
+                mock.patch("tools.fleet.github_poller._get_json") as get:
+            poll_and_store("acme/repo", "tok", self.store)
+        self.assertEqual(0, get.call_count)
+        self.assertEqual("in_progress", self._row("7")[0])
+
+    def test_a_failed_refresh_keeps_the_cycles_jobs(self):
+        self._open_job("7")
+        job = {"id": 42, "created_at": "2026-09-18T00:00:00Z", "started_at": "2026-09-18T00:05:00Z"}
+        with mock.patch("tools.fleet.github_poller.fetch_runs", return_value=[{"id": 1}]), \
+                mock.patch("tools.fleet.github_poller.fetch_run_jobs", return_value=[job]), \
+                mock.patch("tools.fleet.github_poller._get_json", side_effect=RuntimeError("boom")), \
+                mock.patch("sys.stderr"):
+            self.assertEqual(1, poll_and_store("acme/repo", "tok", self.store, reconcile_limit=10))
+        self.assertEqual(2, self.store.job_event_count())
 
 
 if __name__ == "__main__":

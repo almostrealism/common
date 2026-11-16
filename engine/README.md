@@ -2,6 +2,8 @@
 
 This layer provides high-level application systems that combine domain models into complete pipelines: rendering engines, ML training and inference, optimization algorithms, and cross-cutting framework utilities.
 
+See [concept-map.md](concept-map.md) for the loop-owning classes and how this layer assembles the domain models below it, and the platform-wide [Concept Map](../docs/internals/concept-map.md) for the layered overview.
+
 ## Modules
 
 ### [ar-optimize](optimize/README.md)

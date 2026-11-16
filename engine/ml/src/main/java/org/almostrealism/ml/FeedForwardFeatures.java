@@ -310,8 +310,87 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 					"modScale and modShift must both be supplied to enable adaLN modulation, " +
 					"or both be null to disable it");
 		}
+
+		Map<String, Object> args = gluFeedForwardArguments(inputShape, weightIn, biasIn,
+				weightOut, biasOut, gateActivation, projectionFactory);
+		args.put("norm_weights", normWeights);
+		args.put("norm_biases", normBiases);
+		args.put("epsilon", normType.defaultEpsilon());
+		args.put("mod_scale", modScale);
+		args.put("mod_shift", modShift);
+
+		String layer = GATED_LINEAR_FEED_FORWARD_LAYER
+				+ (normType == NormalizationType.RMS ? "_rmsnorm" : "_layernorm")
+				+ (modScale == null ? "" : "_modulated");
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(FEED_FORWARD_ASSET), layer, inputShape, args, requirements);
+	}
+
+	/**
+	 * Creates the norm-free gated-linear feed-forward body from the {@code glu_feed_forward} layer of
+	 * {@link #FEED_FORWARD_ASSET}: the fused gate+linear projection, the split of its output into two
+	 * equal halves, the gate half's activation, the element-wise product of the halves and the down
+	 * projection.
+	 *
+	 * <p>This is the sibling of {@link #feedForward} for the gated-linear idiom, and the body that a
+	 * residual sub-layer wraps around a pre-normalization. The pre-normalization and the optional adaLN
+	 * modulation are deliberately <em>not</em> part of this body (see the asset): the residual sub-layer
+	 * that uses it supplies them, so the body is shared by every normalization family rather than
+	 * duplicated per family. {@link #gatedLinearFeedForward} is the pre-normalized, optionally modulated
+	 * counterpart that composes a norm (and modulation) ahead of this same body in a single layer.</p>
+	 *
+	 * @param inputShape        the activation shape {@code [batch, seq_len, dim]}
+	 * @param weightIn          fused gate+linear projection weights
+	 * @param biasIn            fused projection bias
+	 * @param weightOut         down projection weights
+	 * @param biasOut           down projection bias
+	 * @param gateActivation    activation applied to the gate half of the fused projection before it
+	 *                          multiplies the linear half (SiLU for a SwiGLU, GELU for a GeGLU)
+	 * @param projectionFactory factory for creating the projection layers (dense, or adapter-wrapped)
+	 * @param requirements      compute requirements applied to every layer the asset builds
+	 * @return the gated-linear feed-forward body block, mapping {@code inputShape} to {@code inputShape}
+	 * @throws IllegalArgumentException if {@code inputShape} is not rank 3, or if the fused projection
+	 *                                  produces an odd number of features
+	 */
+	default Block gluFeedForward(TraversalPolicy inputShape,
+								 PackedCollection weightIn, PackedCollection biasIn,
+								 PackedCollection weightOut, PackedCollection biasOut,
+								 Function<TraversalPolicy, CellularLayer> gateActivation,
+								 ProjectionFactory projectionFactory,
+								 ComputeRequirement... requirements) {
+		Map<String, Object> args = gluFeedForwardArguments(inputShape, weightIn, biasIn,
+				weightOut, biasOut, gateActivation, projectionFactory);
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(FEED_FORWARD_ASSET), "glu_feed_forward",
+				inputShape, args, requirements);
+	}
+
+	/**
+	 * Builds the projection layers and the bindings the {@code glu_feed_forward} body shares with the
+	 * {@code gated_linear_feed_forward_*} layers of {@link #FEED_FORWARD_ASSET}: the two projections
+	 * created through {@code projectionFactory}, the gate activation, and the batch, sequence length,
+	 * model dimension and inner (half-fused) dimension read from the input shape and the fused
+	 * projection width. A caller that needs the pre-normalized form adds the norm weights, epsilon and
+	 * modulation to the returned (mutable) map before loading its layer.
+	 *
+	 * @param inputShape        the activation shape {@code [batch, seq_len, dim]}
+	 * @param weightIn          fused gate+linear projection weights
+	 * @param biasIn            fused projection bias
+	 * @param weightOut         down projection weights
+	 * @param biasOut           down projection bias
+	 * @param gateActivation    activation applied to the gate half of the fused projection
+	 * @param projectionFactory factory for creating the projection layers
+	 * @return the shared argument bindings, a fresh mutable map
+	 * @throws IllegalArgumentException if {@code inputShape} is not rank 3, or if the fused projection
+	 *                                  produces an odd number of features
+	 */
+	private Map<String, Object> gluFeedForwardArguments(TraversalPolicy inputShape,
+														PackedCollection weightIn, PackedCollection biasIn,
+														PackedCollection weightOut, PackedCollection biasOut,
+														Function<TraversalPolicy, CellularLayer> gateActivation,
+														ProjectionFactory projectionFactory) {
 		if (inputShape.getDimensions() != 3) {
-			throw new IllegalArgumentException("gatedLinearFeedForward requires a [batch, seq_len, dim] " +
+			throw new IllegalArgumentException("The gated-linear feed-forward requires a [batch, seq_len, dim] " +
 					"input, but was given " + inputShape);
 		}
 
@@ -333,19 +412,9 @@ public interface FeedForwardFeatures extends LayerFeatures, LayerRoutingFeatures
 		args.put("seq_len", inputShape.length(1));
 		args.put("dim", inputShape.length(2));
 		args.put("inner_dim", innerDim);
-		args.put("norm_weights", normWeights);
-		args.put("norm_biases", normBiases);
-		args.put("epsilon", normType.defaultEpsilon());
-		args.put("mod_scale", modScale);
-		args.put("mod_shift", modShift);
 		args.put("in_projection", inProjection);
 		args.put("out_projection", outProjection);
 		args.put("gate_activation", gateActivation.apply(gatedShape));
-
-		String layer = GATED_LINEAR_FEED_FORWARD_LAYER
-				+ (normType == NormalizationType.RMS ? "_rmsnorm" : "_layernorm")
-				+ (modScale == null ? "" : "_modulated");
-		PdslLoader loader = new PdslLoader();
-		return loader.buildLayer(loader.parseResource(FEED_FORWARD_ASSET), layer, inputShape, args, requirements);
+		return args;
 	}
 }

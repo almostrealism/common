@@ -125,6 +125,19 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, PackedCol
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Preparing this adapter prepares the producer and the rank, neither of which is a
+	 * position of the process tree this adapter is a leaf of, so every argument preparing them
+	 * obtains, as {@link ScopeLifecycle#getPreparedArgumentBound(Stream, int)} counts it, is
+	 * reported here.</p>
+	 */
+	@Override
+	public int getScopeArgumentCount(int cap) {
+		return ScopeLifecycle.getPreparedArgumentBound(Stream.of(getProducer(), getRank()), cap);
+	}
+
+	/**
 	 * Resets arguments for both the producer and rank.
 	 */
 	@Override

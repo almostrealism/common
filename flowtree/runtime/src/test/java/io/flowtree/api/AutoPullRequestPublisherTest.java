@@ -35,8 +35,10 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
@@ -152,6 +154,86 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
         assertEquals(List.of(existing.htmlUrl), event.getCompanionPullRequestUrls());
     }
 
+    /**
+     * A reused open companion PR whose title is a stale prompt-fallback is
+     * refreshed from the dependent repo's own commit, so a truncated prompt
+     * title does not stick to the PR forever.
+     */
+    @Test(timeout = 30000)
+    public void reusedCompanionPrIsRetitledFromItsCommit() {
+        FakePr existing = github.seedOpenPr("widgets/lib", "feature/x",
+                "You are hunting for a real defect in this codebase...", "prompt body");
+        github.messageByRef.put("dep123", "Move the helper into lib\n\nShared by both repos.");
+        publisher.register("job-1", context(false));
+
+        JobCompletionEvent event = eventWithPush("abc", "dep123");
+        publisher.publish(event);
+
+        assertTrue("no new companion PR may be created",
+                github.requests.stream().noneMatch(r -> r.equals("POST /repos/widgets/lib/pulls")));
+        assertEquals(List.of(existing.htmlUrl), event.getCompanionPullRequestUrls());
+        FakePr refreshed = github.prByNumber(existing.number);
+        assertEquals("Move the helper into lib", refreshed.title);
+        assertTrue("the refreshed body comes from the commit",
+                refreshed.body.contains("Shared by both repos."));
+    }
+
+    /**
+     * When the reused companion PR's commit message cannot be fetched (a
+     * transient GitHub/API failure), the PR is left untouched: no PATCH is sent
+     * and its existing title and body survive, rather than being overwritten
+     * with the generic fallback description. A later completion refreshes it.
+     */
+    @Test(timeout = 30000)
+    public void reusedCompanionPrIsNotClobberedWhenCommitFetchFails() {
+        FakePr existing = github.seedOpenPr("widgets/lib", "feature/x",
+                "A good human-authored title", "A good human-authored body");
+        github.unfetchableRefs.add("dep123");
+        publisher.register("job-1", context(false));
+
+        JobCompletionEvent event = eventWithPush("abc", "dep123");
+        publisher.publish(event);
+
+        assertTrue("no PATCH may be sent when the commit message cannot be fetched",
+                github.requests.stream().noneMatch(r -> r.startsWith("PATCH ")));
+        assertEquals(List.of(existing.htmlUrl), event.getCompanionPullRequestUrls());
+        FakePr untouched = github.prByNumber(existing.number);
+        assertEquals("A good human-authored title", untouched.title);
+        assertEquals("A good human-authored body", untouched.body);
+    }
+
+    /**
+     * Once a reused companion PR's title and body match what its commit
+     * derives, a later completion on the same commit sends no further PATCH,
+     * so a correctly titled PR is not rewritten on every reuse.
+     */
+    @Test(timeout = 30000)
+    public void reusedCompanionPrAlreadyCurrentIsNotPatchedAgain() {
+        FakePr existing = github.seedOpenPr("widgets/lib", "feature/x",
+                "Stale prompt title", "stale body");
+        github.messageByRef.put("dep123", "Move the helper into lib\n\nShared by both repos.");
+
+        publisher.register("job-1", context(false));
+        JobCompletionEvent first = eventWithPush("abc", "dep123");
+        publisher.publish(first);
+        assertNotNull("a primary PR must be opened", first.getPullRequestUrl());
+        long firstPatches = github.requests.stream().filter(r -> r.startsWith("PATCH ")).count();
+        assertEquals("the stale PR is refreshed exactly once", 1L, firstPatches);
+        String refreshedBody = github.prByNumber(existing.number).body;
+
+        publisher.register("job-1", context(false));
+        // The primary PR now exists, so the next completion arrives carrying it.
+        JobCompletionEvent second = eventWithPush("abc", "dep123")
+                .withPullRequestUrl(first.getPullRequestUrl());
+        publisher.publish(second);
+
+        long totalPatches = github.requests.stream().filter(r -> r.startsWith("PATCH ")).count();
+        assertEquals("an already-current PR must not be patched again", 1L, totalPatches);
+        assertEquals(List.of(existing.htmlUrl), second.getCompanionPullRequestUrls());
+        assertEquals("Move the helper into lib", github.prByNumber(existing.number).title);
+        assertEquals(refreshedBody, github.prByNumber(existing.number).body);
+    }
+
     /** A branch that is not ahead of the default branch opens nothing. */
     @Test(timeout = 30000)
     public void branchEqualToDefaultCreatesNothing() {
@@ -232,10 +314,10 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
         private final String head;
         /** The base branch. */
         private final String base;
-        /** The PR title. */
-        private final String title;
-        /** The PR body. */
-        private final String body;
+        /** The PR title (mutable so a PATCH can refresh it). */
+        private String title;
+        /** The PR body (mutable so a PATCH can refresh it). */
+        private String body;
         /** Whether the PR is open. */
         private final boolean open;
         /** The PR's HTML URL. */
@@ -301,6 +383,8 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
         private final List<FakeComment> comments = new ArrayList<>();
         /** Commit messages by ref. */
         private final Map<String, String> messageByRef = new HashMap<>();
+        /** Refs whose commit lookup fails (a transient GitHub/API error). */
+        private final Set<String> unfetchableRefs = new HashSet<>();
         /** The {@code ahead_by} every compare reports. */
         private int aheadBy = 3;
         /** The {@code default_branch} every repo reports. */
@@ -333,11 +417,37 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
          * @return the seeded pull request
          */
         private FakePr seedOpenPr(String ownerRepo, String head) {
+            return seedOpenPr(ownerRepo, head, "existing", "existing");
+        }
+
+        /**
+         * Seeds an already-open pull request with a specific title and body.
+         *
+         * @param ownerRepo the {@code owner/repo}
+         * @param head      the head branch
+         * @param title     the PR title
+         * @param body      the PR body
+         * @return the seeded pull request
+         */
+        private FakePr seedOpenPr(String ownerRepo, String head, String title, String body) {
             int n = nextNumber.getAndIncrement();
-            FakePr pr = new FakePr(ownerRepo, n, head, defaultBranch, "existing", "existing",
+            FakePr pr = new FakePr(ownerRepo, n, head, defaultBranch, title, body,
                     true, root() + "/" + ownerRepo + "/pull/" + n);
             prs.add(pr);
             return pr;
+        }
+
+        /**
+         * Returns the stored pull request with the given number.
+         *
+         * @param number the PR number
+         * @return the matching pull request, or {@code null}
+         */
+        private FakePr prByNumber(int number) {
+            for (FakePr pr : prs) {
+                if (pr.number == number) return pr;
+            }
+            return null;
         }
 
         /**
@@ -406,6 +516,9 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
             }
             if (seg.length >= 3 && seg[2].equals("commits")) {
                 String ref = seg[3];
+                if (unfetchableRefs.contains(ref)) {
+                    return null;
+                }
                 String message = messageByRef.getOrDefault(ref, "Default subject\n\nDefault body.");
                 return "{\"commit\":{\"message\":" + quote(message) + "}}";
             }
@@ -414,6 +527,10 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
             }
             if (seg.length >= 3 && seg[2].equals("pulls") && method.equals("POST")) {
                 return createPull(ownerRepo, body(exchange));
+            }
+            if (seg.length >= 4 && seg[2].equals("pulls") && seg[3].matches("\\d+")
+                    && method.equals("PATCH")) {
+                return updatePull(ownerRepo, Integer.parseInt(seg[3]), body(exchange));
             }
             if (seg.length >= 4 && seg[2].equals("issues") && seg[3].matches("\\d+")) {
                 comments.add(new FakeComment(ownerRepo, Integer.parseInt(seg[3]),
@@ -453,6 +570,8 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
                 sb.append("{\"number\":").append(pr.number)
                         .append(",\"state\":\"").append(pr.open ? "open" : "closed")
                         .append("\",\"html_url\":").append(quote(pr.htmlUrl))
+                        .append(",\"title\":").append(quote(pr.title))
+                        .append(",\"body\":").append(quote(pr.body))
                         .append(",\"head\":{\"ref\":").append(quote(pr.head)).append("}}");
             }
             return sb.append("]").toString();
@@ -473,6 +592,26 @@ public class AutoPullRequestPublisherTest extends TestSuiteBase {
                     node.path("base").asText(""), node.path("title").asText(""),
                     node.path("body").asText(""), true, url));
             return "{\"number\":" + n + ",\"html_url\":" + quote(url) + "}";
+        }
+
+        /**
+         * Applies a PATCH to a stored pull request's title and body.
+         *
+         * @param ownerRepo the {@code owner/repo}
+         * @param number    the PR number
+         * @param body      the update request body
+         * @return the JSON response, or {@code null} when the PR is unknown
+         */
+        private String updatePull(String ownerRepo, int number, String body) throws IOException {
+            JsonNode node = MAPPER.readTree(body);
+            for (FakePr pr : prs) {
+                if (pr.ownerRepo.equals(ownerRepo) && pr.number == number) {
+                    if (node.has("title")) pr.title = node.path("title").asText(pr.title);
+                    if (node.has("body")) pr.body = node.path("body").asText(pr.body);
+                    return "{\"number\":" + number + ",\"html_url\":" + quote(pr.htmlUrl) + "}";
+                }
+            }
+            return null;
         }
 
         /** Reads the request body as a UTF-8 string. */

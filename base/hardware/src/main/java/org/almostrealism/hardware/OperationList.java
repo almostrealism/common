@@ -993,6 +993,19 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A list deeper than the abortable depth places the abort operation's scope after each of
+	 * its operations, and that scope reads the abort flag through an argument which is not a
+	 * position of this list's process tree. Such a list reports that argument; any other list
+	 * leaves the abort scope out of its kernel and reports nothing.</p>
+	 */
+	@Override
+	public int getScopeArgumentCount(int cap) {
+		return getDepth() > abortableDepth ? 1 : 0;
+	}
+
+	/**
 	 * Returns the combined scope for all operations in this list.
 	 *
 	 * <p>Concatenates the scopes from all operations into a single scope

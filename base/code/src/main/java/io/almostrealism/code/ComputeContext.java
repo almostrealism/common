@@ -20,6 +20,8 @@ import io.almostrealism.streams.Semaphore;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 
+import java.util.OptionalInt;
+
 /**
  * {@link ComputeContext} represents an execution environment for computations in the
  * Almost Realism framework. It provides the bridge between high-level computation
@@ -127,6 +129,40 @@ public interface ComputeContext<MEM> {
 	 * @return the lanes available to each work item, at least 1
 	 */
 	default int getLaneCount() { return 1; }
+
+	/**
+	 * Returns the most arguments a kernel program compiled for this context may declare, or an
+	 * empty value when there is no known limit (the default).
+	 *
+	 * <p>A context reports a limit only where there is evidence for it: a device query, a documented
+	 * compiler limit, or a measured failure. A limit is used to decide whether the small inputs of a
+	 * kernel must be folded into a single aggregate argument for the kernel to compile at all, so a
+	 * value that is too high reintroduces exactly the compile failure folding prevents; an unknown
+	 * limit is therefore reported as empty rather than guessed, and every eligible argument is then
+	 * folded.</p>
+	 *
+	 * @return the largest number of kernel arguments this context can compile, or empty if unknown
+	 */
+	default OptionalInt getArgumentLimit() { return OptionalInt.empty(); }
+
+	/**
+	 * Returns whether a kernel that declares at most {@code argumentBound} arguments provably
+	 * compiles for this context, that is, whether this context reports an
+	 * {@link #getArgumentLimit() argument limit} and the bound does not exceed it.
+	 *
+	 * <p>A kernel that provably fits needs none of its small inputs folded into an aggregate
+	 * argument, so it pays no aggregate copies; every other kernel, including any kernel compiled
+	 * for a context whose limit is unknown, must fold every eligible argument. The bound is an
+	 * upper bound on the arguments the kernel declares when nothing is folded, computed from its
+	 * structure alone, so every computation sharing a compiled kernel reaches the same answer.</p>
+	 *
+	 * @param argumentBound an upper bound on the arguments the kernel declares when nothing is folded
+	 * @return {@code true} if the limit is known and the bound is at most the limit
+	 */
+	default boolean fitsArgumentLimit(int argumentBound) {
+		OptionalInt limit = getArgumentLimit();
+		return limit.isPresent() && argumentBound <= limit.getAsInt();
+	}
 
 	/**
 	 * Copies all of {@code source} into {@code destination} &mdash; each carrying its own offset and
