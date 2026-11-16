@@ -278,7 +278,9 @@ class GitHubClient:
                            "application/vnd.github+json" if not raw else "*/*")
         request.add_header("X-GitHub-Api-Version", "2022-11-28")
         if self.token:
-            request.add_header("Authorization", "Bearer %s" % self.token)
+            # Unredirected: a job-log read is redirected to a pre-signed
+            # storage URL, which rejects a request that also carries the token.
+            request.add_unredirected_header("Authorization", "Bearer %s" % self.token)
         with urllib.request.urlopen(
                 request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             data = response.read()
