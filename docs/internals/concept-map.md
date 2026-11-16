@@ -332,19 +332,27 @@ Notes on the declarations:
   `IndexedGraph` (`base/relation`, reachable transitively from `studio/bioscience`, so no new
   dependency) are host-object based — `Collection<T> neighbors(T)`, `T nodeAt(int)`,
   `edgeWeight(T,T)` — and the connectomes are columnar and device-resident with no per-neuron
-  node object and no `neighbors`/`edgeWeight` members to align. Honouring the contract means
-  introducing a neuron-`Node` abstraction and materialising node objects (a design decision and a
-  feature, "can be converted to a graph" rather than "is one"), so it is filed rather than forced
-  here. This is the same host-object-vs-columnar tension as `Mesh.neighbors` in family 3.
+  node object and no `neighbors`/`edgeWeight` members to align. A second, independent mismatch is
+  the edge-weight convention: `WeightedGraph` documents its weights as non-negative, with
+  `edgeWeight` returning `0` to mean *no edge*, whereas both connectome matrices are **signed**
+  (`getWeights()` carries the presynaptic sign — negative for an inhibitory neuron), so even once
+  node objects exist, implementing `WeightedGraph` is not behaviour-preserving unless its
+  edge-weight contract is broadened or the sign is represented separately. Honouring the contract
+  means introducing a neuron-`Node` abstraction and materialising node objects (a design decision
+  and a feature, "can be converted to a graph" rather than "is one"), so it is filed rather than
+  forced here. This is the same host-object-vs-columnar tension as `Mesh.neighbors` in family 3.
 - **`LeakyIntegrateAndFirePopulation` and `RatePopulation` are parallel populations with no
-  common contract.** Both own device-resident state and build one compiled step driven by
-  `SimulationRunner`, but their step signatures differ: `RatePopulation` owns its drive and offers
-  the no-argument `Temporal.tick()`, whereas `LeakyIntegrateAndFirePopulation` takes the step's
-  synaptic input as a `Producer<PackedCollection>` argument to `step(Producer)` (its dual data
-  flow emits `delayedSpikes()` and the caller forms the weighted input between emit and consume).
-  So `LIF` cannot honour the no-argument `tick()` as it stands, and naming the shared "driven
-  stepped system" concept would require a **new interface** — which this round does not introduce.
-  Filed for a round to judge.
+  common contract.** Both own device-resident state and build one step the `SimulationRunner` loop
+  drives, but they expose it differently and only one is a `Temporal`. `RatePopulation` owns its
+  drive and *is a* `Temporal`, so `SimulationRunner` drives it directly through the no-argument
+  `Temporal.tick()`. `LeakyIntegrateAndFirePopulation` builds its step as an `OperationList`
+  returned from `step(Producer)` — it takes the step's synaptic input as a
+  `Producer<PackedCollection>` argument (its dual data flow emits `delayedSpikes()` and the caller
+  forms the weighted input between emit and consume), does not implement `Temporal`, and so reaches
+  `SimulationRunner` only through a caller-provided `Temporal` adapter that wraps `step(..)` (as
+  `NeuralPopulationSimulationExamplesTest` does). So `LIF` cannot honour the no-argument `tick()`
+  as it stands, and naming the shared "driven stepped system" concept would require a **new
+  interface** — which this round does not introduce. Filed for a round to judge.
 
 ---
 
