@@ -82,6 +82,14 @@ public class JobDecodeTest extends TestSuiteBase {
 				"@wire=no-such-format::" + STUB + "::QUJD"));
 	}
 
+	/** A structurally malformed wire marker yields null at the server boundary instead of throwing. */
+	@Test(timeout = 60000)
+	public void malformedWireMarkerYieldsNull() {
+		Assert.assertNull(Server.instantiateJobClass("@wire=coding-pb1::" + STUB));
+		Assert.assertNull(Server.instantiateJobClass("@wire=::" + STUB + "::QUJD"));
+		Assert.assertNull(Server.instantiateJobClass("@wire=Bad_Id::" + STUB + "::QUJD"));
+	}
+
 	/**
 	 * A minimal {@link Job} whose {@link #set(String, String)} records every key-value
 	 * assignment so a test can confirm the decoder applied them. It must be public with a

@@ -51,6 +51,7 @@ public final class JobCodecRegistry {
 
     /** Builds the registry with the built-in {@link StringJobCodec} and every {@link ServiceLoader}-registered codec. */
     private JobCodecRegistry() {
+        // TODO(review): a ServiceLoader codec with an invalid or duplicate format id throws from this static-init path, making every decode/toWire fail with NoClassDefFoundError
         register(new StringJobCodec());
         for (JobCodec codec : ServiceLoader.load(JobCodec.class)) {
             register(codec);
@@ -71,10 +72,17 @@ public final class JobCodecRegistry {
      * codec whose format id is already registered is rejected, so a duplicate
      * service registration cannot silently shadow the built-in string codec.
      *
+     * <p>The format id must be {@link WireEnvelope#isValidFormatId(String) well formed},
+     * since an id outside {@code [a-z0-9-]+} (one containing
+     * {@link JobFactory#ENTRY_SEPARATOR}, for example) would render a marker that
+     * does not parse back to the same format.</p>
+     *
      * @param codec the codec to register
-     * @throws IllegalStateException if the format id is already registered
+     * @throws IllegalArgumentException if the codec's format id is not well formed
+     * @throws IllegalStateException    if the format id is already registered
      */
     public void register(JobCodec codec) {
+        WireEnvelope.requireValidFormatId(codec.getFormatId());
         JobCodec existing = codecs.putIfAbsent(codec.getFormatId(), codec);
         if (existing != null && existing != codec) {
             throw new IllegalStateException("duplicate job codec for format '"

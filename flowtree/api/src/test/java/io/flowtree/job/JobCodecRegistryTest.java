@@ -85,6 +85,74 @@ public class JobCodecRegistryTest extends TestSuiteBase {
         Assert.assertEquals(0, TrackingFactory.INSTANCES.get());
     }
 
+    /**
+     * decode() of a payload whose marker is structurally malformed returns null
+     * rather than propagating the parse failure, and never constructs the class.
+     */
+    @Test(timeout = 60000)
+    public void decodeMalformedMarkerReturnsNullWithoutInstantiating() {
+        TrackingFactory.INSTANCES.set(0);
+        String name = TrackingFactory.class.getName();
+
+        Assert.assertNull(JobFactory.decode("@wire=coding-pb1"));
+        Assert.assertNull(JobFactory.decode("@wire=coding-pb1::" + name));
+        Assert.assertNull(JobFactory.decode("@wire=::" + name + "::QUJD"));
+        Assert.assertNull(JobFactory.decode("@wire=Coding_PB::" + name + "::QUJD"));
+        Assert.assertEquals(0, TrackingFactory.INSTANCES.get());
+    }
+
+    /** Job.decode() of a structurally malformed marker returns null rather than throwing. */
+    @Test(timeout = 60000)
+    public void jobDecodeMalformedMarkerReturnsNull() {
+        Assert.assertNull(Job.decode("@wire=coding-pb1"));
+        Assert.assertNull(Job.decode("@wire=coding-pb1::a.b.C"));
+        Assert.assertNull(Job.decode("@wire=::a.b.C::QUJD"));
+        Assert.assertNull(Job.decode("@wire=Coding_PB::a.b.C::QUJD"));
+        Assert.assertNull(Job.decode(null));
+    }
+
+    /**
+     * A codec whose format id falls outside {@code [a-z0-9-]+} is refused at
+     * registration, so it can never render a marker that fails to round-trip,
+     * and the refused id is not left registered.
+     */
+    @Test(timeout = 60000)
+    public void registerRejectsMalformedFormatIds() {
+        for (String bad : new String[] { "foo::bar", "coding_pb", "Upper", "", "a b" }) {
+            try {
+                JobCodecRegistry.getInstance().register(new RejectingCodec() {
+                    @Override
+                    public String getFormatId() { return bad; }
+                });
+                Assert.fail("expected IllegalArgumentException for format id '" + bad + "'");
+            } catch (IllegalArgumentException e) {
+                Assert.assertTrue("message must name the id: " + e.getMessage(),
+                        e.getMessage().contains("'" + bad + "'"));
+            }
+
+            try {
+                JobCodecRegistry.getInstance().forFormat(bad);
+                Assert.fail("format id '" + bad + "' must not have been registered");
+            } catch (UnsupportedWireFormatException expected) {
+                // the refused id stays unregistered
+            }
+        }
+    }
+
+    /** A codec with a null format id is refused at registration. */
+    @Test(timeout = 60000)
+    public void registerRejectsNullFormatId() {
+        try {
+            JobCodecRegistry.getInstance().register(new RejectingCodec() {
+                @Override
+                public String getFormatId() { return null; }
+            });
+            Assert.fail("expected IllegalArgumentException for a null format id");
+        } catch (IllegalArgumentException e) {
+            Assert.assertTrue(e.getMessage().contains("'null'"));
+        }
+    }
+
     /** A sender whose chosen codec does not support its class fails at toWire(), not on the receiver. */
     @Test(timeout = 60000)
     public void toWireFailsWhenCodecRejectsSenderClass() {

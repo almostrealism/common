@@ -16,6 +16,8 @@
 
 package io.flowtree.job;
 
+import java.util.regex.Pattern;
+
 /**
  * The parsed view of a serialized job payload, owning the format-marker grammar
  * that lets a receiver pick the right {@link JobCodec} from the payload alone.
@@ -57,6 +59,9 @@ public final class WireEnvelope {
     /** The leading token of a marked payload. */
     public static final String MARKER_PREFIX = "@wire=";
 
+    /** The grammar every format id must match; it can never contain {@link JobFactory#ENTRY_SEPARATOR}. */
+    private static final Pattern FORMAT_ID_PATTERN = Pattern.compile("[a-z0-9-]+");
+
     /** The codec format id; {@link StringJobCodec#FORMAT_ID} for an unmarked payload. */
     private final String formatId;
 
@@ -77,9 +82,10 @@ public final class WireEnvelope {
      * @param formatId  the codec format id; must match {@code [a-z0-9-]+}
      * @param className the fully-qualified class the receiver must instantiate
      * @param payload   the codec-specific body
+     * @throws IllegalArgumentException if {@code formatId} does not match {@code [a-z0-9-]+}
      */
     public WireEnvelope(String formatId, String className, String payload) {
-        this(formatId, className, payload, !StringJobCodec.FORMAT_ID.equals(formatId));
+        this(requireValidFormatId(formatId), className, payload, !StringJobCodec.FORMAT_ID.equals(formatId));
     }
 
     /**
@@ -105,8 +111,8 @@ public final class WireEnvelope {
      * {@link JobFactory#ENTRY_SEPARATOR}-delimited token (or {@code null} when
      * the payload carries no separator), and its payload is the whole string.
      * A payload beginning with {@link #MARKER_PREFIX} is parsed as a marked
-     * format; a marker missing either {@link JobFactory#ENTRY_SEPARATOR} is
-     * rejected.</p>
+     * format; a marker missing either {@link JobFactory#ENTRY_SEPARATOR}, or
+     * whose format id does not match {@code [a-z0-9-]+}, is rejected.</p>
      *
      * @param data the serialized payload; must not be {@code null}
      * @return the parsed envelope
@@ -129,8 +135,9 @@ public final class WireEnvelope {
             throw new IllegalArgumentException("malformed wire marker, missing class separator: " + data);
         }
         String formatId = data.substring(MARKER_PREFIX.length(), firstSep);
-        if (formatId.isEmpty()) {
-            throw new IllegalArgumentException("malformed wire marker, empty format id: " + data);
+        if (!isValidFormatId(formatId)) {
+            throw new IllegalArgumentException("malformed wire marker, invalid format id '"
+                    + formatId + "': " + data);
         }
 
         String rest = data.substring(firstSep + JobFactory.ENTRY_SEPARATOR.length());
@@ -141,6 +148,35 @@ public final class WireEnvelope {
         String className = rest.substring(0, secondSep);
         String payload = rest.substring(secondSep + JobFactory.ENTRY_SEPARATOR.length());
         return new WireEnvelope(formatId, className, payload, true);
+    }
+
+    /**
+     * Returns whether the given value is a well-formed format id: a non-empty
+     * string matching {@code [a-z0-9-]+}. Such an id can never contain
+     * {@link JobFactory#ENTRY_SEPARATOR}, so a rendered marker always parses
+     * back to the same format id, class name and payload.
+     *
+     * @param formatId the candidate format id, possibly {@code null}
+     * @return {@code true} if {@code formatId} is well formed
+     */
+    public static boolean isValidFormatId(String formatId) {
+        return formatId != null && FORMAT_ID_PATTERN.matcher(formatId).matches();
+    }
+
+    /**
+     * Returns the given format id unchanged if it is
+     * {@link #isValidFormatId(String) well formed}, and rejects it otherwise.
+     *
+     * @param formatId the candidate format id
+     * @return {@code formatId}
+     * @throws IllegalArgumentException if {@code formatId} is not well formed
+     */
+    public static String requireValidFormatId(String formatId) {
+        if (!isValidFormatId(formatId)) {
+            throw new IllegalArgumentException("invalid wire format id '" + formatId
+                    + "'; a format id must match [a-z0-9-]+");
+        }
+        return formatId;
     }
 
     /**

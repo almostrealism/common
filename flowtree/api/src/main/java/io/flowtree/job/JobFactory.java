@@ -130,7 +130,9 @@ public interface JobFactory {
      * {@code ENTRY_SEPARATOR} sequences that fall inside a value (a leading
      * {@code /} after the separator, or a {@code \}-escaped separator), matching
      * what {@link #encode()} emits. Returns {@code null} when {@code data} is
-     * {@code null} or carries no {@link #ENTRY_SEPARATOR}, when the class
+     * {@code null} or carries no {@link #ENTRY_SEPARATOR}, when it carries a
+     * structurally malformed {@link WireEnvelope} format marker or names a wire
+     * format this node does not support, when the class
      * cannot be found, instantiated, or cast to {@link JobFactory}, and when
      * any entry fails to parse or apply (an entry without
      * {@link #KEY_VALUE_SEPARATOR}, a dangling trailing separator, or a
@@ -144,8 +146,13 @@ public interface JobFactory {
     static JobFactory decode(String data) {
         if (data == null) return null;
 
-        // TODO(review): a malformed @wire= marker makes parse() throw IllegalArgumentException uncaught here, unlike the UnsupportedWireFormatException path below which returns null
-        WireEnvelope envelope = WireEnvelope.parse(data);
+        WireEnvelope envelope;
+        try {
+            envelope = WireEnvelope.parse(data);
+        } catch (IllegalArgumentException e) {
+            Console.root().warn("JobFactory: " + e.getMessage(), e);
+            return null;
+        }
         String className = envelope.getClassName();
         if (className == null) return null;
 

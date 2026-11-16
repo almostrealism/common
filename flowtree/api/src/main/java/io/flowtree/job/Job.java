@@ -173,7 +173,8 @@ public interface Job extends Runnable, KeyValueStore {
 	 * {@link StringJobCodec}.
 	 *
 	 * <p>Returns {@code null} — never a misparsed or partially-decoded job — when
-	 * the payload is {@code null}, carries no class name, names an unsupported
+	 * the payload is {@code null}, carries a structurally malformed
+	 * {@link WireEnvelope} format marker, carries no class name, names an unsupported
 	 * wire format, names a class that cannot be found or is not a {@link Job}, or
 	 * names a class the selected codec does not support. A payload with no
 	 * {@link JobFactory#ENTRY_SEPARATOR} (which the historic inline parser
@@ -183,11 +184,17 @@ public interface Job extends Runnable, KeyValueStore {
 	 *             {@link WireEnvelope} format marker
 	 * @return the reconstructed job, or {@code null} if it cannot be decoded
 	 */
+	// TODO(review): javadoc's "never partially-decoded" contradicts lenient StringJobCodec.decodeJob; logic duplicates JobFactory.decode
 	static Job decode(String data) {
 		if (data == null) return null;
 
-		// TODO(review): a malformed @wire= marker makes parse() throw IllegalArgumentException uncaught here, unlike the UnsupportedWireFormatException path below which returns null
-		WireEnvelope envelope = WireEnvelope.parse(data);
+		WireEnvelope envelope;
+		try {
+			envelope = WireEnvelope.parse(data);
+		} catch (IllegalArgumentException e) {
+			Console.root().warn("Job: " + e.getMessage(), e);
+			return null;
+		}
 		String className = envelope.getClassName();
 		if (className == null) {
 			Console.root().warn("Job: payload has no class name: " + data);

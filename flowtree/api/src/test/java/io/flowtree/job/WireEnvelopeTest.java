@@ -108,6 +108,48 @@ public class WireEnvelopeTest extends TestSuiteBase {
         WireEnvelope.parse("@wire=::a.b.C::QUJD");
     }
 
+    /** A marker whose format id is outside {@code [a-z0-9-]+} is rejected. */
+    @Test(timeout = 60000)
+    public void markerWithInvalidFormatIdRejected() {
+        for (String bad : new String[] { "Coding-PB1", "coding_pb", "a b", "x.y" }) {
+            try {
+                WireEnvelope.parse("@wire=" + bad + "::a.b.C::QUJD");
+                Assert.fail("expected IllegalArgumentException for format id '" + bad + "'");
+            } catch (IllegalArgumentException e) {
+                Assert.assertTrue(e.getMessage().contains("'" + bad + "'"));
+            }
+        }
+    }
+
+    /** The constructor refuses a format id that would render a marker that does not round-trip. */
+    @Test(timeout = 60000)
+    public void constructorRejectsInvalidFormatId() {
+        for (String bad : new String[] { "foo::bar", "coding_pb", "", null }) {
+            try {
+                new WireEnvelope(bad, "a.b.C", "QUJD");
+                Assert.fail("expected IllegalArgumentException for format id '" + bad + "'");
+            } catch (IllegalArgumentException expected) {
+                // rejected before it can be rendered
+            }
+        }
+    }
+
+    /** isValidFormatId accepts exactly non-empty {@code [a-z0-9-]+} strings. */
+    @Test(timeout = 60000)
+    public void formatIdGrammar() {
+        Assert.assertTrue(WireEnvelope.isValidFormatId("string"));
+        Assert.assertTrue(WireEnvelope.isValidFormatId("coding-pb1"));
+        Assert.assertTrue(WireEnvelope.isValidFormatId("-"));
+        Assert.assertTrue(WireEnvelope.isValidFormatId("0"));
+        Assert.assertFalse(WireEnvelope.isValidFormatId(null));
+        Assert.assertFalse(WireEnvelope.isValidFormatId(""));
+        Assert.assertFalse(WireEnvelope.isValidFormatId("foo::bar"));
+        Assert.assertFalse(WireEnvelope.isValidFormatId("coding_pb"));
+        Assert.assertFalse(WireEnvelope.isValidFormatId("Coding"));
+        Assert.assertFalse(WireEnvelope.isValidFormatId("a\n"));
+        Assert.assertEquals("coding-pb1", WireEnvelope.requireValidFormatId("coding-pb1"));
+    }
+
     /** Parsing a null payload is rejected. */
     @Test(timeout = 60000, expected = IllegalArgumentException.class)
     public void nullPayloadRejected() {

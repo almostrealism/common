@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-11-15
 closed:
 tracker: []
@@ -29,7 +29,8 @@ This plan does four things:
 - It adds a typed *evidence* field that never merges into the instructions.
 - It moves the CI remediation builders onto that field.
 
-It is a plan only. Nothing here is implemented yet.
+Phase (a), the codec SPI with no change to the string format, is implemented
+(see §8). Phases (b), (c) and (d) are not implemented yet.
 
 ---
 
@@ -221,9 +222,11 @@ The abstraction is format-agnostic and must be visible to every decode site in
   the second to become a decode failure, as `JobFactory.decode` already does.
   Both are fixes, but they are changes to what a relayed job does today, so
   phase (a) is not strictly "no behaviour change"; open question 10 asks
-  whether to make them now. `JobClassLoader` stays as a thin delegate to
-  `StringJobCodec` (or is removed together with its callers), because
-  `Server.instantiateJobClass` and `JobClassLoaderTest` call it directly.
+  whether to make them now. As implemented, `JobClassLoader` is removed: the
+  job-side orchestration became `static Job decode(String)` on `Job`, the
+  counterpart of `JobFactory.decode`, and `Server.instantiateJobClass` delegates
+  to it. `JobClassLoaderTest` became `JobDecodeTest`, which exercises the same
+  cases through `Server.instantiateJobClass`.
 - **`JobCodecRegistry`**, which maps a format id to a `JobCodec`. It always
   contains `StringJobCodec`. Further codecs register through
   `java.util.ServiceLoader` (`META-INF/services/io.flowtree.job.JobCodec`), so
@@ -802,13 +805,14 @@ behaviour changes are the decoder fixes named in §3.1 (and open question 10).
   `UnsupportedWireFormatException` in `flowtree/api`.
 - Add `getWireFormat()`/`toWire()` defaults to `JobFactory` and `Job`.
 - Make `JobFactory.decode` and `Server.instantiateJobClass` envelope-aware.
-  `JobClassLoader`'s body moves into `StringJobCodec`.
+  `JobClassLoader`'s body moves into `StringJobCodec` and `Job.decode`, and
+  `JobClassLoader` is deleted.
 - Switch the send sites in §3.1 to `toWire()`.
 
 **Tests:**
 
 - `GitManagedJobSerializationTest`, `JobFactoryDecodeTest` and the existing
-  `JobClassLoaderTest` cases pass unchanged. Note what each proves.
+  former `JobClassLoaderTest` cases (now `JobDecodeTest`) pass unchanged. Note what each proves.
   `GitManagedJobSerializationTest`'s `roundTrip`/`roundTripFactory` helpers split
   `encode()` on `::` by hand and call `set` on a fresh instance; they never call
   `JobFactory.decode` or `JobClassLoader`, so they show that `encode()` and
