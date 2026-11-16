@@ -350,12 +350,19 @@ class GitRepositorySetup implements ConsoleFeatures {
 
     /**
      * Returns every file reported as dirty by
-     * {@link GitOperations#getChangedFiles(String)}, with no exclusion
+     * {@link GitOperations#requireChangedFiles(String)}, with no exclusion
      * filtering applied. Only git's standard output is parsed, so a warning on
      * standard error cannot corrupt the first entry of the {@code -z} listing.
+     *
+     * <p>The throwing variant is used deliberately: {@link #prepare()} reads an
+     * empty result as "nothing to stash" and proceeds to a fetch and hard-reset
+     * that would discard any uncommitted work. A failed {@code git status} query
+     * must therefore abort preparation rather than masquerade as a clean tree.</p>
+     *
+     * @throws IOException if the {@code git status} query could not be run
      */
-    private List<String> getAllDirtyFiles() {
-        return GitOperations.getChangedFiles(job.getWorkingDirectory());
+    private List<String> getAllDirtyFiles() throws IOException {
+        return GitOperations.requireChangedFiles(job.getWorkingDirectory());
     }
 
     /**

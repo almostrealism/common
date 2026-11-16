@@ -535,10 +535,11 @@ public class GitOperations implements ConsoleFeatures {
             if (workingDirectory != null) {
                 pb.directory(new File(workingDirectory));
             }
-            // Keep stderr separate so a git failure (not-a-repo, missing dir, etc.)
-            // cannot be mis-parsed as a "changed file"; read raw bytes (not
-            // line-buffered) so the NUL separators -z emits survive intact.
+            // Discard stderr so a git failure is never mis-parsed as a changed
+            // file and a warning-heavy status cannot fill the stderr pipe and
+            // block git; read raw bytes so -z's NUL separators survive intact.
             augmentPath(pb);
+            pb.redirectError(ProcessBuilder.Redirect.DISCARD);
             Process process = pb.start();
             String statusOutput = new String(
                     process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);

@@ -35,7 +35,7 @@ then failed to include it without noticing. This plan has two goals:
 
 An earlier diagnosis said that "porcelain quoting of spaces broke `git add`", then
 dismissed it on the grounds that git prints paths with spaces unquoted. The dismissal
-is wrong for current git. Reproduced on the macOS worker's git (2.50) in a scratch
+is wrong for current git. Reproduced on the macOS worker's git in a scratch
 repository:
 
 ```
@@ -98,7 +98,7 @@ that contains the text ` -> ` is split in the wrong place).
 
 These commands do **not** quote a space, so they played no part in the original drop.
 They do quote a path that contains `"`, `\`, a control character or (with the default
-`core.quotePath`) a non-ASCII byte. Reproduced on git 2.50:
+`core.quotePath`) a non-ASCII byte. Reproduced on current git:
 
 ```
 $ git diff --cached --name-only
@@ -245,7 +245,7 @@ Two layers, since the parse fix only removes one cause:
   `job.asGitOperations().executeForPaths(...)` (after §1b it reads `-z` output). Do
   not name `HEAD` explicitly: `git diff --cached` already compares with `HEAD`, and on
   an unborn `HEAD` it compares with the empty tree. `git diff --cached ... HEAD` fails
-  there with "ambiguous argument 'HEAD'", checked on git 2.50.
+  there with "ambiguous argument 'HEAD'", checked on current git.
 - **Merge path.** A merge-carried candidate may legitimately match `HEAD`, so the
   "in `diff --cached`" check is not valid for every merge candidate. Apply it
   only to the merge candidates that `git status` itself reported as changed. Those
