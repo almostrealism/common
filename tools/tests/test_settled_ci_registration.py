@@ -17,6 +17,14 @@ workflow that registers a workstream or submits a job (the QA rounds, task
 planning, plan implementation, goal decomposition, plan review) sets it on
 those steps too, so no branch an automated workflow starts waits for a test
 run that nobody will start.
+
+The submission half reaches the controller two ways: a step may run
+``submit-agent-job.sh`` directly, or through the trusted
+``submit-staged-request.sh`` wrapper (the staged auto-resolve/auto-review and
+plan-implementation submit paths). The wrapper leaves ``CREATE_WORKSTREAM`` at
+``submit-agent-job.sh``'s default of true and forwards ``SETTLED_CI_TRIGGER``
+from its own environment, so both invocation forms can be the first to create a
+workstream and ``EveryWorkflowWiringTests`` checks both.
 """
 
 import glob
@@ -38,10 +46,16 @@ _WORKFLOW = os.path.join(_REPO_ROOT, ".github", "workflows", "analysis.yaml")
 _SUBMIT = os.path.join(_REPO_ROOT, "tools", "ci", "submit-agent-job.sh")
 _WORKFLOWS = os.path.join(_REPO_ROOT, ".github", "workflows")
 _TRIGGER = "deployment:test"
-# A step that runs one of the two scripts able to create a workstream, as
-# opposed to one that only names the script (an integrity check, a chmod).
+# A step that runs one of the scripts able to create a workstream, as opposed
+# to one that only names the script (an integrity check, a chmod, a comment).
+# submit-staged-request.sh is a trusted wrapper around submit-agent-job.sh: it
+# forwards SETTLED_CI_TRIGGER from its own environment (not from the untrusted
+# staged submit.env) and leaves CREATE_WORKSTREAM at submit-agent-job.sh's
+# default of true, so a staged submission can be the first to create a branch's
+# workstream and must carry the trigger just like a direct invocation.
 _CREATES_WORKSTREAM = re.compile(
-    r"(?:^|[\s;&|(])(?:bash\s+|\./)\S*tools/ci/(?:register-workstream|submit-agent-job)\.sh")
+    r"(?:^|[\s;&|(])(?:bash\s+|\./)\S*tools/ci/"
+    r"(?:register-workstream|submit-agent-job|submit-staged-request)\.sh")
 
 
 class RegisterWorkstreamTriggerTests(unittest.TestCase):
@@ -162,7 +176,8 @@ class EveryWorkflowWiringTests(unittest.TestCase):
         files = {step[0] for step in self._creating_steps()}
         for expected in ("analysis.yaml", "master-agent-dispatch.yaml", "qa-round.yaml",
                          "task-planning.yaml", "implement-plan.yaml",
-                         "goal-decomposition.yaml", "plan-review.yaml"):
+                         "goal-decomposition.yaml", "plan-review.yaml",
+                         "auto-resolve-submit.yaml"):
             self.assertIn(expected, files)
 
     def test_every_creating_step_sets_the_trigger(self):

@@ -168,7 +168,11 @@ ways, none of which CI depends on:
    registers a workstream or submits a job (the QA rounds, task planning, plan
    implementation, goal decomposition, plan review) sets it on those steps
    too, so a branch an automated workflow starts gets it from its first job,
-   before its pull request has a pipeline run. A workstream without it
+   before its pull request has a pipeline run. This holds whether a step runs
+   `submit-agent-job.sh` directly or through the `submit-staged-request.sh`
+   wrapper (the staged auto-resolve and plan-implementation submit paths): the
+   wrapper forwards the trigger from its own environment and can itself create
+   the workstream. A workstream without it
    leaves its PR unmergeable until someone starts the test run by hand.
    `tools/tests/test_settled_ci_registration.py` pins this.
 2. **The `Start Tests` workflow** (`start-tests.yaml`). Dispatch it on master and
