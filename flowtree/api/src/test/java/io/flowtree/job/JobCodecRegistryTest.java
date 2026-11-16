@@ -21,6 +21,10 @@ import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.ServiceConfigurationError;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -173,6 +177,142 @@ public class JobCodecRegistryTest extends TestSuiteBase {
         TrackingFactory factory = new TrackingFactory();
 
         Assert.assertEquals(factory.encode(), factory.toWire());
+    }
+
+    /**
+     * A provider with a malformed format id, a duplicate of the string codec and
+     * a provider whose {@code getFormatId()} throws are each skipped while the
+     * registry is built; the string codec and the valid provider listed after
+     * them are still registered.
+     */
+    @Test(timeout = 60000)
+    public void badProvidersAreSkippedWithoutPoisoningRegistry() {
+        JobCodec malformed = new RejectingCodec() {
+            @Override
+            public String getFormatId() { return "Bad::Id"; }
+        };
+        JobCodec throwing = new RejectingCodec() {
+            @Override
+            public String getFormatId() { throw new IllegalStateException("broken codec"); }
+        };
+        JobCodec valid = new RejectingCodec() {
+            @Override
+            public String getFormatId() { return "valid-after-bad"; }
+        };
+
+        JobCodecRegistry registry = new JobCodecRegistry(
+                Arrays.asList(malformed, new StringJobCodec(), throwing, valid));
+
+        Assert.assertTrue(registry.forFormat(StringJobCodec.FORMAT_ID) instanceof StringJobCodec);
+        Assert.assertSame(valid, registry.forFormat("valid-after-bad"));
+        try {
+            registry.forFormat("Bad::Id");
+            Assert.fail("the malformed provider must not have been registered");
+        } catch (UnsupportedWireFormatException expected) {
+            // skipped provider leaves its format unsupported
+        }
+    }
+
+    /**
+     * A provider iterator that fails with {@link ServiceConfigurationError} (a
+     * broken service entry) stops the loading without failing construction, and
+     * the codecs registered before the failure remain usable.
+     */
+    @Test(timeout = 60000)
+    public void brokenProviderEntryKeepsEarlierCodecs() {
+        JobCodec first = new RejectingCodec() {
+            @Override
+            public String getFormatId() { return "before-broken"; }
+        };
+        Iterable<JobCodec> providers = () -> new Iterator<JobCodec>() {
+            private int position;
+
+            @Override
+            public boolean hasNext() {
+                if (position == 1) throw new ServiceConfigurationError("broken provider entry");
+                return position == 0;
+            }
+
+            @Override
+            public JobCodec next() {
+                position++;
+                return first;
+            }
+        };
+
+        JobCodecRegistry registry = new JobCodecRegistry(providers);
+
+        Assert.assertTrue(registry.forFormat(StringJobCodec.FORMAT_ID) instanceof StringJobCodec);
+        Assert.assertSame(first, registry.forFormat("before-broken"));
+    }
+
+    /** A registry built with no additional providers holds exactly the string codec. */
+    @Test(timeout = 60000)
+    public void emptyProvidersYieldStringCodecOnly() {
+        JobCodecRegistry registry = new JobCodecRegistry(Collections.emptyList());
+
+        Assert.assertTrue(registry.forFormat(StringJobCodec.FORMAT_ID) instanceof StringJobCodec);
+        try {
+            registry.forFormat(REJECTING_FORMAT);
+            Assert.fail("only the string codec should be registered");
+        } catch (UnsupportedWireFormatException e) {
+            Assert.assertTrue(e.getMessage().contains("[" + StringJobCodec.FORMAT_ID + "]"));
+        }
+    }
+
+    /**
+     * The shared decode path hands the decoder the resolved class and the
+     * payload, and returns the decoder's result unchanged.
+     */
+    @Test(timeout = 60000)
+    public void sharedDecodePassesResolvedTypeAndPayload() {
+        String payload = TrackingFactory.class.getName() + "::taskId:=track1";
+        JobFactory expected = new TrackingFactory();
+
+        JobFactory result = JobCodecRegistry.getInstance().decode(JobFactory.class, payload,
+                (codec, type, body) -> {
+                    Assert.assertTrue(codec instanceof StringJobCodec);
+                    Assert.assertEquals(TrackingFactory.class, type);
+                    Assert.assertEquals(payload, body);
+                    return expected;
+                });
+
+        Assert.assertSame(expected, result);
+    }
+
+    /** A decoder that throws yields null from the shared decode path rather than propagating. */
+    @Test(timeout = 60000)
+    public void sharedDecodeReturnsNullWhenDecoderThrows() {
+        String payload = TrackingFactory.class.getName() + "::taskId:=track1";
+
+        Assert.assertNull(JobCodecRegistry.getInstance().decode(JobFactory.class, payload,
+                (codec, type, body) -> { throw new IllegalStateException("decode failed"); }));
+    }
+
+    /**
+     * A payload naming a class that is not the requested target type is
+     * rejected before the decoder runs, so a factory payload never decodes as a
+     * job and is never instantiated.
+     */
+    @Test(timeout = 60000)
+    public void sharedDecodeRejectsClassOfWrongTargetType() {
+        TrackingFactory.INSTANCES.set(0);
+        String payload = TrackingFactory.class.getName() + "::taskId:=track1";
+
+        Assert.assertNull(Job.decode(payload));
+        Assert.assertNull(JobCodecRegistry.getInstance().decode(Job.class, payload,
+                (codec, type, body) -> {
+                    Assert.fail("decoder must not run for a class of the wrong type");
+                    return null;
+                }));
+        Assert.assertEquals(0, TrackingFactory.INSTANCES.get());
+    }
+
+    /** A payload whose named class does not exist yields null from both decode entry points. */
+    @Test(timeout = 60000)
+    public void decodeMissingClassReturnsNull() {
+        Assert.assertNull(JobFactory.decode("io.flowtree.job.NoSuchFactory::taskId:=x"));
+        Assert.assertNull(Job.decode("io.flowtree.job.NoSuchJob::taskId:=x"));
     }
 
     /** A {@link JobCodec} that supports no type, used to exercise the supports() gate. */

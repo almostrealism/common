@@ -16,7 +16,6 @@
 
 package io.flowtree.job;
 
-import org.almostrealism.io.Console;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.io.OutputHandler;
 
@@ -136,7 +135,10 @@ public interface JobFactory {
      * cannot be found, instantiated, or cast to {@link JobFactory}, and when
      * any entry fails to parse or apply (an entry without
      * {@link #KEY_VALUE_SEPARATOR}, a dangling trailing separator, or a
-     * {@link #set(String, String)} that throws). A partially-configured factory
+     * {@link #set(String, String)} that throws). The resolution and checks are
+     * shared with {@link Job#decode(String)} through
+     * {@link JobCodecRegistry#decode(Class, String, JobCodecRegistry.PayloadDecoder)}.
+     * A partially-configured factory
      * is never returned: it would lack every entry after the failure point,
      * and dispatching it would run a job missing part of its definition.</p>
      *
@@ -144,56 +146,7 @@ public interface JobFactory {
      * @return the reconstructed factory, or {@code null} on failure
      */
     static JobFactory decode(String data) {
-        if (data == null) return null;
-
-        WireEnvelope envelope;
-        try {
-            envelope = WireEnvelope.parse(data);
-        } catch (IllegalArgumentException e) {
-            Console.root().warn("JobFactory: " + e.getMessage(), e);
-            return null;
-        }
-        String className = envelope.getClassName();
-        if (className == null) return null;
-
-        JobCodec codec;
-        try {
-            codec = JobCodecRegistry.getInstance().forFormat(envelope.getFormatId());
-        } catch (UnsupportedWireFormatException e) {
-            Console.root().warn("JobFactory: " + e.getMessage(), e);
-            return null;
-        }
-
-        Class<?> type;
-        try {
-            type = Class.forName(className);
-        } catch (ClassNotFoundException cnf) {
-            Console.root().warn("JobFactory: class not found: " + className, cnf);
-            return null;
-        }
-
-        if (!JobFactory.class.isAssignableFrom(type)) {
-            Console.root().warn("JobFactory: " + className + " is not a JobFactory");
-            return null;
-        }
-
-        if (!codec.supports(type)) {
-            Console.root().warn("JobFactory: codec '" + codec.getFormatId()
-                    + "' does not support " + className);
-            return null;
-        }
-
-        try {
-            return codec.decodeFactory(type.asSubclass(JobFactory.class), envelope.getPayload());
-        } catch (UnsupportedWireFormatException e) {
-            Console.root().warn("JobFactory: " + e.getMessage(), e);
-            return null;
-        } catch (Exception e) {
-            // A factory missing the entries after the failure point (prompt,
-            // branch, ...) must never be dispatched, so discard it entirely.
-            Console.root().warn("JobFactory: failed to decode factory " + className, e);
-            return null;
-        }
+        return JobCodecRegistry.getInstance().<JobFactory>decode(JobFactory.class, data, JobCodec::decodeFactory);
     }
 
     /**

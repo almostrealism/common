@@ -16,7 +16,6 @@
 
 package io.flowtree.job;
 
-import org.almostrealism.io.Console;
 import org.almostrealism.io.JobOutput;
 import org.almostrealism.util.KeyValueStore;
 
@@ -172,70 +171,28 @@ public interface Job extends Runnable, KeyValueStore {
 	 * historic {@code classname::key:=value} string form, decoded by the
 	 * {@link StringJobCodec}.
 	 *
-	 * <p>Returns {@code null} — never a misparsed or partially-decoded job — when
-	 * the payload is {@code null}, carries a structurally malformed
-	 * {@link WireEnvelope} format marker, carries no class name, names an unsupported
-	 * wire format, names a class that cannot be found or is not a {@link Job}, or
-	 * names a class the selected codec does not support. A payload with no
+	 * <p>Returns {@code null} — never a misparsed job — when the payload is
+	 * {@code null}, carries a structurally malformed {@link WireEnvelope} format
+	 * marker, carries no class name, names an unsupported wire format, names a
+	 * class that cannot be found or is not a {@link Job}, or names a class the
+	 * selected codec does not support. A payload with no
 	 * {@link JobFactory#ENTRY_SEPARATOR} (which the historic inline parser
-	 * crashed on) is one such case and now yields {@code null}.</p>
+	 * crashed on) is one such case and now yields {@code null}. The resolution
+	 * and checks are shared with {@link JobFactory#decode(String)} through
+	 * {@link JobCodecRegistry#decode(Class, String, JobCodecRegistry.PayloadDecoder)}.</p>
+	 *
+	 * <p>Unlike {@link JobFactory#decode(String)}, a string-format payload is
+	 * decoded leniently: {@link StringJobCodec#decodeJob(Class, String)} keeps the
+	 * historic behaviour of returning a job that is only partially configured
+	 * when a {@link #set(String, String)} call throws part-way through the
+	 * entries. Codecs other than the string codec never return a partially
+	 * decoded job (see {@link JobCodec}).</p>
 	 *
 	 * @param data the serialized wire payload, optionally preceded by a
 	 *             {@link WireEnvelope} format marker
 	 * @return the reconstructed job, or {@code null} if it cannot be decoded
 	 */
-	// TODO(review): javadoc's "never partially-decoded" contradicts lenient StringJobCodec.decodeJob; logic duplicates JobFactory.decode
 	static Job decode(String data) {
-		if (data == null) return null;
-
-		WireEnvelope envelope;
-		try {
-			envelope = WireEnvelope.parse(data);
-		} catch (IllegalArgumentException e) {
-			Console.root().warn("Job: " + e.getMessage(), e);
-			return null;
-		}
-		String className = envelope.getClassName();
-		if (className == null) {
-			Console.root().warn("Job: payload has no class name: " + data);
-			return null;
-		}
-
-		JobCodec codec;
-		try {
-			codec = JobCodecRegistry.getInstance().forFormat(envelope.getFormatId());
-		} catch (UnsupportedWireFormatException e) {
-			Console.root().warn("Job: " + e.getMessage(), e);
-			return null;
-		}
-
-		Class<?> type;
-		try {
-			type = Class.forName(className);
-		} catch (ClassNotFoundException cnf) {
-			Console.root().warn("Job: class not found: " + className, cnf);
-			return null;
-		}
-
-		if (!Job.class.isAssignableFrom(type)) {
-			Console.root().warn("Job: " + className + " is not a Job");
-			return null;
-		}
-
-		if (!codec.supports(type)) {
-			Console.root().warn("Job: codec '" + codec.getFormatId()
-					+ "' does not support " + className);
-			return null;
-		}
-
-		try {
-			return codec.decodeJob(type.asSubclass(Job.class), envelope.getPayload());
-		} catch (UnsupportedWireFormatException e) {
-			Console.root().warn("Job: " + e.getMessage(), e);
-			return null;
-		} catch (Exception e) {
-			Console.root().warn("Job: failed to decode job " + className, e);
-			return null;
-		}
+		return JobCodecRegistry.getInstance().<Job>decode(Job.class, data, JobCodec::decodeJob);
 	}
 }
