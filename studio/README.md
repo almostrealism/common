@@ -2,6 +2,8 @@
 
 This layer provides high-level multimedia composition: musical pattern systems, spatial audio/3D visualization, and scene orchestration. These modules combine signal processing, ML generation, and evolutionary optimization into complete production pipelines. It is also where a domain model meets the ML engine in a complete application, as biological models do in `bioscience`.
 
+See [concept-map.md](concept-map.md) for how this layer arranges the engine layer below it, and the platform-wide [Concept Map](../docs/internals/concept-map.md) for the layered overview.
+
 ## Modules
 
 ### [ar-music](music/README.md)
