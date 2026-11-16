@@ -1179,6 +1179,35 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		Assert.assertTrue(comparisons.get() > 0);
 	}
 
+	/**
+	 * The arguments of a method call are fixed when it is constructed. Adding to the list
+	 * given to the constructor afterwards changes neither the arguments nor the cached size
+	 * of the call, so a containment query, which passes over subtrees smaller than the
+	 * expression it looks for, still finds every call equal to the target.
+	 */
+	@Test(timeout = 30000)
+	public void methodArgumentsAreFixedAtConstruction() {
+		List<Expression<?>> arguments = new ArrayList<>();
+		arguments.add(ref("a"));
+		Method<Double> call = new Method<>(Double.class, "f", arguments);
+		arguments.add(ref("b"));
+
+		Assert.assertEquals(List.of(ref("a")), call.getArguments());
+		Assert.assertEquals(call.getChildren(), call.getArguments());
+		Assert.assertEquals(2, call.countNodes());
+		try {
+			call.getArguments().add(ref("c"));
+			Assert.fail("The arguments of a method call must not be modifiable");
+		} catch (UnsupportedOperationException expected) {
+			Assert.assertEquals(1, call.getArguments().size());
+		}
+
+		Method<Double> larger = new Method<>(Double.class, "f", ref("a"), ref("b"));
+		Assert.assertNotEquals(call, larger);
+		Assert.assertFalse(Sum.of(call, ref("z")).contains(larger));
+		Assert.assertTrue(Sum.of(call, ref("z")).contains(new Method<>(Double.class, "f", ref("a"))));
+	}
+
 	/** A sum that counts how often it is compared with another expression. */
 	private static final class CountingSum extends Sum<Integer> {
 		/** The number of comparisons made by every sum sharing this counter. */
