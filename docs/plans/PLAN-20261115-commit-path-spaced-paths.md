@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-11-15
 closed:
 tracker: []
@@ -345,13 +345,13 @@ the `-z` parse is correct on every version.
    unpushed when the check fails. Recommendation: before the commit, because a failed
    job then leaves the branch as it was. The approver should pick one and remove the
    other from §3, since doing both adds no coverage.
-5. **Relationship to an in-flight implementation.** The branch's memory notes say an
-   implementation session on this workstream changed the parser and the listings
-   to `-z`, made `stageFiles` throw, and added an after-commit check (option 4's
-   alternative). None of that is on the branch: every change here is this document.
-   If that work is pushed later, compare it against this plan before approving. In
-   particular, check whether it includes the stricter `GitOperations.stage` (§3),
-   `GitPushReconciler` (§1b), and the dependent-repo stage failure (§2).
+5. **Relationship to the implementation on the branch.** The implementation is now
+   on the branch and matches this plan: the parser and the listings are parsed with
+   `-z` (via `StatusEntry`), `stageFiles` throws when a guardrail-approved file cannot
+   be staged, `GitOperations.stage` rejects a path git knows nothing about (§3), and
+   the after-commit check (option 4's alternative) verifies every staged path reached
+   the commit. The `GitPushReconciler` NUL-safety (§1b) was filed as a follow-up rather
+   than done here, since the branch does not touch that commit path.
 6. **Correct the two off-commit-path listings too?** `GitOperations.extractNewFilePaths`
    and `GitOperations.listFilesOnRef` (§1b, "Two more `--name-only` listings")
    misreport a path containing `"`, `\` or a non-ASCII byte, and mangle a

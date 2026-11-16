@@ -672,6 +672,55 @@ public class GitOperationsTest extends TestSuiteBase {
     }
 
     /**
+     * A merge-resolution deletion of a file the merged branch added is a real,
+     * already-staged removal, so {@link GitOperations#stage(String)} accepts it
+     * rather than rejecting it as an unknown path and aborting the merge. The
+     * agent's {@code git rm} has taken the file out of both the index and the
+     * working tree and it was never in {@code HEAD}, so only {@code MERGE_HEAD}
+     * still carries it — exactly the state the unknown-path guard must not
+     * mistake for the spaced-path phantom. The path here contains a space, the
+     * drop this branch targets.
+     */
+    @Test(timeout = 60000)
+    public void stageAcceptsAMergeResolutionDeletionCarriedOnlyByMergeHead() throws Exception {
+        Path dir = initRepo();
+        GitOperations git = new GitOperations(dir.toString(), "test");
+        requireGit(git, "config", "commit.gpgsign", "false");
+        Files.writeString(dir.resolve("seed.txt"), "seed\n", StandardCharsets.UTF_8);
+        requireGit(git, "add", "-A");
+        requireGit(git, "commit", "-q", "-m", "initial");
+        String base = requireGit(git, "rev-parse", "--abbrev-ref", "HEAD").trim();
+
+        // Merged branch adds a spaced path.
+        String spaced = "new from base.txt";
+        requireGit(git, "checkout", "-q", "-b", "incoming");
+        Files.writeString(dir.resolve(spaced), "base content\n", StandardCharsets.UTF_8);
+        requireGit(git, "add", "-A");
+        requireGit(git, "commit", "-q", "-m", "add from base");
+
+        // Target branch diverges, forcing a real (non-fast-forward) merge.
+        requireGit(git, "checkout", "-q", base);
+        Files.writeString(dir.resolve("seed.txt"), "seed changed\n", StandardCharsets.UTF_8);
+        requireGit(git, "commit", "-q", "-am", "diverge");
+        requireGit(git, "merge", "--no-commit", "--no-ff", "incoming");
+
+        // -f clears the merge-staged addition from index and working tree.
+        requireGit(git, "rm", "-q", "-f", spaced);
+        assertFalse("the file must be gone from the working tree",
+                Files.exists(dir.resolve(spaced)));
+        assertFalse("the path must be absent from the index",
+                git.executeForResult("ls-files", "--error-unmatch", "--", spaced).succeeded());
+        assertFalse("the path must be absent from HEAD",
+                git.executeForResult("cat-file", "-e", "HEAD:" + spaced).succeeded());
+        assertTrue("the path must still be carried by MERGE_HEAD",
+                git.executeForResult("cat-file", "-e", "MERGE_HEAD:" + spaced).succeeded());
+
+        GitOperations.Result staged = git.stage(spaced);
+        assertTrue("a MERGE_HEAD-only deletion must stage, not abort the merge: " + staged.describe(),
+                staged.succeeded());
+    }
+
+    /**
      * {@link GitOperations#executeForStdout} returns standard output alone, so a
      * warning git writes to standard error cannot fuse with the first field of a
      * {@code -z} listing; {@link GitOperations#executeForResult} merges it in.

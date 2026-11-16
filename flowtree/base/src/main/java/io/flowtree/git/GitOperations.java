@@ -663,13 +663,14 @@ public class GitOperations implements ConsoleFeatures {
      * index, which is the state {@code git rm} leaves, for example when a
      * modify/delete merge conflict is resolved by taking the deletion.</p>
      *
-     * <p>A path that is in none of the working tree, the index, and
-     * {@code HEAD} is not a deletion of anything, so staging it would record
-     * nothing while {@code --ignore-unmatch} reported success — the silent
-     * no-op behind the spaced-path drop, where the non-{@code -z} porcelain
-     * quoted a real path into a name no file carries. Such a path fails here
-     * with a {@linkplain Result#succeeded() failed} result naming it, rather
-     * than passing for a staged change that never enters the commit.</p>
+     * <p>A path that is in none of the working tree, the index, {@code HEAD},
+     * and (during a merge) {@code MERGE_HEAD} is not a deletion of anything, so
+     * staging it would record nothing while {@code --ignore-unmatch} reported
+     * success — the silent no-op behind the spaced-path drop, where the
+     * non-{@code -z} porcelain quoted a real path into a name no file carries.
+     * Such a path fails here with a {@linkplain Result#succeeded() failed}
+     * result naming it, rather than passing for a staged change that never
+     * enters the commit.</p>
      *
      * @param path the path, relative to the working directory
      * @return the git invocation's result
@@ -680,28 +681,38 @@ public class GitOperations implements ConsoleFeatures {
         if (existsInWorkingTree(path)) {
             return executeForResult("add", "--", path);
         }
-        if (!isTrackedOrInHead(path)) {
+        if (!canStageRemovalOf(path)) {
             return new Result(List.of("rm", "--cached", "--", path), 128,
                     "fatal: pathspec '" + path + "' did not match any file in the working tree,"
-                            + " the index, or HEAD, so there is nothing to stage for it");
+                            + " the index, HEAD, or MERGE_HEAD, so there is nothing to stage for it");
         }
         return executeForResult("rm", "--cached", "--quiet", "--ignore-unmatch", "--", path);
     }
 
     /**
      * Returns whether git knows {@code path} as something it could stage a
-     * removal of: a path tracked in the index, or present in {@code HEAD}.
-     * On an unborn {@code HEAD} the {@code HEAD} lookup simply fails, leaving
-     * the index check to decide.
+     * removal of: a path tracked in the index, present in {@code HEAD}, or
+     * present in an in-progress merge's {@code MERGE_HEAD}. On an unborn
+     * {@code HEAD} the {@code HEAD} lookup simply fails, leaving the other
+     * checks to decide; when no merge is in progress the {@code MERGE_HEAD}
+     * lookup fails the same way.
+     *
+     * <p>The {@code MERGE_HEAD} case matters for a merge-resolution deletion:
+     * when the merged branch added a file the agent resolves by removing it,
+     * {@code git rm} has already taken it out of both the index and the working
+     * tree and it was never in {@code HEAD}, so only {@code MERGE_HEAD} still
+     * carries it. Without that check the already-staged deletion would be
+     * mistaken for an unknown path and abort an otherwise committable merge.</p>
      *
      * @param path the path, relative to the working directory
-     * @return {@code true} when the path is in the index or in {@code HEAD}
+     * @return {@code true} when the path is in the index, {@code HEAD}, or {@code MERGE_HEAD}
      * @throws IOException          if a process cannot be started
      * @throws InterruptedException if the current thread is interrupted
      */
-    private boolean isTrackedOrInHead(String path) throws IOException, InterruptedException {
+    private boolean canStageRemovalOf(String path) throws IOException, InterruptedException {
         return executeForResult("ls-files", "--error-unmatch", "--", path).succeeded()
-                || executeForResult("cat-file", "-e", "HEAD:" + path).succeeded();
+                || executeForResult("cat-file", "-e", "HEAD:" + path).succeeded()
+                || executeForResult("cat-file", "-e", "MERGE_HEAD:" + path).succeeded();
     }
 
     /**
