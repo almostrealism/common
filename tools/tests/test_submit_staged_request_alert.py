@@ -201,6 +201,34 @@ class SubmitStagedRequestAlertTest(unittest.TestCase):
         self.assertNotEqual(0, result.returncode, result.stdout)
         self.assertIn("some-submit-job", self.message_posted())
 
+    def test_the_whole_body_is_used_when_the_response_has_no_error_field(self):
+        # The controller's error body carries no ``.error`` key, so the alert
+        # falls back to the raw response body rather than losing the reason.
+        result = self.run_script(
+            submit_body='{"detail":"prompt rejected by the linter"}',
+            submit_code="400")
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        text = self.message_posted()
+        self.assertIsNotNone(text, self.calls())
+        self.assertIn("HTTP 400", text)
+        self.assertIn("prompt rejected by the linter", text)
+
+    def test_the_branch_only_fallback_posts_when_the_repo_url_form_differs(self):
+        # The workstream is registered with an HTTPS repoUrl while the script
+        # derives the SSH form, so the repository-qualified filter misses and
+        # the branch-only fallback still finds the workstream to alert.
+        other_form = json.dumps([
+            {"workstreamId": "ws-9", "defaultBranch": self.BRANCH,
+             "repoUrl": "https://github.com/o/r.git"},
+        ])
+        result = self.run_script(
+            submit_body='{"ok":false,"error":"linter said no"}',
+            submit_code="400", ws_list=other_form)
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertIn("POST http://controller.invalid/api/workstreams/ws-9/messages",
+                      self.calls())
+        self.assertIn("linter said no", self.message_posted())
+
 
 if __name__ == "__main__":
     unittest.main()
