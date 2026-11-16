@@ -22,7 +22,7 @@ Companion to [studio/README.md](README.md) and the summary map in
 |---|---|
 | `PatternSystemManager` | Owns all pattern rendering; coordinates the layer managers. |
 | `PatternLayerManager`, `PatternElement`, `PatternNote` | A pattern of up to 32 hierarchical layers, its individual musical events, and the sample adapters they resolve to. |
-| `PatternFeatures`, `AudioSceneContext`, `ParameterizedEnvelopes` | The rendering mixin, the measure/frame/destination context, and ADSR envelope generators. |
+| `PatternFeatures`, `AudioSceneContext`, `ParameterizedEnvelope` | The rendering mixin, the measure/frame/destination context, and the ADSR envelope-generator contract (implemented by `ParameterizedVolumeEnvelope` and `ParameterizedFilterEnvelope`). |
 
 ### spatial — audio visualization
 | Concept | Role |

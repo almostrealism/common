@@ -17,7 +17,7 @@ Three lower-layer concepts do most of the work here:
 
 - **`PackedCollection` / `CollectionProducer`** (compute/algebra) back every weight, colour,
   vertex buffer and neuron state.
-- **`Vector` / `Ray` / `TransformMatrix`** (compute/geometry) give colour and space their
+- **`Vector`** (compute/algebra) and **`Ray` / `TransformMatrix`** (compute/geometry) give colour and space their
   positions, directions and transforms.
 - **The `Node`/`Graph` vocabulary** (base/relation) is what the central pattern of this layer —
   the computation graph — is an instance of. Because `Producer` and `MemoryData` are both
@@ -63,7 +63,7 @@ Scene structure and spatial acceleration, built on `color` (surfaces are shadabl
 | `AbstractSurface` and primitives (`Sphere`, `Plane`, `Mesh`, `Triangle`, …) | Renderable surfaces that implement `ShadableSurface`. |
 | `Scene<T extends ShadableSurface>` | A container of surfaces, lights and a camera. |
 | `Mesh` | A vertex/triangle surface that `implements Graph<Vector>` — the graph/mesh link of family 3. |
-| `SpacePartition`, CSG, `BoundingSolid`, `DistanceEstimator` | Acceleration structures, constructive solid geometry, bounds and signed-distance estimation. |
+| `SpacePartition`, CSG, `DistanceEstimator` | Acceleration structures, constructive solid geometry and signed-distance estimation. Bounds come from `compute/geometry`'s `BoundingSolid`. |
 
 ### heredity — evolutionary computation
 Genes, chromosomes and genomes as producer-backed structures.
