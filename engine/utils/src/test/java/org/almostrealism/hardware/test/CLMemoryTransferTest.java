@@ -21,6 +21,9 @@ import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.List;
+import java.util.function.Consumer;
+
 /**
  * Tests for the host-array transfers of {@link CLMemoryProvider}: writing a {@code float[]} or
  * {@code double[]} into a buffer and reading a buffer back into either array type, with
@@ -46,17 +49,40 @@ public class CLMemoryTransferTest extends TestSuiteBase {
 	private static final int LENGTH = 20;
 
 	/**
+	 * Runs {@code test} against every available {@link CLMemoryProvider}, so a configuration
+	 * that exposes both an FP32 and an FP64 context exercises the direct and the converting
+	 * transfer paths of each overload rather than only the first provider's precision. Skips
+	 * cleanly when no OpenCL backend is available.
+	 *
+	 * @param test the per-provider check to run
+	 */
+	private void forEachProvider(Consumer<CLMemoryProvider> test) {
+		List<CLMemoryProvider> providers = CLHostReadCacheTest.clProviders();
+		if (providers.isEmpty()) {
+			log("skipping, OpenCL memory provider unavailable");
+			return;
+		}
+
+		for (CLMemoryProvider provider : providers) {
+			test.accept(provider);
+		}
+	}
+
+	/**
 	 * Writes part of a {@code float[]} starting at a non-zero source offset and verifies the
 	 * buffer holds the elements from that offset, at the requested buffer offset.
 	 */
 	@Test(timeout = 120000)
 	public void floatWriteHonorsSourceOffset() {
-		CLMemoryProvider provider = CLHostReadCacheTest.clProvider();
-		if (provider == null) {
-			log("skipping, OpenCL memory provider unavailable");
-			return;
-		}
+		forEachProvider(this::floatWriteHonorsSourceOffset);
+	}
 
+	/**
+	 * Runs {@link #floatWriteHonorsSourceOffset()} against a single {@code provider}.
+	 *
+	 * @param provider the OpenCL memory provider under test
+	 */
+	private void floatWriteHonorsSourceOffset(CLMemoryProvider provider) {
 		CLMemory mem = provider.allocate(SIZE);
 
 		try {
@@ -78,12 +104,15 @@ public class CLMemoryTransferTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void doubleWriteHonorsSourceOffset() {
-		CLMemoryProvider provider = CLHostReadCacheTest.clProvider();
-		if (provider == null) {
-			log("skipping, OpenCL memory provider unavailable");
-			return;
-		}
+		forEachProvider(this::doubleWriteHonorsSourceOffset);
+	}
 
+	/**
+	 * Runs {@link #doubleWriteHonorsSourceOffset()} against a single {@code provider}.
+	 *
+	 * @param provider the OpenCL memory provider under test
+	 */
+	private void doubleWriteHonorsSourceOffset(CLMemoryProvider provider) {
 		CLMemory mem = provider.allocate(SIZE);
 
 		try {
@@ -106,12 +135,15 @@ public class CLMemoryTransferTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void readsHonorBothOffsets() {
-		CLMemoryProvider provider = CLHostReadCacheTest.clProvider();
-		if (provider == null) {
-			log("skipping, OpenCL memory provider unavailable");
-			return;
-		}
+		forEachProvider(this::readsHonorBothOffsets);
+	}
 
+	/**
+	 * Runs {@link #readsHonorBothOffsets()} against a single {@code provider}.
+	 *
+	 * @param provider the OpenCL memory provider under test
+	 */
+	private void readsHonorBothOffsets(CLMemoryProvider provider) {
 		CLMemory mem = provider.allocate(SIZE);
 
 		try {
