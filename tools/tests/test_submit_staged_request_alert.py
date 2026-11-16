@@ -187,6 +187,19 @@ class SubmitStagedRequestAlertTest(unittest.TestCase):
         # The summary is still written even when the workstream cannot be found.
         self.assertIn("auto-resolve-python", self.summary_text())
 
+    def test_a_failed_workstream_listing_warns_but_still_fails(self):
+        # The controller answers the workstream listing with a non-200 status,
+        # so the alert cannot resolve a workstream to post to; it warns, never
+        # reaches the messages endpoint, and the submission failure still stands.
+        result = self.run_script(
+            submit_body='{"ok":false,"error":"linter said no"}',
+            submit_code="400", ws_code="500")
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertIn("Could not list workstreams", result.stdout)
+        self.assertNotIn("/messages", self.calls())
+        # The summary is still written even when the listing cannot be read.
+        self.assertIn("auto-resolve-python", self.summary_text())
+
     def test_an_unreachable_controller_submission_reports_no_response(self):
         result = self.run_script(submit_body="", submit_fail="1")
         self.assertNotEqual(0, result.returncode, result.stdout)
