@@ -30,6 +30,7 @@ workstream and ``EveryWorkflowWiringTests`` checks both.
 import glob
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -64,8 +65,33 @@ _COMMAND_WRAPPERS = frozenset(("timeout", "env", "xargs"))
 # Programs that run the script named by their argument: a shell as a subprocess
 # (``bash``, ``sh``) or the current shell sourcing it (``source``, ``.``). Each
 # leaves the script path as the first non-flag word that follows.
-_SCRIPT_RUNNERS = frozenset(("bash", "sh", "/bin/bash", "/bin/sh", "source", "."))
+_SHELLS = frozenset(("bash", "sh", "/bin/bash", "/bin/sh"))
+_SCRIPT_RUNNERS = _SHELLS | frozenset(("source", "."))
 _ASSIGNMENT = re.compile(r"\w+=")
+
+
+def _inline_shell_script(command, shell):
+    """Return the script a ``shell -c '<script>'`` command runs, or ``None``.
+
+    ``command`` is tokenized the way the shell would (quotes removed, quoted
+    text kept whole), and the ``-c`` argument of the first ``shell`` word is
+    returned. A short flag cluster containing ``c`` (``-lc``, ``-ec``) counts as
+    ``-c``. ``None`` means the shell is not given an inline script, or the
+    command cannot be tokenized (an unbalanced quote).
+    """
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+    if shell not in tokens:
+        return None
+    index = tokens.index(shell) + 1
+    while index < len(tokens) and tokens[index].startswith("-") \
+            and not tokens[index].startswith("--"):
+        if "c" in tokens[index][1:]:
+            return tokens[index + 1] if index + 1 < len(tokens) else None
+        index += 1
+    return None
 
 
 def _split_commands(script):
@@ -118,7 +144,9 @@ def _command_runs_script(command):
     Leading shell keywords, command wrappers (with their own arguments) and
     ``VAR=value`` prefixes are skipped. The command runs the script when what
     remains is the script path itself, or a script runner (``bash`` with any
-    flags, ``source``, ``.``) applied to it. A command that passes the path to a
+    flags, ``source``, ``.``) applied to it. A shell given an inline script
+    (``bash -c '...'``) runs the script when that inline script does, judged by
+    the same rules. A command that passes the path to a
     different program (``chmod``, ``git``, ``[``, ``echo``) does not run it.
     """
     words = command.split()
@@ -140,6 +168,10 @@ def _command_runs_script(command):
     if index >= len(words):
         return False
     word = words[index]
+    if word in _SHELLS:
+        inline = _inline_shell_script(command, word)
+        if inline is not None:
+            return _creates_workstream(inline)
     if word in _SCRIPT_RUNNERS:
         index += 1
         while index < len(words) and words[index].startswith("-"):
@@ -300,6 +332,10 @@ class EveryWorkflowWiringTests(unittest.TestCase):
             # sourced into the current shell rather than run as a subprocess
             "source ./tools/ci/submit-agent-job.sh prompt.txt",
             ". ./tools/ci/register-workstream.sh",
+            # run by a nested shell given an inline script
+            "bash -lc 'cd repo && ./tools/ci/submit-agent-job.sh p'",
+            'sh -c "FOO=1 ./tools/ci/register-workstream.sh"',
+            "timeout 60 bash -ec 'bash ./tools/ci/submit-staged-request.sh r'",
         )
         named_only = (
             "chmod +x ./tools/ci/register-workstream.sh",
@@ -310,6 +346,9 @@ class EveryWorkflowWiringTests(unittest.TestCase):
             # the path sits inside a quoted string, so the separators around it
             # do not start a command of their own
             'echo "(bash ./tools/ci/register-workstream.sh)"',
+            # a nested shell whose inline script only names the path
+            "bash -c 'chmod +x ./tools/ci/register-workstream.sh'",
+            'sh -c "echo tools/ci/submit-agent-job.sh"',
         )
         for run in executed:
             with self.subTest(run=run):
