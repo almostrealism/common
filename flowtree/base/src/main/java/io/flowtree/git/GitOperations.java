@@ -306,7 +306,7 @@ public class GitOperations implements ConsoleFeatures {
 
     /**
      * Returns every file reported as changed by
-     * {@code git status --porcelain -uall} in {@code workingDirectory}:
+     * {@code git status --porcelain -z -uall} in {@code workingDirectory}:
      * modified, added, deleted, and untracked files. Untracked files are
      * listed individually ({@code -uall}) rather than collapsed to their
      * containing directory, so that each one can be evaluated on its own by
@@ -406,7 +406,7 @@ public class GitOperations implements ConsoleFeatures {
     }
 
     /**
-     * Runs {@code git status --porcelain -uall} in {@code workingDirectory}
+     * Runs {@code git status --porcelain -z -uall} in {@code workingDirectory}
      * and parses its output, recording whether the query itself succeeded
      * separately from whether any changed files were found.
      *
@@ -416,12 +416,14 @@ public class GitOperations implements ConsoleFeatures {
      */
     private static ChangedFilesResult queryChangedFiles(String workingDirectory) {
         try {
-            ProcessBuilder pb = new ProcessBuilder(resolveGitCommand(), "status", "--porcelain", "-uall");
+            ProcessBuilder pb = new ProcessBuilder(
+                    resolveGitCommand(), "status", "--porcelain", "-z", "-uall");
             if (workingDirectory != null) {
                 pb.directory(new File(workingDirectory));
             }
             // Keep stderr separate so a git failure (not-a-repo, missing dir, etc.)
-            // cannot be mis-parsed as a porcelain "changed file" line.
+            // cannot be mis-parsed as a "changed file"; read raw bytes (not
+            // line-buffered) so the NUL separators -z emits survive intact.
             augmentPath(pb);
             Process process = pb.start();
             String statusOutput = new String(
@@ -441,36 +443,50 @@ public class GitOperations implements ConsoleFeatures {
     }
 
     /**
-     * Parses the standard output of {@code git status --porcelain} into the
-     * list of changed file paths it reports. Each porcelain line carries a
-     * two-character status code followed by a space, so the path begins at
-     * the fourth column; lines too short to hold a path are ignored. For a
-     * renamed entry ({@code "R  old -> new"}) only the post-rename path (the
-     * part after {@code " -> "}) is returned, and blank paths are dropped.
+     * Parses the output of {@code git status --porcelain -z} into the list of
+     * changed file paths it reports. The {@code -z} form is required: the
+     * default ({@code \n}-terminated) form C-quotes any path that contains a
+     * space, a {@code "}, a control character, or (with {@code core.quotePath})
+     * a non-ASCII byte — wrapping it in double quotes and escaping it — which
+     * this parser would then carry through verbatim, so that a working-tree
+     * edit to {@code dir/a b.txt} would be looked up (and staged) as the
+     * non-existent path {@code "dir/a b.txt"}. The {@code -z} form never quotes:
+     * each entry is a two-character status code, a space, and the raw path,
+     * terminated by a NUL byte, and a rename or copy entry ({@code R}/{@code C})
+     * is followed by its original path as its own NUL-terminated field, which is
+     * discarded here so only the post-rename path is returned.
      *
      * <p>This is the shared porcelain-parsing step behind both
      * {@link #getChangedFiles(String)} (which runs the query itself) and
-     * callers that have already captured status output through another git
-     * invocation. It makes no assumption about the {@code -u} mode used to
-     * produce the output: whether untracked files are listed individually or
-     * collapsed is decided by the command that generated {@code statusOutput},
-     * not by this parser.</p>
+     * callers that have already captured {@code -z} status output through
+     * another git invocation. It makes no assumption about the {@code -u} mode
+     * used to produce the output: whether untracked files are listed
+     * individually or collapsed is decided by the command that generated
+     * {@code statusOutput}, not by this parser. A field too short to hold a
+     * status code and a path (such as a trailing newline a line-buffered reader
+     * appended after the final NUL) is ignored, and blank paths are dropped.</p>
      *
-     * @param statusOutput the raw standard output of a
-     *                     {@code git status --porcelain} invocation
+     * @param statusOutput the raw output of a
+     *                     {@code git status --porcelain -z} invocation
      * @return the changed file paths, in the order git reported them
      */
     public static List<String> parseChangedFiles(String statusOutput) {
         List<String> files = new ArrayList<>();
-        for (String line : statusOutput.split("\n")) {
-            if (line.length() > 3) {
-                String file = line.substring(3).trim();
-                if (file.contains(" -> ")) {
-                    file = file.split(" -> ")[1];
-                }
-                if (!file.isEmpty()) {
-                    files.add(file);
-                }
+        String[] fields = statusOutput.split("\0", -1);
+        for (int i = 0; i < fields.length; i++) {
+            String field = fields[i];
+            if (field.length() <= 3) {
+                continue;
+            }
+            // A rename or copy carries its source path as the next NUL field;
+            // consume and discard it so only the post-rename path is returned.
+            if (field.charAt(0) == 'R' || field.charAt(0) == 'C'
+                    || field.charAt(1) == 'R' || field.charAt(1) == 'C') {
+                i++;
+            }
+            String file = field.substring(3);
+            if (!file.isEmpty()) {
+                files.add(file);
             }
         }
         return files;
