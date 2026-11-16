@@ -74,23 +74,23 @@ Genes, chromosomes and genomes as producer-backed structures.
 | `ProjectedGene`/`ProjectedGenome`, `ChoiceGene` | Weighted and discrete gene representations; `ProjectedGenome` stores parameters as a `PackedCollection`. |
 | `ChromosomeBreeder`, `GenomeBreeder` | Crossover and mutation operators used by `engine/optimize`. |
 
-### physics — atomic and classical simulation
-Quantum structure and rigid-body dynamics, integrating with `chemistry` and `space`.
-
-<!-- TODO(review): Atom, Shell, Orbital and Electron are declared in domain/chemistry (org.almostrealism.chem), not physics; move this row and fix the "chemistry constructs atoms through physics" wording. -->
+### physics — photon and classical simulation
+Photon fields, absorbers, physical constants and rigid-body dynamics. Both `chemistry` and
+`space` build on it.
 
 | Concept | Role |
 |---|---|
-| `Atom`, `Shell`, `Orbital`, `Electron` | The atomic model with electron configuration and energy levels. |
 | `PhotonField` | Photon propagation and absorption over a field, stepped over time. |
 | `RigidBody` / `RigidBody.State` | Classical dynamics (position, velocity, force, torque) integrated by `space` primitives. |
 | `Volume<T>` | A `Curve` of occupancy — the host-valued member of family 1 awaiting a producer-valued intersection. |
 
-### chemistry — the periodic table
-Elements and their mixtures, integrating with `physics` for atomic construction.
+### chemistry — the periodic table and the atomic model
+Elements, the atoms they construct, and their mixtures; uses `physics` for physical constants
+and photon absorption.
 
 | Concept | Role |
 |---|---|
+| `Atom`, `Shell`, `Orbital`, `Electron` | The atomic model with electron configuration and energy levels. |
 | `Element` | All 118 elements, each able to `construct()` an `Atom`; organised by group/period/block. |
 | `Atomic`, `Substance` | The atom-factory contract and the `Node`-rooted marker for chemical substances. |
 | `Alloy` | A probabilistic element mixture, selecting by weight (integrating with `heredity`). |
@@ -111,7 +111,7 @@ Spiking dynamics expressed as `Block`s so a simulation compiles like any other m
 
 `graph` is foundational and mostly independent of the others. `color` + `space` form the
 rendering subsystem (`space` depends on `color`). `physics`, `chemistry`, `heredity` and
-`biology` form a loosely-coupled life-and-matter subsystem: `chemistry` constructs atoms through
-`physics`, `heredity` supplies the probabilities an `Alloy` mixes with, and `biology` builds its
+`biology` form a loosely-coupled life-and-matter subsystem: `chemistry` builds its atomic model on
+`physics`'s constants and photon absorption, `heredity` supplies the probabilities an `Alloy` mixes with, and `biology` builds its
 neurons as `graph` `Block`s. Training loops, rendering pipelines and transformer architectures
 are deliberately *absent* — those belong to `engine`. See [domain/CLAUDE.md](CLAUDE.md).
