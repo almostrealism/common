@@ -38,6 +38,29 @@ re-checked against the current source on this branch). The substantive changes:
 The recommendation (height-field mesh through the existing ray tracer) is unchanged; the owner
 decisions in §6 and §11 are updated but left open.
 
+## Revision note — 2026-11-16 (spectral 2D FFT and Poisson solver)
+
+When this plan was written, `FourierTransform` (`compute/time`) was a 1-D, recursive, CPU-only
+kernel, and R14 (§2, §4.1) and the spectral pressure solve (§6.4 Option B) were scoped around that
+gap. That is no longer the state of the code (re-checked against the current source):
+
+- `FourierTransform` now compiles an **iterative** radix-2 Cooley-Tukey FFT — `log2(bins)` unrolled
+  butterfly stages, no function calls and no recursion — so the **same program compiles for every
+  backend, including Metal and OpenCL** (`FourierTransformTests#compileGpu` compiles under
+  `ComputeRequirement.GPU`). The `enableRecursion` flag and the GPU-recursion limit are gone.
+- `SpectralFeatures` (`compute/time`, an interface mixin) now provides N-dimensional transforms
+  built from strided per-axis passes — `fftAxis`, `fftn`, `fft2d`/`ifft2d` — and a **spectral
+  Poisson solver**, `poissonSolve(source, spacing)`, backed by `SpectralGrid.inverseLaplacian()`.
+  It solves the **periodic** Poisson equation `laplacian(p) = f` with a zero-mean solution (the
+  `k = 0` mode is set to zero), which is exactly the §6.4 Option B machinery.
+
+So Option B no longer "requires a new 2D/3D FFT and a validated GPU path": that path now exists and
+is backend-portable. What remains Option B's open work is **boundary conditions** (the solver is
+periodic-only; a ferrofluid free surface and a container are not periodic) and **validation at the
+resolutions this demo needs** — not building the transform. R14 and §6.4 below are updated to this
+state. The §6.4 recommendation (iterative Option A first) is a design judgment left to the owner,
+but its premise has changed and is now called out as **open question 10 (§11)**.
+
 ## 1. Purpose and framing
 
 This is a proof-of-value plan. The motivating phenomenon is **ferrofluid**: a colloidal
@@ -188,11 +211,11 @@ but partial, stubbed, host-side, or disconnected) · **MISSING** (no implementat
 
 | Requirement | Capability | Status | Blocks? | Size | Evidence |
 |---|---|---|---|---|---|
-| R11 | Globally-coupled time-stepped loop | **PRESENT** | — | — | `SimulationRunner` (`compute/time`, `org.almostrealism.time`) owns the loop, extends `TemporalRunner`; a system implements `Temporal.tick()` as a Producer step. Well-tested: `SimulationRunnerTest` (`engine/utils`) covers element-local, **coupled** (`dampedOscillatorCoupledState`: `matmul` + copy-back), boundary input, step counter, lifecycle, reset, and a 12000×12000 `largeDenseStep` at `@TestDepth(2)`. Contract documented in [`docs/internals/simulation-loop-examples.md`](../internals/simulation-loop-examples.md). Already delivered by the completed [`PLAN-20261025-simulation-loop-owner.md`](PLAN-20261025-simulation-loop-owner.md) — this plan builds on it and proposes no loop-owner work. |
+| R11 | Globally-coupled time-stepped loop | **PRESENT** | — | — | `SimulationRunner` (`compute/time`, `org.almostrealism.time`) owns the loop, extends `TemporalRunner`; a system implements `Temporal.tick()` as a Producer step. Well-tested: `SimulationRunnerTest` (`engine/utils`) covers element-local, **coupled** (`dampedOscillatorCoupledState`: `matmul` + copy-back), boundary input, step counter, lifecycle, reset, and a 12000×12000 `largeDenseStep` at `@TestDepth(2)`. Contract documented in [`docs/internals/simulation-loop-examples.md`](../internals/simulation-loop-examples.md). `SimulationRunner` already owns the loop — this plan builds on it and proposes no loop-owner work. |
 | R12 | Large device-resident arrays | **PRESENT** | — | — | `PackedCollection` (`base/collect`); indexing bounded by `int` length (~2.1e9), real limit is device memory via `AR_HARDWARE_MEMORY_SCALE`. 128³ grid (~2M) and 10⁶ particles are well within range. `largeDenseStep` exercises ~0.55 GB. |
 | R20 | GPU/CPU backends, kernel compile/dispatch | **PRESENT** | — | — | `base/hardware`: native (JNI), OpenCL, Metal (`libMTL`), CUDA (NVRTC). Signature-cached compilation; `ComputeRequirement.GPU/CPU` steering; Metal command-buffer batching. `base/hardware/README.md`. |
 | R21 | Determinism across backends | **IMPROVE** | No | S | No cross-backend determinism contract found; Metal is FP32, native can be FP64, shared-memory mode forces FP32. Reproducibility requires pinning precision + backend. Adequate for within-backend comparison; document and pin for validation. |
-| R14 | FFT for spectral Poisson | **IMPROVE** | No* | M–L | `FourierTransform` (`compute/time`) is a real compiled radix-2/4 FFT but **1-D only, CPU only** by default: `FourierTransform.enableRecursion` defaults to `true`, and the generated recursive kernel is not supported on the GPU — recorded by the test `FourierTransformTests#compileGpu` (`engine/utils`), which throws `UnsupportedOperationException("Recursion is not supported on the GPU")` while `enableRecursion` is set (skipped unless known issues are enabled). The production class itself has no GPU guard; the limit is known only from that test. No 2D/3D transform and no Poisson solver exist. *Only blocks if a spectral pressure solve is chosen; an iterative Jacobi/multigrid solve avoids it. |
+| R14 | FFT for spectral Poisson | **PRESENT** (periodic) | No* | S–M | `FourierTransform` (`compute/time`) is now an **iterative** radix-2 Cooley-Tukey FFT — `log2(bins)` unrolled butterfly stages, no function calls and no recursion — so it compiles on **every backend, including Metal/OpenCL/GPU** (`FourierTransformTests#compileGpu` compiles under `ComputeRequirement.GPU`; the old `enableRecursion` flag and the GPU-recursion limit are gone). `SpectralFeatures` (`compute/time`) adds N-dimensional transforms (`fftAxis`, `fftn`, `fft2d`/`ifft2d`) and a **spectral Poisson solver** `poissonSolve(source, spacing)` backed by `SpectralGrid.inverseLaplacian()`. So the 2D/3D FFT and Poisson solver that this row once called missing now exist and are backend-portable (see the 2026-11-16 revision note). The remaining work is **boundaries** — `poissonSolve` solves only the *periodic* equation with a zero-mean solution — and validation at the needed resolution. *Only on the spectral-pressure path (§6.4 Option B); an iterative Jacobi/multigrid solve avoids it. |
 | R13 | Device neighbor search (spatial hash / cell list) | **MISSING** | Yes* | L | Repo-wide search finds no spatial hash, cell list, uniform-grid binning, or GPU k-d tree. The only spatial structure is `KdTree` (`domain/graph`), **host-Java**, used by `RayField` only; not a Producer. *Blocks only the particle (SPH) method; a grid/height-field method avoids it. |
 | — | Particle substrate | **MISSING** | No | — | `ParticleGroup` (`compute/algebra`) is a one-method **host** interface (`double[][] getParticleVertices()`). It is implemented — `Triangle`, `Plane` and `RigidSphere` (`domain/space`) return fixed vertex/corner coordinates as host `double[][]` — but those are static geometry-vertex accessors, **not** a device-resident, time-stepped particle state (`Sphere` itself carries only a `// TODO Add ParticleGroup implementation`). Not a simulation substrate; do not build on it. |
 
@@ -272,7 +295,7 @@ single-ray camera and intersection-distance unit tests run in the default lanes
 | R18 | Camera / ray generation | **PRESENT** | — | — | `PinholeCamera.rayAt` via `ProjectionFeatures` (compiled); `ThinLensCamera` present. |
 | R18 | Anti-aliasing / supersampling | **IMPROVE** | No | M | `SuperSampler`/`Pixel` average an N×M grid correctly but as a host-Java loop (`toDouble`/`addTo` per pixel). Correct, slow. |
 | R18 | Image file output (PNG) | **PRESENT** | — | — | `ImageCanvas.encodeImageFile` and `RGBFeatures.saveRgb` both emit PNG via `ImageIO`. |
-| R19 | Animation / frame-sequence driver | **IMPROVE** (reference only) | Yes | S–M | `RayTracedAnimation` (`engine/render`, migrated from the rings raytracer) now renders a scene **frame by frame** to image files: its `writeImage` ray-traces each frame with `RayTracedScene.realize().get().evaluate()`, writes it via `ImageCanvas.encodeImageFile(..., ImageCanvas.JPEGEncoding)` to `frame_<instance>.<i>.jpeg`, and emits an `encode.sh`. (Despite the name and extension, `ImageCanvas`'s `JPEGEncoding` branch writes **PNG** bytes through `ImageIO.write(bimg, "png", ...)`, so the frames are PNG files with a `.jpeg` suffix — harmless for most decoders, but a driver reusing this stage should name its output honestly.) So the per-frame render→save plumbing exists and is a useful **reference**. But it is **not a drop-in** ferrofluid driver: it extends `space.Animation`, whose `run()` **steps the physics itself** (rigid-body `State.update(dt)`, force application and impulse collisions each iteration, calling `writeImage` every *iterationsPerFrame*). §10 requires the outer frame loop *not* to drive the physics step — the fluid step belongs to `SimulationRunner` — so the ferrofluid frame driver must adapt this pattern, not inherit `Animation.run()`. (Two further caveats found in the source: the in-loop `clock.tick()` advance is commented out, so `Animation.run()` never advances its `Clock`; and `generateProperties` writes `bodies.length` from `size()`, counting non-serializable surfaces. The `camera.foclen` round-trip, by contrast, is fixed.) |
+| R19 | Animation / frame-sequence driver | **IMPROVE** (reference only) | Yes | S–M | `RayTracedAnimation` (`engine/render`, migrated from the rings raytracer) now renders a scene **frame by frame** to image files: its `writeImage` calls the overridable `renderFrame()` hook (by default `new RayTracedScene(this, new FogParameters(), p).render()`) and hands the pixels to an `ImageSequence` (`domain/color`, `org.almostrealism.texture`) via `writeFrame`, which writes a zero-padded PNG named `frame_<instance>.<index>.png` and tracks it; `writeEncodeScript` has the `ImageSequence` emit an `encode.sh` containing an `ffmpeg` command (`-framerate`, `-start_number 0`, `libx264`) bounded to the contiguous run of frames on disk. So the per-frame render→save plumbing exists and is a useful **reference**. But it is **not a drop-in** ferrofluid driver: it extends `space.Animation`, whose `run()` **steps the physics itself** (rigid-body `State.update(dt)`, force application and impulse collisions each iteration, calling `writeImage` every *iterationsPerFrame*). §10 requires the outer frame loop *not* to drive the physics step — the fluid step belongs to `SimulationRunner` — so the ferrofluid frame driver must adapt this pattern, not inherit `Animation.run()`. (Two further caveats found in the source: the in-loop `clock.tick()` advance is commented out, so `Animation.run()` never advances its `Clock`; and `generateProperties` writes `bodies.length` from `size()`, counting non-serializable surfaces. The `camera.foclen` round-trip, by contrast, is fixed.) |
 | — | Photon-mapping renderer | **IMPROVE** (dead) | No | — | `AbsorberHashSet` + `DefaultPhotonField` form a separate photon renderer referenced only by its own tests; not wired into `Engine`. Candidate for removal/relocation (see §5). |
 
 ---
@@ -338,13 +361,15 @@ revision.
 - **Option A — 2D height field (shallow surface model).** Represent the free surface as h(x,y) on
   a grid; evolve it with a surface PDE including gravity, surface tension (curvature of h), and the
   magnetic normal stress. *Pros:* smallest state (a 2D grid), maps directly to the canonical
-  flat-dish Rosensweig experiment, no neighbor search, no 3D pressure solve, reuses the existing FFT
-  (1-D along rows/cols) or a cheap iterative solve; cheapest path to the actual spikes. *Cons:*
+  flat-dish Rosensweig experiment, no neighbor search, no 3D pressure solve, reuses the existing 2D
+  spectral solve (`SpectralFeatures.fft2d`/`poissonSolve`, periodic) or a cheap iterative solve;
+  cheapest path to the actual spikes. *Cons:*
   cannot represent overturning/pinching spikes or arbitrary geometry; a reduced physical model.
 - **Option B — 3D Eulerian grid (MAC grid, level set / volume-of-fluid free surface).** Full
   incompressible Navier–Stokes with pressure projection and a level-set interface. *Pros:* general,
-  physically complete, reusable fluid engine. *Cons:* needs a 3D Poisson solve (iterative or a new
-  3D FFT), a level-set/VOF advection + reinitialization, and far more new code; highest risk.
+  physically complete, reusable fluid engine. *Cons:* needs a 3D Poisson solve (iterative, or
+  spectral via `SpectralFeatures.fftn`/`poissonSolve` — now N-dimensional and backend-portable, but
+  periodic-only), a level-set/VOF advection + reinitialization, and far more new code; highest risk.
 - **Option C — SPH particles.** Lagrangian particles with a magnetic body force. *Pros:* free
   surfaces are automatic, visually appealing. *Cons:* **requires the missing device neighbor
   search** (R13, a large new subsystem), surface reconstruction from particles is harder, and
@@ -418,11 +443,19 @@ way; the cost is in the field, so couple B's timing to the pressure-solver decis
 - **Option A — iterative (Jacobi/Gauss–Seidel/CG, optionally multigrid)** as Producer graphs.
   *Pros:* no new FFT work, flexible boundaries, each iteration is a stencil kernel. *Cons:* many
   iterations per step; multigrid is more code.
-- **Option B — spectral (FFT) Poisson solve.** *Pros:* fast for periodic/simple boundaries.
-  *Cons:* requires a **new 2D/3D FFT** and a validated GPU path (current FFT is 1-D CPU-only).
+- **Option B — spectral (FFT) Poisson solve.** *Pros:* fast for periodic/simple boundaries; the
+  machinery now exists — `SpectralFeatures.poissonSolve(source, spacing)` is a backend-portable
+  spectral solve of the periodic `laplacian(p) = f`, built on the iterative multi-backend FFT (see
+  the 2026-11-16 revision note). *Cons:* `poissonSolve` is **periodic-only** and returns a zero-mean
+  solution, so a free surface / container (non-periodic) boundary would need extending it (or an
+  embedding/mirroring trick), and it is unvalidated at the resolutions this demo needs.
 
-**Recommendation:** **iterative (A)** first — it reuses only the existing collection algebra and
-avoids the FFT gap; revisit spectral (B) only if iteration dominates runtime. Not needed at all for
+**Recommendation (owner to confirm — see open question 10):** this plan originally recommended
+**iterative (A)** first on the grounds that B needed a new FFT and GPU path. That premise no longer
+holds — the spectral path exists and is backend-portable — so the choice is now between A's boundary
+flexibility and B's speed, not "existing code vs. new FFT work." Iterative (A) remains the safer
+default because it handles non-periodic boundaries directly, but the owner should decide whether the
+periodic `poissonSolve` is close enough to the demo's boundaries to prefer B. Not needed at all for
 fluid Option A with a cheap surface solve.
 
 ### 6.5 Materials source
@@ -681,6 +714,14 @@ From CLAUDE.md and `docs/internals`, binding on every phase:
    module**, single-precision, not CI-exercised) of interest only if interactive viewing becomes a
    goal? The recommendation keeps the height-field mesh through the existing tracer as the primary
    path; this question is only about whether to keep the GLSL route open.
+10. **Spectral pressure solve now available (§6.4, R14).** The spectral FFT/Poisson gap this plan
+    was scoped around is closed: `FourierTransform` is now iterative and backend-portable, and
+    `SpectralFeatures.poissonSolve` solves the **periodic** Poisson equation on any backend. The
+    §6.4 recommendation (iterative Option A first) was partly justified by that gap, which no longer
+    exists. Should the pressure solve prefer the spectral `poissonSolve` (fast, but periodic-only
+    and zero-mean, so it needs a boundary strategy for a free surface/container), or stay with an
+    iterative stencil solve that handles non-periodic boundaries directly? This is a design choice,
+    not a capability gap.
 
 ---
 

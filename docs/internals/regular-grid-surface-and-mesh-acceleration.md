@@ -31,12 +31,14 @@ offsets `(0,0) (1,1) (1,0)`, the second `(0,0) (0,1) (1,1)`. The triangle count 
 
 ### Device path (per-frame rebuild)
 
-`MeshData.gridSurface(Producer<PackedCollection> heights, nx, ny, Vector origin, spacingX, spacingZ)`
-builds the packed triangle buffer the intersection path expects, in a single kernel. It is
-driven by `TriangleFeatures.regularGridSurfacePoints(...)`, which emits the `(T, 3, 3)`
-triangle-corner buffer directly from the height field as one
+`MeshFeatures.gridSurface(Producer<PackedCollection> heights, nx, ny, Vector origin, spacingX, spacingZ)`
+builds the packed triangle buffer the intersection path expects, in a single kernel, as a
+`CollectionProducer` graph. It is driven by `TriangleFeatures.regularGridSurfacePoints(...)`,
+which emits the `(T, 3, 3)` triangle-corner buffer directly from the height field as one
 `DefaultTraversableExpressionComputation`, and then packs it into the `(T, 4, 3)` `MeshData`
-layout with `TriangleFeatures.triangle(...)`. Because `heights` is a `Producer`, a simulation
+layout with `TriangleFeatures.triangle(...)`. As a `Features` mixin builder it returns a
+producer rather than materializing it — the caller evaluates the graph into a `MeshData` at a
+top-of-stack boundary. Because `heights` is a `Producer`, a simulation
 can write new heights into the backing collection each frame and rebuild the `MeshData` with a
 single `gridSurface` call — no host loop over cells.
 
@@ -53,10 +55,11 @@ tilted plane the normals are exact at every node.
 `Mesh.gridSurface(PackedCollection heights, Vector origin, spacingX, spacingZ)` builds a
 vertex-list `Mesh` with the same node layout and winding. Its node positions are computed by
 one kernel, `TriangleFeatures.regularGridSurfaceNodes(...)`, into a single `(nx*ny, 3)` tensor
-whose rows become the mesh's vertices (as `Vector` views, not copies); only the triangle
+whose rows are copied into the mesh's vertices (each `Vertex` owns its coordinates, so the
+tensor may be released after construction); only the triangle
 connectivity is built on the host. This is the path for inspection,
 for use as a test fixture, and for GTS export (`GtsResource.MeshTranscoder`), which reads a
-mesh's vertex list and triangles. Use the device `MeshData.gridSurface` for the intersection
+mesh's vertex list and triangles. Use the device `MeshFeatures.gridSurface` for the intersection
 and per-frame path; use the host `Mesh.gridSurface` when a `Mesh` object is wanted.
 
 ## 2. Accelerated intersection
@@ -69,11 +72,17 @@ no host loop over rays or triangles:
 
 - `meshIntersectAt(mesh, triangleCount, rays)` — the Möller–Trumbore distance of every ray
   against every triangle of a packed `(T, 4, 3)` mesh, as an `(R, T)` grid (`-1` where a ray
-  misses a triangle). Rays are `(R, 6)` (origin, direction), or a single `(6)` ray.
+  misses a triangle or would cross it only behind its origin). Rays are `(R, 6)` (origin, direction), or a single `(6)` ray.
 - `closestMeshIntersection(mesh, triangleCount, rays)` — the closest hit per ray as `(R, 2)`
   (distance, triangle index), or `(-1, -1)` for a miss. Each (ray, triangle) pair is scored with
-  its negated distance (a miss scores far below any hit), and the per-ray `max` and `indexOfMax`
+  its negated distance (a miss scores the most negative finite value of the target precision,
+  which no finite hit falls below), and the per-ray `max` and `indexOfMax`
   reductions over the triangle axis pick the closest; ties resolve to the lowest triangle index.
+  Whether a ray hit anything comes from that same single score grid: a ray hit something exactly
+  when its best score rose above the miss sentinel, which is also the `max` reduction's identity,
+  so an all-miss row keeps the sentinel and no finite hit distance scores that low. This reuses the
+  one score grid rather than materializing and reducing a second per-(ray, triangle) hit mask, so
+  a hit at any distance is still reported.
 - `meshNormalAt(mesh, hits)` — gathers the face normal of each hit triangle, `(R, 3)`, with the
   zero vector for a miss.
 - `meshTriangleBounds(mesh, triangleCount)` — the `(T, 6)` axis-aligned bounds of every triangle
@@ -132,7 +141,9 @@ Vector origin = new Vector(0, 0, 0);
 double spacing = 0.1;
 
 // Device tessellation -> MeshData for intersection (one kernel; rebuildable per frame).
-MeshData md = MeshData.gridSurface(cp(heights), nx, ny, origin, spacing, spacing);
+// gridSurface(...) returns the triangle-buffer producer; the caller evaluates it here.
+MeshData md = new MeshData(2 * (nx - 1) * (ny - 1));
+gridSurface(cp(heights), nx, ny, origin, spacing, spacing).get().into(md.traverse(1)).evaluate();
 
 // Closest hit, accelerated and (reference) unaccelerated — identical result. The mesh data
 // builds its own acceleration structure over its triangles on first accelerated query.

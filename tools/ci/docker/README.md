@@ -68,7 +68,7 @@ issues when multiple runners build in parallel.
 ## JDK Version (Baked Into the Image)
 
 The image ships the JDK; the CI jobs do **not** download one with
-`actions/setup-java`. The `test` and `test-media` jobs instead verify the
+`actions/setup-java`. The `test` job instead verifies the
 runner's `java` against the workflow-level `EXPECTED_JDK_MAJOR` in
 `.github/workflows/analysis.yaml` and fail fast, naming the runner, if it does
 not match. The major version is the single `JDK_MAJOR` build arg in the

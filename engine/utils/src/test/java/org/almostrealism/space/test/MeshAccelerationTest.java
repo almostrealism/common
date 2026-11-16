@@ -152,7 +152,7 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		Vector origin = new Vector(0.0, 0.0, 0.0);
 
 		PackedCollection heights = bumpyHeights(nx, ny).evaluate();
-		MeshData md = MeshData.gridSurface(cp(heights), nx, ny, origin, SPACING, SPACING);
+		MeshData md = gridSurfaceData(cp(heights), nx, ny, origin, SPACING, SPACING);
 
 		double extentX = (nx - 1) * SPACING;
 		double extentZ = (ny - 1) * SPACING;
@@ -227,7 +227,7 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		int nx = 8;
 		int ny = 8;
 		Vector origin = new Vector(0.0, 0.0, 0.0);
-		MeshData md = MeshData.gridSurface(bumpyHeights(nx, ny), nx, ny, origin, SPACING, SPACING);
+		MeshData md = gridSurfaceData(bumpyHeights(nx, ny), nx, ny, origin, SPACING, SPACING);
 
 		int rays = 12;
 		double extent = (nx - 1) * SPACING;
@@ -259,6 +259,58 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 	}
 
 	/**
+	 * The accelerated batch path, {@link MeshData#evaluateIntersectionKernelAccelerated}, writes
+	 * the same (distance, triangle index) pair for every ray as the linear batch path
+	 * {@link MeshData#evaluateIntersectionKernel}. Rays alternate between hits with differing
+	 * candidate counts and misses with none, so the reused candidate buffer is both refilled and
+	 * cleared between rays.
+	 */
+	@Test(timeout = 180000)
+	public void acceleratedBatchMatchesLinearBatch() {
+		int nx = 8;
+		int ny = 8;
+		Vector origin = new Vector(0.0, 0.0, 0.0);
+		MeshData md = gridSurfaceData(bumpyHeights(nx, ny), nx, ny, origin, SPACING, SPACING);
+
+		int rays = 12;
+		double extent = (nx - 1) * SPACING;
+		Random random = new Random(7);
+		PackedCollection bank = Ray.bank(rays);
+		for (int r = 0; r < rays; r++) {
+			// Every third ray starts beyond the surface edge and so misses it; the others are
+			// slanted by varying amounts so that their candidate sets differ in size
+			double x = r % 3 == 2 ? extent + 10.0 : (0.1 + 0.8 * random.nextDouble()) * extent;
+			double z = (0.1 + 0.8 * random.nextDouble()) * extent;
+			double slant = (r % 3) * 0.04;
+			bank.setFrom(r * 6, new Ray(new Vector(x, 5.0, z), new Vector(slant, -1.0, 0.0)), 0, 6);
+		}
+
+		// The batch ray evaluable must support into(), as the render pipeline's does
+		Evaluable<Ray> batch = (Evaluable) cp(bank).multiply(c(1.0)).get();
+
+		PackedCollection linear = Pair.bank(rays);
+		md.evaluateIntersectionKernel(batch, linear, new MemoryData[0]);
+		PackedCollection accelerated = Pair.bank(rays);
+		md.evaluateIntersectionKernelAccelerated(batch, accelerated, new MemoryData[0]);
+
+		int misses = 0;
+		for (int r = 0; r < rays; r++) {
+			Assert.assertEquals("distance for ray " + r,
+					linear.toDouble(r * 2), accelerated.toDouble(r * 2), 1e-4);
+			Assert.assertEquals("triangle for ray " + r,
+					linear.toDouble(r * 2 + 1), accelerated.toDouble(r * 2 + 1), 1e-9);
+			if (accelerated.toDouble(r * 2 + 1) < 0) {
+				misses++;
+				Assert.assertEquals("miss distance for ray " + r, -1.0, accelerated.toDouble(r * 2), 1e-9);
+			} else {
+				Assert.assertTrue("hit distance for ray " + r, accelerated.toDouble(r * 2) > 0.0);
+			}
+		}
+
+		Assert.assertEquals("rays beyond the surface edge must miss", rays / 3, misses);
+	}
+
+	/**
 	 * {@link TriangleFeatures#meshNormalAt} gathers the face normal of the triangle each hit
 	 * reports, and the zero vector for a miss.
 	 */
@@ -286,6 +338,82 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 		}
 	}
 
+	/**
+	 * {@link TriangleFeatures#meshIntersectAt} reports the distance to a triangle in front of the
+	 * ray, and {@code -1} both for a triangle the ray misses and for one it would cross only
+	 * behind its origin, which must never be reported as a negative-distance hit.
+	 */
+	@Test(timeout = 60000)
+	public void meshIntersectAtRejectsBehindOrigin() {
+		MeshData md = twoTriangleMesh();
+
+		PackedCollection bank = Ray.bank(2);
+		bank.setFrom(0, new Ray(new Vector(0.0, 1.0, 2.0), new Vector(0.0, 0.0, -1.0)), 0, 6);
+		bank.setFrom(6, new Ray(new Vector(0.0, 1.0, 3.0), new Vector(0.0, 0.0, 1.0)), 0, 6);
+
+		PackedCollection distances = TriangleFeatures.getInstance()
+				.meshIntersectAt(cp(md), md.getCount(), cp(bank)).evaluate();
+		Assert.assertEquals(4, distances.getMemLength());
+
+		Assert.assertEquals("front ray, missed triangle", -1.0, distances.toDouble(0), 1e-9);
+		Assert.assertEquals("front ray, hit triangle", 2.0, distances.toDouble(1), 1e-4);
+		Assert.assertEquals("back ray, missed triangle", -1.0, distances.toDouble(2), 1e-9);
+		Assert.assertEquals("back ray, triangle behind origin", -1.0, distances.toDouble(3), 1e-9);
+	}
+
+	/**
+	 * A hit at an extreme, but representable, distance is still reported as that hit, with its
+	 * own distance and triangle index: neither the hit decision nor the choice of triangle may
+	 * depend on a fixed distance sentinel that a legitimate hit could exceed. A miss score of
+	 * {@code -1e30} would outrank this hit and report the missed slot instead.
+	 */
+	@Test(timeout = 60000)
+	public void closestHitAtExtremeDistance() {
+		double z = 2e30;
+		DefaultVertexData data = new DefaultVertexData(6, 2);
+		// Triangle 0 lies off to the side and is missed by both rays
+		data.getVertices().set(0, new Vector(100.0, 0.0, 1.0));
+		data.getVertices().set(1, new Vector(101.0, 0.0, 1.0));
+		data.getVertices().set(2, new Vector(100.0, 1.0, 1.0));
+		data.setTriangle(0, 0, 1, 2);
+		data.getVertices().set(3, new Vector(0.0, 0.0, z));
+		data.getVertices().set(4, new Vector(1.0, 0.0, z));
+		data.getVertices().set(5, new Vector(0.0, 1.0, z));
+		data.setTriangle(1, 3, 4, 5);
+		MeshData md = new Mesh(data).getMeshData();
+
+		PackedCollection bank = Ray.bank(2);
+		bank.setFrom(0, new Ray(new Vector(0.25, 0.25, 0.0), new Vector(0.0, 0.0, 1.0)), 0, 6);
+		bank.setFrom(6, new Ray(new Vector(5.0, 5.0, 0.0), new Vector(0.0, 0.0, 1.0)), 0, 6);
+
+		PackedCollection hits = Process.optimized(TriangleFeatures.getInstance()
+				.closestMeshIntersection(cp(md), md.getCount(), cp(bank))).get().evaluate();
+
+		Assert.assertEquals("far hit distance", 1.0, hits.toDouble(0) / z, 1e-3);
+		Assert.assertEquals("far hit triangle", 1.0, hits.toDouble(1), 1e-9);
+		Assert.assertEquals("miss distance", -1.0, hits.toDouble(2), 1e-9);
+		Assert.assertEquals("miss triangle", -1.0, hits.toDouble(3), 1e-9);
+	}
+
+	/**
+	 * The candidate buffer the accelerated path allocates is owned by the mesh: it exists after
+	 * an accelerated query and is released when the mesh is destroyed.
+	 */
+	@Test(timeout = 60000)
+	public void candidateBufferReleasedWithMesh() {
+		MeshData md = twoTriangleMesh();
+		Assert.assertEquals(0, md.getCandidateCapacity());
+
+		Ray value = new Ray(new Vector(0.0, 1.0, 1.0), new Vector(0.0, 0.0, -1.0));
+		Pair hit = md.evaluateIntersectionAccelerated(args -> value, new Object[0]);
+		Assert.assertEquals("accelerated distance", 1.0, hit.getA(), 1e-4);
+		Assert.assertEquals("accelerated triangle", 1.0, hit.getB(), 1e-9);
+		Assert.assertTrue("candidate buffer allocated", md.getCandidateCapacity() >= 1);
+
+		md.destroy();
+		Assert.assertEquals("candidate buffer released", 0, md.getCandidateCapacity());
+	}
+
 	/** {@link TriangleFeatures#meshTriangleBounds} bounds each triangle's three vertices exactly. */
 	@Test(timeout = 60000)
 	public void meshTriangleBoundsCoverVertices() {
@@ -303,6 +431,46 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 				Assert.assertEquals("triangle " + t + " bound " + k,
 						expected[t][k], bounds.toDouble(t * 6 + k), 1e-4);
 			}
+		}
+	}
+
+	/**
+	 * {@link MeshData} cannot be constructed without triangles, so no empty mesh ever reaches
+	 * the closest-hit graph; only a caller that builds that graph directly can pass a zero
+	 * triangle count, which the graph builders reject (see the two tests below).
+	 */
+	@Test(timeout = 60000)
+	public void meshDataRequiresTriangles() {
+		try {
+			new MeshData(0);
+			Assert.fail("MeshData accepted zero triangles");
+		} catch (IllegalArgumentException e) {
+			Assert.assertNotNull(e);
+		}
+	}
+
+	/**
+	 * The closest-hit graph needs at least one triangle: building it over an empty mesh is
+	 * rejected up front rather than producing a modulo-by-zero index expression.
+	 */
+	@Test(timeout = 60000)
+	public void closestMeshIntersectionRejectsEmptyMesh() {
+		try {
+			TriangleFeatures.getInstance().closestMeshIntersection(cp(new MeshData(1)), 0, cp(Ray.bank(1)));
+			Assert.fail("closestMeshIntersection accepted a mesh with no triangles");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("at least one triangle"));
+		}
+	}
+
+	/** The per-pair distance grid is likewise rejected for a mesh with no triangles. */
+	@Test(timeout = 60000)
+	public void meshIntersectAtRejectsEmptyMesh() {
+		try {
+			TriangleFeatures.getInstance().meshIntersectAt(cp(new MeshData(1)), 0, cp(Ray.bank(1)));
+			Assert.fail("meshIntersectAt accepted a mesh with no triangles");
+		} catch (IllegalArgumentException e) {
+			Assert.assertTrue(e.getMessage(), e.getMessage().contains("at least one triangle"));
 		}
 	}
 }

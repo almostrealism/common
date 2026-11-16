@@ -319,7 +319,9 @@ default, keeping the linear scan the reference). See
 
 ```java
 // Tessellate a height field into renderable geometry on the device, in one kernel.
-MeshData md = MeshData.gridSurface(heights, nx, ny, origin, spacingX, spacingZ);
+// MeshFeatures.gridSurface(...) returns the triangle-buffer producer; evaluate it at the boundary.
+MeshData md = new MeshData(2 * (nx - 1) * (ny - 1));
+gridSurface(heights, nx, ny, origin, spacingX, spacingZ).get().into(md.traverse(1)).evaluate();
 
 // Vertex-list mesh for inspection / GTS export; heights is an (nx, ny) PackedCollection and
 // the node positions are computed by one kernel into an (nx*ny, 3) tensor.

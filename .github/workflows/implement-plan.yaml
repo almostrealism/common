@@ -270,6 +270,7 @@ jobs:
       - name: Register workstream
         id: register
         env:
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
@@ -432,6 +433,10 @@ jobs:
 
       - name: Submit agent job
         env:
+          # Carried through submit-staged-request.sh to submit-agent-job.sh, in
+          # case this submission is the first to create the branch's workstream
+          # (register-workstream was skipped), so its PR still gets a test run.
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}

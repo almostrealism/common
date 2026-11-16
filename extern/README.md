@@ -2,6 +2,8 @@
 
 This layer provides integration modules that bridge the AR framework with external ML runtimes and scripting environments. Each module wraps a third-party library to extend ar-ml capabilities with specialized tokenization, inference engines, or dynamic model definition.
 
+See [concept-map.md](concept-map.md) for the thin-adapter pattern this layer follows, and the platform-wide [Concept Map](../docs/internals/concept-map.md) for the layered overview.
+
 ## Modules
 
 ### [ar-ml-djl](ml-djl/README.md)

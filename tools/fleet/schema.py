@@ -98,11 +98,8 @@ CREATE TABLE IF NOT EXISTS job_event (
     run_id TEXT,
     repo TEXT,
     name TEXT,
-    -- The labels of the runner that actually executed this job (the
-    -- workflow-jobs API's own `labels` field), not the workflow's requested
-    -- `runs-on:` set. A runner can carry extra/custom labels beyond what a
-    -- job asked for, so grouping by this column reports actual-runner-label
-    -- demand, not per-`runs-on` demand.
+    -- The workflow-jobs API's own `labels` field: the job's `runs-on:`
+    -- labels, present even for a job that was skipped and never ran.
     labels TEXT,
     -- Two projections of `labels`, so a dashboard groups by a short, stable
     -- key instead of parsing the JSON label set in every panel. `lane` is

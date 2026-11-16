@@ -172,15 +172,27 @@ public class RayTracedScene extends Realization<RealizableImage, RenderParameter
 
 ### RayTracedAnimation
 
-An `Animation` (from `ar-space`) that ray traces each frame with `RayTracedScene` and writes it to
-the output directory as a PNG, plus an `encode.sh` that encodes the frames as a video. Its camera
-and rigid bodies can be stored as and loaded from `Properties`. Set the frame size with
-`setImageDimensions` and turn on `setRenderEachFrame`; `Animation.run()` then writes a frame
-each time a frame duration of simulated time has passed.
+An `Animation` (from `ar-space`) that ray traces each frame with `RayTracedScene` and hands it to an
+`ImageSequence` (from `ar-color`), the single frame-sequence writer that owns the zero-padded PNG
+naming, written-frame tracking, and the `ffmpeg` `encode.sh`. Its camera and rigid bodies can be
+stored as and loaded from `Properties`. Set the frame size with `setImageDimensions` and turn on
+`setRenderEachFrame`; `Animation.run()` then writes a frame each time a frame duration of simulated
+time has passed. The `SimulationRunner`-driven `RayTracedFrameSequence` shares the same
+`ImageSequence`; the two differ only in what advances time between frames.
 
 `PhotonFieldAnimation` extends it with a `DefaultPhotonField` on the animation's clock: every
 member that is also an `Absorber` is kept in the field's `AbsorberHashSet`, however it is added to
 or removed from the animation.
+
+### ImplicitSurfaceRenderer
+
+Renders an `ImplicitSurface` (`SignedDistanceFunction`, `HeightField`, from `ar-geometry`)
+with one program per pixel: the camera ray of every pixel is marched with conservative
+Lipschitz steps, refined by bisection and a secant step, and shaded with point and ambient
+lights, a Schlick Fresnel term and an environment gradient. `frame()` returns the operations
+of one frame; the per-pixel part compiles to a single kernel. The image is a
+`(height, width, 3)` `PackedCollection` ready for `saveRgb`. See
+[Per-Pixel Kernel Rendering](../../docs/internals/per-pixel-rendering.md).
 
 ### Engine Interface
 

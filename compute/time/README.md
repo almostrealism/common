@@ -207,6 +207,35 @@ PackedCollection<?> reconstructed = ifft.get().evaluate();
 
 **Output format:** Complex numbers as (real, imaginary) pairs
 
+The kernel is an iterative (non-recursive) radix-2 FFT, so it compiles and runs on every
+backend, Metal and OpenCL included. Bin counts must be powers of 2. A transform can also run
+along a strided axis of a multidimensional collection (see `FourierTransform`'s five-argument
+constructor).
+
+#### Multidimensional FFT and Spectral Analysis (`SpectralFeatures`)
+`SpectralFeatures`, which `TemporalFeatures` extends, works on fields sampled on regular periodic
+grids:
+
+```java
+// 2D FFT of a real [rows, cols] field, and back
+CollectionProducer spectrum = fft2d(toComplex(field));      // [rows, cols, 2], unnormalised
+CollectionProducer restored = realPart(ifft2d(spectrum));   // inverse carries 1/(rows*cols)
+
+// N-D: fftn(complex, inverse) transforms every grid axis; fftAxis transforms one
+CollectionProducer volume = fftn(toComplex(field3d), false);
+
+// Analysis, with grid spacing in axis order (dy, dx) so results are in physical units
+CollectionProducer power = powerSpectrum(spectrum);                  // [rows, cols]
+CollectionProducer radial = radialPowerSpectrum(power, dy, dx);      // shell averages
+CollectionProducer lambda = dominantWavelength(field, dy, dx);       // single value
+
+// Periodic Poisson solve: laplacian(p) = f, zero-mean solution
+CollectionProducer p = poissonSolve(f, dy, dx);
+```
+
+See [Spectral Analysis on Regular Grids](../../docs/internals/spectral-analysis.md) for the
+conventions, the algorithms, precision on FP32 and FP64, and the tolerances the tests use.
+
 #### Filtering
 Multi-order low-pass and high-pass filters:
 
@@ -428,6 +457,7 @@ TemporalRunner.enableIsolation = false;
 ### Core Interfaces
 - `Temporal` - Tick-based execution interface
 - `TemporalFeatures` - Convenience methods for creating operations
+- `SpectralFeatures` - N-D FFT, power and radial spectra, dominant wavelength, spectral Poisson solve
 - `Updatable` - Simple periodic update interface (legacy)
 
 ### Data Structures
@@ -442,7 +472,7 @@ TemporalRunner.enableIsolation = false;
 - `TimingRegularizer` - Real-time timing adjustment (3-sample rolling window)
 
 ### Computations (`org.almostrealism.time.computations`)
-- `FourierTransform` - FFT/IFFT with radix-2/4 algorithm
+- `FourierTransform` - FFT/IFFT, iterative radix-2, strided lines (GPU-capable)
 - `Interpolate` - Linear interpolation with custom time mapping
 - `MultiOrderFilter` - FIR filtering with arbitrary coefficients
 - `AcceleratedTimeSeriesAdd` - GPU-accelerated series append
@@ -490,15 +520,16 @@ High-capacity (10M+ entries) GPU-accelerated time-series. Features:
 
 ### TemporalFeatures
 Feature interface providing factory methods for:
-- FFT and IFFT operations
+- FFT and IFFT operations (and, through `SpectralFeatures`, N-D FFTs and spectral analysis)
 - Low-pass and high-pass filters
 - Interpolation with various configurations
 - Coefficient generation (Hamming window)
 - Iteration and looping utilities
 
 ### FourierTransform
-Radix-2/4 FFT implementation. Supports:
+Iterative radix-2 FFT, compiled without recursion so it runs on Metal, OpenCL and native. Supports:
 - Powers of 2 bin counts (512, 1024, 2048, etc.)
+- Strided lines, for transforms along any axis of an N-D collection
 - Forward and inverse transforms
 - Batch processing (multiple signals in parallel)
 - Complex number interleaved format (real, imaginary)

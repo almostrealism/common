@@ -192,6 +192,7 @@ jobs:
       - name: Register the goal-decomposition workstream
         if: steps.intake.outputs.open == 'true'
         env:
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ inputs.workstream-branch }}
           BASE_BRANCH: ${{ github.event.repository.default_branch }}
@@ -227,6 +228,7 @@ jobs:
       - name: Submit the goal-decomposition job
         if: steps.intake.outputs.open == 'true'
         env:
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ inputs.workstream-branch }}
           BASE_BRANCH: ${{ github.event.repository.default_branch }}

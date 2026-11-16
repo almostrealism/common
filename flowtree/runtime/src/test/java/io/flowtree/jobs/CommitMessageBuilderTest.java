@@ -38,7 +38,7 @@ import static org.junit.Assert.fail;
 
 /**
  * Unit tests for the {@link CommitMessageBuilder} collaborator extracted from
- * {@link CodingAgentJob#getCommitMessage()}. These tests exercise the helper
+ * {@link CodingAgentJob#getCommitMessage(String)}. These tests exercise the helper
  * directly so that the source-tag side effects ({@code "agent"} vs
  * {@code "prompt_fallback"}) and the deterministic fallback formatting are
  * preserved independently of any future changes to {@code CodingAgentJob}.
@@ -305,5 +305,73 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, first.getCommitMessageSource());
         assertNull("Another job's builder must not record a source it never resolved",
                 second.getCommitMessageSource());
+    }
+
+    /**
+     * {@link CommitMessageBuilder#resolveForRepo} reads the {@code commit.txt} at
+     * a dependent repo's own root, not the primary one, and does not tag the
+     * primary source — the source describes how the job's (primary) message was
+     * produced.
+     */
+    @Test(timeout = 30000)
+    public void resolveForRepoReadsDependentCommitTxt() throws IOException {
+        writeCommitTxt("Primary message");
+        Path depDir = Files.createTempDirectory("commit-msg-builder-dep");
+        try {
+            Files.write(depDir.resolve("commit.txt"),
+                    "Move the helper into lib".getBytes(StandardCharsets.UTF_8));
+            CodingAgentJob job = job("do the work");
+            assertEquals("Move the helper into lib",
+                    job.commitMessageBuilder().resolveForRepo(job, depDir.toString()));
+            assertNull("A dependent repo's message must not tag the primary source",
+                    job.getCommitMessageSource());
+        } finally {
+            deleteRecursively(depDir);
+        }
+    }
+
+    /**
+     * When a dependent repo has no {@code commit.txt}, the fallback names that
+     * repository so it cannot be mistaken for the primary one.
+     */
+    @Test(timeout = 30000)
+    public void resolveForRepoDependentFallbackNamesRepo() throws IOException {
+        Path depDir = Files.createTempDirectory("commit-msg-builder-dep-named");
+        try {
+            CodingAgentJob job = job("do the work");
+            String msg = job.commitMessageBuilder().resolveForRepo(job, depDir.toString());
+            assertTrue("Fallback must name the dependent repo: " + msg,
+                    msg.contains(depDir.getFileName().toString()));
+            assertFalse("A dependent fallback must not disclose the absolute checkout path: " + msg,
+                    msg.contains(depDir.toString()));
+            assertFalse("A dependent fallback must not be the primary prompt fallback",
+                    msg.startsWith("Claude Code:"));
+            assertNull(job.getCommitMessageSource());
+        } finally {
+            deleteRecursively(depDir);
+        }
+    }
+
+    /**
+     * {@link CommitMessageBuilder#resolveForRepo} for the primary working
+     * directory delegates to {@link CommitMessageBuilder#resolve} and tags the
+     * source.
+     */
+    @Test(timeout = 30000)
+    public void resolveForRepoPrimaryDelegatesToResolve() throws IOException {
+        writeCommitTxt("Primary message");
+        CodingAgentJob job = job("do the work");
+        assertEquals("Primary message",
+                job.commitMessageBuilder().resolveForRepo(job, tempDir.toString()));
+        assertEquals(CommitMessageBuilder.SOURCE_AGENT, job.getCommitMessageSource());
+    }
+
+    /** Recursively deletes {@code dir} and all its contents. */
+    private static void deleteRecursively(Path dir) throws IOException {
+        if (dir == null || !Files.exists(dir)) return;
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder())
+                    .forEach(p -> { try { Files.delete(p); } catch (IOException ignored) { } });
+        }
     }
 }

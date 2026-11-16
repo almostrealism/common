@@ -87,8 +87,12 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * {@code AR_HARDWARE_ARGUMENT_AGGREGATION}.
 	 *
 	 * <p>Defaults to {@code true}: the compile-time collapse keeps kernels under the compute
-	 * context's buffer-argument limit (e.g. Metal's ~31, and the native compiler's parameter
-	 * limit), which is required for fused kernels with many small inputs to evaluate at all. The
+	 * context's buffer-argument limit, which is required for fused kernels with many small inputs
+	 * to evaluate at all. On a context that {@link ComputeContext#getArgumentLimit() reports} its
+	 * limit (Metal: 29 arguments), only a kernel whose structural argument bound exceeds that limit
+	 * folds; a kernel that provably fits takes every argument directly and pays no aggregate copies
+	 * (see {@link ComputeContext#fitsArgumentLimit(int)}). On a context with no known limit (the
+	 * native backend, whose parameter limit is unmeasured), every eligible argument is folded. The
 	 * copy plan copies aggregated inputs IN before the kernel and copies written slices back OUT
 	 * afterward (skipping the slice that aliases an explicit {@code output}; see
 	 * {@link #getPostprocessOperations(MemoryData)}). Under instruction reuse each reused operation
@@ -102,7 +106,9 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	/**
 	 * Maximum element count for an argument to be eligible for aggregation. Controlled by
 	 * {@code AR_HARDWARE_AGGREGATE_MAX}. Eligibility depends only on this size -- a
-	 * signature-stable structural property -- never on where the data currently lives.
+	 * signature-stable structural property -- never on where the data currently lives. An eligible
+	 * argument is folded only when its kernel folds at all, which on a context with a known
+	 * argument limit is decided by {@link ComputeContext#fitsArgumentLimit(int)}.
 	 */
 	public static int maxAggregateLength = SystemUtils.getInt("AR_HARDWARE_AGGREGATE_MAX").orElse(1024);
 
@@ -114,6 +120,12 @@ public class MemoryDataArgumentMap extends SupplierArgumentMap {
 	 * recorded. When true, copy-back runs even with an explicit output, except for the slice that
 	 * aliases that output (so an in-place {@code x = x + y} is not overwritten by the stale
 	 * read-copy of {@code x}). Controlled by {@code AR_HARDWARE_STRICT_SIDE_EFFECTS}.
+	 *
+	 * <p>This governs only arguments that are folded. A kernel that folds nothing writes every
+	 * argument directly, so its side effects always land. Because a context with a known argument
+	 * limit folds nothing for a kernel that fits it (see {@link ComputeContext#fitsArgumentLimit(int)}),
+	 * the side effects of such a kernel to small buffers land on that context even when this flag
+	 * is false, while on a context with no known limit (the native backend) they are dropped.</p>
 	 */
 	public static boolean enableStrictSideEffects = SystemUtils.isEnabled("AR_HARDWARE_STRICT_SIDE_EFFECTS").orElse(false);
 

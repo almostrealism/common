@@ -440,9 +440,9 @@ class TestGraderTeeth(unittest.TestCase):
             "ok": True,
             "answer": ("Master Agent Dispatch runs doc-qa, defect-hunt, "
                        "flaky-qa, coverage-qa, consolidation-qa, "
-                       "performance-qa, pdsl-qa and qa-retrospective, with "
+                       "concept-qa, performance-qa, pdsl-qa and qa-retrospective, with "
                        "branch prefixes qa/docs-, qa/defect-, qa/flaky-, "
-                       "qa/coverage-, qa/consolidate-, qa/performance-, "
+                       "qa/coverage-, qa/consolidate-, qa/concept-, qa/performance-, "
                        "qa/pdsl- and qa/retro-. The open-PR limit "
                        "MAX_OPEN_PRS is 7."),
             "sources": [".github/CLAUDE.md"],
@@ -461,7 +461,7 @@ class TestGraderTeeth(unittest.TestCase):
         self.assertFalse(grade(incomplete, resolve_expect(case, "step2")).passed)
 
     def test_e1_step2_rejects_an_answer_that_omits_the_named_limit(self):
-        # All seven prefixes and a bare "7" are not enough: the question asks
+        # Every prefix and a bare "7" are not enough: the question asks
         # for the open-PR limit, so the named MAX_OPEN_PRS constant must appear
         # — otherwise an unrelated 7 would satisfy the check.
         case = self._case("E1")
@@ -469,7 +469,7 @@ class TestGraderTeeth(unittest.TestCase):
             "ok": True,
             "answer": ("Master Agent Dispatch runs rounds with prefixes "
                        "qa/docs-, qa/defect-, qa/flaky-, qa/coverage-, "
-                       "qa/consolidate-, qa/performance-, qa/pdsl- and "
+                       "qa/consolidate-, qa/concept-, qa/performance-, qa/pdsl- and "
                        "qa/retro-. It uses 7 workers."),
             "sources": [".github/CLAUDE.md"],
         }
@@ -486,13 +486,29 @@ class TestGraderTeeth(unittest.TestCase):
             "ok": True,
             "answer": ("Master Agent Dispatch uses branch prefixes qa/docs-, "
                        "qa/defect-, qa/coverage-, qa/consolidate-, "
-                       "qa/performance-, qa/pdsl- and qa/retro-; the open-PR "
+                       "qa/concept-, qa/performance-, qa/pdsl- and qa/retro-; the open-PR "
                        "limit is MAX_OPEN_PRS = 7."),
             "sources": [".github/CLAUDE.md"],
         }
         result = grade(no_flaky, resolve_expect(case, "step2"))
         self.assertFalse(result.passed)
         self.assertIn("qa/flaky-", " ".join(result.failures))
+
+    def test_e1_step2_rejects_an_answer_that_omits_the_concept_pilot_prefix(self):
+        # concept-qa is a pilot round like flaky-qa; an answer that names every
+        # other prefix but leaves out qa/concept- has not listed every round.
+        case = self._case("E1")
+        no_concept = {
+            "ok": True,
+            "answer": ("Master Agent Dispatch uses branch prefixes qa/docs-, "
+                       "qa/defect-, qa/flaky-, qa/coverage-, qa/consolidate-, "
+                       "qa/performance-, qa/pdsl- and qa/retro-; the open-PR "
+                       "limit is MAX_OPEN_PRS = 7."),
+            "sources": [".github/CLAUDE.md"],
+        }
+        result = grade(no_concept, resolve_expect(case, "step2"))
+        self.assertFalse(result.passed)
+        self.assertIn("qa/concept-", " ".join(result.failures))
 
     def test_e1_step2_rejects_a_seven_that_is_not_the_limit(self):
         # Naming MAX_OPEN_PRS and mentioning "seven" somewhere is not an
@@ -501,10 +517,10 @@ class TestGraderTeeth(unittest.TestCase):
         case = self._case("E1")
         unrelated_seven = {
             "ok": True,
-            "answer": ("Master Agent Dispatch runs eight QA jobs, seven of them "
+            "answer": ("Master Agent Dispatch runs nine QA jobs, seven of them "
                        "full-cadence rounds, with branch prefixes qa/docs-, "
                        "qa/defect-, qa/flaky-, qa/coverage-, qa/consolidate-, "
-                       "qa/performance-, qa/pdsl- and qa/retro-. Each caller "
+                       "qa/concept-, qa/performance-, qa/pdsl- and qa/retro-. Each caller "
                        "forwards MAX_OPEN_PRS as its max-open-prs input."),
             "sources": [".github/CLAUDE.md"],
         }
@@ -520,7 +536,7 @@ class TestGraderTeeth(unittest.TestCase):
             "ok": True,
             "answer": ("Master Agent Dispatch runs rounds with prefixes "
                        "qa/docs-, qa/defect-, qa/flaky-, qa/coverage-, "
-                       "qa/consolidate-, qa/performance-, qa/pdsl- and "
+                       "qa/consolidate-, qa/concept-, qa/performance-, qa/pdsl- and "
                        "qa/retro-; MAX_OPEN_PRS is not 7."),
             "sources": [".github/CLAUDE.md"],
         }
@@ -537,7 +553,7 @@ class TestGraderTeeth(unittest.TestCase):
             "ok": True,
             "answer": ("Master Agent Dispatch runs rounds with prefixes "
                        "qa/docs-, qa/defect-, qa/flaky-, qa/coverage-, "
-                       "qa/consolidate-, qa/performance-, qa/pdsl- and "
+                       "qa/consolidate-, qa/concept-, qa/performance-, qa/pdsl- and "
                        "qa/retro-; there are seven rounds and MAX_OPEN_PRS is "
                        "merely forwarded as input."),
             "sources": [".github/CLAUDE.md"],
@@ -552,7 +568,7 @@ class TestGraderTeeth(unittest.TestCase):
             "ok": True,
             "answer": ("Master Agent Dispatch uses branch prefixes qa/docs-, "
                        "qa/defect-, qa/flaky-, qa/coverage-, qa/consolidate-, "
-                       "qa/performance-, qa/pdsl- and qa/retro-, and starts no "
+                       "qa/concept-, qa/performance-, qa/pdsl- and qa/retro-, and starts no "
                        "round while more than 7 PRs are open (MAX_OPEN_PRS)."),
             "sources": [".github/CLAUDE.md"],
         }
@@ -569,7 +585,7 @@ class TestGraderTeeth(unittest.TestCase):
             "ok": True,
             "answer": ("Master Agent Dispatch runs rounds with prefixes "
                        "qa/docs-, qa/defect-, qa/flaky-, qa/coverage-, "
-                       "qa/consolidate-, qa/performance-, qa/pdsl- and "
+                       "qa/consolidate-, qa/concept-, qa/performance-, qa/pdsl- and "
                        "qa/retro-. There are 7 open PRs; MAX_OPEN_PRS is "
                        "merely forwarded as input."),
             "sources": [".github/CLAUDE.md"],
@@ -584,7 +600,7 @@ class TestGraderTeeth(unittest.TestCase):
         case = self._case("E1")
         prefixes = ("Master Agent Dispatch uses branch prefixes qa/docs-, "
                     "qa/defect-, qa/flaky-, qa/coverage-, qa/consolidate-, "
-                    "qa/performance-, qa/pdsl- and qa/retro-; ")
+                    "qa/concept-, qa/performance-, qa/pdsl- and qa/retro-; ")
         accepted = [
             "no round starts while more than 7 PRs are open (MAX_OPEN_PRS).",
             "no more than 7 PRs may be open (MAX_OPEN_PRS).",
@@ -605,7 +621,7 @@ class TestGraderTeeth(unittest.TestCase):
         case = self._case("E1")
         prefixes = ("Master Agent Dispatch uses branch prefixes qa/docs-, "
                     "qa/defect-, qa/flaky-, qa/coverage-, qa/consolidate-, "
-                    "qa/performance-, qa/pdsl- and qa/retro-; ")
+                    "qa/concept-, qa/performance-, qa/pdsl- and qa/retro-; ")
         accepted = ["MAX_OPEN_PRS is set to 7.",
                     "MAX_OPEN_PRS is `7`.",
                     "MAX_OPEN_PRS defaults to seven.",

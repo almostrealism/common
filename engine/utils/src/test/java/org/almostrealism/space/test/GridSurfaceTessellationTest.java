@@ -132,7 +132,7 @@ public class GridSurfaceTessellationTest extends TestSuiteBase implements GridIn
 		Assert.assertEquals(expected, mesh.getTriangleData().length);
 
 		// The triangle count is independent of the height values, so a flat field suffices.
-		MeshData md = MeshData.gridSurface(cp(new PackedCollection(shape(nx, ny))),
+		MeshData md = gridSurfaceData(cp(new PackedCollection(shape(nx, ny))),
 				nx, ny, ORIGIN, SPACING_X, SPACING_Z);
 		Assert.assertEquals(expected, md.getCount());
 	}
@@ -209,7 +209,7 @@ public class GridSurfaceTessellationTest extends TestSuiteBase implements GridIn
 		double b = 0.25;
 		double c = 0.1;
 
-		MeshData md = MeshData.gridSurface(planeHeights(nx, ny, a, b, c), nx, ny,
+		MeshData md = gridSurfaceData(planeHeights(nx, ny, a, b, c), nx, ny,
 				ORIGIN, SPACING_X, SPACING_Z);
 		List<Vector[]> expected = triangleCorners(Mesh.gridSurface(
 				heightField(planeHeights(nx, ny, a, b, c), nx, ny), ORIGIN, SPACING_X, SPACING_Z));

@@ -80,7 +80,7 @@ public class CodingAgentJobCollaboratorSeamTest extends TestSuiteBase {
 
         assertSame(replacement, job.commitMessageBuilder());
         assertNull("No source before the message is resolved", job.getCommitMessageSource());
-        assertEquals("Replacement message", job.getCommitMessage());
+        assertEquals("Replacement message", job.getCommitMessage(job.getWorkingDirectory()));
         assertEquals(CommitMessageBuilder.SOURCE_AGENT, job.getCommitMessageSource());
     }
 

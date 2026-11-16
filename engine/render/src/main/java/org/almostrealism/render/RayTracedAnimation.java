@@ -37,11 +37,9 @@ import org.almostrealism.rayshade.ReflectionShader;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.Animation;
 import org.almostrealism.space.StandardLightingRigs;
+import org.almostrealism.texture.ImageSequence;
 
 import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -67,12 +65,31 @@ public class RayTracedAnimation<T extends ShadableSurface> extends Animation<T> 
 	/** The most recently rendered frame, or null if no frame has been rendered. */
 	private RGB[][] image;
 
-	/** The frame files written so far, in order, for the encode script. */
-	private final List<File> frameFiles;
+	/**
+	 * The frame-sequence output (directory, naming, tracking, encode and encode script), created on
+	 * the first rendered frame once the instance identifier is known.
+	 */
+	private ImageSequence sequence;
+
+	/** The index of the next frame written to the sequence, so frames are named in frame order. */
+	private int frame;
 
 	/** Creates an animation with no frames rendered and no image dimensions set. */
-	public RayTracedAnimation() {
-		this.frameFiles = new ArrayList<>();
+	public RayTracedAnimation() { }
+
+	/**
+	 * Runs the animation, resetting the frame-sequence output first so each run starts a fresh
+	 * sequence. {@link Animation#run()} has no one-shot contract, so without this reset a second run
+	 * would keep the first run's {@link ImageSequence} — whose frame count was fixed on the first run
+	 * — and continue the frame counter past it, making {@link ImageSequence#writeFrame} reject the
+	 * next frame. Clearing both here rebinds the sequence to the current output directory, instance
+	 * and {@link Animation#getFrameCount() frame count} on the next rendered frame.
+	 */
+	@Override
+	public void run() {
+		sequence = null;
+		frame = 0;
+		super.run();
 	}
 
 	/**
@@ -94,64 +111,63 @@ public class RayTracedAnimation<T extends ShadableSurface> extends Animation<T> 
 	public RGB[][] getImage() { return image; }
 
 	/**
-	 * Renders the current state of the scene and writes it to the output directory as
-	 * {@code frame_<instance>.<i>.png}. The render and write share
-	 * {@link RayTracedScene#renderToFile(File)} with every other frame-sequence
-	 * writer. A frame that cannot be written is reported as a warning, and the animation continues.
+	 * Renders the current state of the scene and hands the frame to the {@link ImageSequence}, which
+	 * writes it to the output directory as a zero-padded PNG (behind the instance identifier) and
+	 * tracks it. A frame that cannot be written is reported as a warning, and the animation continues.
 	 *
 	 * @param i        the iteration number of the frame
 	 * @param instance the instance identifier of the animation
 	 */
 	@Override
 	public void writeImage(int i, String instance) {
-		File f = outputFile("frame_" + instance + "." + i + ".png");
-
-		RenderParameters p = new RenderParameters(imageWidth, imageHeight, 1, 1);
-
-		try {
-			image = new RayTracedScene(this, new FogParameters(), p).renderToFile(f);
-			frameFiles.add(f);
-			log("Wrote frame " + i + "/" + getIterations() + ": " + f);
-		} catch (IOException e) {
-			warn("Could not write frame " + i + " to " + f, e);
-		}
+		image = renderFrame();
+		frameSequence(instance).writeFrame(frame++, image);
 	}
 
 	/**
-	 * Writes {@code encode.sh} to the output directory: a {@code mencoder} command that encodes
-	 * the frames written so far as an MPEG-4 video at this animation's frame rate.
+	 * Renders the current state of the scene to a frame of pixels. This is the render step of a
+	 * frame; it is the template-method hook a subclass overrides to render with a different engine or
+	 * to produce the frame without a lit ray trace. The surrounding frame naming, tracking, encode
+	 * and encode script are the {@link ImageSequence}'s and are independent of it.
+	 *
+	 * @return the rendered pixels, indexed by column then row
+	 */
+	protected RGB[][] renderFrame() {
+		RenderParameters p = new RenderParameters(imageWidth, imageHeight, 1, 1);
+		return new RayTracedScene(this, new FogParameters(), p).render();
+	}
+
+	/**
+	 * Writes {@code encode.sh} to the output directory through the {@link ImageSequence}: an
+	 * {@code ffmpeg} command that encodes the frames written so far, bounded to the contiguous run on
+	 * disk.
 	 *
 	 * @param instance the instance identifier of the animation
 	 */
 	@Override
 	public void writeEncodeScript(String instance) {
-		File script = outputFile("encode.sh");
-
-		List<String> names = new ArrayList<>();
-		for (File f : frameFiles) names.add(f.getName());
-
-		int fps = Math.max(1, (int) Math.round(1.0 / getFrameDuration()));
-
-		try (PrintWriter out = new PrintWriter(new FileWriter(script))) {
-			out.println("#!/bin/sh");
-			out.println("mencoder mf://" + String.join(",", names) +
-					" -mf w=" + imageWidth + ":h=" + imageHeight + ":fps=" + fps +
-					":type=png -ovc lavc -lavcopts vcodec=mpeg4 -oac copy -o output.avi");
-		} catch (IOException e) {
-			warn("Could not write encode script " + script, e);
-		}
+		frameSequence(instance).writeEncodeScript();
 	}
 
 	/**
-	 * Returns the file with the given name in the output directory, or in the working directory
-	 * if no output directory is set.
+	 * Returns the frame sequence, creating it on first use. The output directory is this animation's
+	 * {@link Animation#getOutputDirectory() output directory} (the working directory when none is
+	 * set); frames are named behind the instance identifier so runs of different instances do not
+	 * collide, and the encode script's frame rate follows the animation's frame duration.
 	 *
-	 * @param name the file name
-	 * @return the file
+	 * @param instance the instance identifier of the animation
+	 * @return the frame sequence
 	 */
-	private File outputFile(String name) {
-		String dir = getOutputDirectory();
-		return dir == null ? new File(name) : new File(dir, name);
+	private ImageSequence frameSequence(String instance) {
+		if (sequence == null) {
+			String dir = getOutputDirectory();
+			sequence = new ImageSequence(dir == null ? new File(".") : new File(dir),
+					getFrameCount(), "frame_" + instance + ".");
+			sequence.prepare();
+			sequence.setFrameRate(Math.max(1, (int) Math.round(1.0 / getFrameDuration())));
+		}
+
+		return sequence;
 	}
 
 	/**

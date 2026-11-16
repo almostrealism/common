@@ -1,0 +1,117 @@
+name: "Master Failure Dispatch"
+
+# Starts a coding-agent round to fix the tests failing on master.
+#
+# A master "Build and Test" run is never retried (the retry gate in
+# auto-resolve-submit.yaml is for branches) and auto-resolve does not run on
+# master, so before this workflow a master failure reached an agent only when a
+# person noticed it, or a week later through the flaky round, which looks only
+# at retried runs. Every branch built on a red master inherits its failures, so
+# a failure left there costs every pull request its Test Checks.
+#
+# The cap is the point of this workflow. A master failure must never fan out
+# into a branch per failure or per run:
+#
+#   - `gate` starts a round only for a failure that is current: the most recent
+#     completed master push run failed with at least one failing test, and that
+#     run's commit contains the merge of the most recent master-fix pull
+#     request, so a run that started before a fix merged cannot send a second
+#     agent after the same failure (tools/ci/collect-master-failures.py).
+#   - `master-fix` is a qa-round. Its cadence gate (tools/ci/qa-cadence.sh)
+#     allows one round of the "qa/master-fix-" prefix in progress at a time:
+#     while one's pull request is open, or its branch is younger than
+#     grace-hours without a pull request, every further master failure is held
+#     off. That round fixes whatever is failing when it starts, and the next
+#     failure after it is dealt with is the next round's.
+#   - The two jobs serialize on one concurrency group, so two runs completing
+#     together cannot both pass the gate.
+#
+# The round's leads come from the same script, so the agent starts from the
+# failing tests and their lanes. It runs on a macOS Node, like the flaky round,
+# so the Metal and native lanes are reproducible there, and with the test lock
+# on: the failing test is the specification.
+
+on:
+  workflow_run:
+    workflows: ["Build and Test"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Start a round even when one is in progress or the backlog is full"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  group: master-failure-dispatch
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    # A completed push run on master that failed. A pull request, deployment or
+    # dispatch run whose head branch happens to be master is not a result for
+    # what was merged.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      dispatch: ${{ steps.decide.outputs.dispatch }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Decide whether a master-fix round should start
+        id: decide
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          # Only the expected key=value lines reach the job's outputs.
+          python3 tools/ci/collect-master-failures.py --gate | tee "$RUNNER_TEMP/gate.txt"
+          grep -E '^(dispatch=(true|false)|run_id=[0-9]*|failing_count=[0-9]+)$' "$RUNNER_TEMP/gate.txt" >> "$GITHUB_OUTPUT"
+
+  master-fix:
+    needs: gate
+    if: needs.gate.outputs.dispatch == 'true'
+    permissions:
+      contents: write
+      pull-requests: write
+      # The leads-script reads the Actions API (the master run, its jobs and
+      # their logs). A called workflow's token can only narrow the caller's.
+      actions: read
+    uses: ./.github/workflows/qa-round.yaml
+    with:
+      round-name: "master-fix"
+      branch-prefix: "qa/master-fix-"
+      # No spacing between rounds beyond the one-in-progress limit: a failure
+      # that appears after a round has been dealt with is a new one to fix.
+      min-interval-days: 0
+      # A round's agent opens its pull request when it finishes. Until then the
+      # branch alone marks the round as in progress, for this long.
+      grace-hours: 12
+      # A red master holds up every pull request, so the open-PR backlog that
+      # spaces the other rounds does not hold this one off.
+      max-open-prs: 1000
+      force: ${{ github.event.inputs.force || 'false' }}
+      prompt: tools/ci/prompts/master-fix.txt
+      leads-script: tools/ci/collect-master-failures.py
+      protect-test-files: "true"
+      phase-configs: '{"primary": {"runner": "claude", "model": "opus", "provider": "anthropic"}}'
+      required-labels: '{"platform": "macos"}'
+      required-labels-json: '{"platform": "macos"}'
+      description: "Fix the tests failing on master"
+      controller-url: ${{ vars.FLOWTREE_CONTROLLER_URL }}
+      cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+    secrets:
+      FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
