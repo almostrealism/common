@@ -6,7 +6,8 @@ name: "Master Agent Dispatch"
 # Defect Hunt) with byte-identical triggers. They are one workflow because a
 # workflow per lifecycle event keeps the Actions UI navigable; a separate file
 # per job multiplies the sidebar without separating anything. Every job added
-# since — test coverage, consolidation, performance, PDSL migration, retrospective — belongs
+# since — test coverage, consolidation, concept alignment, performance, PDSL migration,
+# retrospective — belongs
 # here for the same reason.
 #
 # Each job keeps its own concurrency group, so they still serialize
@@ -55,6 +56,7 @@ on:
           - "flaky"
           - "coverage"
           - "consolidation"
+          - "concept"
           - "performance"
           - "pdsl"
           - "retrospective"
@@ -84,6 +86,11 @@ on:
         type: boolean
       ignore_interval_consolidation:
         description: "Run the consolidation QA even if its minimum interval has not passed (a round still in progress blocks it)"
+        required: false
+        default: false
+        type: boolean
+      ignore_interval_concept:
+        description: "Run the concept-alignment QA even if its minimum interval has not passed (a round still in progress blocks it)"
         required: false
         default: false
         type: boolean
@@ -933,6 +940,52 @@ jobs:
     secrets:
       FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
 
+  # ── Quality Assurance — Concept Alignment (pilot) ────────
+  # Finds one type that represents an existing abstraction's concept without
+  # extending it (an orphaned interface, a parallel hierarchy, a missing
+  # specialization), makes it extend that contract, updates every caller, and
+  # records the relationship in the javadoc of both types and in
+  # docs/internals/concept-map.md. It only aligns new or orphaned types onto
+  # existing contracts; renaming a member of an established interface is filed
+  # as a tracker task for a person to approve. A PILOT: its interval is 5 days
+  # (an alignment is slower to review than a defect fix) and it deliberately
+  # does NOT raise the shared MAX_OPEN_PRS (the note above the jobs). Pins
+  # claude/opus, like consolidation-qa — the "is-a" judgment is the work — and
+  # keeps the test lock on, since a realignment must not change what existing
+  # tests assert. Its template is this repository's own (concept-alignment.txt),
+  # passed by path and read as data. A caller of qa-round.yaml.
+  concept-qa:
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.agent == 'all' ||
+      github.event.inputs.agent == 'concept'
+    permissions:
+      contents: write
+      pull-requests: write
+
+    # Serialize so two merges landing together cannot both pass the gate.
+    concurrency:
+      group: concept-qa
+      cancel-in-progress: false
+
+    uses: ./.github/workflows/qa-round.yaml
+    with:
+      round-name: "concept-qa"
+      branch-prefix: "qa/concept-"
+      min-interval-days: 5
+      # The workflow's MAX_OPEN_PRS; see the note above the jobs.
+      max-open-prs: 7
+      force: ${{ github.event.inputs.force || 'false' }}
+      ignore-interval: ${{ github.event.inputs.ignore_interval_concept || 'false' }}
+      prompt: tools/ci/prompts/concept-alignment.txt
+      protect-test-files: "true"
+      phase-configs: '{"primary": {"runner": "claude", "model": "opus", "provider": "anthropic"}}'
+      description: "Align an orphaned concept with the existing type hierarchy"
+      controller-url: ${{ vars.FLOWTREE_CONTROLLER_URL }}
+      cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+    secrets:
+      FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+
   # ── Quality Assurance — Performance ──────────────────────
   # Picks an existing slow test, profiles where its time goes, and makes the
   # framework code it exercises measurably faster, with the test untouched. Its
@@ -1048,7 +1101,7 @@ jobs:
       force: ${{ github.event.inputs.force || 'false' }}
       ignore-interval: ${{ github.event.inputs.ignore_interval_retrospective || 'false' }}
       prompt: retrospective
-      template-vars: '{"REVIEW_SINCE": "14 days ago", "QA_PREFIXES": "qa/docs- qa/defect- qa/flaky- qa/coverage- qa/consolidate- qa/performance- qa/pdsl- qa/retro- ci/qa-"}'
+      template-vars: '{"REVIEW_SINCE": "14 days ago", "QA_PREFIXES": "qa/docs- qa/defect- qa/flaky- qa/coverage- qa/consolidate- qa/concept- qa/performance- qa/pdsl- qa/retro- ci/qa-"}'
       protect-test-files: "true"
       enforce-changes: "true"
       max-enforce-changes-retries: "0"
