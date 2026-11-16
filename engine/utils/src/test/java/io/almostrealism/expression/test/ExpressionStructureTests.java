@@ -67,6 +67,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Verifies the structural primitives every {@link Expression} node relies on: the tree
@@ -1109,6 +1110,72 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		@Override
 		public String getExpression(LanguageOperations lang) {
 			return "countdown" + remaining;
+		}
+	}
+
+	/**
+	 * A containment query finds a subtree equal to the one it looks for wherever it occurs,
+	 * from the root down to a leaf, whether or not it is the same instance, and finds neither
+	 * an absent subtree of the same size nor one that is deeper or larger than the tree.
+	 */
+	@Test(timeout = 30000)
+	public void containmentFindsEqualSubtreesAtEveryDepth() {
+		Expression<?> deep = Sum.of(tree(), Product.of(ref("z"), ref("w")), kernel());
+
+		Assert.assertTrue(deep.contains(Sum.of(tree(), Product.of(ref("z"), ref("w")), kernel())));
+		Assert.assertTrue(deep.contains(tree()));
+		Assert.assertTrue(deep.contains(Product.of(ref("z"), ref("w"))));
+		Assert.assertTrue(deep.contains(Sum.of(ref("x"), ref("y"))));
+		Assert.assertTrue(deep.contains(ref("w")));
+		Assert.assertTrue(deep.contains(kernel()));
+
+		Assert.assertFalse(deep.contains(Product.of(ref("z"), ref("y"))));
+		Assert.assertFalse(deep.contains(ref("v")));
+		Assert.assertFalse(deep.contains(Sum.of(deep, ref("v"))));
+		Assert.assertFalse(Product.of(ref("z"), ref("w")).contains(tree()));
+		Assert.assertFalse(deep.contains(null));
+	}
+
+	/**
+	 * A containment query compares only the nodes that could equal the expression it looks
+	 * for. Equal expressions have the same depth and size, so the leaves of a tree are never
+	 * compared with a target that has children, while a target that is itself a leaf is
+	 * compared with the leaves and found among them.
+	 */
+	@Test(timeout = 30000)
+	public void containmentSkipsSubtreesTooSmallToHoldTheTarget() {
+		AtomicInteger comparisons = new AtomicInteger();
+		Expression<?> tree = Sum.of(
+				Product.of(new CountingReference("a", comparisons), new CountingReference("b", comparisons)),
+				Product.of(new CountingReference("c", comparisons), new CountingReference("d", comparisons)));
+
+		comparisons.set(0);
+		Assert.assertFalse(tree.contains(Sum.of(ref("p"), ref("q"))));
+		Assert.assertEquals(0, comparisons.get());
+
+		Assert.assertTrue(tree.contains(new CountingReference("c", comparisons)));
+		Assert.assertTrue(comparisons.get() > 0);
+	}
+
+	/** A reference leaf that counts how often it is compared with another expression. */
+	private static final class CountingReference extends StaticReference<Integer> {
+		/** The number of comparisons made by every reference sharing this counter. */
+		private final AtomicInteger comparisons;
+
+		/**
+		 * @param name        the name of the referenced value
+		 * @param comparisons the counter of comparisons, shared by the leaves of one tree
+		 */
+		CountingReference(String name, AtomicInteger comparisons) {
+			super(Integer.class, name);
+			this.comparisons = comparisons;
+		}
+
+		/** Counts the comparison, then compares as a {@link StaticReference} does. */
+		@Override
+		public boolean compare(Expression expression) {
+			comparisons.incrementAndGet();
+			return super.compare(expression);
 		}
 	}
 }
