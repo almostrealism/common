@@ -120,6 +120,27 @@ cases in §Success criteria fail there even after the status parser is fixed:
 
 The fix is the same as for status: pass `-z` and split on `\0`.
 
+#### Two more `--name-only` listings in `flowtree/base`, off the commit path
+
+Two listing methods on `GitOperations` read `--name-only` output the same way
+(`listing.split("\n")` then `trim()`, no `-z`), but neither feeds the commit or
+merge path, so neither can drop a file:
+
+| Site | Command | Consumers |
+|---|---|---|
+| `GitOperations.extractNewFilePaths` | `diff --name-only --diff-filter=A origin/<base>`, then `ls-files --others --exclude-standard` | `CodingAgentJob.extractNewFilePaths` → `OrganizationalPlacementRule`, `ReviewRule`, `ReviewPromptBuilder`, `EnforcementRunner` |
+| `GitOperations.listFilesOnRef` | `ls-tree -r --name-only <ref>` | `InvalidFileDetector` |
+
+A file whose name contains `"`, `\` or a non-ASCII byte would still be reported
+quoted by these two, and the `trim()` mangles a leading or trailing space — so
+the organizational-placement / review prompts and the invalid-file scan would
+see a wrong path for such a file. This is a reporting defect in the
+review/enforcement path, not a lost commit, which is why it sits outside the
+"approved file dropped from the commit" problem this plan exists to close. They
+share the `GitOperations` parsing that §1 touches, so if the approver wants
+them corrected too, the same `-z` + split-on-`\0` change applies and is cheap;
+see open question 6. Listed here so the choice is explicit rather than silent.
+
 ## Scope
 
 In scope:
@@ -140,6 +161,11 @@ Out of scope:
 - Changing the `DEGRADED`/`SUCCESS` rules for files the guardrails *rejected*
   (`JobWorkOutcome.allChangesDropped`, `StagingSkipRule`). Those are working as designed, since a
   rejected file is reported as skipped. This plan is about *approved* files.
+- The two `flowtree/base` `--name-only` listings off the commit path
+  (`GitOperations.extractNewFilePaths`, `GitOperations.listFilesOnRef`). They
+  can misreport a quoted or space-padded path to the review/enforcement rules
+  but cannot drop a commit, so they are out of this plan's scope unless the
+  approver folds them in (open question 6).
 
 ## Approach
 
@@ -326,6 +352,15 @@ the `-z` parse is correct on every version.
    If that work is pushed later, compare it against this plan before approving. In
    particular, check whether it includes the stricter `GitOperations.stage` (§3),
    `GitPushReconciler` (§1b), and the dependent-repo stage failure (§2).
+6. **Correct the two off-commit-path listings too?** `GitOperations.extractNewFilePaths`
+   and `GitOperations.listFilesOnRef` (§1b, "Two more `--name-only` listings")
+   misreport a path containing `"`, `\` or a non-ASCII byte, and mangle a
+   leading/trailing space, to the review/enforcement rules and the invalid-file
+   scan. They cannot drop a commit, so this plan leaves them out. Recommendation:
+   fold them into §1's `-z` change, since the parser work is already open there
+   and the correction is small; the only cost is a slightly wider blast radius for
+   the review-path consumers. The approver decides whether to include them or keep
+   them out.
 
 ## Estimated complexity
 
