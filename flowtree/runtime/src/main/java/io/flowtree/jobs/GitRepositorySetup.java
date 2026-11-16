@@ -305,9 +305,8 @@ class GitRepositorySetup implements ConsoleFeatures {
             mergeConflictsDetected = true;
             mergeParent = baseHead;
 
-            // TODO(review): executeGitWithOutput merges stderr, so a git warning now fuses with the first -z field and drops that entry; read stdout only.
-            String statusOutput = job.executeGitWithOutput("status", "--porcelain", "-z");
-            for (GitOperations.StatusEntry entry : GitOperations.StatusEntry.parseAll(statusOutput)) {
+            for (GitOperations.StatusEntry entry
+                    : GitOperations.requireStatusEntries(job.getWorkingDirectory())) {
                 if (entry.isUnmerged()) {
                     conflictFiles.add(entry.path());
                 }
@@ -349,12 +348,13 @@ class GitRepositorySetup implements ConsoleFeatures {
     }
 
     /**
-     * Returns every file reported as dirty by {@code git status --porcelain -z},
-     * with no exclusion filtering applied.
+     * Returns every file reported as dirty by
+     * {@link GitOperations#getChangedFiles(String)}, with no exclusion
+     * filtering applied. Only git's standard output is parsed, so a warning on
+     * standard error cannot corrupt the first entry of the {@code -z} listing.
      */
-    private List<String> getAllDirtyFiles() throws IOException, InterruptedException {
-        String statusOutput = job.executeGitWithOutput("status", "--porcelain", "-z");
-        return GitOperations.parseChangedFiles(statusOutput);
+    private List<String> getAllDirtyFiles() {
+        return GitOperations.getChangedFiles(job.getWorkingDirectory());
     }
 
     /**

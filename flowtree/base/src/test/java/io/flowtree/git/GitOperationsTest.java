@@ -545,6 +545,76 @@ public class GitOperationsTest extends TestSuiteBase {
             if (entry.isUnmerged()) unmerged.add(entry.path());
         }
         Assert.assertEquals(List.of(spaced), unmerged);
+        Assert.assertEquals("the stdout-only query must report the same conflict",
+                List.of(new GitOperations.StatusEntry("UU", spaced)),
+                GitOperations.requireStatusEntries(repo.toString()));
+    }
+
+    /**
+     * A warning git writes to standard error while listing status — here
+     * "could not open directory" for an unreadable untracked directory — must
+     * not cost {@link GitOperations#requireStatusEntries(String)} an entry.
+     * When stderr is merged into the {@code -z} listing (as
+     * {@link GitOperations#executeWithOutput(String...)} does) the warning
+     * fuses with the first NUL field and that entry is lost; the stdout-only
+     * query keeps every entry, spaced paths included.
+     *
+     * @throws IOException          if a git command or file write fails
+     * @throws InterruptedException if a git command is interrupted
+     */
+    @Test(timeout = 30000)
+    public void requireStatusEntriesKeepsEveryEntryDespiteStderrWarning()
+            throws IOException, InterruptedException {
+        Path repo = initRepo();
+        GitOperations git = new GitOperations(repo.toString(), "status-entry-test");
+        Files.writeString(repo.resolve("a.txt"), "staged\n", StandardCharsets.UTF_8);
+        requireGit(git, "add", "a.txt");
+        Files.writeString(repo.resolve("a.txt"), "modified\n", StandardCharsets.UTF_8);
+        Files.createDirectories(repo.resolve("dir with space"));
+        Files.writeString(repo.resolve("dir with space/b.txt"), "new\n", StandardCharsets.UTF_8);
+        Path locked = repo.resolve("locked");
+        Files.createDirectories(locked);
+        Files.writeString(locked.resolve("c.txt"), "hidden\n", StandardCharsets.UTF_8);
+        // TODO(review): as root the unreadable bit is not enforced, git emits no warning and the stderr assertion below fails; consider a non-permission way to make git warn.
+        assertTrue("the directory must be made unreadable", locked.toFile().setReadable(false, false));
+        try {
+            String merged = git.executeWithOutput("status", "--porcelain", "-z", "-uall");
+            assertTrue("git must warn on stderr for this scenario to be meaningful: " + merged,
+                    merged.contains("could not open directory"));
+            assertFalse("merging stderr loses the first entry, which is the defect guarded here",
+                    GitOperations.parseChangedFiles(merged).contains("a.txt"));
+
+            Assert.assertEquals(List.of(
+                            new GitOperations.StatusEntry("AM", "a.txt"),
+                            new GitOperations.StatusEntry("??", "dir with space/b.txt")),
+                    GitOperations.requireStatusEntries(repo.toString()));
+            Assert.assertEquals(List.of("a.txt", "dir with space/b.txt"),
+                    GitOperations.requireChangedFiles(repo.toString()));
+            Assert.assertEquals(List.of("a.txt", "dir with space/b.txt"),
+                    GitOperations.getChangedFiles(repo.toString()));
+        } finally {
+            locked.toFile().setReadable(true, false);
+        }
+    }
+
+    /**
+     * {@link GitOperations#requireStatusEntries(String)} throws when the
+     * status query fails rather than reporting a clean tree.
+     *
+     * @throws IOException if the temporary directory cannot be created
+     */
+    @Test(timeout = 10000)
+    public void requireStatusEntriesThrowsOutsideARepository() throws IOException {
+        Path notRepo = Files.createTempDirectory("git-ops-not-a-repo-");
+        tempDirs.add(notRepo);
+        try {
+            GitOperations.requireStatusEntries(notRepo.toString());
+            Assert.fail("a failed status query must throw");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains(notRepo.toString()));
+        }
+        assertTrue("the lenient query reports nothing on failure",
+                GitOperations.getChangedFiles(notRepo.toString()).isEmpty());
     }
 
     /**

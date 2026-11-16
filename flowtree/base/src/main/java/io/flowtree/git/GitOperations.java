@@ -330,7 +330,7 @@ public class GitOperations implements ConsoleFeatures {
      * @return the changed file paths, in the order git reported them
      */
     public static List<String> getChangedFiles(String workingDirectory) {
-        return queryChangedFiles(workingDirectory).getFiles();
+        return StatusEntry.paths(queryChangedFiles(workingDirectory).getEntries());
     }
 
     /**
@@ -351,12 +351,36 @@ public class GitOperations implements ConsoleFeatures {
      *                      or exited with a non-zero code
      */
     public static List<String> requireChangedFiles(String workingDirectory) throws IOException {
+        return StatusEntry.paths(requireStatusEntries(workingDirectory));
+    }
+
+    /**
+     * Returns every {@link StatusEntry} reported by
+     * {@code git status --porcelain -z -uall} in {@code workingDirectory} —
+     * the status code as well as the path — for callers that act on the kind
+     * of change, such as a merge-conflict scan selecting
+     * {@linkplain StatusEntry#isUnmerged() unmerged} entries.
+     *
+     * <p>Only git's standard output is parsed. A warning git writes to
+     * standard error (for example an unreadable directory) is kept out of the
+     * NUL-separated listing, where it would otherwise fuse with the first
+     * field and corrupt or drop that entry. A query that cannot be run or
+     * exits non-zero throws, exactly as {@link #requireChangedFiles(String)}
+     * does.</p>
+     *
+     * @param workingDirectory the repository root to inspect; {@code null}
+     *                         means the JVM's current working directory
+     * @return the status entries, in the order git reported them
+     * @throws IOException if the {@code git status} query could not be run
+     *                      or exited with a non-zero code
+     */
+    public static List<StatusEntry> requireStatusEntries(String workingDirectory) throws IOException {
         ChangedFilesResult result = queryChangedFiles(workingDirectory);
         if (!result.isQuerySucceeded()) {
             throw new IOException("git status query failed in "
                     + (workingDirectory != null ? workingDirectory : "."));
         }
-        return result.getFiles();
+        return result.getEntries();
     }
 
     /**
@@ -433,7 +457,7 @@ public class GitOperations implements ConsoleFeatures {
                 return new ChangedFilesResult(new ArrayList<>(), false);
             }
 
-            return new ChangedFilesResult(parseChangedFiles(statusOutput), true);
+            return new ChangedFilesResult(StatusEntry.parseAll(statusOutput), true);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return new ChangedFilesResult(new ArrayList<>(), false);
@@ -471,11 +495,7 @@ public class GitOperations implements ConsoleFeatures {
      * @return the changed file paths, in the order git reported them
      */
     public static List<String> parseChangedFiles(String statusOutput) {
-        List<String> files = new ArrayList<>();
-        for (StatusEntry entry : StatusEntry.parseAll(statusOutput)) {
-            files.add(entry.path());
-        }
-        return files;
+        return StatusEntry.paths(StatusEntry.parseAll(statusOutput));
     }
 
     /**
@@ -520,6 +540,20 @@ public class GitOperations implements ConsoleFeatures {
         }
 
         /**
+         * Returns the paths of {@code entries}, in order.
+         *
+         * @param entries the status entries
+         * @return each entry's path, in the order given
+         */
+        public static List<String> paths(List<StatusEntry> entries) {
+            List<String> files = new ArrayList<>();
+            for (StatusEntry entry : entries) {
+                files.add(entry.path());
+            }
+            return files;
+        }
+
+        /**
          * Returns whether this entry is a rename or copy ({@code R} or
          * {@code C} in either column), whose source path git emits as the
          * following NUL-terminated field.
@@ -551,27 +585,27 @@ public class GitOperations implements ConsoleFeatures {
      * so callers can tell a clean tree from a query that never ran.
      */
     private static final class ChangedFilesResult {
-        /** The changed file paths the query found; empty when the query failed. */
-        private final List<String> files;
+        /** The status entries the query found; empty when the query failed. */
+        private final List<StatusEntry> entries;
         /** Whether the underlying {@code git status} process ran and exited zero. */
         private final boolean querySucceeded;
 
         /**
-         * @param files          the changed file paths found, if any
+         * @param entries        the status entries found, if any
          * @param querySucceeded whether the underlying query completed successfully
          */
-        private ChangedFilesResult(List<String> files, boolean querySucceeded) {
-            this.files = files;
+        private ChangedFilesResult(List<StatusEntry> entries, boolean querySucceeded) {
+            this.entries = entries;
             this.querySucceeded = querySucceeded;
         }
 
         /**
-         * Returns the changed file paths found by this query.
+         * Returns the status entries found by this query.
          *
-         * @return the changed file paths found by this query
+         * @return the status entries found by this query
          */
-        List<String> getFiles() {
-            return files;
+        List<StatusEntry> getEntries() {
+            return entries;
         }
 
         /**
