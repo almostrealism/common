@@ -577,6 +577,58 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertLess(text.index("NodeWorkerWakeTest"), fallback)
         self.assertNotRegex(text, r"PR #\d+")
 
+    def test_concept_alignment_renders_through_the_qa_round_builder(self):
+        """The concept-alignment round passes its template by path to the
+        generic qa-round builder, so it is not among the fixed-shape builders
+        above. Rendered exactly as qa-round.yaml renders a caller template —
+        this checkout as the caller root — it must come out with the round's
+        branch and base substituted and no placeholder left in it."""
+        env = dict(os.environ)
+        env.update({
+            "BRANCH": "qa/concept-20261115-000000",
+            "BASE_BRANCH": "master",
+            "REPO_URL": "git@github.com:example/common.git",
+            "PROMPT": "tools/ci/prompts/concept-alignment.txt",
+        })
+        env.pop("TEMPLATE_VARS", None)
+        env.pop("LEADS_FILE", None)
+        result = subprocess.run(
+            ["bash", os.path.join(_PROMPT_DIR, _GENERIC_QA_BUILDER), _REPO_ROOT, self.output],
+            env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, result.returncode, result.stderr)
+        text = _read(self.output)
+        self.assertNotRegex(text, _PLACEHOLDER)
+        self.assertIn('"qa/concept-20261115-000000" (created from master)', text)
+        self.assertIn("test method that exists on master", text)
+
+    def test_concept_alignment_states_its_scope_and_prohibitions(self):
+        """The round's contract lives in its template: survey and choose one
+        candidate, map the hierarchy, check the "is-a" claim and the poms in
+        both directions, keep the change behavior-preserving, add a test
+        through the new supertype, record the relationship in the concept map
+        (creating it when absent), and file every further alignment instead of
+        making it. It only aligns new or orphaned types; renaming an established
+        contract is filed for a person. It must forbid new modules, pom edits,
+        weakened tests, instanceof bridges and adapter classes."""
+        text = _read(os.path.join(_PROMPT_DIR, "concept-alignment.txt"))
+        for phrase in ("docs/internals/concept-map.md",
+                       "If the file does not exist yet, create it",
+                       "Map the existing hierarchy completely", "in both directions",
+                       "through its new supertype", "behavior-preserving",
+                       "tracker_create_task", "tracker_search_tasks",
+                       "new or orphaned types onto existing contracts",
+                       "long-established interface", "test-file protection",
+                       "Do not create a Maven module, modify any `pom.xml`",
+                       "Do not weaken, disable, or narrow an existing test",
+                       "No `instanceof`", 'No adapter, wrapper, or "converter" classes'):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, text)
+        self.assertLess(text.index("Map the existing hierarchy completely"),
+                        text.index("Make the alignment"),
+                        "the hierarchy must be mapped before anything is changed")
+        self.assertNotRegex(text, r"PR #\d+")
+        self.assertNotIn("docs/plans/", text)
+
 
 if __name__ == "__main__":
     unittest.main()
