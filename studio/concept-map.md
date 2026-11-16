@@ -4,7 +4,9 @@ The multimedia-composition layer. It orchestrates the layers below into complete
 pipelines: pattern-based music, audio-scene arrangement and effects, spatial audio
 visualization, and the place where a domain model meets the ML engine in a finished application
 (biological connectomes run as trained networks). Composition works at a *higher abstraction than
-synthesis* — it arranges and sequences; it does not generate the raw signal.
+synthesis*: it arranges, sequences and renders scenes, and `compose` generates audio from ML
+models, but the synthesis primitives it assembles (oscillators, filters, envelopes) are defined
+in `engine/audio`, not here.
 
 Companion to [studio/README.md](README.md) and the summary map in
 [docs/internals/concept-map.md](../docs/internals/concept-map.md).

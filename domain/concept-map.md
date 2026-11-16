@@ -77,6 +77,8 @@ Genes, chromosomes and genomes as producer-backed structures.
 ### physics — atomic and classical simulation
 Quantum structure and rigid-body dynamics, integrating with `chemistry` and `space`.
 
+<!-- TODO(review): Atom, Shell, Orbital and Electron are declared in domain/chemistry (org.almostrealism.chem), not physics; move this row and fix the "chemistry constructs atoms through physics" wording. -->
+
 | Concept | Role |
 |---|---|
 | `Atom`, `Shell`, `Orbital`, `Electron` | The atomic model with electron configuration and energy levels. |
