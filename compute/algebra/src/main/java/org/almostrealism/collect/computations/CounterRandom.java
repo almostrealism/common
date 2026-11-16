@@ -38,7 +38,8 @@ import java.util.List;
 /**
  * The {@link RandomProducer} implementation whose values are computed inside the compiled kernel, as
  * a counter-based generator. It is selected for every {@code rand}/{@code randn} when the
- * {@code AR_RANDOM} setting is {@code counter} (see {@link RandomProducer}).
+ * {@code AR_RANDOM} setting is {@code counter}, and for every variable-count shape whatever
+ * that setting (see {@link RandomProducer}).
  *
  * <p>Each output element is a pure function of {@code (seed, counter, element index)}:</p>
  * <pre>

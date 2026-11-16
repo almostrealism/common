@@ -30,7 +30,9 @@ RandomProducer n = randn(shape(3, 4));
 ```
 
 `rand`/`randn` return the `RandomProducer` implementation selected once by the `AR_RANDOM`
-setting (`java`, host-drawn, by default; `counter`, the in-kernel `CounterRandom`). See
+setting (`java`, host-drawn, by default; `counter`, the in-kernel `CounterRandom`). A shape
+whose count is variable, such as `shape(-1, 2)` for one pair per item of a batch, always gets a
+`CounterRandom`, since the host cannot draw values for a count it does not yet know. See
 [Reproducible random drive](neural-population-simulation.md#6-reproducible-random-drive) for
 how the two differ, what `refresh()` does, and the 2^24 seed and counter bound.
 

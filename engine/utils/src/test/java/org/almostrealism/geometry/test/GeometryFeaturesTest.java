@@ -188,4 +188,49 @@ public class GeometryFeaturesTest extends TestSuiteBase {
 		assertVector("second origin", new Vector(4.0, 5.0, 6.0), second.getOrigin());
 		assertVector("second direction", new Vector(0.0, -0.8, 0.6), second.getDirection());
 	}
+
+	/**
+	 * A blurred {@link ReflectedRay} evaluated over a batch perturbs every ray independently.
+	 * All rays share the same viewer and normal, so any difference between their
+	 * directions comes from the blur alone. Every direction must still be a unit vector within
+	 * the angle the blur allows of the mirror direction, keep its own origin, and the batch must
+	 * not collapse onto a single shared perturbation.
+	 */
+	@Test(timeout = 60000)
+	public void blurredReflectedRayBatchPerturbsEachRay() {
+		int count = 16;
+		double blur = 0.2;
+		double minCos = Math.cos(Math.atan(blur / Math.sqrt(2.0))) - EPSILON;
+		Vector mirror = new Vector(-0.6, 0.0, 0.8);
+
+		Producer<PackedCollection> points = v(shape(-1, 3), 0);
+		Producer<PackedCollection> viewers = v(shape(-1, 3), 1);
+		Producer<PackedCollection> normals = v(shape(-1, 3), 2);
+
+		PackedCollection pointData = integers(0, count * 3).evaluate().reshape(shape(count, 3).traverse(1));
+		PackedCollection viewerData = vector(0.6, 0.0, 0.8).repeat(count).evaluate().reshape(shape(count, 3).traverse(1));
+		PackedCollection normalData = vector(0.0, 0.0, 1.0).repeat(count).evaluate().reshape(shape(count, 3).traverse(1));
+
+		PackedCollection result = new PackedCollection(shape(count, 6).traverse(1));
+		reflectedRay(points, viewers, normals, blur).into(result.each())
+				.evaluate(pointData, viewerData, normalData);
+
+		int distinct = 0;
+		Vector first = new Ray(result, 0).getDirection();
+
+		for (int i = 0; i < count; i++) {
+			Ray r = new Ray(result, i * 6);
+			assertVector("origin " + i, new Vector(3.0 * i, 3.0 * i + 1, 3.0 * i + 2), r.getOrigin());
+
+			Vector d = r.getDirection();
+			Assert.assertEquals("ray " + i + " length", 1.0, Math.sqrt(d.dotProduct(d)), EPSILON);
+			double cos = d.dotProduct(mirror);
+			Assert.assertTrue("ray " + i + " deviates too far from the mirror: cos=" + cos, cos >= minCos);
+
+			if (i > 0 && d.subtract(first).length() > EPSILON) distinct++;
+		}
+
+		Assert.assertTrue("every ray in the batch received the same blur perturbation",
+				distinct > count / 2);
+	}
 }

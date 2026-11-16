@@ -186,6 +186,9 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 	 * in {@code [-blur / 2, blur / 2)} along each of two tangent axes, and renormalized.
 	 * A blur of 0.0 returns the mirror reflection unchanged.
 	 *
+	 * <p>The offsets are drawn from a variable-count random producer, one pair per item, so when
+	 * the reflection is evaluated over a batch of rays every ray is perturbed independently.</p>
+	 *
 	 * @param vector the vector from the surface toward the viewer
 	 * @param normal the surface normal
 	 * @param blur   the amount of random perturbation (0.0 = perfect mirror)
@@ -202,10 +205,10 @@ public interface GeometryFeatures extends ScalarFeatures, PairFeatures, RayFeatu
 		CollectionProducer u = normalize(crossProduct(n, helper));
 		CollectionProducer v = crossProduct(n, u);
 
-		CollectionProducer offsets = rand(2).subtract(c(0.5)).multiply(c(blur));
+		CollectionProducer offsets = rand(shape(-1, 2).traverse(1)).subtract(c(0.5)).multiply(c(blur));
 		return normalize(reflected
-				.add(u.multiply(subset(shape(1), offsets, 0)))
-				.add(v.multiply(subset(shape(1), offsets, 1))));
+				.add(u.multiply(x(offsets)))
+				.add(v.multiply(y(offsets))));
 	}
 
 	/**

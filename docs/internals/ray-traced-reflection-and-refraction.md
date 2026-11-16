@@ -81,8 +81,9 @@ sphere.setShaders(new Shader[] { mirror });
 
 `ReflectionShader.shade` builds, for each shaded side of the surface,
 
-1. a `ReflectedRay(point, viewer, normal, blur)`: a shape-`(6)` computation (origin then
-   direction, the layout of a `Ray`) whose direction is
+1. the reflected ray, from `GeometryFeatures.reflectedRay(point, viewer, normal, blur)`: a
+   `ReflectedRay`, the shape-`(6)` computation (origin then direction, the layout of a `Ray`)
+   built by `new ReflectedRay(point, direction)` with the direction
    `GeometryFeatures.reflect(viewer, normal, blur)`;
 2. a `LightingEngineAggregator` over the other surfaces (front side) or all surfaces (back
    side) for that ray, whose `getClosestColor()` is the colour seen in the mirror. The
@@ -99,7 +100,11 @@ Recursion is bounded by `ReflectionShader.maxReflections`: past that many bounce
 `ShaderContext`, the shader returns the reflective colour times the surface colour.
 
 `blur` perturbs the reflected direction by a uniformly distributed amount in
-`[-blur / 2, blur / 2)` along two axes perpendicular to the normal, using `rand(2)`.
+`[-blur / 2, blur / 2)` along two axes perpendicular to the normal. The offsets come from
+`rand(shape(-1, 2))`, a variable-count generator with one pair per item, so every ray of a
+batch is perturbed independently; a fixed `rand(2)` would broadcast one pair to every ray.
+`RandomProducer.create` always gives a variable-count shape a `CounterRandom`, whose values
+are computed per element inside the kernel.
 
 ### Direction conventions
 
