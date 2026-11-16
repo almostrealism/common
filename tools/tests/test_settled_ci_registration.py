@@ -53,9 +53,14 @@ _TRIGGER = "deployment:test"
 # staged submit.env) and leaves CREATE_WORKSTREAM at submit-agent-job.sh's
 # default of true, so a staged submission can be the first to create a branch's
 # workstream and must carry the trigger just like a direct invocation.
+# The invocation must be the command itself: at the start of a line or after a
+# shell operator, so ``chmod +x ./tools/ci/...`` or ``[ -f ./tools/ci/... ]``
+# (which only name the script as an argument) are not counted.
+# TODO(review): forms like ``if bash ./tools/ci/...``, ``then ./tools/ci/...``, ``bash -x ...`` or ``"$DIR"/tools/ci/...`` are not detected.
 _CREATES_WORKSTREAM = re.compile(
-    r"(?:^|[\s;&|(])(?:bash\s+|\./)\S*tools/ci/"
-    r"(?:register-workstream|submit-agent-job|submit-staged-request)\.sh")
+    r"(?:^|[;&|(])\s*(?:bash\s+|\./)\S*tools/ci/"
+    r"(?:register-workstream|submit-agent-job|submit-staged-request)\.sh",
+    re.MULTILINE)
 
 
 class RegisterWorkstreamTriggerTests(unittest.TestCase):
@@ -179,6 +184,30 @@ class EveryWorkflowWiringTests(unittest.TestCase):
                          "goal-decomposition.yaml", "plan-review.yaml",
                          "auto-resolve-submit.yaml"):
             self.assertIn(expected, files)
+
+    def test_detector_counts_only_executed_invocations(self):
+        executed = (
+            "bash ./tools/ci/register-workstream.sh",
+            "./tools/ci/submit-agent-job.sh prompt.txt",
+            'bash "$FRAMEWORK/tools/ci/submit-agent-job.sh" prompt.txt',
+            "set -e\n  bash ./tools/ci/submit-staged-request.sh staged-request",
+            "./tools/ci/register-workstream.sh 2>&1 | sed 's/x//'",
+            "true && ./tools/ci/register-workstream.sh",
+            "OUT=$(bash ./tools/ci/submit-agent-job.sh p)",
+        )
+        named_only = (
+            "chmod +x ./tools/ci/register-workstream.sh",
+            "if [ ! -f ./tools/ci/submit-staged-request.sh ]; then exit 0; fi",
+            "git diff --name-only -- tools/ci/register-workstream.sh",
+            'echo "see tools/ci/submit-agent-job.sh"',
+            "# bash ./tools/ci/register-workstream.sh",
+        )
+        for run in executed:
+            with self.subTest(run=run):
+                self.assertIsNotNone(_CREATES_WORKSTREAM.search(run))
+        for run in named_only:
+            with self.subTest(run=run):
+                self.assertIsNone(_CREATES_WORKSTREAM.search(run))
 
     def test_every_creating_step_sets_the_trigger(self):
         for name, job, step, env in self._creating_steps():
