@@ -75,7 +75,8 @@ Tick-based execution and signal analysis over time-indexed collections.
 | `Temporal`, `TemporalRunner` | The `tick()`-based execution interface and the setup/tick orchestrator. |
 | `SimulationRunner` | Owner of the loop for globally-coupled recurrent dynamical systems — never hand-write that loop. See [Simulation Loop Examples](../docs/internals/simulation-loop-examples.md). |
 | `TimeSeries`, `AcceleratedTimeSeries` | Host and device-accelerated time-indexed storage with interpolation. |
-| `FourierTransform`, `MultiOrderFilter`, `SpectralFeatures`, `Frequency` | FFT/IFFT, FIR filtering, spectral operators, and Hz/BPM conversion — each compiled to a kernel. |
+| `FourierTransform`, `MultiOrderFilter`, `SpectralFeatures` | FFT/IFFT, FIR filtering and spectral operators — computations (`FourierTransform` and `MultiOrderFilter` extend `CollectionProducerComputationBase`) that compile to kernels. |
+| `Frequency` | Hz/BPM/wavelength conversion. An immutable host-side value class, not a computation — it converts host `double` values and does not compile to a kernel. |
 
 ## What stays out
 
