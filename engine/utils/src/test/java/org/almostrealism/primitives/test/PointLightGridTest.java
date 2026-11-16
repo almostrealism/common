@@ -27,7 +27,6 @@ import org.junit.Test;
  * Tests {@link PointLightGrid}: the number of lights it builds, how it shares its total intensity
  * across them, how it propagates its colour, and the degenerate normal and intersection it reports.
  */
-// TODO(review): all tests fail on pre-existing bug — PointLightGrid.updateGrid NPEs because getTransform(true) returns null for a default geometry (see review-followup memory).
 public class PointLightGridTest extends TestSuiteBase {
 	/** The tolerance for comparing intensities. */
 	private static final double TOLERANCE = 1e-9;
@@ -58,9 +57,8 @@ public class PointLightGridTest extends TestSuiteBase {
 	}
 
 	/**
-	 * The prototype constructor seeds each cell with the prototype's intensity, so the grid total is
-	 * that intensity times the number of cells. (The prototype's colour is not retained: a grid with
-	 * no colour of its own defaults every cell to white.)
+	 * The prototype constructor seeds each cell with the prototype's intensity and colour, so the grid
+	 * total is that intensity times the number of cells and every cell carries the prototype colour.
 	 */
 	@Test(timeout = 30000)
 	public void prototypeSeedsIntensityOfEveryCell() {
@@ -73,11 +71,11 @@ public class PointLightGridTest extends TestSuiteBase {
 		for (PointLight light : grid.getLights()) {
 			assertEquals(2.0, light.getIntensity(), TOLERANCE);
 
-			// The grid defaulted its colour to white, overriding the prototype colour.
+			// A grid with no colour of its own retains the prototype colour in every cell.
 			RGB c = light.getColor();
-			assertEquals(1.0, c.getRed(), TOLERANCE);
-			assertEquals(1.0, c.getGreen(), TOLERANCE);
-			assertEquals(1.0, c.getBlue(), TOLERANCE);
+			assertEquals(0.25, c.getRed(), TOLERANCE);
+			assertEquals(0.5, c.getGreen(), TOLERANCE);
+			assertEquals(0.75, c.getBlue(), TOLERANCE);
 		}
 	}
 

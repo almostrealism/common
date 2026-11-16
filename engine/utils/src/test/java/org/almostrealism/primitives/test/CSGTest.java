@@ -16,6 +16,7 @@
 
 package org.almostrealism.primitives.test;
 
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.primitives.CSG;
 import org.almostrealism.primitives.Sphere;
@@ -108,6 +109,12 @@ public class CSGTest extends TestSuiteBase {
 
 		ContinuousField f = csg.intersectAt(ray(0.0, 0.0, 3.0, 0.0, 0.0, -1.0));
 		assertTrue(f != null);
+
+		// The ray enters the unit sphere at (0, 0, 1), the nearer of the two hits (distance 2, not 4).
+		Vector hit = new Vector(f.get(0).get().evaluate(), 0);
+		assertEquals(0.0, hit.getX(), TOLERANCE);
+		assertEquals(0.0, hit.getY(), TOLERANCE);
+		assertEquals(1.0, hit.getZ(), TOLERANCE);
 	}
 
 	/** The difference operation is declared but not yet implemented. */

@@ -27,7 +27,6 @@ import org.junit.Test;
  * image, a photon landing on the sensor grid is recorded into the image and energy map, and repeated
  * absorptions in the same cell accumulate their energy.
  */
-// TODO(review): recording tests fail on pre-existing bug — AbsorptionPlane.absorb throws IllegalArgumentException constructing new RGB(wavelength) (see review-followup memory).
 public class AbsorptionPlaneRecordingTest extends TestSuiteBase {
 	/** The tolerance for comparing accumulated energy values. */
 	private static final double TOLERANCE = 1e-9;

@@ -27,7 +27,6 @@ import org.junit.Test;
  * Tests {@link RigidBodyPinholeCamera}: it mirrors the pose of the body it follows at construction
  * and on each tick, and the directional impulses it applies to that body.
  */
-// TODO(review): tickFollowsTheBody fails on pre-existing bug — RigidBodyPinholeCamera constructor never assigns this.c, so tick() NPEs (see review-followup memory).
 public class RigidBodyPinholeCameraTest extends TestSuiteBase {
 	/** The tolerance for comparing positions and velocities. */
 	private static final double TOLERANCE = 1e-9;

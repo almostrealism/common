@@ -46,7 +46,8 @@ public class RigidBodyPinholeCamera implements Temporal {
 		c.setLocation(model.getState().getLocation());
 		c.setViewingDirection(model.getState().getRotation());
 		c.setUpDirection(new Vector(0.0, 1.0, 0.0));
-		
+
+		this.c = c;
 		this.model = model.getState();
 		this.model.addUpdateListener(this);
 	}

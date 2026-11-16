@@ -26,7 +26,6 @@ import org.junit.Test;
  * Tests {@link RectangularLight}: its dimensions and sample count, how it splits its intensity
  * across the point lights it samples, and its label.
  */
-// TODO(review): getSamples tests fail on pre-existing bug — RectangularLight.getSamples NPEs because getTransform(true) returns null (see review-followup memory).
 public class RectangularLightTest extends TestSuiteBase {
 	/** The tolerance for comparing dimensions and intensities. */
 	private static final double TOLERANCE = 1e-6;
