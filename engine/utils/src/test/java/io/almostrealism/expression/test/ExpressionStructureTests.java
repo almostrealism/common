@@ -1157,6 +1157,50 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		Assert.assertTrue(comparisons.get() > 0);
 	}
 
+	/**
+	 * A containment query passes over a subtree that is as deep as the expression it looks
+	 * for but has fewer nodes, without comparing it: a sum of two operands is never compared
+	 * with a sum of three, while a sum of two equal to the target is compared and found.
+	 */
+	@Test(timeout = 30000)
+	public void containmentSkipsSubtreesWithFewerNodesThanTheTarget() {
+		AtomicInteger comparisons = new AtomicInteger();
+		Expression<?> tree = Product.of(
+				new CountingSum(comparisons, ref("a"), ref("b")),
+				new CountingSum(comparisons, ref("c"), ref("d")));
+		Expression<?> wide = new CountingSum(new AtomicInteger(), ref("p"), ref("q"), ref("r"));
+
+		Assert.assertEquals(1, wide.treeDepth());
+		Assert.assertEquals(4, wide.countNodes());
+		Assert.assertFalse(tree.contains(wide));
+		Assert.assertEquals(0, comparisons.get());
+
+		Assert.assertTrue(tree.contains(new CountingSum(new AtomicInteger(), ref("c"), ref("d"))));
+		Assert.assertTrue(comparisons.get() > 0);
+	}
+
+	/** A sum that counts how often it is compared with another expression. */
+	private static final class CountingSum extends Sum<Integer> {
+		/** The number of comparisons made by every sum sharing this counter. */
+		private final AtomicInteger comparisons;
+
+		/**
+		 * @param comparisons the counter of comparisons, shared by the sums of one tree
+		 * @param operands    the operands of the sum
+		 */
+		CountingSum(AtomicInteger comparisons, Expression<Integer>... operands) {
+			super(operands);
+			this.comparisons = comparisons;
+		}
+
+		/** Counts the comparison, then compares as a {@link Sum} does. */
+		@Override
+		public boolean compare(Expression expression) {
+			comparisons.incrementAndGet();
+			return super.compare(expression);
+		}
+	}
+
 	/** A reference leaf that counts how often it is compared with another expression. */
 	private static final class CountingReference extends StaticReference<Integer> {
 		/** The number of comparisons made by every reference sharing this counter. */
