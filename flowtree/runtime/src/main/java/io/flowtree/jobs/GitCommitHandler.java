@@ -872,6 +872,14 @@ class GitCommitHandler implements ConsoleFeatures {
      * dependent {@code commit.txt}; a dependent commit accepts no merge
      * resolution, so none is appended.
      *
+     * <p>Each file is staged through {@link GitOperations#stage(String)}, which
+     * passes the path after {@code --} (so a name beginning with {@code -} is
+     * read as a filename, not a flag) and stages a removal with {@code git rm}.
+     * When git refuses to stage a guardrail-approved file, this repo's commit is
+     * abandoned and recorded in {@link #getDependentRepoFailures()} rather than
+     * committing around the miss — the primary path fails loud for the same case,
+     * and a silently dropped file would otherwise leave no trace.</p>
+     *
      * <p>Takes the {@link GitRepositorySetup} rather than a bare list of paths
      * so each repo's clone URL is recoverable: a push records a
      * {@link DependentRepoPush} carrying the URL, branch, and pushed HEAD, which
@@ -920,6 +928,7 @@ class GitCommitHandler implements ConsoleFeatures {
 
             List<String> stagedInDep = new ArrayList<>();
             List<String> skippedInDep = new ArrayList<>();
+            List<String> stageFailuresInDep = new ArrayList<>();
             for (String file : committable) {
                 File f = new File(depPath, file);
                 if (f.exists() && f.length() > job.getMaxFileSizeBytes()) {
@@ -927,11 +936,18 @@ class GitCommitHandler implements ConsoleFeatures {
                     skippedInDep.add(file);
                     continue;
                 }
-                // TODO(review): dependent-repo add ignores its exit code, omits
-                // `--`, and is never verified post-commit, so a failed stage here
-                // is committed-around silently (the primary path fails loud).
-                gitOps.execute("add", file);
-                stagedInDep.add(file);
+                GitOperations.Result staged = gitOps.stage(file);
+                if (staged.succeeded()) {
+                    stagedInDep.add(file);
+                } else {
+                    warn("Failed to stage in dependent repo " + depPath + ": " + staged.describe());
+                    stageFailuresInDep.add(file);
+                }
+            }
+            if (!stageFailuresInDep.isEmpty()) {
+                dependentRepoFailures.add(depPath + " (could not stage: "
+                        + String.join(", ", stageFailuresInDep) + ")");
+                continue;
             }
             if (stagedInDep.isEmpty()) {
                 log("No files staged in dependent repo (all skipped): " + depPath);

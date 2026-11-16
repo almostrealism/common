@@ -177,6 +177,94 @@ public class GitCommitHandlerDependentRepoTest extends TestSuiteBase {
     }
 
     /**
+     * A dependent-repo file whose name begins with {@code -} is committed and
+     * pushed. The handler stages through {@link GitOperations#stage(String)},
+     * which passes the path after {@code --}, so the leading dash is read as a
+     * filename rather than a flag; a bare {@code git add -dash.md} would reject
+     * it and the file would be committed around and silently dropped.
+     */
+    @Test(timeout = 60000)
+    public void dependentRepoCommitsALeadingDashPath()
+            throws IOException, InterruptedException {
+        Files.writeString(dependent.resolve("-dash.md"), "leading dash content\n",
+                StandardCharsets.UTF_8);
+
+        GitRepositorySetup setup = preparedSetup();
+        GitCommitHandler handler = new GitCommitHandler(job());
+        handler.handleDependentRepos(setup);
+
+        assertTrue("the leading-dash file must not be recorded as a failure",
+                handler.getDependentRepoFailures().isEmpty());
+        assertEquals("the leading-dash change is committed and pushed",
+                1, handler.getDependentRepoPushes().size());
+        String committed = git(dependent, "ls-tree", "-r", "--name-only", "HEAD");
+        assertTrue("the leading-dash file must reach the dependent commit",
+                committed.lines().anyMatch(line -> line.equals("-dash.md")));
+    }
+
+    /**
+     * When git refuses to stage a changed dependent-repo file, the repo's commit
+     * is abandoned rather than committed around: nothing is pushed, the HEAD is
+     * unchanged, and the failure is recorded naming the unstageable file. A
+     * read-only {@code .git/objects} makes {@code git add} fail to write the blob
+     * while leaving the index reset (which writes no objects) able to succeed.
+     *
+     * <p>A process that writes regardless of the read-only bit (a root or
+     * overlay-mount test host) cannot stage-fail by this means, so the test first
+     * confirms the object store is genuinely unwritable before asserting on the
+     * abandon path.</p>
+     */
+    @Test(timeout = 60000)
+    public void failedStageAbandonsDependentCommitAndRecordsFailure()
+            throws IOException, InterruptedException {
+        Files.writeString(dependent.resolve("README.md"), "changed by the job\n", StandardCharsets.UTF_8);
+        String headBefore = git(dependent, "rev-parse", "HEAD").trim();
+
+        Path objects = dependent.resolve(".git").resolve("objects");
+        assertTrue("the object store must be made read-only",
+                objects.toFile().setWritable(false, false));
+        try {
+            if (canCreateFileIn(objects)) {
+                // The host honours no read-only directory bit for this process,
+                // so `git add` cannot be made to fail this way here.
+                return;
+            }
+
+            GitRepositorySetup setup = preparedSetup();
+            GitCommitHandler handler = new GitCommitHandler(job());
+            handler.handleDependentRepos(setup);
+
+            assertTrue("a failed stage must push nothing", handler.getDependentRepoPushes().isEmpty());
+            Assert.assertEquals("a failed stage must leave the dependent HEAD untouched",
+                    headBefore, git(dependent, "rev-parse", "HEAD").trim());
+            List<String> failures = handler.getDependentRepoFailures();
+            assertEquals(1, failures.size());
+            assertTrue("the failure must name the unstageable file: " + failures.get(0),
+                    failures.get(0).contains("README.md"));
+        } finally {
+            objects.toFile().setWritable(true, true);
+        }
+    }
+
+    /**
+     * Returns whether a probe file can be created inside {@code dir}, used to
+     * confirm a read-only directory bit is actually enforced for this process.
+     *
+     * @param dir the directory to probe
+     * @return {@code true} when a file could be created (the bit is not enforced)
+     */
+    private static boolean canCreateFileIn(Path dir) {
+        Path probe = dir.resolve(".writability-probe");
+        try {
+            Files.writeString(probe, "x", StandardCharsets.UTF_8);
+            Files.deleteIfExists(probe);
+            return true;
+        } catch (IOException expected) {
+            return false;
+        }
+    }
+
+    /**
      * When the pre-commit index reset fails, the dependent repo is skipped
      * rather than committed from an untrusted index: nothing is pushed, the HEAD
      * is unchanged, and the failure is recorded naming the reset.
