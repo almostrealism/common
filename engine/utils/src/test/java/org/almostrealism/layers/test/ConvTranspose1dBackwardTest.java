@@ -130,23 +130,27 @@ public class ConvTranspose1dBackwardTest extends TestSuiteBase {
 
 		// Snapshot the weights on the device so they can be restored after the update
 		PackedCollection weightsSnapshot = new PackedCollection(weights.getShape());
-		weightsSnapshot.setFrom(0, weights);
+		try {
+			weightsSnapshot.setFrom(0, weights);
 
-		double[] weightsBefore = weights.toArray();
-		trainedCompiled.backward(upstream);
-		double[] weightsAfter = weights.toArray();
+			double[] weightsBefore = weights.toArray();
+			trainedCompiled.backward(upstream);
+			double[] weightsAfter = weights.toArray();
 
-		double[] filterGradient = new double[weightsBefore.length];
-		for (int i = 0; i < filterGradient.length; i++) {
-			filterGradient[i] = (weightsBefore[i] - weightsAfter[i]) / learningRate;
+			double[] filterGradient = new double[weightsBefore.length];
+			for (int i = 0; i < filterGradient.length; i++) {
+				filterGradient[i] = (weightsBefore[i] - weightsAfter[i]) / learningRate;
+			}
+
+			// Restore the weights the update changed before taking finite differences of them
+			weights.setFrom(0, weightsSnapshot);
+
+			double[] numericWeights = extrapolatedDifferences(weights, EPS,
+					() -> loss(trainedCompiled.forward(input), upstream));
+			assertGradientMatches(testName + " filter", numericWeights, filterGradient, TOLERANCE, MINIMUM);
+		} finally {
+			weightsSnapshot.destroy();
 		}
-
-		// Restore the weights the update changed before taking finite differences of them
-		weights.setFrom(0, weightsSnapshot);
-
-		double[] numericWeights = extrapolatedDifferences(weights, EPS,
-				() -> loss(trainedCompiled.forward(input), upstream));
-		assertGradientMatches(testName + " filter", numericWeights, filterGradient, TOLERANCE, MINIMUM);
 	}
 
 	/**
