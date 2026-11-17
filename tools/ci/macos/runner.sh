@@ -266,6 +266,15 @@ fi
 # Setting it to /tmp/ar_libs/ causes permission errors on shared or sandboxed systems.
 # AR_HARDWARE_DRIVER is intentionally left unset to auto-detect the best available backend.
 
+# Retry a Maven Central download that fails transiently (HTTP 429 rate-limit, a
+# dropped connection, a 5xx) with backoff instead of failing the job. MAVEN_ARGS
+# is read by the Maven 3.9+ launcher and prepended to every `mvn` invocation, so
+# every CI step inherits it. The macOS fleet keeps a persistent $HOME/.m2-ci/<runner>
+# repository and so already makes few Central requests; this matches the Linux
+# runner images (tools/ci/docker/Dockerfile) so the backstop is the same fleet-wide.
+# Set it only if a fleet has not pinned its own.
+export MAVEN_ARGS="${MAVEN_ARGS:--Daether.connector.http.retryHandler.count=10 -Daether.connector.http.retryHandler.interval=5000 -Daether.connector.http.retryHandler.intervalMax=60000}"
+
 # ---------- Helper: request a runner token from the GitHub API ----------
 
 # Requests a runner token (e.g. runners/registration-token or
