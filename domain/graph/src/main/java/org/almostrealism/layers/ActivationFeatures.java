@@ -214,7 +214,7 @@ public interface ActivationFeatures extends GeometryFeatures {
 	 */
 	default CellularLayer logSoftmax(TraversalPolicy shape, ComputeRequirement... requirements) {
 		TraversalPolicy layerShape = padDimensions(shape, 2).traverse(1);
-		TraversalPolicy rows = shape(layerShape.length(0), layerShape.getTotalSize() / layerShape.length(0));
+		TraversalPolicy rows = layerShape.flatten(true);
 
 		return layer("logSoftmax", layerShape, layerShape, input ->
 						logSoftmax(c(input).reshape(rows)).reshape(layerShape),
