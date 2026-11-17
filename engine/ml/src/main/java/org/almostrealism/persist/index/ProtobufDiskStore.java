@@ -28,9 +28,11 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -57,6 +59,36 @@ import java.util.logging.Logger;
  *
  * <p>A separate protobuf index file maps each record ID to its batch file
  * and byte offset within that file.</p>
+ *
+ * <h2>Thread safety</h2>
+ * <p>The store may be used from several threads, for example one that adds
+ * records while another periodically flushes. Every operation on the records
+ * (the pending batch, the record index and the batch cache) holds this
+ * store's monitor. The vector index is guarded by a separate lock. The
+ * lock-order rule is monitor-then-vector-lock: an operation that needs both —
+ * a record stored together with its vector, and {@link #close()} — acquires the
+ * store's monitor first and then the vector-index lock, never the reverse, so
+ * the record and its vector are replaced atomically and persisted together.
+ * Vector-only operations ({@link #setIndexModel}, {@link #insertEmbedding},
+ * search, and the vector-index save on {@link #flush()}) take the vector-index
+ * lock alone, without the store's monitor, and so do not block record access.
+ * {@link #scan} and {@link #pairwiseScan} hold the monitor only while they
+ * load each batch, not while the visitor runs.</p>
+ *
+ * <h2>Crash safety</h2>
+ * <p>A record is durable once a flush (automatic, {@link #flush()} or
+ * {@link #close()}) has written its batch file and then committed the record
+ * index. The batch file is written and synced before the index refers to it,
+ * and the index is written to a temporary file, synced, and moved over
+ * {@code index.bin} atomically, so an interruption at any point leaves the
+ * previously committed index intact. A batch file the committed index does
+ * not refer to (one left partial by an interrupted flush) is never read, and
+ * batch numbers are never reused for a file that already exists. Records
+ * still pending when the process ends are lost. The vector index is saved
+ * only on {@link #flush()} and {@link #close()}, so it may omit vectors for
+ * records that an automatic flush made durable; a caller that can recompute
+ * them restores them with {@link #insertEmbedding}, guided by
+ * {@link #hasIndexedEmbedding}.</p>
  *
  * @param <T> the protobuf message type
  */
@@ -107,7 +139,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	private final List<PendingRecord<T>> pendingRecords;
 
 	/** Whether this store has been closed; no further mutations are permitted after closing. */
-	private boolean closed;
+	private volatile boolean closed;
 
 	/** Optional HNSW vector index for approximate nearest-neighbor search over stored vectors. */
 	private HnswIndex hnswIndex;
@@ -130,7 +162,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	private String indexModel;
 
 	/** Optional callback invoked each time a batch file is loaded from disk, receiving the batch ID. */
-	private Consumer<Integer> loadListener;
+	private volatile Consumer<Integer> loadListener;
 
 	/**
 	 * Open or create a disk store at the given directory.
@@ -179,6 +211,15 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 			}
 		} else {
 			this.nextBatchId = new AtomicInteger(0);
+		}
+
+		// Never assign a batch number whose file already exists: an index that was
+		// lost, or that predates a partially written batch, must not lead a new
+		// batch to overwrite records that are still on disk.
+		List<Integer> existingBatchIds = listBatchIds();
+		if (!existingBatchIds.isEmpty()) {
+			int lastExisting = existingBatchIds.get(existingBatchIds.size() - 1);
+			this.nextBatchId.accumulateAndGet(lastExisting + 1, Math::max);
 		}
 
 		this.pendingBatchId = this.nextBatchId.getAndIncrement();
@@ -268,7 +309,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	@Override
-	public void put(String id, T record) {
+	public synchronized void put(String id, T record) {
 		if (closed) {
 			throw new IllegalStateException("Cannot put into a closed store");
 		}
@@ -296,8 +337,16 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The record and its vector are stored as one operation under this
+	 * store's monitor, so a concurrent replacement or deletion of the same
+	 * identifier cannot fall between them and leave the vector index holding a
+	 * vector for a record that is no longer stored.</p>
+	 */
 	@Override
-	public void put(String id, T record, PackedCollection vector) {
+	public synchronized void put(String id, T record, PackedCollection vector) {
 		put(id, record);
 		synchronized (hnswLock) {
 			ensureHnswIndex(vector.getMemLength());
@@ -313,12 +362,14 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 *
 	 * @param id     the record identifier
 	 * @param vector the embedding vector to index
+	 * @throws IllegalStateException if the store has been closed
 	 */
 	public void insertEmbedding(String id, PackedCollection vector) {
-		// TODO(review): unlike put(), this does not check `closed`; since close() now
-		// nulls hnswIndex, calling this after close() silently creates a fresh, empty
-		// index via ensureHnswIndex() instead of failing, discarding prior data.
 		synchronized (hnswLock) {
+			if (closed) {
+				throw new IllegalStateException("Cannot insert an embedding into a closed store");
+			}
+
 			ensureHnswIndex(vector.getMemLength());
 			if (hnswIndex.contains(id)) {
 				hnswIndex.remove(id);
@@ -382,7 +433,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	@Override
-	public T get(String id) {
+	public synchronized T get(String id) {
 		RecordPointer pointer = index.get(id);
 		if (pointer == null) {
 			return null;
@@ -406,7 +457,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	@Override
-	public void delete(String id) {
+	public synchronized void delete(String id) {
 		RecordPointer pointer = index.remove(id);
 		if (pointer == null) {
 			return;
@@ -425,31 +476,16 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 	@Override
 	public void scan(Consumer<T> visitor) {
-		flushPendingBatch();
-
-		for (int batchId : listBatchIds()) {
-			ParsedBatch<T> batch = loadBatch(batchId);
-			if (batch != null) {
-				for (Map.Entry<String, T> entry : batch.records.entrySet()) {
-					RecordPointer ptr = index.get(entry.getKey());
-					if (ptr != null && ptr.batchId == batchId) {
-						visitor.accept(entry.getValue());
-					}
-				}
-			}
+		for (int batchId : flushAndListReferencedBatches()) {
+			liveRecords(batchId).forEach(visitor);
 		}
 	}
 
 	@Override
 	public void pairwiseScan(BiConsumer<T, T> pairVisitor) {
-		flushPendingBatch();
-
-		List<Integer> batchIds = listBatchIds();
+		List<Integer> batchIds = flushAndListReferencedBatches();
 		for (int i = 0; i < batchIds.size(); i++) {
-			ParsedBatch<T> batchA = loadBatch(batchIds.get(i));
-			if (batchA == null) continue;
-
-			List<T> recordsA = liveRecords(batchA);
+			List<T> recordsA = liveRecords(batchIds.get(i));
 
 			for (int a = 0; a < recordsA.size() - 1; a++) {
 				for (int b = a + 1; b < recordsA.size(); b++) {
@@ -458,10 +494,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 			}
 
 			for (int j = i + 1; j < batchIds.size(); j++) {
-				ParsedBatch<T> batchB = loadBatch(batchIds.get(j));
-				if (batchB == null) continue;
-
-				List<T> recordsB = liveRecords(batchB);
+				List<T> recordsB = liveRecords(batchIds.get(j));
 				for (T rA : recordsA) {
 					for (T rB : recordsB) {
 						pairVisitor.accept(rA, rB);
@@ -472,28 +505,46 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	@Override
-	public boolean containsKey(String id) {
+	public synchronized boolean containsKey(String id) {
 		return index.containsKey(id);
 	}
 
 	@Override
-	public Set<String> allIds() {
+	public synchronized Set<String> allIds() {
 		return Collections.unmodifiableSet(new HashSet<>(index.keySet()));
 	}
 
 	@Override
-	public int size() {
+	public synchronized int size() {
 		return index.size();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Both the records and the vector index are persisted before the store
+	 * is marked closed, holding this store's monitor and the vector-index lock
+	 * throughout, so no record or vector can be added between the save and the
+	 * release of the in-memory state. If persisting fails, the store remains
+	 * open and the close can be retried.</p>
+	 */
 	@Override
-	public void close() {
+	public synchronized void close() {
 		if (closed) {
 			return;
 		}
 
 		flushOrSaveIndex();
-		closed = true;
+
+		synchronized (hnswLock) {
+			saveHnswIndex();
+			closed = true;
+
+			if (hnswIndex != null) {
+				hnswIndex.destroy();
+				hnswIndex = null;
+			}
+		}
 
 		List<Integer> cachedIds = new ArrayList<>();
 		batchCache.forEach((k, v) -> cachedIds.add(k));
@@ -501,13 +552,6 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 			batchCache.evict(id);
 		}
 		index.clear();
-
-		synchronized (hnswLock) {
-			if (hnswIndex != null) {
-				hnswIndex.destroy();
-				hnswIndex = null;
-			}
-		}
 	}
 
 	/**
@@ -519,17 +563,21 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * <p>Has no effect if the store has been {@linkplain #close() closed}.</p>
 	 */
 	public void flush() {
-		if (closed) {
-			return;
+		synchronized (this) {
+			if (closed) {
+				return;
+			}
+
+			flushOrSaveIndex();
 		}
 
-		flushOrSaveIndex();
+		saveHnswIndex();
 	}
 
 	/**
-	 * Persist all in-memory state to disk. Flushes pending records
-	 * if any exist, otherwise saves just the index. Also persists the
-	 * HNSW vector index if one has been created.
+	 * Persist the record side of the store to disk. Flushes pending records
+	 * if any exist, otherwise saves just the index. Must be called holding
+	 * this store's monitor; the caller saves the HNSW vector index separately.
 	 */
 	private void flushOrSaveIndex() {
 		if (!pendingRecords.isEmpty()) {
@@ -537,7 +585,6 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		} else {
 			saveIndex();
 		}
-		saveHnswIndex();
 	}
 
 	/**
@@ -557,9 +604,23 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	private void saveHnswIndex() {
 		synchronized (hnswLock) {
 			if (hnswIndex != null) {
-				hnswIndex.save(new File(rootDir, HNSW_FILE_NAME).toPath());
+				replaceAtomically(new File(rootDir, HNSW_FILE_NAME), hnswIndex::save);
 			}
 		}
+	}
+
+	/**
+	 * The content of a file written by {@link #replaceAtomically}.
+	 */
+	@FunctionalInterface
+	private interface FileContent {
+		/**
+		 * Write the content to the given stream.
+		 *
+		 * @param out the stream to write to
+		 * @throws IOException if writing fails
+		 */
+		void writeTo(OutputStream out) throws IOException;
 	}
 
 	/**
@@ -567,7 +628,7 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 *
 	 * @return cached batch count
 	 */
-	public int getCachedBatchCount() {
+	public synchronized int getCachedBatchCount() {
 		return batchCache.size();
 	}
 
@@ -597,14 +658,20 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 
 	/**
 	 * Return the list of live (non-deleted, non-replaced) records in the
-	 * given batch. A record is live if its current index pointer still
-	 * references this batch.
+	 * given batch, loading it if necessary. A record is live if its current
+	 * index pointer still references this batch.
+	 *
+	 * @param batchId the batch to read
+	 * @return the live records, empty if the batch file does not exist
 	 */
-	private List<T> liveRecords(ParsedBatch<T> batch) {
+	private synchronized List<T> liveRecords(int batchId) {
 		List<T> result = new ArrayList<>();
+		ParsedBatch<T> batch = loadBatch(batchId);
+		if (batch == null) return result;
+
 		for (Map.Entry<String, T> entry : batch.records.entrySet()) {
 			RecordPointer ptr = index.get(entry.getKey());
-			if (ptr != null && ptr.batchId == batch.batchId) {
+			if (ptr != null && ptr.batchId == batchId) {
 				result.add(entry.getValue());
 			}
 		}
@@ -612,9 +679,35 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	}
 
 	/**
+	 * Flush any pending records and return the IDs of the batches the record
+	 * index refers to, sorted ascending. Batch files on disk that no record
+	 * refers to (fully superseded batches, or a batch left partially written
+	 * by an interrupted flush) are not included.
+	 *
+	 * @return the referenced batch IDs
+	 */
+	private synchronized List<Integer> flushAndListReferencedBatches() {
+		flushPendingBatch();
+
+		Set<Integer> referenced = new HashSet<>();
+		for (RecordPointer pointer : index.values()) {
+			referenced.add(pointer.batchId);
+		}
+
+		List<Integer> batchIds = new ArrayList<>(referenced);
+		batchIds.sort(Integer::compareTo);
+		return batchIds;
+	}
+
+	/**
 	 * Write all pending records to a new batch file, update the index
 	 * pointers with real byte offsets, cache the parsed batch, and
 	 * prepare a new pending batch ID. No-op if there are no pending records.
+	 * Must be called holding this store's monitor.
+	 *
+	 * <p>The batch file is written and synced completely before any index
+	 * pointer refers to it. If the write fails, the records stay pending and
+	 * readable, and a later flush writes them again.</p>
 	 */
 	private void flushPendingBatch() {
 		if (pendingRecords.isEmpty()) {
@@ -622,23 +715,29 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		}
 
 		Map<String, T> parsedRecords = new HashMap<>();
+		Map<String, RecordPointer> pointers = new HashMap<>();
 		File file = batchFile(pendingBatchId);
 
-		try (FileOutputStream fos = new FileOutputStream(file)) {
+		try (FileOutputStream fileOut = new FileOutputStream(file);
+			 OutputStream out = decorateOutput(file, fileOut)) {
 			long offset = 0;
 			for (PendingRecord<T> pending : pendingRecords) {
-				index.put(pending.id, new RecordPointer(pendingBatchId, offset));
-				pending.record.writeDelimitedTo(fos);
+				pointers.put(pending.id, new RecordPointer(pendingBatchId, offset));
+				pending.record.writeDelimitedTo(out);
 				long written = computeVarintSize(pending.record.getSerializedSize())
 						+ pending.record.getSerializedSize();
 				offset += written;
 				parsedRecords.put(pending.id, pending.record);
 			}
+
+			out.flush();
+			fileOut.getFD().sync();
 		} catch (IOException e) {
 			throw new UncheckedIOException(
 					"Failed to write batch file " + file, e);
 		}
 
+		index.putAll(pointers);
 		ParsedBatch<T> parsed = new ParsedBatch<>(pendingBatchId, parsedRecords);
 		batchCache.put(pendingBatchId, parsed);
 
@@ -664,8 +763,9 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 			return null;
 		}
 
-		if (loadListener != null) {
-			loadListener.accept(batchId);
+		Consumer<Integer> listener = loadListener;
+		if (listener != null) {
+			listener.accept(batchId);
 		}
 
 		Map<String, T> records = new HashMap<>();
@@ -753,7 +853,13 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		return batchIds;
 	}
 
-	/** Persist the in-memory index to the index file on disk. */
+	/**
+	 * Persist the in-memory index to the index file on disk. The index is
+	 * written to a temporary file, synced, and then moved over the index file
+	 * atomically, so an interruption leaves either the previous index or the
+	 * new one, never a truncated file. Must be called holding this store's
+	 * monitor.
+	 */
 	private void saveIndex() {
 		Diskstore.DiskStoreIndex.Builder builder =
 				Diskstore.DiskStoreIndex.newBuilder()
@@ -767,12 +873,51 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 							.build());
 		}
 
-		File file = indexFile();
-		try (FileOutputStream fos = new FileOutputStream(file)) {
-			builder.build().writeTo(fos);
+		replaceAtomically(indexFile(), builder.build()::writeTo);
+	}
+
+	/**
+	 * Replace a file with new content so that an interruption leaves either
+	 * the previous file or the new one, never a truncated file. The content is
+	 * written to a temporary file beside the target, synced to the storage
+	 * device, and then moved over the target atomically.
+	 *
+	 * @param target  the file to replace
+	 * @param content writes the new content to the stream it is given
+	 * @throws UncheckedIOException if writing or moving the file fails
+	 */
+	private void replaceAtomically(File target, FileContent content) {
+		File pending = new File(target.getParentFile(), target.getName() + ".tmp");
+		try {
+			try (FileOutputStream fileOut = new FileOutputStream(pending);
+				 OutputStream out = decorateOutput(pending, fileOut)) {
+				content.writeTo(out);
+				out.flush();
+				fileOut.getFD().sync();
+			}
+
+			Files.move(pending.toPath(), target.toPath(),
+					StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
 		} catch (IOException e) {
-			throw new UncheckedIOException("Failed to save index", e);
+			throw new UncheckedIOException("Failed to save " + target, e);
 		}
+	}
+
+	/**
+	 * Returns the stream through which a batch file or the index file is
+	 * written. The store writes through the returned stream, flushes it, and
+	 * then syncs the file's descriptor to the storage device before anything
+	 * refers to the file, so a later write that depends on it (the index
+	 * referring to a batch, or the index replacing its predecessor) cannot
+	 * reach the device first. By default the file's own stream is returned;
+	 * subclasses may wrap it, for example to observe or interrupt a write.
+	 *
+	 * @param file the file being written
+	 * @param out  the stream writing to the file
+	 * @return the stream the store writes through
+	 */
+	protected OutputStream decorateOutput(File file, OutputStream out) {
+		return out;
 	}
 
 	/** Load the index from disk, returning {@code null} if absent or corrupted. */

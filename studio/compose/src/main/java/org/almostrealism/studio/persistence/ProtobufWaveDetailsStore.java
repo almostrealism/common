@@ -54,6 +54,18 @@ import java.util.function.Predicate;
  * and writes the marker, so no record can be stored that the marker vouches for
  * without having been tested.</p>
  *
+ * <p>{@link #flush()} and {@link #close()} take that same lock, so a periodic
+ * save on one thread and record writes on another are serialized at this
+ * level as well as inside the {@link ProtobufDiskStore}.</p>
+ *
+ * <p>The nearest-neighbor index is saved only on {@link #flush()} and
+ * {@link #close()}, while records also become durable through the disk
+ * store's automatic batch flushes. After an interrupted run, the index on disk
+ * can therefore lack records that are stored complete for its model. The first
+ * time a model is declared through {@link #setEmbeddingModel(String)} after the
+ * store is opened, every stored record that holds that model's features but
+ * has no indexed embedding is embedded and indexed, which closes that gap.</p>
+ *
  * @see WaveDetailsStore
  * @see ProtobufDiskStore
  * @see AudioLibraryPersistence
@@ -73,8 +85,20 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	/** Directory holding the batch files, index, and the validated-model marker. */
 	private final File rootDir;
 
-	/** Guards the validated-model marker against concurrent record writes. */
-	private final Object markerLock = new Object();
+	/**
+	 * Serializes every change to the stored records, the nearest-neighbor
+	 * index's model and the validated-model marker: record writes and
+	 * deletions, a model declaration together with the backfill it triggers,
+	 * the marker update, and flush and close.
+	 */
+	private final Object writeLock = new Object();
+
+	/**
+	 * The model for which every stored record holding its features has been
+	 * confirmed to be in the nearest-neighbor index since this store was
+	 * opened, or {@code null} if no model has been reconciled yet.
+	 */
+	private volatile String reconciledModel;
 
 	/**
 	 * Creates a store at the given directory with default settings.
@@ -129,7 +153,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	@Override
 	public void put(String identifier, WaveDetails details) {
 		Audio.WaveDetailData data = AudioLibraryPersistence.encode(details, false);
-		synchronized (markerLock) {
+		synchronized (writeLock) {
 			clearValidatedModel();
 			diskStore.put(identifier, data);
 		}
@@ -137,10 +161,10 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	@Override
 	public void put(String identifier, WaveDetails details, PackedCollection embeddingVector) {
-		// The embedding is pooled from the active model's features
-		setEmbeddingModel(details.getActiveModelIdentifier());
 		Audio.WaveDetailData data = AudioLibraryPersistence.encode(details, false);
-		synchronized (markerLock) {
+		synchronized (writeLock) {
+			// The embedding is pooled from the active model's features
+			setEmbeddingModel(details.getActiveModelIdentifier());
 			clearValidatedModel();
 			diskStore.put(identifier, data, embeddingVector);
 		}
@@ -148,7 +172,9 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	@Override
 	public void delete(String identifier) {
-		diskStore.delete(identifier);
+		synchronized (writeLock) {
+			diskStore.delete(identifier);
+		}
 	}
 
 	@Override
@@ -181,31 +207,63 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 		return diskStore.hasIndexedEmbedding(identifier);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Runs under the same lock as every record write and model declaration, so
+	 * it cannot interleave with a {@link #setEmbeddingModel(String)} model switch
+	 * and its backfill, or with a {@code put} of the same identifier, either of
+	 * which could otherwise leave a stale vector in the index or index a vector
+	 * against the wrong model.</p>
+	 */
 	@Override
 	public void insertEmbedding(String identifier, PackedCollection embeddingVector) {
-		diskStore.insertEmbedding(identifier, embeddingVector);
-	}
-
-	@Override
-	public void setEmbeddingModel(String modelIdentifier) {
-		if (diskStore.setIndexModel(modelIdentifier) && modelIdentifier != null) {
-			rebuildIndex(modelIdentifier);
+		synchronized (writeLock) {
+			diskStore.insertEmbedding(identifier, embeddingVector);
 		}
 	}
 
 	/**
-	 * Rebuilds the nearest-neighbor index from the stored records after a model
-	 * change has discarded it. Every record that already holds features for the
-	 * declared model is re-embedded from those features and re-inserted, so
+	 * {@inheritDoc}
+	 *
+	 * <p>The declaration and the backfill it triggers run as one operation
+	 * under the same lock as every record write, so a concurrent declaration of
+	 * another model cannot interleave its vectors with this one's, and a
+	 * concurrent write cannot replace a record between the backfill reading its
+	 * features and indexing the embedding pooled from them.</p>
+	 */
+	@Override
+	public void setEmbeddingModel(String modelIdentifier) {
+		synchronized (writeLock) {
+			boolean reset = diskStore.setIndexModel(modelIdentifier);
+			if (modelIdentifier == null) return;
+
+			if (reset || !modelIdentifier.equals(reconciledModel)) {
+				indexMissingEmbeddings(modelIdentifier);
+				reconciledModel = modelIdentifier;
+			}
+		}
+	}
+
+	/**
+	 * Indexes every stored record that holds features for the declared model
+	 * but has no embedding in the nearest-neighbor index. This rebuilds the
+	 * index after a model change has discarded it (when no record is indexed),
+	 * and on the first declaration after opening it adds the records that were
+	 * made durable by an automatic batch flush after the index was last saved.
+	 * Each such record is re-embedded from its stored features and inserted, so
 	 * records complete for the model are searchable immediately rather than only
 	 * after a recomputation that will never be triggered for them. Records
 	 * without the declared model's features are left out; they are indexed when
-	 * their embeddings are computed and stored.
+	 * their embeddings are computed and stored. Only records missing from the
+	 * index are read. Must be called holding {@link #writeLock}.
 	 *
-	 * @param modelIdentifier the model whose embeddings the index now holds
+	 * @param modelIdentifier the model whose embeddings the index holds
 	 */
-	private void rebuildIndex(String modelIdentifier) {
+	private void indexMissingEmbeddings(String modelIdentifier) {
 		for (String identifier : diskStore.allIds()) {
+			if (diskStore.hasIndexedEmbedding(identifier)) continue;
+
 			WaveDetails details = get(identifier);
 			if (details == null || details.getFeatures(modelIdentifier) == null) continue;
 
@@ -237,7 +295,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	@Override
 	public void setValidatedModel(String modelIdentifier, Predicate<Set<String>> complete) {
-		synchronized (markerLock) {
+		synchronized (writeLock) {
 			if (modelIdentifier == null || !complete.test(allIdentifiers())) {
 				clearValidatedModel();
 				return;
@@ -260,7 +318,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	/**
 	 * Deletes the validated-model marker, if present. Must be called holding
-	 * {@link #markerLock}. The file is checked on every call rather than cached,
+	 * {@link #writeLock}. The file is checked on every call rather than cached,
 	 * because the marker is shared by every store opened on the directory.
 	 * Failure is thrown rather than logged: a marker that survives would let
 	 * the next launch trust records it never vouched for.
@@ -282,11 +340,15 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	@Override
 	public void flush() {
-		diskStore.flush();
+		synchronized (writeLock) {
+			diskStore.flush();
+		}
 	}
 
 	@Override
 	public void close() {
-		diskStore.close();
+		synchronized (writeLock) {
+			diskStore.close();
+		}
 	}
 }

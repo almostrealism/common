@@ -432,8 +432,11 @@ public class Repeated<T> extends Scope<T> {
 			loop = loop.replace(promoted.get(i), accumulators.get(i));
 		}
 
-		// The result stands in for this loop; see the method documentation for what moves.
-		Scope<T> result = (Scope<T>) super.generate(new ArrayList<>());
+		// The result stands in for this loop; see the method documentation for what moves. It is
+		// a plain Scope wrapper, not a Repeated — generate() would reproduce this loop's own type
+		// and render a for-loop with the null condition and interval this wrapper does not carry.
+		Scope<T> result = new Scope<>(getName(), getMetadata());
+		copyConfigurationTo(result);
 		result.getParameters().addAll(getParameters());
 		result.getRequiredScopes().addAll(getRequiredScopes());
 		result.getMethods().addAll(getMethods());
@@ -915,17 +918,26 @@ public class Repeated<T> extends Scope<T> {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Creates a new {@link Repeated} scope with the same name, metadata, index,
-	 * compute requirements and lane count, then populates it with the provided child
-	 * scopes.</p>
+	 * <p>Narrows the return type to {@link Repeated}; the generated scope is created by
+	 * {@link #createGenerated()} and configured by {@link Scope#generate(List)}.</p>
 	 */
 	@Override
 	public Repeated<T> generate(List<Scope<T>> children) {
-		Repeated<T> scope = getMetadata() == null ? new Repeated<>(getName()) : new Repeated<>(getName(), getMetadata());
+		return (Repeated<T>) super.generate(children);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Creates an empty {@link Repeated} scope carrying this loop's name, metadata and
+	 * {@link #getIndex() index}. {@link Scope#generate(List)} copies the reference index,
+	 * compute requirements and lane count onto it.</p>
+	 */
+	@Override
+	protected Scope<T> createGenerated() {
+		Repeated<T> scope = getMetadata() == null ?
+				new Repeated<>(getName()) : new Repeated<>(getName(), getMetadata());
 		scope.setIndex(getIndex());
-		scope.setComputeRequirements(getComputeRequirements());
-		scope.setLaneCount(getLaneCount());
-		scope.getChildren().addAll(children);
 		return scope;
 	}
 
