@@ -218,9 +218,13 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 * same-size, and non-batched selections are unaffected.</p>
 	 *
 	 * <p>The projection applies only to an operand with a variable count &mdash; a batched input
-	 * whose rows are indexed by the kernel without being wrapped to the operand's size. An operand
+	 * whose rows are indexed by the kernel without being wrapped to the operand's size. Fixedness is
+	 * read from the operand's {@link TraversalPolicy} as the computation sees it, which already
+	 * carries the operand producer's count contract: the batched inputs that need the projection are
+	 * reported here as variable-count, so testing the shape is equivalent to consulting
+	 * {@link io.almostrealism.relation.Countable#isFixedCount(Object)} on the producer. An operand
 	 * with a fixed count is read at the output element index exactly as any other element-wise
-	 * operand is, so a smaller fixed-size operand keeps the framework's ordinary (repeating)
+	 * operand is, so a smaller fixed-count operand keeps the framework's ordinary (repeating)
 	 * element-wise semantics.</p>
 	 *
 	 * <p>Broadcasting only applies to shapes that are broadcast-compatible: the operand item size
@@ -242,7 +246,8 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 		long outputSize = getShape().getSizeLong();
 		long operandSize = operandShape.getSizeLong();
 
-		// TODO(review): fixedness is a proxy for "per-row operand"; consider comparing operand count to output count instead
+		// A fixed-count operand keeps the ordinary element-wise read; only a variable-count
+		// operand is projected per row (see the count-contract note in this method's javadoc).
 		if (operandShape.isFixedCount() || operandSize >= outputSize) {
 			return index;
 		}
