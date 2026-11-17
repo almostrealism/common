@@ -36,8 +36,14 @@ import org.junit.Test;
  */
 public class ConvTranspose1dBackwardTest extends TestSuiteBase {
 
-	/** Perturbation step for the finite differences. */
-	private static final double EPS = 1e-4;
+	/**
+	 * Perturbation step for the finite differences. The loss {@code sum(output * upstream)} is
+	 * linear in the input and, separately, in the filter, so central differences carry no
+	 * truncation error at any step; the step only governs the cancellation error of subtracting
+	 * two nearly equal losses, which at single precision exceeds the tolerance for a step as small
+	 * as {@code 1e-4}.
+	 */
+	private static final double EPS = 1e-2;
 
 	/** Permitted relative difference between the analytic gradient and the finite differences. */
 	private static final double TOLERANCE = 1e-3;
@@ -89,9 +95,9 @@ public class ConvTranspose1dBackwardTest extends TestSuiteBase {
 	 * @param padding       padding
 	 * @param outputPadding output padding
 	 */
-	private void runGradientCase(String testName, int inChannels, int outChannels,
-								 int seqLength, int kernel, int stride,
-								 int padding, int outputPadding) {
+	private void assertGradientsMatch(String testName, int inChannels, int outChannels,
+									  int seqLength, int kernel, int stride,
+									  int padding, int outputPadding) {
 		int batchSize = 1;
 		int outLength = (seqLength - 1) * stride - 2 * padding + kernel + outputPadding;
 
@@ -103,58 +109,65 @@ public class ConvTranspose1dBackwardTest extends TestSuiteBase {
 		PackedCollection weights = nonTrivial(weightShape, 0.07, -0.2);
 		PackedCollection upstream = nonTrivial(outputShape, 0.05, 0.2);
 
-		// --- Input gradient: weights are frozen so the backward pass leaves them intact ---
-		Model model = new Model(inputShape);
-		CellularLayer layer = (CellularLayer) convTranspose1d(batchSize, inChannels, outChannels,
-				seqLength, kernel, stride, padding, outputPadding, weights, null);
-		((Learning) layer).setParameterUpdate(ParameterUpdate.disabled());
-		model.add(layer);
-
-		CompiledModel compiled = model.compile(true, true);
 		try {
-			compiled.forward(input);
-			double[] inputGradient = compiled.backward(upstream).toArray();
+			// --- Input gradient: weights are frozen so the backward pass leaves them intact ---
+			Model model = new Model(inputShape);
+			CellularLayer layer = (CellularLayer) convTranspose1d(batchSize, inChannels, outChannels,
+					seqLength, kernel, stride, padding, outputPadding, weights, null);
+			((Learning) layer).setParameterUpdate(ParameterUpdate.disabled());
+			model.add(layer);
 
-			double[] numericInput = extrapolatedDifferences(input, EPS,
-					() -> loss(compiled.forward(input), upstream));
-			assertGradientMatches(testName + " input", numericInput, inputGradient, TOLERANCE, MINIMUM);
-		} finally {
-			compiled.destroy();
-		}
+			CompiledModel compiled = model.compile(true, true);
+			try {
+				compiled.forward(input);
+				double[] inputGradient = compiled.backward(upstream).toArray();
 
-		// --- Filter gradient: observed as the weight update produced by a known learning rate ---
-		double learningRate = 1.0;
-		Model trained = new Model(inputShape, learningRate);
-		CellularLayer trainedLayer = (CellularLayer) convTranspose1d(batchSize, inChannels, outChannels,
-				seqLength, kernel, stride, padding, outputPadding, weights, null);
-		trained.add(trainedLayer);
-
-		CompiledModel trainedCompiled = trained.compile(true, true);
-		trainedCompiled.forward(input);
-
-		// Snapshot the weights on the device so they can be restored after the update
-		PackedCollection weightsSnapshot = new PackedCollection(weights.getShape());
-		try {
-			weightsSnapshot.setFrom(0, weights);
-
-			double[] weightsBefore = weights.toArray();
-			trainedCompiled.backward(upstream);
-			double[] weightsAfter = weights.toArray();
-
-			double[] filterGradient = new double[weightsBefore.length];
-			for (int i = 0; i < filterGradient.length; i++) {
-				filterGradient[i] = (weightsBefore[i] - weightsAfter[i]) / learningRate;
+				double[] numericInput = extrapolatedDifferences(input, EPS,
+						() -> loss(compiled.forward(input), upstream));
+				assertGradientMatches(testName + " input", numericInput, inputGradient, TOLERANCE, MINIMUM);
+			} finally {
+				compiled.destroy();
 			}
 
-			// Restore the weights the update changed before taking finite differences of them
-			weights.setFrom(0, weightsSnapshot);
+			// --- Filter gradient: observed as the weight update produced by a known learning rate ---
+			double learningRate = 1.0;
+			Model trained = new Model(inputShape, learningRate);
+			CellularLayer trainedLayer = (CellularLayer) convTranspose1d(batchSize, inChannels, outChannels,
+					seqLength, kernel, stride, padding, outputPadding, weights, null);
+			trained.add(trainedLayer);
 
-			double[] numericWeights = extrapolatedDifferences(weights, EPS,
-					() -> loss(trainedCompiled.forward(input), upstream));
-			assertGradientMatches(testName + " filter", numericWeights, filterGradient, TOLERANCE, MINIMUM);
+			CompiledModel trainedCompiled = trained.compile(true, true);
+			trainedCompiled.forward(input);
+
+			// Snapshot the weights on the device so they can be restored after the update
+			PackedCollection weightsSnapshot = new PackedCollection(weights.getShape());
+			try {
+				weightsSnapshot.setFrom(0, weights);
+
+				double[] weightsBefore = weights.toArray();
+				trainedCompiled.backward(upstream);
+				double[] weightsAfter = weights.toArray();
+
+				double[] filterGradient = new double[weightsBefore.length];
+				for (int i = 0; i < filterGradient.length; i++) {
+					filterGradient[i] = (weightsBefore[i] - weightsAfter[i]) / learningRate;
+				}
+
+				// Restore the weights the update changed before taking finite differences of them
+				weights.setFrom(0, weightsSnapshot);
+
+				double[] numericWeights = extrapolatedDifferences(weights, EPS,
+						() -> loss(trainedCompiled.forward(input), upstream));
+				assertGradientMatches(testName + " filter", numericWeights, filterGradient, TOLERANCE, MINIMUM);
+			} finally {
+				weightsSnapshot.destroy();
+				trainedCompiled.destroy();
+			}
 		} finally {
-			weightsSnapshot.destroy();
-			trainedCompiled.destroy();
+			// TODO(review): these are reshape() views; destroy() frees nothing
+			upstream.destroy();
+			weights.destroy();
+			input.destroy();
 		}
 	}
 
@@ -163,7 +176,7 @@ public class ConvTranspose1dBackwardTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void gradientStride2Padding1() {
-		runGradientCase("stride2_padding1", 2, 3, 4, 4, 2, 1, 0);
+		assertGradientsMatch("stride2_padding1", 2, 3, 4, 4, 2, 1, 0);
 	}
 
 	/**
@@ -171,6 +184,6 @@ public class ConvTranspose1dBackwardTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 120000)
 	public void gradientStride1Padding0() {
-		runGradientCase("stride1_padding0", 2, 3, 4, 3, 1, 0, 0);
+		assertGradientsMatch("stride1_padding0", 2, 3, 4, 3, 1, 0, 0);
 	}
 }
