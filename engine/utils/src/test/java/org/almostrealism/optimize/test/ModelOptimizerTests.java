@@ -780,6 +780,41 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 	}
 
 	/**
+	 * The divergence guard compares epochs within a single {@code optimize} call, never across
+	 * calls. The average loss persists on the optimizer between calls, so a guard gated on the
+	 * previous loss value would compare the first epoch of a second run against the final epoch of
+	 * the first and stop spuriously. Two single-epoch runs, neither of which contains a prior epoch
+	 * to diverge from, must therefore both complete without an early stop even though the second
+	 * run's loss is higher than the first's.
+	 */
+	@Test(timeout = 60000)
+	public void divergenceGuardDoesNotCompareAcrossRuns() {
+		PackedCollection weights = pack(0.0).reshape(shape(1, 1));
+		Model model = new Model(shape(1), 0.5);
+		model.add(dense(shape(1), weights, null, false));
+
+		List<ValueTarget<PackedCollection>> samples =
+				Collections.singletonList(ValueTarget.of(pack(2.0), pack(1.0)));
+
+		ModelOptimizer optimizer = new ModelOptimizer(model.compile(), () -> Dataset.of(samples));
+		optimizer.setLossFunction(new MeanSquaredError(shape(1).traverseEach()));
+		optimizer.setLogFrequency(0);
+		optimizer.setDivergenceThreshold(0.5);
+
+		TrainingResult first = optimizer.optimize(1);
+		Assert.assertEquals(1, first.getEpochsCompleted());
+		Assert.assertFalse("A single-epoch run has no prior epoch to diverge from",
+				first.isEarlyStopped());
+
+		TrainingResult second = optimizer.optimize(1);
+		Assert.assertEquals(1, second.getEpochsCompleted());
+		Assert.assertTrue("The second run's loss must rise above the first run's final loss",
+				second.getFinalTrainLoss() > first.getFinalTrainLoss() + 0.5);
+		Assert.assertFalse("The guard must not compare a run's first epoch against an earlier run",
+				second.isEarlyStopped());
+	}
+
+	/**
 	 * Asserts that {@code action}, which issues the named {@code pass}, throws an
 	 * {@link IllegalArgumentException}.
 	 */

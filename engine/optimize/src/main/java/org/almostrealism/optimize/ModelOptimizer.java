@@ -749,8 +749,9 @@ public class ModelOptimizer implements CodeFeatures {
 				}
 			}
 
-			// TODO(review): prefer `i > 0` over `previousLoss >= 0` so a negative-valued loss cannot silently disable this guard
-			if (divergenceThreshold > 0 && previousLoss >= 0 &&
+			// Gate on the loop index, not the previous loss value: averageLoss persists across
+			// optimize calls, so the first epoch of a run has no prior epoch to compare against.
+			if (divergenceThreshold > 0 && i > 0 &&
 					averageLoss > previousLoss + divergenceThreshold) {
 				log("Training stopped at epoch " + (i + 1) + " after the average loss rose from " +
 						previousLoss + " to " + averageLoss);
@@ -762,7 +763,7 @@ public class ModelOptimizer implements CodeFeatures {
 				break;
 			}
 
-			if (averageLoss == previousLoss) {
+			if (i > 0 && averageLoss == previousLoss) {
 				earlyStopped = true;
 				break;
 			}
