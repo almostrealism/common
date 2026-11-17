@@ -516,6 +516,42 @@ public class CollectionComputationTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests the minimum reduction over a vector for positive, negative and mixed inputs, and
+	 * with the minimum occurring at the first, a middle and the last position.
+	 */
+	@Test(timeout = 30000)
+	public void min() {
+		// Positive values, minimum in the middle
+		assertEquals(1.0, cp(pack(3.0, 1.0, 2.0)).min().get().evaluate().toDouble(0));
+		// Minimum at the first position
+		assertEquals(1.0, cp(pack(1.0, 3.0, 2.0)).min().get().evaluate().toDouble(0));
+		// Minimum at the last position
+		assertEquals(1.0, cp(pack(3.0, 2.0, 1.0)).min().get().evaluate().toDouble(0));
+		// Negative values
+		assertEquals(-3.0, cp(pack(-3.0, -1.0, -2.0)).min().get().evaluate().toDouble(0));
+		// Mixed values
+		assertEquals(-1.0, cp(pack(3.0, -1.0, 2.0)).min().get().evaluate().toDouble(0));
+	}
+
+	/**
+	 * Tests the per-axis minimum reduction on a 2D input: reducing the last axis gives the
+	 * minimum of each row, and reducing axis 0 gives the minimum across the whole collection.
+	 */
+	@Test(timeout = 30000)
+	public void min2d() {
+		PackedCollection value = pack(5.0, 3.0, 7.0, 2.0, 9.0, 1.0).reshape(2, 3);
+
+		PackedCollection rows = cp(value).min(1).get().evaluate();
+		rows.print();
+		assertEquals(3.0, rows.toDouble(0));
+		assertEquals(1.0, rows.toDouble(1));
+
+		PackedCollection all = cp(value).min(0).get().evaluate();
+		all.print();
+		assertEquals(1.0, all.toDouble(0));
+	}
+
+	/**
 	 * Tests index of max value in 2D collection.
 	 */
 	@Test(timeout = 30000)

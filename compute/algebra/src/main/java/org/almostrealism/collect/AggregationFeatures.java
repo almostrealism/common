@@ -23,9 +23,11 @@ import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.computations.CollectionMaxComputation;
+import org.almostrealism.collect.computations.CollectionMinComputation;
 import org.almostrealism.collect.computations.CollectionSumComputation;
 import org.almostrealism.collect.computations.CumulativeProductComputation;
 import org.almostrealism.collect.computations.IndexOfMaxComputation;
+import org.almostrealism.collect.computations.IndexOfMinComputation;
 
 import java.util.function.Function;
 
@@ -79,6 +81,33 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 	}
 
 	/**
+	 * Finds the minimum element in a collection.
+	 * This reduction operation scans through all elements and returns
+	 * the smallest value as a single-element collection. It is the mirror of
+	 * {@link #max(Producer)} and is distinct from the element-wise
+	 * {@link ArithmeticFeatures#min(Producer, Producer) min(a, b)}.
+	 *
+	 * @param input the collection to find the minimum element in
+	 * @return a {@link CollectionProducer} that generates the minimum value
+	 *
+	 *
+	 * <pre>{@code
+	 * // Find minimum in a vector
+	 * CollectionProducer values = c(3.0, 7.0, 2.0, 9.0, 5.0);
+	 * CollectionProducer minimum = min(values);
+	 * // Result: Producer that generates [2.0]
+	 *
+	 * // Minimum of negative numbers
+	 * CollectionProducer negatives = c(-5.0, -2.0, -8.0, -1.0);
+	 * CollectionProducer negMin = min(negatives);
+	 * // Result: Producer that generates [-8.0] (most negative = minimum)
+	 * }</pre>
+	 */
+	default CollectionProducer min(Producer<PackedCollection> input) {
+		return new CollectionMinComputation(input);
+	}
+
+	/**
 	 * Creates a computation that finds the index of the maximum value in each group of a
 	 * collection, where the groups are the items of the input at its traversal axis.
 	 *
@@ -89,6 +118,19 @@ public interface AggregationFeatures extends ArithmeticFeatures, ExpressionFeatu
 	 */
 	default CollectionProducer indexOfMax(Producer<PackedCollection> input) {
 		return new IndexOfMaxComputation(input);
+	}
+
+	/**
+	 * Creates a computation that finds the index of the minimum value in each group of a
+	 * collection, where the groups are the items of the input at its traversal axis.
+	 *
+	 * @param input The collection to find the minimum index in
+	 *
+	 * @return A computation that produces the index of the minimum element of each group
+	 * @see IndexOfMinComputation
+	 */
+	default CollectionProducer indexOfMin(Producer<PackedCollection> input) {
+		return new IndexOfMinComputation(input);
 	}
 
 	/**

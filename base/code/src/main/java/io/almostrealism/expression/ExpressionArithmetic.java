@@ -82,6 +82,17 @@ public interface ExpressionArithmetic<T> {
 	}
 
 	/**
+	 * Returns the smaller of this expression and another expression.
+	 *
+	 * @param operand the expression to compare with
+	 * @return an expression representing {@code min(this, operand)}
+	 * @see Min#of(Expression, Expression)
+	 */
+	public default Expression<Double> min(Expression<?> operand) {
+		return Min.of((Expression) self(), (Expression) operand);
+	}
+
+	/**
 	 * Returns the difference of this expression and another expression.
 	 *
 	 * @param operand the expression to subtract
