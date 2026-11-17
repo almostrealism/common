@@ -63,7 +63,6 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 	 * Tests dense layer training.
 	 */
 	@Test(timeout = 120000)
-	@TestProperties(knownIssue = true)
 	public void dense() {
 
 		int size = 30;
@@ -78,10 +77,14 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		Tensor<Double> t = tensor(shape(size));
 		PackedCollection input = t.pack();
 
+		CompiledModel compiled = model.compile();
+
+		// compile() runs the layer setup, which randomises the weights and zeroes the
+		// biases, so assign the biases afterwards to exercise the bias term below.
 		PackedCollection biases = dense.getWeights().get(1);
 		rand(biases.getShape()).into(biases.traverseEach()).evaluate();
 
-		model.compile().forward(input);
+		compiled.forward(input);
 
 		PackedCollection weights = dense.getWeights().get(0);
 		PackedCollection output =  ((DefaultCellularLayer) dense).getOutput();
@@ -89,8 +92,9 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		for (int i = 0; i < nodes; i++) {
 			double expected = 0;
 
+			// Dense weights are stored as [nodes, size]: node i reads row i.
 			for (int x = 0; x < size; x++) {
-				expected += weights.valueAt(x, i) * input.valueAt(x);
+				expected += weights.valueAt(i, x) * input.valueAt(x);
 			}
 
 			double actual = output.valueAt(i);
