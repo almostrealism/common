@@ -8,7 +8,8 @@ asks this script whether a fix round should start, and, when one starts, uses
 the same script as the round's leads-script so the agent begins from the
 failures themselves.
 
-The failures are read from the most recent *completed* master push run: newer
+The failures are read from the most recent *completed* master push run that
+was not cancelled (a later merge cancels a run before its tests finish): newer
 evidence supersedes older, and a master that has since gone green has nothing
 left to fix. For that run, every failed test-lane job's log is read for the
 Surefire ``<<< FAILURE!`` / ``<<< ERROR!`` lines, giving each failing
@@ -57,15 +58,21 @@ _spec.loader.exec_module(flakes)
 # branches (the branch-prefix "Master Failure Dispatch" passes to qa-round).
 MASTER = "master"
 ROUND_BRANCH_PREFIX = "qa/master-fix-"
+# Conclusions of a completed run that did not test the merged commit.
+NOT_A_RESULT = ("cancelled", "skipped")
 
 
 def latest_completed_master_run(runs):
     """The newest completed push run on master in ``runs`` (newest first), or
     ``None``. A pull-request or deployment run on master's head is not a master
-    result: only a push run tests what was merged."""
+    result: only a push run tests what was merged. Nor is a cancelled or
+    skipped run: one is cancelled when a later merge supersedes it, before its
+    tests finish, so it says nothing about master. Counting it would let every
+    merge that lands while a failing run is still going hide that failure."""
     for run in runs:
         if (run.get("head_branch") == MASTER and run.get("event") == "push"
-                and run.get("status") == "completed"):
+                and run.get("status") == "completed"
+                and run.get("conclusion") not in NOT_A_RESULT):
             return run
     return None
 

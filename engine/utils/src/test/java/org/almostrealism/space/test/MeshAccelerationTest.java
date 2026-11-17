@@ -186,6 +186,42 @@ public class MeshAccelerationTest extends TestSuiteBase implements GridIndexFeat
 	}
 
 	/**
+	 * The batch {@link MeshData#evaluateIntersectionKernelAccelerated} must produce the same
+	 * (distance, triangle index) pairs as the batch linear scan
+	 * {@link MeshData#evaluateIntersectionKernel}, for both a ray that hits the mesh (a non-empty
+	 * candidate set) and a ray that misses it entirely (an empty candidate set, which must report
+	 * the {@code (-1, -1)} miss result rather than a stale or negative triangle index).
+	 */
+	@Test(timeout = 120000)
+	public void acceleratedKernelMatchesLinearKernel() {
+		MeshData md = twoTriangleMesh();
+
+		// A ray dropping onto the large triangle (index 1), and a ray pointing away from it.
+		Producer<Ray> hitRay = (Producer) ray(vector(0.0, 1.0, 1.0), vector(0.0, 0.0, -1.0));
+		Producer<Ray> missRay = (Producer) ray(vector(0.0, 1.0, 1.0), vector(0.0, 0.0, 1.0));
+
+		PackedCollection linearHit = Pair.bank(1);
+		md.evaluateIntersectionKernel(hitRay.get(), linearHit, new MemoryData[0]);
+		PackedCollection accelHit = Pair.bank(1);
+		md.evaluateIntersectionKernelAccelerated(hitRay.get(), accelHit, new MemoryData[0]);
+
+		Assert.assertEquals("hit distance", 1.0, accelHit.toDouble(0), 1e-4);
+		Assert.assertEquals("hit triangle", 1.0, accelHit.toDouble(1), 1e-9);
+		Assert.assertEquals("hit distance matches linear", linearHit.toDouble(0), accelHit.toDouble(0), 1e-4);
+		Assert.assertEquals("hit triangle matches linear", linearHit.toDouble(1), accelHit.toDouble(1), 1e-9);
+
+		PackedCollection linearMiss = Pair.bank(1);
+		md.evaluateIntersectionKernel(missRay.get(), linearMiss, new MemoryData[0]);
+		PackedCollection accelMiss = Pair.bank(1);
+		md.evaluateIntersectionKernelAccelerated(missRay.get(), accelMiss, new MemoryData[0]);
+
+		Assert.assertEquals("miss distance", -1.0, accelMiss.toDouble(0), 1e-9);
+		Assert.assertEquals("miss triangle", -1.0, accelMiss.toDouble(1), 1e-9);
+		Assert.assertEquals("miss distance matches linear", linearMiss.toDouble(0), accelMiss.toDouble(0), 1e-9);
+		Assert.assertEquals("miss triangle matches linear", linearMiss.toDouble(1), accelMiss.toDouble(1), 1e-9);
+	}
+
+	/**
 	 * Intersecting a whole batch of rays in one evaluation of
 	 * {@link TriangleFeatures#closestMeshIntersection} gives, ray by ray, the same closest hit as
 	 * intersecting each ray on its own, including rays that miss the surface entirely.

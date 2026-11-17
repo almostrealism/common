@@ -149,23 +149,61 @@ public class FileStager implements ConsoleFeatures {
         }
 
         /**
-         * Runs a git command that prints one path per line (such as
-         * {@code diff --name-only}) and returns those paths, or {@code null}
-         * if the command failed; see {@link #executeOrNull}.
+         * Runs a git command and returns its <em>standard output only</em>,
+         * keeping standard error out of the result.
+         *
+         * <p>{@link #executeWithOutput} combines stdout and stderr, which is
+         * wrong for a {@code -z} (NUL-delimited) listing: a warning git prints
+         * to stderr (for example a line-ending notice from a worktree diff)
+         * would fuse with the first NUL field and corrupt that path.
+         * {@link #executeForPaths} therefore reads through this method.</p>
+         *
+         * <p>The default delegates to {@link #executeWithOutput}, which suits a
+         * test fake whose output is already stdout only. An implementation
+         * whose {@code executeWithOutput} merges stderr (as a real git process
+         * does) must override this to read stdout alone.</p>
          *
          * @param args the git subcommand and its arguments
+         * @return the command's standard output
+         * @throws IOException if the process cannot be started
+         * @throws InterruptedException if the calling thread is interrupted while waiting
+         */
+        default String executeForStdout(String... args) throws IOException, InterruptedException {
+            return executeWithOutput(args);
+        }
+
+        /**
+         * Runs a NUL-delimited git command that prints one path per field (such
+         * as {@code diff --name-only -z}) and returns those paths, or
+         * {@code null} if the command failed; see {@link #executeOrNull}.
+         *
+         * <p>The {@code -z} form is required of the caller: the default
+         * ({@code \n}-terminated) listings of {@code git diff --name-only} and
+         * {@code git ls-tree --name-only} C-quote any path containing a
+         * {@code "}, a control character, or (with {@code core.quotePath}) a
+         * non-ASCII byte, and the quoted form would then be treated as a
+         * distinct, non-existent path. The {@code -z} form never quotes, so
+         * each field is a raw path; fields are split on the NUL separator and a
+         * trailing newline a line-buffered reader appends after the final NUL is
+         * discarded.</p>
+         *
+         * @param args the git subcommand and its arguments, which must request
+         *             {@code -z} output
          * @return the listed paths in output order, or {@code null} on failure
          * @throws IOException if the process cannot be started
          * @throws InterruptedException if the calling thread is interrupted while waiting
          */
         default Set<String> executeForPaths(String... args) throws IOException, InterruptedException {
-            String output = executeOrNull(args);
-            if (output == null) {
+            if (execute(args) != 0) {
                 return null;
             }
+            String output = executeForStdout(args);
+            if (output.endsWith("\n")) {
+                output = output.substring(0, output.length() - 1);
+            }
             Set<String> paths = new LinkedHashSet<>();
-            for (String line : output.split("\n")) {
-                if (!line.isEmpty()) paths.add(line);
+            for (String path : output.split("\0", -1)) {
+                if (!path.isEmpty()) paths.add(path);
             }
             return paths;
         }
@@ -181,7 +219,7 @@ public class FileStager implements ConsoleFeatures {
          * @throws InterruptedException if the calling thread is interrupted while waiting
          */
         default Set<String> changedPaths(String from, String to) throws IOException, InterruptedException {
-            Set<String> paths = executeForPaths("diff", "--name-only", "--no-renames", from, to);
+            Set<String> paths = executeForPaths("diff", "--name-only", "--no-renames", "-z", from, to);
             if (paths == null) {
                 throw new IOException("Could not list the files changed between " + from + " and " + to);
             }
@@ -268,10 +306,10 @@ public class FileStager implements ConsoleFeatures {
         // can bring in thousands of base-branch files. An unavailable listing
         // leaves no file merge-carried.
         Set<String> parentChanges = mergeParent != null
-                ? gitOps.pathsOrNull("diff", "--name-only", "--no-renames", "HEAD..." + mergeParent)
+                ? gitOps.pathsOrNull("diff", "--name-only", "--no-renames", "-z", "HEAD..." + mergeParent)
                 : null;
         Set<String> differFromParent = mergeParent != null
-                ? gitOps.pathsOrNull("diff", "--name-only", "--no-renames", mergeParent, "--")
+                ? gitOps.pathsOrNull("diff", "--name-only", "--no-renames", "-z", mergeParent, "--")
                 : null;
 
         for (String file : changedFiles) {

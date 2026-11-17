@@ -17,6 +17,7 @@
 package io.flowtree.jobs;
 
 import io.flowtree.git.GitOperations;
+import io.flowtree.git.StatusEntry;
 import io.flowtree.git.TransientGitException;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -305,16 +306,10 @@ class GitRepositorySetup implements ConsoleFeatures {
             mergeConflictsDetected = true;
             mergeParent = baseHead;
 
-            String statusOutput = job.executeGitWithOutput("status", "--porcelain");
-            for (String line : statusOutput.split("\n")) {
-                if (line.startsWith("UU ") || line.startsWith("AA ")
-                        || line.startsWith("DD ") || line.startsWith("AU ")
-                        || line.startsWith("UA ") || line.startsWith("DU ")
-                        || line.startsWith("UD ")) {
-                    String file = line.substring(3).trim();
-                    if (!file.isEmpty()) {
-                        conflictFiles.add(file);
-                    }
+            for (StatusEntry entry
+                    : GitOperations.requireStatusEntries(job.getWorkingDirectory())) {
+                if (entry.isUnmerged()) {
+                    conflictFiles.add(entry.path());
                 }
             }
 
@@ -354,12 +349,20 @@ class GitRepositorySetup implements ConsoleFeatures {
     }
 
     /**
-     * Returns every file reported as dirty by {@code git status --porcelain},
-     * with no exclusion filtering applied.
+     * Returns every file reported as dirty by
+     * {@link GitOperations#requireChangedFiles(String)}, with no exclusion
+     * filtering applied. Only git's standard output is parsed, so a warning on
+     * standard error cannot corrupt the first entry of the {@code -z} listing.
+     *
+     * <p>The throwing variant is used deliberately: {@link #prepare()} reads an
+     * empty result as "nothing to stash" and proceeds to a fetch and hard-reset
+     * that would discard any uncommitted work. A failed {@code git status} query
+     * must therefore abort preparation rather than masquerade as a clean tree.</p>
+     *
+     * @throws IOException if the {@code git status} query could not be run
      */
-    private List<String> getAllDirtyFiles() throws IOException, InterruptedException {
-        String statusOutput = job.executeGitWithOutput("status", "--porcelain");
-        return GitOperations.parseChangedFiles(statusOutput);
+    private List<String> getAllDirtyFiles() throws IOException {
+        return GitOperations.requireChangedFiles(job.getWorkingDirectory());
     }
 
     /**

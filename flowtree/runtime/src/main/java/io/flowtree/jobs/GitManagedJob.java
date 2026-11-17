@@ -1198,24 +1198,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
     /**
      * Returns a {@link FileStager.GitOperations} adapter bound to this job's
-     * own {@link #executeGit} and {@link #executeGitWithOutput}, for use by
-     * {@link FileStager#evaluateFiles} and the test-method-protection
+     * working-directory {@link #gitOperations(String) GitOperations}, for use
+     * by {@link FileStager#evaluateFiles} and the test-method-protection
      * analysis it delegates to.
      *
      * @return the adapter
      */
     FileStager.GitOperations asGitOperations() {
-        return new FileStager.GitOperations() {
-            @Override
-            public int execute(String... args) throws IOException, InterruptedException {
-                return executeGit(args);
-            }
-
-            @Override
-            public String executeWithOutput(String... args) throws IOException, InterruptedException {
-                return executeGitWithOutput(args);
-            }
-        };
+        return new GitManagedJobOperations(this);
     }
 
     /**

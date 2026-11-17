@@ -390,5 +390,56 @@ class RequestTimeoutTests(unittest.TestCase):
         self.assertGreater(collect_observed_flakes.REQUEST_TIMEOUT_SECONDS, 0)
 
 
+class RedirectAuthorizationTests(unittest.TestCase):
+    """The token goes to the API, never to where the API redirects.
+
+    GitHub answers a job-log request with a redirect to a pre-signed storage
+    URL. The storage service rejects a request that also carries an
+    ``Authorization`` header (HTTP 401), so a token forwarded across the
+    redirect makes every log read fail. That is what stopped "Master Failure
+    Dispatch" from reading the failing lanes of a red master run."""
+
+    def setUp(self):
+        import http.server
+        import threading
+
+        seen = self.seen = []
+
+        class _Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append((self.path, self.headers.get("Authorization")))
+                if self.path.endswith("/logs"):
+                    self.send_response(302)
+                    self.send_header("Location", "/storage/log.txt?signature=x")
+                    self.end_headers()
+                    return
+                if self.headers.get("Authorization"):
+                    self.send_response(401)
+                    self.end_headers()
+                    return
+                body = b"the job log"
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
+        thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+
+    def test_a_redirected_log_read_does_not_forward_the_token(self):
+        client = collect_observed_flakes.GitHubClient(
+            "owner/name", token="secret",
+            api="http://127.0.0.1:%d" % self.server.server_address[1])
+        self.assertEqual("the job log", client.job_log(42))
+        self.assertEqual("Bearer secret", self.seen[0][1])
+        self.assertIsNone(self.seen[1][1])
+
+
 if __name__ == "__main__":
     unittest.main()
