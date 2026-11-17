@@ -31,7 +31,6 @@ import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.ValueTarget;
 import org.almostrealism.stats.DistributionFeatures;
 import org.almostrealism.util.TestDepth;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -155,7 +154,6 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 	 * Tests dense layer with model optimizer.
 	 */
 	@Test(timeout = 30000)
-	@TestProperties(knownIssue = true)
 	public void dense() {
 
 		int size = 1800;
@@ -168,13 +166,15 @@ public class LayersTests extends TestSuiteBase implements LayerFeatures, Distrib
 		initKernelMetrics();
 		OperationProfile profile = new OperationProfile("Model");
 
+		// The dense layer maps size inputs to nodes outputs, so the training target
+		// must match the nodes-element output shape rather than the size-element input.
 		Supplier<Dataset<?>> data = () -> Dataset.of(IntStream.range(0, steps)
 				.mapToObj(i -> new PackedCollection(shape(size)))
 				.map(input -> {
 					rand(input.getShape()).multiply(2.0).add(1.0).into(input.traverseEach()).evaluate();
 					return input;
 				})
-				.map(input -> ValueTarget.of(input, input))
+				.map(input -> ValueTarget.of(input, new PackedCollection(shape(nodes)).randFill()))
 				.collect(Collectors.toList()));
 		ModelOptimizer train = new ModelOptimizer(model, profile, data);
 		log("Model compiled");
