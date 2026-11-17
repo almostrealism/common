@@ -88,14 +88,14 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LeafInternTable {
 
 	/** Backing table for {@link Constant} and {@link InstanceReference}; canonical instance stored as the value for its own key. */
-	private static final ConcurrentHashMap<Expression<?>, Expression<?>> table = new ConcurrentHashMap<>();
+	private static final BoundedInternTable<Expression<?>, Expression<?>> table = new BoundedInternTable<>();
 
 	/**
 	 * Strict secondary table for {@link KernelIndex} keyed by axis + context
 	 * (see {@link KernelIndexKey}). Necessary because {@code KernelIndex}'s
 	 * structural {@code compare()} intentionally ignores context.
 	 */
-	private static final ConcurrentHashMap<KernelIndexKey, KernelIndex> kernelIndexTable = new ConcurrentHashMap<>();
+	private static final BoundedInternTable<KernelIndexKey, KernelIndex> kernelIndexTable = new BoundedInternTable<>();
 
 	/**
 	 * Static-only utility; instances are not meaningful.
@@ -126,13 +126,7 @@ public class LeafInternTable {
 		if (e instanceof KernelIndex) return canonicalKernelIndex((KernelIndex) e);
 		if (!isInternable(e)) return e;
 
-		if (table.size() >= ScopeSettings.maxLeafInternTableSize) {
-			Expression<?> existing = table.get(e);
-			return existing != null ? existing : e;
-		}
-
-		Expression<?> existing = table.putIfAbsent(e, e);
-		return existing != null ? existing : e;
+		return table.intern(e, e);
 	}
 
 	/**
@@ -146,14 +140,7 @@ public class LeafInternTable {
 	 */
 	private static KernelIndex canonicalKernelIndex(KernelIndex idx) {
 		KernelIndexKey key = new KernelIndexKey(idx);
-
-		if (kernelIndexTable.size() >= ScopeSettings.maxLeafInternTableSize) {
-			KernelIndex existing = kernelIndexTable.get(key);
-			return existing != null ? existing : idx;
-		}
-
-		KernelIndex existing = kernelIndexTable.putIfAbsent(key, idx);
-		return existing != null ? existing : idx;
+		return kernelIndexTable.intern(key, idx);
 	}
 
 	/**
@@ -225,6 +212,64 @@ public class LeafInternTable {
 	public static void clear() {
 		table.clear();
 		kernelIndexTable.clear();
+	}
+
+	/**
+	 * A bounded content-keyed canonicalisation table. Owns its backing
+	 * {@link ConcurrentHashMap} and the graceful-degradation policy that applies
+	 * once the table reaches {@link ScopeSettings#maxLeafInternTableSize}: while
+	 * the table holds fewer entries than the cap, {@link #intern(Object, Object)}
+	 * installs a value if no entry exists yet and returns the resulting canonical;
+	 * once full no new entry is added, but an already-present canonical is still
+	 * returned. In other words, behaviour degrades to "intern what we already saw,
+	 * leave new things alone" without a separate eviction policy.
+	 *
+	 * <p>The backing {@link ConcurrentHashMap} makes this safe under concurrent
+	 * callers; two threads racing on the same key may both offer a fresh value,
+	 * but {@link ConcurrentHashMap#putIfAbsent} guarantees only one wins and both
+	 * callers observe the same canonical.</p>
+	 *
+	 * @param <K> the key type
+	 * @param <V> the canonical value type
+	 */
+	private static final class BoundedInternTable<K, V> {
+		/** Backing content-keyed table; the canonical instance is stored as the value for its key. */
+		private final ConcurrentHashMap<K, V> entries = new ConcurrentHashMap<>();
+
+		/**
+		 * Returns the canonical instance for {@code key}, installing {@code value}
+		 * as the canonical when the table has not yet reached its cap and no entry
+		 * exists. Once the cap is reached, an already-present canonical is still
+		 * returned but no new entry is added.
+		 *
+		 * @param key   the lookup key for {@code value}
+		 * @param value the candidate canonical instance
+		 * @return the existing canonical for {@code key} if one is present,
+		 *         otherwise {@code value}
+		 */
+		V intern(K key, V value) {
+			if (entries.size() >= ScopeSettings.maxLeafInternTableSize) {
+				V existing = entries.get(key);
+				return existing != null ? existing : value;
+			}
+
+			V existing = entries.putIfAbsent(key, value);
+			return existing != null ? existing : value;
+		}
+
+		/**
+		 * @return the number of canonical entries currently held
+		 */
+		int size() {
+			return entries.size();
+		}
+
+		/**
+		 * Removes all entries.
+		 */
+		void clear() {
+			entries.clear();
+		}
 	}
 
 	/**
