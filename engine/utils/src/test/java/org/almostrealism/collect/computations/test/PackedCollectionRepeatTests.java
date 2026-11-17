@@ -32,7 +32,8 @@ import java.util.function.Supplier;
  */
 public class PackedCollectionRepeatTests extends TestSuiteBase {
 	/**
-	 * Tests isolated repeat operation (marked as known issue).
+	 * Tests that an isolated repeat operation materialises a dense output whose shape
+	 * no longer carries the zero-copy {@link RepeatTraversalOrdering}.
 	 */
 	@Test(timeout = 30000)
 	public void isolatedRepeat() {

@@ -80,9 +80,10 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		CompiledModel compiled = model.compile();
 
 		// compile() runs the layer setup, which randomises the weights and zeroes the
-		// biases, so assign the biases afterwards to exercise the bias term below.
+		// biases, so assign a deterministic nonzero bias afterwards: it exercises the
+		// bias term below while keeping assertNotEquals from intermittently failing.
 		PackedCollection biases = dense.getWeights().get(1);
-		rand(biases.getShape()).into(biases.traverseEach()).evaluate();
+		integers(0, nodes).multiply(0.1).add(0.1).into(biases.traverseEach()).evaluate();
 
 		compiled.forward(input);
 
