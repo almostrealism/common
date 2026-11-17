@@ -238,16 +238,22 @@ Runnable compiled = op.get();  // May cause timeouts/failures!
 3. Use `CompiledModel` which calls `optimize()` internally
 
 This applies just as much when the graph is a `Producer` rather than an
-`OperationList`. The convenience methods on `Producer` reach `get()` implicitly, and
-most of them do not optimize on the way:
+`OperationList`. The convenience methods on `Producer` reach `get()` implicitly.
+`evaluate(args)` optimizes on the way; the lower-level entry points do not:
 
 | Call | Optimizes? |
 |---|---|
 | `producer.get()` | No |
-| `producer.evaluate(args)` | No — `get().evaluate(args)` |
+| `producer.evaluate(args)` | **Yes** — `Process.optimized(this).get().evaluate(args)` |
+| `producer.evaluateExplicit(args)` | No — `get().evaluate(args)` |
 | `producer.into(destination)` | No — `get().into(destination)` |
-| `producer.evaluateOptimized(args)` | **Yes** — `Process.optimized(this).get().evaluate(args)` |
+| `producer.evaluateOptimized(args)` | **Yes** — deprecated alias of `evaluate(args)` |
 | `Process.optimized(producer).get()` | **Yes** |
+
+`evaluate(...)` is the default: it optimizes, so a composite graph containing a
+reduction is isolated into its own kernel instead of being embedded in every
+reader. `evaluateExplicit(...)` is the deliberate unoptimized path, for a graph the
+caller knows needs no isolation.
 
 `into(...)` has no optimizing counterpart, so writing into a pre-allocated
 destination with optimization means combining the two:
