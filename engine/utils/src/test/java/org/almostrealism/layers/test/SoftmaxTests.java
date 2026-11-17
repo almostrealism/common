@@ -26,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.layers.ActivationFeatures;
 import org.almostrealism.layers.BackPropagationCell;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
@@ -519,6 +520,21 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		assertLayerOutput(softmax(true),
 				pack(-1.0, 0.0, -2.0, 100.0, 0.0, 99.0).reshape(shape(2, 3)),
 				pack(0.2447285, 0.6652410, 0.0900306, 0.7310586, 0.0, 0.2689414));
+	}
+
+	/**
+	 * {@link ActivationFeatures#logSoftmax(io.almostrealism.relation.Producer)} rejects an input
+	 * with fewer than two dimensions, since it has no leading axis to normalize independently of.
+	 */
+	@Test(timeout = 60000)
+	public void logSoftmaxProducerRejectsRankOneInput() {
+		try {
+			logSoftmax(cp(pack(1.0, 2.0, 3.0)));
+			Assert.fail("logSoftmax should reject a one-dimensional input");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue("message should mention the dimension requirement",
+					expected.getMessage().contains("at least 2 dimensions"));
+		}
 	}
 
 	/**
