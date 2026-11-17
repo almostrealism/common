@@ -20,6 +20,7 @@ import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -347,6 +348,21 @@ public class FourierTransform extends CollectionProducerComputationBase {
 	 */
 	private Expression scaled(Expression value, double scale) {
 		return scale == 1.0 ? value : value.multiply(e(scale));
+	}
+
+	/**
+	 * Reports that this transform needs a kernel of its own. Its scope selects the line to
+	 * transform from the kernel index and runs the whole butterfly network for that line, so it
+	 * is only correct when dispatched with one work item per line; embedded in a consumer that
+	 * is dispatched over its own elements, every element would rerun the transform at a line
+	 * position derived from the consumer's index.
+	 *
+	 * @param context the process context
+	 * @return {@code true}
+	 */
+	@Override
+	public boolean isIsolationTarget(ProcessContext context) {
+		return true;
 	}
 
 	@Override

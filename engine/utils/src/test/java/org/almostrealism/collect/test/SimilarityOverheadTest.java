@@ -18,6 +18,7 @@ package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.Ops;
 import org.almostrealism.hardware.Hardware;
@@ -667,15 +668,18 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 * Returns a cached evaluable that computes per-frame cosine similarity
 	 * between two feature tensors of shape (frames, bins, 1). This same
 	 * evaluable works for batched computation by passing
-	 * {@code (batchSize * frames)} as the frames parameter.
+	 * {@code (batchSize * frames)} as the frames parameter. Like the production
+	 * evaluable it replicates, it is optimized before compilation, matching what
+	 * {@code evaluate()} does for the expression-tree-per-call baseline.
 	 */
 	private static Evaluable<PackedCollection> cosineSimilarityEvaluable(int frames, int bins) {
 		long key = ((long) frames << 32) | bins;
 		TraversalPolicy shape = new TraversalPolicy(frames, bins, 1);
 		return cosineCache.computeIfAbsent(key, k ->
-				Ops.op(o -> o.multiply(o.cv(shape, 0), o.cv(shape, 1)).sum(1)
-						.divide(o.multiply(o.length(1, o.cv(shape, 0)),
-								o.length(1, o.cv(shape, 1))))).get());
+				(Evaluable<PackedCollection>) Process.optimized(
+						Ops.op(o -> o.multiply(o.cv(shape, 0), o.cv(shape, 1)).sum(1)
+								.divide(o.multiply(o.length(1, o.cv(shape, 0)),
+										o.length(1, o.cv(shape, 1)))))).get());
 	}
 
 	/**

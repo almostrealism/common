@@ -145,6 +145,12 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	 * Returns the second difference {@code (f[i+1] - 2 f[i] + f[i-1]) / h^2} along an axis, a
 	 * second-order approximation of the second derivative at each cell.
 	 *
+	 * <p>The stencil is formed as the difference of the two one-sided differences,
+	 * {@code ((f[i+1] - f[i]) - (f[i] - f[i-1])) / h^2}. Each of those subtracts neighbouring
+	 * values, which is exact when they are close, so a smooth field offset by a large constant
+	 * keeps its precision however the compiled kernel orders the terms; summing the neighbours
+	 * first instead rounds at the magnitude of the field before the cancellation.</p>
+	 *
 	 * @param field    the grid field
 	 * @param axis     the axis to differentiate along
 	 * @param spacing  the grid spacing {@code h} along the axis
@@ -154,9 +160,10 @@ public interface FieldCalculusFeatures extends CollectionFeatures {
 	default CollectionProducer secondDifference(Producer<PackedCollection> field, int axis,
 												double spacing, GridBoundary boundary) {
 		double h = requireSpacing(spacing);
-		return shift(field, axis, 1, boundary).add(shift(field, axis, -1, boundary))
-				.subtract(c(field).multiply(2.0))
-				.multiply(1.0 / (h * h));
+		// TODO(review): precision relies on the simplifier not re-associating the stencil; add a guard test or soften the javadoc claim
+		CollectionProducer forward = shift(field, axis, 1, boundary).subtract(field);
+		CollectionProducer backward = c(field).subtract(shift(field, axis, -1, boundary));
+		return forward.subtract(backward).multiply(1.0 / (h * h));
 	}
 
 	/**
