@@ -32,7 +32,7 @@ Key methods:
 | `Evaluable<T> get()` | Compile this description into an executable `Evaluable` |
 | `Evaluable<T> into(Object destination)` | Compile for in-place computation into a pre-allocated destination |
 | `T evaluate(Object... args)` | Default path: optimizes the graph, then compiles and evaluates (`Process.optimized(this).get().evaluate(args)`) |
-| `T evaluateExplicit(Object... args)` | Deliberate unoptimized path: calls `get().evaluate(args)` (compiles every time, no optimization) |
+| `T evaluateExplicit(Object... args)` | Calls `get().evaluate(args)` without invoking optimization itself; `get()` may still return a cached `Evaluable`, including an optimized one if this producer was already optimized (see `Producer.evaluateExplicit`) |
 | `T evaluateOptimized(Object... args)` | Deprecated alias of `evaluate(args)` |
 
 The most important of these is `get()`. It is the bridge between description and
@@ -158,8 +158,11 @@ for (int i = 0; i < 1000; i++) {
 ```
 
 **Using `evaluate()` instead of caching.** The convenience method
-`Producer.evaluate(args)` optimizes and compiles every time. It is fine for
-one-shot usage but wasteful in loops. For repeated evaluation, call
+`Producer.evaluate(args)` invokes optimization on every call. Optimization does
+not guarantee a recompile -- `Process.optimized` passes a non-`Process` producer
+through unchanged, and collection computations cache the `Evaluable` their `get()`
+returns -- but repeating the optimization pass and the `get()` lookup in a loop is
+still wasted work. It is fine for one-shot usage; for repeated evaluation, call
 `Process.optimized(producer).get()` once and hold the `Evaluable`.
 
 **Skipping optimization.** Calling `get()` directly (or `evaluateExplicit()`) on a
