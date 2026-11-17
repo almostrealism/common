@@ -19,6 +19,7 @@ package org.almostrealism.layers;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputeRequirement;
 import io.almostrealism.relation.Factor;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.GeometryFeatures;
@@ -94,12 +95,19 @@ public interface ActivationFeatures extends GeometryFeatures {
 	/**
 	 * Creates a flat softmax layer for the given shape.
 	 *
-	 * @param shape the input/output shape; the softmax is applied across the last traversal dimension
+	 * <p>The softmax normalizes over the <em>whole</em> tensor: every element of the output
+	 * is non-negative and all of them together sum to 1, regardless of the rank of
+	 * {@code shape}. For per-row normalization use
+	 * {@link #softmax(TraversalPolicy, boolean, ComputeRequirement...)} or
+	 * {@link #logSoftmax(Producer)}.</p>
+	 *
+	 * @param shape the input/output shape
 	 * @return the softmax {@link CellularLayer}
 	 */
 	default CellularLayer softmax(TraversalPolicy shape) {
+		TraversalPolicy flat = shape(1, shape.getTotalSize());
 		return layer("softmax", shape, shape,
-				input -> c(input).traverse(1).exp().divide(c(input).traverse(1).exp().traverse(0).sum()));
+				input -> logSoftmax(c(input).reshape(flat)).exp().reshape(shape));
 	}
 
 	/**
@@ -133,14 +141,8 @@ public interface ActivationFeatures extends GeometryFeatures {
 		double eps = 1e-5;
 
 		if (enableLogStability) {
-			return layer("softmax2d", shape, shape, input -> {
-				CollectionProducer max = traverse(axis, input).max();
-				CollectionProducer stable =
-						traverse(axis + 1, input).subtract(max.expand(seqLen));
-				CollectionProducer logSum =
-						stable.exp().traverse(axis).sum().log().expand(seqLen);
-				return stable.subtract(logSum).exp();
-			}, requirements);
+			return layer("softmax2d", shape, shape,
+					input -> logSoftmax(input).exp(), requirements);
 		} else {
 			return layer("softmax2d", shape, shape, input -> {
 				CollectionProducer o = traverse(axis, input);
@@ -202,20 +204,50 @@ public interface ActivationFeatures extends GeometryFeatures {
 	/**
 	 * Creates a log-softmax layer for the given shape.
 	 *
-	 * <p>The shape is padded to at least 2 dimensions and traversed along axis 1. The
-	 * computation is {@code log(softmax(x)) = x - log(sum(exp(x)))}.</p>
+	 * <p>The shape is padded to at least 2 dimensions; each slice along axis 0 is
+	 * normalized independently, using the numerically stable form computed by
+	 * {@link #logSoftmax(Producer)}.</p>
 	 *
 	 * @param shape        the input/output shape
 	 * @param requirements optional compute requirements
 	 * @return the log-softmax {@link CellularLayer}
 	 */
 	default CellularLayer logSoftmax(TraversalPolicy shape, ComputeRequirement... requirements) {
-		shape = padDimensions(shape, 2).traverse(1);
+		TraversalPolicy layerShape = padDimensions(shape, 2).traverse(1);
+		TraversalPolicy rows = shape(layerShape.length(0), layerShape.getTotalSize() / layerShape.length(0));
 
-		return layer("logSoftmax", shape, shape, input ->
-						c(input).traverse(2).subtract(
-								c(input).traverse(2).exp().traverse(1).sum().log()),
+		return layer("logSoftmax", layerShape, layerShape, input ->
+						logSoftmax(c(input).reshape(rows)).reshape(layerShape),
 				requirements);
+	}
+
+	/**
+	 * Computes the log-softmax of {@code input} over its last axis, independently for every
+	 * position of the leading axes, in the numerically stable log-sum-exp form
+	 * {@code (x - m) - log(sum(exp(x - m)))} where {@code m} is the maximum of each row.
+	 *
+	 * <p>Subtracting the row maximum keeps every exponent at or below zero, so a single
+	 * large logit cannot overflow {@code exp} and a row of large negative logits cannot
+	 * underflow it to a zero sum. The subtracted maximum does not change the result, or its
+	 * gradient. The softmax is the {@code exp()} of this producer.</p>
+	 *
+	 * @param input the logits; must have at least 2 dimensions
+	 * @return the log-softmax of each row of {@code input}, with the shape of {@code input}
+	 * @throws IllegalArgumentException if {@code input} has fewer than 2 dimensions
+	 */
+	default CollectionProducer logSoftmax(Producer<PackedCollection> input) {
+		TraversalPolicy shape = shape(input);
+		if (shape.getDimensions() < 2) {
+			throw new IllegalArgumentException("logSoftmax requires at least 2 dimensions, got " + shape);
+		}
+
+		int axis = shape.getDimensions() - 1;
+		int size = shape.length(axis);
+
+		CollectionProducer max = traverse(axis, input).max();
+		CollectionProducer stable = traverse(axis + 1, input).subtract(max.expand(size));
+		CollectionProducer logSum = stable.exp().traverse(axis).sum().log().expand(size);
+		return stable.subtract(logSum);
 	}
 
 	/**
