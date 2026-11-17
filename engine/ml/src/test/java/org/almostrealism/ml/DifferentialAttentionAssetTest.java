@@ -642,18 +642,18 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 	}
 
 	/**
-	 * A new tensor of the given shape filled on the host with standard normal draws taken from
-	 * {@link #random} in index order. This reproduces what {@link PackedCollection#randnFill(Random)}
-	 * draws under the default random implementation, but takes the draw on the host rather than through
-	 * the generator the {@code AR_RANDOM} setting selects, so a seed picks the same values — including
-	 * the nearly constant key row of {@link #NEARLY_CONSTANT_ROW_SEED} — whichever implementation is
-	 * configured.
+	 * A new tensor of the given shape holding standard normal draws taken from {@link #random} in index
+	 * order. The generator is the host-drawn {@link org.almostrealism.collect.computations.Random}
+	 * itself rather than the one the {@code AR_RANDOM} setting selects, so a seed picks the same
+	 * values — including the nearly constant key row of {@link #NEARLY_CONSTANT_ROW_SEED} — whichever
+	 * implementation is configured.
 	 *
 	 * @param shape the shape of the tensor
 	 * @return the filled tensor
 	 */
 	private PackedCollection gaussian(TraversalPolicy shape) {
-		return new PackedCollection(shape).fill(random::nextGaussian);
+		return new org.almostrealism.collect.computations.Random(shape, true, random)
+				.get().into(new PackedCollection(shape)).evaluate();
 	}
 
 	/**

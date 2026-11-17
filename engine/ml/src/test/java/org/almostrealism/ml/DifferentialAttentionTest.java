@@ -281,17 +281,18 @@ public class DifferentialAttentionTest extends TestSuiteBase implements Differen
 	}
 
 	/**
-	 * A new tensor of the given shape filled on the host with standard normal draws from
-	 * {@link #random} in index order. Taking the draw on the host rather than through the generator
-	 * the {@code AR_RANDOM} setting selects keeps the values a seed produces the same whichever
-	 * implementation is configured, so the lambda characterization of {@link #SEED} holds in every
-	 * configuration.
+	 * A new tensor of the given shape holding standard normal draws from {@link #random} in index
+	 * order. The generator is the host-drawn {@link org.almostrealism.collect.computations.Random}
+	 * itself rather than the one the {@code AR_RANDOM} setting selects, which keeps the values a seed
+	 * produces the same whichever implementation is configured, so the lambda characterization of
+	 * {@link #SEED} holds in every configuration.
 	 *
 	 * @param shape the shape of the tensor
 	 * @return the filled tensor
 	 */
 	private PackedCollection gaussian(TraversalPolicy shape) {
-		return new PackedCollection(shape).fill(random::nextGaussian);
+		return new org.almostrealism.collect.computations.Random(shape, true, random)
+				.get().into(new PackedCollection(shape)).evaluate();
 	}
 
 	/**
