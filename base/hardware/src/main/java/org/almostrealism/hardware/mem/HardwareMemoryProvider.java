@@ -508,7 +508,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 	 * ({@code AR_HARDWARE_ALLOCATION_TRACE_FRAMES}) is positive; blocks allocated without
 	 * a recorded site are reported together.
 	 *
-	 * @param sites the most allocation sites to list
+	 * @param sites the most allocation sites to list; a negative value lists none, so that
+	 *              reporting can never replace the exception this is called to produce
 	 * @return a multi-line description of the live allocations
 	 */
 	public String describeAllocations(int sites) {
@@ -526,7 +527,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 		bySite.entrySet().stream()
 				.sorted(Comparator.comparingLong((Map.Entry<List<StackTraceElement>, LongSummaryStatistics> e) ->
 						e.getValue().getSum()).reversed())
-				.limit(sites)
+				.limit(Math.max(0, sites))
 				.forEach(site -> {
 					out.append("\n").append(site.getValue().getSum()).append(" bytes in ")
 							.append(site.getValue().getCount()).append(" blocks");

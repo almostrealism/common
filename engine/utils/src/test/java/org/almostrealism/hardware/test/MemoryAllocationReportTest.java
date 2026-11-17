@@ -116,6 +116,34 @@ public class MemoryAllocationReportTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A negative site count lists no sites rather than throwing, so that reporting can
+	 * never replace the exception the ceiling failure path is meant to raise. The summary
+	 * line still describes every live block.
+	 */
+	@Test(timeout = 60000)
+	public void negativeSiteCountListsNoSites() {
+		int frames = RAM.allocationTraceFrames;
+		RAM.allocationTraceFrames = TRACE_FRAMES;
+		NativeMemoryProvider provider = provider();
+		List<RAM> held = new ArrayList<>();
+
+		try {
+			for (int i = 0; i < 2; i++) {
+				held.add(provider.allocate(BLOCK_ELEMENTS));
+			}
+
+			String report = provider.describeAllocations(-1);
+			Assert.assertEquals("2 blocks holding " + 2 * BLOCK_BYTES + " bytes from 1 allocation sites", report);
+			Assert.assertFalse("a site was listed despite a negative count in\n" + report,
+					report.contains("\tat "));
+		} finally {
+			RAM.allocationTraceFrames = frames;
+			held.forEach(block -> provider.deallocate(BLOCK_ELEMENTS, block));
+			provider.destroy();
+		}
+	}
+
+	/**
 	 * Creates a direct-buffer provider with the test ceiling.
 	 *
 	 * @return the provider
