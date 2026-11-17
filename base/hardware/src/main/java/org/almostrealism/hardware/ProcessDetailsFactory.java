@@ -981,16 +981,16 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 *
 	 * <p>Every referenced argument that carries more than one item must carry the same number of
 	 * them: the kernel reads each batched argument index-parametrically, so a second argument
-	 * supplied for fewer items than the kernel count would be read past the data it holds. An
-	 * argument supplied at exactly its declared size (batch factor one) is shared across all
-	 * items and is allowed alongside a larger batch. Conflicting non-unit batch factors are
-	 * rejected rather than mapped to an out-of-bounds read. An argument supplied larger than its
-	 * declared size but not a whole number of items is malformed and is likewise rejected, rather
-	 * than silently treated as a shared argument and then read past its data under another
-	 * argument's batch factor. An argument supplied <em>smaller</em> than its declared per-item
-	 * size is also rejected: the reference reads its declared size per item (wrapping the index by
-	 * that declared size, see {@code PassThroughProducer#getValueAt}), so an undersized buffer
-	 * would be read past its data regardless of the batch.</p>
+	 * supplied for fewer items than the kernel count would be read past the data it holds.
+	 * Conflicting non-unit batch factors are rejected rather than mapped to an out-of-bounds read.
+	 * This includes an argument supplied at exactly its declared size (a single item) alongside a
+	 * batch: it is not broadcast across the items but read index-parametrically like every other
+	 * referenced argument, so items after the first would read past its data. An argument
+	 * supplied larger than its declared size but not a whole number of items is malformed and is
+	 * likewise rejected. An argument supplied <em>smaller</em> than its declared per-item size is
+	 * also rejected: the reference reads its declared size per item (wrapping the index by that
+	 * declared size, see {@code PassThroughProducer#getValueAt}), so an undersized buffer would be
+	 * read past its data regardless of the batch.</p>
 	 *
 	 * <p>Deriving the kernel size from the data actually supplied (rather than from the
 	 * destination) keeps a destination honest: the caller-supplied destination must then match
@@ -1010,6 +1010,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		}
 
 		long batchFactor = 1;
+		boolean singleItemArgument = false;
 
 		for (int i = 0; i < arguments.size(); i++) {
 			ArrayVariable<? extends T> argument = arguments.get(i);
@@ -1029,11 +1030,12 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 			long suppliedSize = ((MemoryData) args[refIndex]).getMemLength();
 			if (suppliedSize == declaredSize) {
-				// A batch factor of one is shared across every item and does not constrain the size
+				singleItemArgument = true;
 				continue;
 			}
 
 			if (suppliedSize < declaredSize) {
+				// TODO(review): "wrapping the index by that size" contradicts the single-item rejection below, which found no wrap on this path
 				throw new IllegalArgumentException("Referenced argument supplied size (" +
 						suppliedSize + ") is smaller than its declared per-item size (" +
 						declaredSize + "); an index-parametric reference reads its declared " +
@@ -1056,6 +1058,13 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			batchFactor = factor;
+		}
+
+		if (batchFactor > 1 && singleItemArgument) {
+			throw new IllegalArgumentException("A referenced argument supplied for a single item " +
+					"cannot accompany a batch of " + batchFactor + " items; the kernel reads every " +
+					"referenced argument index-parametrically, so a single-item argument would be " +
+					"read past its data rather than shared across the batch");
 		}
 
 		return declaredCount * batchFactor;

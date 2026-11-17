@@ -421,6 +421,92 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests a reduction referencing two arguments that both carry the same batch of items.
+	 * Each referenced argument establishes the same batch factor, so the kernel runs once per
+	 * item and every output is the sum over the corresponding item of both inputs.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumConsistentBatch() {
+		int r = 4;
+		int c = 2;
+		int count = 3;
+
+		PackedCollection a = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection b = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(count, r, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0)
+				.add(cv(shape(r, c, 1), 1)).traverse(1).sum().get();
+		sum.into(output.traverse(2)).evaluate(a.traverse(1), b.traverse(1));
+
+		for (int i = 0; i < count; i++) {
+			for (int j = 0; j < r; j++) {
+				double total = 0.0;
+				for (int k = 0; k < c; k++) {
+					total += a.valueAt(i, j, k, 0) + b.valueAt(i, j, k, 0);
+				}
+
+				assertEquals(total, output.valueAt(i, j, 0));
+			}
+		}
+	}
+
+	/**
+	 * Tests that a reduction referencing a batched argument alongside an argument supplied at
+	 * exactly its declared per-item size (a single item) is rejected. The single-item argument is
+	 * not broadcast across the batch: the kernel reads it index-parametrically like every other
+	 * referenced argument, so every item after the first would read past its data. The
+	 * invocation must be refused rather than produce wrong results for those items.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumRejectsSingleItemArgumentInBatch() {
+		int r = 4;
+		int c = 2;
+		int count = 3;
+
+		PackedCollection a = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection single = new PackedCollection(shape(r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(count, r, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0)
+				.add(cv(shape(r, c, 1), 1)).traverse(1).sum().get();
+
+		try {
+			sum.into(output.traverse(2)).evaluate(a.traverse(1), single.traverse(1));
+			Assert.fail("Expected a single-item argument alongside a batch to be rejected");
+		} catch (IllegalArgumentException expected) {
+			// Every referenced argument must supply the batch the kernel runs over
+		}
+	}
+
+	/**
+	 * Tests that a reduction referencing two single-item arguments, with no batch, is still
+	 * accepted and computed at its declared count.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumSingleItemArguments() {
+		int r = 4;
+		int c = 2;
+
+		PackedCollection a = new PackedCollection(shape(r, c, 1)).randFill();
+		PackedCollection b = new PackedCollection(shape(r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(r, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0)
+				.add(cv(shape(r, c, 1), 1)).traverse(1).sum().get();
+		sum.into(output.traverse(1)).evaluate(a.traverse(1), b.traverse(1));
+
+		for (int j = 0; j < r; j++) {
+			double total = 0.0;
+			for (int k = 0; k < c; k++) {
+				total += a.valueAt(j, k, 0) + b.valueAt(j, k, 0);
+			}
+
+			assertEquals(total, output.valueAt(j, 0));
+		}
+	}
+
+	/**
 	 * Tests that a destination whose count is neither the batched kernel size nor the
 	 * total output size is still rejected, so the batched path does not admit a
 	 * genuinely mismatched destination.
