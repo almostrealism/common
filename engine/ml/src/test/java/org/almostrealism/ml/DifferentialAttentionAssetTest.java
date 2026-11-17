@@ -212,7 +212,7 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		}
 
 		Weights w = new Weights(NormalizationType.LAYER, true, false);
-		PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill(random);
+		PackedCollection input = gaussian(shape(BATCH, SEQ_LEN, DIM));
 		double[] feature = run(w.feature(ProjectionFactory.dense(), null, lambda), input);
 		double[] assembly = run(w.javaAssembly(null, lambda), input);
 		double[] host = w.hostReference(input.doubleStream().toArray(), null, hostLambda);
@@ -231,8 +231,8 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 	@Test(timeout = 300000)
 	public void everyForwardPassAttendsOverItsOwnSequence() {
 		Weights w = new Weights(NormalizationType.LAYER, true, false);
-		PackedCollection first = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill(random);
-		PackedCollection second = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill(random);
+		PackedCollection first = gaussian(shape(BATCH, SEQ_LEN, DIM));
+		PackedCollection second = gaussian(shape(BATCH, SEQ_LEN, DIM));
 		double[] firstExpected = w.hostReference(first.doubleStream().toArray(), null, w.hostLambda());
 		double[] secondExpected = w.hostReference(second.doubleStream().toArray(), null, w.hostLambda());
 
@@ -267,7 +267,7 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		ProjectionFactory adapted = ProjectionFactory.lora(new AdapterConfig().rank(2).alpha(4.0)
 				.targets(AdapterConfig.TargetLayer.SELF_ATTENTION_QKV,
 						AdapterConfig.TargetLayer.SELF_ATTENTION_OUT), adapters);
-		PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill(random);
+		PackedCollection input = gaussian(shape(BATCH, SEQ_LEN, DIM));
 		double[] dense = run(w.feature(ProjectionFactory.dense(), null, w.lambda()), input);
 
 		try (CompiledModel compiled = compile(w.feature(adapted, null, w.lambda()))) {
@@ -324,8 +324,8 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		Weights w = new Weights(NormalizationType.LAYER, true, false);
 		PackedCollection padding = validPrefix(PADDING_VALID);
 		TraversalPolicy sequenceShape = shape(BATCH, SEQ_LEN, DIM);
-		PackedCollection input = new PackedCollection(sequenceShape).randnFill(random);
-		PackedCollection outputGradient = new PackedCollection(sequenceShape).randnFill(random);
+		PackedCollection input = gaussian(sequenceShape);
+		PackedCollection outputGradient = gaussian(sequenceShape);
 
 		List<PackedCollection> recorded = new ArrayList<>();
 		Model model = new Model(sequenceShape, gradientRecorder(recorded));
@@ -408,8 +408,8 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		}
 
 		TraversalPolicy sequenceShape = shape(BATCH, SEQ_LEN, DIM);
-		PackedCollection input = new PackedCollection(sequenceShape).randnFill(random);
-		PackedCollection outputGradient = new PackedCollection(sequenceShape).randnFill(random);
+		PackedCollection input = gaussian(sequenceShape);
+		PackedCollection outputGradient = gaussian(sequenceShape);
 
 		List<PackedCollection> recorded = new ArrayList<>();
 		Model model = new Model(sequenceShape, gradientRecorder(recorded));
@@ -492,7 +492,7 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		Weights w = new Weights(qkNorm, biases, fullRotary);
 		PackedCollection padding = paddingValid == null ? null : validPrefix(paddingValid);
 		Producer<PackedCollection> paddingMask = padding == null ? null : cp(padding);
-		PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill(random);
+		PackedCollection input = gaussian(shape(BATCH, SEQ_LEN, DIM));
 
 		double[] feature = run(w.feature(ProjectionFactory.dense(), paddingMask, w.lambda()), input);
 		double[] assembly = run(w.javaAssembly(paddingMask, w.lambda()), input);
@@ -637,8 +637,23 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 	 * @return the tensor
 	 */
 	private PackedCollection random(int... dims) {
-		PackedCollection value = new PackedCollection(shape(dims)).randnFill(random);
+		PackedCollection value = gaussian(shape(dims));
 		return cp(value).multiply(0.25).into(value.traverseEach()).evaluate();
+	}
+
+	/**
+	 * A new tensor of the given shape filled on the host with standard normal draws taken from
+	 * {@link #random} in index order. This reproduces what {@link PackedCollection#randnFill(Random)}
+	 * draws under the default random implementation, but takes the draw on the host rather than through
+	 * the generator the {@code AR_RANDOM} setting selects, so a seed picks the same values — including
+	 * the nearly constant key row of {@link #NEARLY_CONSTANT_ROW_SEED} — whichever implementation is
+	 * configured.
+	 *
+	 * @param shape the shape of the tensor
+	 * @return the filled tensor
+	 */
+	private PackedCollection gaussian(TraversalPolicy shape) {
+		return new PackedCollection(shape).fill(random::nextGaussian);
 	}
 
 	/**
@@ -679,9 +694,9 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		Weights(NormalizationType qkNorm, boolean biases, boolean fullRotary) {
 			this.qkNorm = qkNorm;
 			boolean normalized = qkNorm != null;
-			this.qNormWeight = normalized ? new PackedCollection(shape(DIM_HEAD)).randnFill(random) : null;
+			this.qNormWeight = normalized ? gaussian(shape(DIM_HEAD)) : null;
 			this.qNormBias = normalized && biases ? random(DIM_HEAD) : null;
-			this.kNormWeight = normalized ? new PackedCollection(shape(DIM_HEAD)).randnFill(random) : null;
+			this.kNormWeight = normalized ? gaussian(shape(DIM_HEAD)) : null;
 			this.kNormBias = normalized && biases ? random(DIM_HEAD) : null;
 			this.invFreq = fullRotary ? PackedCollection.of(1.0, 0.3) : PackedCollection.of(0.5);
 		}

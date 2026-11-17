@@ -81,7 +81,7 @@ public class DifferentialAttentionTest extends TestSuiteBase implements Differen
 	@Test(timeout = 240000)
 	public void differentialReducesToStandardWhenLambdaZero() {
 		Weights w = new Weights();
-		PackedCollection input = new PackedCollection(inputShape()).randnFill(random);
+		PackedCollection input = gaussian(inputShape());
 
 		PackedCollection diffOut = run(differentialSequenceAttention(
 				BATCH, SEQ_LEN, DIM, HEADS,
@@ -111,7 +111,7 @@ public class DifferentialAttentionTest extends TestSuiteBase implements Differen
 		double lambdaValue = 0.5;
 
 		Weights w = new Weights();
-		PackedCollection input = new PackedCollection(inputShape()).randnFill(random);
+		PackedCollection input = gaussian(inputShape());
 
 		PackedCollection diffOut = run(differentialSequenceAttention(
 				BATCH, SEQ_LEN, DIM, HEADS,
@@ -154,7 +154,7 @@ public class DifferentialAttentionTest extends TestSuiteBase implements Differen
 	@Test(timeout = 240000)
 	public void standardVariantMatchesSequenceAttention() {
 		Weights w = new Weights();
-		PackedCollection input = new PackedCollection(inputShape()).randnFill(random);
+		PackedCollection input = gaussian(inputShape());
 		PackedCollection qkv = w.standardQkv(0, 1, 3);
 
 		PackedCollection viaSeam = run(selfAttention(
@@ -184,7 +184,7 @@ public class DifferentialAttentionTest extends TestSuiteBase implements Differen
 	@Test(timeout = 240000)
 	public void differentialWithoutQueryKeyNormalizationReducesToStandard() {
 		Weights w = new Weights();
-		PackedCollection input = new PackedCollection(inputShape()).randnFill(random);
+		PackedCollection input = gaussian(inputShape());
 
 		PackedCollection diffOut = run(differentialSequenceAttention(
 				BATCH, SEQ_LEN, DIM, HEADS,
@@ -248,10 +248,10 @@ public class DifferentialAttentionTest extends TestSuiteBase implements Differen
 		int lambdaDim = 3;
 		double lambdaInit = 0.05;
 
-		PackedCollection lambdaQ1 = new PackedCollection(shape(heads, lambdaDim)).randnFill(random);
-		PackedCollection lambdaK1 = new PackedCollection(shape(heads, lambdaDim)).randnFill(random);
-		PackedCollection lambdaQ2 = new PackedCollection(shape(heads, lambdaDim)).randnFill(random);
-		PackedCollection lambdaK2 = new PackedCollection(shape(heads, lambdaDim)).randnFill(random);
+		PackedCollection lambdaQ1 = gaussian(shape(heads, lambdaDim));
+		PackedCollection lambdaK1 = gaussian(shape(heads, lambdaDim));
+		PackedCollection lambdaQ2 = gaussian(shape(heads, lambdaDim));
+		PackedCollection lambdaK2 = gaussian(shape(heads, lambdaDim));
 
 		Producer<PackedCollection> lambda =
 				differentialLambda(lambdaQ1, lambdaK1, lambdaQ2, lambdaK2, lambdaInit);
@@ -278,6 +278,20 @@ public class DifferentialAttentionTest extends TestSuiteBase implements Differen
 	 */
 	private TraversalPolicy inputShape() {
 		return shape(BATCH, SEQ_LEN, DIM);
+	}
+
+	/**
+	 * A new tensor of the given shape filled on the host with standard normal draws from
+	 * {@link #random} in index order. Taking the draw on the host rather than through the generator
+	 * the {@code AR_RANDOM} setting selects keeps the values a seed produces the same whichever
+	 * implementation is configured, so the lambda characterization of {@link #SEED} holds in every
+	 * configuration.
+	 *
+	 * @param shape the shape of the tensor
+	 * @return the filled tensor
+	 */
+	private PackedCollection gaussian(TraversalPolicy shape) {
+		return new PackedCollection(shape).fill(random::nextGaussian);
 	}
 
 	/**
@@ -324,17 +338,17 @@ public class DifferentialAttentionTest extends TestSuiteBase implements Differen
 	 */
 	private final class Weights {
 		/** Fused {@code [5*dim, dim]} differential projection, sections {@code [Q1, K1, K2, V, Q2]}. */
-		private final PackedCollection toQkv5 = new PackedCollection(shape(5 * DIM, DIM)).randnFill(random);
+		private final PackedCollection toQkv5 = gaussian(shape(5 * DIM, DIM));
 		/** Output projection {@code [dim, dim]}, shared by the differential block and both references. */
-		private final PackedCollection toOut = new PackedCollection(shape(DIM, DIM)).randnFill(random);
+		private final PackedCollection toOut = gaussian(shape(DIM, DIM));
 		/** Query-normalization scale, shared by {@code Q1} and {@code Q2}. */
-		private final PackedCollection qNormWeight = new PackedCollection(shape(DIM_HEAD)).randnFill(random);
+		private final PackedCollection qNormWeight = gaussian(shape(DIM_HEAD));
 		/** Query-normalization bias, shared by {@code Q1} and {@code Q2}. */
-		private final PackedCollection qNormBias = new PackedCollection(shape(DIM_HEAD)).randnFill(random);
+		private final PackedCollection qNormBias = gaussian(shape(DIM_HEAD));
 		/** Key-normalization scale, shared by {@code K1} and {@code K2}. */
-		private final PackedCollection kNormWeight = new PackedCollection(shape(DIM_HEAD)).randnFill(random);
+		private final PackedCollection kNormWeight = gaussian(shape(DIM_HEAD));
 		/** Key-normalization bias, shared by {@code K1} and {@code K2}. */
-		private final PackedCollection kNormBias = new PackedCollection(shape(DIM_HEAD)).randnFill(random);
+		private final PackedCollection kNormBias = gaussian(shape(DIM_HEAD));
 		/** RoPE inverse frequencies, shape {@code [dimHead/4]}. */
 		private final PackedCollection invFreq = new PackedCollection(shape(DIM_HEAD / 4)).fill(0.01);
 
