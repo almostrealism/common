@@ -299,28 +299,35 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 	 */
 	@Test(timeout = 900000)
 	public void everySectionOfTheProjectionReceivesItsGradient() {
-		assertEverySectionReceivesItsGradient();
+		assertSectionsReceiveTheirGradients(true, 0, 1, 2, 3, 4);
 	}
 
 	/**
-	 * Every section of the fused projection receives its gradient where a head row of a key section
+	 * The {@code K2} section of the fused projection receives its gradient where one of its head rows
 	 * is nearly constant, so that the key LayerNorm bends sharply: the weights and input of
 	 * {@link #NEARLY_CONSTANT_ROW_SEED}, for which a coarser step of the finite differences once missed
-	 * the gradient.
+	 * the largest gradient of that section. Only that section is swept, so the case costs a fifth of
+	 * the fused projection's finite differences rather than a second full sweep.
 	 */
 	@Test(timeout = 900000)
-	public void everySectionReceivesItsGradientWhereAKeyRowIsNearlyConstant() {
+	public void theKeySectionReceivesItsGradientWhereAKeyRowIsNearlyConstant() {
 		random.setSeed(NEARLY_CONSTANT_ROW_SEED);
-		assertEverySectionReceivesItsGradient();
+		assertSectionsReceiveTheirGradients(false, 2);
 	}
 
 	/**
 	 * Draws LayerNorm weights with biases, a partial rotation, an input and an output gradient from
 	 * {@link #random}, runs one backward pass through the attention with a padding mask, and checks the
-	 * gradient of each of the five sections of the fused projection, of the output projection and of
-	 * the input against fourth-order finite differences of {@code L = sum(output * G)}.
+	 * gradient of each requested section of the fused projection, and optionally of the output
+	 * projection and of the input, against fourth-order finite differences of
+	 * {@code L = sum(output * G)}. Each section is perturbed through a view of the fused projection, so
+	 * the sections not requested cost nothing.
+	 *
+	 * @param projectionAndInput whether to check the output projection and the input as well
+	 * @param sections           the indices, in {@code [Q1, K1, K2, V, Q2]} order, of the sections of the
+	 *                           fused projection to check
 	 */
-	private void assertEverySectionReceivesItsGradient() {
+	private void assertSectionsReceiveTheirGradients(boolean projectionAndInput, int... sections) {
 		Weights w = new Weights(NormalizationType.LAYER, true, false);
 		PackedCollection padding = validPrefix(PADDING_VALID);
 		TraversalPolicy sequenceShape = shape(BATCH, SEQ_LEN, DIM);
@@ -339,18 +346,20 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 			Evaluable<PackedCollection> loss = multiply(cv(sequenceShape, 0), cv(sequenceShape, 1)).sum().get();
 			DoubleSupplier objective = () -> loss.evaluate(compiled.forward(input), outputGradient).toDouble();
 
-			double[] fusedNumeric = extrapolatedDifferences(w.qkv, FINITE_DIFFERENCE_STEP, objective);
-			String[] sections = { "Q1", "K1", "K2", "V", "Q2" };
+			String[] names = { "Q1", "K1", "K2", "V", "Q2" };
 			int sectionSize = DIM * DIM;
-			for (int s = 0; s < SECTIONS; s++) {
-				assertGradient(sections[s] + " section of the fused projection",
-						Arrays.copyOfRange(fusedNumeric, s * sectionSize, (s + 1) * sectionSize),
+			for (int s : sections) {
+				PackedCollection section = w.qkv.range(shape(sectionSize), s * sectionSize);
+				assertGradient(names[s] + " section of the fused projection",
+						extrapolatedDifferences(section, FINITE_DIFFERENCE_STEP, objective),
 						Arrays.copyOfRange(fusedGradient, s * sectionSize, (s + 1) * sectionSize));
 			}
 
-			assertGradient("output projection",
-					extrapolatedDifferences(w.out, FINITE_DIFFERENCE_STEP, objective), outputProjectionGradient);
-			assertGradient("input", extrapolatedDifferences(input, FINITE_DIFFERENCE_STEP, objective), inputGradient);
+			if (projectionAndInput) {
+				assertGradient("output projection",
+						extrapolatedDifferences(w.out, FINITE_DIFFERENCE_STEP, objective), outputProjectionGradient);
+				assertGradient("input", extrapolatedDifferences(input, FINITE_DIFFERENCE_STEP, objective), inputGradient);
+			}
 		}
 	}
 
