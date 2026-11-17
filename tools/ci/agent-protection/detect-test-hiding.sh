@@ -568,6 +568,42 @@ count_test_annotations() {
 
 # ── File-level checks ───────────────────────────────────────────────────
 
+# Print the integer literals found on one side of a unified diff, one per line,
+# largest first, capped at 50.
+#   $1 = the diff text
+#   $2 = side marker as an ERE fragment: '-' (removed lines) or '\+' (added lines)
+#
+# Only integers are dimension-like. Floating-point literals are deleted before
+# extraction, because the digit runs on either side of a decimal point, and the
+# digits of an exponent, are not integers: `0.034696` would otherwise be read as
+# the "large" integer 034696, so replacing a hard-coded array of expected
+# floating-point values with a computed expectation would look like many large
+# dimensions disappearing. Every Java float form is removed first:
+#   - a hexadecimal float (`0x1.8p3`, `0x40000000p-1`), whose significand digits
+#     would otherwise be read as a large integer;
+#   - a decimal float with a fractional part (`0.5`, `.5`, `1.5e-6`, `2.0f`);
+#   - a decimal float written with a trailing dot and no fraction (`64.`, `256.`);
+#   - a bare exponent form (`1e6`).
+#
+# Only portable constructs are used (ERE + sed, not grep -oP; no `\b`) so
+# extraction behaves the same under both GNU grep and BSD grep. The hexadecimal
+# patterns run first, before the decimal ones can mistake a hex significand's
+# `.` for a decimal point. After the floats are removed, `tr` splits what
+# remains into identifier-like tokens — every run of word characters
+# (`[0-9A-Za-z_]`) becomes one line — and only the all-digit tokens are kept.
+# That reproduces the word-boundary semantics of `\b[0-9]+\b` (an integer not
+# adjacent to a letter or underscore, so `64` in `embedDim64` is not a literal)
+# without relying on `\b`, which is a GNU grep extension BSD grep does not read
+# as a boundary and would silently match nothing for. `|| true` keeps a grep
+# no-match from aborting under `set -e`.
+extract_integer_literals() {
+    local diff="$1"
+    local marker="$2"
+    echo "$diff" | grep -E "^${marker}" \
+        | sed -E 's/0[xX][0-9a-fA-F]*\.[0-9a-fA-F]*([pP][-+]?[0-9]+)?[fFdD]?//g; s/0[xX][0-9a-fA-F]+[pP][-+]?[0-9]+[fFdD]?//g; s/[0-9]*\.[0-9]+([eE][-+]?[0-9]+)?[fFdD]?//g; s/[0-9]+\.([eE][-+]?[0-9]+)?[fFdD]?//g; s/[0-9]+[eE][-+]?[0-9]+[fFdD]?//g' \
+        | tr -c '0-9A-Za-z_' '\n' | grep -E '^[0-9]+$' | sort -rn | head -50 || true
+}
+
 # Get list of modified (not added) test files.
 # We only care about files that existed on the base branch. New files (A status)
 # are excluded because modifying your own new tests is acceptable. The diff is
@@ -831,9 +867,10 @@ for FILE in $MODIFIED_TEST_FILES; do
     # ── Pattern 11: Numeric literals in method calls DECREASED ──
     # Catches dimension reductions in method-call arguments like
     # someMethod(1, 8, 32, 64) -> someMethod(1, 4, 8, 16)
-    # Extract all numeric literals > 4 from removed and added lines
-    REMOVED_LITERALS=$(echo "$DIFF" | grep -E '^\-' | grep -oP '\b[0-9]+\b' | sort -rn | head -50 || true)
-    ADDED_LITERALS=$(echo "$DIFF" | grep -E '^\+' | grep -oP '\b[0-9]+\b' | sort -rn | head -50 || true)
+    # Extract the integer literals from removed and added lines. Floating-point
+    # literals are not dimensions and are excluded (see extract_integer_literals).
+    REMOVED_LITERALS=$(extract_integer_literals "$DIFF" '-')
+    ADDED_LITERALS=$(extract_integer_literals "$DIFF" '\+')
     if [ -n "$REMOVED_LITERALS" ] && [ -n "$ADDED_LITERALS" ]; then
         # Count how many large numbers disappeared and were replaced by smaller ones
         LARGE_REMOVED=0
