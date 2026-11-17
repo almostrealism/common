@@ -975,10 +975,16 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * The batch is carried by the arguments: an argument the process references through a
 	 * {@link ProducerArgumentReference} declares a fixed per-item size, and the supplied
 	 * collection holds a whole number of those items. That whole number is the batch factor, so
-	 * the kernel size is {@code declaredCount} times the largest batch factor any referenced
-	 * argument supplies, and each item is reduced (or transformed) independently. When no
-	 * referenced argument carries more than its declared size, the declared count is returned
-	 * unchanged.</p>
+	 * the kernel size is {@code declaredCount} times the batch factor the referenced arguments
+	 * supply, and each item is reduced (or transformed) independently. When no referenced
+	 * argument carries more than its declared size, the declared count is returned unchanged.</p>
+	 *
+	 * <p>Every referenced argument that carries more than one item must carry the same number of
+	 * them: the kernel reads each batched argument index-parametrically, so a second argument
+	 * supplied for fewer items than the kernel count would be read past the data it holds. An
+	 * argument supplied at exactly its declared size (batch factor one) is shared across all
+	 * items and is allowed alongside a larger batch. Conflicting non-unit batch factors are
+	 * rejected rather than mapped to an out-of-bounds read.</p>
 	 *
 	 * <p>Deriving the kernel size from the data actually supplied (rather than from the
 	 * destination) keeps a destination honest: the caller-supplied destination must then match
@@ -997,7 +1003,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			return declaredCount;
 		}
 
-		long batched = declaredCount;
+		long batchFactor = 1;
 
 		for (int i = 0; i < arguments.size(); i++) {
 			ArrayVariable<? extends T> argument = arguments.get(i);
@@ -1016,13 +1022,24 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			if (declaredSize <= 0) continue;
 
 			long suppliedSize = ((MemoryData) args[refIndex]).getMemLength();
-			if (suppliedSize > declaredSize && suppliedSize % declaredSize == 0) {
-				long candidate = declaredCount * (suppliedSize / declaredSize);
-				if (candidate > batched) batched = candidate;
+			if (suppliedSize <= declaredSize || suppliedSize % declaredSize != 0) {
+				// Supplied at (or below) the declared size, or not a whole number of items;
+				// a batch factor of one is shared across every item, so it does not constrain
+				// the kernel size
+				continue;
 			}
+
+			long factor = suppliedSize / declaredSize;
+			if (batchFactor > 1 && factor != batchFactor) {
+				throw new IllegalArgumentException("Conflicting batch factors (" + batchFactor +
+						" and " + factor + ") across referenced arguments; every batched argument " +
+						"must supply the same number of items");
+			}
+
+			batchFactor = factor;
 		}
 
-		return batched;
+		return declaredCount * batchFactor;
 	}
 
 	/**

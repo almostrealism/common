@@ -445,6 +445,32 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests that a reduction referencing two arguments supplied with different non-unit
+	 * batch factors is rejected rather than launched with an out-of-bounds mapping for the
+	 * smaller argument. The first input carries three items and the second only two, so the
+	 * batch the two arguments describe is inconsistent and the invocation must be refused.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumRejectsConflictingBatch() {
+		int r = 4;
+		int c = 2;
+
+		PackedCollection a = new PackedCollection(shape(3, r, c, 1)).randFill();
+		PackedCollection b = new PackedCollection(shape(2, r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(3, r, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0)
+				.add(cv(shape(r, c, 1), 1)).traverse(1).sum().get();
+
+		try {
+			sum.into(output.traverse(2)).evaluate(a.traverse(1), b.traverse(1));
+			Assert.fail("Expected conflicting batch factors to be rejected");
+		} catch (IllegalArgumentException expected) {
+			// Every batched argument must supply the same number of items
+		}
+	}
+
+	/**
 	 * Tests enumeration with product operation.
 	 */
 	@Test(timeout = 30000)
