@@ -1224,6 +1224,86 @@ public class MyTest {
 }'
 }
 
+# ── Scenario: trailing-dot float expectations replaced by a computed
+#    expectation — FALSE-POSITIVE REGRESSION ────────────────────────────────
+#
+# A hard-coded array of expected values written with a trailing decimal point
+# and no fractional digits (`64.`, `128.`, `256.`) is rewritten to compute the
+# expectation. These are floating-point literals, not integer dimensions, so
+# Pattern 11 (NUMERIC_LITERALS_SHRUNK) MUST NOT read `64.` as the integer 64
+# disappearing (expected exit 0).
+setup_trailing_dot_floats_replaced() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int size = 3;
+        double[] expected = new double[]{64., 128., 256.};
+        for (int i = 0; i < expected.length; i++) {
+            assertEquals(expected[i], compute(size, i), 1e-6);
+        }
+    }
+    double compute(int size, int i) { return i; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int size = 3;
+        for (int i = 0; i < size; i++) {
+            double expected = Math.scalb(1., 6 + i);
+            assertEquals(expected, compute(size, i), 1e-6);
+        }
+    }
+    double compute(int size, int i) { return i; }
+}'
+}
+
+# ── Scenario: hexadecimal-float expectations replaced by a computed
+#    expectation — FALSE-POSITIVE REGRESSION ────────────────────────────────
+#
+# A hard-coded array of expected values written as Java hexadecimal floats
+# (`0x1.8p3`, `0x40000000p-1`) is rewritten to compute the expectation. The
+# significand digits of a hex float are not integer dimensions, so Pattern 11
+# (NUMERIC_LITERALS_SHRUNK) MUST NOT read `0x40000000p-1` as the integer
+# 40000000 disappearing (expected exit 0).
+setup_hex_floats_replaced() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int size = 2;
+        double[] expected = new double[]{0x1.8p3, 0x40000000p-1};
+        for (int i = 0; i < expected.length; i++) {
+            assertEquals(expected[i], compute(size, i), 1e-6);
+        }
+    }
+    double compute(int size, int i) { return i; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int size = 2;
+        for (int i = 0; i < size; i++) {
+            double expected = Math.pow(2, 30 * i);
+            assertEquals(expected, compute(size, i), 1e-6);
+        }
+    }
+    double compute(int size, int i) { return i; }
+}'
+}
+
 # ── Run all cases ──────────────────────────────────────────────────────────
 
 echo "Running detect-test-hiding regression tests..."
@@ -1260,6 +1340,8 @@ run_case "pr880-reenable-camera-ray [false-positive regression]" 0 setup_pr880_r
 run_case "float-expectations-replaced [false-positive regression]" 0 setup_float_expectations_replaced
 run_case "integer-arguments-shrunk [true positive]"         2 setup_integer_arguments_shrunk
 run_case "integer-arguments-shrunk-beside-floats [true positive]" 2 setup_integer_arguments_shrunk_beside_floats
+run_case "trailing-dot-floats-replaced [false-positive regression]" 0 setup_trailing_dot_floats_replaced
+run_case "hex-floats-replaced [false-positive regression]" 0 setup_hex_floats_replaced
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

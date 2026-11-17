@@ -578,16 +578,22 @@ count_test_annotations() {
 # digits of an exponent, are not integers: `0.034696` would otherwise be read as
 # the "large" integer 034696, so replacing a hard-coded array of expected
 # floating-point values with a computed expectation would look like many large
-# dimensions disappearing. A float is a literal with a fractional part
-# (`0.5`, `.5`, `1.5e-6`, `2.0f`) or an exponent (`1e6`).
+# dimensions disappearing. Every Java float form is removed first:
+#   - a hexadecimal float (`0x1.8p3`, `0x40000000p-1`), whose significand digits
+#     would otherwise be read as a large integer;
+#   - a decimal float with a fractional part (`0.5`, `.5`, `1.5e-6`, `2.0f`);
+#   - a decimal float written with a trailing dot and no fraction (`64.`, `256.`);
+#   - a bare exponent form (`1e6`).
 #
 # ERE + sed is used (not grep -oP) so extraction works under both GNU grep and
-# BSD grep. `|| true` keeps a grep no-match from aborting under `set -e`.
+# BSD grep. The hexadecimal patterns run first, before the decimal ones can
+# mistake a hex significand's `.` for a decimal point. `|| true` keeps a grep
+# no-match from aborting under `set -e`.
 extract_integer_literals() {
     local diff="$1"
     local marker="$2"
     echo "$diff" | grep -E "^${marker}" \
-        | sed -E 's/[0-9]*\.[0-9]+([eE][-+]?[0-9]+)?[fFdD]?//g; s/[0-9]+[eE][-+]?[0-9]+[fFdD]?//g' \
+        | sed -E 's/0[xX][0-9a-fA-F]*\.[0-9a-fA-F]*([pP][-+]?[0-9]+)?[fFdD]?//g; s/0[xX][0-9a-fA-F]+[pP][-+]?[0-9]+[fFdD]?//g; s/[0-9]*\.[0-9]+([eE][-+]?[0-9]+)?[fFdD]?//g; s/[0-9]+\.([eE][-+]?[0-9]+)?[fFdD]?//g; s/[0-9]+[eE][-+]?[0-9]+[fFdD]?//g' \
         | grep -oE '\b[0-9]+\b' | sort -rn | head -50 || true
 }
 
