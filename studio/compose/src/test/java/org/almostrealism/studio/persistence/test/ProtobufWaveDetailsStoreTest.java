@@ -20,7 +20,6 @@ import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveFeatures;
 import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -30,6 +29,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * Unit tests for {@link ProtobufWaveDetailsStore}, focused on how the
@@ -190,9 +190,11 @@ public class ProtobufWaveDetailsStoreTest extends TestSuiteBase {
 	public void autoFlushedRecordsAreIndexedAfterReopen() throws IOException {
 		Path tempDir = Files.createTempDirectory("protobuf-wave-store-autoflush");
 
-		// A one-byte batch target makes every put flush its batch automatically.
+		// A one-byte batch target makes every put flush its batch automatically; the
+		// memory budget is kept small to match, since the batch cache is sized to
+		// maxMemoryBytes / targetBatchSize.
 		ProtobufWaveDetailsStore interrupted = new ProtobufWaveDetailsStore(tempDir.toFile(),
-				ProtobufDiskStore.DEFAULT_MAX_MEMORY_BYTES, 1);
+				4096, 1);
 		ProtobufWaveDetailsStore reopened = null;
 
 		try {
@@ -217,6 +219,41 @@ public class ProtobufWaveDetailsStoreTest extends TestSuiteBase {
 		} finally {
 			if (reopened != null) reopened.close();
 			interrupted.close();
+		}
+	}
+
+	/**
+	 * {@link ProtobufWaveDetailsStore#insertEmbedding(String, PackedCollection)} adds
+	 * the vector to the nearest-neighbor index for a record that was stored without
+	 * one, so the record becomes indexed and searchable. The insert runs under the
+	 * same write lock as record writes and model declarations.
+	 *
+	 * @throws IOException if the store directory cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void insertEmbeddingIndexesAStoredRecord() throws IOException {
+		Path tempDir = Files.createTempDirectory("protobuf-wave-store-insert");
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(tempDir.toFile());
+
+		try {
+			store.setEmbeddingModel("m1");
+
+			WaveDetails details = detailsFor("a", "m1", 1.0);
+			store.put("a", details);
+			Assert.assertFalse("a record stored without an embedding is not indexed",
+					store.hasEmbedding("a"));
+			Assert.assertEquals(0, store.indexedEmbeddingCount());
+
+			store.insertEmbedding("a", details.meanPooledEmbedding());
+			Assert.assertTrue("insertEmbedding indexes the record", store.hasEmbedding("a"));
+			Assert.assertEquals(1, store.indexedEmbeddingCount());
+
+			List<WaveDetailsStore.NeighborResult> neighbors =
+					store.searchNeighbors(details.meanPooledEmbedding(), 1);
+			Assert.assertEquals("the inserted vector is searchable", 1, neighbors.size());
+			Assert.assertEquals("a", neighbors.get(0).identifier());
+		} finally {
+			store.close();
 		}
 	}
 

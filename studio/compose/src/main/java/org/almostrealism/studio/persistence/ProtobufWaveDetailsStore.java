@@ -207,10 +207,20 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 		return diskStore.hasIndexedEmbedding(identifier);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Runs under the same lock as every record write and model declaration, so
+	 * it cannot interleave with a {@link #setEmbeddingModel(String)} model switch
+	 * and its backfill, or with a {@code put} of the same identifier, either of
+	 * which could otherwise leave a stale vector in the index or index a vector
+	 * against the wrong model.</p>
+	 */
 	@Override
 	public void insertEmbedding(String identifier, PackedCollection embeddingVector) {
-		// TODO(review): not under writeLock, so it can interleave with setEmbeddingModel's model switch/backfill or a put of the same id
-		diskStore.insertEmbedding(identifier, embeddingVector);
+		synchronized (writeLock) {
+			diskStore.insertEmbedding(identifier, embeddingVector);
+		}
 	}
 
 	/**
