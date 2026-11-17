@@ -987,7 +987,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * rejected rather than mapped to an out-of-bounds read. An argument supplied larger than its
 	 * declared size but not a whole number of items is malformed and is likewise rejected, rather
 	 * than silently treated as a shared argument and then read past its data under another
-	 * argument's batch factor.</p>
+	 * argument's batch factor. An argument supplied <em>smaller</em> than its declared per-item
+	 * size is also rejected: the reference reads its declared size per item (wrapping the index by
+	 * that declared size, see {@code PassThroughProducer#getValueAt}), so an undersized buffer
+	 * would be read past its data regardless of the batch.</p>
 	 *
 	 * <p>Deriving the kernel size from the data actually supplied (rather than from the
 	 * destination) keeps a destination honest: the caller-supplied destination must then match
@@ -1025,9 +1028,17 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			if (declaredSize <= 0) continue;
 
 			long suppliedSize = ((MemoryData) args[refIndex]).getMemLength();
-			if (suppliedSize <= declaredSize) {
+			if (suppliedSize == declaredSize) {
 				// A batch factor of one is shared across every item and does not constrain the size
 				continue;
+			}
+
+			if (suppliedSize < declaredSize) {
+				throw new IllegalArgumentException("Referenced argument supplied size (" +
+						suppliedSize + ") is smaller than its declared per-item size (" +
+						declaredSize + "); an index-parametric reference reads its declared " +
+						"size per item (wrapping the index by that size) and would read past " +
+						"the supplied data");
 			}
 
 			if (suppliedSize % declaredSize != 0) {

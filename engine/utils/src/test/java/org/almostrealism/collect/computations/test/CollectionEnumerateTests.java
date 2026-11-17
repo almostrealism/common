@@ -499,6 +499,34 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests that a reduction referencing an argument supplied smaller than its declared
+	 * per-item size is rejected. The first input carries a clean batch of three items (24
+	 * values over a declared per-item size of eight) while the second carries only four
+	 * values, fewer than one declared item. The reference reads its declared size per item,
+	 * wrapping the index by that declared size, so the undersized argument would be read past
+	 * its data; the invocation must be refused rather than produce an out-of-bounds read.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumRejectsUndersizedArgument() {
+		int r = 4;
+		int c = 2;
+
+		PackedCollection a = new PackedCollection(shape(3, r, c, 1)).randFill();
+		PackedCollection undersized = new PackedCollection(shape(4, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(3, r, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0)
+				.add(cv(shape(r, c, 1), 1)).traverse(1).sum().get();
+
+		try {
+			sum.into(output.traverse(2)).evaluate(a.traverse(1), undersized.traverse(1));
+			Assert.fail("Expected an undersized referenced argument to be rejected");
+		} catch (IllegalArgumentException expected) {
+			// An index-parametric reference must supply at least its declared per-item size
+		}
+	}
+
+	/**
 	 * Tests enumeration with product operation.
 	 */
 	@Test(timeout = 30000)
