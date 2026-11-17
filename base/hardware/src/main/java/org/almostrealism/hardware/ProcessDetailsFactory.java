@@ -984,7 +984,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * supplied for fewer items than the kernel count would be read past the data it holds. An
 	 * argument supplied at exactly its declared size (batch factor one) is shared across all
 	 * items and is allowed alongside a larger batch. Conflicting non-unit batch factors are
-	 * rejected rather than mapped to an out-of-bounds read.</p>
+	 * rejected rather than mapped to an out-of-bounds read. An argument supplied larger than its
+	 * declared size but not a whole number of items is malformed and is likewise rejected, rather
+	 * than silently treated as a shared argument and then read past its data under another
+	 * argument's batch factor.</p>
 	 *
 	 * <p>Deriving the kernel size from the data actually supplied (rather than from the
 	 * destination) keeps a destination honest: the caller-supplied destination must then match
@@ -1022,11 +1025,16 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			if (declaredSize <= 0) continue;
 
 			long suppliedSize = ((MemoryData) args[refIndex]).getMemLength();
-			if (suppliedSize <= declaredSize || suppliedSize % declaredSize != 0) {
-				// Supplied at (or below) the declared size, or not a whole number of items;
-				// a batch factor of one is shared across every item, so it does not constrain
-				// the kernel size
+			if (suppliedSize <= declaredSize) {
+				// A batch factor of one is shared across every item and does not constrain the size
 				continue;
+			}
+
+			if (suppliedSize % declaredSize != 0) {
+				throw new IllegalArgumentException("Referenced argument supplied size (" +
+						suppliedSize + ") is not a whole multiple of its declared per-item size (" +
+						declaredSize + "); a batched fixed-count argument must supply a whole " +
+						"number of items");
 			}
 
 			long factor = suppliedSize / declaredSize;

@@ -471,6 +471,34 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests that a reduction referencing an argument supplied larger than its declared
+	 * per-item size but not a whole number of items is rejected. The first input carries a
+	 * clean batch of three items (24 values over a declared per-item size of eight) while the
+	 * second carries twenty values, which is not a whole multiple of eight; mapping the second
+	 * argument index-parametrically against the three-item kernel would read it past its data,
+	 * so the invocation must be refused rather than produce an out-of-bounds read.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumRejectsMalformedBatch() {
+		int r = 4;
+		int c = 2;
+
+		PackedCollection a = new PackedCollection(shape(3, r, c, 1)).randFill();
+		PackedCollection malformed = new PackedCollection(shape(20, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(3, r, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0)
+				.add(cv(shape(r, c, 1), 1)).traverse(1).sum().get();
+
+		try {
+			sum.into(output.traverse(2)).evaluate(a.traverse(1), malformed.traverse(1));
+			Assert.fail("Expected a malformed batched argument size to be rejected");
+		} catch (IllegalArgumentException expected) {
+			// A batched argument must supply a whole number of items
+		}
+	}
+
+	/**
 	 * Tests enumeration with product operation.
 	 */
 	@Test(timeout = 30000)
