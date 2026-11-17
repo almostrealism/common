@@ -26,6 +26,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.layers.ActivationFeatures;
 import org.almostrealism.layers.BackPropagationCell;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
@@ -41,6 +42,7 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -49,7 +51,9 @@ import java.util.stream.IntStream;
  */
 public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, DistributionFeatures {
 	/**
-	 * Tests basic softmax computation across multiple heads.
+	 * Tests the zero-masked softmax across multiple heads: the trailing elements of each
+	 * head are set to zero as padding and the first elements must form the distribution
+	 * on their own.
 	 */
 	@Test(timeout = 60000)
 	public void softmaxComputation() {
@@ -68,7 +72,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		boolean subtractMax = true;
 		Producer<PackedCollection> input = p(in);
 
-		CollectionProducer o = softmax(traverse(1, input));
+		CollectionProducer o = softmaxIgnoreZero(traverse(1, input), subtractMax);
 
 		PackedCollection output = new PackedCollection(heads, len);
 
@@ -475,6 +479,159 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 
 			compare(a(subset.each(), p), input, values);
 		});
+	}
+
+	/**
+	 * The flat softmax layer must stay finite and correct when a logit is far above the
+	 * point where {@code exp} overflows in single precision (about 88.7), when every logit
+	 * is far below the point where it underflows, and must still match for small logits.
+	 */
+	@Test(timeout = 60000)
+	public void softmaxLayerLargeLogits() {
+		assertLayerOutput(softmax(), pack(100.0, 0.0, 99.0),
+				pack(0.7310586, 0.0, 0.2689414));
+		assertLayerOutput(softmax(), pack(-1000.0, -1001.0, -1002.0),
+				pack(0.6652410, 0.2447285, 0.0900306));
+		assertLayerOutput(softmax(), pack(-1.0, 0.0, -2.0),
+				pack(0.2447285, 0.6652410, 0.0900306));
+	}
+
+	/**
+	 * The log-softmax layer must stay finite and correct for large positive and large
+	 * negative logits, for a single row and for a batch of rows normalized independently.
+	 */
+	@Test(timeout = 60000)
+	public void logSoftmaxLayerLargeLogits() {
+		assertLayerOutput(logSoftmax(), pack(100.0, 0.0, 99.0).reshape(shape(1, 3)),
+				pack(-0.3132617, -100.3132617, -1.3132617));
+		assertLayerOutput(logSoftmax(), pack(-1000.0, -1001.0, -1002.0).reshape(shape(1, 3)),
+				pack(-0.4076059, -1.4076059, -2.4076059));
+		assertLayerOutput(logSoftmax(),
+				pack(100.0, 0.0, 99.0, -1.0, 0.0, -2.0, -1000.0, -1001.0, -1002.0).reshape(shape(3, 3)),
+				pack(-0.3132617, -100.3132617, -1.3132617,
+						-1.4076059, -0.4076059, -2.4076059,
+						-0.4076059, -1.4076059, -2.4076059));
+	}
+
+	/**
+	 * The two-dimensional softmax layer with max subtraction normalizes each row
+	 * independently, including a row with large logits.
+	 */
+	@Test(timeout = 60000)
+	public void softmax2dLayerLargeLogits() {
+		assertLayerOutput(softmax(true),
+				pack(-1.0, 0.0, -2.0, 100.0, 0.0, 99.0).reshape(shape(2, 3)),
+				pack(0.2447285, 0.6652410, 0.0900306, 0.7310586, 0.0, 0.2689414));
+	}
+
+	/**
+	 * {@link ActivationFeatures#logSoftmax(io.almostrealism.relation.Producer)} rejects an input
+	 * with fewer than two dimensions, since it has no leading axis to normalize independently of.
+	 */
+	@Test(timeout = 60000)
+	public void logSoftmaxProducerRejectsRankOneInput() {
+		try {
+			logSoftmax(cp(pack(1.0, 2.0, 3.0)));
+			Assert.fail("logSoftmax should reject a one-dimensional input");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue("message should mention the dimension requirement",
+					expected.getMessage().contains("at least 2 dimensions"));
+		}
+	}
+
+	/**
+	 * The input gradient of the flat softmax layer matches central differences of its
+	 * forward output; subtracting the maximum must not change the gradient.
+	 */
+	@Test(timeout = 2 * 60000)
+	public void softmaxLayerGradientMatchesFiniteDifferences() {
+		assertGradientMatchesFiniteDifferences(softmax(),
+				pack(0.3, -1.2, 2.0, 0.7),
+				pack(0.5, -1.0, 0.25, 2.0));
+	}
+
+	/**
+	 * The input gradient of the log-softmax layer matches central differences of its
+	 * forward output for a batch of rows.
+	 */
+	@Test(timeout = 2 * 60000)
+	public void logSoftmaxLayerGradientMatchesFiniteDifferences() {
+		assertGradientMatchesFiniteDifferences(logSoftmax(),
+				pack(0.3, -1.2, 2.0, 0.7, 1.1, -0.4).reshape(shape(2, 3)),
+				pack(0.5, -1.0, 0.25, 2.0, 0.0, -0.75).reshape(shape(2, 3)));
+	}
+
+	/**
+	 * The input gradient of the two-dimensional softmax layer matches central
+	 * differences of its forward output for a batch of rows.
+	 */
+	@Test(timeout = 2 * 60000)
+	public void softmax2dLayerGradientMatchesFiniteDifferences() {
+		assertGradientMatchesFiniteDifferences(softmax(true),
+				pack(0.3, -1.2, 2.0, 0.7, 1.1, -0.4).reshape(shape(2, 3)),
+				pack(0.5, -1.0, 0.25, 2.0, 0.0, -0.75).reshape(shape(2, 3)));
+	}
+
+	/**
+	 * Runs a single-layer inference model forward and compares its output to the expected
+	 * values, requiring every output to be finite.
+	 *
+	 * @param layer    factory for the layer under test
+	 * @param input    the input, whose shape is the input shape of the model
+	 * @param expected the expected output values
+	 */
+	protected void assertLayerOutput(Function<TraversalPolicy, CellularLayer> layer,
+									 PackedCollection input, PackedCollection expected) {
+		Model model = new Model(input.getShape());
+		model.add(layer);
+		double[] actual = model.compile(false).forward(input).toArray();
+		double[] values = expected.toArray();
+
+		log("output = " + Arrays.toString(actual));
+		Assert.assertEquals(values.length, actual.length);
+		for (int i = 0; i < values.length; i++) {
+			Assert.assertTrue("output " + i + " is not finite: " + actual[i], Double.isFinite(actual[i]));
+			Assert.assertEquals("output " + i, values[i], actual[i], 1e-4);
+		}
+	}
+
+	/**
+	 * Back-propagates {@code gradient} through a single-layer model and compares the
+	 * input gradient with the central differences of {@code sum(gradient * f(x))}.
+	 *
+	 * @param layer    factory for the layer under test
+	 * @param input    the input, whose shape is the input shape of the model
+	 * @param gradient the gradient arriving at the output of the layer
+	 */
+	protected void assertGradientMatchesFiniteDifferences(Function<TraversalPolicy, CellularLayer> layer,
+														  PackedCollection input,
+														  PackedCollection gradient) {
+		TraversalPolicy shape = input.getShape();
+		Model model = new Model(shape);
+		model.add(layer);
+		CompiledModel training = model.compile(true, true);
+		training.forward(input);
+		double[] actual = training.backward(gradient).toArray();
+
+		CompiledModel inference = model.compile(false);
+		double h = 1e-2;
+
+		for (int i = 0; i < shape.getTotalSize(); i++) {
+			PackedCollection step = new PackedCollection(shape);
+			step.clear();
+			step.setMem(i, 1.0);
+
+			PackedCollection fPlus = inference.forward(
+					cp(input).add(cp(step).multiply(h)).evaluate()).clone();
+			PackedCollection fMinus = inference.forward(
+					cp(input).subtract(cp(step).multiply(h)).evaluate()).clone();
+
+			double expected = cp(gradient).multiply(cp(fPlus).subtract(cp(fMinus)))
+					.traverse(0).sum().divide(2 * h).evaluate().toDouble(0);
+
+			log("gradient[" + i + "] = " + actual[i] + " (expected " + expected + ")");
+			Assert.assertEquals("gradient " + i, expected, actual[i], 1e-3);
+		}
 	}
 
 	/**

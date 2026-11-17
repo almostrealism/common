@@ -55,6 +55,11 @@ class TestLatestRun(unittest.TestCase):
         runs = [_run(9, status="in_progress"), _run(8, event="deployment"), _run(7), _run(6)]
         self.assertEqual(7, collector.latest_completed_master_run(runs)["id"])
 
+    def test_a_run_cancelled_by_a_later_merge_is_passed_over(self):
+        runs = [_run(9, status="queued", conclusion=None), _run(8, conclusion="cancelled"),
+                _run(7, conclusion="skipped"), _run(6), _run(5, conclusion="success")]
+        self.assertEqual(6, collector.latest_completed_master_run(runs)["id"])
+
     def test_no_master_push_run_is_none(self):
         self.assertIsNone(collector.latest_completed_master_run([_run(5, branch="feature/x")]))
 

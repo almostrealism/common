@@ -780,6 +780,80 @@ public class FileStagerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Pins {@link FileStager.GitOperations#executeForPaths} on the NUL-delimited
+	 * {@code -z} listing it requires: spaces and quote characters are kept
+	 * verbatim (never C-quoted), a duplicate path is reported once in first-seen
+	 * order, the trailing newline a line-buffered reader appends after the final
+	 * NUL is discarded rather than reported as a path, and a failed command
+	 * yields {@code null} rather than an empty set.
+	 */
+	@Test(timeout = 30000)
+	public void executeForPathsSplitsNulDelimitedListing() throws IOException, InterruptedException {
+		String listing = "dir/a b.txt\u0000dir/quote\"name.txt\u0000dir/a b.txt\u0000plain.txt\u0000\n";
+		FileStager.GitOperations listingOps = new FileStager.GitOperations() {
+			@Override
+			public int execute(String... args) {
+				return 0;
+			}
+
+			@Override
+			public String executeWithOutput(String... args) {
+				return listing;
+			}
+		};
+
+		Set<String> paths = listingOps.executeForPaths("diff", "--name-only", "-z", "HEAD");
+		assertEquals(Arrays.asList("dir/a b.txt", "dir/quote\"name.txt", "plain.txt"),
+			Arrays.asList(paths.toArray(new String[0])));
+
+		FileStager.GitOperations emptyOps = new FileStager.GitOperations() {
+			@Override
+			public int execute(String... args) {
+				return 0;
+			}
+
+			@Override
+			public String executeWithOutput(String... args) {
+				return "\n";
+			}
+		};
+		assertTrue(emptyOps.executeForPaths("diff", "--name-only", "-z", "HEAD").isEmpty());
+
+		FileStager.GitOperations failingOps = (String... args) -> 1;
+		assertEquals(null, failingOps.executeForPaths("diff", "--name-only", "-z", "HEAD"));
+	}
+
+	/**
+	 * {@link FileStager.GitOperations#executeForPaths} reads through
+	 * {@link FileStager.GitOperations#executeForStdout}, not
+	 * {@link FileStager.GitOperations#executeWithOutput}: a warning git prints to
+	 * standard error (which a real adapter merges into {@code executeWithOutput})
+	 * would otherwise fuse with the first NUL field and corrupt that path.
+	 */
+	@Test(timeout = 30000)
+	public void executeForPathsReadsStdoutNotMergedStderr() throws IOException, InterruptedException {
+		FileStager.GitOperations ops = new FileStager.GitOperations() {
+			@Override
+			public int execute(String... args) {
+				return 0;
+			}
+
+			@Override
+			public String executeWithOutput(String... args) {
+				return "warning: in the working copy of 'a b.txt', LF will be replaced\u0000a b.txt\u0000\n";
+			}
+
+			@Override
+			public String executeForStdout(String... args) {
+				return "a b.txt\u0000\n";
+			}
+		};
+
+		Set<String> paths = ops.executeForPaths("diff", "--name-only", "-z", "HEAD");
+		assertEquals(Collections.singleton("a b.txt"), paths);
+	}
+
+	/**
 	 * Recursively deletes a directory and all its contents.
 	 */
 	private static void deleteRecursively(Path path) throws IOException {

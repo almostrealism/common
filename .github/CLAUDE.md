@@ -1582,9 +1582,12 @@ agent after a test failing on master. It fires when a master "Build and Test"
 run completes. Its `gate` job runs `tools/ci/collect-master-failures.py
 --gate`, which starts a round only when the most recent completed master push
 run failed with at least one failing test in a test lane, and that run's commit
-contains the merge of the most recent `qa/master-fix-*` pull request. The second
-condition matters because master runs take hours: after a fix merges, the newest
-completed run is often still one that started before it.
+contains the merge of the most recent `qa/master-fix-*` pull request. A
+cancelled or skipped run is passed over when choosing that run: a later merge
+cancels a master run before its tests finish, so such a run says nothing about
+master, and counting it would hide the failure of the run still going. The
+second condition matters because master runs take hours: after a fix merges,
+the newest completed run is often still one that started before it.
 
 The round is a `qa-round` on the `qa/master-fix-` prefix. Its cadence gate
 allows one round in progress at a time: an open pull request, or a branch
