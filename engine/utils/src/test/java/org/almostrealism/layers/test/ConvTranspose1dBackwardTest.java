@@ -56,14 +56,24 @@ public class ConvTranspose1dBackwardTest extends TestSuiteBase {
 	 * multiples of {@code scale} offset by {@code offset}, so no two elements coincide and the
 	 * gradient of each is exercised independently.
 	 *
+	 * <p>The values are copied into a collection allocated with the requested shape rather than
+	 * returned as a {@code reshape} view of the evaluated result, so the caller owns the memory and
+	 * {@link PackedCollection#destroy()} on the returned collection actually releases it.</p>
+	 *
 	 * @param shape  the shape of the collection
 	 * @param scale  the spacing between successive values
 	 * @param offset the value of the first element
-	 * @return the filled collection
+	 * @return the filled collection, owning its own memory
 	 */
 	private PackedCollection nonTrivial(TraversalPolicy shape, double scale, double offset) {
-		return integers(0, shape.getTotalSize()).multiply(scale).add(offset).evaluate()
-				.reshape(shape);
+		PackedCollection values = integers(0, shape.getTotalSize()).multiply(scale).add(offset).evaluate();
+		PackedCollection result = new PackedCollection(shape);
+		try {
+			result.setFrom(0, values);
+		} finally {
+			values.destroy();
+		}
+		return result;
 	}
 
 	/**
@@ -136,35 +146,36 @@ public class ConvTranspose1dBackwardTest extends TestSuiteBase {
 					seqLength, kernel, stride, padding, outputPadding, weights, null);
 			trained.add(trainedLayer);
 
-			CompiledModel trainedCompiled = trained.compile(true, true);
-			trainedCompiled.forward(input);
-
-			// Snapshot the weights on the device so they can be restored after the update
+			// Snapshot of the weights on the device, so they can be restored after the update
 			PackedCollection weightsSnapshot = new PackedCollection(weights.getShape());
 			try {
-				weightsSnapshot.setFrom(0, weights);
+				CompiledModel trainedCompiled = trained.compile(true, true);
+				try {
+					trainedCompiled.forward(input);
+					weightsSnapshot.setFrom(0, weights);
 
-				double[] weightsBefore = weights.toArray();
-				trainedCompiled.backward(upstream);
-				double[] weightsAfter = weights.toArray();
+					double[] weightsBefore = weights.toArray();
+					trainedCompiled.backward(upstream);
+					double[] weightsAfter = weights.toArray();
 
-				double[] filterGradient = new double[weightsBefore.length];
-				for (int i = 0; i < filterGradient.length; i++) {
-					filterGradient[i] = (weightsBefore[i] - weightsAfter[i]) / learningRate;
+					double[] filterGradient = new double[weightsBefore.length];
+					for (int i = 0; i < filterGradient.length; i++) {
+						filterGradient[i] = (weightsBefore[i] - weightsAfter[i]) / learningRate;
+					}
+
+					// Restore the weights the update changed before taking finite differences of them
+					weights.setFrom(0, weightsSnapshot);
+
+					double[] numericWeights = extrapolatedDifferences(weights, EPS,
+							() -> loss(trainedCompiled.forward(input), upstream));
+					assertGradientMatches(testName + " filter", numericWeights, filterGradient, TOLERANCE, MINIMUM);
+				} finally {
+					trainedCompiled.destroy();
 				}
-
-				// Restore the weights the update changed before taking finite differences of them
-				weights.setFrom(0, weightsSnapshot);
-
-				double[] numericWeights = extrapolatedDifferences(weights, EPS,
-						() -> loss(trainedCompiled.forward(input), upstream));
-				assertGradientMatches(testName + " filter", numericWeights, filterGradient, TOLERANCE, MINIMUM);
 			} finally {
 				weightsSnapshot.destroy();
-				trainedCompiled.destroy();
 			}
 		} finally {
-			// TODO(review): these are reshape() views; destroy() frees nothing
 			upstream.destroy();
 			weights.destroy();
 			input.destroy();
