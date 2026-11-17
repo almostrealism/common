@@ -52,7 +52,10 @@ jobs:
   # attempt count and fires this workflow again on completion, so the gate is
   # re-evaluated until the failure either clears or survives 3 attempts. Only
   # a failure that survives (or a deterministic failure with no test job in
-  # it) reaches `submit`.
+  # it) reaches `submit`. A failed job outside the test lanes whose log shows
+  # an infrastructure failure (a download, a connection, a lost runner) is
+  # retried the same way; see rerun-flaky-tests.sh. Reading job logs needs
+  # only the actions access granted below.
   #
   # A run whose commit is no longer the branch tip is superseded and is neither
   # retried nor submitted: the newer commit has its own pipeline, so retrying
@@ -165,12 +168,20 @@ jobs:
       # retry-flaky-tests' superseded check instead.
       - name: Submit agent job
         env:
+          # Forwarded through submit-staged-request.sh to submit-agent-job.sh so
+          # a workstream this submission creates carries the trigger. This slow
+          # path follows a "Build and Test" run that normally registered the
+          # workstream already, but setting it keeps every submit path uniform.
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           # The target comes from the completed run's event, never from the
           # staged request, which pull request code wrote.
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           BASE_BRANCH: ${{ github.event.workflow_run.pull_requests[0].base.ref || 'master' }}
           ATTEMPT_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
           REQUIRED_LABELS: ${{ steps.labels.outputs.required_labels }}
+          # Names this route in the workstream alert when the controller rejects
+          # the submission (see tools/ci/submit-staged-request.sh).
+          REMEDIATION_KIND: "auto-resolve"
           # A follow-up job CI runs in a loop; the object-oriented design review
           # belongs to a branch's initial work, not each remediation pass.
           OBJECT_ORIENTED_REVIEW_ENABLED: "false"

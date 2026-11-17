@@ -26,14 +26,15 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Verifies that {@link JobClassLoader#instantiateJobClass(String)} reconstructs a
- * {@link Job} from the encoded {@code classname::key:=value::key:=value} wire format
- * used across FlowTree, applying every key-value pair to the instance, and that it
- * fails softly (returning {@code null}) when the class cannot be instantiated.
+ * Verifies that {@link Job#decode(String)}, reached through
+ * {@link Server#instantiateJobClass(String)}, reconstructs a {@link Job} from the
+ * encoded {@code classname::key:=value::key:=value} wire format used across
+ * FlowTree, applying every key-value pair to the instance, and that it fails
+ * softly (returning {@code null}) when the class cannot be instantiated.
  *
  * @author Michael Murray
  */
-public class JobClassLoaderTest extends TestSuiteBase {
+public class JobDecodeTest extends TestSuiteBase {
 
 	/** The fully-qualified binary name of the reflectively-instantiated stub job. */
 	private static final String STUB = StubJob.class.getName();
@@ -41,7 +42,7 @@ public class JobClassLoaderTest extends TestSuiteBase {
 	/** A single property is decoded and applied to the reconstructed job. */
 	@Test(timeout = 60000)
 	public void instantiatesAndAppliesSingleProperty() {
-		Job job = JobClassLoader.instantiateJobClass(STUB + "::alpha:=one");
+		Job job = Server.instantiateJobClass(STUB + "::alpha:=one");
 
 		Assert.assertTrue(job instanceof StubJob);
 		Assert.assertEquals("one", ((StubJob) job).value("alpha"));
@@ -50,7 +51,7 @@ public class JobClassLoaderTest extends TestSuiteBase {
 	/** Multiple properties are each decoded and applied in order. */
 	@Test(timeout = 60000)
 	public void instantiatesAndAppliesMultipleProperties() {
-		Job job = JobClassLoader.instantiateJobClass(STUB + "::alpha:=one::beta:=two");
+		Job job = Server.instantiateJobClass(STUB + "::alpha:=one::beta:=two");
 
 		StubJob stub = (StubJob) job;
 		Assert.assertEquals("one", stub.value("alpha"));
@@ -61,13 +62,38 @@ public class JobClassLoaderTest extends TestSuiteBase {
 	/** An unknown class name is reported as a null job rather than an exception. */
 	@Test(timeout = 60000)
 	public void unknownClassNameYieldsNull() {
-		Assert.assertNull(JobClassLoader.instantiateJobClass("io.flowtree.NotARealClass::k:=v"));
+		Assert.assertNull(Server.instantiateJobClass("io.flowtree.NotARealClass::k:=v"));
+	}
+
+	/**
+	 * A payload with no entry separator now returns {@code null} instead of
+	 * throwing {@link StringIndexOutOfBoundsException} as the pre-change inline
+	 * parser did; the envelope carries no class name, so nothing is instantiated.
+	 */
+	@Test(timeout = 60000)
+	public void payloadWithoutSeparatorYieldsNull() {
+		Assert.assertNull(Server.instantiateJobClass("io.flowtree.NoSeparatorHere"));
+	}
+
+	/** A marked payload naming an unregistered wire format returns null rather than running. */
+	@Test(timeout = 60000)
+	public void unregisteredWireFormatYieldsNull() {
+		Assert.assertNull(Server.instantiateJobClass(
+				"@wire=no-such-format::" + STUB + "::QUJD"));
+	}
+
+	/** A structurally malformed wire marker yields null at the server boundary instead of throwing. */
+	@Test(timeout = 60000)
+	public void malformedWireMarkerYieldsNull() {
+		Assert.assertNull(Server.instantiateJobClass("@wire=coding-pb1::" + STUB));
+		Assert.assertNull(Server.instantiateJobClass("@wire=::" + STUB + "::QUJD"));
+		Assert.assertNull(Server.instantiateJobClass("@wire=Bad_Id::" + STUB + "::QUJD"));
 	}
 
 	/**
 	 * A minimal {@link Job} whose {@link #set(String, String)} records every key-value
 	 * assignment so a test can confirm the decoder applied them. It must be public with a
-	 * public no-argument constructor so {@link JobClassLoader} can instantiate it by name.
+	 * public no-argument constructor so {@link Job#decode(String)} can instantiate it by name.
 	 */
 	public static class StubJob implements Job {
 

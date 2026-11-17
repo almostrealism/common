@@ -57,7 +57,7 @@ public class GitManagedJobSerializationTest extends TestSuiteBase {
 	 * Encodes {@code original}, then parses the wire format and calls
 	 * {@code set()} on a fresh {@link CodingAgentJob} for every key-value pair.
 	 *
-	 * <p>This mirrors the logic in {@link io.flowtree.JobClassLoader}: the
+	 * <p>This mirrors the logic in {@link io.flowtree.job.StringJobCodec}: the
 	 * encoded string is {@code className::k1:=v1::k2:=v2...} and
 	 * {@code "::"} is the entry separator while {@code ":="} is the
 	 * key-value separator.  The split uses a limit of {@code -1} so trailing

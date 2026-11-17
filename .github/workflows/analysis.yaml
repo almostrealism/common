@@ -4099,6 +4099,9 @@ jobs:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # Names this route in the workstream alert when the controller rejects
+          # the submission (see tools/ci/submit-staged-request.sh).
+          REMEDIATION_KIND: "auto-resolve-python"
           ENFORCE_CHANGES: "true"
           # Sent to make failing tests pass. The harness's test lock covers
           # Java tests under src/test/ (and CI files), not the Python suites
@@ -4523,6 +4526,9 @@ jobs:
           BRANCH: ${{ needs.changes.outputs.branch }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
           STARTED_AFTER: ${{ needs.changes.outputs.started_at }}
+          # Names this route in the workstream alert when the controller rejects
+          # the submission (see tools/ci/submit-staged-request.sh).
+          REMEDIATION_KIND: "auto-review"
           # auto-review submits as soon as the gates report, which can be
           # before GitHub Copilot's review of the same push (about eight
           # minutes) has posted. The controller holds the job this long before

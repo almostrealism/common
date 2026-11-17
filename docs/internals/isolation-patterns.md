@@ -291,7 +291,8 @@ Process isolated = process.isolate();
 // May create unnecessary memory allocation and kernel overhead
 ```
 
-**Fix:** Let strategies decide, or understand the trade-offs first.
+**Fix:** Let strategies decide. Only `Process.optimize` decides kernel boundaries; a computation
+that needs its own kernel says so through `isIsolationTarget`.
 
 ## Debugging Isolation Issues
 

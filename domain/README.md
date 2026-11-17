@@ -2,6 +2,8 @@
 
 This layer provides concrete domain models for graphics, neural networks, and simulation. These modules combine the foundation and mathematical layers to implement domain-specific systems — color and lighting, neural network graphs, 3D scene management, physical simulation, evolutionary computation, and biological dynamics.
 
+See [concept-map.md](concept-map.md) for how this layer builds on `base` and `compute`, and the platform-wide [Concept Map](../docs/internals/concept-map.md) for the layered overview and type-alignment families.
+
 ## Modules
 
 ### [ar-color](color/README.md)

@@ -24,6 +24,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
  * Tests for the whole-buffer host read cache of {@link CLMemory}, which serves per-element
  * read loops from one snapshot instead of one blocking OpenCL transfer per element.
@@ -177,16 +180,28 @@ public class CLHostReadCacheTest extends TestSuiteBase {
 	 * Returns the OpenCL memory provider of the active hardware configuration, or null when
 	 * no OpenCL backend is available.
 	 */
-	private static CLMemoryProvider clProvider() {
+	static CLMemoryProvider clProvider() {
+		List<CLMemoryProvider> providers = clProviders();
+		return providers.isEmpty() ? null : providers.get(0);
+	}
+
+	/**
+	 * Returns every OpenCL memory provider of the active hardware configuration, or an empty
+	 * list when no OpenCL backend is available. A configuration that exposes both an FP32 and
+	 * an FP64 context yields a provider of each precision, so a caller that iterates this list
+	 * exercises both the direct and the converting transfer paths. The returned list is
+	 * unmodifiable on both the populated and the empty path.
+	 */
+	static List<CLMemoryProvider> clProviders() {
 		try {
 			return Hardware.getLocalHardware()
 					.getComputeContexts(false, true, ComputeRequirement.CL).stream()
 					.flatMap(c -> c.getDataContext().getMemoryProviders().stream())
 					.filter(CLMemoryProvider.class::isInstance)
 					.map(CLMemoryProvider.class::cast)
-					.findFirst().orElse(null);
+					.collect(Collectors.toUnmodifiableList());
 		} catch (RuntimeException e) {
-			return null;
+			return List.of();
 		}
 	}
 }

@@ -107,12 +107,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 					// whose position is left advanced by element-wise host writes
 					Pointer dst = Pointer.to(mem.asByteBuffer())
 							.withByteOffset((long) offset * source.getProvider().getNumberSize());
-					cl_event event = new cl_event();
-					CL.clEnqueueReadBuffer(source.getProvider().queue, source.getMem(),
-							CL.CL_TRUE, (long) srcOffset * source.getProvider().getNumberSize(),
-							(long) length *  source.getProvider().getNumberSize(), dst, 0,
-							null, event);
-					processEvent(event);
+					source.getProvider().read(source, srcOffset, dst, length);
 				});
 	}
 
@@ -297,19 +292,9 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			if (context.getPrecision() == Precision.FP64) {
 				double d[] = new double[length];
 				for (int i = 0; i < d.length; i++) d[i] = source[srcOffset + i];
-				Pointer src = Pointer.to(d).withByteOffset(0);
-				cl_event event = new cl_event();
-				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
-						(long) offset * getNumberSize(), (long) length * getNumberSize(),
-						src, 0, null, event);
-				processEvent(event);
+				write(mem, offset, Pointer.to(d), length);
 			} else {
-				Pointer src = Pointer.to(source).withByteOffset(0);
-				cl_event event = new cl_event();
-				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
-						(long) offset * getNumberSize(), (long) length * getNumberSize(),
-						src, 0, null, event);
-				processEvent(event);
+				write(mem, offset, Pointer.to(source).withByteOffset((long) srcOffset * getNumberSize()), length);
 			}
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
@@ -326,21 +311,11 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 
 		try {
 			if (context.getPrecision() == Precision.FP64) {
-				Pointer src = Pointer.to(source).withByteOffset((long) srcOffset * getNumberSize());
-				cl_event event = new cl_event();
-				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
-						(long) offset * getNumberSize(), (long) length * getNumberSize(),
-						src, 0, null, event);
-				processEvent(event);
+				write(mem, offset, Pointer.to(source).withByteOffset((long) srcOffset * getNumberSize()), length);
 			} else {
 				float f[] = new float[length];
 				for (int i = 0; i < f.length; i++) f[i] = (float) source[srcOffset + i];
-				Pointer src = Pointer.to(f).withByteOffset(0);
-				cl_event event = new cl_event();
-				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
-						(long) offset * getNumberSize(), (long) length * getNumberSize(),
-						src, 0, null, event);
-				processEvent(event);
+				write(mem, offset, Pointer.to(f), length);
 			}
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
@@ -382,11 +357,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 			try {
 				Pointer src = Pointer.to(((DirectMemory) srcRam).asByteBuffer())
 						.withByteOffset((long) srcOffset * getNumberSize());
-				cl_event event = new cl_event();
-				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
-						(long) offset * getNumberSize(), (long) length * getNumberSize(),
-						src, 0, null, event);
-				processEvent(event);
+				write(mem, offset, src, length);
 			} catch (CLException e) {
 				throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
 			} finally {
@@ -413,22 +384,10 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		try {
 			if (getNumberSize() == 8) {
 				double d[] = new double[length];
-				Pointer dst = Pointer.to(d).withByteOffset(0);
-				cl_event event = new cl_event();
-				CL.clEnqueueReadBuffer(queue, mem.getMem(),
-						CL.CL_TRUE, (long) sOffset * getNumberSize(),
-						(long) length * getNumberSize(), dst, 0,
-						null, event);
-				processEvent(event);
+				read(mem, sOffset, Pointer.to(d), length);
 				for (int i = 0; i < d.length; i++) out[oOffset + i] = (float) d[i];
 			} else if (getNumberSize() == 4) {
-				Pointer dst = Pointer.to(out).withByteOffset((long) oOffset * getNumberSize());
-				cl_event event = new cl_event();
-				CL.clEnqueueReadBuffer(queue, mem.getMem(),
-						CL.CL_TRUE, (long) sOffset * getNumberSize(),
-						(long) length * getNumberSize(), dst, 0,
-						null, event);
-				processEvent(event);
+				read(mem, sOffset, Pointer.to(out).withByteOffset((long) oOffset * getNumberSize()), length);
 			} else {
 				throw new IllegalArgumentException();
 			}
@@ -453,22 +412,10 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 
 		try {
 			if (getNumberSize() == 8) {
-				Pointer dst = Pointer.to(out).withByteOffset((long) oOffset * getNumberSize());
-				cl_event event = new cl_event();
-				CL.clEnqueueReadBuffer(queue, mem.getMem(),
-						CL.CL_TRUE, (long) sOffset * getNumberSize(),
-						(long) length * getNumberSize(), dst, 0,
-						null, event);
-				processEvent(event);
+				read(mem, sOffset, Pointer.to(out).withByteOffset((long) oOffset * getNumberSize()), length);
 			} else if (getNumberSize() == 4) {
 				float f[] = new float[length];
-				Pointer dst = Pointer.to(f).withByteOffset(0);
-				cl_event event = new cl_event();
-				CL.clEnqueueReadBuffer(queue, mem.getMem(),
-						CL.CL_TRUE, (long) sOffset * getNumberSize(),
-						(long) length * getNumberSize(), dst, 0,
-						null, event);
-				processEvent(event);
+				read(mem, sOffset, Pointer.to(f), length);
 				for (int i = 0; i < f.length; i++) out[oOffset + i] = f[i];
 			} else {
 				throw new IllegalArgumentException();
@@ -478,6 +425,44 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 		} finally {
 			ioTime.addEntry("getMem", System.nanoTime() - start);
 		}
+	}
+
+	/**
+	 * Copies {@code length} elements from host memory at {@code src} into {@code mem}, starting
+	 * at element {@code offset} of the buffer, and blocks until the transfer completes.
+	 * {@code src} must already address the first element to transfer and hold values of this
+	 * provider's number size.
+	 *
+	 * @param mem    the destination buffer
+	 * @param offset the element offset into {@code mem} of the first element written
+	 * @param src    the host memory holding the elements to write
+	 * @param length the number of elements to write
+	 */
+	private void write(CLMemory mem, int offset, Pointer src, int length) {
+		cl_event event = new cl_event();
+		CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
+				(long) offset * getNumberSize(), (long) length * getNumberSize(),
+				src, 0, null, event);
+		processEvent(event);
+	}
+
+	/**
+	 * Copies {@code length} elements of {@code mem}, starting at element {@code offset} of the
+	 * buffer, into host memory at {@code dst}, and blocks until the transfer completes.
+	 * {@code dst} must already address the position of the first element and have room for
+	 * {@code length} values of this provider's number size.
+	 *
+	 * @param mem    the source buffer
+	 * @param offset the element offset into {@code mem} of the first element read
+	 * @param dst    the host memory receiving the elements
+	 * @param length the number of elements to read
+	 */
+	private void read(CLMemory mem, int offset, Pointer dst, int length) {
+		cl_event event = new cl_event();
+		CL.clEnqueueReadBuffer(queue, mem.getMem(), CL.CL_TRUE,
+				(long) offset * getNumberSize(), (long) length * getNumberSize(),
+				dst, 0, null, event);
+		processEvent(event);
 	}
 
 	/**

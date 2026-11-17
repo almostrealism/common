@@ -718,6 +718,23 @@ public abstract class CollectionProducerComputationBase
 
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The {@link #getDependentLifecycles() dependent lifecycles} are prepared along with this
+	 * computation without being positions of its process tree, so every argument preparing them
+	 * obtains, as {@link ScopeLifecycle#getPreparedArgumentBound(Stream, int)} counts it, is
+	 * reported here.</p>
+	 */
+	@Override
+	public int getScopeArgumentCount(int cap) {
+		int own = super.getScopeArgumentCount(cap);
+		if (dependentLifecycles == null || own > cap) return own;
+
+		return (int) Math.min(Integer.MAX_VALUE,
+				(long) own + ScopeLifecycle.getPreparedArgumentBound(dependentLifecycles.stream(), cap - own));
+	}
+
+	/**
 	 * Resets the computation arguments and invalidates cached evaluables.
 	 * This method should be called when argument values change to ensure
 	 * that subsequent evaluations use the updated arguments.
@@ -1191,6 +1208,14 @@ public abstract class CollectionProducerComputationBase
 	 * The signature is used for computation caching and deduplication.
 	 * It combines the base signature with the detailed shape representation.
 	 *
+	 * <p>The {@link #getDependentLifecycles() dependent lifecycles} are not inputs, so the base
+	 * signature does not describe them, yet the arguments preparing them obtains are part of this
+	 * computation's {@link #getScopeArgumentCount(int) scope argument count}, and so of the
+	 * structural bound that decides whether a kernel folds its arguments. When there are any,
+	 * the exact {@link ScopeLifecycle#getPreparedArgumentBound(Stream, int) bound} on those
+	 * arguments is appended, so computations sharing a signature always reach the same folding
+	 * decision and a reused kernel never meets an aggregate layout it was not compiled for.</p>
+	 *
 	 * @return A signature string including shape details, or null if no base signature exists
 	 * @see TraversalPolicy#toStringDetail()
 	 */
@@ -1199,7 +1224,11 @@ public abstract class CollectionProducerComputationBase
 		String signature = super.signature();
 		if (signature == null) return null;
 
-		return signature + getShape().toStringDetail();
+		signature = signature + getShape().toStringDetail();
+		if (dependentLifecycles == null || dependentLifecycles.isEmpty()) return signature;
+
+		return signature + "{dependentArguments=" +
+				ScopeLifecycle.getPreparedArgumentBound(dependentLifecycles.stream(), Integer.MAX_VALUE) + "}";
 	}
 
 	/**
