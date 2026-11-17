@@ -49,7 +49,9 @@ import java.util.stream.IntStream;
  */
 public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, DistributionFeatures {
 	/**
-	 * Tests basic softmax computation across multiple heads.
+	 * Tests the zero-masked softmax across multiple heads: the trailing elements of each
+	 * head are set to zero as padding and the first elements must form the distribution
+	 * on their own.
 	 */
 	@Test(timeout = 60000)
 	public void softmaxComputation() {
@@ -68,7 +70,7 @@ public class SoftmaxTests extends TestSuiteBase implements LayerFeatures, Distri
 		boolean subtractMax = true;
 		Producer<PackedCollection> input = p(in);
 
-		CollectionProducer o = softmax(traverse(1, input));
+		CollectionProducer o = softmaxIgnoreZero(traverse(1, input), subtractMax);
 
 		PackedCollection output = new PackedCollection(heads, len);
 

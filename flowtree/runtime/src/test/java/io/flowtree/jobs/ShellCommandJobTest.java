@@ -353,7 +353,7 @@ public class ShellCommandJobTest extends TestSuiteBase {
 	/**
 	 * Round-trips a job through its wire encoding by replaying the encoded
 	 * {@code key:=value} tokens onto a fresh instance, mirroring how the
-	 * {@code JobClassLoader} reconstructs jobs on remote nodes.
+	 * string job codec reconstructs jobs on remote nodes.
 	 *
 	 * @param job the job to encode and reconstruct
 	 * @return the reconstructed job

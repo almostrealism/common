@@ -24,6 +24,7 @@ import org.almostrealism.io.ConsoleFeatures;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -311,7 +312,7 @@ class GitCommitHandler implements ConsoleFeatures {
             return changedFiles;
         }
         Set<String> baseChanges = gitOps.executeForPaths(
-                "diff", "--name-only", "--no-renames", "HEAD..." + mergedCommit);
+                "diff", "--name-only", "--no-renames", "-z", "HEAD..." + mergedCommit);
         if (baseChanges == null) {
             throw new IOException("Could not list the files " + mergedCommit
                     + " changed since its merge-base with HEAD");
@@ -544,9 +545,17 @@ class GitCommitHandler implements ConsoleFeatures {
      * recorded in {@link #stagedFiles}; rejected files are recorded in
      * {@link #skippedFiles} with a reason suffix.</p>
      *
+     * <p>A file the guardrails <em>approved</em> that then cannot be added to
+     * the index is not an ordinary skip: approval means the commit is meant to
+     * carry it, so a failure to stage it fails the whole commit rather than
+     * dropping the change with a warning. Silently demoting such a file to a
+     * skip is how an intended change disappears while the job still reports
+     * success.</p>
+     *
      * @param files the candidate file paths to evaluate and stage
      * @throws IOException if a git command fails to execute
      * @throws InterruptedException if a git command is interrupted
+     * @throws RuntimeException if a guardrail-approved file cannot be staged
      */
     private void stageFiles(List<String> files) throws IOException, InterruptedException {
         FileStagingConfig config = FileStagingConfig.forJob(job);
@@ -558,6 +567,7 @@ class GitCommitHandler implements ConsoleFeatures {
 
         StagingResult result = stager.evaluateFiles(files, config, workDir, job.asGitOperations());
 
+        List<String> stageFailures = new ArrayList<>();
         // Stage each approved file.
         for (String file : result.getStagedFiles()) {
             // Structural guard: never stage anything under .flowtree/ unless its
@@ -579,12 +589,19 @@ class GitCommitHandler implements ConsoleFeatures {
                 log("Staged: " + file);
             } else {
                 warn("Failed to stage " + file + ": " + failure);
-                skippedFiles.add(file + " (" + failure + ")");
+                stageFailures.add(file + " (" + failure + ")");
             }
         }
 
         skippedFiles.addAll(result.getSkippedFiles());
         log("Staged " + stagedFiles.size() + " files, skipped " + skippedFiles.size());
+
+        if (!stageFailures.isEmpty()) {
+            throw new RuntimeException("The staging guardrails approved "
+                    + stageFailures.size() + " file(s) that could not be added to the index: "
+                    + String.join("; ", stageFailures)
+                    + ". Failing the commit rather than dropping an intended change.");
+        }
     }
 
     /**
@@ -603,7 +620,7 @@ class GitCommitHandler implements ConsoleFeatures {
 
     /**
      * Commits the staged changes using the message from
-     * {@link GitManagedJob#getCommitMessage()}.
+     * {@link GitManagedJob#getCommitMessage(String)}.
      *
      * <p>When {@link GitManagedJob#getGitUserName()} and/or
      * {@link GitManagedJob#getGitUserEmail()} are set, they are forwarded as
@@ -617,7 +634,7 @@ class GitCommitHandler implements ConsoleFeatures {
      * @throws RuntimeException if the commit fails (non-zero exit code)
      */
     private void commit() throws IOException, InterruptedException {
-        String message = job.getCommitMessage();
+        String message = job.getCommitMessage(job.getWorkingDirectory());
 
         // Strip-then-replace: any agent-supplied copy of a controller-signed
         // trailer is removed before the grants append their own; see
@@ -663,6 +680,38 @@ class GitCommitHandler implements ConsoleFeatures {
 
         commitHash = job.executeGitWithOutput("rev-parse", "HEAD").trim();
         log("Committed: " + commitHash);
+
+        verifyStagedFilesCommitted();
+    }
+
+    /**
+     * Fails the commit when a file reported as staged did not reach it, so a
+     * silently dropped change surfaces as a failure instead of a success.
+     *
+     * <p>A guardrail-approved file is added to {@link #stagedFiles} on the
+     * strength of a {@code git add} that reported success, but a path git
+     * handled by a different name than its real one — the historical failure
+     * being a spaced or otherwise special path that the non-{@code -z}
+     * porcelain quoted — can be "staged" as a no-op and never enter the commit.
+     * The surest evidence of that is the file still showing as an uncommitted
+     * change after the commit: a file whose staged change truly landed is clean
+     * afterward, whatever its path and whether the commit is an ordinary or a
+     * merge commit. A staged file that is clean but absent from the commit
+     * (content identical to the parent, as a merge can carry in) is not a drop
+     * and is not flagged.</p>
+     *
+     * @throws IOException if the post-commit status query fails
+     * @throws RuntimeException if a staged file did not reach the commit
+     */
+    private void verifyStagedFilesCommitted() throws IOException {
+        List<String> dropped = GitOperations.pathsStillChanged(job.getWorkingDirectory(), stagedFiles);
+        if (!dropped.isEmpty()) {
+            throw new RuntimeException("Commit " + TestMethodProtection.shortSha(commitHash)
+                    + " did not capture " + dropped.size() + " file(s) reported as staged: "
+                    + String.join(", ", dropped)
+                    + ". They remain uncommitted changes after the commit, so the commit silently"
+                    + " dropped them; failing rather than reporting success without the change.");
+        }
     }
 
     /**
@@ -794,8 +843,32 @@ class GitCommitHandler implements ConsoleFeatures {
 
     /**
      * Handles git operations (stage, commit, push) for all dependent repos.
-     * Uses the same commit message as the primary repo. No-op when the setup
-     * cloned no dependent repos.
+     * Each dependent repo commits with the message the agent wrote to the
+     * {@code commit.txt} at its own root (see
+     * {@link GitManagedJob#getCommitMessage(String)}), and harness artifacts
+     * such as {@code commit.txt} are excluded from its commit exactly as they
+     * are from the primary repo's. No-op when the setup cloned no dependent
+     * repos.
+     *
+     * <p>Two protections mirror the primary path. The index is reset before the
+     * allowlist is applied, so an artifact the agent staged directly cannot be
+     * committed by slipping past a filter that only governs what this method
+     * adds; a reset that cannot complete leaves the index untrusted, so the repo
+     * is recorded as a failure and skipped rather than committed. And each
+     * dependent message is run through
+     * {@link OperatorGrants#applyToMessage} before it reaches {@code git commit},
+     * stripping any agent-forged {@code Sensitive-File-Bypass} or
+     * {@code Merge-Resolution-Accepted} trailer the agent wrote into the
+     * dependent {@code commit.txt}; a dependent commit accepts no merge
+     * resolution, so none is appended.
+     *
+     * <p>Each file is staged through {@link GitOperations#stage(String)}, which
+     * passes the path after {@code --} (so a name beginning with {@code -} is
+     * read as a filename, not a flag) and stages a removal with {@code git rm}.
+     * When git refuses to stage a guardrail-approved file, this repo's commit is
+     * abandoned and recorded in {@link #getDependentRepoFailures()} rather than
+     * committing around the miss — the primary path fails loud for the same case,
+     * and a silently dropped file would otherwise leave no trace.</p>
      *
      * <p>Takes the {@link GitRepositorySetup} rather than a bare list of paths
      * so each repo's clone URL is recoverable: a push records a
@@ -815,44 +888,86 @@ class GitCommitHandler implements ConsoleFeatures {
         for (String depPath : repoSetup.getDependentRepoPaths()) {
             GitOperations gitOps = job.gitOperations(depPath);
 
-            String statusOutput = gitOps.executeWithOutput("status", "--porcelain");
-            List<String> changedFiles = new ArrayList<>();
-            for (String line : statusOutput.split("\n")) {
-                if (line.length() > 3) {
-                    String file = line.substring(3).trim();
-                    if (file.contains(" -> ")) file = file.split(" -> ")[1];
-                    if (!file.isEmpty()) changedFiles.add(file);
-                }
+            // Unstage whatever the agent staged directly, as the primary path
+            // does, so the allowlist below gates the index and not only the adds.
+            int resetExitCode = gitOps.execute("reset", "HEAD");
+            if (resetExitCode != 0) {
+                log("Reset failed in dependent repo: " + depPath + " (exit code " + resetExitCode
+                        + "); skipping to avoid committing a staged index");
+                dependentRepoFailures.add(depPath + " (reset exited " + resetExitCode + ")");
+                continue;
+            }
+
+            List<String> changedFiles;
+            try {
+                changedFiles = GitOperations.requireChangedFiles(depPath);
+            } catch (IOException e) {
+                warn("Could not list changes in dependent repo " + depPath + ": " + e.getMessage());
+                dependentRepoFailures.add(depPath + " (status query failed)");
+                continue;
             }
             if (changedFiles.isEmpty()) {
                 log("No changes in dependent repo: " + depPath);
                 continue;
             }
-            log("Committing " + changedFiles.size() + " changes in dependent repo: " + depPath);
 
-            boolean anyStagedInDep = false;
-            List<String> skippedInDep = new ArrayList<>();
+            // commit.txt and other harness artifacts never belong in a commit.
+            List<String> committable = new ArrayList<>();
             for (String file : changedFiles) {
+                if (!GitOperations.isExcludedPath(file)) committable.add(file);
+            }
+            if (committable.isEmpty()) {
+                log("No committable changes in dependent repo (only harness artifacts): " + depPath);
+                continue;
+            }
+            log("Committing " + committable.size() + " changes in dependent repo: " + depPath);
+
+            List<String> stagedInDep = new ArrayList<>();
+            List<String> skippedInDep = new ArrayList<>();
+            List<String> stageFailuresInDep = new ArrayList<>();
+            for (String file : committable) {
                 File f = new File(depPath, file);
                 if (f.exists() && f.length() > job.getMaxFileSizeBytes()) {
                     log("Skipping (size) in dependent repo: " + file);
                     skippedInDep.add(file);
                     continue;
                 }
-                gitOps.execute("add", file);
-                anyStagedInDep = true;
+                GitOperations.Result staged = gitOps.stage(file);
+                if (staged.succeeded()) {
+                    stagedInDep.add(file);
+                } else {
+                    warn("Failed to stage in dependent repo " + depPath + ": " + staged.describe());
+                    stageFailuresInDep.add(file);
+                }
             }
-            if (!anyStagedInDep) {
+            if (!stageFailuresInDep.isEmpty()) {
+                dependentRepoFailures.add(depPath + " (could not stage: "
+                        + String.join(", ", stageFailuresInDep) + ")");
+                continue;
+            }
+            if (stagedInDep.isEmpty()) {
                 log("No files staged in dependent repo (all skipped): " + depPath);
                 dependentRepoFailures.add(depPath + " (every changed file was skipped: "
                         + String.join(", ", skippedInDep) + ")");
                 continue;
             }
 
-            int commitExitCode = gitOps.execute("commit", "-m", job.getCommitMessage());
+            // Normalize controller-grant trailers as the primary path does.
+            String depMessage = job.operatorGrants().applyToMessage(
+                    job.getCommitMessage(depPath), job.getTaskId(), Collections.emptyList());
+            int commitExitCode = gitOps.execute("commit", "-m", depMessage);
             if (commitExitCode != 0) {
                 log("Commit failed in dependent repo: " + depPath + " (exit code " + commitExitCode + ")");
                 dependentRepoFailures.add(depPath + " (commit exited " + commitExitCode + ")");
+                continue;
+            }
+
+            // Abandon the repo (do not push) when the commit dropped a staged file.
+            List<String> droppedInDep = GitOperations.pathsStillChanged(depPath, stagedInDep);
+            if (!droppedInDep.isEmpty()) {
+                log("Commit dropped staged files in dependent repo: " + depPath);
+                dependentRepoFailures.add(depPath + " (committed but did not capture: "
+                        + String.join(", ", droppedInDep) + ")");
                 continue;
             }
             dependentRepoCommits.add(depPath);

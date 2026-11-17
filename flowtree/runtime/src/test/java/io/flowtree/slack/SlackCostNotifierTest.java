@@ -21,6 +21,7 @@ import io.flowtree.JsonFieldExtractor;
 import io.flowtree.api.FlowTreeApiEndpoint;
 import io.flowtree.controller.JobStatsStore;
 import io.flowtree.jobs.CodingAgentJobEvent;
+import io.flowtree.jobs.DependentRepoPush;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.workstream.Workstream;
 import org.almostrealism.util.TestSuiteBase;
@@ -446,6 +447,35 @@ public class SlackCostNotifierTest extends TestSuiteBase {
         assertFalse(details.contains("Review the open PR"));
         assertFalse(details.contains("PR:"));
         assertTrue(details.contains("Turns: 5"));
+    }
+
+    /**
+     * A job whose only change landed in a dependent repository reports the push
+     * as completed work naming that repository, never as "no changes to push".
+     */
+    @Test(timeout = 10000)
+    public void testDependentOnlyPushReportsCompletedWork() {
+        List<String> messages = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null);
+        notifier.setMessageCallback(json ->
+            messages.add(JsonFieldExtractor.extractString(json, "text")));
+
+        Workstream workstream = new Workstream("C_DEPONLY", "#dep-only-test");
+        notifier.registerWorkstream(workstream);
+
+        CodingAgentJobEvent event = CodingAgentJobEvent.success("job-dep", "Fix in dependent");
+        event.withGitInfo("feature/x", null, List.of(), List.of(), false);
+        event.withDependentRepoPushes(List.of(
+            new DependentRepoPush("https://github.com/almostrealism/common.git", "feature/x", "abc1234")));
+        notifier.onJobCompleted(workstream.getWorkstreamId(), event);
+
+        String summary = messages.stream().filter(m -> m.contains("Work complete"))
+            .findFirst().orElse("");
+        assertFalse("a dependent-only push is not 'no changes to push'",
+            summary.contains("no changes to push"));
+        assertTrue(summary.contains(":white_check_mark:"));
+        assertTrue("the dependent repo is named in the push summary",
+            summary.contains("common"));
     }
 
     /**

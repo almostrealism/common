@@ -23,10 +23,12 @@ name: "Auto-Resolve Submit"
 # inside the main pipeline.
 #
 # It fires on every completion of "Build and Test". `auto-resolve` stages a
-# request only on attempt 3 or later — MAX_ATTEMPTS below, and the attempt
-# threshold in analysis.yaml must stay equal to it — so on any earlier attempt
-# there is no request artifact and `submit` is a no-op; `retry-flaky-tests` is
-# what carries a failing run to that attempt.
+# request on the attempt a regression is confirmed on two or more backends, and
+# otherwise only on the final attempt — MAX_ATTEMPTS below, which must stay
+# equal to MAX_ATTEMPTS in analysis.yaml's auto-resolve job. An attempt that
+# staged a request is submitted rather than retried; one that staged nothing is
+# retried by `retry-flaky-tests` until that final attempt, and `submit` finds no
+# request for it and does nothing.
 
 on:
   workflow_run:
@@ -43,12 +45,17 @@ jobs:
   # flaky and pass on re-run. Before an auto-resolve agent is dispatched,
   # give a red pipeline more attempts: when the failed set contains a flaky-
   # eligible test job, python-tests did not fail (auto-resolve-python owns
-  # that run), and the run has had fewer than 3 total attempts, re-run the
+  # that run), the attempt staged no auto-resolve request (it stages one at
+  # once for a regression confirmed on two or more backends, which a retry
+  # cannot clear), and the run has had fewer than 3 total attempts, re-run the
   # failed jobs instead of submitting. Each re-run increments the run's
   # attempt count and fires this workflow again on completion, so the gate is
   # re-evaluated until the failure either clears or survives 3 attempts. Only
   # a failure that survives (or a deterministic failure with no test job in
-  # it) reaches `submit`.
+  # it) reaches `submit`. A failed job outside the test lanes whose log shows
+  # an infrastructure failure (a download, a connection, a lost runner) is
+  # retried the same way; see rerun-flaky-tests.sh. Reading job logs needs
+  # only the actions access granted below.
   #
   # A run whose commit is no longer the branch tip is superseded and is neither
   # retried nor submitted: the newer commit has its own pipeline, so retrying
@@ -87,6 +94,7 @@ jobs:
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
           MAX_ATTEMPTS: "3"
+          ATTEMPT_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
         run: |
           chmod +x ./tools/ci/rerun-flaky-tests.sh
           ./tools/ci/rerun-flaky-tests.sh
@@ -114,6 +122,8 @@ jobs:
     permissions:
       actions: read
       contents: read
+      # The remediation-cap status when the controller refuses the pass.
+      statuses: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -158,12 +168,20 @@ jobs:
       # retry-flaky-tests' superseded check instead.
       - name: Submit agent job
         env:
+          # Forwarded through submit-staged-request.sh to submit-agent-job.sh so
+          # a workstream this submission creates carries the trigger. This slow
+          # path follows a "Build and Test" run that normally registered the
+          # workstream already, but setting it keeps every submit path uniform.
+          SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           # The target comes from the completed run's event, never from the
           # staged request, which pull request code wrote.
           BRANCH: ${{ github.event.workflow_run.head_branch }}
           BASE_BRANCH: ${{ github.event.workflow_run.pull_requests[0].base.ref || 'master' }}
           ATTEMPT_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
           REQUIRED_LABELS: ${{ steps.labels.outputs.required_labels }}
+          # Names this route in the workstream alert when the controller rejects
+          # the submission (see tools/ci/submit-staged-request.sh).
+          REMEDIATION_KIND: "auto-resolve"
           # A follow-up job CI runs in a loop; the object-oriented design review
           # belongs to a branch's initial work, not each remediation pass.
           OBJECT_ORIENTED_REVIEW_ENABLED: "false"
@@ -173,6 +191,10 @@ jobs:
           # Marked explicitly, not inferred from `automated` (every CI job sets
           # that) — a QA, planning or implementation job is the work reviewed.
           REMEDIATION_PASS: "true"
+          # Marked with the remediation-cap status when the controller refuses
+          # this pass for the per-PR cap, so the pull request's label shows it.
+          CAP_STATUS_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}

@@ -80,6 +80,27 @@ public class MetalOperator extends HardwareOperator {
 	 */
 	public static final int LANED_THREADGROUP_THREADS = 256;
 
+	/**
+	 * Number of entries in the buffer argument table of a Metal compute function. Every buffer and
+	 * every inline {@code setBytes} value an encoder binds occupies one entry.
+	 */
+	public static final int BUFFER_TABLE_ENTRIES = 31;
+
+	/**
+	 * Number of buffer table entries {@link #accept(Object[], Semaphore)} binds after the last
+	 * kernel argument: one for the offsets of the arguments and one for their sizes.
+	 */
+	public static final int TRAILING_BUFFER_ENTRIES = 2;
+
+	/**
+	 * The most kernel arguments a Metal kernel may declare: the
+	 * {@link #BUFFER_TABLE_ENTRIES buffer table} less the
+	 * {@link #TRAILING_BUFFER_ENTRIES entries bound after the last argument}. A kernel declaring
+	 * more fails when its {@link MetalProgram} is compiled. This is the limit
+	 * {@link MetalComputeContext#getArgumentLimit()} reports.
+	 */
+	public static final int MAX_ARGUMENTS = BUFFER_TABLE_ENTRIES - TRAILING_BUFFER_ENTRIES;
+
 	/** Cumulative count of all Metal kernel invocations across all operator instances. */
 	private static long totalInvocations;
 
@@ -306,8 +327,8 @@ public class MetalOperator extends HardwareOperator {
 	 * for a {@link MetalDataContext} is its {@link MetalMemoryProvider} alone, so every argument's
 	 * memory is a {@link MetalMemory}. The buffer of each argument is bound at the argument's index,
 	 * and the offsets and sizes of the arguments are bound inline at the two indices after the
-	 * last argument, the layout the generated kernel declares. Metal's buffer argument table has
-	 * 31 entries, so a kernel takes at most 29 arguments; one that declares more fails when its
+	 * last argument, the layout the generated kernel declares. A kernel therefore takes at most
+	 * {@link #MAX_ARGUMENTS} arguments; one that declares more fails when its
 	 * {@link MetalProgram} is compiled, before an operator exists for it.</p>
 	 *
 	 * <p>A global work size this operator cannot dispatch is refused before anything is reserved

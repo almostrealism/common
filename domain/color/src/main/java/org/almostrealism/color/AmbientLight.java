@@ -125,8 +125,7 @@ public class AmbientLight implements Light, RGBFeatures {
 	 * not include the specified surface for which the lighting calculations are to be done.
 	 */
 	public Producer<PackedCollection> lightingCalculation(Curve<PackedCollection> surface, Producer<PackedCollection> point) {
-		Producer<PackedCollection> color = multiply(v(getColor()), c(getIntensity()));
-		return multiply(color, surface.getValueAt(point));
+		return multiply(v(getRadiance()), surface.getValueAt(point));
 	}
 	
 	/** Returns "Ambient Light". */
