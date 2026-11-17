@@ -302,10 +302,11 @@ too-deep, or failing compile is a reduction embedded in each of its readers
 because optimization was never reached — far more often than it is an isolation
 decision you need to make by hand. (A reduction is the usual case, not the only
 isolation target: `isIsolationTarget` also marks long loops and other
-high-aggregation computations, as above.) `Producer.evaluate()` and
-`Producer.get()` do not optimize (see the table
-under [When optimize() MUST Be Called](#when-optimize-must-be-called)). Answer the
-question by evaluating the graph once through `evaluateOptimized()` (equivalently
+high-aggregation computations, as above.) `Producer.evaluate()` optimizes, but
+`Producer.evaluateExplicit()` and `Producer.get()` do not (see the table
+under [When optimize() MUST Be Called](#when-optimize-must-be-called)), so a graph
+reaching `get()` through the unoptimized path hits this symptom. Answer the
+question by evaluating the graph once through `evaluate()` (equivalently
 `Process.optimized(producer).get().evaluate()`); `Process.optimize` isolates the reductions
 that `isIsolationTarget` marks, and the same graph compiles in about a second.
 
@@ -315,7 +316,7 @@ its input size — so a size-dependent *compile* failure means a child that shou
 have been isolated was embedded instead.
 
 Check:
-1. Is `optimize()` being called before `get()`? Note that `Producer.evaluate(...)`
+1. Is `optimize()` being called before `get()`? Note that `Producer.evaluateExplicit(...)`
    and `Producer.into(...)` reach `get()` without optimizing — see the table under
    [When optimize() MUST Be Called](#when-optimize-must-be-called).
 2. Does the problematic computation override `isIsolationTarget()` correctly?
@@ -433,9 +434,9 @@ The current implementation is embryonic — each frame is a pair of `Predicate` 
 
 ### Optimizing Computations
 ```java
-// Apply optimization before evaluation
+// evaluate() optimizes by default
 Producer<T> producer = ...;
-T result = producer.evaluateOptimized(args);
+T result = producer.evaluate(args);
 
 // Or explicitly optimize the process
 Process<?, T, ?> optimized = Process.optimized(producer);

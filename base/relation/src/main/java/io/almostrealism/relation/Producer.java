@@ -117,8 +117,11 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	 * embeds that reduction in each of its readers and builds an exponentially
 	 * large expression. Routing through {@link Process#optimized(Supplier)} lets
 	 * the optimizer isolate such reductions into their own kernels. When this
-	 * producer is not a {@link Process}, or needs no isolation, optimization is a
-	 * no-op and the result is identical to {@link #evaluateExplicit(Object...)}.</p>
+	 * producer is not a {@link Process}, {@link Process#optimized(Supplier)} passes
+	 * it through unchanged and the result matches {@link #evaluateExplicit(Object...)};
+	 * when it is a {@link Process}, optimization may still restructure or regenerate
+	 * the graph even if no isolation target is present, so the result is not
+	 * guaranteed to be identical to the unoptimized path.</p>
 	 *
 	 * <p>For repeated evaluations, consider caching the {@link Evaluable} returned
 	 * by {@code Process.optimized(this).get()} rather than optimizing on each call.</p>

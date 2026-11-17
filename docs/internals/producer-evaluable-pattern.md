@@ -31,8 +31,9 @@ Key methods:
 |--------|---------|
 | `Evaluable<T> get()` | Compile this description into an executable `Evaluable` |
 | `Evaluable<T> into(Object destination)` | Compile for in-place computation into a pre-allocated destination |
-| `T evaluate(Object... args)` | Convenience: calls `get().evaluate(args)` (compiles every time) |
-| `T evaluateOptimized(Object... args)` | Optimizes the computation graph, then compiles and evaluates |
+| `T evaluate(Object... args)` | Default path: optimizes the graph, then compiles and evaluates (`Process.optimized(this).get().evaluate(args)`) |
+| `T evaluateExplicit(Object... args)` | Deliberate unoptimized path: calls `get().evaluate(args)` (compiles every time, no optimization) |
+| `T evaluateOptimized(Object... args)` | Deprecated alias of `evaluate(args)` |
 
 The most important of these is `get()`. It is the bridge between description and
 execution.
@@ -157,13 +158,15 @@ for (int i = 0; i < 1000; i++) {
 ```
 
 **Using `evaluate()` instead of caching.** The convenience method
-`Producer.evaluate(args)` calls `get().evaluate(args)` every time. It is fine for
-one-shot usage but wasteful in loops. For repeated evaluation, call `get()` once
-and hold the `Evaluable`.
+`Producer.evaluate(args)` optimizes and compiles every time. It is fine for
+one-shot usage but wasteful in loops. For repeated evaluation, call
+`Process.optimized(producer).get()` once and hold the `Evaluable`.
 
-**Skipping optimization.** Calling `get()` directly on a complex `Producer` tree
-compiles without optimization. Use `Process.optimized(producer)` or
-`evaluateOptimized()` to apply graph-level optimizations first:
+**Skipping optimization.** Calling `get()` directly (or `evaluateExplicit()`) on a
+complex `Producer` tree compiles without optimization, which can embed a reduction
+in each of its readers and build an exponentially large expression. Use
+`Process.optimized(producer)` or the default `evaluate()` to apply graph-level
+optimizations first:
 
 ```java
 // Without optimization
@@ -172,8 +175,8 @@ Evaluable<T> evaluable = producer.get();
 // With optimization (preferred for complex graphs)
 Evaluable<T> evaluable = Process.optimized(producer).get();
 
-// One-shot with optimization
-T result = producer.evaluateOptimized(args);
+// One-shot with optimization (the default)
+T result = producer.evaluate(args);
 ```
 
 **Treating PackedCollection as a Java array.** Never use `System.arraycopy`,

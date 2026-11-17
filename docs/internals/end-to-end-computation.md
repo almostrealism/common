@@ -47,7 +47,9 @@ Nothing has been compiled or executed. The graph is a lightweight description.
 
 ## Stage 2: Evaluable Creation
 
-Calling `evaluate()` on `Producer` triggers `get().evaluate()` (see `Producer.java`).
+Calling `evaluate()` on `Producer` optimizes first and then evaluates --
+`Process.optimized(this).get().evaluate()` (see `Producer.java`). The deliberate
+unoptimized path, `evaluateExplicit()`, is the plain `get().evaluate()`.
 
 `CollectionProducerComputationBase.get()` creates a `HardwareEvaluable` -- a lazy
 wrapper that defers compilation until first use. When `evaluate()` is called, the
@@ -196,7 +198,8 @@ Java code                   What happens                     Key class
 cp(a)                       Wraps memory as a Producer       CollectionCreationFeatures.cp()
   .multiply(cp(b))          Builds product Producer graph    ArithmeticFeatures.multiply()
                                                              CollectionProductComputation
-  .evaluate()               Triggers get() + evaluate()      Producer.evaluate()
+  .evaluate()               Triggers optimize + get() +      Producer.evaluate()
+                            evaluate()
 
   get():
     Create evaluable         Lazy compilation wrapper         HardwareEvaluable

@@ -120,9 +120,9 @@ public class PatternAnalysis implements SpectralFeatures {
     }
 }
 
-// At a host boundary (once per frame, or in a test). evaluateOptimized() runs Process.optimize,
-// which isolates the grid-wide reductions; plain evaluate() does not (see Gotchas below).
-double lambda = analysis.wavelength(cp(height), dy, dx).evaluateOptimized().toDouble(0);
+// At a host boundary (once per frame, or in a test). evaluate() runs Process.optimize,
+// which isolates the grid-wide reductions; evaluateExplicit() does not (see Gotchas below).
+double lambda = analysis.wavelength(cp(height), dy, dx).evaluate().toDouble(0);
 ```
 
 ## Precision and tolerances
@@ -170,10 +170,10 @@ the grid puts its power in exact cells, and the estimate is then exact to roundi
   `dominantWavelength` and `spectralPeak` contain reductions over the whole grid (sums, a
   radial spectrum, an `indexOfMax`) that several consumers read. Kernel boundaries are
   decided by `Process.optimize`, which isolates each such reduction
-  (`TraversableRepeatedProducerComputation.isIsolationTarget`). `Producer.evaluate()` and
-  `Producer.get()` do not optimize, so they embed every reduction in each of its readers.
-  On a 128 × 128 grid that runs past two minutes of expression building. Use
-  `evaluateOptimized()` or `Process.optimized(producer).get()`; the same graphs then compile
+  (`TraversableRepeatedProducerComputation.isIsolationTarget`). `Producer.evaluateExplicit()`
+  and `Producer.get()` do not optimize, so they embed every reduction in each of its readers.
+  On a 128 × 128 grid that runs past two minutes of expression building. Use the default
+  `evaluate()` or `Process.optimized(producer).get()`; the same graphs then compile
   and run in about a second. The spectral methods do not isolate anything themselves:
   deciding kernel boundaries belongs to the optimizer, not to the code that builds the graph.
 - **`indexOfMax` of a `[B]` vector** treats each element as its own group. Reshape to

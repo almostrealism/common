@@ -289,16 +289,19 @@ isolation. `OperationList.get()` performs this automatically only when
 `false`. Raw `Process` trees always require an explicit `optimize()` call.
 
 This includes the case where the graph is a `Producer` rather than an `OperationList`
-or a hand-built `Process` tree. `Producer.evaluate(...)` and `Producer.into(...)` are
-convenience methods that call `get()` for you, and neither optimizes on the way:
+or a hand-built `Process` tree. `Producer.evaluate(...)` optimizes on the way to `get()`;
+the lower-level convenience methods `Producer.evaluateExplicit(...)` and
+`Producer.into(...)` call `get()` without optimizing:
 
 ```java
-// Neither of these optimizes
+// Optimizes (the default)
 producer.evaluate();
+
+// Neither of these optimizes
+producer.evaluateExplicit();
 producer.into(destination).evaluate();
 
-// These do
-producer.evaluateOptimized();
+// Optimizing into a destination has to be written as two steps
 Evaluable e = Process.optimized(producer).get();
 e.into(destination).evaluate();
 ```
