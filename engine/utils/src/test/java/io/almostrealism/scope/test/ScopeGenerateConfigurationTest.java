@@ -148,6 +148,35 @@ public class ScopeGenerateConfigurationTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link Scope#generate(List)} copies the compute requirements and lane count for every scope
+	 * type, so that a kernel whose root scope is a plain {@link Scope} or a {@link Repeated} loop
+	 * is dispatched with the requirements and lane count it was configured with rather than losing
+	 * them when the scope is rebuilt during simplification. {@link Cases} and {@link HybridScope}
+	 * are covered by their own simplify tests; this exercises the two remaining scope types
+	 * directly through {@code generate}.
+	 */
+	@Test(timeout = 30000)
+	public void generatePreservesComputeRequirementsAndLaneCount() {
+		OperationMetadata metadata = new OperationMetadata("genConfig", "Generate config");
+
+		List<Scope<Void>> sources = List.of(
+				new Scope<>("genScope", metadata),
+				new Repeated<>("genRepeated", metadata));
+
+		for (Scope<Void> source : sources) {
+			source.setComputeRequirements(List.of(ComputeRequirement.CPU));
+			source.setLaneCount(4);
+
+			Scope<?> generated = (Scope<?>) source.generate(new ArrayList<>());
+
+			Assert.assertEquals(source.getClass().getSimpleName() + " should copy compute requirements",
+					List.of(ComputeRequirement.CPU), generated.getComputeRequirements());
+			Assert.assertEquals(source.getClass().getSimpleName() + " should copy the lane count",
+					4, generated.getLaneCount());
+		}
+	}
+
+	/**
 	 * {@link Scope#generate(List)} copies the reference index for every scope type, so that the
 	 * unique names it seeds for extracted subexpressions continue from where the original left
 	 * off rather than restarting. The reference index is private with no accessor, so it is read
