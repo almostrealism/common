@@ -174,8 +174,23 @@ public class CollectionMaxComputation extends AggregatedExtremumComputation {
 	}
 
 	/**
+	 * Returns this computation unchanged when the setting already matches. A max reduction
+	 * is constructed without loop replacement and has no reason to toggle it, so a change to
+	 * the setting is not supported here (matching the weighted-sum precedent).
+	 *
+	 * @param replaceLoop the requested loop replacement setting
+	 * @return this computation
+	 * @throws UnsupportedOperationException if the setting differs from the current one
+	 */
+	@Override
+	public CollectionMaxComputation withReplaceLoop(boolean replaceLoop) {
+		if (isReplaceLoop() == replaceLoop) return this;
+		throw new UnsupportedOperationException();
+	}
+
+	/**
 	 * Returns the index of the maximum element of each group of the input, which locates the
-	 * element the maximum, and its derivative, depend on.
+	 * element on which the maximum and its derivative depend.
 	 *
 	 * @param input the input collection, traversed at the axis whose items are the groups
 	 * @return a computation of the position of the maximum element of each group

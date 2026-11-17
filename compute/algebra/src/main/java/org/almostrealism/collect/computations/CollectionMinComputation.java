@@ -46,7 +46,7 @@ import java.util.List;
  * <h2>Implementation Details</h2>
  * <p>The minimum is computed using an aggregation pattern:</p>
  * <ul>
- *   <li><strong>Initialization:</strong> Accumulator starts at {@link MaximumValue} (positive infinity)</li>
+ *   <li><strong>Initialization:</strong> Accumulator starts at {@link MaximumValue} (the largest finite value)</li>
  *   <li><strong>Accumulation:</strong> Each element is compared to the current minimum</li>
  *   <li><strong>Iteration:</strong> Fixed count equal to the input collection size</li>
  *   <li><strong>Comparison:</strong> Uses {@link Expression#min(Expression)} for element-wise min</li>
@@ -87,7 +87,7 @@ public class CollectionMinComputation extends AggregatedExtremumComputation {
 	 * <ul>
 	 *   <li>Output shape: single element (shape.replace(shape(1)))</li>
 	 *   <li>Iteration count: total input size</li>
-	 *   <li>Initial value: positive infinity ({@link MaximumValue})</li>
+	 *   <li>Initial value: the largest finite value ({@link MaximumValue})</li>
 	 *   <li>Aggregation function: min(out, arg)</li>
 	 * </ul>
 	 *
@@ -136,8 +136,23 @@ public class CollectionMinComputation extends AggregatedExtremumComputation {
 	}
 
 	/**
+	 * Returns this computation unchanged when the setting already matches. A min reduction
+	 * is constructed without loop replacement and has no reason to toggle it, so a change to
+	 * the setting is not supported here (matching the weighted-sum precedent).
+	 *
+	 * @param replaceLoop the requested loop replacement setting
+	 * @return this computation
+	 * @throws UnsupportedOperationException if the setting differs from the current one
+	 */
+	@Override
+	public CollectionMinComputation withReplaceLoop(boolean replaceLoop) {
+		if (isReplaceLoop() == replaceLoop) return this;
+		throw new UnsupportedOperationException();
+	}
+
+	/**
 	 * Returns the index of the minimum element of each group of the input, which locates the
-	 * element the minimum, and its derivative, depend on.
+	 * element on which the minimum and its derivative depend.
 	 *
 	 * @param input the input collection, traversed at the axis whose items are the groups
 	 * @return a computation of the position of the minimum element of each group

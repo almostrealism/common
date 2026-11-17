@@ -35,8 +35,8 @@ import java.util.Arrays;
  *   <li>{@link org.almostrealism.collect.computations.CollectionMaxComputation} and its mirror
  *       {@link org.almostrealism.collect.computations.CollectionMinComputation}, whose extremum
  *       depends only on the element it selects. Each group of the input has a distinct extremum,
- *       so the derivative is defined everywhere it is checked, and the minimum's agrees with the
- *       central difference at a unique minimum.</li>
+ *       so the derivative is defined everywhere it is checked, and the derivative of the minimum
+ *       agrees with the central difference at a unique minimum.</li>
  *   <li>Element-wise computations whose operands both depend on the target, which the
  *       chain rule passes on to every operand through the computation's element-wise
  *       partial derivatives.</li>
@@ -237,6 +237,7 @@ public class ReducedDeltaRulesTest extends TestSuiteBase {
 	 * The minimum mirrors the maximum: its full Jacobian is one at the position each minimum
 	 * selects and zero elsewhere, rather than an aggregation of the input's Jacobian.
 	 */
+	// TODO(review): add minOutputReduced/minInputReduced mirroring the max reduced-delta tests
 	@Test(timeout = 60000)
 	public void minJacobian() {
 		PackedCollection values = groups();
