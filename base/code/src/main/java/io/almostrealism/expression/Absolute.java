@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -83,6 +84,25 @@ public class Absolute extends Expression<Double> {
 	@Override
 	public Number evaluate(Number... children) {
 		return Math.abs(children[0].doubleValue());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Since {@code abs(u) = max(u, -u)}, its derivative is {@code sign(u) * du/dx}:
+	 * the derivative of the operand where it is positive and its negation where it is
+	 * negative. The kink at {@code u == 0} is not differentiable; there the strict
+	 * comparison selects the negated branch, mirroring how {@link Max#delta(CollectionExpression)}
+	 * resolves a tie.</p>
+	 */
+	@Override
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
+		Expression<?> input = getChildren().get(0);
+		CollectionExpression<?> childDelta = input.delta(target);
+		return conditional(target.getShape(),
+				input.greaterThan(new DoubleConstant(0.0)),
+				childDelta,
+				minus(target.getShape(), childDelta));
 	}
 
 	/**

@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -93,6 +95,33 @@ public class Atan2 extends BinaryExpression<Double> {
 	@Override
 	public Number evaluate(Number... children) {
 		return Math.atan2(children[0].doubleValue(), children[1].doubleValue());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The derivative of {@code atan2(y, x)} with respect to the target is
+	 * {@code (x * dy/dt - y * dx/dt) / (x^2 + y^2)}, which is well defined everywhere
+	 * except at the origin where {@code x} and {@code y} both vanish.</p>
+	 */
+	@Override
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
+		Expression<Double> y = getY();
+		Expression<Double> x = getX();
+
+		CollectionExpression<?> dy = y.delta(target);
+		CollectionExpression<?> dx = x.delta(target);
+
+		CollectionExpression<?> xTerm = product(target.getShape(),
+				List.of(dy, new ConstantCollectionExpression(target.getShape(), x)));
+		CollectionExpression<?> yTerm = product(target.getShape(),
+				List.of(dx, new ConstantCollectionExpression(target.getShape(), y)));
+		CollectionExpression<?> numerator = difference(target.getShape(), List.of(xTerm, yTerm));
+
+		Expression<?> denominator = x.multiply(x).add(y.multiply(y));
+		CollectionExpression<?> denom = new ConstantCollectionExpression(target.getShape(), denominator);
+
+		return quotient(target.getShape(), List.of(numerator, denom));
 	}
 
 	@Override
