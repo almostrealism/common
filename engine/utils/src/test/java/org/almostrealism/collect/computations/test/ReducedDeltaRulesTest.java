@@ -234,10 +234,83 @@ public class ReducedDeltaRulesTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The output-reduced delta of the minimum passes each group's weight to the position of
+	 * its minimum, which is selected by {@code indexOfMin} rather than {@code indexOfMax}, and
+	 * nothing to the other positions; with no weight, each minimum is weighted by one.
+	 */
+	@Test(timeout = 60000)
+	public void minOutputReduced() {
+		PackedCollection values = groups();
+		PackedCollection gradient = new PackedCollection(shape(GROUPS)).randnFill();
+		int[] argmin = minPositions(values.toArray());
+		double[] g = gradient.toArray();
+
+		double[] weighted = new double[GROUPS * GROUP_SIZE];
+		double[] unit = new double[GROUPS * GROUP_SIZE];
+		for (int r = 0; r < GROUPS; r++) {
+			weighted[r * GROUP_SIZE + argmin[r]] = g[r];
+			unit[r * GROUP_SIZE + argmin[r]] = 1.0;
+		}
+
+		CollectionProducer input = cp(values);
+		CollectionProducer min = min(input.traverse(1));
+		assertMatches("weighted", weighted, evaluate(min.delta(input, ReduceAxis.OUT, cp(gradient))));
+		assertMatches("unweighted", unit, evaluate(min.delta(input, ReduceAxis.OUT)));
+	}
+
+	/**
+	 * The output-reduced delta of the minimum of a function of the target is the gradient of
+	 * the selected element of that function, and agrees with contracting the full Jacobian of
+	 * the minimum. The values are positive, so squaring them keeps the position of each minimum.
+	 */
+	@Test(timeout = 60000)
+	public void minOutputReducedThroughInput() {
+		PackedCollection values = new PackedCollection(shape(GROUPS, GROUP_SIZE)).randFill();
+		PackedCollection gradient = new PackedCollection(shape(GROUPS)).randnFill();
+		double[] v = values.toArray();
+		int[] argmin = minPositions(v);
+		double[] g = gradient.toArray();
+
+		double[] expected = new double[GROUPS * GROUP_SIZE];
+		for (int r = 0; r < GROUPS; r++) {
+			int i = r * GROUP_SIZE + argmin[r];
+			expected[i] = g[r] * 2 * v[i];
+		}
+
+		CollectionProducer input = cp(values);
+		CollectionProducer min = min(input.multiply(input).traverse(1));
+		assertMatches("reduced", expected, evaluate(min.delta(input, ReduceAxis.OUT, cp(gradient))));
+		assertMatches("jacobian", expected, evaluate(jacobianGradient(min, input, cp(gradient))));
+	}
+
+	/**
+	 * The input-reduced delta of the minimum is the tangent of the element each minimum
+	 * selects, which differs from the element the maximum would select.
+	 */
+	@Test(timeout = 60000)
+	public void minInputReduced() {
+		PackedCollection values = groups();
+		PackedCollection tangent = new PackedCollection(shape(GROUPS, GROUP_SIZE)).randnFill();
+		double[] v = values.toArray();
+		int[] argmin = minPositions(v);
+		int[] argmax = maxPositions(v);
+		double[] t = tangent.toArray();
+
+		double[] expected = new double[GROUPS];
+		for (int r = 0; r < GROUPS; r++) {
+			Assert.assertNotEquals("group " + r + " minimum and maximum coincide", argmax[r], argmin[r]);
+			expected[r] = t[r * GROUP_SIZE + argmin[r]];
+		}
+
+		CollectionProducer input = cp(values);
+		CollectionProducer min = min(input.traverse(1));
+		assertMatches("tangent", expected, evaluate(min.delta(input, ReduceAxis.IN, cp(tangent))));
+	}
+
+	/**
 	 * The minimum mirrors the maximum: its full Jacobian is one at the position each minimum
 	 * selects and zero elsewhere, rather than an aggregation of the input's Jacobian.
 	 */
-	// TODO(review): add minOutputReduced/minInputReduced mirroring the max reduced-delta tests
 	@Test(timeout = 60000)
 	public void minJacobian() {
 		PackedCollection values = groups();
