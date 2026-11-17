@@ -493,4 +493,53 @@ public class TraversalPolicyTests extends TestSuiteBase {
 
 		Assert.assertEquals(0, new TraversalPolicy(4, 1).traverse(0).trim().getTraversalAxis());
 	}
+
+	/**
+	 * {@link TraversalPolicy#requireDimensions(String, int)} returns the same policy when the
+	 * dimension count matches, and otherwise throws a message naming the operation, the required
+	 * count and the shape, for fewer and for more dimensions alike.
+	 */
+	@Test(timeout = 10000)
+	public void requireDimensionsAcceptsOnlyTheRequiredCount() {
+		TraversalPolicy matrix = new TraversalPolicy(4, 3);
+		Assert.assertSame(matrix, matrix.requireDimensions("op", 2));
+
+		for (TraversalPolicy wrong : new TraversalPolicy[] {
+				new TraversalPolicy(12), new TraversalPolicy(2, 3, 2) }) {
+			try {
+				wrong.requireDimensions("op", 2);
+				Assert.fail("requireDimensions accepted " + wrong);
+			} catch (IllegalArgumentException expected) {
+				Assert.assertTrue(expected.getMessage(), expected.getMessage().startsWith("op expects a 2-dimensional"));
+				Assert.assertTrue(expected.getMessage(), expected.getMessage().contains(wrong.toString()));
+			}
+		}
+	}
+
+	/**
+	 * {@link TraversalPolicy#requireIntegerAddressable(String)} accepts a shape of exactly
+	 * {@link Integer#MAX_VALUE} elements, the largest whose every element offset is an exact
+	 * 32-bit integer, and rejects one element more, naming the operation, the size and the limit.
+	 */
+	@Test(timeout = 10000)
+	public void requireIntegerAddressableBoundary() {
+		TraversalPolicy largest = new TraversalPolicy(Integer.MAX_VALUE);
+		Assert.assertSame(largest, largest.requireIntegerAddressable("op"));
+
+		TraversalPolicy split = new TraversalPolicy(1, Integer.MAX_VALUE);
+		Assert.assertSame(split, split.requireIntegerAddressable("op"));
+
+		long tooMany = (long) Integer.MAX_VALUE + 1;
+		TraversalPolicy beyond = new TraversalPolicy(2, tooMany / 2);
+		Assert.assertEquals(tooMany, beyond.getTotalSizeLong());
+
+		try {
+			beyond.requireIntegerAddressable("op");
+			Assert.fail("requireIntegerAddressable accepted " + tooMany + " elements");
+		} catch (IllegalArgumentException expected) {
+			String message = expected.getMessage();
+			Assert.assertTrue(message, message.startsWith("op cannot address " + tooMany));
+			Assert.assertTrue(message, message.endsWith(String.valueOf(Integer.MAX_VALUE)));
+		}
+	}
 }
