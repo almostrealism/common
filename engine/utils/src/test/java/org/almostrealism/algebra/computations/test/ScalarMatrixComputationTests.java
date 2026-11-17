@@ -41,6 +41,15 @@ import java.util.function.Function;
 public class ScalarMatrixComputationTests extends TestSuiteBase {
 
 	/**
+	 * The perturbation step of the central differences. On a single-precision backend the
+	 * rounding error of a central difference is about {@code ulp(f) / (2 * step)}, which for the
+	 * inputs here exceeds the {@code 1e-3} relative tolerance once the step is as small as
+	 * {@code 1e-4}. At this step the estimate is exact for the linear negations and its truncation
+	 * error, {@code step^2 f''' / 6}, stays near {@code 1e-5} for the sigmoid and exponential.
+	 */
+	private static final double DIFFERENCE_STEP = 1e-2;
+
+	/**
 	 * The scalar matrix must put the scalar on every diagonal entry whether its shape traverses
 	 * axis 0 (the default for {@code shape(n, n)}) or axis 1.
 	 */
@@ -99,10 +108,13 @@ public class ScalarMatrixComputationTests extends TestSuiteBase {
 	}
 
 	/**
-	 * The Jacobian of {@code sigmoid(x)} is diagonal, carrying {@code s(x)(1 - s(x))}, and the
-	 * Jacobian of {@code exp(-x)} is diagonal carrying {@code -exp(-x)}. Both compose the identity
-	 * shortcut with an element-wise cofactor, so a corner-only identity would leave every entry but
-	 * {@code [0, 0]} zero.
+	 * The Jacobian of {@code sigmoid(x)} is diagonal, carrying {@code s(x)(1 - s(x))}; the Jacobian
+	 * of {@code sigmoid(-x)} is diagonal, carrying {@code -s(-x)(1 - s(-x))}; and the Jacobian of
+	 * {@code exp(-x)} is diagonal carrying {@code -exp(-x)}. The negated cases compose the
+	 * {@link ScalarMatrixComputation} produced by the identity shortcut of {@code minus()} with an
+	 * element-wise cofactor, so a corner-only scalar matrix would leave every entry but
+	 * {@code [0, 0]} zero. The un-negated sigmoid is kept as the reference the negated one is
+	 * checked against.
 	 */
 	@Test(timeout = 120000)
 	public void negationComposedWithUnaryHasFullDiagonalJacobian() {
@@ -113,9 +125,17 @@ public class ScalarMatrixComputationTests extends TestSuiteBase {
 		Evaluable<PackedCollection> sigmoidForward = sigmoid.get();
 		double[] sigmoidAnalytic = sigmoid.delta(cp(x)).evaluate().toArray();
 		double[] sigmoidNumeric = numericJacobian(x, n, sigmoidForward);
-		assertDiagonalJacobian("d sigmoid", n, sigmoidForward, sigmoidAnalytic);
+		assertSigmoidJacobian("d sigmoid", n, 1.0, sigmoidForward, sigmoidAnalytic);
 		assertGradientMatches("d sigmoid vs central differences", sigmoidNumeric, sigmoidAnalytic,
 				1e-3, 1e-3);
+
+		CollectionProducer sigmoidMinus = cp(x).minus().sigmoid();
+		Evaluable<PackedCollection> sigmoidMinusForward = sigmoidMinus.get();
+		double[] sigmoidMinusAnalytic = sigmoidMinus.delta(cp(x)).evaluate().toArray();
+		double[] sigmoidMinusNumeric = numericJacobian(x, n, sigmoidMinusForward);
+		assertSigmoidJacobian("d sigmoid(-x)", n, -1.0, sigmoidMinusForward, sigmoidMinusAnalytic);
+		assertGradientMatches("d sigmoid(-x) vs central differences", sigmoidMinusNumeric,
+				sigmoidMinusAnalytic, 1e-3, 1e-3);
 
 		CollectionProducer expMinus = cp(x).minus().exp();
 		Evaluable<PackedCollection> expForward = expMinus.get();
@@ -146,7 +166,8 @@ public class ScalarMatrixComputationTests extends TestSuiteBase {
 			assertEquals("d sum(-x*w) / d x[" + i + "]", -w.toDouble(i), analytic[i], 1e-5);
 		}
 
-		double[] numeric = centralDifferences(x, 1e-4, () -> loss.get().evaluate().toDouble(0));
+		Evaluable<PackedCollection> lossForward = loss.get();
+		double[] numeric = centralDifferences(x, DIFFERENCE_STEP, () -> lossForward.evaluate().toDouble(0));
 		assertGradientMatches("d sum(-x*w) vs central differences", numeric, analytic, 1e-3, 1e-3);
 	}
 
@@ -187,20 +208,22 @@ public class ScalarMatrixComputationTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Asserts that {@code analytic} is the diagonal Jacobian of a sigmoid: the diagonal carries
-	 * {@code s(x)(1 - s(x))} evaluated from the forward pass, and every off-diagonal entry is zero.
+	 * Asserts that {@code analytic} is the diagonal Jacobian of {@code sigmoid(sign * x)}: the
+	 * diagonal carries {@code sign * s(1 - s)}, where {@code s} is the forward output, and every
+	 * off-diagonal entry is zero.
 	 *
 	 * @param label    a description of the Jacobian, for the messages
 	 * @param n        the dimension of the square Jacobian
+	 * @param sign     the factor the sigmoid's argument applies to the input ({@code 1} or {@code -1})
 	 * @param forward  the forward sigmoid, read for its output on the diagonal
 	 * @param analytic the Jacobian to check, in row-major order
 	 */
-	private void assertDiagonalJacobian(String label, int n, Evaluable<PackedCollection> forward,
-										double[] analytic) {
+	private void assertSigmoidJacobian(String label, int n, double sign,
+									   Evaluable<PackedCollection> forward, double[] analytic) {
 		PackedCollection f = forward.evaluate();
 		for (int i = 0; i < n; i++) {
 			double sigma = f.toDouble(i);
-			double expected = sigma * (1.0 - sigma);
+			double expected = sign * sigma * (1.0 - sigma);
 			assertEquals(label + "[" + i + ", " + i + "]", expected, analytic[i * n + i], 1e-4);
 			for (int j = 0; j < n; j++) {
 				if (i != j) {
@@ -225,7 +248,7 @@ public class ScalarMatrixComputationTests extends TestSuiteBase {
 		double[] jacobian = new double[outputs * inputs];
 		for (int i = 0; i < outputs; i++) {
 			int row = i;
-			double[] column = centralDifferences(x, 1e-4, () -> forward.evaluate().toDouble(row));
+			double[] column = centralDifferences(x, DIFFERENCE_STEP, () -> forward.evaluate().toDouble(row));
 			for (int j = 0; j < inputs; j++) {
 				jacobian[i * inputs + j] = column[j];
 			}
