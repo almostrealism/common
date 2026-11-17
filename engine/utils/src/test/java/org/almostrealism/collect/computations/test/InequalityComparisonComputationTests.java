@@ -268,4 +268,74 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 		Assert.assertEquals(27.0, result.toDouble(7), 0.001);
 		Assert.assertEquals(28.0, result.toDouble(8), 0.001);
 	}
+
+	/**
+	 * Pins the sub-item broadcast of a comparison operand that is narrower than the output item
+	 * but divides it evenly. The condition is two values per row over a six-element branch, so
+	 * each condition value governs a contiguous group of three output channels: the first value
+	 * controls channels 0&ndash;2 and the second controls channels 3&ndash;5. This exercises the
+	 * general divisible branch of the comparison-operand index projection, beyond the per-row
+	 * scalar (operand size 1) case.
+	 */
+	@Test(timeout = 30000)
+	public void greaterThanBroadcastsSubItemConditionOverWiderBranches() {
+		Producer<PackedCollection> cond = v(shape(-1, 2), 0);
+		Producer<PackedCollection> trueBranch = v(shape(-1, 6), 1);
+		Producer<PackedCollection> falseBranch = v(shape(-1, 6), 2);
+
+		// 1 > 0 selects the true branch for channels 0-2; -1 > 0 is false for channels 3-5
+		PackedCollection condition = pack(1.0, -1.0).reshape(1, 2).traverse(1);
+
+		PackedCollection trueValues =
+				pack(10, 11, 12, 13, 14, 15).reshape(1, 6).traverse(1);
+		PackedCollection falseValues =
+				pack(20, 21, 22, 23, 24, 25).reshape(1, 6).traverse(1);
+		PackedCollection result = new PackedCollection(1, 6);
+
+		greaterThan(cond, c(0.0), trueBranch, falseBranch).get().into(result.each())
+				.evaluate(condition, trueValues, falseValues);
+
+		Assert.assertEquals(10.0, result.toDouble(0), 0.001);
+		Assert.assertEquals(11.0, result.toDouble(1), 0.001);
+		Assert.assertEquals(12.0, result.toDouble(2), 0.001);
+		Assert.assertEquals(23.0, result.toDouble(3), 0.001);
+		Assert.assertEquals(24.0, result.toDouble(4), 0.001);
+		Assert.assertEquals(25.0, result.toDouble(5), 0.001);
+	}
+
+	/**
+	 * Verifies that a comparison operand narrower than the output item but not dividing it evenly
+	 * is rejected with a fail-loud {@link IllegalArgumentException} rather than silently repeating
+	 * and dropping condition values. The condition is two values per row while the branches are a
+	 * three-element vector per row; two does not divide three, so there is no consistent broadcast
+	 * and the projection refuses the shape mismatch.
+	 */
+	@Test(timeout = 30000)
+	public void narrowerConditionNotDividingOutputItemIsRejected() {
+		Producer<PackedCollection> cond = v(shape(-1, 2), 0);
+		Producer<PackedCollection> trueBranch = v(shape(-1, 3), 1);
+		Producer<PackedCollection> falseBranch = v(shape(-1, 3), 2);
+
+		PackedCollection condition = pack(1.0, -1.0).reshape(1, 2).traverse(1);
+		PackedCollection trueValues = pack(10, 11, 12).reshape(1, 3).traverse(1);
+		PackedCollection falseValues = pack(20, 21, 22).reshape(1, 3).traverse(1);
+		PackedCollection result = new PackedCollection(1, 3);
+
+		try {
+			greaterThan(cond, c(0.0), trueBranch, falseBranch).get().into(result.each())
+					.evaluate(condition, trueValues, falseValues);
+			Assert.fail("A condition operand width that does not divide the output item should be rejected");
+		} catch (RuntimeException expected) {
+			// The fail-loud rejection surfaces as an IllegalArgumentException, wrapped in the
+			// HardwareException raised when the kernel fails to compile.
+			Throwable cause = expected;
+			while (cause != null && !(cause instanceof IllegalArgumentException)) {
+				cause = cause.getCause();
+			}
+			Assert.assertNotNull(
+					"Expected an IllegalArgumentException for the broadcast-incompatible operand width",
+					cause);
+			Assert.assertTrue(cause.getMessage().contains("broadcast-compatible"));
+		}
+	}
 }

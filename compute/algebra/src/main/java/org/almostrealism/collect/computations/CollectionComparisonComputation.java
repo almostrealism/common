@@ -217,10 +217,19 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 * scalar operands over a scalar output) the index is returned unchanged, so element-wise,
 	 * same-size, and non-batched selections are unaffected.</p>
 	 *
+	 * <p>Broadcasting only applies to shapes that are broadcast-compatible: the operand item size
+	 * must divide the output item size evenly, so each operand value governs a whole, equal-sized
+	 * group of output elements. A per-row scalar (operand size 1) and a sub-item operand whose
+	 * size divides the item are both valid. A narrower operand whose size does not divide the
+	 * output item (for example an item width of 2 over an output width of 3) has no consistent
+	 * broadcast and is rejected, rather than silently repeating and dropping condition values.</p>
+	 *
 	 * @param index         the output element index
 	 * @param inputPosition the input position of the comparison operand (1 for the left operand,
 	 *                      2 for the right operand), matching the {@code args} index
 	 * @return the index at which to read the comparison operand
+	 * @throws IllegalArgumentException if the operand item size is narrower than the output item
+	 *                                  but does not divide it evenly
 	 */
 	protected Expression<?> conditionIndex(Expression<?> index, int inputPosition) {
 		long outputSize = getShape().getSizeLong();
@@ -228,6 +237,13 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 
 		if (operandSize >= outputSize) {
 			return index;
+		}
+
+		if (operandSize <= 0 || outputSize % operandSize != 0) {
+			throw new IllegalArgumentException(
+					"Comparison operand item size " + operandSize +
+							" is not broadcast-compatible with output item size " + outputSize +
+							" (operand size must divide output size evenly)");
 		}
 
 		Expression<?> idx = index.toInt();
