@@ -40,6 +40,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.function.DoubleSupplier;
 
 /**
@@ -66,8 +67,10 @@ import java.util.function.DoubleSupplier;
  * <p>The backward pass is pinned against fourth-order finite differences
  * ({@link org.almostrealism.util.TestFeatures#extrapolatedDifferences}): the query/key normalizations
  * bend sharply on the scale of the step wherever a head row's features are nearly equal, which a
- * central difference misreads by more than the tolerance. Each of the five sections of the
- * fused projection, the output projection and the input must receive the gradient the forward pass
+ * central difference misreads by more than the tolerance. How sharply they bend depends on the draw,
+ * without bound, so no step serves every draw: the weights and inputs are drawn from a seeded source
+ * ({@link #SEED}), and the step is small enough for a draw whose row is as nearly constant as that of
+ * {@link #NEARLY_CONSTANT_ROW_SEED}. Each of the five sections of the fused projection, the output projection and the input must receive the gradient the forward pass
  * implies. The Java assembly read its keys, its values and its second map back from stores the branches
  * wrote, so the gradient never reached four of the five sections.</p>
  */
@@ -116,8 +119,32 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 	/** Agreement required between a framework computation and the double-precision host reference. */
 	private static final double HOST_TOLERANCE = 1e-4;
 
-	/** Smaller step of the fourth-order finite differences. */
-	private static final double FINITE_DIFFERENCE_STEP = 1e-2;
+	/**
+	 * Smaller step of the fourth-order finite differences. The error of the estimate grows as the
+	 * fourth power of the step where a normalized head row is nearly constant, and float32 rounding
+	 * of the loss grows as its inverse; at this step the first is below 0.2% of the gradient for a row
+	 * with a variance of 5e-4 ({@link #NEARLY_CONSTANT_ROW_SEED}) and the second below 0.1% of the
+	 * gradients compared here.
+	 */
+	private static final double FINITE_DIFFERENCE_STEP = 2e-3;
+
+	/** Seed of the random weights and inputs of every test. */
+	private static final long SEED = 31L;
+
+	/**
+	 * Seed whose weights and input give the second key section a nearly constant head row: at the
+	 * second position, the second head's row has a variance of about 5e-4. Its LayerNorm bends on the
+	 * scale of a step of 1e-2, where the finite differences missed the largest gradient, about 12.6, by
+	 * 9.7; the analytic gradient matched the derivative of the double-precision host reference.
+	 */
+	private static final long NEARLY_CONSTANT_ROW_SEED = 4679L;
+
+	/**
+	 * Source of every random weight and input of one test, in the order the test draws them: the fused
+	 * projection, the output projection, the query and key normalization weights and biases, and then
+	 * the test's sequences.
+	 */
+	private final Random random = new Random(SEED);
 
 	/** Agreement required with the finite differences, relative to the largest gradient compared. */
 	private static final double GRADIENT_TOLERANCE = 0.02;
@@ -185,7 +212,7 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		}
 
 		Weights w = new Weights(NormalizationType.LAYER, true, false);
-		PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
+		PackedCollection input = gaussian(shape(BATCH, SEQ_LEN, DIM));
 		double[] feature = run(w.feature(ProjectionFactory.dense(), null, lambda), input);
 		double[] assembly = run(w.javaAssembly(null, lambda), input);
 		double[] host = w.hostReference(input.doubleStream().toArray(), null, hostLambda);
@@ -204,8 +231,8 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 	@Test(timeout = 300000)
 	public void everyForwardPassAttendsOverItsOwnSequence() {
 		Weights w = new Weights(NormalizationType.LAYER, true, false);
-		PackedCollection first = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
-		PackedCollection second = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
+		PackedCollection first = gaussian(shape(BATCH, SEQ_LEN, DIM));
+		PackedCollection second = gaussian(shape(BATCH, SEQ_LEN, DIM));
 		double[] firstExpected = w.hostReference(first.doubleStream().toArray(), null, w.hostLambda());
 		double[] secondExpected = w.hostReference(second.doubleStream().toArray(), null, w.hostLambda());
 
@@ -240,7 +267,7 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		ProjectionFactory adapted = ProjectionFactory.lora(new AdapterConfig().rank(2).alpha(4.0)
 				.targets(AdapterConfig.TargetLayer.SELF_ATTENTION_QKV,
 						AdapterConfig.TargetLayer.SELF_ATTENTION_OUT), adapters);
-		PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
+		PackedCollection input = gaussian(shape(BATCH, SEQ_LEN, DIM));
 		double[] dense = run(w.feature(ProjectionFactory.dense(), null, w.lambda()), input);
 
 		try (CompiledModel compiled = compile(w.feature(adapted, null, w.lambda()))) {
@@ -272,11 +299,40 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 	 */
 	@Test(timeout = 900000)
 	public void everySectionOfTheProjectionReceivesItsGradient() {
+		assertSectionsReceiveTheirGradients(true, 0, 1, 2, 3, 4);
+	}
+
+	/**
+	 * The {@code K2} section of the fused projection receives its gradient where one of its head rows
+	 * is nearly constant, so that the key LayerNorm bends sharply: the weights and input of
+	 * {@link #NEARLY_CONSTANT_ROW_SEED}, for which a coarser step of the finite differences once missed
+	 * the largest gradient of that section. Only that section is swept, so the case costs a fifth of
+	 * the fused projection's finite differences rather than a second full sweep.
+	 */
+	@Test(timeout = 900000)
+	public void theKeySectionReceivesItsGradientWhereAKeyRowIsNearlyConstant() {
+		random.setSeed(NEARLY_CONSTANT_ROW_SEED);
+		assertSectionsReceiveTheirGradients(false, 2);
+	}
+
+	/**
+	 * Draws LayerNorm weights with biases, a partial rotation, an input and an output gradient from
+	 * {@link #random}, runs one backward pass through the attention with a padding mask, and checks the
+	 * gradient of each requested section of the fused projection, and optionally of the output
+	 * projection and of the input, against fourth-order finite differences of
+	 * {@code L = sum(output * G)}. Each section is perturbed through a view of the fused projection, so
+	 * the sections not requested cost nothing.
+	 *
+	 * @param projectionAndInput whether to check the output projection and the input as well
+	 * @param sections           the indices, in {@code [Q1, K1, K2, V, Q2]} order, of the sections of the
+	 *                           fused projection to check
+	 */
+	private void assertSectionsReceiveTheirGradients(boolean projectionAndInput, int... sections) {
 		Weights w = new Weights(NormalizationType.LAYER, true, false);
 		PackedCollection padding = validPrefix(PADDING_VALID);
 		TraversalPolicy sequenceShape = shape(BATCH, SEQ_LEN, DIM);
-		PackedCollection input = new PackedCollection(sequenceShape).randnFill();
-		PackedCollection outputGradient = new PackedCollection(sequenceShape).randnFill();
+		PackedCollection input = gaussian(sequenceShape);
+		PackedCollection outputGradient = gaussian(sequenceShape);
 
 		List<PackedCollection> recorded = new ArrayList<>();
 		Model model = new Model(sequenceShape, gradientRecorder(recorded));
@@ -290,18 +346,20 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 			Evaluable<PackedCollection> loss = multiply(cv(sequenceShape, 0), cv(sequenceShape, 1)).sum().get();
 			DoubleSupplier objective = () -> loss.evaluate(compiled.forward(input), outputGradient).toDouble();
 
-			double[] fusedNumeric = extrapolatedDifferences(w.qkv, FINITE_DIFFERENCE_STEP, objective);
-			String[] sections = { "Q1", "K1", "K2", "V", "Q2" };
+			String[] names = { "Q1", "K1", "K2", "V", "Q2" };
 			int sectionSize = DIM * DIM;
-			for (int s = 0; s < SECTIONS; s++) {
-				assertGradient(sections[s] + " section of the fused projection",
-						Arrays.copyOfRange(fusedNumeric, s * sectionSize, (s + 1) * sectionSize),
+			for (int s : sections) {
+				PackedCollection section = w.qkv.range(shape(sectionSize), s * sectionSize);
+				assertGradient(names[s] + " section of the fused projection",
+						extrapolatedDifferences(section, FINITE_DIFFERENCE_STEP, objective),
 						Arrays.copyOfRange(fusedGradient, s * sectionSize, (s + 1) * sectionSize));
 			}
 
-			assertGradient("output projection",
-					extrapolatedDifferences(w.out, FINITE_DIFFERENCE_STEP, objective), outputProjectionGradient);
-			assertGradient("input", extrapolatedDifferences(input, FINITE_DIFFERENCE_STEP, objective), inputGradient);
+			if (projectionAndInput) {
+				assertGradient("output projection",
+						extrapolatedDifferences(w.out, FINITE_DIFFERENCE_STEP, objective), outputProjectionGradient);
+				assertGradient("input", extrapolatedDifferences(input, FINITE_DIFFERENCE_STEP, objective), inputGradient);
+			}
 		}
 	}
 
@@ -359,8 +417,8 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		}
 
 		TraversalPolicy sequenceShape = shape(BATCH, SEQ_LEN, DIM);
-		PackedCollection input = new PackedCollection(sequenceShape).randnFill();
-		PackedCollection outputGradient = new PackedCollection(sequenceShape).randnFill();
+		PackedCollection input = gaussian(sequenceShape);
+		PackedCollection outputGradient = gaussian(sequenceShape);
 
 		List<PackedCollection> recorded = new ArrayList<>();
 		Model model = new Model(sequenceShape, gradientRecorder(recorded));
@@ -443,7 +501,7 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		Weights w = new Weights(qkNorm, biases, fullRotary);
 		PackedCollection padding = paddingValid == null ? null : validPrefix(paddingValid);
 		Producer<PackedCollection> paddingMask = padding == null ? null : cp(padding);
-		PackedCollection input = new PackedCollection(shape(BATCH, SEQ_LEN, DIM)).randnFill();
+		PackedCollection input = gaussian(shape(BATCH, SEQ_LEN, DIM));
 
 		double[] feature = run(w.feature(ProjectionFactory.dense(), paddingMask, w.lambda()), input);
 		double[] assembly = run(w.javaAssembly(paddingMask, w.lambda()), input);
@@ -588,8 +646,23 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 	 * @return the tensor
 	 */
 	private PackedCollection random(int... dims) {
-		PackedCollection value = new PackedCollection(shape(dims)).randnFill();
+		PackedCollection value = gaussian(shape(dims));
 		return cp(value).multiply(0.25).into(value.traverseEach()).evaluate();
+	}
+
+	/**
+	 * A new tensor of the given shape holding standard normal draws taken from {@link #random} in index
+	 * order. The generator is the host-drawn {@link org.almostrealism.collect.computations.Random}
+	 * itself rather than the one the {@code AR_RANDOM} setting selects, so a seed picks the same
+	 * values — including the nearly constant key row of {@link #NEARLY_CONSTANT_ROW_SEED} — whichever
+	 * implementation is configured.
+	 *
+	 * @param shape the shape of the tensor
+	 * @return the filled tensor
+	 */
+	private PackedCollection gaussian(TraversalPolicy shape) {
+		return new org.almostrealism.collect.computations.Random(shape, true, random)
+				.get().into(new PackedCollection(shape)).evaluate();
 	}
 
 	/**
@@ -630,9 +703,9 @@ public class DifferentialAttentionAssetTest extends TestSuiteBase
 		Weights(NormalizationType qkNorm, boolean biases, boolean fullRotary) {
 			this.qkNorm = qkNorm;
 			boolean normalized = qkNorm != null;
-			this.qNormWeight = normalized ? new PackedCollection(shape(DIM_HEAD)).randnFill() : null;
+			this.qNormWeight = normalized ? gaussian(shape(DIM_HEAD)) : null;
 			this.qNormBias = normalized && biases ? random(DIM_HEAD) : null;
-			this.kNormWeight = normalized ? new PackedCollection(shape(DIM_HEAD)).randnFill() : null;
+			this.kNormWeight = normalized ? gaussian(shape(DIM_HEAD)) : null;
 			this.kNormBias = normalized && biases ? random(DIM_HEAD) : null;
 			this.invFreq = fullRotary ? PackedCollection.of(1.0, 0.3) : PackedCollection.of(0.5);
 		}
