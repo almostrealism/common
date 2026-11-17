@@ -381,7 +381,7 @@ public class NativeMemoryProvider extends HardwareMemoryProvider<RAM> {
 	 */
 	private synchronized RAM allocateNow(int size) {
 		if (memoryUsed + (long) getNumberSize() * size > memoryMax) {
-			throw new HardwareException("Memory max reached");
+			throw memoryMaxReached("Memory max reached", (long) getNumberSize() * size, memoryUsed, memoryMax);
 		}
 
 		if (enableLargeAllocationLogging && size > (20 * 1024 * 1024)) {
