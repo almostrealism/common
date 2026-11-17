@@ -24,7 +24,6 @@ import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -284,21 +283,37 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests dynamic sum operation.
+	 * Tests a reduction declared over one item, evaluated into a caller-supplied
+	 * destination over a batch of several items.
 	 */
 	@Test(timeout = 30000)
-	@TestProperties(knownIssue = true)
 	public void dynamicSum() {
+		verifyDynamicSum(3);
+	}
 
+	/**
+	 * Tests the same reduction over a batch of a single item, where the batched
+	 * kernel size coincides with the declared single-item count.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumBatchOfOne() {
+		verifyDynamicSum(1);
+	}
+
+	/**
+	 * Evaluates {@code sum} of each {@code (c, 1)} group of a {@code (count, r, c, 1)} batch
+	 * into a caller-supplied {@code (count, r, 1)} destination and checks every output.
+	 *
+	 * @param count the number of items in the batch
+	 */
+	private void verifyDynamicSum(int count) {
 		int r = 4;
 		int c = 2;
-		int count = 3;
 
 		PackedCollection input = new PackedCollection(shape(count, r, c, 1)).randFill();
 		PackedCollection output = new PackedCollection(shape(count, r, 1));
 
 		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0).traverse(1).sum().get();
-//		PackedCollection output = sum.evaluate(input.traverse(1));
 		sum.into(output.traverse(2)).evaluate(input.traverse(1));
 
 		Assert.assertEquals(count, output.getShape().length(0));
@@ -314,6 +329,118 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 
 				assertEquals(total, output.valueAt(i, j, 0));
 			}
+		}
+	}
+
+	/**
+	 * Tests the reduction without supplying a destination. A fixed-count process allocates its
+	 * own result at its declared shape (see {@code ProducerHookTest#forKernelLength}), which does
+	 * not grow with the batch, so the no-destination form reduces the first item only. Batching a
+	 * fixed-count reduction requires a caller-supplied destination of the batched size (see
+	 * {@link #dynamicSum()}); this test pins the no-destination contract so the two forms are not
+	 * confused.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumNoDestination() {
+		int r = 4;
+		int c = 2;
+		int count = 3;
+
+		PackedCollection input = new PackedCollection(shape(count, r, c, 1)).randFill();
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0).traverse(1).sum().get();
+		PackedCollection output = sum.evaluate(input.traverse(1));
+
+		Assert.assertEquals(r, output.getShape().getCountLong());
+
+		for (int j = 0; j < r; j++) {
+			double total = 0.0;
+			for (int k = 0; k < c; k++) {
+				total += input.valueAt(0, j, k, 0);
+			}
+
+			assertEquals(total, output.valueAt(j, 0));
+		}
+	}
+
+	/**
+	 * Tests a maximum reduction declared over one item, evaluated into a caller-supplied
+	 * destination over a batch of several items, exercising the same batched-count path
+	 * as {@link #dynamicSum()} through a different reduction.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicMax() {
+		int r = 4;
+		int c = 3;
+		int count = 3;
+
+		PackedCollection input = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(count, r, 1));
+
+		Evaluable<PackedCollection> max = cv(shape(r, c, 1), 0).traverse(1).max().get();
+		max.into(output.traverse(2)).evaluate(input.traverse(1));
+
+		for (int i = 0; i < count; i++) {
+			for (int j = 0; j < r; j++) {
+				double expected = input.valueAt(i, j, 0, 0);
+				for (int k = 1; k < c; k++) {
+					expected = Math.max(expected, input.valueAt(i, j, k, 0));
+				}
+
+				assertEquals(expected, output.valueAt(i, j, 0));
+			}
+		}
+	}
+
+	/**
+	 * Tests a mean reduction declared over one item, evaluated into a caller-supplied
+	 * destination over a batch of several items.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicMean() {
+		int r = 4;
+		int c = 2;
+		int count = 3;
+
+		PackedCollection input = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(count, r, 1));
+
+		Evaluable<PackedCollection> mean = cv(shape(r, c, 1), 0).traverse(1).mean().get();
+		mean.into(output.traverse(2)).evaluate(input.traverse(1));
+
+		for (int i = 0; i < count; i++) {
+			for (int j = 0; j < r; j++) {
+				double total = 0.0;
+				for (int k = 0; k < c; k++) {
+					total += input.valueAt(i, j, k, 0);
+				}
+
+				assertEquals(total / c, output.valueAt(i, j, 0));
+			}
+		}
+	}
+
+	/**
+	 * Tests that a destination whose count is neither the batched kernel size nor the
+	 * total output size is still rejected, so the batched path does not admit a
+	 * genuinely mismatched destination.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumRejectsWrongDestination() {
+		int r = 4;
+		int c = 2;
+		int count = 3;
+
+		PackedCollection input = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection wrong = new PackedCollection(shape(count * r + 1, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0).traverse(1).sum().get();
+
+		try {
+			sum.into(wrong.traverse(1)).evaluate(input.traverse(1));
+			Assert.fail("Expected a mismatched destination to be rejected");
+		} catch (IllegalArgumentException expected) {
+			// The destination count must match the batched kernel size
 		}
 	}
 
