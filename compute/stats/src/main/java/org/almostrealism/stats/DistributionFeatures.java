@@ -28,8 +28,8 @@ import java.util.Random;
  * <p>This interface extends {@link CollectionFeatures} to provide utilities for:</p>
  * <ul>
  *   <li>Sampling from discrete probability distributions</li>
- *   <li>Computing softmax transformations</li>
- *   <li>Statistical operations on packed collections</li>
+ *   <li>Computing the softmax of a collection of logits, and a masked variant that treats
+ *       zero-valued elements as padding</li>
  * </ul>
  *
  * <h2>Discrete Sampling</h2>
@@ -46,12 +46,15 @@ import java.util.Random;
  *
  * <h2>Softmax</h2>
  * <pre>{@code
- * // Convert logits to probabilities
- * CollectionProducer<?> logits = ...;
- * CollectionProducer<?> probs = features.softmax(logits);
+ * // Convert logits to probabilities: exp(x_i) / sum(exp(x_j)) for every logit, including 0.0
+ * CollectionProducer logits = ...;
+ * CollectionProducer probs = features.softmax(logits);
  *
- * // Without max subtraction (less numerically stable)
- * CollectionProducer<?> probs = features.softmax(logits, false);
+ * // Without max subtraction (same result, but can overflow for large logits)
+ * CollectionProducer unshifted = features.softmax(logits, false);
+ *
+ * // Elements equal to exactly 0.0 are padding: they receive probability 0
+ * CollectionProducer masked = features.softmaxIgnoreZero(logits, true);
  * }</pre>
  *
  * <p>Like all {@code Features} interfaces, this is a mixin: a type that needs these
@@ -102,42 +105,73 @@ public interface DistributionFeatures extends CollectionFeatures {
 	}
 
 	/**
-	 * Applies the softmax function to convert logits to probabilities.
-	 * Uses max subtraction for numerical stability.
+	 * Applies the softmax function to convert logits to probabilities, subtracting the
+	 * maximum logit before exponentiation for numerical stability.
 	 *
-	 * <p>The softmax function is defined as: softmax(x_i) = exp(x_i) / sum(exp(x_j))</p>
-	 *
-	 * <p>This method subtracts the maximum value before exponentiation to prevent
-	 * numerical overflow, a standard trick for stable softmax computation.</p>
+	 * <p>The result is {@code softmax(x_i) = exp(x_i) / sum(exp(x_j))} for every finite
+	 * logit, including {@code 0.0}. Subtracting {@code max(x)} from every logit leaves the
+	 * result unchanged mathematically but keeps every exponent at or below zero, which
+	 * prevents overflow for large logits.</p>
 	 *
 	 * @param <T> the collection type
 	 * @param input the input logits
 	 * @return a producer that computes the softmax probabilities
+	 * @see #softmaxIgnoreZero(CollectionProducer, boolean)
 	 */
 	default <T extends PackedCollection> CollectionProducer softmax(CollectionProducer input) {
 		return softmax(input, true);
 	}
 
 	/**
-	 * Applies the softmax function to convert logits to probabilities.
+	 * Applies the softmax function {@code exp(x_i) / sum(exp(x_j))} to convert logits to
+	 * probabilities. Every element of the input, including one equal to {@code 0.0}, is a
+	 * logit that takes part in the distribution. Each item at the traversal axis of the
+	 * input (for example each row of {@code traverse(1, matrix)}) is normalized on its own.
 	 *
 	 * @param <T> the collection type
 	 * @param input the input logits
-	 * @param subtractMax if true, subtracts the max value before exp for numerical stability
+	 * @param subtractMax if true, subtracts the maximum logit before exponentiation, which
+	 *                    leaves the result unchanged but prevents overflow for large logits
 	 * @return a producer that computes the softmax probabilities
+	 * @see #softmaxIgnoreZero(CollectionProducer, boolean)
 	 */
 	default <T extends PackedCollection> CollectionProducer softmax(CollectionProducer input, boolean subtractMax) {
 		int size = shape(input).getSize();
-		CollectionProducer o = input;
-
+		CollectionProducer o = input.traverse();
 		if (subtractMax) {
-			o = o.max();
-			o = o.expand(size);
-			o = input.traverse().subtractIgnoreZero(o);
+			o = o.subtract(input.max().expand(size));
+		}
+
+		o = o.exp().consolidate();
+		return o.divide(o.sum().expand(size));
+	}
+
+	/**
+	 * Applies a softmax in which every input element equal to exactly {@code 0.0} is treated
+	 * as absent (padding) rather than as a logit: such an element receives probability
+	 * {@code 0} and is excluded from the normalizing sum, so the remaining elements form the
+	 * distribution on their own.
+	 *
+	 * <p>This is built from {@code subtractIgnoreZero} and {@code expIgnoreZero}. Because the
+	 * mask is the value {@code 0.0} itself, a genuine logit of {@code 0.0} cannot be
+	 * represented and is masked as well; use {@link #softmax(CollectionProducer, boolean)}
+	 * for an ordinary softmax. When {@code subtractMax} is true the maximum is taken over
+	 * every element, padding included, so for a row whose remaining logits are all negative
+	 * the subtracted value is {@code 0.0}.</p>
+	 *
+	 * @param <T> the collection type
+	 * @param input the input logits, with {@code 0.0} marking absent elements
+	 * @param subtractMax if true, subtracts the maximum element before exponentiation
+	 * @return a producer that computes the masked softmax probabilities
+	 */
+	default <T extends PackedCollection> CollectionProducer softmaxIgnoreZero(CollectionProducer input, boolean subtractMax) {
+		int size = shape(input).getSize();
+		CollectionProducer o = input.traverse();
+		if (subtractMax) {
+			o = o.subtractIgnoreZero(input.max().expand(size));
 		}
 
 		o = o.expIgnoreZero().consolidate();
-		o = o.divide(o.sum().expand(size));
-		return o;
+		return o.divide(o.sum().expand(size));
 	}
 }
