@@ -67,6 +67,18 @@ Volume=/opt/rocm:/opt/rocm:ro
 # The workflow points AR_RINGS_LIBRARY / AR_RINGS_PATTERNS at this mount.
 Volume=/srv/ar-ci/music:/opt/ar-samples:ro
 
+# Persistent, shared Maven dependency cache. Every runner instance mounts this
+# named volume and uses its own <runner> subdirectory (the select-maven-repo
+# action), so the plugin and dependency set resolved once survives the ephemeral
+# containers and is reused instead of re-downloaded from Maven Central on every
+# job — the fix for the Central 429 rate-limit failures. podman auto-creates the
+# named volume; the shared image creates /opt/ar-maven-cache owned by the runner
+# user so the rootless container can write to the fresh volume. Remove it
+# (`podman volume rm ar-ci-cl-m2`) to force a cold rebuild of the cache; a cold
+# cache resolves correctly, only slower. See "Maven dependency caching" in
+# tools/ci/README.md.
+Volume=ar-ci-cl-m2:/opt/ar-maven-cache
+
 # Credentials and runner configuration, installed from .env by
 # install-runner.sh. Kept out of this file so it stays committable.
 EnvironmentFile=%h/.config/ar-ci-cl/runner.env
