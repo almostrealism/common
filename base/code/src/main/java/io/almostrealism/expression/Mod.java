@@ -400,16 +400,22 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Writing the modulo as {@code u - m * floor(u / m)}, away from the integer boundaries
-	 * of {@code u / m} (where the remainder steps) its partial derivatives are {@code 1} with
-	 * respect to the dividend and {@code -floor(u / m)} with respect to the modulus, so the
-	 * chain rule gives {@code du/dx - floor(u / m) * dm/dx}. When the modulus does not depend
-	 * on the target its derivative is zero and this reduces to {@code du/dx}.</p>
+	 * <p>Writing the modulo as {@code u - m * q}, where {@code q} is the integer quotient the
+	 * forward operation uses, away from the points where {@code q} steps its partial
+	 * derivatives are {@code 1} with respect to the dividend and {@code -q} with respect to the
+	 * modulus, so the chain rule gives {@code du/dx - q * dm/dx}. The quotient is recovered as
+	 * {@code (u - (u mod m)) / m} from this expression itself, so it always matches the forward
+	 * semantics: truncation toward zero for the floating-point {@code fmod}, and flooring for
+	 * {@link LanguageOperations#floorMod}. When the modulus does not depend on the target its
+	 * derivative is zero and this reduces to {@code du/dx}.</p>
+	 *
+	 * <p>Like {@link Max#delta(CollectionExpression)}, this differentiates the operands
+	 * directly, so it is only correct when they are raw inputs rather than references to
+	 * composite sub-computations (for example {@code (2x) mod 3}); that limitation is tracked
+	 * as a follow-up for the chain rule across computation references.</p>
 	 */
 	@Override
 	public CollectionExpression<?> delta(CollectionExpression<?> target) {
-		// TODO(review): like Max.delta, operands that are composite sub-computations (e.g. (2x) mod 3)
-		// TODO(review): yield incorrect off-diagonal Jacobian entries; correct only for raw operands.
 		Expression<?> dividend = getLeft();
 		Expression<?> divisor = getRight();
 
@@ -419,10 +425,10 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		}
 
 		CollectionExpression<?> divisorDelta = divisor.delta(target);
-		Expression<?> quotientFloor = Floor.of(dividend.divide(divisor));
+		Expression<?> quotient = dividend.subtract(this).divide(divisor);
 		return CollectionExpression.create(target.getShape(), idx ->
 				dividendDelta.getValueAt(idx).subtract(
-						quotientFloor.multiply(divisorDelta.getValueAt(idx))));
+						quotient.multiply(divisorDelta.getValueAt(idx))));
 	}
 
 	/**

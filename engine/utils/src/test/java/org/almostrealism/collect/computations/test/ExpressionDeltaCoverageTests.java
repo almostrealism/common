@@ -150,6 +150,21 @@ public class ExpressionDeltaCoverageTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests d/dx[u mod x] for negative (and mixed-sign) dividends. The floating-point remainder
+	 * truncates its quotient toward zero, so the modulus term of the derivative is
+	 * {@code -trunc(u / x)}, which differs by one from {@code -floor(u / x)} whenever
+	 * {@code u / x} is negative. Evaluation points avoid the boundaries where {@code u / x}
+	 * crosses an integer.
+	 */
+	@Test(timeout = 120000)
+	public void moduloNegativeDividendDelta() {
+		PackedCollection dividend = pack(-7.0, -1.5, 4.2, -4.2);
+		assertDeltaMatchesCentralDifference("u mod x (negative u)",
+				x -> mod(cp(dividend), x),
+				pack(1.3, 2.1, 2.3, 2.3));
+	}
+
+	/**
 	 * Tests d/dx[floor(x)], which is zero everywhere it is differentiable. Evaluation points are
 	 * non-integers so the floor does not step between the perturbed samples.
 	 */
