@@ -108,13 +108,22 @@ public class ScalarMatrixComputation extends MatrixExpressionComputation {
 	 * Generates the expression that creates the scalar matrix.
 	 * Creates a diagonal matrix with the scalar value repeated on the diagonal.
 	 *
+	 * <p>The diagonal is built over the shape traversed at axis 1, so that each row is one
+	 * item of the position shape and the per-row diagonal width matches the kernel's local
+	 * extent. This is the same normalization {@link IdentityMatrixComputation} applies, and it
+	 * is required regardless of the traversal axis the output {@link #getShape() shape} carries:
+	 * with the shape traversed at axis 0 (as when this computation is produced for the Jacobian
+	 * of a negated one-dimensional input) the position shape would otherwise span the whole
+	 * matrix, and {@link DiagonalCollectionExpression#uniqueNonZeroOffset} would collapse every
+	 * row's single non-zero onto the {@code [0, 0]} entry.</p>
+	 *
 	 * @param args  traversable expressions [this, scalar_value]
 	 * @return the collection expression for the scalar matrix
 	 */
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		ConstantCollectionExpression scalar = new ConstantCollectionExpression(shape(1), args[1].getValueAt(e(0)));
-		return new DiagonalCollectionExpression(getShape(), scalar);
+		return new DiagonalCollectionExpression(getShape().traverse(1), scalar);
 	}
 
 	/**
