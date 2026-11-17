@@ -1031,20 +1031,41 @@ public class Scope<T> extends ArrayList<Scope<T>>
 
 	/**
 	 * Generates a new scope with the given children while preserving this scope's configuration.
-	 * <p>Copies the name, metadata, reference index, and compute requirements to the new scope.</p>
+	 * <p>The new instance is created by {@link #createGenerated()}, which carries this scope's
+	 * name, metadata and any subclass-specific state. This method then copies the configuration
+	 * every scope shares — the reference index, compute requirements and lane count — onto it,
+	 * and appends the given children.</p>
 	 *
 	 * @param children the child scopes to include in the generated scope
 	 * @return a new scope with the specified children
 	 */
 	@Override
 	public Parent<Scope<T>> generate(List<Scope<T>> children) {
-		Scope<T> scope = new Scope<>(getName(), getMetadata());
+		Scope<T> scope = createGenerated();
 		scope.refIdx = refIdx;
-
 		scope.setComputeRequirements(getComputeRequirements());
 		scope.setLaneCount(getLaneCount());
 		scope.getChildren().addAll(children);
 		return scope;
+	}
+
+	/**
+	 * Creates an empty scope of this scope's own type to receive the children and configuration
+	 * copied by {@link #generate(List)}. The returned scope carries this scope's
+	 * {@link #getName() name}, {@link #getMetadata() metadata} and any state particular to the
+	 * subclass, such as a {@link Repeated} loop index; it does not carry the reference index,
+	 * {@link #getComputeRequirements() compute requirements} or {@link #getLaneCount() lane count},
+	 * which {@link #generate(List)} copies uniformly onto whatever this returns.
+	 *
+	 * <p>A subclass overrides only this method, so the shared configuration is copied in one
+	 * place and a subclass cannot omit part of it — as the reference index and compute
+	 * requirements were once omitted by the subclasses that supplied their own {@code generate}.</p>
+	 *
+	 * @return a new empty scope of this scope's type carrying its name, metadata and
+	 *         subclass-specific state
+	 */
+	protected Scope<T> createGenerated() {
+		return new Scope<>(getName(), getMetadata());
 	}
 
 	/**

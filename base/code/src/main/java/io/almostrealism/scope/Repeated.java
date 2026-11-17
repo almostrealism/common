@@ -915,17 +915,15 @@ public class Repeated<T> extends Scope<T> {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Creates a new {@link Repeated} scope with the same name, metadata, index,
-	 * compute requirements and lane count, then populates it with the provided child
-	 * scopes.</p>
+	 * <p>Creates an empty {@link Repeated} scope carrying this loop's name, metadata and
+	 * {@link #getIndex() index}. {@link Scope#generate(List)} copies the reference index,
+	 * compute requirements and lane count onto it.</p>
 	 */
 	@Override
-	public Repeated<T> generate(List<Scope<T>> children) {
-		Repeated<T> scope = getMetadata() == null ? new Repeated<>(getName()) : new Repeated<>(getName(), getMetadata());
+	protected Scope<T> createGenerated() {
+		Repeated<T> scope = getMetadata() == null ?
+				new Repeated<>(getName()) : new Repeated<>(getName(), getMetadata());
 		scope.setIndex(getIndex());
-		scope.setComputeRequirements(getComputeRequirements());
-		scope.setLaneCount(getLaneCount());
-		scope.getChildren().addAll(children);
 		return scope;
 	}
 
