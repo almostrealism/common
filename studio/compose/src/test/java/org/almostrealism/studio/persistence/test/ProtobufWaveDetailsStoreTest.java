@@ -20,6 +20,7 @@ import org.almostrealism.audio.data.WaveDetails;
 import org.almostrealism.audio.data.WaveFeatures;
 import org.almostrealism.audio.data.WaveDetailsStore;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.persist.index.ProtobufDiskStore;
 import org.almostrealism.studio.persistence.ProtobufWaveDetailsStore;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -172,6 +173,50 @@ public class ProtobufWaveDetailsStoreTest extends TestSuiteBase {
 			Assert.assertTrue("rebuilt index holds an m1 record", reopened.hasEmbedding("b"));
 		} finally {
 			reopened.close();
+		}
+	}
+
+	/**
+	 * An automatic batch flush makes records durable without saving the
+	 * nearest-neighbor index. When the process ends before the next full save,
+	 * the reopened store holds those records complete for the model, but the
+	 * index on disk predates them and nothing re-puts them. Declaring the model
+	 * on the reopened store must index them alongside the records the saved
+	 * index already held.
+	 *
+	 * @throws IOException if the store directory cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void autoFlushedRecordsAreIndexedAfterReopen() throws IOException {
+		Path tempDir = Files.createTempDirectory("protobuf-wave-store-autoflush");
+
+		// A one-byte batch target makes every put flush its batch automatically.
+		ProtobufWaveDetailsStore interrupted = new ProtobufWaveDetailsStore(tempDir.toFile(),
+				ProtobufDiskStore.DEFAULT_MAX_MEMORY_BYTES, 1);
+		ProtobufWaveDetailsStore reopened = null;
+
+		try {
+			putWithEmbedding(interrupted, detailsFor("a", "m1", 1.0));
+			interrupted.flush();
+
+			putWithEmbedding(interrupted, detailsFor("b", "m1", 2.0));
+			putWithEmbedding(interrupted, detailsFor("c", "m1", 3.0));
+			interrupted.put("d", detailsFor("d", "m2", 4.0));
+
+			// The process ends here: no flush or close follows the automatic flushes.
+			reopened = new ProtobufWaveDetailsStore(tempDir.toFile());
+			Assert.assertEquals("automatically flushed records are durable", 4, reopened.size());
+			Assert.assertEquals("the saved index predates them", 1, reopened.indexedEmbeddingCount());
+
+			reopened.setEmbeddingModel("m1");
+			Assert.assertEquals("every record complete for the model is indexed",
+					3, reopened.indexedEmbeddingCount());
+			Assert.assertTrue(reopened.hasEmbedding("b"));
+			Assert.assertTrue(reopened.hasEmbedding("c"));
+			Assert.assertFalse("a record without the model's features stays out", reopened.hasEmbedding("d"));
+		} finally {
+			if (reopened != null) reopened.close();
+			interrupted.close();
 		}
 	}
 
