@@ -40,7 +40,6 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 	 * Tests the highest rank operation.
 	 */
 	@Test(timeout = 10000)
-	@TestProperties(knownIssue = true)
 	public void highestRank() {
 
 		IntStream.range(0, 5).forEach(i -> {
