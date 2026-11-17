@@ -1,3 +1,10 @@
+---
+status: proposed
+created: 2026-11-17
+closed:
+tracker: []
+---
+
 # Survey: how element-wise operations reconcile operands of different sizes
 
 **Status:** investigation only. No production code is changed by the branch that adds this
