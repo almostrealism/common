@@ -64,12 +64,14 @@ import java.util.logging.Logger;
  * <p>The store may be used from several threads, for example one that adds
  * records while another periodically flushes. Every operation on the records
  * (the pending batch, the record index and the batch cache) holds this
- * store's monitor. The vector index is guarded by a separate lock, which is
- * only ever acquired after the store's monitor and never before it. A record
- * stored with its vector holds both, so the pair is replaced atomically;
- * {@link #insertEmbedding}, search and the vector-index save on
- * {@link #flush()} take only the vector-index lock and do not block record
- * access. {@link #close()} holds both until everything is persisted.
+ * store's monitor. The vector index is guarded by a separate lock. The
+ * lock-order rule is monitor-then-vector-lock: an operation that needs both —
+ * a record stored together with its vector, and {@link #close()} — acquires the
+ * store's monitor first and then the vector-index lock, never the reverse, so
+ * the record and its vector are replaced atomically and persisted together.
+ * Vector-only operations ({@link #setIndexModel}, {@link #insertEmbedding},
+ * search, and the vector-index save on {@link #flush()}) take the vector-index
+ * lock alone, without the store's monitor, and so do not block record access.
  * {@link #scan} and {@link #pairwiseScan} hold the monitor only while they
  * load each batch, not while the visitor runs.</p>
  *
