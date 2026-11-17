@@ -232,6 +232,47 @@ public class LeafInternTableTests extends TestSuiteBase implements ExpressionFea
 	}
 
 	/**
+	 * The strict {@link KernelIndex} table honours the same cap as the primary
+	 * table: once full it stops adding entries but still returns an existing
+	 * canonical. Exercises the bounded-degradation path on the secondary table
+	 * directly through {@link LeafInternTable#canonical(Expression)}, which the
+	 * primary-table cap test does not reach.
+	 */
+	@Test(timeout = 10000)
+	public void kernelIndexTableRespectsMaxSizeCap() {
+		ScopeSettings.enableLeafInterning = true;
+		int previousMax = ScopeSettings.maxLeafInternTableSize;
+		ScopeSettings.maxLeafInternTableSize = 1;
+
+		try {
+			// An axis-0 index fills the strict KernelIndex table to its cap of 1.
+			KernelIndex firstAxis = new KernelIndex(null, 0);
+			Expression<?> firstCanonical = LeafInternTable.canonical(firstAxis);
+			Assert.assertSame("first KernelIndex becomes its own canonical",
+					firstAxis, firstCanonical);
+
+			// A second axis-0 index (same strict key) resolves to the stored canonical.
+			Expression<?> repeat = LeafInternTable.canonical(new KernelIndex(null, 0));
+			Assert.assertSame("within-cap KernelIndex canonical still resolves",
+					firstCanonical, repeat);
+
+			// A distinct axis cannot be added once the table is full, so two
+			// axis-1 indices return themselves rather than collapsing to a shared
+			// canonical.
+			KernelIndex overCapA = new KernelIndex(null, 1);
+			KernelIndex overCapB = new KernelIndex(null, 1);
+			Expression<?> canonA = LeafInternTable.canonical(overCapA);
+			Expression<?> canonB = LeafInternTable.canonical(overCapB);
+			Assert.assertSame("over-cap KernelIndex returns the input unchanged",
+					overCapA, canonA);
+			Assert.assertNotSame("over-cap KernelIndices must not be interned together",
+					canonA, canonB);
+		} finally {
+			ScopeSettings.maxLeafInternTableSize = previousMax;
+		}
+	}
+
+	/**
 	 * Picks the first child that is an {@link IntegerConstant}. Used by tests
 	 * that need to fish the interned leaf back out of a parent's children list
 	 * without depending on a specific ordering. Restricted to
