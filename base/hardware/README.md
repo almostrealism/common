@@ -1120,10 +1120,10 @@ a 552 MB FP32 matrix), a step took 836 microseconds instead of 3,211 on an M1 Ul
 `MetalCommandRunner` orders a dispatch after one in an earlier command buffer by encoding a GPU
 wait for that dispatch's timeline value. It does so only while the earlier buffer may still be
 running: once a host wait has seen the buffer complete and drained it, the dependency is
-honored with no command at all. A
-wait for a value already reached does not hold the GPU back, but encoded between two dispatches
-it splits the buffer's work. On an M1 Ultra, a buffer of 32 dependent single-thread kernels took
-about 350 microseconds to commit and complete, and about 815 with one such wait in its middle.
+honored with no command at all. A wait for a value already reached does not hold the GPU back,
+but encoded between two dispatches it splits the buffer's work. On an M1 Ultra, a buffer of 32
+dependent single-thread kernels took about 350 microseconds to commit and complete, and about
+815 with one such wait in its middle.
 
 Every loop that waits once per step and chains its next step on the last completion
 (`ModelOptimizer` is one) used to pay that in every step, for each dependency of the new step on

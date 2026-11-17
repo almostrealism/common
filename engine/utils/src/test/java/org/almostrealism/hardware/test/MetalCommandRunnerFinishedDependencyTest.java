@@ -166,6 +166,55 @@ public class MetalCommandRunnerFinishedDependencyTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A dependency on a drained dispatch is honored without a wait even while a later buffer is
+	 * still undrained: the drained dispatch's value lies below the first value of the oldest
+	 * closed buffer, here one held back from the GPU by an unsignaled host-signaled bridge.
+	 */
+	@Test(timeout = 60000)
+	public void dependentOfDrainedDispatchEncodesNoWaitBehindUndrainedBuffer() {
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
+		MetalCommandRunner.enableHostSignaledBridges = true;
+		MetalCommandRunner runner = new MetalCommandRunner(metal.getMtlQueue());
+		DefaultLatchSemaphore gate = new DefaultLatchSemaphore((Semaphore) null, 1);
+		DefaultLatchSemaphore secondGate = new DefaultLatchSemaphore((Semaphore) null, 1);
+
+		try {
+			MetalSemaphore drained = runner.submit(null, NOTHING, null, null);
+			drained.waitFor();
+
+			MetalSemaphore gated = runner.submit(null, NOTHING, gate, null);
+
+			// A second bridged dispatch closes the gated buffer, which stays undrained
+			MetalSemaphore other = runner.submit(null, NOTHING, secondGate, null);
+			Assert.assertNotSame(gated.getCommandBuffer(), other.getCommandBuffer());
+			Assert.assertTrue(drained.getValue() < gated.getValue());
+
+			long waits = runner.getOrderingWaitCount();
+			long finished = runner.getFinishedDependencyCount();
+
+			MetalSemaphore dependent = runner.submit(null, NOTHING, drained, null);
+			Assert.assertSame(other.getCommandBuffer(), dependent.getCommandBuffer());
+			Assert.assertEquals(waits, runner.getOrderingWaitCount());
+			Assert.assertEquals(finished + 1, runner.getFinishedDependencyCount());
+
+			gate.countDown();
+			secondGate.countDown();
+			dependent.waitFor();
+		} finally {
+			gate.countDown();
+			secondGate.countDown();
+			runner.destroy();
+			MetalCommandRunner.enableHostSignaledBridges = bridges;
+		}
+	}
+
+	/**
 	 * A kernel chained on a copy that a host wait has already completed reads the copy's result,
 	 * through the context's own runner, with no wait encoded for the copy.
 	 */
