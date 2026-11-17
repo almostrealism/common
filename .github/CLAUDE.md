@@ -512,7 +512,7 @@ than its declared `total_count` counts one crash too, because an omitted matrix
 run (a crashed `test-media-cl (5)`) is invisible to id-level accounting while
 another run of the same job is present. The test step is identified
 by "test(s)" in its name alone; "Maven" is not a marker, because the accelerator
-lanes' "Isolate Maven repository per runner" setup step runs before their
+lanes' "Select Maven repository" setup step runs before their
 artifact download and restore.
 `test-flowtree` originally had no `needs.test-flowtree.result` check here at
 all — back when one job owned every prompt, a `test-flowtree` failure fell
@@ -704,8 +704,10 @@ own `mvn install -DskipTests` — the three `tools` policy checks,
 - Jobs run `mvn test -pl <module>` with no `-am`, so Maven takes every other
   module from the local repository. "Download build artifacts" fetches
   `build`'s jars into `runner.temp`, and "Restore build artifacts" copies them
-  into the repository Maven reads: `$MAVEN_REPO` where the macOS and CL jobs
-  isolate one ("Isolate Maven repository per runner" exports it), otherwise
+  into the repository Maven reads: `$MAVEN_REPO`, which the self-hosted lanes'
+  "Select Maven repository" step exports (the shared `select-maven-repo` action —
+  it prefers a host's persistent shared Maven cache and otherwise isolates per
+  runner; see "Maven dependency caching" in `tools/ci/README.md`), otherwise
   `$HOME/.m2/repository`. The copy is done by the shell on purpose: those are
   environment variables, and an action input cannot rely on seeing a value an
   earlier step wrote to `GITHUB_ENV`.
@@ -1582,9 +1584,12 @@ agent after a test failing on master. It fires when a master "Build and Test"
 run completes. Its `gate` job runs `tools/ci/collect-master-failures.py
 --gate`, which starts a round only when the most recent completed master push
 run failed with at least one failing test in a test lane, and that run's commit
-contains the merge of the most recent `qa/master-fix-*` pull request. The second
-condition matters because master runs take hours: after a fix merges, the newest
-completed run is often still one that started before it.
+contains the merge of the most recent `qa/master-fix-*` pull request. A
+cancelled or skipped run is passed over when choosing that run: a later merge
+cancels a master run before its tests finish, so such a run says nothing about
+master, and counting it would hide the failure of the run still going. The
+second condition matters because master runs take hours: after a fix merges,
+the newest completed run is often still one that started before it.
 
 The round is a `qa-round` on the `qa/master-fix-` prefix. Its cadence gate
 allows one round in progress at a time: an open pull request, or a branch

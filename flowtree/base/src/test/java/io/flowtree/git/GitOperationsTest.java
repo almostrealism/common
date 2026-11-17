@@ -402,44 +402,48 @@ public class GitOperationsTest extends TestSuiteBase {
     /**
      * Pins the shared porcelain parse {@link GitOperations#parseChangedFiles(String)}
      * that both {@link GitOperations#getChangedFiles(String)} and
-     * {@code GitRepositorySetup.getAllDirtyFiles()} now rely on: the path begins
-     * at the fourth column (after the two-character status code and its trailing
-     * space), every status kind (modified, added, deleted, untracked) is listed
-     * alike, a renamed entry yields only its post-rename path, and git's reported
-     * order is preserved.
+     * {@code GitRepositorySetup.getAllDirtyFiles()} now rely on, fed the
+     * NUL-separated {@code git status --porcelain -z} form: the path begins at
+     * the fourth column (after the two-character status code and its trailing
+     * space) and is kept verbatim, so a path containing spaces survives
+     * unquoted (the historical silent-drop bug); every status kind (modified,
+     * added, deleted, untracked) is listed alike; a renamed entry carries its
+     * original path as its own trailing NUL field, which is discarded so only
+     * the post-rename path is returned; and git's reported order is preserved.
      */
     @Test(timeout = 10000)
     public void parseChangedFilesReadsPathsAndRenamesInOrder() {
-        String statusOutput = String.join("\n",
+        String statusOutput = String.join("\u0000",
                 " M tracked.txt",
                 "A  added.txt",
                 " D deleted.txt",
                 "?? Untracked.java",
-                "R  old/name.txt -> new/name.txt");
+                " M .run/My App Config.run.xml",
+                "R  new/name.txt",
+                "old/name.txt") + "\u0000";
 
         List<String> files = GitOperations.parseChangedFiles(statusOutput);
 
         Assert.assertEquals(
                 List.of("tracked.txt", "added.txt", "deleted.txt",
-                        "Untracked.java", "new/name.txt"),
+                        "Untracked.java", ".run/My App Config.run.xml", "new/name.txt"),
                 files);
     }
 
     /**
      * Pins the filtering edges of {@link GitOperations#parseChangedFiles(String)}:
-     * lines too short to hold a path (empty lines, a bare status code, the
-     * trailing fragment left by {@code split}) are ignored, and a line whose
-     * path is blank after trimming is dropped rather than contributing an empty
-     * entry.
+     * fields too short to hold a path (an empty field, a bare status code, the
+     * trailing newline a line-buffered reader appends after the final NUL) are
+     * ignored rather than contributing an empty or whitespace entry.
      */
     @Test(timeout = 10000)
     public void parseChangedFilesIgnoresShortAndBlankLines() {
-        String statusOutput = String.join("\n",
+        String statusOutput = String.join("\u0000",
                 "",
                 "??",
                 " M kept.txt",
-                "    ",
-                " M also/kept.txt");
+                " M ",
+                " M also/kept.txt") + "\u0000\n";
 
         List<String> files = GitOperations.parseChangedFiles(statusOutput);
 
@@ -451,6 +455,175 @@ public class GitOperationsTest extends TestSuiteBase {
     public void parseChangedFilesEmptyOnNoOutput() {
         assertTrue("Empty porcelain output must yield no files",
                 GitOperations.parseChangedFiles("").isEmpty());
+    }
+
+    /**
+     * Pins {@link StatusEntry#parseAll(String)}: each entry keeps
+     * its two-character status code alongside the verbatim path, a rename and a
+     * copy (in either column) each consume their trailing source-path field, and
+     * a path containing the text {@code " -> "} is not split.
+     */
+    @Test(timeout = 10000)
+    public void statusEntriesKeepCodeAndConsumeRenameAndCopySources() {
+        String statusOutput = String.join("\u0000",
+                "UU conflicted file.txt",
+                "C  copy dest.txt",
+                "copy source.txt",
+                " R worktree rename.txt",
+                "worktree source.txt",
+                "?? a -> b.txt") + "\u0000";
+
+        List<StatusEntry> entries = StatusEntry.parseAll(statusOutput);
+
+        Assert.assertEquals(List.of(
+                new StatusEntry("UU", "conflicted file.txt"),
+                new StatusEntry("C ", "copy dest.txt"),
+                new StatusEntry(" R", "worktree rename.txt"),
+                new StatusEntry("??", "a -> b.txt")), entries);
+    }
+
+    /**
+     * Pins {@link StatusEntry#isUnmerged()} against every status
+     * code {@code git status} documents: the seven unmerged codes are
+     * recognised, and ordinary modified, added, deleted, renamed, copied,
+     * untracked and ignored codes are not.
+     */
+    @Test(timeout = 10000)
+    public void statusEntryRecognisesExactlyTheUnmergedCodes() {
+        for (String code : List.of("DD", "AU", "UD", "UA", "DU", "AA", "UU")) {
+            assertTrue(code + " must be unmerged",
+                    new StatusEntry(code, "f").isUnmerged());
+        }
+        for (String code : List.of(" M", "M ", "MM", "A ", "AM", "AD", " D", "D ",
+                "R ", "C ", " R", "??", "!!")) {
+            assertFalse(code + " must not be unmerged",
+                    new StatusEntry(code, "f").isUnmerged());
+        }
+        assertTrue(new StatusEntry("R ", "f").isRenameOrCopy());
+        assertTrue(new StatusEntry("RM", "f").isRenameOrCopy());
+        assertTrue(new StatusEntry(" C", "f").isRenameOrCopy());
+        assertFalse(new StatusEntry("UU", "f").isRenameOrCopy());
+        assertFalse(new StatusEntry("??", "f").isRenameOrCopy());
+    }
+
+    /**
+     * A real merge conflict on a path containing a space is reported by
+     * {@code git status --porcelain -z} as an unmerged entry whose path is the
+     * raw, unquoted name, so the merge-conflict scan built on
+     * {@link StatusEntry} names the file the agent must resolve
+     * rather than a quoted string that does not exist.
+     *
+     * @throws IOException          if a git command or file write fails
+     * @throws InterruptedException if a git command is interrupted
+     */
+    @Test(timeout = 60000)
+    public void unmergedSpacedPathParsesUnquotedFromRealConflict()
+            throws IOException, InterruptedException {
+        Path repo = initRepo();
+        GitOperations git = new GitOperations(repo.toString(), "status-entry-test");
+        String spaced = "conf/My App.cfg";
+        requireGit(git, "config", "commit.gpgsign", "false");
+        Files.createDirectories(repo.resolve("conf"));
+        Files.writeString(repo.resolve(spaced), "base\n", StandardCharsets.UTF_8);
+        requireGit(git, "add", "-A");
+        requireGit(git, "commit", "-q", "-m", "base");
+        String base = requireGit(git, "rev-parse", "--abbrev-ref", "HEAD").trim();
+
+        requireGit(git, "checkout", "-q", "-b", "other");
+        Files.writeString(repo.resolve(spaced), "other side\n", StandardCharsets.UTF_8);
+        requireGit(git, "commit", "-q", "-am", "other");
+        requireGit(git, "checkout", "-q", base);
+        Files.writeString(repo.resolve(spaced), "base side\n", StandardCharsets.UTF_8);
+        requireGit(git, "commit", "-q", "-am", "base side");
+
+        GitOperations.Result merge = git.executeForResult("merge", "other", "--no-edit");
+        assertFalse("the merge must conflict: " + merge.describe(), merge.succeeded());
+
+        List<String> unmerged = new ArrayList<>();
+        for (StatusEntry entry : StatusEntry.parseAll(
+                requireGit(git, "status", "--porcelain", "-z"))) {
+            if (entry.isUnmerged()) unmerged.add(entry.path());
+        }
+        Assert.assertEquals(List.of(spaced), unmerged);
+        Assert.assertEquals("the stdout-only query must report the same conflict",
+                List.of(new StatusEntry("UU", spaced)),
+                GitOperations.requireStatusEntries(repo.toString()));
+    }
+
+    /**
+     * A warning git writes to standard error while listing status — here
+     * "unable to access" for a {@code .git/info/exclude} that is a symbolic
+     * link to itself, which git reports whatever user runs it (unlike an
+     * unreadable directory, which root can still read) — must not cost
+     * {@link GitOperations#requireStatusEntries(String)} an entry.
+     * When stderr is merged into the {@code -z} listing (as
+     * {@link GitOperations#executeWithOutput(String...)} does) the warning
+     * fuses with the first NUL field and that entry is lost; the stdout-only
+     * query keeps every entry, spaced paths included.
+     *
+     * @throws IOException          if a git command or file write fails
+     * @throws InterruptedException if a git command is interrupted
+     */
+    @Test(timeout = 30000)
+    public void requireStatusEntriesKeepsEveryEntryDespiteStderrWarning()
+            throws IOException, InterruptedException {
+        Path repo = initRepo();
+        GitOperations git = new GitOperations(repo.toString(), "status-entry-test");
+        Files.writeString(repo.resolve("a.txt"), "staged\n", StandardCharsets.UTF_8);
+        requireGit(git, "add", "a.txt");
+        Files.writeString(repo.resolve("a.txt"), "modified\n", StandardCharsets.UTF_8);
+        Files.createDirectories(repo.resolve("dir with space"));
+        Files.writeString(repo.resolve("dir with space/b.txt"), "new\n", StandardCharsets.UTF_8);
+        Path exclude = repo.resolve(".git/info/exclude");
+        Files.createDirectories(exclude.getParent());
+        Files.deleteIfExists(exclude);
+        Files.createSymbolicLink(exclude, exclude.getFileName());
+
+        String merged = git.executeWithOutput("status", "--porcelain", "-z", "-uall");
+        assertTrue("git must warn on stderr for this scenario to be meaningful: " + merged,
+                merged.contains("unable to access"));
+        assertFalse("merging stderr loses the first entry, which is the defect guarded here",
+                GitOperations.parseChangedFiles(merged).contains("a.txt"));
+
+        Assert.assertEquals(List.of(
+                        new StatusEntry("AM", "a.txt"),
+                        new StatusEntry("??", "dir with space/b.txt")),
+                GitOperations.requireStatusEntries(repo.toString()));
+        Assert.assertEquals(List.of("a.txt", "dir with space/b.txt"),
+                GitOperations.requireChangedFiles(repo.toString()));
+        Assert.assertEquals(List.of("a.txt", "dir with space/b.txt"),
+                GitOperations.getChangedFiles(repo.toString()));
+    }
+
+    /**
+     * {@link GitOperations#requireStatusEntries(String)} throws when the
+     * status query fails rather than reporting a clean tree.
+     *
+     * @throws IOException if the temporary directory cannot be created
+     */
+    @Test(timeout = 10000)
+    public void requireStatusEntriesThrowsOutsideARepository() throws IOException {
+        Path notRepo = Files.createTempDirectory("git-ops-not-a-repo-");
+        tempDirs.add(notRepo);
+        try {
+            GitOperations.requireStatusEntries(notRepo.toString());
+            Assert.fail("a failed status query must throw");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains(notRepo.toString()));
+        }
+        assertTrue("the lenient query reports nothing on failure",
+                GitOperations.getChangedFiles(notRepo.toString()).isEmpty());
+    }
+
+    /**
+     * Runs a git sub-command through {@code git}, failing the test if it exits
+     * non-zero, and returns its output.
+     */
+    private static String requireGit(GitOperations git, String... args)
+            throws IOException, InterruptedException {
+        GitOperations.Result result = git.executeForResult(args);
+        Assert.assertEquals(result.describe(), 0, result.exitCode());
+        return result.output();
     }
 
     /**
@@ -474,6 +647,133 @@ public class GitOperationsTest extends TestSuiteBase {
         assertFalse(git.matchesCommit("gone.txt", "HEAD"));
         assertTrue("the deletion must be staged",
                 git.executeForResult("diff", "--cached", "--name-only").output().contains("gone.txt"));
+    }
+
+    /**
+     * A path in none of the working tree, the index, and {@code HEAD} is not a
+     * deletion of anything, so staging it fails rather than passing as the
+     * no-op {@code git rm --cached --ignore-unmatch} would report. This is the
+     * silent drop behind a spaced path the non-{@code -z} porcelain quoted into
+     * a name no file carries.
+     */
+    @Test(timeout = 30000)
+    public void stageRejectsAPathUnknownToGit() throws Exception {
+        Path dir = initRepo();
+        Files.writeString(dir.resolve("real.txt"), "content\n");
+        gitRun(dir, "add", "real.txt");
+        gitRun(dir, "commit", "-q", "-m", "initial");
+        GitOperations git = new GitOperations(dir.toString(), "test");
+
+        GitOperations.Result result = git.stage("\".run/My File.run.xml\"");
+
+        assertFalse("a path git does not know must not stage as a no-op: " + result.describe(),
+                result.succeeded());
+        assertTrue(result.describe(), result.describe().contains(".run/My File.run.xml"));
+    }
+
+    /**
+     * A merge-resolution deletion of a file the merged branch added is a real,
+     * already-staged removal, so {@link GitOperations#stage(String)} accepts it
+     * rather than rejecting it as an unknown path and aborting the merge. The
+     * agent's {@code git rm} has taken the file out of both the index and the
+     * working tree and it was never in {@code HEAD}, so only {@code MERGE_HEAD}
+     * still carries it — exactly the state the unknown-path guard must not
+     * mistake for the spaced-path phantom. The path here contains a space, the
+     * drop this branch targets.
+     */
+    @Test(timeout = 60000)
+    public void stageAcceptsAMergeResolutionDeletionCarriedOnlyByMergeHead() throws Exception {
+        Path dir = initRepo();
+        GitOperations git = new GitOperations(dir.toString(), "test");
+        requireGit(git, "config", "commit.gpgsign", "false");
+        Files.writeString(dir.resolve("seed.txt"), "seed\n", StandardCharsets.UTF_8);
+        requireGit(git, "add", "-A");
+        requireGit(git, "commit", "-q", "-m", "initial");
+        String base = requireGit(git, "rev-parse", "--abbrev-ref", "HEAD").trim();
+
+        // Merged branch adds a spaced path.
+        String spaced = "new from base.txt";
+        requireGit(git, "checkout", "-q", "-b", "incoming");
+        Files.writeString(dir.resolve(spaced), "base content\n", StandardCharsets.UTF_8);
+        requireGit(git, "add", "-A");
+        requireGit(git, "commit", "-q", "-m", "add from base");
+
+        // Target branch diverges, forcing a real (non-fast-forward) merge.
+        requireGit(git, "checkout", "-q", base);
+        Files.writeString(dir.resolve("seed.txt"), "seed changed\n", StandardCharsets.UTF_8);
+        requireGit(git, "commit", "-q", "-am", "diverge");
+        requireGit(git, "merge", "--no-commit", "--no-ff", "incoming");
+
+        // -f clears the merge-staged addition from index and working tree.
+        requireGit(git, "rm", "-q", "-f", spaced);
+        assertFalse("the file must be gone from the working tree",
+                Files.exists(dir.resolve(spaced)));
+        assertFalse("the path must be absent from the index",
+                git.executeForResult("ls-files", "--error-unmatch", "--", spaced).succeeded());
+        assertFalse("the path must be absent from HEAD",
+                git.executeForResult("cat-file", "-e", "HEAD:" + spaced).succeeded());
+        assertTrue("the path must still be carried by MERGE_HEAD",
+                git.executeForResult("cat-file", "-e", "MERGE_HEAD:" + spaced).succeeded());
+
+        GitOperations.Result staged = git.stage(spaced);
+        assertTrue("a MERGE_HEAD-only deletion must stage, not abort the merge: " + staged.describe(),
+                staged.succeeded());
+    }
+
+    /**
+     * {@link GitOperations#executeForStdout} returns standard output alone, so a
+     * warning git writes to standard error cannot fuse with the first field of a
+     * {@code -z} listing; {@link GitOperations#executeForResult} merges it in.
+     */
+    @Test(timeout = 30000)
+    public void executeForStdoutKeepsStderrOutOfTheOutput() throws Exception {
+        Path dir = initRepo();
+        Files.writeString(dir.resolve("a.txt"), "x\n", StandardCharsets.UTF_8);
+        Path exclude = dir.resolve(".git/info/exclude");
+        Files.createDirectories(exclude.getParent());
+        Files.deleteIfExists(exclude);
+        Files.createSymbolicLink(exclude, exclude.getFileName());
+        GitOperations git = new GitOperations(dir.toString(), "test");
+
+        GitOperations.Result merged = git.executeForResult("status", "--porcelain", "-z", "-uall");
+        GitOperations.Result stdoutOnly = git.executeForStdout("status", "--porcelain", "-z", "-uall");
+
+        assertTrue("git must warn on stderr for this scenario to be meaningful: " + merged.output(),
+                merged.output().contains("unable to access"));
+        assertFalse("stdout-only output must not carry the stderr warning: " + stdoutOnly.output(),
+                stdoutOnly.output().contains("unable to access"));
+        assertTrue("stdout-only output must still carry the real entry: " + stdoutOnly.output(),
+                stdoutOnly.output().contains("a.txt"));
+    }
+
+    /**
+     * A submodule reported as changed only because its own working tree is dirty
+     * — its recorded commit unchanged — is omitted by
+     * {@link GitOperations#requireChangedFilesIgnoringSubmoduleDirt} while
+     * {@link GitOperations#requireChangedFiles} still lists it. This is what
+     * keeps the commit-capture check from flagging such a submodule as a dropped
+     * change after the parent gitlink is committed.
+     */
+    @Test(timeout = 60000)
+    public void requireChangedFilesIgnoringSubmoduleDirtOmitsADirtySubmodule() throws Exception {
+        Path sub = initRepo();
+        Files.writeString(sub.resolve("inner.txt"), "one\n", StandardCharsets.UTF_8);
+        gitRun(sub, "add", "inner.txt");
+        gitRun(sub, "commit", "-q", "-m", "seed submodule");
+
+        Path dir = initRepo();
+        Files.writeString(dir.resolve("top.txt"), "top\n", StandardCharsets.UTF_8);
+        gitRun(dir, "add", "top.txt");
+        gitRun(dir, "commit", "-q", "-m", "seed super");
+        gitRun(dir, "-c", "protocol.file.allow=always", "submodule", "add", sub.toString(), "mysub");
+        gitRun(dir, "commit", "-q", "-m", "add submodule");
+
+        Files.writeString(dir.resolve("mysub/inner.txt"), "two\n", StandardCharsets.UTF_8);
+
+        assertTrue("git status must report the dirty submodule",
+                GitOperations.requireChangedFiles(dir.toString()).contains("mysub"));
+        assertFalse("a dirty-only submodule must be omitted when submodule dirt is ignored",
+                GitOperations.requireChangedFilesIgnoringSubmoduleDirt(dir.toString()).contains("mysub"));
     }
 
     /**
