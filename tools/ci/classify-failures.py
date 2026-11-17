@@ -80,11 +80,19 @@ import xml.etree.ElementTree as ElementTree
 # device fault raised through that class is still caught by the device's own
 # marker (a CUDA or OpenCL error code, a native allocation frame) in its
 # message or trace.
+#
+# A missing or unloadable native backend is one such genuine fault: it surfaces
+# as an ``UnsatisfiedLinkError`` (a CUDA bridge library absent from the
+# classpath, a driver missing on the host), kept as the cause when a
+# ``HardwareException`` wraps it. That is not agent-fixable — the runner lacks
+# the library — so ``unsatisfiedlinkerror`` is a marker in its own right,
+# keyed on the fault rather than on the wrapping class.
 ENVIRONMENTAL_MARKERS = (
     "memallocmanaged",
     "cumemalloc", "cumemfree", "cumemcpy",
     "cudaerror", "cuda_error", "curesult", "jcuda",
     "cl_out_of_resources", "cl_mem_object_allocation_failure",
+    "unsatisfiedlinkerror",
     "sigsegv", "sigbus", "sigabrt", "sigill", "sigfpe",
     "fatal error has been detected",
     "exception_access_violation",

@@ -56,6 +56,16 @@ _DEVICE_FAULT_BLOCK = """- org.example.KernelTest#runsOnDevice
     at org.example.KernelTest.runsOnDevice(KernelTest.java:8)
 """
 
+# A missing native backend: the bridge library is absent from the runner, so
+# the load fails with an UnsatisfiedLinkError wrapped in a HardwareException.
+# The runner lacks the library, so no agent can fix it — it is environmental.
+_NATIVE_LINKAGE_BLOCK = """- org.example.KernelTest#runsOnDevice
+  Exception: org.almostrealism.hardware.HardwareException: hardware initialization failed
+  Stack trace (truncated):
+    at org.almostrealism.hardware.cuda.CU.<clinit>(CU.java:88)
+  Caused by: java.lang.UnsatisfiedLinkError: No CUDA bridge library libARCUDA-linux-x86_64.so on the classpath
+"""
+
 
 def _parse(block):
     return classify_failures.parse_failures(block)
@@ -82,6 +92,13 @@ class TestEnvironmentalDetection(unittest.TestCase):
     def test_device_fault_in_framework_exception_is_environmental(self):
         self.assertTrue(
             classify_failures.is_environmental(_parse(_DEVICE_FAULT_BLOCK)[0]))
+
+    def test_native_linkage_failure_is_environmental(self):
+        # A missing native backend (UnsatisfiedLinkError) is not agent-fixable:
+        # removing the generic HardwareException marker must not reclassify it
+        # as a regression.
+        self.assertTrue(
+            classify_failures.is_environmental(_parse(_NATIVE_LINKAGE_BLOCK)[0]))
 
     def test_plain_assertion_is_not_environmental(self):
         self.assertFalse(
@@ -128,6 +145,16 @@ class TestClassification(unittest.TestCase):
                          ["org.example.ChainedDispatchTest#independentDispatch"])
         self.assertEqual(preexisting, [])
         self.assertEqual(environmental, [])
+
+    def test_native_linkage_failure_is_environmental_not_regression(self):
+        # With no baseline a non-environmental failure defaults to a regression;
+        # a missing native backend must still be classified environmental.
+        regressions, preexisting, environmental = classify_failures.classify(
+            _parse(_NATIVE_LINKAGE_BLOCK), set())
+        self.assertEqual(regressions, [])
+        self.assertEqual(preexisting, [])
+        self.assertEqual([f.name for f in environmental],
+                         ["org.example.KernelTest#runsOnDevice"])
 
     def test_no_baseline_treats_nonenvironmental_as_regression(self):
         failures = _parse(_REGRESSION_BLOCK + _PREEXISTING_BLOCK)
