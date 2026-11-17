@@ -16,7 +16,6 @@
 
 package org.almostrealism.audio.filter.test;
 
-import org.almostrealism.audio.CellFeatures;
 import org.almostrealism.audio.filter.AudioSumProvider;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
@@ -35,7 +34,7 @@ import java.util.stream.IntStream;
  * out {@code 0.0}. These tests pin a non-zero value into frame 0 so the defect
  * surfaces as a mismatch there.
  */
-public class AudioSumProviderTest extends TestSuiteBase implements CellFeatures {
+public class AudioSumProviderTest extends TestSuiteBase {
 
 	/** Number of frames in the synthetic buffers. */
 	private static final int LEN = 8;
