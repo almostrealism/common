@@ -193,6 +193,35 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Pins the fixed-count side of the comparison-operand index projection: a comparison operand
+	 * whose item is narrower than the output item but whose count is fixed keeps the ordinary
+	 * element-wise (repeating) read and is NOT broadcast per item. The condition is a fixed
+	 * {@code (2, 1)} collection, one value per item, while the branches are fixed {@code (2, 3)}
+	 * collections, three values per item. The two condition values repeat element-wise across the
+	 * six output elements (alternating true and false), whereas a per-row broadcast would select
+	 * the true branch for the whole first row and the false branch for the whole second row.
+	 * The computation is constructed directly with a {@code (2, 3)} output so that the narrower
+	 * fixed-count operand reaches the projection as-is, rather than being aligned to the output
+	 * shape beforehand as {@code greaterThan(...)} does.
+	 */
+	@Test(timeout = 30000)
+	public void greaterThanKeepsElementWiseReadForFixedCountNarrowerCondition() {
+		try (PackedCollection condition = pack(1.0, -1.0).reshape(2, 1).traverse(1);
+			 PackedCollection t = pack(10.0, 11.0, 12.0, 13.0, 14.0, 15.0).reshape(2, 3).traverse(1);
+			 PackedCollection f = pack(20.0, 21.0, 22.0, 23.0, 24.0, 25.0).reshape(2, 3).traverse(1);
+			 PackedCollection result = new GreaterThanCollection(shape(2, 3).traverse(1),
+					 cp(condition), c(0.0), cp(t), cp(f)).get().evaluate()) {
+			Assert.assertEquals(6, result.getMemLength());
+			Assert.assertEquals(10.0, result.toDouble(0), 0.001);
+			Assert.assertEquals(21.0, result.toDouble(1), 0.001);
+			Assert.assertEquals(12.0, result.toDouble(2), 0.001);
+			Assert.assertEquals(23.0, result.toDouble(3), 0.001);
+			Assert.assertEquals(14.0, result.toDouble(4), 0.001);
+			Assert.assertEquals(25.0, result.toDouble(5), 0.001);
+		}
+	}
+
+	/**
 	 * Pins the batched broadcast of a per-row scalar condition over vector-valued branches for
 	 * strict greater-than. The condition is one value per row (a variable-count {@code (-1, 1)}
 	 * input) while the true and false branches are a three-element vector per row that varies by
