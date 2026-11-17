@@ -191,4 +191,81 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 			Assert.assertEquals("2 <= 5 selects true", 12.0, lte.toDouble(2), 0.001);
 		}
 	}
+
+	/**
+	 * Pins the batched broadcast of a per-row scalar condition over vector-valued branches for
+	 * strict greater-than. The condition is one value per row (a variable-count {@code (-1, 1)}
+	 * input) while the true and false branches are a three-element vector per row that varies by
+	 * row. Each row's single condition governs all three of that row's output channels, and the
+	 * branches are read element-wise within the row. This is the batched counterpart of
+	 * {@link #greaterThanSelectsTrueAndFalseValues()} and exercises the comparison-operand index
+	 * projection on the left operand.
+	 */
+	@Test(timeout = 30000)
+	public void greaterThanBroadcastsPerRowConditionOverVectorBranches() {
+		Producer<PackedCollection> cond = v(shape(-1, 1), 0);
+		Producer<PackedCollection> trueBranch = v(shape(-1, 3), 1);
+		Producer<PackedCollection> falseBranch = v(shape(-1, 3), 2);
+
+		PackedCollection condition = new PackedCollection(3, 1).traverse(1);
+		condition.set(0, 1.0);    // 1 > 0 selects the true branch
+		condition.set(1, -1.0);   // -1 > 0 is false, selects the false branch
+		condition.set(2, 0.5);    // 0.5 > 0 selects the true branch
+
+		PackedCollection trueValues =
+				pack(10, 11, 12, 13, 14, 15, 16, 17, 18).reshape(3, 3).traverse(1);
+		PackedCollection falseValues =
+				pack(20, 21, 22, 23, 24, 25, 26, 27, 28).reshape(3, 3).traverse(1);
+		PackedCollection result = new PackedCollection(3, 3);
+
+		greaterThan(cond, c(0.0), trueBranch, falseBranch).get().into(result.each())
+				.evaluate(condition, trueValues, falseValues);
+
+		Assert.assertEquals(10.0, result.toDouble(0), 0.001);
+		Assert.assertEquals(11.0, result.toDouble(1), 0.001);
+		Assert.assertEquals(12.0, result.toDouble(2), 0.001);
+		Assert.assertEquals(23.0, result.toDouble(3), 0.001);
+		Assert.assertEquals(24.0, result.toDouble(4), 0.001);
+		Assert.assertEquals(25.0, result.toDouble(5), 0.001);
+		Assert.assertEquals(16.0, result.toDouble(6), 0.001);
+		Assert.assertEquals(17.0, result.toDouble(7), 0.001);
+		Assert.assertEquals(18.0, result.toDouble(8), 0.001);
+	}
+
+	/**
+	 * Pins the batched broadcast for the inclusive less-than-or-equal operator, with a per-row
+	 * scalar condition over vector-valued branches that vary by row. Row 1 exercises the inclusive
+	 * boundary ({@code 0 <= 0}), confirming the per-row condition is broadcast across the whole
+	 * row rather than read with the branches' stride.
+	 */
+	@Test(timeout = 30000)
+	public void lessThanOrEqualBroadcastsPerRowConditionOverVectorBranches() {
+		Producer<PackedCollection> cond = v(shape(-1, 1), 0);
+		Producer<PackedCollection> trueBranch = v(shape(-1, 3), 1);
+		Producer<PackedCollection> falseBranch = v(shape(-1, 3), 2);
+
+		PackedCollection condition = new PackedCollection(3, 1).traverse(1);
+		condition.set(0, -1.0);   // -1 <= 0 selects the true branch
+		condition.set(1, 0.0);    // 0 <= 0 is true (inclusive), selects the true branch
+		condition.set(2, 2.0);    // 2 <= 0 is false, selects the false branch
+
+		PackedCollection trueValues =
+				pack(10, 11, 12, 13, 14, 15, 16, 17, 18).reshape(3, 3).traverse(1);
+		PackedCollection falseValues =
+				pack(20, 21, 22, 23, 24, 25, 26, 27, 28).reshape(3, 3).traverse(1);
+		PackedCollection result = new PackedCollection(3, 3);
+
+		lessThan(cond, c(0.0), trueBranch, falseBranch, true).get().into(result.each())
+				.evaluate(condition, trueValues, falseValues);
+
+		Assert.assertEquals(10.0, result.toDouble(0), 0.001);
+		Assert.assertEquals(11.0, result.toDouble(1), 0.001);
+		Assert.assertEquals(12.0, result.toDouble(2), 0.001);
+		Assert.assertEquals(13.0, result.toDouble(3), 0.001);
+		Assert.assertEquals(14.0, result.toDouble(4), 0.001);
+		Assert.assertEquals(15.0, result.toDouble(5), 0.001);
+		Assert.assertEquals(26.0, result.toDouble(6), 0.001);
+		Assert.assertEquals(27.0, result.toDouble(7), 0.001);
+		Assert.assertEquals(28.0, result.toDouble(8), 0.001);
+	}
 }

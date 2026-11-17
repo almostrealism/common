@@ -20,6 +20,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -194,8 +195,44 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return CollectionExpression.create(getShape(), index ->
-			conditional(args[1].getValueAt(index).eq(args[2].getValueAt(index)),
+			conditional(args[1].getValueAt(conditionIndex(index, 1)).eq(args[2].getValueAt(conditionIndex(index, 2))),
 						args[3].getValueAt(index), args[4].getValueAt(index)));
+	}
+
+	/**
+	 * Projects an output element {@code index} onto the comparison operand at the given
+	 * input position, so that an operand narrower than the output item is broadcast across
+	 * the item rather than read element-for-element.
+	 *
+	 * <p>A selection reads its two comparison operands ({@code args[1]} and {@code args[2]})
+	 * at the same index as the true and false branches ({@code args[3]} and {@code args[4]}),
+	 * which set the output item size. When a condition is one value per item &mdash; a per-row
+	 * scalar, such as a variable-count {@code (-1, 1)} input &mdash; but the branches are a vector
+	 * per item, reading the condition at the output element index walks across neighbouring rows
+	 * (stride equal to the item size) instead of holding one condition value for the whole item.
+	 * This method maps an output element index to the position of the condition value that governs
+	 * the item the element belongs to: for a per-row scalar it reduces to {@code index / itemSize}.</p>
+	 *
+	 * <p>When the operand is as wide as the output item (the ordinary element-wise case, including
+	 * scalar operands over a scalar output) the index is returned unchanged, so element-wise,
+	 * same-size, and non-batched selections are unaffected.</p>
+	 *
+	 * @param index         the output element index
+	 * @param inputPosition the input position of the comparison operand (1 for the left operand,
+	 *                      2 for the right operand), matching the {@code args} index
+	 * @return the index at which to read the comparison operand
+	 */
+	protected Expression<?> conditionIndex(Expression<?> index, int inputPosition) {
+		long outputSize = getShape().getSizeLong();
+		long operandSize = shape(getInputs().get(inputPosition)).getSizeLong();
+
+		if (operandSize >= outputSize) {
+			return index;
+		}
+
+		Expression<?> idx = index.toInt();
+		return idx.divide(outputSize).multiply(operandSize)
+				.add(idx.imod(outputSize).multiply(operandSize).divide(outputSize));
 	}
 
 	/**
