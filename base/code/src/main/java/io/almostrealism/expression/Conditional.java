@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -71,9 +72,20 @@ public class Conditional<T extends Number> extends Expression<T> {
 		}
 	}
 
+	/**
+	 * Returns the boolean-valued guard expression that selects between the two branches.
+	 * This is the first child; the accessor localises the erasure cast to the boolean
+	 * type that the condition always carries.
+	 *
+	 * @return the condition expression
+	 */
+	public Expression<Boolean> getCondition() {
+		return (Expression<Boolean>) getChildren().get(0);
+	}
+
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return getChildren().get(0).getWrappedExpression(lang) + " ? " +
+		return getCondition().getWrappedExpression(lang) + " ? " +
 				getChildren().get(1).getWrappedExpression(lang) +
 				" : " + getChildren().get(2).getWrappedExpression(lang);
 	}
@@ -81,7 +93,7 @@ public class Conditional<T extends Number> extends Expression<T> {
 	@Override
 	public boolean isValue(IndexValues values) {
 		// TODO  This should just be the parent implementation
-		return getChildren().get(0).isValue(values) &&
+		return getCondition().isValue(values) &&
 				getChildren().get(1).isValue(values) &&
 				getChildren().get(2).isValue(values);
 	}
@@ -110,7 +122,7 @@ public class Conditional<T extends Number> extends Expression<T> {
 	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
-		double[] condition = getChildren().get(0).values(range);
+		double[] condition = getCondition().values(range);
 		double[] positive = getChildren().get(1).values(range);
 		double[] negative = getChildren().get(2).values(range);
 		double[] out = new double[range.getLength()];
@@ -120,6 +132,23 @@ public class Conditional<T extends Number> extends Expression<T> {
 		}
 
 		return out;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The derivative selects the derivative of whichever branch the condition would,
+	 * {@code condition ? d(positive)/dx : d(negative)/dx}. The condition is treated as
+	 * independent of the target, so the measure-zero boundary where it flips is not
+	 * differentiated. This is the general form of {@link Max#delta(CollectionExpression)}
+	 * and {@link Min#delta(CollectionExpression)}.</p>
+	 */
+	@Override
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
+		return conditional(target.getShape(),
+				getCondition(),
+				getChildren().get(1).delta(target),
+				getChildren().get(2).delta(target));
 	}
 
 	@Override
