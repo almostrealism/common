@@ -147,6 +147,13 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	 * read by several consumers must be evaluated through {@link #evaluate(Object...)}
 	 * instead, or it will build an exponentially large expression.</p>
 	 *
+	 * <p>Note that this method does not itself optimize, but it does not force an
+	 * unoptimized compile either: {@link #get()} returns a cached optimized
+	 * {@link Evaluable} when this producer has already been optimized (for example
+	 * by a prior {@link #evaluate(Object...)} call, which populates that cache). A
+	 * guaranteed-unoptimized evaluation therefore requires a producer that has not
+	 * yet been optimized.</p>
+	 *
 	 * @param args arguments to pass to the evaluation
 	 * @return the computed result
 	 *
