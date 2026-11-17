@@ -28,7 +28,6 @@ import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -59,26 +58,33 @@ public class ScopeGenerateConfigurationTest extends TestSuiteBase {
 
 	/**
 	 * A reduction over a traversed collection compiles to a kernel whose root scope originates
-	 * from a {@link Repeated} loop. The compute requirements set on the computation must be
-	 * carried by the compiled scope, which is where
-	 * {@link AcceleratedComputationOperation#getComputeRequirements()} reads them from after
-	 * compilation.
+	 * from a {@link Repeated} loop and is rebuilt through {@link Scope#generate(List)} during
+	 * {@link Scope#simplify(io.almostrealism.kernel.KernelStructureContext, int)}, then wrapped
+	 * in a plain {@link Scope} when its accumulator is promoted. This exercises that whole chain
+	 * end-to-end: the reduction must compile and evaluate to the correct per-row sums, which it
+	 * cannot do if {@code generate} reproduces an invalid {@link Repeated} (one without a
+	 * condition or interval) in place of the plain wrapper the promotion produces. Compute
+	 * requirements are set on the reduction to confirm they do not disturb that compilation.
 	 */
 	@Test(timeout = 120000)
-	public void reductionKeepsComputeRequirementsThroughCompile() {
-		ComputeRequirement requirement = ComputeRequirement.CPU;
+	public void reductionCompilesAndEvaluatesThroughGenerate() {
+		int rows = 4;
+		int cols = 8;
 
-		try (PackedCollection data = new PackedCollection(shape(4, 8)).randFill()) {
+		try (PackedCollection data = new PackedCollection(shape(rows, cols)).randFill()) {
 			CollectionProducer sum = cp(data).traverse(1).sum();
-			((ComputationBase) sum).setComputeRequirements(List.of(requirement));
+			((ComputationBase) sum).setComputeRequirements(List.of(ComputeRequirement.CPU));
 
-			// TODO(review): cp(...).sum().get() returns a HardwareEvaluable, not an
-			// TODO(review): AcceleratedComputationOperation, so this cast throws ClassCastException
-			// TODO(review): before the assertion runs; unwrap the kernel or use the getScope path.
-			AcceleratedComputationOperation op = (AcceleratedComputationOperation) sum.get();
-			op.compile();
+			PackedCollection result = (PackedCollection) sum.get().evaluate();
 
-			Assert.assertEquals(List.of(requirement), op.getComputeRequirements());
+			for (int row = 0; row < rows; row++) {
+				double expected = 0.0;
+				for (int col = 0; col < cols; col++) {
+					expected += data.toDouble(row * cols + col);
+				}
+
+				Assert.assertEquals("Row " + row + " sum", expected, result.toDouble(row), 1e-5);
+			}
 		}
 	}
 

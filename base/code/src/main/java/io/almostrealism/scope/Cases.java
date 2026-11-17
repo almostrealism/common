@@ -238,6 +238,17 @@ public class Cases<T> extends Scope<T> {
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>Narrows the return type to {@link Cases}; the generated scope is created by
+	 * {@link #createGenerated()} and configured by {@link Scope#generate(List)}.</p>
+	 */
+	@Override
+	public Cases<T> generate(List<Scope<T>> children) {
+		return (Cases<T>) super.generate(children);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p>Creates an empty {@link Cases} scope carrying this scope's name and metadata.
 	 * {@link Scope#generate(List)} copies the reference index, compute requirements and lane
 	 * count onto it.</p>

@@ -1042,11 +1042,28 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	@Override
 	public Parent<Scope<T>> generate(List<Scope<T>> children) {
 		Scope<T> scope = createGenerated();
-		scope.refIdx = refIdx;
-		scope.setComputeRequirements(getComputeRequirements());
-		scope.setLaneCount(getLaneCount());
+		copyConfigurationTo(scope);
 		scope.getChildren().addAll(children);
 		return scope;
+	}
+
+	/**
+	 * Copies the configuration every scope shares — the reference index,
+	 * {@link #getComputeRequirements() compute requirements} and {@link #getLaneCount() lane
+	 * count} — from this scope onto {@code target}.
+	 *
+	 * <p>{@link #generate(List)} uses this after {@link #createGenerated()} so that the shared
+	 * configuration is copied in one place. A caller that builds a replacement scope of a
+	 * different type than this one — as {@link Repeated#promoteAccumulators()} does when it wraps
+	 * a loop in a plain {@link Scope} — uses it directly rather than routing through
+	 * {@link #generate(List)}, which would reproduce this scope's own type.</p>
+	 *
+	 * @param target the scope to copy this scope's shared configuration onto
+	 */
+	protected void copyConfigurationTo(Scope<T> target) {
+		target.refIdx = refIdx;
+		target.setComputeRequirements(getComputeRequirements());
+		target.setLaneCount(getLaneCount());
 	}
 
 	/**
