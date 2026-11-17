@@ -1123,6 +1123,107 @@ public class MyTest {
 }'
 }
 
+# ── Scenario: hard-coded floating-point expectations replaced by a computed
+#    expectation — FALSE-POSITIVE REGRESSION ────────────────────────────────
+#
+# A test that compared against a hard-coded array of expected floating-point
+# values is rewritten to compute the expectation instead. Dimensions and the
+# number of assertion calls are unchanged. The digits after a decimal point
+# are not integer literals, so Pattern 11 (NUMERIC_LITERALS_SHRUNK) MUST NOT
+# read `0.034696079790592194` as a large integer that disappeared
+# (expected exit 0).
+setup_float_expectations_replaced() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int size = 12;
+        double[] expected = new double[]{0.034696079790592194, 0.06780441105365753,
+                0.13250578939914703, 0.2589479088783264, 0.5060457587242126,
+                -0.0023582035209983587, -0.003028743900358677, 1.86271326e-09};
+        for (int i = 0; i < expected.length; i++) {
+            assertEquals(expected[i], compute(size, i), 1e-6);
+        }
+    }
+    double compute(int size, int i) { return i; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int size = 12;
+        for (int i = 0; i < size; i++) {
+            double expected = Math.exp(i) / size;
+            assertEquals(expected, compute(size, i), 1e-6);
+        }
+    }
+    double compute(int size, int i) { return i; }
+}'
+}
+
+# ── Scenario: integer dimensions in method arguments shrunk — TRUE POSITIVE ─
+#
+# Large integer arguments are replaced by small ones. Pattern 11
+# (NUMERIC_LITERALS_SHRUNK) MUST fire (expected exit 2).
+setup_integer_arguments_shrunk() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, build(1, 64, 128, 256));
+    }
+    int build(int a, int b, int c, int d) { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, build(1, 4, 8, 2));
+    }
+    int build(int a, int b, int c, int d) { return 1; }
+}'
+}
+
+# ── Scenario: integer dimensions shrunk beside floating-point arguments —
+#    TRUE POSITIVE ──────────────────────────────────────────────────────────
+#
+# Excluding floating-point literals must not hide an integer reduction on the
+# same lines: the floats are unchanged, the integer dimensions shrink.
+# Pattern 11 (NUMERIC_LITERALS_SHRUNK) MUST fire (expected exit 2).
+setup_integer_arguments_shrunk_beside_floats() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, build(0.25, 64, 128, 256, 1.5e-3));
+    }
+    int build(double p, int b, int c, int d, double q) { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, build(0.25, 4, 8, 2, 1.5e-3));
+    }
+    int build(double p, int b, int c, int d, double q) { return 1; }
+}'
+}
+
 # ── Run all cases ──────────────────────────────────────────────────────────
 
 echo "Running detect-test-hiding regression tests..."
@@ -1156,6 +1257,9 @@ run_case "deleted-parenthesized-test [true positive]"       2 setup_deleted_pare
 run_case "deleted-same-line-annotation-test [true positive]" 2 setup_deleted_same_line_annotation_test
 run_case "removed-block-comment-test-marker [false-positive regression]" 0 setup_removed_block_comment_test_marker
 run_case "pr880-reenable-camera-ray [false-positive regression]" 0 setup_pr880_reenable
+run_case "float-expectations-replaced [false-positive regression]" 0 setup_float_expectations_replaced
+run_case "integer-arguments-shrunk [true positive]"         2 setup_integer_arguments_shrunk
+run_case "integer-arguments-shrunk-beside-floats [true positive]" 2 setup_integer_arguments_shrunk_beside_floats
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

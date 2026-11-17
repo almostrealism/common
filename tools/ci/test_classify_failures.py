@@ -38,6 +38,24 @@ _CUDA_TIMEOUT_BLOCK = """- org.example.AudioSceneMultiGenomeTest#multiGenomePatt
     at org.almostrealism.hardware.cuda.CUDAMemoryProvider.allocate(CUDAMemoryProvider.java:88)
 """
 
+# A kernel the native compiler rejected. The framework reports it through its
+# general HardwareException, but it is a defect in generated code, not a
+# hardware fault.
+_COMPILE_FAILURE_BLOCK = """- org.example.ChainedDispatchTest#independentDispatch
+  Exception: org.almostrealism.hardware.HardwareException: Native compiler failure (1) on org.almostrealism.generated.GeneratedOperation7
+  Stack trace (truncated):
+    at org.almostrealism.c.NativeCompiler.compile(NativeCompiler.java:10)
+    at org.example.ChainedDispatchTest.independentDispatch(ChainedDispatchTest.java:20)
+"""
+
+# A device fault raised through the same exception class: the device's own
+# error code is what marks it environmental.
+_DEVICE_FAULT_BLOCK = """- org.example.KernelTest#runsOnDevice
+  Exception: org.almostrealism.hardware.HardwareException: CL_OUT_OF_RESOURCES
+  Stack trace (truncated):
+    at org.example.KernelTest.runsOnDevice(KernelTest.java:8)
+"""
+
 
 def _parse(block):
     return classify_failures.parse_failures(block)
@@ -54,6 +72,16 @@ class TestEnvironmentalDetection(unittest.TestCase):
                  "  Stack trace (truncated):\n"
                  "    at org.example.NativeTest.run(NativeTest.java:3)\n")
         self.assertTrue(classify_failures.is_environmental(_parse(block)[0]))
+
+    def test_framework_exception_class_alone_is_not_environmental(self):
+        # HardwareException is the hardware layer's general exception: a kernel
+        # that does not compile is the code's fault and must reach an agent.
+        self.assertFalse(
+            classify_failures.is_environmental(_parse(_COMPILE_FAILURE_BLOCK)[0]))
+
+    def test_device_fault_in_framework_exception_is_environmental(self):
+        self.assertTrue(
+            classify_failures.is_environmental(_parse(_DEVICE_FAULT_BLOCK)[0]))
 
     def test_plain_assertion_is_not_environmental(self):
         self.assertFalse(
@@ -90,6 +118,16 @@ class TestClassification(unittest.TestCase):
                          ["org.example.FooTest#computesSum"])
         self.assertEqual([f.name for f in environmental],
                          ["org.example.AudioSceneMultiGenomeTest#multiGenomePatternRender"])
+
+    def test_compile_failure_is_a_regression(self):
+        # The only failure of a run: classified environmental it would leave
+        # regression_count at 0 and nothing would be staged for an agent.
+        regressions, preexisting, environmental = classify_failures.classify(
+            _parse(_COMPILE_FAILURE_BLOCK), set())
+        self.assertEqual([f.name for f in regressions],
+                         ["org.example.ChainedDispatchTest#independentDispatch"])
+        self.assertEqual(preexisting, [])
+        self.assertEqual(environmental, [])
 
     def test_no_baseline_treats_nonenvironmental_as_regression(self):
         failures = _parse(_REGRESSION_BLOCK + _PREEXISTING_BLOCK)

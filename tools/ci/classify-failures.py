@@ -69,12 +69,22 @@ import xml.etree.ElementTree as ElementTree
 # example, a 600s timeout inside CU.memAllocManaged — is caught by its frame
 # appearing in the trace, so a plain deterministic timeout with no native frame
 # stays a regression candidate.
+#
+# The framework's own ``HardwareException`` is deliberately NOT a marker. It is
+# the general exception of the hardware layer, thrown for a kernel that does not
+# compile, an argument-count limit, an instruction-cache collision and a
+# configured memory ceiling being exceeded — failures the code under test
+# causes and an agent can fix. Treating the class name as a hardware fault
+# classified every such failure environmental, and a run whose only failures
+# are environmental stages no request, so the failure reached nobody. A real
+# device fault raised through that class is still caught by the device's own
+# marker (a CUDA or OpenCL error code, a native allocation frame) in its
+# message or trace.
 ENVIRONMENTAL_MARKERS = (
     "memallocmanaged",
     "cumemalloc", "cumemfree", "cumemcpy",
     "cudaerror", "cuda_error", "curesult", "jcuda",
     "cl_out_of_resources", "cl_mem_object_allocation_failure",
-    "hardwareexception",
     "sigsegv", "sigbus", "sigabrt", "sigill", "sigfpe",
     "fatal error has been detected",
     "exception_access_violation",
