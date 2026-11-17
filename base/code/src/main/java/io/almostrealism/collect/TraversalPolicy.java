@@ -315,16 +315,6 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	}
 
 	/**
-	 * Returns the traversal-rate numerator for the given axis as an {@code int}.
-	 *
-	 * @param axis the zero-based dimension axis
-	 * @return the rate numerator for that axis
-	 */
-	public int rateNumerator(int axis) {
-		return Math.toIntExact(rateNumeratorLong(axis));
-	}
-
-	/**
 	 * Returns the traversal-rate numerator for the given axis as a {@code long}.
 	 *
 	 * @param axis the zero-based dimension axis, or {@code -1} to return {@code 1}
@@ -332,16 +322,6 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 */
 	public long rateNumeratorLong(int axis) {
 		return rateNumerator == null || axis == -1 ? 1 : rateNumerator[axis];
-	}
-
-	/**
-	 * Returns the traversal-rate denominator for the given axis as an {@code int}.
-	 *
-	 * @param axis the zero-based dimension axis
-	 * @return the rate denominator for that axis
-	 */
-	public int rateDenominator(int axis) {
-		return Math.toIntExact(rateDenominatorLong(axis));
 	}
 
 	/**
@@ -1569,5 +1549,39 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 		}
 
 		return shape;
+	}
+
+	/**
+	 * Validates that this shape has {@code count} dimensions, as {@code operation} requires.
+	 *
+	 * @param operation the operation the shape is given to, for the error message
+	 * @param count     the number of dimensions the operation requires
+	 * @return this shape
+	 * @throws IllegalArgumentException if the number of dimensions differs
+	 */
+	public TraversalPolicy requireDimensions(String operation, int count) {
+		if (getDimensions() != count) {
+			throw new IllegalArgumentException(operation + " expects a " + count + "-dimensional shape, got " + this);
+		}
+
+		return this;
+	}
+
+	/**
+	 * Validates that every element of this shape has an exact 32-bit integer offset, as kernels
+	 * forming offsets on integers (such as {@code row * rowLength + i}) require; past
+	 * {@link Integer#MAX_VALUE} such offsets wrap, so {@code operation} is rejected when created.
+	 *
+	 * @param operation the operation the shape is given to, for the error message
+	 * @return this shape
+	 * @throws IllegalArgumentException if this shape has more than {@link Integer#MAX_VALUE} elements
+	 */
+	public TraversalPolicy requireIntegerAddressable(String operation) {
+		if (getTotalSizeLong() > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException(operation + " cannot address " + getTotalSizeLong()
+					+ " elements exactly; element offsets are 32-bit integers, limited to " + Integer.MAX_VALUE);
+		}
+
+		return this;
 	}
 }
