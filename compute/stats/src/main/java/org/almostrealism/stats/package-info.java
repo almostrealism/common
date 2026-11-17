@@ -17,14 +17,15 @@
 /**
  * Provides probability distribution utilities and statistical sampling for graphics and physics simulations.
  *
- * <p>This package contains utilities for working with probability distributions, particularly
- * those used in physically-based rendering and Monte Carlo simulations.</p>
+ * <p>This package contains utilities for working with probability distributions: discrete
+ * sampling and softmax for statistical modeling and token sampling, and spherical
+ * distributions used in physically-based rendering and Monte Carlo simulations.</p>
  *
  * <h2>Core Components</h2>
  *
  * <h3>Distribution Sampling</h3>
  * <ul>
- *   <li>{@link org.almostrealism.stats.DistributionFeatures} - Utilities for sampling from discrete distributions and softmax</li>
+ *   <li>{@link org.almostrealism.stats.DistributionFeatures} - Sampling from discrete distributions, softmax, and a zero-masked softmax</li>
  *   <li>{@link org.almostrealism.stats.SphericalProbabilityDistribution} - Interface for spherical distributions (e.g., BRDF)</li>
  * </ul>
  *
@@ -51,8 +52,12 @@
  *
  * <h3>Softmax</h3>
  * <pre>{@code
+ * // exp(x_i) / sum(exp(x_j)) over every logit, including logits equal to 0.0
  * CollectionProducer logits = ...;
  * CollectionProducer probabilities = features.softmax(logits);
+ *
+ * // A masked softmax in which elements equal to exactly 0.0 are padding
+ * CollectionProducer masked = features.softmaxIgnoreZero(logits, true);
  * }</pre>
  *
  * @author Michael Murray
