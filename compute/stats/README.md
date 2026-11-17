@@ -49,9 +49,16 @@ CollectionProducer<?> logits = ...;
 // Standard softmax with max subtraction for numerical stability
 CollectionProducer<?> probs = features.softmax(logits);
 
-// Without max subtraction (less stable)
+// Without max subtraction (same result, but can overflow for large logits)
 CollectionProducer<?> probs = features.softmax(logits, false);
 ```
+
+Every element is a logit, including one equal to `0.0`.
+
+**Masked softmax:** `softmaxIgnoreZero(logits, subtractMax)` treats every element equal
+to exactly `0.0` as padding: it receives probability `0` and is excluded from the sum.
+A genuine zero logit cannot be expressed with it, so use it only where zero marks an
+absent element.
 
 **Softmax Formula:**
 ```
