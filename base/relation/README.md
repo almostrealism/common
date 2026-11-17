@@ -253,7 +253,11 @@ This applies just as much when the graph is a `Producer` rather than an
 `evaluate(...)` is the default: it optimizes, so a composite graph containing a
 reduction is isolated into its own kernel instead of being embedded in every
 reader. `evaluateExplicit(...)` is the deliberate unoptimized path, for a graph the
-caller knows needs no isolation.
+caller knows needs no isolation. Note that `evaluateExplicit(...)` does not itself
+optimize, but it does not force an unoptimized compile either: `get()` returns a
+cached optimized `Evaluable` once the producer has already been optimized (for
+example by a prior `evaluate(...)` call). A guaranteed-unoptimized evaluation
+therefore requires a producer that has not yet been optimized.
 
 `into(...)` has no optimizing counterpart, so writing into a pre-allocated
 destination with optimization means combining the two:
