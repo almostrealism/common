@@ -494,6 +494,36 @@ public class FieldCalculusTests extends TestSuiteBase {
 	}
 
 	/**
+	 * The second difference of a smooth field offset by a large constant keeps the precision of the
+	 * small variation, through both the optimizing {@code evaluate()} and the unoptimized
+	 * {@code evaluateExplicit()}. The field is {@code 1000 + 0.01 i^2}, whose exact second difference
+	 * is {@code 0.02}; the reference is computed in double precision from the values actually stored,
+	 * so it is exact for whatever precision the backend holds. Subtracting neighbouring values first
+	 * is exact for such a field, while summing the two neighbours first rounds at a magnitude of
+	 * {@code 2000}, which in single precision loses about {@code 1e-4} and fails the bound.
+	 */
+	@Test(timeout = 120000)
+	public void secondDifferenceLargeOffsetPrecision() {
+		int n = 32;
+		PackedCollection field = integers(0, n).multiply(integers(0, n)).multiply(0.01).add(1000.0).evaluate();
+		double[] stored = field.toArray(0, n);
+
+		List<Supplier<PackedCollection>> paths = List.of(
+				() -> secondDifference(cp(field), 0, 1.0, GridBoundary.periodic()).evaluate(),
+				() -> secondDifference(cp(field), 0, 1.0, GridBoundary.periodic()).evaluateExplicit());
+		String[] names = { "evaluate", "evaluateExplicit" };
+
+		for (int p = 0; p < paths.size(); p++) {
+			double[] actual = paths.get(p).get().toArray(0, n);
+			for (int i = 1; i < n - 1; i++) {
+				double expected = (stored[i + 1] - stored[i]) - (stored[i] - stored[i - 1]);
+				assertEquals(names[p] + " stored stencil at " + i, 0.02, expected, 1e-3);
+				assertEquals(names[p] + " at " + i, expected, actual[i], 1e-6);
+			}
+		}
+	}
+
+	/**
 	 * The 5-point and 9-point Laplacians of {@code sin(kx x) sin(ky y)} on a periodic grid are
 	 * {@code -(kx^2 + ky^2) f} up to their leading truncation errors, {@code (kx^4 + ky^4) h^2 / 12}
 	 * and the isotropic {@code (kx^2 + ky^2)^2 h^2 / 12} respectively, and each equals the exact
