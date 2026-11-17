@@ -16,19 +16,24 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
 import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Equals;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.AggregatedProducerComputation;
+import org.almostrealism.collect.computations.DefaultTraversableExpressionComputation;
 
 import java.util.List;
 
@@ -201,12 +206,31 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	}
 
 	/**
+	 * Unrolls both the outer and inner sums into a single weighted-sum expression for one output
+	 * element, over the given traversable arguments. Each outer iteration's result is flattened
+	 * via {@code generate(flatten())} to keep the expression tree flat.
+	 *
+	 * @param args  the traversable arguments [output, input, weights]
+	 * @param index the output element index
+	 * @return expression computing the weighted sum at this index
+	 */
+	private Expression<?> computeFullSum(TraversableExpression[] args, Expression<?> index) {
+		Expression<?> result = getInitialValue(args, index);
+		for (int outer = 0; outer < count; outer++) {
+			Expression<Integer> outerIdx = new IntegerConstant(outer);
+			result = combine(result, computeInnerSum(args, index, outerIdx));
+			result = result.generate(result.flatten());
+		}
+
+		return result;
+	}
+
+	/**
 	 * Computes the value at a given index when embedded in another computation.
 	 *
 	 * <p>This override unrolls both loops using the same incremental flattening
 	 * approach as the base class, delegating the inner sum to
-	 * {@link #computeInnerSum}. Each outer iteration's result is flattened
-	 * via {@code generate(flatten())} to keep the expression tree flat.</p>
+	 * {@link #computeInnerSum}.</p>
 	 *
 	 * <p>For truly efficient computation with native loops, the computation must be
 	 * isolated so that getScope() is called instead.</p>
@@ -216,15 +240,7 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	 */
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		TraversableExpression[] args = getTraversableArguments(index);
-		Expression<?> result = getInitialValue(args, index);
-		for (int outer = 0; outer < count; outer++) {
-			Expression<Integer> outerIdx = new IntegerConstant(outer);
-			result = combine(result, computeInnerSum(args, index, outerIdx));
-			result = result.generate(result.flatten());
-		}
-
-		return (Expression<Double>) result;
+		return (Expression<Double>) computeFullSum(getTraversableArguments(index), index);
 	}
 
 	/**
@@ -245,6 +261,108 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
 		Expression currentValue = out.reference(k.multiply(out.length()));
 		return combine(currentValue, computeInnerSum(args, globalIndex, localIndex));
+	}
+
+	/**
+	 * Returns the full Jacobian of this weighted sum with respect to one of its two operands, as a
+	 * closed form rather than by differentiating the unrolled {@link #getValueAt(Expression)}
+	 * expression.
+	 *
+	 * <p>This computation is bilinear: each output is a sum of products of one input element and
+	 * one weight element, so the derivative of an output with respect to a target element of one
+	 * operand is the matching element of the <em>other</em> operand, summed over every
+	 * {@code (outer, inner)} term whose index into the differentiated operand equals the target.
+	 * The Jacobian is formed here by reading the other operand as a coefficient — exactly as the
+	 * forward pass reads it — masked by that index match. The base
+	 * {@code AggregatedProducerComputation} instead forms the Jacobian through a
+	 * {@code ConstantRepeatedDeltaComputation}, whose single iteration index cannot carry both the
+	 * output position and the outer-loop position this computation's two-level indexing needs, and
+	 * which asks this computation for its compiled output variable while it is embedded in the
+	 * delta. Differentiating the unrolled expression instead (through a
+	 * {@code TraversableDeltaComputation}) drops the boundary mask of a non-trivial input operand,
+	 * such as the zero-padded upsampled input of a transposed convolution, so the gradient reads
+	 * values the forward pass treats as zero. Reading the other operand directly avoids all three:
+	 * the forward construction — the native loop of {@link #getScope} and {@link #getExpression} —
+	 * is untouched.</p>
+	 *
+	 * @param target the producer with respect to which to differentiate; it is one of the two
+	 *               operands (or the stub that replaces it during chain-rule differentiation)
+	 * @return the Jacobian, in the shape of this computation followed by that of the target
+	 */
+	@Override
+	protected CollectionProducer deltaMatrix(Producer<?> target) {
+		Producer<PackedCollection> input = getInputs().get(1);
+		Producer<PackedCollection> weights = getInputs().get(2);
+
+		if (weights.refersTo(target) && input.cannotMatch(target)) {
+			return jacobian(false, target, input);
+		} else if (input.refersTo(target) && weights.cannotMatch(target)) {
+			return jacobian(true, target, weights);
+		}
+
+		return super.deltaMatrix(target);
+	}
+
+	/**
+	 * Builds the closed-form Jacobian of this weighted sum with respect to one operand.
+	 *
+	 * <p>For each joint index into {@code output_shape.append(target_shape)}, the high-order part
+	 * selects the output element and the low-order part selects the target element. The value is
+	 * the sum, over the {@code outer * inner} terms of that output element, of the other operand's
+	 * element — read through {@code args[1]} so that a non-trivial operand's own expression (for
+	 * example a pad's boundary zeros) is honoured — masked to zero unless the differentiated
+	 * operand's index for that term equals the target element.</p>
+	 *
+	 * @param wrtInput {@code true} to differentiate with respect to the input, {@code false} for
+	 *                 the weights
+	 * @param target   the operand (or its stub) with respect to which to differentiate
+	 * @param other    the operand read as the coefficient: the weights when {@code wrtInput}, the
+	 *                 input otherwise
+	 * @return the Jacobian, in the shape of this computation followed by that of the target
+	 */
+	private CollectionProducer jacobian(boolean wrtInput, Producer<?> target,
+										Producer<PackedCollection> other) {
+		TraversalPolicy targetShape = shape(target);
+		long targetSize = targetShape.getTotalSizeLong();
+		TraversalPolicy jacobianShape = getShape().append(targetShape);
+
+		return new DefaultTraversableExpressionComputation(
+				wrtInput ? getName() + "InputDelta" : getName() + "WeightDelta",
+				jacobianShape,
+				args -> CollectionExpression.create(jacobianShape, jointIndex -> {
+					Expression<?> outputIndex = jointIndex.divide(targetSize);
+					Expression<?> targetIndex = jointIndex.imod(targetSize);
+
+					Expression<?> sum = new DoubleConstant(0.0);
+					for (int outer = 0; outer < count; outer++) {
+						Expression<Integer> outerIdx = new IntegerConstant(outer);
+						for (int inner = 0; inner < innerCount; inner++) {
+							Expression<Integer> innerIdx = new IntegerConstant(inner);
+							Expression<?> inputIdx = inputIndexer.index(outputIndex, outerIdx, innerIdx);
+							Expression<?> weightIdx = weightIndexer.index(outputIndex, outerIdx, innerIdx);
+
+							Expression<?> matchIdx = wrtInput ? inputIdx : weightIdx;
+							Expression<?> coeffIdx = wrtInput ? weightIdx : inputIdx;
+							sum = sum.add(Mask.of(Equals.of(matchIdx, targetIndex),
+									args[1].getValueAt(coeffIdx)));
+						}
+					}
+
+					return sum;
+				}),
+				other);
+	}
+
+	/**
+	 * Supports the chain rule, so that the dependent delta can differentiate this computation with
+	 * respect to a target reached through one of its inputs, by differentiating the regenerated
+	 * expression with respect to a stub for that input (its {@link #deltaMatrix(Producer) Jacobian}).
+	 *
+	 * @return {@code true}
+	 */
+	@Override
+	protected boolean isChainRuleSupported() {
+		return true;
 	}
 
 	/**
