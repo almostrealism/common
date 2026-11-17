@@ -217,6 +217,12 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 * scalar operands over a scalar output) the index is returned unchanged, so element-wise,
 	 * same-size, and non-batched selections are unaffected.</p>
 	 *
+	 * <p>The projection applies only to an operand with a variable count &mdash; a batched input
+	 * whose rows are indexed by the kernel without being wrapped to the operand's size. An operand
+	 * with a fixed count is read at the output element index exactly as any other element-wise
+	 * operand is, so a smaller fixed-size operand keeps the framework's ordinary (repeating)
+	 * element-wise semantics.</p>
+	 *
 	 * <p>Broadcasting only applies to shapes that are broadcast-compatible: the operand item size
 	 * must divide the output item size evenly, so each operand value governs a whole, equal-sized
 	 * group of output elements. A per-row scalar (operand size 1) and a sub-item operand whose
@@ -232,10 +238,12 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 *                                  but does not divide it evenly
 	 */
 	protected Expression<?> conditionIndex(Expression<?> index, int inputPosition) {
+		TraversalPolicy operandShape = shape(getInputs().get(inputPosition));
 		long outputSize = getShape().getSizeLong();
-		long operandSize = shape(getInputs().get(inputPosition)).getSizeLong();
+		long operandSize = operandShape.getSizeLong();
 
-		if (operandSize >= outputSize) {
+		// TODO(review): fixedness is a proxy for "per-row operand"; consider comparing operand count to output count instead
+		if (operandShape.isFixedCount() || operandSize >= outputSize) {
 			return index;
 		}
 
