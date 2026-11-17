@@ -588,9 +588,9 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 	 * Tests that a reduction referencing an argument supplied smaller than its declared
 	 * per-item size is rejected. The first input carries a clean batch of three items (24
 	 * values over a declared per-item size of eight) while the second carries only four
-	 * values, fewer than one declared item. The reference reads its declared size per item,
-	 * wrapping the index by that declared size, so the undersized argument would be read past
-	 * its data; the invocation must be refused rather than produce an out-of-bounds read.
+	 * values, fewer than one declared item. The kernel reads the declared size per item at
+	 * index-parametric positions, so the undersized argument would be read past its data;
+	 * the invocation must be refused rather than produce an out-of-bounds read.
 	 */
 	@Test(timeout = 30000)
 	public void dynamicSumRejectsUndersizedArgument() {

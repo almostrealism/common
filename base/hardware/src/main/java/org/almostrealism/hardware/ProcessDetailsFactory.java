@@ -988,9 +988,14 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	 * referenced argument, so items after the first would read past its data. An argument
 	 * supplied larger than its declared size but not a whole number of items is malformed and is
 	 * likewise rejected. An argument supplied <em>smaller</em> than its declared per-item size is
-	 * also rejected: the reference reads its declared size per item (wrapping the index by that
-	 * declared size, see {@code PassThroughProducer#getValueAt}), so an undersized buffer would be
-	 * read past its data regardless of the batch.</p>
+	 * also rejected: the kernel reads {@code declaredSize} values per item at index-parametric
+	 * positions, so an undersized buffer would be read past its data regardless of the batch.</p>
+	 *
+	 * <p>The modulo wrap in {@code PassThroughProducer#getValueAt} does not confine these reads:
+	 * the compiled reduction addresses each referenced argument at the kernel's index-parametric
+	 * position, so nothing limits a kernel index to an argument's declared size. That is why a
+	 * single-item argument cannot be broadcast across a batch: items after the first would read
+	 * values past its data.</p>
 	 *
 	 * <p>Deriving the kernel size from the data actually supplied (rather than from the
 	 * destination) keeps a destination honest: the caller-supplied destination must then match
@@ -1035,12 +1040,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 
 			if (suppliedSize < declaredSize) {
-				// TODO(review): "wrapping the index by that size" contradicts the single-item rejection below, which found no wrap on this path
 				throw new IllegalArgumentException("Referenced argument supplied size (" +
 						suppliedSize + ") is smaller than its declared per-item size (" +
 						declaredSize + "); an index-parametric reference reads its declared " +
-						"size per item (wrapping the index by that size) and would read past " +
-						"the supplied data");
+						"size per item and would read past the supplied data");
 			}
 
 			if (suppliedSize % declaredSize != 0) {
