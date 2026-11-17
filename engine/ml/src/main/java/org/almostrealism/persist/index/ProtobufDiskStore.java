@@ -65,8 +65,11 @@ import java.util.logging.Logger;
  * records while another periodically flushes. Every operation on the records
  * (the pending batch, the record index and the batch cache) holds this
  * store's monitor. The vector index is guarded by a separate lock, which is
- * only ever acquired after the store's monitor and never before it, so
- * vector insertion and the vector-index save do not block record access.
+ * only ever acquired after the store's monitor and never before it. A record
+ * stored with its vector holds both, so the pair is replaced atomically;
+ * {@link #insertEmbedding}, search and the vector-index save on
+ * {@link #flush()} take only the vector-index lock and do not block record
+ * access. {@link #close()} holds both until everything is persisted.
  * {@link #scan} and {@link #pairwiseScan} hold the monitor only while they
  * load each batch, not while the visitor runs.</p>
  *
@@ -332,8 +335,16 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The record and its vector are stored as one operation under this
+	 * store's monitor, so a concurrent replacement or deletion of the same
+	 * identifier cannot fall between them and leave the vector index holding a
+	 * vector for a record that is no longer stored.</p>
+	 */
 	@Override
-	public void put(String id, T record, PackedCollection vector) {
+	public synchronized void put(String id, T record, PackedCollection vector) {
 		put(id, record);
 		synchronized (hnswLock) {
 			ensureHnswIndex(vector.getMemLength());
@@ -349,12 +360,14 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 *
 	 * @param id     the record identifier
 	 * @param vector the embedding vector to index
+	 * @throws IllegalStateException if the store has been closed
 	 */
 	public void insertEmbedding(String id, PackedCollection vector) {
-		// TODO(review): unlike put(), this does not check `closed`; since close() now
-		// nulls hnswIndex, calling this after close() silently creates a fresh, empty
-		// index via ensureHnswIndex() instead of failing, discarding prior data.
 		synchronized (hnswLock) {
+			if (closed) {
+				throw new IllegalStateException("Cannot insert an embedding into a closed store");
+			}
+
 			ensureHnswIndex(vector.getMemLength());
 			if (hnswIndex.contains(id)) {
 				hnswIndex.remove(id);
@@ -504,31 +517,39 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		return index.size();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Both the records and the vector index are persisted before the store
+	 * is marked closed, holding this store's monitor and the vector-index lock
+	 * throughout, so no record or vector can be added between the save and the
+	 * release of the in-memory state. If persisting fails, the store remains
+	 * open and the close can be retried.</p>
+	 */
 	@Override
-	public void close() {
-		synchronized (this) {
-			if (closed) {
-				return;
-			}
-
-			flushOrSaveIndex();
-			closed = true;
-
-			List<Integer> cachedIds = new ArrayList<>();
-			batchCache.forEach((k, v) -> cachedIds.add(k));
-			for (Integer id : cachedIds) {
-				batchCache.evict(id);
-			}
-			index.clear();
+	public synchronized void close() {
+		if (closed) {
+			return;
 		}
 
+		flushOrSaveIndex();
+
 		synchronized (hnswLock) {
+			saveHnswIndex();
+			closed = true;
+
 			if (hnswIndex != null) {
-				saveHnswIndex();
 				hnswIndex.destroy();
 				hnswIndex = null;
 			}
 		}
+
+		List<Integer> cachedIds = new ArrayList<>();
+		batchCache.forEach((k, v) -> cachedIds.add(k));
+		for (Integer id : cachedIds) {
+			batchCache.evict(id);
+		}
+		index.clear();
 	}
 
 	/**
@@ -579,12 +600,25 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 	 * Save the HNSW index to disk if it exists.
 	 */
 	private void saveHnswIndex() {
-		// TODO(review): hnsw.bin is still rewritten in place; consider the tmp+sync+atomic move used for index.bin
 		synchronized (hnswLock) {
 			if (hnswIndex != null) {
-				hnswIndex.save(new File(rootDir, HNSW_FILE_NAME).toPath());
+				replaceAtomically(new File(rootDir, HNSW_FILE_NAME), hnswIndex::save);
 			}
 		}
+	}
+
+	/**
+	 * The content of a file written by {@link #replaceAtomically}.
+	 */
+	@FunctionalInterface
+	private interface FileContent {
+		/**
+		 * Write the content to the given stream.
+		 *
+		 * @param out the stream to write to
+		 * @throws IOException if writing fails
+		 */
+		void writeTo(OutputStream out) throws IOException;
 	}
 
 	/**
@@ -796,11 +830,6 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 		return new File(rootDir, "index.bin");
 	}
 
-	/** Return the path of the temporary file the index is written to before it replaces the index file. */
-	private File pendingIndexFile() {
-		return new File(rootDir, "index.bin.tmp");
-	}
-
 	/** List all batch IDs by scanning the root directory, sorted ascending. */
 	private List<Integer> listBatchIds() {
 		List<Integer> batchIds = new ArrayList<>();
@@ -842,19 +871,33 @@ public class ProtobufDiskStore<T extends Message> implements DiskStore<T> {
 							.build());
 		}
 
-		File pending = pendingIndexFile();
+		replaceAtomically(indexFile(), builder.build()::writeTo);
+	}
+
+	/**
+	 * Replace a file with new content so that an interruption leaves either
+	 * the previous file or the new one, never a truncated file. The content is
+	 * written to a temporary file beside the target, synced to the storage
+	 * device, and then moved over the target atomically.
+	 *
+	 * @param target  the file to replace
+	 * @param content writes the new content to the stream it is given
+	 * @throws UncheckedIOException if writing or moving the file fails
+	 */
+	private void replaceAtomically(File target, FileContent content) {
+		File pending = new File(target.getParentFile(), target.getName() + ".tmp");
 		try {
 			try (FileOutputStream fileOut = new FileOutputStream(pending);
 				 OutputStream out = decorateOutput(pending, fileOut)) {
-				builder.build().writeTo(out);
+				content.writeTo(out);
 				out.flush();
 				fileOut.getFD().sync();
 			}
 
-			Files.move(pending.toPath(), indexFile().toPath(),
+			Files.move(pending.toPath(), target.toPath(),
 					StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
 		} catch (IOException e) {
-			throw new UncheckedIOException("Failed to save index", e);
+			throw new UncheckedIOException("Failed to save " + target, e);
 		}
 	}
 

@@ -59,7 +59,7 @@ vector index is written on `flush()` and `close()`.
 **What survives an interruption.** A record is durable once a flush has written and synced its
 batch file *and then* committed `index.bin`. The index is written to `index.bin.tmp`, synced,
 and moved over `index.bin` atomically, so an interruption at any point leaves the previously
-committed index readable:
+committed index readable. `hnsw.bin` is replaced the same way, through `hnsw.bin.tmp`:
 
 | Interrupted while... | After reopening |
 |---|---|
@@ -67,7 +67,8 @@ committed index readable:
 | a batch file is being written | the partial batch file is referenced by no index entry and is never read; its records are lost |
 | the batch is complete but the index is being written | the previous index is used; the complete batch is unreferenced and ignored, its records are lost |
 | the index has been moved into place | every record of that flush is kept |
-| `hnsw.bin` is being written, or after an automatic flush that did not save it | records are kept; the vector index lacks some of them until the model is declared again (section 5) |
+| `hnsw.bin` is being written | the previously saved vector index is used; it lacks the vectors added since, until the model is declared again (section 5) |
+| after an automatic flush that did not save `hnsw.bin` | records are kept; the vector index lacks some of them until the model is declared again (section 5) |
 
 Batch numbers are never reused for a file that already exists, so a store whose index was lost
 does not overwrite the batches still on disk. `scan` and `pairwiseScan` read only the batches

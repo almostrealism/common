@@ -85,8 +85,13 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	/** Directory holding the batch files, index, and the validated-model marker. */
 	private final File rootDir;
 
-	/** Guards the validated-model marker against concurrent record writes. */
-	private final Object markerLock = new Object();
+	/**
+	 * Serializes every change to the stored records, the nearest-neighbor
+	 * index's model and the validated-model marker: record writes and
+	 * deletions, a model declaration together with the backfill it triggers,
+	 * the marker update, and flush and close.
+	 */
+	private final Object writeLock = new Object();
 
 	/**
 	 * The model for which every stored record holding its features has been
@@ -148,7 +153,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	@Override
 	public void put(String identifier, WaveDetails details) {
 		Audio.WaveDetailData data = AudioLibraryPersistence.encode(details, false);
-		synchronized (markerLock) {
+		synchronized (writeLock) {
 			clearValidatedModel();
 			diskStore.put(identifier, data);
 		}
@@ -156,10 +161,10 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	@Override
 	public void put(String identifier, WaveDetails details, PackedCollection embeddingVector) {
-		// The embedding is pooled from the active model's features
-		setEmbeddingModel(details.getActiveModelIdentifier());
 		Audio.WaveDetailData data = AudioLibraryPersistence.encode(details, false);
-		synchronized (markerLock) {
+		synchronized (writeLock) {
+			// The embedding is pooled from the active model's features
+			setEmbeddingModel(details.getActiveModelIdentifier());
 			clearValidatedModel();
 			diskStore.put(identifier, data, embeddingVector);
 		}
@@ -167,7 +172,9 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	@Override
 	public void delete(String identifier) {
-		diskStore.delete(identifier);
+		synchronized (writeLock) {
+			diskStore.delete(identifier);
+		}
 	}
 
 	@Override
@@ -202,17 +209,29 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	@Override
 	public void insertEmbedding(String identifier, PackedCollection embeddingVector) {
+		// TODO(review): not under writeLock, so it can interleave with setEmbeddingModel's model switch/backfill or a put of the same id
 		diskStore.insertEmbedding(identifier, embeddingVector);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The declaration and the backfill it triggers run as one operation
+	 * under the same lock as every record write, so a concurrent declaration of
+	 * another model cannot interleave its vectors with this one's, and a
+	 * concurrent write cannot replace a record between the backfill reading its
+	 * features and indexing the embedding pooled from them.</p>
+	 */
 	@Override
 	public void setEmbeddingModel(String modelIdentifier) {
-		boolean reset = diskStore.setIndexModel(modelIdentifier);
-		if (modelIdentifier == null) return;
+		synchronized (writeLock) {
+			boolean reset = diskStore.setIndexModel(modelIdentifier);
+			if (modelIdentifier == null) return;
 
-		if (reset || !modelIdentifier.equals(reconciledModel)) {
-			indexMissingEmbeddings(modelIdentifier);
-			reconciledModel = modelIdentifier;
+			if (reset || !modelIdentifier.equals(reconciledModel)) {
+				indexMissingEmbeddings(modelIdentifier);
+				reconciledModel = modelIdentifier;
+			}
 		}
 	}
 
@@ -227,12 +246,11 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 	 * after a recomputation that will never be triggered for them. Records
 	 * without the declared model's features are left out; they are indexed when
 	 * their embeddings are computed and stored. Only records missing from the
-	 * index are read.
+	 * index are read. Must be called holding {@link #writeLock}.
 	 *
 	 * @param modelIdentifier the model whose embeddings the index holds
 	 */
 	private void indexMissingEmbeddings(String modelIdentifier) {
-		// TODO(review): a concurrent put of the same id between get() and insertEmbedding() lets this overwrite the newer vector with one pooled from stale features
 		for (String identifier : diskStore.allIds()) {
 			if (diskStore.hasIndexedEmbedding(identifier)) continue;
 
@@ -267,7 +285,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	@Override
 	public void setValidatedModel(String modelIdentifier, Predicate<Set<String>> complete) {
-		synchronized (markerLock) {
+		synchronized (writeLock) {
 			if (modelIdentifier == null || !complete.test(allIdentifiers())) {
 				clearValidatedModel();
 				return;
@@ -290,7 +308,7 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	/**
 	 * Deletes the validated-model marker, if present. Must be called holding
-	 * {@link #markerLock}. The file is checked on every call rather than cached,
+	 * {@link #writeLock}. The file is checked on every call rather than cached,
 	 * because the marker is shared by every store opened on the directory.
 	 * Failure is thrown rather than logged: a marker that survives would let
 	 * the next launch trust records it never vouched for.
@@ -312,14 +330,14 @@ public class ProtobufWaveDetailsStore implements WaveDetailsStore, ConsoleFeatur
 
 	@Override
 	public void flush() {
-		synchronized (markerLock) {
+		synchronized (writeLock) {
 			diskStore.flush();
 		}
 	}
 
 	@Override
 	public void close() {
-		synchronized (markerLock) {
+		synchronized (writeLock) {
 			diskStore.close();
 		}
 	}

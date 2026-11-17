@@ -320,7 +320,7 @@ public class ProtobufDiskStoreCrashSafetyTest extends TestSuiteBase {
 	 */
 	private static void awaitFinishedOrBlockedOn(Thread thread, Object monitor) {
 		while (thread.isAlive()) {
-			ThreadInfo info = ManagementFactory.getThreadMXBean().getThreadInfo(thread.threadId());
+			ThreadInfo info = ManagementFactory.getThreadMXBean().getThreadInfo(thread.getId());
 			if (info != null && info.getThreadState() == Thread.State.BLOCKED && info.getLockInfo() != null
 					&& info.getLockInfo().getIdentityHashCode() == System.identityHashCode(monitor)) {
 				return;
