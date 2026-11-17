@@ -111,12 +111,16 @@ public class ConvTranspose1dBackwardTest extends TestSuiteBase {
 		model.add(layer);
 
 		CompiledModel compiled = model.compile(true, true);
-		compiled.forward(input);
-		double[] inputGradient = compiled.backward(upstream).toArray();
+		try {
+			compiled.forward(input);
+			double[] inputGradient = compiled.backward(upstream).toArray();
 
-		double[] numericInput = extrapolatedDifferences(input, EPS,
-				() -> loss(compiled.forward(input), upstream));
-		assertGradientMatches(testName + " input", numericInput, inputGradient, TOLERANCE, MINIMUM);
+			double[] numericInput = extrapolatedDifferences(input, EPS,
+					() -> loss(compiled.forward(input), upstream));
+			assertGradientMatches(testName + " input", numericInput, inputGradient, TOLERANCE, MINIMUM);
+		} finally {
+			compiled.destroy();
+		}
 
 		// --- Filter gradient: observed as the weight update produced by a known learning rate ---
 		double learningRate = 1.0;
@@ -150,6 +154,7 @@ public class ConvTranspose1dBackwardTest extends TestSuiteBase {
 			assertGradientMatches(testName + " filter", numericWeights, filterGradient, TOLERANCE, MINIMUM);
 		} finally {
 			weightsSnapshot.destroy();
+			trainedCompiled.destroy();
 		}
 	}
 
