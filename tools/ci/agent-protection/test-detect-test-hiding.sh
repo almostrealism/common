@@ -1304,6 +1304,41 @@ public class MyTest {
 }'
 }
 
+# ── Scenario: digits embedded in identifiers shrink, no real dimension change
+#    — FALSE-POSITIVE REGRESSION / word-boundary guard ──────────────────────
+#
+# The large numbers that change are all embedded inside identifiers
+# (`buffer4096` -> `buffer8`, `stage2048` -> `stage4`), not standalone method
+# arguments. An integer literal is a digit run NOT adjacent to a letter or
+# underscore, so none of these are literals and Pattern 11
+# (NUMERIC_LITERALS_SHRUNK) MUST NOT fire (expected exit 0). This pins the
+# word-boundary semantics of the extractor: it would fail if extraction ever
+# regressed to a boundary-free `[0-9]+`, and it is the portable counterpart to
+# the GNU-only `\b` the extractor must not depend on.
+setup_identifier_embedded_digits_shrunk() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, run(buffer4096, stage2048, node1024, lane512));
+    }
+    int run(int a, int b, int c, int d) { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, run(buffer8, stage4, node2, lane1));
+    }
+    int run(int a, int b, int c, int d) { return 1; }
+}'
+}
+
 # ── Run all cases ──────────────────────────────────────────────────────────
 
 echo "Running detect-test-hiding regression tests..."
@@ -1342,6 +1377,7 @@ run_case "integer-arguments-shrunk [true positive]"         2 setup_integer_argu
 run_case "integer-arguments-shrunk-beside-floats [true positive]" 2 setup_integer_arguments_shrunk_beside_floats
 run_case "trailing-dot-floats-replaced [false-positive regression]" 0 setup_trailing_dot_floats_replaced
 run_case "hex-floats-replaced [false-positive regression]" 0 setup_hex_floats_replaced
+run_case "identifier-embedded-digits-shrunk [false-positive regression]" 0 setup_identifier_embedded_digits_shrunk
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

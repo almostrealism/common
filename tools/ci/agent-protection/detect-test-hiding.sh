@@ -585,16 +585,23 @@ count_test_annotations() {
 #   - a decimal float written with a trailing dot and no fraction (`64.`, `256.`);
 #   - a bare exponent form (`1e6`).
 #
-# ERE + sed is used (not grep -oP) so extraction works under both GNU grep and
-# BSD grep. The hexadecimal patterns run first, before the decimal ones can
-# mistake a hex significand's `.` for a decimal point. `|| true` keeps a grep
+# Only portable constructs are used (ERE + sed, not grep -oP; no `\b`) so
+# extraction behaves the same under both GNU grep and BSD grep. The hexadecimal
+# patterns run first, before the decimal ones can mistake a hex significand's
+# `.` for a decimal point. After the floats are removed, `tr` splits what
+# remains into identifier-like tokens — every run of word characters
+# (`[0-9A-Za-z_]`) becomes one line — and only the all-digit tokens are kept.
+# That reproduces the word-boundary semantics of `\b[0-9]+\b` (an integer not
+# adjacent to a letter or underscore, so `64` in `embedDim64` is not a literal)
+# without relying on `\b`, which is a GNU grep extension BSD grep does not read
+# as a boundary and would silently match nothing for. `|| true` keeps a grep
 # no-match from aborting under `set -e`.
 extract_integer_literals() {
     local diff="$1"
     local marker="$2"
     echo "$diff" | grep -E "^${marker}" \
         | sed -E 's/0[xX][0-9a-fA-F]*\.[0-9a-fA-F]*([pP][-+]?[0-9]+)?[fFdD]?//g; s/0[xX][0-9a-fA-F]+[pP][-+]?[0-9]+[fFdD]?//g; s/[0-9]*\.[0-9]+([eE][-+]?[0-9]+)?[fFdD]?//g; s/[0-9]+\.([eE][-+]?[0-9]+)?[fFdD]?//g; s/[0-9]+[eE][-+]?[0-9]+[fFdD]?//g' \
-        | grep -oE '\b[0-9]+\b' | sort -rn | head -50 || true
+        | tr -c '0-9A-Za-z_' '\n' | grep -E '^[0-9]+$' | sort -rn | head -50 || true
 }
 
 # Get list of modified (not added) test files.
