@@ -12,7 +12,6 @@ import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.TransformMatrixFeatures;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.primitives.Sphere;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -600,7 +599,6 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	 * transform matrix is applied to a batch of varying vectors, do
 	 * we get correct results?
 	 */
-	@TestProperties(knownIssue = true)
 	@Test(timeout = 20000)
 	public void testBatchTransformAsLocation() {
 		log("Testing batch mode transform (transformAsLocation)...");
@@ -680,7 +678,6 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	 * Tests that the matmul-based TransformMatrixFeatures.transform()
 	 * produces correct results in batch mode.
 	 */
-	@TestProperties(knownIssue = true)
 	@Test(timeout = 20000)
 	public void testBatchMatmulTransformVector() {
 		log("Testing batch matmul transform on vectors...");
@@ -732,6 +729,69 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 				Math.abs(output.valueAt(2, 1) - 8.0) < 0.01);
 
 		log("Batch matmul transform test passed!");
+	}
+
+	/**
+	 * Tests that {@link TransformMatrix#TRANSFORM_AS_OFFSET} applied to a batch of
+	 * vectors scales every row by the same matrix and ignores the translation.
+	 */
+	@Test(timeout = 20000)
+	public void testBatchTransformAsOffset() {
+		PackedCollection inputBatch = pack(
+				1.0, 1.0, 1.0,
+				1.0, 2.0, 3.0,
+				-1.0, 0.5, 0.25).reshape(shape(3, 3));
+
+		assertBatchTransform(TransformMatrix.TRANSFORM_AS_OFFSET, inputBatch,
+				2.0, 4.0, 8.0,
+				2.0, 8.0, 24.0,
+				-2.0, 2.0, 2.0);
+	}
+
+	/**
+	 * Tests that {@link TransformMatrix#TRANSFORM_AS_NORMAL} applied to a batch of
+	 * vectors applies the inverse transpose of the matrix to every row.
+	 */
+	@Test(timeout = 20000)
+	public void testBatchTransformAsNormal() {
+		PackedCollection inputBatch = pack(
+				2.0, 4.0, 8.0,
+				4.0, 4.0, 4.0,
+				0.0, 8.0, 16.0).reshape(shape(3, 3));
+
+		assertBatchTransform(TransformMatrix.TRANSFORM_AS_NORMAL, inputBatch,
+				1.0, 1.0, 1.0,
+				2.0, 1.0, 0.5,
+				0.0, 2.0, 2.0);
+	}
+
+	/**
+	 * Applies a matrix that scales by (2, 4, 8) and translates by (1, 2, 3) to a
+	 * variable-count batch of vectors and asserts every component of every row.
+	 *
+	 * @param type       the {@link TransformMatrix} transform type
+	 * @param inputBatch the input vectors, shape (n, 3)
+	 * @param expected   the expected output values, row-major
+	 */
+	private void assertBatchTransform(int type, PackedCollection inputBatch, double... expected) {
+		TransformMatrix mat = new TransformMatrix(new double[][] {
+				{ 2.0, 0.0, 0.0, 1.0 },
+				{ 0.0, 4.0, 0.0, 2.0 },
+				{ 0.0, 0.0, 8.0, 3.0 },
+				{ 0.0, 0.0, 0.0, 1.0 }
+		});
+
+		int rows = inputBatch.getShape().length(0);
+		Producer<PackedCollection> transform = mat.transform(v(shape(-1, 3), 0), type);
+		PackedCollection output = new PackedCollection(shape(rows, 3).traverse(1));
+		transform.get().into(output.each()).evaluate(inputBatch);
+
+		for (int i = 0; i < rows; i++) {
+			for (int j = 0; j < 3; j++) {
+				assertEquals("Row " + i + " component " + j,
+						expected[i * 3 + j], output.valueAt(i, j), 1e-5);
+			}
+		}
 	}
 
 	/**
@@ -913,7 +973,6 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	 * This mirrors how LightingEngineAggregator.initRankCache() evaluates
 	 * the intersection distance for multiple pixels at once.
 	 */
-	@TestProperties(knownIssue = true)
 	@Test(timeout = 20000)
 	public void testBatchRayTransform() {
 		log("Testing batch mode ray transformation...");
@@ -983,7 +1042,6 @@ public class TransformMatrixTest extends TestSuiteBase implements RayFeatures, T
 	 * Tests that Sphere intersection works in batch mode with a translated sphere.
 	 * This mimics how LightingEngineAggregator.initRankCache() evaluates.
 	 */
-	@TestProperties(knownIssue = true)
 	@Test(timeout = 20000)
 	public void testBatchSphereIntersection() {
 		log("Testing batch sphere intersection with translated sphere...");
