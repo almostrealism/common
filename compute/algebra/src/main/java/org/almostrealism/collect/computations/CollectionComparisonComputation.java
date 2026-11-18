@@ -200,11 +200,13 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 
 	/**
 	 * Generates a new comparison computation with the specified child processes.
-	 * This default implementation creates an equality comparison using the
-	 * {@code equals} factory method from {@link org.almostrealism.collect.CollectionFeatures}.
+	 * This default implementation creates an equality comparison with the same name
+	 * and shape as this computation.
 	 *
-	 * <p>Subclasses override this method to delegate to their specific comparison
-	 * factory methods (e.g., {@code greaterThan}, {@code lessThan}).</p>
+	 * <p>The shape is kept rather than recomputed through the {@code equals} factory,
+	 * whose traversal-axis alignment of the optimized children can choose a different
+	 * output traversal axis than the one this computation has. Subclasses override this
+	 * method to construct their own comparison type in the same way.</p>
 	 *
 	 * @param children List of child {@link Process} instances where:
 	 *                 <ul>
@@ -217,8 +219,8 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return (CollectionProducerParallelProcess)
-				equals((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
-						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4));
+		return new CollectionComparisonComputation(getName(), getShape(),
+				(Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
+				(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4));
 	}
 }

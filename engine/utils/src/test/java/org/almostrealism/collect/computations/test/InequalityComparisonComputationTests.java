@@ -191,4 +191,31 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 			Assert.assertEquals("2 <= 5 selects true", 12.0, lte.toDouble(2), 0.001);
 		}
 	}
+
+	/**
+	 * Verifies that optimizing a comparison keeps its output shape. The optimizer
+	 * regenerates each comparison from its optimized children, and the regenerated
+	 * computation must have the same traversal axis as the original. If it did not,
+	 * a reduction over the result would reduce each element on its own instead of
+	 * reducing the whole collection.
+	 */
+	@Test(timeout = 60000)
+	public void optimizedComparisonPreservesTraversalAxis() {
+		try (PackedCollection data = pack(0.0, -0.25, 0.8, -0.5, 0.1)) {
+			PackedCollection optimized = lessThan(abs(cp(data)), c(Double.MAX_VALUE), cp(data), c(0.0)).evaluate();
+			PackedCollection explicit = lessThan(abs(cp(data)), c(Double.MAX_VALUE), cp(data), c(0.0)).evaluateExplicit();
+			PackedCollection gt = greaterThan(abs(cp(data)), c(-1.0), cp(data), c(0.0)).evaluate();
+			PackedCollection eq = equals(cp(data), cp(data), cp(data), c(0.0)).evaluate();
+			PackedCollection and = and(cp(data), c(1.0), cp(data), c(0.0)).evaluate();
+
+			Assert.assertEquals(explicit.getShape().getTraversalAxis(), optimized.getShape().getTraversalAxis());
+			Assert.assertEquals(explicit.getShape().getTraversalAxis(), gt.getShape().getTraversalAxis());
+			Assert.assertEquals(explicit.getShape().getTraversalAxis(), eq.getShape().getTraversalAxis());
+			Assert.assertEquals(explicit.getShape().getTraversalAxis(), and.getShape().getTraversalAxis());
+
+			Assert.assertEquals(0.8, max(cp(optimized).abs()).evaluate().toDouble(0), 1e-6);
+			Assert.assertEquals(0.8, max(cp(gt).abs()).evaluate().toDouble(0), 1e-6);
+			Assert.assertEquals(0.8, max(cp(eq).abs()).evaluate().toDouble(0), 1e-6);
+		}
+	}
 }

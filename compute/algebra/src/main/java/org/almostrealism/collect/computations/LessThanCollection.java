@@ -173,9 +173,9 @@ public class LessThanCollection extends InequalityComparisonComputation {
 	 * This method creates a new instance with the same configuration (including the
 	 * {@link #includeEqual} flag) but using the provided child processes as operands.
 	 *
-	 * <p>The method delegates to the {@code lessThan} factory method from
-	 * {@link org.almostrealism.collect.CollectionFeatures} to ensure consistent
-	 * construction and configuration of the comparison operation.</p>
+	 * <p>The new instance keeps this computation's shape. It does not go back through the
+	 * {@code lessThan} factory, whose traversal-axis alignment of the optimized children
+	 * can choose a different output traversal axis than the one this computation has.</p>
 	 *
 	 * @param children List of child {@link Process} instances where:
 	 *                 <ul>
@@ -188,8 +188,8 @@ public class LessThanCollection extends InequalityComparisonComputation {
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return (CollectionProducerParallelProcess)
-				lessThan((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
-						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4), includeEqual);
+		return new LessThanCollection(getShape(),
+				(Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
+				(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4), includeEqual);
 	}
 }

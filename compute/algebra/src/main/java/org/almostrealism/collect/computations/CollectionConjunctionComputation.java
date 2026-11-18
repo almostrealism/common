@@ -196,9 +196,9 @@ public class CollectionConjunctionComputation extends CollectionComparisonComput
 
 	/**
 	 * Generates a new logical AND computation with the specified child processes.
-	 * This method creates a new instance using the {@code and} factory method from
-	 * {@link org.almostrealism.collect.CollectionFeatures} to ensure consistent
-	 * construction and configuration of the logical operation.
+	 * The new instance keeps this computation's shape rather than going back through
+	 * the {@code and} factory, whose traversal-axis alignment of the optimized children
+	 * can choose a different output traversal axis than the one this computation has.
 	 *
 	 * @param children List of child {@link Process} instances where:
 	 *                 <ul>
@@ -211,8 +211,8 @@ public class CollectionConjunctionComputation extends CollectionComparisonComput
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return (CollectionProducerParallelProcess)
-				and((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
-						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4));
+		return new CollectionConjunctionComputation(getShape(),
+				(Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
+				(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4));
 	}
 }
