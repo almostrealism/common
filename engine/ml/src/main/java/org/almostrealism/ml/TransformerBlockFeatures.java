@@ -19,11 +19,15 @@ package org.almostrealism.ml;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.layers.NormalizationType;
 import org.almostrealism.layers.ProjectionFactory;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Assembles complete pre-norm transformer blocks (self-attention, optional cross-attention and a
@@ -36,6 +40,222 @@ import org.almostrealism.model.SequentialBlock;
  * callers share one block assembly.</p>
  */
 public interface TransformerBlockFeatures extends AttentionFeatures {
+
+	/**
+	 * Classpath location of the asset describing the pre-norm residual self-attention sub-layer. Its
+	 * {@link #SELF_ATTENTION_SUBLAYER_LAYER} layers are the single definition of the sub-layer that
+	 * {@link #selfAttentionResidualSublayer} builds: the pre-normalization, the optional adaptive
+	 * layer-normalization (adaLN-Zero) modulation, the self-attention, the optional adaLN gate, and
+	 * the residual connection around them.
+	 */
+	String SELF_ATTENTION_SUBLAYER_ASSET = "/pdsl/self_attention_sublayer.pdsl";
+
+	/**
+	 * Name stem of the four {@link #SELF_ATTENTION_SUBLAYER_ASSET} layers describing the residual
+	 * self-attention sub-layer: the normalization family ({@code _layernorm} or {@code _rmsnorm}) and,
+	 * in the {@code _modulated} layers, the adaLN modulation of the normalized activation and the gate
+	 * on the attention output. {@link #selfAttentionResidualSublayer} builds the layer of the
+	 * normalization family and conditioning it is asked for.
+	 */
+	String SELF_ATTENTION_SUBLAYER_LAYER = "self_attention_sublayer";
+
+	/**
+	 * Classpath location of the asset describing the pre-norm residual feed-forward sub-layer. Its
+	 * {@link #FEED_FORWARD_SUBLAYER_LAYER} layers are the single definition of the sub-layer that
+	 * {@link #feedForwardResidualSublayer} builds: the pre-normalization, the optional adaptive
+	 * layer-normalization (adaLN-Zero) modulation, the gated-linear feed-forward body, the optional
+	 * adaLN gate, and the residual connection around them. It is the feed-forward sibling of
+	 * {@link #SELF_ATTENTION_SUBLAYER_ASSET}.
+	 */
+	String FEED_FORWARD_SUBLAYER_ASSET = "/pdsl/feed_forward_sublayer.pdsl";
+
+	/**
+	 * Name stem of the four {@link #FEED_FORWARD_SUBLAYER_ASSET} layers describing the residual
+	 * feed-forward sub-layer: the normalization family ({@code _layernorm} or {@code _rmsnorm}) and, in
+	 * the {@code _modulated} layers, the adaLN modulation of the normalized activation and the gate on
+	 * the feed-forward output. {@link #feedForwardResidualSublayer} builds the layer of the
+	 * normalization family and conditioning it is asked for.
+	 */
+	String FEED_FORWARD_SUBLAYER_LAYER = "feed_forward_sublayer";
+
+	/**
+	 * Classpath location of the asset describing the pre-norm residual cross-attention sub-layer. Its
+	 * {@link #CROSS_ATTENTION_SUBLAYER_LAYER} layers are the single definition of the sub-layer that
+	 * {@link #crossAttentionResidualSublayer} builds: the pre-normalization, the cross-attention over
+	 * the encoder context, and the residual connection around them. It is the cross-attention sibling
+	 * of {@link #SELF_ATTENTION_SUBLAYER_ASSET} and {@link #FEED_FORWARD_SUBLAYER_ASSET}, but carries
+	 * no {@code _modulated} layers because a transformer block never adaLN-modulates its
+	 * cross-attention.
+	 */
+	String CROSS_ATTENTION_SUBLAYER_ASSET = "/pdsl/cross_attention_sublayer.pdsl";
+
+	/**
+	 * Name stem of the two {@link #CROSS_ATTENTION_SUBLAYER_ASSET} layers describing the residual
+	 * cross-attention sub-layer, distinguished only by normalization family ({@code _layernorm} or
+	 * {@code _rmsnorm}). {@link #crossAttentionResidualSublayer} builds the layer of the normalization
+	 * family it is asked for.
+	 */
+	String CROSS_ATTENTION_SUBLAYER_LAYER = "cross_attention_sublayer";
+
+	/**
+	 * Builds the pre-norm residual self-attention sub-layer of a transformer block as a {@link Block}
+	 * from the {@link #SELF_ATTENTION_SUBLAYER_ASSET} asset.
+	 *
+	 * <p>The structure is not assembled here: the asset composes the pre-normalization of the given
+	 * family, the optional adaLN modulation {@code (1 + scale) * norm(x) + shift} of the normalized
+	 * activation, the self-attention sub-block, the optional adaLN gate {@code gate * attention(...)},
+	 * and the residual connection around all of them. This method binds the normalization weights and
+	 * the modulation producers, and loads the layer of the normalization family and conditioning it is
+	 * asked for. The modulation producers are either all supplied (adaLN-Zero conditioning) or all
+	 * {@code null} (the plain pre-norm residual block); they are supplied this way by
+	 * {@link #transformerBlock}, which forms {@code modScale = 1 + scale} and
+	 * {@code gate = sigmoid(1 - gate)} from the packed modulation.</p>
+	 *
+	 * @param blockShape     the sub-layer input and output shape {@code [batch, seqLen, dim]}
+	 * @param normType       the normalization family of the pre-normalization
+	 * @param preNormWeight  the pre-normalization scale weights
+	 * @param preNormBias    the pre-normalization shift weights, or {@code null} for none
+	 * @param modScale       the adaLN multiplicative modulation {@code 1 + scale}, shape
+	 *                       {@code [batch, dim]}, or {@code null} for no modulation
+	 * @param modShift       the adaLN additive modulation {@code shift}, shape {@code [batch, dim]}, or
+	 *                       {@code null} for no modulation
+	 * @param gate           the adaLN output gate {@code sigmoid(1 - gate)}, shape {@code [batch, dim]},
+	 *                       or {@code null} for no modulation
+	 * @param attention      the self-attention sub-block, mapping {@code blockShape} to {@code blockShape}
+	 * @return the residual self-attention sub-layer block
+	 * @throws IllegalArgumentException if the {@code modScale}, {@code modShift} and {@code gate}
+	 *                                  producers are not either all supplied or all {@code null}
+	 */
+	default Block selfAttentionResidualSublayer(TraversalPolicy blockShape, NormalizationType normType,
+												PackedCollection preNormWeight, PackedCollection preNormBias,
+												Producer<PackedCollection> modScale,
+												Producer<PackedCollection> modShift,
+												Producer<PackedCollection> gate,
+												Block attention) {
+		boolean modulated = modScale != null;
+		if (modulated != (modShift != null) || modulated != (gate != null)) {
+			throw new IllegalArgumentException("adaLN conditioning producers (modScale, modShift, gate) " +
+					"must be either all present (adaLN-Zero modulation) or all null (plain pre-norm residual)");
+		}
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("pre_norm_weight", preNormWeight);
+		args.put("pre_norm_bias", preNormBias);
+		args.put("epsilon", normType.defaultEpsilon());
+		args.put("attention", attention);
+		if (modulated) {
+			args.put("batch", blockShape.length(0));
+			args.put("dim", blockShape.length(2));
+			args.put("mod_scale", modScale);
+			args.put("mod_shift", modShift);
+			args.put("gate", gate);
+		}
+
+		String layer = SELF_ATTENTION_SUBLAYER_LAYER
+				+ (normType == NormalizationType.RMS ? "_rmsnorm" : "_layernorm")
+				+ (modulated ? "_modulated" : "");
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(SELF_ATTENTION_SUBLAYER_ASSET), layer, blockShape, args);
+	}
+
+	/**
+	 * Builds the pre-norm residual feed-forward sub-layer of a transformer block as a {@link Block} from
+	 * the {@link #FEED_FORWARD_SUBLAYER_ASSET} asset.
+	 *
+	 * <p>The structure is not assembled here: the asset composes the pre-normalization of the given
+	 * family, the optional adaLN modulation {@code (1 + scale) * norm(x) + shift} of the normalized
+	 * activation, the gated-linear feed-forward body, the optional adaLN gate {@code gate * feed_forward(...)},
+	 * and the residual connection around all of them. This method binds the normalization weights and the
+	 * modulation producers, and loads the layer of the normalization family and conditioning it is asked
+	 * for. The modulation producers are either all supplied (adaLN-Zero conditioning) or all {@code null}
+	 * (the plain pre-norm residual block); they are supplied this way by {@link #transformerBlock}, which
+	 * forms {@code modScale = 1 + scale} and {@code gate = sigmoid(1 - gate)} from the packed modulation.
+	 * It is the feed-forward counterpart of {@link #selfAttentionResidualSublayer}.</p>
+	 *
+	 * @param blockShape    the sub-layer input and output shape {@code [batch, seqLen, dim]}
+	 * @param normType      the normalization family of the pre-normalization
+	 * @param ffnNormWeight the pre-normalization scale weights
+	 * @param ffnNormBias   the pre-normalization shift weights, or {@code null} for none
+	 * @param modScale      the adaLN multiplicative modulation {@code 1 + scale}, shape
+	 *                      {@code [batch, dim]}, or {@code null} for no modulation
+	 * @param modShift      the adaLN additive modulation {@code shift}, shape {@code [batch, dim]}, or
+	 *                      {@code null} for no modulation
+	 * @param gate          the adaLN output gate {@code sigmoid(1 - gate)}, shape {@code [batch, dim]}, or
+	 *                      {@code null} for no modulation
+	 * @param feedForward   the norm-free gated-linear feed-forward body, mapping {@code blockShape} to
+	 *                      {@code blockShape} (see {@link FeedForwardFeatures#gluFeedForward})
+	 * @return the residual feed-forward sub-layer block
+	 * @throws IllegalArgumentException if the {@code modScale}, {@code modShift} and {@code gate}
+	 *                                  producers are not either all supplied or all {@code null}
+	 */
+	default Block feedForwardResidualSublayer(TraversalPolicy blockShape, NormalizationType normType,
+											  PackedCollection ffnNormWeight, PackedCollection ffnNormBias,
+											  Producer<PackedCollection> modScale,
+											  Producer<PackedCollection> modShift,
+											  Producer<PackedCollection> gate,
+											  Block feedForward) {
+		boolean modulated = modScale != null;
+		if (modulated != (modShift != null) || modulated != (gate != null)) {
+			throw new IllegalArgumentException("adaLN conditioning producers (modScale, modShift, gate) " +
+					"must be either all present (adaLN-Zero modulation) or all null (plain pre-norm residual)");
+		}
+
+		Map<String, Object> args = new HashMap<>();
+		args.put("pre_norm_weight", ffnNormWeight);
+		args.put("pre_norm_bias", ffnNormBias);
+		args.put("epsilon", normType.defaultEpsilon());
+		args.put("feed_forward", feedForward);
+		if (modulated) {
+			args.put("batch", blockShape.length(0));
+			args.put("dim", blockShape.length(2));
+			args.put("mod_scale", modScale);
+			args.put("mod_shift", modShift);
+			args.put("gate", gate);
+		}
+
+		String layer = FEED_FORWARD_SUBLAYER_LAYER
+				+ (normType == NormalizationType.RMS ? "_rmsnorm" : "_layernorm")
+				+ (modulated ? "_modulated" : "");
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(FEED_FORWARD_SUBLAYER_ASSET), layer, blockShape, args);
+	}
+
+	/**
+	 * Builds the pre-norm residual cross-attention sub-layer of a transformer block as a {@link Block}
+	 * from the {@link #CROSS_ATTENTION_SUBLAYER_ASSET} asset.
+	 *
+	 * <p>The structure is not assembled here: the asset composes the pre-normalization of the given
+	 * family, the cross-attention sub-block over the encoder context, and the residual connection
+	 * around both of them ({@code x + cross_attention(norm(x))}). This method binds the normalization
+	 * weights and loads the layer of the normalization family it is asked for. Unlike
+	 * {@link #selfAttentionResidualSublayer} and {@link #feedForwardResidualSublayer} it takes no
+	 * adaLN modulation producers: a transformer block attends to its encoder context unconditionally,
+	 * so the cross-attention sub-layer is always the plain pre-norm residual.</p>
+	 *
+	 * @param blockShape            the sub-layer input and output shape {@code [batch, seqLen, dim]}
+	 * @param normType              the normalization family of the pre-normalization
+	 * @param crossAttPreNormWeight the pre-normalization scale weights
+	 * @param crossAttPreNormBias   the pre-normalization shift weights, or {@code null} for none
+	 * @param crossAttention        the cross-attention sub-block, mapping {@code blockShape} to
+	 *                              {@code blockShape} (see {@link SequenceAttentionFeatures#sequenceCrossAttention})
+	 * @return the residual cross-attention sub-layer block
+	 */
+	default Block crossAttentionResidualSublayer(TraversalPolicy blockShape, NormalizationType normType,
+												 PackedCollection crossAttPreNormWeight,
+												 PackedCollection crossAttPreNormBias,
+												 Block crossAttention) {
+		Map<String, Object> args = new HashMap<>();
+		args.put("pre_norm_weight", crossAttPreNormWeight);
+		args.put("pre_norm_bias", crossAttPreNormBias);
+		args.put("epsilon", normType.defaultEpsilon());
+		args.put("cross_attention", crossAttention);
+
+		String layer = CROSS_ATTENTION_SUBLAYER_LAYER
+				+ (normType == NormalizationType.RMS ? "_rmsnorm" : "_layernorm");
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(CROSS_ATTENTION_SUBLAYER_ASSET), layer, blockShape, args);
+	}
+
 	/**
 	 * Creates a complete transformer block with self-attention, optional cross-attention, and feed-forward.
 	 * Simplified version without attention score capturing - delegates to the full transformerBlock method.
@@ -549,21 +769,14 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 		Producer<PackedCollection> gateFf = modulation == null ? null : residualGate(modulationComponent(modulation, batchSize, dim, 5));
 
 		// Python: x = x + sigmoid(1 - gate_self) * self_attn((1 + scale_self) * pre_norm(x) + shift_self)
-		SequentialBlock selfAttentionWithNorm = new SequentialBlock(blockShape);
-		selfAttentionWithNorm.add(norm(normType, preNormWeight, preNormBias));
-		if (modulation != null) {
-			selfAttentionWithNorm.add(adaptiveModulate(blockShape, scaleSelf, shiftSelf));
-		}
-		selfAttentionWithNorm.add(selfAttention(
+		Block selfAttentionBlock = selfAttention(
 				batchSize, seqLen, dim, heads, variant,
 				selfQkv, selfWo,
 				selfQNormWeight, selfQNormBias,
 				selfKNormWeight, selfKNormBias,
-				invFreq, diffLambda, projectionFactory, normType, paddingMask, causal));
-		if (modulation != null) {
-			selfAttentionWithNorm.add(adaptiveGate(blockShape, gateSelf));
-		}
-		block.add(residual(selfAttentionWithNorm));
+				invFreq, diffLambda, projectionFactory, normType, paddingMask, causal);
+		block.add(selfAttentionResidualSublayer(blockShape, normType, preNormWeight, preNormBias,
+				scaleSelf, shiftSelf, gateSelf, selfAttentionBlock));
 
 		// Python: x = x + cross_attn(cross_attend_norm(x)), never modulated
 		if (crossAttend) {
@@ -571,15 +784,14 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 				throw new IllegalArgumentException("Context block cannot be null for cross-attention");
 			}
 
-			SequentialBlock crossAttentionWithNorm = new SequentialBlock(blockShape);
-			crossAttentionWithNorm.add(norm(normType, crossAttPreNormWeight, crossAttPreNormBias));
-			crossAttentionWithNorm.add(sequenceCrossAttention(
+			Block crossAttention = sequenceCrossAttention(
 					batchSize, seqLen, contextSeqLen, dim, heads,
 					crossWq, crossKv, crossWo,
 					crossQNormWeight, crossQNormBias,
 					crossKNormWeight, crossKNormBias,
-					context, attentionScores, projectionFactory, normType));
-			block.add(residual(crossAttentionWithNorm));
+					context, attentionScores, projectionFactory, normType);
+			block.add(crossAttentionResidualSublayer(blockShape, normType,
+					crossAttPreNormWeight, crossAttPreNormBias, crossAttention));
 		}
 
 		if (localAddition != null) {
@@ -587,17 +799,9 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 		}
 
 		// Python: x = x + sigmoid(1 - gate_ff) * ff((1 + scale_ff) * ff_norm(x) + shift_ff)
-		Block feedForward = gatedLinearFeedForward(block.getOutputShape(), normType,
-				ffnNormWeight, ffnNormBias, w1, w1Bias, w2, w2Bias,
-				scaleFf, shiftFf, silu(), projectionFactory);
-		if (modulation == null) {
-			block.add(residual(feedForward));
-		} else {
-			SequentialBlock gatedFeedForward = new SequentialBlock(block.getOutputShape());
-			gatedFeedForward.add(feedForward);
-			gatedFeedForward.add(adaptiveGate(blockShape, gateFf));
-			block.add(residual(gatedFeedForward));
-		}
+		Block feedForward = gluFeedForward(blockShape, w1, w1Bias, w2, w2Bias, silu(), projectionFactory);
+		block.add(feedForwardResidualSublayer(blockShape, normType, ffnNormWeight, ffnNormBias,
+				scaleFf, shiftFf, gateFf, feedForward));
 
 		return block;
 	}

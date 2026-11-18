@@ -217,7 +217,7 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 			double uniformLogit = -Math.log(config.decodeVocabSize);
 			output.fill(uniformLogit);
 
-			double loss = nll.loss(output, target);
+			double loss = nll.loss(cp(output), cp(target)).evaluate().doubleStream().average().orElse(0);
 			Assert.assertFalse("Loss should not be NaN", Double.isNaN(loss));
 			Assert.assertFalse("Loss should not be infinite", Double.isInfinite(loss));
 			Assert.assertTrue("Loss should be positive for uniform predictions", loss > 0);
@@ -277,7 +277,8 @@ public class MoonbeamFineTuningTest extends TestSuiteBase implements
 		PackedCollection firstTarget = trainingSamples.get(0).getExpectedOutput();
 		PackedCollection firstOutput = compiled.forward(firstInput);
 		MeanSquaredError mse = new MeanSquaredError(new TraversalPolicy(1, dim).traverseEach());
-		double initialLoss = mse.loss(firstOutput, firstTarget);
+		double initialLoss = mse.loss(cp(firstOutput), cp(firstTarget)).evaluate()
+				.doubleStream().average().orElse(0);
 		log("Initial loss: " + initialLoss);
 
 		TrainingResult result = optimizer.optimize(2);

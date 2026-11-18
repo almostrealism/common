@@ -17,16 +17,15 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ProducerArgumentReference;
+import io.almostrealism.collect.Shape;
 import io.almostrealism.concurrent.CompletionConsumer;
 import io.almostrealism.streams.Semaphore;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.FixedEvaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.streams.StreamingEvaluable;
 import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.arguments.ProcessArgumentEvaluator;
@@ -442,9 +441,13 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			kernelSize = getCount();
 
 			if (output != null) {
+				// A fixed-count process evaluated into a destination may run over a batch,
+				// taking its size from the batch the supplied arguments carry
+				kernelSize = batchedKernelSize(getCountLong(), args);
+
 				long dc = output.getCountLong();
-				boolean matchCount = List.of(1L, getCountLong()).contains(dc);
-				boolean matchTotal = getCountLong() == output.getMemLength();
+				boolean matchCount = List.of(1L, kernelSize).contains(dc);
+				boolean matchTotal = kernelSize == output.getMemLength();
 
 				if (!matchCount && !matchTotal) {
 					throw new IllegalArgumentException("The destination count (" + dc +
@@ -485,10 +488,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 				continue i;
 			}
 
-			int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));
+			ProducerArgumentReference reference = arguments.get(i).getProducerArgumentReference();
 
-			if (refIndex >= 0) {
-				kernelArgs[i] = (MemoryData) args[refIndex];
+			if (reference != null) {
+				kernelArgs[i] = (MemoryData) args[reference.getReferencedArgumentIndex()];
 			}
 
 			if (kernelSize > 0) continue i;
@@ -965,25 +968,109 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	}
 
 	/**
-	 * Returns the {@link ProducerArgumentReference} index for an argument variable, or -1 if not applicable.
+	 * Determines the kernel size for a fixed-count process evaluated into a destination,
+	 * accounting for a batch of items.
 	 *
-	 * <p>Checks both the argument's producer directly and, if the producer is a {@link Delegated},
-	 * its delegate for a {@link ProducerArgumentReference}.</p>
+	 * <p>A process declared over a single item is run once per item when it is supplied a batch.
+	 * The batch is carried by the arguments: an argument the process references through a
+	 * {@link ProducerArgumentReference} declares a fixed per-item size, and the supplied
+	 * collection holds a whole number of those items. That whole number is the batch factor, so
+	 * the kernel size is {@code declaredCount} times the batch factor the referenced arguments
+	 * supply, and each item is reduced (or transformed) independently. When no referenced
+	 * argument carries more than its declared size, the declared count is returned unchanged.</p>
 	 *
-	 * @param arg The argument variable to inspect
-	 * @return Referenced argument index, or -1 if the argument is not a reference
+	 * <p>Every referenced argument that carries more than one item must carry the same number of
+	 * them: the kernel reads each batched argument index-parametrically, so a second argument
+	 * supplied for fewer items than the kernel count would be read past the data it holds.
+	 * Conflicting non-unit batch factors are rejected rather than mapped to an out-of-bounds read.
+	 * This includes an argument supplied at exactly its declared size (a single item) alongside a
+	 * batch: it is not broadcast across the items but read index-parametrically like every other
+	 * referenced argument, so items after the first would read past its data. An argument
+	 * supplied larger than its declared size but not a whole number of items is malformed and is
+	 * likewise rejected. An argument supplied <em>smaller</em> than its declared per-item size is
+	 * also rejected: the kernel reads {@code declaredSize} values per item at index-parametric
+	 * positions, so an undersized buffer would be read past its data regardless of the batch.</p>
+	 *
+	 * <p>The modulo wrap in {@code PassThroughProducer#getValueAt} does not confine these reads:
+	 * the compiled reduction addresses each referenced argument at the kernel's index-parametric
+	 * position, so nothing limits a kernel index to an argument's declared size. That is why a
+	 * single-item argument cannot be broadcast across a batch: items after the first would read
+	 * values past its data.</p>
+	 *
+	 * <p>Deriving the kernel size from the data actually supplied (rather than from the
+	 * destination) keeps a destination honest: the caller-supplied destination must then match
+	 * this size, so a destination whose count is not the batch the arguments describe is still
+	 * rejected by the ordinary destination check. It also keeps the size within the bounds of
+	 * the supplied data: a fixed-count process only takes its own declared output shape when no
+	 * destination is supplied, so the batch is applied only where the caller has provided a
+	 * destination large enough to hold it.</p>
+	 *
+	 * @param declaredCount the process's declared (single-item) count
+	 * @param args          the positional arguments for this invocation
+	 * @return the batched kernel size, or {@code declaredCount} when no batch is indicated
 	 */
-	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
-		if (arg.getProducer() instanceof ProducerArgumentReference) {
-			return ((ProducerArgumentReference) arg.getProducer()).getReferencedArgumentIndex();
+	private long batchedKernelSize(long declaredCount, Object args[]) {
+		if (declaredCount <= 0) {
+			return declaredCount;
 		}
 
-		if (arg.getProducer() instanceof Delegated &&
-				((Delegated) arg.getProducer()).getDelegate() instanceof ProducerArgumentReference) {
-			return ((ProducerArgumentReference) ((Delegated) arg.getProducer()).getDelegate()).getReferencedArgumentIndex();
+		long batchFactor = 1;
+		boolean singleItemArgument = false;
+
+		for (int i = 0; i < arguments.size(); i++) {
+			ArrayVariable<? extends T> argument = arguments.get(i);
+			if (argument == null || i == outputArgIndex) continue;
+
+			ProducerArgumentReference reference = argument.getProducerArgumentReference();
+			if (reference == null) continue;
+
+			int refIndex = reference.getReferencedArgumentIndex();
+			if (refIndex < 0 || refIndex >= args.length || !(args[refIndex] instanceof MemoryData)) {
+				continue;
+			}
+
+			long declaredSize = reference instanceof Shape ?
+					((Shape<?>) reference).getShape().getTotalSizeLong() : -1;
+			if (declaredSize <= 0) continue;
+
+			long suppliedSize = ((MemoryData) args[refIndex]).getMemLength();
+			if (suppliedSize == declaredSize) {
+				singleItemArgument = true;
+				continue;
+			}
+
+			if (suppliedSize < declaredSize) {
+				throw new IllegalArgumentException("Referenced argument supplied size (" +
+						suppliedSize + ") is smaller than its declared per-item size (" +
+						declaredSize + "); an index-parametric reference reads its declared " +
+						"size per item and would read past the supplied data");
+			}
+
+			if (suppliedSize % declaredSize != 0) {
+				throw new IllegalArgumentException("Referenced argument supplied size (" +
+						suppliedSize + ") is not a whole multiple of its declared per-item size (" +
+						declaredSize + "); a batched fixed-count argument must supply a whole " +
+						"number of items");
+			}
+
+			long factor = suppliedSize / declaredSize;
+			if (batchFactor > 1 && factor != batchFactor) {
+				throw new IllegalArgumentException("Conflicting batch factors (" + batchFactor +
+						" and " + factor + ") across referenced arguments; every batched argument " +
+						"must supply the same number of items");
+			}
+
+			batchFactor = factor;
 		}
 
-		return -1;
+		if (batchFactor > 1 && singleItemArgument) {
+			throw new IllegalArgumentException("A referenced argument supplied for a single item " +
+					"cannot accompany a batch of " + batchFactor + " items; the kernel reads every " +
+					"referenced argument index-parametrically, so a single-item argument would be " +
+					"read past its data rather than shared across the batch");
+		}
+
+		return declaredCount * batchFactor;
 	}
 
 	/**

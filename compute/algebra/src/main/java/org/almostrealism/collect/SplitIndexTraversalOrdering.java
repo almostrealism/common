@@ -202,6 +202,12 @@ public class SplitIndexTraversalOrdering implements TraversalOrdering {
 		return bound == null ? this : new SplitIndexTraversalOrdering(lanes, bound);
 	}
 
+	/** {@inheritDoc} Binding obtains one argument, for the lane collection. */
+	@Override
+	public int getArgumentCount() {
+		return 1;
+	}
+
 	/**
 	 * Creates an ordering over the given physical positions, storing them in a new lane
 	 * collection with {@link PackedCollection#ofSplitIndices(int...)}.

@@ -106,6 +106,40 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	public Expression<T> getExpression() { return expression; }
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>An assignment declares such a variable when it is a {@link #isDeclaration() declaration}
+	 * and its {@link #getExpression() expression} equals {@code e}.</p>
+	 */
+	@Override
+	public boolean isDeclarationOf(Expression<?> e) {
+		return declaration && expression.equals(e);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The value an assignment computes is its {@link #getExpression() expression}; its
+	 * {@link #getDestination() destination} only says where that value is stored.</p>
+	 */
+	@Override
+	public boolean computes(Expression<?> e) {
+		return expression.contains(e);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Only the {@link #getExpression() expression} is rewritten; the
+	 * {@link #getDestination() destination} is kept as it is.</p>
+	 */
+	@Override
+	public ExpressionAssignment<T> replaceComputed(Expression<?> target, Expression<?> replacement) {
+		if (!computes(target)) return this;
+		return new ExpressionAssignment<>(declaration, destination, expression.replace(target, replacement));
+	}
+
+	/**
 	 * Returns the physical scope of the destination variable, if any.
 	 *
 	 * @return the physical scope, or {@code null} if the destination has no physical scope

@@ -36,9 +36,15 @@
 # whose name begins with "assert" (e.g. `protected void assertWithin(...) {`) — a
 # method name is not an assertion call. The declaration exclusion is applied
 # symmetrically to the removed and added side. Pattern 3
-# (NET_TEST_METHODS_REMOVED) counts `@Test` lines and needs no equivalent
-# exclusion: a declaration line carries no `@Test` annotation and no method is
-# named `@Test`, so it cannot mistake a declaration for a test method.
+# (NET_TEST_METHODS_REMOVED) counts the `@Test` annotation itself via
+# count_test_annotations, which strips string/char literals and line and block
+# comments (tracking multi-line `/* ... */` state across a hunk) before matching
+# `@Test`/`@Test(...)` as an annotation. That makes the count immune to four
+# disguises a bare regex cannot see through: the @TestProperties/@TestDepth/
+# @TestFactory prefixes (trailing boundary), the token inside a string literal,
+# the token inside a line or block comment — including an unstarred
+# `/*\n@Test\n*/` continuation — and, counted rather than missed, a real `@Test`
+# preceded on its line by a sibling annotation (`@TestProperties(...) @Test(...)`).
 #
 # Exit codes:
 #   0 - no test-hiding detected (or only new test files modified)
@@ -492,7 +498,111 @@ count_unpaired_removals() {
     ' <<< "$diff"
 }
 
+# Counts `@Test` annotations on one side of a unified diff: the removed side
+# when MARKER is "-", the added side when "+". The token is counted only where
+# it is a genuine `@Test`/`@Test(...)` annotation, which requires looking past
+# four disguises a single-line regex cannot see through:
+#   - a longer annotation that merely shares the prefix (@TestProperties,
+#     @TestDepth, @TestFactory) — excluded by the trailing boundary;
+#   - the token inside a string literal, a line comment, or a single- or
+#     multi-line block comment (`/*\n@Test(...)\n*/`) — excluded by stripping
+#     strings and comments, tracking block-comment state across the side's
+#     lines in hunk order (reset at each `@@` so an unterminated block cannot
+#     bleed across hunks);
+#   - the token preceded on the same line by other annotations
+#     (`@TestProperties(knownIssue = true) @Test(timeout = 120000)`) — counted,
+#     because after stripping the match only requires `@Test` to sit at line
+#     start or after whitespace, not immediately after the diff marker.
+# Stripping before matching is what lets the same ruleset both ignore a `@Test`
+# buried in a deleted doc block and catch one that trails a sibling annotation.
+count_test_annotations() {
+    local diff="$1"
+    local marker="$2"
+    [ -z "$diff" ] && { echo 0; return 0; }
+    awk -v marker="$marker" '
+        function skip_quote(s, i, q,   n, c) {
+            n = length(s)
+            while (i <= n) {
+                c = substr(s, i, 1)
+                if (c == "\\") { i += 2; continue }
+                if (c == q) return i + 1
+                i += 1
+            }
+            return i    # unterminated literal: consume to end of line
+        }
+        # Returns the code portion of a line with string/char literals, line
+        # comments and block comments removed. Uses the global in_block state
+        # so a block comment opened on an earlier line keeps suppressing text
+        # until its closing */.
+        function strip(s,   out, i, n, c, c2) {
+            out = ""
+            n = length(s)
+            i = 1
+            while (i <= n) {
+                c = substr(s, i, 1)
+                c2 = substr(s, i, 2)
+                if (in_block) {
+                    if (c2 == "*/") { in_block = 0; i += 2 } else { i += 1 }
+                    continue
+                }
+                if (c2 == "/*") { in_block = 1; i += 2; continue }
+                if (c2 == "//") break
+                if (c == "\"") { i = skip_quote(s, i + 1, "\""); continue }
+                if (c == "\047") { i = skip_quote(s, i + 1, "\047"); continue }
+                out = out c
+                i += 1
+            }
+            return out
+        }
+        BEGIN { in_block = 0; count = 0 }
+        /^@@/ { in_block = 0; next }                  # new hunk: drop stale block state
+        substr($0, 1, 3) == "---" || substr($0, 1, 3) == "+++" { next }
+        substr($0, 1, 1) != marker { next }
+        {
+            code = strip(substr($0, 2))               # drop the diff marker
+            if (code ~ /(^|[ \t])@Test([ \t(]|$)/) count++
+        }
+        END { print count }
+    ' <<< "$diff"
+}
+
 # ── File-level checks ───────────────────────────────────────────────────
+
+# Print the integer literals found on one side of a unified diff, one per line,
+# largest first, capped at 50.
+#   $1 = the diff text
+#   $2 = side marker as an ERE fragment: '-' (removed lines) or '\+' (added lines)
+#
+# Only integers are dimension-like. Floating-point literals are deleted before
+# extraction, because the digit runs on either side of a decimal point, and the
+# digits of an exponent, are not integers: `0.034696` would otherwise be read as
+# the "large" integer 034696, so replacing a hard-coded array of expected
+# floating-point values with a computed expectation would look like many large
+# dimensions disappearing. Every Java float form is removed first:
+#   - a hexadecimal float (`0x1.8p3`, `0x40000000p-1`), whose significand digits
+#     would otherwise be read as a large integer;
+#   - a decimal float with a fractional part (`0.5`, `.5`, `1.5e-6`, `2.0f`);
+#   - a decimal float written with a trailing dot and no fraction (`64.`, `256.`);
+#   - a bare exponent form (`1e6`).
+#
+# Only portable constructs are used (ERE + sed, not grep -oP; no `\b`) so
+# extraction behaves the same under both GNU grep and BSD grep. The hexadecimal
+# patterns run first, before the decimal ones can mistake a hex significand's
+# `.` for a decimal point. After the floats are removed, `tr` splits what
+# remains into identifier-like tokens — every run of word characters
+# (`[0-9A-Za-z_]`) becomes one line — and only the all-digit tokens are kept.
+# That reproduces the word-boundary semantics of `\b[0-9]+\b` (an integer not
+# adjacent to a letter or underscore, so `64` in `embedDim64` is not a literal)
+# without relying on `\b`, which is a GNU grep extension BSD grep does not read
+# as a boundary and would silently match nothing for. `|| true` keeps a grep
+# no-match from aborting under `set -e`.
+extract_integer_literals() {
+    local diff="$1"
+    local marker="$2"
+    echo "$diff" | grep -E "^${marker}" \
+        | sed -E 's/0[xX][0-9a-fA-F]*\.[0-9a-fA-F]*([pP][-+]?[0-9]+)?[fFdD]?//g; s/0[xX][0-9a-fA-F]+[pP][-+]?[0-9]+[fFdD]?//g; s/[0-9]*\.[0-9]+([eE][-+]?[0-9]+)?[fFdD]?//g; s/[0-9]+\.([eE][-+]?[0-9]+)?[fFdD]?//g; s/[0-9]+[eE][-+]?[0-9]+[fFdD]?//g' \
+        | tr -c '0-9A-Za-z_' '\n' | grep -E '^[0-9]+$' | sort -rn | head -50 || true
+}
 
 # Get list of modified (not added) test files.
 # We only care about files that existed on the base branch. New files (A status)
@@ -587,8 +697,15 @@ for FILE in $MODIFIED_TEST_FILES; do
     fi
 
     # ── Pattern 3: Deleted @Test methods (net) ──
-    DELETED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\-.*@Test' || true)
-    ADDED_TEST_METHODS=$(echo "$DIFF" | grep -cE '^\+.*@Test' || true)
+    # Count @Test annotations on each side with count_test_annotations, which
+    # strips strings and comments (tracking multi-line block comments) before
+    # matching, so the count is immune to the four disguises documented on that
+    # helper: the @TestProperties/@TestDepth/@TestFactory prefixes, the token in
+    # a string literal, the token in a line or block comment (including an
+    # unstarred `/*\n@Test\n*/` continuation), and the real annotation preceded
+    # on its line by a sibling annotation.
+    DELETED_TEST_METHODS=$(count_test_annotations "$DIFF" "-")
+    ADDED_TEST_METHODS=$(count_test_annotations "$DIFF" "+")
     if [ "$DELETED_TEST_METHODS" -gt 0 ] && [ "$ADDED_TEST_METHODS" -lt "$DELETED_TEST_METHODS" ]; then
         NET_REMOVED=$((DELETED_TEST_METHODS - ADDED_TEST_METHODS))
         record_violation "$FILE" "NET_TEST_METHODS_REMOVED" \
@@ -750,9 +867,10 @@ for FILE in $MODIFIED_TEST_FILES; do
     # ── Pattern 11: Numeric literals in method calls DECREASED ──
     # Catches dimension reductions in method-call arguments like
     # someMethod(1, 8, 32, 64) -> someMethod(1, 4, 8, 16)
-    # Extract all numeric literals > 4 from removed and added lines
-    REMOVED_LITERALS=$(echo "$DIFF" | grep -E '^\-' | grep -oP '\b[0-9]+\b' | sort -rn | head -50 || true)
-    ADDED_LITERALS=$(echo "$DIFF" | grep -E '^\+' | grep -oP '\b[0-9]+\b' | sort -rn | head -50 || true)
+    # Extract the integer literals from removed and added lines. Floating-point
+    # literals are not dimensions and are excluded (see extract_integer_literals).
+    REMOVED_LITERALS=$(extract_integer_literals "$DIFF" '-')
+    ADDED_LITERALS=$(extract_integer_literals "$DIFF" '\+')
     if [ -n "$REMOVED_LITERALS" ] && [ -n "$ADDED_LITERALS" ]; then
         # Count how many large numbers disappeared and were replaced by smaller ones
         LARGE_REMOVED=0

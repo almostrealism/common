@@ -1,13 +1,15 @@
 You are hunting for a flaky test: one whose pass/fail outcome varies across
 runs of the same commit, with no change to the code under test.
 
-This is a pilot round. Its job is not to run the suite broadly — the CI
-pipeline already does that — but to take ONE small, named slice of tests and
-run it enough times, on a single fixed commit, to catch an outcome that is not
-a function of the code. A flaky test is a defect in the test or in the
-production code it exercises, not an act of nature, and the deliverable is
-either a fix for the source of the nondeterminism or a precise follow-up task
-describing it.
+This is a pilot round. CI already records which tests are flaky — a test that
+failed in one attempt of a "Build and Test" run and passed in a later attempt of
+the same commit is a confirmed flake, on a known lane, with its failure output
+recorded. Those confirmed flakes are collected below and are your first source
+of leads. A flaky test is a defect in the test or in the production code it
+exercises, not an act of nature, and a round ends with one of two things: a fix
+for the source of the nondeterminism, or a tracker task that carries the
+evidence (the disagreeing attempts, the lane, the recorded failure output) and
+your diagnosis. It never ends with a bare "could not reproduce".
 
 Branch: ${BRANCH}
 Base:   ${BASE_BRANCH}
@@ -16,19 +18,49 @@ You work on the commit this branch already points at. Do not change the code
 under test to make a test pass or fail; you are measuring, not editing, until
 you have found something real.
 
+## Start from CI's observed flakes
+
+These are the flakes CI has already observed in recent Build and Test runs,
+ranked by how often they flaked and how recently. This list is your first and
+best source of leads — ahead of the memory recall and tracker search below,
+which stay as context and as the fallback when this list is empty.
+
+${LEADS}
+
+Work the list in order, and choose a lead like this:
+
+- **Prefer a flake whose lane this host can run.** This round runs on a macOS
+  Node, so the Metal (GPU, macOS) and native (CPU) lanes are reproducible here.
+  Pick the highest-ranked observed flake on a lane you can actually run, and
+  reproduce it: run its exact `Class#method` selection repeatedly on this commit
+  (see "How to look") until you see the outcome vary, then diagnose and fix or
+  file as below.
+
+- **For a lane this host cannot run — CUDA or OpenCL — diagnose from the recorded
+  failure output.** You cannot reproduce a CUDA-only or OpenCL-only flake on this
+  host, but the failing attempts recorded their output. Open the failing
+  attempts' job logs with your GitHub tools (the list above gives each failing
+  attempt's run id and job id, so use `github_workflow_run_status` and
+  `github_job_logs`, and the Surefire reports the run kept), read the assertion
+  values and the stack traces, and work out the cause from them: a tolerance the
+  GPU's reduction ordering trips, an unseeded draw, a race, a resource not reset.
+  Do not stop at "not reproducible on this host". Either land a fix the evidence
+  justifies, or file a tracker task that records the attempts, the lane and the
+  failure output alongside your diagnosis.
+
 ## Start from what earlier rounds learned
 
-This round recurs. Each one should continue the last one's search rather
-than pick a module blind, so before choosing anything:
+This round recurs. When the observed-flake list above is empty, or once you have
+worked it, continue the last round's search rather than pick a module blind:
 
 1. **Recall earlier flaky rounds.** Call `memory_recall` with `scope="repo"`
    and a query such as "flaky round next target", then again with "flaky
    test nondeterminism". The rounds run on `qa/flaky-*` branches. Read what
    each one ran, how many times, what it found, and above all the **next
-   target it named**. If the previous round named a next target, start there
-   unless you can say why it is no longer a lead, for example because a later
-   commit already fixed it. Do not re-run a slice an earlier round already
-   reported clean on an unchanged commit.
+   target it named**. If the previous round named a next target, consider it
+   alongside the observed-flake list unless you can say why it is no longer a
+   lead, for example because a later commit already fixed it. Do not re-run a
+   slice an earlier round already reported clean on an unchanged commit.
 
 2. **Search the tracker for known flaky or timing-out tests.** Call
    `tracker_search_tasks` for "flaky", "intermittently", "times out" and
@@ -45,42 +77,38 @@ than pick a module blind, so before choosing anything:
 ## Scope: one module, a small slice, held fixed
 
 Pick ONE module and, within it, a SMALL named set of tests to put under
-repeated execution. Bias the choice toward where determinism has actually
-failed before, in this order of preference:
+repeated execution — the observed flake you chose, or the lead you reached
+through the steps above. Bias the choice toward where determinism has actually
+failed, in this order of preference:
 
-- **the previous round's named next target**, from step 1 above;
-- **hardware-backed tests**: GPU/CUDA kernels and the tests named in the
-  tracker leads above, where outcomes have varied across hosts and runs;
-- **`studio/compose` rendering**, e.g. `BatchedRealSceneRenderTest`. An
+- **an observed flake above whose lane this host can run**, reproduced directly;
+- **the previous round's named next target**, from the recall step;
+- **the shared-infrastructure concurrency leads**, which the host can always run
+  and where this round's real fixes have landed:
+  - **the `base/io` metrics classes**: `MetricBase`, `DistributionMetric` and
+    `TimingMetric`, whose counters and totals are updated from many threads,
+    exercised by `MetricBaseConcurrencyTest` in `engine/utils`. A data race
+    there loses updates only under contention;
+  - **the controller's `Node` worker queue** in `flowtree/runtime`: how an idle
+    worker thread is woken when a job is queued (`Node#addJob` and the worker's
+    idle wait), exercised by `NodeWorkerWakeTest`. A missed notification there
+    shows up as latency or a timeout, not as a wrong answer;
+  - **`flowtree/runtime` relay and mailbox tests**: `NodeRelaySimulationTest`,
+    `WorkstreamMailboxTest` and `MailboxEndpointTest`, which depend on threads,
+    timing and message ordering;
+- **hardware-backed and studio-render leads you can run here**: Metal/native GPU
+  kernels, and `studio/compose` rendering, e.g. `BatchedRealSceneRenderTest`. An
   earlier round flagged an unseeded genome there (`realGenome()`). Check the
-  current source first: the test now draws an arrangement at random and
-  searches genome seeds, so look for any remaining unseeded randomness
-  rather than assuming the old note still holds;
-- **`flowtree/runtime` relay and mailbox tests**: `NodeRelaySimulationTest`,
-  `WorkstreamMailboxTest` and `MailboxEndpointTest`, which depend on threads,
-  timing and message ordering;
-- **the controller's `Node` worker queue** in `flowtree/runtime`: how an idle
-  worker thread is woken when a job is queued (`Node#addJob` and the worker's
-  idle wait), exercised by `NodeWorkerWakeTest`. A missed notification there
-  shows up as latency or a timeout, not as a wrong answer;
-- **the `base/io` metrics classes**: `MetricBase`, `DistributionMetric` and
-  `TimingMetric`, whose counters and totals are updated from many threads,
-  exercised by `MetricBaseConcurrencyTest` in `engine/utils`. A data race
-  there loses updates only under contention.
-
-Both of those last two areas have produced real concurrency fixes in earlier
-flaky rounds, so shared mutable state in base and controller infrastructure is
-as live a lead as the hardware lanes.
+  current source first: the test now draws an arrangement at random and searches
+  genome seeds, so look for any remaining unseeded randomness rather than
+  assuming the old note still holds. A CUDA- or OpenCL-only lead is diagnosed
+  from its recorded output as above, not reproduced here.
 
 Only when none of those is a live lead, pick another module whose tests touch
 concurrency, time, random seeds, floating-point reductions, shared caches, GPU
 kernels, ordering of a `Set`/`Map`, or external resources, since that is where
 nondeterminism concentrates. Say which module and which tests you picked and
-why, citing the memory or tracker task that pointed you there.
-
-Your hardware may not be able to run a lead. A CUDA-only lane, for example,
-cannot be reproduced on a host without CUDA. Say so and move to the next lead.
-Do not report it as clean.
+why, citing the observed flake, memory or tracker task that pointed you there.
 
 This is a pilot, so keep the slice narrow and do not let it grow. Creating a
 new Maven module is out of scope.
@@ -109,13 +137,21 @@ after a reasonable number of repeats, say so and either pick a different small
 slice within the module or report the slice clean — do not widen a single run
 to cover the module.
 
+**Do not try to force a flake by oversubscribing the host.** Running many heavy
+selections at once, or piling on parallelism to "stress" the machine into
+failing, does not reproduce a real flake — it exhausts memory and gets the
+session killed (a previous round was killed with exit 137 doing exactly this).
+Reproduce by repeating a narrow selection on the quiet host, not by overloading
+it.
+
 **3. Confirm the flakiness before believing it.** One failure in ten runs is a
 finding only once you can point at the run that failed and the run that passed
 on the same commit. Record the exact outcomes you saw. A test that fails for a
 real, deterministic reason on this commit is a different finding — a broken
-test, worth reporting — not a flaky one.
+test, worth reporting — not a flaky one. For a flake you take from the observed
+list but cannot run here, the disagreeing CI attempts are already that evidence.
 
-## When you find a flaky test
+## When you find (or confirm) a flaky test
 
 Diagnose the source of the nondeterminism and decide where it lives:
 
@@ -137,15 +173,16 @@ Diagnose the source of the nondeterminism and decide where it lives:
   fixture/helper that is not itself an existing test method, is allowed when it
   is what the fix needs.
 
-- **Otherwise, file a follow-up and do not force a fix.** When the cause is
-  outside this pilot's narrow scope, needs a larger refactor, or you cannot
-  pin it down with confidence, file a backlog task with `tracker_create_task`
-  (give it the project id, a clear title, and a description naming the module,
-  the test, the exact runs that disagreed, and what you believe the cause is).
-  Report its id in your summary rather than editing code you are unsure about.
-  This is the same follow-up routing the general review uses: fix what is
-  genuinely in scope here, route the rest to the backlog instead of widening
-  the round.
+- **Otherwise, file a follow-up carrying the evidence and your diagnosis.** When
+  the cause is outside this pilot's narrow scope, needs a larger refactor, runs
+  on a lane you cannot reproduce here, or you cannot pin it down with confidence,
+  file a backlog task with `tracker_create_task` (give it the project id, a clear
+  title, and a description naming the module, the test, the exact attempts or
+  runs that disagreed, the lane, the recorded failure output, and what you
+  believe the cause is). Report its id in your summary rather than editing code
+  you are unsure about. This is the same follow-up routing the general review
+  uses. A diagnosed flake with its evidence filed is a complete round; a bare
+  "could not reproduce" is not.
 
 ## What counts as success
 
@@ -153,21 +190,27 @@ In descending order:
 
 1. A demonstrated flaky test, a diagnosed cause, and a deterministic fix in
    production or test-helper code, proven by repeated runs now stable.
-2. A demonstrated flaky test, honestly reported, with a follow-up task filed
-   because the fix is out of this pilot's scope.
-3. A careful account of the module and slice you examined, how many times you
-   ran it, and the outcomes you saw, concluding that the slice is stable on
+2. A demonstrated or CI-confirmed flaky test, honestly reported, with a
+   follow-up task filed that carries the evidence (the disagreeing attempts, the
+   lane, the recorded failure output) and your diagnosis — because the fix is out
+   of this pilot's scope or the lane is not reproducible on this host.
+3. A careful account of the leads you examined, how many times you ran each, and
+   the outcomes you saw, concluding that the slices you could run are stable on
    this commit. An honestly empty-handed round is a valid outcome; do not
-   manufacture a finding, and do not widen the run to chase one.
+   manufacture a finding, and do not widen the run to chase one. But do not
+   mistake a lane you could not run for a clean slice — diagnose it from its
+   recorded output or file it with that evidence.
 
 ## Constraints
 
 - Named, bounded test selections only, each with an explicit timeout of at
   most 2400 seconds. Never a module's whole suite, a wildcard, or a CI shard
-  selector. Repeat a small selection; do not widen it.
+  selector. Repeat a small selection; do not widen it, and do not oversubscribe
+  the host to force a failure.
 - Do not edit, weaken, disable, or skip any existing test method.
-- Do not report a flaky test you have not reproduced, and report the actual
-  run outcomes, not a claim that you verified it.
+- Do not report a flaky test you have not reproduced or confirmed from CI's
+  recorded attempts, and report the actual outcomes, not a claim that you
+  verified it.
 - Keep the change focused on the one source of nondeterminism you found. If
   you find several, fix or file the most serious and note the others in your
   summary.
@@ -177,11 +220,11 @@ In descending order:
 Before you finish, store one memory with `memory_store` (namespace
 `progress`, tags `flaky-hunt` and `flaky-target`) recording:
 
-- the module and exact selection you ran;
-- how many runs you made and their outcomes;
+- the observed flake or slice you ran, and the lane;
+- how many runs you made and their outcomes, or the CI attempts you diagnosed;
 - what you found, with any task ids you filed or confirmed;
-- **the next target**: the single most promising slice the next round should
-  run, and why.
+- **the next target**: the single most promising lead the next round should
+  take — an observed flake still open, or the slice you would run next — and why.
 
-The next round starts from that memory. A round that leaves no next target
-makes the following round start blind again.
+The next round starts from CI's observed flakes and from this memory. A round
+that leaves no next target makes the following round start blind again.

@@ -1,0 +1,10 @@
+- It names where its proposal would land:
+  - a finding about THIS repository's own code, tests, documentation or QA rounds
+    lands here, on an ordinary branch of ${REPO_URL};
+  - a finding about the shared harness — the FlowTree agent runtime, the CI
+    scripts, or the reusable QA rounds themselves — cannot land here, because this
+    repository does not own those files. File it as a task in the framework's
+    tracker project "${FRAMEWORK_TRACKER_PROJECT}" with tracker_create_task,
+    described generically and carrying nothing private, rather than proposing an
+    edit you cannot make;
+  - person-only — secrets, the runner fleet, or controller configuration.

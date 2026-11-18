@@ -427,7 +427,7 @@ public class Node implements Runnable, ThreadFactory, ConsoleFeatures {
 
 							warn(e.getMessage(), e);
 							Node.this.totalErrJobs++;
-							Node.this.addFailedJob(j.encode());
+							Node.this.addFailedJob(j.toWire());
 						}
 						
 						Node.this.working = false;

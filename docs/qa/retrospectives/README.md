@@ -7,6 +7,17 @@ looks back at what those rounds — and the agent harness that runs them — hav
 actually been doing, and proposes, with evidence, how the process itself should
 improve.
 
+The retrospective is a **built-in template** of the reusable `qa-round.yaml`
+workflow (`prompt: retrospective`), the same way `defect-hunt` and `doc-qa` are.
+This repository runs it over itself; a repository that builds on this one runs
+its own retrospective, scoped to its own repository and written into its own
+tree, by adding a caller job (see the header of
+`.github/workflows/qa-round.yaml`). The conventions below are this repository's —
+the built-in defaults a public, framework-owned repository selects; a private
+consumer overrides the visibility and finding-landing through its caller's
+template variables. A retrospective never reads, quotes or counts another
+repository, so each repository's history stays private to it.
+
 Each run of the retrospective produces one docs-only branch and, on it, one new
 report plus one appended row in the survey ledger. A person reviews each report
 and decides whether to act on any of its proposals.

@@ -14,7 +14,7 @@
 #
 # It provides:
 #   - GitHub Actions runner agent (org- or repo-scoped registration)
-#   - JDK 17 (Eclipse Temurin) + Maven
+#   - JDK (Eclipse Temurin), major version from the JDK_MAJOR build arg, + Maven
 #   - OpenCL ICD loader, clinfo, and an ICD entry naming the ROCm runtime
 #   - build-essential, required by the `native` JNI backend that the CL jobs also
 #     exercise via AR_HARDWARE_DRIVER=native,cl
@@ -104,24 +104,25 @@ RUN mkdir -p /etc/OpenCL/vendors && \
 ENV PATH="/opt/rocm/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/opt/rocm/lib:/opt/rocm/lib/opencl:${LD_LIBRARY_PATH:-}"
 
-# ---------- JDK 17 (Eclipse Temurin / Adoptium) ----------
+# ---------- JDK (Eclipse Temurin / Adoptium) ----------
+# JDK_MAJOR is the single source of truth for the JDK major version baked into
+# this image, matching tools/ci/docker/Dockerfile. The CL jobs verify the
+# runner's java against the workflow-level EXPECTED_JDK_MAJOR in
+# .github/workflows/analysis.yaml instead of downloading a JDK with
+# actions/setup-java, so a JDK upgrade is this build arg plus a rebuild.
+ARG JDK_MAJOR=17
 RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
         | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] \
         https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" \
         > /etc/apt/sources.list.d/adoptium.list && \
     apt-get update && \
-    apt-get install -y --no-install-recommends temurin-17-jdk && \
+    apt-get install -y --no-install-recommends "temurin-${JDK_MAJOR}-jdk" && \
     rm -rf /var/lib/apt/lists/* && \
-    ln -s /usr/lib/jvm/temurin-17-jdk-* /usr/lib/jvm/temurin-17-jdk
+    ln -s /usr/lib/jvm/temurin-${JDK_MAJOR}-jdk-* /usr/lib/jvm/temurin-${JDK_MAJOR}-jdk
 
-ENV JAVA_HOME=/usr/lib/jvm/temurin-17-jdk
+ENV JAVA_HOME=/usr/lib/jvm/temurin-${JDK_MAJOR}-jdk
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
-
-# Both CL jobs run actions/setup-java@v5 with java-version 17. setup-java honours
-# JAVA_HOME_<version>_<arch> for a pre-installed JDK, so advertising the image's
-# Temurin here keeps every job from downloading its own copy.
-ENV JAVA_HOME_17_X64=/usr/lib/jvm/temurin-17-jdk
 
 # ---------- Maven ----------
 RUN curl -fsSL "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz" \
@@ -130,6 +131,12 @@ RUN curl -fsSL "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/b
 
 ENV MAVEN_HOME=/opt/maven
 ENV PATH="${MAVEN_HOME}/bin:${PATH}"
+
+# Retry a Maven Central download that fails transiently (HTTP 429 rate-limit, a
+# dropped connection, a 5xx) with backoff instead of failing the job. Matches
+# tools/ci/docker/Dockerfile; see its comment and "Maven dependency caching" in
+# tools/ci/README.md.
+ENV MAVEN_ARGS="-Daether.connector.http.retryHandler.count=10 -Daether.connector.http.retryHandler.interval=5000 -Daether.connector.http.retryHandler.intervalMax=60000"
 
 # ---------- AR environment ----------
 # AR_HARDWARE_LIBS is intentionally NOT set here — the system auto-detects a
@@ -177,6 +184,15 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # ---------- Maven local repo (shared volume mount point) ----------
 RUN mkdir -p /home/runner/.m2/repository && \
     chown -R runner:runner /home/runner
+
+# ---------- Persistent shared Maven cache mount point ----------
+# A host can mount a persistent, shared Maven repository here (a named volume in
+# the ar-ci-cl-runner@.container quadlet). Matches tools/ci/docker/Dockerfile;
+# see its comment and "Maven dependency caching" in tools/ci/README.md. Creating
+# it with runner ownership lets a fresh named volume mounted over it inherit that
+# ownership. Without the mount it stays empty and jobs fall back to $HOME.
+RUN mkdir -p /opt/ar-maven-cache && \
+    chown -R runner:runner /opt/ar-maven-cache
 
 # Copy entrypoint and settings
 COPY entrypoint.sh /home/runner/entrypoint.sh

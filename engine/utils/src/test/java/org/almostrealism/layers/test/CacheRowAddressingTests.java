@@ -112,6 +112,48 @@ public class CacheRowAddressingTests extends TestSuiteBase implements LayerFeatu
 	}
 
 	/**
+	 * A cache with more elements than a 32-bit element offset can address is rejected when the
+	 * read or write is created, with a message naming its size and the limit, instead of being
+	 * addressed at a wrapped offset when it runs. The cache is an unevaluated producer, so nothing
+	 * of its size is allocated.
+	 */
+	@Test(timeout = 60000)
+	public void cacheBeyondIntegerRangeIsRejectedAtCreation() {
+		int rowSize = 1_000_000_000;
+		long size = 3L * rowSize;
+		Assert.assertTrue(size > Integer.MAX_VALUE);
+
+		try (PackedCollection position = new PackedCollection(shape(1))) {
+			assertRejected("cacheWrite", size,
+					() -> cacheWrite(shape(rowSize), zeros(shape(3, rowSize)), p(position)));
+			assertRejected("cacheRead", size,
+					() -> cacheRead(shape(1), zeros(shape(3, rowSize)), p(position)));
+			assertRejected("rows", size,
+					() -> rows(shape(rowSize), zeros(shape(3, rowSize)), p(position)));
+		}
+	}
+
+	/**
+	 * Fails unless {@code create} throws an {@link IllegalArgumentException} whose message names
+	 * the operation, the cache size and the 32-bit limit.
+	 *
+	 * @param operation the operation expected to reject the cache
+	 * @param size      the number of elements in the cache
+	 * @param create    creates the operation
+	 */
+	private void assertRejected(String operation, long size, Runnable create) {
+		try {
+			create.run();
+			Assert.fail(operation + " accepted a cache of " + size + " elements");
+		} catch (IllegalArgumentException expected) {
+			String message = expected.getMessage();
+			Assert.assertTrue(message, message.startsWith(operation));
+			Assert.assertTrue(message, message.contains(String.valueOf(size)));
+			Assert.assertTrue(message, message.contains(String.valueOf(Integer.MAX_VALUE)));
+		}
+	}
+
+	/**
 	 * Fails unless {@code actual} is the value written to element {@code i} of row {@code row}.
 	 *
 	 * @param operation the operation whose result is checked

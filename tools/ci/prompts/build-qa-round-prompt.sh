@@ -21,8 +21,8 @@
 #   BRANCH          - branch name for the round's work
 #   BASE_BRANCH     - base branch (the caller's default branch)
 #   PROMPT          - a built-in selector (defect-hunt | doc-qa |
-#                     consolidation | flaky-hunt), or the path, relative to
-#                     <caller-root>, of a template the caller supplies
+#                     consolidation | flaky-hunt | retrospective), or the path,
+#                     relative to <caller-root>, of a template the caller supplies
 #
 # Optional environment variables:
 #   REPO_URL             - the round's repository, substituted as ${REPO_URL}
@@ -33,6 +33,33 @@
 #                          for test-runner / tooling guidance (default:
 #                          test-runner-maven.txt). A non-Maven consumer passes
 #                          test-runner-generic.txt (or another published one).
+#
+# The retrospective built-in reads four more, each with a default that
+# reproduces this framework's own (public, framework-owned) round, so a
+# consuming repository overrides only what differs through TEMPLATE_VARS:
+#   REPORT_DIR              - where the report and ledger live (default:
+#                             docs/qa/retrospectives).
+#   VISIBILITY_FRAGMENT     - the @include fragment stating what the report may
+#                             name: retrospective-public.txt (default) for a
+#                             public repository, retrospective-private.txt for a
+#                             private one.
+#   FINDINGS_FRAGMENT       - the @include fragment stating where a finding's
+#                             proposal lands: retrospective-findings-owner.txt
+#                             (default) for the repository that owns the shared
+#                             harness, retrospective-findings-consumer.txt for a
+#                             consuming repository, which files harness findings
+#                             as tracker tasks instead of editing files it does
+#                             not own.
+#   FRAMEWORK_TRACKER_PROJECT - the tracker project a consuming repository files
+#                             its harness findings into; named only by the
+#                             consumer findings fragment.
+#   LEADS_FILE           - path to a file whose contents the round's workflow
+#                          computed before the prompt was built (e.g. the flaky
+#                          round's observed-flake evidence). Its text replaces
+#                          ${LEADS} in the template. A template that names
+#                          ${LEADS} without this set — or with a missing or
+#                          empty file — gets an empty section; a template that
+#                          does not name it is unaffected.
 #
 # Exit codes:
 #   0 - prompt written successfully
@@ -60,9 +87,24 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "${SCRIPT_DIR}/prompt-render.sh"
 
 # Always available to every template; REPO_URL is substituted even when empty,
-# so a template that does not name it is unaffected.
+# so a template that does not name it is unaffected. REPORT_DIR joins NAMES
+# below so it is substituted for every round; it is empty unless a round (the
+# retrospective) gives it a value, so set -u stays satisfied when it is unused.
 export REPO_URL="${REPO_URL:-}"
+export REPORT_DIR="${REPORT_DIR:-}"
 export TEST_RUNNER_FRAGMENT="${TEST_RUNNER_FRAGMENT:-test-runner-maven.txt}"
+
+# The round-computed leads section (the flaky round's observed-flake evidence).
+# It is a whole multi-line block, so it cannot travel as a TEMPLATE_VARS value
+# (those are single-line); the workflow writes it to LEADS_FILE and it is
+# substituted for ${LEADS} here. Absent, missing or empty leaves ${LEADS} empty,
+# which a template that names it renders as a blank section and one that does
+# not name it ignores.
+LEADS=""
+if [ -n "${LEADS_FILE:-}" ] && [ -s "${LEADS_FILE}" ]; then
+    LEADS="$(cat "${LEADS_FILE}")"
+fi
+export LEADS
 
 # A built-in selector names a framework template; anything else is a path,
 # relative to the caller's checkout, read as data. Reject an absolute path or
@@ -70,6 +112,18 @@ export TEST_RUNNER_FRAGMENT="${TEST_RUNNER_FRAGMENT:-test-runner-maven.txt}"
 case "$PROMPT" in
     defect-hunt|doc-qa|consolidation|flaky-hunt)
         TEMPLATE="${SCRIPT_DIR}/${PROMPT}.txt"
+        ;;
+    retrospective)
+        TEMPLATE="${SCRIPT_DIR}/retrospective.txt"
+        # The retrospective's defaults reproduce this framework's own round — a
+        # public, framework-owned repository writing into docs/qa/retrospectives.
+        # A consuming repository overrides each through TEMPLATE_VARS (they are
+        # not reserved). REPORT_DIR is substituted into the prompt body, so it is
+        # already in NAMES; the two fragment names are resolved only in the
+        # template's @include lines, so they are exported but never substituted.
+        export REPORT_DIR="${REPORT_DIR:-docs/qa/retrospectives}"
+        export VISIBILITY_FRAGMENT="${VISIBILITY_FRAGMENT:-retrospective-public.txt}"
+        export FINDINGS_FRAGMENT="${FINDINGS_FRAGMENT:-retrospective-findings-owner.txt}"
         ;;
     /*|../*|*/../*|*/..)
         echo "ERROR: a caller template path must be relative and stay inside the checkout: ${PROMPT}" >&2
@@ -86,8 +140,10 @@ if [ ! -f "$TEMPLATE" ]; then
 fi
 
 # The names substituted into the template: the three the workflow always
-# supplies, plus every key the caller listed in TEMPLATE_VARS.
-NAMES=(BRANCH BASE_BRANCH REPO_URL)
+# supplies, the report location (empty unless a round sets it), the
+# round-computed leads section, plus every key the caller listed in
+# TEMPLATE_VARS.
+NAMES=(BRANCH BASE_BRANCH REPO_URL REPORT_DIR LEADS)
 
 if [ -n "${TEMPLATE_VARS:-}" ]; then
     # Captured by command substitution rather than read from a process
@@ -103,7 +159,7 @@ import json, os, sys
 # builder refuses it instead of exporting it.
 RESERVED = {
     "PATH", "HOME", "IFS",
-    "BRANCH", "BASE_BRANCH", "REPO_URL",
+    "BRANCH", "BASE_BRANCH", "REPO_URL", "LEADS",
     "PROMPT", "TEMPLATE_VARS", "TEST_RUNNER_FRAGMENT",
 }
 raw = os.environ.get("TEMPLATE_VARS", "").strip()

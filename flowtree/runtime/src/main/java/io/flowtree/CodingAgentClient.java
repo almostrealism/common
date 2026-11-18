@@ -199,7 +199,7 @@ public class CodingAgentClient implements ConsoleFeatures {
 
 			try {
 				Message m = new Message(Message.Task, -1, proxy);
-				m.setString(factory.encode());
+				m.setString(factory.toWire());
 				m.send(-1);
 				return true;
 			} catch (IOException e) {

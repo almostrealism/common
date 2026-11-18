@@ -257,7 +257,7 @@ public class AbsorptionPlane extends Plane implements Absorber, Fast, ConsoleFea
 										ImageCanvas.PPMEncoding);
 		else
 			ImageCanvas.encodeImageFile(this.getImage(), new File(file),
-										ImageCanvas.JPEGEncoding);
+										ImageCanvas.PNGEncoding);
 		*/
 	}
 	

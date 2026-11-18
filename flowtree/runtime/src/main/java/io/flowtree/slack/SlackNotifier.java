@@ -1117,9 +1117,9 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
 
         switch (event.getStatus()) {
             case SUCCESS:
-                if (isPushedWork(event)) {
+                if (event.hasPushedWork()) {
                     sb.append(":white_check_mark: *Work complete* - pushed ");
-                    sb.append(event.getStagedFiles().size()).append(" file(s)\n");
+                    sb.append(pushedSummary(event)).append("\n");
                     if (!hasSubmissionThread && event.getTargetBranch() != null) {
                         sb.append("   Branch: `").append(event.getTargetBranch()).append("`\n");
                     }
@@ -1176,7 +1176,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
         StringBuilder sb = new StringBuilder();
 
         if (event.getStatus() == JobCompletionEvent.Status.SUCCESS
-                && isPushedWork(event) && event.getCommitHash() != null) {
+                && event.isPrimaryPushed() && event.getCommitHash() != null) {
             String shortHash = event.getCommitHash().length() > 7
                 ? event.getCommitHash().substring(0, 7)
                 : event.getCommitHash();
@@ -1190,10 +1190,23 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
     }
 
     /**
-     * Returns whether a completion pushed changed files to its branch.
+     * Describes what each repository received, e.g.
+     * {@code "2 file(s) to the primary repository, to common"}. Every
+     * repository the job pushed to is named, so a dependent-only job reads as
+     * the work it was rather than as "no changes to push".
+     *
+     * @param event the completion event
+     * @return the per-repository push summary
      */
-    private static boolean isPushedWork(JobCompletionEvent event) {
-        return !event.getStagedFiles().isEmpty() && event.isPushed();
+    private static String pushedSummary(JobCompletionEvent event) {
+        List<String> parts = new ArrayList<>();
+        if (event.isPrimaryPushed()) {
+            parts.add(event.getStagedFiles().size() + " file(s) to the primary repository");
+        }
+        for (DependentRepoPush push : event.getDependentRepoPushes()) {
+            parts.add("to " + push.repoName());
+        }
+        return String.join(", ", parts);
     }
 
     /**

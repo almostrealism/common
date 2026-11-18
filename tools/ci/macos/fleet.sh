@@ -574,7 +574,7 @@ read_env() {
     values="$(env -i HOME="${RUNNER_HOME}" PATH=/usr/bin:/bin /bin/bash -c '
         set -a
         . "$1" >/dev/null
-        for v in GITHUB_PAT GITHUB_OWNER GITHUB_REPO RUNNER_SCOPE RUNNER_NAME RUNNER_DIR RUNNER_WORKDIR RUNNER_LABELS RUNNER_PATH; do
+        for v in GITHUB_PAT GITHUB_OWNER GITHUB_REPO RUNNER_SCOPE RUNNER_NAME RUNNER_DIR RUNNER_WORKDIR RUNNER_LABELS RUNNER_PATH EXPECTED_JDK_MAJOR; do
             eval "x=\${$v-}"
             printf "ENV_%s=%q\n" "$v" "$x"
         done
@@ -779,7 +779,12 @@ cmd_install() {
     STAGE_DIR="${RUNNER_HOME}/ci-runner${SUFFIX}"
     RUNNER_DIR="${ENV_RUNNER_DIR:-${RUNNER_HOME}/actions-runner${SUFFIX}}"
     ENV_RUNNER_NAME="${ENV_RUNNER_NAME:-$(hostname)-macos}"
-    RUNNER_PATH="${ENV_RUNNER_PATH:-${RUNNER_HOME}/.local/bin:/opt/homebrew/bin:/opt/homebrew/opt/openjdk@17/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
+    # The exact JDK major runner.sh will demand when it starts, defaulted and
+    # overridden the same way (the staged env file is what runner.sh sources), so
+    # this preflight refuses a host the runner would refuse instead of passing it
+    # and leaving install waiting for a registration that never happens.
+    EXPECTED_JDK_MAJOR="${ENV_EXPECTED_JDK_MAJOR:-17}"
+    RUNNER_PATH="${ENV_RUNNER_PATH:-${RUNNER_HOME}/.local/bin:/opt/homebrew/bin:/opt/homebrew/opt/openjdk@${EXPECTED_JDK_MAJOR}/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
     # The REQUIRED_TOOLS check above only proves java, mvn, curl, jq, git and
     # lsof resolve on this PATH, but runner.sh and cpu-watcher.sh run it under
     # the daemon's RUNNER_PATH and resolve the system commands they need by name
@@ -836,15 +841,16 @@ cmd_install() {
     # The tools runner.sh and the jobs need, looked up the way the daemon
     # will look them up: as the runner account, with the daemon's PATH.
     local missing
-    missing="$(sudo -u "${RUNNER_USER}" env -i HOME="${RUNNER_HOME}" PATH="${RUNNER_PATH}" /bin/bash -c '
+    missing="$(sudo -u "${RUNNER_USER}" env -i HOME="${RUNNER_HOME}" PATH="${RUNNER_PATH}" \
+        EXPECTED_JDK_MAJOR="${EXPECTED_JDK_MAJOR}" /bin/bash -c '
         for c in "$@"; do command -v "$c" >/dev/null 2>&1 || printf "%s " "$c"; done
         major=$(java -version 2>&1 | sed -n "1s/.*\"\([0-9][0-9]*\).*/\1/p")
-        [ -n "$major" ] && [ "$major" -ge 17 ] \
-            || printf "jdk17+ (java -version said: %s) " "$(java -version 2>&1 | head -1)"' _ ${REQUIRED_TOOLS} 2>/dev/null || true)"
+        [ -n "$major" ] && [ "$major" = "$EXPECTED_JDK_MAJOR" ] \
+            || printf "jdk%s exactly (java -version said: %s) " "$EXPECTED_JDK_MAJOR" "$(java -version 2>&1 | head -1)"' _ ${REQUIRED_TOOLS} 2>/dev/null || true)"
     if [ -n "${missing}" ]; then
         echo "  ✗ not on ${RUNNER_USER}'s daemon PATH: ${missing}" >&2
         echo "      PATH=${RUNNER_PATH}" >&2
-        echo "      Install with: brew install maven jq && brew install --cask temurin@17" >&2
+        echo "      Install with: brew install maven jq && brew install --cask temurin@${EXPECTED_JDK_MAJOR}" >&2
         echo "      or set RUNNER_PATH in ${ENV_FILE} to where they are." >&2
         errors=$((errors + 1))
     else

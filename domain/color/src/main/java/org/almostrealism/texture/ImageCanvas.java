@@ -66,8 +66,12 @@ public class ImageCanvas extends JPanel implements ConsoleFeatures {
   public static final int PIXEncoding = 5;
   /** The integer code for a PPM image encoding. */
   public static final int PPMEncoding = 4;
-  /** The integer code for a JPEG image encoding. */
-  public static final int JPEGEncoding = 6;
+  /**
+   * The integer code for a PNG image encoding. The bytes written are PNG
+   * ({@link ImageIO#write(java.awt.image.RenderedImage, String, OutputStream)}
+   * with {@code "png"}), so output files should carry a {@code .png} extension.
+   */
+  public static final int PNGEncoding = 6;
 
   	
   
@@ -180,7 +184,7 @@ public class ImageCanvas extends JPanel implements ConsoleFeatures {
 	public void writeImage(String file) {
 		try {
 			ImageCanvas.encodeImageFile(new Provider<>(this.image),
-							new File(file), ImageCanvas.JPEGEncoding);
+							new File(file), ImageCanvas.PNGEncoding);
 		} catch (Exception e) {
 			warn(e.getMessage(), e);
 		}
@@ -200,7 +204,7 @@ public class ImageCanvas extends JPanel implements ConsoleFeatures {
 	 *
 	 * @param image    the 2D array of {@link RGB} pixels to encode
 	 * @param o        the output stream to write to
-	 * @param encoding the encoding format (e.g., {@link #JPEGEncoding}, {@link #PPMEncoding})
+	 * @param encoding the encoding format (e.g., {@link #PNGEncoding}, {@link #PPMEncoding})
 	 * @throws IOException if writing fails
 	 */
 	public static void writeImage(RGB[][] image, OutputStream o, int encoding)
@@ -213,7 +217,7 @@ public class ImageCanvas extends JPanel implements ConsoleFeatures {
 	 *
 	 * @param imageProducer an {@link Evaluable} that produces the image pixels
 	 * @param o             the output stream to write to
-	 * @param encoding      the encoding format (e.g., {@link #JPEGEncoding}, {@link #PPMEncoding})
+	 * @param encoding      the encoding format (e.g., {@link #PNGEncoding}, {@link #PPMEncoding})
 	 * @throws IOException if writing fails
 	 */
 	public static void writeImage(Evaluable<RGB[][]> imageProducer, OutputStream o, int encoding)
@@ -286,7 +290,7 @@ public class ImageCanvas extends JPanel implements ConsoleFeatures {
 			}
 			
 			o.write(b);
-		} else if (encoding == JPEGEncoding) {
+		} else if (encoding == PNGEncoding) {
 		    BufferedImage bimg = new BufferedImage(image.length, image[0].length, BufferedImage.TYPE_INT_ARGB);
 		    Graphics g = bimg.createGraphics();
 		    

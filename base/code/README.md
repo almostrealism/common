@@ -331,6 +331,23 @@ row-duplicate map, is populated only when `getRowDuplicates()` is requested.
 List<Expression<?>> frequent = cache.getFrequentExpressions();
 ```
 
+The ranking is kept until the next lookup changes the cache, so asking for it again does
+not rank the expressions again. Common sub-expression extraction asks for it for every scope
+of a kernel and after every round of replacements, mostly with no lookup in between, and
+ends a scope's replacement as soon as it is handed the same list again. The list returned is
+shared and cannot be modified.
+
+### Common Sub-expression Replacement
+
+When a `Scope` is simplified, `Scope.processReplacements` hands its simplified statements to
+`CommonSubexpressions`, offering `ExpressionCache.getCurrentFrequentExpressions()` (the ranking
+of the active cache) as candidates. Each candidate that a statement computes, and that no
+statement declares already, is declared once as a variable of the scope ahead of the
+statements, which then obtain its value from that variable. The statements answer for
+themselves through `Statement.computes(e)`, `Statement.isDeclarationOf(e)` and
+`Statement.replaceComputed(target, replacement)`: an `ExpressionAssignment` computes its
+expression and keeps its destination, and a statement of any other kind is left as it is.
+
 ## See Also
 
 - `ar-relation` module - Provides `Computable`, `Evaluable`, `Producer` abstractions

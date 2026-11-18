@@ -16,6 +16,110 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `monitor/` | Host monitoring tools for CI infrastructure |
 | `prompts/` | Prompt builders and templates for agent jobs |
 
+## JDK on Self-Hosted Runners
+
+Self-hosted CI jobs do **not** download a JDK with `actions/setup-java`; the JDK
+is baked into each runner's image or host, and every self-hosted job runs the
+shared [`select-jdk`](../../.github/actions/select-jdk/action.yml) composite
+action as its `Select and verify JDK` step. The action selects the installed JDK
+whose major matches the workflow-level `EXPECTED_JDK_MAJOR` in
+[`.github/workflows/analysis.yaml`](../../.github/workflows/analysis.yaml) (on
+macOS via `/usr/libexec/java_home`, otherwise the image's `JAVA_HOME` or the home
+of the `java` on `PATH`), verifies that major robustly — reading the JDK's
+`release` metadata or `java.specification.version`, never the first line of
+`java -version`, which is the `Picked up _JAVA_OPTIONS:` notice on these runners —
+and **exports `JAVA_HOME`** (and prepends its `bin` to `PATH`) so every later
+step, the Maven launcher in particular, runs on exactly that JDK rather than
+whatever `java_home` would otherwise pick. It fails fast and names the runner
+when no JDK of the expected major is installed. Keeping this in one composite
+action stops the eight self-hosted lanes' JDK handling from drifting apart.
+(Hosted `ubuntu-latest` jobs keep `setup-java`, which serves the JDK from the
+hosted image's tool cache; its `java-version` is `${{ env.EXPECTED_JDK_MAJOR }}`,
+so the hosted and self-hosted lanes track the same major from the one env value.)
+
+The major version is a single value: `EXPECTED_JDK_MAJOR` in the workflow, the
+`JDK_MAJOR` build arg in the Linux images, and the `EXPECTED_JDK_MAJOR` check in
+`macos/runner.sh`. A JDK upgrade is that one value plus a rebuild/restart of each
+runner. If the `Select and verify JDK` step fails, the runner that ran it has no
+JDK of the expected major — rebuild/restart it per its fleet's doc:
+
+| Fleet | Label | How to rebuild/restart for a new JDK |
+|---|---|---|
+| CPU (Linux) | `ar-ci` | [`docker/README.md`](docker/README.md#jdk-version-baked-into-the-image) — `docker compose build --build-arg JDK_MAJOR=<n>` then `up` |
+| GPU (macOS) | `ar-ci` | [`macos/README.md`](macos/README.md#jdk-version) — install the JDK on the host, then `fleet macos stop`/`start` |
+| OpenCL (ROCm) | `ar-ci-cl` | [`rocm/README.md`](rocm/README.md#jdk-version-baked-into-the-image) — set `JDK_MAJOR` in `.env`, then `install-runner.sh` |
+| CUDA (NVIDIA) | `ar-ci-cuda` | [`cuda/README.md`](cuda/README.md#jdk-version-baked-into-the-shared-image) — reuses the CPU image; set `JDK_MAJOR` in `.env`, then `fleet.sh up` |
+
+## Maven dependency caching
+
+The self-hosted Linux runners (`ar-ci`, `ar-ci-cl`, `ar-ci-cuda`) are **ephemeral
+containers**: each job starts from the image with an empty local Maven
+repository. Without a cache every job re-resolves the whole plugin and
+dependency set from Maven Central — about 800 artifacts per job — and a full
+pipeline fans out to ~18 such jobs, so the repeated downloads hit Central's HTTP
+429 rate limit and fail the pipeline. (The macOS fleet never had this: it keeps a
+persistent `$HOME/.m2-ci/<runner>` on the host, so it is warm after the first
+job. GitHub-hosted jobs keep `actions/setup-java`'s `cache: maven`, which is
+GitHub's own cache and appropriate for them.)
+
+Three pieces fix it, and **all of them are safe on today's runners** — nothing
+changes until a host is rebuilt/recreated to provide the mount:
+
+1. **A shared `select-maven-repo` composite action**
+   ([`.github/actions/select-maven-repo`](../../.github/actions/select-maven-repo/action.yml))
+   runs on every self-hosted lane as the `Select Maven repository` step. It
+   points `maven.repo.local` at a **per-runner subdirectory** of a persistent,
+   shared Maven cache the host mounts at `/opt/ar-maven-cache`, so the plugin and
+   dependency set resolved once survives the ephemeral container and is reused by
+   every later job on that host. Per-runner subdirectories keep concurrent
+   runners from clobbering each other's SNAPSHOT installs (the same reason the
+   macOS fleet isolates per runner). **When the mount is absent or not writable,
+   the action falls back to the previous behaviour** — `$HOME/.m2-ci/<runner>`, or
+   `$HOME/.m2/repository` for the `ar-ci` `test` lane whose `actions/cache` step
+   warms that path — so a runner that has not been recreated with the volume
+   still builds correctly, only slower. `tools/tests/test_maven_cache.py` pins
+   the action and its wiring.
+
+2. **A persistent named volume** mounted at `/opt/ar-maven-cache` on each Linux
+   fleet (a `docker compose` volume for `ar-ci`/`ar-ci-cuda`, a podman quadlet
+   `Volume=` for `ar-ci-cl`). A named volume auto-creates, inherits the image
+   mount point's `runner` ownership (the images `mkdir`/`chown` it) so the
+   non-root runner can write, and survives container recreation.
+
+3. **Maven transport retry/backoff** baked into the runner images and the macOS
+   runner (`MAVEN_ARGS` with `aether.connector.http.retryHandler.*`), so a
+   *remaining* transient 429/5xx/dropped connection is retried with backoff
+   instead of failing the job. This is a backstop, not the fix — a warm cache
+   makes almost no Central requests in the first place.
+
+### Enabling it on a host (person steps)
+
+CI keeps working before any of this is applied; applying it makes a host's lanes
+warm. Per fleet:
+
+| Fleet | Label | How to enable / verify / roll back |
+|---|---|---|
+| CPU (Linux) | `ar-ci` | [`docker/README.md`](docker/README.md#maven-dependency-cache) |
+| GPU (macOS) | `ar-ci` | already warm via `$HOME/.m2-ci/<runner>`; nothing to mount (see [`macos/README.md`](macos/README.md#maven-dependency-cache)) |
+| OpenCL (ROCm) | `ar-ci-cl` | [`rocm/README.md`](rocm/README.md#maven-dependency-cache) |
+| CUDA (NVIDIA) | `ar-ci-cuda` | [`cuda/README.md`](cuda/README.md#maven-dependency-cache) |
+
+**Correctness guarantees.** A **cold** cache (fresh volume, or none) resolves
+everything from Central exactly as before — slower, never wrong. A **stale**
+cache is a superset of what a build needs, so extra artifacts are harmless and a
+new dependency is fetched on demand. A **poisoned or partial** artifact cannot
+persist a broken build: Maven validates checksums, each per-runner subdirectory
+is independent so one runner's corruption never reaches another, and the whole
+cache is disposable — `docker volume rm <project>_ar-maven-cache` (or `podman
+volume rm ar-ci-cl-m2`) forces a clean cold rebuild. The cache is never an input
+the build cannot reproduce from Central.
+
+**Optional cold-start seed.** The first job on a brand-new volume is still cold.
+To warm it in advance, run one throwaway build on the host (for example `mvn
+-q -DskipTests dependency:go-offline` against a checkout, writing into the
+volume's per-runner subdirectory), or simply let the first pipeline warm it —
+steady state is warm either way.
+
 ## Root Scripts
 
 | Script | Purpose |
@@ -31,10 +135,13 @@ to build prompts, parse test results, and submit agent jobs to the FlowTree cont
 | `register-workstream.sh` | Register a workstream with the FlowTree controller (emits `workstream_id`, also to `$GITHUB_OUTPUT`), optionally granting tracker roles (`TRACKER_CAPABILITIES`) and checking out other repositories beside it (`DEPENDENT_REPOS`) |
 | `resolve-release-scope.sh` | Goal decomposition: read the next version from a repository (`pom.xml` or a plain version file), the framework version it pins, and whether `<plans dir>/<version>/PLAN.md` exists (`in_scope`) |
 | `remediation-required-labels.sh` | Pin an auto-resolve submission to a macOS Node (`REQUIRED_LABELS`) when a Metal lane (`test-mac`, `test-media-mac`) failed in the attempt |
-| `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests or python-evals failed |
+| `classify-job-failures.py` | Classify a failed test job by *where* it failed, from the run's jobs-API payload: a job whose failed steps all precede its first Maven/test step is environmental (a setup-step failure — checkout, `setup-java`, cache restore, artifact download), reported but not assigned; a failure at or after the test step is a genuine crash routed to the VM-crash prompt. Used by the `Check for incomplete test execution` step so a setup-java network timeout is no longer sent to the crash agent |
+| `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`, and any other failed job whose log shows an infrastructure failure (download, connection, lost runner); never retries a run whose python-tests or python-evals failed |
+| `pr-status-labels.py` | Give every open pull request one `ci: ...` label for its CI stage (validating, auto-review, full tests, auto-fix, ready for review, needs attention, review limit) plus `ci: stalled` when a stage overruns, derived from the head commit's runs, jobs, staged request, check runs and `remediation-cap` commit status. Run by `pr-status-labels.yaml`; see "What the `PR Status Labels` workflow does" in `.github/CLAUDE.md` |
+| `collect-observed-flakes.py` | Collect the flakes CI has already observed, for the flaky round's prompt: walk recent "Build and Test" runs (window configurable via `--window-days`/`FLAKE_WINDOW_DAYS`, `--max-runs`/`FLAKE_MAX_RUNS`), and for each retried run read each attempt's test-lane jobs; a `Class#method` that failed in one attempt (parsed from the attempt's job log) and passed in a later attempt of the same commit is a confirmed flake, ranked by frequency then recency, rendered as the prompt's leads section with each flake's lane, commits and failing-attempt job ids. A test that fails in every attempt is a real failure, not a flake, and is left out. Run before the prompt build via `qa-round.yaml`'s `leads-script` input (needs `actions: read`) |
 | `stage-submit-request.sh` | Write a built prompt and its submission parameters to a request directory for a remediation job to upload |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"false"`: it turns on the harness's per-job test lock (see `flowtree/runtime/docs/file-staging.md`), which only the jobs sent to make failing tests pass, and a few QA rounds, request — everything else is held to `test-integrity-check`. `ENFORCE_CHANGES` (default `"false"`) requires the job to produce a change. A run that leaves none is re-run up to `MAX_ENFORCE_CHANGES_RETRIES` times over the whole job (omitted: the controller default; `"0"`: never re-run), and a job that still commits nothing once that cap is spent is reported DEGRADED rather than SUCCESS |
-| `submit-staged-request.sh` | Submit a staged request directory from a trusted (default-branch) checkout, exporting only the documented `submit.env` keys |
+| `submit-staged-request.sh` | Submit a staged request directory from a trusted (default-branch) checkout, exporting only the documented `submit.env` keys. When the controller rejects the submission, posts a short alert to the branch's workstream (`POST /api/workstreams/{id}/messages`) and `$GITHUB_STEP_SUMMARY` naming the remediation kind (`REMEDIATION_KIND`), branch, run, HTTP status and the controller's error, then still fails the job |
 | `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
 
 ## Reusable workflows
@@ -53,7 +160,7 @@ declares no secret.
 | `task-planning.yaml` | Task-planning round: on the caller's default branch, gate on intake, a round in progress (`qa-cadence.sh`), the open-PR backlog (`open-pr-backlog.sh`) and a claimable task (`tracker-claimable.sh`) in `<project> <version>`, then create a `project/task-*` branch, register its workstream, claim the task (`tracker-claim.sh`) and submit an agent that plans it and opens the PR. This repository's `plan-release-task` calls it |
 | `implement-plan.yaml` | The manual "implement the plan" trigger, dispatched by the caller on a plan branch: detect the plan, resolve its workstream settings (`plan_workstream_config.py`), register the workstream, and submit the implementation through a token-free prompt build and `submit-staged-request.sh`. This repository's `verify-completion.yaml` calls it |
 | `plan-review.yaml` | Docs-only review for a repository without this pipeline: when every change on the branch is under `docs/`, submit the `docs-review.txt` agent, which improves the documents and never implements the plan |
-| `qa-round.yaml` | One recurring QA round: ask the controller about intake, gate on the shared cadence (`qa-cadence.sh`), archive the rounds that are over, create a `<branch-prefix><timestamp>` branch, build a prompt (`build-qa-round-prompt.sh`, from a built-in selector or the caller's own template path), register its workstream directly before submitting a coding-agent job that opens a PR, and archive that workstream again if the submission fails, so no round leaves a jobless workstream. The branch prefix, interval, prompt, template vars and submission settings are inputs. This repository's `master-agent-dispatch.yaml` calls it for every QA round except `coverage-qa` (which stays inline) |
+| `qa-round.yaml` | One recurring QA round: ask the controller about intake, gate on the shared cadence (`qa-cadence.sh`), archive the rounds that are over, create a `<branch-prefix><timestamp>` branch, build a prompt (`build-qa-round-prompt.sh`, from a built-in selector — `defect-hunt`, `doc-qa`, `consolidation`, `flaky-hunt`, `retrospective` — or the caller's own template path), register its workstream directly before submitting a coding-agent job that opens a PR, and archive that workstream again if the submission fails, so no round leaves a jobless workstream. The branch prefix, interval, prompt, template vars and submission settings are inputs. A consuming repository adopts the `retrospective` selector with a caller job of its own (see the header of `.github/workflows/qa-round.yaml`): the survey stays scoped to the caller's `REPO_URL`, its report and ledger live under its `REPORT_DIR`, and the `VISIBILITY_FRAGMENT`/`FINDINGS_FRAGMENT`/`FRAMEWORK_TRACKER_PROJECT` template-vars make a private repository's report describe its own work while harness findings are filed to the framework's tracker project. A round may set the `leads-script` input to a framework script run before the prompt build whose stdout fills the prompt's `${LEADS}` section (the flaky round passes `collect-observed-flakes.py`; its caller grants the `actions: read` the script needs, which flows through because the job declares no narrowing permissions block of its own). This repository's `master-agent-dispatch.yaml` calls it for every QA round except `coverage-qa` (which stays inline) |
 | `plan-ready.yaml` | Plan approval → implementation: on a plan PR being marked **ready for review**, dispatch the implementation workflow (`dispatch-workflow`, default `verify-completion.yaml`) on the PR's head branch, but only for a sender in the `approvers` allowlist and while every changed file is under `docs-directory` (default `docs/`). Inline shell over event metadata and the GitHub API — it checks out nothing, runs no framework script, and holds no controller secret (only `GITHUB_TOKEN`), so it has no framework checkout and no `secrets:` block. This repository's `ready-plan.yaml` is its `pull_request_target` caller |
 
 ## Coverage (`coverage/`)
@@ -102,8 +209,32 @@ result without parseable Surefire XML still routes to the build-failure path
 instead of going unresolved once the flaky-test retries are spent), and its Surefire artifact name is kept by the
 `Filter to resolvable surefire reports` allowlist (so a genuine test failure
 is actually parsed and described, not silently deleted before
-`parse-surefire-failures.sh` ever sees it). `test-flowtree` originally had
-neither — it uploaded no Surefire artifact at all — so a failure there was
+`parse-surefire-failures.sh` ever sees it).
+
+A raw `failure` result is not automatically a crash, though. Before taking the
+crash route, that step reads each failing job's steps from the jobs API and runs
+`classify-job-failures.py`: a job that failed in a setup step — `setup-java`
+timing out on the JDK host, checkout, cache restore or artifact download, all
+*before* its first Maven/test step — is environmental and dispatches no agent
+(the pipeline already retried three times), while a failure inside the test step
+still routes to the crash prompt. A mixed run routes only the genuine crashes
+and lists the environmental ones. When the jobs cannot be classified (an older
+checkout, or the jobs API is unreachable) the step falls back to the crash route,
+the conservative default that preserves the earlier behaviour. The step also
+passes the ids of the failing required jobs. The jobs payload is for the whole
+run, so the classifier restricts the crash/environmental split to runs of those
+ids — an unrelated failed job (`docker-build`, a failed `analysis`) never counts
+toward the crash count or lands in the reports. It counts any required id with
+no failed run in the payload (an empty or partial API response) as a
+crash. A payload holding fewer jobs than its declared `total_count` also counts
+one crash, since a missing matrix run can hide behind another run of the same
+job. So a zero crash count means every failing job was seen and found
+environmental. The test step is recognised by the word "test(s)" in its name
+only — never "Maven", because the self-hosted lanes' "Select Maven repository"
+setup step precedes their artifact download.
+
+`test-flowtree` originally had
+neither check — it uploaded no Surefire artifact at all — so a failure there was
 never auto-resolved with a specific fix; it fell through to prompts claiming
 every test had passed.
 
@@ -150,7 +281,7 @@ it knowingly does not cover are in
 | `build-coverage-prompt.sh` | Build prompt for the recurring test-coverage round |
 | `build-goal-decomposition-prompt.sh` | Build prompt for the goal-decomposition round: turn a repository's release plan into tracker tasks, in its own project or the framework's; changes no files |
 | `build-docs-review-prompt.sh` | Build prompt for auto-review of a docs-only branch: review and improve the documents, never implement a plan |
-| `build-qa-round-prompt.sh` | Build the prompt for any round the reusable `qa-round.yaml` runs: render a built-in template chosen by selector (`defect-hunt` \| `doc-qa` \| `consolidation` \| `flaky-hunt`) or a caller-supplied template read as data by path, substituting `BRANCH`/`BASE_BRANCH`/`REPO_URL` and the round's `TEMPLATE_VARS`, including the `TEST_RUNNER_FRAGMENT` a built-in template selects, and failing if any `${...}` survives. Replaces the per-round builders the recurring QA jobs used to each carry |
+| `build-qa-round-prompt.sh` | Build the prompt for any round the reusable `qa-round.yaml` runs: render a built-in template chosen by selector (`defect-hunt` \| `doc-qa` \| `consolidation` \| `flaky-hunt` \| `retrospective`) or a caller-supplied template read as data by path, substituting `BRANCH`/`BASE_BRANCH`/`REPO_URL`/`REPORT_DIR` and the round's `TEMPLATE_VARS`, including the `TEST_RUNNER_FRAGMENT` a built-in template selects, and failing if any `${...}` survives. Replaces the per-round builders the recurring QA jobs used to each carry |
 | `build-planning-prompt.sh` | Build prompt for planning workflow |
 | `build-task-planning-prompt.sh` | Build prompt for the task-planning round: plan the tracker task CI claimed for the round (`TASK_ID`, `TASK_TITLE`, `TASK_DESCRIPTION`) |
 | `build-policy-violation-prompt.sh` | Build prompt for agent when code policy enforcement fails |
@@ -160,6 +291,7 @@ it knowingly does not cover are in
 | `build-review-prompt.sh` | Build prompt for general code review |
 | `build-verify-prompt.sh` | Build prompt for the implement-plan workflow (called by verify-completion), the manual "implement the plan" trigger |
 | `consolidation.txt` | Template for the consolidation round: find one duplicated behavior, share it, pin it with tests |
+| `concept-alignment.txt` | Template for the pilot concept-alignment round: find one type that represents an existing abstraction's concept without extending it, make it extend that contract with every caller updated, test it through the new supertype, and record the relationship in `docs/internals/concept-map.md` |
 | `coverage.txt` | Template for the test-coverage round |
 | `defect-hunt.txt` | Template for the defect hunt. Offered to consumers through `qa-round.yaml`'s `defect-hunt` selector; its test-runner / tooling guidance is an `@include ${TEST_RUNNER_FRAGMENT}` so a non-Maven consumer can select a neutral fragment |
 | `test-runner-maven.txt` | The default `TEST_RUNNER_FRAGMENT`: this framework's tooling guidance (`ar-profile-analyzer`, the MCP test runner) a built-in template includes |
@@ -170,14 +302,16 @@ it knowingly does not cover are in
 | `goal-decomposition.txt` | Template for the goal-decomposition round: reconcile a release's tracker tasks with its plan, touching only the goal-derived tasks of the repository being reconciled |
 | `general-review.txt` | Template for general code review prompt: review and fix within what the branch set out to do, routing out-of-scope work to `tracker_create_task` rather than widening the branch |
 | `performance.txt` | Template for the performance round: pick a slow test, profile it on Metal, make the framework faster without touching the test |
-| `retrospective.txt` | Template for the QA retrospective: study recent automated work and propose, with evidence, how the agent harness and the QA jobs should improve — proposes, never implements. Before classifying any prior proposal "still open" it checks open PRs (`github_list_open_prs`) and in-window branches (`workstream_list`, incl. `ci/qa-`) for an in-flight implementation and reports it "in progress (PR #N)". Writes a skeleton report and ledger row to disk first, before the survey, so a stalled run still leaves a reviewable artifact; the round is submitted with `ENFORCE_CHANGES` and a re-run cap of 0, so an empty-tree exit is reported DEGRADED without a re-run |
+| `retrospective.txt` | Template for the QA retrospective, offered to consumers through `qa-round.yaml`'s `retrospective` selector: study recent automated work and propose, with evidence, how the agent harness and the QA jobs should improve — proposes, never implements. Generalised with template variables so each repository runs its own, scoped to its own `REPO_URL` and written into its own tree: `REPORT_DIR` is where the report and ledger live (default `docs/qa/retrospectives`); `@include ${VISIBILITY_FRAGMENT}` states what the report may name (public default, or a private variant); `@include ${FINDINGS_FRAGMENT}` states where a finding lands (framework-owner default, or a consumer variant that files harness findings as tracker tasks in `FRAMEWORK_TRACKER_PROJECT`). Before classifying any prior proposal "still open" it checks open PRs (`github_list_open_prs`) and in-window branches (`workstream_list`, matching the caller's `QA_PREFIXES`) for an in-flight implementation and reports it "in progress (PR #N)". Writes a skeleton report and ledger row to disk first, before the survey, so a stalled run still leaves a reviewable artifact; the round is submitted with `ENFORCE_CHANGES` and a re-run cap of 0, so an empty-tree exit is reported DEGRADED without a re-run |
+| `retrospective-public.txt` / `retrospective-private.txt` | The `VISIBILITY_FRAGMENT` pair: the public one forbids naming any private product or workstream (the default, this framework's own round); the private one lets a repository describe its own work freely while still never reading or quoting another repository |
+| `retrospective-findings-owner.txt` / `retrospective-findings-consumer.txt` | The `FINDINGS_FRAGMENT` pair: the owner one lands findings on `ci/qa-…`/ordinary/person-only branches (the default); the consumer one lands own-repository findings there but files shared-harness findings as tracker tasks in `FRAMEWORK_TRACKER_PROJECT`, since a consumer cannot edit files it does not own |
 | `pdsl-migration.txt` | Template for the PDSL migration round: move one piece of pipeline structure from Java into a `.pdsl` asset, delete the Java assembly, pin parity with tests, and report language gaps rather than aliasing around them |
 | `plan-workstream-settings.txt` | Shared fragment: when a plan needs particular hardware, declare it in `docs/plans/<branch>-workstream.yaml` — included by both planning prompts |
 | `plan-pr-framing.txt` | Shared fragment: write the commit message (and so the pull request) for the planned work, not the plan — included by both planning prompts |
-| `pr-feedback.txt` | Shared fragment: how to find, read, act on and reply to pull-request review comments — patched into every auto-resolve prompt |
+| `pr-feedback.txt` | Shared fragment carrying both the pull-request review-comment policy (how to find, read, act on and reply to comments) and the "new TODOs are findings" rule (every TODO the branch adds must be fixed or filed as a tracker task) — patched into every route's prompt by `append_branch_feedback`, which also appends CI's computed list of the branch's new TODOs |
 | `project-planning.txt` | Template for the planning workflow |
 | `task-planning.txt` | Template for the task-planning round |
-| `prompt-render.sh` | Sourced by the builders: expands `@include <fragment>` lines and substitutes `${VAR}` placeholders (`render_prompt`, `append_prompt_fragment`). An `@include` line may name its fragment through a `${VAR}` resolved from the environment before expansion (so a template selects a fragment), and a resolved fragment name may not contain `/`, so a caller template can include only the framework's published fragments |
+| `prompt-render.sh` | Sourced by the builders: expands `@include <fragment>` lines and substitutes `${VAR}` placeholders (`render_prompt`, `append_prompt_fragment`), and provides `append_branch_feedback <output> [<todos-file>]` — the one call every route makes to patch in `pr-feedback.txt` plus CI's computed new-TODO list (the TODO file is optional, so the trusted `plan-review`/`implement-plan` routes, which cannot diff the branch, still carry the fragment without a list). An `@include` line may name its fragment through a `${VAR}` resolved from the environment before expansion (so a template selects a fragment), and a resolved fragment name may not contain `/`, so a caller template can include only the framework's published fragments |
 | `verify-completion.txt` | Template for verify-completion prompt |
 
 ### Test execution limits
@@ -200,13 +334,20 @@ above regardless of the hooks.
 
 Each `build-*-prompt.sh` reads its sibling template, substitutes the environment
 variables named in its header, and writes the result to an output-file argument.
-Most take that path as their only argument; a few need additional file input first
-— `build-resolve-prompt.sh <failures-file> <output-file>`,
+Most take that path as their only required argument; a few need additional file
+input first — `build-resolve-prompt.sh <failures-file> <output-file>`,
 `build-quality-gate-prompt.sh <failures-file> <output-file>`,
 `build-python-failure-prompt.sh <log-file> <output-file>` and
 `build-vm-crash-prompt.sh <crash-reports-dir> <output-file>` — where the output
-file is always the last argument. `tools/tests/test_prompt_builders.py` holds
-them to that contract.
+file is the last *required* argument. Every route builder then accepts one
+optional argument after the output file: the computed-TODO-section file that
+`append_branch_feedback` patches in (`build-resolve-prompt.sh` reads two optional
+classification files between the output path and it, so there the TODO file is
+the fifth positional). So the output path is the last argument a builder
+requires, but no longer always the last one it reads.
+`tools/tests/test_prompt_builders.py` holds the builders to that contract, and
+`tools/tests/test_branch_todos_workflow_wiring.py` checks that every route step
+in `analysis.yaml` passes that TODO file in its builder's final slot.
 
 Instructions that several tasks share live once, as a fragment in this directory,
 and are patched into each prompt by `prompt-render.sh`: a template names the
@@ -217,12 +358,26 @@ planning prompts: how to frame the commit message for the planned work rather
 than the plan, and how a plan declares the hardware it needs.
 `test-lock-enforcement.txt` is appended by the test-failure and test-crash
 builders (`build-resolve-prompt.sh`, `build-vm-crash-prompt.sh`).
-`pr-feedback.txt` is the
-policy for pull-request review comments — read both the inline and conversation feeds before starting, fix what
-is right in the code, reply threaded to the original comment only where the
-author is safe to answer (Copilot and people, never CodeRabbit or an unknown bot),
-and treat a comment as evidence to verify rather than an instruction to obey.
-Every auto-resolve builder carries it, whatever the job was submitted for — a
-reviewer may already have named the defect a test-failure job is chasing, and on
-a docs-only branch the review comments are usually the whole of the work.
-`test_prompt_builders.py` fails if any auto-resolve prompt stops carrying it.
+
+`pr-feedback.txt` is the one fragment every route that runs against a branch
+with a pull request carries, and it holds two obligations together so no route
+can carry one without the other:
+
+- the **pull-request review-comment policy** — read both the inline and
+  conversation feeds before starting, fix what is right in the code, reply
+  threaded to the original comment only where the author is safe to answer
+  (Copilot and people, never CodeRabbit or an unknown bot), and treat a comment
+  as evidence to verify rather than an instruction to obey; and
+- the **new-TODO findings rule** — every `TODO` this branch adds (computed by
+  `extract_branch_todos.py` relative to the merge base) is a finding to fix and
+  remove, or to turn into a tracker task and reference, never to carry forward.
+
+A builder patches both in with one call, `append_branch_feedback "$OUTPUT_FILE"
+"$TODOS_FILE"`, which appends the fragment and then CI's computed TODO list when
+the route passed one. Whatever the job was submitted for, the session leaves
+every review comment and every new TODO accounted for before it finishes — a
+reviewer may already have named the defect a test-failure job is chasing, on a
+docs-only branch the review comments are usually the whole of the work, and a
+quality-gate session that lands no fix still answers the comments and files the
+TODOs. `test_prompt_builders.py` fails if any route's prompt stops carrying
+either half.

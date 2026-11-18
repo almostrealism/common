@@ -264,6 +264,17 @@ public class TraversableDeltaComputation
 	}
 
 	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Also counts the argument obtained for the {@link #target}, which is not an input of
+	 * this computation.</p>
+	 */
+	@Override
+	public int getScopeArgumentCount(int cap) {
+		return (int) Math.min(Integer.MAX_VALUE, (long) super.getScopeArgumentCount(cap) + 1);
+	}
+
+	/**
 	 * Resets the computation arguments after kernel execution.
 	 *
 	 * <p>Clears the {@link #targetVariable} reference in addition to performing standard

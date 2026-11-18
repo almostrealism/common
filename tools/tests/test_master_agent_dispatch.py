@@ -40,6 +40,11 @@ _QA_SCRIPTS = [
     "submit-agent-job.sh",
 ]
 
+# The QA rounds running as pilots. A pilot participates in the shared backlog
+# gate like every round but is not counted when MAX_OPEN_PRS is sized; promoting
+# one to a full-cadence round means removing it here and raising that limit.
+_PILOTS = ("flaky-qa", "concept-qa")
+
 _SELECTOR = re.compile(r"github\.event\.inputs\.agent == '([a-z-]+)'")
 
 
@@ -190,6 +195,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
             "flaky-qa": 7,
             "coverage-qa": 2,
             "consolidation-qa": 2,
+            "concept-qa": 5,
             "performance-qa": 2,
             "pdsl-qa": 5,
             "qa-retrospective": 7,
@@ -848,36 +854,138 @@ class MasterAgentDispatchTests(unittest.TestCase):
         follow-up, so it carries the per-job test lock. Like the defect hunt it
         pins claude/opus (telling a real flake from a deterministic failure is
         judgment), and an empty-handed round is valid so it sets no
-        ENFORCE_CHANGES. It reads tools and runs bounded test selections, so it
-        needs no Metal and carries no REQUIRED_LABELS."""
+        ENFORCE_CHANGES. It is routed to a macOS Node (REQUIRED_LABELS) so the
+        Metal and native lanes its observed flakes come from are reproducible —
+        the same routing performance-qa uses."""
         job = self.qa_jobs["flaky-qa"]
         submit = next(s for s in job["steps"]
                       if "submit-agent-job.sh" in s.get("run", ""))
         env = submit["env"]
         self.assertEqual("true", env["PROTECT_TEST_FILES"])
-        # The reusable submit step always carries these; an empty-handed round
-        # is valid (no enforce-changes) and the hunt needs no Metal (no labels).
+        # An empty-handed round is valid (no enforce-changes); the submission is
+        # pinned to a macOS Node so the lanes the observed flakes come from run.
         self.assertEqual("false", env.get("ENFORCE_CHANGES", "false"))
-        self.assertEqual("", env.get("REQUIRED_LABELS", ""))
+        self.assertEqual({"platform": "macos"}, json.loads(env["REQUIRED_LABELS"]))
         primary = json.loads(env["PHASE_CONFIGS"])["primary"]
         self.assertEqual("opus", primary["model"])
         # Runner, model and provider must be set together; see the defect
         # hunt's note in the workflow for why one alone misroutes the phase.
         self.assertEqual({"runner", "model", "provider"}, set(primary))
 
+    def test_the_flaky_workstream_is_routed_to_a_macos_node(self):
+        """The flaky round's observed flakes come from the Metal and native
+        lanes, so like performance-qa it pins its workstream to a macOS Node:
+        REQUIRED_LABELS_JSON on the registration (every later job on the
+        workstream) and REQUIRED_LABELS on the submission (the first job). The
+        two must agree, so a follow-up or fix lands on a Node that can reproduce
+        the flake too."""
+        job = self.qa_jobs["flaky-qa"]
+        register = next(s for s in job["steps"]
+                        if "register-workstream.sh" in s.get("run", ""))
+        submit = next(s for s in job["steps"]
+                      if "submit-agent-job.sh" in s.get("run", ""))
+        labels = json.loads(register["env"]["REQUIRED_LABELS_JSON"])
+        self.assertEqual({"platform": "macos"}, labels)
+        self.assertEqual(labels, json.loads(submit["env"]["REQUIRED_LABELS"]))
+
+    def test_the_flaky_round_collects_cis_observed_flakes(self):
+        """The round feeds CI's observed flakes into its prompt before it is
+        built: the caller sets the qa-round leads-script to the collection
+        script, which must exist, and the called workflow runs it before the
+        build step. A round whose leads-script named a script that is not there
+        would build its prompt with an empty leads section and no error."""
+        leads_script = self.jobs["flaky-qa"]["with"]["leads-script"]
+        self.assertEqual("tools/ci/collect-observed-flakes.py", leads_script)
+        self.assertTrue(os.path.isfile(os.path.join(_REPO_ROOT, leads_script)))
+        # The called workflow's collect step runs before the build step.
+        job = self.qa_jobs["flaky-qa"]
+        steps = [s.get("name", "") for s in job["steps"]]
+        self.assertIn("Collect the round's leads", steps)
+        self.assertLess(steps.index("Collect the round's leads"),
+                        steps.index("Build the round's prompt"))
+
     def test_the_flaky_pilot_does_not_raise_the_open_pr_limit(self):
         """MAX_OPEN_PRS is sized to the full-cadence QA rounds, one open PR per
         round for the same reviewer. The flaky hunt is a pilot, not a full
         cadence job, so it deliberately does NOT raise that
-        limit until it proves its yield — the eight QA jobs share a budget of
-        seven. This pins that decision: a later session that promotes the pilot
-        to a full round, or adds an eighth full-cadence round, must raise
+        limit until it proves its yield — the QA jobs, pilots included, share a
+        budget of seven. This pins that decision: a later session that promotes
+        a pilot to a full round, or adds an eighth full-cadence round, must raise
         MAX_OPEN_PRS and update this test on purpose rather than by surprise."""
         self.assertIn("flaky-qa", self.qa_jobs, "the flaky pilot must be a QA round")
         self.assertEqual("7", self.workflow["env"]["MAX_OPEN_PRS"])
-        full_cadence = [name for name in self.qa_jobs if name != "flaky-qa"]
+        full_cadence = [name for name in self.qa_jobs if name not in _PILOTS]
         self.assertEqual(7, len(full_cadence),
                          "MAX_OPEN_PRS tracks the full-cadence QA rounds, pilot excluded")
+
+    def test_the_concept_pilot_does_not_raise_the_open_pr_limit(self):
+        """The concept-alignment round is a pilot like the flaky hunt: it is
+        gated by the shared backlog limit like every round and passes the
+        shared value, but adding it did not raise MAX_OPEN_PRS, which still
+        counts the seven full-cadence rounds only."""
+        self.assertIn("concept-qa", self.qa_jobs, "the concept pilot must be a QA round")
+        self.assertEqual("7", self.workflow["env"]["MAX_OPEN_PRS"])
+        self.assertEqual(self.workflow["env"]["MAX_OPEN_PRS"],
+                         str(self.jobs["concept-qa"]["with"]["max-open-prs"]))
+        gate = next(s for s in self.qa_jobs["concept-qa"]["steps"]
+                    if "qa-cadence.sh" in s.get("run", ""))
+        self.assertEqual("true", gate["env"].get("CHECK_BACKLOG"))
+        full_cadence = [name for name in self.qa_jobs if name not in _PILOTS]
+        self.assertNotIn("concept-qa", full_cadence)
+        self.assertEqual(7, len(full_cadence),
+                         "MAX_OPEN_PRS tracks the full-cadence QA rounds, pilots excluded")
+
+    def test_the_concept_round_is_wired_like_every_qa_round(self):
+        """The shared per-round checks above iterate over the discovered QA
+        jobs; this names the concept round so a discovery change cannot drop it
+        from them unnoticed. Its intake check precedes its gate, its gate sets a
+        PR grace window and reads its own interval override, its archive step
+        skips a forced run, and its workstream is registered directly before
+        the submission."""
+        job = self.qa_jobs["concept-qa"]
+        steps = job["steps"]
+
+        def index(script):
+            return next(i for i, s in enumerate(steps) if script in s.get("run", ""))
+
+        self.assertLess(index("automated-intake.sh"), index("qa-cadence.sh"),
+                        "intake must be asked before the cadence gate")
+        gate = steps[index("qa-cadence.sh")]
+        self.assertEqual("qa/concept-", job["env"]["BRANCH_PREFIX"])
+        self.assertGreater(int(gate["env"]["PR_GRACE_HOURS"]), 0)
+        self.assertEqual("${{ github.event.inputs.ignore_interval_concept || 'false' }}",
+                         gate["env"]["IGNORE_INTERVAL"])
+        archive = steps[index("archive-stale-workstreams.sh")]
+        self.assertIn("steps.decide.outputs.reason != 'forced'", archive.get("if", ""))
+        self.assertEqual(index("register-workstream.sh") + 1, index("submit-agent-job.sh"))
+        self.assertEqual("concept-qa", self.jobs["concept-qa"]["concurrency"]["group"])
+        self.assertIn("concept",
+                      self.workflow[_ON]["workflow_dispatch"]["inputs"]["agent"]["options"])
+
+    def test_the_concept_round_is_a_test_locked_opus_round_with_its_own_template(self):
+        """A realignment must not change what existing tests assert, so the
+        round carries the per-job test lock. Deciding whether one type really
+        is another is judgment, so it pins claude/opus as consolidation-qa does.
+        Its template is this repository's own, passed by path, and must exist.
+        An empty-handed round (every candidate rejected, with reasons) is valid,
+        so it sets no ENFORCE_CHANGES, and it needs no Metal, so it carries no
+        REQUIRED_LABELS."""
+        caller = self.jobs["concept-qa"]
+        prompt = caller["with"]["prompt"]
+        self.assertEqual("tools/ci/prompts/concept-alignment.txt", prompt)
+        self.assertTrue(os.path.isfile(os.path.join(_REPO_ROOT, prompt)))
+        submit = next(s for s in self.qa_jobs["concept-qa"]["steps"]
+                      if "submit-agent-job.sh" in s.get("run", ""))
+        env = submit["env"]
+        self.assertEqual("true", env["PROTECT_TEST_FILES"])
+        self.assertEqual("false", env.get("ENFORCE_CHANGES", "false"))
+        self.assertEqual("", env.get("REQUIRED_LABELS", ""))
+        primary = json.loads(env["PHASE_CONFIGS"])["primary"]
+        self.assertEqual(
+            json.loads(self.jobs["consolidation-qa"]["with"]["phase-configs"])["primary"],
+            primary)
+        self.assertEqual({"runner": "claude", "model": "opus", "provider": "anthropic"},
+                         primary)
 
 
 if __name__ == "__main__":

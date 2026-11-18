@@ -33,7 +33,10 @@ import org.almostrealism.raytrace.FogParameters;
 import org.almostrealism.raytrace.RayIntersectionEngine;
 import org.almostrealism.raytrace.RenderParameters;
 import org.almostrealism.space.Scene;
+import org.almostrealism.texture.ImageCanvas;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -189,16 +192,19 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 	/**
 	 * Builds a color producer for all pixels given the specified render parameters.
 	 *
-	 * <p>Creates a pixel position input with the total number of pixels (including supersamples),
-	 * then calls {@link #operate} to build the computation graph. If the result implements
-	 * {@link DimensionAware}, dimensions are configured accordingly.</p>
+	 * <p>Creates a pixel position input of variable count (shape {@code (-1, 2)}), so the
+	 * kernel's count is the number of pixel positions passed at evaluation time rather than a
+	 * value baked into the graph, then calls {@link #operate} to build the computation graph.
+	 * Because the input carries no resolution, the image dimensions are supplied separately:
+	 * as the {@code (width, height)} pair passed to {@link #operate} and, when the result
+	 * implements {@link DimensionAware}, through
+	 * {@link DimensionAware#setDimensions(int, int, int, int)} including supersampling.</p>
 	 *
 	 * @param p The render parameters specifying resolution and supersampling
 	 * @return A producer that computes colors for all pixels
 	 */
 	public Producer<PackedCollection> getProducer(RenderParameters p) {
-		int totalPixels = p.width * p.ssWidth * p.height * p.ssHeight;
-		Producer<PackedCollection> producer = operate(v(shape(totalPixels, 2), 0), (Producer) pair(p.width, p.height));
+		Producer<PackedCollection> producer = operate(v(shape(-1, 2), 0), (Producer) pair(p.width, p.height));
 
 		if (producer instanceof DimensionAware) {
 			((DimensionAware) producer).setDimensions(p.width, p.height, p.ssWidth, p.ssHeight);
@@ -221,5 +227,38 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 		}
 
 		return new RealizableImage(px, new Pair(p.dx, p.dy));
+	}
+
+	/**
+	 * Renders this scene with its {@link #getRenderParameters() render parameters} and evaluates the
+	 * result to pixels. This is the per-frame render stage: {@link #realize(RenderParameters)} builds
+	 * the image producer and it is evaluated once, at this host boundary, into a 2D {@link RGB} array
+	 * indexed by column then row. The scene renders with the parameters it was given at construction
+	 * (or by the last {@link #realize(RenderParameters)}), exactly as the no-argument
+	 * {@link #getProducer()} does.
+	 *
+	 * @return the rendered pixels, indexed by x then y
+	 */
+	public RGB[][] render() {
+		return realize(getRenderParameters()).get().evaluate();
+	}
+
+	/**
+	 * Renders this scene and writes the frame to a file as a PNG. This is the shared per-frame
+	 * render-and-write stage used both by {@link RayTracedAnimation} and by callers that drive a
+	 * simulation into a frame sequence: it {@link #render() renders} the scene with its own
+	 * {@link #getRenderParameters() render parameters} and encodes the pixels with
+	 * {@link ImageCanvas#encodeImageFile(RGB[][], File, int)} using {@link ImageCanvas#PNGEncoding}
+	 * (the honest encoding for the bytes written), returning the rendered pixels so a caller can keep
+	 * the frame it wrote.
+	 *
+	 * @param file the output file (should carry a {@code .png} extension)
+	 * @return the rendered pixels, indexed by x then y
+	 * @throws IOException if the frame cannot be written
+	 */
+	public RGB[][] renderToFile(File file) throws IOException {
+		RGB[][] image = render();
+		ImageCanvas.encodeImageFile(image, file, ImageCanvas.PNGEncoding);
+		return image;
 	}
 }

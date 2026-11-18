@@ -14,7 +14,7 @@
 - [Execution Keys](#execution-keys)
   - [ScopeSignatureExecutionKey](#scopesignatureexecutionkey)
   - [DefaultExecutionKey](#defaultexecutionkey)
-  - [ProcessTreePositionKey](#processtreepositionkey-deprecated)
+  - [ProcessTreePositionKey](#processtreepositionkey)
 - [Core Components](#core-components)
   - [InstructionSetManager](#instructionsetmanager)
   - [ScopeInstructionsManager](#scopeinstructionsmanager)
@@ -96,7 +96,7 @@ ExecutionKey (marker interface)
     |
     +-- ScopeSignatureExecutionKey    -- Key by signature string (primary)
     +-- DefaultExecutionKey           -- Key by function name + arg count (fallback)
-    +-- ProcessTreePositionKey        -- Key by tree position (deprecated)
+    +-- ProcessTreePositionKey        -- Key by tree position (used by ProcessArgumentMap)
 
 InstructionSetManager<K extends ExecutionKey> (interface)
     |
@@ -275,6 +275,16 @@ two stages above cannot see extend the Stage 1 result with that state:
   per-axis rates (which the standard policy descriptions omit).
 - `LoopedWeightedSumComputation` appends its inner count, operand shapes, and a structural
   rendering of its two index functions.
+- `DelegatedProducer` (and so `IsolatedProcess`, the wrapper the optimizer places around an
+  isolated kernel input) is identified by its count alone when it delegates to a computed
+  value, because a kernel receives that value as an argument whatever computed it. A direct
+  delegate of a provider is different: it returns the provider's evaluable unchanged, so the
+  kernel binds the provided memory exactly as it binds the provider, possibly folding it into
+  the aggregate argument. Its signature therefore appends `|provider=` and the provider's own
+  signature (which encodes the provided memory's layout and whether it is aggregated). Without
+  this, an isolated input read through a provider and the same input read through a
+  `CollectionContainer` shared a signature while compiling to kernels with different argument
+  layouts, and the second to load was refused as an instruction cache collision.
 
 Because the metadata signature is recorded during superclass construction, before subclass
 state is assigned, each of these classes calls `init()` again at the end of its own
@@ -325,7 +335,7 @@ Fallback key type used when signature-based caching is disabled or unavailable.
 
 Used by `ComputationInstructionsManager` for multi-function scopes where operations are identified by name rather than signature.
 
-### ProcessTreePositionKey (Deprecated)
+### ProcessTreePositionKey
 
 Identifies operations by their position in a Process tree hierarchy.
 
@@ -333,7 +343,7 @@ Identifies operations by their position in a Process tree hierarchy.
 |-------|------|-------------|
 | `position` | `int[]` | Path from root (e.g., `[0, 1]` = second child of first child) |
 
-Primarily used by `ProcessArgumentMap` for mapping Process tree positions to scope arguments during argument substitution. The key type itself is deprecated for use as an `ExecutionKey`.
+Originally paired with the now-removed `ProcessTreeInstructionsManager`. Instruction caching keys off `ScopeSignatureExecutionKey` instead, but this key type remains the live position identifier that `ProcessArgumentMap` uses to map Process tree nodes to their scope arguments and substitutions during argument substitution.
 
 ---
 

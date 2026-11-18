@@ -351,12 +351,23 @@ public interface CollectionFeatures extends GradientFeatures {
 	 * (the output is longer than the inputs' total, leaving a zero tail), inputs are
 	 * zero-padded to the output shape and summed.</p>
 	 *
+	 * <p>An input with fewer dimensions than {@code shape} is a single item, repeated over
+	 * the leading dimensions of {@code shape} it lacks (see
+	 * {@link #repeatItems(TraversalPolicy, Producer)}), so a shared value can be concatenated
+	 * with a batch of values.</p>
+	 *
 	 * @param shape the shape of the concatenated output
-	 * @param producers the producers to concatenate
+	 * @param inputs the producers to concatenate
 	 * @return a producer computing the concatenation
 	 * @throws IllegalArgumentException if inputs cannot be concatenated into the given shape
 	 */
-	default CollectionProducer concat(TraversalPolicy shape, Producer<PackedCollection>... producers) {
+	default CollectionProducer concat(TraversalPolicy shape, Producer<PackedCollection>... inputs) {
+		// Inputs with fewer dimensions than the output are single items,
+		// repeated for every item of a batched output
+		Producer<PackedCollection>[] producers = Stream.of(inputs)
+				.map(p -> repeatItems(shape, p))
+				.toArray(Producer[]::new);
+
 		List<TraversalPolicy> shapes = Stream.of(producers)
 				.map(this::shape)
 				.filter(s -> s.getDimensions() == shape.getDimensions())
@@ -518,14 +529,22 @@ public interface CollectionFeatures extends GradientFeatures {
 	 * so it stays exact for collections with more elements than single precision can count
 	 * (above {@code 2^24}); a flat index carried as a floating-point value would be rounded.</p>
 	 *
+	 * <p>The row offset is a 32-bit integer product, so a collection of more than
+	 * {@link Integer#MAX_VALUE} elements cannot be addressed exactly and is rejected here,
+	 * rather than read at a wrapped offset.</p>
+	 *
 	 * @param shape the output shape, whose last axis is the row length
 	 * @param collection the collection to read rows from, laid out as consecutive rows
 	 * @param rowIndex the producer of one row position per output row
 	 * @return a computation that gathers the rows at the specified positions
+	 * @throws IllegalArgumentException if the collection has more than {@link Integer#MAX_VALUE}
+	 *                                  elements
 	 */
 	default CollectionProducerComputation rows(TraversalPolicy shape,
 											   Producer<PackedCollection> collection,
 											   Producer<PackedCollection> rowIndex) {
+		shape(collection).requireIntegerAddressable("rows");
+
 		long rowLength = shape.length(shape.getDimensions() - 1);
 		return new DefaultTraversableExpressionComputation("rowAtIndex", shape,
 				true,

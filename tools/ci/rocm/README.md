@@ -50,7 +50,7 @@ fails to load entirely, with an error that mentions neither ROCm nor OpenCL.
 │                         GitHub Actions                            │
 │                                                                   │
 │   CPU lane (linux)      GPU lane (macOS)        CL lane (linux)    │
-│   test → test-media     test-mac                test-cl           │
+│   test → test-media*    test-mac                test-cl           │
 │                          → test-media-mac        → test-media-cl  │
 └────────┬───────────────────────┬──────────────────────┬───────────┘
          │ [self-hosted,         │ [self-hosted,        │ [self-hosted,
@@ -60,8 +60,11 @@ fails to load entirely, with an error that mentions neither ROCm nor OpenCL.
       tools/ci/docker         tools/ci/macos          tools/ci/rocm
 ```
 
+\* `test-media` runs on a GitHub-hosted `ubuntu-latest` runner; only `test`
+takes the `ar-ci` Linux fleet.
+
 The label is `ar-ci-cl`, deliberately **not** `ar-ci`. The existing Linux fleet
-carries `ar-ci` and serves `test` and `test-media`; sharing the label would pull
+carries `ar-ci` and serves `test`; sharing the label would pull
 general CPU test jobs onto this machine and put the CL lane behind an unrelated
 queue.
 
@@ -454,6 +457,66 @@ systemctl --user stop 'ar-ci-cl-runner@*'
 Because runners register as ephemeral, the container exits after every job and
 systemd starts the next one. A service that keeps restarting is normal; one that
 enters `failed` is not.
+
+## Maven dependency cache
+
+These runners are ephemeral, so without a persistent cache every job re-resolves
+the whole plugin and dependency set from Maven Central and the pipeline hits its
+429 rate limit (full design: "Maven dependency caching" in
+[`../README.md`](../README.md#maven-dependency-caching)). The quadlet
+(`ar-ci-cl-runner@.container`) mounts a **podman named volume** `ar-ci-cl-m2` at
+`/opt/ar-maven-cache`, and the CI jobs point `maven.repo.local` at a per-runner
+subdirectory of it. The image creates that mount point owned by the runner user,
+so the rootless container can write to the fresh volume.
+
+**Enable it** (safe any time; CI falls back to the empty per-container repository
+until applied). Rebuild the image for the mount point and the Maven retry
+setting, then reinstall so the quadlet unit picks up the `Volume=` line:
+
+```bash
+./install-runner.sh         # rebuilds the image and reinstalls the unit
+```
+
+**Verify / roll back** (a cold cache resolves from Central, only slower), as the
+service account (`sudo -iu ar-ci`):
+
+```bash
+podman volume inspect ar-ci-cl-m2        # exists once a runner has started
+./fleet.sh stop
+sudo -iu ar-ci podman volume rm ar-ci-cl-m2   # discard; rebuilds on next job
+./fleet.sh start
+```
+
+A job log's `Select Maven repository` step prints the repository it chose
+(`using persistent shared Maven cache /opt/ar-maven-cache/<runner>` once warm).
+
+## JDK Version (Baked Into the Image)
+
+The image ships the JDK; the CL jobs (`test-cl`, `test-media-cl`) do **not**
+download one with `actions/setup-java`. They verify the runner's `java` against
+the workflow-level `EXPECTED_JDK_MAJOR` in `.github/workflows/analysis.yaml` and
+fail fast, naming the runner, on a mismatch. The major version is the single
+`JDK_MAJOR` build arg in the [`Dockerfile`](Dockerfile) (default `17`), and
+`JAVA_HOME`/`PATH` in the image point at it, which is what Maven and the forked
+surefire JVMs use.
+
+The runners are ephemeral, so the JDK only changes when the **image** is rebuilt.
+To move this fleet to a new major version:
+
+1. Change `EXPECTED_JDK_MAJOR` in `.github/workflows/analysis.yaml` (one value,
+   shared by every self-hosted lane), on a `ci/...` branch.
+2. On the ROCm host, as the service account, set `JDK_MAJOR` in `.env` to the
+   same number and rebuild:
+
+   ```bash
+   echo 'JDK_MAJOR=21' >> .env     # omit to keep the default (17)
+   ./install-runner.sh             # rebuilds the image and refreshes the units
+   ```
+
+`install-runner.sh` reads `JDK_MAJOR` from `.env` and passes it as a build arg
+(like `ROCM_OPENCL_LIB` and `RUNNER_VERSION`); with it unset the Dockerfile
+default is built. A host left on the old image turns the CL lane red at the
+verify step, so a missed rebuild is reported rather than running the wrong JDK.
 
 ## Troubleshooting
 

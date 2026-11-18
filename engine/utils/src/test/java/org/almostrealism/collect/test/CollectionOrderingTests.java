@@ -24,10 +24,13 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
+import org.almostrealism.collect.CompressedRowTraversalOrdering;
 import org.almostrealism.collect.ExplicitIndexTraversalOrdering;
 import org.almostrealism.collect.computations.CollectionProvider;
+import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.IndexMaskTraversalOrdering;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.SplitIndexTraversalOrdering;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -217,6 +220,43 @@ public class CollectionOrderingTests extends TestSuiteBase {
 				new IndexMaskTraversalOrdering(pack(0, 3)));
 		assertTrue(tables.bind(provider) == tables);
 		assertEquals(2, requested.size());
+	}
+
+	/**
+	 * The argument count an ordering reports is exactly the number of arguments binding it
+	 * requests from a provider: none for a closed-form ordering, one for each collection an
+	 * ordering reads, and the sum of both halves for a composition. A producer of a collection
+	 * carrying an ordering reports the ordering's count as the arguments its scope preparation
+	 * adds, and a producer of an unordered collection reports none.
+	 */
+	@Test(timeout = 10000)
+	public void argumentCountMatchesWhatBindingRequests() {
+		TraversalOrdering[] orders = {
+				new RepeatTraversalOrdering(3),
+				new ExplicitIndexTraversalOrdering(pack(1, 0)),
+				new IndexMaskTraversalOrdering(pack(0, 3)),
+				new SplitIndexTraversalOrdering(PackedCollection.ofSplitIndices(0, 1)),
+				CompressedRowTraversalOrdering.of(3, new int[] { 0, 1, 2 }, new int[] { 0, 2 }),
+				new DelegatedTraversalOrdering(new RepeatTraversalOrdering(3), new RepeatTraversalOrdering(2)),
+				new DelegatedTraversalOrdering(new ExplicitIndexTraversalOrdering(pack(1, 0)),
+						new IndexMaskTraversalOrdering(pack(0, 3))),
+				new DelegatedTraversalOrdering(new RepeatTraversalOrdering(3),
+						CompressedRowTraversalOrdering.of(3, new int[] { 0, 1, 2 }, new int[] { 0, 2 }))
+		};
+		int[] expected = { 0, 1, 1, 1, 2, 0, 2, 2 };
+
+		for (int i = 0; i < orders.length; i++) {
+			List<Supplier<?>> requested = new ArrayList<>();
+			orders[i].bind(OrderedCollectionInputTests.recordingProvider(null, requested));
+			assertEquals("ordering " + i, expected[i], orders[i].getArgumentCount());
+			assertEquals("ordering " + i, requested.size(), orders[i].getArgumentCount());
+		}
+
+		PackedCollection plain = pack(1.0, 2.0, 3.0, 4.0);
+		PackedCollection masked = new PackedCollection(shape(4), 0, pack(2.0, 3.0), 0,
+				new IndexMaskTraversalOrdering(pack(0, 3)));
+		assertEquals(0, new CollectionProviderProducer<>(plain).getScopeArgumentCount(Integer.MAX_VALUE));
+		assertEquals(1, new CollectionProviderProducer<>(masked).getScopeArgumentCount(Integer.MAX_VALUE));
 	}
 
 	/**

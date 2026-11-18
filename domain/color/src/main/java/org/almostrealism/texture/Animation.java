@@ -14,7 +14,7 @@ import java.util.Iterator;
  * The animation iterates indefinitely — {@link Iterator#hasNext()} always returns {@code true}.</p>
  *
  * <p>The {@link #render()} method spawns a background thread that writes each frame as a
- * JPEG file using {@link ImageCanvas#JPEGEncoding}.</p>
+ * PNG file using {@link ImageCanvas#PNGEncoding}.</p>
  *
  * @see Layered
  * @see org.almostrealism.color.RealizableImage
@@ -75,10 +75,10 @@ public abstract class Animation implements Layered<RealizableImage>, ConsoleFeat
 	}
 	
 	/**
-	 * Starts a background thread that renders each animation frame to a JPEG file.
+	 * Starts a background thread that renders each animation frame to a PNG file.
 	 *
 	 * <p>The thread iterates over this animation, evaluating each frame and writing it
-	 * to a JPEG file named by the most recent call to {@link #next()}.</p>
+	 * to a PNG file named by the most recent call to {@link #next()}.</p>
 	 *
 	 * @return the background rendering thread (not yet started)
 	 */
@@ -86,7 +86,7 @@ public abstract class Animation implements Layered<RealizableImage>, ConsoleFeat
 		return new Thread(() -> {
 			for (RealizableImage r : Animation.this) {
 				try {
-					ImageCanvas.encodeImageFile(r.get(), new File(name), ImageCanvas.JPEGEncoding);
+					ImageCanvas.encodeImageFile(r.get(), new File(name), ImageCanvas.PNGEncoding);
 				} catch (IOException e) {
 					warn(e.getMessage(), e);
 				}

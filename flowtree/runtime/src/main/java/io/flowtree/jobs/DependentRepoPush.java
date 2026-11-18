@@ -76,6 +76,23 @@ public record DependentRepoPush(String repoUrl, String branch, String commitHash
     }
 
     /**
+     * Returns a short, human-readable name for the repository this push
+     * targeted — the last path segment of its URL, without a trailing
+     * {@code .git}. Falls back to the full URL when no segment can be derived.
+     *
+     * @return the repository's short name, or the full URL
+     */
+    public String repoName() {
+        if (repoUrl == null || repoUrl.isEmpty()) {
+            return repoUrl;
+        }
+        String trimmed = repoUrl.endsWith(".git")
+                ? repoUrl.substring(0, repoUrl.length() - 4) : repoUrl;
+        int slash = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf(':'));
+        return slash >= 0 && slash < trimmed.length() - 1 ? trimmed.substring(slash + 1) : trimmed;
+    }
+
+    /**
      * Renders a list of pushes as a comma-joined, human-readable list for an
      * unreviewed-commits warning.
      *

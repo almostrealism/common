@@ -8,6 +8,11 @@
 # Usage:
 #   build-quality-gate-prompt.sh <failures-file> <output-file>
 #
+# A third positional argument is optional: a file holding the rendered
+# "new TODOs this branch adds" section (extract_branch_todos.py's output),
+# passed through to the shared branch-feedback block. It is optional so a
+# caller that has not computed it still produces a prompt.
+#
 # Required environment variables:
 #   FAILURE_COUNT   - number of quality gate failures
 #   BRANCH          - branch name where failures occurred
@@ -21,9 +26,10 @@ set -euo pipefail
 
 FAILURES_FILE="${1:-}"
 OUTPUT_FILE="${2:-}"
+TODOS_FILE="${3:-}"
 
 if [ -z "$FAILURES_FILE" ] || [ -z "$OUTPUT_FILE" ]; then
-    echo "Usage: $0 <failures-file> <output-file>" >&2
+    echo "Usage: $0 <failures-file> <output-file> [todos-section-file]" >&2
     exit 1
 fi
 
@@ -116,4 +122,4 @@ Fix the violations in production code, then re-run the validator with skip_build
 to verify (since the project is already built at that point).
 EOF
 
-append_prompt_fragment pr-feedback.txt "$OUTPUT_FILE" BRANCH
+append_branch_feedback "$OUTPUT_FILE" "$TODOS_FILE"

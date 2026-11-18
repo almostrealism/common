@@ -48,5 +48,6 @@ source "${SCRIPT_DIR}/prompt-render.sh"
 # Expand the template's @include lines and substitute its placeholders.
 render_prompt "$TEMPLATE" BRANCH BASE_BRANCH COMMIT_SHA > "$OUTPUT_FILE"
 
-# Extend the prompt with the new-TODO findings, when CI has computed them.
-append_todo_findings "$OUTPUT_FILE" "$TODOS_FILE"
+# Append the shared branch-feedback block: the pull-request review-comment
+# policy and the new-TODO findings, with CI's computed list when it passed one.
+append_branch_feedback "$OUTPUT_FILE" "$TODOS_FILE"

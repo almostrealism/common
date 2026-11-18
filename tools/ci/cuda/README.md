@@ -20,17 +20,15 @@ without one runs the plain CPU fleet (`../docker`, label `ar-ci`) and is never
 offered a CUDA job.
 
 `RUNNER_EXTRA_LABELS` adds further labels. With `ar-ci` (the default in
-`.env.example`), these runners also take the CPU lane, `test` and `test-media`, so
-a GPU host can serve both lanes with one set of runners instead of running a CPU
-fleet beside this one. That is safe because the two lanes differ only in
-configuration:
+`.env.example`), these runners also take the CPU lane's self-hosted stage, `test`,
+so a GPU host can serve both lanes with one set of runners instead of running a
+CPU fleet beside this one. (`test-media`, the CPU lane's second stage, runs on a
+GitHub-hosted `ubuntu-latest` runner and never lands here.) That is safe because
+the two lanes differ only in configuration:
 
 - Both fleets build the same image (`../docker`).
-- Every step of `test` and `test-media` sets `AR_HARDWARE_DRIVER=native`, so the
-  framework creates no CUDA context and `Hardware.isAvailable(GPU)` reports no
-  GPU. The media tests that require the curated library when a GPU is present
-  (for example `AudioSceneTestBase.requireCuratedLibrary()`) therefore behave
-  exactly as they do on a CPU-only runner.
+- Every step of `test` sets `AR_HARDWARE_DRIVER=native`, so the framework
+  creates no CUDA context and `Hardware.isAvailable(GPU)` reports no GPU.
 - The exception is the CUDA bridge tests in `base/hardware` (`CudaBridgeTest`,
   `CudaDataContextLifecycleTest`), which use the GPU directly whenever one is
   present, whatever the driver setting. On these runners they run in `test`
@@ -44,7 +42,7 @@ configuration:
   runs beside the CPU lane and the two compete for these runners; across
   concurrent pipelines every stage shares them. The cost is queueing, not
   correctness. `test-media-cuda` waits only for `test-cuda`, so it can likewise run
-  beside `test-media`.
+  beside `test`.
 
 `AR_HARDWARE_DRIVER=native` governs only which backend the framework selects.
 It does not isolate the job: a CPU-lane job on these runners still has the GPU
@@ -56,7 +54,35 @@ isolation from the sample data, leave `RUNNER_EXTRA_LABELS` empty and run
 
 When this host replaces a CPU fleet (`docker compose down` in `../docker`), count
 the CPU lane in the runner count and the memory limit: `test` runs as a single
-job (no matrix), and so does `test-media`, so one runner holds each stage at once.
+job (no matrix), so one runner holds it at once. `test-media` runs on a hosted
+runner and needs no capacity here.
+
+## JDK Version (Baked Into the Shared Image)
+
+This fleet has no image of its own — it builds the Linux CPU fleet's image
+(`../docker`) unchanged, so it inherits that image's JDK. The CUDA jobs
+(`test-cuda`, `test-media-cuda`) do **not** download a JDK with
+`actions/setup-java`; they verify the runner's `java` against the workflow-level
+`EXPECTED_JDK_MAJOR` in `.github/workflows/analysis.yaml` and fail fast, naming
+the runner, on a mismatch. The major version is the single `JDK_MAJOR` build arg
+in [`../docker/Dockerfile`](../docker/Dockerfile) (default `17`), passed through
+this fleet's [`docker-compose.yml`](docker-compose.yml) as `JDK_MAJOR`.
+
+The runners are ephemeral, so the JDK changes only on an image rebuild. To move
+this fleet to a new major version:
+
+1. Change `EXPECTED_JDK_MAJOR` in `.github/workflows/analysis.yaml` (one value,
+   shared by every self-hosted lane), on a `ci/...` branch.
+2. On the DGX host, set `JDK_MAJOR` in `.env` to the same number and rebuild:
+
+   ```bash
+   echo 'JDK_MAJOR=21' >> .env     # omit to keep the default (17)
+   ./fleet.sh up                   # rebuilds the shared image and restarts the runner
+   ```
+
+With `JDK_MAJOR` unset the compose default (`17`) is built. A host left on the
+old image turns the CUDA lane red at the verify step, so a missed rebuild is
+reported rather than running the wrong JDK.
 
 ## Design: Nothing Installed on the Host
 
@@ -211,6 +237,35 @@ gh api orgs/almostrealism/actions/runners \
 For org scope, grant the runner group access to the repository once (Org
 Settings → Actions → Runner groups → Repository access), or jobs queue forever
 against a runner that reports healthy.
+
+## Maven dependency cache
+
+Like the other ephemeral Linux fleets, these runners re-resolve the whole plugin
+and dependency set from Maven Central on every job without a persistent cache,
+which hits Central's 429 rate limit (full design: "Maven dependency caching" in
+[`../README.md`](../README.md#maven-dependency-caching)). `docker-compose.yml`
+mounts a **named volume** `ar-maven-cache` at `/opt/ar-maven-cache` — the shared
+`../docker` image already creates that mount point owned by the runner user — and
+the CI jobs point `maven.repo.local` at a per-runner subdirectory of it.
+
+**Enable it** (safe any time; CI falls back to the empty per-container repository
+until applied):
+
+```bash
+./fleet.sh up [N]       # recreates the containers so they mount the named volume
+```
+
+**Verify / roll back** (a cold cache resolves from Central, only slower):
+
+```bash
+docker volume inspect ar-ci-cuda_ar-maven-cache     # exists after `fleet.sh up`
+./fleet.sh down
+docker volume rm ar-ci-cuda_ar-maven-cache          # discard; rebuilds on next job
+./fleet.sh up [N]
+```
+
+A job log's `Select Maven repository` step prints the repository it chose
+(`using persistent shared Maven cache /opt/ar-maven-cache/<runner>` once warm).
 
 ## Files
 

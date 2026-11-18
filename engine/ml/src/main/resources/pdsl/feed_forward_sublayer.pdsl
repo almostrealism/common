@@ -1,0 +1,117 @@
+/**
+ * Pre-norm residual feed-forward sub-layer of a transformer block — the pre-normalization, the
+ * optional adaptive-layernorm (adaLN-Zero) modulation of the normalized activation, the gated-linear
+ * feed-forward body, the optional adaLN gate on the feed-forward output, and the residual connection
+ * around all of them.
+ *
+ * This file replaces the Java assembly that used to live in
+ * TransformerBlockFeatures.transformerBlock(...), which built this sub-layer as a residual() around
+ * the gatedLinearFeedForward block, with (in adaLN conditioning) the feed-forward output wrapped in a
+ * SequentialBlock with an adaptiveGate stage before the residual add. transformerBlock now binds the
+ * normalization weights and the conditioning producers, builds the feed-forward body, and loads the
+ * layer of the normalization family and conditioning it is asked for
+ * (TransformerBlockFeatures.feedForwardResidualSublayer), so there is one definition of the sub-layer
+ * structure and it is here. It is the feed-forward sibling of self_attention_sublayer.pdsl, and reads
+ * as the same diagram: norm, (modulate), body, (gate), residual.
+ *
+ * There is one layer per normalization family (LayerNorm or RMSNorm) and conditioning (plain
+ * pre-norm, or adaLN-modulated):
+ *
+ *   feed_forward_sublayer_layernorm             LayerNorm, no modulation
+ *   feed_forward_sublayer_layernorm_modulated   LayerNorm, then the adaLN modulation and gate
+ *   feed_forward_sublayer_rmsnorm               RMSNorm, no modulation
+ *   feed_forward_sublayer_rmsnorm_modulated     RMSNorm, then the adaLN modulation and gate
+ *
+ * The feed-forward body itself is NOT written out here: it arrives as the feed_forward block — the
+ * norm-free gated-linear unit transformerBlock builds (the fused gate+linear projection, the split
+ * into two halves, the gate half's activation, the element-wise product and the down projection: the
+ * glu_feed_forward layer of feed_forward.pdsl). The projections and the gate activation belong to the
+ * feed-forward build, not to this residual wiring, and the language names neither the projection
+ * adapter nor the activation as a value a stage can select, so the body arrives as a block, exactly
+ * as the attention does in self_attention_sublayer.pdsl. Keeping the pre-normalization here rather
+ * than inside the body lets this sub-layer read as a full data-flow diagram, symmetric with the
+ * self-attention sub-layer.
+ *
+ * adaLN-Zero conditioning (see AdaptiveLayerNormFeatures): a global conditioning vector produces, per
+ * block, a scale, a shift and a gate for this sub-layer, and the modulated residual is
+ *   x = x + gate_mult ⊙ feed_forward( scale_mult ⊙ norm(x) + shift )
+ * where scale_mult = 1 + scale and gate_mult = sigmoid(1 - gate) are formed by transformerBlock
+ * (AdaptiveLayerNormFeatures.residualScale / residualGate) and bound as the mod_scale and gate
+ * producers, so a zero-initialised to_scale_shift_gate leaves the activation unscaled and passes the
+ * feed-forward through. mod_scale, mod_shift and gate are [batch, dim] — one value per batch entry and
+ * channel, broadcast across the sequence — and are constants of the graph refreshed before each
+ * forward pass, so no gradient reaches the conditioning through them. Without modulation the sub-layer
+ * is the plain pre-norm residual x = x + feed_forward(norm(x)).
+ *
+ * Data flow of one forward pass over a [batch, seq_len, dim] activation (modulated form):
+ *
+ *   x                                                               [batch, seq_len, dim]
+ *   accum {                            residual: x + sub-block(x)
+ *     layernorm | rmsnorm              each position normalized over its dim features
+ *                                                                   [batch, seq_len, dim]
+ *     modulate(mod_scale, mod_shift, 2)
+ *                                      (1 + scale) ⊙ norm + shift, per channel, per batch entry
+ *                                      (modulated form only)        [batch, seq_len, dim]
+ *     feed_forward                     the gated-linear feed-forward body
+ *                                      in_projection → linear half ⊙ gate(gate half) → out_projection
+ *                                                                   [batch, seq_len, dim]
+ *     scale(gate, 2)                   gate ⊙ feed_forward, per channel, per batch entry
+ *                                      (modulated form only)        [batch, seq_len, dim]
+ *   }                                                               [batch, seq_len, dim]
+ */
+
+/** LayerNorm, then the feed-forward, added back to the stream: x -> x + feed_forward(layernorm(x)). */
+layer feed_forward_sublayer_layernorm(pre_norm_weight: weight, pre_norm_bias: weight,
+                                      epsilon: float, feed_forward: block) {
+    accum {
+        layernorm(pre_norm_weight, pre_norm_bias, epsilon)
+        feed_forward
+    }
+}
+
+/**
+ * LayerNorm, the adaLN modulation, the feed-forward, the adaLN gate, added back to the stream:
+ * x -> x + gate ⊙ feed_forward( modulate(layernorm(x)) ). [batch, seq_len, dim] -> same.
+ */
+layer feed_forward_sublayer_layernorm_modulated(batch: int, dim: int,
+                                                pre_norm_weight: weight, pre_norm_bias: weight,
+                                                epsilon: float,
+                                                mod_scale: producer([batch, dim]),
+                                                mod_shift: producer([batch, dim]),
+                                                gate: producer([batch, dim]),
+                                                feed_forward: block) {
+    accum {
+        layernorm(pre_norm_weight, pre_norm_bias, epsilon)
+        modulate(mod_scale, mod_shift, 2)
+        feed_forward
+        scale(gate, 2)
+    }
+}
+
+/** RMSNorm, then the feed-forward, added back to the stream: x -> x + feed_forward(rmsnorm(x)). */
+layer feed_forward_sublayer_rmsnorm(pre_norm_weight: weight, pre_norm_bias: weight,
+                                    epsilon: float, feed_forward: block) {
+    accum {
+        rmsnorm(pre_norm_weight, pre_norm_bias, epsilon)
+        feed_forward
+    }
+}
+
+/**
+ * RMSNorm, the adaLN modulation, the feed-forward, the adaLN gate, added back to the stream:
+ * x -> x + gate ⊙ feed_forward( modulate(rmsnorm(x)) ). [batch, seq_len, dim] -> same.
+ */
+layer feed_forward_sublayer_rmsnorm_modulated(batch: int, dim: int,
+                                              pre_norm_weight: weight, pre_norm_bias: weight,
+                                              epsilon: float,
+                                              mod_scale: producer([batch, dim]),
+                                              mod_shift: producer([batch, dim]),
+                                              gate: producer([batch, dim]),
+                                              feed_forward: block) {
+    accum {
+        rmsnorm(pre_norm_weight, pre_norm_bias, epsilon)
+        modulate(mod_scale, mod_shift, 2)
+        feed_forward
+        scale(gate, 2)
+    }
+}

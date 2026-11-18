@@ -236,7 +236,7 @@ class MacosFleetWorkingDirectoryTests(unittest.TestCase):
 
     def test_an_unreadable_java_version_is_reported_with_what_java_said(self):
         install = re.search(r"^cmd_install\(\) \{.*?^\}", self.src, re.M | re.S).group(0)
-        self.assertIn('printf "jdk17+ (java -version said: %s) " "$(java -version 2>&1 | head -1)"', install)
+        self.assertIn('printf "jdk%s exactly (java -version said: %s) " "$EXPECTED_JDK_MAJOR" "$(java -version 2>&1 | head -1)"', install)
 
 
 class MacosFleetSecurityTests(unittest.TestCase):

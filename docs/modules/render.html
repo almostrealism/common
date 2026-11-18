@@ -302,8 +302,8 @@ RayTracedScene rayTracedScene = new RayTracedScene(engine, camera, params);
 RealizableImage image = rayTracedScene.realize(params);
 
 // 7. Save output
-ImageCanvas.encodeImageFile(image.get(), new File("output.jpg"),
-                           ImageCanvas.JPEGEncoding);</code></pre>
+ImageCanvas.encodeImageFile(image.get(), new File("output.png"),
+                           ImageCanvas.PNGEncoding);</code></pre>
 
                 <h3>Multi-Light Scene Setup</h3>
                 <pre><code class="language-java">// Key light (main illumination)

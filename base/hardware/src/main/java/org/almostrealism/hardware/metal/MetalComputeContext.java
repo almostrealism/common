@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 
 /**
  * {@link io.almostrealism.code.ComputeContext} for Apple Metal shader compilation and execution.
@@ -263,6 +264,20 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	@Override
 	public int getLaneCount() {
 		return copyKernel(0).threadExecutionWidth();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A Metal kernel may declare at most {@link MetalOperator#MAX_ARGUMENTS} arguments, which is
+	 * what remains of the buffer argument table once {@link MetalOperator} has bound the offsets and
+	 * sizes of the arguments after the last of them.</p>
+	 *
+	 * @return {@link MetalOperator#MAX_ARGUMENTS}
+	 */
+	@Override
+	public OptionalInt getArgumentLimit() {
+		return OptionalInt.of(MetalOperator.MAX_ARGUMENTS);
 	}
 
 	/**

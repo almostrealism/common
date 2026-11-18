@@ -82,6 +82,17 @@ public interface ExpressionArithmetic<T> {
 	}
 
 	/**
+	 * Returns the smaller of this expression and another expression.
+	 *
+	 * @param operand the expression to compare with
+	 * @return an expression representing {@code min(this, operand)}
+	 * @see Min#of(Expression, Expression)
+	 */
+	public default Expression<Double> min(Expression<?> operand) {
+		return Min.of((Expression) self(), (Expression) operand);
+	}
+
+	/**
 	 * Returns the difference of this expression and another expression.
 	 *
 	 * @param operand the expression to subtract
@@ -616,15 +627,18 @@ public interface ExpressionArithmetic<T> {
 	 * Computes the derivative of this expression with respect to the target collection expression.
 	 *
 	 * <p>This method is used for automatic differentiation. The default implementation
-	 * throws {@link UnsupportedOperationException}; subclasses that support differentiation
-	 * should override this method.</p>
+	 * throws {@link UnsupportedOperationException} naming the operation, so an expression
+	 * that has no derivative reports that directly when {@code delta} is requested rather
+	 * than surfacing as an opaque kernel compile failure; subclasses that support
+	 * differentiation override this method.</p>
 	 *
 	 * @param target the collection expression to differentiate with respect to
 	 * @return the derivative expression
 	 * @throws UnsupportedOperationException if this expression type does not support differentiation
 	 */
 	public default CollectionExpression<?> delta(CollectionExpression<?> target) {
-		throw new UnsupportedOperationException(getClass().getSimpleName());
+		throw new UnsupportedOperationException(
+				"No derivative is defined for " + getClass().getSimpleName());
 	}
 
 	/**

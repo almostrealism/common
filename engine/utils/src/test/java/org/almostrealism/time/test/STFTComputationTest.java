@@ -177,6 +177,38 @@ public class STFTComputationTest extends TestSuiteBase implements TemporalFeatur
 	}
 
 	/**
+	 * Test that every frame of the STFT equals the FFT of that windowed frame computed on its own.
+	 */
+	@Test(timeout = 60000)
+	public void testFramesMatchIndividualTransforms() {
+		int fftSize = 32;
+		int hopSize = 16;
+		int signalLength = 96;
+
+		PackedCollection signal = new PackedCollection(shape(signalLength));
+		sin(integers(0, signalLength).multiply(2.0 * Math.PI * 3.0 / signalLength))
+				.into(signal.traverseEach()).evaluate();
+
+		int numFrames = TemporalFeatures.computeNumFrames(signalLength, fftSize, hopSize);
+		PackedCollection spectrogram =
+				stft(fftSize, hopSize, WindowComputation.Type.HAMMING, cp(signal)).evaluate();
+
+		for (int frame = 0; frame < numFrames; frame++) {
+			CollectionProducer windowed = multiply(
+					subset(shape(fftSize), cp(signal), frame * hopSize),
+					window(WindowComputation.Type.HAMMING, fftSize));
+			PackedCollection expected =
+					fft(fftSize, complexFromParts(windowed, zeros(shape(fftSize)))).evaluate();
+
+			int frameOffset = frame * fftSize * 2;
+			for (int i = 0; i < fftSize * 2; i++) {
+				assertSimilar("frame " + frame + ", element " + i,
+						expected.toDouble(i), spectrogram.toDouble(frameOffset + i));
+			}
+		}
+	}
+
+	/**
 	 * Test STFT output shape.
 	 */
 	@Test(timeout = 60000)
