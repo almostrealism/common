@@ -239,6 +239,8 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	private volatile long destroyCommits;
 	/** Commits forced so a bridged dispatch starts a fresh buffer. Executor-thread written. */
 	private volatile long bridgeCommits;
+	/** Commits made to release finished work under memory pressure ({@link #releaseFinishedWork}). */
+	private volatile long releaseCommits;
 	/** GPU waits encoded to order a dispatch after an earlier one of this runner. Executor-thread written. */
 	private volatile long orderingWaits;
 	/** Dependencies on an earlier dispatch that had finished when encoded (see {@link #hasFinished}). */
@@ -904,6 +906,71 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * @return the number of commits caused by foreign-dependency bridges
 	 */
 	public long getBridgeCommitCount() { return bridgeCommits; }
+
+	/**
+	 * Returns the number of commits made by {@link #releaseFinishedWork()}, so that work no thread
+	 * waits for could run and the memory it holds be released.
+	 *
+	 * @return the number of commits made to release finished work
+	 */
+	public long getReleaseCommitCount() { return releaseCommits; }
+
+	/**
+	 * Releases what this runner's work holds once the GPU has finished it, without waiting for the
+	 * GPU: the open buffer is committed, so that dispatches no thread will ever wait for get to run,
+	 * and every committed buffer the GPU has already finished is drained, oldest first, running its
+	 * released-memory callbacks. Those callbacks give back the {@link
+	 * org.almostrealism.hardware.mem.KernelMemoryGuard} reservations of the buffer's dispatches and
+	 * drop the references to their arguments, which is what lets memory those dispatches used be
+	 * collected and freed.
+	 *
+	 * <p>A buffer is otherwise drained only by a host wait for one of its dispatches or a later one
+	 * ({@link #complete}), and committed only when it fills, when the GPU is idle as a dispatch is
+	 * encoded, or for such a wait. Work submitted without anything waiting for it afterwards, such as
+	 * work abandoned by a caller that failed before its wait, therefore keeps its arguments, and
+	 * every block they reference, reachable until some later wait on this runner. This method is for
+	 * a caller that needs that memory back without waiting for any dispatch: a memory provider that
+	 * has reached its ceiling (see
+	 * {@link org.almostrealism.hardware.mem.HardwareMemoryProvider#releaseFinishedWork()}). A buffer
+	 * committed here is drained by a later call, once it has finished.</p>
+	 *
+	 * <p>Nothing here waits for the GPU, and a buffer still waiting for a host-signaled bridge is
+	 * left for the bridge to commit, so the call cannot stall on work that is not finished. A
+	 * buffer some thread is waiting on is drained like any other, its command buffer staying
+	 * retained until that thread withdraws (see {@link #complete}). A buffer drained here that
+	 * failed on the GPU is recorded exactly as a wait would record it, so every wait at or after its
+	 * dispatches still throws. Called on this runner's own thread, which may already be draining
+	 * buffers, or once the runner has been destroyed, it does nothing. A drain that throws is
+	 * rethrown after every finished buffer has been drained.</p>
+	 */
+	@Override
+	public void releaseFinishedWork() {
+		if (isStreamThread()) return;
+		executor.runOrElse(this::releaseFinishedOnExecutor, () -> { });
+	}
+
+	/**
+	 * Commits the open buffer if it holds any dispatch, then drains every committed buffer, oldest
+	 * first, that has finished on the GPU. Part of {@link #releaseFinishedWork()}. Must run on the
+	 * executor thread.
+	 */
+	private void releaseFinishedOnExecutor() {
+		if (openBatch != null && openBatch.getDispatchCount() > 0 && closeOpenBatch()) {
+			releaseCommits++;
+		}
+
+		int finished = 0;
+		while (finished < committed.size() && committed.get(finished).isCommitted()
+				&& committed.get(finished).isFinished()) {
+			finished++;
+		}
+
+		List<Runnable> drains = new ArrayList<>(finished);
+		for (int i = 0; i < finished; i++) {
+			drains.add(() -> drainOldestCommitted(null, false));
+		}
+		Destroyable.releaseAll(drains);
+	}
 
 	/**
 	 * Returns the number of GPU waits encoded to order a dispatch after an earlier dispatch of this

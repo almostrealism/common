@@ -347,6 +347,23 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 	}
 
 	/**
+	 * Releases what the stream's work still holds once the device has finished it, without waiting
+	 * for the device: memory reservations, references to the work's arguments, and anything else
+	 * the stream keeps until it observes that work complete. A memory provider that has reached its
+	 * ceiling calls this (see
+	 * {@link org.almostrealism.hardware.mem.HardwareMemoryProvider#releaseFinishedWork()}) so that
+	 * memory held only by finished work can be freed even though no thread waits for that work.
+	 *
+	 * <p>A stream that releases each submission's resources as soon as it completes, which is what
+	 * this assumes unless a stream overrides it, holds nothing for finished work, so there is
+	 * nothing to release. A stream that releases them only when a host wait observes the
+	 * completion (a batching stream that drains its command buffers on a wait) overrides this, and
+	 * also hands the device any batch it is holding back, so that work no thread will wait for
+	 * runs and can then be released by a later call.</p>
+	 */
+	public void releaseFinishedWork() { }
+
+	/**
 	 * Returns the number of batches closed early because the device had run out of work (see
 	 * {@link #closeEarlyIfIdle}).
 	 *

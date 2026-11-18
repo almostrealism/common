@@ -287,6 +287,31 @@ consequence: if a dispatch genuinely hangs or leaks its reservation past 30 s, t
 its memory out from under it, so a use-after-free is **not** ruled out merely by confirming the
 dispatch was bracketed — check whether the timeout fired.
 
+The backstop covers only blocks whose release was requested, which happens once a block's Java
+holder has been collected. A reservation holds the block's `RAM` strongly, so a block reserved by
+a dispatch whose reservation is never given back stays reachable and is never collected at all.
+On Metal the reservations of a command buffer's dispatches are given back by the buffer's
+released-memory callbacks, which run when the runner *drains* the buffer, and a buffer is drained
+by a host wait for one of its dispatches or a later one. Work that no thread waits for afterwards
+(for example, the dispatches of a caller that failed before its wait) therefore keeps every block it
+referenced reachable until some later wait on that runner. A process that hit its ceiling in that
+state used to stay at it: every allocation's collections found nothing to free. To prevent this,
+`HardwareMemoryProvider.reclaim` asks every data context of the local `Hardware` to release
+finished work (`DataContext.releaseFinishedWork()`, reaching every
+`ComputeContext.releaseFinishedWork()`) before each collection it requests. The Metal runner then commits its open buffer and drains every
+committed buffer the GPU has finished, without waiting for the GPU
+(`MetalCommandRunner.releaseFinishedWork()`), so the collection that follows can free what those
+dispatches held; a buffer committed in one pass is drained by a later one. A heap dump that shows
+large amounts of device memory reachable only through `KernelMemoryGuard` reservations or a
+`CommandBatch`'s `onComplete` list is reporting work that was never drained.
+
+Before the same collection, the provider also runs every *ceiling release* registered with
+`HardwareMemoryProvider.addCeilingRelease`: a cache that holds device memory only to save work
+registers one that drops its references, so the memory can be freed when an allocation would
+otherwise be rejected, and the cache rebuilds what it needs on its next use. The compiled pattern
+renderers of `BatchedPatternLayerRenderer` are released this way, since a process that keeps one
+scene live never reaches the point where that cache is otherwise cleared.
+
 One count is exempt from the backstop: a **scheduling lease**
 (`KernelMemoryGuard.acquireScheduled`, consulted through `isScheduled`). A deferred dispatch
 (`CLOperator.accept`) or fallback copy (`AbstractComputeContext.copy`) that waits on a foreign

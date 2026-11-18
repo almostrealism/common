@@ -66,6 +66,16 @@ public interface DataContext<MEM> extends Named {
 	List<ComputeContext<MEM>> getComputeContexts();
 
 	/**
+	 * Asks every compute context of this data context to release what its finished work still
+	 * holds (see {@link ComputeContext#releaseFinishedWork()}). A destroyed data context has no
+	 * work left to release, so it does nothing.
+	 */
+	default void releaseFinishedWork() {
+		if (isDestroyed()) return;
+		getComputeContexts().forEach(ComputeContext::releaseFinishedWork);
+	}
+
+	/**
 	 * Returns the compute context through which work on the given {@link Memory}, which this
 	 * context manages, should be performed &mdash; a copy into it, for example.
 	 *

@@ -16,7 +16,9 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.DataContext;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.io.Console;
@@ -33,6 +35,7 @@ import java.util.LongSummaryStatistics;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -223,6 +226,13 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 	 */
 	public static int reclaimAttempts = 10;
 
+	/**
+	 * Releases registered with {@link #addCeilingRelease(Runnable)}, run by every provider before
+	 * each collection it requests while reclaiming room for an allocation (see
+	 * {@link #releaseCeilingCaches()}).
+	 */
+	private static final List<Runnable> ceilingReleases = new CopyOnWriteArrayList<>();
+
 	/** How long {@link #reclaim(BooleanSupplier)} waits after each collection for releases to complete. */
 	public static long reclaimWaitMs = 100;
 
@@ -399,6 +409,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 		}
 
 		try {
+			releaseFinishedWork();
+			releaseCeilingCaches();
 			collectGarbage();
 			Thread.sleep(reclaimWaitMs);
 			return true;
@@ -412,6 +424,60 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 				collectionLock.notifyAll();
 			}
 		}
+	}
+
+	/**
+	 * Asks every data context of the local {@link Hardware} to release what finished kernel work
+	 * still holds (see {@link DataContext#releaseFinishedWork()}). Called once per
+	 * {@link #collectionPass() collection pass}, before the collection.
+	 *
+	 * <p>A dispatch's {@link KernelMemoryGuard} reservations hold its arguments' memory strongly,
+	 * and a backend that batches dispatches gives them back only when it observes the batch
+	 * complete, which for work no thread waits for may never happen. Memory held that way is
+	 * reachable, so no collection can free it, and an allocation that needs it would be rejected
+	 * however many collections were requested. Releasing finished work first makes that memory
+	 * unreachable, and the collection that follows frees it; work the backend commits here is
+	 * released by a later pass once the device has finished it.</p>
+	 */
+	protected void releaseFinishedWork() {
+		Hardware hw = Hardware.getLocalHardware();
+		if (hw != null) hw.getAllDataContexts().forEach(DataContext::releaseFinishedWork);
+	}
+
+	/**
+	 * Registers a release that drops memory a cache keeps only to save work, so that the memory
+	 * can be freed when an allocation does not fit under a provider's ceiling. Every provider
+	 * runs every registered release before each collection it requests while reclaiming room
+	 * (see {@link #releaseCeilingCaches()}); the collection then frees whatever the release made
+	 * unreachable.
+	 *
+	 * <p>A release must be safe to run at any time from any thread, including while the cache is
+	 * in use: it may only drop the cache's own references, so that work already holding an entry
+	 * keeps it for as long as it needs it, and a later lookup rebuilds what was dropped. It must
+	 * not allocate device memory.</p>
+	 *
+	 * @param release drops the cache's references to memory it can rebuild
+	 */
+	public static void addCeilingRelease(Runnable release) {
+		ceilingReleases.add(release);
+	}
+
+	/**
+	 * Removes a release registered with {@link #addCeilingRelease(Runnable)}.
+	 *
+	 * @param release the release to remove
+	 */
+	public static void removeCeilingRelease(Runnable release) {
+		ceilingReleases.remove(release);
+	}
+
+	/**
+	 * Runs every release registered with {@link #addCeilingRelease(Runnable)}. Called once per
+	 * {@link #collectionPass() collection pass}, before the collection. A release that throws does
+	 * not stop the others; the first failure is rethrown once all have run.
+	 */
+	protected void releaseCeilingCaches() {
+		Destroyable.releaseAll(ceilingReleases);
 	}
 
 	/**
