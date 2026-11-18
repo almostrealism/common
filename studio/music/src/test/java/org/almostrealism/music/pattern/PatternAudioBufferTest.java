@@ -16,6 +16,7 @@
 
 package org.almostrealism.music.pattern;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.ProjectedChromosome;
 import org.almostrealism.music.arrange.AudioSceneContext;
@@ -25,7 +26,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
-import java.util.List;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
@@ -71,10 +71,14 @@ public class PatternAudioBufferTest extends TestSuiteBase {
 		ChannelInfo channel = new ChannelInfo(2, ChannelInfo.StereoChannel.RIGHT);
 		PatternAudioBuffer buffer = new PatternAudioBuffer(patterns(), CONTEXT, channel, 512, FRAME);
 
-		Assert.assertEquals(512, buffer.getBufferSize());
-		Assert.assertNotNull(buffer.getOutputBuffer());
-		Assert.assertEquals(512, buffer.getOutputBuffer().getMemLength());
-		Assert.assertSame("the channel is retained", channel, buffer.getChannel());
+		try {
+			Assert.assertEquals(512, buffer.getBufferSize());
+			Assert.assertNotNull(buffer.getOutputBuffer());
+			Assert.assertEquals(512, buffer.getOutputBuffer().getMemLength());
+			Assert.assertSame("the channel is retained", channel, buffer.getChannel());
+		} finally {
+			buffer.getOutputBuffer().destroy();
+		}
 	}
 
 	/**
@@ -89,15 +93,22 @@ public class PatternAudioBufferTest extends TestSuiteBase {
 		PatternAudioBuffer buffer = new PatternAudioBuffer(patterns(), CONTEXT,
 				new ChannelInfo(0), 8, FRAME, supplied);
 
-		Assert.assertSame("the supplied buffer is used directly", supplied, buffer.getOutputBuffer());
-		Assert.assertEquals("the frame count is stored independently of the buffer length",
-				8, buffer.getBufferSize());
-		Assert.assertEquals(4, buffer.getOutputBuffer().getMemLength());
+		try {
+			Assert.assertSame("the supplied buffer is used directly", supplied, buffer.getOutputBuffer());
+			Assert.assertEquals("the frame count is stored independently of the buffer length",
+					8, buffer.getBufferSize());
+			Assert.assertEquals(4, buffer.getOutputBuffer().getMemLength());
+		} finally {
+			supplied.destroy();
+		}
 	}
 
 	/**
 	 * The output producer reads the live output buffer: values written into the buffer
-	 * after the producer is obtained are visible when it is evaluated.
+	 * after the producer is obtained are visible when it is evaluated. The producer is
+	 * obtained <em>before</em> the buffer is filled so the test actually pins the
+	 * live-read property — a producer that snapshotted its contents at creation time
+	 * would fail these assertions.
 	 */
 	@Test(timeout = 10000)
 	public void outputProducerReadsLiveBuffer() {
@@ -105,14 +116,19 @@ public class PatternAudioBufferTest extends TestSuiteBase {
 		PatternAudioBuffer buffer = new PatternAudioBuffer(patterns(), CONTEXT,
 				new ChannelInfo(0), 4, FRAME, supplied);
 
-		supplied.fill(0.1, 0.2, 0.3, 0.4);
+		try {
+			Producer<PackedCollection> producer = buffer.getOutputProducer();
+			supplied.fill(0.1, 0.2, 0.3, 0.4);
 
-		PackedCollection read = buffer.getOutputProducer().get().evaluate();
-		Assert.assertEquals(4, read.getMemLength());
-		Assert.assertEquals(0.1, read.toDouble(0), 1e-9);
-		Assert.assertEquals(0.2, read.toDouble(1), 1e-9);
-		Assert.assertEquals(0.3, read.toDouble(2), 1e-9);
-		Assert.assertEquals(0.4, read.toDouble(3), 1e-9);
+			PackedCollection read = producer.get().evaluate();
+			Assert.assertEquals(4, read.getMemLength());
+			Assert.assertEquals(0.1, read.toDouble(0), 1e-9);
+			Assert.assertEquals(0.2, read.toDouble(1), 1e-9);
+			Assert.assertEquals(0.3, read.toDouble(2), 1e-9);
+			Assert.assertEquals(0.4, read.toDouble(3), 1e-9);
+		} finally {
+			supplied.destroy();
+		}
 	}
 
 	/** {@link PatternAudioBuffer#reset()} zeroes every frame of the output buffer. */
@@ -120,13 +136,17 @@ public class PatternAudioBufferTest extends TestSuiteBase {
 	public void resetZeroesTheOutputBuffer() {
 		PatternAudioBuffer buffer = buffer(4);
 		PackedCollection output = buffer.getOutputBuffer();
-		output.fill(1.0, 2.0, 3.0, 4.0);
-		Assert.assertEquals(1.0, output.toDouble(0), 0.0);
+		try {
+			output.fill(1.0, 2.0, 3.0, 4.0);
+			Assert.assertEquals(1.0, output.toDouble(0), 0.0);
 
-		buffer.reset();
+			buffer.reset();
 
-		for (int i = 0; i < output.getMemLength(); i++) {
-			Assert.assertEquals("frame " + i + " is cleared", 0.0, output.toDouble(i), 0.0);
+			for (int i = 0; i < output.getMemLength(); i++) {
+				Assert.assertEquals("frame " + i + " is cleared", 0.0, output.toDouble(i), 0.0);
+			}
+		} finally {
+			output.destroy();
 		}
 	}
 
@@ -138,14 +158,18 @@ public class PatternAudioBufferTest extends TestSuiteBase {
 	public void setupIsANoOp() {
 		PatternAudioBuffer buffer = buffer(4);
 		PackedCollection output = buffer.getOutputBuffer();
-		output.fill(0.5, 0.6, 0.7, 0.8);
+		try {
+			output.fill(0.5, 0.6, 0.7, 0.8);
 
-		Supplier<Runnable> setup = buffer.setup();
-		Assert.assertNotNull(setup);
-		setup.get().run();
+			Supplier<Runnable> setup = buffer.setup();
+			Assert.assertNotNull(setup);
+			setup.get().run();
 
-		Assert.assertEquals("setup does not disturb the buffer", 0.5, output.toDouble(0), 0.0);
-		Assert.assertEquals(0.8, output.toDouble(3), 0.0);
+			Assert.assertEquals("setup does not disturb the buffer", 0.5, output.toDouble(0), 0.0);
+			Assert.assertEquals(0.8, output.toDouble(3), 0.0);
+		} finally {
+			output.destroy();
+		}
 	}
 
 	/**
@@ -158,12 +182,16 @@ public class PatternAudioBufferTest extends TestSuiteBase {
 	public void prepareBatchClearsOutputBeforeSumming() {
 		PatternAudioBuffer buffer = buffer(4);
 		PackedCollection output = buffer.getOutputBuffer();
-		output.fill(0.5, 0.6, 0.7, 0.8);
+		try {
+			output.fill(0.5, 0.6, 0.7, 0.8);
 
-		buffer.prepareBatch().get().run();
+			buffer.prepareBatch().get().run();
 
-		for (int i = 0; i < output.getMemLength(); i++) {
-			Assert.assertEquals("frame " + i + " is cleared before summing", 0.0, output.toDouble(i), 0.0);
+			for (int i = 0; i < output.getMemLength(); i++) {
+				Assert.assertEquals("frame " + i + " is cleared before summing", 0.0, output.toDouble(i), 0.0);
+			}
+		} finally {
+			output.destroy();
 		}
 	}
 
@@ -177,13 +205,17 @@ public class PatternAudioBufferTest extends TestSuiteBase {
 	public void prepareBatchWithoutClearLeavesOutputIntact() {
 		PatternAudioBuffer buffer = buffer(4);
 		PackedCollection output = buffer.getOutputBuffer();
-		output.fill(0.5, 0.6, 0.7, 0.8);
+		try {
+			output.fill(0.5, 0.6, 0.7, 0.8);
 
-		buffer.prepareBatch(false).get().run();
+			buffer.prepareBatch(false).get().run();
 
-		Assert.assertEquals(0.5, output.toDouble(0), 0.0);
-		Assert.assertEquals(0.6, output.toDouble(1), 0.0);
-		Assert.assertEquals(0.7, output.toDouble(2), 0.0);
-		Assert.assertEquals(0.8, output.toDouble(3), 0.0);
+			Assert.assertEquals(0.5, output.toDouble(0), 0.0);
+			Assert.assertEquals(0.6, output.toDouble(1), 0.0);
+			Assert.assertEquals(0.7, output.toDouble(2), 0.0);
+			Assert.assertEquals(0.8, output.toDouble(3), 0.0);
+		} finally {
+			output.destroy();
+		}
 	}
 }
