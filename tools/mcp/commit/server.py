@@ -67,16 +67,24 @@ def _review(repo_path: str) -> dict:
     names = commit_check.private_product_names()
     products = commit_check.private_product_pattern(names)
 
+    def read_ledger(path: str) -> str:
+        """Returns a tracked plan ledger's text from the staged index, not the working tree.
+
+        The checks describe the snapshot being committed, so an unstaged edit or
+        deletion of a ledger must not change which identifiers are enforced.
+        """
+        return _git(root, "show", f":{path}").stdout
+
     problems = commit_check.branch_problems(branch)
     if not staged:
         problems.append(commit_check.Problem("change", str(root), "nothing is staged"))
     message = None
     if message_path.is_file():
         message = message_path.read_text(encoding="utf-8").replace("\r\n", "\n").rstrip() + "\n"
-        problems.extend(commit_check.message_problems(message, root, tracked, products))
+        problems.extend(commit_check.message_problems(message, root, tracked, products, read_ledger))
     else:
         problems.append(commit_check.Problem("message", str(message_path), "does not exist"))
-    problems.extend(commit_check.change_problems(diff, root, staged, tracked, products))
+    problems.extend(commit_check.change_problems(diff, root, staged, tracked, products, read_ledger))
 
     warnings = []
     if products is None:

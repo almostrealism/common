@@ -157,6 +157,23 @@ class CommitToolTest(unittest.TestCase):
         self.assertTrue(any("nothing is staged" in p for p in result["problems"]), result)
         self.assertTrue(any("does not exist" in p for p in result["problems"]), result)
 
+    def test_plan_ledger_is_read_from_the_index_not_the_working_tree(self):
+        ledger = self.root / "docs" / "qa" / "retrospectives" / "ledger.tsv"
+        ledger.parent.mkdir(parents=True)
+        ledger.write_text("proposal_ids\tnote\nfoo-proposal\tx\n")
+        self.git("add", "docs/qa/retrospectives/ledger.tsv")
+        self.git("commit", "-q", "-m", "Add ledger")
+        # An unstaged deletion of the tracked ledger must neither abort the check
+        # nor drop the slug it defines: the slug is read from the staged index.
+        ledger.unlink()
+        self.stage("mentions foo-proposal here\n")
+        (self.root / "commit.txt").write_text("Change a\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("temporary id: a.txt:1") for p in result["problems"]), result)
+
     def test_staged_message_file_is_refused(self):
         self.stage("two\n")
         (self.root / "commit.txt").write_text("Change a\n")

@@ -83,7 +83,7 @@ import csv
 import re
 import sys
 from pathlib import Path
-from typing import Iterable, NamedTuple, Optional
+from typing import Callable, Iterable, NamedTuple, Optional
 
 
 PLAN_DIRECTORIES = ("docs/plans/", "docs/qa/retrospectives/")
@@ -223,8 +223,16 @@ def ledger_slugs(text: str) -> list[str]:
     return slugs
 
 
-def discover_identifiers(root: Path, plan_paths: Iterable[str]) -> list[Identifier]:
-    """Reads the temporary identifiers the given plan documents define."""
+def discover_identifiers(root: Path, plan_paths: Iterable[str],
+                         read_ledger: Optional[Callable[[str], str]] = None) -> list[Identifier]:
+    """Reads the temporary identifiers the given plan documents define.
+
+    ``read_ledger`` supplies a ledger's text given its path; when it is None,
+    each ledger is read from ``root`` on disk. A caller committing a staged
+    snapshot passes the index's copy of the ledger, so that an unstaged edit or
+    deletion of a tracked ledger neither changes which identifiers are enforced
+    for the commit nor aborts the read.
+    """
     identifiers: list[Identifier] = []
     families: dict[str, str] = {}
     seen_slugs: set[str] = set()
@@ -237,7 +245,7 @@ def discover_identifiers(root: Path, plan_paths: Iterable[str]) -> list[Identifi
             identifiers.append(Identifier(bounded(stem), f"defined by {path}"))
             families.setdefault(dated.group("family"), path)
         elif name == LEDGER_NAME:
-            text = (root / path).read_text(encoding="utf-8")
+            text = read_ledger(path) if read_ledger is not None else (root / path).read_text(encoding="utf-8")
             for slug in ledger_slugs(text):
                 if slug not in seen_slugs:
                     seen_slugs.add(slug)

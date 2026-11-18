@@ -37,7 +37,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Iterable, NamedTuple, Optional
+from typing import Callable, Iterable, NamedTuple, Optional
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 
@@ -129,11 +129,14 @@ def private_product_pattern(names: Iterable[str]) -> Optional["re.Pattern[str]"]
 
 
 def message_problems(message: str, root: Path, tracked: Iterable[str],
-                     products: Optional["re.Pattern[str]"]) -> list[Problem]:
+                     products: Optional["re.Pattern[str]"],
+                     read_ledger: Optional[Callable[[str], str]] = None) -> list[Problem]:
     """Returns every problem with the text of a commit message.
 
     ``root`` is the working tree being committed and ``tracked`` its tracked
     files, from which the plan documents defining temporary identifiers are read.
+    ``read_ledger`` supplies a ledger's text from the staged snapshot; see
+    ``change_problems``.
     """
     problems = []
     lines = message.splitlines()
@@ -144,7 +147,7 @@ def message_problems(message: str, root: Path, tracked: Iterable[str],
     for link in private_url_check.private_links(message, private_url_check.lab_hosts()):
         problems.append(Problem("private link", MESSAGE_FILE, link))
     plans = [path for path in tracked if identifier_check.is_plan_path(path)]
-    for identifier in identifier_check.discover_identifiers(root, plans):
+    for identifier in identifier_check.discover_identifiers(root, plans, read_ledger):
         for match in identifier.pattern.finditer(message):
             number = message.count("\n", 0, match.start()) + 1
             problems.append(Problem("temporary id", f"{MESSAGE_FILE}:{number}",
@@ -164,18 +167,22 @@ def message_problems(message: str, root: Path, tracked: Iterable[str],
 
 
 def change_problems(diff: str, root: Path, staged: Iterable[str], tracked: Iterable[str],
-                    products: Optional["re.Pattern[str]"]) -> list[Problem]:
+                    products: Optional["re.Pattern[str]"],
+                    read_ledger: Optional[Callable[[str], str]] = None) -> list[Problem]:
     """Returns every problem with the lines a staged change adds.
 
     ``diff`` is the staged change as a unified diff, ``staged`` the paths it
-    touches, and ``tracked`` the working tree's tracked files.
+    touches, and ``tracked`` the working tree's tracked files. ``read_ledger``
+    supplies a plan ledger's text from the staged snapshot rather than the
+    working tree, so an unstaged edit or deletion of a tracked ledger does not
+    change which identifiers are enforced for this commit or abort the read.
     """
     staged = list(staged)
     problems = []
     if MESSAGE_FILE in staged:
         problems.append(Problem("message", MESSAGE_FILE, "is staged; it must not be part of the commit"))
     plans = [path for path in tracked if identifier_check.is_plan_path(path)]
-    identifiers = identifier_check.discover_identifiers(root, plans)
+    identifiers = identifier_check.discover_identifiers(root, plans, read_ledger)
     changed = identifier_check.parse_diff(diff)
     for path in staged:
         if path not in changed or identifier_check.is_plan_path(path):
