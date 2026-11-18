@@ -227,19 +227,23 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 * operand is, so a smaller fixed-count operand keeps the framework's ordinary (repeating)
 	 * element-wise semantics.</p>
 	 *
-	 * <p>Broadcasting only applies to shapes that are broadcast-compatible: the operand item size
-	 * must divide the output item size evenly, so each operand value governs a whole, equal-sized
-	 * group of output elements. A per-row scalar (operand size 1) and a sub-item operand whose
-	 * size divides the item are both valid. A narrower operand whose size does not divide the
-	 * output item (for example an item width of 2 over an output width of 3) has no consistent
-	 * broadcast and is rejected, rather than silently repeating and dropping condition values.</p>
+	 * <p>Only a per-row scalar &mdash; a single operand value governing a whole output item &mdash;
+	 * is projected. That is the one broadcast this computation can perform unambiguously from the
+	 * operand's total width alone. A wider narrower operand (more than one value per item but fewer
+	 * than the output item) has no consistent flat projection: its values could correspond to an
+	 * outer or an inner axis of the output item, and dividing total widths cannot tell those apart
+	 * (operand item {@code (1, 3)} and output item {@code (2, 3)} both have an operand width of 3
+	 * over an output width of 6, yet an outer-axis broadcast reads {@code 0,0,1,1,2,2} while the
+	 * axis-aware inner broadcast reads {@code 0,1,2,0,1,2}). Rather than guess, such an operand is
+	 * rejected; axis-aware broadcasting of multi-element operands is left to the operand alignment
+	 * that precedes the computation.</p>
 	 *
 	 * @param index         the output element index
 	 * @param inputPosition the input position of the comparison operand (1 for the left operand,
 	 *                      2 for the right operand), matching the {@code args} index
 	 * @return the index at which to read the comparison operand
-	 * @throws IllegalArgumentException if the operand item size is narrower than the output item
-	 *                                  but does not divide it evenly
+	 * @throws IllegalArgumentException if the operand item is narrower than the output item but is
+	 *                                  not a single per-row value
 	 */
 	protected Expression<?> conditionIndex(Expression<?> index, int inputPosition) {
 		TraversalPolicy operandShape = shape(getInputs().get(inputPosition));
@@ -252,16 +256,15 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 			return index;
 		}
 
-		if (operandSize <= 0 || outputSize % operandSize != 0) {
+		if (operandSize != 1) {
 			throw new IllegalArgumentException(
 					"Comparison operand item size " + operandSize +
 							" is not broadcast-compatible with output item size " + outputSize +
-							" (operand size must divide output size evenly)");
+							" (a narrower comparison operand must be a single per-row value)");
 		}
 
-		Expression<?> idx = index.toInt();
-		return idx.divide(outputSize).multiply(operandSize)
-				.add(idx.imod(outputSize).multiply(operandSize).divide(outputSize));
+		// Per-row scalar: every output element of an item reads the one condition value for it.
+		return index.toInt().divide(outputSize);
 	}
 
 	/**
