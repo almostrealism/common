@@ -218,10 +218,14 @@ def change_problems(diff: str, root: Path, staged: Iterable[str], tracked: Itera
     return problems
 
 
-def branch_problems(branch: str) -> list[Problem]:
-    """Returns the problems with committing on ``branch``."""
+def branch_problems(branch: str, defaults: Iterable[str] = DEFAULT_BRANCHES) -> list[Problem]:
+    """Returns the problems with committing on ``branch``.
+
+    ``defaults`` are the repository's default branches; the server adds the
+    branch each remote's HEAD points at to ``DEFAULT_BRANCHES``.
+    """
     if not branch:
         return [Problem("branch", "HEAD", "is detached; check out a branch first")]
-    if branch in DEFAULT_BRANCHES:
+    if branch in set(defaults):
         return [Problem("branch", branch, "is a default branch; commit on a feature branch")]
     return []

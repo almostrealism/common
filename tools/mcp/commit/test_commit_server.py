@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _SERVER_DIR = Path(__file__).resolve().parent
 if str(_SERVER_DIR) not in sys.path:
@@ -83,6 +84,10 @@ class BranchTest(unittest.TestCase):
         self.assertEqual(["branch"], [p.check for p in commit_check.branch_problems("")])
         self.assertEqual(["branch"], [p.check for p in commit_check.branch_problems("master")])
         self.assertEqual([], commit_check.branch_problems("feature/x"))
+
+    def test_configured_default_branch_is_refused(self):
+        self.assertEqual(["branch"], [p.check for p in commit_check.branch_problems("develop", {"develop"})])
+        self.assertEqual([], commit_check.branch_problems("develop"))
 
 
 class CommitToolTest(unittest.TestCase):
@@ -220,6 +225,46 @@ class CommitToolTest(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertTrue(any(p.startswith("temporary id: notes.txt") for p in result["problems"]), result)
+
+    def test_remote_default_branch_is_refused(self):
+        # A repository whose default branch is not master or main records it as
+        # the target of the remote's HEAD; committing on it is refused too.
+        self.git("update-ref", "refs/remotes/origin/develop", "HEAD")
+        self.git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+        self.git("checkout", "-q", "-b", "develop")
+        self.stage("two\n")
+        (self.root / "commit.txt").write_text("Change a\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertIn("branch: develop: is a default branch; commit on a feature branch", result["problems"])
+        self.git("checkout", "-q", "feature/change")
+        self.assertTrue(server.check_commit(str(self.root))["ok"])
+
+    def test_failed_staged_diff_refuses_the_commit(self):
+        # An inspection that git cannot complete must refuse the commit rather
+        # than check an empty diff while the staged change is still committed.
+        self.stage("made for AcmeApp\n")
+        (self.root / "commit.txt").write_text("Change a\n")
+        head = self.git("rev-parse", "HEAD")
+        real_git = server._git
+
+        def failing_diff(root, *args, stdin=None):
+            if args[:2] == ("diff", "--cached") and "--name-only" not in args:
+                return subprocess.CompletedProcess(["git", *args], 1, "", "external diff died")
+            return real_git(root, *args, stdin=stdin)
+
+        with mock.patch.object(server, "_git", failing_diff):
+            checked = server.check_commit(str(self.root))
+            committed = server.commit(str(self.root))
+
+        self.assertFalse(checked["ok"])
+        self.assertIn("external diff died", checked["error"])
+        self.assertFalse(committed["ok"])
+        self.assertIn("external diff died", committed["error"])
+        self.assertEqual(head, self.git("rev-parse", "HEAD"))
+        self.assertTrue((self.root / "commit.txt").exists())
 
     def test_staged_message_file_is_refused(self):
         self.stage("two\n")

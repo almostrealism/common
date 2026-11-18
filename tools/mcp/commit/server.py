@@ -46,6 +46,37 @@ def _git(root: Path, *args: str, stdin: str = None) -> subprocess.CompletedProce
                           text=True, timeout=GIT_TIMEOUT_SECONDS)
 
 
+def _git_output(root: Path, *args: str) -> str:
+    """Runs a git command that inspects the repository and returns its output.
+
+    Raises ``ValueError`` when git fails, so the review is refused rather than
+    read from an empty output: an empty staged diff from a failed ``git diff``
+    would otherwise leave the staged lines unchecked while the commit goes ahead.
+    """
+    result = _git(root, *args)
+    if result.returncode != 0:
+        raise ValueError(f"git {' '.join(args)} failed in {root}: "
+                         f"{(result.stderr or result.stdout).strip()}")
+    return result.stdout
+
+
+def _default_branches(root: Path) -> set[str]:
+    """Returns the branches treated as default: ``master``, ``main`` and every remote's HEAD branch.
+
+    A repository whose default is another name (``develop``, say) records it as
+    the target of ``refs/remotes/<remote>/HEAD`` when cloned, so that name is
+    refused as well.
+    """
+    branches = set(commit_check.DEFAULT_BRANCHES)
+    heads = _git_output(root, "for-each-ref", "--format=%(refname)%00%(symref)", "refs/remotes/*/HEAD")
+    for line in heads.splitlines():
+        ref, _, target = line.partition("\0")
+        prefix = ref[:-len("HEAD")]
+        if target.startswith(prefix):
+            branches.add(target[len(prefix):])
+    return branches
+
+
 def _working_tree(repo_path: str) -> Path:
     """Returns the top of the working tree containing ``repo_path`` (the server's directory when empty)."""
     start = Path(repo_path).expanduser() if repo_path else Path.cwd()
@@ -58,10 +89,10 @@ def _working_tree(repo_path: str) -> Path:
 def _review(repo_path: str) -> dict:
     """Runs every check on the working tree and returns the findings, with what the commit needs."""
     root = _working_tree(repo_path)
-    branch = _git(root, "branch", "--show-current").stdout.strip()
-    staged = [p for p in _git(root, "diff", "--cached", "--name-only", "-z").stdout.split("\0") if p]
-    tracked = [p for p in _git(root, "ls-files", "-z").stdout.split("\0") if p]
-    diff = _git(root, "diff", "--cached", "-M", "--unified=3", "--no-color").stdout
+    branch = _git_output(root, "branch", "--show-current").strip()
+    staged = [p for p in _git_output(root, "diff", "--cached", "--name-only", "-z").split("\0") if p]
+    tracked = [p for p in _git_output(root, "ls-files", "-z").split("\0") if p]
+    diff = _git_output(root, "diff", "--cached", "-M", "--unified=3", "--no-color", "--no-ext-diff", "--no-textconv")
 
     message_path = root / commit_check.MESSAGE_FILE
     names = commit_check.private_product_names()
@@ -73,9 +104,9 @@ def _review(repo_path: str) -> dict:
         The checks describe the snapshot being committed, so an unstaged edit or
         deletion of a ledger must not change which identifiers are enforced.
         """
-        return _git(root, "show", f":{path}").stdout
+        return _git_output(root, "show", f":{path}")
 
-    problems = commit_check.branch_problems(branch)
+    problems = commit_check.branch_problems(branch, _default_branches(root))
     if not staged:
         problems.append(commit_check.Problem("change", str(root), "nothing is staged"))
     message = None
