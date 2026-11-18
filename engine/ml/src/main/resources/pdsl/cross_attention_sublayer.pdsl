@@ -1,0 +1,66 @@
+/**
+ * Pre-norm residual cross-attention sub-layer of a transformer block — the pre-normalization, the
+ * cross-attention over an encoder context, and the residual connection around both of them.
+ *
+ * This file replaces the Java assembly that used to live in
+ * TransformerBlockFeatures.transformerBlock(...), which built this sub-layer as a SequentialBlock
+ * (the cross-attention pre-normalization, then the cross-attention) wrapped in residual():
+ *   SequentialBlock crossAttentionWithNorm = new SequentialBlock(blockShape);
+ *   crossAttentionWithNorm.add(norm(normType, crossAttPreNormWeight, crossAttPreNormBias));
+ *   crossAttentionWithNorm.add(sequenceCrossAttention(...));
+ *   block.add(residual(crossAttentionWithNorm));
+ * transformerBlock now binds the normalization weights, builds the cross-attention block, and loads
+ * the layer of the normalization family it is asked for
+ * (TransformerBlockFeatures.crossAttentionResidualSublayer), so there is one definition of the
+ * sub-layer structure and it is here. It is the cross-attention sibling of
+ * self_attention_sublayer.pdsl and feed_forward_sublayer.pdsl, and reads as the same diagram: norm,
+ * body, residual.
+ *
+ * There is one layer per normalization family (LayerNorm or RMSNorm):
+ *
+ *   cross_attention_sublayer_layernorm   LayerNorm
+ *   cross_attention_sublayer_rmsnorm     RMSNorm
+ *
+ * Unlike the self-attention and feed-forward sub-layers, the cross-attention sub-layer is never
+ * adaptive-layernorm (adaLN-Zero) modulated: a diffusion transformer conditions its self-attention
+ * and feed-forward on the global vector, but attends to the encoder context unconditionally
+ * (x = x + cross_attention(norm(x))). So there is no modulate stage, no output gate, and no
+ * _modulated variant.
+ *
+ * The cross-attention itself is NOT written out here: it arrives as the cross_attention block — the
+ * sequence cross-attention transformerBlock builds over the normalized activation and the encoder
+ * context (the query projection, the context key/value projection on a branch, the query/key
+ * normalization, the scores, the softmax and the output projection). Which projection adapter it
+ * uses, and the context block it attends over, belong to the cross-attention build, not to this
+ * residual wiring, and the language names neither as a value a stage can select, so the
+ * cross-attention arrives as a block, exactly as the attention does in self_attention_sublayer.pdsl
+ * and the feed-forward does in feed_forward_sublayer.pdsl.
+ *
+ * Data flow of one forward pass over a [batch, seq_len, dim] activation:
+ *
+ *   x                                                               [batch, seq_len, dim]
+ *   accum {                            residual: x + sub-block(x)
+ *     layernorm | rmsnorm              each position normalized over its dim features
+ *                                                                   [batch, seq_len, dim]
+ *     cross_attention                  the cross-attention sub-block over the encoder context
+ *                                                                   [batch, seq_len, dim]
+ *   }                                                               [batch, seq_len, dim]
+ */
+
+/** LayerNorm, then cross-attention, added back to the stream: x -> x + cross_attention(layernorm(x)). */
+layer cross_attention_sublayer_layernorm(pre_norm_weight: weight, pre_norm_bias: weight,
+                                         epsilon: float, cross_attention: block) {
+    accum {
+        layernorm(pre_norm_weight, pre_norm_bias, epsilon)
+        cross_attention
+    }
+}
+
+/** RMSNorm, then cross-attention, added back to the stream: x -> x + cross_attention(rmsnorm(x)). */
+layer cross_attention_sublayer_rmsnorm(pre_norm_weight: weight, pre_norm_bias: weight,
+                                       epsilon: float, cross_attention: block) {
+    accum {
+        rmsnorm(pre_norm_weight, pre_norm_bias, epsilon)
+        cross_attention
+    }
+}
