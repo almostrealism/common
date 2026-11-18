@@ -289,6 +289,31 @@ class CommitToolTest(unittest.TestCase):
         self.assertEqual(head, self.git("rev-parse", "HEAD"))
         self.assertTrue((self.root / "commit.txt").exists())
 
+    def test_git_timeout_with_captured_bytes_refuses_the_commit(self):
+        # TimeoutExpired carries the captured output as raw bytes on POSIX even
+        # under text=True, so the timeout branch must decode it rather than
+        # concatenate str and bytes (which would raise TypeError out of the tool).
+        self.stage("two\n")
+        (self.root / "commit.txt").write_text("Change a\n")
+        head = self.git("rev-parse", "HEAD")
+        real_run = subprocess.run
+
+        def timing_out_commit(argv, *args, **kwargs):
+            if "commit" in argv:
+                raise subprocess.TimeoutExpired(argv, server.GIT_TIMEOUT_SECONDS,
+                                                output=b"partial out",
+                                                stderr=b"hook noise")
+            return real_run(argv, *args, **kwargs)
+
+        with mock.patch.object(server.subprocess, "run", timing_out_commit):
+            result = server.commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["committed"])
+        self.assertIn("timed out", result["error"])
+        self.assertEqual(head, self.git("rev-parse", "HEAD"))
+        self.assertTrue((self.root / "commit.txt").exists())
+
     def test_staged_message_file_is_refused(self):
         self.stage("two\n")
         (self.root / "commit.txt").write_text("Change a\n")

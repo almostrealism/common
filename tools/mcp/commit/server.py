@@ -53,9 +53,22 @@ def _git(root: Path, *args: str, stdin: str = None) -> subprocess.CompletedProce
         return subprocess.run(argv, input=stdin, capture_output=True,
                               text=True, timeout=GIT_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired as e:
-        return subprocess.CompletedProcess(argv, 124, e.stdout or "",
-                                           (e.stderr or "") + f"git {' '.join(args)} "
+        return subprocess.CompletedProcess(argv, 124, _as_text(e.stdout),
+                                           _as_text(e.stderr) + f"git {' '.join(args)} "
                                            f"timed out after {GIT_TIMEOUT_SECONDS}s")
+
+
+def _as_text(stream) -> str:
+    """Decodes a captured git stream to text.
+
+    ``TimeoutExpired`` carries whatever output the command produced before it was
+    killed, and on POSIX that is the raw ``bytes`` buffer even when ``text=True``
+    was requested, because the timeout aborts before the decode step. Normalizing
+    it here keeps the timeout branch from concatenating ``str`` and ``bytes``.
+    """
+    if isinstance(stream, bytes):
+        return stream.decode("utf-8", "replace")
+    return stream or ""
 
 
 def _git_output(root: Path, *args: str) -> str:
