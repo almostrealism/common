@@ -289,11 +289,17 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @param v     the vector producer, {@code (3)} or a batch such as {@code (n, 3)}
 	 * @param index the index of the component within each vector
 	 * @return a producer for the component of every vector
-	 * @throws IllegalArgumentException if {@code index} is not within the component axis
+	 * @throws IllegalArgumentException if {@code index} is not within the component axis, or
+	 *                                  within a 1-D vector
 	 */
 	default CollectionProducer vectorComponent(Producer<PackedCollection> v, int index) {
 		TraversalPolicy shape = shape(v);
 		if (shape.getDimensions() < 2) {
+			if (index < 0 || index >= shape.getTotalSizeLong()) {
+				throw new IllegalArgumentException("component " + index
+						+ " is out of range for a vector of shape " + shape);
+			}
+
 			return c(v, index);
 		}
 

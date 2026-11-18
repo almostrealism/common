@@ -314,4 +314,23 @@ public class VectorMathTest extends TestSuiteBase {
 			Assert.assertTrue(expected.getMessage().contains("out of range"));
 		}
 	}
+
+	/**
+	 * Tests that a component index beyond the components of a single vector {@code (3)}, or a
+	 * negative index, is rejected as it is for a batch, rather than producing a read past the
+	 * end of the vector.
+	 */
+	@Test(timeout = 30000)
+	public void singleVectorComponentIndexOutOfRangeIsRejected() {
+		Producer<PackedCollection> v = vector(1.0, 2.0, 3.0);
+
+		for (int index : new int[] { 3, -1 }) {
+			try {
+				vectorComponent(v, index);
+				Assert.fail("index " + index + " of a (3) vector should be rejected");
+			} catch (IllegalArgumentException expected) {
+				Assert.assertTrue(expected.getMessage().contains("out of range"));
+			}
+		}
+	}
 }
