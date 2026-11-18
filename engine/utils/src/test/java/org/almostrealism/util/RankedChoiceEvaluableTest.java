@@ -53,15 +53,16 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that the highest rank operation never reads past the end of the
-	 * distances argument, even when the configured count exceeds its length.
-	 * The single-element input is a view over a larger buffer whose following
-	 * elements hold smaller (better) ranks, so reading out of bounds would select one.
+	 * Tests that the highest rank operation never reads past the end of its distances
+	 * argument when the configured count is larger than the argument. The input is a
+	 * single-element view onto a larger buffer whose following elements are smaller
+	 * positive values, so a read past the view would select one of them instead of the
+	 * only real distance.
 	 */
 	@Test(timeout = 10000)
-	public void highestRankRespectsInputLength() {
+	public void highestRankStopsAtInputLength() {
 		PackedCollection backing = pack(1.0, 0.5, 0.25);
-		PackedCollection in = backing.range(shape(1));
+		PackedCollection in = backing.range(shape(1), 0);
 
 		Pair out = RankedChoiceEvaluable.highestRank.evaluate(
 				in, new Pair(3, Intersection.e));
