@@ -53,6 +53,21 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that a configured count larger than the distances argument stops at the
+	 * end of the input, rather than reading the memory that follows it. The input is a
+	 * one-element range view over a larger collection whose later values would win.
+	 */
+	@Test(timeout = 10000)
+	public void highestRankStopsAtInputLength() {
+		PackedCollection backing = pack(1.0, 0.5, 0.25);
+		PackedCollection in = backing.range(new TraversalPolicy(1));
+		Pair out = RankedChoiceEvaluable.highestRank.evaluate(
+				in, new Pair(3, Intersection.e));
+		assertEquals(1.0, out.toDouble(0));
+		assertEquals(0.0, out.toDouble(1));
+	}
+
+	/**
 	 * Tests the highest rank kernel operation.
 	 */
 	@Test(timeout = 10000)

@@ -96,7 +96,9 @@ public class HighestRank extends CollectionProducerComputationBase {
 	 * The algorithm:
 	 * <ol>
 	 *   <li>Initialize closest = -1, closestIndex = -1</li>
-	 *   <li>Iterate through all distance values</li>
+	 *   <li>Iterate through the first {@code count} distance values, stopping at the end of
+	 *       the distances argument when the configured count is larger than it, so the
+	 *       search never reads memory that follows the input</li>
 	 *   <li>Update closest if:
 	 *     <ul>
 	 *       <li>value >= epsilon AND no closest found yet, OR</li>
@@ -124,7 +126,8 @@ public class HighestRank extends CollectionProducerComputationBase {
 		Expression<Double> eps = epsilon();
 
 		Variable i = new Variable(varName("i"), Integer.class);
-		Repeated loop = new Repeated<>(i, i.ref().lessThan(count));
+		Repeated loop = new Repeated<>(i,
+				i.ref().lessThan(count).and(i.ref().lessThan(distances.length())));
 		Scope<?> loopBody = new Scope<>(); {
 			Expression<Double> value = loopBody.declareDouble(varName("value"),
 									distances.reference(i.ref()));
