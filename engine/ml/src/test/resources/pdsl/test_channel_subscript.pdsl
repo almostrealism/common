@@ -1,7 +1,7 @@
 /**
  * Fixture for PdslChannelSubscriptTest: a layer that scales its input by the factor the
- * per-channel subscript selects from a bank. The subscript carves channel {@code index} out
- * of {@code volume}, a bank holding {@code channels} equal slices.
+ * per-channel subscript selects from a bank. The {@code volume} bank holds one gain factor
+ * per channel, and {@code volume[index]} selects the factor for channel {@code index}.
  */
 
 /** Scales the input by the factor that channel {@code index} holds in the {@code volume} bank. */
