@@ -356,6 +356,56 @@ Notes on the declarations:
 
 ---
 
+## 6. Audio processing
+
+Transforming a source buffer of audio into a destination buffer. This family has two parallel
+contracts for the same idea in `engine/audio` (`org.almostrealism.audio.filter`): a
+producer-valued one that is the intended target, and a `@Deprecated` host-valued one that a
+migration is moving away from. It is the same host-valued-vs-producer-valued tension as the
+`Volume` (family 1) and `DistanceEstimator` (family 2) gaps, here within a single module.
+
+| Type | Declared as | Module (package) | Members |
+|---|---|---|---|
+| `AudioProcessor` | `extends Lifecycle` | `engine/audio` (`org.almostrealism.audio.filter`) | `process(Producer destination, Producer source) : Supplier<Runnable>` (producer-valued, deferred); static `fromWave` |
+| `StatelessFilter` | interface (no supertype) | `engine/audio` (`org.almostrealism.audio.filter`) | `filter(..)`; default `toAudioProcessor(..)` adapting a stateless filter to an `AudioProcessor` |
+| `EnvelopeProcessor` | `@Deprecated` interface (no supertype) | `engine/audio` (`org.almostrealism.audio.filter`) | `process(PackedCollection input, PackedCollection output) : void` (host-valued, eager); ADSR setters `setDuration`/`setAttack`/`setDecay`/`setSustain`/`setRelease` |
+| `FilterEnvelopeProcessor` | `implements EnvelopeProcessor, CellFeatures, EnvelopeFeatures` | `engine/audio` (`org.almostrealism.audio.filter`) | the ADSR setters plus the host-valued `process` |
+| `MultiOrderFilterEnvelopeProcessor` | `implements EnvelopeProcessor, Destroyable, CellFeatures, EnvelopeFeatures` | `engine/audio` (`org.almostrealism.audio.filter`) | the ADSR setters plus the host-valued `process` |
+
+Notes on the declarations:
+
+- `AudioProcessor`'s javadoc only links to `EnvelopeProcessor` with `@see`; the supersession is
+  declared on `EnvelopeProcessor` itself, whose javadoc is `@deprecated Use AudioProcessor ...`
+  and whose source carries a note to use `AudioProcessor` instead. Both `FilterEnvelopeProcessor`
+  and `MultiOrderFilterEnvelopeProcessor` carry a source note that they should implement
+  `AudioProcessor`.
+
+### Gaps
+
+- **The ADSR envelope processors are `AudioProcessor`s but implement only the deprecated,
+  host-valued `EnvelopeProcessor`.** A `FilterEnvelopeProcessor`/`MultiOrderFilterEnvelopeProcessor`
+  *is an* `AudioProcessor` (it transforms a source buffer into a destination buffer), and
+  everything lives in `engine/audio` so no new dependency is needed. The blocker is **contract,
+  not module**: `EnvelopeProcessor.process(PackedCollection, PackedCollection)` is host-valued and
+  eager — it is handed concrete buffers and performs the work immediately — whereas
+  `AudioProcessor.process(Producer, Producer)` is producer-valued and deferred (returning a
+  `Supplier<Runnable>` over arbitrary source/destination producers). The two implementors reach
+  that eager result differently: `FilterEnvelopeProcessor` copies the input into a private `input`
+  buffer, runs a pre-compiled pipeline, and copies its private `output` buffer back out, while
+  `MultiOrderFilterEnvelopeProcessor` has no such fields and passes the caller's collections
+  straight into its compiled evaluables, calling `evaluate()`. Either way the pipeline is compiled
+  in the constructor against a fixed sample rate and maximum frame count, so honouring
+  `AudioProcessor` is a re-architecture onto producers, not a member rename — and doing it by
+  evaluating in Java would violate the Producer rules. The two `process` signatures
+  (`PackedCollection, PackedCollection` vs `Producer, Producer`) erase to different Java types, so
+  a class can declare both at once: *adding* the producer-valued `AudioProcessor.process` is
+  therefore an additive, behaviour-preserving step — the existing host-valued overload that the
+  tests call stays in place — and only *retiring* the deprecated `EnvelopeProcessor` later forces
+  migrating those call sites. Filed for a person to approve rather than forced here; this is the
+  same shape as the `Volume`/`DistanceEstimator` gaps in families 1 and 2.
+
+---
+
 ## How to use this map
 
 To find where a concept lives and what it builds on, start from Part I and follow the link to the
@@ -364,9 +414,11 @@ use Part II as follows.
 
 Before introducing a type with a `value`/`normal`/`getValueAt`/`getNormalAt` pair, a
 ray-`intersect`, a `neighbors`/node structure, or a state-advancing step the simulation loop
-owner drives (a `tick`/`step`), find the family above and extend the existing interface rather
+owner drives (a `tick`/`step`), or an operation that transforms a source buffer of audio into a
+destination buffer, find the family above and extend the existing interface rather
 than a `*Features` mixin alone — a population whose step takes no argument *is a* `Temporal`
-(family 5). A grid of sampled values is the one
+(family 5), and a source-to-destination audio transform *is an* `AudioProcessor` (family 6, in its
+producer-valued form). A grid of sampled values is the one
 case where that advice is reversed: family 4 records that **no interface names "a field
 sampled on a grid"**, and the finite-difference calculus is delivered deliberately through the
 `FieldCalculusFeatures` mixin — so reuse that mixin rather than reimplementing its operators or

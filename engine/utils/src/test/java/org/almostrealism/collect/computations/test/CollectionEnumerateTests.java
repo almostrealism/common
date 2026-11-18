@@ -24,7 +24,6 @@ import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -284,21 +283,37 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Tests dynamic sum operation.
+	 * Tests a reduction declared over one item, evaluated into a caller-supplied
+	 * destination over a batch of several items.
 	 */
 	@Test(timeout = 30000)
-	@TestProperties(knownIssue = true)
 	public void dynamicSum() {
+		verifyDynamicSum(3);
+	}
 
+	/**
+	 * Tests the same reduction over a batch of a single item, where the batched
+	 * kernel size coincides with the declared single-item count.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumBatchOfOne() {
+		verifyDynamicSum(1);
+	}
+
+	/**
+	 * Evaluates {@code sum} of each {@code (c, 1)} group of a {@code (count, r, c, 1)} batch
+	 * into a caller-supplied {@code (count, r, 1)} destination and checks every output.
+	 *
+	 * @param count the number of items in the batch
+	 */
+	private void verifyDynamicSum(int count) {
 		int r = 4;
 		int c = 2;
-		int count = 3;
 
 		PackedCollection input = new PackedCollection(shape(count, r, c, 1)).randFill();
 		PackedCollection output = new PackedCollection(shape(count, r, 1));
 
 		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0).traverse(1).sum().get();
-//		PackedCollection output = sum.evaluate(input.traverse(1));
 		sum.into(output.traverse(2)).evaluate(input.traverse(1));
 
 		Assert.assertEquals(count, output.getShape().length(0));
@@ -314,6 +329,286 @@ public class CollectionEnumerateTests extends TestSuiteBase {
 
 				assertEquals(total, output.valueAt(i, j, 0));
 			}
+		}
+	}
+
+	/**
+	 * Tests the reduction without supplying a destination. A fixed-count process allocates its
+	 * own result at its declared shape (see {@code ProducerHookTest#forKernelLength}), which does
+	 * not grow with the batch, so the no-destination form reduces the first item only. Batching a
+	 * fixed-count reduction requires a caller-supplied destination of the batched size (see
+	 * {@link #dynamicSum()}); this test pins the no-destination contract so the two forms are not
+	 * confused.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumNoDestination() {
+		int r = 4;
+		int c = 2;
+		int count = 3;
+
+		PackedCollection input = new PackedCollection(shape(count, r, c, 1)).randFill();
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0).traverse(1).sum().get();
+		PackedCollection output = sum.evaluate(input.traverse(1));
+
+		Assert.assertEquals(r, output.getShape().getCountLong());
+
+		for (int j = 0; j < r; j++) {
+			double total = 0.0;
+			for (int k = 0; k < c; k++) {
+				total += input.valueAt(0, j, k, 0);
+			}
+
+			assertEquals(total, output.valueAt(j, 0));
+		}
+	}
+
+	/**
+	 * Tests a maximum reduction declared over one item, evaluated into a caller-supplied
+	 * destination over a batch of several items, exercising the same batched-count path
+	 * as {@link #dynamicSum()} through a different reduction.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicMax() {
+		int r = 4;
+		int c = 3;
+		int count = 3;
+
+		PackedCollection input = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(count, r, 1));
+
+		Evaluable<PackedCollection> max = cv(shape(r, c, 1), 0).traverse(1).max().get();
+		max.into(output.traverse(2)).evaluate(input.traverse(1));
+
+		for (int i = 0; i < count; i++) {
+			for (int j = 0; j < r; j++) {
+				double expected = input.valueAt(i, j, 0, 0);
+				for (int k = 1; k < c; k++) {
+					expected = Math.max(expected, input.valueAt(i, j, k, 0));
+				}
+
+				assertEquals(expected, output.valueAt(i, j, 0));
+			}
+		}
+	}
+
+	/**
+	 * Tests a mean reduction declared over one item, evaluated into a caller-supplied
+	 * destination over a batch of several items.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicMean() {
+		int r = 4;
+		int c = 2;
+		int count = 3;
+
+		PackedCollection input = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(count, r, 1));
+
+		Evaluable<PackedCollection> mean = cv(shape(r, c, 1), 0).traverse(1).mean().get();
+		mean.into(output.traverse(2)).evaluate(input.traverse(1));
+
+		for (int i = 0; i < count; i++) {
+			for (int j = 0; j < r; j++) {
+				double total = 0.0;
+				for (int k = 0; k < c; k++) {
+					total += input.valueAt(i, j, k, 0);
+				}
+
+				assertEquals(total / c, output.valueAt(i, j, 0));
+			}
+		}
+	}
+
+	/**
+	 * Tests a reduction referencing two arguments that both carry the same batch of items.
+	 * Each referenced argument establishes the same batch factor, so the kernel runs once per
+	 * item and every output is the sum over the corresponding item of both inputs.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumConsistentBatch() {
+		int r = 4;
+		int c = 2;
+		int count = 3;
+
+		PackedCollection a = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection b = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(count, r, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0)
+				.add(cv(shape(r, c, 1), 1)).traverse(1).sum().get();
+		sum.into(output.traverse(2)).evaluate(a.traverse(1), b.traverse(1));
+
+		for (int i = 0; i < count; i++) {
+			for (int j = 0; j < r; j++) {
+				double total = 0.0;
+				for (int k = 0; k < c; k++) {
+					total += a.valueAt(i, j, k, 0) + b.valueAt(i, j, k, 0);
+				}
+
+				assertEquals(total, output.valueAt(i, j, 0));
+			}
+		}
+	}
+
+	/**
+	 * Tests that a reduction referencing a batched argument alongside an argument supplied at
+	 * exactly its declared per-item size (a single item) is rejected. The single-item argument is
+	 * not broadcast across the batch: the kernel reads it index-parametrically like every other
+	 * referenced argument, so every item after the first would read past its data. The
+	 * invocation must be refused rather than produce wrong results for those items.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumRejectsSingleItemArgumentInBatch() {
+		int r = 4;
+		int c = 2;
+		int count = 3;
+
+		PackedCollection a = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection single = new PackedCollection(shape(r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(count, r, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0)
+				.add(cv(shape(r, c, 1), 1)).traverse(1).sum().get();
+
+		try {
+			sum.into(output.traverse(2)).evaluate(a.traverse(1), single.traverse(1));
+			Assert.fail("Expected a single-item argument alongside a batch to be rejected");
+		} catch (IllegalArgumentException expected) {
+			// Every referenced argument must supply the batch the kernel runs over
+		}
+	}
+
+	/**
+	 * Tests that a reduction referencing two single-item arguments, with no batch, is still
+	 * accepted and computed at its declared count.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumSingleItemArguments() {
+		int r = 4;
+		int c = 2;
+
+		PackedCollection a = new PackedCollection(shape(r, c, 1)).randFill();
+		PackedCollection b = new PackedCollection(shape(r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(r, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0)
+				.add(cv(shape(r, c, 1), 1)).traverse(1).sum().get();
+		sum.into(output.traverse(1)).evaluate(a.traverse(1), b.traverse(1));
+
+		for (int j = 0; j < r; j++) {
+			double total = 0.0;
+			for (int k = 0; k < c; k++) {
+				total += a.valueAt(j, k, 0) + b.valueAt(j, k, 0);
+			}
+
+			assertEquals(total, output.valueAt(j, 0));
+		}
+	}
+
+	/**
+	 * Tests that a destination whose count is neither the batched kernel size nor the
+	 * total output size is still rejected, so the batched path does not admit a
+	 * genuinely mismatched destination.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumRejectsWrongDestination() {
+		int r = 4;
+		int c = 2;
+		int count = 3;
+
+		PackedCollection input = new PackedCollection(shape(count, r, c, 1)).randFill();
+		PackedCollection wrong = new PackedCollection(shape(count * r + 1, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0).traverse(1).sum().get();
+
+		try {
+			sum.into(wrong.traverse(1)).evaluate(input.traverse(1));
+			Assert.fail("Expected a mismatched destination to be rejected");
+		} catch (IllegalArgumentException expected) {
+			// The destination count must match the batched kernel size
+		}
+	}
+
+	/**
+	 * Tests that a reduction referencing two arguments supplied with different non-unit
+	 * batch factors is rejected rather than launched with an out-of-bounds mapping for the
+	 * smaller argument. The first input carries three items and the second only two, so the
+	 * batch the two arguments describe is inconsistent and the invocation must be refused.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumRejectsConflictingBatch() {
+		int r = 4;
+		int c = 2;
+
+		PackedCollection a = new PackedCollection(shape(3, r, c, 1)).randFill();
+		PackedCollection b = new PackedCollection(shape(2, r, c, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(3, r, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0)
+				.add(cv(shape(r, c, 1), 1)).traverse(1).sum().get();
+
+		try {
+			sum.into(output.traverse(2)).evaluate(a.traverse(1), b.traverse(1));
+			Assert.fail("Expected conflicting batch factors to be rejected");
+		} catch (IllegalArgumentException expected) {
+			// Every batched argument must supply the same number of items
+		}
+	}
+
+	/**
+	 * Tests that a reduction referencing an argument supplied larger than its declared
+	 * per-item size but not a whole number of items is rejected. The first input carries a
+	 * clean batch of three items (24 values over a declared per-item size of eight) while the
+	 * second carries twenty values, which is not a whole multiple of eight; mapping the second
+	 * argument index-parametrically against the three-item kernel would read it past its data,
+	 * so the invocation must be refused rather than produce an out-of-bounds read.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumRejectsMalformedBatch() {
+		int r = 4;
+		int c = 2;
+
+		PackedCollection a = new PackedCollection(shape(3, r, c, 1)).randFill();
+		PackedCollection malformed = new PackedCollection(shape(20, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(3, r, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0)
+				.add(cv(shape(r, c, 1), 1)).traverse(1).sum().get();
+
+		try {
+			sum.into(output.traverse(2)).evaluate(a.traverse(1), malformed.traverse(1));
+			Assert.fail("Expected a malformed batched argument size to be rejected");
+		} catch (IllegalArgumentException expected) {
+			// A batched argument must supply a whole number of items
+		}
+	}
+
+	/**
+	 * Tests that a reduction referencing an argument supplied smaller than its declared
+	 * per-item size is rejected. The first input carries a clean batch of three items (24
+	 * values over a declared per-item size of eight) while the second carries only four
+	 * values, fewer than one declared item. The kernel reads the declared size per item at
+	 * index-parametric positions, so the undersized argument would be read past its data;
+	 * the invocation must be refused rather than produce an out-of-bounds read.
+	 */
+	@Test(timeout = 30000)
+	public void dynamicSumRejectsUndersizedArgument() {
+		int r = 4;
+		int c = 2;
+
+		PackedCollection a = new PackedCollection(shape(3, r, c, 1)).randFill();
+		PackedCollection undersized = new PackedCollection(shape(4, 1)).randFill();
+		PackedCollection output = new PackedCollection(shape(3, r, 1));
+
+		Evaluable<PackedCollection> sum = cv(shape(r, c, 1), 0)
+				.add(cv(shape(r, c, 1), 1)).traverse(1).sum().get();
+
+		try {
+			sum.into(output.traverse(2)).evaluate(a.traverse(1), undersized.traverse(1));
+			Assert.fail("Expected an undersized referenced argument to be rejected");
+		} catch (IllegalArgumentException expected) {
+			// An index-parametric reference must supply at least its declared per-item size
 		}
 	}
 

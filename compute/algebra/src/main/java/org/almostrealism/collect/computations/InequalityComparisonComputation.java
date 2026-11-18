@@ -131,7 +131,7 @@ public abstract class InequalityComparisonComputation extends CollectionComparis
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return CollectionExpression.create(getShape(), index ->
-				conditional(compare(args[1].getValueAt(index), args[2].getValueAt(index)),
+				conditional(compare(args[1].getValueAt(conditionIndex(index, 1)), args[2].getValueAt(conditionIndex(index, 2))),
 						args[3].getValueAt(index), args[4].getValueAt(index)));
 	}
 }

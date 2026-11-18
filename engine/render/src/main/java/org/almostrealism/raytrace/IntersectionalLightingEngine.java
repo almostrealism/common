@@ -17,11 +17,10 @@
 package org.almostrealism.raytrace;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
+import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.geometry.Curve;
 import org.almostrealism.geometry.Intersectable;
 
 import java.util.Collection;
@@ -49,9 +48,9 @@ import java.util.Collection;
  *   <li>Apply surface shading with the specified light</li>
  * </ul>
  *
- * <p><b>Note:</b> The surface must implement both {@link Intersectable} (to compute intersections)
- * and extend {@link Curve} of RGB (to provide surface color). Most surfaces extend
- * {@link org.almostrealism.space.AbstractSurface} which provides both.</p>
+ * <p>The surface is a {@link ShadableSurface}, which is both {@link Intersectable} (to compute
+ * intersections) and a shadable curve (to provide surface color and shading). Most surfaces
+ * extend {@link org.almostrealism.space.AbstractSurface}.</p>
  *
  * @see LightingEngine
  * @see org.almostrealism.geometry.ShadableIntersection
@@ -68,15 +67,16 @@ public class IntersectionalLightingEngine extends LightingEngine<ContinuousField
 	 * distance, and surface normal.</p>
 	 *
 	 * @param ray           The ray to trace
-	 * @param surface       The surface to intersect (must be both Intersectable and Curve&lt;RGB&gt;)
+	 * @param surface       The surface to intersect and shade
 	 * @param otherSurfaces All other surfaces in the scene (used for shadows/reflections)
 	 * @param light         The light source to use for shading
 	 * @param otherLights   All other lights in the scene (for multi-light scenarios)
 	 * @param p             The shader context containing rendering parameters
 	 */
-    public IntersectionalLightingEngine(Producer<?> ray, Intersectable surface, Collection<Curve<PackedCollection>> otherSurfaces,
+    public IntersectionalLightingEngine(Producer<?> ray, ShadableSurface surface,
+										Collection<? extends ShadableSurface> otherSurfaces,
 										Light light, Iterable<Light> otherLights, ShaderContext p) {
-        super(surface.intersectAt(ray), (Curve<PackedCollection>) surface, otherSurfaces, light, otherLights, p);
+        super(surface.intersectAt(ray), surface, otherSurfaces, light, otherLights, p);
     }
 
 	@Override

@@ -30,7 +30,9 @@ RandomProducer n = randn(shape(3, 4));
 ```
 
 `rand`/`randn` return the `RandomProducer` implementation selected once by the `AR_RANDOM`
-setting (`java`, host-drawn, by default; `counter`, the in-kernel `CounterRandom`). See
+setting (`java`, host-drawn, by default; `counter`, the in-kernel `CounterRandom`). A shape
+whose count is variable, such as `shape(-1, 2)` for one pair per item of a batch, always gets a
+`CounterRandom`, since the host cannot draw values for a count it does not yet know. See
 [Reproducible random drive](neural-population-simulation.md#6-reproducible-random-drive) for
 how the two differ, what `refresh()` does, and the 2^24 seed and counter bound.
 
@@ -84,6 +86,7 @@ data.sum()            // sum of all elements -> shape (1)
 data.mean()           // arithmetic mean -> shape (1)
 data.variance()       // population variance -> shape (1)
 data.max()            // maximum element -> shape (1)
+data.min()            // minimum element -> shape (1)
 data.magnitude()      // L2 norm: sqrt(sum(x^2)) -> shape (1)
 
 // Axis reductions — collapse along one axis using traverse
@@ -91,6 +94,7 @@ data.sum(0)           // sum along axis 0 -> shape (5)
 data.mean(1)          // mean along axis 1 -> shape (10)
 data.variance(0)      // variance along axis 0
 data.max(1)           // max along axis 1
+data.min(0)           // min along axis 0
 data.magnitude(0)     // L2 norm along axis 0
 
 // Centering
@@ -262,6 +266,6 @@ operands to have the same total size, or one operand must be a scalar (size 1).
 - **Mismatched sizes**: Throws `IllegalArgumentException`. Use `reshape`, `repeat`,
   or `traverse` to make shapes compatible before the operation.
 
-Reductions (`sum`, `mean`, `max`, `variance`) replace the item shape with `shape(1)`,
+Reductions (`sum`, `mean`, `max`, `min`, `variance`) replace the item shape with `shape(1)`,
 preserving the traversal structure. The axis argument controls which dimension
 collapses by setting the traversal axis before reduction.
