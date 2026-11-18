@@ -20,6 +20,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -194,19 +195,90 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return CollectionExpression.create(getShape(), index ->
-			conditional(args[1].getValueAt(index).eq(args[2].getValueAt(index)),
+			conditional(args[1].getValueAt(conditionIndex(index, 1)).eq(args[2].getValueAt(conditionIndex(index, 2))),
 						args[3].getValueAt(index), args[4].getValueAt(index)));
 	}
 
 	/**
-	 * Generates a new comparison computation with the specified child processes.
-	 * This default implementation creates an equality comparison with the same name
-	 * and shape as this computation.
+	 * Projects an output element {@code index} onto the comparison operand at the given
+	 * input position, so that an operand narrower than the output item is broadcast across
+	 * the item rather than read element-for-element.
 	 *
-	 * <p>The shape is kept rather than recomputed through the {@code equals} factory,
-	 * whose traversal-axis alignment of the optimized children can choose a different
-	 * output traversal axis than the one this computation has. Subclasses override this
-	 * method to construct their own comparison type in the same way.</p>
+	 * <p>A selection reads its two comparison operands ({@code args[1]} and {@code args[2]})
+	 * at the same index as the true and false branches ({@code args[3]} and {@code args[4]}),
+	 * which set the output item size. When a condition is one value per item &mdash; a per-row
+	 * scalar, such as a variable-count {@code (-1, 1)} input &mdash; but the branches are a vector
+	 * per item, reading the condition at the output element index walks across neighbouring rows
+	 * (stride equal to the item size) instead of holding one condition value for the whole item.
+	 * This method maps an output element index to the position of the condition value that governs
+	 * the item the element belongs to: for a per-row scalar it reduces to {@code index / itemSize}.</p>
+	 *
+	 * <p>When the operand is as wide as the output item (the ordinary element-wise case, including
+	 * scalar operands over a scalar output) the index is returned unchanged, so element-wise,
+	 * same-size, and non-batched selections are unaffected.</p>
+	 *
+	 * <p>The projection applies only to an operand with a variable count &mdash; a batched input
+	 * whose rows are indexed by the kernel without being wrapped to the operand's size. Fixedness is
+	 * read from the operand's {@link TraversalPolicy} as the computation sees it, which already
+	 * carries the operand producer's count contract: the batched inputs that need the projection are
+	 * reported here as variable-count, so testing the shape is equivalent to consulting
+	 * {@link io.almostrealism.relation.Countable#isFixedCount(Object)} on the producer. An operand
+	 * with a fixed count is read at the output element index exactly as any other element-wise
+	 * operand is, so a smaller fixed-count operand keeps the framework's ordinary (repeating)
+	 * element-wise semantics.</p>
+	 *
+	 * <p>Only a per-row scalar &mdash; a single operand value governing a whole output item &mdash;
+	 * is projected. That is the one broadcast this computation can perform unambiguously from the
+	 * operand's total width alone. A wider narrower operand (more than one value per item but fewer
+	 * than the output item) has no consistent flat projection: its values could correspond to an
+	 * outer or an inner axis of the output item, and dividing total widths cannot tell those apart
+	 * (operand item {@code (1, 3)} and output item {@code (2, 3)} both have an operand width of 3
+	 * over an output width of 6, yet an outer-axis broadcast reads {@code 0,0,1,1,2,2} while the
+	 * axis-aware inner broadcast reads {@code 0,1,2,0,1,2}). Rather than guess, such an operand is
+	 * rejected; axis-aware broadcasting of multi-element operands is left to the operand alignment
+	 * that precedes the computation.</p>
+	 *
+	 * @param index         the output element index
+	 * @param inputPosition the input position of the comparison operand (1 for the left operand,
+	 *                      2 for the right operand), matching the {@code args} index
+	 * @return the index at which to read the comparison operand
+	 * @throws IllegalArgumentException if the operand item is narrower than the output item but is
+	 *                                  not a single per-row value
+	 */
+	protected Expression<?> conditionIndex(Expression<?> index, int inputPosition) {
+		TraversalPolicy operandShape = shape(getInputs().get(inputPosition));
+		long outputSize = getShape().getSizeLong();
+		long operandSize = operandShape.getSizeLong();
+
+		// A fixed-count operand keeps the ordinary element-wise read; only a variable-count
+		// operand is projected per row (see the count-contract note in this method's javadoc).
+		if (operandShape.isFixedCount() || operandSize >= outputSize) {
+			return index;
+		}
+
+		if (operandSize != 1) {
+			throw new IllegalArgumentException(
+					"Comparison operand item size " + operandSize +
+							" is not broadcast-compatible with output item size " + outputSize +
+							" (a narrower comparison operand must be a single per-row value)");
+		}
+
+		// Per-row scalar: every output element of an item reads the one condition value for it.
+		return index.toInt().divide(outputSize);
+	}
+
+	/**
+	 * Generates a new comparison computation of the same kind over the specified child processes.
+	 *
+	 * <p>Two kinds of caller supply children. The optimizer supplies optimized versions of this
+	 * computation's own inputs; none of them is larger than this computation's output, and the new
+	 * computation keeps this computation's shape. That shape is not recomputed by aligning the
+	 * children's traversal axes, because the alignment can choose a different output traversal axis
+	 * than the one this computation has. The transitive delta ({@link #deltaMatrix}) instead supplies
+	 * derivatives of the branch values, which carry the target's dimensions as well and are larger
+	 * than this computation's output. Their output shape is derived from the children by aligning
+	 * their traversal axes, as the comparison factories in
+	 * {@link org.almostrealism.collect.ComparisonFeatures} do.</p>
 	 *
 	 * @param children List of child {@link Process} instances where:
 	 *                 <ul>
@@ -219,8 +291,42 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new CollectionComparisonComputation(getName(), getShape(),
-				(Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
-				(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4));
+		Producer<PackedCollection> left = (Producer<PackedCollection>) children.get(1);
+		Producer<PackedCollection> right = (Producer<PackedCollection>) children.get(2);
+		Producer<PackedCollection> positive = (Producer<PackedCollection>) children.get(3);
+		Producer<PackedCollection> negative = (Producer<PackedCollection>) children.get(4);
+
+		long outputSize = getShape().getTotalSizeLong();
+		boolean fitsShape = children.stream().skip(1)
+				.allMatch(child -> shape(child).getTotalSizeLong() <= outputSize);
+
+		if (fitsShape) {
+			return generate(getShape(), left, right, positive, negative);
+		}
+
+		return (CollectionProducerParallelProcess) compute((shape, args) ->
+						generate(shape, args.get(0), args.get(1), args.get(2), args.get(3)),
+				null, left, right, positive, negative);
+	}
+
+	/**
+	 * Creates a comparison computation of the same kind as this one, with the given output
+	 * shape and operands. This default implementation creates an equality comparison with
+	 * the same name as this computation; subclasses override it to construct their own
+	 * comparison type.
+	 *
+	 * @param shape    the output shape of the new computation
+	 * @param left     the left-hand side comparison values
+	 * @param right    the right-hand side comparison values
+	 * @param positive the values to use where the comparison is true
+	 * @param negative the values to use where the comparison is false
+	 * @return the new comparison computation
+	 */
+	protected CollectionProducerParallelProcess generate(TraversalPolicy shape,
+														 Producer<PackedCollection> left,
+														 Producer<PackedCollection> right,
+														 Producer<PackedCollection> positive,
+														 Producer<PackedCollection> negative) {
+		return new CollectionComparisonComputation(getName(), shape, left, right, positive, negative);
 	}
 }

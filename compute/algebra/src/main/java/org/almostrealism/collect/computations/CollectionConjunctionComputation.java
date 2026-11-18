@@ -19,12 +19,9 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
-
-import java.util.List;
 
 /**
  * A computation that performs element-wise logical AND operation on two {@link PackedCollection}s,
@@ -188,31 +185,28 @@ public class CollectionConjunctionComputation extends CollectionComparisonComput
 		// Check if a != 0 and b != 0 by using eq().not()
 		return CollectionExpression.create(getShape(), index ->
 				conditional(
-						args[1].getValueAt(index).eq(e(0.0)).not()
-								.and(args[2].getValueAt(index).eq(e(0.0)).not()),
+						args[1].getValueAt(conditionIndex(index, 1)).eq(e(0.0)).not()
+								.and(args[2].getValueAt(conditionIndex(index, 2)).eq(e(0.0)).not()),
 						args[3].getValueAt(index),
 						args[4].getValueAt(index)));
 	}
 
 	/**
-	 * Generates a new logical AND computation with the specified child processes.
-	 * The new instance keeps this computation's shape rather than going back through
-	 * the {@code and} factory, whose traversal-axis alignment of the optimized children
-	 * can choose a different output traversal axis than the one this computation has.
+	 * Creates a logical AND computation with the given output shape and operands.
 	 *
-	 * @param children List of child {@link Process} instances where:
-	 *                 <ul>
-	 *                   <li>children.get(1) - left operand producer</li>
-	 *                   <li>children.get(2) - right operand producer</li>
-	 *                   <li>children.get(3) - true value producer</li>
-	 *                   <li>children.get(4) - false value producer</li>
-	 *                 </ul>
-	 * @return A new {@link CollectionProducerParallelProcess} for parallel execution
+	 * @param shape    the output shape of the new computation
+	 * @param left     the left-hand side operand
+	 * @param right    the right-hand side operand
+	 * @param positive the values to use where both operands are true
+	 * @param negative the values to use where either operand is false
+	 * @return the new {@link CollectionConjunctionComputation}
 	 */
 	@Override
-	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new CollectionConjunctionComputation(getShape(),
-				(Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
-				(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4));
+	protected CollectionProducerParallelProcess generate(TraversalPolicy shape,
+														 Producer<PackedCollection> left,
+														 Producer<PackedCollection> right,
+														 Producer<PackedCollection> positive,
+														 Producer<PackedCollection> negative) {
+		return new CollectionConjunctionComputation(shape, left, right, positive, negative);
 	}
 }

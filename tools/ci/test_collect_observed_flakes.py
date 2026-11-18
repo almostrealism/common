@@ -58,6 +58,26 @@ class SurefireParsingTests(unittest.TestCase):
             collect_observed_flakes.surefire_failures(log),
             {"org.example.FooTest#computesSum", "org.example.BarTest#reads"})
 
+    def test_the_dash_separated_line_of_the_current_plugin_is_read(self):
+        # The lines a real test-lane job log carries: the per-class summary,
+        # then the failing method, name and timing separated by " -- ".
+        log = "\n".join([
+            "2026-11-18T02:32:54.3387150Z [ERROR] Tests run: 2, Failures: 1, Errors: 0, "
+            "Skipped: 0, Time elapsed: 0.018 s <<< FAILURE! -- in org.example.FooTest",
+            "2026-11-18T02:32:54.3387960Z [ERROR] org.example.FooTest.computesSum "
+            "-- Time elapsed: 0.003 s <<< FAILURE!",
+            "2026-11-18T02:32:55.0000000Z [ERROR] org.example.BarTest.reads[2] "
+            "-- Time elapsed: 1.5 s <<< ERROR!",
+        ])
+        self.assertEqual(
+            collect_observed_flakes.surefire_failures(log),
+            {"org.example.FooTest#computesSum", "org.example.BarTest#reads"})
+
+    def test_the_class_summary_line_alone_names_no_test(self):
+        log = ("2026-11-18T02:32:54.3387150Z [ERROR] Tests run: 2, Failures: 1, Errors: 0, "
+               "Skipped: 0, Time elapsed: 0.018 s <<< FAILURE! -- in org.example.FooTest")
+        self.assertEqual(collect_observed_flakes.surefire_failures(log), set())
+
     def test_parameterised_method_collapses_to_one_name(self):
         log = "\n".join([
             _surefire_line("org.example.FooTest.render[0]"),
