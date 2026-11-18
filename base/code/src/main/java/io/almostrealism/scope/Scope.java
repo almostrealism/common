@@ -47,11 +47,8 @@ import org.almostrealism.io.SystemUtils;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -155,7 +152,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 
 	/**
 	 * Reference index counter used for generating unique variable names
-	 * during expression replacement processing.
+	 * during expression replacement processing (see {@link #nextVariableName()}).
 	 */
 	private int refIdx;
 
@@ -1012,10 +1009,7 @@ public class Scope<T> extends ArrayList<Scope<T>>
 
 		scope.getStatements().addAll(processReplacements((List) getStatements()
 						.stream().map(simplification).collect(Collectors.toList()),
-				() -> Optional.ofNullable(ExpressionCache.getCurrent())
-						.filter(Predicate.not(ExpressionCache::isEmpty))
-						.map(ExpressionCache::getFrequentExpressions)
-						.orElse(Collections.emptyList())));
+				ExpressionCache::getCurrentFrequentExpressions));
 
 		scope.getVariables().addAll((List) getVariables()
 				.stream().map(simplification).collect(Collectors.toList()));
@@ -1357,27 +1351,17 @@ public class Scope<T> extends ArrayList<Scope<T>>
 	public Console console() { return console; }
 
 	/**
-	 * Processes expression replacements to extract common subexpressions.
-	 * <p>This method identifies frequently-used expressions and replaces them with
-	 * variable references to avoid redundant computation. The process iterates
-	 * until no more replacements can be made or the maximum replacement limit is reached.</p>
-	 *
-	 * <p>The algorithm:</p>
-	 * <ol>
-	 *   <li>Identify expressions that are used but not yet declared</li>
-	 *   <li>Create variable declarations for these expressions</li>
-	 *   <li>Replace occurrences of the expressions with variable references</li>
-	 *   <li>Repeat until no new replacement opportunities exist</li>
-	 * </ol>
-	 *
-	 * <p>Replacements are applied in the order they were declared. The order changes the
-	 * generated code, since a replacement can absorb part of another target, so it must
-	 * not depend on hash iteration order: every {@link StaticReference} has the same hash,
-	 * and a hash table holding many of them orders them by identity, which differs from
-	 * one run to the next.</p>
+	 * Replaces the common sub-expressions of the given statements: each candidate offered by
+	 * {@code replacementTargets} that the statements compute is declared once, as a variable of
+	 * this scope ahead of them, and the statements obtain its value from that variable, as
+	 * described by {@link CommonSubexpressions}. {@link #simplify(KernelStructureContext, int)}
+	 * applies this to its simplified statements, offering the
+	 * {@link ExpressionCache#getCurrentFrequentExpressions() frequent expressions} of the active
+	 * expression cache.
 	 *
 	 * @param statements         the list of statements to process
-	 * @param replacementTargets supplier of expressions that are candidates for replacement
+	 * @param replacementTargets supplier of expressions that are candidates for replacement,
+	 *                           asked again after every round of replacements
 	 * @return the processed statements with common subexpressions extracted
 	 */
 	protected List<Statement<?>> processReplacements(List<Statement<?>> statements,
@@ -1387,100 +1371,25 @@ public class Scope<T> extends ArrayList<Scope<T>>
 		long start = System.nanoTime();
 
 		try {
-			Set<Expression<?>> processed = new HashSet<>();
-			List<Statement<?>> declarations = new ArrayList<>();
-			Map<StaticReference, Expression<?>> replacements = new LinkedHashMap<>();
-
-			Set<Expression<?>> targets = new HashSet<>(replacementTargets.get());
-
-			while (!targets.isEmpty() && replacements.size() < ScopeSettings.getMaximumReplacements()) {
-				if (verbose) log("Processing " + targets.size() + " replacement targets");
-				boolean updated = false;
-
-				// Replace all targets which are used, but not already declared
-				r: for (Expression<?> e : targets) {
-					if (replacements.size() >= ScopeSettings.getMaximumReplacements()) {
-						break r;
-					}
-
-					boolean inUse = statements.stream()
-							.filter(ExpressionAssignment.class::isInstance)
-							.map(s -> (ExpressionAssignment) s)
-							.map(ExpressionAssignment::getExpression)
-							.anyMatch(exp -> exp.contains(e));
-					boolean alreadyDeclared = statements.stream()
-							.filter(ExpressionAssignment.class::isInstance)
-							.map(s -> (ExpressionAssignment) s)
-							.filter(ExpressionAssignment::isDeclaration)
-							.map(ExpressionAssignment::getExpression)
-							.anyMatch(exp -> exp.equals(e));
-
-					if (inUse && !alreadyDeclared) {
-						StaticReference ref = new StaticReference<>(e.getDeclarationType(), getName() + "_" + refIdx++);
-						declarations.add(new ExpressionAssignment(true, ref, e));
-						replacements.put(ref, e);
-						updated = true;
-					}
-
-					// Record the target, as it
-					// should not be visited again
-					processed.add(e);
-				}
-
-				// If any replacements were declared, update all
-				// the statements to include them
-				if (updated) {
-					List<Statement<?>> next = new ArrayList<>();
-
-					for (Statement<?> s : statements) {
-						if (s instanceof ExpressionAssignment) {
-							ExpressionAssignment assignment = (ExpressionAssignment) s;
-
-							for (StaticReference r : replacements.keySet()) {
-								Expression<?> e = replacements.get(r);
-								if (assignment.getExpression().contains(e)) {
-									assignment = new ExpressionAssignment(
-											assignment.isDeclaration(),
-											assignment.getDestination(),
-											assignment.getExpression().replace(e, r));
-								}
-							}
-
-							next.add(assignment);
-						} else {
-							next.add(s);
-						}
-					}
-
-					// The process will be repeated, but with the
-					// updated statements and any new targets that
-					// may have been identified in the process
-					statements = next;
-				}
-
-				// Reset the targets and prepare to review
-				// any new replacement opportunities that
-				// have not already been reviewed
-				targets.clear();
-				replacementTargets.get().stream()
-						.filter(Predicate.not(processed::contains))
-						.forEach(targets::add);
-			}
-
-			// If no replacements were made, return the statements
-			if (declarations.isEmpty()) return statements;
-
-			// Otherwise, combine the declarations with the updated statements
-			List<Statement<?>> result = new ArrayList<>();
-			result.addAll(declarations);
-			result.addAll(statements);
-			return result;
+			return new CommonSubexpressions(this, statements).replace(replacementTargets);
 		} finally {
 			if (timing != null) {
 				timing.recordDuration(getMetadata(), getMetadata(),
 						"processReplacements", System.nanoTime() - start);
 			}
 		}
+	}
+
+	/**
+	 * Returns the name of a new variable of this scope: the name of the scope followed by its
+	 * reference index, which advances with every name returned, so no two names this scope
+	 * returns are the same. {@link CommonSubexpressions} names the variables it declares for
+	 * this scope this way.
+	 *
+	 * @return the name for the next variable of this scope
+	 */
+	String nextVariableName() {
+		return getName() + "_" + refIdx++;
 	}
 
 	/**
