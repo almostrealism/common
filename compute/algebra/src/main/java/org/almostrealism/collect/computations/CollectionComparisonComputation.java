@@ -268,17 +268,11 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	}
 
 	/**
-	 * Generates a new comparison computation of the same kind over the specified child processes.
-	 *
-	 * <p>Two kinds of caller supply children. The optimizer supplies optimized versions of this
-	 * computation's own inputs; none of them is larger than this computation's output, and the new
-	 * computation keeps this computation's shape. That shape is not recomputed by aligning the
-	 * children's traversal axes, because the alignment can choose a different output traversal axis
-	 * than the one this computation has. The transitive delta ({@link #deltaMatrix}) instead supplies
-	 * derivatives of the branch values, which carry the target's dimensions as well and are larger
-	 * than this computation's output. Their output shape is derived from the children by aligning
-	 * their traversal axes, as the comparison factories in
-	 * {@link org.almostrealism.collect.ComparisonFeatures} do.</p>
+	 * Generates a new comparison computation of the same kind over optimized versions of this
+	 * computation's inputs, keeping this computation's shape. That shape is not recomputed by
+	 * aligning the children's traversal axes, because the alignment can choose a different output
+	 * traversal axis than the one this computation has. Operands derived from the inputs (their
+	 * derivatives, tangents or diagonal scalars) are handled by {@link #generateDerived(List)}.
 	 *
 	 * @param children List of child {@link Process} instances where:
 	 *                 <ul>
@@ -291,23 +285,30 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		Producer<PackedCollection> left = (Producer<PackedCollection>) children.get(1);
-		Producer<PackedCollection> right = (Producer<PackedCollection>) children.get(2);
-		Producer<PackedCollection> positive = (Producer<PackedCollection>) children.get(3);
-		Producer<PackedCollection> negative = (Producer<PackedCollection>) children.get(4);
+		return generate(getShape(),
+				(Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
+				(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4));
+	}
 
-		// TODO(review): getDiagonalScalar also calls generate with scalar children; confirm keeping getShape() there is intended
-		long outputSize = getShape().getTotalSizeLong();
-		boolean fitsShape = children.stream().skip(1)
-				.allMatch(child -> shape(child).getTotalSizeLong() <= outputSize);
-
-		if (fitsShape) {
-			return generate(getShape(), left, right, positive, negative);
-		}
-
+	/**
+	 * Generates a new comparison computation of the same kind over operands derived from this
+	 * computation's inputs. The transitive delta supplies derivatives of the branch values, which
+	 * also carry the target's dimensions, and diagonal scalar extraction supplies the scalar of
+	 * each input; in both cases the output shape is derived from the operands by aligning their
+	 * traversal axes, as the comparison factories in
+	 * {@link org.almostrealism.collect.ComparisonFeatures} do.
+	 *
+	 * @param operands the operands, where index 0 is the destination placeholder followed by the
+	 *                 left, right, positive and negative operands
+	 * @return the new comparison computation
+	 */
+	@Override
+	protected CollectionProducerParallelProcess generateDerived(List<Process<?, ?>> operands) {
 		return (CollectionProducerParallelProcess) compute((shape, args) ->
 						generate(shape, args.get(0), args.get(1), args.get(2), args.get(3)),
-				null, left, right, positive, negative);
+				null,
+				(Producer<PackedCollection>) operands.get(1), (Producer<PackedCollection>) operands.get(2),
+				(Producer<PackedCollection>) operands.get(3), (Producer<PackedCollection>) operands.get(4));
 	}
 
 	/**

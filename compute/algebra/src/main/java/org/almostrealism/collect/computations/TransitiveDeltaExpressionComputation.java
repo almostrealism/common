@@ -23,6 +23,7 @@ import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
@@ -182,7 +183,7 @@ public abstract class TransitiveDeltaExpressionComputation
 		List<Process<?, ?>> operands = new ArrayList<>();
 		operands.add(null);
 		operands.addAll(scalars);
-		return Optional.of(generate(operands));
+		return Optional.of(generateDerived(operands));
 	}
 
 	/**
@@ -280,7 +281,7 @@ public abstract class TransitiveDeltaExpressionComputation
 			}
 		}
 
-		return generate(deltas).reshape(getShape().append(targetShape));
+		return generateDerived(deltas).reshape(getShape().append(targetShape));
 	}
 
 	/**
@@ -313,6 +314,26 @@ public abstract class TransitiveDeltaExpressionComputation
 			}
 		}
 
-		return generate(tangents);
+		return generateDerived(tangents);
+	}
+
+	/**
+	 * Generates a computation of the same kind as this one over operands that are derived from
+	 * this computation's inputs (their derivatives, tangents or diagonal scalars) rather than
+	 * optimized replacements for them. Such operands generally have different shapes than the
+	 * inputs, so the output shape of the result is determined by the operands rather than taken
+	 * from this computation.
+	 *
+	 * <p>{@link #generate(List)} is the method the optimizer uses to rebuild this computation
+	 * from optimized inputs. This default implementation delegates to it, which is correct for
+	 * any computation whose {@link #generate(List)} derives its shape from the children it is
+	 * given. A subclass whose {@link #generate(List)} preserves its own shape overrides this
+	 * method to derive the shape from the operands instead.</p>
+	 *
+	 * @param operands the operands, where index 0 is the destination placeholder
+	 * @return the new computation
+	 */
+	protected CollectionProducerParallelProcess generateDerived(List<Process<?, ?>> operands) {
+		return generate(operands);
 	}
 }

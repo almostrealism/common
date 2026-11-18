@@ -16,7 +16,9 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.computations.ScalarMatrixComputation;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.GreaterThanCollection;
@@ -24,6 +26,8 @@ import org.almostrealism.collect.computations.LessThanCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.Optional;
 
 /**
  * Tests that pin the behavior shared by {@link GreaterThanCollection} and
@@ -239,6 +243,33 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 					Assert.assertEquals(expected, jacobian.toDouble(i * 4 + j), 1e-6);
 				}
 			}
+		}
+	}
+
+	/**
+	 * The diagonal scalar of a comparison between scalar matrices is a comparison of their
+	 * scalars, and it has the scalars' shape rather than the matrix shape of the comparison it
+	 * was extracted from. A matrix multiplication by a diagonal matrix multiplies by this scalar,
+	 * so a matrix-shaped scalar would change the shape of the product.
+	 */
+	@Test(timeout = 30000)
+	public void comparisonDiagonalScalarHasScalarShape() {
+		int n = 4;
+		GreaterThanCollection comparison = new GreaterThanCollection(shape(n, n),
+				new ScalarMatrixComputation(shape(n, n), c(3.0)),
+				new ScalarMatrixComputation(shape(n, n), c(2.0)),
+				new ScalarMatrixComputation(shape(n, n), c(5.0)),
+				new ScalarMatrixComputation(shape(n, n), c(7.0)), false);
+
+		Optional<Computable> scalar = comparison.getDiagonalScalar(n);
+		Assert.assertTrue(scalar.isPresent());
+
+		CollectionProducer scalarProducer = (CollectionProducer) scalar.get();
+		Assert.assertEquals(1, scalarProducer.getShape().getTotalSize());
+
+		try (PackedCollection result = scalarProducer.evaluate()) {
+			Assert.assertEquals(1, result.getMemLength());
+			Assert.assertEquals(5.0, result.toDouble(0), 1e-6);
 		}
 	}
 
