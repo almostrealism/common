@@ -302,6 +302,107 @@ public class HardwareMemoryProviderReclaimTest {
 	}
 
 	/**
+	 * A data context whose release of finished work throws does not stop the release of the
+	 * contexts after it: every context is asked, the failure is logged, and the allocation fits
+	 * using the room the later context gave back.
+	 */
+	@Test(timeout = 30000)
+	public void reclaimReleasesEveryContextWhenOneThrows() {
+		long max = 100;
+		AtomicLong used = new AtomicLong(max);
+		AtomicInteger failedReleases = new AtomicInteger();
+		UnregisteredDataContext failing = new UnregisteredDataContext(new AtomicLong()) {
+			@Override
+			public void releaseFinishedWork() {
+				failedReleases.incrementAndGet();
+				throw new IllegalStateException("context release failure");
+			}
+		};
+		UnregisteredDataContext owner = new UnregisteredDataContext(used);
+		OwnedProvider provider = new OwnedProvider(owner) {
+			@Override
+			protected List<DataContext<MemoryData>> getReclaimContexts() {
+				return List.of(failing, owner);
+			}
+		};
+
+		Assert.assertTrue("The allocation must fit once the later context's work is released",
+				provider.reserve(used, max, 40));
+		Assert.assertEquals("The failing context must be asked once", 1, failedReleases.get());
+		Assert.assertEquals("The context after the failing one must still be released",
+				1, owner.releases.get());
+		Assert.assertEquals("Only one collection must be needed", List.of("collect"), provider.steps);
+		Assert.assertEquals("The reservation must be counted", 40, used.get());
+	}
+
+	/**
+	 * Releasing finished work asks every reclaim context, in order, even when several fail, and
+	 * rethrows the first failure with the later ones suppressed.
+	 */
+	@Test(timeout = 30000)
+	public void releaseFinishedWorkAttemptsAllContextsAndRethrowsFirstFailure() {
+		List<String> asked = new ArrayList<>();
+		IllegalStateException first = new IllegalStateException("first");
+		IllegalStateException second = new IllegalStateException("second");
+		UnregisteredDataContext a = new UnregisteredDataContext(new AtomicLong()) {
+			@Override
+			public void releaseFinishedWork() {
+				asked.add("a");
+				throw first;
+			}
+		};
+		UnregisteredDataContext b = new UnregisteredDataContext(new AtomicLong()) {
+			@Override
+			public void releaseFinishedWork() {
+				asked.add("b");
+			}
+		};
+		UnregisteredDataContext c = new UnregisteredDataContext(new AtomicLong()) {
+			@Override
+			public void releaseFinishedWork() {
+				asked.add("c");
+				throw second;
+			}
+		};
+		OwnedProvider provider = new OwnedProvider(null) {
+			@Override
+			protected List<DataContext<MemoryData>> getReclaimContexts() {
+				return List.of(a, b, c);
+			}
+		};
+
+		try {
+			provider.releaseFinishedWork();
+			Assert.fail("The first release failure must be rethrown");
+		} catch (IllegalStateException e) {
+			Assert.assertSame("The first failure must be rethrown", first, e);
+			Assert.assertArrayEquals("Later failures must be suppressed onto the first",
+					new Throwable[] { second }, e.getSuppressed());
+		}
+
+		Assert.assertEquals("Every context must be asked, in order", List.of("a", "b", "c"), asked);
+	}
+
+	/**
+	 * The reclaim contexts include the provider's own data context exactly once, after the
+	 * contexts registered with {@link Hardware}, and include no owner when the provider has none.
+	 */
+	@Test(timeout = 30000)
+	public void reclaimContextsIncludeOwnerOnce() {
+		UnregisteredDataContext owner = new UnregisteredDataContext(new AtomicLong());
+		Hardware hw = Hardware.getLocalHardware();
+		List<DataContext<MemoryData>> registered = hw == null ? List.of() : hw.getAllDataContexts();
+
+		List<DataContext<MemoryData>> owned = new OwnedProvider(owner).getReclaimContexts();
+		Assert.assertEquals("The owner must follow the registered contexts",
+				registered.size() + 1, owned.size());
+		Assert.assertSame("The owner must be last", owner, owned.get(owned.size() - 1));
+
+		Assert.assertEquals("A provider with no owner must release only the registered contexts",
+				registered, new OwnedProvider(null).getReclaimContexts());
+	}
+
+	/**
 	 * A registered ceiling release that throws does not stop the collection pass: the failure is
 	 * logged, the garbage collection still runs, and the allocation succeeds on memory grounds.
 	 */

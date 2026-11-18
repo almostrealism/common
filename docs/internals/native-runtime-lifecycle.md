@@ -301,7 +301,9 @@ provider's own data context (`HardwareMemoryProvider.getContext()`) when it is n
 as with the isolated context `Hardware.dataContext(...)` runs a callable in, to release
 finished work (`DataContext.releaseFinishedWork()`, reaching the
 `ComputeContext.releaseFinishedWork()` of every compute context the data context has already
-created) before each collection it requests. The release never goes through
+created) before each collection it requests. Every context is asked even when an earlier one
+fails, so one context's failure cannot leave the others' finished work pinned; a failure is logged
+and the collection still runs. The release never goes through
 `getComputeContexts()`, which may create a context or start a device and on some backends sees
 only the calling thread's contexts; a data context that has never run any work does nothing. The Metal runner then commits its open buffer and drains every
 committed buffer the GPU has finished, without waiting for the GPU

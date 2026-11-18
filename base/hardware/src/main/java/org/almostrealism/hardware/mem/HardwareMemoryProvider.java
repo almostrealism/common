@@ -446,8 +446,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 	public DataContext<MemoryData> getContext() { return null; }
 
 	/**
-	 * Asks every data context of the local {@link Hardware}, and this provider's own
-	 * {@link #getContext() data context} when it is not one of them, to release what finished
+	 * Asks every {@link #getReclaimContexts() reclaim context} to release what finished
 	 * kernel work still holds (see {@link DataContext#releaseFinishedWork()}). Called once per
 	 * {@link #collectionPass() collection pass}, before the collection.
 	 *
@@ -458,14 +457,32 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 	 * however many collections were requested. Releasing finished work first makes that memory
 	 * unreachable, and the collection that follows frees it; work the backend commits here is
 	 * released by a later pass once the device has finished it.</p>
+	 *
+	 * <p>Every context is asked even when an earlier one fails, so one context's failure cannot
+	 * leave the finished work of the others pinned; the first failure is rethrown once all have
+	 * been attempted (see {@link Destroyable#releaseAll(Iterable)}).</p>
 	 */
 	protected void releaseFinishedWork() {
+		Destroyable.releaseAll(getReclaimContexts().stream()
+				.<Runnable>map(context -> context::releaseFinishedWork)
+				.collect(Collectors.toList()));
+	}
+
+	/**
+	 * Returns the data contexts whose finished work {@link #releaseFinishedWork()} releases: every
+	 * data context of the local {@link Hardware}, followed by this provider's own
+	 * {@link #getContext() data context} when it is not one of them.
+	 *
+	 * @return a new list of the contexts to release, each appearing once
+	 */
+	protected List<DataContext<MemoryData>> getReclaimContexts() {
 		Hardware hw = Hardware.getLocalHardware();
-		List<DataContext<MemoryData>> registered = hw == null ? List.of() : hw.getAllDataContexts();
-		registered.forEach(DataContext::releaseFinishedWork);
+		List<DataContext<MemoryData>> contexts =
+				new ArrayList<>(hw == null ? List.of() : hw.getAllDataContexts());
 
 		DataContext<MemoryData> owner = getContext();
-		if (owner != null && !registered.contains(owner)) owner.releaseFinishedWork();
+		if (owner != null && !contexts.contains(owner)) contexts.add(owner);
+		return contexts;
 	}
 
 	/**
