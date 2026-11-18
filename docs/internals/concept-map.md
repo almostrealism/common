@@ -356,6 +356,48 @@ Notes on the declarations:
 
 ---
 
+## 6. Audio processing
+
+Transforming a source buffer of audio into a destination buffer. This family has two parallel
+contracts for the same idea in `engine/audio` (`org.almostrealism.audio.filter`): a
+producer-valued one that is the intended target, and a `@Deprecated` host-valued one that a
+migration is moving away from. It is the same host-valued-vs-producer-valued tension as family 2
+(`Volume`/`DistanceEstimator`), here within a single module.
+
+| Type | Declared as | Module (package) | Members |
+|---|---|---|---|
+| `AudioProcessor` | `extends Lifecycle` | `engine/audio` (`org.almostrealism.audio.filter`) | `process(Producer destination, Producer source) : Supplier<Runnable>` (producer-valued, deferred); static `fromWave` |
+| `StatelessFilter` | interface (no supertype) | `engine/audio` (`org.almostrealism.audio.filter`) | `filter(..)`; default `toAudioProcessor(..)` adapting a stateless filter to an `AudioProcessor` |
+| `EnvelopeProcessor` | `@Deprecated` interface (no supertype) | `engine/audio` (`org.almostrealism.audio.filter`) | `process(PackedCollection input, PackedCollection output) : void` (host-valued, eager); ADSR setters `setDuration`/`setAttack`/`setDecay`/`setSustain`/`setRelease` |
+| `FilterEnvelopeProcessor` | `implements EnvelopeProcessor, CellFeatures, EnvelopeFeatures` | `engine/audio` (`org.almostrealism.audio.filter`) | the ADSR setters plus the host-valued `process` |
+| `MultiOrderFilterEnvelopeProcessor` | `implements EnvelopeProcessor, Destroyable, CellFeatures, EnvelopeFeatures` | `engine/audio` (`org.almostrealism.audio.filter`) | the ADSR setters plus the host-valued `process` |
+
+Notes on the declarations:
+
+- `AudioProcessor`'s javadoc names `EnvelopeProcessor` as the concept it supersedes, and
+  `EnvelopeProcessor`'s javadoc and a source TODO say to use `AudioProcessor` instead. Both
+  `FilterEnvelopeProcessor` and `MultiOrderFilterEnvelopeProcessor` carry a
+  `// TODO  This should implement AudioProcessor`.
+
+### Gaps
+
+- **The ADSR envelope processors are `AudioProcessor`s but implement only the deprecated,
+  host-valued `EnvelopeProcessor`.** A `FilterEnvelopeProcessor`/`MultiOrderFilterEnvelopeProcessor`
+  *is an* `AudioProcessor` (it transforms a source buffer into a destination buffer), and
+  everything lives in `engine/audio` so no new dependency is needed. The blocker is **contract,
+  not module**: `EnvelopeProcessor.process(PackedCollection, PackedCollection)` is host-valued and
+  eager (it copies concrete buffers into internal `input`/`output` fields and calls `.run()`),
+  whereas `AudioProcessor.process(Producer, Producer)` is producer-valued and deferred (returning a
+  `Supplier<Runnable>` over arbitrary source/destination producers). The processors' internal
+  compiled pipelines are hardwired to their own `input`/`output` fields, so honouring
+  `AudioProcessor` is a re-architecture onto producers, not a member rename — and doing it by
+  evaluating in Java would violate the Producer rules. Existing tests call the host-valued
+  `process`, so the migration cannot be behaviour-preserving for them. Filed for a person to
+  approve rather than forced here; this is the same shape as the `Volume`/`DistanceEstimator` gaps
+  in families 1 and 2.
+
+---
+
 ## How to use this map
 
 To find where a concept lives and what it builds on, start from Part I and follow the link to the
