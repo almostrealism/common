@@ -243,4 +243,75 @@ public class VectorMathTest extends TestSuiteBase {
 		assertEquals(3.0, z(v).evaluate().toDouble(0));
 		assertEquals(1, shape(z(v)).getTotalSize());
 	}
+
+	/**
+	 * Tests that a column-shaped vector {@code (3, 1)} gives each of its components, as a
+	 * {@code (1, 1)} value, rather than being sliced along its trailing axis of length one.
+	 */
+	@Test(timeout = 30000)
+	public void columnVectorComponents() {
+		PackedCollection v = pack(1.0, 2.0, 3.0).reshape(3, 1);
+		CollectionProducer[] components = { x(cp(v)), y(cp(v)), z(cp(v)) };
+
+		for (int c = 0; c < 3; c++) {
+			assertEquals(2, shape(components[c]).getDimensions());
+			assertEquals(1, shape(components[c]).length(0));
+			assertEquals(1, shape(components[c]).length(1));
+			assertEquals(c + 1.0, components[c].evaluate().toDouble(0));
+		}
+	}
+
+	/**
+	 * Tests that a batch of one vector {@code (1, 3)} keeps its batch axis, giving
+	 * {@code (1, 1)} as {@link #dotProduct} does, rather than being reduced to {@code (1)}.
+	 */
+	@Test(timeout = 30000)
+	public void singleItemBatchComponents() {
+		PackedCollection v = pack(4.0, 5.0, 6.0).reshape(1, 3);
+		CollectionProducer[] components = { x(cp(v)), y(cp(v)), z(cp(v)) };
+
+		for (int c = 0; c < 3; c++) {
+			assertEquals(2, shape(components[c]).getDimensions());
+			assertEquals(1, shape(components[c]).length(0));
+			assertEquals(1, shape(components[c]).length(1));
+			assertEquals(c + 4.0, components[c].evaluate().toDouble(0));
+		}
+	}
+
+	/**
+	 * Tests that a batch of column-shaped vectors {@code (n, 3, 1)} gives the component of
+	 * every vector, {@code (n, 1, 1)}, taken from the axis of length three.
+	 */
+	@Test(timeout = 60000)
+	public void batchedColumnVectorComponents() {
+		int n = 8;
+		PackedCollection v = new PackedCollection(shape(n, 3, 1)).randFill();
+
+		for (int c = 0; c < 3; c++) {
+			CollectionProducer component = vectorComponent(cp(v), c);
+			assertEquals(n, shape(component).length(0));
+			assertEquals(1, shape(component).length(1));
+			assertEquals(1, shape(component).length(2));
+
+			PackedCollection result = component.evaluate();
+			assertEquals(n, result.getMemLength());
+
+			for (int i = 0; i < n; i++) {
+				assertEquals(v.toDouble(3 * i + c), result.toDouble(i));
+			}
+		}
+	}
+
+	/** Tests that a component index beyond the components of each vector is rejected. */
+	@Test(timeout = 30000)
+	public void componentIndexOutOfRangeIsRejected() {
+		PackedCollection v = new PackedCollection(shape(4, 3)).randFill();
+
+		try {
+			vectorComponent(cp(v), 3);
+			Assert.fail("index 3 of a (4, 3) batch should be rejected");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains("out of range"));
+		}
+	}
 }

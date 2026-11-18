@@ -281,17 +281,25 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * vector. A batch must not be reduced to a single value, since every vector of it would
 	 * then be given the component of the first.
 	 *
+	 * <p>The components are held by the last axis whose length exceeds one, so trailing axes of
+	 * length one are skipped: a column-shaped vector {@code (3, 1)} gives {@code (1, 1)} and a
+	 * batch {@code (n, 3, 1)} gives {@code (n, 1, 1)}. Any multi-dimensional input keeps all of
+	 * its axes, including a batch of one vector {@code (1, 3)}, which gives {@code (1, 1)}.</p>
+	 *
 	 * @param v     the vector producer, {@code (3)} or a batch such as {@code (n, 3)}
 	 * @param index the index of the component within each vector
 	 * @return a producer for the component of every vector
+	 * @throws IllegalArgumentException if {@code index} is not within the component axis
 	 */
 	default CollectionProducer vectorComponent(Producer<PackedCollection> v, int index) {
 		TraversalPolicy shape = shape(v);
-		int axis = shape.getDimensions() - 1;
-
-		// TODO(review): a column-shaped vector such as (3, 1) reaches slice() with index >= 1 on a length-1 axis and throws; c(v, index) handled it before
-		if (axis < 1 || shape.getTotalSizeLong() == shape.length(axis)) {
+		if (shape.getDimensions() < 2) {
 			return c(v, index);
+		}
+
+		int axis = shape.getDimensions() - 1;
+		while (axis > 0 && shape.length(axis) == 1) {
+			axis--;
 		}
 
 		return slice(axis, index, 1, v);
