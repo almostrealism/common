@@ -199,6 +199,7 @@ public class CLMemoryProvider extends HardwareMemoryProvider<CLMemory> {
 	 *
 	 * @return the CL data context
 	 */
+	@Override
 	public CLDataContext getContext() { return context; }
 
 	/**

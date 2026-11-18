@@ -21,6 +21,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -427,8 +428,22 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 	}
 
 	/**
-	 * Asks every data context of the local {@link Hardware} to release what finished kernel work
-	 * still holds (see {@link DataContext#releaseFinishedWork()}). Called once per
+	 * Returns the data context whose device this provider allocates on.
+	 *
+	 * <p>A data context created in isolation, such as the one {@link Hardware#dataContext}
+	 * runs a callable in, is not among {@link Hardware#getAllDataContexts()}, so this is how a
+	 * provider reaches the work of the context it serves when it has to reclaim room (see
+	 * {@link #releaseFinishedWork()}).</p>
+	 *
+	 * @return the owning data context, or {@code null} for memory no data context owns, such as
+	 *         memory the {@link Hardware} itself manages
+	 */
+	public DataContext<MemoryData> getContext() { return null; }
+
+	/**
+	 * Asks every data context of the local {@link Hardware}, and this provider's own
+	 * {@link #getContext() data context} when it is not one of them, to release what finished
+	 * kernel work still holds (see {@link DataContext#releaseFinishedWork()}). Called once per
 	 * {@link #collectionPass() collection pass}, before the collection.
 	 *
 	 * <p>A dispatch's {@link KernelMemoryGuard} reservations hold its arguments' memory strongly,
@@ -441,7 +456,11 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 	 */
 	protected void releaseFinishedWork() {
 		Hardware hw = Hardware.getLocalHardware();
-		if (hw != null) hw.getAllDataContexts().forEach(DataContext::releaseFinishedWork);
+		List<DataContext<MemoryData>> registered = hw == null ? List.of() : hw.getAllDataContexts();
+		registered.forEach(DataContext::releaseFinishedWork);
+
+		DataContext<MemoryData> owner = getContext();
+		if (owner != null && !registered.contains(owner)) owner.releaseFinishedWork();
 	}
 
 	/**

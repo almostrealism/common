@@ -240,6 +240,7 @@ public abstract class AcceleratorDataContext<M extends HardwareMemoryProvider<?>
 	 * run any work does nothing. Scoped contexts of other threads are not visited: each is
 	 * destroyed, and so releases its work, when its scope ends.
 	 */
+	// TODO(review): DataContext#releaseFinishedWork promises every context "on any thread"; other threads' live scoped contexts are skipped here
 	@Override
 	public void releaseFinishedWork() {
 		if (isDestroyed()) return;

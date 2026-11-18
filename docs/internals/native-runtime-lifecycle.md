@@ -296,7 +296,9 @@ by a host wait for one of its dispatches or a later one. Work that no thread wai
 (for example, the dispatches of a caller that failed before its wait) therefore keeps every block it
 referenced reachable until some later wait on that runner. A process that hit its ceiling in that
 state used to stay at it: every allocation's collections found nothing to free. To prevent this,
-`HardwareMemoryProvider.reclaim` asks every data context of the local `Hardware` to release
+`HardwareMemoryProvider.reclaim` asks every data context of the local `Hardware`, and the
+provider's own data context (`HardwareMemoryProvider.getContext()`) when it is not among them,
+as with the isolated context `Hardware.dataContext(...)` runs a callable in, to release
 finished work (`DataContext.releaseFinishedWork()`, reaching the
 `ComputeContext.releaseFinishedWork()` of every compute context the data context has already
 created) before each collection it requests. The release never goes through

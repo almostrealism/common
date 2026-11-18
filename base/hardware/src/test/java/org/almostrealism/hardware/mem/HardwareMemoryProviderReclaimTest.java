@@ -16,11 +16,21 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.DataContext;
+import io.almostrealism.code.Memory;
+import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
+import io.almostrealism.compute.ComputeRequirement;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -34,35 +44,12 @@ import java.util.concurrent.atomic.AtomicLong;
 public class HardwareMemoryProviderReclaimTest {
 
 	/**
-	 * A provider that records the order of the steps of each collection pass, and whose release
-	 * of finished work gives back the bytes such work held.
+	 * A provider that never registers an allocation and records the order of the steps of each
+	 * collection pass.
 	 */
-	private static class RecordingProvider extends HardwareMemoryProvider<RAM> {
+	private abstract static class StepProvider extends HardwareMemoryProvider<RAM> {
 		/** The steps taken, in order. */
-		private final List<String> steps = new ArrayList<>();
-
-		/** The provider's usage counter, which a release of finished work reduces. */
-		private final AtomicLong used;
-
-		/** The bytes a release of finished work gives back. */
-		private final long heldByFinishedWork;
-
-		/**
-		 * Creates a provider whose finished work holds the given number of bytes of its usage.
-		 *
-		 * @param used               the usage counter the test reserves against
-		 * @param heldByFinishedWork the bytes released by releasing finished work
-		 */
-		RecordingProvider(AtomicLong used, long heldByFinishedWork) {
-			this.used = used;
-			this.heldByFinishedWork = heldByFinishedWork;
-		}
-
-		@Override
-		protected void releaseFinishedWork() {
-			steps.add("release");
-			used.addAndGet(-heldByFinishedWork);
-		}
+		protected final List<String> steps = new ArrayList<>();
 
 		@Override
 		protected void collectGarbage() {
@@ -86,6 +73,126 @@ public class HardwareMemoryProviderReclaimTest {
 
 		@Override
 		public String getName() { return "recording-provider"; }
+	}
+
+	/**
+	 * A provider whose release of finished work gives back the bytes such work held.
+	 */
+	private static class RecordingProvider extends StepProvider {
+
+		/** The provider's usage counter, which a release of finished work reduces. */
+		private final AtomicLong used;
+
+		/** The bytes a release of finished work gives back. */
+		private final long heldByFinishedWork;
+
+		/**
+		 * Creates a provider whose finished work holds the given number of bytes of its usage.
+		 *
+		 * @param used               the usage counter the test reserves against
+		 * @param heldByFinishedWork the bytes released by releasing finished work
+		 */
+		RecordingProvider(AtomicLong used, long heldByFinishedWork) {
+			this.used = used;
+			this.heldByFinishedWork = heldByFinishedWork;
+		}
+
+		@Override
+		protected void releaseFinishedWork() {
+			steps.add("release");
+			used.addAndGet(-heldByFinishedWork);
+		}
+	}
+
+	/**
+	 * A provider owned by a data context that is not registered with {@link Hardware}, as the
+	 * context {@link Hardware#dataContext} runs a callable in is not. Its release of finished work
+	 * is the one {@link HardwareMemoryProvider} provides.
+	 */
+	private static class OwnedProvider extends StepProvider {
+		/** The data context that owns this provider. */
+		private final DataContext<MemoryData> owner;
+
+		/**
+		 * Creates a provider owned by the given data context.
+		 *
+		 * @param owner the owning data context
+		 */
+		OwnedProvider(DataContext<MemoryData> owner) {
+			this.owner = owner;
+		}
+
+		@Override
+		public DataContext<MemoryData> getContext() { return owner; }
+	}
+
+	/**
+	 * A data context that is never registered with {@link Hardware}, counts the releases of its
+	 * finished work, and supports nothing else.
+	 */
+	private static class UnregisteredDataContext implements DataContext<MemoryData> {
+		/** The number of times finished work was released. */
+		private final AtomicInteger releases = new AtomicInteger();
+
+		/** The usage counter of the provider this context owns. */
+		private final AtomicLong used;
+
+		/**
+		 * Creates a context whose finished work holds all of the given usage.
+		 *
+		 * @param used the usage counter a release of finished work clears
+		 */
+		UnregisteredDataContext(AtomicLong used) {
+			this.used = used;
+		}
+
+		@Override
+		public void releaseFinishedWork() {
+			releases.incrementAndGet();
+			used.set(0);
+		}
+
+		@Override
+		public String getName() { return "unregistered"; }
+
+		@Override
+		public Precision getPrecision() { return Precision.FP32; }
+
+		@Override
+		public void init() { }
+
+		@Override
+		public List<ComputeContext<MemoryData>> getComputeContexts() {
+			throw new UnsupportedOperationException("Reclaim must not ask for compute contexts");
+		}
+
+		@Override
+		public List<MemoryProvider<? extends Memory>> getMemoryProviders() {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public MemoryProvider<? extends Memory> getMemoryProvider(int size) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public MemoryProvider<? extends Memory> getKernelMemoryProvider() {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public <T> T deviceMemory(Callable<T> exec) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public void destroy() { }
 	}
 
 	/**
@@ -138,5 +245,47 @@ public class HardwareMemoryProviderReclaimTest {
 		used.set(max);
 		Assert.assertTrue("The allocation must fit after the collection", provider.reserve(used, max, 40));
 		Assert.assertEquals("A removed release must no longer run", List.of("release", "collect"), provider.steps);
+	}
+
+	/**
+	 * A provider whose owning data context is not registered with {@link Hardware} still releases
+	 * that context's finished work while reclaiming, exactly once per collection pass, so memory
+	 * held by finished work of an isolated context is freed before the allocation is rejected.
+	 */
+	@Test(timeout = 60000)
+	public void reclaimReleasesUnregisteredOwnerWork() {
+		long max = 100;
+		AtomicLong used = new AtomicLong(max);
+		UnregisteredDataContext owner = new UnregisteredDataContext(used);
+		OwnedProvider provider = new OwnedProvider(owner);
+
+		Hardware hw = Hardware.getLocalHardware();
+		Assert.assertFalse("The owner must not be a registered data context",
+				hw != null && hw.getAllDataContexts().contains(owner));
+
+		Assert.assertTrue("The allocation must fit once the owner's finished work is released",
+				provider.reserve(used, max, 40));
+		Assert.assertEquals("The owner's finished work must be released once, in one pass",
+				1, owner.releases.get());
+		Assert.assertEquals("Only one collection must be needed", List.of("collect"), provider.steps);
+		Assert.assertEquals("The reservation must be counted", 40, used.get());
+	}
+
+	/**
+	 * A provider that no data context owns has no owner to release, so a reclaim that frees nothing
+	 * requests every collection it is allowed and then rejects the allocation.
+	 */
+	@Test(timeout = 60000)
+	public void reclaimWithoutOwnerRejectsWhenNothingIsFreed() {
+		long max = 100;
+		AtomicLong used = new AtomicLong(max);
+		OwnedProvider provider = new OwnedProvider(null);
+
+		Assert.assertNull("A provider with no owner must report none", provider.getContext());
+		Assert.assertFalse("The allocation must be rejected when nothing is freed",
+				provider.reserve(used, max, 40));
+		Assert.assertEquals("Every allowed collection must be requested",
+				HardwareMemoryProvider.reclaimAttempts, provider.steps.size());
+		Assert.assertEquals("Nothing must be reserved", max, used.get());
 	}
 }
