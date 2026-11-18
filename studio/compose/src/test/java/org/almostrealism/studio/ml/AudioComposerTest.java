@@ -202,6 +202,64 @@ public class AudioComposerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A normalized blend divides each source's scale by the total of the scales, so the
+	 * composed latent depends on the proportions the position selects and not on its
+	 * magnitude: positions that differ only in length compose the same latent.
+	 */
+	@Test(timeout = 60000)
+	public void normalizedBlendIsWeightedMean() {
+		AudioComposer composer = composer(17L);
+		composer.setNormalizedBlend(true);
+		composer.addSource(sourceA(), weightVector(1.0, 0.0));
+		composer.addSource(sourceB(), weightVector(0.0, 1.0));
+
+		assertValues(expected(0.8, 0.2), latent(composer, 2.0, 0.5));
+		assertValues(expected(0.8, 0.2), latent(composer, 20.0, 5.0));
+		assertValues(expected(0.8, 0.2), latent(composer, 0.2, 0.05));
+	}
+
+	/**
+	 * In a normalized blend, a position at which no source has a positive scale yields
+	 * the plain mean of the sources rather than silence or a division by zero.
+	 */
+	@Test(timeout = 60000)
+	public void normalizedBlendWithNoSelectedSourceIsMean() {
+		AudioComposer composer = composer(19L);
+		composer.setNormalizedBlend(true);
+		composer.addSource(sourceA(), weightVector(1.0, 0.0));
+		composer.addSource(sourceB(), weightVector(0.0, 1.0));
+
+		assertValues(expected(0.5, 0.5), latent(composer, -1.0, -3.0));
+	}
+
+	/**
+	 * In a normalized blend, random weights keep the composed latent within the range of
+	 * the sources at every position, however far the position is from the origin.
+	 */
+	@Test(timeout = 60000)
+	public void normalizedBlendStaysWithinSources() {
+		Random positions = new Random(23L);
+
+		for (int i = 0; i < 8; i++) {
+			AudioComposer composer = composer(100L + i);
+			composer.setNormalizedBlend(true);
+			composer.addSource(sourceA());
+			composer.addSource(sourceB());
+
+			double scale = Math.pow(10, positions.nextInt(5) - 2);
+			double[] actual = latent(composer,
+					scale * positions.nextGaussian(), scale * positions.nextGaussian());
+
+			for (int j = 0; j < actual.length; j++) {
+				double low = Math.min(SOURCE_A[j], SOURCE_B[j]);
+				double high = Math.max(SOURCE_A[j], SOURCE_B[j]);
+				Assert.assertTrue("Cell " + j + " = " + actual[j] + " is outside [" + low + ", " + high + "]",
+						actual[j] >= low - 1e-4 && actual[j] <= high + 1e-4);
+			}
+		}
+	}
+
+	/**
 	 * Composes the two test sources with orthogonal unit weight vectors using the
 	 * given seed.
 	 */
