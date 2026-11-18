@@ -106,6 +106,30 @@ public class InterpolateTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests that interpolation produces the same result when evaluated through the
+	 * optimizing {@link io.almostrealism.relation.Producer#evaluate(Object...)} entry
+	 * point as through the unoptimized {@code get().evaluate()} path. Because
+	 * {@code evaluate()} now routes through {@code Process.optimized(this).get()}, this
+	 * exercises the regeneration path of a multi-input {@link Interpolate} computation.
+	 */
+	// TODO(review): currently throws UnsupportedOperationException — Interpolate has no generate()
+	//  override, so the optimizing evaluate() default reaches the throwing CollectionProducerComputation
+	//  default; needs a regeneration path (cross-cutting, deferred). See review-followup memory.
+	@Test(timeout = 10000)
+	public void interpolateKernelOptimized() {
+		PackedCollection series = pack(7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		PackedCollection cursors = pack(5.5, 6.5).reshape(shape(2, 1));
+		PackedCollection rate = new PackedCollection(2, 1).fill(1.0);
+
+		Interpolate interpolate = new Interpolate(cp(series), traverse(1, cp(cursors)), cp(rate));
+		PackedCollection dest = interpolate.evaluate();
+		dest.print();
+
+		assertEquals(11.5, dest.toDouble(0));
+		assertEquals(10.5, dest.toDouble(1));
+	}
+
+	/**
 	 * Tests interpolate pass-through with explicit shape.
 	 */
 	@Test(timeout = 10000)
