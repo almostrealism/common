@@ -132,6 +132,20 @@ class TestMain(unittest.TestCase):
         self.assertIn("run_id=7", out)
         self.assertIn("failing_count=1", out)
 
+    def test_the_gate_dispatches_a_failure_logged_by_the_current_plugin(self):
+        # A test-lane job log as the pipeline writes it: name and timing
+        # separated by " -- ", after the per-class summary line.
+        log = ("2026-11-18T02:32:54.3387150Z [ERROR] Tests run: 2, Failures: 1, Errors: 0, "
+               "Skipped: 0, Time elapsed: 0.018 s <<< FAILURE! -- in org.example.FooTest\n"
+               "2026-11-18T02:32:54.3387960Z [ERROR] org.example.FooTest.computesSum "
+               "-- Time elapsed: 0.003 s <<< FAILURE!\n")
+        client = FakeClient(
+            [_run()], jobs=[{"id": 1, "name": "test-cuda (2)", "conclusion": "failure"}],
+            logs={1: log})
+        out = self._main(client, "--gate")
+        self.assertIn("dispatch=true", out)
+        self.assertIn("failing_count=1", out)
+
     def test_the_gate_holds_off_a_run_that_predates_the_last_fix(self):
         pulls = [{"head": {"ref": "qa/master-fix-20261110-000000"},
                   "merged_at": "2026-11-10T00:00:00Z", "merge_commit_sha": "fix"}]
