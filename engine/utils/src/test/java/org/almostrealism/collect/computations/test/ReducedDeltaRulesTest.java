@@ -32,9 +32,11 @@ import java.util.Arrays;
  * structure, against the derivative computed on the host and, where it is formed, the
  * contraction of the full Jacobian:
  * <ul>
- *   <li>{@link org.almostrealism.collect.computations.CollectionMaxComputation}, whose
- *       maximum depends only on the element it selects. Each group of the input has a
- *       distinct maximum, so the derivative is defined everywhere it is checked.</li>
+ *   <li>{@link org.almostrealism.collect.computations.CollectionMaxComputation} and its mirror
+ *       {@link org.almostrealism.collect.computations.CollectionMinComputation}, whose extremum
+ *       depends only on the element it selects. Each group of the input has a distinct extremum,
+ *       so the derivative is defined everywhere it is checked, and the derivative of the minimum
+ *       agrees with the central difference at a unique minimum.</li>
  *   <li>Element-wise computations whose operands both depend on the target, which the
  *       chain rule passes on to every operand through the computation's element-wise
  *       partial derivatives.</li>
@@ -232,6 +234,121 @@ public class ReducedDeltaRulesTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The output-reduced delta of the minimum passes each group's weight to the position of
+	 * its minimum, which is selected by {@code indexOfMin} rather than {@code indexOfMax}, and
+	 * nothing to the other positions; with no weight, each minimum is weighted by one.
+	 */
+	@Test(timeout = 60000)
+	public void minOutputReduced() {
+		PackedCollection values = groups();
+		PackedCollection gradient = new PackedCollection(shape(GROUPS)).randnFill();
+		int[] argmin = minPositions(values.toArray());
+		double[] g = gradient.toArray();
+
+		double[] weighted = new double[GROUPS * GROUP_SIZE];
+		double[] unit = new double[GROUPS * GROUP_SIZE];
+		for (int r = 0; r < GROUPS; r++) {
+			weighted[r * GROUP_SIZE + argmin[r]] = g[r];
+			unit[r * GROUP_SIZE + argmin[r]] = 1.0;
+		}
+
+		CollectionProducer input = cp(values);
+		CollectionProducer min = min(input.traverse(1));
+		assertMatches("weighted", weighted, evaluate(min.delta(input, ReduceAxis.OUT, cp(gradient))));
+		assertMatches("unweighted", unit, evaluate(min.delta(input, ReduceAxis.OUT)));
+	}
+
+	/**
+	 * The output-reduced delta of the minimum of a function of the target is the gradient of
+	 * the selected element of that function, and agrees with contracting the full Jacobian of
+	 * the minimum. The values are positive, so squaring them keeps the position of each minimum.
+	 */
+	@Test(timeout = 60000)
+	public void minOutputReducedThroughInput() {
+		PackedCollection values = new PackedCollection(shape(GROUPS, GROUP_SIZE)).randFill();
+		PackedCollection gradient = new PackedCollection(shape(GROUPS)).randnFill();
+		double[] v = values.toArray();
+		int[] argmin = minPositions(v);
+		double[] g = gradient.toArray();
+
+		double[] expected = new double[GROUPS * GROUP_SIZE];
+		for (int r = 0; r < GROUPS; r++) {
+			int i = r * GROUP_SIZE + argmin[r];
+			expected[i] = g[r] * 2 * v[i];
+		}
+
+		CollectionProducer input = cp(values);
+		CollectionProducer min = min(input.multiply(input).traverse(1));
+		assertMatches("reduced", expected, evaluate(min.delta(input, ReduceAxis.OUT, cp(gradient))));
+		assertMatches("jacobian", expected, evaluate(jacobianGradient(min, input, cp(gradient))));
+	}
+
+	/**
+	 * The input-reduced delta of the minimum is the tangent of the element each minimum
+	 * selects, which differs from the element the maximum would select.
+	 */
+	@Test(timeout = 60000)
+	public void minInputReduced() {
+		PackedCollection values = groups();
+		PackedCollection tangent = new PackedCollection(shape(GROUPS, GROUP_SIZE)).randnFill();
+		double[] v = values.toArray();
+		int[] argmin = minPositions(v);
+		int[] argmax = maxPositions(v);
+		double[] t = tangent.toArray();
+
+		double[] expected = new double[GROUPS];
+		for (int r = 0; r < GROUPS; r++) {
+			Assert.assertNotEquals("group " + r + " minimum and maximum coincide", argmax[r], argmin[r]);
+			expected[r] = t[r * GROUP_SIZE + argmin[r]];
+		}
+
+		CollectionProducer input = cp(values);
+		CollectionProducer min = min(input.traverse(1));
+		assertMatches("tangent", expected, evaluate(min.delta(input, ReduceAxis.IN, cp(tangent))));
+	}
+
+	/**
+	 * The minimum mirrors the maximum: its full Jacobian is one at the position each minimum
+	 * selects and zero elsewhere, rather than an aggregation of the input's Jacobian.
+	 */
+	@Test(timeout = 60000)
+	public void minJacobian() {
+		PackedCollection values = groups();
+		int[] argmin = minPositions(values.toArray());
+		int size = GROUPS * GROUP_SIZE;
+
+		double[] expected = new double[GROUPS * size];
+		for (int r = 0; r < GROUPS; r++) {
+			expected[r * size + r * GROUP_SIZE + argmin[r]] = 1.0;
+		}
+
+		CollectionProducer input = cp(values);
+		assertMatches("jacobian", expected, evaluate(min(input.traverse(1)).delta(input)));
+	}
+
+	/**
+	 * The full Jacobian of the minimum agrees with the numerical gradient at a point whose
+	 * minimum is unique: it is one at the position of the minimum and zero elsewhere, and so
+	 * is the central difference, since a small perturbation of any other element leaves the
+	 * minimum unchanged while a perturbation of the minimum moves it one-for-one. This checks
+	 * the selection-based derivative against the definition of the derivative itself.
+	 */
+	@Test(timeout = 60000)
+	public void minJacobianByCentralDifference() {
+		// A single group whose minimum (-0.5 at index 3) is unique
+		PackedCollection input = pack(0.6, -0.2, 0.9, -0.5, 0.3);
+		double[] values = input.toArray();
+
+		double eps = 1e-4;
+		double[] expected = new double[values.length];
+		for (int i = 0; i < values.length; i++) {
+			expected[i] = (hostMin(values, i, eps) - hostMin(values, i, -eps)) / (2 * eps);
+		}
+
+		assertMatches("central difference", expected, evaluate(cp(input).min().delta(cp(input))));
+	}
+
+	/**
 	 * Asserts that the output-reduced and input-reduced deltas of an element-wise
 	 * computation, and the contraction of its full Jacobian, all have the expected values.
 	 * The Jacobian of an element-wise computation is diagonal, so its vector-Jacobian and
@@ -274,6 +391,42 @@ public class ReducedDeltaRulesTest extends TestSuiteBase {
 		}
 
 		return argmax;
+	}
+
+	/**
+	 * Returns the position of the minimum within each group of values.
+	 *
+	 * @param values {@link #GROUPS} groups of {@link #GROUP_SIZE} values
+	 * @return the position of each group's minimum
+	 */
+	private static int[] minPositions(double[] values) {
+		int[] argmin = new int[GROUPS];
+		for (int r = 0; r < GROUPS; r++) {
+			for (int i = 1; i < GROUP_SIZE; i++) {
+				if (values[r * GROUP_SIZE + i] < values[r * GROUP_SIZE + argmin[r]]) argmin[r] = i;
+			}
+		}
+
+		return argmin;
+	}
+
+	/**
+	 * Computes, on the host, the minimum of the values with one element perturbed, used to form
+	 * the central difference the selection-based derivative is checked against.
+	 *
+	 * @param values the unperturbed values
+	 * @param index  the position of the element to perturb
+	 * @param delta  the amount to add to the element at {@code index}
+	 * @return the minimum of the perturbed values
+	 */
+	private static double hostMin(double[] values, int index, double delta) {
+		double min = Double.POSITIVE_INFINITY;
+		for (int i = 0; i < values.length; i++) {
+			double v = values[i] + (i == index ? delta : 0.0);
+			if (v < min) min = v;
+		}
+
+		return min;
 	}
 
 	/**

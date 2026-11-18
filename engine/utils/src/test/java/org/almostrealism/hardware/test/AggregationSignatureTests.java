@@ -23,8 +23,10 @@ import org.almostrealism.algebra.computations.WeightedSumComputation;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionMaxComputation;
+import org.almostrealism.collect.computations.CollectionMinComputation;
 import org.almostrealism.collect.computations.CollectionSumComputation;
 import org.almostrealism.collect.computations.IndexOfMaxComputation;
+import org.almostrealism.collect.computations.IndexOfMinComputation;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -173,6 +175,62 @@ public class AggregationSignatureTests extends TestSuiteBase {
 		}
 		assertTrue("Changing the loop replacement setting on a max is unsupported", rejected);
 		assertEquals(5.0, max.get().evaluate().toDouble(0));
+	}
+
+	/**
+	 * Verifies that {@link CollectionMinComputation#withReplaceLoop(boolean)} keeps its own
+	 * concrete return type, returns the same instance when the setting already matches, and
+	 * rejects a change, exactly as the maximum does.
+	 */
+	@Test(timeout = 60000)
+	public void minWithReplaceLoopRejectsChange() {
+		PackedCollection data = pack(4.0, 3.0, 2.0, 5.0);
+
+		CollectionMinComputation min = new CollectionMinComputation(cp(data));
+		assertFalse("Min is constructed without loop replacement", min.isReplaceLoop());
+		CollectionMinComputation same = min.withReplaceLoop(false);
+		assertTrue("Matching setting returns the same instance", min == same);
+
+		boolean rejected = false;
+		try {
+			min.withReplaceLoop(true);
+		} catch (UnsupportedOperationException e) {
+			rejected = true;
+		}
+		assertTrue("Changing the loop replacement setting on a min is unsupported", rejected);
+		assertEquals(2.0, min.get().evaluate().toDouble(0));
+	}
+
+	/**
+	 * Verifies that the minimum and maximum reductions, and the index-of-minimum and
+	 * index-of-maximum searches, never share a signature over the same data. Each pair differs
+	 * only in the direction of its comparison, so a shared signature would let the
+	 * signature-keyed instruction cache run one in place of the other.
+	 */
+	@Test(timeout = 60000)
+	public void minAndMaxSignaturesDisambiguate() {
+		PackedCollection data = pack(5.0, 3.0, 7.0, 10.0).reshape(2, 2).traverse(1);
+
+		CollectionMinComputation min = new CollectionMinComputation(cp(data));
+		CollectionMaxComputation max = new CollectionMaxComputation(cp(data));
+		assertNotNull("min should have a signature", min.signature());
+		assertNotEquals(max.signature(), min.signature());
+		assertEquals(min.signature(), new CollectionMinComputation(cp(data)).signature());
+
+		IndexOfMinComputation indexOfMin = new IndexOfMinComputation(cp(data));
+		IndexOfMaxComputation indexOfMax = new IndexOfMaxComputation(cp(data));
+		String signature = indexOfMin.signature();
+		assertNotNull("indexOfMin should have a signature", signature);
+		assertTrue(signature, signature.contains(IndexOfMinComputation.class.getName()));
+		assertNotEquals(indexOfMax.signature(), signature);
+
+		PackedCollection minimum = min.get().evaluate();
+		assertEquals(3.0, minimum.toDouble(0));
+		assertEquals(7.0, minimum.toDouble(1));
+
+		PackedCollection index = indexOfMin.get().evaluate();
+		assertEquals(1.0, index.toDouble(0));
+		assertEquals(0.0, index.toDouble(1));
 	}
 
 	/**

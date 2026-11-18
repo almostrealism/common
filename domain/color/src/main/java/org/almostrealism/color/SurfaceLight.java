@@ -16,6 +16,9 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
+
 /**
  * A {@link SurfaceLight} implementation represents a light that can be described
  * by some (possibly infinite) set of other {@link Light}s. A correct implementation
@@ -25,7 +28,7 @@ package org.almostrealism.color;
  * 
  * @author Michael Murray
  */
-public interface SurfaceLight extends Light {
+public interface SurfaceLight extends Light, RGBFeatures {
 	/**
 	 * Returns an array containing samples for this SurfaceLight instance.
 	 *
@@ -40,4 +43,27 @@ public interface SurfaceLight extends Light {
 	 * @return  An array containing samples for this SurfaceLight instance.
 	 */
 	Light[] getSamples();
+
+	/**
+	 * Sums the contribution of every sample returned by {@link #getSamples()}, each
+	 * computed against its own copy of the context with the sample as the light.
+	 *
+	 * @param surface  the surface being lit
+	 * @param context  the shading context carrying the intersection being lit
+	 * @return the summed contribution of the samples, or black when there are none
+	 */
+	@Override
+	default Producer<PackedCollection> lightingCalculation(ShadableSurface surface, ShaderContext context) {
+		Producer<PackedCollection> color = null;
+
+		for (Light sample : getSamples()) {
+			ShaderContext sampleContext = context.clone();
+			sampleContext.setLight(sample);
+
+			Producer<PackedCollection> c = sample.lightingCalculation(surface, sampleContext);
+			color = color == null ? c : add(color, c);
+		}
+
+		return color == null ? black() : color;
+	}
 }

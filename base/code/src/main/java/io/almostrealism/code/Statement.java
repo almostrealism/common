@@ -139,4 +139,56 @@ public interface Statement<T extends KernelStructure> extends Fragment, KernelSt
 	 * @return a statement of the same type with the substitution applied
 	 */
 	T replace(Expression target, Expression replacement);
+
+	/**
+	 * Returns whether this statement declares a variable holding the value of {@code e}, so
+	 * that the statements following it already have a name for that value.
+	 *
+	 * <p>This default answers {@code false}: a statement that does not say otherwise declares
+	 * no such variable.</p>
+	 *
+	 * @param e the expression whose value is in question
+	 * @return {@code true} if this statement declares a variable holding exactly the value of
+	 *         {@code e}
+	 */
+	default boolean isDeclarationOf(Expression<?> e) {
+		return false;
+	}
+
+	/**
+	 * Returns whether {@code e} occurs in the value this statement computes, so that the
+	 * statement could obtain that part of its value from a variable holding the value of
+	 * {@code e} rather than computing it, as the
+	 * {@link io.almostrealism.scope.CommonSubexpressions common sub-expression replacement} of
+	 * a scope arranges with {@link #replaceComputed(Expression, Expression)}.
+	 *
+	 * <p>This default answers {@code false}: a statement that does not say otherwise computes
+	 * no value that could be obtained from a variable, and is left as it is.</p>
+	 *
+	 * @param e the expression in question
+	 * @return {@code true} if {@code e} occurs in the value this statement computes
+	 */
+	default boolean computes(Expression<?> e) {
+		return false;
+	}
+
+	/**
+	 * Returns a copy of this statement in which every occurrence of {@code target} within the
+	 * value it {@link #computes(Expression) computes} is replaced by {@code replacement},
+	 * typically a reference to a variable holding the value of {@code target}. Unlike
+	 * {@link #replace(Expression, Expression)}, which rewrites every expression of the
+	 * statement, this leaves the rest of the statement, such as where an assignment stores its
+	 * value, as it is.
+	 *
+	 * <p>This default returns this statement unchanged, since by default a statement computes
+	 * nothing that {@link #computes(Expression)} reports.</p>
+	 *
+	 * @param target      the expression whose occurrences are replaced
+	 * @param replacement the expression to substitute for the target
+	 * @return this statement if it does not compute {@code target}, otherwise a copy with the
+	 *         replacement applied
+	 */
+	default Statement<?> replaceComputed(Expression<?> target, Expression<?> replacement) {
+		return this;
+	}
 }

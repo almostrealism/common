@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2026 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,52 +16,57 @@
 
 package org.almostrealism.rayshade;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.color.Light;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.Shader;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.color.computations.GeneratedColorProducer;
-import org.almostrealism.geometry.Curve;
+import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.DiscreteField;
-import org.almostrealism.geometry.Intersection;
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.raytrace.LightingEngineAggregator;
-import org.almostrealism.space.AbstractSurface;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 /**
- * {@link RefractionShader} provides physically-based refraction rendering for transparent
- * and translucent materials such as glass, water, and crystals.
- *
- * <p>Refraction occurs when light passes through the boundary between two media with
- * different indices of refraction (IOR), causing the light ray to bend according to
- * Snell's law:</p>
+ * {@link RefractionShader} renders transparent materials such as glass and water by tracing
+ * the ray refracted at the surface according to Snell's law:
  * <pre>
  * n1 * sin(theta1) = n2 * sin(theta2)
  * </pre>
- * <p>where n1 and n2 are the indices of refraction of the two media, and theta1/theta2
- * are the angles of incidence and refraction.</p>
  *
- * <h2>Features</h2>
+ * <p>The surface is treated as the boundary of a closed solid of the material (a sphere of
+ * glass, for example): a ray refracted into it always leaves through it again. The whole
+ * shader is a {@link Producer} graph, so the refracted colour compiles into the kernel of the
+ * surface being shaded:</p>
  * <ul>
- *   <li><b>Snell's Law refraction:</b> Physically accurate ray bending at material boundaries</li>
- *   <li><b>Total internal reflection:</b> Handled when rays exceed the critical angle</li>
- *   <li><b>Color attenuation:</b> Absorption effects for tinted glass</li>
- *   <li><b>Density sampling:</b> Supports variable IOR within a volume</li>
- *   <li><b>Recursive tracing:</b> Follows refracted rays through multiple surfaces</li>
+ *   <li>The ray entering the material is refracted with
+ *       {@link org.almostrealism.geometry.GeometryFeatures#refract}, which applies Snell's law
+ *       with relative index {@code 1 / n} on the way in and {@code n} on the way out, and falls
+ *       back to the mirror reflection under total internal reflection.</li>
+ *   <li>The point where it leaves is found by intersecting the ray inside with the
+ *       {@link ShadableSurface} being shaded ({@link ShaderContext#getSurface()}), and the ray
+ *       is refracted again there, out of the material.</li>
+ *   <li>Each refracted ray starts a short distance ({@link #RAY_OFFSET}) along its direction,
+ *       so that it does not intersect the surface at the point it leaves.</li>
+ *   <li>The colour seen along the ray leaving the material is the closest hit among the other
+ *       surfaces, selected on the device by {@link LightingEngineAggregator#getClosestColor()}.
+ *       That hit is lit only by the light this shader is invoked for
+ *       ({@link ShaderContext#getLight()}), so the aggregator builds one candidate per surface
+ *       rather than one per (surface, light) pair.</li>
+ *   <li>The colour is weighted by the transmitted fraction {@code 1 - R}, where {@code R} is
+ *       Schlick's approximation of the Fresnel reflectance at the entry point,
+ *       {@code R0 + (1 - R0)(1 - cos(theta))^5} with {@code R0 = ((n - 1) / (n + 1))^2}, and by
+ *       the attenuation factors of the material the ray travelled through.</li>
  * </ul>
+ *
+ * <p>Each refraction through the material counts as one bounce of the {@link ShaderContext},
+ * and at most {@link #maxRefractions} bounces are traced (a second transparent object seen
+ * through the first is another bounce); a ray still bouncing after that contributes black.</p>
  *
  * <h2>Common Index of Refraction Values</h2>
  * <ul>
@@ -71,65 +76,62 @@ import java.util.List;
  *   <li>Diamond: 2.42</li>
  * </ul>
  *
- * <h2>Configuration</h2>
- * <ul>
- *   <li>{@link #setIndexOfRefraction(double)} - IOR of the material (default 1.0)</li>
- *   <li>{@link #setAttenuationFactors(double, double, double)} - RGB attenuation for colored glass</li>
- * </ul>
- *
  * <h2>Usage Example</h2>
  * <pre>{@code
- * RefractionShader glass = new RefractionShader();
- * glass.setIndexOfRefraction(1.5);                    // Standard glass
+ * RefractionShader glass = new RefractionShader(1.5);
  * glass.setAttenuationFactors(0.95, 0.95, 0.98);     // Slight blue-green tint
- *
- * sphere.addShader(glass);
- * sphere.setRefractedPercentage(0.9);                 // 90% transparent
+ * sphere.setShaders(new Shader[] { glass });
  * }</pre>
- *
- * <h2>Known Issues</h2>
- * <p><b>Note:</b> The refraction algorithm has some known issues (see TODO at class level).
- * Results may not be perfectly physically accurate in all edge cases.</p>
  *
  * @see org.almostrealism.color.Shader
  * @see ReflectionShader
  * @see org.almostrealism.raytrace.LightingEngineAggregator
  * @author Michael Murray
  */
-// TODO  Fix refraction algorithm.
-public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, CodeFeatures, ConsoleFeatures {
+public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, CodeFeatures {
+	/**
+	 * The distance along the refracted direction at which the refracted ray starts, so that
+	 * it does not intersect the surface at the point it leaves.
+	 */
+	public static final double RAY_OFFSET = 1e-3;
 
 	/**
-	 * The last refracted ray direction (for debugging purposes).
+	 * The number of bounces of a {@link ShaderContext} beyond which refraction is no longer
+	 * traced. The default of 2 lets one transparent object be seen through another.
 	 */
-	public static Vector lastRay;
+	public static int maxRefractions = 2;
 
-	/**
-	 * Enables debug output during refraction calculations.
-	 */
-	public static boolean produceOutput = false;
-  
 	/** The index of refraction of the material (e.g., 1.0 for air, 1.5 for glass). */
 	private double indexOfRefraction;
-	/** Red, green, and blue attenuation factors applied to the refracted color. */
+	/** Red, green, and blue attenuation factors applied to light travelling inside the material. */
 	private double ra, ga, ba;
-	/** The step distance used when sampling material density for variable IOR computation. */
-	private double sampleDistance = 0.01;
-	/** The number of density samples taken along the surface normal for IOR estimation. */
-	private int sampleCount = 1;
 
 	/**
-	 * Constructs a new {@link RefractionShader} with default settings.
-	 * The index of refraction defaults to 0.0 (should be set before use).
+	 * Constructs a new {@link RefractionShader} with an index of refraction of 1.0 (which
+	 * passes rays through undeflected) and no attenuation.
 	 */
-	public RefractionShader() { }
+	public RefractionShader() {
+		this(1.0);
+	}
 
 	/**
-	 * Computes the refracted color at a surface intersection point.
+	 * Constructs a new {@link RefractionShader} with the given index of refraction and no
+	 * attenuation.
 	 *
-	 * <p>This method traces a refracted ray through the surface based on the index of
-	 * refraction and returns the color seen through the transparent material. It handles
-	 * both front-face and back-face refractions for proper entry/exit behavior.</p>
+	 * @param indexOfRefraction the index of refraction of the material
+	 */
+	public RefractionShader(double indexOfRefraction) {
+		setIndexOfRefraction(indexOfRefraction);
+		setAttenuationFactors(1.0, 1.0, 1.0);
+	}
+
+	/**
+	 * Computes the colour seen through the surface at the intersection described by the
+	 * given context.
+	 *
+	 * <p>The candidate surfaces for the ray leaving the material are the other surfaces, in
+	 * the order the context holds them; {@link LightingEngineAggregator} breaks ties between
+	 * equal distances in favour of the earlier candidate.</p>
 	 *
 	 * @param p       The shader context containing intersection and lighting information
 	 * @param normals The surface normals at the intersection point
@@ -137,369 +139,72 @@ public class RefractionShader implements Shader<ShaderContext>, RGBFeatures, Cod
 	 */
 	@Override
 	public Producer<PackedCollection> shade(ShaderContext p, DiscreteField normals) {
-		Producer pr = (Producer<PackedCollection>) () -> (Evaluable<PackedCollection>) args -> {
-			p.addReflection();
-
-			Producer<PackedCollection> color = null;
-
-			Vector po = new Ray(p.getIntersection().get(0).get().evaluate(args), 0).getOrigin();
-
-			if (Math.random() < 0.01 &&
-					po.getX() * po.getX() + po.getY() * po.getY() + po.getZ() * po.getZ() - 1.0 > 0.01)
-				log(String.valueOf(po));
-
-			Vector n = new Ray(normals.iterator().next().get().evaluate(args), 0).getDirection();
-
-			n = n.divide(n.length());
-
-			if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeFront()) {
-				Vector point;
-
-				try {
-					point = new Ray(p.getIntersection().get(0).get().evaluate(args), 0).getOrigin();
-				} catch (Exception e) {
-					warn(e.getMessage(), e);
-					return null;
-				}
-
-				Producer<PackedCollection> c = RefractionShader.this.shade(point, new Vector((PackedCollection) p.getIntersection().getNormalAt((Producer) v(point)).get().evaluate(args), 0),
-						p.getLightDirection(), p.getLight(), p.getOtherLights(), p.getSurface(),
-						p.getOtherSurfaces(), n, p);
-
-				c = multiply(rgb(10, 10, 10), c);
-
-				if (Math.random() < 0.01)
-					log(String.valueOf(c.get().evaluate(args)));
-
-				if (c != null) {
-					if (color == null) {
-						color = c;
-					} else {
-						color = add(color, c);
-					}
-				}
-			}
-
-			if (p.getSurface() instanceof ShadableSurface == false || ((ShadableSurface) p.getSurface()).getShadeBack()) {
-				Vector point = new Ray(p.getIntersection().get(0).get().evaluate(args), 0).getOrigin();
-
-				Producer<PackedCollection> c = RefractionShader.this.shade(point, new Vector((PackedCollection) p.getIntersection().getNormalAt((Producer) v(point)).get().evaluate(args), 0),
-						p.getLightDirection(), p.getLight(), p.getOtherLights(), p.getSurface(),
-						p.getOtherSurfaces(), n.minus(), p);
-
-				if (Math.random() < 0.01)
-					log(String.valueOf(c.get().evaluate(args)));
-
-				if (c != null) {
-					if (color == null) {
-						color = c;
-					} else {
-						color = add(color, c);
-					}
-				}
-			}
-
-			return color.get().evaluate(args);
-		};
-		
-		return GeneratedColorProducer.fromProducer(this, pr);
-	}
-	
-	/**
-	 * Computes the refracted color contribution for a specific ray entry or exit through the surface.
-	 *
-	 * <p>Applies Snell's law to compute the refracted ray direction, then traces it through the scene
-	 * using a {@link LightingEngineAggregator}. If the recursion depth exceeds the maximum allowed
-	 * reflections, black is returned immediately.</p>
-	 *
-	 * <p>{@link LightingEngineAggregator} ranks candidates by distance and breaks ties with a
-	 * strict {@code <} comparison, so whichever surface is first in the candidate list wins a
-	 * tie. This method needs the primary surface last, so other surfaces win ties, which is the
-	 * opposite of {@link ShaderContext#getAllSurfaces()} (primary first, used where the shaded
-	 * surface should win ties, e.g. by {@link ReflectionShader}). Since the two call sites need
-	 * opposite tie-break orders, the candidate list here is assembled locally rather than through
-	 * a shared {@link ShaderContext} method.</p>
-	 *
-	 * @param point           The surface intersection point
-	 * @param viewerDirection The direction from the intersection toward the viewer
-	 * @param lightDirection  The direction of the current light source
-	 * @param light           The current light source
-	 * @param otherLights     Other lights in the scene
-	 * @param surface         The refracting surface
-	 * @param otherSurfaces   Other surfaces in the scene
-	 * @param n               The surface normal at the intersection point
-	 * @param p               The shader context
-	 * @return A producer computing the refracted color contribution
-	 */
-	protected Producer<PackedCollection> shade(Vector point, Vector viewerDirection, Producer<PackedCollection> lightDirection,
-								  Light light, Iterable<Light> otherLights, Curve<PackedCollection> surface,
-								  Curve<PackedCollection> otherSurfaces[], Vector n, ShaderContext p) {
-		if (p.getReflectionCount() > ReflectionShader.maxReflections) {
-			lastRay = null;
+		if (p.getReflectionCount() >= maxRefractions) {
 			return black();
 		}
-		
-		boolean entering = this.checkEntering(viewerDirection, n);
-		double currentR = 0.0, nextR = 0.0;
-		
-		if (entering)
-			p.addEntrance();
-		else
-			p.addExit();
-		
-		if (surface instanceof AbstractSurface) {
-			currentR =
-				this.sampleDensity((AbstractSurface) surface, point, n,
-						this.sampleDistance, this.sampleCount, !entering);
-			nextR =
-				this.sampleDensity((AbstractSurface) surface, point, n,
-						this.sampleDistance, this.sampleCount, entering);
-		} else if (entering) {
-			currentR = 1.0;
-			nextR = this.indexOfRefraction;
-		} else {
-			currentR = this.indexOfRefraction;
-			nextR = 1.0;
-		}
-		
-//		if (Math.random() < 0.0001)
-//			System.out.println(viewerDirection.length() +
-//								" " + n.length() + " " + 
-//								currentR + " " + nextR);
-		
-		// if (!entering) n = n.minus();
-		
-		Vector dv = viewerDirection;
-		dv = dv.minus();
-		
-		Vector d = RefractionShader.refract(dv, n, currentR, nextR, (Math.random() < 0.0000));
-		d.divideBy(d.length());
-		
-		// if (d.dotProduct(dv) > 0) d.multiplyBy(-1.0);
-		
-		// d = dv.minus();
-		
-		// if (entering) d.multiplyBy(-1.0);
-		Producer<Ray> r = new DynamicProducerForMemoryData<>(args -> new Ray(point, d));
-		
-		// Primary surface last; see this method's javadoc for the tie-break rationale.
-		List<Curve<PackedCollection>> allSurfaces = new ArrayList<>(Arrays.asList(otherSurfaces));
-		allSurfaces.add(surface);
-		List<Light> allLights = p.getAllLights();
-		
-//		if (Math.random() < 0.00001 && !entering) System.out.println(r.getDirection() + " " + lastRay);
-		RefractionShader.lastRay = d;
 
-		Producer<PackedCollection> color = () -> new LightingEngineAggregator(r, allSurfaces, allLights, p);
-		
-//		if (color.equals(new RGB()) && Math.random() < 0.01) System.out.println(d.dotProduct(dv));
-		
-//		if (color == null) {
-////			color = surface.getColorAt(point).multiply(new RGB(this.lra, this.lga, this.lba));
-//		} else {
-//			// if (!color.equals(new RGB()) && Math.random() < 0.001) System.out.println(color);
-//			if (entering) color.multiplyBy(new RGB(this.ra, this.ga, this.ba));
-//			
-//		}
-		
-		return color;
-	}
-	
-	/**
-	 * Samples the index of refraction at a point near the surface.
-	 *
-	 * <p>This method supports materials with spatially varying IOR by sampling
-	 * multiple points and averaging. For simple materials with uniform IOR,
-	 * use a single sample.</p>
-	 *
-	 * @param s        The surface to sample
-	 * @param p        The surface intersection point
-	 * @param n        The surface normal at the intersection
-	 * @param sd       The sampling distance (how far to step from surface)
-	 * @param samples  Number of samples to take (1 for uniform materials)
-	 * @param entering True if ray is entering the material, false if exiting
-	 * @return The averaged index of refraction at the sampled location
-	 */
-	public double sampleDensity(AbstractSurface s, Vector p, Vector n,
-								double sd, int samples, boolean entering) {
-		double totalR = 0.0;
-		
-		if (entering) {
-			Vector v = n.multiply(-sd);
-			v.addTo(p);
-			totalR = s.getIndexOfRefraction(v);
-		} else {
-			Vector v = n.multiply(sd);
-			v.addTo(p);
-			totalR = s.getIndexOfRefraction(v);
-		}
-		
-		for (int i = 1; i < samples; i++) {
-			Vector d = Vector.uniformSphericalRandom();
-			double dot = d.dotProduct(n);
-			
-			if ((entering && dot > 0.0) ||
-					(!entering && dot < 0.0)) {
-				d.multiplyBy(-1.0);
-			}
-			
-			Producer<Ray> r = new DynamicProducerForMemoryData<>(args -> new Ray(p, d));
+		p.addReflection();
 
-			Intersection inter = (Intersection) s.intersectAt(r);
-			PackedCollection id = inter.getDistance().get().evaluate();
-			
-			if (inter == null || id.toDouble() < 0) {
-				totalR += 1.0;
-			} else {
-				totalR += s.getIndexOfRefraction(new Vector(r.get().evaluate().pointAt(v(id)).get().evaluate(), 0));
-			}
-		}
-		
-		if (samples > 1)
-			return totalR / samples;
-		else
-			return totalR;
-	}
-	
-	/**
-	 * Determines whether a ray is entering or exiting a surface based on the
-	 * ray direction and surface normal.
-	 *
-	 * @param d The ray direction vector
-	 * @param n The surface normal vector (pointing outward)
-	 * @return True if the ray is entering the surface, false if exiting
-	 */
-	public boolean checkEntering(Vector d, Vector n) {
-		double dot = d.dotProduct(n);
-		
-		if (dot > 0.0) {
-			return true;
-		} else {
-			return false;
-		}
-	}
-	
-	/**
-	 * Computes the refracted ray direction using Snell's law.
-	 *
-	 * <p>When total internal reflection occurs (ray angle exceeds critical angle),
-	 * this method returns the reflected direction instead.</p>
-	 *
-	 * @param n      The surface normal
-	 * @param d      The incident ray direction
-	 * @param rindex The index of refraction of the current medium
-	 * @param eindex The index of refraction of the medium being entered
-	 * @return The refracted (or reflected) ray direction
-	 */
-	public Vector refract(Vector n, Vector d, double rindex, double eindex) {
-		Vector refracted;
-		
-		double ndoti, tndoti, ndoti2, a, b, b2, d2;
-		
-		ndoti = n.dotProduct(d);
-		ndoti2 = ndoti * ndoti;
-		
-		// if (ndoti >= 0.0) {
-		b = eindex / rindex; // } else { b = eindex / rindex; }
-		b2 = b * b;
-		
-		d2 = 1.0 - b2 * (1.0 - ndoti2);
-		
-		if (d2 >= 0.0) {
-			if (ndoti >= 0.0)
-				a = b * ndoti - Math.sqrt(d2);
-			else
-				a = b * ndoti + Math.sqrt(d2);
-			
-			refracted = n.multiply(a).subtract(d.multiply(b));
-		} else {
-			tndoti = ndoti + ndoti;
-			
-			refracted = n.multiply(tndoti).subtract(d);
-		}
-		
-		return refracted;
+		CollectionProducer point = origin(p.getIntersection().get(0));
+		Producer<PackedCollection> normal = direction(normals.iterator().next());
+		Producer<PackedCollection> viewer = p.getIntersection().getNormalAt(point);
+
+		// Refract into the material, then find where the ray leaves it again
+		CollectionProducer inside = refract(viewer, normal, indexOfRefraction);
+		ContinuousField exit = p.getSurface().intersectAt(ray(point, inside, RAY_OFFSET));
+
+		// Refract back out of the material where the ray leaves it
+		CollectionProducer outside = refract(inside.minus(), direction(exit.get(0)), indexOfRefraction);
+		CollectionProducer refractedRay = ray(origin(exit.get(0)), outside, RAY_OFFSET);
+
+		// The ray leaving the material is lit only by the light this shader is invoked for
+		List<ShadableSurface> surfaces = Arrays.asList(p.getOtherSurfaces());
+		CollectionProducer color = new LightingEngineAggregator(refractedRay, surfaces, List.of(p.getLight()), p)
+				.getClosestColor();
+
+		CollectionProducer cos = dotProduct(normalize(viewer), normalize(normal));
+		double r0 = Math.pow((indexOfRefraction - 1.0) / (indexOfRefraction + 1.0), 2.0);
+		CollectionProducer transmitted = c(1.0 - r0).subtract(
+				c(1.0 - r0).multiply(pow(c(1.0).subtract(abs(cos)), c(5.0))));
+		return GeneratedColorProducer.fromProducer(this, color.multiply(rgb(ra, ga, ba)).multiply(transmitted));
 	}
 
-
-	/**
-	 * Refracts the specified Vector object based on the specified normal vector and 2 specified indices of refraction.
-	 *
-	 * @param vector  A Vector object representing a unit vector in the direction of the incident ray
-	 * @param normal  A Vector object representing a unit vector that is normal to the surface refracting the ray
-	 * @param ni  A double value representing the index of refraction of the incident medium
-	 * @param nr  A double value representing the index of refraction of the refracting medium
-	 *
-	 * @deprecated
-	 */
-	@Deprecated
-	public static Vector refract(Vector vector, Vector normal, double ni, double nr, boolean v) {
-		if (v) Console.root().println("Vector = " + vector);
-
-		vector = vector.minus();
-
-		double p = -vector.dotProduct(normal);
-		double r = ni / nr;
-
-		if (v) Console.root().println("p = " + p + " r = " + r);
-
-		vector = vector.minus();
-		if (vector.dotProduct(normal) < 0) {
-			if (v) Console.root().println("LALA");
-			normal = normal.minus();
-			p = -p;
-		}
-		vector = vector.minus();
-
-		double s = Math.sqrt(1.0 - r * r * (1.0 - p * p));
-
-		if (v) Console.root().println("s = " + s);
-
-		Vector refracted = vector.multiply(r);
-
-		if (v) Console.root().println(String.valueOf(refracted));
-
-		//	if (p >= 0.0) {
-		refracted.addTo(normal.multiply((p * r) - s));
-		//	} else {
-		//		refracted.addTo(normal.multiply((p * r) - s));
-		//	}
-
-		if (v) Console.root().println(String.valueOf(refracted));
-
-		// Vector refracted = ((vector.subtract(normal.multiply(p))).multiply(r)).subtract(normal.multiply(s));
-
-//		if (refracted.subtract(vector).length() > 0.001) System.out.println("!!"); TODO
-
-		return refracted.minus();
-	}
-	
 	/**
 	 * Sets the index of refraction value used by this RefractionShader object.
+	 *
+	 * @param n the index of refraction of the material
 	 */
 	public void setIndexOfRefraction(double n) { this.indexOfRefraction = n; }
-	
+
 	/**
-	 * Sets the attenuation factors used by this RefractionShader object.
+	 * Sets the attenuation factors applied to light travelling inside the material.
+	 *
+	 * @param r the red attenuation factor
+	 * @param g the green attenuation factor
+	 * @param b the blue attenuation factor
 	 */
 	public void setAttenuationFactors(double r, double g, double b) {
 		this.ra = r;
 		this.ga = g;
 		this.ba = b;
 	}
-	
+
 	/**
 	 * Returns the index of refraction value used by this RefractionShader object.
+	 *
+	 * @return the index of refraction of the material
 	 */
 	public double getIndexOfRefraction() { return this.indexOfRefraction; }
-	
+
 	/**
 	 * Returns the 3 attenuation factors (RGB) used by this RefractionShader object.
+	 *
+	 * @return the red, green and blue attenuation factors
 	 */
 	public double[] getAttenuationFactors() {
 		return new double[] {this.ra, this.ga, this.ba};
 	}
-	
+
 	/**
 	 * Returns "Refraction Shader".
 	 */
