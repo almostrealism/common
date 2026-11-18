@@ -396,10 +396,13 @@ Notes on the declarations:
   straight into its compiled evaluables, calling `evaluate()`. Either way the pipeline is compiled
   in the constructor against a fixed sample rate and maximum frame count, so honouring
   `AudioProcessor` is a re-architecture onto producers, not a member rename — and doing it by
-  evaluating in Java would violate the Producer rules. Existing tests call the host-valued
-  `process`, so the migration cannot be behaviour-preserving for them. Filed for a person to
-  approve rather than forced here; this is the same shape as the `Volume`/`DistanceEstimator` gaps
-  in families 1 and 2.
+  evaluating in Java would violate the Producer rules. The two `process` signatures
+  (`PackedCollection, PackedCollection` vs `Producer, Producer`) erase to different Java types, so
+  a class can declare both at once: *adding* the producer-valued `AudioProcessor.process` is
+  therefore an additive, behaviour-preserving step — the existing host-valued overload that the
+  tests call stays in place — and only *retiring* the deprecated `EnvelopeProcessor` later forces
+  migrating those call sites. Filed for a person to approve rather than forced here; this is the
+  same shape as the `Volume`/`DistanceEstimator` gaps in families 1 and 2.
 
 ---
 
@@ -411,9 +414,11 @@ use Part II as follows.
 
 Before introducing a type with a `value`/`normal`/`getValueAt`/`getNormalAt` pair, a
 ray-`intersect`, a `neighbors`/node structure, or a state-advancing step the simulation loop
-owner drives (a `tick`/`step`), find the family above and extend the existing interface rather
+owner drives (a `tick`/`step`), or an operation that transforms a source buffer of audio into a
+destination buffer, find the family above and extend the existing interface rather
 than a `*Features` mixin alone — a population whose step takes no argument *is a* `Temporal`
-(family 5). A grid of sampled values is the one
+(family 5), and a source-to-destination audio transform *is an* `AudioProcessor` (family 6, in its
+producer-valued form). A grid of sampled values is the one
 case where that advice is reversed: family 4 records that **no interface names "a field
 sampled on a grid"**, and the finite-difference calculus is delivered deliberately through the
 `FieldCalculusFeatures` mixin — so reuse that mixin rather than reimplementing its operators or
