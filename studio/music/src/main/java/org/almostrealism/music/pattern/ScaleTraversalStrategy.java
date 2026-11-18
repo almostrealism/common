@@ -166,6 +166,13 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 					warn("Multiple scale position for non-melodic material");
 				}
 
+				// No key at this position (e.g. an empty scale from a zero-depth chord
+				// progression) means there is nothing to voice; skip this repetition
+				// rather than indexing an empty list. The melodic branches below and the
+				// MIDI mirror (toMidiEvents) guard the same case, keeping the two paths
+				// from diverging.
+				if (keys.isEmpty()) continue;
+
 				ElementVoicingDetails details =
 						audioContext.createVoicingDetails(melodic,
 								keys.get(0), relativePosition);
