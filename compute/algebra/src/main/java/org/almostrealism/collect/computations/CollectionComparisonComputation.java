@@ -296,6 +296,7 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 		Producer<PackedCollection> positive = (Producer<PackedCollection>) children.get(3);
 		Producer<PackedCollection> negative = (Producer<PackedCollection>) children.get(4);
 
+		// TODO(review): getDiagonalScalar also calls generate with scalar children; confirm keeping getShape() there is intended
 		long outputSize = getShape().getTotalSizeLong();
 		boolean fitsShape = children.stream().skip(1)
 				.allMatch(child -> shape(child).getTotalSizeLong() <= outputSize);
