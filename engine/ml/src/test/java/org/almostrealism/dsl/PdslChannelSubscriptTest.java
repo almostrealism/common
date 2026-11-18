@@ -37,7 +37,7 @@ import java.util.Map;
  */
 public class PdslChannelSubscriptTest extends TestSuiteBase {
 
-	/** The {@code channel_gain} fixture, which scales its input by the factor the subscript selects. */
+	/** Fixture declaring {@code channel_gain}, the layer that scales its input by the factor the subscript selects. */
 	private static final String FIXTURE = "/pdsl/test_channel_subscript.pdsl";
 
 	/** Largest absolute difference permitted from the host reference. */
