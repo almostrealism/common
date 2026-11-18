@@ -410,6 +410,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 		}
 
 		try {
+			// TODO(review): a release that throws skips collectGarbage() and surfaces in whichever thread is allocating
 			releaseFinishedWork();
 			releaseCeilingCaches();
 			collectGarbage();
