@@ -403,9 +403,17 @@ These are three distinct facts, each requiring independent verification.
 
 If the agent believes a new module is needed, it must document the requirement in its completion notes and explain why, but MUST NOT create the module itself. The project owner will handle module creation manually.
 
-## Do Not Commit Code
+## Commit Only Through ar-commit
 
-Never use `git commit`. Stage changes with `git add` only. The developer reviews and commits.
+Never run `git commit` yourself; the `block-git-commit` hook refuses it. Stage changes with
+`git add`, write the message to `commit.txt` at the top of the working tree, and call
+`mcp__ar-commit__commit` (pass `repo_path` when working in another worktree) when the developer
+has asked for a commit. It refuses the commit when the message attributes authorship or carries
+a private link, temporary identifier or private product name, when the staged lines carry a
+temporary identifier or private product name, or when the branch is a default or detached one;
+fix what it reports and call it again. `mcp__ar-commit__check_commit` runs the same checks
+without committing. A successful commit deletes `commit.txt`, so write a new one for the next.
+Without a request to commit, stage only: the developer reviews and commits.
 
 ## Never Attribute Authorship in a Commit Message
 
