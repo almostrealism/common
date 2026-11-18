@@ -79,6 +79,25 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 	String FEED_FORWARD_SUBLAYER_LAYER = "feed_forward_sublayer";
 
 	/**
+	 * Classpath location of the asset describing the pre-norm residual cross-attention sub-layer. Its
+	 * {@link #CROSS_ATTENTION_SUBLAYER_LAYER} layers are the single definition of the sub-layer that
+	 * {@link #crossAttentionResidualSublayer} builds: the pre-normalization, the cross-attention over
+	 * the encoder context, and the residual connection around them. It is the cross-attention sibling
+	 * of {@link #SELF_ATTENTION_SUBLAYER_ASSET} and {@link #FEED_FORWARD_SUBLAYER_ASSET}, but carries
+	 * no {@code _modulated} layers because a transformer block never adaLN-modulates its
+	 * cross-attention.
+	 */
+	String CROSS_ATTENTION_SUBLAYER_ASSET = "/pdsl/cross_attention_sublayer.pdsl";
+
+	/**
+	 * Name stem of the two {@link #CROSS_ATTENTION_SUBLAYER_ASSET} layers describing the residual
+	 * cross-attention sub-layer, distinguished only by normalization family ({@code _layernorm} or
+	 * {@code _rmsnorm}). {@link #crossAttentionResidualSublayer} builds the layer of the normalization
+	 * family it is asked for.
+	 */
+	String CROSS_ATTENTION_SUBLAYER_LAYER = "cross_attention_sublayer";
+
+	/**
 	 * Builds the pre-norm residual self-attention sub-layer of a transformer block as a {@link Block}
 	 * from the {@link #SELF_ATTENTION_SUBLAYER_ASSET} asset.
 	 *
@@ -199,6 +218,42 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 				+ (modulated ? "_modulated" : "");
 		PdslLoader loader = new PdslLoader();
 		return loader.buildLayer(loader.parseResource(FEED_FORWARD_SUBLAYER_ASSET), layer, blockShape, args);
+	}
+
+	/**
+	 * Builds the pre-norm residual cross-attention sub-layer of a transformer block as a {@link Block}
+	 * from the {@link #CROSS_ATTENTION_SUBLAYER_ASSET} asset.
+	 *
+	 * <p>The structure is not assembled here: the asset composes the pre-normalization of the given
+	 * family, the cross-attention sub-block over the encoder context, and the residual connection
+	 * around both of them ({@code x + cross_attention(norm(x))}). This method binds the normalization
+	 * weights and loads the layer of the normalization family it is asked for. Unlike
+	 * {@link #selfAttentionResidualSublayer} and {@link #feedForwardResidualSublayer} it takes no
+	 * adaLN modulation producers: a transformer block attends to its encoder context unconditionally,
+	 * so the cross-attention sub-layer is always the plain pre-norm residual.</p>
+	 *
+	 * @param blockShape            the sub-layer input and output shape {@code [batch, seqLen, dim]}
+	 * @param normType              the normalization family of the pre-normalization
+	 * @param crossAttPreNormWeight the pre-normalization scale weights
+	 * @param crossAttPreNormBias   the pre-normalization shift weights, or {@code null} for none
+	 * @param crossAttention        the cross-attention sub-block, mapping {@code blockShape} to
+	 *                              {@code blockShape} (see {@link SequenceAttentionFeatures#sequenceCrossAttention})
+	 * @return the residual cross-attention sub-layer block
+	 */
+	default Block crossAttentionResidualSublayer(TraversalPolicy blockShape, NormalizationType normType,
+												 PackedCollection crossAttPreNormWeight,
+												 PackedCollection crossAttPreNormBias,
+												 Block crossAttention) {
+		Map<String, Object> args = new HashMap<>();
+		args.put("pre_norm_weight", crossAttPreNormWeight);
+		args.put("pre_norm_bias", crossAttPreNormBias);
+		args.put("epsilon", normType.defaultEpsilon());
+		args.put("cross_attention", crossAttention);
+
+		String layer = CROSS_ATTENTION_SUBLAYER_LAYER
+				+ (normType == NormalizationType.RMS ? "_rmsnorm" : "_layernorm");
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(CROSS_ATTENTION_SUBLAYER_ASSET), layer, blockShape, args);
 	}
 
 	/**
@@ -729,15 +784,14 @@ public interface TransformerBlockFeatures extends AttentionFeatures {
 				throw new IllegalArgumentException("Context block cannot be null for cross-attention");
 			}
 
-			SequentialBlock crossAttentionWithNorm = new SequentialBlock(blockShape);
-			crossAttentionWithNorm.add(norm(normType, crossAttPreNormWeight, crossAttPreNormBias));
-			crossAttentionWithNorm.add(sequenceCrossAttention(
+			Block crossAttention = sequenceCrossAttention(
 					batchSize, seqLen, contextSeqLen, dim, heads,
 					crossWq, crossKv, crossWo,
 					crossQNormWeight, crossQNormBias,
 					crossKNormWeight, crossKNormBias,
-					context, attentionScores, projectionFactory, normType));
-			block.add(residual(crossAttentionWithNorm));
+					context, attentionScores, projectionFactory, normType);
+			block.add(crossAttentionResidualSublayer(blockShape, normType,
+					crossAttPreNormWeight, crossAttPreNormBias, crossAttention));
 		}
 
 		if (localAddition != null) {
