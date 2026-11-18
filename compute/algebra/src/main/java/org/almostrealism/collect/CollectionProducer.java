@@ -654,14 +654,22 @@ public interface CollectionProducer extends
 	}
 
 	/**
+	 * Returns the minimum element along the specified axis.
+	 *
+	 * @param axis the axis to reduce over
+	 * @return a computation for the minimum value along the axis
+	 */
+	default CollectionProducer min(int axis) {
+		return min(traverse(axis, this));
+	}
+
+	/**
 	 * Returns the minimum element across this collection.
 	 *
 	 * @return a computation for the minimum value
-	 * @throws UnsupportedOperationException always (not yet implemented)
 	 */
 	default CollectionProducer min() {
-		// TODO  return min((Producer) this);
-		throw new UnsupportedOperationException();
+		return min(this);
 	}
 
 	/**

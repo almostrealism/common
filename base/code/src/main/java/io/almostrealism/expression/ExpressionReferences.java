@@ -33,7 +33,10 @@ import java.util.Set;
  *
  * <p>The queries are built on three primitives every implementation supplies — its
  * {@link #getChildren() children}, its {@link #getDependencies() variable dependencies}, and
- * its {@link #getIndices() indices} — and answer by walking the subtree through them. A node
+ * its {@link #getIndices() indices} — and answer by walking the subtree through them. The
+ * query for a subexpression also consults the {@link #treeDepth() depth} and
+ * {@link #countNodes() size} of each subtree, to pass over the subtrees too small to hold the
+ * expression it looks for. A node
  * that is itself something a query looks for answers that part for itself by overriding the
  * query, and consults its children through {@code super}: a {@link Constant} references no
  * index; the indices ({@link io.almostrealism.sequence.DefaultIndex},
@@ -71,14 +74,39 @@ public interface ExpressionReferences extends VariableReferenceSupport {
 	Set<Index> getIndices();
 
 	/**
+	 * Returns the depth of this expression tree: 0 for a leaf, and otherwise one more than
+	 * the depth of its deepest child.
+	 *
+	 * @return the depth of this tree
+	 */
+	int treeDepth();
+
+	/**
+	 * Returns the number of nodes in this expression tree, including this node.
+	 *
+	 * @return the number of nodes in this tree
+	 */
+	int countNodes();
+
+	/**
 	 * Checks if this expression contains the specified expression anywhere in its subtree.
 	 *
-	 * <p>Uses structural equality ({@link Expression#equals(Object)}) for comparison.</p>
+	 * <p>Uses structural equality ({@link Expression#equals(Object)}) for comparison. Equal
+	 * expressions have the same {@link #treeDepth() depth} and {@link #countNodes() size}:
+	 * two nodes are equal only when both are leaves or their children are equal, and the
+	 * depth and size of a node follow from those of its children. A subtree that is shallower
+	 * or smaller than {@code e} therefore cannot contain it, and is rejected without visiting
+	 * its descendants, so a query walks only the part of the tree that is at least as deep and
+	 * as large as the expression it looks for. Common sub-expression extraction asks this of
+	 * every statement of a kernel for every frequent expression of the kernel, most of which a
+	 * given statement does not contain, and without the bound each of those queries would walk
+	 * the whole statement.</p>
 	 *
 	 * @param e the expression to search for
 	 * @return {@code true} if the expression is found in this subtree
 	 */
 	default boolean contains(Expression e) {
+		if (e == null || treeDepth() < e.treeDepth() || countNodes() < e.countNodes()) return false;
 		if (this.equals(e)) return true;
 
 		for (Expression<?> child : getChildren()) {

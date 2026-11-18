@@ -57,6 +57,20 @@ public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
 		ScopeLifecycle.prepareScope(Stream.of(args), manager, context);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Preparing this producer prepares the adapted producer and every argument producer,
+	 * none of which is a position of the process tree this producer is a leaf of, so every
+	 * argument preparing them obtains, as
+	 * {@link ScopeLifecycle#getPreparedArgumentBound(Stream, int)} counts it, is reported
+	 * here.</p>
+	 */
+	@Override
+	public int getScopeArgumentCount(int cap) {
+		return ScopeLifecycle.getPreparedArgumentBound(Stream.concat(Stream.of(p), Stream.of(args)), cap);
+	}
+
 	@Override
 	public void resetArguments() {
 		ScopeLifecycle.resetArguments(Stream.of(p));

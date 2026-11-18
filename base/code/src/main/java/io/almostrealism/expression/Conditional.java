@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -71,9 +72,20 @@ public class Conditional<T extends Number> extends Expression<T> {
 		}
 	}
 
+	/**
+	 * Returns the boolean-valued guard expression that selects between the two branches.
+	 * This is the first child; the accessor localises the erasure cast to the boolean
+	 * type that the condition always carries.
+	 *
+	 * @return the condition expression
+	 */
+	public Expression<Boolean> getCondition() {
+		return (Expression<Boolean>) getChildren().get(0);
+	}
+
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return getChildren().get(0).getWrappedExpression(lang) + " ? " +
+		return getCondition().getWrappedExpression(lang) + " ? " +
 				getChildren().get(1).getWrappedExpression(lang) +
 				" : " + getChildren().get(2).getWrappedExpression(lang);
 	}
@@ -81,7 +93,7 @@ public class Conditional<T extends Number> extends Expression<T> {
 	@Override
 	public boolean isValue(IndexValues values) {
 		// TODO  This should just be the parent implementation
-		return getChildren().get(0).isValue(values) &&
+		return getCondition().isValue(values) &&
 				getChildren().get(1).isValue(values) &&
 				getChildren().get(2).isValue(values);
 	}
@@ -110,7 +122,7 @@ public class Conditional<T extends Number> extends Expression<T> {
 	 */
 	@Override
 	protected double[] computeValues(IndexRange range) {
-		double[] condition = getChildren().get(0).values(range);
+		double[] condition = getCondition().values(range);
 		double[] positive = getChildren().get(1).values(range);
 		double[] negative = getChildren().get(2).values(range);
 		double[] out = new double[range.getLength()];
@@ -120,6 +132,23 @@ public class Conditional<T extends Number> extends Expression<T> {
 		}
 
 		return out;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The derivative selects the derivative of whichever branch the condition would,
+	 * {@code condition ? d(positive)/dx : d(negative)/dx}. The condition is treated as
+	 * independent of the target, so the measure-zero boundary where it flips is not
+	 * differentiated. This is the general form of {@link Max#delta(CollectionExpression)}
+	 * and {@link Min#delta(CollectionExpression)}.</p>
+	 */
+	@Override
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
+		return conditional(target.getShape(),
+				getCondition(),
+				getChildren().get(1).delta(target),
+				getChildren().get(2).delta(target));
 	}
 
 	@Override
@@ -199,6 +228,16 @@ public class Conditional<T extends Number> extends Expression<T> {
 	 * is returned directly. If both branches are equal a single constant is returned.
 	 * If one branch is zero the expression is converted to a {@link Mask}.</p>
 	 *
+	 * <p>Branches of different types give the {@linkplain NAryExpression#promotedType promoted}
+	 * type, as the operands of an arithmetic operation do: a
+	 * conditional selecting between an {@link Integer} and a {@link Long} is a {@link Long}, and
+	 * only a floating-point branch makes it floating-point. An integer branch is routinely
+	 * replaced by a {@link Long} reference to a declared common subexpression, so treating any
+	 * type mismatch as floating-point would turn an integer index computation into a
+	 * floating-point one, which an integer {@link Mod} around it cannot accept. A non-numeric
+	 * branch mixed with a branch of another type gives a floating-point conditional; see
+	 * {@link #branchType}.</p>
+	 *
 	 * @param condition the boolean guard expression
 	 * @param positive  the branch used when the condition is true
 	 * @param negative  the branch used when the condition is false
@@ -242,11 +281,33 @@ public class Conditional<T extends Number> extends Expression<T> {
 			return Mask.of(condition.not(), negative);
 		}
 
+		return new Conditional(branchType(positive, negative), condition, positive, negative);
+	}
+
+	/**
+	 * Determines the type of a conditional selecting between the given branches.
+	 *
+	 * <p>Branches of the same type give that type. Numeric branches of different types give
+	 * their {@linkplain NAryExpression#promotedType promoted} type. A branch whose type is not
+	 * a {@link Number} (a {@link Boolean} comparison, for example) has no numeric promotion,
+	 * so a conditional mixing it with a branch of any other type is floating-point, which is
+	 * the type every generated language can represent both branches in.</p>
+	 *
+	 * @param positive the branch used when the condition is true
+	 * @param negative the branch used when the condition is false
+	 * @return the type of the conditional
+	 */
+	private static Class<?> branchType(Expression<?> positive, Expression<?> negative) {
 		if (positive.getType() == negative.getType()) {
-			return new Conditional(positive.getType(), condition, positive, negative);
-		} else {
-			return new Conditional(Double.class, condition, positive, negative);
+			return positive.getType();
 		}
+
+		if (Number.class.isAssignableFrom(positive.getType())
+				&& Number.class.isAssignableFrom(negative.getType())) {
+			return NAryExpression.promotedType(List.of(positive, negative));
+		}
+
+		return Double.class;
 	}
 
 	/**

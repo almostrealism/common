@@ -29,7 +29,6 @@ import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.optimize.AdamOptimizer;
 import org.almostrealism.optimize.Dataset;
-import org.almostrealism.optimize.LossProvider;
 import org.almostrealism.optimize.ModelOptimizer;
 import org.almostrealism.optimize.NegativeLogLikelihood;
 import org.almostrealism.optimize.TrainingResult;
@@ -334,8 +333,8 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		Assert.assertTrue("positions with different tokens must produce different distributions",
 				rowDifference > 1e-5);
 
-		double loss = new NegativeLogLikelihood().loss(output.reshape(shape(SEQ_LEN, VOCAB)),
-				window.getExpectedOutput());
+		double loss = new NegativeLogLikelihood().loss(cp(output.reshape(shape(SEQ_LEN, VOCAB))),
+				cp(window.getExpectedOutput())).evaluate().doubleStream().average().orElse(0);
 		log("initial window loss = " + loss + " (uniform = " + Math.log(VOCAB) + ")");
 		Assert.assertEquals(sum / SEQ_LEN, loss, 1e-4);
 		Assert.assertEquals(Math.log(VOCAB), loss, 0.5);
@@ -637,13 +636,15 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 													NextTokenDataset trainWindows, NextTokenDataset heldOut,
 													NextTokenDataset heldOutAll) throws IOException {
 		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> trainWindows);
-		optimizer.setLossFunction(finiteLoss(new NegativeLogLikelihood()));
+		optimizer.setLossFunction(new NegativeLogLikelihood());
 		optimizer.setValidationDataset(() -> heldOut);
 		optimizer.setLogFrequency(1);
 
 		List<Long> epochEnds = new ArrayList<>();
 		long trainingStart = System.nanoTime();
 		optimizer.setProgressCallback(progress -> {
+			assertFiniteLoss(progress.getTrainLoss());
+			assertFiniteLoss(progress.getValidationLoss());
 			epochEnds.add(System.nanoTime());
 			log("epoch=" + progress.getEpoch() + " trainBitsPerByte=" + progress.getTrainLoss() / Math.log(2) +
 					" heldOutBitsPerByte=" + progress.getValidationLoss() / Math.log(2) +
@@ -658,7 +659,7 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 		List<Double> heldOutHistory = result.getValidationLossHistory();
 		Assert.assertFalse(heldOutHistory.isEmpty());
 		long evaluationStart = System.nanoTime();
-		double finalBits = optimizer.evaluate(heldOutAll) / Math.log(2);
+		double finalBits = assertFiniteLoss(optimizer.evaluate(heldOutAll)) / Math.log(2);
 		double unigramBits = heldOutAll.scoredTargetEntropyBits();
 		log("totalSteps=" + result.getEpochsCompleted() * trainWindows.getWindowCount() +
 				" epochsRun=" + result.getEpochsCompleted() +
@@ -678,9 +679,9 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 					reloadedWeights);
 			reloadedCompiled = reloaded.compile(false);
 			ModelOptimizer evaluator = new ModelOptimizer(reloadedCompiled, () -> heldOut);
-			evaluator.setLossFunction(finiteLoss(new NegativeLogLikelihood()));
-			double reloadedBits = evaluator.evaluate(heldOut) / Math.log(2);
-			double trainedBits = optimizer.evaluate(heldOut) / Math.log(2);
+			evaluator.setLossFunction(new NegativeLogLikelihood());
+			double reloadedBits = assertFiniteLoss(evaluator.evaluate(heldOut)) / Math.log(2);
+			double trainedBits = assertFiniteLoss(optimizer.evaluate(heldOut)) / Math.log(2);
 			log("reloadedHeldOutBitsPerByte=" + reloadedBits + " trainedHeldOutBitsPerByte=" + trainedBits);
 			Assert.assertEquals(trainedBits, reloadedBits, RELOAD_TOLERANCE * trainedBits);
 
@@ -1398,29 +1399,18 @@ public class CausalLanguageModelTest extends TestSuiteBase implements ModelTestF
 	}
 
 	/**
-	 * Wraps a loss so that any non-finite loss value fails the run immediately, instead of being
-	 * skipped ({@code NaN}) or applied ({@code Infinity}) by {@link ModelOptimizer}.
+	 * Fails the run if a loss reported by {@link ModelOptimizer} is not finite: an epoch or
+	 * evaluation whose average is {@code Infinity}, or {@code NaN} because no sample had a defined
+	 * loss.
 	 *
-	 * @param loss the loss to wrap
-	 * @return the fail-fast loss
+	 * @param loss the reported loss
+	 * @return the loss
 	 */
-	private LossProvider finiteLoss(LossProvider loss) {
-		return new LossProvider() {
-			@Override
-			public double loss(PackedCollection output, PackedCollection target) {
-				double value = loss.loss(output, target);
-				if (!Double.isFinite(value)) {
-					throw new AssertionError("Non-finite loss " + value);
-				}
+	private double assertFiniteLoss(double loss) {
+		if (!Double.isFinite(loss)) {
+			throw new AssertionError("Non-finite loss " + loss);
+		}
 
-				return value;
-			}
-
-			@Override
-			public Producer<PackedCollection> gradient(Producer<PackedCollection> output,
-													   Producer<PackedCollection> target) {
-				return loss.gradient(output, target);
-			}
-		};
+		return loss;
 	}
 }

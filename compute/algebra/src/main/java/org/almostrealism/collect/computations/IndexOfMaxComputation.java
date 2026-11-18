@@ -16,13 +16,9 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.CollectionVariable;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
@@ -44,21 +40,17 @@ import java.util.List;
  * // Produces [1.0, 2.0]
  * }</pre>
  *
- * <p>The index starts at zero and is replaced on each iteration in which the element at the
- * iteration's position exceeds the element at the current index. Each output element locates
- * its group by its own position, never by the kernel index, because when the computation is
- * embedded in a kernel of a different size the kernel index identifies an element of that
- * kernel rather than of this computation.</p>
+ * <p>The index is replaced on each iteration in which the element at the iteration's position
+ * exceeds the element at the current index; see {@link IndexOfExtremumComputation} for the
+ * shared search.</p>
  *
  * @see org.almostrealism.collect.AggregationFeatures#indexOfMax(Producer)
+ * @see IndexOfExtremumComputation
  * @see CollectionMaxComputation
  *
  * @author Michael Murray
  */
-public class IndexOfMaxComputation extends TraversableRepeatedProducerComputation {
-	/** The number of elements in each group of the input. */
-	private final int size;
-
+public class IndexOfMaxComputation extends IndexOfExtremumComputation {
 	/**
 	 * Constructs a computation of the index of the maximum of each group of the input.
 	 *
@@ -77,70 +69,19 @@ public class IndexOfMaxComputation extends TraversableRepeatedProducerComputatio
 	 * @param input the {@link Producer} of the collection to search
 	 */
 	protected IndexOfMaxComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
-		super("indexOfMax", shape.replace(new TraversalPolicy(1)), shape.getSize(), input);
-		this.size = shape.getSize();
+		super("indexOfMax", shape, input);
 	}
 
 	/**
-	 * Returns zero: the search starts at the first element of each group.
+	 * A candidate replaces the current maximum when it is strictly greater.
 	 *
-	 * @param args  the traversable arguments
-	 * @param index the position within the output block
-	 * @return the constant {@code 0}
+	 * @param candidate the element at the position being considered
+	 * @param current   the element at the current maximum index
+	 * @return {@code candidate > current}
 	 */
 	@Override
-	protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
-		return new IntegerConstant(0);
-	}
-
-	/**
-	 * Computes the index of the maximum of the group of the output element at the given
-	 * position, by comparing each element of the group with the one at the current index.
-	 *
-	 * @param index the position of the output element
-	 * @return the expression for the index of the maximum of that element's group
-	 */
-	@Override
-	public Expression<Double> getValueAt(Expression index) {
-		TraversableExpression[] args = getTraversableArguments(index);
-
-		Expression value = getInitialValue(args, e(0));
-
-		for (int i = 0; i < count; i++) {
-			value = step(args, index, value, e(i));
-			value = value.generate(value.flatten());
-		}
-
-		return value;
-	}
-
-	/**
-	 * Computes one iteration of the search in a kernel of its own, where the current index
-	 * of each output element is held in the output itself.
-	 */
-	@Override
-	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionVariable variable = (CollectionVariable) args[0];
-		Expression<?> position = new KernelIndex().multiply(variable.length());
-		return step(args, position, variable.reference(position), localIndex);
-	}
-
-	/**
-	 * Returns the index after comparing one element of a group with the element at the
-	 * current index: the element's own position if it is larger, otherwise the current index.
-	 *
-	 * @param args     the traversable arguments, where {@code args[1]} is the input
-	 * @param position the position of the output element whose group is searched
-	 * @param current  the current index of the maximum
-	 * @param element  the position within the group of the element to compare
-	 * @return the index of the maximum after the comparison
-	 */
-	private Expression<?> step(TraversableExpression[] args, Expression<?> position,
-							   Expression<?> current, Expression<?> element) {
-		Expression<?> group = position.multiply(size);
-		return conditional(args[1].getValueAt(group.add(element))
-						.greaterThan(args[1].getValueAt(group.add(current))),
-				element, current);
+	protected Expression<Boolean> isReplacement(Expression<?> candidate, Expression<?> current) {
+		return candidate.greaterThan(current);
 	}
 
 	/**

@@ -176,6 +176,17 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	/**
 	 * {@inheritDoc}
 	 *
+	 * <p>Also counts the {@link TraversalOrdering#getArgumentCount() arguments} binding the
+	 * ordering of the matrix obtains.</p>
+	 */
+	@Override
+	public int getScopeArgumentCount(int cap) {
+		return (int) Math.min(Integer.MAX_VALUE, (long) super.getScopeArgumentCount(cap) + order.getArgumentCount());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
 	 * <p>Also discards the enumeration bound by
 	 * {@link #prepareScope(ArgumentProvider, KernelStructureContext)}.</p>
 	 */

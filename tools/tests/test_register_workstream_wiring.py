@@ -187,10 +187,12 @@ class RegistrationDeclaresNoModelConfigTests(unittest.TestCase):
     #: plan declares); it selects a machine, not a model. ``dependentRepos``
     #: lists repositories checked out beside this one (goal decomposition
     #: reads the framework's code next to an application's); it selects
-    #: source, not a model.
+    #: source, not a model. ``settledCiTrigger`` names the CI the controller
+    #: starts when a job ends with nothing to commit (the branch's test run);
+    #: it selects a CI action, not a model.
     _ALLOWED_PAYLOAD_KEYS = frozenset({
         "defaultBranch", "baseBranch", "channelName", "planningDocument", "repoUrl",
-        "trackerCapabilities", "requiredLabels", "dependentRepos",
+        "trackerCapabilities", "requiredLabels", "dependentRepos", "settledCiTrigger",
     })
 
     @staticmethod

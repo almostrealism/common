@@ -17,6 +17,7 @@
 package org.almostrealism.ml.midi;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.ml.AutoregressiveModel;
@@ -128,6 +129,24 @@ public class GRUDecoder implements LayerFeatures {
 	private volatile CompiledModel stepModel;
 
 	/**
+	 * The position, {@code [token, 0]}, of the {@link #decoderEmbedding} row that
+	 * {@link #embeddingLookup} copies: the token chosen by the previous decode step.
+	 */
+	private final PackedCollection stepToken;
+
+	/** The decoder embedding of the previous token: the input of each {@link #stepModel} pass. */
+	private final PackedCollection stepInput;
+
+	/**
+	 * The compiled lookup that copies the {@link #decoderEmbedding} row at {@link #stepToken} into
+	 * {@link #stepInput}. The token is a kernel argument, so one program serves every token; a
+	 * lookup built with the token as a literal would be a different program, compiled anew, for
+	 * every distinct token sampled. Lazily initialised by {@link #ensureCompiled()}, before
+	 * {@link #stepModel}.
+	 */
+	private volatile Runnable embeddingLookup;
+
+	/**
 	 * Create a GRU decoder with explicit weights.
 	 *
 	 * <p>Weight tensors are provided in the stacked layout used by the model checkpoint (each
@@ -174,6 +193,8 @@ public class GRUDecoder implements LayerFeatures {
 		this.vocabSizesPerStep = computeVocabSizesPerStep(config);
 		validateLayers();
 		this.hiddenState = new PackedCollection(shape(numLayers, config.decoderHiddenSize));
+		this.stepToken = new PackedCollection(2);
+		this.stepInput = new PackedCollection(shape(inputSizes[0]));
 	}
 
 	/**
@@ -440,6 +461,10 @@ public class GRUDecoder implements LayerFeatures {
 			}
 			step.add(loader.buildLayer(program, head, shape(config.decoderHiddenSize), headArgs));
 
+			int embeddingSize = inputSizes[0];
+			this.embeddingLookup = Process.optimized(a(cp(stepInput),
+					subset(shape(1, embeddingSize), cp(decoderEmbedding), cp(stepToken))
+							.reshape(shape(embeddingSize)))).get();
 			this.startModel = start.compile(false);
 			this.stepModel = step.compile(false);
 		}
@@ -465,15 +490,14 @@ public class GRUDecoder implements LayerFeatures {
 	 */
 	private int[] runGruDecode(PackedCollection transformerHidden,
 								double temperature, double topP, Random random) {
-		int embeddingSize = inputSizes[0];
 		start(transformerHidden);
 
 		int[] outputTokens = new int[TOKENS_PER_NOTE];
 		int token = 0;
 		for (int i = 0; i < TOKENS_PER_NOTE; i++) {
-			PackedCollection input = cp(decoderEmbedding).subset(shape(1, embeddingSize), token, 0)
-					.reshape(shape(embeddingSize)).evaluate();
-			token = AutoregressiveModel.sampleToken(step(input), config.decodeVocabSize,
+			stepToken.fill(token, 0);
+			embeddingLookup.run();
+			token = AutoregressiveModel.sampleToken(step(stepInput), config.decodeVocabSize,
 					temperature, topP, random);
 			outputTokens[i] = token;
 		}

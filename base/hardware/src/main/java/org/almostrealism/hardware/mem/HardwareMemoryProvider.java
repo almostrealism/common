@@ -29,6 +29,8 @@ import java.lang.ref.ReferenceQueue;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.LongSummaryStatistics;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.PriorityBlockingQueue;
@@ -37,6 +39,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -222,6 +225,12 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 
 	/** How long {@link #reclaim(BooleanSupplier)} waits after each collection for releases to complete. */
 	public static long reclaimWaitMs = 100;
+
+	/**
+	 * How many allocation sites {@link #memoryMaxReached(String, long, long, long)} lists
+	 * when an allocation is rejected at the memory ceiling.
+	 */
+	public static int reportedAllocationSites = 10;
 
 	/** Guards {@link #collecting} and {@link #collectionPasses}, and is waited on by joining threads. */
 	private final Object collectionLock = new Object();
@@ -462,7 +471,7 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 	 */
 	protected <B> B allocateReserved(AtomicLong used, long max, long size, Supplier<B> allocation) {
 		if (!reserve(used, max, size)) {
-			throw new HardwareException("Memory Max Reached");
+			throw memoryMaxReached("Memory Max Reached", size, used.get(), max);
 		}
 
 		try {
@@ -471,6 +480,69 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 			used.addAndGet(-size);
 			throw e;
 		}
+	}
+
+	/**
+	 * Reports an allocation rejected at this provider's memory ceiling and returns the
+	 * exception to throw for it. The report names the request, the bytes in use, and the
+	 * live allocations grouped by the site that allocated them (see
+	 * {@link #describeAllocations(int)}), so that the memory holding the ceiling can be
+	 * attributed when the failure happens rather than only at shutdown.
+	 *
+	 * @param message   the exception message
+	 * @param requested the bytes the rejected allocation asked for
+	 * @param used      the bytes in use when it was rejected
+	 * @param max       the provider's memory ceiling in bytes
+	 * @return the exception to throw
+	 */
+	protected HardwareException memoryMaxReached(String message, long requested, long used, long max) {
+		warn("Allocation of " + requested + " bytes rejected with " + used + " of " + max +
+				" bytes in use\n" + describeAllocations(reportedAllocationSites));
+		return new HardwareException(message);
+	}
+
+	/**
+	 * Describes the blocks this provider currently holds, grouped by the stack trace
+	 * recorded when each was allocated and ordered by the bytes each site holds, largest
+	 * first. Allocation sites are recorded only when {@link RAM#allocationTraceFrames}
+	 * ({@code AR_HARDWARE_ALLOCATION_TRACE_FRAMES}) is positive; blocks allocated without
+	 * a recorded site are reported together.
+	 *
+	 * @param sites the most allocation sites to list; a negative value lists none, so that
+	 *              reporting can never replace the exception this is called to produce
+	 * @return a multi-line description of the live allocations
+	 */
+	public String describeAllocations(int sites) {
+		Map<List<StackTraceElement>, LongSummaryStatistics> bySite = allocated.values().stream()
+				.collect(Collectors.groupingBy(ref -> ref.getAllocationStackTrace() == null ?
+								List.<StackTraceElement>of() : List.of(ref.getAllocationStackTrace()),
+						Collectors.summarizingLong(NativeRef::getSize)));
+
+		StringBuilder out = new StringBuilder();
+		out.append(bySite.values().stream().mapToLong(LongSummaryStatistics::getCount).sum())
+				.append(" blocks holding ")
+				.append(bySite.values().stream().mapToLong(LongSummaryStatistics::getSum).sum())
+				.append(" bytes from ").append(bySite.size()).append(" allocation sites");
+
+		bySite.entrySet().stream()
+				.sorted(Comparator.comparingLong((Map.Entry<List<StackTraceElement>, LongSummaryStatistics> e) ->
+						e.getValue().getSum()).reversed())
+				.limit(Math.max(0, sites))
+				.forEach(site -> {
+					out.append("\n").append(site.getValue().getSum()).append(" bytes in ")
+							.append(site.getValue().getCount()).append(" blocks");
+					if (site.getKey().isEmpty()) {
+						out.append(" allocated where no site was recorded");
+					} else {
+						site.getKey().forEach(frame -> out.append("\n\tat ").append(frame));
+					}
+				});
+
+		if (bySite.containsKey(List.of())) {
+			out.append("\nSet AR_HARDWARE_ALLOCATION_TRACE_FRAMES to record allocation sites");
+		}
+
+		return out.toString();
 	}
 
 	/** Returns the reference queue used to receive GC notifications for collected {@link RAM} objects. */

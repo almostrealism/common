@@ -19,7 +19,6 @@ package org.almostrealism.algebra.test;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -60,7 +59,6 @@ public class ComplexMathTests extends TestSuiteBase {
 	 * Tests creating complex numbers from parts with batches.
 	 */
 	@Test(timeout = 30000)
-	@TestProperties(knownIssue = true)
 	public void complexFromPartsBatches2() {
 
 		PackedCollection values = new PackedCollection(10, 2, 1024).randFill();

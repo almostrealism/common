@@ -70,6 +70,57 @@ public class JobCompletionEventTest extends TestSuiteBase {
 		assertTrue(event.isPushed());
 	}
 
+	/**
+	 * A successful job whose git info shows no commit, nothing staged and
+	 * nothing held back is "without changes"; any one of those, a failure, or
+	 * a missing branch makes it not.
+	 */
+	@Test(timeout = 30000)
+	public void successWithoutChangesRequiresAnUntouchedBranch() {
+		assertTrue(JobCompletionEvent.success("j", "review")
+				.withGitInfo("feature/x", null, null, null, false).isSuccessWithoutChanges());
+
+		assertFalse("a commit is a change", JobCompletionEvent.success("j", "review")
+				.withGitInfo("feature/x", "abc", Arrays.asList("A.java"), null, true).isSuccessWithoutChanges());
+		assertFalse("a held-back file is a change", JobCompletionEvent.success("j", "review")
+				.withGitInfo("feature/x", null, null, Arrays.asList("pom.xml (blocked)"), false)
+				.isSuccessWithoutChanges());
+		assertFalse("no branch, no review loop", JobCompletionEvent.success("j", "review")
+				.withGitInfo(null, null, null, null, false).isSuccessWithoutChanges());
+		assertFalse("a failure is not a settled loop", JobCompletionEvent.failed("j", "review", "boom", null)
+				.withGitInfo("feature/x", null, null, null, false).isSuccessWithoutChanges());
+	}
+
+	/**
+	 * {@code isPrimaryPushed()} requires both staged primary files and a push;
+	 * {@code hasPushedWork()} is also true when only a dependent repository was
+	 * pushed, so a dependent-only job still counts as having pushed work.
+	 */
+	@Test(timeout = 30000)
+	public void pushedWorkPredicatesDistinguishPrimaryFromDependent() {
+		JobCompletionEvent primary = JobCompletionEvent.success("j", "primary")
+				.withGitInfo("feature/x", "abc", Arrays.asList("A.java"), null, true);
+		assertTrue("staged files that were pushed are a primary push", primary.isPrimaryPushed());
+		assertTrue(primary.hasPushedWork());
+
+		JobCompletionEvent stagedNotPushed = JobCompletionEvent.success("j", "primary")
+				.withGitInfo("feature/x", "abc", Arrays.asList("A.java"), null, false);
+		assertFalse("staged but not pushed is not a primary push", stagedNotPushed.isPrimaryPushed());
+		assertFalse(stagedNotPushed.hasPushedWork());
+
+		JobCompletionEvent dependentOnly = JobCompletionEvent.success("j", "dependent")
+				.withGitInfo("feature/x", null, null, null, false)
+				.withDependentRepoPushes(List.of(new DependentRepoPush(
+						"https://github.com/acme/lib.git", "feature/x", "abc123")));
+		assertFalse("no primary staged files means no primary push", dependentOnly.isPrimaryPushed());
+		assertTrue("a dependent push is still pushed work", dependentOnly.hasPushedWork());
+
+		JobCompletionEvent nothing = JobCompletionEvent.success("j", "review")
+				.withGitInfo("feature/x", null, null, null, false);
+		assertFalse(nothing.isPrimaryPushed());
+		assertFalse("a job that pushed nothing has no pushed work", nothing.hasPushedWork());
+	}
+
 	/** Verifies that withPullRequestUrl stores the URL on the event. */
 	@Test(timeout = 30000)
 	public void withPullRequestUrlSetsUrl() {

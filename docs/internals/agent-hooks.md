@@ -96,6 +96,26 @@ working rules:
 Soft reminders still have a place where blocking would be the wrong force. The memory
 reminder below is the example.
 
+## A branch that tracks master
+
+`block-branch-track-master` (core `git_command_check.py`) refuses the commands that would
+make a feature branch track a remote master/main: `git checkout -b <name> origin/master`
+without `--no-track`, `git branch -u origin/master`, and pushes onto master from another
+ref. It reads only command text, so it cannot see the state when it arises some other way,
+such as a branch created in a person's own terminal, by a script, or before the guard
+existed. On such a branch a bare `git push` updates master.
+
+`require-own-upstream.sh` / `require-own-upstream.ts` (core `branch_upstream_check.py`)
+check the state itself, before **every** tool call. While the current branch is not
+master/main and its configured upstream (`branch.<name>.merge` on a real remote) is
+master/main, every call is blocked except a Bash command made only of the fixes
+(`git branch --unset-upstream`, `git branch -u <remote>/<not master>`,
+`git push -u <remote> <branch>`), read-only git inspection (`git status`, the `git branch`
+listing forms, `git rev-parse`, `git config --get`, `git remote -v`) and `cd`. The session
+has to fix the branch before it can do anything else. A detached HEAD, a branch with no
+upstream or a local one, and a directory that is not a repository are allowed; the check
+fails open on anything it cannot read.
+
 ## The memory reminder
 
 `memory-reminder.sh` / `memory-reminder.ts` (core `memory_reminder_check.py`) nudge an
@@ -133,6 +153,26 @@ test-running phase without `-DskipTests` and any `AR_TEST_GROUP` assignment. The
 hook blocks a run with no path, with a directory, or above 5 test files or 40 node ids.
 They parse command text and are backstops; the enforced surfaces are job submission, the
 controller's submit endpoint and the MCP test runner.
+
+## Private-link hook
+
+`block-private-url` applies the root `CLAUDE.md` rule "Never Publish a Private Link". It
+blocks a claude.ai page (other than the public `claude.ai/api/` endpoints), a bare
+`session_...` id, or a URL whose host is a project machine (a `[lab-hosts]` entry of
+`exfil-allowlist.txt`, or a private, link-local or shared-address IP; loopback is
+allowed) in text about to be published:
+
+- a `gh pr`/`gh issue`/`gh release`/`gh api`/`gh gist` or `git commit`/`git tag`/
+  `git notes`/`git merge` command, including the file a `--body-file`, `--file`, `-F` or
+  `--message-file` names;
+- an ar-manager `github_*` tool that writes (creates a pull request, replies, comments,
+  edits);
+- a write to a file named `commit.txt`.
+
+Claude Code harnesses can be configured to remind the model to end commit messages and
+pull request descriptions with a link to its session. Such a link opens only for its
+owner, and `attribution` in `.claude/settings.json` does not suppress the reminder, so
+this hook is what keeps the link out.
 
 ## Testing a hook
 

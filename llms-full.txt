@@ -1254,7 +1254,9 @@ Consult the linked references before writing related code.
 
 **Code Policy Enforcement:** `CodePolicyViolationDetector` enforces the GPU memory model in CI. Do not circumvent it by extracting code to helpers, naming methods to match the whitelist, or adding suppression comments. Fix the violating code.
 
-**Process Isolation:** Only `IsolatedProcess` breaks expression embedding. Never return null from `getValueAt()`. Call `Process.optimize()` before `Process.get()`.
+**Process Isolation:** Only `Process.optimize` decides kernel boundaries. Graph-building code never calls `Process.isolated`, `isolate()` or a wrapper of them; a computation that needs its own kernel says so through `isIsolationTarget`. Never return null from `getValueAt()`. Call `Process.optimize()` before `Process.get()`.
+
+**Optimization before evaluation.** `Producer.evaluate()` (which is `get().evaluate()`) and `Producer.get()` do not optimize — kernel boundaries are decided only by `Process.optimize`, which these paths never reach. The canonical `cp(source).multiply(2.0).evaluate()` is element-wise with no reduction, so plain `.evaluate()` is correct for it. But a graph where several consumers read the same reduction (a sum, mean, maximum, `indexOfMax`, or other aggregation) must be evaluated through `evaluateOptimized()` (equivalently `Process.optimized(producer).get().evaluate()`); otherwise that reduction is embedded in each of its readers and the graph builds an exponentially large expression. A reduction with a single reader does not need it — the optimizer isolates only what `isIsolationTarget` marks. Do not split such a graph by hand to make it compile — that moves a kernel-boundary decision into application code.
 
 **StateDictionary** for all model weight management.
 

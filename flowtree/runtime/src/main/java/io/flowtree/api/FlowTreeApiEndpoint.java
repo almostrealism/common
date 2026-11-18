@@ -1187,7 +1187,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         remediationGuard.dispatched(factory.getTaskId(), workstreamId, remediationPass);
         // Persist for restart recovery; cleared at the terminal choke point.
         if (pendingJobRecovery != null) {
-            pendingJobRecovery.persist(factory.getTaskId(), factory.encode());
+            pendingJobRecovery.persist(factory.getTaskId(), factory.toWire());
         }
 
         // Notify that the job has been submitted (not yet executing)
@@ -1345,6 +1345,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         } else if (jobId != null) {
             autoPrPublisher.discard(jobId);
         }
+
+        // A job that changed nothing ends the review loop: start the workstream's settled CI.
+        Workstream settled = event.isSuccessWithoutChanges() ? notifiers.workstreamFor(workstreamId) : null;
+        if (settled != null) settled.startSettledCi(githubProxyHandler, event.getTargetBranch());
 
         // Every status event is also a liveness signal, so the stuck-job
         // scanner sees progress without the agent posting anything extra.

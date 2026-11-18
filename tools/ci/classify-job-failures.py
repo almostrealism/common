@@ -74,11 +74,12 @@ FAILED_CONCLUSIONS = ("failure", "timed_out")
 # The name of a Maven/test step. Every test lane's invocation step is named
 # "Run <area> Tests" or "Flowtree Tests", so the word "test(s)" identifies it.
 # Matched case-insensitively on word boundaries. "Maven"/"mvn" are deliberately
-# NOT work markers: "Isolate Maven repository per runner" is a setup step that
-# precedes "Download build artifacts" and "Restore build artifacts" in every
-# macOS, CL and CUDA lane, and anchoring on it would route a failed artifact
-# download in those lanes to the crash prompt. Likewise "build" is not a marker,
-# so "Download build artifacts" is never taken for the work step.
+# NOT work markers: the "Select Maven repository" setup step (named "Isolate
+# Maven repository per runner" before it moved to the shared select-maven-repo
+# action) precedes "Download build artifacts" and "Restore build artifacts" in
+# every self-hosted lane, and anchoring on its name would route a failed
+# artifact download in those lanes to the crash prompt. Likewise "build" is not
+# a marker, so "Download build artifacts" is never taken for the work step.
 _WORK_STEP_PATTERN = re.compile(r"\btests?\b", re.IGNORECASE)
 
 

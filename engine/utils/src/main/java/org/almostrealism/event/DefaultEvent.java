@@ -71,6 +71,30 @@ public class DefaultEvent extends AbstractEvent {
 	}
 
 	/**
+	 * Describes this event as a flat map of string-valued metadata, suitable
+	 * for delivery to an analytics service. The map contains the duration and
+	 * every tag; subclasses add the metadata for their own fields.
+	 * <p>
+	 * Tags are copied first so that the reserved {@code duration} key, written
+	 * last, always reports {@link #getDuration()} rather than a caller-supplied
+	 * tag that happens to share the key.
+	 * </p>
+	 *
+	 * @return a new mutable map describing this event
+	 */
+	public Map<String, String> toMetadata() {
+		Map<String, String> metadata = new HashMap<>();
+
+		if (hasTags()) {
+			metadata.putAll(getTags());
+		}
+
+		metadata.put("duration", String.valueOf(getDuration()));
+
+		return metadata;
+	}
+
+	/**
 	 * Returns the wall-clock timestamp in milliseconds when this event was created.
 	 *
 	 * @return  the creation timestamp in milliseconds

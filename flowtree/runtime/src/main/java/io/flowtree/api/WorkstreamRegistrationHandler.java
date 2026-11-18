@@ -20,6 +20,7 @@ import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.IHTTPSession;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.JsonFieldExtractor;
+import io.flowtree.github.CiTrigger;
 import io.flowtree.jobs.agent.PhaseConfigBundle;
 
 import java.util.List;
@@ -48,7 +49,8 @@ import java.util.Map;
  * <p>Both endpoints share the same field surface ({@code defaultBranch},
  * {@code baseBranch}, {@code repoUrl}, {@code planningDocument},
  * {@code planInstructions}, {@code channelName}, {@code requiredLabels},
- * {@code dependentRepos}, {@code defaultPhaseConfig}, {@code phaseConfigs}).
+ * {@code dependentRepos}, {@code settledCiTrigger}, {@code defaultPhaseConfig},
+ * {@code phaseConfigs}).
  * Registration additionally derives the target workspace from
  * {@code workspaceId}, the GitHub org of {@code repoUrl}, or the
  * primary notifier in single-workspace mode, then auto-creates a Slack
@@ -363,7 +365,8 @@ final class WorkstreamRegistrationHandler {
 
         Registration created = register(
                 registrationRequest(targetBranch, repoUrl,
-                        JsonFieldExtractor.extractString(body, "baseBranch")),
+                        JsonFieldExtractor.extractString(body, "baseBranch"),
+                        JsonFieldExtractor.extractString(body, "settledCiTrigger")),
                 targetBranch);
         if (created.failure() == null) {
             log.accept("Workstream " + (created.existing() ? "resolved" : "created")
@@ -387,13 +390,20 @@ final class WorkstreamRegistrationHandler {
      * bare {@code POST /api/workstreams} would produce, and can be set
      * afterwards through the update endpoint or {@code /flowtree config}.</p>
      *
-     * @param targetBranch the branch the workstream tracks
-     * @param repoUrl      the repository the workstream tracks
-     * @param baseBranch   the base branch, or {@code null} for the default
+     * <p>{@code settledCiTrigger} is the exception, because it has no
+     * per-job meaning: it names the CI the controller starts when a job on
+     * the workstream ends with nothing to commit. Without it, a branch whose
+     * first job creates its workstream would never have its merge-gating
+     * test run started.</p>
+     *
+     * @param targetBranch     the branch the workstream tracks
+     * @param repoUrl          the repository the workstream tracks
+     * @param baseBranch       the base branch, or {@code null} for the default
+     * @param settledCiTrigger the settled-CI trigger spec, or {@code null} for none
      * @return the registration request JSON
      */
     private static String registrationRequest(String targetBranch, String repoUrl,
-                                              String baseBranch) {
+                                              String baseBranch, String settledCiTrigger) {
         StringBuilder json = new StringBuilder();
         json.append("{\"defaultBranch\":\"")
             .append(JsonFieldExtractor.escapeJson(targetBranch)).append("\"");
@@ -402,6 +412,10 @@ final class WorkstreamRegistrationHandler {
         if (baseBranch != null && !baseBranch.isEmpty()) {
             json.append(",\"baseBranch\":\"")
                 .append(JsonFieldExtractor.escapeJson(baseBranch)).append("\"");
+        }
+        if (settledCiTrigger != null && !settledCiTrigger.isEmpty()) {
+            json.append(",\"settledCiTrigger\":\"")
+                .append(JsonFieldExtractor.escapeJson(settledCiTrigger)).append("\"");
         }
         json.append("}");
         return json.toString();
@@ -467,7 +481,7 @@ final class WorkstreamRegistrationHandler {
      * ({@code baseBranch}, {@code repoUrl}, {@code channelName}, …); the
      * branch is a separate parameter because a submission names it
      * {@code targetBranch}. The submission path supplies a request built by
-     * {@link #registrationRequest(String, String, String)} rather than its own
+     * {@link #registrationRequest(String, String, String, String)} rather than its own
      * body, so job-level fields never become workstream defaults.</p>
      *
      * <p>Deduplication runs in two steps. An exact {@code (branch, repo)}
@@ -511,8 +525,10 @@ final class WorkstreamRegistrationHandler {
         List<String> completionListeners = extractCompletionListeners(body);
         boolean dispatchCapable = JsonFieldExtractor.extractBoolean(body, "dispatchCapable");
         List<String> trackerCapabilities;
+        CiTrigger settledCiTrigger;
         try {
             trackerCapabilities = readTrackerCapabilities(body);
+            settledCiTrigger = CiTrigger.parse(JsonFieldExtractor.extractString(body, "settledCiTrigger"));
         } catch (IllegalArgumentException e) {
             return Registration.failed(errorResponse.apply(e.getMessage()));
         }
@@ -616,6 +632,8 @@ final class WorkstreamRegistrationHandler {
         if (planInstructions != null && !planInstructions.isEmpty()) {
             workstream.setPlanInstructions(planInstructions);
         }
+
+        workstream.setSettledCiTrigger(settledCiTrigger);
 
         if (!requiredLabels.isEmpty()) {
             workstream.setRequiredLabels(requiredLabels);
@@ -729,7 +747,7 @@ final class WorkstreamRegistrationHandler {
      * <p>Supports updating any combination of: {@code channelId}, {@code channelName},
      * {@code defaultBranch}, {@code baseBranch}, {@code repoUrl},
      * {@code planningDocument}, {@code planInstructions}, {@code requiredLabels},
-     * {@code dependentRepos},
+     * {@code dependentRepos}, {@code settledCiTrigger} (an empty string clears it),
      * {@code defaultPhaseConfig}, {@code phaseConfigs}.</p>
      *
      * <p>Runner / model / effort defaults are configured through
@@ -773,9 +791,12 @@ final class WorkstreamRegistrationHandler {
         // unknown role rejects the whole update rather than leaving another
         // field's change applied to a workstream whose update was refused.
         boolean hasTrackerCapabilities = JsonFieldExtractor.hasField(body, "trackerCapabilities");
+        boolean hasSettledCiTrigger = JsonFieldExtractor.hasField(body, "settledCiTrigger");
         List<String> trackerCapabilities;
+        CiTrigger settledCiTrigger;
         try {
             trackerCapabilities = readTrackerCapabilities(body);
+            settledCiTrigger = CiTrigger.parse(JsonFieldExtractor.extractString(body, "settledCiTrigger"));
         } catch (IllegalArgumentException e) {
             return errorResponse.apply(e.getMessage());
         }
@@ -834,6 +855,11 @@ final class WorkstreamRegistrationHandler {
         // setter ran.
         if (hasTrackerCapabilities) {
             workstream.setTrackerCapabilities(trackerCapabilities);
+        }
+        // Settled CI trigger: same presence signal; an empty string clears it.
+        // Validated above before any setter ran.
+        if (hasSettledCiTrigger) {
+            workstream.setSettledCiTrigger(settledCiTrigger);
         }
         // Workstream-level tmux default: same presence-signal pattern as
         // dispatch_capable so an unrelated update does not silently flip
