@@ -121,6 +121,10 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 	 * by their total, and the latent stays at the level of the sources it mixes, however
 	 * close to the origin the position is. Only a cell at which no source has a positive
 	 * scale, so that the total is zero, yields the plain mean of the sources instead.
+	 * A source whose blend contribution
+	 * ({@link ComposableAudioFeatures#setContribution(double)}) drives its scale below zero
+	 * cannot be a proportion of a weighted mean, so it is excluded from the blend rather
+	 * than allowed to make the total negative.
 	 *
 	 * @param normalizedBlend {@code true} to compose a weighted mean of the sources
 	 */
@@ -283,7 +287,8 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 		if (normalizedBlend) {
 			List<CollectionProducer> scales = new ArrayList<>();
 			for (ComposableAudioFeatures source : features) {
-				scales.add(source.getScale(value));
+				// A weighted mean requires non-negative weights
+				scales.add(max(source.getScale(value), c(0.0)));
 			}
 
 			CollectionProducer total = add(new ArrayList<Producer<?>>(scales));

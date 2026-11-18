@@ -277,6 +277,40 @@ public class AudioComposerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * In a normalized blend, a source whose scale is driven negative by its blend
+	 * contribution is excluded from the proportions: the composed latent is the remaining
+	 * selected source alone, not a mix pulled towards the negative source, and there is no
+	 * division by a negative or zero total.
+	 */
+	@Test(timeout = 60000)
+	public void normalizedBlendExcludesNegativeContribution() {
+		AudioComposer composer = composer(29L);
+		composer.setNormalizedBlend(true);
+		composer.addSource(sourceA(), weightVector(1.0, 0.0));
+		composer.addSource(sourceB(), weightVector(0.0, 1.0));
+		composer.getSource(1).setContribution(-1.0);
+
+		assertValues(expected(1.0, 0.0), latent(composer, 2.0, 0.5));
+	}
+
+	/**
+	 * In a normalized blend, when every source's scale is driven non-positive by a
+	 * negative contribution the total is zero and the composer falls back to the plain
+	 * mean rather than dividing by a zero or negative total and producing NaN.
+	 */
+	@Test(timeout = 60000)
+	public void normalizedBlendWithAllNegativeContributionsIsMean() {
+		AudioComposer composer = composer(31L);
+		composer.setNormalizedBlend(true);
+		composer.addSource(sourceA(), weightVector(1.0, 0.0));
+		composer.addSource(sourceB(), weightVector(0.0, 1.0));
+		composer.getSource(0).setContribution(-1.0);
+		composer.getSource(1).setContribution(-1.0);
+
+		assertValues(expected(0.5, 0.5), latent(composer, 2.0, 0.5));
+	}
+
+	/**
 	 * Composes the two test sources with orthogonal unit weight vectors using the
 	 * given seed.
 	 */
@@ -292,9 +326,13 @@ public class AudioComposerTest extends TestSuiteBase {
 		return new AudioComposer(new StubAutoEncoder(), DIM, seed);
 	}
 
-	/** Evaluates the interpolated latent of the composer at the position {@code (x, y)}. */
+	/**
+	 * Evaluates the interpolated latent of the composer at the position {@code (x, y)}
+	 * through the optimizer, as the production callers do, so a normalized blend's shared
+	 * reductions are isolated rather than embedded once per consumer.
+	 */
 	private double[] latent(AudioComposer composer, double x, double y) {
-		return composer.getInterpolatedLatent(cp(pack(x, y))).get().evaluate().toArray();
+		return composer.getInterpolatedLatent(cp(pack(x, y))).evaluateOptimized().toArray();
 	}
 
 	/**
