@@ -166,6 +166,8 @@ public enum ScaleTraversalStrategy implements CodeFeatures, ConsoleFeatures {
 					warn("Multiple scale position for non-melodic material");
 				}
 
+				if (keys.isEmpty()) continue;
+
 				ElementVoicingDetails details =
 						audioContext.createVoicingDetails(melodic,
 								keys.get(0), relativePosition);
