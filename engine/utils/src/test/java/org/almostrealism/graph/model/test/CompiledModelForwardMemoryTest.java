@@ -45,8 +45,10 @@ public class CompiledModelForwardMemoryTest extends TestSuiteBase {
 
 	/**
 	 * Runs many forward passes, each with a new input that is destroyed after the pass, and
-	 * checks that the number of live native blocks after the passes is no greater than after
-	 * the first few, which would mean each pass leaves a block behind.
+	 * checks that neither the number of live native blocks nor the live native bytes grow with
+	 * the passes: fewer than one block per four passes, and fewer bytes than a quarter of the
+	 * passes' inputs at single precision, so that retaining each pass's input, or any per-pass
+	 * buffer of comparable size, fails the test.
 	 */
 	@Test(timeout = 600000)
 	public void forwardPassesDoNotAccumulateMemory() {
@@ -72,9 +74,10 @@ public class CompiledModelForwardMemoryTest extends TestSuiteBase {
 
 			log("liveBlocks before=" + before + " after=" + after +
 					" liveBytes before=" + beforeBytes + " after=" + afterBytes);
-			Assert.assertTrue("Native memory grew by " + (after - before) + " blocks (" +
-							(afterBytes - beforeBytes) + " bytes) over " + passes + " passes",
-					after - before < passes / 4);
+			String growth = "Native memory grew by " + (after - before) + " blocks (" +
+					(afterBytes - beforeBytes) + " bytes) over " + passes + " passes";
+			Assert.assertTrue(growth, after - before < passes / 4);
+			Assert.assertTrue(growth, afterBytes - beforeBytes < (long) (passes / 4) * INPUT_SIZE * Float.BYTES);
 		} finally {
 			compiled.destroy();
 		}

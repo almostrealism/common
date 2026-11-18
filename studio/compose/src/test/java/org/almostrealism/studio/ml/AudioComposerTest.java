@@ -233,6 +233,23 @@ public class AudioComposerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * In a normalized blend, a position very close to the origin still composes the
+	 * proportions it selects: a tiny positive scale is not diluted towards the plain mean,
+	 * and a source selected alone by a tiny scale is the whole latent.
+	 */
+	@Test(timeout = 60000)
+	public void normalizedBlendNearOriginKeepsProportions() {
+		AudioComposer composer = composer(21L);
+		composer.setNormalizedBlend(true);
+		composer.addSource(sourceA(), weightVector(1.0, 0.0));
+		composer.addSource(sourceB(), weightVector(0.0, 1.0));
+
+		assertValues(expected(0.8, 0.2), latent(composer, 2e-12, 5e-13));
+		assertValues(expected(1.0, 0.0), latent(composer, 1e-12, -1.0));
+		assertValues(expected(0.0, 1.0), latent(composer, -1.0, 1e-12));
+	}
+
+	/**
 	 * In a normalized blend, random weights keep the composed latent within the range of
 	 * the sources at every position, however far the position is from the origin.
 	 */

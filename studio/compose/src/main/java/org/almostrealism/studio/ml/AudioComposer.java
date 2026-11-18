@@ -65,14 +65,6 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 	private boolean normalizedBlend;
 
 	/**
-	 * The amount added to every source's scale in a {@link #setNormalizedBlend(boolean)
-	 * normalized blend}, so that a position at which every source's scale is zero yields
-	 * the plain mean of the sources rather than a division by zero. It is small next to the
-	 * scale of a source that a position actually selects.
-	 */
-	public static double normalizedBlendFloor = 1e-8;
-
-	/**
 	 * Creates a composer using the given autoencoder and latent dimension, seeded with the
 	 * current time.
 	 *
@@ -126,8 +118,9 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 	 * the position: a random position can scale every source far above or below its own
 	 * level, and the decoded audio is then near-silent or clipped. In a weighted mean the
 	 * position decides only the proportions of the sources, each cell's scales are divided
-	 * by their total, and the latent stays at the level of the sources it mixes. A position
-	 * at which no source has a positive scale yields the plain mean of the sources.
+	 * by their total, and the latent stays at the level of the sources it mixes, however
+	 * close to the origin the position is. Only a cell at which no source has a positive
+	 * scale, so that the total is zero, yields the plain mean of the sources instead.
 	 *
 	 * @param normalizedBlend {@code true} to compose a weighted mean of the sources
 	 */
@@ -288,15 +281,20 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 		}
 
 		if (normalizedBlend) {
-			List<Producer<?>> scales = new ArrayList<>();
-			List<Producer<?>> terms = new ArrayList<>();
+			List<CollectionProducer> scales = new ArrayList<>();
 			for (ComposableAudioFeatures source : features) {
-				CollectionProducer scale = source.getScale(value).add(c(normalizedBlendFloor));
-				scales.add(scale);
-				terms.add(source.scaled(scale));
+				scales.add(source.getScale(value));
 			}
 
-			return add(terms).divide(add(scales));
+			CollectionProducer total = add(new ArrayList<Producer<?>>(scales));
+			CollectionProducer unselected = greaterThan(total, c(0.0), c(0.0), c(1.0));
+
+			List<Producer<?>> terms = new ArrayList<>();
+			for (int i = 0; i < features.size(); i++) {
+				terms.add(features.get(i).scaled(scales.get(i).add(unselected)));
+			}
+
+			return add(terms).divide(total.add(unselected.multiply(c(features.size()))));
 		}
 
 		List<Producer<?>> components = new ArrayList<>();
