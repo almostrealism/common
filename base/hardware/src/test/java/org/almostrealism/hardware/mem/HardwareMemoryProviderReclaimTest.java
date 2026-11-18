@@ -272,6 +272,70 @@ public class HardwareMemoryProviderReclaimTest {
 	}
 
 	/**
+	 * A release of finished work that throws does not stop the collection pass: the failure is
+	 * logged, the garbage collection still runs, and the allocation succeeds on memory grounds
+	 * rather than the release failure surfacing in the allocating thread.
+	 */
+	@Test(timeout = 30000)
+	public void reclaimCollectsWhenFinishedWorkReleaseThrows() {
+		long max = 100;
+		AtomicLong used = new AtomicLong(max);
+		StepProvider provider = new StepProvider() {
+			@Override
+			protected void releaseFinishedWork() {
+				steps.add("release");
+				throw new IllegalStateException("release failure");
+			}
+
+			@Override
+			protected void collectGarbage() {
+				super.collectGarbage();
+				used.set(0);
+			}
+		};
+
+		Assert.assertTrue("The collection must still free room after a release failure",
+				provider.reserve(used, max, 40));
+		Assert.assertEquals("The collection must run after the failed release",
+				List.of("release", "collect"), provider.steps);
+		Assert.assertEquals("The reservation must be counted", 40, used.get());
+	}
+
+	/**
+	 * A registered ceiling release that throws does not stop the collection pass: the failure is
+	 * logged, the garbage collection still runs, and the allocation succeeds on memory grounds.
+	 */
+	@Test(timeout = 30000)
+	public void reclaimCollectsWhenCeilingReleaseThrows() {
+		long max = 100;
+		AtomicLong used = new AtomicLong(max);
+		RecordingProvider provider = new RecordingProvider(used, 0) {
+			@Override
+			protected void collectGarbage() {
+				super.collectGarbage();
+				used.set(0);
+			}
+		};
+
+		Runnable release = () -> {
+			provider.steps.add("cache");
+			throw new IllegalStateException("cache release failure");
+		};
+		HardwareMemoryProvider.addCeilingRelease(release);
+
+		try {
+			Assert.assertTrue("The collection must still free room after a cache release failure",
+					provider.reserve(used, max, 40));
+			Assert.assertEquals("The collection must run after the failed cache release",
+					List.of("release", "cache", "collect"), provider.steps);
+		} finally {
+			HardwareMemoryProvider.removeCeilingRelease(release);
+		}
+
+		Assert.assertEquals("The reservation must be counted", 40, used.get());
+	}
+
+	/**
 	 * A provider that no data context owns has no owner to release, so a reclaim that frees nothing
 	 * requests every collection it is allowed and then rejects the allocation.
 	 */

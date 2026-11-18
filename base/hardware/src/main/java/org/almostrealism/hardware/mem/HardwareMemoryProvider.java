@@ -387,6 +387,11 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 	 * pass, this joins it and returns when it completes rather than starting another, so
 	 * concurrent reclaimers do not multiply the number of full collections requested.
 	 *
+	 * <p>The releases that precede the collection are best-effort: a release that throws is logged
+	 * and the collection still runs, so the allocation that triggered reclaim fails or succeeds on
+	 * memory grounds rather than surfacing a release failure in whichever thread happens to be
+	 * allocating.</p>
+	 *
 	 * @return {@code false} if the thread was interrupted while waiting
 	 */
 	private boolean collectionPass() {
@@ -410,9 +415,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 		}
 
 		try {
-			// TODO(review): a release that throws skips collectGarbage() and surfaces in whichever thread is allocating
-			releaseFinishedWork();
-			releaseCeilingCaches();
+			releaseQuietly("Release of finished work", this::releaseFinishedWork);
+			releaseQuietly("Release of ceiling caches", this::releaseCeilingCaches);
 			collectGarbage();
 			Thread.sleep(reclaimWaitMs);
 			return true;
@@ -462,6 +466,24 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 
 		DataContext<MemoryData> owner = getContext();
 		if (owner != null && !registered.contains(owner)) owner.releaseFinishedWork();
+	}
+
+	/**
+	 * Runs a release that precedes a {@link #collectGarbage() collection} in a
+	 * {@link #collectionPass() collection pass}, logging a failure rather than letting it
+	 * propagate. A reclaim release is best-effort: its failure must not skip the collection or
+	 * surface in the thread that happens to be allocating, which should fail or succeed on memory
+	 * grounds alone.
+	 *
+	 * @param description names the release for the log message when it fails
+	 * @param release     the release to run
+	 */
+	private void releaseQuietly(String description, Runnable release) {
+		try {
+			release.run();
+		} catch (RuntimeException e) {
+			warn(description + " failed during reclaim", e);
+		}
 	}
 
 	/**
