@@ -53,6 +53,24 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Verifies that the highest rank operation never reads past the end of the
+	 * distances argument, even when the configured count exceeds its length.
+	 * The single-element input is a view over a larger buffer whose following
+	 * elements hold smaller (better) ranks, so reading out of bounds would select one.
+	 */
+	@Test(timeout = 10000)
+	public void highestRankRespectsInputLength() {
+		PackedCollection backing = pack(1.0, 0.5, 0.25);
+		PackedCollection in = backing.range(shape(1));
+
+		Pair out = RankedChoiceEvaluable.highestRank.evaluate(
+				in, new Pair(3, Intersection.e));
+
+		assertEquals(1.0, out.toDouble(0));
+		assertEquals(0.0, out.toDouble(1));
+	}
+
+	/**
 	 * Tests the highest rank kernel operation.
 	 */
 	@Test(timeout = 10000)
