@@ -266,6 +266,29 @@ class CommitToolTest(unittest.TestCase):
         self.assertEqual(head, self.git("rev-parse", "HEAD"))
         self.assertTrue((self.root / "commit.txt").exists())
 
+    def test_git_timeout_refuses_the_commit(self):
+        # A git command (a commit hook, say) that outlives the timeout must be
+        # reported as a structured error, not raised out of the tool, and must
+        # leave HEAD and commit.txt untouched.
+        self.stage("two\n")
+        (self.root / "commit.txt").write_text("Change a\n")
+        head = self.git("rev-parse", "HEAD")
+        real_run = subprocess.run
+
+        def timing_out_commit(argv, *args, **kwargs):
+            if "commit" in argv:
+                raise subprocess.TimeoutExpired(argv, server.GIT_TIMEOUT_SECONDS)
+            return real_run(argv, *args, **kwargs)
+
+        with mock.patch.object(server.subprocess, "run", timing_out_commit):
+            result = server.commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["committed"])
+        self.assertIn("timed out", result["error"])
+        self.assertEqual(head, self.git("rev-parse", "HEAD"))
+        self.assertTrue((self.root / "commit.txt").exists())
+
     def test_staged_message_file_is_refused(self):
         self.stage("two\n")
         (self.root / "commit.txt").write_text("Change a\n")

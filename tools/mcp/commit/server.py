@@ -41,9 +41,21 @@ mcp = FastMCP("ar-commit")
 
 
 def _git(root: Path, *args: str, stdin: str = None) -> subprocess.CompletedProcess:
-    """Runs git in ``root`` and returns the completed process, without raising on failure."""
-    return subprocess.run(["git", "-C", str(root), *args], input=stdin, capture_output=True,
-                          text=True, timeout=GIT_TIMEOUT_SECONDS)
+    """Runs git in ``root`` and returns the completed process, without raising on failure.
+
+    A command that outlives ``GIT_TIMEOUT_SECONDS`` (a repository hook included)
+    is returned as a failed process rather than raised: ``_git_output`` then
+    refuses the review and ``commit`` reports that nothing was committed, instead
+    of an unstructured ``TimeoutExpired`` escaping the MCP tool.
+    """
+    argv = ["git", "-C", str(root), *args]
+    try:
+        return subprocess.run(argv, input=stdin, capture_output=True,
+                              text=True, timeout=GIT_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as e:
+        return subprocess.CompletedProcess(argv, 124, e.stdout or "",
+                                           (e.stderr or "") + f"git {' '.join(args)} "
+                                           f"timed out after {GIT_TIMEOUT_SECONDS}s")
 
 
 def _git_output(root: Path, *args: str) -> str:
