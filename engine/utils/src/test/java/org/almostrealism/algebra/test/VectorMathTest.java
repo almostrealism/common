@@ -205,4 +205,42 @@ public class VectorMathTest extends TestSuiteBase {
 		double length = result.doubleStream().map(d -> d * d).sum();
 		assertEquals(1.0, length);
 	}
+
+	/**
+	 * Tests that {@code x}, {@code y} and {@code z} of a batch of vectors give the component of
+	 * every vector, {@code (n, 1)}, so that combining them with another per-vector value, here
+	 * the squared length, reads each vector's own component rather than that of the first.
+	 */
+	@Test(timeout = 60000)
+	public void batchedComponents() {
+		int n = 64;
+		PackedCollection v = new PackedCollection(shape(n, 3)).randFill();
+		CollectionProducer[] components = { x(cp(v)), y(cp(v)), z(cp(v)) };
+
+		for (int c = 0; c < 3; c++) {
+			assertEquals(n, shape(components[c]).getTotalSize());
+
+			PackedCollection result = dotProduct(cp(v), cp(v)).add(components[c]).evaluate();
+			assertEquals(n, result.getMemLength());
+
+			for (int i = 0; i < n; i++) {
+				double lengthSq = 0.0;
+				for (int k = 0; k < 3; k++) {
+					lengthSq += v.toDouble(3 * i + k) * v.toDouble(3 * i + k);
+				}
+
+				assertEquals(lengthSq + v.toDouble(3 * i + c), result.toDouble(i));
+			}
+		}
+	}
+
+	/** Tests that {@code x}, {@code y} and {@code z} of a single vector are its components. */
+	@Test(timeout = 30000)
+	public void singleVectorComponents() {
+		Producer<PackedCollection> v = vector(1.0, 2.0, 3.0);
+		assertEquals(1.0, x(v).evaluate().toDouble(0));
+		assertEquals(2.0, y(v).evaluate().toDouble(0));
+		assertEquals(3.0, z(v).evaluate().toDouble(0));
+		assertEquals(1, shape(z(v)).getTotalSize());
+	}
 }

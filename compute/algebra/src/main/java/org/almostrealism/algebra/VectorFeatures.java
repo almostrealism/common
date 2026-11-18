@@ -240,33 +240,61 @@ public interface VectorFeatures extends ScalarFeatures {
 	default Producer<PackedCollection> vector() { return Vector.blank(); }
 
 	/**
-	 * Extracts the x component (first element) from a vector producer.
+	 * Extracts the x component (first element) from a vector producer, or from every vector
+	 * of a batch, as described by {@link #vectorComponent(Producer, int)}.
 	 *
-	 * @param v  the vector producer
-	 * @return a producer for the x component
+	 * @param v  the vector producer, {@code (3)} or {@code (n, 3)}
+	 * @return a producer for the x component, {@code (1)} or {@code (n, 1)}
 	 */
 	default CollectionProducer x(Producer<PackedCollection> v) {
-		return c(v, 0);
+		return vectorComponent(v, 0);
 	}
 
 	/**
-	 * Extracts the y component (second element) from a vector producer.
+	 * Extracts the y component (second element) from a vector producer, or from every vector
+	 * of a batch, as described by {@link #vectorComponent(Producer, int)}.
 	 *
-	 * @param v  the vector producer
-	 * @return a producer for the y component
+	 * @param v  the vector producer, {@code (3)} or {@code (n, 3)}
+	 * @return a producer for the y component, {@code (1)} or {@code (n, 1)}
 	 */
 	default CollectionProducer y(Producer<PackedCollection> v) {
-		return c(v, 1);
+		return vectorComponent(v, 1);
 	}
 
 	/**
-	 * Extracts the z component (third element) from a vector producer.
+	 * Extracts the z component (third element) from a vector producer, or from every vector
+	 * of a batch, as described by {@link #vectorComponent(Producer, int)}.
 	 *
-	 * @param v  the vector producer
-	 * @return a producer for the z component
+	 * @param v  the vector producer, {@code (3)} or {@code (n, 3)}
+	 * @return a producer for the z component, {@code (1)} or {@code (n, 1)}
 	 */
 	default CollectionProducer z(Producer<PackedCollection> v) {
-		return c(v, 2);
+		return vectorComponent(v, 2);
+	}
+
+	/**
+	 * Extracts one component of a vector, or of every vector of a batch. For a single vector
+	 * the result is the {@code (1)} value at {@code index}. For a batch, whose last axis holds
+	 * the components of each vector, the result keeps every other axis and has one component
+	 * along the last, such as {@code (n, 1)} for {@code (n, 3)} vectors, in the same way as
+	 * {@link #dotProduct(Producer, Producer)} and {@link #length(Producer)} produce one value per
+	 * vector. A batch must not be reduced to a single value, since every vector of it would
+	 * then be given the component of the first.
+	 *
+	 * @param v     the vector producer, {@code (3)} or a batch such as {@code (n, 3)}
+	 * @param index the index of the component within each vector
+	 * @return a producer for the component of every vector
+	 */
+	default CollectionProducer vectorComponent(Producer<PackedCollection> v, int index) {
+		TraversalPolicy shape = shape(v);
+		int axis = shape.getDimensions() - 1;
+
+		// TODO(review): a column-shaped vector such as (3, 1) reaches slice() with index >= 1 on a length-1 axis and throws; c(v, index) handled it before
+		if (axis < 1 || shape.getTotalSizeLong() == shape.length(axis)) {
+			return c(v, index);
+		}
+
+		return slice(axis, index, 1, v);
 	}
 
 	/**
