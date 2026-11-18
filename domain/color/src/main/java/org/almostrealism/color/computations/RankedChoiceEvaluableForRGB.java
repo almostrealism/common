@@ -17,14 +17,13 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluableForMemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.NullProcessor;
-
-import java.util.function.IntFunction;
 
 /**
  * A {@link RankedChoiceEvaluableForMemoryData} specialization that produces {@link RGB}-compatible
@@ -68,7 +67,19 @@ public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryD
 	 * @return an accelerated evaluable using {@link RGB} constructors and banks
 	 */
 	public Evaluable<PackedCollection> getAccelerated() {
-		return getAccelerated(3, RGB::new, (IntFunction) RGB::bank);
+		return getAccelerated(3, RGB::new);
+	}
+
+	/**
+	 * Returns the colour of the closest candidate as a {@link CollectionProducer} of shape
+	 * {@code (3)}, black when no candidate is hit, for embedding in a larger colour
+	 * computation (for example, the colour seen along a reflected ray).
+	 *
+	 * @return a producer of the closest candidate's colour
+	 * @see #getClosestChoice(int)
+	 */
+	public CollectionProducer getClosestColor() {
+		return getClosestChoice(3);
 	}
 
 	/**

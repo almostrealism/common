@@ -20,7 +20,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.ShaderContext;
-import org.almostrealism.geometry.Curve;
 import org.almostrealism.geometry.DimensionAwareKernel;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.space.Scene;
@@ -44,8 +43,10 @@ import java.util.List;
  * which creates a {@link IntersectionalLightingEngine} for each surface-light pair and uses
  * ranked choice selection to determine which surface is visible (closest to camera).</p>
  *
- * <p>Note: This implementation does not currently support features like reflection, refraction,
- * or recursive ray tracing (these would need to be added to the lighting/shader layer).</p>
+ * <p>Secondary rays (reflection and refraction) are traced by the shaders themselves, each of
+ * which builds its own {@link LightingEngineAggregator} for the secondary ray and embeds its
+ * {@link LightingEngineAggregator#getClosestColor() closest-hit colour} in the colour it
+ * returns.</p>
  *
  * @author  Michael Murray
  * @see LightingEngineAggregator
@@ -84,7 +85,7 @@ public class RayIntersectionEngine implements Engine {
 	 */
 	@Override
 	public Producer<PackedCollection> trace(Producer<Ray> r) {
-		List<Curve<PackedCollection>> surfaces = new ArrayList<>();
+		List<ShadableSurface> surfaces = new ArrayList<>();
 		for (ShadableSurface s : scene) surfaces.add(s);
 		LightingEngineAggregator agg = new LightingEngineAggregator(r, surfaces, scene.getLights(), sparams, true);
 		return enableAcceleratedAggregator ? () -> agg.getAccelerated() : new DimensionAwareKernel<>(agg);
