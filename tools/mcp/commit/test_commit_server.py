@@ -174,6 +174,53 @@ class CommitToolTest(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertTrue(any(p.startswith("temporary id: a.txt:1") for p in result["problems"]), result)
 
+    def test_tracked_commit_txt_is_refused(self):
+        # A repository that already tracks a commit.txt must not be committed
+        # through: a successful commit would unlink that tracked file, leaving an
+        # uncommitted deletion of committed content.
+        (self.root / "commit.txt").write_text("Change a\n")
+        self.git("add", "commit.txt")
+        self.git("commit", "-q", "-m", "Track a commit.txt")
+        self.stage("two\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any("tracked file" in p for p in result["problems"]), result)
+
+    def test_product_name_in_plan_file_added_line_is_refused(self):
+        # A plan path is exempt from the temporary-identifier check (plans define
+        # those identifiers), but never from the private-product check.
+        plan = self.root / "docs" / "plans" / "PLAN-20260101-example.md"
+        plan.parent.mkdir(parents=True)
+        plan.write_text("# Plan\n\nBuilt for AcmeApp.\n")
+        self.git("add", "docs/plans/PLAN-20260101-example.md")
+        (self.root / "commit.txt").write_text("Change a\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("private product: docs/plans/PLAN-20260101-example.md:3")
+                            for p in result["problems"]), result)
+
+    def test_working_tree_generated_header_does_not_hide_staged_identifier(self):
+        # scan_added judges whether a file is generated from the staged snapshot,
+        # not the working tree: an unstaged @generated header must not suppress a
+        # temporary identifier on the staged lines.
+        source = self.root / "notes.txt"
+        source.write_text("header\n")
+        self.git("add", "notes.txt")
+        self.git("commit", "-q", "-m", "Add notes")
+        source.write_text("header\ncommit 7f3e9a21b4c8 landed\n")  # temporary-identifier-ok: fixture the check must find
+        self.git("add", "notes.txt")
+        source.write_text("@generated\nheader\ncommit 7f3e9a21b4c8 landed\n")  # temporary-identifier-ok: fixture the check must find
+        (self.root / "commit.txt").write_text("Change notes\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("temporary id: notes.txt") for p in result["problems"]), result)
+
     def test_staged_message_file_is_refused(self):
         self.stage("two\n")
         (self.root / "commit.txt").write_text("Change a\n")

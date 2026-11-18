@@ -173,32 +173,46 @@ def change_problems(diff: str, root: Path, staged: Iterable[str], tracked: Itera
 
     ``diff`` is the staged change as a unified diff, ``staged`` the paths it
     touches, and ``tracked`` the working tree's tracked files. ``read_ledger``
-    supplies a plan ledger's text from the staged snapshot rather than the
-    working tree, so an unstaged edit or deletion of a tracked ledger does not
-    change which identifiers are enforced for this commit or abort the read.
+    supplies a tracked file's text from the staged snapshot rather than the
+    working tree — a plan ledger when discovering identifiers, and a staged
+    file when deciding whether it is generated — so an unstaged edit or deletion
+    of a tracked file does not change which identifiers are enforced for this
+    commit or abort the read.
+
+    ``commit.txt`` must be neither staged (it would be committed) nor already
+    tracked (the commit would delete the committed copy); added lines of a plan
+    document are exempt from the temporary-identifier check but not from the
+    private-product check.
     """
     staged = list(staged)
+    tracked = list(tracked)
     problems = []
     if MESSAGE_FILE in staged:
         problems.append(Problem("message", MESSAGE_FILE, "is staged; it must not be part of the commit"))
+    elif MESSAGE_FILE in tracked:
+        problems.append(Problem("message", MESSAGE_FILE,
+                                "is a tracked file; it must be an untracked scratch file so the commit "
+                                "does not delete committed content"))
     plans = [path for path in tracked if identifier_check.is_plan_path(path)]
     identifiers = identifier_check.discover_identifiers(root, plans, read_ledger)
     changed = identifier_check.parse_diff(diff)
     for path in staged:
-        if path not in changed or identifier_check.is_plan_path(path):
+        if path not in changed:
             continue
+        plan = identifier_check.is_plan_path(path)
         for number, line in sorted(changed[path].items()):
             if not line.added:
                 continue
-            for identifier in identifiers:
-                for match in identifier.pattern.finditer(line.text):
-                    problems.append(Problem("temporary id", f"{path}:{number}",
-                                            f"'{match.group(0)}' {identifier.source}"))
+            if not plan:
+                for identifier in identifiers:
+                    for match in identifier.pattern.finditer(line.text):
+                        problems.append(Problem("temporary id", f"{path}:{number}",
+                                                f"'{match.group(0)}' {identifier.source}"))
             if products is not None:
                 for match in products.finditer(line.text):
                     problems.append(Problem("private product", f"{path}:{number}",
                                             f"names '{match.group(0)}'"))
-    for violation in identifier_check.scan_added(root, diff, staged):
+    for violation in identifier_check.scan_added(root, diff, staged, read_ledger):
         problems.append(Problem("temporary id", f"{violation.path}:{violation.line}",
                                 f"'{violation.text}' is {violation.source}"))
     return problems

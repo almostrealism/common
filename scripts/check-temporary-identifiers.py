@@ -422,21 +422,33 @@ def diff_identifiers(path: str, lines: dict[int, DiffLine]) -> list[Violation]:
     return violations
 
 
-def is_generated(root: Path, path: str) -> bool:
-    """Returns True when ``path`` is a generated or vendored file, by its path or its header."""
+def is_generated(root: Path, path: str,
+                 read_source: Optional[Callable[[str], str]] = None) -> bool:
+    """Returns True when ``path`` is a generated or vendored file, by its path or its header.
+
+    ``read_source`` supplies the file's text given its path; when it is None the
+    file is read from ``root`` on disk. A caller judging a staged snapshot passes
+    the index's copy, so that an unstaged edit adding or removing a generated-file
+    header neither hides nor exposes the staged additions of a tracked file.
+    """
     if GENERATED_PATH.search(path):
         return True
-    text = read_text(root / path)
+    text = read_source(path) if read_source is not None else read_text(root / path)
     head = "\n".join(text.split("\n")[:GENERATED_HEADER_LINES]) if text is not None else ""
     return GENERATED_HEADER.search(head) is not None
 
 
-def scan_added(root: Path, diff: str, files: Iterable[str]) -> list[Violation]:
-    """Returns the generic temporary identifiers on the lines ``diff`` adds to long-term files."""
+def scan_added(root: Path, diff: str, files: Iterable[str],
+               read_source: Optional[Callable[[str], str]] = None) -> list[Violation]:
+    """Returns the generic temporary identifiers on the lines ``diff`` adds to long-term files.
+
+    ``read_source`` is forwarded to ``is_generated`` so that the generated-file
+    decision reads the same snapshot the diff describes; see ``is_generated``.
+    """
     changed = parse_diff(diff)
     violations = []
     for path in files:
-        if path in changed and not is_plan_path(path) and not is_generated(root, path):
+        if path in changed and not is_plan_path(path) and not is_generated(root, path, read_source):
             violations.extend(diff_identifiers(path, changed[path]))
     return sorted(violations)
 
