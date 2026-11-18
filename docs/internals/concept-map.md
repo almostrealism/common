@@ -361,8 +361,8 @@ Notes on the declarations:
 Transforming a source buffer of audio into a destination buffer. This family has two parallel
 contracts for the same idea in `engine/audio` (`org.almostrealism.audio.filter`): a
 producer-valued one that is the intended target, and a `@Deprecated` host-valued one that a
-migration is moving away from. It is the same host-valued-vs-producer-valued tension as family 2
-(`Volume`/`DistanceEstimator`), here within a single module.
+migration is moving away from. It is the same host-valued-vs-producer-valued tension as the
+`Volume` (family 1) and `DistanceEstimator` (family 2) gaps, here within a single module.
 
 | Type | Declared as | Module (package) | Members |
 |---|---|---|---|
@@ -374,10 +374,11 @@ migration is moving away from. It is the same host-valued-vs-producer-valued ten
 
 Notes on the declarations:
 
-- `AudioProcessor`'s javadoc names `EnvelopeProcessor` as the concept it supersedes, and
-  `EnvelopeProcessor`'s javadoc and a source TODO say to use `AudioProcessor` instead. Both
-  `FilterEnvelopeProcessor` and `MultiOrderFilterEnvelopeProcessor` carry a
-  `// TODO  This should implement AudioProcessor`.
+- `AudioProcessor`'s javadoc only links to `EnvelopeProcessor` with `@see`; the supersession is
+  declared on `EnvelopeProcessor` itself, whose javadoc is `@deprecated Use AudioProcessor ...`
+  and whose source carries a note to use `AudioProcessor` instead. Both `FilterEnvelopeProcessor`
+  and `MultiOrderFilterEnvelopeProcessor` carry a source note that they should implement
+  `AudioProcessor`.
 
 ### Gaps
 
@@ -386,10 +387,14 @@ Notes on the declarations:
   *is an* `AudioProcessor` (it transforms a source buffer into a destination buffer), and
   everything lives in `engine/audio` so no new dependency is needed. The blocker is **contract,
   not module**: `EnvelopeProcessor.process(PackedCollection, PackedCollection)` is host-valued and
-  eager (it copies concrete buffers into internal `input`/`output` fields and calls `.run()`),
-  whereas `AudioProcessor.process(Producer, Producer)` is producer-valued and deferred (returning a
-  `Supplier<Runnable>` over arbitrary source/destination producers). The processors' internal
-  compiled pipelines are hardwired to their own `input`/`output` fields, so honouring
+  eager — it is handed concrete buffers and performs the work immediately — whereas
+  `AudioProcessor.process(Producer, Producer)` is producer-valued and deferred (returning a
+  `Supplier<Runnable>` over arbitrary source/destination producers). The two implementors reach
+  that eager result differently: `FilterEnvelopeProcessor` copies the input into a private `input`
+  buffer, runs a pre-compiled pipeline, and copies its private `output` buffer back out, while
+  `MultiOrderFilterEnvelopeProcessor` has no such fields and passes the caller's collections
+  straight into its compiled evaluables, calling `evaluate()`. Either way the pipeline is compiled
+  in the constructor against a fixed sample rate and maximum frame count, so honouring
   `AudioProcessor` is a re-architecture onto producers, not a member rename — and doing it by
   evaluating in Java would violate the Producer rules. Existing tests call the host-valued
   `process`, so the migration cannot be behaviour-preserving for them. Filed for a person to
