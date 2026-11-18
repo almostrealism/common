@@ -96,9 +96,9 @@ public class HighestRank extends CollectionProducerComputationBase {
 	 * The algorithm:
 	 * <ol>
 	 *   <li>Initialize closest = -1, closestIndex = -1</li>
-	 *   <li>Iterate through the first {@code count} distance values, stopping at the end of
-	 *       the distances argument when the configured count is larger than it, so the
-	 *       search never reads memory that follows the input</li>
+	 *   <li>Iterate through the configured count of distance values, never past the
+	 *       length of the distances argument (a count larger than the array would
+	 *       otherwise read whatever memory follows it)</li>
 	 *   <li>Update closest if:
 	 *     <ul>
 	 *       <li>value >= epsilon AND no closest found yet, OR</li>

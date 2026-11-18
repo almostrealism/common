@@ -53,16 +53,20 @@ public class RankedChoiceEvaluableTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that a configured count larger than the distances argument stops at the
-	 * end of the input, rather than reading the memory that follows it. The input is a
-	 * one-element range view over a larger collection whose later values would win.
+	 * Tests that the highest rank operation never reads past the end of its distances
+	 * argument when the configured count is larger than the argument. The input is a
+	 * single-element view onto a larger buffer whose following elements are smaller
+	 * positive values, so a read past the view would select one of them instead of the
+	 * only real distance.
 	 */
 	@Test(timeout = 10000)
 	public void highestRankStopsAtInputLength() {
 		PackedCollection backing = pack(1.0, 0.5, 0.25);
-		PackedCollection in = backing.range(new TraversalPolicy(1));
+		PackedCollection in = backing.range(shape(1), 0);
+
 		Pair out = RankedChoiceEvaluable.highestRank.evaluate(
 				in, new Pair(3, Intersection.e));
+
 		assertEquals(1.0, out.toDouble(0));
 		assertEquals(0.0, out.toDouble(1));
 	}
