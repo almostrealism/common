@@ -122,10 +122,10 @@ public class PatternAudioBufferTest extends TestSuiteBase {
 
 			PackedCollection read = producer.get().evaluate();
 			Assert.assertEquals(4, read.getMemLength());
-			Assert.assertEquals(0.1, read.toDouble(0), 1e-9);
-			Assert.assertEquals(0.2, read.toDouble(1), 1e-9);
-			Assert.assertEquals(0.3, read.toDouble(2), 1e-9);
-			Assert.assertEquals(0.4, read.toDouble(3), 1e-9);
+			assertSimilar(0.1, read.toDouble(0));
+			assertSimilar(0.2, read.toDouble(1));
+			assertSimilar(0.3, read.toDouble(2));
+			assertSimilar(0.4, read.toDouble(3));
 		} finally {
 			supplied.destroy();
 		}
@@ -165,8 +165,8 @@ public class PatternAudioBufferTest extends TestSuiteBase {
 			Assert.assertNotNull(setup);
 			setup.get().run();
 
-			Assert.assertEquals("setup does not disturb the buffer", 0.5, output.toDouble(0), 0.0);
-			Assert.assertEquals(0.8, output.toDouble(3), 0.0);
+			assertSimilar("setup does not disturb the buffer", 0.5, output.toDouble(0));
+			assertSimilar(0.8, output.toDouble(3));
 		} finally {
 			output.destroy();
 		}
@@ -210,10 +210,10 @@ public class PatternAudioBufferTest extends TestSuiteBase {
 
 			buffer.prepareBatch(false).get().run();
 
-			Assert.assertEquals(0.5, output.toDouble(0), 0.0);
-			Assert.assertEquals(0.6, output.toDouble(1), 0.0);
-			Assert.assertEquals(0.7, output.toDouble(2), 0.0);
-			Assert.assertEquals(0.8, output.toDouble(3), 0.0);
+			assertSimilar(0.5, output.toDouble(0));
+			assertSimilar(0.6, output.toDouble(1));
+			assertSimilar(0.7, output.toDouble(2));
+			assertSimilar(0.8, output.toDouble(3));
 		} finally {
 			output.destroy();
 		}
