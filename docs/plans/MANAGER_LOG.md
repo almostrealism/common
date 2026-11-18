@@ -180,9 +180,11 @@ is a medium task touching two files plus one `knownIssue` flag, runs on any node
 
 1. This plan: the `ReflectedRay` Producer-graph rewrite, the `shadeFront` selection-path switch, and
    the cleared `knownIssue` on `reflectiveSphereShowsFloor`. **Shipped via PR #886
-   (`feature/glossy-reflection`), merged into `master` on 2026-11-18, which also covers item 2 below**
-   — so this plan is closed as completed rather than dispatched fresh (see the plan's *Relationship to
-   existing work* section).
+   (`feature/glossy-reflection`), merged into `master` on 2026-11-18, which also landed the
+   `RefractionShader` graph rewrite from item 2 below (but not the `refractiveSphereShowsFloor` render
+   assertion, which stays `knownIssue` — so that part of item 2 remains open)** — so this plan is
+   closed as completed rather than dispatched fresh (see the plan's *Relationship to existing work*
+   section).
 2. **Code quality, sibling:** fix refraction (`RefractionShader` / `GeneratedColorProducer.getShape`
    `ClassCastException`) and clear `refractiveSphereShowsFloor` (ferrofluid §5 item 3). PR #886
    rewrote `RefractionShader` as a graph too, but left `refractiveSphereShowsFloor` pinned

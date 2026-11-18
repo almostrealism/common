@@ -44,8 +44,14 @@ sections below are retained as the record of the defect and the specification th
 That branch:
 
 - rebuilds `ReflectedRay` (`compute/geometry`) as a shape-`(6)` `TraversableExpressionComputation`
-  (no host-Java `evaluate`, no throwing `getScope`), keeping a public four-argument constructor —
-  this plan's **Scope item 1**;
+  (no host-Java `evaluate`, no throwing `getScope`) — this plan's **Scope item 1**. It diverged
+  from the plan on the constructor: rather than keeping the four-argument
+  `ReflectedRay(point, incident, normal, blur)` constructor, #886 gives `ReflectedRay` a two-argument
+  `(point, direction)` constructor (the direction is the reflected-direction operand) and moves the
+  four-argument entry point to a feature method, `GeometryFeatures.reflectedRay(point, vector, normal, blur)`,
+  which folds `blur` into `reflect(vector, normal, double)`. Both `ReflectionShader` call sites use
+  the feature method, so the end result — a shape-carrying reflected ray with no host-Java math — is
+  the same;
 - reworks `ReflectionShader.shade` so the reflected-ray aggregation builds and runs — this plan's
   **Scope item 3** (it reworks the aggregator rather than routing `shadeFront` through the
   `shadeBack` value path, so the *approach* to gap (b) differs from §Approach step 3 below, but it
@@ -213,7 +219,9 @@ last is noted as resolved by the merged implementation.
   (`ShaderContext`, `LightingEngine`, `LightingEngineAggregator`). The reflection render assertion
   (`reflectiveSphereShowsFloor`) is enabled; the refraction one (`refractiveSphereShowsFloor`)
   remains `knownIssue`, so that assertion is still pending as a separate item.
-- **Glossy `blur != 0` graph form** — the mirror case `blur == 0` is exact and unambiguous; the
-  glossy path's handling is whatever #886's merged `ReflectedRay` implements. Confirm against the
-  merged code before relying on glossy (non-zero blur) reflection, and note that it must not
-  reintroduce a host-Java per-element `evaluate`.
+- **Resolved — glossy `blur != 0` is a Producer graph.** The merged
+  `GeometryFeatures.reflect(vector, normal, double blur)` is the glossy path: for `blur == 0` it
+  returns the exact mirror reflection, and for `blur != 0` it perturbs the mirror direction within
+  the tangent plane by uniform offsets in `[-blur / 2, blur / 2)` along two tangent axes, drawn from
+  a variable-count random producer (one pair per ray, so each ray in a batch is perturbed
+  independently) via `rand(...)`, then renormalizes. There is no host-Java per-element `evaluate`.
