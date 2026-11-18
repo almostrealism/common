@@ -66,14 +66,19 @@ public interface DataContext<MEM> extends Named {
 	List<ComputeContext<MEM>> getComputeContexts();
 
 	/**
-	 * Asks every compute context of this data context to release what its finished work still
-	 * holds (see {@link ComputeContext#releaseFinishedWork()}). A destroyed data context has no
-	 * work left to release, so it does nothing.
+	 * Asks every compute context this data context has already created, on any thread, to release
+	 * what its finished work still holds (see {@link ComputeContext#releaseFinishedWork()}). A
+	 * memory provider calls this when an allocation does not fit under its ceiling, so it must
+	 * never create a compute context or start a device: {@link #getComputeContexts()} may do both,
+	 * and may also see only the calling thread's contexts, so an implementation must visit the
+	 * contexts it holds directly rather than go through that accessor. A destroyed data context has
+	 * no work left to release.
+	 *
+	 * <p>A data context whose compute contexts release what each dispatch holds as soon as the
+	 * dispatch completes, which is what this assumes unless a data context overrides it, holds
+	 * nothing for finished work, so there is nothing to release.</p>
 	 */
-	default void releaseFinishedWork() {
-		if (isDestroyed()) return;
-		getComputeContexts().forEach(ComputeContext::releaseFinishedWork);
-	}
+	default void releaseFinishedWork() { }
 
 	/**
 	 * Returns the compute context through which work on the given {@link Memory}, which this

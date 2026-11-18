@@ -234,6 +234,24 @@ public abstract class AcceleratorDataContext<M extends HardwareMemoryProvider<?>
 	}
 
 	/**
+	 * Asks the shared compute context, if it has been created, and the calling thread's scoped
+	 * compute context, if a scope is active, to release what their finished work still holds.
+	 * Neither context is created and the device is not started, so a data context that has never
+	 * run any work does nothing. Scoped contexts of other threads are not visited: each is
+	 * destroyed, and so releases its work, when its scope ends.
+	 */
+	@Override
+	public void releaseFinishedWork() {
+		if (isDestroyed()) return;
+
+		ComputeContext<MemoryData> shared = sharedContext;
+		if (shared != null) shared.releaseFinishedWork();
+
+		ComputeContext<MemoryData> scoped = scopedContext.get();
+		if (scoped != null && scoped != shared) scoped.releaseFinishedWork();
+	}
+
+	/**
 	 * Returns the shared compute context, creating it on first use.
 	 *
 	 * @throws IllegalStateException if this data context has been destroyed

@@ -90,6 +90,51 @@ public class MetalDataContextLifecycleTest {
 	}
 
 	/**
+	 * Releasing finished work, which a memory provider at its ceiling requests of every data
+	 * context, must not start the device or create a compute context for a data context that has
+	 * never run anything: there is no work to release, and starting a device under memory pressure
+	 * would only take more memory.
+	 */
+	@Test(timeout = 30000)
+	public void releaseFinishedWorkCreatesNothing() throws Exception {
+		MetalDataContext context = newContext();
+
+		try {
+			context.releaseFinishedWork();
+
+			Assert.assertNull("No shared compute context may be created",
+					acceleratorField("sharedContext").get(context));
+			Assert.assertNotNull("The device must not be started",
+					acceleratorField("start").get(context));
+		} finally {
+			context.destroy();
+		}
+	}
+
+	/** Releasing finished work of a destroyed data context does nothing rather than failing. */
+	@Test(timeout = 30000)
+	public void releaseFinishedWorkAfterDestroyDoesNothing() throws Exception {
+		MetalDataContext context = newContext();
+		context.destroy();
+
+		context.releaseFinishedWork();
+		Assert.assertNull("No shared compute context may be created",
+				acceleratorField("sharedContext").get(context));
+	}
+
+	/**
+	 * Returns an accessible private field of {@link AcceleratorDataContext}.
+	 *
+	 * @param name the field name
+	 * @return the field
+	 */
+	private static Field acceleratorField(String name) throws NoSuchFieldException {
+		Field field = AcceleratorDataContext.class.getDeclaredField(name);
+		field.setAccessible(true);
+		return field;
+	}
+
+	/**
 	 * A {@link MetalDataContext#destroy()} issued while the calling thread still holds the read
 	 * side of the lifecycle lock (as it does throughout {@code sharedContext()} and
 	 * {@code computeContext(...)}) must fail fast rather than block forever on the write lock,

@@ -297,8 +297,11 @@ by a host wait for one of its dispatches or a later one. Work that no thread wai
 referenced reachable until some later wait on that runner. A process that hit its ceiling in that
 state used to stay at it: every allocation's collections found nothing to free. To prevent this,
 `HardwareMemoryProvider.reclaim` asks every data context of the local `Hardware` to release
-finished work (`DataContext.releaseFinishedWork()`, reaching every
-`ComputeContext.releaseFinishedWork()`) before each collection it requests. The Metal runner then commits its open buffer and drains every
+finished work (`DataContext.releaseFinishedWork()`, reaching the
+`ComputeContext.releaseFinishedWork()` of every compute context the data context has already
+created) before each collection it requests. The release never goes through
+`getComputeContexts()`, which may create a context or start a device and on some backends sees
+only the calling thread's contexts; a data context that has never run any work does nothing. The Metal runner then commits its open buffer and drains every
 committed buffer the GPU has finished, without waiting for the GPU
 (`MetalCommandRunner.releaseFinishedWork()`), so the collection that follows can free what those
 dispatches held; a buffer committed in one pass is drained by a later one. A heap dump that shows
