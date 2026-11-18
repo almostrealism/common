@@ -236,16 +236,26 @@ public class Cases<T> extends Scope<T> {
 	}
 
 	/**
-	 * Generates a new cases scope with the given children while preserving this scope's configuration.
+	 * {@inheritDoc}
 	 *
-	 * @param children the child scopes to include in the generated scope
-	 * @return a new cases scope with the specified children
+	 * <p>Narrows the return type to {@link Cases}; the generated scope is created by
+	 * {@link #createGenerated()} and configured by {@link Scope#generate(List)}.</p>
 	 */
 	@Override
 	public Cases<T> generate(List<Scope<T>> children) {
-		Cases<T> scope = getMetadata() == null ? new Cases<>(getName()) : new Cases<>(getName(), getMetadata());
-		scope.getChildren().addAll(children);
-		return scope;
+		return (Cases<T>) super.generate(children);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Creates an empty {@link Cases} scope carrying this scope's name and metadata.
+	 * {@link Scope#generate(List)} copies the reference index, compute requirements and lane
+	 * count onto it.</p>
+	 */
+	@Override
+	protected Scope<T> createGenerated() {
+		return getMetadata() == null ? new Cases<>(getName()) : new Cases<>(getName(), getMetadata());
 	}
 
 	/**
