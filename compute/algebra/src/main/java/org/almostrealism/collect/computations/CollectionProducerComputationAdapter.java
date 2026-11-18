@@ -787,7 +787,8 @@ public abstract class CollectionProducerComputationAdapter
 	 * computation in an adapter that follows the repeated computation pattern. The resulting
 	 * adapter will:
 	 * <ul>
-	 *   <li>Initialize output elements to zero</li>
+	 *   <li>Leave the output uninitialised, so the result is also correct when evaluated
+	 *       in place (the output aliasing an input)</li>
 	 *   <li>Iterate through each index position</li>
 	 *   <li>Evaluate this computation's expression at each position</li>
 	 *   <li>Write results directly to the output array</li>

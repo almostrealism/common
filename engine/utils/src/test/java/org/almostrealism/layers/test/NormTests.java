@@ -21,6 +21,7 @@ import io.almostrealism.compute.ParallelProcess;
 import io.almostrealism.compute.Process;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
@@ -187,7 +188,6 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 	 * Tests normalization delta computation with weights.
 	 */
 	@Test(timeout = 60000)
-	@TestProperties(knownIssue = true)
 	public void normComputationDeltaMedium() {
 
 		int c = 28;
@@ -198,30 +198,92 @@ public class NormTests extends TestSuiteBase implements LayerFeatures, GradientT
 	}
 
 	/**
-	 * Helper method to test normalization delta computation.
+	 * Tests the normalization delta as a reverse-mode vector-Jacobian product.
+	 *
+	 * <p>The full Jacobian of the group-normalised output with respect to the input has
+	 * {@code totalSize * totalSize} entries; at the medium size that is 482 million values,
+	 * whose materialisation exceeds the maximum single allocation. The reverse-mode
+	 * reduction ({@link ReduceAxis#OUT}) with an upstream gradient contracts it to one
+	 * value per input element, and the expected result is derived from the analytic
+	 * group-norm Jacobian in {@link #validateDelta}.</p>
 	 */
 	public void normComputationDelta(int c, int v, int groups, PackedCollection weights, PackedCollection biases) {
 		double eps = Hardware.getLocalHardware().epsilon();
 
 		TraversalPolicy shape = shape(c, v);
+		int total = shape.getTotalSize();
 
-		PackedCollection o = new PackedCollection(shape.getTotalSize());
+		PackedCollection o = new PackedCollection(total);
 		o.randFill();
 
+		PackedCollection grad = new PackedCollection(total);
+		grad.randFill();
+
 		kernelTest(() -> {
-					CollectionProducer input = cp(o).reshape(-1, groups, shape.getTotalSize() / groups);
+					CollectionProducer input = cp(o).reshape(-1, groups, total / groups);
 					CollectionProducer out = input
 							.subtractMean(2)
 							.divide(input.variance(2).add(c(eps)).sqrt())
-							.reshape(-1, shape.getTotalSize());
+							.reshape(total);
 					if (weights != null) out = out.multiply(cp(weights));
 					if (biases != null) out = out.add(cp(biases));
-					out.describe();
-					return out.delta(cp(o));
+					return out.delta(cp(o), ReduceAxis.OUT, cp(grad));
 				},
 				output -> {
-					validate(groups, c / groups, v, o, output, weights, biases);
+					validateDelta(groups, total / groups, o, grad, weights, output, eps);
 				}, false, false, true);
+	}
+
+	/**
+	 * Validates a reverse-mode normalization delta against the analytic group-norm Jacobian.
+	 *
+	 * <p>For a group of {@code N} elements with mean {@code mu}, standard deviation
+	 * {@code sigma} and normalised value {@code xHat_m = (o_m - mu) / sigma}, the output is
+	 * {@code y_m = weight_m * xHat_m}. The vector-Jacobian product with upstream gradient
+	 * {@code g} is {@code vjp_j = (g_j w_j - A / N - xHat_j * B / N) / sigma}, where
+	 * {@code A = sum_m g_m w_m} and {@code B = sum_m g_m w_m xHat_m} are summed over the
+	 * group containing {@code j}. A {@code null} weight is treated as one.</p>
+	 */
+	protected void validateDelta(int groups, int groupTotal,
+								 PackedCollection in, PackedCollection grad,
+								 PackedCollection weights, PackedCollection out,
+								 double eps) {
+		PackedCollection result = out.reshape(groups * groupTotal);
+
+		for (int g = 0; g < groups; g++) {
+			int start = g * groupTotal;
+
+			double mean = 0;
+			for (int i = 0; i < groupTotal; i++) mean += in.valueAt(start + i);
+			mean /= groupTotal;
+
+			double variance = 0;
+			for (int i = 0; i < groupTotal; i++) {
+				double d = in.valueAt(start + i) - mean;
+				variance += d * d;
+			}
+			variance /= groupTotal;
+
+			double sigma = Math.sqrt(variance + eps);
+
+			double a = 0;
+			double b = 0;
+			for (int i = 0; i < groupTotal; i++) {
+				int m = start + i;
+				double gw = grad.valueAt(m) * (weights == null ? 1.0 : weights.valueAt(m));
+				double xHat = (in.valueAt(m) - mean) / sigma;
+				a += gw;
+				b += gw * xHat;
+			}
+
+			for (int i = 0; i < groupTotal; i++) {
+				int j = start + i;
+				double wj = weights == null ? 1.0 : weights.valueAt(j);
+				double xHatj = (in.valueAt(j) - mean) / sigma;
+				double expected = (grad.valueAt(j) * wj - a / groupTotal - xHatj * b / groupTotal) / sigma;
+				assertEquals(expected, result.valueAt(j));
+			}
+		}
 	}
 
 	/**

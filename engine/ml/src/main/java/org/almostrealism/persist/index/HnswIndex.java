@@ -397,41 +397,53 @@ public class HnswIndex implements CodeFeatures, Destroyable {
 	 */
 	public void save(Path file) {
 		try (OutputStream os = Files.newOutputStream(file)) {
-			Diskstore.HnswIndexData.Builder builder =
-					Diskstore.HnswIndexData.newBuilder();
-			builder.setDimension(dimension);
-			builder.setM(m);
-			builder.setEfConstruction(efConstruction);
-			builder.setMaxLevel(maxLevel);
-			builder.setEntryPointId(entryPointId != null ? entryPointId : "");
-
-			for (Map.Entry<String, Node> entry : nodes.entrySet()) {
-				Node node = entry.getValue();
-				Diskstore.HnswNodeData.Builder nodeBuilder =
-						Diskstore.HnswNodeData.newBuilder();
-				nodeBuilder.setId(node.id);
-				nodeBuilder.setVector(CollectionEncoder.encode(
-						vectors.get(node.row, shape(dimension)), Precision.FP32));
-				nodeBuilder.setLevel(node.level);
-				nodeBuilder.setDeleted(node.deleted);
-
-				for (int lc = 0; lc <= node.level; lc++) {
-					Diskstore.HnswLayerNeighbors.Builder layerBuilder =
-							Diskstore.HnswLayerNeighbors.newBuilder();
-					for (IdScore edge : node.getNeighbors(lc)) {
-						layerBuilder.addNeighborIds(edge.id);
-						layerBuilder.addNeighborScores(edge.score);
-					}
-					nodeBuilder.addLayers(layerBuilder);
-				}
-
-				builder.addNodes(nodeBuilder);
-			}
-
-			builder.build().writeTo(os);
+			save(os);
 		} catch (IOException e) {
 			throw new UncheckedIOException("Failed to save HNSW index", e);
 		}
+	}
+
+	/**
+	 * Write the HNSW index to the given stream in the format read by
+	 * {@link #load(Path, SimilarityMetric)}. The stream is neither flushed nor
+	 * closed, so a caller can sync the underlying file before publishing it.
+	 *
+	 * @param os stream to write to
+	 * @throws IOException if writing to the stream fails
+	 */
+	public void save(OutputStream os) throws IOException {
+		Diskstore.HnswIndexData.Builder builder =
+				Diskstore.HnswIndexData.newBuilder();
+		builder.setDimension(dimension);
+		builder.setM(m);
+		builder.setEfConstruction(efConstruction);
+		builder.setMaxLevel(maxLevel);
+		builder.setEntryPointId(entryPointId != null ? entryPointId : "");
+
+		for (Map.Entry<String, Node> entry : nodes.entrySet()) {
+			Node node = entry.getValue();
+			Diskstore.HnswNodeData.Builder nodeBuilder =
+					Diskstore.HnswNodeData.newBuilder();
+			nodeBuilder.setId(node.id);
+			nodeBuilder.setVector(CollectionEncoder.encode(
+					vectors.get(node.row, shape(dimension)), Precision.FP32));
+			nodeBuilder.setLevel(node.level);
+			nodeBuilder.setDeleted(node.deleted);
+
+			for (int lc = 0; lc <= node.level; lc++) {
+				Diskstore.HnswLayerNeighbors.Builder layerBuilder =
+						Diskstore.HnswLayerNeighbors.newBuilder();
+				for (IdScore edge : node.getNeighbors(lc)) {
+					layerBuilder.addNeighborIds(edge.id);
+					layerBuilder.addNeighborScores(edge.score);
+				}
+				nodeBuilder.addLayers(layerBuilder);
+			}
+
+			builder.addNodes(nodeBuilder);
+		}
+
+		builder.build().writeTo(os);
 	}
 
 	/**

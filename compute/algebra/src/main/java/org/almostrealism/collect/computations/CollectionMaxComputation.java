@@ -16,14 +16,12 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MinimumValue;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.calculus.ReduceAxis;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -33,7 +31,7 @@ import java.util.List;
 /**
  * A computation that performs a reduction operation to find the maximum element in a {@link PackedCollection}.
  *
- * <p>This class extends {@link AggregatedProducerComputation} to implement a max reduction,
+ * <p>This class extends {@link AggregatedExtremumComputation} to implement a max reduction,
  * finding the largest value among all elements of an input collection. The result is a
  * single-element collection containing the maximum value.</p>
  *
@@ -110,7 +108,7 @@ import java.util.List;
  *
  * @author Michael Murray
  */
-public class CollectionMaxComputation extends AggregatedProducerComputation {
+public class CollectionMaxComputation extends AggregatedExtremumComputation {
 	/**
 	 * Constructs a max computation that reduces the input collection to a single maximum value.
 	 * The input shape is automatically determined from the producer.
@@ -135,7 +133,7 @@ public class CollectionMaxComputation extends AggregatedProducerComputation {
 	 * @param input The {@link Producer} providing the collection to find the maximum of
 	 */
 	protected CollectionMaxComputation(TraversalPolicy shape, Producer<PackedCollection> input) {
-		super("max", shape.replace(new TraversalPolicy(1)), shape.getSize(), input);
+		super("max", shape, input);
 	}
 
 	/**
@@ -191,50 +189,24 @@ public class CollectionMaxComputation extends AggregatedProducerComputation {
 	}
 
 	/**
-	 * Selects, from each group of {@code values}, the element at the position of the
-	 * maximum of the same group of this computation's input. Applied to the input itself
-	 * this is equal in value to this computation; applied to the derivative of the input it
-	 * is the derivative of the maximum, which is that of the element the maximum selects.
+	 * Returns the index of the maximum element of each group of the input, which locates the
+	 * element on which the maximum and its derivative depend.
 	 *
-	 * @param values a collection with the shape of the input
-	 * @return the selected elements, one for each group
+	 * @param input the input collection, traversed at the axis whose items are the groups
+	 * @return a computation of the position of the maximum element of each group
 	 */
-	protected CollectionProducer select(Producer<PackedCollection> values) {
-		Producer<PackedCollection> input = getInputs().get(1);
-		return new DynamicIndexProjectionProducerComputation("projectMax", shape(input).replace(shape(1)),
-				(args, idx) -> args[2].getValueAt(idx).toInt(),
-				true, values, indexOfMax(input));
+	@Override
+	protected CollectionProducer indexOfExtremum(Producer<PackedCollection> input) {
+		return indexOfMax(input);
 	}
 
 	/**
-	 * The maximum is not a linear aggregation, so its derivative is not the maximum of the
-	 * input's derivatives: it is the derivative of the element that the maximum
-	 * {@link #select selects}. The Jacobian and the {@link ReduceAxis#OUT output-reduced}
-	 * delta are those of the selection, and the {@link ReduceAxis#IN input-reduced} delta
-	 * selects, from the input's own input-reduced delta, the element at the position of
-	 * the maximum.
-	 */
-	@Override
-	protected CollectionProducer deltaDependent(Producer<?> target, ReduceAxis axis, Producer<PackedCollection> weight) {
-		Producer<PackedCollection> child = getInputs().get(1);
-		if (axis == ReduceAxis.NONE) {
-			return select(child).delta(target);
-		} else if (!(child instanceof Shape)) {
-			return super.deltaDependent(target, axis, weight);
-		} else if (axis == ReduceAxis.OUT) {
-			return select(child).delta(target, axis, weight);
-		}
-
-		CollectionProducer input = c(child);
-		return select(reshape(input.getShape(), input.delta(target, axis, weight)));
-	}
-
-	/**
-	 * Indicates that this computation supports signature generation for caching
-	 * and deduplication purposes.
+	 * Returns the operation name of the selection projection for the maximum.
 	 *
-	 * @return {@code true} to enable signature support
+	 * @return {@code "projectMax"}
 	 */
 	@Override
-	protected boolean isSignatureSupported() { return true; }
+	protected String projectionName() {
+		return "projectMax";
+	}
 }
