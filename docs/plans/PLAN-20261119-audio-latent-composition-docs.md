@@ -1,8 +1,8 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-19
-closed:
-tracker: []
+closed: 2026-11-19
+tracker: [232983ee-121b-4df8-8a28-b2c1acdc95ef]
 ---
 
 # Document composing audio in latent space: the AutoEncoder blend pipeline
@@ -77,7 +77,10 @@ Concrete, actionable items:
    - **THE FUNDAMENTAL RULE in the small**: state plainly that the composed latent is a
      computation graph, and that the production boundaries evaluate it through
      `evaluateOptimized()` (`AudioGenerator` and `LegacyAudioGenerator` on
-     `getInterpolatedLatent`, `AudioModulator.project` on `getResultant`). Be precise about
+     `getInterpolatedLatent`). `AudioModulator.project` calls `evaluateOptimized()` on
+     `getResultant`, which does not optimize the latent through a `CompiledModelAutoEncoder`
+     decoder (see "Open questions"); the page documents it as a current limitation, not as
+     an optimization example. Be precise about
      why: in the normalized blend each `getScale` reduction is read twice (by `total` and by
      its own term) and `total` is read by `unselected`, every term and the divisor, so a
      plain `.evaluate()` would embed those reductions per consumer; in the default weighted

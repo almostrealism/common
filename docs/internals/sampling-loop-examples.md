@@ -65,6 +65,10 @@ AutoEncoder autoEncoder = new CompiledModelAutoEncoder(
 );
 ```
 
+The same abstraction is the decode side of latent-space composition, where
+`AudioComposer` blends several encoded sources into the starting latent that
+`generateFrom` refines. See [Latent Audio Composition](latent-audio-composition.md).
+
 ## Historical Context
 
 This rule exists because both `AudioGenerator` and `AudioDiffusionGenerator` were originally implemented with duplicate sampling loops. Both have been corrected to use `DiffusionSampler` with appropriate `SamplingStrategy` implementations.

@@ -33,7 +33,7 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 **Category:** Documentation
 **Branch:** `project/plan-20261119-010237`
 **Plan:** [`PLAN-20261119-audio-latent-composition-docs.md`](PLAN-20261119-audio-latent-composition-docs.md)
-**Tracker:** none (docs cycle)
+**Tracker:** `232983ee-121b-4df8-8a28-b2c1acdc95ef` (optimization through the decoder, a follow-up to the docs work)
 
 #### What changed since last cycle
 
