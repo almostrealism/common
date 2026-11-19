@@ -483,6 +483,102 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * A PATCH whose body stream fails mid-read is rejected rather than read as a
+     * {@code null} body. {@link RequestBodyReader} converts the {@link IOException}
+     * into an {@link io.flowtree.github.GitHubProxyHandler.BodyReader.InvalidRequestBodyException},
+     * so the handler never mistakes a failed read for an empty payload and
+     * forwards a PATCH that would clear the pull request's fields.
+     */
+    @Test(timeout = 10000)
+    public void patchWhoseBodyReadFailsIsRejected() {
+        InputStream failing = new InputStream() {
+            @Override
+            public int read() throws IOException {
+                throw new IOException("stream broke");
+            }
+
+            @Override
+            public int read(byte[] b, int off, int len) throws IOException {
+                throw new IOException("stream broke");
+            }
+        };
+        IHTTPSession session = new FakeSession(Method.PATCH, Map.of(),
+                Map.of("content-length", "32"), failing);
+        try {
+            new RequestBodyReader().read(session);
+            fail("a PATCH body that cannot be read must be rejected, not returned as null");
+        } catch (GitHubProxyHandler.BodyReader.InvalidRequestBodyException expected) {
+            assertTrue(expected.getMessage().contains("could not read PATCH request body"));
+        }
+    }
+
+    /**
+     * A PATCH whose body stream fails is refused with a 4xx and no request
+     * reaches GitHub, so a read failure is never forwarded as an empty update.
+     * The stub counts every request it receives, proving nothing was forwarded.
+     */
+    @Test(timeout = 30000)
+    public void patchWhoseBodyReadFailsDoesNotReachGitHub() throws IOException {
+        AtomicInteger hits = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            hits.incrementAndGet();
+            respond(exchange, "{}");
+        });
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(
+                    Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            InputStream failing = new InputStream() {
+                @Override
+                public int read() throws IOException {
+                    throw new IOException("stream broke");
+                }
+
+                @Override
+                public int read(byte[] b, int off, int len) throws IOException {
+                    throw new IOException("stream broke");
+                }
+            };
+            IHTTPSession session = new FakeSession(Method.PATCH,
+                    Map.of("url", "/repos/almostrealism/common/pulls/5"),
+                    Map.of("content-length", "32"), failing);
+
+            Response response = handler.handle(session, Method.PATCH,
+                    new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+            assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+            assertTrue(bodyOf(response).contains("could not read PATCH request body"));
+            assertEquals("a failed body read never reaches GitHub", 0, hits.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * A malformed caller-supplied {@code url} makes the PATCH forward's
+     * {@link java.net.URI#create} throw an unchecked exception. The handler
+     * routes it through the error responder — as the GET/POST/PUT path does —
+     * so the caller receives the normal 4xx rather than an exception escaping
+     * {@code handle}.
+     */
+    @Test(timeout = 10000)
+    public void patchWithMalformedUrlReturnsErrorResponse() {
+        GitHubProxyHandler handler = new GitHubProxyHandler(Map.of("almostrealism", "tok"));
+        byte[] bytes = "{\"title\":\"x\"}".getBytes(StandardCharsets.UTF_8);
+        IHTTPSession session = new FakeSession(Method.PATCH,
+                Map.of("url", "https://api.github.com/repos/almostrealism/common/pulls/5 bad"),
+                Map.of("content-length", String.valueOf(bytes.length)),
+                new ByteArrayInputStream(bytes));
+
+        Response response = handler.handle(session, Method.PATCH,
+                new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+        assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+    }
+
     /** Builds the 400 error envelope the proxy endpoint returns, for the handler's responder. */
     private static Response errorResponse(String message) {
         return NanoHTTPD.newFixedLengthResponse(Response.Status.BAD_REQUEST,

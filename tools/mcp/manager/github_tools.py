@@ -711,7 +711,18 @@ def github_update_pr(
             "title": result.get("title"),
             "updated_fields": updated_fields,
         }
-    return result
+    # An API error (ok=False) is propagated as-is. Any other response without a
+    # PR object — a 204/no-body that _github_request reports as {"ok": True,
+    # "status": 204}, or any other bodyless success — cannot confirm the edit,
+    # so it is reported as a failure rather than a false success.
+    if isinstance(result, dict) and result.get("ok") is False:
+        return result
+    return {
+        "ok": False,
+        "error": ("GitHub did not return the updated pull request, so the edit "
+                  "could not be confirmed"),
+        "returned": result,
+    }
 
 @mcp.tool()
 def github_request_copilot_review(

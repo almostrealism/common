@@ -53,18 +53,34 @@ public class RequestBodyReader implements GitHubProxyHandler.BodyReader, Console
     /**
      * Reads the request body from the given session.
      *
+     * <p>A PATCH body that cannot be read in full — a bad {@code Content-Length},
+     * a truncated or failed stream read — is rejected with an
+     * {@link InvalidRequestBodyException} rather than returned as {@code null}.
+     * {@link GitHubProxyHandler#handle} treats {@code null} as an empty body and
+     * still forwards it, so returning {@code null} on a read failure would turn a
+     * failed read into a PATCH that silently clears the pull request's fields.
+     * A failed POST/PUT read keeps the previous {@code null} behaviour.</p>
+     *
      * @param session the NanoHTTPD session
-     * @return the body string, or {@code null} when there is none or it cannot be read
+     * @return the body string, or {@code null} when there is none or a non-PATCH body cannot be read
      * @throws InvalidRequestBodyException when a PATCH declares a
      *         {@code Content-Length} that is missing, unparseable, negative, or
-     *         above {@link #MAX_BODY_BYTES}
+     *         above {@link #MAX_BODY_BYTES}, yields fewer bytes than declared, or
+     *         cannot be read from the stream
      */
     @Override
     public String read(IHTTPSession session) {
-        try {
-            if (Method.PATCH.equals(session.getMethod())) {
+        if (Method.PATCH.equals(session.getMethod())) {
+            try {
                 return readPatchBody(session);
+            } catch (IOException e) {
+                // Rejected so the handler returns a 4xx rather than forwarding
+                // a failed read as an empty PATCH.
+                throw new InvalidRequestBodyException(
+                        "could not read PATCH request body: " + e.getMessage());
             }
+        }
+        try {
             Map<String, String> bodyMap = new HashMap<>();
             session.parseBody(bodyMap);
             if (bodyMap.containsKey("postData")) {

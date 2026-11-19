@@ -271,11 +271,19 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * Forwards a proxied {@code PATCH} to GitHub and wraps the result like any
      * other proxied response.
      *
+     * <p>Every failure becomes an error response rather than an escaping
+     * exception, matching the GET/POST/PUT path's broad {@code catch}: a
+     * transport {@link IOException}, an interruption, and the unchecked
+     * {@link IllegalArgumentException} that {@link URI#create} or
+     * {@link HttpRequest} construction throws for a malformed caller-supplied
+     * {@code url} all route through {@code error} so malformed proxy input
+     * yields the normal 4xx rather than a 500.</p>
+     *
      * @param fullUrl the fully-resolved GitHub API URL
      * @param payload the JSON body to forward, or {@code null} for an empty body
      * @param token   the GitHub API bearer token
      * @param error   a callback that builds an error response
-     * @return the wrapped GitHub response, or an error response on transport failure
+     * @return the wrapped GitHub response, or an error response on any failure
      */
     private Response forwardPatch(String fullUrl, String payload, String token,
                                   ErrorResponder error) {
@@ -291,6 +299,9 @@ public class GitHubProxyHandler implements ConsoleFeatures {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return error.respond("GitHub proxy error: PATCH interrupted");
+        } catch (RuntimeException e) {
+            log("GitHub proxy error: " + e.getMessage());
+            return error.respond("GitHub proxy error: " + e.getMessage());
         }
     }
 

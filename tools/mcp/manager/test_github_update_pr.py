@@ -162,6 +162,21 @@ class TestGithubUpdatePr(unittest.TestCase):
         result = server.github_update_pr(pr_number=7, title="New")
         self.assertEqual({"ok": False, "error": "GitHub returned HTTP 422: bad"}, result)
 
+    @patch.object(server, "_github_request",
+                  return_value={"ok": True, "status": 204})
+    def test_response_without_pr_object_is_not_success(self, mock_gh, mock_repo):
+        """A bodyless success (e.g. a 204) confirms no field, so it is a failure.
+
+        ``_github_request`` reports an empty response as ``{"ok": True,
+        "status": 204}``. That carries no PR object, so the edit cannot be
+        verified; the tool must report ok=False rather than pass the bodyless
+        success through as if the change had been applied.
+        """
+        result = server.github_update_pr(pr_number=7, title="New")
+        self.assertFalse(result["ok"])
+        self.assertIn("could not be confirmed", result["error"])
+        self.assertEqual({"ok": True, "status": 204}, result["returned"])
+
     @patch.object(server, "_github_request")
     @patch.object(server, "_require_org_in_scope")
     def test_org_scope_gate_applied_for_direct_addressing(
