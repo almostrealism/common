@@ -553,5 +553,75 @@ class TestBulkImport(unittest.TestCase):
         self.assertEqual(body["updated"]["projects"], 1)
 
 
+class TestArtifacts(unittest.TestCase):
+
+    def setUp(self):
+        self.client, self.store, self.db_path = _make_client()
+        proj = self.client.post(
+            "/v1/projects", json={"name": "Rings", "workspace_id": "W1"})
+        self.project_id = proj.json()["project"]["id"]
+        task = self.client.post(
+            "/v1/tasks", json={"title": "Task", "project_id": self.project_id})
+        self.task_id = task.json()["task"]["id"]
+
+    def tearDown(self):
+        self.store.close()
+        os.unlink(self.db_path)
+
+    def _add(self, **body):
+        return self.client.post(f"/v1/tasks/{self.task_id}/artifacts", json=body)
+
+    def test_create_and_list(self):
+        resp = self._add(artifact_type="comment", content="a note", author="person")
+        self.assertEqual(resp.status_code, 201)
+        artifact = resp.json()["artifact"]
+        self.assertEqual(artifact["artifact_type"], "comment")
+        self.assertEqual(artifact["workspace_id"], "W1")
+
+        listed = self.client.get(f"/v1/tasks/{self.task_id}/artifacts")
+        self.assertEqual(listed.status_code, 200)
+        body = listed.json()
+        self.assertEqual(body["task_id"], self.task_id)
+        self.assertEqual(len(body["artifacts"]), 1)
+        self.assertEqual(body["artifacts"][0]["content"], "a note")
+
+    def test_create_rejects_unknown_type(self):
+        resp = self._add(artifact_type="sketch", content="x", author="person")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_requires_content(self):
+        resp = self._add(artifact_type="comment", content="", author="person")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_requires_author(self):
+        resp = self._add(artifact_type="comment", content="x", author="")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_on_unknown_task_is_404(self):
+        resp = self.client.post(
+            "/v1/tasks/no-such-task/artifacts",
+            json={"artifact_type": "comment", "content": "x", "author": "person"})
+        self.assertEqual(resp.status_code, 404)
+
+    def test_list_on_unknown_task_is_404(self):
+        resp = self.client.get("/v1/tasks/no-such-task/artifacts")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_get_and_delete(self):
+        artifact_id = self._add(
+            artifact_type="reference", content="https://example/x",
+            author="ws/job").json()["artifact"]["id"]
+        got = self.client.get(f"/v1/artifacts/{artifact_id}")
+        self.assertEqual(got.status_code, 200)
+        self.assertEqual(got.json()["artifact"]["content"], "https://example/x")
+
+        deleted = self.client.delete(f"/v1/artifacts/{artifact_id}")
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(self.client.get(f"/v1/artifacts/{artifact_id}").status_code, 404)
+
+    def test_delete_nonexistent_is_404(self):
+        self.assertEqual(self.client.delete("/v1/artifacts/none").status_code, 404)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1571,6 +1571,9 @@ from tracker_tools import (  # noqa: E402
     tracker_delete_task,
     tracker_search_tasks,
     tracker_project_summary,
+    tracker_add_artifact,
+    tracker_list_artifacts,
+    tracker_delete_artifact,
 )
 
 
