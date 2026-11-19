@@ -26,8 +26,8 @@ import org.almostrealism.collect.PackedCollection;
 
 /**
  * A {@link Factor} that scales audio feature data by decision weights derived from
- * a conditioning value vector. Used in attention-conditioned audio generation to
- * modulate feature contributions based on an external control signal.
+ * a position vector. Each instance is one encoded source of an {@link AudioComposer},
+ * which blends its sources in latent space according to the scales computed here.
  */
 public class ComposableAudioFeatures implements Factor<PackedCollection>, Destroyable, CodeFeatures {
 	/** The audio feature data to be scaled, shaped {@code (T, B)}. */
