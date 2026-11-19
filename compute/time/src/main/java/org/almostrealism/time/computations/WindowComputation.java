@@ -253,7 +253,7 @@ public class WindowComputation extends CollectionProducerComputationBase {
 			case BARTLETT:
 				// w[n] = 1 - |2n/(N-1) - 1|
 				Expression<Double> normalized = (Expression<Double>) e(2.0).multiply(n).divide(nMinus1).subtract(e(1.0));
-				windowValue = e(1.0).subtract(new Absolute(normalized));
+				windowValue = e(1.0).subtract(Absolute.of(normalized));
 				break;
 
 			case FLATTOP:

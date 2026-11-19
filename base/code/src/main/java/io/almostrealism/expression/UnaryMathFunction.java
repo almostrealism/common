@@ -42,6 +42,7 @@ import java.util.function.Function;
  * @see Tangent
  * @see Exp
  * @see Logarithm
+ * @see Absolute
  */
 public abstract class UnaryMathFunction extends Expression<Double> {
 	/**
@@ -112,7 +113,7 @@ public abstract class UnaryMathFunction extends Expression<Double> {
 	 * @param node  builds the function node from the widened operand when folding does not apply
 	 * @return a {@link DoubleConstant} when the operand is constant, otherwise {@code node}'s result
 	 */
-	protected static Expression<Double> of(DoubleUnaryOperator fold, Expression<Double> input,
+	protected static Expression<Double> of(DoubleUnaryOperator fold, Expression<?> input,
 										   Function<Expression<Double>, ? extends Expression<Double>> node) {
 		OptionalDouble d = input.doubleValue();
 
