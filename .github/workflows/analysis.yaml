@@ -639,11 +639,13 @@ jobs:
         with:
           cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
+      # TODO(review): `mvn test-compile` fails deterministically on ar-compose (unpack-dependencies on an unpackaged reactor artifact, MDEP-98), so with the save gated on steps.warm.outcome == 'success' the cache is never saved; make the warm succeed before relying on that gate.
       # Resolve the full plugin and dependency set into ~/.m2. Best-effort: a
       # transient resolution failure must not fail this maintenance job (nothing
-      # depends on it), and whatever was resolved is still worth saving — the
-      # consumers fall back to the network for anything missing.
+      # depends on it). A failed warm is NOT saved (see the save step), so the
+      # next run restores the previous cache through restore-keys and warms again.
       - name: Warm the Maven repository
+        id: warm
         if: steps.restore.outputs.cache-hit != 'true'
         continue-on-error: true
         run: |
@@ -674,23 +676,29 @@ jobs:
           JACOCO_VERSION=$(sed -n 's|.*<jacoco.version>\(.*\)</jacoco.version>.*|\1|p' pom.xml | head -n1)
           mvn -B -ntp dependency:get -Dartifact="org.jacoco:jacoco:${JACOCO_VERSION}:zip"
 
-      # A best-effort warm that hit a transient transfer failure leaves
-      # `*.lastUpdated` resolver markers in ~/.m2. Maven's update policy reads
-      # those markers and skips re-fetching the artifact until the policy window
-      # elapses, so a consumer restoring this cache would be told the missing
-      # artifact was "recently tried" and fail offline instead of following the
-      # documented network fallback. Delete the markers before saving, so the
-      # cache only ever holds artifacts it actually resolved — never a record of
-      # one it failed to. Runs whenever the save does.
+      # Even a successful warm can leave `*.lastUpdated` resolver markers in
+      # ~/.m2 (an artifact probed in a repository that did not hold it, or one
+      # restored from an older cache). Maven's update policy reads those markers
+      # and skips re-fetching the artifact until the policy window elapses, so a
+      # consumer restoring this cache could be told an artifact was "recently
+      # tried" and fail instead of following the documented network fallback.
+      # Delete the markers before saving, so the cache only ever holds artifacts
+      # it actually resolved — never a record of one it failed to. Runs whenever
+      # the save does.
       - name: Remove failed-transfer markers
-        if: ${{ always() && steps.restore.outputs.cache-hit != 'true' }}
+        if: steps.warm.outcome == 'success'
         run: find ~/.m2/repository -name '*.lastUpdated' -type f -delete
 
-      # Save the warmed repository for subsequent runs. Skipped on an exact hit
-      # (already complete) and run even if warming reported an error, so a
-      # partially-warmed repository is still saved.
+      # Save the warmed repository for subsequent runs — only when the warm
+      # completed. A cache key is immutable: a partial repository saved under
+      # the exact primary key would make every later run see cache-hit == 'true',
+      # skip warming, and leave the consumers (read-only) re-downloading the
+      # missing artifacts on every job until the poms or the version prefix
+      # change. Not saving a failed warm leaves the exact key unclaimed, so the
+      # next run restores the previous cache through restore-keys and warms
+      # again. The warm step is skipped on an exact hit, so the save is too.
       - name: Save Maven dependencies
-        if: ${{ always() && steps.restore.outputs.cache-hit != 'true' }}
+        if: steps.warm.outcome == 'success'
         uses: actions/cache/save@v4
         with:
           path: |

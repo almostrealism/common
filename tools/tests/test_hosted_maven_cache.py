@@ -130,7 +130,7 @@ class RestoreActionShapeTest(unittest.TestCase):
         self.assertNotIn("hashFiles", restore_keys)
 
     def test_exposes_cache_hit_and_primary_key_outputs(self):
-        """The maven-cache job gates its warm/save on cache-hit and saves under
+        """The maven-cache job gates its warm on cache-hit and saves under
         the exact primary key, so both must be exported outputs."""
         outputs = _action().get("outputs", {})
         self.assertIn("cache-hit", outputs)
@@ -212,7 +212,16 @@ class MavenCacheJobTest(unittest.TestCase):
                         "not fail this maintenance job")
         self.assertIn("steps.restore.outputs.cache-hit", str(warm.get("if", "")))
 
-    def test_saves_under_the_restored_primary_key_only_on_a_non_exact_hit(self):
+    def test_saves_under_the_restored_primary_key_only_after_a_successful_warm(self):
+        """Cache keys are immutable. Saving a partially-warmed repository under
+        the exact primary key would make every later run see cache-hit == 'true'
+        and skip warming, leaving the read-only consumers re-downloading the
+        missing artifacts forever. The save must therefore be gated on the warm
+        step's outcome (which is 'skipped' on an exact hit and 'failure' on a
+        failed warm despite continue-on-error), never on always()."""
+        warm = self._step("Warm the Maven repository")
+        self.assertEqual("warm", warm.get("id"),
+                         "the warm step needs id: warm so the save can read its outcome")
         save = self._step("Save Maven dependencies")
         self.assertTrue(str(save.get("uses", "")).startswith("actions/cache/save"))
         self.assertEqual("${{ steps.restore.outputs.cache-primary-key }}",
@@ -220,15 +229,19 @@ class MavenCacheJobTest(unittest.TestCase):
                          "save must use the exact key the restore reported")
         self.assertIn(_PROJECT_GROUP_EXCLUDE, save["with"]["path"])
         cond = str(save.get("if", ""))
-        self.assertIn("always()", cond)
-        self.assertIn("cache-hit != 'true'", cond)
+        self.assertIn("steps.warm.outcome == 'success'", cond)
+        self.assertNotIn("always()", cond,
+                         "a failed warm must not be saved under the immutable key")
+        self.assertNotIn("conclusion", cond,
+                         "conclusion is 'success' for a failed continue-on-error "
+                         "step; the gate must read outcome")
 
     def test_removes_failed_transfer_markers_before_saving(self):
-        """A best-effort warm that hit a transient failure leaves `*.lastUpdated`
-        resolver markers; Maven's update policy would then suppress the retry for
-        a consumer restoring this cache, turning a transient miss into a hard
-        failure. The markers must be deleted, under the same gate as the save and
-        ordered before it, so the saved cache never records a failed transfer."""
+        """`*.lastUpdated` resolver markers make Maven's update policy suppress
+        the retry for a consumer restoring this cache, turning a transient miss
+        into a hard failure. The markers must be deleted, under the same gate as
+        the save and ordered before it, so the saved cache never records a
+        failed transfer."""
         names = [s.get("name") for s in self.steps]
         self.assertIn("Remove failed-transfer markers", names,
                       "maven-cache must delete *.lastUpdated markers before saving")
@@ -238,9 +251,9 @@ class MavenCacheJobTest(unittest.TestCase):
         remove = self._step("Remove failed-transfer markers")
         self.assertRegex(remove["run"], r"\*\.lastUpdated",
                          "the step must target *.lastUpdated marker files")
-        cond = str(remove.get("if", ""))
-        self.assertIn("always()", cond)
-        self.assertIn("cache-hit != 'true'", cond)
+        self.assertEqual(str(self._step("Save Maven dependencies").get("if", "")),
+                         str(remove.get("if", "")),
+                         "the marker removal must run under the same gate as the save")
 
 
 class MavenConfigRetryTest(unittest.TestCase):

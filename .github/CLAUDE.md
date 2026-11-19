@@ -687,7 +687,10 @@ full plugin and dependency set on purpose (`mvn test-compile`, then
 test-compile does not reach the test phase — the checkstyle plugin, and the
 jacoco-cli distribution the `analysis` job unzips) and saves it with an explicit
 `actions/cache` under a key of the pom hashes plus the manual
-`HOSTED_MAVEN_CACHE_VERSION` prefix, with a `restore-keys` fallback. Gated on
+`HOSTED_MAVEN_CACHE_VERSION` prefix, with a `restore-keys` fallback. It saves
+only when the warm step succeeded: cache keys are immutable, so a partial
+repository saved under the exact key would stop every later run from re-warming;
+a failed warm leaves the key unclaimed for the next run to fill. Gated on
 `code_changed` like `build`; depends only on `changes`. **Nothing depends on it**
 — it maintains the cache for subsequent runs (master's cache is readable by every
 PR) rather than sitting on the critical path, so a warm-cache failure never

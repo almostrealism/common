@@ -143,7 +143,11 @@ followed. Three pieces replace it, all in `.github/workflows/analysis.yaml`:
    (`HOSTED_MAVEN_CACHE_VERSION`), with a `restore-keys` fallback so a pom change
    starts from the previous cache rather than from empty. It warms best-effort
    and nothing depends on it: it maintains the cache for subsequent runs rather
-   than sitting on the critical path.
+   than sitting on the critical path. It saves only after a warm that completed:
+   a cache key is immutable, so a partial repository saved under the exact key
+   would make every later run skip warming while consumers re-download what it
+   lacks. A failed warm leaves the key unclaimed, and the next run restores the
+   previous cache through `restore-keys` and warms again.
 
 2. **The shared `restore-maven-cache` composite action**
    ([`.github/actions/restore-maven-cache`](../../.github/actions/restore-maven-cache/action.yml))
