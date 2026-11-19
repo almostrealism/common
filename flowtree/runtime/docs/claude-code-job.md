@@ -306,14 +306,16 @@ The commit message is determined by `getCommitMessage()`, which implements a two
 
 1. **Agent-written message**: If the agent wrote a `commit.txt` file in the working directory root, its contents (trimmed) are used as the commit message. This allows the agent to craft a meaningful description of its changes. After the commit succeeds, `commit.txt` is deleted to prevent reuse by subsequent runs.
 
-2. **Auto-generated message**: If no `commit.txt` exists or it is empty, a commit message is generated from the prompt:
+2. **Auto-generated message**: If no `commit.txt` exists or it is empty, a commit message is generated from the files the job changed (read from `git status`, with harness scratch paths removed) — never from the prompt, which describes what was asked for rather than what was done:
    ```
-   Claude Code: <prompt truncated to 72 chars>
+   Update <File> | Update <A> and <B> | Update <A> and <N> other files
+                                      (or "Job <taskId> commit" when no changes can be determined)
 
-   Prompt: <full prompt>
+   The harness generated this message because the agent wrote no commit.txt.
    Session: <session ID>
    Exit code: <exit code>
    ```
+   The subject uses file base names (no directory or extension), has control characters replaced by spaces, and is clipped to 72 characters. Because a pull request opened from the commit takes its title from this subject, the title also describes the change rather than the task.
 
 The agent's instruction prompt tells it about the `commit.txt` mechanism (in the "Git Commit Instructions" section), so agents that are configured with a target branch know they can control the commit message.
 

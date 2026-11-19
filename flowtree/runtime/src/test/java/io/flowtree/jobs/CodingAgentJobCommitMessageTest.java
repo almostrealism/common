@@ -265,8 +265,9 @@ public class CodingAgentJobCommitMessageTest extends TestSuiteBase {
         job.setWorkingDirectory(tempDir.toString());
         String msg = job.getCommitMessage(job.getWorkingDirectory());
         assertNotNull(msg);
-        assertTrue("Fallback message should start with 'Claude Code:'",
-                msg.startsWith("Claude Code:"));
+        assertTrue("Fallback subject should name the job when no changes are determinable: " + msg,
+                msg.startsWith("Job t1 commit"));
+        assertFalse("Fallback message must not echo the prompt", msg.contains("do something"));
         assertEquals("prompt_fallback", job.getCommitMessageSource());
     }
 

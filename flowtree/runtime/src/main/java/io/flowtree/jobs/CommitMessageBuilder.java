@@ -332,16 +332,17 @@ class CommitMessageBuilder {
             return null;
         }
 
-        String full = names.size() == 1
-                ? "Update " + names.get(0)
-                : "Update " + names.get(0) + " and " + names.get(1);
-        if (names.size() <= 2 && full.length() <= SUBJECT_LIMIT) {
-            return full;
+        String summary;
+        if (names.size() == 1) {
+            summary = "Update " + names.get(0);
+        } else {
+            summary = "Update " + names.get(0) + " and " + names.get(1);
+            if (names.size() > 2 || summary.length() > SUBJECT_LIMIT) {
+                int others = names.size() - 1;
+                summary = "Update " + names.get(0) + " and " + others
+                        + (others == 1 ? " other file" : " other files");
+            }
         }
-
-        int others = names.size() - 1;
-        String summary = "Update " + names.get(0) + " and " + others
-                + (others == 1 ? " other file" : " other files");
         return summary.length() <= SUBJECT_LIMIT
                 ? summary
                 : summary.substring(0, SUBJECT_LIMIT - 3) + "...";
@@ -350,13 +351,16 @@ class CommitMessageBuilder {
     /**
      * Returns the base name of {@code path} — its final segment with any file
      * extension removed — so {@code .../jobs/IndexSequence.java} becomes
-     * {@code IndexSequence}.
+     * {@code IndexSequence}. Control characters, which {@code git status -z}
+     * reports verbatim in file names, are replaced by spaces so a crafted name
+     * cannot inject extra lines (a body or trailers) into the commit message
+     * or the pull request title derived from it.
      *
      * @param path a repository-relative file path
-     * @return the extension-free final segment, trimmed
+     * @return the extension-free final segment, trimmed, free of control characters
      */
     private static String baseName(String path) {
-        String name = finalSegment(path);
+        String name = finalSegment(path).replaceAll("\\p{Cntrl}", " ");
         int dot = name.lastIndexOf('.');
         if (dot > 0) {
             name = name.substring(0, dot);

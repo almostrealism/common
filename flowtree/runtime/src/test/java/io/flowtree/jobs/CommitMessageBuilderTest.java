@@ -168,6 +168,90 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         assertTrue("Overlong subject is ellipsised", subject.endsWith("..."));
     }
 
+    /**
+     * A single changed file whose name alone exceeds the limit is clipped as a one-file summary; it
+     * never claims a count of other files that do not exist.
+     */
+    @Test(timeout = 30000)
+    public void summarizeClipsOverlongSingleFileWithoutOtherFileCount() {
+        String name = "S".repeat(100);
+        String subject = CommitMessageBuilder.summarizeChangedFiles(List.of("a/" + name + ".java"));
+        assertEquals(("Update " + name).substring(0, 69) + "...", subject);
+        assertFalse("A single file must not be described with an other-file count: " + subject,
+                subject.contains("other file"));
+    }
+
+    /**
+     * Two changed files whose names together exceed the limit fall back to naming the first and
+     * counting one other file.
+     */
+    @Test(timeout = 30000)
+    public void summarizeCountsSecondFileWhenTwoNamesDoNotFit() {
+        String first = "F".repeat(30);
+        String second = "G".repeat(40);
+        assertEquals("Update " + first + " and 1 other file",
+                CommitMessageBuilder.summarizeChangedFiles(List.of(first + ".java", second + ".java")));
+    }
+
+    /**
+     * Control characters in a file name (which {@code git status -z} reports verbatim) are replaced
+     * so they cannot inject extra lines into the commit message.
+     */
+    @Test(timeout = 30000)
+    public void summarizeReplacesControlCharactersInNames() {
+        String subject = CommitMessageBuilder.summarizeChangedFiles(
+                List.of("a/Evil\n\nCo-Authored-By: X\r\tName.java"));
+        assertEquals("Update Evil  Co-Authored-By: X  Name", subject);
+        assertFalse("Subject must be a single line", subject.contains("\n") || subject.contains("\r"));
+    }
+
+    /**
+     * {@link CommitMessageBuilder#buildChangeSubject} reads the job's real working tree: changed
+     * files reported by {@code git status} name the subject, and harness scratch paths
+     * ({@code commit.txt}, {@code .flowtree/}) are filtered out of it.
+     */
+    @Test(timeout = 30000)
+    public void buildChangeSubjectNamesChangedFilesFromGitStatus() throws IOException, InterruptedException {
+        initGitRepository();
+        Files.writeString(tempDir.resolve("Widget.java"), "class Widget { }\n", StandardCharsets.UTF_8);
+        Files.writeString(tempDir.resolve("commit.txt"), "  \n", StandardCharsets.UTF_8);
+        Files.createDirectories(tempDir.resolve(".flowtree"));
+        Files.writeString(tempDir.resolve(".flowtree/notes.md"), "scratch\n", StandardCharsets.UTF_8);
+
+        CodingAgentJob job = job("You are hunting for a real defect");
+        assertEquals("Update Widget", job.commitMessageBuilder().buildChangeSubject(job));
+        assertEquals("Update Widget", job.commitMessageBuilder().buildExhaustionFallback(job));
+        String msg = job.commitMessageBuilder().resolve(job);
+        assertTrue("Commit-time fallback subject must name the changed file: " + msg,
+                msg.startsWith("Update Widget\n"));
+        assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, job.getCommitMessageSource());
+    }
+
+    /**
+     * In a git repository whose only changes are harness scratch paths, there is nothing to name,
+     * so the subject falls back to the job rather than naming a scratch file.
+     */
+    @Test(timeout = 30000)
+    public void buildChangeSubjectIgnoresTreeWithOnlyExcludedPaths() throws IOException, InterruptedException {
+        initGitRepository();
+        Files.writeString(tempDir.resolve("commit.txt"), "  \n", StandardCharsets.UTF_8);
+        Files.createDirectories(tempDir.resolve(".flowtree"));
+        Files.writeString(tempDir.resolve(".flowtree/notes.md"), "scratch\n", StandardCharsets.UTF_8);
+
+        CodingAgentJob job = job("do the work");
+        assertEquals("Job t1 commit", job.commitMessageBuilder().buildChangeSubject(job));
+    }
+
+    /** Initializes an empty git repository in the temporary working directory. */
+    private void initGitRepository() throws IOException, InterruptedException {
+        Process process = new ProcessBuilder("git", "init", "-q")
+                .directory(tempDir.toFile())
+                .redirectErrorStream(true)
+                .start();
+        process.getInputStream().readAllBytes();
+        assertEquals("git init must succeed", 0, process.waitFor());
+    }
+
     /** An empty change set yields no summary, so the caller supplies the neutral job-named subject. */
     @Test(timeout = 30000)
     public void summarizeReturnsNullForNoChanges() {
