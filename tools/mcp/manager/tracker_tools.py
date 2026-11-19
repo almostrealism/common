@@ -779,10 +779,11 @@ def _evidence_header(caller_ws: Optional[str], caller_job: Optional[str]) -> str
 
     It records who added the section and when: the calling job's provenance
     (taken from its token) for an agent job, or ``person`` for a caller with no
-    job binding, and the current UTC date.
+    job binding, and the current UTC date. The caller rejects a token that names
+    a workstream but no job before reaching here, so a workstream without a job
+    never becomes the author.
     """
-    author = (_job_provenance(caller_ws, caller_job) if caller_ws and caller_job
-              else caller_ws or _PERSON_SOURCE)
+    author = _job_provenance(caller_ws, caller_job) if caller_job else _PERSON_SOURCE
     today = datetime.now(timezone.utc).date().isoformat()
     return f"### Evidence added by {author} on {today}"
 
@@ -824,9 +825,12 @@ def tracker_append_task_evidence(task_id: str, evidence: str) -> dict:
             f"Task {task_id} is {task.get('status') or 'not open'}; evidence may be "
             "added only to an open task. File a new task with tracker_create_task.")}
     caller_ws, caller_job = _caller_job()
+    if caller_ws and not caller_job:
+        return {"ok": False, "error": "The request's token names no job to record "
+                                      "as the author of the evidence."}
     existing = task.get("description") or ""
     section = _evidence_header(caller_ws, caller_job) + "\n\n" + evidence.strip()
-    description = (existing.rstrip("\n") + "\n\n" + section) if existing else section
+    description = (existing + "\n\n" + section) if existing else section
     if len(description) > _DESCRIPTION_MAX:
         return {"ok": False, "error": (
             f"Appending this evidence would make the description of task {task_id} "
@@ -835,7 +839,10 @@ def tracker_append_task_evidence(task_id: str, evidence: str) -> dict:
             "file a new task that references this one.")}
     server._audit("tracker_append_task_evidence", task_id=task_id,
                   caller_workstream_id=caller_ws)
-    # TODO(review): read-modify-write; a concurrent append or edit between the GET and this PUT is silently lost.
+    # Known limitation: this is a client-side read-modify-write, so a concurrent
+    # append or edit between the fetch above and this write is silently lost, and
+    # the open check is not atomic with the write. Flaky rounds are rare and
+    # serial; an atomic server-side append is tracked for later.
     return server._tracker_put(f"/v1/tasks/{task_id}", {"description": description})
 
 

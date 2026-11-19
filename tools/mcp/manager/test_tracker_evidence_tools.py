@@ -129,6 +129,20 @@ class TestAppendTaskEvidence(unittest.TestCase):
         description = mock_put.call_args.args[1]["description"]
         self.assertIn("### Evidence added by person on ", description)
 
+    def test_a_trailing_newline_in_the_existing_description_is_kept(self):
+        existing = "Already noted.\n\n"
+        _, mock_put = self._append(_task(description=existing))
+        description = mock_put.call_args.args[1]["description"]
+        self.assertEqual(existing, description[:len(existing)])
+        self.assertIn("### Evidence added by follow-up:ws-1/job-1 on ", description)
+
+    def test_a_workstream_without_a_job_is_refused(self):
+        server._set_token_context(workstream_id="ws-1", job_id=None)
+        result, mock_put = self._append(_task())
+        self.assertFalse(result["ok"])
+        self.assertIn("job", result["error"])
+        mock_put.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
