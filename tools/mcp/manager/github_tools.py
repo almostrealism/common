@@ -14,6 +14,7 @@ moving the code that depends on it.
 import base64
 import binascii
 import re
+from typing import Optional
 from urllib.parse import quote
 
 import github_api
@@ -609,8 +610,8 @@ def _normalise_pr_field(value: str) -> str:
 @mcp.tool()
 def github_update_pr(
     pr_number: int,
-    title: str = "",
-    body: str = "",
+    title: Optional[str] = None,
+    body: Optional[str] = None,
     workstream_id: str = "",
     branch: str = "",
     org: str = "",
@@ -620,14 +621,16 @@ def github_update_pr(
 
     Only the title and the description can be changed; the request never
     carries state, base, maintainer_can_modify, labels or any other field.
-    A field left empty is not changed. Use this to correct a pull request
-    whose title or description no longer matches the branch.
+    A field left unset (``None``) is not changed. Use this to correct a pull
+    request whose title or description no longer matches the branch.
 
     Args:
         pr_number: The PR number. Must be a positive integer.
-        title: New PR title. Empty leaves the title unchanged; a title of
-            only whitespace is rejected.
-        body: New PR description. Empty leaves the description unchanged.
+        title: New PR title. ``None`` (the default) leaves the title
+            unchanged; an empty or whitespace-only title is rejected because
+            GitHub requires a non-empty title.
+        body: New PR description. ``None`` (the default) leaves the
+            description unchanged; pass an empty string to clear it.
         workstream_id: Workstream to resolve repo from. Defaults to token context.
         branch: Branch hint.
         org: GitHub org (owner) to address directly. Must be passed together
@@ -646,13 +649,14 @@ def github_update_pr(
 
     if not isinstance(pr_number, int) or isinstance(pr_number, bool) or pr_number <= 0:
         return {"ok": False, "error": "pr_number must be a positive integer"}
-    if title and not title.strip():
-        return {"ok": False, "error": "title must not be only whitespace"}
+    if title is not None and not title.strip():
+        return {"ok": False, "error": "title must not be empty or only whitespace"}
     payload = {}
-    # TODO(review): empty title/body means "unchanged", so a description can never be cleared; the plan intended Optional[str]=None defaults so body="" could clear it.
-    if title:
+    # None means "leave unchanged"; an empty-string body is sent so it can
+    # clear the description on purpose.
+    if title is not None:
         payload["title"] = title
-    if body:
+    if body is not None:
         payload["body"] = body
     if not payload:
         return {
