@@ -33,9 +33,9 @@ import java.util.OptionalLong;
  * byte-identical to supplying no source at all: each generator receives its own fresh
  * {@link java.util.Random}. Production therefore stays unchanged unless it is configured. Seeding
  * the source makes every later seedless draw reproducible, because a seeded source is consumed in
- * construction order (a {@link Random} draws its values, and a {@link CounterRandom} its seed, when
- * it is constructed), so the same sequence of generator constructions yields the same values on
- * every run.</p>
+ * construction order: each generator construction takes one draw from it to seed a
+ * {@link #generator() generator-owned source}, so the same sequence of generator constructions
+ * yields the same values on every run, while no generator retains the shared source itself.</p>
  *
  * <p>At class initialization the source is seeded from the {@code AR_RANDOM_SEED} setting (a system
  * property or environment variable, read through {@link SystemUtils#getProperty(String, String)})
@@ -97,8 +97,26 @@ public final class DefaultRandomSource {
 	 *
 	 * @return the seeded default source, or {@code null} when unseeded
 	 */
+	// TODO(review): javadoc predates generator(); generators now resolve through generator(), not current()
 	public static java.util.Random current() {
 		return source;
+	}
+
+	/**
+	 * Returns a new {@link java.util.Random} for one generator, seeded with the next value drawn
+	 * from the default source, or {@code null} when the source is unseeded. Each generator thereby
+	 * owns its own {@link java.util.Random}, exactly as it does when the source is unseeded: the
+	 * shared source is consumed once per generator construction (so the same construction order
+	 * still reproduces the same values), but it is never retained by a generator. A generator's
+	 * later {@link RandomProducer#refresh() refreshes} therefore draw only from its own source and
+	 * are independent of other generators, of other threads, and of later {@link #seed(long)} or
+	 * {@link #clear()} calls.
+	 *
+	 * @return a generator-owned source derived from the default source, or {@code null} when unseeded
+	 */
+	public static java.util.Random generator() {
+		java.util.Random active = source;
+		return active == null ? null : new java.util.Random(active.nextLong());
 	}
 
 	/**

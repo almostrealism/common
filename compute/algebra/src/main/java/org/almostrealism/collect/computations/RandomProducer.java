@@ -105,7 +105,7 @@ public interface RandomProducer extends CollectionProducer {
 			// Resolve the one process-wide default in a single place, so rand/randn, weight
 			// initialization and CounterRandom seeds are all covered. When the default is
 			// unseeded this is still null, leaving the unseeded path byte-identical to today.
-			source = DefaultRandomSource.current();
+			source = DefaultRandomSource.generator();
 		}
 
 		if (!shape.isFixedCount()) {

@@ -171,6 +171,32 @@ public class DefaultRandomSourceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link DefaultRandomSource#generator()} hands each generator its own source rather than the
+	 * shared one: it is {@code null} when unseeded, a distinct instance from
+	 * {@link DefaultRandomSource#current()} when seeded, reproducible for the same seed, and its
+	 * draws are unaffected by draws other generators later take from the shared source.
+	 */
+	@Test(timeout = 30000)
+	public void generatorOwnsDerivedSource() {
+		DefaultRandomSource.clear();
+		Assert.assertNull(DefaultRandomSource.generator());
+
+		DefaultRandomSource.seed(7);
+		Random first = DefaultRandomSource.generator();
+		Assert.assertNotNull(first);
+		Assert.assertNotSame(DefaultRandomSource.current(), first);
+
+		DefaultRandomSource.seed(7);
+		Random second = DefaultRandomSource.generator();
+		DefaultRandomSource.current().nextLong();
+		DefaultRandomSource.clear();
+
+		for (int i = 0; i < 16; i++) {
+			Assert.assertEquals(first.nextGaussian(), second.nextGaussian(), 0.0);
+		}
+	}
+
+	/**
 	 * Returns whether two arrays of equal length hold identical values.
 	 *
 	 * @param a the first array

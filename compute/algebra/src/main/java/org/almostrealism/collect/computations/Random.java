@@ -142,8 +142,8 @@ public class Random implements RandomProducer, OperationInfo, Signature {
 	private static java.util.Random source(Long seed) {
 		if (seed != null) return new java.util.Random(seed);
 
-		java.util.Random current = DefaultRandomSource.current();
-		return current == null ? new java.util.Random() : current;
+		java.util.Random derived = DefaultRandomSource.generator();
+		return derived == null ? new java.util.Random() : derived;
 	}
 
 	/**
