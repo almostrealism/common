@@ -133,9 +133,10 @@ public class ComposableAudioFeatures implements Factor<PackedCollection>, Destro
 	public TraversalPolicy getFeatureShape() { return shape(features); }
 
 	/**
-	 * Compute the dot product of each weight vector with the provided value vector
-	 * and use the resulting values, clamped to be non-negative and multiplied by the
-	 * {@link #getContribution() contribution}, to scale the feature data.
+	 * Returns the factor by which {@link #getResultant(Producer)} scales each cell of the
+	 * feature data: the dot product of the cell's weight vector with the provided value
+	 * vector, clamped to be non-negative and multiplied by the
+	 * {@link #getContribution() contribution}.
 	 *
 	 * <p>
 	 * The value vector is tiled explicitly to the {@code (T, B, L)} shape of the weights
@@ -145,10 +146,9 @@ public class ComposableAudioFeatures implements Factor<PackedCollection>, Destro
 	 * </p>
 	 *
 	 * @param value  the vector of length {@code L} used to determine the scaling factors
-	 * @return  scaled feature data
+	 * @return  the per-cell scaling factors, in the shape of the feature data
 	 */
-	@Override
-	public Producer<PackedCollection> getResultant(Producer<PackedCollection> value) {
+	public CollectionProducer getScale(Producer<PackedCollection> value) {
 		TraversalPolicy weightShape = shape(weights);
 		int length = weightShape.length(2);
 		CollectionProducer tiled = c(value).reshape(shape(length))
@@ -156,9 +156,31 @@ public class ComposableAudioFeatures implements Factor<PackedCollection>, Destro
 				.reshape(weightShape);
 
 		CollectionProducer scale = c(weights).multiply(tiled).traverse(2).sum();
-		scale = scale.reshape(scale.getShape().trim());
-		CollectionProducer result = c(features).multiply(max(scale, c(0)));
-		return contribution == 1.0 ? result : result.multiply(c(contribution));
+		scale = max(scale.reshape(scale.getShape().trim()), c(0));
+		return contribution == 1.0 ? scale : scale.multiply(c(contribution));
+	}
+
+	/**
+	 * Scales the feature data by the {@link #getScale(Producer) scaling factors} for the
+	 * provided value vector.
+	 *
+	 * @param value  the vector of length {@code L} used to determine the scaling factors
+	 * @return  scaled feature data
+	 */
+	@Override
+	public Producer<PackedCollection> getResultant(Producer<PackedCollection> value) {
+		return scaled(getScale(value));
+	}
+
+	/**
+	 * Returns the feature data scaled by the given factors, which must have the shape of
+	 * the feature data.
+	 *
+	 * @param scale  the per-cell scaling factors
+	 * @return  scaled feature data
+	 */
+	public CollectionProducer scaled(Producer<PackedCollection> scale) {
+		return c(features).multiply(scale);
 	}
 
 	@Override

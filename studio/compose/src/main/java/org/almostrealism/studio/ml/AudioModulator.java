@@ -111,7 +111,7 @@ public class AudioModulator implements AutoCloseable, CodeFeatures {
 	 * @return stereo audio data as a packed collection
 	 */
 	public PackedCollection project(PackedCollection position) {
-		try (PackedCollection result = composer.getResultant(cp(position)).evaluate()) {
+		try (PackedCollection result = composer.getResultant(cp(position)).evaluateOptimized()) {
 			int channelSamples = result.getShape().getTotalSize() / 2; // Stereo audio, 2 channels
 			int finalSamples = (int) (getAudioDuration() * composer.getSampleRate());
 

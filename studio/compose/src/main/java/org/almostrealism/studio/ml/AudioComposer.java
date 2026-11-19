@@ -59,6 +59,12 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 	private double deviation;
 
 	/**
+	 * Whether the composed latent is a weighted mean of the sources rather than a weighted
+	 * sum; see {@link #setNormalizedBlend(boolean)}.
+	 */
+	private boolean normalizedBlend;
+
+	/**
 	 * Creates a composer using the given autoencoder and latent dimension, seeded with the
 	 * current time.
 	 *
@@ -97,6 +103,34 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 
 	/** Returns the standard deviation used to sample weight vectors. */
 	public double getDeviation() { return deviation; }
+
+	/**
+	 * Returns whether the composed latent is a weighted mean of the sources; see
+	 * {@link #setNormalizedBlend(boolean)}.
+	 *
+	 * @return {@code true} if the blend is normalized
+	 */
+	public boolean isNormalizedBlend() { return normalizedBlend; }
+
+	/**
+	 * Sets whether the composed latent is a weighted mean of the sources rather than a
+	 * weighted sum. In a weighted sum the magnitude of the latent follows the magnitude of
+	 * the position: a random position can scale every source far above or below its own
+	 * level, and the decoded audio is then near-silent or clipped. In a weighted mean the
+	 * position decides only the proportions of the sources, each cell's scales are divided
+	 * by their total, and the latent stays at the level of the sources it mixes, however
+	 * close to the origin the position is. Only a cell at which no source has a positive
+	 * scale, so that the total is zero, yields the plain mean of the sources instead.
+	 * A source whose blend contribution
+	 * ({@link ComposableAudioFeatures#setContribution(double)}) drives its scale below zero
+	 * cannot be a proportion of a weighted mean, so it is excluded from the blend rather
+	 * than allowed to make the total negative.
+	 *
+	 * @param normalizedBlend {@code true} to compose a weighted mean of the sources
+	 */
+	public void setNormalizedBlend(boolean normalizedBlend) {
+		this.normalizedBlend = normalizedBlend;
+	}
 
 	/**
 	 * Sets the standard deviation used to sample weight vectors.
@@ -248,6 +282,24 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 	public Producer<PackedCollection> getInterpolatedLatent(Producer<PackedCollection> value) {
 		if (features.isEmpty()) {
 			throw new IllegalStateException("No features have been added to the composer");
+		}
+
+		if (normalizedBlend) {
+			List<CollectionProducer> scales = new ArrayList<>();
+			for (ComposableAudioFeatures source : features) {
+				// A weighted mean requires non-negative weights
+				scales.add(max(source.getScale(value), c(0.0)));
+			}
+
+			CollectionProducer total = add(new ArrayList<Producer<?>>(scales));
+			CollectionProducer unselected = greaterThan(total, c(0.0), c(0.0), c(1.0));
+
+			List<Producer<?>> terms = new ArrayList<>();
+			for (int i = 0; i < features.size(); i++) {
+				terms.add(features.get(i).scaled(scales.get(i).add(unselected)));
+			}
+
+			return add(terms).divide(total.add(unselected.multiply(c(features.size()))));
 		}
 
 		List<Producer<?>> components = new ArrayList<>();
