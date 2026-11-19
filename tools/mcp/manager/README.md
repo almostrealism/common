@@ -102,6 +102,7 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | `github_workflow_run_status` | github | Get a workflow run's jobs and failed steps by run id |
 | `github_list_open_prs` | github | List open PRs for a repo |
 | `github_create_pr` | github | Create a pull request |
+| `github_update_pr` | github | Change an existing PR's title and/or description |
 | `github_request_copilot_review` | github | Request a Copilot automated review on a PR |
 | `github_read_file` | github | Read a file from a GitHub repo at a branch/ref |
 | `project_read_plan` | github | Read the planning document for a workstream |

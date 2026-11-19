@@ -1547,6 +1547,7 @@ from github_tools import (  # noqa: E402
     github_pr_reply,
     github_list_open_prs,
     github_create_pr,
+    github_update_pr,
     github_request_copilot_review,
     github_read_file,
     github_pr_check_status,
