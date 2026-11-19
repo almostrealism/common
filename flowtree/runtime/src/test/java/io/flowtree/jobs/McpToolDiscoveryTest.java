@@ -341,6 +341,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"github_request_copilot_review",
 			"github_read_file",
 			"github_pr_check_status",
+			"github_pr_labels",
 			"github_list_workflow_runs",
 			"github_workflow_run_status",
 			"tracker_list_projects",
