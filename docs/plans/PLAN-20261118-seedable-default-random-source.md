@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-18
-closed:
+closed: 2026-11-19
 tracker: [9a68c5cb-c756-460c-9a2a-a8a41a0f2b52]
 ---
 
@@ -58,32 +58,36 @@ own. Tests that override `getInitializationRandom()` (for example
 
 ## 2. Design
 
-### 2a. The default source lives with `RandomProducer`
+### 2a. The default source is a dedicated class next to `RandomProducer`
 
-`RandomProducer` (in `compute/algebra`, `org.almostrealism.collect.computations`) is the type
-that turns a `null` source into an unseeded one, so the default source belongs on it. No new
-helper class is needed. Proposed members:
+The default source is a genuinely new concept — one process-wide holder of mutable state — so it
+is its own class, `DefaultRandomSource`, in `compute/algebra`,
+`org.almostrealism.collect.computations`, next to `RandomProducer`/`Random`/`CounterRandom`. (A
+`RandomProducer` is an interface and cannot hold a mutable field, which is the mechanical reason
+the state does not live on it.) Its members, all `static`:
 
 ```java
-/** Returns the source rand/randn draw from when given none; null when unseeded. */
-static java.util.Random defaultSource();
-
 /** Seeds the default source; every later rand/randn without a source draws from it. */
-static void seedDefaultSource(long seed);
+static void seed(long seed);
 
 /** Returns the default source to unseeded: each generator gets its own fresh source. */
-static void clearDefaultSource();
+static void clear();
+
+/** The seeded default source, or null when unseeded. */
+static java.util.Random current();
+
+/** The active seed, or empty when unseeded. */
+static OptionalLong getSeed();
 ```
 
-An interface cannot hold mutable state in a plain field, so the state is a `static final
-AtomicReference<java.util.Random>` (`null` means unseeded). It is initialized from the
-`AR_RANDOM_SEED` setting through `SystemUtils.getProperty`, which reads either a system
-property or an environment variable, in the same way as `AR_RANDOM`. When the setting is
-absent, the reference starts as `null`.
+The state is a `volatile java.util.Random` (`null` means unseeded) with a parallel `volatile
+Long` seed. It is initialized from the `AR_RANDOM_SEED` setting through `SystemUtils.getProperty`,
+which reads either a system property or an environment variable, in the same way as `AR_RANDOM`.
+When the setting is absent, the source starts as `null`.
 
-`RandomProducer.create(shape, normal, source)` substitutes `defaultSource()` when `source` is
-`null`, before it dispatches to an `Implementation`. **When the default is unseeded,
-`defaultSource()` returns `null`.** The code path is then exactly the one used today: one fresh
+`RandomProducer.create(shape, normal, source)` substitutes `DefaultRandomSource.current()` when
+`source` is `null`, before it dispatches to an `Implementation`. **When the default is unseeded,
+`current()` returns `null`.** The code path is then exactly the one used today: one fresh
 `java.util.Random` per generator. This is how "production is unchanged unless configured" is
 guaranteed by construction, not just by testing.
 
@@ -94,38 +98,33 @@ caller that already passes its own source is unaffected, because the substitutio
 a `null`: `ProjectedGene.randomWeights`, for example, draws from a `new Random(seed)`, so its
 explicit seed keeps its current meaning.
 
-**Direct constructors are not routed.** `new Random(shape, normal)` and
-`new CounterRandom(shape, normal, (java.util.Random) null)` keep their current meaning. The
-javadoc of `Random` already tells callers to use `rand`/`randn` rather than construct it.
-The plan lists the direct `null`-source construction sites in `src/main` and moves them to
-`rand`/`randn` if any exist, instead of changing what the constructors mean.
+**Direct seedless construction is also routed.** `Random(shape, normal, (Long) null)` — reached by
+`new Random(shape)` / `new Random(shape, normal)` — resolves the default source too, so a direct
+construction of `computations.Random` without a seed behaves the same as going through `create`.
 
 **Thread safety.** The shared source is one `java.util.Random`, which is thread-safe. If
 generators are constructed on several threads at once, though, the order of their draws is
-not deterministic. The javadoc of `seedDefaultSource` states this, just as the
-`ParameterFunction.setRandomSeed` javadoc does ("provided the construction is
-single-threaded"). Graph construction in tests is single-threaded.
+not deterministic. The javadoc of `DefaultRandomSource` states this. Graph construction in tests
+is single-threaded.
 
 ### 2b. `TestSuiteBase` resets the source for every test
 
-`TestSuiteBase` (in `engine/utils`) resets the default source to the test seed **in its
-constructor** and logs the seed. It does not do this in an `@Before` method.
+`TestSuiteBase` (in `engine/utils`) seeds the default source to the test seed in an `@Before`
+method, `resetRandomSeed()`, and logs the seed.
 
-- JUnit 4 builds a new test-class instance for every test method. The superclass
-  constructor runs *before* subclass field initializers. A test class with a field such as
-  `private final RandomProducer noise = randn(shape(64));` therefore draws after the reset.
-  An `@Before` reset would come too late for that field, and the field would draw from
-  whatever state the previous test left behind. The order of test methods would then change
-  the values.
-- `@Before` methods, `@Rule`s and the test body all run after the constructor, so all of
-  them see the seeded source.
-- `@BeforeClass` and static initializers run before any instance exists, so the reset does
-  not cover them. The `TestSuiteBase` javadoc says so. Such draws should take an explicit
-  source.
+- JUnit 4 runs a superclass's `@Before` before a subclass's, so a subclass that seeds explicitly
+  in its own `@Before` still wins. `@Rule`s and the test body also run after `@Before`, so they
+  see the seeded source.
+- A subclass field initializer runs *before* any `@Before`, so a field such as
+  `private final RandomProducer noise = randn(shape(64));` is **not** covered by the reset and
+  should take an explicit source. The `TestSuiteBase` javadoc says so. (`@BeforeClass` and static
+  initializers run before any instance exists and are likewise uncovered.)
 
-An `@After` method calls `RandomProducer.clearDefaultSource()`. This keeps the default from
-staying seeded for code that runs after the test in the same fork and is not a
-`TestSuiteBase` test. It is the hidden cross-class coupling that `ParameterFunction` has today.
+An `@After` method, `clearDefaultRandomSource()`, calls `DefaultRandomSource.clear()`. This keeps
+the default from staying seeded for code that runs after the test in the same fork and is not a
+`TestSuiteBase` test. (It is named for the source rather than the seed because
+`ParameterFunctionTest` already contributes an `@After clearRandomSeed()` that resets a different,
+unrelated global source.)
 
 The new `@After` method must not take a name a subclass already declares. `ParameterFunctionTest`
 (in `studio/music`) already has `@After public void clearRandomSeed()`, which resets
@@ -137,15 +136,15 @@ distinct name, such as `clearDefaultRandomSource()`. Before adding any lifecycle
 widely-extended base class, grep its subclasses for same-named `@Before`/`@After` methods.
 
 **The seed.**
-- The default is a fixed constant on `TestSuiteBase`, such as `DEFAULT_TEST_RANDOM_SEED`.
-- The `AR_TEST_RANDOM_SEED` setting overrides it for the whole run. This is how CI or a
-  developer tries a different seed, or replays the seed of a failure.
-- A subclass can override a `protected long getTestRandomSeed()` method to pin its own seed.
-  This is for the rare class whose assertions were characterized against a particular draw.
-  Such a class should normally pass an explicit `Random` instead.
-- Every test logs one line, `randomSeed=<seed>`, through `ConsoleFeatures.log`. Following
-  the logging rules, the line has no prefix, and its key can be found with grep. It is logged
-  even when the seed is the default, so a CI log always records the seed in use.
+- The default is a fixed constant on `TestSuiteBase`, `DEFAULT_TEST_SEED`.
+- The `AR_TEST_SEED` setting overrides it for the whole run: a number pins that seed, and
+  `random` chooses a fresh seed for every test (logged each time) to hunt order- or
+  seed-dependent flakes.
+- A subclass can override `protected long testSeed()` to pin its own seed. This is for the rare
+  class whose assertions were characterized against a particular draw; such a class should
+  normally pass an explicit `Random` instead.
+- The seed is logged as `randomSeed=<seed>` through `ConsoleFeatures.log` (no prefix, greppable
+  key): once per test class for the stable default, and for every test under `AR_TEST_SEED=random`.
 
 **The same seed for every test.** Every test starts from the same seed, not from a seed
 derived from its name. This makes a test's draws independent of which tests ran before it.
@@ -165,43 +164,31 @@ implementation, not across implementations.
 
 ## 3. Work items
 
-1. **`RandomProducer`**: add `defaultSource()`, `seedDefaultSource(long)`,
-   `clearDefaultSource()` and the `AR_RANDOM_SEED` initialization. Make `create(...)`
-   substitute the default for a `null` source. Update the javadoc of `RandomProducer`,
-   `Random` and `CounterRandom` where they describe `null` as "unseeded".
-2. **`CollectionCreationFeatures`**: no code change. Update the `rand`/`randn` javadoc to
-   say "draws from the default source (see `RandomProducer.defaultSource()`)" instead of
-   "unseeded". Note that the terminology is already inconsistent in the code: the
-   `rand(shape[, source])` and `randn(shape[, source])` overloads say "unseeded", but the
-   `randn(shape, mean, std[, source])` overloads already describe their `null` source as
-   "the default source" / "using the default random source". Today that wording is a
-   misnomer, because no default source exists and `null` yields a fresh unseeded generator;
-   this change is what makes it accurate. The update should align all of these overloads on
-   the same, now-correct, description.
-3. **`LayerFeatures.getInitializationRandom()`**: no code change. Update the javadoc: `null`
-   now means "the default source", which is unseeded unless configured.
-4. **`TestSuiteBase`**: add the constructor reset, the seed resolution
-   (`AR_TEST_RANDOM_SEED`, then `getTestRandomSeed()`, then the constant), the
-   `randomSeed=` log line, and the `@After` clear. Document all of it in the class javadoc
-   next to the existing `AR_TEST_DEPTH` and `AR_TEST_PROFILE` entries.
-5. **Tests**, in `engine/utils/src/test/java`. `compute/algebra` has no test tree, and the
-   existing `CounterRandomTests` lives in `org.almostrealism.collect.computations.test` in
-   `engine/utils`. These are new tests; no existing test is modified.
-   - After `seedDefaultSource(s)`, two `rand(shape)` sequences produce identical values,
-     under both `Implementation.JAVA` and `Implementation.COUNTER`. Construct through
-     `Implementation.X.create(shape, normal, RandomProducer.defaultSource())` so that the
-     test does not depend on the run's `AR_RANDOM` setting.
-   - After `clearDefaultSource()`, `defaultSource()` is `null` and two generators differ.
-   - Two generators from one seeded source differ from each other, so sharing the source
-     does not make sibling generators identical.
-   - A `TestSuiteBase` subclass whose field initializer calls `randn(...)` gets the same
-     values in two test methods. This guards the constructor-reset decision in §2b.
+1. **`DefaultRandomSource`** (new class in `compute/algebra`): `seed(long)`, `clear()`,
+   `current()`, `getSeed()` and the `AR_RANDOM_SEED` initialization.
+2. **`RandomProducer`**: make `create(...)` substitute `DefaultRandomSource.current()` for a
+   `null` source, and route `Random(shape, normal, (Long) null)` through the default source.
+   Update the javadoc of `RandomProducer` and `Random` where they describe `null` as "unseeded".
+3. **`CollectionCreationFeatures`**: no code change. Update the `rand`/`randn` javadoc to say the
+   `null` source draws from the default source (unseeded unless configured).
+4. **`TestSuiteBase`**: add the `@Before` reset `resetRandomSeed()`, the seed resolution
+   (`AR_TEST_SEED` — `random` or a number — then `testSeed()`, then `DEFAULT_TEST_SEED`), the
+   `randomSeed=` log line, and the `@After` `clearDefaultRandomSource()`. Document all of it in
+   the class javadoc next to the existing `AR_TEST_DEPTH` and `AR_TEST_PROFILE` entries.
+5. **Tests** — `DefaultRandomSourceTest` in `engine/utils/src/test/java`, next to the existing
+   `CounterRandomTests` in `org.almostrealism.collect.computations.test` (`compute/algebra` has no
+   test tree). These are new tests; no existing test is modified.
+   - After `seed(s)`, two `randnFill()` results are identical; a different seed makes them differ,
+     for both the host (`randnFill`) and counter (`Implementation.COUNTER.create(shape, normal,
+     DefaultRandomSource.current())`) implementations.
+   - After `clear()`, `current()` is `null` and two fills differ.
+   - Calling `resetRandomSeed()` twice yields the same first `randn` draw.
+   - An explicit source still overrides the default.
 6. **Documentation**:
    - `docs/internals/collection-producer-operations.md` (the `rand`/`randn` and `AR_RANDOM`
      section): describe the default source and `AR_RANDOM_SEED`.
-   - `engine/utils/README.md` (the TestSuiteBase section) and
-     `docs/internals/test-examples.md`: describe the per-test seed, `AR_TEST_RANDOM_SEED`,
-     `getTestRandomSeed()` and how to replay a failing seed.
+   - `engine/utils/README.md` (the TestSuiteBase section): describe the per-test seed,
+     `AR_TEST_SEED`, `testSeed()` and how to replay a failing seed.
 
 ## 4. Risks
 
@@ -209,12 +196,12 @@ implementation, not across implementations.
   for most draws but fails for some may fail on every run under the default seed. That is
   the point of the change: the failure becomes reproducible. **It must be fixed in the test's
   numerics or in production code, never by choosing a seed that happens to pass.** Changing
-  `DEFAULT_TEST_RANDOM_SEED`, or adding a `getTestRandomSeed()` override, to make a red test
+  `DEFAULT_TEST_SEED`, or adding a `testSeed()` override, to make a red test
   green is the "skip-gating" pattern described in `CLAUDE.md`, in another form. Each such
   failure gets its own tracker task.
 - **The reverse can happen too.** A flaky test can become always green under the default
-  seed, which hides a real fragility. A CI lane, or a periodic QA round, that runs with a
-  random `AR_TEST_RANDOM_SEED` and logs it would restore coverage of the distribution.
+  seed, which hides a real fragility. A CI lane, or a periodic QA round, that runs with
+  `AR_TEST_SEED=random` and logs it would restore coverage of the distribution.
   Adding one is a CI change that needs a `ci/...` branch, so it is listed as an open
   question and not done here.
 - **Explicit seeds stay explicit.** Any caller that passes its own `Random` is unaffected,
@@ -233,11 +220,11 @@ a second phase, for two reasons.
 - The `Math.random()` sites are spread across many domain modules.
 
 The follow-up would make `ParameterFunction.random(double)`, `ParameterSet.random()` and
-`GrainSet` draw from `RandomProducer.defaultSource()` when it is seeded, and keep the
+`GrainSet` draw from `DefaultRandomSource.current()` when it is seeded, and keep the
 explicit `setRandomSeed` as an override. `studio/music/pom.xml` declares `ar-audio`, and
 `engine/audio/pom.xml` declares `ar-utils`, which reaches `ar-algebra`. So `studio/music`
 can reach the source transitively. Whether a non-collection consumer should depend
-on `RandomProducer`, or whether the default source should move further down (for example
+on `DefaultRandomSource`, or whether the default source should move further down (for example
 next to `SystemUtils` in `base/io`), is the placement question below. It has to be settled
 before phase 2.
 
@@ -246,15 +233,16 @@ before phase 2.
 1. Should the seed be the same for every test (proposed), or derived from
    `defaultSeed ^ testName.hashCode()` so that different tests see different streams while
    each stays reproducible?
-2. Should the default source live on `RandomProducer` (proposed, `compute/algebra`), or lower
-   (in `base/io`, next to `SystemUtils`) so that the `Math.random()` sites in modules that do
-   not use collections can share it in phase 2? Related: §2a proposes holding the state as a
-   `static final AtomicReference` on the `RandomProducer` *interface*. A process-wide mutable
-   singleton expressed as static state on an interface is an awkward fit (an interface models a
-   contract, not a mutable holder); a small dedicated type that owns the seed, the source and the
-   `seed`/`clear`/`current` operations may read more clearly and keeps the lifecycle in one place.
-   `RandomProducer.create(...)` would then consult that type instead of its own statics. This is a
-   placement/shape decision for the owner, not a change of what the plan does.
-3. Should a CI lane or QA round run with a random, logged `AR_TEST_RANDOM_SEED` to keep
+2. Should the default source live in `compute/algebra` (as built, `DefaultRandomSource`), or lower
+   (in `base/io`, next to `SystemUtils`) so that the `Math.random()` sites in modules that do not
+   use collections can share it in phase 2? The earlier shape of this question — whether to hold
+   the state as a `static final AtomicReference` on the `RandomProducer` *interface* — is settled:
+   a process-wide mutable singleton expressed as static state on an interface is an awkward fit (an
+   interface models a contract, not a mutable holder), so the implementation introduced a small
+   dedicated type, `DefaultRandomSource`, that owns the seed, the source and the
+   `seed`/`clear`/`current` operations, and `RandomProducer.create(...)` consults it rather than
+   its own statics. What remains open is only the placement (`compute/algebra` versus lower), not
+   the shape.
+3. Should a CI lane or QA round run with `AR_TEST_SEED=random`, logged, to keep
    exploring the distribution? This needs a `ci/...` branch.
 4. Should `AR_RANDOM_SEED` in production also log its seed once at startup?
