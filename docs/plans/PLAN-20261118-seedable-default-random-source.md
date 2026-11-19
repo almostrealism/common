@@ -162,7 +162,13 @@ implementation, not across implementations.
    `Random` and `CounterRandom` where they describe `null` as "unseeded".
 2. **`CollectionCreationFeatures`**: no code change. Update the `rand`/`randn` javadoc to
    say "draws from the default source (see `RandomProducer.defaultSource()`)" instead of
-   "unseeded".
+   "unseeded". Note that the terminology is already inconsistent in the code: the
+   `rand(shape[, source])` and `randn(shape[, source])` overloads say "unseeded", but the
+   `randn(shape, mean, std[, source])` overloads already describe their `null` source as
+   "the default source" / "using the default random source". Today that wording is a
+   misnomer, because no default source exists and `null` yields a fresh unseeded generator;
+   this change is what makes it accurate. The update should align all of these overloads on
+   the same, now-correct, description.
 3. **`LayerFeatures.getInitializationRandom()`**: no code change. Update the javadoc: `null`
    now means "the default source", which is unseeded unless configured.
 4. **`TestSuiteBase`**: add the constructor reset, the seed resolution
