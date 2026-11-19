@@ -91,9 +91,12 @@ When the setting is absent, the source starts as `null`.
 `java.util.Random` per generator. This is how "production is unchanged unless configured" is
 guaranteed by construction, not just by testing.
 
-Because the substitution happens in `create`, every caller that reaches it is covered with no
-further edits: all `rand`/`randn` overloads, `LayerFeatures` weight initialization, and
-`ProjectedGene`'s use of `randn`.
+Because the substitution happens in `create`, every caller that passes no source is covered
+with no further edits: all `rand`/`randn` overloads called without a source, and
+`LayerFeatures` weight initialization while `getInitializationRandom()` returns `null`. A
+caller that already passes its own source is unaffected, because the substitution replaces only
+a `null`: `ProjectedGene.randomWeights`, for example, draws from a `new Random(seed)`, so its
+explicit seed keeps its current meaning.
 
 **Direct seedless construction is also routed.** `Random(shape, normal, (Long) null)` — reached by
 `new Random(shape)` / `new Random(shape, normal)` — resolves the default source too, so a direct
@@ -192,8 +195,9 @@ implementation, not across implementations.
   `AR_TEST_SEED=random` and logs it would restore coverage of the distribution.
   Adding one is a CI change that needs a `ci/...` branch, so it is listed as an open
   question and not done here.
-- **Explicit seeds stay explicit.** Tests that pass their own `Random`, such as
-  `DifferentialAttentionTest` and `SyntheticNormTrainingTest`, are not affected.
+- **Explicit seeds stay explicit.** Any caller that passes its own `Random` is unaffected,
+  whether a test (`DifferentialAttentionTest`, `SyntheticNormTrainingTest`) or production code
+  (`ProjectedGene.randomWeights`): the default source replaces only a `null` source.
 - **Tests that assert two draws differ** still pass, because a shared source keeps
   advancing between generators.
 
