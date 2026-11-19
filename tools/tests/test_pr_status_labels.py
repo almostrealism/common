@@ -360,6 +360,45 @@ class ReadyToLaunchTest(unittest.TestCase):
         self.assertFalse(labels.ready_to_launch(facts, client.repo))
 
 
+class SummaryRowTest(unittest.TestCase):
+    """The step-summary row shows each marker beside the stage label."""
+
+    PR = {"number": 7, "title": "Plan a | b"}
+
+    def row(self, stalled, ready):
+        return labels.summary_row(self.PR, labels.VALIDATING, "2026-01-01",
+                                  "why", stalled, ready)
+
+    def test_no_marker(self):
+        self.assertEqual(self.row(False, False),
+                         "| #7 | Plan a \\| b | %s | 2026-01-01 | why |"
+                         % labels.VALIDATING)
+
+    def test_stalled_marker(self):
+        self.assertEqual(self.row(True, False),
+                         "| #7 | Plan a \\| b | %s (stalled) | 2026-01-01 | why |"
+                         % labels.VALIDATING)
+
+    def test_ready_to_launch_marker(self):
+        self.assertEqual(
+            self.row(False, True),
+            "| #7 | Plan a \\| b | %s (ready to launch) | 2026-01-01 | why |"
+            % labels.VALIDATING)
+
+    def test_both_markers_stalled_first(self):
+        self.assertEqual(
+            self.row(True, True),
+            "| #7 | Plan a \\| b | %s (stalled) (ready to launch) "
+            "| 2026-01-01 | why |" % labels.VALIDATING)
+
+    def test_missing_since_is_blank(self):
+        self.assertEqual(
+            labels.summary_row(self.PR, labels.VALIDATING, None, "why",
+                               False, True),
+            "| #7 | Plan a \\| b | %s (ready to launch) |  | why |"
+            % labels.VALIDATING)
+
+
 class FakeClient:
     """Answers the GETs ``gather`` makes from a path-prefix table."""
 
