@@ -237,7 +237,7 @@ class WorkspaceMigrationTests(unittest.TestCase):
 
             store = TrackerStore(tmp.name)
             try:
-                self.assertEqual(5, migrate._get_version(store._conn))
+                self.assertEqual(6, migrate._get_version(store._conn))
                 self.assertIsNone(store.get_project("p1")["workspace_id"])
             finally:
                 store.close()

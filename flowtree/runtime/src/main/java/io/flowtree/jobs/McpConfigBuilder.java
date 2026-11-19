@@ -76,9 +76,16 @@ public class McpConfigBuilder implements ConsoleFeatures {
      *       any task in its workspace; any other workstream may edit only the
      *       tasks linked to itself.</li>
      *   <li>{@code tracker_create_release}: {@code planner} only.</li>
+     *   <li>{@code tracker_add_artifact}: any agent may attach an artifact
+     *       (a comment, reference or memory id) to any task in its workspace.
+     *       An artifact is additive and does not edit the task, so adding one
+     *       needs neither the {@code planner} role nor a workstream link —
+     *       this is how a branch annotates a task another branch owns.
+     *       {@code tracker_list_artifacts} reads them back.</li>
      * </ul>
      *
-     * <p>Deleting anything, and updating projects or releases, stays out of
+     * <p>Deleting anything (including artifacts), and updating projects or
+     * releases, stays out of
      * reach of agents; see {@link #EXCLUDED_AR_MANAGER_TOOLS}. Agents never
      * claim tasks themselves: CI claims the next task through the
      * controller's {@code POST /api/tracker/claim} and hands it to the agent
@@ -132,6 +139,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "github_request_copilot_review",
             "github_read_file",
             "github_pr_check_status",
+            "github_pr_labels",
             "github_list_workflow_runs",
             "github_workflow_run_status",
             "github_job_logs",
@@ -144,7 +152,9 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "tracker_list_releases",
             "tracker_create_task",
             "tracker_update_task",
-            "tracker_create_release"
+            "tracker_create_release",
+            "tracker_add_artifact",
+            "tracker_list_artifacts"
         ))
     );
 
@@ -154,7 +164,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
      * operation (creating workstreams, dispatching workflows, mutating
      * controller config) or a shared-state mutation of the tracker that no
      * agent role is trusted with (creating, updating or deleting projects,
-     * updating or deleting releases, deleting tasks).
+     * updating or deleting releases, deleting tasks or artifacts).
      *
      * <p>Tools in this set still exist on the ar-manager server but
      * cannot be invoked by agent jobs through the
@@ -204,6 +214,7 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "tracker_update_release",
             "tracker_delete_release",
             "tracker_delete_task",
+            "tracker_delete_artifact",
             // Workspace secrets: still callable by admin/Slack flows on the
             // controller, but agents use the in-container ar-secrets MCP
             // server (tools/mcp/secrets/server.py) so the rendered file

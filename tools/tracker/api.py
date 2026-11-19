@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 from store import (
+    ARTIFACT_TYPES,
     CLOSE_OUT_OUTCOMES,
     FOLLOW_UP_SOURCE_PREFIX,
     GOAL_SOURCE_PREFIX,
@@ -27,6 +28,9 @@ _VALID_STATUSES = {"open", "closed"}
 
 # Allowed stage values; the database CHECK constraint mirrors this set.
 _VALID_STAGES = {"backlog", "ready", "declined"}
+
+# Allowed artifact types; the database CHECK constraint mirrors this set.
+_VALID_ARTIFACT_TYPES = set(ARTIFACT_TYPES)
 
 # Allowed task provenance: a person, or a task an agent derived from a named
 # goal document ("goals:<document>"). The database CHECK constraint mirrors
@@ -603,6 +607,93 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         return JSONResponse({"ok": True})
 
     # ------------------------------------------------------------------
+    # Task artifacts
+    # ------------------------------------------------------------------
+
+    async def list_task_artifacts(request: Request) -> JSONResponse:
+        """GET /v1/tasks/{id}/artifacts
+
+        Lists the artifacts attached to a task, oldest first. A task that does
+        not exist is a 404 rather than an empty list, so a caller can tell a
+        task with no artifacts from one that is not there.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        task_id = request.path_params["id"]
+        if not store.get_task(task_id):
+            return JSONResponse(
+                {"ok": False, "error": "Task not found"}, status_code=404
+            )
+        return JSONResponse(
+            {"ok": True, "task_id": task_id, "artifacts": store.list_artifacts(task_id)}
+        )
+
+    async def create_task_artifact(request: Request) -> JSONResponse:
+        """POST /v1/tasks/{id}/artifacts  {"artifact_type", "content", "author"}
+
+        Attaches an artifact to a task. ``artifact_type`` is one of
+        ``comment``, ``reference`` or ``memory``; ``content`` is the payload
+        (the comment body, the reference target, or the memory id); ``author``
+        records who added it. The task must exist.
+        """
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        body, err = await _json_body(request)
+        if err:
+            return err
+        artifact_type = body.get("artifact_type")
+        if not _one_of(artifact_type, _VALID_ARTIFACT_TYPES):
+            return _bad_request(
+                f"artifact_type must be one of: {sorted(_VALID_ARTIFACT_TYPES)}")
+        content = _text_field(body, "content")
+        if content is None:
+            return _bad_request("content must be a string")
+        if not content:
+            return _bad_request("content is required")
+        author = _text_field(body, "author")
+        if author is None:
+            return _bad_request("author must be a string")
+        if not author:
+            return _bad_request("author is required")
+        artifact = store.create_artifact(
+            task_id=request.path_params["id"],
+            artifact_type=artifact_type,
+            content=content,
+            author=author,
+        )
+        if artifact is None:
+            return JSONResponse(
+                {"ok": False, "error": "Task not found"}, status_code=404
+            )
+        return JSONResponse({"ok": True, "artifact": artifact}, status_code=201)
+
+    async def get_artifact(request: Request) -> JSONResponse:
+        """GET /v1/artifacts/{id}"""
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        artifact = store.get_artifact(request.path_params["id"])
+        if not artifact:
+            return JSONResponse(
+                {"ok": False, "error": "Artifact not found"}, status_code=404
+            )
+        return JSONResponse({"ok": True, "artifact": artifact})
+
+    async def delete_artifact(request: Request) -> JSONResponse:
+        """DELETE /v1/artifacts/{id}"""
+        auth_err = await _check_auth(request)
+        if auth_err:
+            return auth_err
+        deleted = store.delete_artifact(request.path_params["id"])
+        if not deleted:
+            return JSONResponse(
+                {"ok": False, "error": "Artifact not found"}, status_code=404
+            )
+        return JSONResponse({"ok": True})
+
+    # ------------------------------------------------------------------
     # Search
     # ------------------------------------------------------------------
 
@@ -1000,6 +1091,10 @@ def create_http_app(store, auth_token: Optional[str] = None) -> Starlette:
         Route("/v1/tasks/{id}", get_task, methods=["GET"]),
         Route("/v1/tasks/{id}", update_task, methods=["PUT"]),
         Route("/v1/tasks/{id}", delete_task, methods=["DELETE"]),
+        Route("/v1/tasks/{id}/artifacts", list_task_artifacts, methods=["GET"]),
+        Route("/v1/tasks/{id}/artifacts", create_task_artifact, methods=["POST"]),
+        Route("/v1/artifacts/{id}", get_artifact, methods=["GET"]),
+        Route("/v1/artifacts/{id}", delete_artifact, methods=["DELETE"]),
         Route("/v1/workstreams/{id}/tasks", workstream_tasks, methods=["GET"]),
         Route("/v1/search/tasks", search_tasks, methods=["GET"]),
         Route("/v1/claimable", claimable, methods=["GET"]),

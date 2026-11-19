@@ -505,3 +505,130 @@ class TestProjectWorkspaceOwnership(unittest.TestCase):
         with self.assertRaises(PermissionError):
             server.tracker_update_project("p1", workspace_id="W1")
         mock_put.assert_not_called()
+
+
+class TestTrackerArtifactTools(unittest.TestCase):
+    """Artifacts are additive notes on a task. Anyone whose workspace owns the
+    task may add or list them; only people may delete one. The author is taken
+    from the caller's token, never from input."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def tearDown(self):
+        server._set_token_context(workstream_id=None, job_id=None)
+        _clear_workspaces()
+
+    def _task(self, workspace_id="W1", workstream_id="ws-owner"):
+        return {"ok": True, "task": {"id": "t1", "workstream_id": workstream_id,
+                                     "workspace_id": workspace_id}}
+
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_tracker_get")
+    def test_add_artifact_person_author(self, mock_get, mock_post):
+        mock_get.return_value = self._task()
+        mock_post.return_value = {"ok": True, "artifact": {"id": "a1"}}
+        result = server.tracker_add_artifact("t1", "comment", "a note")
+        self.assertTrue(result["ok"])
+        path, payload = mock_post.call_args.args
+        self.assertEqual(path, "/v1/tasks/t1/artifacts")
+        self.assertEqual(payload, {"artifact_type": "comment",
+                                   "content": "a note", "author": "person"})
+
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_tracker_get")
+    def test_add_artifact_author_from_token(self, mock_get, mock_post):
+        # A non-planner agent may annotate a task its workspace owns even when
+        # the task is linked to another workstream; the author is its own job.
+        server._set_token_context(workstream_id="ws-1", job_id="job-1")
+        _set_workspaces("W1")
+        mock_get.return_value = self._task(workspace_id="W1", workstream_id="ws-other")
+        mock_post.return_value = {"ok": True, "artifact": {"id": "a1"}}
+        with patch.object(server, "_is_tracker_planner", return_value=False):
+            result = server.tracker_add_artifact("t1", "reference", "PR #42")
+        self.assertTrue(result["ok"])
+        self.assertEqual(mock_post.call_args.args[1]["author"], "ws-1/job-1")
+
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_tracker_get")
+    def test_add_artifact_rejects_unknown_type(self, mock_get, mock_post):
+        result = server.tracker_add_artifact("t1", "sketch", "x")
+        self.assertFalse(result["ok"])
+        mock_get.assert_not_called()
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_tracker_get")
+    def test_add_artifact_requires_content(self, mock_get, mock_post):
+        result = server.tracker_add_artifact("t1", "comment", "   ")
+        self.assertFalse(result["ok"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_tracker_get")
+    def test_add_artifact_denies_other_workspace(self, mock_get, mock_post):
+        _set_workspaces("W-MINE")
+        mock_get.return_value = self._task(workspace_id="W-OTHER")
+        with self.assertRaises(PermissionError):
+            server.tracker_add_artifact("t1", "comment", "n")
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_tracker_get")
+    def test_list_artifacts(self, mock_get):
+        mock_get.side_effect = lambda path: (
+            self._task() if path == "/v1/tasks/t1"
+            else {"ok": True, "task_id": "t1", "artifacts": [{"id": "a1"}]})
+        result = server.tracker_list_artifacts("t1")
+        self.assertTrue(result["ok"])
+        self.assertEqual([a["id"] for a in result["artifacts"]], ["a1"])
+        self.assertIn("/v1/tasks/t1/artifacts",
+                      [c.args[0] for c in mock_get.call_args_list])
+
+    @patch.object(server, "_tracker_delete")
+    @patch.object(server, "_tracker_get")
+    def test_delete_artifact_person_only(self, mock_get, mock_del):
+        mock_get.return_value = {"ok": True, "artifact": {"id": "a1", "workspace_id": "W1"}}
+        mock_del.return_value = {"ok": True}
+        result = server.tracker_delete_artifact("a1")
+        self.assertTrue(result["ok"])
+        mock_del.assert_called_once_with("/v1/artifacts/a1")
+
+    @patch.object(server, "_tracker_delete")
+    def test_delete_artifact_refused_for_agents(self, mock_del):
+        server._set_token_context(workstream_id="ws-1", job_id="job-1")
+        with self.assertRaises(PermissionError):
+            server.tracker_delete_artifact("a1")
+        mock_del.assert_not_called()
+
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_tracker_get")
+    def test_add_artifact_refuses_partial_bindings(self, mock_get, mock_post):
+        # A token bound to only a workstream, or only a job, is neither a person
+        # nor a job: recording it as "person" would be false provenance.
+        mock_get.return_value = self._task()
+        for ws, job in (("ws-1", None), (None, "job-1")):
+            with self.subTest(workstream_id=ws, job_id=job):
+                server._set_token_context(workstream_id=ws, job_id=job)
+                result = server.tracker_add_artifact("t1", "comment", "a note")
+                self.assertFalse(result["ok"])
+                self.assertIn("author", result["error"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_tracker_delete")
+    def test_delete_artifact_refused_for_partial_bindings(self, mock_del):
+        for ws, job in (("ws-1", None), (None, "job-1")):
+            with self.subTest(workstream_id=ws, job_id=job):
+                server._set_token_context(workstream_id=ws, job_id=job)
+                with self.assertRaises(PermissionError):
+                    server.tracker_delete_artifact("a1")
+        mock_del.assert_not_called()
+
+    def test_artifact_tools_require_scope(self):
+        _grant_scopes("read")
+        with self.assertRaises(PermissionError):
+            server.tracker_add_artifact("t1", "comment", "n")
+        with self.assertRaises(PermissionError):
+            server.tracker_delete_artifact("a1")
+        _grant_scopes("write")
+        with self.assertRaises(PermissionError):
+            server.tracker_list_artifacts("t1")
