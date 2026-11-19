@@ -198,6 +198,20 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
     }
 
     /**
+     * Distinct paths that share a base name count as separate files: the
+     * {@code "N other files"} tally is over distinct changed paths, not
+     * deduplicated base names, so the count is never under-reported.
+     */
+    @Test(timeout = 30000)
+    public void summarizeCountsPathsNotBaseNames() {
+        assertEquals("Update Foo and 1 other file",
+                CommitMessageBuilder.summarizeChangedFiles(List.of("a/Foo.java", "b/Foo.java")));
+        assertEquals("Update Foo and 2 other files",
+                CommitMessageBuilder.summarizeChangedFiles(
+                        List.of("a/Foo.java", "b/Foo.java", "c/Bar.java")));
+    }
+
+    /**
      * Control characters in a file name (which {@code git status -z} reports verbatim) are replaced
      * so they cannot inject extra lines into the commit message.
      */

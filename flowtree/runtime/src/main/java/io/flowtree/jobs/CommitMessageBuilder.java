@@ -24,7 +24,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Resolves the commit message for a finished {@link CodingAgentJob}.
@@ -364,20 +366,27 @@ class CommitMessageBuilder {
     /**
      * Summarizes the changed file paths into a commit subject, or returns
      * {@code null} when the list names no files. Base names are deduplicated in
-     * order (so {@code .../Foo.java} and {@code .../Foo.java} count once) and
-     * stripped of directory and extension, so the subject reads as class or
-     * file names rather than full repository paths.
+     * order for display (so {@code .../Foo.java} and {@code .../Foo.java} read
+     * once) and stripped of directory and extension, so the subject reads as
+     * class or file names rather than full repository paths. The
+     * {@code "N other files"} tally counts distinct changed paths rather than
+     * base names, so paths that share a base name ({@code a/Foo.java} and
+     * {@code b/Foo.java}) are counted as two files, not one.
      *
      * @param changedPaths the repository-relative changed paths, or {@code null}
      * @return the {@code "Update ..."} subject, or {@code null} when empty
      */
     static String summarizeChangedFiles(List<String> changedPaths) {
         List<String> names = new ArrayList<>();
+        Set<String> paths = new LinkedHashSet<>();
         if (changedPaths != null) {
             for (String path : changedPaths) {
                 String base = baseName(path);
-                if (!base.isEmpty() && !names.contains(base)) {
-                    names.add(base);
+                if (!base.isEmpty()) {
+                    paths.add(path);
+                    if (!names.contains(base)) {
+                        names.add(base);
+                    }
                 }
             }
         }
@@ -385,17 +394,19 @@ class CommitMessageBuilder {
             return null;
         }
 
-        // TODO(review): "N other files" counts distinct base names, so changed paths that share a basename (a/Foo.java, b/Foo.java) under-report the file count.
+        int fileCount = paths.size();
         String summary;
-        if (names.size() == 1) {
+        if (fileCount == 1) {
             summary = "Update " + names.get(0);
-        } else {
+        } else if (fileCount == 2 && names.size() == 2) {
             summary = "Update " + names.get(0) + " and " + names.get(1);
-            if (names.size() > 2 || summary.length() > SUBJECT_LIMIT) {
-                int others = names.size() - 1;
-                summary = "Update " + names.get(0) + " and " + others
-                        + (others == 1 ? " other file" : " other files");
+            if (summary.length() > SUBJECT_LIMIT) {
+                summary = "Update " + names.get(0) + " and 1 other file";
             }
+        } else {
+            int others = fileCount - 1;
+            summary = "Update " + names.get(0) + " and " + others
+                    + (others == 1 ? " other file" : " other files");
         }
         return summary.length() <= SUBJECT_LIMIT
                 ? summary
