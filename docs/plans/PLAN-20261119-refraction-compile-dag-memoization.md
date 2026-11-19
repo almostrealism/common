@@ -1,8 +1,8 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-11-19
 closed:
-tracker: []
+tracker: [80b892da-f079-456c-b7e3-059bbed7db65]
 ---
 
 # Render the floor through a refractive sphere by memoizing the argument-reset DAG traversal
@@ -87,11 +87,25 @@ Concrete, actionable items:
      the existing no-arg `resetArguments()` — and a static
      `ScopeLifecycle.resetArguments(Stream<?>, Set<ScopeLifecycle>)` that skips any element
      already in the set.
-   - Have `ComputationBase.resetArguments()` seed a `Collections.newSetFromMap(new IdentityHashMap<>())`
-     and call the visited-set overload, which recurses through
-     `ScopeLifecycle.resetArguments(getInputs().stream(), visited)`.
+   - Have the no-arg `resetArguments()` seed a
+     `Collections.newSetFromMap(new IdentityHashMap<>())` exactly once — the single entry point of
+     a pass — and `ComputationBase` **override** the visited-set overload to clear this node and
+     recurse through `ScopeLifecycle.resetArguments(getInputs().stream(), visited)` with the
+     *supplied* set. The default overload only delegates to the no-arg method, which would seed a
+     *fresh* set at each child and lose the shared traversal state, so every node that recurses
+     into inputs must override the visited-set overload rather than rely on the default. In
+     practice that means `ComputationBase` plus every subclass or direct `ScopeLifecycle`
+     implementer that today recurses in its no-arg `resetArguments()` (e.g.
+     `CollectionProducerComputationBase`, the delta computations, `ReshapeProducer`,
+     `ProducerWithRankAdapter`, `AdaptProducer`) moves its descent onto the visited-set overload;
+     a node that recurses but is only reached via the default overload would re-seed and defeat the
+     once-per-node guarantee.
    - Preserve the public no-arg `resetArguments()` contract and its existing single-node
-     semantics (clearing `arguments`); only the *recursive descent* gains the visited set.
+     semantics (clearing `arguments`); only the *recursive descent* gains the visited set. A
+     component that drives the descent itself (one implementing `ScopeLifecycle` directly rather
+     than through `ComputationBase`) keeps a no-arg `resetArguments()` that seeds the set via a
+     shared `ScopeLifecycle.resetArguments(ScopeLifecycle root)` entry point, so the seed lives in
+     one place.
    - Identity semantics (an `IdentityHashMap`), not `equals`, because distinct graph nodes can
      compare equal yet carry independent argument state.
 
@@ -217,3 +231,34 @@ implementation session's main work is measurement and careful validation.
 - Complements the standing kernel-boundary discipline plans
   (`PLAN-20261114-manual-isolation-prevention.md`): this fix keeps the boundary decision in the
   optimizer and only deduplicates a traversal, deliberately avoiding any manual isolation.
+
+## Closing notes (implementation session)
+
+The memoization (Scope items 1, 2, 4) is implemented and verified; item 3 (un-flagging the
+refraction render) is intentionally **not** done, because the measured outcome matched the first
+Open Question's pessimistic branch.
+
+- **Items 1 & 2 — reset-traversal memoization.** `ScopeLifecycle` gained the visited-set overload
+  `resetArguments(Set<ScopeLifecycle>)` (default delegates to the no-arg single-node reset), the
+  static descent `resetArguments(Stream<?>, Set)` (skips any element already in the set), and a
+  single seeding entry point `resetArguments(ScopeLifecycle root)`. The no-arg `resetArguments()`
+  seeds exactly once and delegates; `ComputationBase` and every recursing collaborator
+  (`CollectionProducerComputationBase`, `TraversableDeltaComputation`,
+  `ConstantRepeatedDeltaComputation`, `SegmentedWeightedSumComputation`, `ReshapeProducer`,
+  `ProducerWithRankAdapter`, `AdaptProducer`) override the visited-set overload so the supplied set
+  is threaded through the whole descent — the point the plan review raised about the default
+  overload re-seeding at a child. `prepareScope` was left untouched (its existing guard already
+  bounds the common case, confirmed by the reflection render staying green).
+- **Item 4 — structural test.** `ScopeLifecycleResetArgumentsTest` (engine/utils) builds a chain of
+  24 diamonds (deepest node reachable along 2^24 ≈ 16M paths) out of a counting `ScopeLifecycle`
+  stub and asserts each node is reset exactly once per pass, and that identity — not `equals` —
+  keys the visited set. It resolves instantly; an un-memoized descent could not.
+- **Measured outcome.** With the flag temporarily removed, `refractiveSphereShowsFloor` no longer
+  times out in `resetArguments` — it now fails fast (~9s, well under the 120s budget) with
+  `ExpressionException: Large expression not improved by simplification`, deep in
+  `Product.of`/`UniformCollectionExpression.getValueAt` while `ComputationScopeCompiler.compile`
+  builds the `LightingEngineAggregator` exit-ray selection. That is the *second*, independent wall
+  this plan named out of scope (the expression-size blow-up in simplification), now reached because
+  the reset cost is gone. Clearing `knownIssue` is therefore premature, so the flag was restored
+  (net-unchanged vs the base branch) and the test Javadoc updated to describe the current cause.
+  The remaining blocker is tracked by the follow-up task in this document's front matter.

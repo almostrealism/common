@@ -59,8 +59,9 @@ None of these touched the platform's render or compilation core.
 - **Code quality (correctness) — a concrete, test-pinned defect, and it decided the cycle.**
   `ReflectionRefractionRenderTest#refractiveSphereShowsFloor` is still
   `@TestProperties(knownIssue = true)`, so the engine ships no asserting refraction render test
-  in CI. The cause is verified and documented in the test's own Javadoc and the glossy-reflection
-  notes: `RefractionShader.shade` builds a correct, diamond-shaped `Producer` graph, but
+  in CI. The cause is identified by code inspection and documented in the test's own Javadoc and
+  the glossy-reflection notes (runtime confirmation was pending at planning time):
+  `RefractionShader.shade` builds a correct, diamond-shaped `Producer` graph, but
   `ComputationBase.resetArguments()` recurses into `getInputs()` through
   `ScopeLifecycle.resetArguments(Stream)` with **no visited set**, so every shared node is reset
   once *per path* that reaches it — exponential compile cost on a heavily-shared graph. The
