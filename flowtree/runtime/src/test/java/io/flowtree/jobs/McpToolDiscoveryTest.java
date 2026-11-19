@@ -421,6 +421,10 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			updatePrParams.contains("title"));
 		assertTrue("github_update_pr must declare body in signature",
 			updatePrParams.contains("body"));
+		assertTrue("github_update_pr must declare workstream_id in signature",
+			updatePrParams.contains("workstream_id"));
+		assertTrue("github_update_pr must declare branch in signature",
+			updatePrParams.contains("branch"));
 
 		List<String> submitParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_submit_task");

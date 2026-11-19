@@ -90,12 +90,15 @@ public class RequestBodyReader implements GitHubProxyHandler.BodyReader, Console
      * <em>before</em> any buffer is allocated: a missing, unparseable,
      * negative, or over-limit length is rejected with an
      * {@link InvalidRequestBodyException} rather than trusted to size the
-     * allocation.</p>
+     * allocation. A stream that ends before the declared length is read — a
+     * client that closed early — is likewise rejected rather than forwarded as
+     * a truncated body.</p>
      *
      * @param session the NanoHTTPD session
      * @return the body string
      * @throws IOException                 if the stream cannot be read
-     * @throws InvalidRequestBodyException if the declared length is absent or out of range
+     * @throws InvalidRequestBodyException if the declared length is absent or out of range,
+     *         or the stream yields fewer bytes than declared
      */
     private String readPatchBody(IHTTPSession session) throws IOException {
         String length = session.getHeaders().get("content-length");
@@ -116,6 +119,11 @@ public class RequestBodyReader implements GitHubProxyHandler.BodyReader, Console
                             + MAX_BODY_BYTES + " bytes");
         }
         byte[] bytes = session.getInputStream().readNBytes((int) declared);
+        if (bytes.length != declared) {
+            throw new InvalidRequestBodyException(
+                    "truncated request body: read " + bytes.length + " of "
+                            + declared + " declared bytes");
+        }
         return new String(bytes, StandardCharsets.UTF_8);
     }
 }

@@ -51,7 +51,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 # Launched as a script (Dockerfile ENTRYPOINT, start.sh) this file is the

@@ -358,6 +358,61 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
     }
 
     /**
+     * A body shorter than its declared {@code Content-Length} — a client that
+     * closed the stream early — is rejected rather than forwarded as truncated
+     * JSON. {@link RequestBodyReader} throws instead of returning the partial
+     * bytes.
+     */
+    @Test(timeout = 10000)
+    public void patchWithShortBodyIsRejected() {
+        byte[] partial = "{\"title\":".getBytes(StandardCharsets.UTF_8);
+        IHTTPSession session = new FakeSession(Method.PATCH, Map.of(),
+                Map.of("content-length", String.valueOf(partial.length + 16)),
+                new ByteArrayInputStream(partial));
+        try {
+            new RequestBodyReader().read(session);
+            fail("a body shorter than its Content-Length must be rejected, not read");
+        } catch (GitHubProxyHandler.BodyReader.InvalidRequestBodyException expected) {
+            assertTrue(expected.getMessage().contains("truncated"));
+        }
+    }
+
+    /**
+     * A PATCH whose body ends early is refused with a 4xx and no request reaches
+     * GitHub, so a truncated update is never attempted. The stub counts every
+     * request it receives, proving the short body was never forwarded.
+     */
+    @Test(timeout = 30000)
+    public void patchWithShortBodyDoesNotReachGitHub() throws IOException {
+        AtomicInteger hits = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            hits.incrementAndGet();
+            respond(exchange, "{}");
+        });
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(
+                    Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            byte[] partial = "{\"title\":".getBytes(StandardCharsets.UTF_8);
+            IHTTPSession session = new FakeSession(Method.PATCH,
+                    Map.of("url", "/repos/almostrealism/common/pulls/5"),
+                    Map.of("content-length", String.valueOf(partial.length + 16)),
+                    new ByteArrayInputStream(partial));
+
+            Response response = handler.handle(session, Method.PATCH,
+                    new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+            assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+            assertTrue(bodyOf(response).contains("truncated"));
+            assertEquals("a truncated body never reaches GitHub", 0, hits.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
      * A {@code Content-Length} above the reader's bound is refused with a 4xx
      * before any buffer is allocated, and no request reaches GitHub. The stub
      * counts every request it receives, proving the over-size body was never
