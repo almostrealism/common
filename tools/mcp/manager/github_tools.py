@@ -628,6 +628,10 @@ def github_update_pr(
     A field left unset (``None``) is not changed. Use this to correct a pull
     request whose title or description no longer matches the branch.
 
+    The edit is refused when the workstream (or the round owning an explicit
+    ``branch``) is archived: an archived round is read-only, as for
+    ``github_create_pr``. Direct ``org``/``repo`` addressing is not guarded.
+
     Args:
         pr_number: The PR number. When omitted (``0``), the open PR for the
             workstream/branch is looked up automatically, the same way
@@ -653,7 +657,8 @@ def github_update_pr(
         on failure.
     """
     server._require_scope("github")
-    if org and repo:
+    direct_addressing = bool(org and repo)
+    if direct_addressing:
         server._require_org_in_scope(org)
 
     if isinstance(pr_number, bool) or not isinstance(pr_number, int) or pr_number < 0:
@@ -672,6 +677,25 @@ def github_update_pr(
             "ok": False,
             "error": "nothing to update: pass a title, a body, or both",
         }
+
+    # An archived round is read-only, and its pull request's title and
+    # description are part of that frozen record, so the same guards as
+    # github_create_pr apply. Direct org/repo addressing carries no
+    # workstream and is scoped only by the org gate above.
+    if not direct_addressing:
+        effective_ws = workstream_id or server._get_token_workstream_id() or ""
+        ws = server._find_workstream(effective_ws) if effective_ws else None
+        archived_err = server._archived_workstream_error(
+            "update a pull request", effective_ws, ws=ws)
+        if archived_err:
+            return archived_err
+        # An explicit branch names the PR being edited, so a live workstream
+        # must not reach another round's archived branch through it.
+        if branch and branch != (ws or {}).get("defaultBranch"):
+            archived_err = server._archived_branch_error(
+                "update a pull request", (ws or {}).get("repoUrl", ""), branch)
+            if archived_err:
+                return archived_err
 
     owner, repo, effective_pr, err = server._resolve_effective_pr(
         pr_number=pr_number, workstream_id=workstream_id, branch=branch,

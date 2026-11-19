@@ -270,7 +270,9 @@ Run them as bounded selections (named classes and Python node ids), never a modu
 1. **Archived workstreams.** Should editing a pull request's title or description be refused when
    the workstream is archived, as `github_create_pr` is? Or is it review-interaction like
    `github_pr_reply`, and allowed? This plan recommends refusing, because the description is part
-   of the round's record. The other choice costs one line.
+   of the round's record. The other choice costs one line. **Implemented as recommended:** the tool
+   refuses an archived workstream (explicit or token-bound) and an explicit `branch` owned by an
+   archived round; direct `org`/`repo` addressing is not guarded.
 2. **Which pull requests may an agent edit?** "Any agent" with the same scope as the other
    `github_*` tools means any pull request in a repository its token's org scope reaches, not
    only its own workstream's pull request. `github_pr_reply` already has that reach. Restricting

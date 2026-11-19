@@ -202,6 +202,89 @@ class TestGithubUpdatePr(unittest.TestCase):
         mock_gh.assert_not_called()
 
 
+@patch.object(server, "_resolve_github_repo",
+              return_value=("org", "repo", "feature/x", None))
+class TestGithubUpdatePrArchived(unittest.TestCase):
+    """An archived round's pull request may not be edited."""
+
+    _LIVE = {"workstreamId": "ws-live", "defaultBranch": "feature/live",
+             "repoUrl": "git@github.com:org/repo.git"}
+    _ARCHIVED = {"workstreamId": "ws-arch", "archived": True,
+                 "defaultBranch": "qa/retro-x"}
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    @patch.object(server, "_find_workstream", return_value=_ARCHIVED)
+    @patch.object(server, "_github_request")
+    def test_rejected_for_archived_workstream(self, mock_gh, mock_find, mock_repo):
+        result = server.github_update_pr(
+            pr_number=7, title="New", workstream_id="ws-arch")
+        self.assertFalse(result["ok"])
+        self.assertIn("Cannot update a pull request", result["error"])
+        self.assertIn("ws-arch", result["error"])
+        mock_find.assert_called_once_with("ws-arch")
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_get_token_workstream_id", return_value="ws-arch")
+    @patch.object(server, "_find_workstream", return_value=_ARCHIVED)
+    @patch.object(server, "_github_request")
+    def test_rejected_for_archived_token_workstream(
+            self, mock_gh, mock_find, mock_token, mock_repo):
+        """Without an explicit workstream_id the token's workstream is guarded."""
+        result = server.github_update_pr(pr_number=7, body="B")
+        self.assertFalse(result["ok"])
+        self.assertIn("archived", result["error"])
+        mock_find.assert_called_once_with("ws-arch")
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_find_workstream", return_value=_LIVE)
+    @patch.object(server, "_find_workstream_by_branch", return_value=_ARCHIVED)
+    @patch.object(server, "_github_request")
+    def test_rejected_for_archived_branch_with_live_workstream(
+            self, mock_gh, mock_by_branch, mock_find, mock_repo):
+        result = server.github_update_pr(
+            title="New", workstream_id="ws-live", branch="qa/retro-x")
+        self.assertFalse(result["ok"])
+        self.assertIn("ws-arch", result["error"])
+        mock_by_branch.assert_called_once_with(
+            "git@github.com:org/repo.git", "qa/retro-x", enforce_scope=False)
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_find_workstream", return_value=_LIVE)
+    @patch.object(server, "_find_workstream_by_branch")
+    @patch.object(server, "_github_request",
+                  return_value={"number": 7, "html_url": "u", "title": "New"})
+    def test_allowed_for_live_workstream_default_branch(
+            self, mock_gh, mock_by_branch, mock_find, mock_repo):
+        """The workstream's own branch needs no second, branch-keyed lookup."""
+        result = server.github_update_pr(
+            pr_number=7, title="New", workstream_id="ws-live",
+            branch="feature/live")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_by_branch.assert_not_called()
+        mock_gh.assert_called_once()
+
+    @patch.object(server, "_require_org_in_scope")
+    @patch.object(server, "_get_token_workstream_id", return_value="ws-arch")
+    @patch.object(server, "_find_workstream", return_value=_ARCHIVED)
+    @patch.object(server, "_find_workstream_by_branch", return_value=_ARCHIVED)
+    @patch.object(server, "_github_request",
+                  return_value={"number": 7, "html_url": "u", "title": "New"})
+    def test_direct_org_repo_not_guarded(
+            self, mock_gh, mock_by_branch, mock_find, mock_token, mock_gate,
+            mock_repo):
+        """Direct addressing names a repository, not a workstream, so an
+        archived token workstream does not block it."""
+        result = server.github_update_pr(
+            pr_number=7, title="New", org="org", repo="repo",
+            branch="qa/retro-x")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        mock_find.assert_not_called()
+        mock_by_branch.assert_not_called()
+        mock_gh.assert_called_once()
+
+
 class TestPrLookupImport(unittest.TestCase):
     """``pr_lookup`` loads on its own, not only by way of ``server``."""
 
