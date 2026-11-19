@@ -97,7 +97,7 @@
 #   send_message, memory_recall, memory_store, workstream_context,
 #   github_pr_find, github_pr_review_comments, github_pr_conversation,
 #   github_pr_reply, github_list_open_prs, github_create_pr,
-#   workstream_get_status, controller_health
+#   github_update_pr, workstream_get_status, controller_health
 #
 # Project-local tools (ar-test-runner, ar-docs, etc.) are discovered
 # from the target repo's .mcp.json and run alongside ar-manager.
