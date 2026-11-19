@@ -193,6 +193,13 @@ def check_commit(repo_path: str = "") -> dict:
     name; something must be staged, commit.txt must not be, and the branch must
     be neither detached nor a default branch.
 
+    The private product name check is skipped, with a warning saying so, when
+    it cannot apply: when AR_PRIVATE_PRODUCT_NAMES is unset, or when the
+    repository being checked is itself one of those products (the name of its
+    repository-local origin remote matches a configured name,
+    case-insensitively). A repository with no local origin keeps the check.
+    Every other check always runs.
+
     Args:
         repo_path: Any path inside the working tree to check, such as a
             worktree directory. Defaults to the server's working directory.

@@ -357,6 +357,7 @@ class RepositoryNameTest(unittest.TestCase):
         self.assertFalse(commit_check.names_own_repository(None, ["acme-private"]))
 
 
+# TODO(review): subclassing CommitToolTest re-runs every inherited CommitToolTest test; share setUp via a base fixture instead.
 class RepositoryScopingTest(CommitToolTest):
     """The product-name check is skipped only in a private product's own repository."""
 
