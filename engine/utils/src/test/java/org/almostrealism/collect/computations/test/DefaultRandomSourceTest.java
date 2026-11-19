@@ -20,6 +20,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DefaultRandomSource;
 import org.almostrealism.collect.computations.RandomProducer;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -198,6 +199,78 @@ public class DefaultRandomSourceTest extends TestSuiteBase {
 		for (int i = 0; i < 16; i++) {
 			Assert.assertEquals(first.nextGaussian(), second.nextGaussian(), 0.0);
 		}
+	}
+
+	/**
+	 * The host generator's {@code Long}-seed constructor resolves its source in two ways: an
+	 * explicit seed gives a dedicated source that ignores the default entirely, and a {@code null}
+	 * seed derives its source from the default, so the same default seed reproduces it.
+	 */
+	@Test(timeout = 30000)
+	public void hostSeedConstructorResolvesSource() {
+		DefaultRandomSource.seed(7);
+		double[] explicitFirst = hostFill(99L);
+		DefaultRandomSource.seed(8);
+		double[] explicitSecond = hostFill(99L);
+		Assert.assertArrayEquals(explicitFirst, explicitSecond, 0.0);
+
+		DefaultRandomSource.seed(7);
+		double[] derivedFirst = hostFill(null);
+		DefaultRandomSource.seed(7);
+		double[] derivedSecond = hostFill(null);
+		Assert.assertArrayEquals(derivedFirst, derivedSecond, 0.0);
+		Assert.assertFalse(equal(explicitFirst, derivedFirst));
+
+		DefaultRandomSource.seed(8);
+		Assert.assertFalse(equal(derivedFirst, hostFill(null)));
+	}
+
+	/**
+	 * A subclass's {@link TestSuiteBase#testSeed()} override decides the seed applied by
+	 * {@link TestSuiteBase#resetRandomSeed()} when {@code AR_TEST_SEED} is not set, a numeric
+	 * {@code AR_TEST_SEED} takes precedence over it, and the {@code @After} hook
+	 * {@link TestSuiteBase#clearDefaultRandomSource()} returns the source to unseeded.
+	 */
+	@Test(timeout = 30000)
+	public void testSeedOverrideAndClearHook() {
+		TestSuiteBase pinned = new TestSuiteBase() {
+			@Override
+			protected long testSeed() {
+				return 4242L;
+			}
+		};
+
+		pinned.resetRandomSeed();
+		Assert.assertTrue(DefaultRandomSource.getSeed().isPresent());
+
+		String setting = SystemUtils.getProperty("AR_TEST_SEED", "").trim();
+		if (setting.isEmpty()) {
+			Assert.assertEquals(4242L, DefaultRandomSource.getSeed().getAsLong());
+		} else if (!"random".equalsIgnoreCase(setting)) {
+			Assert.assertEquals(Long.parseLong(setting), DefaultRandomSource.getSeed().getAsLong());
+		}
+
+		pinned.clearDefaultRandomSource();
+		Assert.assertFalse(DefaultRandomSource.getSeed().isPresent());
+		Assert.assertNull(DefaultRandomSource.current());
+		Assert.assertNull(DefaultRandomSource.generator());
+	}
+
+	/**
+	 * Generates standard normal values with the host implementation through its {@code Long}-seed
+	 * constructor and returns its host values.
+	 *
+	 * @param seed the explicit seed, or {@code null} to derive the source from the default
+	 * @return the generated values
+	 */
+	private double[] hostFill(Long seed) {
+		org.almostrealism.collect.computations.Random random =
+				new org.almostrealism.collect.computations.Random(SHAPE, true, seed);
+		PackedCollection out = random.get().evaluate();
+		double[] result = out.toArray();
+		out.destroy();
+		random.destroy();
+		return result;
 	}
 
 	/**
