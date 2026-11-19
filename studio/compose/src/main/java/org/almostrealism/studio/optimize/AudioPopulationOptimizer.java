@@ -85,6 +85,9 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 	/** Optional callback invoked at the start of each optimization cycle. */
 	private Runnable cycleListener;
 
+	/** Optional callback invoked once breeding has produced the population a cycle will evaluate. */
+	private Runnable breedingCompleteListener;
+
 	/** Optional callback invoked after each optimization cycle completes. */
 	private Runnable completionListener;
 
@@ -164,6 +167,23 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 	}
 
 	/**
+	 * Registers a callback that is invoked once breeding has produced the population a
+	 * cycle will evaluate, before the first genome of that population is evaluated.
+	 *
+	 * <p>This is the point at which a consumer tracking the population per genome (for
+	 * example, maintaining a record for each) must bring itself into step with the new
+	 * population: breeding has already replaced the genomes, and the health evaluation
+	 * that follows delivers one result per new genome. Unlike {@link #setCycleListener},
+	 * which fires before the population for the cycle has been read or bred, this fires
+	 * when {@link #getPopulation()} already holds the genomes that will be scored.</p>
+	 *
+	 * @param r the breeding-complete listener runnable
+	 */
+	public void setBreedingCompleteListener(Runnable r) {
+		this.breedingCompleteListener = r;
+	}
+
+	/**
 	 * Registers a callback that is invoked after each optimization cycle completes.
 	 *
 	 * @param r the completion listener runnable
@@ -240,6 +260,7 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		storePopulation();
 		count.set(0);
 		outputPrefix = generatePrefix();
+		if (breedingCompleteListener != null) breedingCompleteListener.run();
 	}
 
 	/**

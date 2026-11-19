@@ -16,13 +16,18 @@
 
 package org.almostrealism.spatial.test;
 
+import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.optimize.PopulationOptimizer;
 import org.almostrealism.spatial.ArrangementGenerationProcess;
 import org.almostrealism.spatial.GenomicNetwork;
 import org.almostrealism.studio.AudioScene;
+import org.almostrealism.studio.generative.GenerationManager;
 import org.almostrealism.studio.health.AudioHealthScore;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
 import org.almostrealism.studio.optimize.AudioSceneOptimizer;
+import org.almostrealism.studio.optimize.AudioScenePopulation;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -204,6 +209,103 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 							+ " immediately (max " + best + " frames) - mixdown"
 							+ " state is accumulating across renders",
 					best > 44100);
+		} finally {
+			process.destroy();
+		}
+	}
+
+	/**
+	 * Builds a health score carrying the given output path. The path need not name
+	 * an existing file: the record attaches the score and derives its key from the
+	 * path without reading audio from disk.
+	 *
+	 * @param output the output file path the score reports
+	 * @return a health score reporting that output
+	 */
+	private AudioHealthScore score(String output) {
+		return new AudioHealthScore(44_100, 0.5, output, List.of(), List.of());
+	}
+
+	/**
+	 * Reproduces the score loss that occurred when records were rebuilt lazily on the
+	 * first unmatched signature rather than once per cycle: a cycle's population
+	 * {@code [A', C]} where {@code A'} shares the previous population's {@code A}
+	 * signature, with scores delivered {@code A'} then {@code C}. Driven through the
+	 * optimizer's real breeding-complete and health-delivery hooks, without rendering
+	 * audio, so the record-synchronization behavior is exercised in isolation.
+	 *
+	 * <p>Before the fix the {@code A'} score attached to the stale {@code A} record and
+	 * the later {@code C} signature triggered a rebuild that discarded it, leaving the
+	 * {@code A'} record unscored. After the fix the records are rebuilt once, at the
+	 * breeding-complete hook, so both delivered scores survive the cycle.</p>
+	 *
+	 * @throws Exception if the process cannot be prepared
+	 */
+	@Test(timeout = 120_000)
+	public void scoresSurviveWhenABredChildRepeatsAPriorSignature() throws Exception {
+		new File("results").mkdirs();
+		File networksFile = new File("results/process-cycle-records.xml");
+		networksFile.delete();
+		new File(AudioSceneOptimizer.POPULATION_FILE).delete();
+
+		AudioScene<?> scene = new AudioScene<>(120.0, 2, 2, OutputLine.sampleRate);
+		// A bare scene's generator list is uninitialized; prepare() clones the scene,
+		// so give it an empty generator set to snapshot.
+		scene.getGenerationManager().setSettings(new GenerationManager.Settings());
+
+		ArrangementGenerationProcess process =
+				new ArrangementGenerationProcess(networksFile.getPath());
+
+		try {
+			process.prepare(scene, 1);
+			AudioSceneOptimizer optimizer = process.getOptimizer();
+
+			// A and A' share parameters, hence a signature; B and C differ from both.
+			ProjectedGenome genomeA = new ProjectedGenome(PackedCollection.of(0.10, 0.20, 0.30));
+			ProjectedGenome genomeB = new ProjectedGenome(PackedCollection.of(0.40, 0.50, 0.60));
+			ProjectedGenome genomeAPrime = new ProjectedGenome(PackedCollection.of(0.10, 0.20, 0.30));
+			ProjectedGenome genomeC = new ProjectedGenome(PackedCollection.of(0.70, 0.80, 0.90));
+
+			String signatureA = genomeA.signature();
+			String signatureC = genomeC.signature();
+			Assert.assertEquals("A and A' must share a signature",
+					signatureA, genomeAPrime.signature());
+			Assert.assertNotEquals("C must not share A's signature",
+					signatureA, signatureC);
+
+			GenomicNetwork recordA = new GenomicNetwork(0, genomeA);
+			recordA.setHealthScore(score("results/prev-A.wav"));
+			GenomicNetwork recordB = new GenomicNetwork(1, genomeB);
+			recordB.setHealthScore(score("results/prev-B.wav"));
+			process.setNetworks(List.of(recordA, recordB));
+
+			optimizer.setPopulation(new AudioScenePopulation(process.getLocalScene(),
+					new ArrayList<>(List.of(genomeAPrime, genomeC))));
+
+			// Breeding has produced the population; the records sync to it once here.
+			optimizer.breedingComplete();
+
+			// Scores arrive A' then C, through the optimizer's own delivery path.
+			optimizer.getHealthListener().accept(signatureA, score("results/cycle-A.wav"));
+			optimizer.getHealthListener().accept(signatureC, score("results/cycle-C.wav"));
+
+			List<GenomicNetwork> records = process.getNetworks();
+			Assert.assertEquals("The cycle's population has two records",
+					2, records.size());
+
+			for (GenomicNetwork record : records) {
+				Assert.assertNotNull("Record for signature "
+						+ record.getGenome().signature()
+						+ " carries no score after the cycle", record.getHealthScore());
+			}
+
+			GenomicNetwork aPrimeRecord = records.stream()
+					.filter(g -> signatureA.equals(g.getGenome().signature()))
+					.findFirst().orElse(null);
+			Assert.assertNotNull("No record carries A's signature", aPrimeRecord);
+			Assert.assertNotNull("The score delivered before the later signature"
+					+ " was lost when the records were rebuilt",
+					aPrimeRecord.getHealthScore());
 		} finally {
 			process.destroy();
 		}

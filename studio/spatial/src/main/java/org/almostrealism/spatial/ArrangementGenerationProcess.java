@@ -335,6 +335,10 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 			completedThisCycle = 0;
 			if (cycleListener != null) cycleListener.run();
 		});
+		// TODO(review): refreshNetworks runs only on breedingComplete, which fires only when
+		// PopulationOptimizer.enableBreeding is true; with breeding disabled records never sync,
+		// unlike the removed lazy refresh in recordsFor().
+		optimizer.setBreedingCompleteListener(this::refreshNetworks);
 		optimizer.setCompletionListener(() -> {
 			iterationCount++;
 			if (completionListener != null) completionListener.run();
@@ -408,10 +412,10 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 * Records that the genome carrying the given signature is now being
 	 * rendered, and notifies the render listener.
 	 *
-	 * <p>This arrives before the render rather than after it, so it is the
-	 * first thing in a cycle to name a genome. That makes it, rather than the
-	 * first delivered score, where the records are brought back into step with
-	 * a population that breeding has moved on.</p>
+	 * <p>The records are already in step with the population by this point: they
+	 * are rebuilt once per cycle at the breeding-complete hook, before the first
+	 * render. A signature with no record here therefore names no genome in the
+	 * current population, and is reported rather than silently rebuilding.</p>
 	 *
 	 * @param signature the signature of the genome being rendered
 	 */
@@ -437,38 +441,36 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	}
 
 	/**
-	 * Returns the records carrying the given genome signature, rebuilding the
-	 * records from the population first if none of them does.
+	 * Returns the records carrying the given genome signature.
 	 *
-	 * <p>Records outlive the population they were built from: they carry the
-	 * previous cycle's scores until breeding moves the population on and a
-	 * signature arrives that none of them answers to.</p>
+	 * <p>The records are brought into step with the population once per cycle, by
+	 * {@link #refreshNetworks()} at the breeding-complete hook, before any score
+	 * or render of the cycle. This method therefore only reads: it never rebuilds,
+	 * so a score already delivered this cycle is never discarded to answer a later
+	 * one. A signature that matches no record is one that truly names no genome in
+	 * the current population, which is what the callers report.</p>
 	 *
 	 * @param signature the genome signature to look for
-	 * @return the records carrying it, empty if the rebuild found none either
+	 * @return the records carrying it, empty if none does
 	 */
 	private List<GenomicNetwork> recordsFor(String signature) {
-		if (!carriesSignature(signature)) refreshNetworks();
-
 		return getNetworks().stream()
 				.filter(g -> g.getGenome() != null &&
 						Objects.equals(g.getGenome().signature(), signature))
 				.collect(Collectors.toList());
 	}
 
-	/** Returns whether any record carries the given genome signature. */
-	private boolean carriesSignature(String signature) {
-		return getNetworks().stream()
-				.map(GenomicNetwork::getGenome)
-				.filter(Objects::nonNull)
-				.anyMatch(g -> Objects.equals(g.signature(), signature));
-	}
-
 	/**
 	 * Rebuilds the records from the optimizer's current population, one record
-	 * per genome. Existing records (and their scores) are discarded, matching
-	 * the behavior the app has always had when its records fall out of sync
-	 * with the population.
+	 * per genome, discarding existing records and their scores.
+	 *
+	 * <p>Called once at the start of each cycle, through the optimizer's
+	 * breeding-complete hook, after breeding has produced the population the cycle
+	 * will evaluate and before its first score or render. Because the records then
+	 * already match the population being scored, no rebuild happens mid-cycle, so
+	 * every score the cycle delivers attaches to a record and survives to the end
+	 * of the cycle. The scores discarded here are the previous cycle's, for a
+	 * population that has been bred away.</p>
 	 */
 	public void refreshNetworks() {
 		if (optimizer == null) return;
