@@ -28,6 +28,93 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-11-19 — Document composing audio in latent space (the AutoEncoder blend pipeline)
+
+**Category:** Documentation
+**Branch:** `project/plan-20261119-010237`
+**Plan:** [`PLAN-20261119-audio-latent-composition-docs.md`](PLAN-20261119-audio-latent-composition-docs.md)
+**Tracker:** none (docs cycle)
+
+#### What changed since last cycle
+
+The reflected-ray fix merged (PR #886 into `master` on 2026-11-18, carried through the
+`project/plan-20261110-032517` merge), restoring a CI render assertion and landing the
+`RefractionShader` graph rewrite alongside it. The agent-infrastructure track advanced
+heavily: a new `ar-commit` MCP server that commits only a checked change and message (staged-
+snapshot checks, plan-ledger and private-URL guards, structured timeout handling), the
+master-failure-log fix round reader, and `feature/inference-memory-savings` (BranchBlock
+allocates its gradient buffer only when a backward pass is built, with inference-only
+coverage). The audio-composition subsystem had its own run of merges — `feature/composer-
+normalized-blend` (#980: normalized weighted-mean blend with negative-contribution clamping),
+`feature/batched-vector-selection` (#972) and the `HighestRank` loop-bound fixes, and
+`feature/similarity-failure-trace` (#988). The standing QA rounds (consolidate, coverage,
+performance, pdsl, concept, docs, defect) kept the foundation current.
+
+#### Category assessment (priority order)
+
+- **Documentation — a reachable flagship gap, and it decided the cycle.** The corpus is
+  genuinely excellent and current: 60+ internals pages, and the render track's prior gaps are
+  now filled (`ray-traced-reflection-and-refraction.md`, `per-pixel-rendering.md`,
+  `grid-field-calculus.md`). But a check of the *actively-developed* subsystems surfaced one
+  real gap: the latent-space **audio-composition** subsystem — `AudioComposer`,
+  `ComposableAudioFeatures` (`studio/compose`), over the `AutoEncoder` abstraction
+  (`engine/ml`, `org.almostrealism.ml.audio`) — took four pull requests in a month (#715,
+  #972, #980, #988) and carries a subtle numerical contract (L2-normalized weights,
+  negative-contribution clamping against a `NaN` divisor, weighted-mean-vs-sum, near-origin
+  behaviour), yet is named in **no internals page** and is absent from `llms.txt`'s internals
+  index. Its only prose is a few class-description sections in `studio/compose/README.md` plus
+  Javadoc. Chosen.
+- **Code quality — covered by continuous QA and three standing proposed plans.** The QA rounds
+  are in flight, and the first reachable code-quality items are already written up as proposed
+  plans (`jni-native-precision-symbols`, `manual-isolation-prevention`). Proposing a fourth
+  would duplicate. Moved on.
+- **Performance — no PM-level blocker this cycle.** The aggregate copy-in/copy-back arc is
+  landed or standing; the `HighestRank` loop bounds just merged. Moved on.
+- **Proof of value — the category this ultimately serves, gated here.** The generative-audio
+  track's on-platform slice is exactly this latent-composition path; the fuller text→diffusion→
+  audio path is ONNX/download-gated. Documenting the on-platform, tested slice first is the
+  disciplined step before building further on it.
+
+#### Why this task
+
+It is the disciplined pick under the priority order: documentation first, and the first
+reachable flagship gap is an actively-used subsystem whose behaviour lives only in code and
+review notes. The page is a clean, **tested** worked example — encoded sources → latent blend →
+decoded waveform — drift-guarded by `LatentAudioCompositionExamplesTest` over a synthetic
+autoencoder (the `StubAutoEncoder` path `AudioComposerTest` already proves), so it runs on any
+backend with no download. It is also a crisp non-training exemplar of THE FUNDAMENTAL RULE: the
+whole blend is one `CollectionProducer` graph evaluated through `evaluateOptimized()` (the exact
+lesson the #980 review had to teach), which is precisely what a model studying the platform
+should be able to read in one page.
+
+#### Balance across categories
+
+The last cycle was code quality (reflected-ray); the two before it were performance and
+documentation. Returning to documentation now is not drift toward an easier category — it
+targets a specific, verified gap in an actively-developed subsystem, touches no production code,
+and runs on any node (no workstream settings file). It continues the documentation arc
+(tokenizer → vector index → simulation pipelines) and plants the anchor page the generative-
+audio proof-of-value track grows from.
+
+#### What comes next
+
+1. This plan: `docs/internals/latent-audio-composition.md`, the
+   `LatentAudioCompositionExamplesTest` drift-guard, and the `llms.txt` /
+   `studio/compose/README.md` / `sampling-loop-examples.md` cross-links.
+2. **Code quality (proposed, awaiting pickup):** `jni-native-precision-symbols` (cross-precision
+   JNI rebinding hazard) and `manual-isolation-prevention` (keep kernel-boundary decisions in
+   the optimizer).
+3. **Proof of value, generative audio:** build on this anchor toward a tested on-platform
+   diffusion-audio generation demonstration, once an on-platform (non-ONNX) conditioner/decoder
+   path is reachable.
+4. **Proof of value, rendering:** the ferrofluid roadmap (`PLAN-20261106`), pending owner
+   fluid-method decisions.
+5. **Proof of value, self-hosted LM:** attention sinks if long rolling-cache generations
+   degrade; long-form self-description at speed once the decode is no longer copy-bound.
+6. Still open: the reduced `matmul`/convolution-gradient forms; `TransformerResamplingFeatures`'
+   buffered K/V; the `io.almostrealism.collect` split; letting a trained model read the
+   platform's own source.
+
 ### 2026-11-05 — Fold kernel arguments into the aggregate only when the kernel would exceed its argument limit
 
 **Category:** Performance
