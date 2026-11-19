@@ -149,8 +149,15 @@ concurrency:
 # Hosted (ubuntu-latest) jobs keep actions/setup-java, which serves the JDK from
 # the hosted image's tool cache; they pin its java-version to this same value, so
 # an upgrade stays a single edit across hosted and self-hosted lanes alike.
+# ─── Hosted Maven dependency cache ────────────────────────
+# GitHub-hosted (ubuntu-latest) jobs restore a deliberately-built Maven
+# repository the `maven-cache` job produces, instead of setup-java's
+# `cache: maven`. See "What the `maven-cache` job does" below and "Maven
+# dependency caching" in tools/ci/README.md. Bump this version prefix to
+# invalidate that cache deliberately, without waiting for a pom change.
 env:
   EXPECTED_JDK_MAJOR: "17"
+  HOSTED_MAVEN_CACHE_VERSION: "v1"
 
 jobs:
   # ─── Change Detection ─────────────────────────────────────────────
@@ -542,7 +549,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, rather than setup-java's `cache: maven` (which saved a partial
+      # repository on a miss from whichever hosted job finished first — one that
+      # did not need jacoco — so jacoco was re-downloaded from Central every run).
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # Every job that needs the project's artifacts restores them from this
       # job rather than running its own `mvn install` (see "Sharing the build"
@@ -564,6 +579,117 @@ jobs:
           # Long enough for the flaky-test retries and a manual re-run.
           retention-days: 3
           if-no-files-found: error
+
+  # ─── Hosted Maven dependency cache ─────────────────────────────────
+  # Produces the Maven repository every GitHub-hosted job restores, on
+  # purpose rather than as a side effect of whichever job misses first.
+  #
+  # The problem this fixes: setup-java's `cache: maven` saved the local
+  # repository only on a cache miss, from whichever hosted job finished
+  # first, and never re-saved it on a hit. The job that won that race
+  # (checkstyle, say) did not run jacoco, so `org.jacoco:jacoco-maven-plugin`
+  # was absent from the saved cache — and every hosted job that runs `mvn test`
+  # (and so jacoco:prepare-agent) re-downloaded it from Maven Central on every
+  # run, failing on 429s and transient "not found" errors.
+  #
+  # This job resolves the FULL set any hosted job uses — declared dependencies
+  # and plugins across the reactor (go-offline, resolve-plugins), the compiler
+  # and error-prone processor path and surefire and jacoco (install -DskipTests
+  # compiles, binds jacoco:prepare-agent and test-compiles, so it resolves all
+  # of those), the checkstyle plugin's pinned Checkstyle library (only the
+  # checkstyle job exercises it), and the jacoco-cli distribution the analysis
+  # job unzips — then saves it with an explicit actions/cache under a key built
+  # from the pom hashes and the manual HOSTED_MAVEN_CACHE_VERSION prefix, with a
+  # restore-keys fallback so a pom change starts from the previous cache instead
+  # of from empty. Consumers restore it read-only via the restore-maven-cache
+  # action, so none of them can re-save a partial repository.
+  #
+  # Nothing waits on this job: it runs in parallel with `build` and maintains
+  # the cache for SUBSEQUENT runs. A run whose poms just changed restores the
+  # previous (near-complete) cache and fetches only the delta from Central, with
+  # the retry/backoff in .mvn/maven.config. GitHub scopes caches by branch with
+  # master's readable by every PR, so master runs keep a complete cache saved
+  # for every PR to restore. tools/tests/test_hosted_maven_cache.py pins the
+  # wiring and that this job's save key matches the restore action's.
+  # TODO(review): the parenthetical above and the maven-cache descriptions in
+  # .github/CLAUDE.md and tools/ci/README.md say `mvn install -DskipTests`, but
+  # the Warm step below runs `mvn test-compile` (surefire is resolved by
+  # resolve-plugins, not the compile). Reconcile the prose with the command.
+  maven-cache:
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.EXPECTED_JDK_MAJOR }}
+          distribution: 'temurin'
+
+      # Start from whatever cache already exists, through the SAME action every
+      # consumer restores with, so the key and path cannot drift. An exact hit
+      # means the repository is already complete for these poms; a restore-keys
+      # hit gives the previous cache as a base so only the delta is fetched.
+      - name: Restore Maven dependencies
+        id: restore
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
+
+      # Resolve the full plugin and dependency set into ~/.m2. Best-effort: a
+      # transient resolution failure must not fail this maintenance job (nothing
+      # depends on it), and whatever was resolved is still worth saving — the
+      # consumers fall back to the network for anything missing.
+      - name: Warm the Maven repository
+        if: steps.restore.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: |
+          # test-compile compiles main AND test sources across the reactor: it
+          # resolves the compiler and the error-prone annotation-processor path
+          # (which go-offline/resolve-plugins cannot, since it is neither a plugin
+          # nor a declared dependency), the tools module's test dependencies —
+          # CPD among them — and jacoco (prepare-agent binds at initialize, so the
+          # plugin is resolved). It does NOT install: `build` is the only job that
+          # installs and uploads the shared artifacts. -Dcheckstyle.skip=true
+          # keeps the validate-phase checkstyle from failing it on a real
+          # violation while warming.
+          mvn -B -ntp test-compile -Dcheckstyle.skip=true
+
+          # go-offline / resolve-plugins across the reactor catch the rest of the
+          # declared dependency and plugin set, including surefire and plugins
+          # bound to phases test-compile does not reach.
+          mvn -B -ntp dependency:go-offline dependency:resolve-plugins -Dcheckstyle.skip=true
+
+          # The checkstyle job runs `checkstyle:check`, which loads the plugin's
+          # pinned Checkstyle library (com.puppycrawl.tools:checkstyle, version in
+          # the root pom). Resolve the plugin so that library is cached too.
+          mvn -B -ntp org.apache.maven.plugins:maven-checkstyle-plugin:check -Dcheckstyle.skip=true
+
+          # The analysis job merges coverage with the standalone jacoco-cli
+          # distribution zip. Prefetch it into ~/.m2 so analysis unzips it from
+          # the cache instead of fetching it from Central.
+          JACOCO_VERSION=$(sed -n 's|.*<jacoco.version>\(.*\)</jacoco.version>.*|\1|p' pom.xml | head -n1)
+          mvn -B -ntp dependency:get -Dartifact="org.jacoco:jacoco:${JACOCO_VERSION}:zip"
+
+      # Save the warmed repository for subsequent runs. Skipped on an exact hit
+      # (already complete) and run even if warming reported an error, so a
+      # partially-warmed repository is still saved.
+      - name: Save Maven dependencies
+        if: ${{ always() && steps.restore.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/org/almostrealism
+          # The exact key the restore action used, so save and restore can never
+          # drift apart.
+          key: ${{ steps.restore.outputs.cache-primary-key }}
 
   # ─── Code Policy Enforcement ───────────────────────────────────────
   code-policy-check:
@@ -588,7 +714,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -1393,7 +1527,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -1461,7 +1603,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -1710,7 +1860,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       - name: Check exempt file lengths
         run: bash scripts/check-exempt-file-lengths.sh
@@ -2132,7 +2290,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -2242,7 +2408,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -2568,14 +2742,23 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      # A hosted runner starts clean, so the JDK and the Maven dependency cache
-      # come from actions/setup-java, as in test-flowtree.
+      # A hosted runner starts clean: the JDK comes from actions/setup-java and
+      # the Maven dependency cache from the restore-maven-cache step below, as in
+      # test-flowtree.
       - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
         uses: actions/setup-java@v5
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -3793,7 +3976,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # JaCoCo reads the class files from `build`'s installed jars, so nothing
       # is rebuilt here. Without a successful build no test job ran, so there
@@ -3842,11 +4033,33 @@ jobs:
 
           # Use JaCoCo CLI to merge all exec files
           if [ -s exec-files.txt ]; then
-            # Download JaCoCo CLI
+            # The jacoco-cli distribution zip. Version matches <jacoco.version>
+            # in the root pom. Prefer the copy the `maven-cache` job prefetched
+            # into ~/.m2 (restored above), so a warm run makes no Central
+            # request. Fall back to Central with curl that FAILS on an HTTP
+            # error (-f) and retries transient ones with backoff, so a 429 or a
+            # rate-limit page can never be mistaken for the zip — the earlier
+            # `-sL` without `-f` left the HTTP error body in the file and then
+            # tried to unzip it.
+            # TODO(review): this version is hardcoded while the maven-cache job
+            # derives it from <jacoco.version> in pom.xml; a pom bump would make
+            # the prefetched and the looked-for versions drift (a Central fetch
+            # on upgrade). Read it from the pom here too.
             JACOCO_VERSION=0.8.11
-            curl -sL -o jacoco-cli.zip \
-              "https://repo1.maven.org/maven2/org/jacoco/jacoco/$JACOCO_VERSION/jacoco-$JACOCO_VERSION.zip"
-            unzip -q jacoco-cli.zip -d jacoco-cli
+            JACOCO_ZIP="${HOME}/.m2/repository/org/jacoco/jacoco/${JACOCO_VERSION}/jacoco-${JACOCO_VERSION}.zip"
+            if [ ! -f "$JACOCO_ZIP" ]; then
+              echo "jacoco-cli ${JACOCO_VERSION} not in the Maven cache; downloading from Maven Central"
+              mkdir -p "$(dirname "$JACOCO_ZIP")"
+              curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --retry-max-time 120 \
+                -o "$JACOCO_ZIP" \
+                "https://repo1.maven.org/maven2/org/jacoco/jacoco/${JACOCO_VERSION}/jacoco-${JACOCO_VERSION}.zip"
+            else
+              echo "Using jacoco-cli ${JACOCO_VERSION} from the Maven cache"
+            fi
+            # Refuse to proceed unless the file is a valid zip (guards against a
+            # truncated download or a cached non-zip).
+            unzip -tq "$JACOCO_ZIP"
+            unzip -q "$JACOCO_ZIP" -d jacoco-cli
 
             # Merge all exec files
             java -jar jacoco-cli/lib/jacococli.jar merge \

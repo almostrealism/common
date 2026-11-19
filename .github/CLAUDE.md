@@ -94,7 +94,7 @@ event that started it. The `changes` job publishes the mode as `run_tests`.
 | | Validate run | Test run |
 |-|--------------|----------|
 | Started by | `pull_request` (every push to a PR branch) | `deployment` of the branch to the `test` environment; `push` to master; `workflow_dispatch` |
-| Runs | `changes`, `build`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test-mac`, `test-media-mac`, `test-flowtree` and `analysis`; and, when `full_matrix` is `true` (master, `workflow_dispatch`), also `test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda` and `test-media-cuda` (see below) |
+| Runs | `changes`, `build`, `maven-cache`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test-mac`, `test-media-mac`, `test-flowtree` and `analysis`; and, when `full_matrix` is `true` (master, `workflow_dispatch`), also `test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda` and `test-media-cuda` (see below) |
 | Remediation | `auto-review`, `auto-resolve-python` | `auto-resolve-python`, and `auto-resolve` after the flaky-test retries |
 | Gate check | **All Checks** | **Test Checks** |
 | `run_tests` | `false` | `true` |
@@ -674,6 +674,29 @@ blocker for every job that compiles, tests or analyses the project, so it MUST
 stay as short as possible; jobs that need only git do not wait for it (see
 "Branch checks that need no build" below). It runs `mvn install -DskipTests`
 and nothing else: it does not run tests and does not upload coverage.
+
+### What the `maven-cache` job does
+
+Produces the Maven dependency repository every GitHub-hosted job restores, so
+the hosted jobs no longer rely on `actions/setup-java`'s `cache: maven` — which
+saved the local repository only on a miss, from whichever hosted job finished
+first (one that did not run jacoco), and so left `jacoco-maven-plugin` out of the
+cache and re-downloaded it from Maven Central on every run. The job resolves the
+full plugin and dependency set on purpose (`mvn install -DskipTests`, then
+`dependency:go-offline`/`resolve-plugins`, the checkstyle plugin, and the
+jacoco-cli distribution the `analysis` job unzips) and saves it with an explicit
+`actions/cache` under a key of the pom hashes plus the manual
+`HOSTED_MAVEN_CACHE_VERSION` prefix, with a `restore-keys` fallback. Gated on
+`code_changed` like `build`; depends only on `changes`. **Nothing depends on it**
+— it maintains the cache for subsequent runs (master's cache is readable by every
+PR) rather than sitting on the critical path, so a warm-cache failure never
+blocks a build or test lane. Every hosted Maven job restores it read-only through
+the shared `restore-maven-cache` composite action (so no consumer re-saves a
+partial repository), and a miss falls back to the network with the retry/backoff
+in `.mvn/maven.config`. See "Hosted (`ubuntu-latest`) jobs" under "Maven
+dependency caching" in `tools/ci/README.md`;
+`tools/tests/test_hosted_maven_cache.py` pins the wiring, including that the save
+and restore keys cannot drift.
 
 ### Re-run jobs and artifacts
 
