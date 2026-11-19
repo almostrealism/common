@@ -25,6 +25,7 @@ import io.flowtree.jobs.agent.PhaseConfigBundle;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import io.flowtree.submission.PhaseConfigResolver;
@@ -35,6 +36,7 @@ import io.flowtree.slack.SlackNotifier;
 import io.flowtree.slack.NotifierRegistry;
 import io.flowtree.github.GitHubOrgs;
 import io.flowtree.github.GitHubProxyHandler;
+import io.flowtree.github.PullRequest;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -83,29 +85,43 @@ final class WorkstreamRegistrationHandler {
     private final Function<String, Response> errorResponse;
     /** Emits a log line via the parent endpoint's logger. */
     private final Consumer<String> log;
+    /**
+     * Lists a repository's pull requests for a branch, keyed by
+     * {@code (ownerRepo, branch)}. Returns {@code null} when GitHub could not be
+     * asked (no token, transport failure) and an empty list when the branch has
+     * none. Used to confirm a dependent-repo match still reflects a live
+     * companion pull request before reusing a downstream workstream; see
+     * {@link #dependentMatchStillCovers(Workstream, String)}.
+     */
+    private final BiFunction<String, String, List<PullRequest>> branchPullRequestLookup;
 
     /**
      * Constructs a new handler bound to the given notifier registry.
      *
-     * @param notifiers        the workspace notifier registry
-     * @param orgToWorkspaceId GitHub-org to workspace-ID lookup; never {@code null}
-     * @param listener         Slack listener for YAML persistence (may be {@code null})
-     * @param readBody         body reader supplied by the parent endpoint
-     * @param errorResponse    400-error response factory
-     * @param log              log line consumer
+     * @param notifiers               the workspace notifier registry
+     * @param orgToWorkspaceId        GitHub-org to workspace-ID lookup; never {@code null}
+     * @param listener                Slack listener for YAML persistence (may be {@code null})
+     * @param readBody                body reader supplied by the parent endpoint
+     * @param errorResponse           400-error response factory
+     * @param log                     log line consumer
+     * @param branchPullRequestLookup lists a repository's pull requests for a
+     *                                branch, keyed by {@code (ownerRepo, branch)};
+     *                                {@code null} result means "could not ask"
      */
     WorkstreamRegistrationHandler(NotifierRegistry notifiers,
                                   Map<String, String> orgToWorkspaceId,
                                   SlackListener listener,
                                   Function<IHTTPSession, String> readBody,
                                   Function<String, Response> errorResponse,
-                                  Consumer<String> log) {
+                                  Consumer<String> log,
+                                  BiFunction<String, String, List<PullRequest>> branchPullRequestLookup) {
         this.notifiers = notifiers;
         this.orgToWorkspaceId = orgToWorkspaceId;
         this.listener = listener;
         this.readBody = readBody;
         this.errorResponse = errorResponse;
         this.log = log;
+        this.branchPullRequestLookup = branchPullRequestLookup;
     }
 
     /**
@@ -490,9 +506,15 @@ final class WorkstreamRegistrationHandler {
      * lookup checks whether a non-archived workstream already covers this
      * branch as a <em>dependent repo</em> — its primary repo is a downstream
      * repository that lists {@code repoUrl} among its {@code dependentRepos}
-     * and shares this branch. Such a workstream already owns the branch's
-     * work, so it is reused via {@link Registration#dependentRepoMatch} rather
-     * than registering a competing duplicate with a suffixed channel. The
+     * and shares this branch. Such a workstream is reused via
+     * {@link Registration#dependentRepoMatch} rather than registering a
+     * competing duplicate with a suffixed channel — but only while it still
+     * genuinely owns the branch's work, i.e. its primary repo carries an open
+     * pull request on the branch ({@link #dependentMatchStillCovers}). When the
+     * primary repo has no open pull request on the branch (the change touched
+     * only {@code repoUrl}, or the companion closed), reusing it would silently
+     * absorb this repository's own pull request and leave it with no review
+     * loop, so a workstream is registered for {@code repoUrl} instead. The
      * exact match always wins, so a workstream that genuinely tracks
      * {@code (branch, repo)} is never returned as a dependent-repo match.</p>
      *
@@ -592,11 +614,18 @@ final class WorkstreamRegistrationHandler {
         // Guarded on a non-empty repoUrl: nothing to compare without one.
         if (repoUrl != null && !repoUrl.isEmpty()) {
             Workstream dependentOf = notifiers.findByBranchAndDependentRepo(defaultBranch, repoUrl);
-            if (dependentOf != null) {
+            if (dependentOf != null && dependentMatchStillCovers(dependentOf, defaultBranch)) {
                 log.accept("Branch " + defaultBranch + " of " + repoUrl
                     + " is already covered as a dependent repo of workstream "
                     + dependentOf.getWorkstreamId() + " — reusing it");
                 return Registration.dependentRepoMatch(dependentOf);
+            }
+            if (dependentOf != null) {
+                log.accept("Branch " + defaultBranch + " of " + repoUrl
+                    + " matched dependent-repo workstream " + dependentOf.getWorkstreamId()
+                    + ", but its primary repo " + dependentOf.getRepoUrl()
+                    + " has no open pull request on the branch — registering a workstream"
+                    + " for " + repoUrl + " instead of absorbing its pull request");
             }
         }
 
@@ -739,6 +768,45 @@ final class WorkstreamRegistrationHandler {
             + " (branch=" + defaultBranch + ", channel=" + channelName + ")");
 
         return Registration.created(workstream, channelId, channelName);
+    }
+
+    /**
+     * Whether a dependent-repo candidate still genuinely covers the branch's
+     * work, and so may be reused instead of registering a workstream for the
+     * submitting repository.
+     *
+     * <p>Reusing {@code candidate} is only correct while the companion-pull-request
+     * arrangement that justifies it is in play: the candidate's primary repository
+     * is downstream and carries its own open pull request on the branch, on which
+     * the review and auto-resolve loop runs. When that primary repository has no
+     * open pull request on the branch — the change touched only the dependent
+     * repository, or the companion was closed — reusing the candidate would
+     * silently absorb the submitting repository's own pull request, leaving it
+     * with no workstream, no review loop, and no settled-CI run. In that case this
+     * returns {@code false} so the caller registers a workstream whose primary repo
+     * is the submitting repository.</p>
+     *
+     * <p>A lookup that could not reach GitHub (a {@code null} result, or a repo
+     * URL with no GitHub slug) is treated as "still covered": absent evidence to
+     * the contrary the deduplication is preserved, so a transient GitHub outage
+     * does not start minting duplicate workstreams. Archived candidates never
+     * reach here — {@link NotifierRegistry#findByBranchAndDependentRepo} excludes
+     * them — so an archived downstream workstream already falls through to
+     * registration.</p>
+     *
+     * @param candidate the dependent-repo workstream a lookup matched
+     * @param branch    the branch the submission names
+     * @return {@code true} to reuse {@code candidate}; {@code false} to register
+     *         a workstream for the submitting repository instead
+     */
+    private boolean dependentMatchStillCovers(Workstream candidate, String branch) {
+        String primaryRepo = candidate.getRepoUrl();
+        if (primaryRepo == null || primaryRepo.isEmpty()) return true;
+        String ownerRepo = GitHubProxyHandler.extractOwnerRepo(primaryRepo);
+        if (ownerRepo == null) return true;
+        List<PullRequest> prs = branchPullRequestLookup.apply(ownerRepo, branch);
+        if (prs == null) return true;
+        return prs.stream().anyMatch(PullRequest::isOpen);
     }
 
     /**

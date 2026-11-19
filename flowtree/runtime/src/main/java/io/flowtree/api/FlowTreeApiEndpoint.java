@@ -1580,7 +1580,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      */
     private WorkstreamRegistrationHandler workstreamRegistrationHandler() {
         return new WorkstreamRegistrationHandler(notifiers, orgToWorkspaceId,
-                listener, this::readBody, this::errorResponse, this::log);
+                listener, this::readBody, this::errorResponse, this::log, githubProxyHandler::listPullRequestsForBranch);
     }
 
     // TODO(review): javadoc here was compressed to dodge the file-length limit; see memory.
