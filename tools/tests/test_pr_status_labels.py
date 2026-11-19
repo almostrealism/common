@@ -45,6 +45,20 @@ def job(name, conclusion="success"):
     return {"name": name, "conclusion": conclusion}
 
 
+def plan_pr(draft=True, base_ref="master", default_branch="master",
+            head_full="owner/repo"):
+    """A pull request detail object for the ready-to-launch conditions."""
+    return {"number": 7, "draft": draft,
+            "base": {"ref": base_ref, "repo": {"default_branch": default_branch}},
+            "head": {"ref": "project/plan-x", "sha": "abc",
+                     "repo": {"full_name": head_full}}}
+
+
+def changed(filename, status="added"):
+    """One entry of the pull request files API."""
+    return {"filename": filename, "status": status}
+
+
 class DeriveTest(unittest.TestCase):
     """Which state each combination of runs and checks reports."""
 
@@ -234,6 +248,107 @@ class LabelChangesTest(unittest.TestCase):
         add, remove = labels.label_changes([labels.FULL_TESTS],
                                            labels.FULL_TESTS, True)
         self.assertEqual((add, remove), ([labels.STALLED], []))
+
+    def test_ready_to_launch_is_added_beside_the_state(self):
+        add, remove = labels.label_changes([labels.VALIDATING],
+                                           labels.VALIDATING, False, ready=True)
+        self.assertEqual((add, remove), ([labels.READY_TO_LAUNCH], []))
+
+    def test_both_markers_are_added_beside_the_state(self):
+        add, remove = labels.label_changes([labels.VALIDATING],
+                                           labels.VALIDATING, True, ready=True)
+        self.assertEqual(add,
+                         sorted([labels.STALLED, labels.READY_TO_LAUNCH]))
+        self.assertEqual(remove, [])
+
+    def test_ready_to_launch_is_removed_when_no_longer_ready(self):
+        add, remove = labels.label_changes(
+            [labels.FULL_TESTS, labels.READY_TO_LAUNCH], labels.FULL_TESTS,
+            False, ready=False)
+        self.assertEqual((add, remove), ([], [labels.READY_TO_LAUNCH]))
+
+
+class ReadyToLaunchTest(unittest.TestCase):
+    """Each condition of the ready-to-launch marker, on and off. It mirrors the
+    ready-plan -> plan-ready -> verify-completion -> implement-plan chain."""
+
+    REPO = "owner/repo"
+
+    def ready(self, pr=None, files=None):
+        return labels.ready_to_launch(
+            {"pr": pr if pr is not None else plan_pr(),
+             "files": files if files is not None
+             else [changed("docs/plans/PLAN-x.md")]},
+            self.REPO)
+
+    def test_all_conditions_met_is_ready(self):
+        self.assertTrue(self.ready())
+
+    def test_a_non_draft_pr_is_not_ready(self):
+        self.assertFalse(self.ready(pr=plan_pr(draft=False)))
+
+    def test_a_pr_not_targeting_the_default_branch_is_not_ready(self):
+        self.assertFalse(self.ready(pr=plan_pr(base_ref="release/1.0")))
+
+    def test_a_fork_head_is_not_ready(self):
+        self.assertFalse(self.ready(pr=plan_pr(head_full="fork/repo")))
+
+    def test_a_change_outside_docs_is_not_ready(self):
+        self.assertFalse(self.ready(files=[
+            changed("docs/plans/PLAN-x.md"),
+            changed("src/main/java/Foo.java", "modified")]))
+
+    def test_no_new_plan_document_is_not_ready(self):
+        # Docs-only, but nothing added under docs/plans.
+        self.assertFalse(self.ready(files=[changed("docs/guide.md")]))
+
+    def test_the_manager_log_does_not_count_as_a_plan(self):
+        self.assertFalse(self.ready(files=[
+            changed("docs/plans/MANAGER_LOG.md")]))
+
+    def test_a_modified_plan_is_not_a_new_plan(self):
+        self.assertFalse(self.ready(files=[
+            changed("docs/plans/PLAN-x.md", "modified")]))
+
+    def test_no_changed_files_is_not_ready(self):
+        self.assertFalse(self.ready(files=[]))
+
+    def test_a_new_plan_beside_other_docs_is_ready(self):
+        self.assertTrue(self.ready(files=[
+            changed("docs/guide.md", "modified"),
+            changed("docs/plans/sub/PLAN-y.md")]))
+
+    def test_the_marker_is_the_same_green_as_ready_for_review(self):
+        self.assertEqual(labels.LABELS[labels.READY_TO_LAUNCH][0],
+                         labels.LABELS[labels.READY][0])
+
+    def test_the_marker_never_stalls(self):
+        self.assertFalse(labels.is_stalled(labels.READY_TO_LAUNCH,
+                                           stamp(10 ** 5), NOW))
+
+    def test_gather_reads_the_files_of_a_draft_plan_pr(self):
+        item = {"number": 7, "head": {"sha": "abc", "ref": "project/plan-x",
+                                      "repo": {"full_name": "owner/repo"}}}
+        client = FakeClient([
+            ("pulls/7/files", [changed("docs/plans/PLAN-x.md")]),
+            ("pulls/7", plan_pr()),
+            ("actions/workflows/", {"workflow_runs": []}),
+            ("commits/abc/check-runs", {"check_runs": []}),
+        ])
+        facts = labels.gather(client, item)
+        self.assertTrue(labels.ready_to_launch(facts, client.repo))
+
+    def test_gather_skips_the_files_of_a_non_draft_pr(self):
+        item = {"number": 7, "head": {"sha": "abc", "ref": "feature/x",
+                                      "repo": {"full_name": "owner/repo"}}}
+        client = FakeClient([
+            ("pulls/7", plan_pr(draft=False)),
+            ("actions/workflows/", {"workflow_runs": []}),
+            ("commits/abc/check-runs", {"check_runs": []}),
+        ])
+        facts = labels.gather(client, item)
+        self.assertNotIn("files", facts)
+        self.assertFalse(labels.ready_to_launch(facts, client.repo))
 
 
 class FakeClient:

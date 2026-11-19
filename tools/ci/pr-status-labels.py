@@ -40,6 +40,16 @@ What decides each state (``derive``), for the pull request's head commit:
     - otherwise: ``ci: needs attention``
 - no run yet: ``ci: validating``
 
+Beside that stage label, the way ``ci: stalled`` sits beside it, a draft plan
+pull request can also carry ``ci: ready to launch``: a marker that an approver
+marking it ready for review now would launch an implementation agent. It
+mirrors the conditions of the ready-for-review chain (``ready-plan.yaml`` ->
+``plan-ready.yaml`` -> ``verify-completion.yaml`` -> ``implement-plan.yaml``)
+that the ready-for-review transition runs — see ``ready_to_launch``. The
+chain's in-flight-workstream guard is not among them: the labeller holds no
+controller credentials, so the marker can show while a job is already in
+flight (in which case the switch would be refused).
+
 The cap is read from the ``remediation-cap`` commit status that
 ``submit-agent-job.sh`` sets on the head commit when the controller refuses a
 remediation pass for that reason. The submit step itself stays green, and the
@@ -93,6 +103,7 @@ READY = "ci: ready for review"
 NEEDS_ATTENTION = "ci: needs attention"
 REVIEW_LIMIT = "ci: review limit"
 STALLED = "ci: stalled"
+READY_TO_LAUNCH = "ci: ready to launch"
 
 # The commit status submit-agent-job.sh sets on the head commit when the
 # controller refuses a remediation pass because the per-PR cap is reached.
@@ -114,6 +125,9 @@ LABELS = {
                              "a person needs to look", None),
     STALLED: ("b60205", "In the same CI state for longer than it should take",
               None),
+    READY_TO_LAUNCH: ("0e8a16", "Beside the stage label: approving this draft "
+                                "plan now would launch an implementation agent",
+                      None),
 }
 
 # The jobs whose success means a remediation agent was submitted.
@@ -221,12 +235,74 @@ def is_stalled(label, since, now):
     return now - when > datetime.timedelta(hours=hours)
 
 
-def label_changes(current, label, stalled):
+def draft_plan_pr(pr, repo):
+    """Condition 1 of ``ready_to_launch``: an open draft pull request of this
+    repository whose head is a branch here (not a fork) and whose base is the
+    repository's default branch — the state a plan branch's pull request is in
+    while it awaits approval.
+
+    This is ``ready-plan.yaml``'s trigger (``pull_request_target`` of a draft
+    marked ready, base the default branch) together with ``plan-ready.yaml``'s
+    fork guard (the head is a branch in this repository). ``gather`` reads it to
+    decide whether the changed files are worth fetching; ``ready_to_launch``
+    rechecks it."""
+    base = pr.get("base") or {}
+    head = pr.get("head") or {}
+    default_branch = (base.get("repo") or {}).get("default_branch")
+    return bool(pr.get("draft")) and default_branch is not None \
+        and base.get("ref") == default_branch \
+        and (head.get("repo") or {}).get("full_name") == repo
+
+
+def ready_to_launch(facts, repo):
+    """Whether, if an approver switched this draft pull request to ready for
+    review now, that switch would launch an implementation agent.
+
+    It mirrors the conditions of the ``ready-plan.yaml`` -> ``plan-ready.yaml``
+    -> ``verify-completion.yaml`` -> ``implement-plan.yaml`` chain a
+    ready-for-review transition runs:
+
+    1. the pull request is an open draft of this repository, targeting its
+       default branch, with a head branch here and not a fork
+       (``ready-plan.yaml``'s trigger and ``plan-ready.yaml``'s fork guard);
+    2. every changed file is under ``docs/`` (``plan-ready.yaml``'s docs-only
+       rule, read from the pull request's files, which GitHub computes as the
+       merge-base diff against the base);
+    3. the branch adds at least one new ``.md`` under ``docs/plans`` other than
+       ``MANAGER_LOG.md`` (``implement-plan.yaml``'s ``detect-plan``: a file
+       added relative to the default branch is ``status == "added"`` here).
+
+    A fourth condition the chain enforces — that the branch's FlowTree
+    workstream has no job pending or running (``implement-plan.yaml``'s
+    in-flight guard, ``workstream-idle.sh``) — is NOT checked: the labeller
+    holds no controller credentials, so the marker can show while a job is in
+    flight, in which case the switch would be refused by that guard. The
+    labeller also cannot know whether the person who switches it is in
+    ``PLAN_APPROVERS``, which ``plan-ready.yaml`` requires."""
+    if not draft_plan_pr(facts["pr"], repo):
+        return False
+    files = facts.get("files") or []
+    names = [item.get("filename", "") for item in files]
+    if not names or not all(name.startswith("docs/") for name in names):
+        return False
+    return any(item.get("status") == "added"
+               and item.get("filename", "").startswith("docs/plans/")
+               and item.get("filename", "").endswith(".md")
+               and os.path.basename(item.get("filename", "")) != "MANAGER_LOG.md"
+               for item in files)
+
+
+def label_changes(current, label, stalled, ready=False):
     """The ``ci: `` labels to add and to remove, as two sorted lists.
 
+    ``stalled`` and ``ready`` each add their marker beside the stage ``label``.
     Every ``ci: `` label this script manages other than the wanted ones is
     removed; labels outside that set are left alone."""
-    wanted = {label} | ({STALLED} if stalled else set())
+    wanted = {label}
+    if stalled:
+        wanted.add(STALLED)
+    if ready:
+        wanted.add(READY_TO_LAUNCH)
     present = set(current) & set(LABELS)
     return sorted(wanted - present), sorted(present - wanted)
 
@@ -331,6 +407,11 @@ def gather(client, pr):
         facts["staged"] = any(
             attempt_start is None or parse_time(a["created_at"]) >= attempt_start
             for a in artifacts)
+    # Only a draft plan pull request can carry the ready-to-launch marker, and
+    # only then are its changed files (conditions 2 and 3 of ready_to_launch)
+    # worth a request.
+    if draft_plan_pr(detail, client.repo):
+        facts["files"] = client.get_all("pulls/%d/files" % pr["number"])
     return facts
 
 
@@ -352,11 +433,13 @@ def apply(client, pr, add, remove):
                     % (pr["number"], urllib.parse.quote(name)))
 
 
-def summary_row(pr, label, since, reason, stalled):
+def summary_row(pr, label, since, reason, stalled, ready):
     """One markdown table row for the step summary."""
+    markers = "".join(mark for mark, on in (
+        (" (stalled)", stalled), (" (ready to launch)", ready)) if on)
     return "| #%d | %s | %s%s | %s | %s |" % (
         pr["number"], pr.get("title", "").replace("|", "\\|"), label,
-        " (stalled)" if stalled else "", since or "", reason)
+        markers, since or "", reason)
 
 
 def main(argv=None):
@@ -373,16 +456,19 @@ def main(argv=None):
     failures = 0
     for pr in open_pulls(client, args.branch):
         try:
-            label, since, reason = derive(gather(client, pr), now)
+            facts = gather(client, pr)
+            label, since, reason = derive(facts, now)
             stalled = is_stalled(label, since, now)
+            ready = ready_to_launch(facts, client.repo)
             add, remove = label_changes(
-                [item["name"] for item in pr.get("labels", [])], label, stalled)
+                [item["name"] for item in pr.get("labels", [])], label, stalled,
+                ready)
             if not args.dry_run:
                 apply(client, pr, add, remove)
-            rows.append(summary_row(pr, label, since, reason, stalled))
-            print("#%d %s%s: %s (add %s, remove %s)" % (
-                pr["number"], label, " stalled" if stalled else "", reason,
-                add, remove))
+            rows.append(summary_row(pr, label, since, reason, stalled, ready))
+            print("#%d %s%s%s: %s (add %s, remove %s)" % (
+                pr["number"], label, " stalled" if stalled else "",
+                " ready-to-launch" if ready else "", reason, add, remove))
         except (urllib.error.URLError, KeyError, ValueError) as error:
             failures += 1
             print("::warning::#%d: could not update its status label: %s"
