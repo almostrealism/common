@@ -32,9 +32,6 @@ import io.flowtree.msg.NodeProxy;
 import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -96,6 +93,7 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>GET</td><td>/api/github/proxy?url=...</td><td>--</td><td>Proxy a GET request to the GitHub API</td></tr>
  *   <tr><td>POST</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a POST request to the GitHub API</td></tr>
  *   <tr><td>PUT</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a PUT request to the GitHub API</td></tr>
+ *   <tr><td>PATCH</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a PATCH request to the GitHub API</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td><td>List registered workstreams. Filters: {@code workspaceId},
  *       {@code repoUrl} (matched on repository identity, so SSH and HTTPS spellings of one repository are equivalent),
  *       {@code dispatchCapable} ({@code true}/{@code false}), {@code archived} ({@code true}/{@code false}; supersedes
@@ -193,6 +191,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Serves the read-only job record endpoints. */
     private final JobQueryHandler jobQueryHandler;
+
+    /** Reads request bodies for every route, including PATCH bodies NanoHTTPD discards. */
+    private final RequestBodyReader bodyReader = new RequestBodyReader();
 
     /**
      * The SMS alerting surface: {@code POST /api/alerts} and the inbound
@@ -762,7 +763,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         if ("/api/github/proxy".equals(uri)
                 && (Method.GET.equals(method) || Method.POST.equals(method)
-                    || Method.PUT.equals(method))) {
+                    || Method.PUT.equals(method) || Method.PATCH.equals(method))) {
             return handleGitHubProxy(session, method);
         }
 
@@ -1419,26 +1420,13 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
     }
 
     /**
-     * Reads the POST body from a NanoHTTPD session.
+     * Reads the request body from a NanoHTTPD session through {@link #bodyReader}.
+     *
+     * @param session the NanoHTTPD session
+     * @return the body string, or {@code null} when there is none
      */
     private String readBody(IHTTPSession session) {
-        try {
-            Map<String, String> bodyMap = new HashMap<>();
-            session.parseBody(bodyMap);
-            // POST bodies are stored inline under "postData"; PUT bodies are stored
-            // as a temp-file path under "content" — handle both shapes.
-            if (bodyMap.containsKey("postData")) {
-                return bodyMap.get("postData");
-            }
-            String contentFile = bodyMap.get("content");
-            if (contentFile != null && !contentFile.isEmpty()) {
-                return Files.readString(Path.of(contentFile), StandardCharsets.UTF_8);
-            }
-            return null;
-        } catch (IOException | ResponseException e) {
-            warn("Error reading body: " + e.getMessage());
-            return null;
-        }
+        return bodyReader.read(session);
     }
 
     /**

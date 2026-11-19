@@ -590,6 +590,95 @@ def github_create_pr(
     return result
 
 @mcp.tool()
+def github_update_pr(
+    pr_number: int,
+    title: str = "",
+    body: str = "",
+    workstream_id: str = "",
+    branch: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Change the title and/or description of an existing pull request.
+
+    Only the title and the description can be changed; the request never
+    carries state, base, maintainer_can_modify, labels or any other field.
+    A field left empty is not changed. Use this to correct a pull request
+    whose title or description no longer matches the branch.
+
+    Args:
+        pr_number: The PR number. Must be a positive integer.
+        title: New PR title. Empty leaves the title unchanged; a title of
+            only whitespace is rejected.
+        body: New PR description. Empty leaves the description unchanged.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch hint.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        dict with ok=True, number, url, title and updated_fields (the names
+        of the fields that were sent) on success; ok=False with error details
+        on failure.
+    """
+    server._require_scope("github")
+    if org and repo:
+        server._require_org_in_scope(org)
+
+    if not isinstance(pr_number, int) or isinstance(pr_number, bool) or pr_number <= 0:
+        return {"ok": False, "error": "pr_number must be a positive integer"}
+    if title and not title.strip():
+        return {"ok": False, "error": "title must not be only whitespace"}
+    payload = {}
+    if title:
+        payload["title"] = title
+    if body:
+        payload["body"] = body
+    if not payload:
+        return {
+            "ok": False,
+            "error": "nothing to update: pass a title, a body, or both",
+        }
+
+    owner, repo, _, err = server._resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
+    if err:
+        return err
+
+    updated_fields = sorted(payload)
+    server._audit("github_update_pr", pr_number=pr_number, fields=updated_fields)
+
+    result = server._github_request(
+        "PATCH", f"/repos/{owner}/{repo}/pulls/{pr_number}", payload)
+    if result.get("number"):
+        # A proxy that does not forward PATCH answers with the unchanged PR
+        # (HTTP 200), so success is reported only when the response shows
+        # every sent field with its new value.
+        # TODO(review): exact equality may misreport a real edit if GitHub trims the title; consider comparing stripped values.
+        unchanged = [
+            field for field in updated_fields
+            if (result.get(field) or "").replace("\r\n", "\n")
+            != payload[field].replace("\r\n", "\n")
+        ]
+        if unchanged:
+            return {
+                "ok": False,
+                "error": ("GitHub responded but the pull request still shows the "
+                          "old " + ", ".join(unchanged) + "; the edit did not take effect"),
+                "number": result["number"],
+            }
+        return {
+            "ok": True,
+            "number": result["number"],
+            "url": result.get("html_url"),
+            "title": result.get("title"),
+            "updated_fields": updated_fields,
+        }
+    return result
+
+@mcp.tool()
 def github_request_copilot_review(
     pr_number: int = 0,
     workstream_id: str = "",

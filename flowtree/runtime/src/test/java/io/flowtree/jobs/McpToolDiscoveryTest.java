@@ -338,6 +338,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"github_pr_reply",
 			"github_list_open_prs",
 			"github_create_pr",
+			"github_update_pr",
 			"github_request_copilot_review",
 			"github_read_file",
 			"github_pr_check_status",
@@ -411,6 +412,15 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			createPrParams.contains("body"));
 		assertTrue("github_create_pr must declare request_copilot_review in signature",
 			createPrParams.contains("request_copilot_review"));
+
+		List<String> updatePrParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_update_pr");
+		assertTrue("github_update_pr must declare pr_number in signature",
+			updatePrParams.contains("pr_number"));
+		assertTrue("github_update_pr must declare title in signature",
+			updatePrParams.contains("title"));
+		assertTrue("github_update_pr must declare body in signature",
+			updatePrParams.contains("body"));
 
 		List<String> submitParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_submit_task");
