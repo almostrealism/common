@@ -30,33 +30,24 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Pins the <em>current</em> behaviour of binary element-wise operations when the two
- * operands have sizes that are not broadcast-compatible in the conventional
- * numerical-library sense.
+ * Pins the contract of binary element-wise operations when the two operands have different
+ * sizes: trailing-axis broadcasting. Comparing the two shapes axis by axis from the trailing
+ * end, each pair of lengths must be equal or one of them must be 1 (a length-1 axis broadcasts,
+ * and a missing leading axis counts as length 1); a scalar broadcasts against anything. A pair
+ * that is not compatible by this rule is rejected when the computation is created, rather than
+ * being tiled or read modulo its own length.
  *
- * <p><strong>These tests characterise behaviour that is under review; they do not assert a
- * desired contract.</strong> Today a binary element-wise operation built through
- * {@code CollectionFeatures.compute(...)} reconciles mismatched operand sizes by taking the
- * larger operand's shape and reading the smaller operand modulo its own length (see
- * {@code CollectionVariable.getValueAt}, which applies {@code imod(getTotalSize())} to a
- * non-scalar operand, and {@code TraversalAxisAlignment.align}, whose second pass either tiles
- * a divisible operand with {@code repeat(...)} or leaves an indivisible one short to be
- * wrapped). The owner's stated principle is to fail fast on a wrong shape at creation time, so
- * a later change is expected to make several of these operations throw instead. When that
- * happens these assertions should be <em>flipped</em> (to expect an exception), not deleted:
- * each one marks a concrete input the new rule has to make a decision about.</p>
- *
- * <p>Scalar (size&nbsp;1) operands broadcast correctly today and are expected to keep doing so
- * under any rule; {@link #scalarOperandBroadcastsCorrectly()} pins that as the baseline the
- * mismatched cases are contrasted against.</p>
+ * <p>Each accepted case asserts both the result shape and the per-element values, using operands
+ * whose elements differ so that a wrong broadcast axis would change the result. Each rejected
+ * case asserts that building the computation throws.</p>
  *
  * @see ClampBroadcastTests
- * @see io.almostrealism.collect.CollectionVariable
+ * @see io.almostrealism.collect.TraversalPolicy#isBroadcastCompatible
  * @see io.almostrealism.collect.TraversalAxisAlignment
  */
 public class OperandSizeBroadcastCharacterizationTests extends TestSuiteBase {
 
-	/** A (4) vector, the larger operand in the vector cases. */
+	/** A (4) vector. */
 	private PackedCollection v() {
 		return pack(0.5, 1.5, 2.0, 3.0);
 	}
@@ -66,7 +57,7 @@ public class OperandSizeBroadcastCharacterizationTests extends TestSuiteBase {
 		return pack(10.0, 20.0, 30.0);
 	}
 
-	/** A (2) vector: a divisor of 4, so it is tiled rather than wrapped. */
+	/** A (2) vector: a divisor of 4, but still not broadcast-compatible with a (4) vector. */
 	private PackedCollection col() {
 		return pack(100.0, 200.0);
 	}
@@ -77,65 +68,31 @@ public class OperandSizeBroadcastCharacterizationTests extends TestSuiteBase {
 	}
 
 	/**
-	 * CURRENT BEHAVIOUR (under review): adding a (3) vector to a (4) vector produces a (4)
-	 * result in which the (3) operand is read modulo 3, so index 3 reuses element 0. A
-	 * conventional library rejects {@code (4) + (3)} as non-broadcastable.
+	 * Asserts that building the given computation throws, because its operands are not
+	 * trailing-axis broadcast compatible.
+	 *
+	 * @param build the computation builder expected to be rejected
 	 */
-	@Test(timeout = 60000)
-	public void addVectorRowWrapsModuloThree() {
-		PackedCollection out = cp(v()).add(cp(row())).evaluate();
-
-		Assert.assertEquals("result keeps the larger operand's total size",
-				4, out.getShape().getTotalSize());
-		assertEquals(0.5 + 10.0, out.toDouble(0));
-		assertEquals(1.5 + 20.0, out.toDouble(1));
-		assertEquals(2.0 + 30.0, out.toDouble(2));
-		// row[3 % 3] == row[0] == 10.0 is reused here:
-		assertEquals(3.0 + 10.0, out.toDouble(3));
+	private void assertRejected(Runnable build) {
+		try {
+			build.run();
+			Assert.fail("Expected a non-broadcastable shape pair to be rejected at creation");
+		} catch (IllegalArgumentException expected) {
+			// a non-broadcastable pair is rejected when the computation is created
+		}
 	}
 
 	/**
-	 * CURRENT BEHAVIOUR (under review): {@code max} of a (4) and a (3) operand wraps the (3)
-	 * operand modulo 3 in exactly the same way {@code add} does, confirming that the wrapping
-	 * lives in the shared size-reconciliation path rather than in any one operation.
+	 * A (3) row vector broadcasts across the trailing axis of a (2, 3) matrix: the same row is
+	 * added to every matrix row. The result keeps the matrix shape.
 	 */
 	@Test(timeout = 60000)
-	public void maxVectorRowWrapsModuloThree() {
-		PackedCollection out = max(cp(v()), cp(row())).evaluate();
-
-		Assert.assertEquals(4, out.getShape().getTotalSize());
-		assertEquals(Math.max(0.5, 10.0), out.toDouble(0));
-		assertEquals(Math.max(1.5, 20.0), out.toDouble(1));
-		assertEquals(Math.max(2.0, 30.0), out.toDouble(2));
-		assertEquals(Math.max(3.0, 10.0), out.toDouble(3));
-	}
-
-	/**
-	 * CURRENT BEHAVIOUR (under review): because 2 divides 4, the (2) operand is tiled to
-	 * {@code [100, 200, 100, 200]} rather than left short, so the multiply reuses it with a
-	 * period of 2. A conventional library rejects {@code (4) * (2)} as non-broadcastable.
-	 */
-	@Test(timeout = 60000)
-	public void multiplyVectorColTilesDivisibleOperand() {
-		PackedCollection out = cp(v()).multiply(cp(col())).evaluate();
-
-		Assert.assertEquals(4, out.getShape().getTotalSize());
-		assertEquals(0.5 * 100.0, out.toDouble(0));
-		assertEquals(1.5 * 200.0, out.toDouble(1));
-		assertEquals(2.0 * 100.0, out.toDouble(2));
-		assertEquals(3.0 * 200.0, out.toDouble(3));
-	}
-
-	/**
-	 * CURRENT BEHAVIOUR (under review): a (3) operand against a (2, 3) operand aligns with the
-	 * trailing axis, so the same row is added to every row of the matrix. Which axis a vector
-	 * aligns with is decided by which dimension its length happens to match.
-	 */
-	@Test(timeout = 60000)
-	public void addMatrixRowAlignsTrailingAxis() {
+	public void rowBroadcastsAcrossTrailingAxis() {
 		PackedCollection out = cp(m23()).add(cp(row())).evaluate();
 
 		Assert.assertEquals(6, out.getShape().getTotalSize());
+		Assert.assertEquals(2, out.getShape().length(0));
+		Assert.assertEquals(3, out.getShape().length(1));
 		double[] expected = {11, 22, 33, 14, 25, 36};
 		for (int i = 0; i < expected.length; i++) {
 			assertEquals(expected[i], out.toDouble(i));
@@ -143,26 +100,120 @@ public class OperandSizeBroadcastCharacterizationTests extends TestSuiteBase {
 	}
 
 	/**
-	 * CURRENT BEHAVIOUR (under review): a (2) operand against the same (2, 3) operand aligns
-	 * with the leading axis instead, so each matrix row is offset by a different element of the
-	 * (2) operand. For a square {@code (n, n)} matrix both alignments would be possible and the
-	 * caller cannot say which they would get — that ambiguity is the second defect under review.
+	 * A (2, 1) column broadcasts across the trailing axis of a (2, 3) matrix: a per-row value is
+	 * added to every element of its row. This is the explicit per-row form a caller writes with
+	 * {@code reshape(2, 1)}.
 	 */
 	@Test(timeout = 60000)
-	public void addMatrixColAlignsLeadingAxis() {
-		PackedCollection out = cp(m23()).add(cp(col())).evaluate();
+	public void columnBroadcastsPerRow() {
+		PackedCollection column = pack(10.0, 20.0).reshape(shape(2, 1));
+		PackedCollection out = cp(m23()).add(cp(column)).evaluate();
 
 		Assert.assertEquals(6, out.getShape().getTotalSize());
-		double[] expected = {101, 102, 103, 204, 205, 206};
+		Assert.assertEquals(2, out.getShape().length(0));
+		Assert.assertEquals(3, out.getShape().length(1));
+		double[] expected = {11, 12, 13, 24, 25, 26};
 		for (int i = 0; i < expected.length; i++) {
 			assertEquals(expected[i], out.toDouble(i));
 		}
 	}
 
 	/**
-	 * BASELINE (expected to survive any rule): a scalar broadcasts across every element of a
-	 * vector, in either operand position, and across the rows of a traversed matrix. This is the
-	 * behaviour the mismatched-size cases above are contrasted against.
+	 * A (2) vector against a square (2, 2) matrix resolves to the trailing axis — the whole
+	 * vector added to every row — rather than the coincidentally equal leading axis.
+	 */
+	@Test(timeout = 60000)
+	public void squareMatrixResolvesTrailingAxis() {
+		PackedCollection square = pack(1.0, 2.0, 3.0, 4.0).reshape(shape(2, 2));
+		PackedCollection vec = pack(10.0, 20.0);
+		PackedCollection out = cp(square).add(cp(vec)).evaluate();
+
+		Assert.assertEquals(4, out.getShape().getTotalSize());
+		Assert.assertEquals(2, out.getShape().length(0));
+		Assert.assertEquals(2, out.getShape().length(1));
+		double[] expected = {11, 22, 13, 24};
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals(expected[i], out.toDouble(i));
+		}
+	}
+
+	/**
+	 * A trailing size-1 reduction broadcast — a (b, k, N) tensor divided or offset by a
+	 * (b, k, 1) per-row value — is the shape family normalization and softmax rely on, and it is
+	 * accepted unchanged.
+	 */
+	@Test(timeout = 60000)
+	public void trailingSizeOneReductionBroadcasts() {
+		PackedCollection a = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0).reshape(shape(1, 2, 3));
+		PackedCollection b = pack(10.0, 20.0).reshape(shape(1, 2, 1));
+		PackedCollection out = cp(a).add(cp(b)).evaluate();
+
+		Assert.assertEquals(6, out.getShape().getTotalSize());
+		Assert.assertEquals(3, out.getShape().getDimensions());
+		double[] expected = {11, 12, 13, 24, 25, 26};
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals(expected[i], out.toDouble(i));
+		}
+	}
+
+	/**
+	 * Operands of equal total size are combined positionally when each exposes the common size at
+	 * a traversal axis, so a (2, 3) matrix combines with a (6) vector element by element.
+	 */
+	@Test(timeout = 60000)
+	public void equalTotalSizeCombinesPositionally() {
+		PackedCollection flat = pack(10.0, 20.0, 30.0, 40.0, 50.0, 60.0);
+		PackedCollection out = cp(m23()).add(cp(flat)).evaluate();
+
+		Assert.assertEquals(6, out.getShape().getTotalSize());
+		double[] expected = {11, 22, 33, 44, 55, 66};
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals(expected[i], out.toDouble(i));
+		}
+	}
+
+	/**
+	 * Adding a (3) vector to a (4) vector is rejected: a conventional library rejects
+	 * {@code (4) + (3)} as non-broadcastable, and so does this one, rather than reading the (3)
+	 * operand modulo 3.
+	 */
+	@Test(timeout = 60000)
+	public void addVectorRowRejectsIndivisible() {
+		assertRejected(() -> cp(v()).add(cp(row())));
+	}
+
+	/**
+	 * {@code max} of a (4) and a (3) operand is rejected in exactly the same way {@code add} is,
+	 * confirming the rejection lives in the shared size-reconciliation path rather than in any one
+	 * operation.
+	 */
+	@Test(timeout = 60000)
+	public void maxVectorRowRejectsIndivisible() {
+		assertRejected(() -> max(cp(v()), cp(row())));
+	}
+
+	/**
+	 * Multiplying a (4) by a (2) operand is rejected even though 2 divides 4: Rule B does not tile
+	 * an operand along an axis that is not length 1.
+	 */
+	@Test(timeout = 60000)
+	public void multiplyVectorColRejectsDivisibleTile() {
+		assertRejected(() -> cp(v()).multiply(cp(col())));
+	}
+
+	/**
+	 * A bare (2) vector against a (2, 3) matrix is rejected: its trailing length 2 does not match
+	 * the matrix's trailing length 3 and is not 1. The caller writes {@code reshape(2, 1)} to say
+	 * the value is per-row.
+	 */
+	@Test(timeout = 60000)
+	public void bareVectorAgainstMatrixRejected() {
+		assertRejected(() -> cp(m23()).add(cp(col())));
+	}
+
+	/**
+	 * A scalar broadcasts across every element of a vector, in either operand position, and across
+	 * the rows of a traversed matrix. This is the behaviour every rule keeps.
 	 */
 	@Test(timeout = 60000)
 	public void scalarOperandBroadcastsCorrectly() {
@@ -186,28 +237,28 @@ public class OperandSizeBroadcastCharacterizationTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Emits a profiled run of the wrapping {@code (4) + (3)} case so the generated kernel source
-	 * and its argument bindings can be read with {@code ar-profile-analyzer}. The profile is
-	 * written under {@code results/} alongside the other profiles this module produces.
+	 * Emits a profiled run of the accepted per-row broadcast {@code (2, 3) + (2, 1)} so the
+	 * generated kernel source and its argument bindings can be read with {@code ar-profile-analyzer}.
 	 *
 	 * @throws IOException if the profile directory cannot be created or the profile cannot be saved
 	 */
 	@Test(timeout = 60000)
-	public void profileVectorRowWrap() throws IOException {
+	public void profileRowBroadcast() throws IOException {
 		OperationProfileNode profile =
-				initKernelMetrics(new OperationProfileNode("operandSizeWrapVectorRowAdd"));
+				initKernelMetrics(new OperationProfileNode("operandSizeRowBroadcastAdd"));
 
 		PackedCollection out;
 		try {
-			CollectionProducer sum = cp(v()).add(cp(row()));
+			PackedCollection column = pack(10.0, 20.0).reshape(shape(2, 1));
+			CollectionProducer sum = cp(m23()).add(cp(column));
 			out = Process.optimized(sum).get().evaluate();
 		} finally {
 			Hardware.getLocalHardware().assignProfile(null);
 			Files.createDirectories(Path.of("results"));
-			profile.save("results/operandSizeWrapVectorRowAdd.xml");
+			profile.save("results/operandSizeRowBroadcastAdd.xml");
 		}
 
-		Assert.assertEquals(4, out.getShape().getTotalSize());
-		assertEquals(3.0 + 10.0, out.toDouble(3));
+		Assert.assertEquals(6, out.getShape().getTotalSize());
+		assertEquals(26.0, out.toDouble(5));
 	}
 }

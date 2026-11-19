@@ -59,12 +59,6 @@ import java.util.stream.Stream;
  * @see Countable#isFixedCount()
  */
 public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable, Describable, Signature, ExpressionFeatures, ConsoleFeatures {
-	/** Whether to enforce strict validation of dimension sizes during construction. */
-	public static boolean enableStrictSizes = true;
-
-	/** Whether to enforce that the total input size is divisible by the denominator rates. */
-	public static boolean enableDivisibleSizes = true;
-
 	/** Maximum allowed total element count, bounded by FP64 byte capacity. */
 	public static long MAX_SIZE = Long.MAX_VALUE / Precision.FP64.bytes();
 
@@ -1486,49 +1480,56 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	}
 
 	/**
-	 * Returns the number of leading dimensions that match between this shape and {@code target}.
+	 * Returns whether a collection of this shape can be combined element-wise with one of the
+	 * given shape under trailing-axis broadcasting. Comparing the two shapes axis by axis from
+	 * the trailing end, every pair of lengths must be equal or one of them must be 1: a length-1
+	 * axis broadcasts along that axis, and a missing leading axis counts as length 1. A total
+	 * size of 1 (a scalar) is therefore compatible with any shape.
 	 *
-	 * @param target the target shape to compare against
-	 * @return the number of leading dimensions with equal lengths
-	 * @see TraversalAxisAlignment
+	 * <p>There is no tiling of an operand along an axis that is not length 1, and no reading of a
+	 * shorter operand modulo its own length; a pair that is not compatible by this rule is
+	 * rejected when the computation is created.</p>
+	 *
+	 * @param other the shape to combine this one with
+	 * @return {@code true} if the two shapes are trailing-axis broadcast compatible
 	 */
-	public int matchDepth(TraversalPolicy target) {
-		int i;
-
-		i: for (i = 0; i < getDimensions(); i++) {
-			if (target.getDimensions() <= i || length(i) != target.length(i)) {
-				break i;
+	public boolean isBroadcastCompatible(TraversalPolicy other) {
+		int axes = Math.max(getDimensions(), other.getDimensions());
+		for (int i = 1; i <= axes; i++) {
+			long a = i <= getDimensions() ? lengthLong(getDimensions() - i) : 1;
+			long b = i <= other.getDimensions() ? other.lengthLong(other.getDimensions() - i) : 1;
+			if (a != b && a != 1 && b != 1) {
+				return false;
 			}
 		}
-		return i;
+
+		return true;
 	}
 
 	/**
-	 * Returns the number of times this shape must be repeated to fill the total size of
-	 * {@code target}. When {@link #enableDivisibleSizes} is set and the total size of
-	 * {@code target} is not a multiple of the total size of this shape, the result is zero.
+	 * Returns whether a collection of this shape broadcasts <em>into</em> {@code target}: it has
+	 * no more dimensions than {@code target}, and comparing from the trailing end every axis of
+	 * this shape either equals the corresponding axis of {@code target} or has length 1. This is
+	 * the directional form of {@link #isBroadcastCompatible} used when {@code target} is already
+	 * known to be the broadcast result shape.
 	 *
-	 * @param target the shape to fill
-	 * @return the number of repetitions of this shape that make up {@code target}
-	 * @throws IllegalArgumentException if this shape has no elements
-	 * @throws UnsupportedOperationException if the number of repetitions exceeds the range of an int
-	 * @see TraversalAxisAlignment
+	 * @param target the broadcast result shape this shape is combined into
+	 * @return {@code true} if this shape broadcasts into {@code target}
 	 */
-	public int repetitionsToFill(TraversalPolicy target) {
-		if (getTotalSizeLong() == 0) {
-			throw new IllegalArgumentException("A shape with no elements cannot be repeated");
+	public boolean broadcastsInto(TraversalPolicy target) {
+		if (getDimensions() > target.getDimensions()) {
+			return false;
 		}
 
-		if (enableDivisibleSizes && target.getTotalSizeLong() % getTotalSizeLong() != 0) {
-			return 0;
+		int off = target.getDimensions() - getDimensions();
+		for (int i = 0; i < getDimensions(); i++) {
+			long a = lengthLong(i);
+			if (a != target.lengthLong(i + off) && a != 1) {
+				return false;
+			}
 		}
 
-		long repeat = target.getTotalSizeLong() / getTotalSizeLong();
-		if (repeat > Integer.MAX_VALUE) {
-			throw new UnsupportedOperationException();
-		}
-
-		return (int) repeat;
+		return true;
 	}
 
 	/**

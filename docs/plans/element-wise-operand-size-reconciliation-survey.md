@@ -1,7 +1,7 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-17
-closed:
+closed: 2026-11-19
 tracker: []
 ---
 
@@ -449,3 +449,43 @@ to expect an exception (or, for the size-1 cases, to keep broadcasting). `subtra
    wider diagnostic sweep (audio DSP, attention, color, heredity, physics, geometry, stats, time)
    run in CI to enumerate every site that enters the reconciliation path, so no latent reliance
    breaks silently at compile time?
+
+---
+
+## 7. Outcome: Rule B implemented
+
+The owner chose **Rule B** (conventional trailing-axis broadcast). It is now the behaviour of
+binary element-wise operations:
+
+- Two operands are combined when, comparing their shapes axis by axis from the trailing end, each
+  pair of lengths is equal or one of them is 1; a length-1 axis broadcasts, a missing leading axis
+  counts as length 1, and a scalar broadcasts against anything. Any other pair is rejected when the
+  computation is created, with a message naming both shapes. Nothing is tiled along an axis that is
+  not length 1, and nothing is read modulo its own length.
+- The compatibility rule lives on `TraversalPolicy` (`isBroadcastCompatible`, `broadcastsInto`),
+  beside the existing shape predicates; `TraversalAxisAlignment.align` applies it. The old
+  `matchDepth`/`repetitionsToFill` tile logic and the `enableStrictSizes`/`enableDivisibleSizes`
+  flags that tuned it were removed; the wrap in `CollectionVariable.getValueAt` is now reached only
+  for a true size-1 (scalar) operand.
+
+How the §6 open questions were settled:
+
+1. **Size-1-axis broadcast** is kept (Rule B), so the `(b, k, 1) → (b, k, N)` normalization and
+   softmax reductions survive unchanged.
+2. **Leading-axis / batch broadcast** is not implicit: a coincidental leading-axis match such as
+   `(2, 3)` against a bare `(2)` is rejected. A square `(n, n)` against `(n)` resolves to the
+   trailing axis. Callers wanting a per-row or per-batch value write `reshape(n, 1)` or an explicit
+   `repeat`. Rule C's named batch API was not added.
+3. **Variable (unknown) counts** are validated from the declared `TraversalPolicy` at creation, not
+   deferred to evaluation. A scalar (total size 1) broadcasts against a variable-count operand as it
+   always did; a variable-count operand whose declared per-item width is not broadcast compatible is
+   rejected at creation.
+4. **`greaterThanConditional`** was moved onto the shared `compute(...)`/alignment path, so it
+   follows Rule B and produces a per-element result instead of collapsing a mismatch to one element.
+5. **The equal-total "first pass"** (operands of equal total size combined positionally through a
+   common traversal axis, e.g. `(2, 3)` against `(6)`) was kept: it neither tiles nor wraps, and
+   existing callers combine equal-sized data through it.
+
+The characterisation tests in this survey's companion file were flipped: the cases Rule B rejects
+assert that creating the computation throws, and the cases it accepts assert result shapes and
+per-element values.

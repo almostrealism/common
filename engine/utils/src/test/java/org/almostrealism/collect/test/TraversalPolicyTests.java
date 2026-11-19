@@ -397,24 +397,29 @@ public class TraversalPolicyTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that {@link TraversalPolicy#repetitionsToFill} counts how many copies of a
-	 * shape make up a larger one, yields zero for a size that does not divide evenly while
-	 * {@link TraversalPolicy#enableDivisibleSizes} is set, and rejects an empty shape.
+	 * Verifies that {@link TraversalPolicy#isBroadcastCompatible} applies the trailing-axis rule
+	 * (each aligned axis equal or 1, a missing leading axis counting as 1, a scalar compatible
+	 * with anything) and that {@link TraversalPolicy#broadcastsInto} additionally requires the
+	 * shape to fit into the given result shape.
 	 */
 	@Test(timeout = 10000)
-	public void repetitionsToFill() {
-		TraversalPolicy target = new TraversalPolicy(4, 6);
+	public void broadcastCompatibility() {
+		// Trailing-axis broadcast: a length-1 axis and a missing leading axis broadcast.
+		assertTrue(new TraversalPolicy(2, 1).isBroadcastCompatible(new TraversalPolicy(2, 3)));
+		assertTrue(new TraversalPolicy(3).isBroadcastCompatible(new TraversalPolicy(2, 3)));
+		assertTrue(new TraversalPolicy(2, 3).isBroadcastCompatible(new TraversalPolicy(2, 3)));
+		assertTrue(new TraversalPolicy(1).isBroadcastCompatible(new TraversalPolicy(4, 6)));
 
-		assertEquals(4, new TraversalPolicy(6).repetitionsToFill(target));
-		assertEquals(1, new TraversalPolicy(24).repetitionsToFill(target));
-		assertEquals(0, new TraversalPolicy(5).repetitionsToFill(target));
+		// Rejected: trailing lengths differ and neither is 1.
+		assertFalse(new TraversalPolicy(4).isBroadcastCompatible(new TraversalPolicy(3)));
+		assertFalse(new TraversalPolicy(4).isBroadcastCompatible(new TraversalPolicy(2)));
+		assertFalse(new TraversalPolicy(2).isBroadcastCompatible(new TraversalPolicy(2, 3)));
 
-		try {
-			new TraversalPolicy(0).repetitionsToFill(target);
-			Assert.fail("An empty shape should not be repeatable");
-		} catch (IllegalArgumentException expected) {
-			// An empty shape cannot fill any target
-		}
+		// broadcastsInto is directional: the shape must have no more axes than the result.
+		assertTrue(new TraversalPolicy(6).broadcastsInto(new TraversalPolicy(4, 6)));
+		assertTrue(new TraversalPolicy(2, 1).broadcastsInto(new TraversalPolicy(2, 3)));
+		assertFalse(new TraversalPolicy(2, 3).broadcastsInto(new TraversalPolicy(3)));
+		assertFalse(new TraversalPolicy(4).broadcastsInto(new TraversalPolicy(6)));
 	}
 
 	/**

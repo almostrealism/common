@@ -128,19 +128,13 @@ public interface ComparisonFeatures extends AggregationFeatures, ExpressionFeatu
 	default CollectionProducer greaterThanConditional(Producer<PackedCollection> a, Producer<PackedCollection> b,
 													  Producer<PackedCollection> trueValue, Producer<PackedCollection> falseValue,
 													  boolean includeEqual) {
-		TraversalPolicy shape;
-
-		if (shape(a).getSize() == shape(b).getSize()) {
-			shape = shape(a);
-		} else {
-			shape = shape(1);
-		}
-
-		return new DefaultTraversableExpressionComputation("greaterThan", shape,
-				args -> new ComparisonExpression("greaterThan", shape,
-						(l, r) -> greater(l, r, includeEqual),
-						args[1], args[2], args[3], args[4]),
-				a, b, trueValue, falseValue);
+		return compute((shape, args) -> (Producer<PackedCollection>)
+						new DefaultTraversableExpressionComputation("greaterThan", shape,
+								e -> new ComparisonExpression("greaterThan", shape,
+										(l, r) -> greater(l, r, includeEqual),
+										e[1], e[2], e[3], e[4]),
+								args.toArray(Producer[]::new)),
+				null, a, b, trueValue, falseValue);
 	}
 
 	/**
