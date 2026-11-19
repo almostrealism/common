@@ -339,6 +339,14 @@ class RepositoryNameTest(unittest.TestCase):
         self.assertEqual("acme-private",
                          commit_check.repository_name("https://github.com/acme/acme-private"))
 
+    def test_trailing_slash_after_suffix(self):
+        self.assertEqual("acme-private",
+                         commit_check.repository_name("https://github.com/acme/acme-private.git/"))
+
+    def test_trailing_slash_without_suffix(self):
+        self.assertEqual("acme-private",
+                         commit_check.repository_name("https://github.com/acme/acme-private/"))
+
     def test_empty_url_has_no_name(self):
         self.assertIsNone(commit_check.repository_name(""))
 

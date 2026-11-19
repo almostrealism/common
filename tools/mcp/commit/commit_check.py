@@ -129,7 +129,7 @@ def repository_name(origin_url: str) -> Optional[str]:
     forms. An empty or nameless URL (no origin remote) yields None, so a caller
     can treat the absence of an origin as "name unknown".
     """
-    url = origin_url.strip()
+    url = origin_url.strip().rstrip("/")
     if url.endswith(".git"):
         url = url[:-len(".git")]
     url = url.rstrip("/")
