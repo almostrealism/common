@@ -38,10 +38,14 @@ import java.util.Locale;
  *       are generated on the host or transferred.</li>
  * </ul>
  *
- * <p>Every generator obtained from {@link #create(TraversalPolicy, boolean, java.util.Random)},
- * and so from {@code rand}/{@code randn} in
- * {@link org.almostrealism.collect.CollectionCreationFeatures}, uses the selected
- * implementation. Both keep their values fixed between calls to {@link #refresh()}, which
+ * <p>Every generator of a fixed-count shape obtained from
+ * {@link #create(TraversalPolicy, boolean, java.util.Random)}, and so from
+ * {@code rand}/{@code randn} in {@link org.almostrealism.collect.CollectionCreationFeatures},
+ * uses the selected implementation. A shape whose count is variable (for example
+ * {@code shape(-1, 2)}, one pair of values per item of a batch whose size is known only when
+ * it is evaluated) cannot be drawn on the host ahead of time, so its generator is always a
+ * {@link CounterRandom}, which computes a distinct value for every element of whatever batch
+ * it is evaluated over. Both keep their values fixed between calls to {@link #refresh()}, which
  * moves the generator on to new values.</p>
  *
  * <pre>{@code
@@ -78,7 +82,9 @@ public interface RandomProducer extends CollectionProducer {
 	void refresh();
 
 	/**
-	 * Creates a generator with the implementation selected by the {@code AR_RANDOM} setting.
+	 * Creates a generator with the implementation selected by the {@code AR_RANDOM} setting,
+	 * or a {@link CounterRandom} when the shape's count is variable, since the number of values
+	 * to draw is then unknown until the generator is evaluated.
 	 *
 	 * @param shape  the shape of the values
 	 * @param normal {@code true} for standard normal values, {@code false} for uniform values
@@ -87,6 +93,10 @@ public interface RandomProducer extends CollectionProducer {
 	 * @return the generator
 	 */
 	static RandomProducer create(TraversalPolicy shape, boolean normal, java.util.Random source) {
+		if (!shape.isFixedCount()) {
+			return Implementation.COUNTER.create(shape, normal, source);
+		}
+
 		return IMPLEMENTATION.create(shape, normal, source);
 	}
 

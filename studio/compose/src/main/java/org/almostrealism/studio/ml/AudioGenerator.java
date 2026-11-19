@@ -293,7 +293,7 @@ public class AudioGenerator extends ConditionalAudioSystem {
 			// and model receive exactly the shape they expect.
 			PackedCollection interpolatedLatent = null;
 			if (position != null) {
-				interpolatedLatent = composer.getInterpolatedLatent(cp(position)).evaluate()
+				interpolatedLatent = composer.getInterpolatedLatent(cp(position)).evaluateOptimized()
 						.reshape(DIT_X_SHAPE);
 			}
 

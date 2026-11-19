@@ -343,16 +343,14 @@ public class HeapPatternRenderingTest extends AudioSceneTestBase {
 	}
 
 	/**
-	 * Checks whether the collection contains any non-zero samples.
+	 * Checks whether the collection contains any non-zero samples. The samples are
+	 * read from the device in a single bulk copy rather than one host read per sample.
 	 *
 	 * @param collection the collection to check
 	 * @return true if any sample is non-zero
 	 */
 	private boolean hasNonZeroSamples(PackedCollection collection) {
-		for (int i = 0; i < collection.getMemLength(); i++) {
-			if (collection.toDouble(i) != 0.0) return true;
-		}
-		return false;
+		return collection.doubleStream().anyMatch(v -> v != 0.0);
 	}
 
 	/**

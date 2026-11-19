@@ -41,27 +41,15 @@ import org.almostrealism.collect.PackedCollection;
  * @see MockOutputLine for testing without data capture
  * @see BufferedOutputScheduler for scheduled output management
  */
-public class BufferOutputLine implements OutputLine {
+public class BufferOutputLine extends SimulatedOutputLine {
 	/** The underlying audio storage buffer. */
 	private final PackedCollection buffer;
-
-	/** Total capacity of the buffer in frames. */
-	private final int bufferSize;
-
-	/** Audio sample rate in Hz used for timing calculations. */
-	private final int sampleRate;
 
 	/** Current write position within the buffer in frames. */
 	private int writePosition;
 
 	/** Total number of frames written since the line became active. */
 	private long totalFramesWritten;
-
-	/** System nanosecond timestamp recorded when the line first became active. */
-	private long startTimeNanos;
-
-	/** True after the first write call; used to initialize the start timestamp. */
-	private boolean active;
 
 	/** When true, the write position wraps around to the beginning instead of stopping at capacity. */
 	private boolean circular;
@@ -82,19 +70,17 @@ public class BufferOutputLine implements OutputLine {
 	 * @param sampleRate The sample rate in Hz
 	 */
 	public BufferOutputLine(int capacityFrames, int sampleRate) {
+		super(capacityFrames, sampleRate);
 		this.buffer = new PackedCollection(capacityFrames);
-		this.bufferSize = capacityFrames;
-		this.sampleRate = sampleRate;
 		this.writePosition = 0;
 		this.totalFramesWritten = 0;
-		this.startTimeNanos = 0;
-		this.active = false;
 		this.circular = true;
 	}
 
 	@Override
 	public void write(PackedCollection sample) {
 		int frameCount = LineUtilities.frameCount(sample);
+		int bufferSize = getBufferSize();
 
 		for (int i = 0; i < frameCount; i++) {
 			if (writePosition >= bufferSize) {
@@ -111,67 +97,19 @@ public class BufferOutputLine implements OutputLine {
 		}
 	}
 
-	/**
-	 * Returns a simulated read position based on elapsed time since {@link #start()}.
-	 * This allows testing of buffer management logic without real hardware.
-	 *
-	 * @return The simulated read position in frames, modulo buffer size
-	 */
-	@Override
-	public int getReadPosition() {
-		if (!active || startTimeNanos == 0) {
-			return 0;
-		}
-
-		long elapsedNanos = System.nanoTime() - startTimeNanos;
-		double elapsedSeconds = elapsedNanos / 1_000_000_000.0;
-		long simulatedFramesRead = (long) (elapsedSeconds * sampleRate);
-
-		return (int) (simulatedFramesRead % bufferSize);
-	}
-
-	@Override
-	public int getBufferSize() {
-		return bufferSize;
-	}
-
-	@Override
-	public int getSampleRate() {
-		return sampleRate;
-	}
-
-	@Override
-	public void start() {
-		if (!active) {
-			startTimeNanos = System.nanoTime();
-			active = true;
-		}
-	}
-
-	@Override
-	public void stop() {
-		active = false;
-	}
-
-	@Override
-	public boolean isActive() {
-		return active;
-	}
-
 	@Override
 	public void reset() {
+		super.reset();
 		writePosition = 0;
 		totalFramesWritten = 0;
-		startTimeNanos = System.nanoTime();
 		buffer.clear();
 	}
 
 	@Override
 	public void destroy() {
-		active = false;
+		super.destroy();
 		writePosition = 0;
 		totalFramesWritten = 0;
-		startTimeNanos = 0;
 	}
 
 	/**
@@ -191,7 +129,7 @@ public class BufferOutputLine implements OutputLine {
 	 * @return A PackedCollection containing the captured audio
 	 */
 	public PackedCollection getCapturedAudio() {
-		int framesToCopy = (int) Math.min(totalFramesWritten, bufferSize);
+		int framesToCopy = (int) Math.min(totalFramesWritten, getBufferSize());
 		PackedCollection result = new PackedCollection(framesToCopy);
 
 		result.setFrom(0, buffer, 0, framesToCopy);
@@ -224,7 +162,7 @@ public class BufferOutputLine implements OutputLine {
 	 * @return The duration in seconds
 	 */
 	public double getDurationWritten() {
-		return totalFramesWritten / (double) sampleRate;
+		return totalFramesWritten / (double) getSampleRate();
 	}
 
 	/**
@@ -264,7 +202,7 @@ public class BufferOutputLine implements OutputLine {
 	 */
 	public double getPeakAmplitude() {
 		double peak = 0.0;
-		int framesToCheck = (int) Math.min(totalFramesWritten, bufferSize);
+		int framesToCheck = (int) Math.min(totalFramesWritten, getBufferSize());
 
 		for (int i = 0; i < framesToCheck; i++) {
 			double abs = Math.abs(buffer.toDouble(i));
@@ -282,7 +220,7 @@ public class BufferOutputLine implements OutputLine {
 	 * @return The RMS amplitude
 	 */
 	public double getRmsAmplitude() {
-		int framesToCheck = (int) Math.min(totalFramesWritten, bufferSize);
+		int framesToCheck = (int) Math.min(totalFramesWritten, getBufferSize());
 		if (framesToCheck == 0) return 0.0;
 
 		double sumSquares = 0.0;
@@ -300,7 +238,7 @@ public class BufferOutputLine implements OutputLine {
 	 * @return true if any sample is non-zero
 	 */
 	public boolean hasAudio() {
-		int framesToCheck = (int) Math.min(totalFramesWritten, bufferSize);
+		int framesToCheck = (int) Math.min(totalFramesWritten, getBufferSize());
 		for (int i = 0; i < framesToCheck; i++) {
 			if (buffer.toDouble(i) != 0.0) {
 				return true;
@@ -316,7 +254,7 @@ public class BufferOutputLine implements OutputLine {
 	 * @return The number of zero crossings
 	 */
 	public int countZeroCrossings() {
-		int framesToCheck = (int) Math.min(totalFramesWritten, bufferSize);
+		int framesToCheck = (int) Math.min(totalFramesWritten, getBufferSize());
 		if (framesToCheck < 2) return 0;
 
 		int crossings = 0;
@@ -342,11 +280,11 @@ public class BufferOutputLine implements OutputLine {
 	 */
 	public double estimateFrequency() {
 		int crossings = countZeroCrossings();
-		int framesToCheck = (int) Math.min(totalFramesWritten, bufferSize);
+		int framesToCheck = (int) Math.min(totalFramesWritten, getBufferSize());
 
 		if (crossings < 2 || framesToCheck < 2) return 0.0;
 
-		double durationSeconds = framesToCheck / (double) sampleRate;
+		double durationSeconds = framesToCheck / (double) getSampleRate();
 		double cyclesPerSecond = crossings / (2.0 * durationSeconds);
 
 		return cyclesPerSecond;

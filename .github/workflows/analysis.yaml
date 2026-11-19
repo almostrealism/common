@@ -2350,6 +2350,17 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-maven-
 
+      - name: Select Maven repository
+        # Prefer the host's persistent shared Maven cache when an ar-ci host
+        # mounts one, so a warm pipeline makes no Maven Central requests even
+        # when the actions/cache above misses or is evicted. Without the mount
+        # this falls back to $HOME/.m2/repository — the path the cache step
+        # warms — so today's runners are unchanged. See "Maven dependency
+        # caching" in tools/ci/README.md.
+        uses: ./.github/actions/select-maven-repo
+        with:
+          fallback: home-default
+
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
       - name: Download build artifacts
@@ -2758,21 +2769,14 @@ jobs:
         with:
           expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
-      - name: Isolate Maven repository per runner
-        # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
-        # which Docker isolates). Concurrent workers installing the same SNAPSHOT
-        # artifacts into a shared repository clobber each other. Give every runner
-        # its own local repository instead. A runner executes one job at a time,
-        # so this is reused across jobs on that runner — the dependency cache is
-        # preserved while cross-worker pollution is eliminated. $HOME and
-        # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
-        # not expand $HOME), and spaces in the runner name are sanitized so the
-        # -D argument stays a single token. MAVEN_REPO is exported too, so
-        # "Restore build artifacts" copies into this repository.
-        run: |
-          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
-          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
-          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
+      - name: Select Maven repository
+        # Self-hosted macOS runners share one $HOME, so each runner keeps its own
+        # $HOME/.m2-ci/<runner> local repository (a runner runs one job at a time,
+        # so it is reused across jobs while concurrent workers never clobber each
+        # other's SNAPSHOT installs). When a host mounts a persistent shared Maven
+        # cache the shared action prefers that instead; see "Maven dependency
+        # caching" in tools/ci/README.md.
+        uses: ./.github/actions/select-maven-repo
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -2933,12 +2937,11 @@ jobs:
         with:
           expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
-      - name: Isolate Maven repository per runner
-        # See the identical step in test-mac for the rationale.
-        run: |
-          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
-          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
-          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
+      - name: Select Maven repository
+        # Prefer the host's persistent shared Maven cache when mounted, else
+        # isolate per runner. See the shared action and "Maven dependency
+        # caching" in tools/ci/README.md for the rationale.
+        uses: ./.github/actions/select-maven-repo
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -3085,12 +3088,11 @@ jobs:
         with:
           expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
-      - name: Isolate Maven repository per runner
-        # See the identical step in test-mac for the rationale.
-        run: |
-          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
-          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
-          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
+      - name: Select Maven repository
+        # Prefer the host's persistent shared Maven cache when mounted, else
+        # isolate per runner. See the shared action and "Maven dependency
+        # caching" in tools/ci/README.md for the rationale.
+        uses: ./.github/actions/select-maven-repo
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -3252,21 +3254,14 @@ jobs:
         with:
           expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
-      - name: Isolate Maven repository per runner
-        # Self-hosted macOS runners share one $HOME/.m2 (unlike the Linux jobs,
-        # which Docker isolates). Concurrent workers installing the same SNAPSHOT
-        # artifacts into a shared repository clobber each other. Give every runner
-        # its own local repository instead. A runner executes one job at a time,
-        # so this is reused across jobs on that runner — the dependency cache is
-        # preserved while cross-worker pollution is eliminated. $HOME and
-        # RUNNER_NAME are expanded by the shell here (a workflow-level env: would
-        # not expand $HOME), and spaces in the runner name are sanitized so the
-        # -D argument stays a single token. MAVEN_REPO is exported too, so
-        # "Restore build artifacts" copies into this repository.
-        run: |
-          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
-          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
-          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
+      - name: Select Maven repository
+        # Self-hosted macOS runners share one $HOME, so each runner keeps its own
+        # $HOME/.m2-ci/<runner> local repository (a runner runs one job at a time,
+        # so it is reused across jobs while concurrent workers never clobber each
+        # other's SNAPSHOT installs). When a host mounts a persistent shared Maven
+        # cache the shared action prefers that instead; see "Maven dependency
+        # caching" in tools/ci/README.md.
+        uses: ./.github/actions/select-maven-repo
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -3458,12 +3453,11 @@ jobs:
         with:
           expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
-      - name: Isolate Maven repository per runner
-        # See the identical step in test-mac for the rationale.
-        run: |
-          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
-          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
-          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
+      - name: Select Maven repository
+        # Prefer the host's persistent shared Maven cache when mounted, else
+        # isolate per runner. See the shared action and "Maven dependency
+        # caching" in tools/ci/README.md for the rationale.
+        uses: ./.github/actions/select-maven-repo
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -3651,12 +3645,11 @@ jobs:
         with:
           expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
 
-      - name: Isolate Maven repository per runner
-        # See the identical step in test-mac for the rationale.
-        run: |
-          MAVEN_REPO="$HOME/.m2-ci/${RUNNER_NAME// /_}"
-          echo "MAVEN_REPO=${MAVEN_REPO}" >> "$GITHUB_ENV"
-          echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${MAVEN_REPO}" >> "$GITHUB_ENV"
+      - name: Select Maven repository
+        # Prefer the host's persistent shared Maven cache when mounted, else
+        # isolate per runner. See the shared action and "Maven dependency
+        # caching" in tools/ci/README.md for the rationale.
+        uses: ./.github/actions/select-maven-repo
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.

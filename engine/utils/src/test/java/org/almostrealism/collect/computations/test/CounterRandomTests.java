@@ -35,7 +35,9 @@ import org.junit.Assume;
 import org.junit.Test;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Tests for {@link CounterRandom}, the {@link RandomProducer} implementation whose values are
@@ -604,5 +606,48 @@ public class CounterRandomTests extends TestSuiteBase {
 		}
 
 		return count;
+	}
+
+	/**
+	 * A variable-count shape cannot be drawn on the host ahead of time, so {@code rand} and
+	 * {@code randn} of such a shape give a {@link CounterRandom} whatever the {@code AR_RANDOM}
+	 * setting, while a fixed-count shape keeps the implementation that setting selects.
+	 */
+	@Test(timeout = 30000)
+	public void variableCountShapeIsCounterBased() {
+		RandomProducer uniform = rand(shape(-1, 2).traverse(1));
+		RandomProducer normal = randn(shape(-1, 3).traverse(1));
+
+		Assert.assertTrue(uniform instanceof CounterRandom);
+		Assert.assertFalse(uniform.isNormal());
+		Assert.assertTrue(normal instanceof CounterRandom);
+		Assert.assertTrue(normal.isNormal());
+
+		RandomProducer fixed = rand(shape(4));
+		RandomProducer expected = RandomProducer.IMPLEMENTATION.create(shape(4), false, null);
+		Assert.assertEquals(expected.getClass(), fixed.getClass());
+	}
+
+	/**
+	 * A variable-count generator evaluated into a batch gives every element of the batch its own
+	 * uniform value in {@code [0, 1)}, rather than repeating the values of a single item.
+	 */
+	@Test(timeout = 60000)
+	public void variableCountShapeFillsEveryItem() {
+		int count = 64;
+		PackedCollection out = new PackedCollection(shape(count, 2).traverse(1));
+		rand(shape(-1, 2).traverse(1)).into(out.each()).evaluate();
+
+		double[] values = out.toArray();
+		Assert.assertEquals(count * 2, values.length);
+
+		Set<Double> distinct = new HashSet<>();
+		for (double value : values) {
+			Assert.assertTrue("value out of range: " + value, value >= 0.0 && value < 1.0);
+			distinct.add(value);
+		}
+
+		Assert.assertTrue("only " + distinct.size() + " distinct values in the batch",
+				distinct.size() > values.length * 9 / 10);
 	}
 }

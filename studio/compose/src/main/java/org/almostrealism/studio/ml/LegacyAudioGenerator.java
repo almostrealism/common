@@ -228,7 +228,7 @@ public class LegacyAudioGenerator extends ConditionalAudioSystem {
 			// 2. Generate interpolated latent from samples (if position provided)
 			PackedCollection interpolatedLatent = null;
 			if (position != null) {
-				interpolatedLatent = composer.getInterpolatedLatent(cp(position)).evaluate();
+				interpolatedLatent = composer.getInterpolatedLatent(cp(position)).evaluateOptimized();
 			}
 
 			// 3. Run diffusion - DELEGATE TO DiffusionSampler - NO LOOP HERE

@@ -182,6 +182,14 @@ public class ModelOptimizer implements CodeFeatures {
 	private double trainingPatienceMinDelta = 1e-6;
 
 	/**
+	 * Maximum increase in the epoch-average loss, from one epoch to the next, tolerated before
+	 * training is stopped as divergent; 0 disables the guard (default). The guard acts on the epoch
+	 * average rather than on any single sample's loss, and reports the stop through
+	 * {@link TrainingResult#isEarlyStopped()} instead of throwing.
+	 */
+	private double divergenceThreshold = 0;
+
+	/**
 	 * Creates a model optimizer for an uncompiled model.
 	 * <p>
 	 * The model will be compiled automatically. Use {@link #setDataset(Supplier)}
@@ -533,6 +541,31 @@ public class ModelOptimizer implements CodeFeatures {
 	}
 
 	/**
+	 * Sets the maximum increase in epoch-average loss tolerated before training stops as divergent.
+	 * <p>
+	 * When set to a positive value, training stops, and {@link TrainingResult#isEarlyStopped()} is
+	 * {@code true}, if the average loss of an epoch exceeds the previous epoch's average by more
+	 * than this threshold. Set to 0 to disable (default). Unlike a per-sample check, this guard
+	 * acts on the epoch average, which already reflects divergence, and never throws.
+	 * </p>
+	 *
+	 * @param threshold the maximum tolerated increase in epoch-average loss
+	 */
+	public void setDivergenceThreshold(double threshold) {
+		this.divergenceThreshold = threshold;
+	}
+
+	/**
+	 * Returns the maximum increase in epoch-average loss tolerated before training stops as
+	 * divergent.
+	 *
+	 * @return the divergence threshold, or 0 when the guard is disabled
+	 */
+	public double getDivergenceThreshold() {
+		return divergenceThreshold;
+	}
+
+	/**
 	 * Returns the current average loss.
 	 *
 	 * @return the average loss from the last epoch, or -1 if not yet computed
@@ -570,18 +603,25 @@ public class ModelOptimizer implements CodeFeatures {
 	 * the loss gradient, and the loss of the sample is their mean, read after that one wait.
 	 * </p>
 	 * <p>
-	 * Training stops early if:
+	 * A single update is not guaranteed to reduce the loss of the sample it was computed from, so a
+	 * per-sample increase is not treated as a failure; divergence is observable through the epoch
+	 * averages, the progress callback and {@link #getTrainingPatience() training patience}. Training
+	 * stops early, with {@link TrainingResult#isEarlyStopped()} set, if:
 	 * </p>
 	 * <ul>
-	 *   <li>Average loss falls below {@link #getLossTarget()}</li>
-	 *   <li>Average loss stops improving (converged)</li>
+	 *   <li>Average loss stops changing between epochs (converged)</li>
 	 *   <li>Validation loss doesn't improve for {@link #getEarlyStoppingPatience()} epochs</li>
+	 *   <li>Training loss doesn't improve for {@link #getTrainingPatience()} epochs</li>
+	 *   <li>The epoch-average loss rises by more than {@link #getDivergenceThreshold()}, when that
+	 *       opt-in guard is enabled</li>
 	 * </ul>
+	 * <p>
+	 * It also stops, without marking an early stop, when the average loss falls below
+	 * {@link #getLossTarget()}.
+	 * </p>
 	 *
 	 * @param iterations the maximum number of epochs to run
 	 * @return TrainingResult containing loss history and metrics
-	 * @throws RuntimeException if loss increases after the first sample
-	 *                          (indicates gradient computation issues)
 	 * @throws RuntimeException if no dataset samples produce valid results
 	 */
 	public TrainingResult optimize(int iterations) {
@@ -601,9 +641,6 @@ public class ModelOptimizer implements CodeFeatures {
 		int trainingEpochsWithoutImprovement = 0;
 
 		for (int i = 0; i < iterations; i++) {
-			boolean first = true;
-			double updatedLoss;
-
 			double totalLoss = 0.0;
 			int count = 0;
 
@@ -637,18 +674,6 @@ public class ModelOptimizer implements CodeFeatures {
 						receptor.push(() -> args -> ls).get().run();
 
 					pending = model.submitBackward(pending, gradient);
-
-					if (first) {
-						pending = lossTerms().submit(model.submitForward(pending, input, arguments));
-						if (pending != null) pending.waitFor();
-						updatedLoss = sampleLoss();
-
-						if ((ls - updatedLoss) < 0.0) {
-							throw new RuntimeException("Loss increased from " + ls + " to " + updatedLoss);
-						}
-
-						first = false;
-					}
 				}
 
 				if (pending != null) pending.waitFor();
@@ -670,11 +695,11 @@ public class ModelOptimizer implements CodeFeatures {
 
 			// Validation phase
 			Double avgValidationLoss = null;
+			boolean validationStalled = false;
 			if (valData != null) {
 				avgValidationLoss = evaluate(valData);
 				validationLossHistory.add(avgValidationLoss);
 
-				// Early stopping check on validation loss
 				if (avgValidationLoss < bestValidationLoss - earlyStoppingMinDelta) {
 					bestValidationLoss = avgValidationLoss;
 					bestEpoch = i;
@@ -683,13 +708,8 @@ public class ModelOptimizer implements CodeFeatures {
 					epochsWithoutImprovement++;
 				}
 
-				if (earlyStoppingPatience > 0 &&
-						epochsWithoutImprovement >= earlyStoppingPatience) {
-					log("Early stopping at epoch " + i + " (no improvement for " +
-							epochsWithoutImprovement + " epochs)");
-					earlyStopped = true;
-					break;
-				}
+				validationStalled = earlyStoppingPatience > 0 &&
+						epochsWithoutImprovement >= earlyStoppingPatience;
 			}
 
 			if (logIteration(totalIterations)) {
@@ -700,14 +720,20 @@ public class ModelOptimizer implements CodeFeatures {
 				log(summary);
 			}
 
-			// Progress callback
+			// Progress callback, reported before any stop decision so the final epoch is observed
 			if (progressCallback != null) {
 				progressCallback.accept(new TrainingProgress(
 						i, totalIterations, averageLoss, avgValidationLoss
 				));
 			}
 
-			// Training patience: stop if training loss hasn't improved
+			if (validationStalled) {
+				log("Early stopping at epoch " + i + " (no improvement for " +
+						epochsWithoutImprovement + " epochs)");
+				earlyStopped = true;
+				break;
+			}
+
 			if (trainingPatience > 0) {
 				if (averageLoss < bestTrainingLoss - trainingPatienceMinDelta) {
 					bestTrainingLoss = averageLoss;
@@ -723,7 +749,22 @@ public class ModelOptimizer implements CodeFeatures {
 				}
 			}
 
-			if (averageLoss < lossTarget || averageLoss == previousLoss) {
+			// Gate on the loop index, not the previous loss value: averageLoss persists across
+			// optimize calls, so the first epoch of a run has no prior epoch to compare against.
+			if (divergenceThreshold > 0 && i > 0 &&
+					averageLoss > previousLoss + divergenceThreshold) {
+				log("Training stopped at epoch " + (i + 1) + " after the average loss rose from " +
+						previousLoss + " to " + averageLoss);
+				earlyStopped = true;
+				break;
+			}
+
+			if (averageLoss < lossTarget) {
+				break;
+			}
+
+			if (i > 0 && averageLoss == previousLoss) {
+				earlyStopped = true;
 				break;
 			}
 		}

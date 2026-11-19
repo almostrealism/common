@@ -50,6 +50,76 @@ JDK of the expected major — rebuild/restart it per its fleet's doc:
 | OpenCL (ROCm) | `ar-ci-cl` | [`rocm/README.md`](rocm/README.md#jdk-version-baked-into-the-image) — set `JDK_MAJOR` in `.env`, then `install-runner.sh` |
 | CUDA (NVIDIA) | `ar-ci-cuda` | [`cuda/README.md`](cuda/README.md#jdk-version-baked-into-the-shared-image) — reuses the CPU image; set `JDK_MAJOR` in `.env`, then `fleet.sh up` |
 
+## Maven dependency caching
+
+The self-hosted Linux runners (`ar-ci`, `ar-ci-cl`, `ar-ci-cuda`) are **ephemeral
+containers**: each job starts from the image with an empty local Maven
+repository. Without a cache every job re-resolves the whole plugin and
+dependency set from Maven Central — about 800 artifacts per job — and a full
+pipeline fans out to ~18 such jobs, so the repeated downloads hit Central's HTTP
+429 rate limit and fail the pipeline. (The macOS fleet never had this: it keeps a
+persistent `$HOME/.m2-ci/<runner>` on the host, so it is warm after the first
+job. GitHub-hosted jobs keep `actions/setup-java`'s `cache: maven`, which is
+GitHub's own cache and appropriate for them.)
+
+Three pieces fix it, and **all of them are safe on today's runners** — nothing
+changes until a host is rebuilt/recreated to provide the mount:
+
+1. **A shared `select-maven-repo` composite action**
+   ([`.github/actions/select-maven-repo`](../../.github/actions/select-maven-repo/action.yml))
+   runs on every self-hosted lane as the `Select Maven repository` step. It
+   points `maven.repo.local` at a **per-runner subdirectory** of a persistent,
+   shared Maven cache the host mounts at `/opt/ar-maven-cache`, so the plugin and
+   dependency set resolved once survives the ephemeral container and is reused by
+   every later job on that host. Per-runner subdirectories keep concurrent
+   runners from clobbering each other's SNAPSHOT installs (the same reason the
+   macOS fleet isolates per runner). **When the mount is absent or not writable,
+   the action falls back to the previous behaviour** — `$HOME/.m2-ci/<runner>`, or
+   `$HOME/.m2/repository` for the `ar-ci` `test` lane whose `actions/cache` step
+   warms that path — so a runner that has not been recreated with the volume
+   still builds correctly, only slower. `tools/tests/test_maven_cache.py` pins
+   the action and its wiring.
+
+2. **A persistent named volume** mounted at `/opt/ar-maven-cache` on each Linux
+   fleet (a `docker compose` volume for `ar-ci`/`ar-ci-cuda`, a podman quadlet
+   `Volume=` for `ar-ci-cl`). A named volume auto-creates, inherits the image
+   mount point's `runner` ownership (the images `mkdir`/`chown` it) so the
+   non-root runner can write, and survives container recreation.
+
+3. **Maven transport retry/backoff** baked into the runner images and the macOS
+   runner (`MAVEN_ARGS` with `aether.connector.http.retryHandler.*`), so a
+   *remaining* transient 429/5xx/dropped connection is retried with backoff
+   instead of failing the job. This is a backstop, not the fix — a warm cache
+   makes almost no Central requests in the first place.
+
+### Enabling it on a host (person steps)
+
+CI keeps working before any of this is applied; applying it makes a host's lanes
+warm. Per fleet:
+
+| Fleet | Label | How to enable / verify / roll back |
+|---|---|---|
+| CPU (Linux) | `ar-ci` | [`docker/README.md`](docker/README.md#maven-dependency-cache) |
+| GPU (macOS) | `ar-ci` | already warm via `$HOME/.m2-ci/<runner>`; nothing to mount (see [`macos/README.md`](macos/README.md#maven-dependency-cache)) |
+| OpenCL (ROCm) | `ar-ci-cl` | [`rocm/README.md`](rocm/README.md#maven-dependency-cache) |
+| CUDA (NVIDIA) | `ar-ci-cuda` | [`cuda/README.md`](cuda/README.md#maven-dependency-cache) |
+
+**Correctness guarantees.** A **cold** cache (fresh volume, or none) resolves
+everything from Central exactly as before — slower, never wrong. A **stale**
+cache is a superset of what a build needs, so extra artifacts are harmless and a
+new dependency is fetched on demand. A **poisoned or partial** artifact cannot
+persist a broken build: Maven validates checksums, each per-runner subdirectory
+is independent so one runner's corruption never reaches another, and the whole
+cache is disposable — `docker volume rm <project>_ar-maven-cache` (or `podman
+volume rm ar-ci-cl-m2`) forces a clean cold rebuild. The cache is never an input
+the build cannot reproduce from Central.
+
+**Optional cold-start seed.** The first job on a brand-new volume is still cold.
+To warm it in advance, run one throwaway build on the host (for example `mvn
+-q -DskipTests dependency:go-offline` against a checkout, writing into the
+volume's per-runner subdirectory), or simply let the first pipeline warm it —
+steady state is warm either way.
+
 ## Root Scripts
 
 | Script | Purpose |
@@ -160,8 +230,8 @@ crash. A payload holding fewer jobs than its declared `total_count` also counts
 one crash, since a missing matrix run can hide behind another run of the same
 job. So a zero crash count means every failing job was seen and found
 environmental. The test step is recognised by the word "test(s)" in its name
-only — never "Maven", because the macOS/CL/CUDA lanes' "Isolate Maven repository
-per runner" setup step precedes their artifact download.
+only — never "Maven", because the self-hosted lanes' "Select Maven repository"
+setup step precedes their artifact download.
 
 `test-flowtree` originally had
 neither check — it uploaded no Surefire artifact at all — so a failure there was

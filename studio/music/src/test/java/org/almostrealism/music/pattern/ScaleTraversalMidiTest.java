@@ -257,6 +257,39 @@ public class ScaleTraversalMidiTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * Percussive rendering must not crash when the scale at the element's position is
+	 * empty. The MIDI mirror ({@link ScaleTraversalStrategy#toMidiEvents}) handles this
+	 * case (see {@link #percussiveEventsUseFirstKey}), and both melodic branches of
+	 * {@link ScaleTraversalStrategy#getNoteDestinations} guard it with an empty-key
+	 * check, so the non-melodic audio branch must too: with no key available it produces
+	 * no destination rather than throwing {@link IndexOutOfBoundsException}. Empty scales
+	 * reach this path in the real renderer whenever the chord progression yields an empty
+	 * scale (e.g. a zero chord depth).
+	 */
+	@Test(timeout = 120000)
+	public void percussiveDestinationsHandleEmptyScale() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = false;
+
+		List<RenderedNoteAudio> destinations = null;
+		try {
+			PatternElement e = element(ScaleTraversalStrategy.CHORD, List.of(0.0), 2);
+			e.setDurationStrategy(NoteDurationStrategy.NONE);
+
+			PatternNote note = e.getNote(ChannelInfo.Voicing.MAIN);
+			NoteAudioContext audio = new NoteAudioContext(ChannelInfo.Voicing.MAIN,
+					ChannelInfo.StereoChannel.LEFT, d -> note, p -> p + 0.25);
+
+			destinations = e.getNoteDestinations(false, 0.0, scene(Scale.of()), audio);
+			Assert.assertTrue("an empty scale yields no percussive destinations",
+					destinations.isEmpty());
+		} finally {
+			if (destinations != null) destinations.forEach(RenderedNoteAudio::destroy);
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
 	/** A chord with more positions than keys stops once every key has been used. */
 	@Test(timeout = 120000)
 	public void chordDestinationsStopWhenKeysAreExhausted() {

@@ -16,6 +16,12 @@
 
 package io.almostrealism.relation;
 
+import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Predicate;
+
 /**
  * {@link Countable} is implemented by data structures and computations that have (or operate on)
  * multiple elements. The {@link #getCount() count} property specifies the number of groups of
@@ -127,5 +133,59 @@ public interface Countable {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Returns whether every source of variable count in the graph rooted at {@code node}
+	 * satisfies {@code source}. A node whose count is fixed has no such source. A node whose
+	 * count is variable is traced through its {@link Parent#getChildren() children} whose
+	 * counts are variable; a variable-count node with no such children is itself a source,
+	 * and is tested with {@code source}.
+	 *
+	 * <p>This distinguishes a node whose count is variable only because it depends on
+	 * particular variable-count inputs from one that is intrinsically variable, for example
+	 * a value that is the kernel index. Each distinct node of the graph is inspected once,
+	 * so subgraphs shared by several paths do not multiply the cost of the walk.</p>
+	 *
+	 * @param <T>     the type of the root node
+	 * @param node    the root of the graph to inspect
+	 * @param source  the test every variable-count source must satisfy
+	 * @return {@code true} if the node's count is fixed or every source satisfies {@code source}
+	 */
+	static <T> boolean isCountFrom(T node, Predicate<Object> source) {
+		return isCountFrom(node, source, new IdentityHashMap<>());
+	}
+
+	/**
+	 * Computes {@link #isCountFrom(Object, Predicate)}, recording the result for every node
+	 * it inspects in {@code results} and reusing a recorded result when a node is reached again.
+	 *
+	 * @param node     the node to inspect
+	 * @param source   the test every variable-count source must satisfy
+	 * @param results  the results already computed for nodes of the graph, keyed by identity
+	 * @return {@code true} if the node's count is fixed or every source satisfies {@code source}
+	 */
+	private static boolean isCountFrom(Object node, Predicate<Object> source, Map<Object, Boolean> results) {
+		if (isFixedCount(node)) return true;
+
+		Boolean known = results.get(node);
+		if (known != null) return known;
+
+		List<Object> variable = new ArrayList<>();
+		if (node instanceof Parent) {
+			for (Object child : ((Parent<?>) node).getChildren()) {
+				if (!isFixedCount(child)) variable.add(child);
+			}
+		}
+
+		boolean result;
+		if (variable.isEmpty()) {
+			result = source.test(node);
+		} else {
+			result = variable.stream().allMatch(c -> isCountFrom(c, source, results));
+		}
+
+		results.put(node, result);
+		return result;
 	}
 }

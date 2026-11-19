@@ -64,6 +64,16 @@ RUN curl -fsSL "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/b
 ENV MAVEN_HOME=/opt/maven
 ENV PATH="${MAVEN_HOME}/bin:${PATH}"
 
+# Retry a Maven Central download that fails transiently (HTTP 429 rate-limit, a
+# dropped connection, a 5xx) with backoff instead of failing the job. MAVEN_ARGS
+# is read by the Maven 3.9+ launcher and prepended to every `mvn` invocation, so
+# this applies to every CI step without editing each command. These are Maven
+# Resolver native-transport properties; unknown ones are ignored, so this is
+# safe across Maven upgrades. It is a backstop under the shared dependency cache
+# (see "Maven dependency caching" in tools/ci/README.md), not a substitute: a
+# warm cache makes almost no Central requests in the first place.
+ENV MAVEN_ARGS="-Daether.connector.http.retryHandler.count=10 -Daether.connector.http.retryHandler.interval=5000 -Daether.connector.http.retryHandler.intervalMax=60000"
+
 # ---------- AR environment ----------
 # AR_HARDWARE_LIBS is intentionally NOT set — the system auto-detects a suitable directory.
 # Setting it to /tmp/ar_libs/ causes permission errors on shared or sandboxed systems.
@@ -91,6 +101,19 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # ---------- Maven local repo (shared volume mount point) ----------
 RUN mkdir -p /home/runner/.m2/repository && \
     chown -R runner:runner /home/runner
+
+# ---------- Persistent shared Maven cache mount point ----------
+# A host can mount a persistent, shared Maven repository here (a named volume in
+# docker-compose.yml, see "Maven dependency caching" in tools/ci/README.md). The
+# CI jobs then point maven.repo.local at a per-runner subdirectory of it (the
+# select-maven-repo action), so the plugin and dependency set resolved once
+# survives this ephemeral container and is reused by every later job instead of
+# being re-downloaded from Maven Central. Creating it here with runner ownership
+# means a fresh named volume mounted over it inherits that ownership, so the
+# non-root runner can write to it. Without the mount this directory stays empty
+# and the jobs fall back to the per-runner repository under $HOME.
+RUN mkdir -p /opt/ar-maven-cache && \
+    chown -R runner:runner /opt/ar-maven-cache
 
 # Copy entrypoint and settings
 COPY entrypoint.sh /home/runner/entrypoint.sh

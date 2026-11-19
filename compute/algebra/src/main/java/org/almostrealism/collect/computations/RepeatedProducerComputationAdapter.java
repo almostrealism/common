@@ -19,7 +19,6 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
-import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -43,10 +42,12 @@ import java.util.function.Supplier;
  * 
  * <p>The adapter automatically configures the repeated computation with:
  * <ul>
- *   <li><strong>Initialization:</strong> Sets all values to 0.0 at the start</li>
+ *   <li><strong>Initialization:</strong> None — the loop writes every output element, so the
+ *       output is left uninitialised. This keeps in-place evaluations correct, where the
+ *       output aliases an input.</li>
  *   <li><strong>Condition:</strong> Continues iteration while output index is less than
  *   the {@link #getOutputVariable() output variable} length</li>
- *   <li><strong>Expression:</strong> Evaluates the provided {@link TraversableExpression} 
+ *   <li><strong>Expression:</strong> Evaluates the provided {@link TraversableExpression}
  *       at each index</li>
  * </ul>
  * 
@@ -82,9 +83,10 @@ import java.util.function.Supplier;
  * </ul>
  * 
  * <p><strong>Implementation Details:</strong>
- * The adapter uses a fixed initialization to zero, which works correctly for most traversable
- * expressions since the expression evaluation replaces these initial values. The condition
- * ensures iteration continues until all elements in the output array are processed.
+ * The adapter does not initialise the output: its loop assigns every output position from the
+ * adapted expression, so an initialising write would be redundant, and it would corrupt an
+ * in-place evaluation by overwriting an aliased input element before the loop read it. The
+ * condition ensures iteration continues until all elements in the output array are processed.
  * 
  * @see RepeatedProducerComputation
  * @see TraversableExpression
@@ -104,7 +106,7 @@ public class RepeatedProducerComputationAdapter extends RepeatedProducerComputat
 	 * 
 	 * <p>This constructor establishes the computational pattern where:
 	 * <ol>
-	 *   <li><strong>Initialization:</strong> All output elements start as 0.0</li>
+	 *   <li><strong>Initialization:</strong> None — the loop writes every output position</li>
 	 *   <li><strong>Iteration:</strong> The provided expression is evaluated at each index</li>
 	 *   <li><strong>Termination:</strong> Processing stops when all output positions are filled</li>
 	 * </ol>
@@ -130,15 +132,24 @@ public class RepeatedProducerComputationAdapter extends RepeatedProducerComputat
 	}
 
 	/**
-	 * Returns zero: every output element starts empty.
+	 * Returns {@code null}: the output is not initialised before the loop.
+	 *
+	 * <p>The loop {@link #getCondition(TraversableExpression[], Expression) runs} over every
+	 * output position and {@link #getExpression(TraversableExpression[], Expression, Expression)
+	 * writes} each one from the adapted expression, so initialising the output would be
+	 * redundant. It would also be incorrect for an in-place evaluation, where the output aliases
+	 * an input: an initialising write to output element 0 would clobber that input element
+	 * before the loop read it. Returning {@code null} is the base class's documented
+	 * "do not initialise" value (see
+	 * {@link RepeatedProducerComputation#getInitialValue(TraversableExpression[], Expression)}).
 	 *
 	 * @param args  the traversable arguments
 	 * @param index the position within the output block
-	 * @return the constant {@code 0.0}
+	 * @return {@code null}
 	 */
 	@Override
 	protected Expression<?> getInitialValue(TraversableExpression[] args, Expression index) {
-		return new DoubleConstant(0.0);
+		return null;
 	}
 
 	/**

@@ -237,6 +237,27 @@ public class BufferOutputLineTest extends TestSuiteBase implements AudioTestFeat
 	}
 
 	/**
+	 * Tests that the simulated read position stays at zero before the line starts and
+	 * advances within the buffer once running. This exercises the same
+	 * {@link org.almostrealism.audio.line.SimulatedOutputLine#getReadPosition()} behaviour that
+	 * {@link org.almostrealism.audio.line.MockOutputLine} inherits.
+	 */
+	@Test(timeout = 30000)
+	public void testReadPositionAdvancesWithTime() throws InterruptedException {
+		BufferOutputLine buffer = new BufferOutputLine(44100, 44100);
+
+		assertEquals(0, buffer.getReadPosition());
+
+		buffer.start();
+
+		Thread.sleep(100);
+
+		int position = buffer.getReadPosition();
+		assertTrue("Read position should advance after start", position > 0);
+		assertTrue("Read position should be reasonable", position < 44100);
+	}
+
+	/**
 	 * Tests reset clears all written data and positions.
 	 */
 	@Test(timeout = 30000)

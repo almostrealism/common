@@ -29,6 +29,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 /**
  * Unit tests for {@link ProtobufWaveDetailsStore}, focused on how the
@@ -172,6 +173,87 @@ public class ProtobufWaveDetailsStoreTest extends TestSuiteBase {
 			Assert.assertTrue("rebuilt index holds an m1 record", reopened.hasEmbedding("b"));
 		} finally {
 			reopened.close();
+		}
+	}
+
+	/**
+	 * An automatic batch flush makes records durable without saving the
+	 * nearest-neighbor index. When the process ends before the next full save,
+	 * the reopened store holds those records complete for the model, but the
+	 * index on disk predates them and nothing re-puts them. Declaring the model
+	 * on the reopened store must index them alongside the records the saved
+	 * index already held.
+	 *
+	 * @throws IOException if the store directory cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void autoFlushedRecordsAreIndexedAfterReopen() throws IOException {
+		Path tempDir = Files.createTempDirectory("protobuf-wave-store-autoflush");
+
+		// A one-byte batch target makes every put flush its batch automatically; the
+		// memory budget is kept small to match, since the batch cache is sized to
+		// maxMemoryBytes / targetBatchSize.
+		ProtobufWaveDetailsStore interrupted = new ProtobufWaveDetailsStore(tempDir.toFile(),
+				4096, 1);
+		ProtobufWaveDetailsStore reopened = null;
+
+		try {
+			putWithEmbedding(interrupted, detailsFor("a", "m1", 1.0));
+			interrupted.flush();
+
+			putWithEmbedding(interrupted, detailsFor("b", "m1", 2.0));
+			putWithEmbedding(interrupted, detailsFor("c", "m1", 3.0));
+			interrupted.put("d", detailsFor("d", "m2", 4.0));
+
+			// The process ends here: no flush or close follows the automatic flushes.
+			reopened = new ProtobufWaveDetailsStore(tempDir.toFile());
+			Assert.assertEquals("automatically flushed records are durable", 4, reopened.size());
+			Assert.assertEquals("the saved index predates them", 1, reopened.indexedEmbeddingCount());
+
+			reopened.setEmbeddingModel("m1");
+			Assert.assertEquals("every record complete for the model is indexed",
+					3, reopened.indexedEmbeddingCount());
+			Assert.assertTrue(reopened.hasEmbedding("b"));
+			Assert.assertTrue(reopened.hasEmbedding("c"));
+			Assert.assertFalse("a record without the model's features stays out", reopened.hasEmbedding("d"));
+		} finally {
+			if (reopened != null) reopened.close();
+			interrupted.close();
+		}
+	}
+
+	/**
+	 * {@link ProtobufWaveDetailsStore#insertEmbedding(String, PackedCollection)} adds
+	 * the vector to the nearest-neighbor index for a record that was stored without
+	 * one, so the record becomes indexed and searchable. The insert runs under the
+	 * same write lock as record writes and model declarations.
+	 *
+	 * @throws IOException if the store directory cannot be created
+	 */
+	@Test(timeout = 60000)
+	public void insertEmbeddingIndexesAStoredRecord() throws IOException {
+		Path tempDir = Files.createTempDirectory("protobuf-wave-store-insert");
+		ProtobufWaveDetailsStore store = new ProtobufWaveDetailsStore(tempDir.toFile());
+
+		try {
+			store.setEmbeddingModel("m1");
+
+			WaveDetails details = detailsFor("a", "m1", 1.0);
+			store.put("a", details);
+			Assert.assertFalse("a record stored without an embedding is not indexed",
+					store.hasEmbedding("a"));
+			Assert.assertEquals(0, store.indexedEmbeddingCount());
+
+			store.insertEmbedding("a", details.meanPooledEmbedding());
+			Assert.assertTrue("insertEmbedding indexes the record", store.hasEmbedding("a"));
+			Assert.assertEquals(1, store.indexedEmbeddingCount());
+
+			List<WaveDetailsStore.NeighborResult> neighbors =
+					store.searchNeighbors(details.meanPooledEmbedding(), 1);
+			Assert.assertEquals("the inserted vector is searchable", 1, neighbors.size());
+			Assert.assertEquals("a", neighbors.get(0).identifier());
+		} finally {
+			store.close();
 		}
 	}
 

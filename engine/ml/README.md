@@ -991,6 +991,8 @@ store.close();
 
 Batch files default to ~4 MB each. The index is loaded into memory on startup. Records are loaded batch-by-batch into `FrequencyCache`.
 
+The store is safe to use from several threads (for example, one adding records while another flushes periodically). A record is durable once a flush has written its batch file and committed `index.bin`, which is replaced atomically through `index.bin.tmp`; an interrupted write leaves the previous index intact, and batch files the index does not refer to are ignored. See [The Vector Index](../../docs/internals/vector-index.md) for what survives an interruption at each point.
+
 ### HnswIndex — Vector Search
 
 `HnswIndex` builds a Hierarchical Navigable Small World graph over `PackedCollection` vectors, all held in one contiguous `[capacity, dimension]` store. Every similarity computation — normalizing a vector on insert, or scoring a query against the whole store — is a single compiled `Evaluable` dispatch; at the scales this index currently serves, that whole-store dispatch is cheap enough that both construction and search use exact scores rather than walking the layered graph. The graph is still built and persisted from those exact neighbors so a batched graph traversal can become the search strategy later without a format change.

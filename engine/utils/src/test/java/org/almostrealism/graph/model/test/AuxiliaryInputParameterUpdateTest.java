@@ -29,6 +29,7 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -116,6 +117,55 @@ public class AuxiliaryInputParameterUpdateTest extends TestSuiteBase implements 
 		attendToProjection(model, branch, weights);
 
 		assertRecordedGradient(model, weights, captured, new Random(32));
+	}
+
+	/**
+	 * A {@link BranchBlock} compiled for inference only never builds a backward pass, so it never
+	 * allocates the gradient accumulation buffer that only the backward pass reads. The forward pass
+	 * still runs and the block destroys cleanly even though the buffer was never created.
+	 */
+	@Test(timeout = 5 * 60000)
+	public void inferenceDoesNotAllocateGradientBuffer() throws Exception {
+		TraversalPolicy shape = shape(SIZE);
+		Model model = new Model(shape, ParameterUpdate.disabled());
+		SequentialBlock context = new SequentialBlock(shape);
+		model.addInput(context);
+
+		BranchBlock split = new BranchBlock(shape);
+		context.add(split);
+		SequentialBlock branch = split.append(new SequentialBlock(shape));
+
+		PackedCollection weights = randomWeights(new Random(41));
+		attendToProjection(model, branch, weights);
+
+		Random random = new Random(42);
+		PackedCollection x = randn(shape, 0.0, 1.0, random).evaluate();
+		PackedCollection c = randn(shape, 0.0, 1.0, random).evaluate();
+
+		CompiledModel compiled = model.compile(false);
+		try {
+			PackedCollection output = compiled.forward(x, c);
+			Assert.assertEquals(SIZE, output.getShape().getTotalSize());
+			Assert.assertNull("inference-only branch allocated a gradient buffer",
+					gradientBuffer(split));
+		} finally {
+			compiled.destroy();
+		}
+
+		Assert.assertNull("gradient buffer allocated during destruction", gradientBuffer(split));
+	}
+
+	/**
+	 * Reads the private gradient accumulation buffer of a {@link BranchBlock} by reflection, so the
+	 * test can assert that an inference-only branch never allocates it.
+	 *
+	 * @param block the branch to inspect
+	 * @return the branch's gradient buffer, or {@code null} if it has not been allocated
+	 */
+	private PackedCollection gradientBuffer(BranchBlock block) throws Exception {
+		Field field = BranchBlock.class.getDeclaredField("gradient");
+		field.setAccessible(true);
+		return (PackedCollection) field.get(block);
 	}
 
 	/**

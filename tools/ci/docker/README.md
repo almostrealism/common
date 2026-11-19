@@ -65,6 +65,44 @@ Each runner container:
 Each container has its own Maven repository to avoid concurrency
 issues when multiple runners build in parallel.
 
+## Maven dependency cache
+
+These runners are ephemeral, so without a persistent cache every job re-resolves
+the whole plugin and dependency set from Maven Central and the pipeline hits its
+429 rate limit (see "Maven dependency caching" in
+[`../README.md`](../README.md#maven-dependency-caching) for the full design).
+`docker-compose.yml` mounts a **named volume** `ar-maven-cache` at
+`/opt/ar-maven-cache`; the CI jobs point `maven.repo.local` at a per-runner
+subdirectory of it, so the dependency set resolved once survives the ephemeral
+containers.
+
+**Enable it** (safe to apply any time — CI falls back to the empty per-container
+repository until you do):
+
+```bash
+# Rebuild the image (it creates the /opt/ar-maven-cache mount point owned by the
+# runner user) and recreate the containers so they pick up the named volume.
+docker compose up -d --build --scale runner=5
+```
+
+**Verify** the volume exists and warms:
+
+```bash
+docker volume inspect ar-ci_ar-maven-cache          # exists after `up`
+docker run --rm -v ar-ci_ar-maven-cache:/c busybox ls /c   # per-runner subdirs after a job
+# In a job log, "Select Maven repository" prints:
+#   using persistent shared Maven cache /opt/ar-maven-cache/<runner>
+```
+
+**Roll back / force a cold rebuild** (always safe — a cold cache resolves from
+Central, only slower):
+
+```bash
+docker compose down
+docker volume rm ar-ci_ar-maven-cache   # discard the cache; it rebuilds on next job
+docker compose up -d --scale runner=5
+```
+
 ## JDK Version (Baked Into the Image)
 
 The image ships the JDK; the CI jobs do **not** download one with

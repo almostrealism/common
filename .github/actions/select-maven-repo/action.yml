@@ -1,0 +1,79 @@
+name: Select Maven repository
+description: >-
+  Point this job's Maven local repository at the persistent, shared dependency
+  cache a self-hosted host mounts into its runners, falling back to the runner's
+  own repository when that mount is absent. This is what stops the ephemeral
+  Linux lanes (ar-ci, ar-ci-cl, ar-ci-cuda) re-downloading the whole plugin and
+  dependency set from Maven Central on every job and hitting its 429 rate limit:
+  a host-mounted cache persists across the ephemeral containers, so Central is
+  contacted at most once per artifact per host rather than once per job. The
+  action changes nothing until a host provides the mount (see tools/ci/README.md,
+  "Maven dependency caching"), so it is safe to run on today's runners — without
+  the mount it reproduces the previous per-runner isolation exactly.
+inputs:
+  shared-cache-root:
+    description: >-
+      Directory a host mounts a persistent, shared Maven repository at. When it
+      exists and is writable, this job's local repository is a per-runner
+      subdirectory of it, so it survives the ephemeral container and warms the
+      next job. Per-runner subdirectories keep concurrent runners on one host
+      from clobbering each other's SNAPSHOT installs, the same reason the
+      fallback isolates per runner.
+    required: false
+    default: /opt/ar-maven-cache
+  fallback:
+    description: >-
+      Which repository to use when the shared cache mount is absent or not
+      writable. "per-runner" (the default) gives each runner its own
+      $HOME/.m2-ci/<runner> repository — the macOS fleet and the ephemeral Linux
+      containers' previous behaviour. "home-default" uses $HOME/.m2/repository,
+      for the ar-ci `test` lane whose actions/cache step warms that path.
+    required: false
+    default: per-runner
+runs:
+  using: composite
+  steps:
+    - name: Select Maven repository
+      shell: bash
+      env:
+        SHARED_CACHE_ROOT: ${{ inputs.shared-cache-root }}
+        FALLBACK: ${{ inputs.fallback }}
+      run: |
+        set -eu
+
+        runner="${RUNNER_NAME:-unknown}"
+        # Sanitize the runner name so the resulting -Dmaven.repo.local stays a
+        # single shell token (macOS runner names can contain spaces).
+        slug="${RUNNER_NAME// /_}"
+        slug="${slug:-default}"
+
+        repo=""
+        # Prefer the host's persistent, shared cache when it is mounted and
+        # writable. A per-runner subdirectory of it survives the ephemeral
+        # container, so the dependency set resolved once is reused by every later
+        # job on this host instead of being re-downloaded from Maven Central.
+        if [ -d "${SHARED_CACHE_ROOT}" ] \
+            && mkdir -p "${SHARED_CACHE_ROOT}/${slug}" 2>/dev/null \
+            && [ -w "${SHARED_CACHE_ROOT}/${slug}" ]; then
+          repo="${SHARED_CACHE_ROOT}/${slug}"
+          echo "Runner ${runner}: using persistent shared Maven cache ${repo}"
+        else
+          # No shared cache on this host: behave exactly as before. The build
+          # still resolves correctly from Central; it is only slower.
+          case "${FALLBACK}" in
+            home-default) repo="${HOME}/.m2/repository" ;;
+            per-runner)   repo="${HOME}/.m2-ci/${slug}" ;;
+            *)
+              echo "::error::select-maven-repo: unknown fallback '${FALLBACK}' (expected per-runner or home-default)."
+              exit 1
+              ;;
+          esac
+          mkdir -p "${repo}"
+          echo "Runner ${runner}: shared Maven cache ${SHARED_CACHE_ROOT} not available; using ${repo}"
+        fi
+
+        # Export for every later step: MAVEN_OPTS carries -Dmaven.repo.local so
+        # Maven reads and writes this repository, and "Restore build artifacts"
+        # copies the build job's jars into the same MAVEN_REPO.
+        echo "MAVEN_REPO=${repo}" >> "${GITHUB_ENV}"
+        echo "MAVEN_OPTS=${MAVEN_OPTS:-} -Dmaven.repo.local=${repo}" >> "${GITHUB_ENV}"

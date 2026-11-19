@@ -271,6 +271,58 @@ public class NotifierRegistryTest extends TestSuiteBase {
     }
 
     /**
+     * The plural dependent-of lookup aggregates matches from every workspace,
+     * not just the first notifier that carries one. This is the multi-workspace
+     * aggregation the registration path relies on to examine every downstream
+     * candidate before deciding none still covers the branch, so a stale
+     * candidate in one workspace cannot bypass a live one in another.
+     */
+    @Test(timeout = 10000)
+    public void testFindAllByBranchAndDependentRepoAggregatesAcrossWorkspaces() {
+        Workstream wsRingsA = newWorkstream("ws-rings-a", "C-rings-a",
+                "feature/shared",
+                "git@github.com:almostrealism/ringsdesktop.git");
+        wsRingsA.setDependentRepos(List.of("git@github.com:almostrealism/common.git"));
+        Workstream wsRingsB = newWorkstream("ws-rings-b", "C-rings-b",
+                "feature/shared",
+                "git@github.com:almostrealism/downstream.git");
+        wsRingsB.setDependentRepos(List.of("git@github.com:almostrealism/common.git"));
+        // An archived downstream in a third workspace must be excluded.
+        Workstream wsArchived = newWorkstream("ws-archived", "C-archived",
+                "feature/shared",
+                "git@github.com:almostrealism/other.git");
+        wsArchived.setDependentRepos(List.of("git@github.com:almostrealism/common.git"));
+        wsArchived.setArchived(true);
+
+        SlackNotifier a = notifierWith(wsRingsA);
+        SlackNotifier b = notifierWith(wsRingsB);
+        SlackNotifier c = notifierWith(wsArchived);
+        Map<String, SlackNotifier> byWs = new LinkedHashMap<>();
+        byWs.put("TAAA", a);
+        byWs.put("TBBB", b);
+        byWs.put("TCCC", c);
+        NotifierRegistry registry = new NotifierRegistry(a, byWs);
+
+        List<Workstream> matches = registry.findAllByBranchAndDependentRepo(
+                "feature/shared", "git@github.com:almostrealism/common.git");
+        assertEquals("both live downstream candidates across workspaces are aggregated",
+                2, matches.size());
+        assertTrue("candidate from the first workspace is present", matches.contains(wsRingsA));
+        assertTrue("candidate from the second workspace is present", matches.contains(wsRingsB));
+        assertTrue("archived candidate is excluded", !matches.contains(wsArchived));
+
+        // A repo nobody depends on yields no matches across any workspace.
+        assertTrue("an unrelated repo aggregates to nothing",
+                registry.findAllByBranchAndDependentRepo(
+                        "feature/shared", "git@github.com:almostrealism/nope.git").isEmpty());
+
+        // A different branch yields no matches even for the right dependent repo.
+        assertTrue("a different branch aggregates to nothing",
+                registry.findAllByBranchAndDependentRepo(
+                        "feature/elsewhere", "git@github.com:almostrealism/common.git").isEmpty());
+    }
+
+    /**
      * Verifies that {@code findAllByBranch} works correctly in single-workspace mode
      * when multiple workstreams share the same branch name.
      */

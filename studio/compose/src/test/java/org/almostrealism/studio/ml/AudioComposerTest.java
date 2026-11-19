@@ -202,6 +202,115 @@ public class AudioComposerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A normalized blend divides each source's scale by the total of the scales, so the
+	 * composed latent depends on the proportions the position selects and not on its
+	 * magnitude: positions that differ only in length compose the same latent.
+	 */
+	@Test(timeout = 60000)
+	public void normalizedBlendIsWeightedMean() {
+		AudioComposer composer = composer(17L);
+		composer.setNormalizedBlend(true);
+		composer.addSource(sourceA(), weightVector(1.0, 0.0));
+		composer.addSource(sourceB(), weightVector(0.0, 1.0));
+
+		assertValues(expected(0.8, 0.2), latent(composer, 2.0, 0.5));
+		assertValues(expected(0.8, 0.2), latent(composer, 20.0, 5.0));
+		assertValues(expected(0.8, 0.2), latent(composer, 0.2, 0.05));
+	}
+
+	/**
+	 * In a normalized blend, a position at which no source has a positive scale yields
+	 * the plain mean of the sources rather than silence or a division by zero.
+	 */
+	@Test(timeout = 60000)
+	public void normalizedBlendWithNoSelectedSourceIsMean() {
+		AudioComposer composer = composer(19L);
+		composer.setNormalizedBlend(true);
+		composer.addSource(sourceA(), weightVector(1.0, 0.0));
+		composer.addSource(sourceB(), weightVector(0.0, 1.0));
+
+		assertValues(expected(0.5, 0.5), latent(composer, -1.0, -3.0));
+	}
+
+	/**
+	 * In a normalized blend, a position very close to the origin still composes the
+	 * proportions it selects: a tiny positive scale is not diluted towards the plain mean,
+	 * and a source selected alone by a tiny scale is the whole latent.
+	 */
+	@Test(timeout = 60000)
+	public void normalizedBlendNearOriginKeepsProportions() {
+		AudioComposer composer = composer(21L);
+		composer.setNormalizedBlend(true);
+		composer.addSource(sourceA(), weightVector(1.0, 0.0));
+		composer.addSource(sourceB(), weightVector(0.0, 1.0));
+
+		assertValues(expected(0.8, 0.2), latent(composer, 2e-12, 5e-13));
+		assertValues(expected(1.0, 0.0), latent(composer, 1e-12, -1.0));
+		assertValues(expected(0.0, 1.0), latent(composer, -1.0, 1e-12));
+	}
+
+	/**
+	 * In a normalized blend, random weights keep the composed latent within the range of
+	 * the sources at every position, however far the position is from the origin.
+	 */
+	@Test(timeout = 60000)
+	public void normalizedBlendStaysWithinSources() {
+		Random positions = new Random(23L);
+
+		for (int i = 0; i < 8; i++) {
+			AudioComposer composer = composer(100L + i);
+			composer.setNormalizedBlend(true);
+			composer.addSource(sourceA());
+			composer.addSource(sourceB());
+
+			double scale = Math.pow(10, positions.nextInt(5) - 2);
+			double[] actual = latent(composer,
+					scale * positions.nextGaussian(), scale * positions.nextGaussian());
+
+			for (int j = 0; j < actual.length; j++) {
+				double low = Math.min(SOURCE_A[j], SOURCE_B[j]);
+				double high = Math.max(SOURCE_A[j], SOURCE_B[j]);
+				Assert.assertTrue("Cell " + j + " = " + actual[j] + " is outside [" + low + ", " + high + "]",
+						actual[j] >= low - 1e-4 && actual[j] <= high + 1e-4);
+			}
+		}
+	}
+
+	/**
+	 * In a normalized blend, a source whose scale is driven negative by its blend
+	 * contribution is excluded from the proportions: the composed latent is the remaining
+	 * selected source alone, not a mix pulled towards the negative source, and there is no
+	 * division by a negative or zero total.
+	 */
+	@Test(timeout = 60000)
+	public void normalizedBlendExcludesNegativeContribution() {
+		AudioComposer composer = composer(29L);
+		composer.setNormalizedBlend(true);
+		composer.addSource(sourceA(), weightVector(1.0, 0.0));
+		composer.addSource(sourceB(), weightVector(0.0, 1.0));
+		composer.getSource(1).setContribution(-1.0);
+
+		assertValues(expected(1.0, 0.0), latent(composer, 2.0, 0.5));
+	}
+
+	/**
+	 * In a normalized blend, when every source's scale is driven non-positive by a
+	 * negative contribution the total is zero and the composer falls back to the plain
+	 * mean rather than dividing by a zero or negative total and producing NaN.
+	 */
+	@Test(timeout = 60000)
+	public void normalizedBlendWithAllNegativeContributionsIsMean() {
+		AudioComposer composer = composer(31L);
+		composer.setNormalizedBlend(true);
+		composer.addSource(sourceA(), weightVector(1.0, 0.0));
+		composer.addSource(sourceB(), weightVector(0.0, 1.0));
+		composer.getSource(0).setContribution(-1.0);
+		composer.getSource(1).setContribution(-1.0);
+
+		assertValues(expected(0.5, 0.5), latent(composer, 2.0, 0.5));
+	}
+
+	/**
 	 * Composes the two test sources with orthogonal unit weight vectors using the
 	 * given seed.
 	 */
@@ -217,9 +326,13 @@ public class AudioComposerTest extends TestSuiteBase {
 		return new AudioComposer(new StubAutoEncoder(), DIM, seed);
 	}
 
-	/** Evaluates the interpolated latent of the composer at the position {@code (x, y)}. */
+	/**
+	 * Evaluates the interpolated latent of the composer at the position {@code (x, y)}
+	 * through the optimizer, as the production callers do, so a normalized blend's shared
+	 * reductions are isolated rather than embedded once per consumer.
+	 */
 	private double[] latent(AudioComposer composer, double x, double y) {
-		return composer.getInterpolatedLatent(cp(pack(x, y))).get().evaluate().toArray();
+		return composer.getInterpolatedLatent(cp(pack(x, y))).evaluateOptimized().toArray();
 	}
 
 	/**

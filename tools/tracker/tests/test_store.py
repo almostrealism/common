@@ -191,6 +191,75 @@ class TestTasks(unittest.TestCase):
         self.assertEqual(counts["tasks"], 1)
 
 
+class TestArtifacts(unittest.TestCase):
+
+    def setUp(self):
+        self.store, self.db_path = _make_store()
+        self.project = self.store.create_project("Rings", workspace_id="W1")
+        self.task = self.store.create_task("Task", project_id=self.project["id"])
+
+    def tearDown(self):
+        self.store.close()
+        os.unlink(self.db_path)
+
+    def test_create_and_get(self):
+        a = self.store.create_artifact(
+            self.task["id"], "comment", "a note", "person")
+        self.assertIsNotNone(a["id"])
+        self.assertEqual(a["artifact_type"], "comment")
+        self.assertEqual(a["content"], "a note")
+        self.assertEqual(a["author"], "person")
+        self.assertEqual(a["task_id"], self.task["id"])
+        fetched = self.store.get_artifact(a["id"])
+        self.assertEqual(fetched["content"], "a note")
+
+    def test_artifact_carries_the_tasks_workspace(self):
+        a = self.store.create_artifact(
+            self.task["id"], "comment", "n", "person")
+        self.assertEqual(a["workspace_id"], "W1")
+
+    def test_create_on_unknown_task_returns_none(self):
+        self.assertIsNone(
+            self.store.create_artifact("no-such-task", "comment", "n", "person"))
+
+    def test_type_check_constraint(self):
+        import sqlite3
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.store.create_artifact(self.task["id"], "sketch", "n", "person")
+
+    def test_list_is_chronological(self):
+        self.store.create_artifact(
+            self.task["id"], "comment", "first", "person",
+            created_at="2026-01-01T00:00:00Z")
+        self.store.create_artifact(
+            self.task["id"], "reference", "https://example/x", "ws/job",
+            created_at="2026-01-02T00:00:00Z")
+        artifacts = self.store.list_artifacts(self.task["id"])
+        self.assertEqual([a["content"] for a in artifacts],
+                         ["first", "https://example/x"])
+
+    def test_list_is_scoped_to_one_task(self):
+        other = self.store.create_task("Other", project_id=self.project["id"])
+        self.store.create_artifact(self.task["id"], "comment", "mine", "person")
+        self.store.create_artifact(other["id"], "comment", "theirs", "person")
+        self.assertEqual(
+            [a["content"] for a in self.store.list_artifacts(self.task["id"])],
+            ["mine"])
+
+    def test_delete(self):
+        a = self.store.create_artifact(self.task["id"], "comment", "n", "person")
+        self.assertTrue(self.store.delete_artifact(a["id"]))
+        self.assertIsNone(self.store.get_artifact(a["id"]))
+
+    def test_delete_nonexistent_returns_false(self):
+        self.assertFalse(self.store.delete_artifact("no-such-id"))
+
+    def test_deleting_the_task_removes_its_artifacts(self):
+        a = self.store.create_artifact(self.task["id"], "memory", "mem-1", "person")
+        self.store.delete_task(self.task["id"])
+        self.assertIsNone(self.store.get_artifact(a["id"]))
+
+
 class TestBulkImport(unittest.TestCase):
 
     def setUp(self):

@@ -44,7 +44,7 @@ import java.util.function.Supplier;
  * receives the input directly.</p>
  *
  * <p>During the backward pass each child pushes its gradient into a shared accumulator
- * buffer ({@link #gradient}). Once all gradients have been summed the backward cell
+ * buffer ({@link #gradient()}). Once all gradients have been summed the backward cell
  * pushes the accumulated gradient upstream and then zeroes the buffer for the next step.</p>
  *
  * @see Block
@@ -73,10 +73,13 @@ public class BranchBlock implements Block, Learning, Tracking {
 	/** The child blocks whose forward cells receive input and backward cells provide gradients. */
 	private List<Block> children;
 
-	/** Accumulated gradient sum from all child backward passes. */
-	private final PackedCollection gradient;
+	/**
+	 * Accumulated gradient sum from all child backward passes, allocated the first time a
+	 * backward pass needs it (see {@link #gradient()}), or {@code null} before then.
+	 */
+	private PackedCollection gradient;
 
-	/** Receptor that adds each child's gradient into {@link #gradient}. */
+	/** Receptor that adds each child's gradient into the {@link #gradient() accumulation buffer}. */
 	private final Receptor<PackedCollection> aggregator;
 
 	/**
@@ -95,22 +98,21 @@ public class BranchBlock implements Block, Learning, Tracking {
 		};
 
 		this.children = new ArrayList<>();
-		this.gradient = new PackedCollection(shape);
 
 		if (DefaultGradientPropagation.enableDiagnosticGrad) {
 			this.aggregator = (input) -> {
 				OperationList op = new OperationList("BranchBlock Aggregate");
 				op.add(a("aggregate",
-						p(gradient.each()), add(p(gradient.each()), input)));
+						p(gradient().each()), add(p(gradient().each()), input)));
 				op.add(() -> () -> {
-					gradient.print();
+					gradient().print();
 				});
 				return op;
 			};
 		} else {
 			this.aggregator = (input) ->
 					a("aggregate",
-							p(gradient.each()), add(p(gradient.each()), input));
+							p(gradient().each()), add(p(gradient().each()), input));
 		}
 	}
 
@@ -217,13 +219,25 @@ public class BranchBlock implements Block, Learning, Tracking {
 			backwards = Cell.of((input, next) -> {
 				OperationList op = new OperationList("BranchBlock Backward");
 				op.add(aggregator.push(input));
-				op.add(next.push(p(gradient)));
-				op.add(a("clearBranchGradient", p(gradient.each()), c(0.0)));
+				op.add(next.push(p(gradient())));
+				op.add(a("clearBranchGradient", p(gradient().each()), c(0.0)));
 				return op;
 			});
 		}
 
 		return backwards;
+	}
+
+	/**
+	 * Returns the buffer the gradients of this branch's children are accumulated into, allocating
+	 * it the first time a backward pass is built. A branch used only for inference never builds
+	 * one, so it never holds a buffer the size of its input that nothing reads.
+	 *
+	 * @return the gradient accumulation buffer
+	 */
+	private synchronized PackedCollection gradient() {
+		if (gradient == null) gradient = new PackedCollection(shape);
+		return gradient;
 	}
 
 	/**

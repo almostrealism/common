@@ -21,7 +21,6 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -90,46 +89,16 @@ public class ColorMathTest extends TestSuiteBase implements RGBFeatures {
 	 * <p>Input values: [0.0, -1.0, 1.0, -0.1, 0.1]</p>
 	 * <p>Expected results: [black, black, white, black, white]</p>
 	 *
-	 * <p><strong>Known Issue - Shape Inference with Constant RGB Producers:</strong></p>
-	 * <p>This test currently fails due to a shape inference problem. When using constant RGB
-	 * producers like {@code white()} and {@code black()} (shape 3) with batched scalar inputs
-	 * (shape -1,1), the generated kernel incorrectly assumes the input has RGB stride (3) instead
-	 * of scalar stride (1).</p>
-	 *
-	 * <p>The generated kernel reads:</p>
-	 * <pre>
-	 * _output[(id * 3) + 0] = (_input[(id * 3) + 0] > 0.0) ? 1.0 : 0;  // Wrong stride!
-	 * </pre>
-	 * <p>Instead of:</p>
-	 * <pre>
-	 * _output[(id * 3) + 0] = (_input[id] > 0.0) ? 1.0 : 0;  // Correct stride
-	 * </pre>
-	 *
-	 * <p>This causes the kernel to read input values [0, 1, 2] for the first RGB and [3, 4, 5]
-	 * for the second RGB, instead of reading scalar value 0 for the first RGB, scalar 1 for the
-	 * second RGB, etc.</p>
-	 *
-	 * <p><strong>Root Cause:</strong> The framework's shape inference mechanism assumes that when
-	 * trueValue and falseValue are both shape(3), the input comparison operands must also be
-	 * shape(3) per element. This works correctly for single-value operations (see {@link #greaterThan()})
-	 * where both scalar and RGB are passed as variable producers, but fails for batched operations
-	 * using constants.</p>
-	 *
-	 * <p><strong>Potential Solutions:</strong></p>
-	 * <ul>
-	 *   <li>Use per-element evaluation instead of batched kernel (defeats batching purpose)</li>
-	 *   <li>Implement explicit scalar-to-RGB expansion operation before conditional</li>
-	 *   <li>Create specialized greaterThan variant for scalar-to-vector conversions</li>
-	 *   <li>Enhance shape inference to handle dimension mismatches between comparison and result</li>
-	 * </ul>
-	 *
-	 * <p>See {@code /workspace/project/common/utils/test_output/greaterThan_investigation.md}
-	 * for detailed analysis and documentation recommendations.</p>
+	 * <p>The condition is one value per row (a variable-count {@code (-1, 1)} input) while the
+	 * true and false branches ({@code white()} and {@code black()}) are a three-element vector.
+	 * The selection broadcasts each row's single condition across all three of that row's output
+	 * channels; reading the condition at the output element index instead would walk across
+	 * neighbouring rows with the branches' stride. The per-row broadcast is handled by the
+	 * comparison-operand index projection shared by the conditional selection computations.</p>
 	 *
 	 * @see #greaterThan() for a working single-value comparison example
 	 */
 	@Test(timeout = 30000)
-	@TestProperties(knownIssue = true)
 	public void greaterThanKernel() {
 
 		verboseLog(() -> {

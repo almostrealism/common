@@ -25,7 +25,6 @@ import org.almostrealism.model.Block;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -39,76 +38,94 @@ import java.util.List;
 public class BackPropagationTests extends TestSuiteBase {
 
 	/**
-	 * Tests dense layer backward pass with known issue.
+	 * Tests the dense layer backward pass against an analytically derived gradient.
+	 *
+	 * <p>The layer is built from the no-initialisation {@code dense(weights, biases)}
+	 * factory with deterministic parameters, so the values survive {@code compile()},
+	 * which would otherwise randomise the weights and zero the biases during setup.
+	 * Weights are stored as {@code [nodes, size]} with
+	 * {@code weights[i, j] = (i + 1) * (j + 1) * 0.01}; the product form keeps the
+	 * Jacobian's dependence on the input index from cancelling in the backward pass.</p>
+	 *
+	 * <p>The expected forward output is {@code softmax(weights @ input + biases)}, and for
+	 * an upstream gradient that is a unit spike at the target output the expected input
+	 * gradient is {@code dx_j = sum_k weights[k, j] * s_target * (delta(target, k) - s_k)}.
+	 * Both are computed here from those definitions rather than copied from the layer.</p>
 	 */
 	@Test(timeout = 120000)
-	@TestProperties(knownIssue = true)
 	public void denseBackwards() {
 
 		int size = 12;
 		int nodes = 5;
 
+		PackedCollection weights = new PackedCollection(shape(nodes, size));
+		int wn = nodes * size;
+		floor(integers(0, wn).divide(size)).add(c(1.0))
+				.multiply(integers(0, wn).mod(size).add(c(1.0)))
+				.multiply(0.01)
+				.into(weights.traverseEach()).evaluate();
+
+		PackedCollection biases = new PackedCollection(shape(nodes));
+		integers(0, nodes).multiply(0.01).add(0.1).into(biases.traverseEach()).evaluate();
+
 		Model model = new Model(shape(size), 1e-1);
-		CellularLayer dense = dense(size, nodes).apply(shape(size));
+		CellularLayer dense = dense(weights, biases).apply(shape(size));
 		CellularLayer softmax = softmax(nodes);
 		model.add(dense);
 		model.add(softmax);
 
-		PackedCollection weights = dense.getWeights().get(0);
-
-		// weights[i, j] = (i + j) * 0.01, from the flattened index k = i * nodes + j
-		int wn = size * nodes;
-		floor(integers(0, wn).divide(nodes)).add(integers(0, wn).mod(nodes)).multiply(0.01)
-				.into(weights.traverseEach()).evaluate();
-
-		PackedCollection biases = dense.getWeights().get(1);
-		integers(0, nodes).multiply(0.01).add(0.1).into(biases.traverseEach()).evaluate();
-
 		PackedCollection input = new PackedCollection(size);
 		integers(0, size).into(input.traverseEach()).evaluate();
 
-		CompiledModel runner = model.compile();
+		CompiledModel runner = model.compile(true, true);
+
+		double[] x = new double[size];
+		for (int j = 0; j < size; j++) x[j] = input.valueAt(j);
+
+		double[][] w = new double[nodes][size];
+		double[] b = new double[nodes];
+		for (int i = 0; i < nodes; i++) {
+			b[i] = biases.valueAt(i);
+			for (int j = 0; j < size; j++) w[i][j] = weights.valueAt(i, j);
+		}
+
+		double[] softmaxOut = new double[nodes];
+		double expSum = 0;
+		for (int i = 0; i < nodes; i++) {
+			double z = b[i];
+			for (int j = 0; j < size; j++) z += w[i][j] * x[j];
+			softmaxOut[i] = Math.exp(z);
+			expSum += softmaxOut[i];
+		}
+		for (int i = 0; i < nodes; i++) softmaxOut[i] /= expSum;
 
 		verboseLog(() -> {
 			PackedCollection output = runner.forward(input);
 			log("Output: " + Arrays.toString(output.toArray(0, output.getMemLength())));
 
-			// double expected[] = new double[]{2.29283592e-12, 1.86271326e-09, 1.51327910e-06, 1.22939676e-03, 9.98769088e-01};
-			double[] expected = new double[]{0.034696079790592194, 0.06780441105365753, 0.13250578939914703, 0.2589479088783264, 0.5060457587242126};
 			for (int i = 0; i < output.getMemLength(); i++) {
-				assertEquals(expected[i], output.valueAt(i));
+				assertEquals(softmaxOut[i], output.valueAt(i));
 			}
 		});
 
-		double[] result = new double[size];
-
-		dense.getBackward().setReceptor(grad -> () -> {
-			Evaluable<PackedCollection> gr = grad.get();
-
-			return () -> {
-				PackedCollection out = gr.evaluate();
-				log(Arrays.toString(out.toArray(0, out.getMemLength())));
-
-				out.getMem(0, result, 0, result.length);
-			};
-		});
-
+		int target = 3;
 		PackedCollection gradient = new PackedCollection(shape(nodes));
-		gradient.setMem(3, 1.0);
-		runner.backward(gradient);
+		gradient.setMem(target, 1.0);
+		PackedCollection result = runner.backward(gradient);
 
 		log("Weights: " + Arrays.toString(weights.toArray(0, weights.getMemLength())));
 		log("Biases: " + Arrays.toString(biases.toArray(0, biases.getMemLength())));
-		log("Output Gradient: " + Arrays.toString(result));
+		log("Output Gradient: " + Arrays.toString(result.toArray(0, result.getMemLength())));
 
-//		double expected[] = new double[] { -0.00012475, -0.0001249,  -0.00012506, -0.00012521, -0.00012536, -0.00012551,
-//				-0.00012566, -0.00012581, -0.00012596, -0.00012611, -0.00012626, -0.00012642 };
+		double[] dz = new double[nodes];
+		for (int k = 0; k < nodes; k++) {
+			dz[k] = softmaxOut[target] * ((k == target ? 1.0 : 0.0) - softmaxOut[k]);
+		}
 
-		double[] expected = new double[]{-0.0023582035209983587, -0.003028743900358677, -0.0036992833483964205,
-				-0.004369824193418026, -0.005040363874286413, -0.005710904952138662, -0.006381443701684475,
-				-0.007051984313875437, -0.007722523529082537, -0.008393064141273499, -0.009063605219125748, -0.009734145365655422};
-		for (int i = 0; i < result.length; i++) {
-			Assert.assertEquals(expected[i], result[i], 1e-6);
+		for (int j = 0; j < size; j++) {
+			double expected = 0;
+			for (int k = 0; k < nodes; k++) expected += w[k][j] * dz[k];
+			Assert.assertEquals(expected, result.valueAt(j), 1e-6);
 		}
 	}
 

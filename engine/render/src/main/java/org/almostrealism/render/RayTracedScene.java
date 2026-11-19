@@ -192,16 +192,19 @@ public class RayTracedScene implements Realization<RealizableImage, RenderParame
 	/**
 	 * Builds a color producer for all pixels given the specified render parameters.
 	 *
-	 * <p>Creates a pixel position input with the total number of pixels (including supersamples),
-	 * then calls {@link #operate} to build the computation graph. If the result implements
-	 * {@link DimensionAware}, dimensions are configured accordingly.</p>
+	 * <p>Creates a pixel position input of variable count (shape {@code (-1, 2)}), so the
+	 * kernel's count is the number of pixel positions passed at evaluation time rather than a
+	 * value baked into the graph, then calls {@link #operate} to build the computation graph.
+	 * Because the input carries no resolution, the image dimensions are supplied separately:
+	 * as the {@code (width, height)} pair passed to {@link #operate} and, when the result
+	 * implements {@link DimensionAware}, through
+	 * {@link DimensionAware#setDimensions(int, int, int, int)} including supersampling.</p>
 	 *
 	 * @param p The render parameters specifying resolution and supersampling
 	 * @return A producer that computes colors for all pixels
 	 */
 	public Producer<PackedCollection> getProducer(RenderParameters p) {
-		int totalPixels = p.width * p.ssWidth * p.height * p.ssHeight;
-		Producer<PackedCollection> producer = operate(v(shape(totalPixels, 2), 0), (Producer) pair(p.width, p.height));
+		Producer<PackedCollection> producer = operate(v(shape(-1, 2), 0), (Producer) pair(p.width, p.height));
 
 		if (producer instanceof DimensionAware) {
 			((DimensionAware) producer).setDimensions(p.width, p.height, p.ssWidth, p.ssHeight);

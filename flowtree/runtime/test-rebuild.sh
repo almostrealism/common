@@ -59,6 +59,27 @@ exit 0
 EOF
 chmod +x "$MOCK_BIN/mvn"
 
+# rebuild.sh's closing (non-fatal) public-endpoint health check resolves a
+# name through a public DNS resolver with `dig @1.1.1.1` and probes it with
+# `curl`. Neither is a deployment command, but both reach the live internet,
+# and the suite drives rebuild.sh dozens of times — on a runner where
+# dnsutils is installed that is dozens of real DNS/HTTP round-trips, enough
+# to exceed the test's wall-clock budget. Mock them so the check takes its
+# healthy path (a resolvable address, an HTTP 401 from the authenticated
+# edge) entirely offline, keeping the suite's promise that it never touches
+# a real deployment. (`dig`/`curl` are used nowhere else these tests reach.)
+cat > "$MOCK_BIN/dig" <<'EOF'
+#!/usr/bin/env bash
+echo "203.0.113.1"
+EOF
+chmod +x "$MOCK_BIN/dig"
+
+cat > "$MOCK_BIN/curl" <<'EOF'
+#!/usr/bin/env bash
+echo "401"
+EOF
+chmod +x "$MOCK_BIN/curl"
+
 cleanup() {
   rm -rf "$MOCK_BIN"
   rm -f "$MOCK_DOCKER_LOG"

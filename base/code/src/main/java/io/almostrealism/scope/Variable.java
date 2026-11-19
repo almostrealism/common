@@ -16,6 +16,7 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.compute.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
@@ -254,6 +255,34 @@ public class Variable<T, V extends Variable<T, ?>>
 	protected Supplier<Evaluable<? extends T>> getProducerDelegate() {
 		Supplier<Evaluable<? extends T>> p = getProducer();
 		return p instanceof Delegated ? (Supplier<Evaluable<? extends T>>) ((Delegated<?>) p).getDelegate() : p;
+	}
+
+	/**
+	 * Returns the {@link ProducerArgumentReference} this variable's value resolves to &mdash;
+	 * the {@link #getProducer() producer} when it is itself a {@link ProducerArgumentReference},
+	 * or its {@link Delegated#getDelegate() delegate} when the producer is {@link Delegated} and
+	 * that delegate is a reference. A variable whose producer is neither is not an argument
+	 * reference and yields {@code null}.
+	 *
+	 * <p>The producer is checked directly before its delegate, so a producer that is itself a
+	 * reference is returned as-is rather than unwrapped &mdash; this is why the check is written
+	 * out here rather than delegating to {@link #getProducerDelegate()}, which unwraps a
+	 * {@link Delegated} producer first.</p>
+	 *
+	 * @return the argument reference this variable resolves to, or {@code null} if it is not one
+	 */
+	public ProducerArgumentReference getProducerArgumentReference() {
+		Supplier<Evaluable<? extends T>> p = getProducer();
+
+		if (p instanceof ProducerArgumentReference) {
+			return (ProducerArgumentReference) p;
+		}
+
+		if (p instanceof Delegated && ((Delegated<?>) p).getDelegate() instanceof ProducerArgumentReference) {
+			return (ProducerArgumentReference) ((Delegated<?>) p).getDelegate();
+		}
+
+		return null;
 	}
 
 	/**
