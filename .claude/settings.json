@@ -11,6 +11,7 @@
     "ar-docs",
     "ar-test-runner",
     "ar-build-validator",
+    "ar-commit",
     "ar-profile-analyzer",
     "ar-jmx",
     "ar-manager",
