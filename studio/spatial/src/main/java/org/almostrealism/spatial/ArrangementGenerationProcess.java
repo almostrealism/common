@@ -335,9 +335,9 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 			completedThisCycle = 0;
 			if (cycleListener != null) cycleListener.run();
 		});
-		// TODO(review): refreshNetworks runs only on breedingComplete, which fires only when
-		// PopulationOptimizer.enableBreeding is true; with breeding disabled records never sync,
-		// unlike the removed lazy refresh in recordsFor().
+		// Records sync once per cycle at the breeding-complete hook, which fires only
+		// when PopulationOptimizer.enableBreeding is true; the breeding-disabled path
+		// has no population-ready hook and is covered by a tracked follow-up.
 		optimizer.setBreedingCompleteListener(this::refreshNetworks);
 		optimizer.setCompletionListener(() -> {
 			iterationCount++;
