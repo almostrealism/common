@@ -306,6 +306,15 @@ class ReadyToLaunchTest(unittest.TestCase):
         self.assertFalse(self.ready(files=[
             changed("docs/plans/MANAGER_LOG.md")]))
 
+    def test_a_plan_whose_path_contains_the_manager_log_name_is_not_ready(self):
+        # implement-plan.yaml's detect-plan drops every path matching
+        # 'MANAGER_LOG.md', not only the exact basename, so approving this
+        # pull request would find no plan.
+        self.assertFalse(self.ready(files=[
+            changed("docs/plans/PLAN-MANAGER_LOG.md")]))
+        self.assertFalse(self.ready(files=[
+            changed("docs/plans/MANAGER_LOG.md/PLAN-x.md")]))
+
     def test_a_modified_plan_is_not_a_new_plan(self):
         self.assertFalse(self.ready(files=[
             changed("docs/plans/PLAN-x.md", "modified")]))

@@ -74,6 +74,7 @@ import datetime
 import importlib.util
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -254,6 +255,14 @@ def draft_plan_pr(pr, repo):
         and (head.get("repo") or {}).get("full_name") == repo
 
 
+# The exclusion ``implement-plan.yaml``'s ``detect-plan`` applies to new plan
+# files: ``grep -v 'MANAGER_LOG.md'``, an unanchored basic regular expression
+# matched against the whole path. It is reproduced as written (``.`` matches
+# any character, anywhere in the path), not narrowed to a basename comparison,
+# so that every path the marker counts as a plan is one detect-plan keeps.
+MANAGER_LOG_PATTERN = re.compile(r"MANAGER_LOG.md")
+
+
 def ready_to_launch(facts, repo):
     """Whether, if an approver switched this draft pull request to ready for
     review now, that switch would launch an implementation agent.
@@ -268,9 +277,10 @@ def ready_to_launch(facts, repo):
     2. every changed file is under ``docs/`` (``plan-ready.yaml``'s docs-only
        rule, read from the pull request's files, which GitHub computes as the
        merge-base diff against the base);
-    3. the branch adds at least one new ``.md`` under ``docs/plans`` other than
-       ``MANAGER_LOG.md`` (``implement-plan.yaml``'s ``detect-plan``: a file
-       added relative to the default branch is ``status == "added"`` here).
+    3. the branch adds at least one new ``.md`` under ``docs/plans`` whose path
+       does not match ``MANAGER_LOG_PATTERN`` (``implement-plan.yaml``'s
+       ``detect-plan``: a file added relative to the default branch is
+       ``status == "added"`` here).
 
     A fourth condition the chain enforces — that the branch's FlowTree
     workstream has no job pending or running (``implement-plan.yaml``'s
@@ -288,7 +298,7 @@ def ready_to_launch(facts, repo):
     return any(item.get("status") == "added"
                and item.get("filename", "").startswith("docs/plans/")
                and item.get("filename", "").endswith(".md")
-               and os.path.basename(item.get("filename", "")) != "MANAGER_LOG.md"
+               and not MANAGER_LOG_PATTERN.search(item.get("filename", ""))
                for item in files)
 
 
