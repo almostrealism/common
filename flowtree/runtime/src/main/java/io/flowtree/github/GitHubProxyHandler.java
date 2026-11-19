@@ -72,9 +72,12 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     private Map<String, String> githubOrgTokens;
 
     /**
-     * The REST API root every typed operation builds its URLs from. Defaults to
+     * The REST API root every typed operation builds its URLs from, and the
+     * root a proxied path (one that is not already an absolute {@code https://}
+     * URL) is resolved against in {@link #handle}. Defaults to
      * {@link #DEFAULT_API_ROOT}; a test points it at a local stub server so the
-     * companion-PR operations can be exercised without reaching GitHub.
+     * companion-PR operations and the proxy forward — including the PATCH verb —
+     * can be exercised without reaching GitHub.
      */
     private final String apiRoot;
 
@@ -125,6 +128,10 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      * The response is wrapped as:</p>
      * <pre>{@code {"status": 200, "link": "<pagination>", "body": <github-json>}}</pre>
      *
+     * <p>A request whose method is none of GET/POST/PUT/PATCH is refused with an
+     * error response rather than downgraded to a GET, so a caller that asks for a
+     * write is never silently answered with a read.</p>
+     *
      * @param session  the NanoHTTPD session containing query parameters and body
      * @param method   the HTTP method of the incoming request
      * @param readBody a callback that reads the raw POST/PUT/PATCH body from the session
@@ -168,14 +175,18 @@ public class GitHubProxyHandler implements ConsoleFeatures {
         }
 
         String githubMethod;
-        if (Method.POST.equals(method)) {
+        if (Method.GET.equals(method)) {
+            githubMethod = "GET";
+        } else if (Method.POST.equals(method)) {
             githubMethod = "POST";
         } else if (Method.PUT.equals(method)) {
             githubMethod = "PUT";
         } else if (Method.PATCH.equals(method)) {
             githubMethod = "PATCH";
         } else {
-            githubMethod = "GET";
+            // Refuse an unsupported verb rather than downgrade it to a GET.
+            return error.respond("Unsupported method for GitHub proxy: " + method
+                    + "; supported methods are GET, POST, PUT, PATCH");
         }
 
         // Read body for POST/PUT/PATCH requests (forwarded to GitHub as-is)
@@ -185,17 +196,18 @@ public class GitHubProxyHandler implements ConsoleFeatures {
         }
 
         // Resolve full GitHub API URL
+        // A path resolves against the configured API root; in production that
+        // is the public API, so a test can redirect the forward to a stub.
         String fullUrl;
         if (urlOrPath.startsWith("https://")) {
             fullUrl = urlOrPath;
         } else {
-            fullUrl = "https://api.github.com" + urlOrPath;
+            fullUrl = apiRoot + urlOrPath;
         }
 
         log("GitHub proxy " + githubMethod + " " + urlOrPath);
 
         if ("PATCH".equals(githubMethod)) {
-            // TODO(review): no test covers PATCH forwarding or RequestBodyReader's PATCH path; unknown methods still fall back to GET.
             return forwardPatch(fullUrl, payload, token, error);
         }
 

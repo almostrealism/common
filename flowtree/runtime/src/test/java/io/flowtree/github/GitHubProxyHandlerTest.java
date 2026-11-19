@@ -18,14 +18,25 @@ package io.flowtree.github;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import fi.iki.elonen.NanoHTTPD;
+import fi.iki.elonen.NanoHTTPD.CookieHandler;
+import fi.iki.elonen.NanoHTTPD.IHTTPSession;
+import fi.iki.elonen.NanoHTTPD.Method;
+import fi.iki.elonen.NanoHTTPD.Response;
+import io.flowtree.api.RequestBodyReader;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -268,6 +279,112 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
         assertNull(GitHubProxyHandler.extractOrgFromRepoUrl("not-a-url"));
     }
 
+    /**
+     * A proxied PATCH is forwarded to GitHub as a PATCH, carrying the body the
+     * {@link RequestBodyReader} read from the session, and the GitHub response
+     * is returned in the proxy envelope. The handler's API root is pointed at a
+     * local stub that records the method and body it actually received, so the
+     * forward is observed on the wire rather than inferred.
+     */
+    @Test(timeout = 30000)
+    public void patchIsForwardedAsPatchWithItsBody() throws IOException {
+        String payload = "{\"title\":\"A new title\"}";
+        AtomicReference<String> seenMethod = new AtomicReference<>();
+        AtomicReference<String> seenBody = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            seenMethod.set(exchange.getRequestMethod());
+            seenBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            respond(exchange, "{\"number\":5,\"title\":\"A new title\"}");
+        });
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(
+                    Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            byte[] bytes = payload.getBytes(StandardCharsets.UTF_8);
+            IHTTPSession session = new FakeSession(Method.PATCH,
+                    Map.of("url", "/repos/almostrealism/common/pulls/5"),
+                    Map.of("content-length", String.valueOf(bytes.length)),
+                    new ByteArrayInputStream(bytes));
+
+            Response response = handler.handle(session, Method.PATCH,
+                    new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+            assertEquals("PATCH", seenMethod.get());
+            assertEquals(payload, seenBody.get());
+            String envelope = bodyOf(response);
+            assertTrue(envelope.contains("\"status\":200"));
+            assertTrue(envelope.contains("\"number\":5"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * {@link RequestBodyReader} — the reader {@code FlowTreeApiEndpoint} uses for
+     * every proxied body — reads a PATCH body straight from the session's input
+     * stream, bounded by {@code content-length}: exactly that many bytes, and no
+     * trailing bytes beyond it.
+     */
+    @Test(timeout = 10000)
+    public void requestBodyReaderReadsPatchBodyBoundedByContentLength() {
+        String body = "{\"title\":\"New title\"}";
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        InputStream stream = new ByteArrayInputStream(
+                (body + "TRAILING").getBytes(StandardCharsets.UTF_8));
+        IHTTPSession session = new FakeSession(Method.PATCH, Map.of(),
+                Map.of("content-length", String.valueOf(bytes.length)), stream);
+
+        assertEquals(body, new RequestBodyReader().read(session));
+    }
+
+    /**
+     * A method the proxy does not support (DELETE, OPTIONS) is refused with an
+     * error, never silently answered as a GET. The stub counts every request it
+     * receives, proving no downgraded read is forwarded.
+     */
+    @Test(timeout = 30000)
+    public void unsupportedMethodIsRefusedNotDowngradedToGet() throws IOException {
+        AtomicInteger hits = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            hits.incrementAndGet();
+            respond(exchange, "{}");
+        });
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(
+                    Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            for (Method method : new Method[] {Method.DELETE, Method.OPTIONS}) {
+                IHTTPSession session = new FakeSession(method,
+                        Map.of("url", "/repos/almostrealism/common/pulls/5"),
+                        Map.of(), new ByteArrayInputStream(new byte[0]));
+
+                Response response = handler.handle(session, method,
+                        new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+                assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+                assertTrue(bodyOf(response).contains("Unsupported method"));
+            }
+            assertEquals("no request reaches GitHub for an unsupported method", 0, hits.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** Builds the 400 error envelope the proxy endpoint returns, for the handler's responder. */
+    private static Response errorResponse(String message) {
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.BAD_REQUEST,
+                "application/json", "{\"ok\":false,\"error\":\"" + message + "\"}");
+    }
+
+    /** Reads a NanoHTTPD response body back as a string. */
+    private static String bodyOf(Response response) throws IOException {
+        return new String(response.getData().readAllBytes(), StandardCharsets.UTF_8);
+    }
+
     /** Writes a JSON body, filtering an empty {@code head=} match to an empty listing. */
     private static void respond(HttpExchange exchange, String listing) throws IOException {
         // getQuery() returns the decoded query, so the branch reads as "no/such".
@@ -278,6 +395,96 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
         exchange.sendResponseHeaders(200, bytes.length);
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(bytes);
+        }
+    }
+
+    /**
+     * A minimal {@link IHTTPSession} serving the method, query parameters,
+     * headers and input stream a test configures. The proxy handler and
+     * {@link RequestBodyReader} read only these; every other session member is
+     * unused and answers with an inert default.
+     */
+    private static final class FakeSession implements IHTTPSession {
+
+        /** The HTTP method of the request. */
+        private final Method method;
+        /** The decoded query parameters. */
+        private final Map<String, String> parms;
+        /** The request headers, keyed by lower-case name. */
+        private final Map<String, String> headers;
+        /** The request body stream. */
+        private final InputStream input;
+
+        /**
+         * @param method  the HTTP method
+         * @param parms   the query parameters
+         * @param headers the request headers (lower-case keys)
+         * @param input   the request body stream
+         */
+        private FakeSession(Method method, Map<String, String> parms,
+                            Map<String, String> headers, InputStream input) {
+            this.method = method;
+            this.parms = parms;
+            this.headers = headers;
+            this.input = input;
+        }
+
+        @Override
+        public Method getMethod() {
+            return method;
+        }
+
+        @Override
+        public Map<String, String> getParms() {
+            return parms;
+        }
+
+        @Override
+        public Map<String, String> getHeaders() {
+            return headers;
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return input;
+        }
+
+        @Override
+        public void parseBody(Map<String, String> files) {
+        }
+
+        @Override
+        public void execute() {
+        }
+
+        @Override
+        public CookieHandler getCookies() {
+            return null;
+        }
+
+        @Override
+        public Map<String, List<String>> getParameters() {
+            return Map.of();
+        }
+
+        @Override
+        public String getQueryParameterString() {
+            return null;
+        }
+
+        @Override
+        public String getUri() {
+            return "/api/github/proxy";
+        }
+
+        @Override
+        public String getRemoteIpAddress() {
+            return "127.0.0.1";
+        }
+
+        @Override
+        public String getRemoteHostName() {
+            return "localhost";
         }
     }
 }

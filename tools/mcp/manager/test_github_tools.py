@@ -1543,12 +1543,22 @@ class TestGithubUpdatePr(unittest.TestCase):
         mock_gh.assert_not_called()
 
     @patch.object(server, "_github_request")
+    def test_whitespace_only_difference_is_success(self, mock_gh, mock_repo):
+        """A title GitHub trims is still the edit we sent, so ok=True."""
+        mock_gh.return_value = self._pr(title="New", body="Body text")
+        result = server.github_update_pr(
+            pr_number=7, title="  New  ", body="Body text\r\n")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual(["body", "title"], result["updated_fields"])
+
+    @patch.object(server, "_github_request")
     def test_unchanged_response_is_not_success(self, mock_gh, mock_repo):
         """A proxy that answers the PATCH as a GET returns the old PR."""
         mock_gh.return_value = self._pr()
         result = server.github_update_pr(pr_number=7, title="New")
         self.assertFalse(result["ok"])
         self.assertIn("title", result["error"])
+        self.assertEqual({"title": "Old"}, result["returned"])
 
     @patch.object(server, "_github_request",
                   return_value={"ok": False, "error": "GitHub returned HTTP 422: bad"})

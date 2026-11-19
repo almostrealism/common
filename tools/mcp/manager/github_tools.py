@@ -589,6 +589,23 @@ def github_create_pr(
         return response
     return result
 
+def _normalise_pr_field(value: str) -> str:
+    """Normalise a PR title/body for the did-the-edit-happen comparison.
+
+    GitHub may canonicalise a field it stores — trimming surrounding
+    whitespace, or rewriting CRLF to LF — so comparing the returned value to
+    the sent value byte-for-byte would misreport a successful edit as dropped.
+    Both sides are normalised the same way before comparison: CRLF is folded to
+    LF and surrounding whitespace is stripped.
+
+    Args:
+        value: The field value, possibly ``None``.
+
+    Returns:
+        The normalised value; empty string when ``value`` is falsy.
+    """
+    return (value or "").replace("\r\n", "\n").strip()
+
 @mcp.tool()
 def github_update_pr(
     pr_number: int,
@@ -632,6 +649,7 @@ def github_update_pr(
     if title and not title.strip():
         return {"ok": False, "error": "title must not be only whitespace"}
     payload = {}
+    # TODO(review): empty title/body means "unchanged", so a description can never be cleared; the plan intended Optional[str]=None defaults so body="" could clear it.
     if title:
         payload["title"] = title
     if body:
@@ -655,12 +673,14 @@ def github_update_pr(
     if result.get("number"):
         # A proxy that does not forward PATCH answers with the unchanged PR
         # (HTTP 200), so success is reported only when the response shows
-        # every sent field with its new value.
-        # TODO(review): exact equality may misreport a real edit if GitHub trims the title; consider comparing stripped values.
+        # every sent field with its new value. The comparison normalises both
+        # sides (CRLF to LF, surrounding whitespace stripped) so GitHub
+        # canonicalising a stored field is not misread as the edit being
+        # dropped.
         unchanged = [
             field for field in updated_fields
-            if (result.get(field) or "").replace("\r\n", "\n")
-            != payload[field].replace("\r\n", "\n")
+            if _normalise_pr_field(result.get(field))
+            != _normalise_pr_field(payload[field])
         ]
         if unchanged:
             return {
@@ -668,6 +688,7 @@ def github_update_pr(
                 "error": ("GitHub responded but the pull request still shows the "
                           "old " + ", ".join(unchanged) + "; the edit did not take effect"),
                 "number": result["number"],
+                "returned": {field: result.get(field) for field in unchanged},
             }
         return {
             "ok": True,
