@@ -52,7 +52,7 @@ recurses into every input:
 ```java
 // ComputationBase.resetArguments()
 public void resetArguments() {
-    super.resetArguments();                          // OperationAdapter: this.arguments = null
+    super.resetArguments();                          // ComputableBase: this.arguments = null
     ScopeLifecycle.resetArguments(getInputs().stream());
 }
 ```
