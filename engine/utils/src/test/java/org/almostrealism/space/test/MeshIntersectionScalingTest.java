@@ -22,7 +22,6 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.space.BoundingVolumeHierarchy;
-import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
@@ -41,7 +40,7 @@ import org.junit.Test;
  * mesh grows. The test asserts the accelerated work grows sub-linearly against the triangle count,
  * and additionally logs the measured device wall time of each path at one resolution.</p>
  */
-public class MeshIntersectionScalingTest extends TestSuiteBase {
+public class MeshIntersectionScalingTest extends TestSuiteBase implements GridIndexFeatures {
 	/** Node spacing, held fixed so triangle count grows with grid extent. */
 	private static final double SPACING = 0.3;
 
@@ -60,8 +59,8 @@ public class MeshIntersectionScalingTest extends TestSuiteBase {
 
 		for (int r = 0; r < resolutions.length; r++) {
 			int n = resolutions[r];
-			BoundingVolumeHierarchy bvh = BoundingVolumeHierarchy.build(
-					Mesh.gridSurfaceTriangles(GridSurfaceTessellationTest.bumpy(n, n), origin, SPACING, SPACING));
+			MeshData mesh = gridSurfaceData(bumpyHeights(n, n), n, n, origin, SPACING, SPACING);
+			BoundingVolumeHierarchy bvh = mesh.getBoundingVolumeHierarchy();
 			int triangles = bvh.getTriangleCount();
 			double extent = (n - 1) * SPACING;
 
@@ -72,6 +71,10 @@ public class MeshIntersectionScalingTest extends TestSuiteBase {
 				candidates += bvh.candidates(origin.getX() + fx * extent, 5.0,
 						origin.getZ() + fz * extent, 0.0, -1.0, 0.0).length;
 			}
+
+			// The hierarchy keeps its own host-side bounds, so the device mesh buffer and the
+			// graphs it compiled can be released now rather than accumulating across resolutions.
+			mesh.destroy();
 
 			log("triangles=" + triangles + " linearTested=" + ((long) rayCount * triangles)
 					+ " candidatesTested=" + candidates);
@@ -108,7 +111,7 @@ public class MeshIntersectionScalingTest extends TestSuiteBase {
 	private void logDeviceTiming(Vector origin, int n, int rayCount) {
 		// A flat field is enough to time the paths; the sub-linearity assertion above uses the
 		// bumpy surface. The mesh data builds its own hierarchy over this flat field.
-		MeshData md = MeshData.gridSurface(cp(new PackedCollection(shape(n, n))),
+		MeshData md = gridSurfaceData(cp(new PackedCollection(shape(n, n))),
 				n, n, origin, SPACING, SPACING);
 		double extent = (n - 1) * SPACING;
 
@@ -136,5 +139,9 @@ public class MeshIntersectionScalingTest extends TestSuiteBase {
 
 		log("deviceTiming triangles=" + md.getCount() + " rays=" + rayCount
 				+ " linearMs=" + linearMs + " accelMs=" + accelMs + " lastHit=" + (last == null ? -1 : last.getB()));
+
+		// Release the device mesh and its compiled intersection graphs so they do not linger
+		// for the rest of the test fork.
+		md.destroy();
 	}
 }

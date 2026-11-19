@@ -100,8 +100,14 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 
 	/** Callbacks invoked at the end of each time interval with the interval total and count. */
 	private List<BiConsumer<Double, Integer>> intervalListeners;
-	/** The index of the most recently reported interval, used to detect interval boundaries. */
-	private long lastReportedInterval;
+	/**
+	 * The highest interval index in which any entry has been recorded, or {@code -1} before
+	 * the first entry. An entry in any later interval completes this one, so a boundary is
+	 * detected however many idle intervals lie between the two entries. Because this is the
+	 * maximum seen rather than the most recent, an entry that is recorded for a lower interval
+	 * after a higher one has already been seen still recognizes its interval as complete.
+	 */
+	private long lastEntryInterval;
 
 	/** Total number of values recorded across all entries. */
 	private long count = 0;
@@ -127,7 +133,7 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 		this.intervalCounts = Collections.synchronizedMap(new HashMap<>());
 
 		this.intervalListeners = new ArrayList<>();
-		this.lastReportedInterval = -1;
+		this.lastEntryInterval = -1;
 	}
 
 	/**
@@ -199,6 +205,23 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	 * Adds a named entry with the specified value.
 	 * The entry is aggregated with any existing entry of the same name.
 	 *
+	 * <p>Recording an entry marks every earlier interval that holds data as complete and
+	 * reports it to the interval listeners. This holds regardless of how many intervals
+	 * have elapsed in between, including before the first entry, since a metric may first
+	 * be used long after {@link #startingTime}. It also holds when entries are recorded out
+	 * of interval order under concurrent use: an entry recorded for an interval below the
+	 * highest one already seen reports that interval immediately rather than losing it.</p>
+	 *
+	 * <p>The interval data is recorded, the completion decision made, and the completed
+	 * interval's total and count snapshotted while holding the aggregate lock; only the listener
+	 * notification happens outside it. A concurrent entry advancing the interval boundary can
+	 * therefore never report an interval whose totals have not yet been merged, and because the
+	 * reported figures are the snapshot taken when the boundary was crossed, a concurrent
+	 * {@link #clear()} or a late entry cannot erase or mutate them before the listeners run. A
+	 * later entry that lands in an already-reported interval is not reported again; its value
+	 * still accumulates, but it arrives too late to be included in that interval's completed
+	 * report.</p>
+	 *
 	 * @param <T> the entry type (must be a String or implement Named)
 	 * @param entry the entry key, or null for an unnamed entry
 	 * @param value the value to add
@@ -210,16 +233,33 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 		entries.merge(name, value, Double::sum);
 		counts.merge(name, 1, Integer::sum);
 
+		long completed = -1;
+		double completedTotal = 0.0;
+		int completedCount = 0;
+
 		synchronized (aggregateLock) {
 			total += value;
 			count++;
+
+			boolean firstInInterval = !intervalTotals.containsKey(interval);
+			intervalTotals.merge(interval, value, Double::sum);
+			intervalCounts.merge(interval, 1, Integer::sum);
+
+			if (interval > lastEntryInterval) {
+				if (lastEntryInterval >= 0) completed = lastEntryInterval;
+				lastEntryInterval = interval;
+			} else if (interval < lastEntryInterval && firstInInterval) {
+				completed = interval;
+			}
+
+			if (completed >= 0) {
+				completedTotal = intervalTotals.get(completed);
+				completedCount = intervalCounts.get(completed);
+			}
 		}
 
-		intervalTotals.merge(interval, value, Double::sum);
-		intervalCounts.merge(interval, 1, Integer::sum);
-
-		if (interval == lastReportedInterval + 2) {
-			reportInterval(interval - 1);
+		if (completed >= 0) {
+			reportInterval(completedTotal, completedCount);
 		}
 	}
 
@@ -288,16 +328,22 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 	}
 
 	/**
-	 * Reports the specified interval to all registered listeners.
+	 * Reports a completed interval's total and count to all registered listeners.
 	 *
-	 * @param interval the interval index to report
+	 * <p>The snapshot is captured by {@link #addEntry} under the aggregate lock at the moment
+	 * the interval is recognized as complete, so the values delivered here are exactly those
+	 * accumulated when the boundary was crossed. Taking the snapshot at decision time — rather
+	 * than reading the mutable interval maps when the listeners run — keeps the report immune to
+	 * a concurrent {@link #clear()} erasing the interval and to a late entry mutating its totals
+	 * before the callbacks fire. Listeners are notified outside the lock.</p>
+	 *
+	 * @param total the total accumulated in the completed interval
+	 * @param count the number of entries recorded in the completed interval
 	 */
-	protected void reportInterval(long interval) {
-		lastReportedInterval = interval;
+	protected void reportInterval(double total, int count) {
 		if (intervalListeners.isEmpty()) return;
 
-		intervalListeners.forEach(l ->
-				l.accept(intervalTotals.get(interval), intervalCounts.get(interval)));
+		intervalListeners.forEach(l -> l.accept(total, count));
 	}
 
 	/**
@@ -324,10 +370,11 @@ public abstract class MetricBase implements Named, ConsoleFeatures {
 		synchronized (aggregateLock) {
 			count = 0;
 			total = 0.0;
+			lastEntryInterval = -1;
+			intervalTotals.clear();
+			intervalCounts.clear();
 		}
 		entries.clear();
 		counts.clear();
-		intervalTotals.clear();
-		intervalCounts.clear();
 	}
 }

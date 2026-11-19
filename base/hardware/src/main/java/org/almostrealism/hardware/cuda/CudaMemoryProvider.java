@@ -221,7 +221,7 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 
 		synchronized (this) {
 			if (memoryUsed + bytes > memoryMax) {
-				throw new HardwareException("Memory Max Reached");
+				throw memoryMaxReached("Memory Max Reached", bytes, memoryUsed, memoryMax);
 			}
 
 			memoryUsed += bytes;

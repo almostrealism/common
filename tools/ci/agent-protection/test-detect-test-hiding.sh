@@ -1123,6 +1123,222 @@ public class MyTest {
 }'
 }
 
+# ── Scenario: hard-coded floating-point expectations replaced by a computed
+#    expectation — FALSE-POSITIVE REGRESSION ────────────────────────────────
+#
+# A test that compared against a hard-coded array of expected floating-point
+# values is rewritten to compute the expectation instead. Dimensions and the
+# number of assertion calls are unchanged. The digits after a decimal point
+# are not integer literals, so Pattern 11 (NUMERIC_LITERALS_SHRUNK) MUST NOT
+# read `0.034696079790592194` as a large integer that disappeared
+# (expected exit 0).
+setup_float_expectations_replaced() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int size = 12;
+        double[] expected = new double[]{0.034696079790592194, 0.06780441105365753,
+                0.13250578939914703, 0.2589479088783264, 0.5060457587242126,
+                -0.0023582035209983587, -0.003028743900358677, 1.86271326e-09};
+        for (int i = 0; i < expected.length; i++) {
+            assertEquals(expected[i], compute(size, i), 1e-6);
+        }
+    }
+    double compute(int size, int i) { return i; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int size = 12;
+        for (int i = 0; i < size; i++) {
+            double expected = Math.exp(i) / size;
+            assertEquals(expected, compute(size, i), 1e-6);
+        }
+    }
+    double compute(int size, int i) { return i; }
+}'
+}
+
+# ── Scenario: integer dimensions in method arguments shrunk — TRUE POSITIVE ─
+#
+# Large integer arguments are replaced by small ones. Pattern 11
+# (NUMERIC_LITERALS_SHRUNK) MUST fire (expected exit 2).
+setup_integer_arguments_shrunk() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, build(1, 64, 128, 256));
+    }
+    int build(int a, int b, int c, int d) { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, build(1, 4, 8, 2));
+    }
+    int build(int a, int b, int c, int d) { return 1; }
+}'
+}
+
+# ── Scenario: integer dimensions shrunk beside floating-point arguments —
+#    TRUE POSITIVE ──────────────────────────────────────────────────────────
+#
+# Excluding floating-point literals must not hide an integer reduction on the
+# same lines: the floats are unchanged, the integer dimensions shrink.
+# Pattern 11 (NUMERIC_LITERALS_SHRUNK) MUST fire (expected exit 2).
+setup_integer_arguments_shrunk_beside_floats() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, build(0.25, 64, 128, 256, 1.5e-3));
+    }
+    int build(double p, int b, int c, int d, double q) { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, build(0.25, 4, 8, 2, 1.5e-3));
+    }
+    int build(double p, int b, int c, int d, double q) { return 1; }
+}'
+}
+
+# ── Scenario: trailing-dot float expectations replaced by a computed
+#    expectation — FALSE-POSITIVE REGRESSION ────────────────────────────────
+#
+# A hard-coded array of expected values written with a trailing decimal point
+# and no fractional digits (`64.`, `128.`, `256.`) is rewritten to compute the
+# expectation. These are floating-point literals, not integer dimensions, so
+# Pattern 11 (NUMERIC_LITERALS_SHRUNK) MUST NOT read `64.` as the integer 64
+# disappearing (expected exit 0).
+setup_trailing_dot_floats_replaced() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int size = 3;
+        double[] expected = new double[]{64., 128., 256.};
+        for (int i = 0; i < expected.length; i++) {
+            assertEquals(expected[i], compute(size, i), 1e-6);
+        }
+    }
+    double compute(int size, int i) { return i; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int size = 3;
+        for (int i = 0; i < size; i++) {
+            double expected = Math.scalb(1., 6 + i);
+            assertEquals(expected, compute(size, i), 1e-6);
+        }
+    }
+    double compute(int size, int i) { return i; }
+}'
+}
+
+# ── Scenario: hexadecimal-float expectations replaced by a computed
+#    expectation — FALSE-POSITIVE REGRESSION ────────────────────────────────
+#
+# A hard-coded array of expected values written as Java hexadecimal floats
+# (`0x1.8p3`, `0x40000000p-1`) is rewritten to compute the expectation. The
+# significand digits of a hex float are not integer dimensions, so Pattern 11
+# (NUMERIC_LITERALS_SHRUNK) MUST NOT read `0x40000000p-1` as the integer
+# 40000000 disappearing (expected exit 0).
+setup_hex_floats_replaced() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int size = 2;
+        double[] expected = new double[]{0x1.8p3, 0x40000000p-1};
+        for (int i = 0; i < expected.length; i++) {
+            assertEquals(expected[i], compute(size, i), 1e-6);
+        }
+    }
+    double compute(int size, int i) { return i; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        int size = 2;
+        for (int i = 0; i < size; i++) {
+            double expected = Math.pow(2, 30 * i);
+            assertEquals(expected, compute(size, i), 1e-6);
+        }
+    }
+    double compute(int size, int i) { return i; }
+}'
+}
+
+# ── Scenario: digits embedded in identifiers shrink, no real dimension change
+#    — FALSE-POSITIVE REGRESSION / word-boundary guard ──────────────────────
+#
+# The large numbers that change are all embedded inside identifiers
+# (`buffer4096` -> `buffer8`, `stage2048` -> `stage4`), not standalone method
+# arguments. An integer literal is a digit run NOT adjacent to a letter or
+# underscore, so none of these are literals and Pattern 11
+# (NUMERIC_LITERALS_SHRUNK) MUST NOT fire (expected exit 0). This pins the
+# word-boundary semantics of the extractor: it would fail if extraction ever
+# regressed to a boundary-free `[0-9]+`, and it is the portable counterpart to
+# the GNU-only `\b` the extractor must not depend on.
+setup_identifier_embedded_digits_shrunk() {
+    scenario_modify \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, run(buffer4096, stage2048, node1024, lane512));
+    }
+    int run(int a, int b, int c, int d) { return 1; }
+}' \
+'package test;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+public class MyTest {
+    @Test(timeout = 5000)
+    public void testA() {
+        assertEquals(1, run(buffer8, stage4, node2, lane1));
+    }
+    int run(int a, int b, int c, int d) { return 1; }
+}'
+}
+
 # ── Run all cases ──────────────────────────────────────────────────────────
 
 echo "Running detect-test-hiding regression tests..."
@@ -1156,6 +1372,12 @@ run_case "deleted-parenthesized-test [true positive]"       2 setup_deleted_pare
 run_case "deleted-same-line-annotation-test [true positive]" 2 setup_deleted_same_line_annotation_test
 run_case "removed-block-comment-test-marker [false-positive regression]" 0 setup_removed_block_comment_test_marker
 run_case "pr880-reenable-camera-ray [false-positive regression]" 0 setup_pr880_reenable
+run_case "float-expectations-replaced [false-positive regression]" 0 setup_float_expectations_replaced
+run_case "integer-arguments-shrunk [true positive]"         2 setup_integer_arguments_shrunk
+run_case "integer-arguments-shrunk-beside-floats [true positive]" 2 setup_integer_arguments_shrunk_beside_floats
+run_case "trailing-dot-floats-replaced [false-positive regression]" 0 setup_trailing_dot_floats_replaced
+run_case "hex-floats-replaced [false-positive regression]" 0 setup_hex_floats_replaced
+run_case "identifier-embedded-digits-shrunk [false-positive regression]" 0 setup_identifier_embedded_digits_shrunk
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

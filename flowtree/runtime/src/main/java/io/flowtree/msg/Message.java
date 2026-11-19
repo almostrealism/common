@@ -288,7 +288,7 @@ public class Message implements Externalizable, ConsoleFeatures {
 	 * 
 	 * @param j  The Job object to be encoded and transmitted.
 	 */
-	public void setJob(Job j) { if (this.type == Message.Job) this.data = j.encode(); }
+	public void setJob(Job j) { if (this.type == Message.Job) this.data = j.toWire(); }
 	
 	/**
 	 * Sets the String to be sent with this message, if this message is the correct type.

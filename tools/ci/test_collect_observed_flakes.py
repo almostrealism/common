@@ -58,6 +58,26 @@ class SurefireParsingTests(unittest.TestCase):
             collect_observed_flakes.surefire_failures(log),
             {"org.example.FooTest#computesSum", "org.example.BarTest#reads"})
 
+    def test_the_dash_separated_line_of_the_current_plugin_is_read(self):
+        # The lines a real test-lane job log carries: the per-class summary,
+        # then the failing method, name and timing separated by " -- ".
+        log = "\n".join([
+            "2026-11-18T02:32:54.3387150Z [ERROR] Tests run: 2, Failures: 1, Errors: 0, "
+            "Skipped: 0, Time elapsed: 0.018 s <<< FAILURE! -- in org.example.FooTest",
+            "2026-11-18T02:32:54.3387960Z [ERROR] org.example.FooTest.computesSum "
+            "-- Time elapsed: 0.003 s <<< FAILURE!",
+            "2026-11-18T02:32:55.0000000Z [ERROR] org.example.BarTest.reads[2] "
+            "-- Time elapsed: 1.5 s <<< ERROR!",
+        ])
+        self.assertEqual(
+            collect_observed_flakes.surefire_failures(log),
+            {"org.example.FooTest#computesSum", "org.example.BarTest#reads"})
+
+    def test_the_class_summary_line_alone_names_no_test(self):
+        log = ("2026-11-18T02:32:54.3387150Z [ERROR] Tests run: 2, Failures: 1, Errors: 0, "
+               "Skipped: 0, Time elapsed: 0.018 s <<< FAILURE! -- in org.example.FooTest")
+        self.assertEqual(collect_observed_flakes.surefire_failures(log), set())
+
     def test_parameterised_method_collapses_to_one_name(self):
         log = "\n".join([
             _surefire_line("org.example.FooTest.render[0]"),
@@ -388,6 +408,57 @@ class RequestTimeoutTests(unittest.TestCase):
                          collect_observed_flakes.REQUEST_TIMEOUT_SECONDS)
         self.assertIsNotNone(collect_observed_flakes.REQUEST_TIMEOUT_SECONDS)
         self.assertGreater(collect_observed_flakes.REQUEST_TIMEOUT_SECONDS, 0)
+
+
+class RedirectAuthorizationTests(unittest.TestCase):
+    """The token goes to the API, never to where the API redirects.
+
+    GitHub answers a job-log request with a redirect to a pre-signed storage
+    URL. The storage service rejects a request that also carries an
+    ``Authorization`` header (HTTP 401), so a token forwarded across the
+    redirect makes every log read fail. That is what stopped "Master Failure
+    Dispatch" from reading the failing lanes of a red master run."""
+
+    def setUp(self):
+        import http.server
+        import threading
+
+        seen = self.seen = []
+
+        class _Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append((self.path, self.headers.get("Authorization")))
+                if self.path.endswith("/logs"):
+                    self.send_response(302)
+                    self.send_header("Location", "/storage/log.txt?signature=x")
+                    self.end_headers()
+                    return
+                if self.headers.get("Authorization"):
+                    self.send_response(401)
+                    self.end_headers()
+                    return
+                body = b"the job log"
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
+        thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+
+    def test_a_redirected_log_read_does_not_forward_the_token(self):
+        client = collect_observed_flakes.GitHubClient(
+            "owner/name", token="secret",
+            api="http://127.0.0.1:%d" % self.server.server_address[1])
+        self.assertEqual("the job log", client.job_log(42))
+        self.assertEqual("Bearer secret", self.seen[0][1])
+        self.assertIsNone(self.seen[1][1])
 
 
 if __name__ == "__main__":

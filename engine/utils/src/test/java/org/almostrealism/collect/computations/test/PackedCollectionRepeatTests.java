@@ -20,7 +20,6 @@ import io.almostrealism.collect.RepeatTraversalOrdering;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.util.TestProperties;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -33,10 +32,10 @@ import java.util.function.Supplier;
  */
 public class PackedCollectionRepeatTests extends TestSuiteBase {
 	/**
-	 * Tests isolated repeat operation (marked as known issue).
+	 * Tests that an isolated repeat operation materialises a dense output whose shape
+	 * no longer carries the zero-copy {@link RepeatTraversalOrdering}.
 	 */
 	@Test(timeout = 30000)
-	@TestProperties(knownIssue = true)
 	public void isolatedRepeat() {
 
 		int d = 4;
@@ -60,7 +59,9 @@ public class PackedCollectionRepeatTests extends TestSuiteBase {
 			}
 		}
 
-		Assert.assertTrue(out.getShape().getOrder() instanceof RepeatTraversalOrdering);
+		// Evaluating a computation materialises a dense output, so the zero-copy repeat
+		// ordering is stripped rather than carried through to the evaluated collection.
+		Assert.assertFalse(out.getShape().getOrder() instanceof RepeatTraversalOrdering);
 	}
 
 	/**

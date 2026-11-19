@@ -2,6 +2,8 @@
 
 This layer provides typed mathematical abstractions built on top of the foundation layer's `PackedCollection` and `Producer` primitives. Each module defines a specific mathematical domain — linear algebra, spatial geometry, probability, or temporal processing — giving higher layers a rich vocabulary for expressing domain-specific computations with full hardware acceleration.
 
+See [concept-map.md](concept-map.md) for how this layer builds on `base`, and the platform-wide [Concept Map](../docs/internals/concept-map.md) for the layered overview and type-alignment families.
+
 ## Modules
 
 ### [ar-algebra](algebra/README.md)

@@ -50,6 +50,76 @@ JDK of the expected major — rebuild/restart it per its fleet's doc:
 | OpenCL (ROCm) | `ar-ci-cl` | [`rocm/README.md`](rocm/README.md#jdk-version-baked-into-the-image) — set `JDK_MAJOR` in `.env`, then `install-runner.sh` |
 | CUDA (NVIDIA) | `ar-ci-cuda` | [`cuda/README.md`](cuda/README.md#jdk-version-baked-into-the-shared-image) — reuses the CPU image; set `JDK_MAJOR` in `.env`, then `fleet.sh up` |
 
+## Maven dependency caching
+
+The self-hosted Linux runners (`ar-ci`, `ar-ci-cl`, `ar-ci-cuda`) are **ephemeral
+containers**: each job starts from the image with an empty local Maven
+repository. Without a cache every job re-resolves the whole plugin and
+dependency set from Maven Central — about 800 artifacts per job — and a full
+pipeline fans out to ~18 such jobs, so the repeated downloads hit Central's HTTP
+429 rate limit and fail the pipeline. (The macOS fleet never had this: it keeps a
+persistent `$HOME/.m2-ci/<runner>` on the host, so it is warm after the first
+job. GitHub-hosted jobs keep `actions/setup-java`'s `cache: maven`, which is
+GitHub's own cache and appropriate for them.)
+
+Three pieces fix it, and **all of them are safe on today's runners** — nothing
+changes until a host is rebuilt/recreated to provide the mount:
+
+1. **A shared `select-maven-repo` composite action**
+   ([`.github/actions/select-maven-repo`](../../.github/actions/select-maven-repo/action.yml))
+   runs on every self-hosted lane as the `Select Maven repository` step. It
+   points `maven.repo.local` at a **per-runner subdirectory** of a persistent,
+   shared Maven cache the host mounts at `/opt/ar-maven-cache`, so the plugin and
+   dependency set resolved once survives the ephemeral container and is reused by
+   every later job on that host. Per-runner subdirectories keep concurrent
+   runners from clobbering each other's SNAPSHOT installs (the same reason the
+   macOS fleet isolates per runner). **When the mount is absent or not writable,
+   the action falls back to the previous behaviour** — `$HOME/.m2-ci/<runner>`, or
+   `$HOME/.m2/repository` for the `ar-ci` `test` lane whose `actions/cache` step
+   warms that path — so a runner that has not been recreated with the volume
+   still builds correctly, only slower. `tools/tests/test_maven_cache.py` pins
+   the action and its wiring.
+
+2. **A persistent named volume** mounted at `/opt/ar-maven-cache` on each Linux
+   fleet (a `docker compose` volume for `ar-ci`/`ar-ci-cuda`, a podman quadlet
+   `Volume=` for `ar-ci-cl`). A named volume auto-creates, inherits the image
+   mount point's `runner` ownership (the images `mkdir`/`chown` it) so the
+   non-root runner can write, and survives container recreation.
+
+3. **Maven transport retry/backoff** baked into the runner images and the macOS
+   runner (`MAVEN_ARGS` with `aether.connector.http.retryHandler.*`), so a
+   *remaining* transient 429/5xx/dropped connection is retried with backoff
+   instead of failing the job. This is a backstop, not the fix — a warm cache
+   makes almost no Central requests in the first place.
+
+### Enabling it on a host (person steps)
+
+CI keeps working before any of this is applied; applying it makes a host's lanes
+warm. Per fleet:
+
+| Fleet | Label | How to enable / verify / roll back |
+|---|---|---|
+| CPU (Linux) | `ar-ci` | [`docker/README.md`](docker/README.md#maven-dependency-cache) |
+| GPU (macOS) | `ar-ci` | already warm via `$HOME/.m2-ci/<runner>`; nothing to mount (see [`macos/README.md`](macos/README.md#maven-dependency-cache)) |
+| OpenCL (ROCm) | `ar-ci-cl` | [`rocm/README.md`](rocm/README.md#maven-dependency-cache) |
+| CUDA (NVIDIA) | `ar-ci-cuda` | [`cuda/README.md`](cuda/README.md#maven-dependency-cache) |
+
+**Correctness guarantees.** A **cold** cache (fresh volume, or none) resolves
+everything from Central exactly as before — slower, never wrong. A **stale**
+cache is a superset of what a build needs, so extra artifacts are harmless and a
+new dependency is fetched on demand. A **poisoned or partial** artifact cannot
+persist a broken build: Maven validates checksums, each per-runner subdirectory
+is independent so one runner's corruption never reaches another, and the whole
+cache is disposable — `docker volume rm <project>_ar-maven-cache` (or `podman
+volume rm ar-ci-cl-m2`) forces a clean cold rebuild. The cache is never an input
+the build cannot reproduce from Central.
+
+**Optional cold-start seed.** The first job on a brand-new volume is still cold.
+To warm it in advance, run one throwaway build on the host (for example `mvn
+-q -DskipTests dependency:go-offline` against a checkout, writing into the
+volume's per-runner subdirectory), or simply let the first pipeline warm it —
+steady state is warm either way.
+
 ## Root Scripts
 
 | Script | Purpose |
@@ -66,11 +136,12 @@ JDK of the expected major — rebuild/restart it per its fleet's doc:
 | `resolve-release-scope.sh` | Goal decomposition: read the next version from a repository (`pom.xml` or a plain version file), the framework version it pins, and whether `<plans dir>/<version>/PLAN.md` exists (`in_scope`) |
 | `remediation-required-labels.sh` | Pin an auto-resolve submission to a macOS Node (`REQUIRED_LABELS`) when a Metal lane (`test-mac`, `test-media-mac`) failed in the attempt |
 | `classify-job-failures.py` | Classify a failed test job by *where* it failed, from the run's jobs-API payload: a job whose failed steps all precede its first Maven/test step is environmental (a setup-step failure — checkout, `setup-java`, cache restore, artifact download), reported but not assigned; a failure at or after the test step is a genuine crash routed to the VM-crash prompt. Used by the `Check for incomplete test execution` step so a setup-java network timeout is no longer sent to the crash agent |
-| `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`; never retries a run whose python-tests or python-evals failed |
+| `rerun-flaky-tests.sh` | Retry gate in `auto-resolve-submit.yaml`: re-run a failed run's long-running test jobs until attempt `MAX_ATTEMPTS`, and any other failed job whose log shows an infrastructure failure (download, connection, lost runner); never retries a run whose python-tests or python-evals failed |
+| `pr-status-labels.py` | Give every open pull request one `ci: ...` label for its CI stage (validating, auto-review, full tests, auto-fix, ready for review, needs attention, review limit) plus `ci: stalled` when a stage overruns, derived from the head commit's runs, jobs, staged request, check runs and `remediation-cap` commit status. Run by `pr-status-labels.yaml`; see "What the `PR Status Labels` workflow does" in `.github/CLAUDE.md` |
 | `collect-observed-flakes.py` | Collect the flakes CI has already observed, for the flaky round's prompt: walk recent "Build and Test" runs (window configurable via `--window-days`/`FLAKE_WINDOW_DAYS`, `--max-runs`/`FLAKE_MAX_RUNS`), and for each retried run read each attempt's test-lane jobs; a `Class#method` that failed in one attempt (parsed from the attempt's job log) and passed in a later attempt of the same commit is a confirmed flake, ranked by frequency then recency, rendered as the prompt's leads section with each flake's lane, commits and failing-attempt job ids. A test that fails in every attempt is a real failure, not a flake, and is left out. Run before the prompt build via `qa-round.yaml`'s `leads-script` input (needs `actions: read`) |
 | `stage-submit-request.sh` | Write a built prompt and its submission parameters to a request directory for a remediation job to upload |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"false"`: it turns on the harness's per-job test lock (see `flowtree/runtime/docs/file-staging.md`), which only the jobs sent to make failing tests pass, and a few QA rounds, request — everything else is held to `test-integrity-check`. `ENFORCE_CHANGES` (default `"false"`) requires the job to produce a change. A run that leaves none is re-run up to `MAX_ENFORCE_CHANGES_RETRIES` times over the whole job (omitted: the controller default; `"0"`: never re-run), and a job that still commits nothing once that cap is spent is reported DEGRADED rather than SUCCESS |
-| `submit-staged-request.sh` | Submit a staged request directory from a trusted (default-branch) checkout, exporting only the documented `submit.env` keys |
+| `submit-staged-request.sh` | Submit a staged request directory from a trusted (default-branch) checkout, exporting only the documented `submit.env` keys. When the controller rejects the submission, posts a short alert to the branch's workstream (`POST /api/workstreams/{id}/messages`) and `$GITHUB_STEP_SUMMARY` naming the remediation kind (`REMEDIATION_KIND`), branch, run, HTTP status and the controller's error, then still fails the job |
 | `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
 
 ## Reusable workflows
@@ -159,8 +230,8 @@ crash. A payload holding fewer jobs than its declared `total_count` also counts
 one crash, since a missing matrix run can hide behind another run of the same
 job. So a zero crash count means every failing job was seen and found
 environmental. The test step is recognised by the word "test(s)" in its name
-only — never "Maven", because the macOS/CL/CUDA lanes' "Isolate Maven repository
-per runner" setup step precedes their artifact download.
+only — never "Maven", because the self-hosted lanes' "Select Maven repository"
+setup step precedes their artifact download.
 
 `test-flowtree` originally had
 neither check — it uploaded no Surefire artifact at all — so a failure there was
@@ -220,6 +291,7 @@ it knowingly does not cover are in
 | `build-review-prompt.sh` | Build prompt for general code review |
 | `build-verify-prompt.sh` | Build prompt for the implement-plan workflow (called by verify-completion), the manual "implement the plan" trigger |
 | `consolidation.txt` | Template for the consolidation round: find one duplicated behavior, share it, pin it with tests |
+| `concept-alignment.txt` | Template for the pilot concept-alignment round: find one type that represents an existing abstraction's concept without extending it, make it extend that contract with every caller updated, test it through the new supertype, and record the relationship in `docs/internals/concept-map.md` |
 | `coverage.txt` | Template for the test-coverage round |
 | `defect-hunt.txt` | Template for the defect hunt. Offered to consumers through `qa-round.yaml`'s `defect-hunt` selector; its test-runner / tooling guidance is an `@include ${TEST_RUNNER_FRAGMENT}` so a non-Maven consumer can select a neutral fragment |
 | `test-runner-maven.txt` | The default `TEST_RUNNER_FRAGMENT`: this framework's tooling guidance (`ar-profile-analyzer`, the MCP test runner) a built-in template includes |

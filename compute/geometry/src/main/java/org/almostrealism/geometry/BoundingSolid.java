@@ -201,7 +201,11 @@ public class BoundingSolid {
      * leaf triangle, so the slab state is kept in scalar locals rather than per-axis arrays
      * to avoid allocating garbage proportional to the number of boxes tested. Because
      * {@code tmin} only grows and {@code tmax} only shrinks as axes are narrowed, a single
-     * {@code tmin <= tmax} check after all three axes is equivalent to testing it per axis.</p>
+     * {@code tmin <= tmax} check after all three axes is equivalent to testing it per axis.
+     * The slab distances divide by the direction component rather than multiplying by its
+     * reciprocal: for a vanishingly small component the reciprocal overflows to infinity, and
+     * a ray starting exactly on that slab boundary would then compute {@code 0 * Infinity},
+     * a {@code NaN} that wrongly rejects the box.</p>
      *
      * @param ox   origin x
      * @param oy   origin y
@@ -218,9 +222,8 @@ public class BoundingSolid {
         if (dirX == 0.0) {
             if (ox < minX || ox > maxX) return false;
         } else {
-            double inv = 1.0 / dirX;
-            double t1 = (minX - ox) * inv;
-            double t2 = (maxX - ox) * inv;
+            double t1 = (minX - ox) / dirX;
+            double t2 = (maxX - ox) / dirX;
             tmin = Math.max(tmin, Math.min(t1, t2));
             tmax = Math.min(tmax, Math.max(t1, t2));
         }
@@ -228,9 +231,8 @@ public class BoundingSolid {
         if (dirY == 0.0) {
             if (oy < minY || oy > maxY) return false;
         } else {
-            double inv = 1.0 / dirY;
-            double t1 = (minY - oy) * inv;
-            double t2 = (maxY - oy) * inv;
+            double t1 = (minY - oy) / dirY;
+            double t2 = (maxY - oy) / dirY;
             tmin = Math.max(tmin, Math.min(t1, t2));
             tmax = Math.min(tmax, Math.max(t1, t2));
         }
@@ -238,9 +240,8 @@ public class BoundingSolid {
         if (dirZ == 0.0) {
             if (oz < minZ || oz > maxZ) return false;
         } else {
-            double inv = 1.0 / dirZ;
-            double t1 = (minZ - oz) * inv;
-            double t2 = (maxZ - oz) * inv;
+            double t1 = (minZ - oz) / dirZ;
+            double t2 = (maxZ - oz) / dirZ;
             tmin = Math.max(tmin, Math.min(t1, t2));
             tmax = Math.min(tmax, Math.max(t1, t2));
         }

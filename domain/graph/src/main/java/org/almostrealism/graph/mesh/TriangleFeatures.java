@@ -28,6 +28,8 @@ import org.almostrealism.collect.computations.DefaultTraversableExpressionComput
 import org.almostrealism.collect.computations.IndexProjectionProducerComputation;
 import org.almostrealism.geometry.Intersection;
 
+import java.util.function.UnaryOperator;
+
 /**
  * Feature interface for triangle mesh operations in 3D geometry.
  *
@@ -271,55 +273,35 @@ public interface TriangleFeatures extends VectorFeatures {
 	}
 
 	/**
-	 * Computes the node positions of a regular grid height field as a single Producer graph,
-	 * so the host grid-surface geometry is a genuine tensor built by the same kernelised
-	 * arithmetic as the device tessellation rather than a hand-written host loop over
-	 * {@link org.almostrealism.algebra.Vector} objects.
+	 * Returns the connectivity of the regular grid tessellation produced by
+	 * {@link #regularGridSurfacePoints}: for each triangle, in the same order, the flat
+	 * indices ({@code i*ny + j}) of its three nodes, so that a vertex list built from
+	 * {@link #regularGridSurfaceNodes} describes the same triangles. The first triangle of
+	 * each cell spans the nodes {@code {v00, v11, v10}} and the second {@code {v00, v01, v11}}.
 	 *
-	 * <p>The surface spans {@code nx} by {@code ny} nodes. Node {@code (i, j)} — flattened in
-	 * row-major order as {@code i*ny + j} — sits at {@code (originX + i*spacingX, originY + h,
-	 * originZ + j*spacingZ)}, where {@code h} is {@code heights[i*ny + j]}; height is the Y axis
-	 * and the grid lies in the XZ plane, matching {@link #regularGridSurfacePoints} and
-	 * {@link #regularGridSurfaceNormals}. The result has shape {@code (nx*ny, 3)} — one position
-	 * per unique node — and a single {@link org.almostrealism.algebra.Vector} can be read back
-	 * from it with {@link org.almostrealism.collect.PackedCollection#get(int)} or
-	 * {@link org.almostrealism.collect.PackedCollection#get(int, TraversalPolicy)} where host
-	 * geometry is needed.</p>
-	 *
-	 * @param heights  the height field, shaped {@code (nx, ny)} (or any shape with
-	 *                 {@code nx*ny} elements in row-major order)
-	 * @param nx       the number of grid nodes along X
-	 * @param ny       the number of grid nodes along Z
-	 * @param originX  the X coordinate of node {@code (0, 0)}
-	 * @param originY  the base height added to every node's height value
-	 * @param originZ  the Z coordinate of node {@code (0, 0)}
-	 * @param spacingX the node spacing along X
-	 * @param spacingZ the node spacing along Z
-	 * @return producer for the {@code (nx*ny, 3)} node positions
+	 * @param nx the number of grid nodes along X
+	 * @param ny the number of grid nodes along Z
+	 * @return the node indices of each of the {@code 2*(nx-1)*(ny-1)} triangles, three per triangle
 	 * @throws IllegalArgumentException if {@code nx} or {@code ny} is less than two
 	 */
-	default CollectionProducer regularGridSurfaceNodes(
-			Producer<PackedCollection> heights, int nx, int ny,
-			double originX, double originY, double originZ,
-			double spacingX, double spacingZ) {
+	default int[][] regularGridSurfaceTriangles(int nx, int ny) {
 		requireGridNodes(nx, ny);
-		int nodeCount = nx * ny;
-		TraversalPolicy outputShape = new TraversalPolicy(false, false, nodeCount, 3).traverse(1);
+		int cellsX = nx - 1;
+		int cellsZ = ny - 1;
+		int[][] triangles = new int[2 * cellsX * cellsZ][];
 
-		return new DefaultTraversableExpressionComputation("regularGridSurfaceNodes", outputShape, args ->
-			CollectionExpression.create(outputShape, idx -> {
-				// Integer arithmetic only; see regularGridSurfacePoints on why not conditionals
-				Expression comp = idx.imod(3);
-				Expression node = idx.divide(e(3));
-				Expression ni = node.divide(e(ny));
-				Expression nj = node.imod(ny);
-
-				Expression x = e(originX).add(ni.multiply(e(spacingX)));
-				Expression z = e(originZ).add(nj.multiply(e(spacingZ)));
-				Expression y = e(originY).add(args[1].getValueAt(node));
-
-				return conditional(comp.eq(e(0)), x, conditional(comp.eq(e(2)), z, y));
-			}), heights);
+		int t = 0;
+		for (int i = 0; i < cellsX; i++) {
+			for (int j = 0; j < cellsZ; j++) {
+				int v00 = i * ny + j;
+				int v10 = (i + 1) * ny + j;
+				int v01 = i * ny + (j + 1);
+				int v11 = (i + 1) * ny + (j + 1);
+				triangles[t++] = new int[] { v00, v11, v10 };
+				triangles[t++] = new int[] { v00, v01, v11 };
+			}
+		}
+		return triangles;
 	}
 
 	/**
@@ -414,29 +396,211 @@ public interface TriangleFeatures extends VectorFeatures {
 	}
 
 	/**
-	 * Builds the Moller-Trumbore ray-triangle intersection distance as an {@link Expression},
-	 * shared by the single-ray ({@link #meshIntersectAt}) and batched ({@link #meshIntersectAll})
-	 * mesh kernels so the two cannot drift apart.
+	 * Computes the ray-triangle intersection distance of every ray against every triangle of a
+	 * packed mesh in a single kernel, using the Moller-Trumbore algorithm.
 	 *
-	 * <p>The result is the parametric distance {@code t} along the ray at which it meets the
-	 * triangle when the barycentric coordinates lie inside it ({@code u >= 0}, {@code v >= 0},
-	 * {@code u + v <= 1}) and the ray is not near-parallel to the triangle plane
-	 * ({@code |f| > eps}); otherwise {@code -1}. The determinant guard is two-sided, matching
-	 * {@link TriangleIntersectAt}; a distance behind the ray ({@code t < 0}) is returned as-is and
-	 * excluded downstream by the closest-positive-hit selection.</p>
+	 * <p>Unlike {@link TriangleIntersectAt}, which tests one triangle, this tests a whole
+	 * {@code (T, 4, 3)} mesh (rows {@code abc}, {@code def}, {@code jkl}, normal per triangle)
+	 * against a batch of {@code R} rays and returns an {@code (R, T)} grid of distances — the
+	 * parametric distance along ray {@code r} to triangle {@code t} where the ray hits the
+	 * triangle at a distance of at least {@link Intersection#e}, or {@code -1} where it misses
+	 * (including a crossing behind the ray origin). A single six-element ray is a batch of
+	 * one. Every (ray, triangle) pair is one element of the kernel, so neither rays nor
+	 * triangles are looped on the host; {@link #closestMeshIntersection} reduces this grid to the
+	 * closest hit per ray.</p>
 	 *
-	 * @param tri the nine triangle components in {@code (abc, def, jkl)} order: edge {@code v2-v1},
-	 *            edge {@code v3-v1}, then vertex {@code v1}, three components each
-	 * @param ray the six ray components in {@code (origin, direction)} order, three components each
-	 * @param eps the near-parallel determinant threshold ({@link Intersection#e})
-	 * @return the hit-distance expression, {@code -1} on a miss
+	 * @param mesh          the packed mesh, shaped {@code (T, 4, 3)}
+	 * @param triangleCount the number of triangles {@code T}
+	 * @param rays          the rays, six elements each (origin then direction), shaped
+	 *                      {@code (R, 6)} or {@code (6)} for a single ray
+	 * @return producer for the {@code (R, T)} per-ray, per-triangle intersection distances
+	 * @throws IllegalArgumentException if {@code triangleCount} is less than one, for which the
+	 *                                  per-triangle index would be taken modulo zero
 	 */
-	private Expression mollerTrumboreDistance(Expression[] tri, Expression[] ray, double eps) {
-		Expression abc0 = tri[0], abc1 = tri[1], abc2 = tri[2];
-		Expression def0 = tri[3], def1 = tri[4], def2 = tri[5];
-		Expression jkl0 = tri[6], jkl1 = tri[7], jkl2 = tri[8];
-		Expression ox = ray[0], oy = ray[1], oz = ray[2];
-		Expression dx = ray[3], dy = ray[4], dz = ray[5];
+	default CollectionProducer meshIntersectAt(Producer<PackedCollection> mesh, int triangleCount,
+											   Producer<PackedCollection> rays) {
+		return meshIntersectionGrid("meshIntersectAt", mesh, triangleCount, rays, t -> t, e(-1.0));
+	}
+
+	/**
+	 * Computes the closest intersection of each ray in a batch with a packed mesh, entirely as a
+	 * Producer graph: the per-(ray, triangle) Moller-Trumbore test, a per-ray maximum and
+	 * index-of-maximum reduction over the triangles, and the assembly of the result.
+	 *
+	 * <p>The result has shape {@code (R, 2)}: for each ray the distance to the closest triangle
+	 * it hits at a distance of at least {@link Intersection#e}, and that triangle's index in the
+	 * mesh. A ray that hits nothing reports {@code (-1, -1)}. When several triangles are hit at
+	 * exactly the same distance the lowest triangle index is reported. All rays are intersected
+	 * in one evaluation, with no host loop over rays or triangles.</p>
+	 *
+	 * <p>Each (ray, triangle) pair is scored with its negated distance, so the closest hit has
+	 * the largest score and the reduction is a maximum; a miss scores the most negative finite
+	 * value of the target precision ({@link #minValue()}), which no finite hit distance can fall
+	 * below, so a hit at any distance outranks every miss. A ray hit something iff its best score
+	 * rose above that same miss sentinel: the maximum reduction's identity is the sentinel too, so
+	 * an all-miss row keeps it, and no finite hit distance scores that low. This reuses the single
+	 * score grid rather than materializing and reducing a second per-(ray, triangle) hit mask,
+	 * which halves the intermediate {@code (R, T)} device memory this graph allocates.</p>
+	 *
+	 * <p>Optimize the result ({@code Process.optimized(...)}) before compiling it: the reductions
+	 * iterate over every triangle, and optimization isolates them into loops of their own;
+	 * compiled unoptimized, they are unrolled into the kernel that assembles the result, which
+	 * fails for all but the smallest meshes.</p>
+	 *
+	 * @param mesh          the packed mesh, shaped {@code (T, 4, 3)}
+	 * @param triangleCount the number of triangles {@code T}
+	 * @param rays          the rays, shaped {@code (R, 6)} or {@code (6)} for a single ray
+	 * @return producer for the {@code (R, 2)} (distance, triangle index) closest hits
+	 * @throws IllegalArgumentException if {@code triangleCount} is less than one, for which the
+	 *                                  per-triangle index would be taken modulo zero
+	 */
+	default CollectionProducer closestMeshIntersection(Producer<PackedCollection> mesh, int triangleCount,
+													   Producer<PackedCollection> rays) {
+		int rayCount = rayCount(rays);
+		CollectionProducer scores = meshIntersectionGrid("meshIntersectionScore",
+				mesh, triangleCount, rays, Expression::minus, minValue());
+
+		CollectionProducer best = max(traverse(1, scores)).reshape(rayCount, 1);
+		CollectionProducer index = indexOfMax(traverse(1, scores)).reshape(rayCount, 1);
+
+		// The best score exceeds the miss sentinel exactly when some triangle was hit; the
+		// sentinel is the same most-negative finite value every missed pair was scored with.
+		CollectionProducer miss = compute("meshMissSentinel",
+				CollectionExpression.create(shape(1), idx -> minValue()));
+
+		return concat(shape(rayCount, 2),
+				greaterThan(best, miss, best.minus(), c(-1.0)),
+				greaterThan(best, miss, index, c(-1.0)));
+	}
+
+	/**
+	 * Gathers, for each closest hit produced by {@link #closestMeshIntersection}, the face normal
+	 * of the triangle that was hit, as a single kernel over the hits.
+	 *
+	 * <p>The result has shape {@code (R, 3)}; a miss (triangle index {@code -1}) yields the zero
+	 * vector and never addresses the mesh outside its bounds.</p>
+	 *
+	 * @param mesh the packed mesh, shaped {@code (T, 4, 3)}
+	 * @param hits the closest hits, shaped {@code (R, 2)} as (distance, triangle index)
+	 * @return producer for the {@code (R, 3)} face normals of the hit triangles
+	 */
+	default CollectionProducer meshNormalAt(Producer<PackedCollection> mesh, Producer<PackedCollection> hits) {
+		int rayCount = shape(hits).getTotalSize() / 2;
+		TraversalPolicy outputShape = new TraversalPolicy(rayCount, 3).traverseEach();
+		return new DefaultTraversableExpressionComputation("meshNormalAt", outputShape, args ->
+			CollectionExpression.create(outputShape, idx -> {
+				Expression triangle = args[2].getValueAt(idx.divide(e(3)).multiply(e(2)).add(e(1)));
+				Expression row = triangle.max(e(0.0)).toInt().multiply(e(12)).add(e(9));
+				Expression normal = args[1].getValueAt(row.add(idx.imod(3)));
+				return triangle.greaterThanOrEqual(e(0.0)).conditional(normal, e(0.0));
+			}), mesh, hits);
+	}
+
+	/**
+	 * Computes the axis-aligned bounding box of every triangle of a packed mesh in a single
+	 * kernel, for building a host acceleration structure over the mesh.
+	 *
+	 * <p>The result has shape {@code (T, 6)}: the minimum X, Y and Z of each triangle's three
+	 * vertices followed by the maximum X, Y and Z. The vertices are recovered from the packed
+	 * rows as {@code jkl}, {@code jkl + abc} and {@code jkl + def}.</p>
+	 *
+	 * @param mesh          the packed mesh, shaped {@code (T, 4, 3)}
+	 * @param triangleCount the number of triangles {@code T}
+	 * @return producer for the {@code (T, 6)} per-triangle bounds
+	 */
+	default CollectionProducer meshTriangleBounds(Producer<PackedCollection> mesh, int triangleCount) {
+		TraversalPolicy outputShape = new TraversalPolicy(triangleCount, 6).traverseEach();
+		return new DefaultTraversableExpressionComputation("meshTriangleBounds", outputShape, args ->
+			CollectionExpression.create(outputShape, idx -> {
+				Expression slot = idx.imod(6);
+				Expression axis = slot.imod(3);
+				Expression base = idx.divide(e(6)).multiply(e(12));
+				Expression abc = args[1].getValueAt(base.add(axis));
+				Expression def = args[1].getValueAt(base.add(axis).add(e(3)));
+				Expression jkl = args[1].getValueAt(base.add(axis).add(e(6)));
+
+				// Offsets of the three vertices from jkl along this axis are 0, abc and def
+				Expression upper = abc.max(def).max(e(0.0));
+				Expression lower = abc.minus().max(def.minus()).max(e(0.0)).minus();
+				return slot.lessThan(e(3)).conditional(jkl.add(lower), jkl.add(upper));
+			}), mesh);
+	}
+
+	/**
+	 * Returns the number of six-element rays in a ray producer of shape {@code (R, 6)} or {@code (6)}.
+	 *
+	 * @param rays the rays
+	 * @return the number of rays {@code R}
+	 */
+	private int rayCount(Producer<PackedCollection> rays) {
+		return shape(rays).getTotalSize() / 6;
+	}
+
+	/**
+	 * Builds an {@code (R, T)} grid with one element per (ray, triangle) pair of a packed mesh,
+	 * holding a value derived from the Moller-Trumbore distance where the ray hits the triangle
+	 * and a fixed value where it misses.
+	 *
+	 * @param name          the name of the computation
+	 * @param mesh          the packed mesh, shaped {@code (T, 4, 3)}
+	 * @param triangleCount the number of triangles {@code T}
+	 * @param rays          the rays, shaped {@code (R, 6)} or {@code (6)} for a single ray
+	 * @param hitValue      maps the hit distance to the element's value
+	 * @param miss          the element's value where the ray misses the triangle
+	 * @return producer for the {@code (R, T)} grid
+	 * @throws IllegalArgumentException if {@code triangleCount} is less than one
+	 */
+	private CollectionProducer meshIntersectionGrid(String name, Producer<PackedCollection> mesh,
+													int triangleCount, Producer<PackedCollection> rays,
+													UnaryOperator<Expression> hitValue, Expression miss) {
+		if (triangleCount < 1) {
+			throw new IllegalArgumentException(
+					"A mesh intersection needs at least one triangle, got " + triangleCount);
+		}
+
+		TraversalPolicy outputShape = new TraversalPolicy(rayCount(rays), triangleCount).traverseEach();
+		return new DefaultTraversableExpressionComputation(name, outputShape, args ->
+			CollectionExpression.create(outputShape, idx ->
+				mollerTrumbore(args[1], idx.imod(triangleCount), args[2], idx.divide(e(triangleCount)),
+						hitValue, miss)),
+			mesh, rays);
+	}
+
+	/**
+	 * Builds the Moller-Trumbore test of one ray against one triangle of a packed mesh. A hit
+	 * requires the ray to pass through the triangle at a distance of at least
+	 * {@link Intersection#e}, so a crossing behind the ray origin is a miss.
+	 *
+	 * @param mesh     the packed mesh, {@code (T, 4, 3)}
+	 * @param triangle the index of the triangle
+	 * @param rays     the rays, six elements each
+	 * @param ray      the index of the ray
+	 * @param hitValue maps the hit distance to the value of the expression on a hit
+	 * @param miss     the value of the expression on a miss
+	 * @return the expression for the hit or miss value
+	 */
+	private Expression mollerTrumbore(TraversableExpression mesh, Expression triangle,
+									  TraversableExpression rays, Expression ray,
+									  UnaryOperator<Expression> hitValue, Expression miss) {
+		double eps = Intersection.e;
+		Expression base = triangle.multiply(e(12));
+		Expression abc0 = mesh.getValueAt(base);
+		Expression abc1 = mesh.getValueAt(base.add(e(1)));
+		Expression abc2 = mesh.getValueAt(base.add(e(2)));
+		Expression def0 = mesh.getValueAt(base.add(e(3)));
+		Expression def1 = mesh.getValueAt(base.add(e(4)));
+		Expression def2 = mesh.getValueAt(base.add(e(5)));
+		Expression jkl0 = mesh.getValueAt(base.add(e(6)));
+		Expression jkl1 = mesh.getValueAt(base.add(e(7)));
+		Expression jkl2 = mesh.getValueAt(base.add(e(8)));
+
+		Expression r = ray.multiply(e(6));
+		Expression ox = rays.getValueAt(r);
+		Expression oy = rays.getValueAt(r.add(e(1)));
+		Expression oz = rays.getValueAt(r.add(e(2)));
+		Expression dx = rays.getValueAt(r.add(e(3)));
+		Expression dy = rays.getValueAt(r.add(e(4)));
+		Expression dz = rays.getValueAt(r.add(e(5)));
 
 		Expression h0 = dy.multiply(def2).subtract(dz.multiply(def1));
 		Expression h1 = dz.multiply(def0).subtract(dx.multiply(def2));
@@ -458,149 +622,49 @@ public interface TriangleFeatures extends VectorFeatures {
 				.and(u.lessThanOrEqual(e(1.0)))
 				.and(v.greaterThanOrEqual(e(0.0)))
 				.and(u.add(v).lessThanOrEqual(e(1.0)));
-		Expression hit = bary.conditional(t, e(-1.0));
 
+		Expression hit = bary.and(t.greaterThanOrEqual(e(eps))).conditional(hitValue.apply(t), miss);
 		return f.greaterThan(e(eps)).conditional(hit,
-				f.lessThan(e(-eps)).conditional(hit, e(-1.0)));
+				f.lessThan(e(-eps)).conditional(hit, miss));
 	}
 
 	/**
-	 * Reads the nine triangle components {@code (abc, def, jkl)} of triangle {@code triangleIndex}
-	 * from a packed {@code (T, 4, 3)} mesh argument, as the input to {@link #mollerTrumboreDistance}.
+	 * Computes the node positions of a regular grid height field as a single Producer graph.
 	 *
-	 * @param mesh          the packed-mesh traversable argument
-	 * @param triangleIndex the triangle's base index expression
-	 * @return the nine triangle component expressions
+	 * <p>The result has shape {@code (nx*ny, 3)}: node {@code (i, j)}, at flat index
+	 * {@code i*ny + j}, sits at {@code (originX + i*spacingX, originY + h, originZ + j*spacingZ)},
+	 * where {@code h} is {@code heights[i*ny + j]}. This is the same node layout that
+	 * {@link #regularGridSurfacePoints} tessellates.</p>
+	 *
+	 * @param heights  the height field, shaped {@code (nx, ny)} (or any shape with
+	 *                 {@code nx*ny} elements in row-major order)
+	 * @param nx       the number of grid nodes along X
+	 * @param ny       the number of grid nodes along Z
+	 * @param originX  the X coordinate of node {@code (0, 0)}
+	 * @param originY  the base height added to every node's height value
+	 * @param originZ  the Z coordinate of node {@code (0, 0)}
+	 * @param spacingX the node spacing along X
+	 * @param spacingZ the node spacing along Z
+	 * @return producer for the {@code (nx*ny, 3)} node positions
+	 * @throws IllegalArgumentException if {@code nx} or {@code ny} is less than two
 	 */
-	private Expression[] triangleComponents(TraversableExpression mesh, Expression triangleIndex) {
-		Expression base = triangleIndex.multiply(e(12));
-		return new Expression[] {
-				mesh.getValueAt(base), mesh.getValueAt(base.add(e(1))), mesh.getValueAt(base.add(e(2))),
-				mesh.getValueAt(base.add(e(3))), mesh.getValueAt(base.add(e(4))), mesh.getValueAt(base.add(e(5))),
-				mesh.getValueAt(base.add(e(6))), mesh.getValueAt(base.add(e(7))), mesh.getValueAt(base.add(e(8))) };
-	}
+	default CollectionProducer regularGridSurfaceNodes(
+			Producer<PackedCollection> heights, int nx, int ny,
+			double originX, double originY, double originZ,
+			double spacingX, double spacingZ) {
+		requireGridNodes(nx, ny);
+		TraversalPolicy outputShape = new TraversalPolicy(false, false, nx * ny, 3).traverse(1);
 
-	/**
-	 * Reads the six components {@code (origin, direction)} of ray {@code rayIndex} from a packed
-	 * ray argument, as the input to {@link #mollerTrumboreDistance}.
-	 *
-	 * @param rays     the packed-ray traversable argument
-	 * @param rayIndex the ray's base index expression
-	 * @return the six ray component expressions
-	 */
-	private Expression[] rayComponents(TraversableExpression rays, Expression rayIndex) {
-		Expression base = rayIndex.multiply(e(6));
-		return new Expression[] {
-				rays.getValueAt(base), rays.getValueAt(base.add(e(1))), rays.getValueAt(base.add(e(2))),
-				rays.getValueAt(base.add(e(3))), rays.getValueAt(base.add(e(4))), rays.getValueAt(base.add(e(5))) };
-	}
-
-	/**
-	 * Computes the ray-triangle intersection distance for every triangle of a packed mesh in
-	 * a single kernel, using the Moller-Trumbore algorithm.
-	 *
-	 * <p>Unlike {@link TriangleIntersectAt}, which tests one triangle, this tests a whole
-	 * {@code (T, 4, 3)} mesh (rows {@code abc}, {@code def}, {@code jkl}, normal per triangle)
-	 * against a single ray and returns a {@code (T, 1)} column of distances — the parametric
-	 * distance along the ray for each triangle it hits, or {@code -1} where it misses. The
-	 * closest hit is then selected with {@code RankedChoiceEvaluable.highestRank}. The
-	 * computation is kernelised over the triangle count, so the whole mesh is tested in one
-	 * dispatch rather than a host loop over triangles.</p>
-	 *
-	 * @param mesh          the packed mesh, shaped {@code (T, 4, 3)}
-	 * @param triangleCount the number of triangles {@code T}
-	 * @param ray           the ray, a six-element vector of origin then direction
-	 * @return producer for the {@code (T, 1)} per-triangle intersection distances
-	 */
-	default CollectionProducer meshIntersectAt(Producer<PackedCollection> mesh, int triangleCount,
-											   Producer<PackedCollection> ray) {
-		TraversalPolicy outputShape = new TraversalPolicy(triangleCount, 1).traverse(1);
-		double eps = Intersection.e;
-
-		return new DefaultTraversableExpressionComputation("meshIntersectAt", outputShape, args ->
-			CollectionExpression.create(outputShape, idx ->
-				mollerTrumboreDistance(
-						triangleComponents(args[1], idx),
-						rayComponents(args[2], e(0)), eps)),
-			mesh, ray);
-	}
-
-	/**
-	 * Computes the ray-triangle intersection distance for every (ray, triangle) pair of a packed
-	 * mesh and a batch of rays in a single kernel, using the Moller-Trumbore algorithm.
-	 *
-	 * <p>This is the batched counterpart of {@link #meshIntersectAt}: where that tests one ray
-	 * against a {@code (T, 4, 3)} mesh, this tests {@code R} rays at once and returns a
-	 * {@code (R, T)} matrix of parametric distances — entry {@code (r, t)} is the distance along
-	 * ray {@code r} at which it meets triangle {@code t}, or {@code -1} where it misses or the
-	 * triangle is behind the ray. The whole {@code R*T} grid is one kernel dispatch, so a batch
-	 * of rays (every pixel of a render, say) is intersected against the mesh without a host loop
-	 * over rays. The closest hit per ray is then a reduction over the triangle axis (the
-	 * {@code (R, T)} matrix traversed at axis 1): the least positive distance and its triangle
-	 * index.</p>
-	 *
-	 * <p>The determinant guard is two-sided ({@code |f| > eps}), matching {@link #meshIntersectAt}
-	 * and {@link TriangleIntersectAt}, so a batched query reproduces the per-ray scan exactly.</p>
-	 *
-	 * @param rays          the rays, shaped {@code (R, 6)} (origin then direction per ray)
-	 * @param rayCount      the number of rays {@code R}
-	 * @param mesh          the packed mesh, shaped {@code (T, 4, 3)}
-	 * @param triangleCount the number of triangles {@code T}
-	 * @return producer for the {@code (R, T)} per-(ray, triangle) intersection distances
-	 */
-	default CollectionProducer meshIntersectAll(Producer<PackedCollection> rays, int rayCount,
-												Producer<PackedCollection> mesh, int triangleCount) {
-		TraversalPolicy outputShape = new TraversalPolicy(rayCount, triangleCount).traverse(1);
-		double eps = Intersection.e;
-
-		return new DefaultTraversableExpressionComputation("meshIntersectAll", outputShape, args ->
-			CollectionExpression.create(outputShape, idx ->
-				mollerTrumboreDistance(
-						triangleComponents(args[2], idx.imod(e(triangleCount))),
-						rayComponents(args[1], idx.divide(e(triangleCount))), eps)),
-			rays, mesh);
-	}
-
-	/**
-	 * Computes the closest ray-triangle intersection for every ray of a batch against a packed
-	 * mesh, entirely on-device, as a single Producer graph with no host loop over rays.
-	 *
-	 * <p>Building on {@link #meshIntersectAll} (which produces the {@code (R, T)} per-(ray,
-	 * triangle) distances in one kernel), the closest hit per ray is found by a reduction over
-	 * the triangle axis rather than a host-side scan: each hit at distance {@code t} is ranked
-	 * as {@code -t} (so the nearest hit is the largest rank) and a miss ranks below every hit, so
-	 * the per-row maximum rank is the nearest hit and its {@link #indexOfMax index} is the hit
-	 * triangle. The result is an {@code (R, 2)} collection, one {@code (distance, triangleIndex)}
-	 * pair per ray — the same contract as the per-ray {@code evaluateIntersection} closest-hit
-	 * selection — with {@code (-1, -1)} for a ray that misses the whole mesh. Ties on distance
-	 * resolve to the lowest triangle index (the first maximum {@code indexOfMax} keeps), matching
-	 * the linear scan.</p>
-	 *
-	 * @param rays          the rays, shaped {@code (R, 6)} (origin then direction per ray)
-	 * @param rayCount      the number of rays {@code R}
-	 * @param mesh          the packed mesh, shaped {@code (T, 4, 3)}
-	 * @param triangleCount the number of triangles {@code T}
-	 * @return producer for the {@code (R, 2)} closest {@code (distance, triangleIndex)} per ray
-	 */
-	default CollectionProducer meshClosestHit(Producer<PackedCollection> rays, int rayCount,
-											  Producer<PackedCollection> mesh, int triangleCount) {
-		double eps = Intersection.e;
-		double miss = -1.0e30;
-
-		CollectionProducer distances = meshIntersectAll(rays, rayCount, mesh, triangleCount);
-
-		// Rank each entry: a hit at distance t ranks as -t (nearest hit = largest rank);
-		// a miss (or behind-ray) ranks below every hit at the miss sentinel.
-		CollectionProducer rank = greaterThan(distances, c(eps), distances.minus(), c(miss), true);
-
-		CollectionProducer bestRank = rank.max(1).reshape(rayCount, 1);
-		CollectionProducer bestIndex = rank.traverse(1).indexOfMax().reshape(rayCount, 1);
-
-		// A row whose best rank is still the miss sentinel saw no hit: report (-1, -1).
-		CollectionProducer distance = greaterThan(bestRank, c(miss / 2.0), bestRank.minus(), c(-1.0));
-		CollectionProducer index = greaterThan(bestRank, c(miss / 2.0), bestIndex, c(-1.0));
-
-		return concat(1, distance, index);
+		return new DefaultTraversableExpressionComputation("regularGridSurfaceNodes", outputShape, args ->
+			CollectionExpression.create(outputShape, idx -> {
+				// Integer arithmetic only; see regularGridSurfacePoints on why not conditionals
+				Expression node = idx.divide(e(3));
+				Expression comp = idx.imod(3);
+				Expression x = e(originX).add(node.divide(e(ny)).multiply(e(spacingX)));
+				Expression z = e(originZ).add(node.imod(ny).multiply(e(spacingZ)));
+				Expression y = e(originY).add(args[1].getValueAt(node));
+				return conditional(comp.eq(e(0)), x, conditional(comp.eq(e(2)), z, y));
+			}), heights);
 	}
 
 	/**

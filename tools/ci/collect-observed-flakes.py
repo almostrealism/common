@@ -48,6 +48,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
@@ -101,13 +102,20 @@ LANE_LABELS = {
 _SHARD_SUFFIX = re.compile(r"\s*\([^)]*\)\s*$")
 
 # Surefire reports a failing test as a line naming the fully-qualified class and
-# method followed by "<<< FAILURE!" or "<<< ERROR!", e.g.
+# method followed by "<<< FAILURE!" or "<<< ERROR!". The plugin this project
+# builds with separates the name from the timing with " -- ":
+#   [ERROR] org.example.FooTest.testBar -- Time elapsed: 0.1 s <<< FAILURE!
+# and older plugins wrote only whitespace there:
 #   [ERROR] org.example.FooTest.testBar  Time elapsed: 0.1 s  <<< FAILURE!
+# Both are read; requiring one of them reads no failure at all from a log in
+# the other, which looks exactly like a job that failed before any test ran.
 # The class is the dotted path up to the last segment; the method is the last
 # segment. A parameterised method carries a "[0]"-style suffix, kept out of the
-# name so repeats of one method collapse to one entry.
+# name so repeats of one method collapse to one entry. The per-class summary
+# line ("Tests run: 2, Failures: 1, ... <<< FAILURE! -- in org.example.FooTest")
+# names no method and is not matched.
 _SUREFIRE_FAILURE = re.compile(
-    r"([\w.$]+)\.([\w$]+)(?:\[[^\]]*\])?\s+Time elapsed:.*<<<\s+(?:FAILURE|ERROR)!")
+    r"([\w.$]+)\.([\w$]+)(?:\[[^\]]*\])?\s+(?:--\s+)?Time elapsed:.*<<<\s+(?:FAILURE|ERROR)!")
 
 
 def lane_of(job_name):
@@ -277,14 +285,17 @@ class GitHubClient:
                            "application/vnd.github+json" if not raw else "*/*")
         request.add_header("X-GitHub-Api-Version", "2022-11-28")
         if self.token:
-            request.add_header("Authorization", "Bearer %s" % self.token)
+            # Unredirected: a job-log read is redirected to a pre-signed
+            # storage URL, which rejects a request that also carries the token.
+            request.add_unredirected_header("Authorization", "Bearer %s" % self.token)
         with urllib.request.urlopen(
                 request, timeout=REQUEST_TIMEOUT_SECONDS) as response:
             data = response.read()
         return data if raw else json.loads(data.decode("utf-8"))
 
-    def list_workflow_runs(self, max_runs, workflow_file=WORKFLOW_FILE):
-        """The most recent Build and Test runs, newest first, across every branch.
+    def list_workflow_runs(self, max_runs, workflow_file=WORKFLOW_FILE, branch=""):
+        """The most recent Build and Test runs, newest first, across every
+        branch, or on ``branch`` alone when one is given.
 
         Scoped to the ``workflow_file`` workflow so ``max_runs`` bounds that
         workflow's runs directly; listing ``/actions/runs`` for the whole
@@ -292,11 +303,12 @@ class GitHubClient:
         discard recent Build-and-Test retries before they are seen."""
         runs = []
         page = 1
+        branch_filter = "&branch=%s" % urllib.parse.quote(branch, safe="") if branch else ""
         while len(runs) < max_runs:
             per_page = min(100, max_runs - len(runs))
             payload = self._request(
-                "/repos/%s/actions/workflows/%s/runs?per_page=%d&page=%d"
-                % (self.repo, workflow_file, per_page, page))
+                "/repos/%s/actions/workflows/%s/runs?per_page=%d&page=%d%s"
+                % (self.repo, workflow_file, per_page, page, branch_filter))
             batch = payload.get("workflow_runs", [])
             if not batch:
                 break
@@ -320,6 +332,19 @@ class GitHubClient:
                 break
             page += 1
         return jobs
+
+    def list_closed_pulls(self, base, limit=100):
+        """The most recently updated closed pull requests against ``base``,
+        merged or not."""
+        return self._request(
+            "/repos/%s/pulls?state=closed&base=%s&sort=updated&direction=desc&per_page=%d"
+            % (self.repo, urllib.parse.quote(base, safe=""), min(100, limit)))
+
+    def compare(self, base_sha, head_sha):
+        """GitHub's comparison of two commits; its ``status`` is ``ahead`` or
+        ``identical`` when ``head_sha`` contains ``base_sha``."""
+        return self._request(
+            "/repos/%s/compare/%s...%s" % (self.repo, base_sha, head_sha))
 
     def job_log(self, job_id):
         """One job's plain-text log (the attempt-scoped job id, so the right

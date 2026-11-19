@@ -188,7 +188,9 @@ public interface VectorFeatures extends ScalarFeatures {
 
 	/**
 	 * Creates a {@link CollectionProducer} for a dynamic vector by concatenating three component producers.
-	 * Each component producer should produce a single scalar value.
+	 * Each component producer should produce a single scalar value, or a batch of them with
+	 * shape {@code (n, 1)}, in which case the result is the {@code (n, 3)} batch of vectors
+	 * (see {@link #batchShape(io.almostrealism.collect.TraversalPolicy, Producer[])}).
 	 *
 	 * @param x  producer for the x coordinate
 	 * @param y  producer for the y coordinate
@@ -199,7 +201,7 @@ public interface VectorFeatures extends ScalarFeatures {
 												Producer<PackedCollection> x,
 												Producer<PackedCollection> y,
 												Producer<PackedCollection> z) {
-		return concat(shape(3), x, y, z);
+		return concat(batchShape(shape(3), x, y, z), x, y, z);
 	}
 
 	/**
@@ -238,33 +240,75 @@ public interface VectorFeatures extends ScalarFeatures {
 	default Producer<PackedCollection> vector() { return Vector.blank(); }
 
 	/**
-	 * Extracts the x component (first element) from a vector producer.
+	 * Extracts the x component (first element) from a vector producer, or from every vector
+	 * of a batch, as described by {@link #vectorComponent(Producer, int)}.
 	 *
-	 * @param v  the vector producer
-	 * @return a producer for the x component
+	 * @param v  the vector producer, {@code (3)} or {@code (n, 3)}
+	 * @return a producer for the x component, {@code (1)} or {@code (n, 1)}
 	 */
 	default CollectionProducer x(Producer<PackedCollection> v) {
-		return c(v, 0);
+		return vectorComponent(v, 0);
 	}
 
 	/**
-	 * Extracts the y component (second element) from a vector producer.
+	 * Extracts the y component (second element) from a vector producer, or from every vector
+	 * of a batch, as described by {@link #vectorComponent(Producer, int)}.
 	 *
-	 * @param v  the vector producer
-	 * @return a producer for the y component
+	 * @param v  the vector producer, {@code (3)} or {@code (n, 3)}
+	 * @return a producer for the y component, {@code (1)} or {@code (n, 1)}
 	 */
 	default CollectionProducer y(Producer<PackedCollection> v) {
-		return c(v, 1);
+		return vectorComponent(v, 1);
 	}
 
 	/**
-	 * Extracts the z component (third element) from a vector producer.
+	 * Extracts the z component (third element) from a vector producer, or from every vector
+	 * of a batch, as described by {@link #vectorComponent(Producer, int)}.
 	 *
-	 * @param v  the vector producer
-	 * @return a producer for the z component
+	 * @param v  the vector producer, {@code (3)} or {@code (n, 3)}
+	 * @return a producer for the z component, {@code (1)} or {@code (n, 1)}
 	 */
 	default CollectionProducer z(Producer<PackedCollection> v) {
-		return c(v, 2);
+		return vectorComponent(v, 2);
+	}
+
+	/**
+	 * Extracts one component of a vector, or of every vector of a batch. For a single vector
+	 * the result is the {@code (1)} value at {@code index}. For a batch, whose last axis holds
+	 * the components of each vector, the result keeps every other axis and has one component
+	 * along the last, such as {@code (n, 1)} for {@code (n, 3)} vectors, in the same way as
+	 * {@link #dotProduct(Producer, Producer)} and {@link #length(Producer)} produce one value per
+	 * vector. A batch must not be reduced to a single value, since every vector of it would
+	 * then be given the component of the first.
+	 *
+	 * <p>The components are held by the last axis whose length exceeds one, so trailing axes of
+	 * length one are skipped: a column-shaped vector {@code (3, 1)} gives {@code (1, 1)} and a
+	 * batch {@code (n, 3, 1)} gives {@code (n, 1, 1)}. Any multi-dimensional input keeps all of
+	 * its axes, including a batch of one vector {@code (1, 3)}, which gives {@code (1, 1)}.</p>
+	 *
+	 * @param v     the vector producer, {@code (3)} or a batch such as {@code (n, 3)}
+	 * @param index the index of the component within each vector
+	 * @return a producer for the component of every vector
+	 * @throws IllegalArgumentException if {@code index} is not within the component axis, or
+	 *                                  within a 1-D vector
+	 */
+	default CollectionProducer vectorComponent(Producer<PackedCollection> v, int index) {
+		TraversalPolicy shape = shape(v);
+		if (shape.getDimensions() < 2) {
+			if (index < 0 || index >= shape.getTotalSizeLong()) {
+				throw new IllegalArgumentException("component " + index
+						+ " is out of range for a vector of shape " + shape);
+			}
+
+			return c(v, index);
+		}
+
+		int axis = shape.getDimensions() - 1;
+		while (axis > 0 && shape.length(axis) == 1) {
+			axis--;
+		}
+
+		return slice(axis, index, 1, v);
 	}
 
 	/**
@@ -383,17 +427,29 @@ public interface VectorFeatures extends ScalarFeatures {
 	 * @return a producer for the normalized (unit) vector
 	 */
 	default CollectionProducer normalize(Producer<PackedCollection> value) {
-		TraversalPolicy valueShape = shape(value);
-		CollectionProducer invLen = length(value).pow(-1.0);
+		return scale(value, length(value).pow(-1.0));
+	}
 
-		// For batch vectors (N, M), length produces (N, 1)
-		// We need to repeat along the innermost axis to get (N, M) for proper broadcasting
-		if (valueShape.getDimensions() >= 2) {
-			int vectorDim = valueShape.length(valueShape.getDimensions() - 1);
-			invLen = repeat(vectorDim, invLen).reshape(valueShape);
+	/**
+	 * Multiplies every vector by its own scalar. For a single vector the scalar has shape
+	 * {@code (1)}; for a batch of vectors with shape {@code (N, M)} the scalars have shape
+	 * {@code (N, 1)}, one per vector, and are repeated along the innermost axis so that each
+	 * scales every component of its vector.
+	 *
+	 * @param vectors the vector, or batch of vectors, to scale
+	 * @param scalars the scale of each vector
+	 * @return a producer for the scaled vectors, with the shape of {@code vectors}
+	 */
+	default CollectionProducer scale(Producer<PackedCollection> vectors, Producer<PackedCollection> scalars) {
+		TraversalPolicy shape = shape(vectors);
+		Producer<PackedCollection> s = scalars;
+
+		if (shape.getDimensions() >= 2) {
+			int vectorDim = shape.length(shape.getDimensions() - 1);
+			s = repeat(vectorDim, s).reshape(shape);
 		}
 
-		return multiply(value, invLen);
+		return multiply(vectors, s);
 	}
 
 	/**

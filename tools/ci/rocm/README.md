@@ -50,7 +50,7 @@ fails to load entirely, with an error that mentions neither ROCm nor OpenCL.
 │                         GitHub Actions                            │
 │                                                                   │
 │   CPU lane (linux)      GPU lane (macOS)        CL lane (linux)    │
-│   test → test-media     test-mac                test-cl           │
+│   test → test-media*    test-mac                test-cl           │
 │                          → test-media-mac        → test-media-cl  │
 └────────┬───────────────────────┬──────────────────────┬───────────┘
          │ [self-hosted,         │ [self-hosted,        │ [self-hosted,
@@ -60,8 +60,11 @@ fails to load entirely, with an error that mentions neither ROCm nor OpenCL.
       tools/ci/docker         tools/ci/macos          tools/ci/rocm
 ```
 
+\* `test-media` runs on a GitHub-hosted `ubuntu-latest` runner; only `test`
+takes the `ar-ci` Linux fleet.
+
 The label is `ar-ci-cl`, deliberately **not** `ar-ci`. The existing Linux fleet
-carries `ar-ci` and serves `test` and `test-media`; sharing the label would pull
+carries `ar-ci` and serves `test`; sharing the label would pull
 general CPU test jobs onto this machine and put the CL lane behind an unrelated
 queue.
 
@@ -454,6 +457,38 @@ systemctl --user stop 'ar-ci-cl-runner@*'
 Because runners register as ephemeral, the container exits after every job and
 systemd starts the next one. A service that keeps restarting is normal; one that
 enters `failed` is not.
+
+## Maven dependency cache
+
+These runners are ephemeral, so without a persistent cache every job re-resolves
+the whole plugin and dependency set from Maven Central and the pipeline hits its
+429 rate limit (full design: "Maven dependency caching" in
+[`../README.md`](../README.md#maven-dependency-caching)). The quadlet
+(`ar-ci-cl-runner@.container`) mounts a **podman named volume** `ar-ci-cl-m2` at
+`/opt/ar-maven-cache`, and the CI jobs point `maven.repo.local` at a per-runner
+subdirectory of it. The image creates that mount point owned by the runner user,
+so the rootless container can write to the fresh volume.
+
+**Enable it** (safe any time; CI falls back to the empty per-container repository
+until applied). Rebuild the image for the mount point and the Maven retry
+setting, then reinstall so the quadlet unit picks up the `Volume=` line:
+
+```bash
+./install-runner.sh         # rebuilds the image and reinstalls the unit
+```
+
+**Verify / roll back** (a cold cache resolves from Central, only slower), as the
+service account (`sudo -iu ar-ci`):
+
+```bash
+podman volume inspect ar-ci-cl-m2        # exists once a runner has started
+./fleet.sh stop
+sudo -iu ar-ci podman volume rm ar-ci-cl-m2   # discard; rebuilds on next job
+./fleet.sh start
+```
+
+A job log's `Select Maven repository` step prints the repository it chose
+(`using persistent shared Maven cache /opt/ar-maven-cache/<runner>` once warm).
 
 ## JDK Version (Baked Into the Image)
 

@@ -212,6 +212,18 @@ or `CLMemoryProvider`) or `Memory max reached` (from `NativeMemoryProvider`), ra
 `AR_HARDWARE_MEMORY_SCALE` (exponential — increase by one step at a time) or reduce the working set;
 see the [hardware README](../../base/hardware/README.md) Memory Configuration section.
 
+Before throwing, the provider logs a warning that names the rejected request and the bytes in use,
+followed by `HardwareMemoryProvider.describeAllocations`: the blocks it still holds, grouped by the
+stack trace that allocated them, the sites holding the most bytes first
+(`HardwareMemoryProvider.reportedAllocationSites` of them: ten by default, or the value of
+`AR_HARDWARE_ALLOCATION_REPORT_SITES`). The rejected request is
+usually not the cause — it is the allocation that happened to cross the ceiling — so read the
+largest sites to find what is holding the memory. Sites are recorded only when
+`AR_HARDWARE_ALLOCATION_TRACE_FRAMES` is positive; without it every block is reported in one
+unattributed group. The first frames of each trace are the allocation machinery itself, so use
+enough frames (around 40) to reach the code that asked for the memory. Recording a trace costs a
+stack walk per allocation, so enable it to diagnose, not in normal runs.
+
 ---
 
 ## 3. GC-driven release

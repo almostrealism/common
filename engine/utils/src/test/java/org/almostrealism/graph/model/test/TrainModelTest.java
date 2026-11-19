@@ -63,7 +63,6 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 	 * Tests dense layer training.
 	 */
 	@Test(timeout = 120000)
-	@TestProperties(knownIssue = true)
 	public void dense() {
 
 		int size = 30;
@@ -78,10 +77,15 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		Tensor<Double> t = tensor(shape(size));
 		PackedCollection input = t.pack();
 
-		PackedCollection biases = dense.getWeights().get(1);
-		rand(biases.getShape()).into(biases.traverseEach()).evaluate();
+		CompiledModel compiled = model.compile();
 
-		model.compile().forward(input);
+		// compile() runs the layer setup, which randomises the weights and zeroes the
+		// biases, so assign a deterministic nonzero bias afterwards: it exercises the
+		// bias term below while keeping assertNotEquals from intermittently failing.
+		PackedCollection biases = dense.getWeights().get(1);
+		integers(0, nodes).multiply(0.1).add(0.1).into(biases.traverseEach()).evaluate();
+
+		compiled.forward(input);
 
 		PackedCollection weights = dense.getWeights().get(0);
 		PackedCollection output =  ((DefaultCellularLayer) dense).getOutput();
@@ -89,8 +93,9 @@ public class TrainModelTest extends TestSuiteBase implements ModelFeatures, Kern
 		for (int i = 0; i < nodes; i++) {
 			double expected = 0;
 
+			// Dense weights are stored as [nodes, size]: node i reads row i.
 			for (int x = 0; x < size; x++) {
-				expected += weights.valueAt(x, i) * input.valueAt(x);
+				expected += weights.valueAt(i, x) * input.valueAt(x);
 			}
 
 			double actual = output.valueAt(i);

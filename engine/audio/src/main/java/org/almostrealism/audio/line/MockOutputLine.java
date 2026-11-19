@@ -35,21 +35,9 @@ import org.almostrealism.collect.PackedCollection;
  * @see BufferOutputLine for capturing actual audio data
  * @see BufferedOutputScheduler for scheduled output management
  */
-public class MockOutputLine implements OutputLine {
-	/** Size of the simulated circular buffer in frames. */
-	private final int bufferSize;
-
-	/** Audio sample rate in Hz used for read position timing simulation. */
-	private final int sampleRate;
-
+public class MockOutputLine extends SimulatedOutputLine {
 	/** Total number of frames written since the line became active. */
 	private long framesWritten;
-
-	/** System nanosecond timestamp recorded on the first write call. */
-	private long startTimeNanos;
-
-	/** True after the first write call; used to initialize the start timestamp. */
-	private boolean active;
 
 	/**
 	 * Creates a MockOutputLine with default buffer size and sample rate.
@@ -74,11 +62,8 @@ public class MockOutputLine implements OutputLine {
 	 * @param sampleRate The sample rate in Hz
 	 */
 	public MockOutputLine(int bufferSize, int sampleRate) {
-		this.bufferSize = bufferSize;
-		this.sampleRate = sampleRate;
+		super(bufferSize, sampleRate);
 		this.framesWritten = 0;
-		this.startTimeNanos = 0;
-		this.active = false;
 	}
 
 	@Override
@@ -87,68 +72,16 @@ public class MockOutputLine implements OutputLine {
 		framesWritten += frameCount;
 	}
 
-	/**
-	 * Returns a simulated read position based on elapsed time since {@link #start()}.
-	 * This allows testing of buffer management logic without real hardware.
-	 * <p>
-	 * The simulation assumes audio plays back at the configured sample rate,
-	 * so the read position advances proportionally to elapsed wall-clock time.
-	 * </p>
-	 *
-	 * @return The simulated read position in frames, modulo buffer size
-	 */
-	@Override
-	public int getReadPosition() {
-		if (!active || startTimeNanos == 0) {
-			return 0;
-		}
-
-		long elapsedNanos = System.nanoTime() - startTimeNanos;
-		double elapsedSeconds = elapsedNanos / 1_000_000_000.0;
-		long simulatedFramesRead = (long) (elapsedSeconds * sampleRate);
-
-		return (int) (simulatedFramesRead % bufferSize);
-	}
-
-	@Override
-	public int getBufferSize() {
-		return bufferSize;
-	}
-
-	@Override
-	public int getSampleRate() {
-		return sampleRate;
-	}
-
-	@Override
-	public void start() {
-		if (!active) {
-			startTimeNanos = System.nanoTime();
-			active = true;
-		}
-	}
-
-	@Override
-	public void stop() {
-		active = false;
-	}
-
-	@Override
-	public boolean isActive() {
-		return active;
-	}
-
 	@Override
 	public void reset() {
+		super.reset();
 		framesWritten = 0;
-		startTimeNanos = System.nanoTime();
 	}
 
 	@Override
 	public void destroy() {
-		active = false;
+		super.destroy();
 		framesWritten = 0;
-		startTimeNanos = 0;
 	}
 
 	/**
@@ -166,7 +99,7 @@ public class MockOutputLine implements OutputLine {
 	 * @return The duration in seconds
 	 */
 	public double getDurationWritten() {
-		return framesWritten / (double) sampleRate;
+		return framesWritten / (double) getSampleRate();
 	}
 
 	/**

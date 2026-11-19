@@ -20,6 +20,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
@@ -194,8 +195,76 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	@Override
 	protected CollectionExpression getExpression(TraversableExpression... args) {
 		return CollectionExpression.create(getShape(), index ->
-			conditional(args[1].getValueAt(index).eq(args[2].getValueAt(index)),
+			conditional(args[1].getValueAt(conditionIndex(index, 1)).eq(args[2].getValueAt(conditionIndex(index, 2))),
 						args[3].getValueAt(index), args[4].getValueAt(index)));
+	}
+
+	/**
+	 * Projects an output element {@code index} onto the comparison operand at the given
+	 * input position, so that an operand narrower than the output item is broadcast across
+	 * the item rather than read element-for-element.
+	 *
+	 * <p>A selection reads its two comparison operands ({@code args[1]} and {@code args[2]})
+	 * at the same index as the true and false branches ({@code args[3]} and {@code args[4]}),
+	 * which set the output item size. When a condition is one value per item &mdash; a per-row
+	 * scalar, such as a variable-count {@code (-1, 1)} input &mdash; but the branches are a vector
+	 * per item, reading the condition at the output element index walks across neighbouring rows
+	 * (stride equal to the item size) instead of holding one condition value for the whole item.
+	 * This method maps an output element index to the position of the condition value that governs
+	 * the item the element belongs to: for a per-row scalar it reduces to {@code index / itemSize}.</p>
+	 *
+	 * <p>When the operand is as wide as the output item (the ordinary element-wise case, including
+	 * scalar operands over a scalar output) the index is returned unchanged, so element-wise,
+	 * same-size, and non-batched selections are unaffected.</p>
+	 *
+	 * <p>The projection applies only to an operand with a variable count &mdash; a batched input
+	 * whose rows are indexed by the kernel without being wrapped to the operand's size. Fixedness is
+	 * read from the operand's {@link TraversalPolicy} as the computation sees it, which already
+	 * carries the operand producer's count contract: the batched inputs that need the projection are
+	 * reported here as variable-count, so testing the shape is equivalent to consulting
+	 * {@link io.almostrealism.relation.Countable#isFixedCount(Object)} on the producer. An operand
+	 * with a fixed count is read at the output element index exactly as any other element-wise
+	 * operand is, so a smaller fixed-count operand keeps the framework's ordinary (repeating)
+	 * element-wise semantics.</p>
+	 *
+	 * <p>Only a per-row scalar &mdash; a single operand value governing a whole output item &mdash;
+	 * is projected. That is the one broadcast this computation can perform unambiguously from the
+	 * operand's total width alone. A wider narrower operand (more than one value per item but fewer
+	 * than the output item) has no consistent flat projection: its values could correspond to an
+	 * outer or an inner axis of the output item, and dividing total widths cannot tell those apart
+	 * (operand item {@code (1, 3)} and output item {@code (2, 3)} both have an operand width of 3
+	 * over an output width of 6, yet an outer-axis broadcast reads {@code 0,0,1,1,2,2} while the
+	 * axis-aware inner broadcast reads {@code 0,1,2,0,1,2}). Rather than guess, such an operand is
+	 * rejected; axis-aware broadcasting of multi-element operands is left to the operand alignment
+	 * that precedes the computation.</p>
+	 *
+	 * @param index         the output element index
+	 * @param inputPosition the input position of the comparison operand (1 for the left operand,
+	 *                      2 for the right operand), matching the {@code args} index
+	 * @return the index at which to read the comparison operand
+	 * @throws IllegalArgumentException if the operand item is narrower than the output item but is
+	 *                                  not a single per-row value
+	 */
+	protected Expression<?> conditionIndex(Expression<?> index, int inputPosition) {
+		TraversalPolicy operandShape = shape(getInputs().get(inputPosition));
+		long outputSize = getShape().getSizeLong();
+		long operandSize = operandShape.getSizeLong();
+
+		// A fixed-count operand keeps the ordinary element-wise read; only a variable-count
+		// operand is projected per row (see the count-contract note in this method's javadoc).
+		if (operandShape.isFixedCount() || operandSize >= outputSize) {
+			return index;
+		}
+
+		if (operandSize != 1) {
+			throw new IllegalArgumentException(
+					"Comparison operand item size " + operandSize +
+							" is not broadcast-compatible with output item size " + outputSize +
+							" (a narrower comparison operand must be a single per-row value)");
+		}
+
+		// Per-row scalar: every output element of an item reads the one condition value for it.
+		return index.toInt().divide(outputSize);
 	}
 
 	/**

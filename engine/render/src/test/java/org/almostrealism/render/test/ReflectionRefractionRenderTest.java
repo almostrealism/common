@@ -42,16 +42,10 @@ import org.junit.Test;
  * above a lit diffuse floor and against a black background. Either shader should show the floor
  * somewhere in the sphere's disc, so the disc must not be entirely black.
  *
- * <p>Known issues, both raised while building the scene's producer in
- * {@code RayTracedScene.realize}, before any pixel is evaluated:</p>
- * <ul>
- *   <li>Reflection: the reflected ray's {@code LightingEngineAggregator} intersects the ray with
- *       the floor, and {@code RayFeatures.origin} fails with "Subset cannot be performed without a
- *       TraversalPolicy" because the reflected ray producer has no shape.</li>
- *   <li>Refraction: {@code LightingEngine} multiplies the shaded colour, and
- *       {@code GeneratedColorProducer.getShape} throws a {@link ClassCastException} casting the
- *       lambda that {@link RefractionShader} returns to {@code io.almostrealism.collect.Shape}.</li>
- * </ul>
+ * <p>Known issue: the refraction case does not finish within its timeout. The refracted ray
+ * is traced into the sphere, out through its far side and on to the floor, and compiling that
+ * graph spends its time in {@code ScopeLifecycle.resetArguments}, which revisits every shared
+ * node of the graph once per path that reaches it.</p>
  */
 public class ReflectionRefractionRenderTest extends TestSuiteBase implements RGBFeatures {
 	/** The width and height of the image, in pixels. */
@@ -131,7 +125,6 @@ public class ReflectionRefractionRenderTest extends TestSuiteBase implements RGB
 	}
 
 	/** A mirror sphere reflects the lit floor. */
-	@TestProperties(knownIssue = true)
 	@Test(timeout = 120000)
 	public void reflectiveSphereShowsFloor() {
 		assertDiscShowsScene(render(new ReflectionShader(0.8, rgb(0.8))));

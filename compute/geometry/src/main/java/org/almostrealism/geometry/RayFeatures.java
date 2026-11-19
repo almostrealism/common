@@ -89,14 +89,31 @@ public interface RayFeatures extends VectorFeatures {
 	}
 
 	/**
-	 * Creates a ray from origin and direction vector producers.
+	 * Creates a ray from origin and direction vector producers. Either may be a single
+	 * vector or an {@code (n, 3)} batch of them; when either is a batch the result is the
+	 * {@code (n, 6)} batch of rays, with a single origin or direction shared by every ray.
 	 *
 	 * @param origin the producer for the ray origin
 	 * @param direction the producer for the ray direction
 	 * @return a producer that yields a ray composed of the origin and direction
 	 */
 	default CollectionProducer ray(Producer<PackedCollection> origin, Producer<PackedCollection> direction) {
-		return concat(shape(6), origin, direction);
+		return concat(batchShape(shape(6), origin, direction), origin, direction);
+	}
+
+	/**
+	 * Creates a ray whose origin is moved the given distance along its direction. This is
+	 * how a secondary ray (reflected or refracted) leaves the surface it was spawned on
+	 * without immediately intersecting that surface again at its own origin.
+	 *
+	 * @param origin the producer for the point the ray leaves from
+	 * @param direction the producer for the ray direction
+	 * @param offset the distance, in units of the direction's length, to move the origin
+	 * @return a producer that yields the offset ray
+	 */
+	default CollectionProducer ray(Producer<PackedCollection> origin, Producer<PackedCollection> direction,
+								   double offset) {
+		return ray(add(origin, multiply(direction, c(offset))), direction);
 	}
 
 	/**
@@ -129,6 +146,18 @@ public interface RayFeatures extends VectorFeatures {
 	 */
 	default CollectionProducer direction(Producer<?> r) {
 		return subset(shape(3), r, 3);
+	}
+
+	/**
+	 * Returns the ray, or every ray of a batch, with the same origin and its direction
+	 * normalized to unit length, so that the parametric distance along it is the distance
+	 * in space.
+	 *
+	 * @param r the ray producer, {@code (6)} or {@code (n, 6)}
+	 * @return a producer for the ray with a unit direction, of the same shape
+	 */
+	default CollectionProducer unitRay(Producer<?> r) {
+		return ray(origin(r), normalize(direction(r)));
 	}
 
 	/**

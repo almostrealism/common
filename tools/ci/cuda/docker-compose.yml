@@ -51,7 +51,7 @@ services:
       # ar-ci-cuda is the capability label: the CUDA jobs require it, and only
       # this fleet (which proves the GPU in its preflight) carries it.
       # RUNNER_EXTRA_LABELS lets a GPU host also serve other lanes; set to ar-ci,
-      # these runners also take the CPU lane (test, test-media). That lane runs
+      # these runners also take the self-hosted CPU-lane stage (test). It runs
       # with AR_HARDWARE_DRIVER=native, but the CUDA bridge tests in base/hardware
       # use the GPU directly whenever one is present, so this container must be
       # a complete CUDA environment for every job it takes, not only CUDA jobs.
@@ -63,6 +63,16 @@ services:
       # libnvrtc-builtins through the container's loader cache instead, which
       # cuda-preflight.sh registers the mounted toolkit in at startup.
     volumes:
+      # Persistent, shared Maven dependency cache. Every replica mounts it and
+      # uses its own <runner> subdirectory (the select-maven-repo action), so the
+      # plugin and dependency set resolved once survives the ephemeral containers
+      # and is reused instead of re-downloaded from Maven Central on every job —
+      # the fix for the Central 429 rate-limit failures. The named volume
+      # inherits the shared image's runner ownership so the non-root runner can
+      # write. See "Maven dependency caching" in tools/ci/README.md.
+      - type: volume
+        source: ar-maven-cache
+        target: /opt/ar-maven-cache
       # Shared by every replica: each holds a lock on its <prefix>-N slot, so
       # "fleet.sh up N" cannot start two runners under the same name.
       - type: volume
@@ -107,6 +117,11 @@ services:
     restart: unless-stopped
 
 volumes:
+  # Survives container recreation, so the ephemeral ar-ci-cuda runners stay warm.
+  # Remove it (`docker volume rm ar-ci-cuda_ar-maven-cache`) to force a cold
+  # rebuild of the cache; a cold cache resolves correctly, only slower.
+  ar-maven-cache:
+    driver: local
   # In-memory, world-writable with the sticky bit (like /tmp), so the
   # non-root runner user can create lock files without the image changing.
   # Held locks die with their containers; nothing persists across a reboot.

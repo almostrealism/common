@@ -20,6 +20,11 @@
       "args": ["tools/mcp/profile-analyzer/server.py"],
       "description": "Performance profile analysis server"
     },
+    "ar-commit": {
+      "command": "python3",
+      "args": ["tools/mcp/commit/server.py"],
+      "description": "Checked commits: commits the staged change with the message in commit.txt after checking both against the commit-message rules"
+    },
     "ar-jmx": {
       "command": "python3",
       "args": ["tools/mcp/jmx/server.py"],

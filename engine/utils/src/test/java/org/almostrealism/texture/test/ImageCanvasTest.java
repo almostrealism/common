@@ -18,7 +18,6 @@ package org.almostrealism.texture.test;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.texture.ImageCanvas;
-import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -36,7 +35,7 @@ import java.nio.file.Files;
  * Tests for {@link ImageCanvas}, an off-screen RGB raster with plotting and several
  * image-encoding formats.
  */
-public class ImageCanvasTest extends TestSuiteBase {
+public class ImageCanvasTest extends TextureTestBase {
 	/** Numerical tolerance for floating-point comparisons. */
 	private static final double TOL = 1e-9;
 
@@ -201,12 +200,7 @@ public class ImageCanvasTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void writeImagePngIsDecodable() throws IOException {
-		RGB[][] image = new RGB[2][2];
-		for (int i = 0; i < 2; i++) {
-			for (int j = 0; j < 2; j++) {
-				image[i][j] = new RGB(1.0, 0.0, 0.0);
-			}
-		}
+		RGB[][] image = solidColorImage(2, 2, new RGB(1.0, 0.0, 0.0));
 
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		ImageCanvas.writeImage(image, out, ImageCanvas.PNGEncoding);

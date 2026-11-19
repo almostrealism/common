@@ -144,7 +144,7 @@ Producer<Ray> closestHit = closest.get(0);
 import org.almostrealism.geometry.ReflectedRay;
 
 // Compute reflected ray
-ReflectedRay reflection = new ReflectedRay(
+ReflectedRay reflection = reflectedRay(
     intersectionPoint,
     incidentDirection,
     surfaceNormal,
@@ -288,7 +288,7 @@ Producer<Vector> hitPoint = origin(hitNormal);
 Producer<Vector> normal = direction(hitNormal);
 
 // 4. Compute reflection for recursive tracing
-ReflectedRay reflection = new ReflectedRay(
+ReflectedRay reflection = reflectedRay(
     hitPoint,
     direction(ray),
     normal,

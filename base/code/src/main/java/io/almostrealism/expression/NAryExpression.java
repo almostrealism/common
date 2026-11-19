@@ -105,7 +105,8 @@ public class NAryExpression<T> extends Expression<T> {
 
 	/**
 	 * Determines the numeric result type of an arithmetic n-ary operation combining the
-	 * given operands. Returns {@code Double.class} if any operand is floating-point,
+	 * given operands, which is also the type of a {@link Conditional} selecting between
+	 * them. Returns {@code Double.class} if any operand is floating-point,
 	 * {@code Long.class} if any operand is a non-{@code Integer} integral type, otherwise
 	 * {@code Integer.class}.
 	 *

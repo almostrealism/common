@@ -197,13 +197,11 @@ public class CachedMeshIntersectionKernel implements Evaluable<PackedCollection>
 	}
 
 	/**
-	 * Intersects a single ray against the mesh, routing through the mesh's acceleration
-	 * structure when {@link #accelerated} is set and falling back to a linear scan otherwise.
-	 * This is the uncached single-ray path shared by {@link #evaluate(Object[])} and
-	 * {@link #getClosestNormal()}.
+	 * Intersects the ray produced for the given arguments with the mesh directly, bypassing
+	 * the cache, through the mesh's acceleration structure when this kernel is accelerated.
 	 *
-	 * @param args arguments passed to the ray evaluable
-	 * @return the closest hit as a {@link Pair} of (distance, triangle index)
+	 * @param args the arguments passed to the ray evaluable
+	 * @return a {@link Pair} of (intersection distance, triangle index)
 	 */
 	private Pair intersect(Object[] args) {
 		return accelerated ? data.evaluateIntersectionAccelerated(ray, args)

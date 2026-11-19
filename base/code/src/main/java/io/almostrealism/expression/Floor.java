@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -95,6 +96,17 @@ public class Floor extends Expression<Double> {
 	@Override
 	public Number evaluate(Number... children) {
 		return Math.floor(children[0].doubleValue());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The floor is piecewise constant, so its derivative is zero everywhere it is
+	 * differentiable (away from the integer boundaries where it steps).</p>
+	 */
+	@Override
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
+		return constantZero(target.getShape());
 	}
 
 	@Override

@@ -906,16 +906,27 @@ public class InstructionPromptBuilder {
         // Dependent repos context
         if (dependentRepoPaths != null && !dependentRepoPaths.isEmpty()) {
             sb.append("## Dependent Repositories\n");
-            sb.append("The following additional repositories have been checked out ");
-            sb.append("alongside the primary working directory. They are on the same ");
-            sb.append("branch (").append(targetBranch != null ? targetBranch : "default");
-            sb.append(") and any changes you make in them will be committed ");
-            sb.append("automatically when the job completes, and pushed when enabled by ");
-            sb.append("job configuration.\n\n");
+            sb.append("**The task targets the primary repository at `");
+            sb.append(workingDirectory != null ? workingDirectory : System.getProperty("user.dir"));
+            sb.append("`.** That is where the work belongs and where you should look for the ");
+            sb.append("defect or change the task describes. The repositories listed below are ");
+            sb.append("checked out alongside it only to help you understand the primary ");
+            sb.append("repository and to make the changes the primary repository's fix ");
+            sb.append("genuinely requires — they are NOT the target of the task. Do not go ");
+            sb.append("hunting for work in them; change one only when the primary repository's ");
+            sb.append("fix cannot be completed without it.\n\n");
+            sb.append("They are on the same branch (");
+            sb.append(targetBranch != null ? targetBranch : "default");
+            sb.append(") and any changes you make in them will be committed automatically when ");
+            sb.append("the job completes, and pushed when enabled by job configuration.\n\n");
             for (String depPath : dependentRepoPaths) {
                 sb.append("- `").append(depPath).append("`\n");
             }
-            sb.append("\nMaven artifacts installed during this job are private to it ");
+            sb.append("\nIf you change a dependent repository, write a `commit.txt` at ITS OWN ");
+            sb.append("root describing that repository's change — each repository is committed ");
+            sb.append("with the `commit.txt` found at its own root, never the primary ");
+            sb.append("repository's message.\n\n");
+            sb.append("Maven artifacts installed during this job are private to it ");
             sb.append("(see MAVEN_ARGS). If this repository builds against a dependent one, ");
             sb.append("run `mvn install -DskipTests` in the dependent checkout first, so your ");
             sb.append("build resolves that checkout rather than failing to resolve it.\n\n");
@@ -1119,6 +1130,20 @@ public class InstructionPromptBuilder {
             sb.append("what you changed and why.\n\n");
             sb.append("The message must describe the actual work you did — do NOT copy ");
             sb.append("the task description into `commit.txt`, and do NOT leave it empty.\n\n");
+            if (dependentRepoPaths != null && !dependentRepoPaths.isEmpty()) {
+                sb.append("If you changed more than one repository, write a SEPARATE ");
+                sb.append("`commit.txt` at the root of EACH repository you changed — each is ");
+                sb.append("committed with the message found at its own root. The repository ");
+                sb.append("roots are:\n");
+                sb.append("  - `");
+                sb.append(workingDirectory != null ? workingDirectory : System.getProperty("user.dir"));
+                sb.append("` (the primary repository)\n");
+                for (String depPath : dependentRepoPaths) {
+                    sb.append("  - `").append(depPath).append("` (a dependent repository)\n");
+                }
+                sb.append("\nEach `commit.txt` describes the changes in its own repository; a ");
+                sb.append("repository you did not change needs no `commit.txt`.\n\n");
+            }
             sb.append("Write it only if you changed files. If you deliberately changed ");
             sb.append("nothing — you reviewed and found no defect, or you investigated and ");
             sb.append("only reported — do NOT create `commit.txt`. Its absence is how you ");

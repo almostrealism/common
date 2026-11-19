@@ -88,15 +88,12 @@ HighlightShader specular = new HighlightShader();
 specular.setHighlightColor(new RGB(1, 1, 1));
 specular.setExponent(64.0);  // Sharp highlights
 
-// Reflection
-ReflectionShader mirror = new ReflectionShader();
-mirror.setReflectivity(0.9);
-mirror.setMaxReflections(4);  // Recursion depth
+// Reflection (Schlick-weighted mirror; ReflectionShader.maxReflections bounds recursion)
+ReflectionShader mirror = new ReflectionShader(0.9, white());  // R0 and tint
 
-// Refraction (glass, water)
-RefractionShader glass = new RefractionShader();
-glass.setIndexOfRefraction(1.5);  // Glass IOR
-glass.setAttenuationFactors(0.9, 0.9, 0.95);  // Slight tint
+// Refraction through a closed solid (glass, water)
+RefractionShader glass = new RefractionShader(1.5);   // Glass IOR
+glass.setAttenuationFactors(0.9, 0.9, 0.95);         // Slight tint
 
 // Apply shaders to surface
 sphere.setShaders(new Shader[] { diffuse, specular, mirror });
@@ -172,15 +169,27 @@ public class RayTracedScene extends Realization<RealizableImage, RenderParameter
 
 ### RayTracedAnimation
 
-An `Animation` (from `ar-space`) that ray traces each frame with `RayTracedScene` and writes it to
-the output directory as a PNG, plus an `encode.sh` that encodes the frames as a video. Its camera
-and rigid bodies can be stored as and loaded from `Properties`. Set the frame size with
-`setImageDimensions` and turn on `setRenderEachFrame`; `Animation.run()` then writes a frame
-each time a frame duration of simulated time has passed.
+An `Animation` (from `ar-space`) that ray traces each frame with `RayTracedScene` and hands it to an
+`ImageSequence` (from `ar-color`), the single frame-sequence writer that owns the zero-padded PNG
+naming, written-frame tracking, and the `ffmpeg` `encode.sh`. Its camera and rigid bodies can be
+stored as and loaded from `Properties`. Set the frame size with `setImageDimensions` and turn on
+`setRenderEachFrame`; `Animation.run()` then writes a frame each time a frame duration of simulated
+time has passed. The `SimulationRunner`-driven `RayTracedFrameSequence` shares the same
+`ImageSequence`; the two differ only in what advances time between frames.
 
 `PhotonFieldAnimation` extends it with a `DefaultPhotonField` on the animation's clock: every
 member that is also an `Absorber` is kept in the field's `AbsorberHashSet`, however it is added to
 or removed from the animation.
+
+### ImplicitSurfaceRenderer
+
+Renders an `ImplicitSurface` (`SignedDistanceFunction`, `HeightField`, from `ar-geometry`)
+with one program per pixel: the camera ray of every pixel is marched with conservative
+Lipschitz steps, refined by bisection and a secant step, and shaded with point and ambient
+lights, a Schlick Fresnel term and an environment gradient. `frame()` returns the operations
+of one frame; the per-pixel part compiles to a single kernel. The image is a
+`(height, width, 3)` `PackedCollection` ready for `saveRgb`. See
+[Per-Pixel Kernel Rendering](../../docs/internals/per-pixel-rendering.md).
 
 ### Engine Interface
 
@@ -345,15 +354,19 @@ Sphere mirrorSphere = new Sphere(new Vector(0, 0, 0), 1.0, new RGB(0.9, 0.9, 0.9
 
 // Configure reflection
 ReflectionShader reflection = new ReflectionShader();
-reflection.setReflectivity(0.95);           // 95% reflective
-reflection.setReflectiveColor(white());
-reflection.setBlur(0.0);                    // Perfect mirror
-reflection.setMaxReflections(4);            // Recursion depth
+reflection.setReflectivity(0.95);           // Reflectance at normal incidence (Schlick R0)
+reflection.setReflectiveColor(white());     // Tint
+reflection.setBlur(0.0);                    // 0 = perfect mirror, > 0 = glossy
 
 mirrorSphere.setShaders(new Shader[] { reflection });
-
-// Engine will trace reflected rays recursively
 ```
+
+The reflected ray is a `ReflectedRay` (a shape-`(6)` computation), and the colour seen along
+it is the closest hit selected on the device by `LightingEngineAggregator.getClosestColor()`,
+so the reflection compiles into the mirror's own kernel. Recursion depth is bounded by the
+static `ReflectionShader.maxReflections`. See
+[Ray-Traced Reflection and Refraction](../../docs/internals/ray-traced-reflection-and-refraction.md)
+for the full path, the direction conventions and the known limits.
 
 ### Pattern 4: Glass/Transparent Objects
 
@@ -362,15 +375,17 @@ mirrorSphere.setShaders(new Shader[] { reflection });
 Sphere glassSphere = new Sphere(new Vector(0, 0, 0), 1.0, new RGB(1, 1, 1));
 
 // Configure refraction
-RefractionShader glass = new RefractionShader();
-glass.setIndexOfRefraction(1.5);            // Glass IOR
-glass.setAttenuationFactors(0.95, 0.95, 0.98);  // Slight blue-green tint
-glass.setTransmitAbsorb(true);
+RefractionShader glass = new RefractionShader(1.5);   // Glass IOR
+glass.setAttenuationFactors(0.95, 0.95, 0.98);       // Slight blue-green tint
 
 glassSphere.setShaders(new Shader[] { glass });
-glassSphere.setRefractedPercentage(0.9);    // 90% transparent
-glassSphere.setReflectedPercentage(0.1);    // 10% reflective
 ```
+
+`RefractionShader` treats the surface as a closed solid: the ray is refracted in with Snell's
+law (`GeometryFeatures.refract`), intersected with the surface again to find where it leaves,
+refracted out, and traced against the other surfaces; the result is weighted by `1 - R`
+(Schlick). Rendering a refractive surface currently takes longer to compile than a test
+timeout allows (see the internals guide).
 
 ### Pattern 5: Composite Materials
 

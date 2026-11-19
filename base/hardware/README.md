@@ -645,8 +645,9 @@ kernel.execute(cpuMem1, cpuMem2, cpuMem3);  // 3 CPU->GPU transfers
 
 **Aggregation Rules:**
 - Enabled by default (`AR_HARDWARE_ARGUMENT_AGGREGATION=true`)
+- Folds only when the kernel needs it: a compute context that reports an argument limit (`ComputeContext.getArgumentLimit()`; Metal reports `MetalOperator.MAX_ARGUMENTS`, 29 — its 31-entry buffer table less the offsets and sizes bound after the last argument) folds nothing for a kernel whose structural argument bound fits it. The bound is the number of leaf positions of the operation's `Process` tree plus the output, plus the arguments each position obtains while its scope is prepared for a value that is not one of its inputs (`ScopeLifecycle.getScopeArgumentCount`: a derivative's target, the collections an ordering binds, `TraversalOrdering.getArgumentCount`, or the arguments of the components a node prepares along with itself — a switch's branches, dependent lifecycles, the producers an adapter wraps — as `ScopeLifecycle.getPreparedArgumentBound` counts them), counted before any de-duplication, so it is fixed by the structure the signature encodes and every operation sharing a compiled kernel reaches the same decision. The arguments the kernel structure resources (series cache, traversal operations) add while a fitting kernel is generated are not leaves, so they are kept within the room the bound leaves under the limit (`AcceleratedOperation.getArgumentAllowance`, applied by `CompiledKernelStructureContext.prepareResources`); an expression that does not fit is compiled without reordering. A kernel whose bound exceeds the limit folds every eligible argument, as does every kernel on a context with no known limit (the native backend). The decision is `ComputeContext.fitsArgumentLimit`, applied in `AcceleratedOperation.createArgumentMap`
 - Only aggregates memory from non-kernel providers
-- Respects size threshold (default: 1MB)
+- Respects a size threshold: a root of at most `maxAggregateLength` elements (default 1024) is eligible
 - Root delegates grouped to minimize copies
 - Each root occupies, and is copied by, its physical backing length (`getDelegatedLength()`), not its logical `getMemLength()` — the two differ for a root read through a compact, sparse or gather `TraversalOrdering`
 - The copies around each dispatch are limited by what the compiled `Scope` itself reads and writes (`Scope.containsRead` / `Scope.containsAssignment`), never by anything the computation declares: only a slice the kernel may write is copied back (`getWrittenSlices`); a read-only slice the kernel does not write is copied in once; and a slice the kernel does not read (`getReadSlices`) is not copied in by a dispatch that does not copy it back. A slice that is copied back keeps its copy-in even when unread, because the copy-back moves the whole slice and the kernel is not known to write every element of it. A scope whose reads or writes cannot be enumerated copies every slice in both directions
@@ -660,8 +661,8 @@ export AR_HARDWARE_ARGUMENT_AGGREGATION=true   # Default
 # Include off-heap memory in aggregation
 export AR_HARDWARE_OFF_HEAP_AGGREGATION=false  # Default
 
-# Max size for aggregation (bytes)
-export AR_HARDWARE_AGGREGATE_MAX=1048576       # 1MB default
+# Max root size for aggregation (elements)
+export AR_HARDWARE_AGGREGATE_MAX=1024          # Default
 ```
 
 ### Memory Replacement for Kernels
@@ -1113,6 +1114,24 @@ CUDA contexts report one lane and compile the same computations as before.
 For the dense step of a rate population over an 11,751-type connectome (`CellTypeRateModelTest`,
 a 552 MB FP32 matrix), a step took 836 microseconds instead of 3,211 on an M1 Ultra, and the
 10,000-step stability run 9.3 seconds instead of 32.7.
+
+### 10. Waits Between Command Buffers (Metal)
+
+`MetalCommandRunner` orders a dispatch after one in an earlier command buffer by encoding a GPU
+wait for that dispatch's timeline value. It does so only while the earlier buffer may still be
+running: once a host wait has seen the buffer complete and drained it, the dependency is
+honored with no command at all. A wait for a value already reached does not hold the GPU back,
+but encoded between two dispatches it splits the buffer's work. On an M1 Ultra, a buffer of 32
+dependent single-thread kernels took about 350 microseconds to commit and complete, and about
+815 with one such wait in its middle.
+
+Every loop that waits once per step and chains its next step on the last completion
+(`ModelOptimizer` is one) used to pay that in every step, for each dependency of the new step on
+the one before it, including the earlier value a merged completion carries
+(`MetalSemaphore.getPriorBufferValue()`). With the waits left out,
+`SyntheticDenseTrainingTest#denseClassification`, 60,000 steps of about 46 dispatches each, ran in
+46 seconds instead of 59 on that machine. `getOrderingWaitCount()` reports the waits a runner
+still encodes and `getFinishedDependencyCount()` the dependencies it honored without one.
 
 ## Advanced Topics
 

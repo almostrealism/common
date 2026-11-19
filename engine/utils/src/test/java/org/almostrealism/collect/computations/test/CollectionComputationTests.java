@@ -37,6 +37,7 @@ import org.junit.Test;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.function.Function;
 import java.util.stream.IntStream;
 
 /**
@@ -516,6 +517,42 @@ public class CollectionComputationTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests the minimum reduction over a vector for positive, negative and mixed inputs, and
+	 * with the minimum occurring at the first, a middle and the last position.
+	 */
+	@Test(timeout = 30000)
+	public void min() {
+		// Positive values, minimum in the middle
+		assertEquals(1.0, cp(pack(3.0, 1.0, 2.0)).min().get().evaluate().toDouble(0));
+		// Minimum at the first position
+		assertEquals(1.0, cp(pack(1.0, 3.0, 2.0)).min().get().evaluate().toDouble(0));
+		// Minimum at the last position
+		assertEquals(1.0, cp(pack(3.0, 2.0, 1.0)).min().get().evaluate().toDouble(0));
+		// Negative values
+		assertEquals(-3.0, cp(pack(-3.0, -1.0, -2.0)).min().get().evaluate().toDouble(0));
+		// Mixed values
+		assertEquals(-1.0, cp(pack(3.0, -1.0, 2.0)).min().get().evaluate().toDouble(0));
+	}
+
+	/**
+	 * Tests the per-axis minimum reduction on a 2D input: reducing the last axis gives the
+	 * minimum of each row, and reducing axis 0 gives the minimum across the whole collection.
+	 */
+	@Test(timeout = 30000)
+	public void min2d() {
+		PackedCollection value = pack(5.0, 3.0, 7.0, 2.0, 9.0, 1.0).reshape(2, 3);
+
+		PackedCollection rows = cp(value).min(1).get().evaluate();
+		rows.print();
+		assertEquals(3.0, rows.toDouble(0));
+		assertEquals(1.0, rows.toDouble(1));
+
+		PackedCollection all = cp(value).min(0).get().evaluate();
+		all.print();
+		assertEquals(1.0, all.toDouble(0));
+	}
+
+	/**
 	 * Tests index of max value in 2D collection.
 	 */
 	@Test(timeout = 30000)
@@ -536,7 +573,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void indexOfMaxEmbedded() throws IOException {
-		assertIndexOfMaxMask(4);
+		assertIndexOfExtremumMask(4, false);
 	}
 
 	/**
@@ -545,40 +582,100 @@ public class CollectionComputationTests extends TestSuiteBase {
 	 */
 	@Test(timeout = 30000)
 	public void indexOfMaxIsolated() throws IOException {
-		assertIndexOfMaxMask(20);
+		assertIndexOfExtremumMask(20, false);
 	}
 
 	/**
-	 * Builds a one-hot mask of the maximum of each of three rows of the given size,
-	 * each row peaking at a different column,
-	 * optimizes it so that isolation is considered, and verifies that each row selects
-	 * its own maximum.
-	 *
-	 * @param size the length of each row
+	 * Tests the index of the minimum of each row of a 2D collection, with the minimum at the
+	 * first, a middle and the last position, with negative values, and with a tie, where the
+	 * first occurrence of the minimum must be the one selected.
 	 */
-	protected void assertIndexOfMaxMask(int size) throws IOException {
+	@Test(timeout = 30000)
+	public void indexOfMin2d() {
+		PackedCollection value = pack(
+				1.0, 8.0, 3.0, 4.0,
+				4.0, 2.0, 6.0, 5.0,
+				9.0, 7.0, 8.0, 0.5,
+				-1.0, -3.0, 2.0, -2.0,
+				6.0, 2.0, 5.0, 2.0).reshape(5, 4).traverse(1);
+
+		PackedCollection m = indexOfMin(cp(value)).get().evaluate();
+		m.print();
+
+		assertEquals(0.0, m.toDouble(0));
+		assertEquals(1.0, m.toDouble(1));
+		assertEquals(3.0, m.toDouble(2));
+		assertEquals(1.0, m.toDouble(3));
+		assertEquals(1.0, m.toDouble(4));
+	}
+
+	/**
+	 * Tests that the index of the maximum also selects the first occurrence when a row has
+	 * a tie, so that the maximum and minimum searches agree on tie-breaking.
+	 */
+	@Test(timeout = 30000)
+	public void indexOfMaxTie() {
+		PackedCollection value = pack(3.0, 7.0, 1.0, 7.0).reshape(1, 4).traverse(1);
+
+		PackedCollection m = cp(value).indexOfMax().get().evaluate();
+		assertEquals(1.0, m.toDouble(0));
+	}
+
+	/**
+	 * Tests the index of the minimum when it is embedded in a kernel of a different size,
+	 * a one-hot mask over each row, where each row is short enough to be embedded rather
+	 * than isolated.
+	 */
+	@Test(timeout = 30000)
+	public void indexOfMinEmbedded() throws IOException {
+		assertIndexOfExtremumMask(4, true);
+	}
+
+	/**
+	 * Tests the index of the minimum when it is used by a kernel of a different size,
+	 * a one-hot mask over each row, where each row is long enough to be isolated.
+	 */
+	@Test(timeout = 30000)
+	public void indexOfMinIsolated() throws IOException {
+		assertIndexOfExtremumMask(20, true);
+	}
+
+	/**
+	 * Builds a one-hot mask of the extremum of each of three rows of the given size,
+	 * each row peaking (for the maximum) or bottoming out (for the minimum) at a different
+	 * column, optimizes it so that isolation is considered, and verifies that each row
+	 * selects its own extremum.
+	 *
+	 * @param size    the length of each row
+	 * @param minimum {@code true} to search for the minimum, {@code false} for the maximum
+	 */
+	protected void assertIndexOfExtremumMask(int size, boolean minimum) throws IOException {
 		int rows = 3;
 		int step = (size - 1) / (rows - 1);
 		int[] expected = IntStream.range(0, rows).map(r -> r * step).toArray();
+		String name = (minimum ? "indexOfMinMask" : "indexOfMaxMask") + size;
 
-		// Row r is a parabola peaking at column r * step
+		// Row r is a parabola whose extremum is at column r * step
 		CollectionProducer offset = integers(0, rows * size).mod(size)
 				.subtract(floor(integers(0, rows * size).divide(size)).multiply(step));
-		PackedCollection value = offset.multiply(offset).multiply(-1.0)
+		PackedCollection value = offset.multiply(offset).multiply(minimum ? 1.0 : -1.0)
 				.evaluate().reshape(rows, size);
 
-		PackedCollection index = indexOfMax(cp(value.traverse(1))).evaluate();
+		Function<PackedCollection, CollectionProducer> indexOf = v -> minimum
+				? indexOfMin(cp(v.traverse(1))) : indexOfMax(cp(v.traverse(1)));
+
+		PackedCollection index = indexOf.apply(value).evaluate();
 		for (int r = 0; r < rows; r++) {
 			assertEquals(expected[r], index.toDouble(r));
 		}
 
 		CollectionProducer mask = equals(
 				integers(0, rows * size).mod(size).reshape(shape(rows, size)),
-				c(indexOfMax(cp(value.traverse(1)))).reshape(shape(rows, 1))
+				c(indexOf.apply(value)).reshape(shape(rows, 1))
 						.repeat(1, size).reshape(shape(rows, size)),
 				c(1.0), c(0.0));
 
-		OperationProfileNode profile = new OperationProfileNode("indexOfMaxMask" + size);
+		OperationProfileNode profile = new OperationProfileNode(name);
 		Hardware.getLocalHardware().assignProfile(profile);
 
 		PackedCollection m;
@@ -588,7 +685,7 @@ public class CollectionComputationTests extends TestSuiteBase {
 		} finally {
 			Hardware.getLocalHardware().assignProfile(null);
 			Files.createDirectories(Path.of("target/test-profiles"));
-			profile.save("target/test-profiles/indexOfMaxMask" + size + ".xml");
+			profile.save("target/test-profiles/" + name + ".xml");
 		}
 
 		m.reshape(rows, size).print();

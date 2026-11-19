@@ -163,6 +163,14 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	/**
 	 * Transforms a vector by a matrix with control over translation inclusion.
 	 *
+	 * <p>The vector may be a batch of vectors (for example a variable input of shape
+	 * {@code (-1, 3)}), in which case each output vector is computed from the
+	 * corresponding input vector and the single matrix. The output index is therefore
+	 * split into the batch row ({@code outputIndex / 3}) and the vector component
+	 * ({@code outputIndex % 3}): the homogeneous input vector is addressed by the
+	 * batch row, while the matrix is addressed by the component alone, so that
+	 * every row reads the same matrix elements.</p>
+	 *
 	 * @param matrix a producer for the transformation matrix
 	 * @param vector the vector to transform
 	 * @param includeTranslation if true, includes translation (for points); if false, excludes it (for directions)
@@ -171,17 +179,23 @@ public interface TransformMatrixFeatures extends MatrixFeatures {
 	default CollectionProducerComputation transform(Producer<TransformMatrix> matrix,
 													Producer<PackedCollection> vector, boolean includeTranslation) {
 		TraversalPolicy shape = shape(3);
+		TraversalPolicy homogeneousShape = shape(4);
+		int components = shape.getSize();
+		int homogeneousComponents = homogeneousShape.getSize();
 
-		vector = concat(shape(4), vector, c(1.0));
+		vector = concat(homogeneousShape, vector, c(1.0));
 
 		DefaultTraversableExpressionComputation c = new DefaultTraversableExpressionComputation("transform", shape,
 				args ->
-						new WeightedSumExpression(shape, includeTranslation ? 4 : 3, args[1], args[2],
+						new WeightedSumExpression(shape, includeTranslation ? homogeneousComponents : components,
+								args[1], args[2],
 								(groupIndex, operandIndex) -> outputIndex -> {
 									if (operandIndex == 0) {
-										return e(groupIndex);
+										return (Expression) outputIndex.divide(components)
+												.multiply(homogeneousComponents).add(e(groupIndex));
 									} else if (operandIndex == 1) {
-										return (Expression) outputIndex.multiply(4).add(e(groupIndex));
+										return (Expression) outputIndex.imod(components)
+												.multiply(homogeneousComponents).add(e(groupIndex));
 									} else {
 										throw new IllegalArgumentException();
 									}

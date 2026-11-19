@@ -1042,6 +1042,18 @@ public class AudioLibrary implements ConsoleFeatures {
 	}
 
 	/**
+	 * Returns whether this library's stored items must be re-analysed for the
+	 * model its feature provider currently produces, as decided by
+	 * {@link WaveDetailsStore#needsReanalysis(String)}. A library without a
+	 * backing store never re-analyses stored items.
+	 *
+	 * @return {@code true} if the stored items are re-analysed for {@link #currentModelId()}
+	 */
+	public boolean isReanalysisNeeded() {
+		return store != null && store.needsReanalysis(currentModelId());
+	}
+
+	/**
 	 * Re-persists a details item, keyed by its identifier: store-backed, written
 	 * to the store with a mean-pooled embedding vector (enabling HNSW
 	 * nearest-neighbour search); otherwise returned to the in-memory cache. Used
@@ -1413,8 +1425,7 @@ public class AudioLibrary implements ConsoleFeatures {
 				}
 			}
 		} catch (Exception e) {
-			log("Failed to load similarities for " + details.getIdentifier() +
-					" (" + Optional.ofNullable(e.getMessage()).orElse(e.getClass().getSimpleName()) + ")");
+			warn("Failed to load similarities for " + details.getIdentifier(), e);
 		}
 
 		return details;
@@ -1474,6 +1485,8 @@ public class AudioLibrary implements ConsoleFeatures {
 			// visits every provider and asks each for its identifier.
 			Map<String, File> index = new HashMap<>();
 			List<WaveDataProvider> recompute = new ArrayList<>();
+			// Content under several paths is queued once, so "n of N" counts items; unreadable files (null id) each count.
+			Set<String> queued = new HashSet<>();
 
 			root.children().forEach(f -> {
 				FileWaveDataProvider provider = f.get();
@@ -1481,7 +1494,7 @@ public class AudioLibrary implements ConsoleFeatures {
 
 				String identifier = provider.getIdentifier();
 				record(index, identifier, provider);
-				if (!completeIdentifiers.contains(identifier)) recompute.add(provider);
+				if (!completeIdentifiers.contains(identifier) && (identifier == null || queued.add(identifier))) recompute.add(provider);
 			});
 
 			fileIndex.replace(index);

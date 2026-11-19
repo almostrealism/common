@@ -34,6 +34,9 @@ import java.lang.ref.Reference;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -99,10 +102,13 @@ import java.util.stream.Collectors;
  *
  * <h2>Executor Configuration</h2>
  *
- * <p>Uses a shared thread pool sized to CPU parallelism:</p>
+ * <p>Workers run on a shared pool that keeps {@link KernelPreferences#getCpuParallelism()} warm
+ * threads &mdash; the number a single dispatch is split across &mdash; but grows past that when
+ * every thread is busy, so an independent dispatch is never queued behind a long-running one (see
+ * the {@link #executor} field for why that distinction matters):</p>
  * <pre>{@code
- * // Thread pool size = KernelPreferences.getCpuParallelism()
- * ExecutorService executor = Executors.newFixedThreadPool(parallelism);
+ * // Resting size = KernelPreferences.getCpuParallelism(), grows on demand
+ * ExecutorService executor = newWorkerPool();
  *
  * // Disable executor (tasks run sequentially)
  * NativeExecution.enableExecutor = false;
@@ -186,14 +192,69 @@ public class NativeExecution extends HardwareOperator {
 	/** Metric tracking dimension mask computation time for JNI kernel invocations. */
 	public static TimingMetric dimMaskMetric = Hardware.console.timing("dimMask");
 
-	/** Shared thread pool sized to the available CPU parallelism for concurrent kernel execution. */
-	private static ExecutorService executor = Executors.newFixedThreadPool(KernelPreferences.getCpuParallelism());
+	/**
+	 * Shared thread pool for the parallel worker tasks of every dispatch (see {@link #coordinate}).
+	 * <p>
+	 * It keeps {@link KernelPreferences#getCpuParallelism()} warm threads &mdash; the number of
+	 * workers a single dispatch is split across &mdash; so a kernel running on its own occupies
+	 * exactly that many threads and no more, as it did when this was a fixed pool. Unlike a fixed
+	 * pool, it <em>grows</em> a thread whenever every current thread is busy, rather than queuing
+	 * the task behind them.
+	 * <p>
+	 * The growth is what keeps an independent dispatch from being wedged behind a long-running one.
+	 * A dispatch is split into {@code getCpuParallelism()} workers, which is also the pool's resting
+	 * size, so one long dispatch occupies <em>every</em> resting thread for its whole duration. A
+	 * native kernel cannot be preempted once it has started, so with a fixed pool a second,
+	 * data-independent dispatch issued meanwhile (the asynchronous model lets callers issue any
+	 * number ahead of a wait) had its workers queued behind the first and could not run until the
+	 * first finished &mdash; and if the first never finished (a pathological kernel), nor did it,
+	 * nor anything issued after it. On a machine with many cores the resting size is large and such
+	 * a kernel finishes quickly, so the wedge went unseen; on one with few cores the resting size is
+	 * small (two) and a single slow dispatch stalled every later one. Growing the pool instead of
+	 * queuing gives each independent dispatch its own worker threads, so one dispatch can no longer
+	 * starve the rest; threads created past the resting size are reclaimed once idle. This is a bound
+	 * the receiver applies at the resource that runs out, not a cap on how far ahead callers may
+	 * issue work (see {@code docs/internals/asynchronous-submission.md}).
+	 */
+	private static final ThreadPoolExecutor executor = newWorkerPool();
+
+	/**
+	 * Creates the {@link #executor} worker pool: up to {@link KernelPreferences#getCpuParallelism()}
+	 * resting threads created on demand and then never reclaimed, growing without bound when all of
+	 * them are busy and reclaiming the extra threads after they fall idle. The threads are created
+	 * lazily on the first dispatches rather than eagerly, so merely loading this class does not
+	 * start any &mdash; a backend that never dispatches natively (a GPU host, a tool) keeps no idle
+	 * worker alive. The {@link SynchronousQueue} hands each submitted worker to an idle thread or,
+	 * when none is idle, to a newly created one rather than queuing it, which is what lets a dispatch
+	 * run even while another holds every resting thread.
+	 *
+	 * @return the worker pool
+	 */
+	private static ThreadPoolExecutor newWorkerPool() {
+		return new ThreadPoolExecutor(
+				KernelPreferences.getCpuParallelism(), Integer.MAX_VALUE,
+				60L, TimeUnit.SECONDS, new SynchronousQueue<>(),
+				r -> new Thread(r, "NativeExecution worker"));
+	}
+
+	/**
+	 * The number of {@link #executor} worker threads currently running a dispatch's kernel. It is
+	 * zero when no native dispatch is in flight &mdash; including on a GPU host, where dispatches
+	 * run on the device rather than on this pool &mdash; and rises to the worker count of a running
+	 * dispatch while it executes. This lets a caller observe that a dispatch has begun occupying the
+	 * pool rather than infer it from elapsed time.
+	 *
+	 * @return the count of worker threads actively executing a kernel
+	 */
+	public static int getActiveWorkerCount() {
+		return executor.getActiveCount();
+	}
 
 	/**
 	 * Permits for single-worker kernels, which run on their coordinating thread rather than on
 	 * the {@link #executor} (see {@link #coordinate}). Coordinating threads come from unbounded
 	 * pools, so without these permits any number of such kernels could run at once; there are as
-	 * many as the {@link #executor} has threads.
+	 * many as the {@link #executor} keeps warm.
 	 */
 	private static final java.util.concurrent.Semaphore inlineWorkers =
 			new java.util.concurrent.Semaphore(KernelPreferences.getCpuParallelism());
@@ -203,7 +264,7 @@ public class NativeExecution extends HardwareOperator {
 	 * dependency runs its worker submission and completion bookkeeping on one of these threads so
 	 * the submitting thread never blocks (a dispatch with a dependency is coordinated on the
 	 * thread its dependency's settlement starts, see {@link Semaphore#onSettled(Runnable)}). Kept
-	 * separate from the fixed-size {@link #executor} worker pool because coordinators block on
+	 * separate from the {@link #executor} worker pool because coordinators block on
 	 * their latch &mdash; running them on the worker pool could occupy every thread with waiting
 	 * coordinators and starve the workers they wait for.
 	 */
@@ -358,7 +419,7 @@ public class NativeExecution extends HardwareOperator {
 	 * so running it here saves a thread hand-off on every such dispatch (a scalar result, for
 	 * example). Coordinating threads are not bounded, so a worker run here first takes one of
 	 * the {@link #inlineWorkers} permits: at most as many single-worker kernels run at once as
-	 * the {@link #executor} has threads, the bound they had when they ran there.</p>
+	 * the {@link #executor} keeps warm, the bound they had when they ran there.</p>
 	 *
 	 * <p>The guard comes off only once the latch has reached zero, on the failure path as
 	 * well as the ordinary one. Releasing it is what allows this dispatch's memory to be

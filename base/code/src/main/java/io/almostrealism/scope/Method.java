@@ -43,9 +43,6 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	/** The object or struct on which this method is called, or {@code null} for free functions. */
 	private String member, name;
 
-	/** The positional arguments passed to the method call. */
-	private List<Expression<?>> arguments;
-
 	/**
 	 * Optional substitutions that replace specific {@link ArrayVariable} names before
 	 * rendering the argument list, used to remap kernel array parameters.
@@ -96,7 +93,6 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 		super(type, arguments.toArray(new Expression[0]));
 		this.member = member;
 		this.name = name;
-		this.arguments = arguments;
 	}
 
 	/**
@@ -259,9 +255,14 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	/**
 	 * Returns the list of arguments passed to this method call.
 	 *
-	 * @return the argument list
+	 * <p>The arguments are the {@link #getChildren() children} of this expression, fixed when
+	 * it is constructed: changing the list given to the constructor afterwards does not change
+	 * the call, so its rendering, its equality and its cached depth, size and hash always
+	 * describe the same arguments.</p>
+	 *
+	 * @return the unmodifiable argument list
 	 */
-	public List<Expression<?>> getArguments() { return arguments; }
+	public List<Expression<?>> getArguments() { return getChildren(); }
 
 	/**
 	 * {@inheritDoc}

@@ -78,7 +78,7 @@ import java.util.function.Consumer;
  *     }
  *
  *     @Override
- *     protected String getCommitMessage() {
+ *     protected String getCommitMessage(String repoRoot) {
  *         return "Completed my task";
  *     }
  * }
@@ -381,12 +381,16 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
     }
 
     /**
-     * Returns the commit message for changes made by this job.
-     * Subclasses should override to provide a descriptive message.
+     * Returns the commit message for changes made by this job in the repository
+     * rooted at {@code repoRoot} — the primary working directory or a dependent
+     * checkout beside it. The base implementation ignores the root and uses one
+     * message for every repository; {@link CodingAgentJob} overrides this to
+     * resolve each repository's own {@code commit.txt}.
      *
+     * @param repoRoot the repository root whose message is wanted
      * @return the commit message
      */
-    protected String getCommitMessage() {
+    protected String getCommitMessage(String repoRoot) {
         return "Changes from job: " + getTaskString();
     }
 
@@ -429,7 +433,7 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
      *
      * <p>This method is {@code final}: subclasses customise behaviour by
      * overriding {@link #doWork()}, {@link #validateChanges()},
-     * {@link #onGitTampering()}, and {@link #getCommitMessage()}.</p>
+     * {@link #onGitTampering()}, and {@link #getCommitMessage(String)}.</p>
      *
      * <p>Regardless of success or failure, {@link #fireJobCompleted(Exception)}
      * is called in the {@code finally} block and the {@link #future} is
@@ -1194,24 +1198,14 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
 
     /**
      * Returns a {@link FileStager.GitOperations} adapter bound to this job's
-     * own {@link #executeGit} and {@link #executeGitWithOutput}, for use by
-     * {@link FileStager#evaluateFiles} and the test-method-protection
+     * working-directory {@link #gitOperations(String) GitOperations}, for use
+     * by {@link FileStager#evaluateFiles} and the test-method-protection
      * analysis it delegates to.
      *
      * @return the adapter
      */
     FileStager.GitOperations asGitOperations() {
-        return new FileStager.GitOperations() {
-            @Override
-            public int execute(String... args) throws IOException, InterruptedException {
-                return executeGit(args);
-            }
-
-            @Override
-            public String executeWithOutput(String... args) throws IOException, InterruptedException {
-                return executeGitWithOutput(args);
-            }
-        };
+        return new GitManagedJobOperations(this);
     }
 
     /**

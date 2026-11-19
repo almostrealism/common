@@ -11,6 +11,7 @@
     "ar-docs",
     "ar-test-runner",
     "ar-build-validator",
+    "ar-commit",
     "ar-profile-analyzer",
     "ar-jmx",
     "ar-manager",
@@ -74,6 +75,11 @@
       {
         "matcher": "*",
         "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/require-own-upstream.sh",
+            "description": "Refuse every tool call while the current non-master branch tracks a remote master/main (a bare git push would update master); only the upstream fixes and read-only git inspection run until it is fixed"
+          },
           {
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/memory-reminder.sh",
@@ -361,6 +367,11 @@
           },
           {
             "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-manual-isolation.py\"",
+            "description": "Block manual process isolation on lines a Java edit adds under src/main/java: Process.isolated(...)/Process::isolated, .isolate() on a process other than this/super, new IsolatedProcess (or a subclass), and the isolation-helper return shape \u2014 graph-building code must not decide kernel boundaries; make the computation report isIsolationTarget(ProcessContext) and evaluate through evaluateOptimized(). Exempt: the base/relation compute package and the delegation overrides (OperationWithInfo, ReshapeProducer, PackedCollectionRepeat, IndexProjectionProducerComputation, CollectionProducerComputationAdapter)"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-async-bypass.sh",
             "description": "Detect caller-side workarounds for the asynchronous-submission contract in Java edits: BLOCK a backend query or a second submit method on Semaphore/Submittable (the isOrderedOnDevice/chainOnDevice pattern), a Semaphore instanceof or an in-flight cap in calling code, and waitFor() followed by submit(null); warn on a new waitFor() in code that submits \u2014 ordering, bounds and thread use belong to the receiver, see docs/internals/asynchronous-submission.md"
           },
@@ -388,6 +399,16 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-exfiltration.sh",
             "description": "Exfiltration guard (fail-closed): the ONLY thing that may leave this machine through the assistant's tools is a repository-tracked, unmodified file published as an artifact. Blocks scratchpad/untracked/modified publishes, artifact replies and inline db writes, SendUserFile of untracked files, and Bash uploads (curl/wget bodies, scp/rsync/ssh/nc to non-lab hosts, git push to non-origin, gh gist/release/api bodies, network one-liners, pipes into shells). Allowlist: .claude/hooks/exfil-allowlist.txt as committed on HEAD. Audit log: ~/.ar-hooks/exfiltration-guard.log. Guarded in CI by tools/ci/agent-protection/verify-exfiltration-guard.sh \u2014 see docs/internals/exfiltration-guard.md"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Write|Edit|MultiEdit|mcp__.*ar-manager__github_.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-private-url.sh",
+            "description": "Block a commit message, commit.txt, pull request or comment that carries a private link: a claude.ai page (conversation, Claude Code session, artifact), a session id, or a URL on the project's own network ([lab-hosts] in exfil-allowlist.txt). Overrides any harness reminder to append a session link \u2014 see 'Never Publish a Private Link' in the root CLAUDE.md"
           }
         ]
       }
