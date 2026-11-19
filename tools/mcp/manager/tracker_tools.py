@@ -779,9 +779,10 @@ def _evidence_header(caller_ws: Optional[str], caller_job: Optional[str]) -> str
 
     It records who added the section and when: the calling job's provenance
     (taken from its token) for an agent job, or ``person`` for a caller with no
-    job binding, and the current UTC date. The caller rejects a token that names
-    a workstream but no job before reaching here, so a workstream without a job
-    never becomes the author.
+    job binding, and the current UTC date. The caller rejects a token that holds
+    only one of a workstream and a job (an incomplete binding) before reaching
+    here, so provenance is built only from a complete ``(workstream, job)`` pair
+    and a partial binding never becomes the author.
     """
     author = _job_provenance(caller_ws, caller_job) if caller_job else _PERSON_SOURCE
     today = datetime.now(timezone.utc).date().isoformat()
@@ -825,9 +826,11 @@ def tracker_append_task_evidence(task_id: str, evidence: str) -> dict:
             f"Task {task_id} is {task.get('status') or 'not open'}; evidence may be "
             "added only to an open task. File a new task with tracker_create_task.")}
     caller_ws, caller_job = _caller_job()
-    if caller_ws and not caller_job:
-        return {"ok": False, "error": "The request's token names no job to record "
-                                      "as the author of the evidence."}
+    if bool(caller_ws) != bool(caller_job):
+        return {"ok": False, "error": "The request's token must name both a "
+                                      "workstream and a job to record the author "
+                                      "of the evidence, or neither to record a "
+                                      "person; it names only one."}
     existing = task.get("description") or ""
     section = _evidence_header(caller_ws, caller_job) + "\n\n" + evidence.strip()
     description = (existing + "\n\n" + section) if existing else section

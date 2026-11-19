@@ -143,6 +143,14 @@ class TestAppendTaskEvidence(unittest.TestCase):
         self.assertIn("job", result["error"])
         mock_put.assert_not_called()
 
+    def test_a_job_without_a_workstream_is_refused(self):
+        server._set_token_context(workstream_id=None, job_id="job-1")
+        _clear_workspaces()
+        result, mock_put = self._append(_task())
+        self.assertFalse(result["ok"])
+        self.assertIn("workstream", result["error"])
+        mock_put.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
