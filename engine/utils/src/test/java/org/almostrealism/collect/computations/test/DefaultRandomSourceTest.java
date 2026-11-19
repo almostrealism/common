@@ -86,6 +86,22 @@ public class DefaultRandomSourceTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Seeding the default source makes {@link DefaultRandomSource#getSeed()} report that exact seed,
+	 * and {@link DefaultRandomSource#current()} is non-null. This pins the present branch of
+	 * {@code getSeed()}, complementing the empty branch asserted in {@link #clearRestoresUnseededHostFill()}.
+	 */
+	@Test(timeout = 30000)
+	public void getSeedReportsSeededValue() {
+		DefaultRandomSource.seed(7);
+		Assert.assertNotNull(DefaultRandomSource.current());
+		Assert.assertTrue(DefaultRandomSource.getSeed().isPresent());
+		Assert.assertEquals(7L, DefaultRandomSource.getSeed().getAsLong());
+
+		DefaultRandomSource.seed(8);
+		Assert.assertEquals(8L, DefaultRandomSource.getSeed().getAsLong());
+	}
+
+	/**
 	 * After {@link DefaultRandomSource#clear()} the source is unseeded, so each generator draws
 	 * from its own fresh {@link Random} and two fills differ. This is the production default, where
 	 * behaviour is unchanged unless the source is configured.
