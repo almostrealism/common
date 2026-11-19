@@ -55,9 +55,9 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
     /** The branch shared by the downstream workstream and the submission. */
     private static final String BRANCH = "feature/shared";
     /** Clone URL of the downstream (primary) repository that lists Common as a dependent. */
-    private static final String RINGS_REPO = "git@github.com:almostrealism/ringsdesktop.git";
-    /** The {@code owner/repo} slug of {@link #RINGS_REPO}, as the PR lookup is keyed. */
-    private static final String RINGS_OWNER_REPO = "almostrealism/ringsdesktop";
+    private static final String DOWNSTREAM_REPO = "git@github.com:almostrealism/downstream.git";
+    /** The {@code owner/repo} slug of {@link #DOWNSTREAM_REPO}, as the PR lookup is keyed. */
+    private static final String DOWNSTREAM_OWNER_REPO = "almostrealism/downstream";
     /** Clone URL of the submitting repository. */
     private static final String COMMON_REPO = "git@github.com:almostrealism/common.git";
     /** A registration/submission body naming {@link #BRANCH} on {@link #COMMON_REPO}. */
@@ -76,15 +76,15 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
         }
     }
 
-    /** A notifier holding a non-archived ringsdesktop workstream that lists Common as a dependent. */
-    private static SlackNotifier ringsNotifier(boolean archived) {
+    /** A notifier holding a non-archived downstream workstream that lists Common as a dependent. */
+    private static SlackNotifier downstreamNotifier(boolean archived) {
         SlackNotifier notifier = new SlackNotifier(null);
-        Workstream wsRings = new Workstream("C_RINGS", "#w-shared");
-        wsRings.setDefaultBranch(BRANCH);
-        wsRings.setRepoUrl(RINGS_REPO);
-        wsRings.setDependentRepos(List.of(COMMON_REPO));
-        wsRings.setArchived(archived);
-        notifier.registerWorkstream(wsRings);
+        Workstream wsDownstream = new Workstream("C_DOWNSTREAM", "#w-shared");
+        wsDownstream.setDefaultBranch(BRANCH);
+        wsDownstream.setRepoUrl(DOWNSTREAM_REPO);
+        wsDownstream.setDependentRepos(List.of(COMMON_REPO));
+        wsDownstream.setArchived(archived);
+        notifier.registerWorkstream(wsDownstream);
         return notifier;
     }
 
@@ -105,7 +105,7 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
      */
     @Test(timeout = 10000)
     public void dependentMatchWithOpenCompanionPrIsReused() {
-        SlackNotifier notifier = ringsNotifier(false);
+        SlackNotifier notifier = downstreamNotifier(false);
         List<String[]> calls = new ArrayList<>();
         WorkstreamRegistrationHandler handler = handler(notifier, (ownerRepo, branch) -> {
             calls.add(new String[] { ownerRepo, branch });
@@ -117,12 +117,12 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
         assertTrue("an open companion PR must keep the dependent-repo match",
                 result.matchedAsDependentRepo());
         assertTrue(result.existing());
-        assertEquals(RINGS_REPO, result.workstream().getRepoUrl());
+        assertEquals(DOWNSTREAM_REPO, result.workstream().getRepoUrl());
         assertEquals("no workstream must be created for Common", 1,
                 notifier.getWorkstreams().size());
         assertEquals("the PR lookup must be keyed by the primary repo's owner/repo and branch",
                 1, calls.size());
-        assertEquals(RINGS_OWNER_REPO, calls.get(0)[0]);
+        assertEquals(DOWNSTREAM_OWNER_REPO, calls.get(0)[0]);
         assertEquals(BRANCH, calls.get(0)[1]);
     }
 
@@ -134,7 +134,7 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
      */
     @Test(timeout = 10000)
     public void dependentMatchWithNoOpenPrRegistersOwnWorkstream() {
-        SlackNotifier notifier = ringsNotifier(false);
+        SlackNotifier notifier = downstreamNotifier(false);
         WorkstreamRegistrationHandler handler = handler(notifier,
                 (ownerRepo, branch) -> Collections.emptyList());
 
@@ -154,7 +154,7 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
      */
     @Test(timeout = 10000)
     public void dependentMatchWithClosedCompanionPrRegistersOwnWorkstream() {
-        SlackNotifier notifier = ringsNotifier(false);
+        SlackNotifier notifier = downstreamNotifier(false);
         WorkstreamRegistrationHandler handler = handler(notifier,
                 (ownerRepo, branch) -> prs("closed"));
 
@@ -172,7 +172,7 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
      */
     @Test(timeout = 10000)
     public void dependentMatchWithUnknownPrStateIsReused() {
-        SlackNotifier notifier = ringsNotifier(false);
+        SlackNotifier notifier = downstreamNotifier(false);
         WorkstreamRegistrationHandler handler = handler(notifier,
                 (ownerRepo, branch) -> null);
 
@@ -180,7 +180,7 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
 
         assertTrue("unknown PR state must preserve the dependent-repo match",
                 result.matchedAsDependentRepo());
-        assertEquals(RINGS_REPO, result.workstream().getRepoUrl());
+        assertEquals(DOWNSTREAM_REPO, result.workstream().getRepoUrl());
         assertEquals(1, notifier.getWorkstreams().size());
     }
 
@@ -191,7 +191,7 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
      */
     @Test(timeout = 10000)
     public void archivedDependentMatchRegistersOwnWorkstreamWithoutConsultingPr() {
-        SlackNotifier notifier = ringsNotifier(true);
+        SlackNotifier notifier = downstreamNotifier(true);
         WorkstreamRegistrationHandler handler = handler(notifier, (ownerRepo, branch) -> {
             throw new AssertionError("an archived candidate must never reach the PR lookup");
         });
@@ -234,7 +234,7 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
      */
     @Test(timeout = 10000)
     public void resolveOrRegisterWithNoOpenPrDoesNotReportDependentMatch() {
-        SlackNotifier notifier = ringsNotifier(false);
+        SlackNotifier notifier = downstreamNotifier(false);
         WorkstreamRegistrationHandler handler = handler(notifier,
                 (ownerRepo, branch) -> Collections.emptyList());
 
@@ -254,7 +254,7 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
      */
     @Test(timeout = 10000)
     public void resolveOrRegisterWithOpenPrReportsDependentMatch() {
-        SlackNotifier notifier = ringsNotifier(false);
+        SlackNotifier notifier = downstreamNotifier(false);
         WorkstreamRegistrationHandler handler = handler(notifier,
                 (ownerRepo, branch) -> prs("open"));
 
@@ -263,7 +263,7 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
 
         assertTrue("an open companion PR must still skip the duplicate submission",
                 result.matchedAsDependentRepo());
-        assertEquals(RINGS_REPO, result.workstream().getRepoUrl());
+        assertEquals(DOWNSTREAM_REPO, result.workstream().getRepoUrl());
         assertEquals(1, notifier.getWorkstreams().size());
     }
 }
