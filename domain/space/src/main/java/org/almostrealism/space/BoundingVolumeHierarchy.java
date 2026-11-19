@@ -50,8 +50,11 @@ import java.util.List;
  * <p>This is intentionally <em>not</em> a {@link SpacePartition}. A {@link SpacePartition} is a
  * <em>space</em> partition: a BSP tree over a {@link org.almostrealism.color.ShadableSurface}
  * group ({@code SpacePartition extends SurfaceGroup}) that splits space by axis-aligned planes
- * into disjoint half-spaces and answers {@code intersectAt(Producer)} with a
+ * into disjoint half-spaces and declares {@code intersectAt(Producer)} returning a
  * {@link org.almostrealism.geometry.ContinuousField} — the host, per-surface intersection path.
+ * (That path is the partition's contract rather than a working accelerator today: the
+ * tree-accelerated traversal behind {@code intersectAt} is still unimplemented and currently
+ * returns {@code null}.)
  * A BVH is an <em>object</em> partition: it groups the triangles of a single mesh into
  * bounding boxes that may overlap and are <em>not</em> separated by shared planes, so a pair of
  * sibling boxes defines no splitting plane between them. It does not intersect or return a field;
