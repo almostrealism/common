@@ -972,6 +972,45 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	}
 
 	/**
+	 * A product built by repeatedly multiplying the previous product renders as a flat chain
+	 * rather than one bracket per multiplication, so a long chain stays within the bracket
+	 * nesting limit native compilers impose (256 for clang).
+	 */
+	@Test(timeout = 30000)
+	public void leftNestedProductRendersFlat() {
+		Expression<?> x = new DefaultIndex("x", 1000);
+		Expression<?> e = x;
+
+		for (int i = 0; i < 500; i++) {
+			e = e.multiply(x);
+		}
+
+		String rendered = e.getExpression(lang);
+		int depth = 0;
+		int maxDepth = 0;
+
+		for (char c : rendered.toCharArray()) {
+			if (c == '(') maxDepth = Math.max(maxDepth, ++depth);
+			if (c == ')') depth--;
+		}
+
+		Assert.assertTrue("rendered product is nested " + maxDepth + " brackets deep", maxDepth < 8);
+	}
+
+	/**
+	 * A sum built by adding to a previous sum renders as {@code a + b + c}, which the generated
+	 * languages evaluate in the same order as {@code (a + b) + c}.
+	 */
+	@Test(timeout = 30000)
+	public void nestedSumRendersWithoutRedundantBrackets() {
+		Expression<?> a = new DefaultIndex("a", 10);
+		Expression<?> b = new DefaultIndex("b", 10);
+		Expression<?> c = new DefaultIndex("c", 10);
+
+		Assert.assertEquals("a + b + c", a.add(b).add(c).getExpression(lang));
+	}
+
+	/**
 	 * Tests kernel sum mod operation 10.
 	 */
 	@Test(timeout = 30000)
