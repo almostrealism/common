@@ -90,8 +90,14 @@ class BranchTest(unittest.TestCase):
         self.assertEqual([], commit_check.branch_problems("develop"))
 
 
-class CommitToolTest(unittest.TestCase):
-    """The commit tool against a scratch repository."""
+class GitRepositoryTestCase(unittest.TestCase):
+    """A scratch repository on a feature branch, with staging helpers.
+
+    Holds the fixture shared by the commit-tool tests and the
+    repository-scoping tests. It defines no test methods of its own, so a
+    subclass reuses the setup without inheriting — and re-running — another
+    test class's cases.
+    """
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -122,6 +128,10 @@ class CommitToolTest(unittest.TestCase):
         """Changes the tracked file and stages it."""
         (self.root / "a.txt").write_text(text)
         self.git("add", "a.txt")
+
+
+class CommitToolTest(GitRepositoryTestCase):
+    """The commit tool against a scratch repository."""
 
     def test_commit_uses_the_message_and_removes_it(self):
         self.stage("two\n")
@@ -357,8 +367,7 @@ class RepositoryNameTest(unittest.TestCase):
         self.assertFalse(commit_check.names_own_repository(None, ["acme-private"]))
 
 
-# TODO(review): subclassing CommitToolTest re-runs every inherited CommitToolTest test; share setUp via a base fixture instead.
-class RepositoryScopingTest(CommitToolTest):
+class RepositoryScopingTest(GitRepositoryTestCase):
     """The product-name check is skipped only in a private product's own repository."""
 
     def configure(self, names: str, origin: str = None):
