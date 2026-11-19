@@ -48,6 +48,12 @@ import java.util.Locale;
  * it is evaluated over. Both keep their values fixed between calls to {@link #refresh()}, which
  * moves the generator on to new values.</p>
  *
+ * <p>A generator created with a {@code null} source draws from the one process-wide
+ * {@link DefaultRandomSource default source}. That default is unseeded unless the
+ * {@code AR_RANDOM_SEED} setting (or a test harness) seeds it, so with no configuration the
+ * behaviour is exactly as if each generator were given its own fresh {@link java.util.Random}.
+ * Seeding the default makes every later seedless draw reproducible.</p>
+ *
  * <pre>{@code
  * RandomProducer noise = randn(shape(1024));
  * CollectionProducer noisy = signal.add(noise);
@@ -89,10 +95,19 @@ public interface RandomProducer extends CollectionProducer {
 	 * @param shape  the shape of the values
 	 * @param normal {@code true} for standard normal values, {@code false} for uniform values
 	 * @param source the source that seeds the generator, so that a seeded source reproduces
-	 *               the same values; {@code null} for an unseeded generator
+	 *               the same values; {@code null} to draw from the
+	 *               {@link DefaultRandomSource default source}, which is itself unseeded unless
+	 *               configured
 	 * @return the generator
 	 */
 	static RandomProducer create(TraversalPolicy shape, boolean normal, java.util.Random source) {
+		if (source == null) {
+			// Resolve the one process-wide default in a single place, so rand/randn, weight
+			// initialization and CounterRandom seeds are all covered. When the default is
+			// unseeded this is still null, leaving the unseeded path byte-identical to today.
+			source = DefaultRandomSource.current();
+		}
+
 		if (!shape.isFixedCount()) {
 			return Implementation.COUNTER.create(shape, normal, source);
 		}

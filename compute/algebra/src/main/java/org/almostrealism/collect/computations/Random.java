@@ -121,11 +121,29 @@ public class Random implements RandomProducer, OperationInfo, Signature {
 	 * @param shape the {@link TraversalPolicy} defining the dimensions and shape of random values to generate
 	 * @param normal if true, generates values from a standard normal distribution (mean=0, stddev=1);
 	 *               if false, generates values from a uniform distribution in range [0.0, 1.0)
-	 * @param seed the seed for the random number generator, or null to use a default seed
+	 * @param seed the seed for the random number generator, or null to draw from the
+	 *             {@link DefaultRandomSource default source} (a fresh unseeded source when the
+	 *             default is itself unseeded)
 	 * @throws IllegalArgumentException if the shape has zero total size
 	 */
 	public Random(TraversalPolicy shape, boolean normal, Long seed) {
-		this(shape, normal, seed == null ? new java.util.Random() : new java.util.Random(seed));
+		this(shape, normal, source(seed));
+	}
+
+	/**
+	 * Resolves the {@link java.util.Random} a seedless construction draws from: an explicit
+	 * {@code seed} creates a dedicated generator, otherwise the process-wide
+	 * {@link DefaultRandomSource} supplies one when it is seeded, and a fresh unseeded generator
+	 * reproduces today's behaviour when it is not.
+	 *
+	 * @param seed the explicit seed, or {@code null} to defer to the default source
+	 * @return the source the generator draws its values from
+	 */
+	private static java.util.Random source(Long seed) {
+		if (seed != null) return new java.util.Random(seed);
+
+		java.util.Random current = DefaultRandomSource.current();
+		return current == null ? new java.util.Random() : current;
 	}
 
 	/**

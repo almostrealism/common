@@ -724,6 +724,7 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	 *
 	 * @param shape the shape of the random collection
 	 * @return a random producer with uniform distribution
+	 * @see RandomProducer#create(TraversalPolicy, boolean, Random)
 	 */
 	default RandomProducer rand(TraversalPolicy shape) { return rand(shape, null); }
 
@@ -731,8 +732,9 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	 * Creates a producer for uniformly-distributed random values using the given source.
 	 *
 	 * @param shape  the shape of the random collection
-	 * @param source the source that seeds the generator, for reproducibility, or null for an
-	 *               unseeded generator
+	 * @param source the source that seeds the generator, for reproducibility, or null to draw from
+	 *               the default source (unseeded unless configured; see
+	 *               {@link RandomProducer#create(TraversalPolicy, boolean, Random)})
 	 * @return a random producer with uniform distribution using the given source
 	 * @see RandomProducer#create(TraversalPolicy, boolean, Random)
 	 */
@@ -755,6 +757,7 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	 *
 	 * @param shape the shape of the random collection
 	 * @return a random producer with standard normal distribution
+	 * @see RandomProducer#create(TraversalPolicy, boolean, Random)
 	 */
 	default RandomProducer randn(TraversalPolicy shape) { return randn(shape, null); }
 
@@ -762,7 +765,9 @@ public interface CollectionCreationFeatures extends CollectionTraversalFeatures 
 	 * Creates a producer for standard normal random values using the given source.
 	 *
 	 * @param shape  the shape of the random collection
-	 * @param source the source that seeds the generator, or null for an unseeded generator
+	 * @param source the source that seeds the generator, or null to draw from the default source
+	 *               (unseeded unless configured; see
+	 *               {@link RandomProducer#create(TraversalPolicy, boolean, Random)})
 	 * @return a random producer with standard normal distribution using the given source
 	 * @see RandomProducer#create(TraversalPolicy, boolean, Random)
 	 */
