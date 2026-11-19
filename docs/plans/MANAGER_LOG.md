@@ -28,6 +28,93 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-11-19 (later) — Render the floor through a refractive sphere by memoizing the argument-reset DAG traversal
+
+**Category:** Code Quality (correctness), with a general compilation-performance payoff
+**Branch:** `project/plan-20261119-180104`
+**Plan:** [`PLAN-20261119-refraction-compile-dag-memoization.md`](PLAN-20261119-refraction-compile-dag-memoization.md)
+
+#### What changed since last cycle
+
+The audio-latent-composition documentation cycle merged (PR #990 into `master`), filling the
+last cleanly-drift-guardable flagship documentation gap. Around it the agent-infrastructure and
+CI track kept moving heavily — `github_update_pr`, the commit-subject-not-prompt work, the
+dependent-repo auto-review, the ready-to-launch label, and the `fix/arrangement-records-rebuilt-
+each-cycle` fix (#999: sync arrangement records once per cycle, not on first unmatched signature).
+None of these touched the platform's render or compilation core.
+
+#### Category assessment (priority order)
+
+- **Documentation — genuinely excellent, and the one remaining platform gap is not reachable.**
+  The corpus is current (60+ internals pages); the prior cycle had to hunt to find the
+  audio-latent-composition gap and filled it. The one platform subsystem still lacking an
+  internals page is the **evolutionary generative arrangement pipeline** (`ProjectedGenome` →
+  `GenomicNetwork` → `AudioScenePopulation` → `ArrangementGenerationProcess`, spanning
+  `domain/heredity`, `studio/spatial`, `studio/compose`). But its only end-to-end test,
+  `ArrangementGenerationProcessTest`, is gated on the curated sample library
+  (`requireCuratedScene` → `AR_RINGS_LIBRARY`/`AR_RINGS_PATTERNS`), so a worked example cannot be
+  drift-guarded on an arbitrary node — exactly the portability the documentation discipline
+  requires. Documenting it as a tested example is premature. No reachable flagship gap this
+  cycle. Moved on.
+- **Code quality (correctness) — a concrete, test-pinned defect, and it decided the cycle.**
+  `ReflectionRefractionRenderTest#refractiveSphereShowsFloor` is still
+  `@TestProperties(knownIssue = true)`, so the engine ships no asserting refraction render test
+  in CI. The cause is verified and documented in the test's own Javadoc and the glossy-reflection
+  notes: `RefractionShader.shade` builds a correct, diamond-shaped `Producer` graph, but
+  `ComputationBase.resetArguments()` recurses into `getInputs()` through
+  `ScopeLifecycle.resetArguments(Stream)` with **no visited set**, so every shared node is reset
+  once *per path* that reaches it — exponential compile cost on a heavily-shared graph. The
+  sibling `prepareScope` does not blow up because it carries a guard that stops re-descent into
+  an already-prepared node; `resetArguments` is missing exactly that guard. Chosen.
+- **Performance — this fix *is* the performance lever, surfaced through a correctness test.**
+  Memoizing the reset traversal is a general compile-cost win for every deeply-shared graph (also
+  the likely-related non-identity-transform reflection and `renderTwoSpheres` compile costs),
+  but it enters through a correctness gate (a disabled CI assertion), so it is classified as code
+  quality, matching the reflected-ray precedent.
+- **Proof of value — the category this serves, gated on exactly this fix.** The ferrofluid glossy
+  render track (Phase 2) needs a working, CI-guarded refraction path; the self-hosted-LM and
+  render workloads both depend on fast compilation of shared graphs.
+
+#### Why this task
+
+It is the disciplined pick under the priority order: documentation has no reachable flagship gap,
+and the first reachable code-quality item is a correctness defect pinned by an existing
+known-issue test whose root cause is already diagnosed to a single missing memoization guard. The
+fix is small and surgical — thread an identity visited set through the recursive
+`resetArguments` descent so each node is reset once per pass — and it keeps every project
+discipline: it is a deduplication of a cleanup walk, not a kernel-boundary decision, so it adds no
+manual `isolate()`/`Process.isolated` and leaves the optimizer in charge. Clearing the
+`knownIssue` flag restores a CI render assertion additively. Backend-independent — a synthetic
+32×32 host render, no curated library, no Metal — so it runs on any node with no workstream
+settings file.
+
+#### Balance across categories
+
+The last cycle was documentation; the two before were documentation and code quality (reflected
+ray). Returning to code quality is not drift: it is the named open sibling of the reflected-ray
+cycle, it attacks a foundational compilation-cost defect (not a symptom), and it unblocks the
+proof-of-value render track. Medium task touching `base/code` (two files) plus one test flag and
+one new structural test.
+
+#### What comes next
+
+1. This plan: the visited-set memoization in `ScopeLifecycle`/`ComputationBase`, the cleared
+   `knownIssue` on `refractiveSphereShowsFloor`, and the structural once-per-node test.
+2. **Code quality / performance, sibling:** the non-identity-transform reflection expression
+   blow-up ("Large expression not improved by simplification") and the `renderTwoSpheres` compile
+   timeout — an expression-*size* problem in simplification, distinct from the reset traversal;
+   report whether this fix incidentally helps.
+3. **Proof of value, ferrofluid Phase 0/2:** the end-to-end vertical slice and the glossy look,
+   once the owner settles the fluid-method choices (§6.1/§6.2) and with the refraction path now
+   CI-guarded.
+4. **Documentation, when reachable:** the evolutionary generative arrangement pipeline, once a
+   synthetic (non-curated-library) path through it exists to drift-guard a worked example.
+5. **Code quality (standing, proposed):** `jni-native-precision-symbols`,
+   `manual-isolation-prevention`, `ordering-bypass-guards`.
+6. Still open from prior cycles: the reduced `matmul`/convolution-gradient forms;
+   `TransformerResamplingFeatures`' buffered K/V; the `io.almostrealism.collect` split; letting a
+   trained model read the platform's own source.
+
 ### 2026-11-19 — Document composing audio in latent space (the AutoEncoder blend pipeline)
 
 **Category:** Documentation
