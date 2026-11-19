@@ -1042,6 +1042,107 @@ def github_pr_check_status(
     }
 
 @mcp.tool()
+def github_pr_labels(
+    pr_number: int = 0,
+    workstream_id: str = "",
+    branch: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Read a pull request's labels and draft status.
+
+    A CI label's meaning depends on whether the PR is still a draft — for
+    example "ci: ready for review" is only meaningful once ``draft`` is
+    False — so this returns the two together. Strictly read-only: it reports
+    labels and never adds, removes, or edits them.
+
+    Fetches the PR by number, or looks it up for the workstream/branch when
+    ``pr_number`` is omitted (the same open-PR lookup
+    ``github_pr_check_status`` uses).
+
+    Args:
+        pr_number: Pull request number. If omitted, the open PR for the
+            workstream/branch is looked up automatically.
+        workstream_id: Workstream to resolve repo from. Defaults to token
+            context.
+        branch: Branch hint used to find the PR when pr_number is not
+            given. Defaults to the workstream's defaultBranch.
+        org: GitHub org (owner) to address directly. Must be passed
+            together with ``repo``. Bypasses workstream resolution;
+            scoped tokens are checked against this org via the workspace
+            scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        dict with ok=True, pr_number, repo, draft (bool), state, labels (a
+        list of label names), label_details (a list of {name, color,
+        description} dicts), head_branch and head_sha; or ok=False with
+        error details.
+    """
+    server._require_scope("github")
+    if org and repo:
+        server._require_org_in_scope(org)
+    owner, repo, effective_branch, err = server._resolve_github_repo(
+        workstream_id=workstream_id, branch=branch, owner=org, repo=repo,
+    )
+    if err:
+        return err
+
+    server._audit("github_pr_labels", pr_number=pr_number,
+           workstream_id=workstream_id, branch=effective_branch)
+
+    effective_pr = pr_number
+    if effective_pr:
+        pr_data = server._github_request(
+            "GET", f"/repos/{owner}/{repo}/pulls/{effective_pr}")
+        if isinstance(pr_data, dict) and pr_data.get("ok") is False:
+            return pr_data
+        if not isinstance(pr_data, dict):
+            return {"ok": False, "error": "Unexpected response fetching PR"}
+    else:
+        if not effective_branch:
+            return {
+                "ok": False,
+                "error": "pr_number or branch is required to look up the PR",
+                "next_steps": [
+                    "Pass pr_number explicitly",
+                    "Or supply workstream_id/branch so the open PR can be found",
+                ],
+            }
+        lookup = server._find_open_pr_by_branch(owner, repo, effective_branch)
+        if not lookup.get("ok"):
+            return lookup
+        if not lookup.get("found"):
+            return {
+                "ok": False,
+                "error": f"No open PR found for branch '{effective_branch}'",
+                "next_steps": ["Pass pr_number explicitly if the PR is closed"],
+            }
+        pr_data = lookup["pr"]
+        effective_pr = pr_data.get("number")
+
+    label_details = []
+    for label in pr_data.get("labels", []) or []:
+        label_details.append({
+            "name": label.get("name"),
+            "color": label.get("color"),
+            "description": label.get("description"),
+        })
+
+    head = pr_data.get("head", {}) or {}
+    return {
+        "ok": True,
+        "pr_number": effective_pr,
+        "repo": f"{owner}/{repo}",
+        "draft": bool(pr_data.get("draft")),
+        "state": pr_data.get("state"),
+        "labels": [label["name"] for label in label_details],
+        "label_details": label_details,
+        "head_branch": head.get("ref"),
+        "head_sha": head.get("sha"),
+    }
+
+@mcp.tool()
 def github_list_workflow_runs(
     workflow: str = "",
     branch: str = "",
