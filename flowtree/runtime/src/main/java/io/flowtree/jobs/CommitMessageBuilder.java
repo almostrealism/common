@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -284,9 +285,15 @@ class CommitMessageBuilder {
     }
 
     /**
-     * Builds a commit subject from the files the job changed in its working
-     * tree — the uncommitted changes it is about to commit, read from
-     * {@code git status} and stripped of harness scratch paths. Names up to two
+     * Builds a commit subject from the files the job is committing. At the
+     * commit boundary those are the files in the index, which
+     * {@link GitCommitHandler} has filled with only what the staging guardrails
+     * approved, so a protected, oversized or otherwise skipped file the job also
+     * touched is never named. Before anything is staged — when
+     * {@link EnforcementRunner} writes {@link #buildExhaustionFallback} — the
+     * index is empty and the subject is read from the working tree's
+     * {@code git status} instead. Harness scratch paths are dropped from either
+     * list. Names up to two
      * changed files ({@code "Update Foo and FooTest"}), or the first file and a
      * count of the rest when there are more ({@code "Update Foo and 3 other
      * files"}), keeping the subject within git's conventional 72-column limit.
@@ -298,14 +305,31 @@ class CommitMessageBuilder {
      * @return the subject line; never {@code null}
      */
     String buildChangeSubject(CodingAgentJob job) {
-        List<String> changed = new ArrayList<>();
-        for (String path : GitOperations.getChangedFiles(job.getWorkingDirectory())) {
-            if (!GitOperations.isExcludedPath(path)) {
-                changed.add(path);
-            }
+        List<String> changed = withoutExcludedPaths(job.asGitOperations().stagedPaths());
+        if (changed.isEmpty()) {
+            changed = withoutExcludedPaths(GitOperations.getChangedFiles(job.getWorkingDirectory()));
         }
         String subject = summarizeChangedFiles(changed);
         return subject != null ? subject : "Job " + job.getTaskId() + " commit";
+    }
+
+    /**
+     * Returns {@code paths} without the harness scratch paths
+     * {@link GitOperations#isExcludedPath(String)} names, in their original order.
+     *
+     * @param paths the paths to filter, or {@code null} when git could not list them
+     * @return the remaining paths; empty, never {@code null}, when none remain
+     */
+    private static List<String> withoutExcludedPaths(Collection<String> paths) {
+        List<String> kept = new ArrayList<>();
+        if (paths != null) {
+            for (String path : paths) {
+                if (!GitOperations.isExcludedPath(path)) {
+                    kept.add(path);
+                }
+            }
+        }
+        return kept;
     }
 
     /**

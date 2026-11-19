@@ -115,10 +115,19 @@ working tree and summarizes them into a subject:
 
 The auto-created PR title takes the commit subject line
 (`GitHubProxyHandler.pullRequestTitle` via
-`AutoPullRequestPublisher.createPullRequestFromCommit`). Its only non-commit
-fallback is the job *description*, not the prompt, so once the commit subject is
-change-derived the PR title is too, with no separate change required. This plan
-verifies that explicitly rather than assuming it.
+`AutoPullRequestPublisher.createPullRequestFromCommit`). Verification found that
+its non-commit fallback was *not* prompt-free: the submit endpoint registered
+`CodingAgentJobFactory.getDisplaySummary()`, which returns a prompt of 80
+characters or fewer verbatim when no description is set. So the PR title, and
+the body of a subject-only commit, could still be the prompt. The submit
+endpoint now registers `AutoPrContext.forJob(factory, ...)`, whose fallback is
+the explicit description or `Job <taskId>`, never the prompt.
+
+The commit-time subject is read from the staged index
+(`FileStager.GitOperations.stagedPaths()`), not from the whole working tree, so
+a file that the staging guardrails skipped is not named in a commit it is
+absent from. When the index is empty, as it is when `EnforcementRunner` writes
+the exhaustion fallback, the subject is read from `git status`.
 
 ### Placement notes
 
@@ -151,8 +160,8 @@ The implementation described here is already on this branch and matches the plan
 `buildFallbackMessage` and `buildExhaustionFallback` build the subject through
 `buildChangeSubject` → `summarizeChangedFiles`, the prompt is removed from both
 the subject and the fallback body, the `prompt_fallback` wire tag is unchanged,
-and the PR-title path was confirmed to take the commit subject with only the job
-description (not the prompt) as its other fallback. `CommitMessageBuilderTest`
+and the PR-title fallback was changed from the display summary (which could be the
+prompt) to a prompt-free `AutoPrContext.forJob` description. `CommitMessageBuilderTest`
 was rewritten accordingly. This document records the intent and the contract so
 the branch and any follow-up review share one reference.
 

@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
@@ -242,14 +243,61 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         assertEquals("Job t1 commit", job.commitMessageBuilder().buildChangeSubject(job));
     }
 
+    /**
+     * At the commit boundary the subject names only what is staged: a file the job also changed but
+     * that the staging guardrails left out of the index (here {@code SecretConfig.java}) must not be
+     * named in a commit it is absent from, either by {@code buildChangeSubject} or by the
+     * commit-time fallback {@code resolve} produces.
+     */
+    @Test(timeout = 30000)
+    public void buildChangeSubjectNamesOnlyStagedFilesWhenIndexIsPopulated()
+            throws IOException, InterruptedException {
+        initGitRepository();
+        Files.writeString(tempDir.resolve("Widget.java"), "class Widget { }\n", StandardCharsets.UTF_8);
+        Files.writeString(tempDir.resolve("SecretConfig.java"), "class SecretConfig { }\n",
+                StandardCharsets.UTF_8);
+        git("add", "Widget.java");
+
+        CodingAgentJob job = job("do the work");
+        assertEquals("Update Widget", job.commitMessageBuilder().buildChangeSubject(job));
+        String msg = job.commitMessageBuilder().resolve(job);
+        assertTrue("Commit-time fallback must name the staged file: " + msg,
+                msg.startsWith("Update Widget\n"));
+        assertFalse("A skipped, unstaged file must not be named: " + msg, msg.contains("SecretConfig"));
+    }
+
+    /**
+     * Staged harness scratch paths are dropped like unstaged ones; when they are all the index
+     * holds, the subject is read from the working tree's other changes.
+     */
+    @Test(timeout = 30000)
+    public void buildChangeSubjectFallsBackToWorkingTreeWhenOnlyScratchIsStaged()
+            throws IOException, InterruptedException {
+        initGitRepository();
+        Files.writeString(tempDir.resolve("commit.txt"), "  \n", StandardCharsets.UTF_8);
+        Files.writeString(tempDir.resolve("Gadget.java"), "class Gadget { }\n", StandardCharsets.UTF_8);
+        git("add", "commit.txt");
+
+        CodingAgentJob job = job("do the work");
+        assertEquals("Update Gadget", job.commitMessageBuilder().buildChangeSubject(job));
+    }
+
     /** Initializes an empty git repository in the temporary working directory. */
     private void initGitRepository() throws IOException, InterruptedException {
-        Process process = new ProcessBuilder("git", "init", "-q")
+        git("init", "-q");
+    }
+
+    /** Runs {@code git <args>} in the temporary working directory and requires it to succeed. */
+    private void git(String... args) throws IOException, InterruptedException {
+        List<String> command = new ArrayList<>();
+        command.add("git");
+        command.addAll(List.of(args));
+        Process process = new ProcessBuilder(command)
                 .directory(tempDir.toFile())
                 .redirectErrorStream(true)
                 .start();
         process.getInputStream().readAllBytes();
-        assertEquals("git init must succeed", 0, process.waitFor());
+        assertEquals("git " + String.join(" ", args) + " must succeed", 0, process.waitFor());
     }
 
     /** An empty change set yields no summary, so the caller supplies the neutral job-named subject. */

@@ -245,6 +245,18 @@ public class FileStager implements ConsoleFeatures {
                 return null;
             }
         }
+
+        /**
+         * Lists the paths staged in the index — the content the next commit will
+         * record — with {@code git diff --cached --name-only -z}, so no path is
+         * quoted. Answers {@code null} when git cannot list them, as
+         * {@link #pathsOrNull} does.
+         *
+         * @return the staged paths in output order, or {@code null} if git could not answer
+         */
+        default Set<String> stagedPaths() {
+            return pathsOrNull("diff", "--cached", "--name-only", "-z");
+        }
     }
 
     /**

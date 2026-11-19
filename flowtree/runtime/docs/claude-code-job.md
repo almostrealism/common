@@ -306,7 +306,7 @@ The commit message is determined by `getCommitMessage()`, which implements a two
 
 1. **Agent-written message**: If the agent wrote a `commit.txt` file in the working directory root, its contents (trimmed) are used as the commit message. This allows the agent to craft a meaningful description of its changes. After the commit succeeds, `commit.txt` is deleted to prevent reuse by subsequent runs.
 
-2. **Auto-generated message**: If no `commit.txt` exists or it is empty, a commit message is generated from the files the job changed (read from `git status`, with harness scratch paths removed) — never from the prompt, which describes what was asked for rather than what was done:
+2. **Auto-generated message**: If no `commit.txt` exists or it is empty, a commit message is generated from the files the job is committing (the staged index, which holds only what the staging guardrails approved; or `git status` when nothing is staged yet; harness scratch paths are removed either way) — never from the prompt, which describes what was asked for rather than what was done:
    ```
    Update <File> | Update <A> and <B> | Update <A> and <N> other files
                                       (or "Job <taskId> commit" when no changes can be determined)
@@ -315,7 +315,7 @@ The commit message is determined by `getCommitMessage()`, which implements a two
    Session: <session ID>
    Exit code: <exit code>
    ```
-   The subject uses file base names (no directory or extension), has control characters replaced by spaces, and is clipped to 72 characters. Because a pull request opened from the commit takes its title from this subject, the title also describes the change rather than the task.
+   The subject uses file base names (no directory or extension), has control characters replaced by spaces, and is clipped to 72 characters. Because a pull request opened from the commit takes its title from this subject, the title also describes the change rather than the task. When the commit's message cannot be read, the pull request falls back to the job's submitted description, or to `Job <taskId>` when it has none; it never falls back to the prompt.
 
 The agent's instruction prompt tells it about the `commit.txt` mechanism (in the "Git Commit Instructions" section), so agents that are configured with a target branch know they can control the commit message.
 

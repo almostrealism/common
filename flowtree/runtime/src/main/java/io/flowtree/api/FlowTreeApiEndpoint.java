@@ -1151,9 +1151,8 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         if (autoCreatePr) {
             factory.setAutoCreatePr(true);
             factory.setCreatePrAsDraft(createPrAsDraft);
-            autoPrPublisher.register(factory.getTaskId(), new AutoPrContext(
-                factory.getRepoUrl(), factory.getBaseBranch(), workstream.getGithubOrg(),
-                factory.getDisplaySummary(), createPrAsDraft));
+            autoPrPublisher.register(factory.getTaskId(),
+                AutoPrContext.forJob(factory, workstream.getGithubOrg(), createPrAsDraft));
         }
 
         // Build workstream URL for status reporting
