@@ -18,18 +18,31 @@ package io.flowtree.github;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import fi.iki.elonen.NanoHTTPD;
+import fi.iki.elonen.NanoHTTPD.CookieHandler;
+import fi.iki.elonen.NanoHTTPD.IHTTPSession;
+import fi.iki.elonen.NanoHTTPD.Method;
+import fi.iki.elonen.NanoHTTPD.Response;
+import io.flowtree.api.RequestBodyReader;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests the derivation of a pull request title and body from the commit message
@@ -268,6 +281,424 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
         assertNull(GitHubProxyHandler.extractOrgFromRepoUrl("not-a-url"));
     }
 
+    /**
+     * A proxied PATCH is forwarded to GitHub as a PATCH, carrying the body the
+     * {@link RequestBodyReader} read from the session, and the GitHub response
+     * is returned in the proxy envelope. The handler's API root is pointed at a
+     * local stub that records the method and body it actually received, so the
+     * forward is observed on the wire rather than inferred.
+     */
+    @Test(timeout = 30000)
+    public void patchIsForwardedAsPatchWithItsBody() throws IOException {
+        String payload = "{\"title\":\"A new title\"}";
+        AtomicReference<String> seenMethod = new AtomicReference<>();
+        AtomicReference<String> seenBody = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            seenMethod.set(exchange.getRequestMethod());
+            seenBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            respond(exchange, "{\"number\":5,\"title\":\"A new title\"}");
+        });
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(
+                    Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            byte[] bytes = payload.getBytes(StandardCharsets.UTF_8);
+            IHTTPSession session = new FakeSession(Method.PATCH,
+                    Map.of("url", "/repos/almostrealism/common/pulls/5"),
+                    Map.of("content-length", String.valueOf(bytes.length)),
+                    new ByteArrayInputStream(bytes));
+
+            Response response = handler.handle(session, Method.PATCH,
+                    new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+            assertEquals("PATCH", seenMethod.get());
+            assertEquals(payload, seenBody.get());
+            String envelope = bodyOf(response);
+            assertTrue(envelope.contains("\"status\":200"));
+            assertTrue(envelope.contains("\"number\":5"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * {@link RequestBodyReader} — the reader {@code FlowTreeApiEndpoint} uses for
+     * every proxied body — reads a PATCH body straight from the session's input
+     * stream, bounded by {@code content-length}: exactly that many bytes, and no
+     * trailing bytes beyond it.
+     */
+    @Test(timeout = 10000)
+    public void requestBodyReaderReadsPatchBodyBoundedByContentLength() {
+        String body = "{\"title\":\"New title\"}";
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        InputStream stream = new ByteArrayInputStream(
+                (body + "TRAILING").getBytes(StandardCharsets.UTF_8));
+        IHTTPSession session = new FakeSession(Method.PATCH, Map.of(),
+                Map.of("content-length", String.valueOf(bytes.length)), stream);
+
+        assertEquals(body, new RequestBodyReader().read(session));
+    }
+
+    /**
+     * A malformed {@code Content-Length} is rejected, not parsed and trusted to
+     * size an allocation. {@link RequestBodyReader} throws rather than reading.
+     */
+    @Test(timeout = 10000)
+    public void patchWithMalformedContentLengthIsRejected() {
+        IHTTPSession session = new FakeSession(Method.PATCH, Map.of(),
+                Map.of("content-length", "not-a-number"),
+                new ByteArrayInputStream("{}".getBytes(StandardCharsets.UTF_8)));
+        try {
+            new RequestBodyReader().read(session);
+            fail("a malformed Content-Length must be rejected, not read");
+        } catch (GitHubProxyHandler.BodyReader.InvalidRequestBodyException expected) {
+            assertTrue(expected.getMessage().contains("Content-Length"));
+        }
+    }
+
+    /**
+     * A body shorter than its declared {@code Content-Length} — a client that
+     * closed the stream early — is rejected rather than forwarded as truncated
+     * JSON. {@link RequestBodyReader} throws instead of returning the partial
+     * bytes.
+     */
+    @Test(timeout = 10000)
+    public void patchWithShortBodyIsRejected() {
+        byte[] partial = "{\"title\":".getBytes(StandardCharsets.UTF_8);
+        IHTTPSession session = new FakeSession(Method.PATCH, Map.of(),
+                Map.of("content-length", String.valueOf(partial.length + 16)),
+                new ByteArrayInputStream(partial));
+        try {
+            new RequestBodyReader().read(session);
+            fail("a body shorter than its Content-Length must be rejected, not read");
+        } catch (GitHubProxyHandler.BodyReader.InvalidRequestBodyException expected) {
+            assertTrue(expected.getMessage().contains("truncated"));
+        }
+    }
+
+    /**
+     * A PATCH whose body ends early is refused with a 4xx and no request reaches
+     * GitHub, so a truncated update is never attempted. The stub counts every
+     * request it receives, proving the short body was never forwarded.
+     */
+    @Test(timeout = 30000)
+    public void patchWithShortBodyDoesNotReachGitHub() throws IOException {
+        AtomicInteger hits = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            hits.incrementAndGet();
+            respond(exchange, "{}");
+        });
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(
+                    Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            byte[] partial = "{\"title\":".getBytes(StandardCharsets.UTF_8);
+            IHTTPSession session = new FakeSession(Method.PATCH,
+                    Map.of("url", "/repos/almostrealism/common/pulls/5"),
+                    Map.of("content-length", String.valueOf(partial.length + 16)),
+                    new ByteArrayInputStream(partial));
+
+            Response response = handler.handle(session, Method.PATCH,
+                    new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+            assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+            assertTrue(bodyOf(response).contains("truncated"));
+            assertEquals("a truncated body never reaches GitHub", 0, hits.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * A {@code Content-Length} above the reader's bound is refused with a 4xx
+     * before any buffer is allocated, and no request reaches GitHub. The stub
+     * counts every request it receives, proving the over-size body was never
+     * forwarded.
+     */
+    @Test(timeout = 30000)
+    public void patchOverSizeLimitIsRejectedWithoutReaching() throws IOException {
+        AtomicInteger hits = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            hits.incrementAndGet();
+            respond(exchange, "{}");
+        });
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(
+                    Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            long overLimit = (long) RequestBodyReader.MAX_BODY_BYTES + 1;
+            IHTTPSession session = new FakeSession(Method.PATCH,
+                    Map.of("url", "/repos/almostrealism/common/pulls/5"),
+                    Map.of("content-length", String.valueOf(overLimit)),
+                    new ByteArrayInputStream(new byte[0]));
+
+            Response response = handler.handle(session, Method.PATCH,
+                    new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+            assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+            assertTrue(bodyOf(response).contains("Content-Length"));
+            assertEquals("an over-limit body never reaches GitHub", 0, hits.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * A method the proxy does not support (DELETE, OPTIONS) is refused with an
+     * error, never silently answered as a GET. The stub counts every request it
+     * receives, proving no downgraded read is forwarded.
+     */
+    @Test(timeout = 30000)
+    public void unsupportedMethodIsRefusedNotDowngradedToGet() throws IOException {
+        AtomicInteger hits = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            hits.incrementAndGet();
+            respond(exchange, "{}");
+        });
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(
+                    Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            for (Method method : new Method[] {Method.DELETE, Method.OPTIONS}) {
+                IHTTPSession session = new FakeSession(method,
+                        Map.of("url", "/repos/almostrealism/common/pulls/5"),
+                        Map.of(), new ByteArrayInputStream(new byte[0]));
+
+                Response response = handler.handle(session, method,
+                        new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+                assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+                assertTrue(bodyOf(response).contains("Unsupported method"));
+            }
+            assertEquals("no request reaches GitHub for an unsupported method", 0, hits.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * A PATCH whose body stream fails mid-read is rejected rather than read as a
+     * {@code null} body. {@link RequestBodyReader} converts the {@link IOException}
+     * into an {@link io.flowtree.github.GitHubProxyHandler.BodyReader.InvalidRequestBodyException},
+     * so the handler never mistakes a failed read for an empty payload and
+     * forwards a PATCH that would clear the pull request's fields.
+     */
+    @Test(timeout = 10000)
+    public void patchWhoseBodyReadFailsIsRejected() {
+        InputStream failing = new InputStream() {
+            @Override
+            public int read() throws IOException {
+                throw new IOException("stream broke");
+            }
+
+            @Override
+            public int read(byte[] b, int off, int len) throws IOException {
+                throw new IOException("stream broke");
+            }
+        };
+        IHTTPSession session = new FakeSession(Method.PATCH, Map.of(),
+                Map.of("content-length", "32"), failing);
+        try {
+            new RequestBodyReader().read(session);
+            fail("a PATCH body that cannot be read must be rejected, not returned as null");
+        } catch (GitHubProxyHandler.BodyReader.InvalidRequestBodyException expected) {
+            assertTrue(expected.getMessage().contains("could not read PATCH request body"));
+        }
+    }
+
+    /**
+     * A PATCH whose body stream fails is refused with a 4xx and no request
+     * reaches GitHub, so a read failure is never forwarded as an empty update.
+     * The stub counts every request it receives, proving nothing was forwarded.
+     */
+    @Test(timeout = 30000)
+    public void patchWhoseBodyReadFailsDoesNotReachGitHub() throws IOException {
+        AtomicInteger hits = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            hits.incrementAndGet();
+            respond(exchange, "{}");
+        });
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(
+                    Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            InputStream failing = new InputStream() {
+                @Override
+                public int read() throws IOException {
+                    throw new IOException("stream broke");
+                }
+
+                @Override
+                public int read(byte[] b, int off, int len) throws IOException {
+                    throw new IOException("stream broke");
+                }
+            };
+            IHTTPSession session = new FakeSession(Method.PATCH,
+                    Map.of("url", "/repos/almostrealism/common/pulls/5"),
+                    Map.of("content-length", "32"), failing);
+
+            Response response = handler.handle(session, Method.PATCH,
+                    new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+            assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+            assertTrue(bodyOf(response).contains("could not read PATCH request body"));
+            assertEquals("a failed body read never reaches GitHub", 0, hits.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * A malformed caller-supplied {@code url} makes the PATCH forward's
+     * {@link java.net.URI#create} throw an unchecked exception. The handler
+     * routes it through the error responder — as the GET/POST/PUT path does —
+     * so the caller receives the normal 4xx rather than an exception escaping
+     * {@code handle}.
+     */
+    @Test(timeout = 10000)
+    public void patchWithMalformedUrlReturnsErrorResponse() {
+        GitHubProxyHandler handler = new GitHubProxyHandler(Map.of("almostrealism", "tok"));
+        byte[] bytes = "{\"title\":\"x\"}".getBytes(StandardCharsets.UTF_8);
+        IHTTPSession session = new FakeSession(Method.PATCH,
+                Map.of("url", "https://api.github.com/repos/almostrealism/common/pulls/5 bad"),
+                Map.of("content-length", String.valueOf(bytes.length)),
+                new ByteArrayInputStream(bytes));
+
+        Response response = handler.handle(session, Method.PATCH,
+                new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+        assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+    }
+
+    /**
+     * An absolute {@code url} on any host other than the API root is refused for
+     * every supported verb, so the org's bearer token is never sent to a
+     * caller-chosen host. Look-alike hosts and a userinfo prefix that only begin
+     * with the API root's text are refused as well. The body reader must not be
+     * consulted, proving the refusal happens before anything is forwarded.
+     */
+    @Test(timeout = 10000)
+    public void absoluteUrlOutsideApiRootIsRefusedForEveryVerb() throws IOException {
+        GitHubProxyHandler handler = new GitHubProxyHandler(Map.of("almostrealism", "tok"));
+        String[] urls = {
+                "https://evil.example/repos/almostrealism/common/pulls/5",
+                "https://api.github.com.evil.example/repos/almostrealism/common/pulls/5",
+                "https://api.github.com@evil.example/repos/almostrealism/common/pulls/5",
+                "https://api.github.com"
+        };
+        AtomicInteger bodyReads = new AtomicInteger();
+        GitHubProxyHandler.BodyReader countingReader = s -> {
+            bodyReads.incrementAndGet();
+            return "{\"title\":\"x\"}";
+        };
+        for (Method method : new Method[] {Method.GET, Method.POST, Method.PUT, Method.PATCH}) {
+            for (String url : urls) {
+                IHTTPSession session = new FakeSession(method, Map.of("url", url),
+                        Map.of(), new ByteArrayInputStream(new byte[0]));
+
+                Response response = handler.handle(session, method,
+                        countingReader, GitHubProxyHandlerTest::errorResponse);
+
+                assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+                assertTrue(method + " " + url,
+                        bodyOf(response).contains("must be a path or a URL under https://api.github.com"));
+            }
+        }
+        assertEquals("a refused request never reads its body", 0, bodyReads.get());
+    }
+
+    /**
+     * A relative {@code url} is appended to the API root, so one that does not
+     * start with {@code /} could extend the root's host and send the org token
+     * elsewhere ({@code .evil.example/...} resolves to
+     * {@code https://api.github.com.evil.example/...}). Such a value is refused
+     * before the body is read.
+     */
+    @Test(timeout = 10000)
+    public void relativeUrlWithoutLeadingSlashIsRefused() throws IOException {
+        GitHubProxyHandler handler = new GitHubProxyHandler(Map.of("almostrealism", "tok"));
+        String[] urls = {
+                ".evil.example/repos/almostrealism/common/pulls/5",
+                "@evil.example/repos/almostrealism/common/pulls/5",
+                "repos/almostrealism/common/pulls/5"
+        };
+        AtomicInteger bodyReads = new AtomicInteger();
+        GitHubProxyHandler.BodyReader countingReader = s -> {
+            bodyReads.incrementAndGet();
+            return "{\"title\":\"x\"}";
+        };
+        for (String url : urls) {
+            IHTTPSession session = new FakeSession(Method.PATCH, Map.of("url", url),
+                    Map.of(), new ByteArrayInputStream(new byte[0]));
+
+            Response response = handler.handle(session, Method.PATCH,
+                    countingReader, GitHubProxyHandlerTest::errorResponse);
+
+            assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+            assertTrue(url, bodyOf(response).contains("must be a path or a URL under"));
+        }
+        assertEquals("a refused request never reads its body", 0, bodyReads.get());
+    }
+
+    /**
+     * The host check compares against the configured API root, not a fixed
+     * host. With an {@code https} root on a local port, an absolute URL under
+     * that root passes the check and is forwarded (the attempt fails at the
+     * transport because nothing speaks TLS on the port, so the error is the
+     * proxy's transport error rather than the host refusal), while the public
+     * API URL, now outside the root, is refused.
+     */
+    @Test(timeout = 30000)
+    public void hostCheckFollowsConfiguredApiRoot() throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> respond(exchange, "{}"));
+        server.start();
+        try {
+            String root = "https://127.0.0.1:" + server.getAddress().getPort();
+            GitHubProxyHandler handler = new GitHubProxyHandler(Map.of("almostrealism", "tok"), root);
+
+            IHTTPSession inside = new FakeSession(Method.PATCH,
+                    Map.of("url", root + "/repos/almostrealism/common/pulls/5"),
+                    Map.of(), new ByteArrayInputStream(new byte[0]));
+            Response forwarded = handler.handle(inside, Method.PATCH,
+                    s -> "{}", GitHubProxyHandlerTest::errorResponse);
+            String forwardedBody = bodyOf(forwarded);
+            assertTrue(forwardedBody, forwardedBody.contains("GitHub proxy error"));
+            assertFalse(forwardedBody, forwardedBody.contains("must be a path or a URL under"));
+
+            IHTTPSession outside = new FakeSession(Method.PATCH,
+                    Map.of("url", "https://api.github.com/repos/almostrealism/common/pulls/5"),
+                    Map.of(), new ByteArrayInputStream(new byte[0]));
+            Response refused = handler.handle(outside, Method.PATCH,
+                    s -> "{}", GitHubProxyHandlerTest::errorResponse);
+            assertEquals(Response.Status.BAD_REQUEST, refused.getStatus());
+            assertTrue(bodyOf(refused).contains("must be a path or a URL under " + root));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /** Builds the 400 error envelope the proxy endpoint returns, for the handler's responder. */
+    private static Response errorResponse(String message) {
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.BAD_REQUEST,
+                "application/json", "{\"ok\":false,\"error\":\"" + message + "\"}");
+    }
+
+    /** Reads a NanoHTTPD response body back as a string. */
+    private static String bodyOf(Response response) throws IOException {
+        return new String(response.getData().readAllBytes(), StandardCharsets.UTF_8);
+    }
+
     /** Writes a JSON body, filtering an empty {@code head=} match to an empty listing. */
     private static void respond(HttpExchange exchange, String listing) throws IOException {
         // getQuery() returns the decoded query, so the branch reads as "no/such".
@@ -278,6 +709,96 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
         exchange.sendResponseHeaders(200, bytes.length);
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(bytes);
+        }
+    }
+
+    /**
+     * A minimal {@link IHTTPSession} serving the method, query parameters,
+     * headers and input stream a test configures. The proxy handler and
+     * {@link RequestBodyReader} read only these; every other session member is
+     * unused and answers with an inert default.
+     */
+    private static final class FakeSession implements IHTTPSession {
+
+        /** The HTTP method of the request. */
+        private final Method method;
+        /** The decoded query parameters. */
+        private final Map<String, String> parms;
+        /** The request headers, keyed by lower-case name. */
+        private final Map<String, String> headers;
+        /** The request body stream. */
+        private final InputStream input;
+
+        /**
+         * @param method  the HTTP method
+         * @param parms   the query parameters
+         * @param headers the request headers (lower-case keys)
+         * @param input   the request body stream
+         */
+        private FakeSession(Method method, Map<String, String> parms,
+                            Map<String, String> headers, InputStream input) {
+            this.method = method;
+            this.parms = parms;
+            this.headers = headers;
+            this.input = input;
+        }
+
+        @Override
+        public Method getMethod() {
+            return method;
+        }
+
+        @Override
+        public Map<String, String> getParms() {
+            return parms;
+        }
+
+        @Override
+        public Map<String, String> getHeaders() {
+            return headers;
+        }
+
+        @Override
+        public InputStream getInputStream() {
+            return input;
+        }
+
+        @Override
+        public void parseBody(Map<String, String> files) {
+        }
+
+        @Override
+        public void execute() {
+        }
+
+        @Override
+        public CookieHandler getCookies() {
+            return null;
+        }
+
+        @Override
+        public Map<String, List<String>> getParameters() {
+            return Map.of();
+        }
+
+        @Override
+        public String getQueryParameterString() {
+            return null;
+        }
+
+        @Override
+        public String getUri() {
+            return "/api/github/proxy";
+        }
+
+        @Override
+        public String getRemoteIpAddress() {
+            return "127.0.0.1";
+        }
+
+        @Override
+        public String getRemoteHostName() {
+            return "localhost";
         }
     }
 }

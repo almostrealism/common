@@ -72,9 +72,12 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     private Map<String, String> githubOrgTokens;
 
     /**
-     * The REST API root every typed operation builds its URLs from. Defaults to
+     * The REST API root every typed operation builds its URLs from, and the
+     * root a proxied path (one that is not already an absolute {@code https://}
+     * URL) is resolved against in {@link #handle}. Defaults to
      * {@link #DEFAULT_API_ROOT}; a test points it at a local stub server so the
-     * companion-PR operations can be exercised without reaching GitHub.
+     * companion-PR operations and the proxy forward — including the PATCH verb —
+     * can be exercised without reaching GitHub.
      */
     private final String apiRoot;
 
@@ -114,18 +117,27 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     }
 
     /**
-     * Handles {@code GET}, {@code POST}, or {@code PUT} requests to
+     * Handles {@code GET}, {@code POST}, {@code PUT}, or {@code PATCH} requests to
      * {@code /api/github/proxy}.
      *
      * <p>The {@code url} query parameter specifies either a full GitHub API URL
      * starting with {@code https://} or a path such as
-     * {@code /repos/owner/repo/pulls}. The request body (for POST/PUT) is
-     * forwarded verbatim to the GitHub API. The response is wrapped as:</p>
+     * {@code /repos/owner/repo/pulls}. An absolute URL must lie under the
+     * configured API root and a path must start with {@code /}; any other
+     * value is refused, because the request
+     * carries the org's bearer token. The request body (for POST/PUT/PATCH) is
+     * forwarded verbatim to the GitHub API. A PATCH is sent through
+     * {@link HttpClient}, because {@link HttpURLConnection} rejects that verb.
+     * The response is wrapped as:</p>
      * <pre>{@code {"status": 200, "link": "<pagination>", "body": <github-json>}}</pre>
+     *
+     * <p>A request whose method is none of GET/POST/PUT/PATCH is refused with an
+     * error response rather than downgraded to a GET, so a caller that asks for a
+     * write is never silently answered with a read.</p>
      *
      * @param session  the NanoHTTPD session containing query parameters and body
      * @param method   the HTTP method of the incoming request
-     * @param readBody a callback that reads the raw POST/PUT body from the session
+     * @param readBody a callback that reads the raw POST/PUT/PATCH body from the session
      * @param error    a callback that builds a 400 error response
      * @return a NanoHTTPD response wrapping the GitHub API result
      */
@@ -165,30 +177,56 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             return error.respond("Missing required query parameter: url");
         }
 
+        // The org token travels in the Authorization header: keep it on the API
+        // host, and require a leading "/" so an appended path cannot extend it.
+        if (urlOrPath.startsWith("https://") ? !isWithinApiRoot(urlOrPath) : !urlOrPath.startsWith("/")) {
+            warn("Refusing GitHub proxy request outside " + apiRoot + ": " + urlOrPath);
+            return error.respond("GitHub proxy url must be a path or a URL under " + apiRoot);
+        }
+
         String githubMethod;
-        if (Method.POST.equals(method)) {
+        if (Method.GET.equals(method)) {
+            githubMethod = "GET";
+        } else if (Method.POST.equals(method)) {
             githubMethod = "POST";
         } else if (Method.PUT.equals(method)) {
             githubMethod = "PUT";
+        } else if (Method.PATCH.equals(method)) {
+            githubMethod = "PATCH";
         } else {
-            githubMethod = "GET";
+            // Refuse an unsupported verb rather than downgrade it to a GET.
+            return error.respond("Unsupported method for GitHub proxy: " + method
+                    + "; supported methods are GET, POST, PUT, PATCH");
         }
 
-        // Read body for POST/PUT requests (forwarded to GitHub as-is)
+        // Read body for POST/PUT/PATCH requests (forwarded to GitHub as-is). A
+        // reader may reject a body it will not read (see BodyReader); that
+        // rejection becomes a 4xx rather than an unbounded allocation.
         String payload = null;
-        if (Method.POST.equals(method) || Method.PUT.equals(method)) {
-            payload = readBody.read(session);
+        if (!"GET".equals(githubMethod)) {
+            try {
+                payload = readBody.read(session);
+            } catch (BodyReader.InvalidRequestBodyException e) {
+                warn("Rejecting GitHub proxy " + githubMethod + ": " + e.getMessage());
+                return error.respond("Invalid request body: " + e.getMessage());
+            }
         }
 
         // Resolve full GitHub API URL
+        // A path resolves against the configured API root; in production that
+        // is the public API, so a test can redirect the forward to a stub.
         String fullUrl;
         if (urlOrPath.startsWith("https://")) {
             fullUrl = urlOrPath;
         } else {
-            fullUrl = "https://api.github.com" + urlOrPath;
+            fullUrl = apiRoot + urlOrPath;
         }
 
         log("GitHub proxy " + githubMethod + " " + urlOrPath);
+
+        if ("PATCH".equals(githubMethod)) {
+            return forwardPatch(fullUrl, payload, token, error);
+        }
 
         try {
             URL url = URI.create(fullUrl).toURL();
@@ -232,21 +270,87 @@ public class GitHubProxyHandler implements ConsoleFeatures {
                 is.close();
             }
 
-            // Wrap response: {"status":N,"link":"...","body":<github-json-or-string>}
-            StringBuilder json = new StringBuilder();
-            json.append("{\"status\":").append(status);
-            json.append(",\"link\":\"")
-                .append(JsonFieldExtractor.escapeJson(linkHeader != null ? linkHeader : ""))
-                .append("\"");
-            json.append(",\"body\":").append(encodeBody(responseBody, contentType));
-            json.append("}");
-
-            return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
-                    "application/json", json.toString());
+            return wrapResponse(status, linkHeader, responseBody, contentType);
         } catch (Exception e) {
             log("GitHub proxy error: " + e.getMessage());
             return error.respond("GitHub proxy error: " + e.getMessage());
         }
+    }
+
+    /**
+     * Returns whether an absolute URL addresses the configured API root, so the
+     * org token attached to a proxied request is sent only to that host. The
+     * root must be followed by a path separator, which rejects look-alike hosts
+     * such as {@code https://api.github.com.example} and userinfo tricks such as
+     * {@code https://api.github.com@example}.
+     *
+     * @param url the absolute caller-supplied URL
+     * @return {@code true} when {@code url} lies under {@link #apiRoot}
+     */
+    private boolean isWithinApiRoot(String url) {
+        return url.startsWith(apiRoot + "/");
+    }
+
+    /**
+     * Forwards a proxied {@code PATCH} to GitHub and wraps the result like any
+     * other proxied response.
+     *
+     * <p>Every failure becomes an error response rather than an escaping
+     * exception, matching the GET/POST/PUT path's broad {@code catch}: a
+     * transport {@link IOException}, an interruption, and the unchecked
+     * {@link IllegalArgumentException} that {@link URI#create} or
+     * {@link HttpRequest} construction throws for a malformed caller-supplied
+     * {@code url} all route through {@code error} so malformed proxy input
+     * yields the normal 4xx rather than a 500.</p>
+     *
+     * @param fullUrl the fully-resolved GitHub API URL
+     * @param payload the JSON body to forward, or {@code null} for an empty body
+     * @param token   the GitHub API bearer token
+     * @param error   a callback that builds an error response
+     * @return the wrapped GitHub response, or an error response on any failure
+     */
+    private Response forwardPatch(String fullUrl, String payload, String token,
+                                  ErrorResponder error) {
+        try {
+            HttpResponse<String> response = sendPatch(fullUrl, payload == null ? "" : payload, token);
+            return wrapResponse(response.statusCode(),
+                    response.headers().firstValue("Link").orElse(null),
+                    response.body() == null ? "" : response.body(),
+                    response.headers().firstValue("Content-Type").orElse(null));
+        } catch (IOException e) {
+            log("GitHub proxy error: " + e.getMessage());
+            return error.respond("GitHub proxy error: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return error.respond("GitHub proxy error: PATCH interrupted");
+        } catch (RuntimeException e) {
+            log("GitHub proxy error: " + e.getMessage());
+            return error.respond("GitHub proxy error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Wraps a GitHub response in the proxy envelope
+     * {@code {"status":N,"link":"...","body":<github-json-or-string>}}.
+     *
+     * @param status       the HTTP status GitHub returned
+     * @param linkHeader   the pagination {@code Link} header, or {@code null}
+     * @param responseBody the raw response body
+     * @param contentType  the response content type, or {@code null}
+     * @return a 200 response carrying the envelope
+     */
+    private Response wrapResponse(int status, String linkHeader,
+                                  String responseBody, String contentType) {
+        StringBuilder json = new StringBuilder();
+        json.append("{\"status\":").append(status);
+        json.append(",\"link\":\"")
+            .append(JsonFieldExtractor.escapeJson(linkHeader != null ? linkHeader : ""))
+            .append("\"");
+        json.append(",\"body\":").append(encodeBody(responseBody, contentType));
+        json.append("}");
+
+        return NanoHTTPD.newFixedLengthResponse(Response.Status.OK,
+                "application/json", json.toString());
     }
 
     /**
@@ -1078,15 +1182,7 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      */
     private ApiResponse apiPatch(String url, String payload, String token) {
         try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(15))
-                    .header("Authorization", "Bearer " + token.trim())
-                    .header("Accept", "application/vnd.github+json")
-                    .header("Content-Type", "application/json")
-                    .header("X-GitHub-Api-Version", "2022-11-28")
-                    .method("PATCH", HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
-                    .build();
-            HttpResponse<String> response = PATCH_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = sendPatch(url, payload, token);
             return new ApiResponse(response.statusCode(), response.body() == null ? "" : response.body());
         } catch (IOException e) {
             log("GitHub PATCH " + url + " failed: " + e.getMessage());
@@ -1096,6 +1192,29 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             log("GitHub PATCH " + url + " interrupted");
             return null;
         }
+    }
+
+    /**
+     * Sends a JSON {@code PATCH} to the GitHub REST API through {@link HttpClient}.
+     *
+     * @param url     the fully-built request URL
+     * @param payload the JSON request body
+     * @param token   the GitHub API bearer token
+     * @return the response, whatever its status
+     * @throws IOException          on a transport failure
+     * @throws InterruptedException if the calling thread is interrupted
+     */
+    private HttpResponse<String> sendPatch(String url, String payload, String token)
+            throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(15))
+                .header("Authorization", "Bearer " + token.trim())
+                .header("Accept", "application/vnd.github+json")
+                .header("Content-Type", "application/json")
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
+                .build();
+        return PATCH_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
     }
 
     /**
@@ -1256,8 +1375,28 @@ public class GitHubProxyHandler implements ConsoleFeatures {
          *
          * @param session the NanoHTTPD session
          * @return the body string, or {@code null} on error
+         * @throws InvalidRequestBodyException when the request declares a body
+         *         the reader will not read — see that type
          */
         String read(IHTTPSession session);
+
+        /**
+         * Signals that a request declared a body the proxy refuses to read: a
+         * {@code Content-Length} that is missing, unparseable, negative, or
+         * above the reader's size limit. {@link GitHubProxyHandler#handle}
+         * converts it into a 4xx error response, so an abusive or malformed
+         * declaration is rejected rather than allocated for. Unchecked so a
+         * reader that never rejects keeps the plain {@link #read} contract.
+         */
+        class InvalidRequestBodyException extends RuntimeException {
+
+            /**
+             * @param message the human-readable reason the body was rejected
+             */
+            public InvalidRequestBodyException(String message) {
+                super(message);
+            }
+        }
     }
 
     /**

@@ -69,7 +69,9 @@ The controller generates a temporary HMAC token at job submission time:
 | `github_pr_conversation` | Get PR conversation (issue comments) |
 | `github_pr_reply` | Reply to a review comment |
 | `github_list_open_prs` | List open pull requests |
+| `github_pr_labels` | Read a PR's labels and draft status |
 | `github_create_pr` | Create a pull request |
+| `github_update_pr` | Change an existing pull request's title and/or description |
 | `workstream_get_status` | Get job timing statistics |
 | `controller_health` | Check controller liveness |
 
@@ -84,7 +86,7 @@ For agents working on **this repo** (almostrealism/common), additional project-l
 | ~~ar-consultant~~ | **Retired** — `consult` now lives in ar-manager, which carries the documentation corpus and so works from any repository |
 | **ar-build-validator** | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
 | **ar-test-runner** | Async test execution with structured result parsing |
-| **ar-commit** | Checked commits: commits the staged change with the message in `commit.txt` once both pass the commit-message rules |
+| **ar-commit** | Checked commits: commits the staged change with the message in `commit.txt` once both pass the commit-message rules. The private-product-name check is skipped when the repository being committed is itself a configured private product (its `origin` remote name matches one of `AR_PRIVATE_PRODUCT_NAMES`, case-insensitively); all other checks still run |
 | **ar-jmx** | JVM memory diagnostics via JDK tools |
 | **ar-profile-analyzer** | Profile XML analysis for performance investigation |
 | **ar-docs** | Documentation search |
@@ -112,7 +114,7 @@ See `flowtree/runtime/src/main/resources/workstreams-example.yaml` for full conf
 | **ar-memory** | [memory/](memory/) | Centralized HTTP memory service with embedding-based search |
 | **ar-build-validator** | [build-validator/](build-validator/) | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
 | **ar-test-runner** | [test-runner/](test-runner/) | Async test execution with structured result parsing |
-| **ar-commit** | [commit/](commit/) | Checked commits: refuses author attribution, private links, temporary identifiers and private product names, then commits and deletes `commit.txt` |
+| **ar-commit** | [commit/](commit/) | Checked commits: refuses author attribution, private links, temporary identifiers and private product names, then commits and deletes `commit.txt`. The private-product-name check is skipped when the repository being committed is itself a configured private product (its `origin` remote name matches one of `AR_PRIVATE_PRODUCT_NAMES`, case-insensitively); all other checks still run |
 | **ar-jmx** | [jmx/](jmx/) | JVM memory diagnostics via JDK tools (jcmd, jstat, JFR) |
 | **ar-profile-analyzer** | [profile-analyzer/](profile-analyzer/) | Profile XML analysis for performance investigation |
 

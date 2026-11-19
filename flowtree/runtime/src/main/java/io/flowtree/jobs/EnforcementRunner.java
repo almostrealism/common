@@ -357,8 +357,8 @@ class EnforcementRunner implements ConsoleFeatures {
     private boolean applyExhaustionFallback(EnforcementRule rule, CodingAgentJob job) {
         if (!"commit-message".equals(rule.getName())) return false;
 
-        // The fallback synthesises a message from the job prompt — a description
-        // of what was ASKED for, not of what was done. That is a reasonable
+        // The fallback synthesises a subject from the files the job changed — a
+        // description of what was done. That is a reasonable
         // stand-in when the agent worked and merely failed to describe itself,
         // and a fabrication when the primary phase hard-failed: it would label a
         // tree the agent never successfully worked on with a message implying it
@@ -370,7 +370,7 @@ class EnforcementRunner implements ConsoleFeatures {
         // manufactured.
         if (job.isPrimaryPhaseHardFailed()) {
             warn("commit-message rule: not writing a fallback commit message because"
-                    + " the primary phase hard-failed; a prompt-derived message would"
+                    + " the primary phase hard-failed; a generated message would"
                     + " describe work that was not done");
             job.harnessStatus().unusual("commit-message fallback suppressed after a"
                     + " hard primary failure");
