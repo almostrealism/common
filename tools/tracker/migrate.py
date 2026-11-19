@@ -211,6 +211,42 @@ CREATE INDEX IF NOT EXISTS idx_projects_workspace ON projects(workspace_id);
 """
 
 
+# v6: artifacts attached to a task.
+#
+# task_artifacts - an additive, immutable record attached to a task, so work on
+#           a task can be annotated without editing the task itself. This is
+#           what lets any caller whose workspace owns a task leave a note on it
+#           (the MCP layer permits adding an artifact more widely than editing a
+#           task, since an artifact does not change the task's fields).
+#
+# artifact_type - what the artifact is: 'comment' (free text), 'reference' (a
+#           pointer to something else — another tracker task, a repo path, or a
+#           URL, carried in content), or 'memory' (the id of a memory in the
+#           memory database, carried in content). The CHECK is the data-integrity
+#           backstop the API validation mirrors; a new type is admitted by a
+#           later migration that rebuilds the constraint, as v4 widened source.
+# content   - the artifact's payload: the comment body, the reference target, or
+#           the memory id. Always non-empty.
+# author    - who added the artifact, taken from the caller's token by the MCP
+#           layer: 'person' for a person, or '<workstream>/<job>' for an agent
+#           job. Free-form like a task's workstream_id, so it carries no CHECK.
+# A task's artifacts are removed with it (ON DELETE CASCADE), the same way its
+# blockers are.
+_SCHEMA_V6 = """
+CREATE TABLE IF NOT EXISTS task_artifacts (
+    id            TEXT PRIMARY KEY,
+    task_id       TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    artifact_type TEXT NOT NULL
+        CHECK (artifact_type IN ('comment', 'reference', 'memory')),
+    content       TEXT NOT NULL,
+    author        TEXT NOT NULL,
+    created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_artifacts_task ON task_artifacts(task_id);
+"""
+
+
 def run_migrations(conn: sqlite3.Connection) -> None:
     """Apply all pending schema migrations to the database connection.
 
@@ -255,6 +291,10 @@ def run_migrations(conn: sqlite3.Connection) -> None:
     if version < 5:
         _apply(conn, _SCHEMA_V5 + "UPDATE schema_version SET version = 5;")
         version = 5
+
+    if version < 6:
+        _apply(conn, _SCHEMA_V6 + "UPDATE schema_version SET version = 6;")
+        version = 6
 
 
 def _apply(conn: sqlite3.Connection, script: str) -> None:
