@@ -50,7 +50,8 @@ Concrete, actionable items:
      `decode` as `Producer` transforms, the latent/audio sample-rate compression ratio, and
      why composition happens in the compact latent space rather than on raw samples.
    - `AudioComposer` and `ComposableAudioFeatures` (`studio/compose`,
-     `org.almostrealism.studio.ml`): adding sources (`addAudio` encodes raw audio;
+     `org.almostrealism.studio.ml`): adding sources (`addAudio` encodes raw audio, which only works when the encoder's output
+     producer reports a shape — see "Accuracy notes";
      `addSource(features)` / `addSource(features, weights)` take an already-encoded latent),
      the per-source merge **weight vector** — sampled from a Gaussian by `createWeights` and
      L2-normalized only when the static flag `AudioComposer.normalizeWeights` is set (default
@@ -193,6 +194,16 @@ must follow them.
 - **Vector weights give a uniform scale per source.** Broadcasting a length-`L` vector to every
   `(T, B)` cell means the "per-cell scale" is one number per source unless a `(T, B, L)` tensor
   is supplied.
+- **`addAudio` depends on the encoder reporting a shape.** `addAudio(audio)` is
+  `addSource(autoencoder.encode(audio))`, and `ComposableAudioFeatures` reads the feature
+  shape from that producer (`broadcastWeights` calls `featureShape.length(1)`).
+  `OnnxAutoEncoder.encode` declares its output shape through `func(shape(LATENT_DIMENSIONS,
+  256), …)`, but `CompiledModelAutoEncoder.encode` returns a bare lambda producer with no
+  shape, so `shape(...)` falls back to a one-dimensional shape and the broadcast fails. Today a
+  caller using `CompiledModelAutoEncoder` evaluates the encode itself, reshapes the latent to
+  two dimensions, and calls `addSource(cp(latent))`. The page's worked example should go
+  through `addSource` with an already-encoded latent, and must not present `addAudio` as
+  working with every `AutoEncoder`.
 
 ## Open questions
 
@@ -207,6 +218,11 @@ must follow them.
   better-tested contract, but it is not what production runs. Leading with it risks teaching a
   mode nobody uses; leading with the sum hides the subtlest numerical contract. The reviewer
   should decide (the plan as written documents both, sum first).
+- **Should `CompiledModelAutoEncoder.encode` carry a shape?** The `addAudio` gap above is a
+  defect in the encoder rather than a documentation matter, and fixing it is out of scope for a
+  docs plan. If it is fixed first, the page can show `addAudio` with either encoder; if not,
+  the page has to state the limitation. The approver should decide whether that fix comes
+  before or after this page.
 - **Is a separate drift-guard class worth it** given `AudioComposerTest` already covers the
   semantics? The alternative is to have the page cite `AudioComposerTest` methods directly and
   add only the decode-through-stub example. Either satisfies the success criteria if each
@@ -214,9 +230,12 @@ must follow them.
 
 ## Relationship to existing work
 
-Does not overlap the three open proposed plans — `PLAN-20261106-ferrofluid-simulation`
-(rendering proof-of-value roadmap), `PLAN-20261114-jni-native-precision-symbols` (hardware
-correctness), and `PLAN-20261114-manual-isolation-prevention` (optimizer discipline). It
+No other document in `docs/plans/` mentions `AudioComposer`, `ComposableAudioFeatures` or
+latent-space composition, so this does not overlap any open plan — including the three most
+recent `PLAN-*` proposals, `PLAN-20261106-ferrofluid-simulation` (rendering proof-of-value
+roadmap), `PLAN-20261114-jni-native-precision-symbols` (hardware correctness), and
+`PLAN-20261114-manual-isolation-prevention` (optimizer discipline). (A dozen older documents
+in `docs/plans/` also carry `status: proposed`; none concerns audio.) It
 continues the documentation arc that filled the tokenizer, vector-index, and
 simulation-pipeline gaps, now applied to the latent-audio-composition subsystem, and it sets
 the anchor page the broader generative-audio proof-of-value track can grow from.

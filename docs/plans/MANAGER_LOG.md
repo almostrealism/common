@@ -84,15 +84,17 @@ decoded waveform — drift-guarded by `LatentAudioCompositionExamplesTest` over 
 autoencoder (the `StubAutoEncoder` path `AudioComposerTest` already proves), so it runs on any
 backend with no download. It is also a crisp non-training exemplar of THE FUNDAMENTAL RULE: the
 whole blend is one `CollectionProducer` graph evaluated through `evaluateOptimized()` (the exact
-lesson the #980 review had to teach), which is precisely what a model studying the platform
+lesson the #980 review had to teach); the autoencoder decode that follows it is a host-side model
+call, not part of that graph (the plan's "Accuracy notes" record this and the other corrections
+review made). That is precisely what a model studying the platform
 should be able to read in one page.
 
 #### Balance across categories
 
 The last cycle was code quality (reflected-ray); the two before it were performance and
 documentation. Returning to documentation now is not drift toward an easier category — it
-targets a specific, verified gap in an actively-developed subsystem, touches no production code,
-and runs on any node (no workstream settings file). It continues the documentation arc
+targets a specific, verified gap in an actively-developed subsystem, touches no production code
+beyond a package Javadoc correction, and runs on any node (no workstream settings file). It continues the documentation arc
 (tokenizer → vector index → simulation pipelines) and plants the anchor page the generative-
 audio proof-of-value track grows from.
 
