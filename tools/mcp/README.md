@@ -69,6 +69,7 @@ The controller generates a temporary HMAC token at job submission time:
 | `github_pr_conversation` | Get PR conversation (issue comments) |
 | `github_pr_reply` | Reply to a review comment |
 | `github_list_open_prs` | List open pull requests |
+| `github_pr_labels` | Read a PR's labels and draft status |
 | `github_create_pr` | Create a pull request |
 | `workstream_get_status` | Get job timing statistics |
 | `controller_health` | Check controller liveness |
