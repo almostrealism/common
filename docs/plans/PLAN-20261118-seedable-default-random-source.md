@@ -64,20 +64,20 @@ The default source is a genuinely new concept — one process-wide holder of mut
 is its own class, `DefaultRandomSource`, in `compute/algebra`,
 `org.almostrealism.collect.computations`, next to `RandomProducer`/`Random`/`CounterRandom`. (A
 `RandomProducer` is an interface and cannot hold a mutable field, which is the mechanical reason
-the state does not live on it.) Its members, all `static`:
+the state does not live on it.) Its members, all `public static`:
 
 ```java
 /** Seeds the default source; every later rand/randn without a source draws from it. */
-static void seed(long seed);
+public static void seed(long seed);
 
 /** Returns the default source to unseeded: each generator gets its own fresh source. */
-static void clear();
+public static void clear();
 
 /** The seeded default source, or null when unseeded. */
-static java.util.Random current();
+public static java.util.Random current();
 
 /** The active seed, or empty when unseeded. */
-static OptionalLong getSeed();
+public static OptionalLong getSeed();
 ```
 
 The state is a `volatile java.util.Random` (`null` means unseeded) with a parallel `volatile
@@ -130,7 +130,7 @@ The new `@After` method must not take a name a subclass already declares. `Param
 (in `studio/music`) already has `@After public void clearRandomSeed()`, which resets
 `ParameterFunction`'s own static seed — a different global source. A base-class method of the
 same name would be silently overridden by that subclass method, so the base hook would never run
-for that class (its `clearDefaultSource()` call would be lost), and errorprone's `MissingOverride`
+for that class (its `DefaultRandomSource.clear()` call would be lost), and errorprone's `MissingOverride`
 would fail the `ar-music` test compile in the full reactor build. The base hook therefore needs a
 distinct name, such as `clearDefaultRandomSource()`. Before adding any lifecycle hook to this
 widely-extended base class, grep its subclasses for same-named `@Before`/`@After` methods.
