@@ -39,6 +39,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -577,6 +578,114 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
                 new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
 
         assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+    }
+
+    /**
+     * An absolute {@code url} on any host other than the API root is refused for
+     * every supported verb, so the org's bearer token is never sent to a
+     * caller-chosen host. Look-alike hosts and a userinfo prefix that only begin
+     * with the API root's text are refused as well. The body reader must not be
+     * consulted, proving the refusal happens before anything is forwarded.
+     */
+    @Test(timeout = 10000)
+    public void absoluteUrlOutsideApiRootIsRefusedForEveryVerb() throws IOException {
+        GitHubProxyHandler handler = new GitHubProxyHandler(Map.of("almostrealism", "tok"));
+        String[] urls = {
+                "https://evil.example/repos/almostrealism/common/pulls/5",
+                "https://api.github.com.evil.example/repos/almostrealism/common/pulls/5",
+                "https://api.github.com@evil.example/repos/almostrealism/common/pulls/5",
+                "https://api.github.com"
+        };
+        AtomicInteger bodyReads = new AtomicInteger();
+        GitHubProxyHandler.BodyReader countingReader = s -> {
+            bodyReads.incrementAndGet();
+            return "{\"title\":\"x\"}";
+        };
+        for (Method method : new Method[] {Method.GET, Method.POST, Method.PUT, Method.PATCH}) {
+            for (String url : urls) {
+                IHTTPSession session = new FakeSession(method, Map.of("url", url),
+                        Map.of(), new ByteArrayInputStream(new byte[0]));
+
+                Response response = handler.handle(session, method,
+                        countingReader, GitHubProxyHandlerTest::errorResponse);
+
+                assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+                assertTrue(method + " " + url,
+                        bodyOf(response).contains("must be a path or a URL under https://api.github.com"));
+            }
+        }
+        assertEquals("a refused request never reads its body", 0, bodyReads.get());
+    }
+
+    /**
+     * A relative {@code url} is appended to the API root, so one that does not
+     * start with {@code /} could extend the root's host and send the org token
+     * elsewhere ({@code .evil.example/...} resolves to
+     * {@code https://api.github.com.evil.example/...}). Such a value is refused
+     * before the body is read.
+     */
+    @Test(timeout = 10000)
+    public void relativeUrlWithoutLeadingSlashIsRefused() throws IOException {
+        GitHubProxyHandler handler = new GitHubProxyHandler(Map.of("almostrealism", "tok"));
+        String[] urls = {
+                ".evil.example/repos/almostrealism/common/pulls/5",
+                "@evil.example/repos/almostrealism/common/pulls/5",
+                "repos/almostrealism/common/pulls/5"
+        };
+        AtomicInteger bodyReads = new AtomicInteger();
+        GitHubProxyHandler.BodyReader countingReader = s -> {
+            bodyReads.incrementAndGet();
+            return "{\"title\":\"x\"}";
+        };
+        for (String url : urls) {
+            IHTTPSession session = new FakeSession(Method.PATCH, Map.of("url", url),
+                    Map.of(), new ByteArrayInputStream(new byte[0]));
+
+            Response response = handler.handle(session, Method.PATCH,
+                    countingReader, GitHubProxyHandlerTest::errorResponse);
+
+            assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+            assertTrue(url, bodyOf(response).contains("must be a path or a URL under"));
+        }
+        assertEquals("a refused request never reads its body", 0, bodyReads.get());
+    }
+
+    /**
+     * The host check compares against the configured API root, not a fixed
+     * host. With an {@code https} root on a local port, an absolute URL under
+     * that root passes the check and is forwarded (the attempt fails at the
+     * transport because nothing speaks TLS on the port, so the error is the
+     * proxy's transport error rather than the host refusal), while the public
+     * API URL, now outside the root, is refused.
+     */
+    @Test(timeout = 30000)
+    public void hostCheckFollowsConfiguredApiRoot() throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> respond(exchange, "{}"));
+        server.start();
+        try {
+            String root = "https://127.0.0.1:" + server.getAddress().getPort();
+            GitHubProxyHandler handler = new GitHubProxyHandler(Map.of("almostrealism", "tok"), root);
+
+            IHTTPSession inside = new FakeSession(Method.PATCH,
+                    Map.of("url", root + "/repos/almostrealism/common/pulls/5"),
+                    Map.of(), new ByteArrayInputStream(new byte[0]));
+            Response forwarded = handler.handle(inside, Method.PATCH,
+                    s -> "{}", GitHubProxyHandlerTest::errorResponse);
+            String forwardedBody = bodyOf(forwarded);
+            assertTrue(forwardedBody, forwardedBody.contains("GitHub proxy error"));
+            assertFalse(forwardedBody, forwardedBody.contains("must be a path or a URL under"));
+
+            IHTTPSession outside = new FakeSession(Method.PATCH,
+                    Map.of("url", "https://api.github.com/repos/almostrealism/common/pulls/5"),
+                    Map.of(), new ByteArrayInputStream(new byte[0]));
+            Response refused = handler.handle(outside, Method.PATCH,
+                    s -> "{}", GitHubProxyHandlerTest::errorResponse);
+            assertEquals(Response.Status.BAD_REQUEST, refused.getStatus());
+            assertTrue(bodyOf(refused).contains("must be a path or a URL under " + root));
+        } finally {
+            server.stop(0);
+        }
     }
 
     /** Builds the 400 error envelope the proxy endpoint returns, for the handler's responder. */

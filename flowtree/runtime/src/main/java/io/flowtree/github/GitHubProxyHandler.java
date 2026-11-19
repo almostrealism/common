@@ -122,7 +122,10 @@ public class GitHubProxyHandler implements ConsoleFeatures {
      *
      * <p>The {@code url} query parameter specifies either a full GitHub API URL
      * starting with {@code https://} or a path such as
-     * {@code /repos/owner/repo/pulls}. The request body (for POST/PUT/PATCH) is
+     * {@code /repos/owner/repo/pulls}. An absolute URL must lie under the
+     * configured API root and a path must start with {@code /}; any other
+     * value is refused, because the request
+     * carries the org's bearer token. The request body (for POST/PUT/PATCH) is
      * forwarded verbatim to the GitHub API. A PATCH is sent through
      * {@link HttpClient}, because {@link HttpURLConnection} rejects that verb.
      * The response is wrapped as:</p>
@@ -172,6 +175,13 @@ public class GitHubProxyHandler implements ConsoleFeatures {
         String urlOrPath = session.getParms().get("url");
         if (urlOrPath == null || urlOrPath.isEmpty()) {
             return error.respond("Missing required query parameter: url");
+        }
+
+        // The org token travels in the Authorization header: keep it on the API
+        // host, and require a leading "/" so an appended path cannot extend it.
+        if (urlOrPath.startsWith("https://") ? !isWithinApiRoot(urlOrPath) : !urlOrPath.startsWith("/")) {
+            warn("Refusing GitHub proxy request outside " + apiRoot + ": " + urlOrPath);
+            return error.respond("GitHub proxy url must be a path or a URL under " + apiRoot);
         }
 
         String githubMethod;
@@ -265,6 +275,20 @@ public class GitHubProxyHandler implements ConsoleFeatures {
             log("GitHub proxy error: " + e.getMessage());
             return error.respond("GitHub proxy error: " + e.getMessage());
         }
+    }
+
+    /**
+     * Returns whether an absolute URL addresses the configured API root, so the
+     * org token attached to a proxied request is sent only to that host. The
+     * root must be followed by a path separator, which rejects look-alike hosts
+     * such as {@code https://api.github.com.example} and userinfo tricks such as
+     * {@code https://api.github.com@example}.
+     *
+     * @param url the absolute caller-supplied URL
+     * @return {@code true} when {@code url} lies under {@link #apiRoot}
+     */
+    private boolean isWithinApiRoot(String url) {
+        return url.startsWith(apiRoot + "/");
     }
 
     /**
