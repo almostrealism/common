@@ -161,6 +161,36 @@ theory, drive each step:
 - `ar-build-validator` is clean (checkstyle, code_policy, test_timeouts, duplicate_code,
   javadoc); no existing test is weakened, disabled, skip-gated, or has its timeout inflated.
 
+## Open questions
+
+These are the risks the approver should weigh; the implementation session should resolve each
+with evidence rather than assume the optimistic answer.
+
+- **Is memoizing the reset traversal sufficient on its own to bring the refraction compile under
+  the 120s timeout?** The plan diagnoses one exponential cost (the un-memoized reset walk), but it
+  also names a *second*, independent cost it puts out of scope: the expression-size blow-up in
+  simplification ("Large expression not improved by simplification") that afflicts the
+  non-identity-transform reflection and `renderTwoSpheres` cases. The refraction graph is larger
+  and more deeply shared than the single-bounce reflection case, so it may hit that second wall
+  once the reset cost is removed. If the post-fix profile still shows the compile exceeding the
+  budget, clearing `knownIssue` is premature — report the measured compile time and keep the flag
+  rather than inflate the timeout, and the success criterion "passes well within its timeout" is
+  not met.
+- **Does the refraction render leave enough CI-speed margin to un-flag safely?** Even with the
+  compile fixed, the render does strictly more work than the reflection sibling (two refractions,
+  a surface re-intersection, and the `LightingEngineAggregator` selection). The sibling
+  `reflectiveSphereShowsFloor` was observed consuming a substantial fraction of its 120s budget on
+  the node where its `knownIssue` flag was cleared, so the refraction case could land near or over
+  the bound on a slower CI node — re-introducing exactly the flakiness the flag was guarding
+  against. If the margin is thin, the right move is to record it and let the approver decide
+  whether to un-flag now or wait for the per-pixel kernelization (ferrofluid Phase 4) that would
+  cut the render cost; it is **not** to raise `@Test(timeout = ...)` past 120000.
+- **"Verified" means verified against the code, not yet against a profile.** The root cause is
+  established by reading `resetArguments`/`prepareScope` and the test's own Javadoc, not by a
+  profile run (the known-issue flag means no profiled run of this graph exists yet). The Approach's
+  first step closes this gap; until it runs, treat the `resetArguments`-dominates hypothesis as
+  strongly-evidenced but unconfirmed.
+
 ## Dependencies
 
 None. The fix lives in `base/code` (`ScopeLifecycle`, `ComputationBase`) and the test in
