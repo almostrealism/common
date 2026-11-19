@@ -26,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
@@ -105,13 +106,18 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         assertEquals(CommitMessageRule.SOURCE_RECOVERED, job.getCommitMessageSource());
     }
 
-    /** {@link CommitMessageBuilder#resolve} falls back to the prompt-derived message when commit.txt is missing. */
+    /**
+     * {@link CommitMessageBuilder#resolve} falls back to a generated message when commit.txt is
+     * missing. With no determinable changes (the temp directory is not a git repository) the
+     * subject names the job, never the prompt, and the source is still {@code prompt_fallback}.
+     */
     @Test(timeout = 30000)
-    public void resolveFallsBackToPromptWhenCommitTxtMissing() {
+    public void resolveFallsBackToGeneratedMessageWhenCommitTxtMissing() {
         CodingAgentJob job = job("do the work");
         String msg = job.commitMessageBuilder().resolve(job);
         assertNotNull(msg);
-        assertTrue("Fallback must start with 'Claude Code:'", msg.startsWith("Claude Code:"));
+        assertTrue("Fallback subject must name the job: " + msg, msg.startsWith("Job t1 commit"));
+        assertFalse("Fallback must not echo the prompt", msg.contains("do the work"));
         assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, job.getCommitMessageSource());
     }
 
@@ -121,37 +127,62 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         writeCommitTxt("   \n\t");
         CodingAgentJob job = job("do the work");
         String msg = job.commitMessageBuilder().resolve(job);
-        assertTrue(msg.startsWith("Claude Code:"));
+        assertTrue("Fallback subject must name the job: " + msg, msg.startsWith("Job t1 commit"));
+        assertFalse("Fallback must not echo the prompt", msg.contains("do the work"));
         assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, job.getCommitMessageSource());
     }
 
-    /** Fallback summary is the prompt unchanged when it fits under 72 chars. */
+    /**
+     * {@link CommitMessageBuilder#summarizeChangedFiles} names one changed file as
+     * {@code "Update <name>"}, and two as {@code "Update <a> and <b>"}, using class/file base
+     * names rather than full paths.
+     */
     @Test(timeout = 30000)
-    public void fallbackSummaryUnderLimitIsVerbatim() {
-        CodingAgentJob job = job("short prompt");
-        String msg = job.commitMessageBuilder().buildFallbackMessage(job);
-        assertTrue("Subject line should include the full short prompt",
-                msg.startsWith("Claude Code: short prompt"));
+    public void summarizeNamesOneOrTwoChangedFiles() {
+        assertEquals("Update IndexSequence", CommitMessageBuilder.summarizeChangedFiles(
+                List.of("compute/algebra/src/main/java/org/x/IndexSequence.java")));
+        assertEquals("Update IndexSequence and IndexSequenceTest",
+                CommitMessageBuilder.summarizeChangedFiles(List.of(
+                        "compute/algebra/src/main/java/org/x/IndexSequence.java",
+                        "compute/algebra/src/test/java/org/x/IndexSequenceTest.java")));
     }
 
-    /** Fallback summary is truncated to 72 chars (69 chars + "...") for long prompts. */
+    /**
+     * With more than two changed files the summary names the first and counts the rest, staying at
+     * or under 72 characters.
+     */
     @Test(timeout = 30000)
-    public void fallbackSummaryOver72CharsIsTruncatedWithEllipsis() {
-        String longPrompt = "a".repeat(120);
-        CodingAgentJob job = job(longPrompt);
-        String msg = job.commitMessageBuilder().buildFallbackMessage(job);
-        String firstLine = msg.split("\n", 2)[0];
-        // "Claude Code: " (13 chars) + first 69 chars + "..." = 13 + 69 + 3 = 85
-        assertEquals("Claude Code: " + "a".repeat(69) + "...", firstLine);
+    public void summarizeNamesFirstFileAndCountsTheRest() {
+        String subject = CommitMessageBuilder.summarizeChangedFiles(List.of(
+                "a/IndexSequence.java", "a/B.java", "a/C.java", "a/D.java"));
+        assertEquals("Update IndexSequence and 3 other files", subject);
+        assertTrue("Subject must stay within 72 characters: " + subject, subject.length() <= 72);
     }
 
-    /** Fallback body includes the full prompt and the exit code. */
+    /** A very long first file name still yields a subject no longer than 72 characters. */
     @Test(timeout = 30000)
-    public void fallbackBodyIncludesFullPromptAndExitCode() {
+    public void summarizeClipsOverlongSubjectTo72Characters() {
+        String subject = CommitMessageBuilder.summarizeChangedFiles(List.of(
+                "a/" + "L".repeat(120) + ".java", "a/B.java", "a/C.java"));
+        assertTrue("Subject must stay within 72 characters: " + subject, subject.length() <= 72);
+        assertTrue("Overlong subject is ellipsised", subject.endsWith("..."));
+    }
+
+    /** An empty change set yields no summary, so the caller supplies the neutral job-named subject. */
+    @Test(timeout = 30000)
+    public void summarizeReturnsNullForNoChanges() {
+        assertNull(CommitMessageBuilder.summarizeChangedFiles(List.of()));
+        assertNull(CommitMessageBuilder.summarizeChangedFiles(null));
+    }
+
+    /** Fallback body records the harness provenance and the exit code, and never the prompt. */
+    @Test(timeout = 30000)
+    public void fallbackBodyRecordsProvenanceAndExitCodeNotPrompt() {
         CodingAgentJob job = job("do the work please");
         String msg = job.commitMessageBuilder().buildFallbackMessage(job);
-        assertTrue("Body must echo the full prompt",
-                msg.contains("Prompt: do the work please"));
+        assertFalse("Body must not echo the prompt", msg.contains("do the work please"));
+        assertTrue("Body must say the harness generated the message",
+                msg.contains("The harness generated this message because the agent wrote no commit.txt."));
         assertTrue("Body must include the exit code line",
                 msg.contains("Exit code: 0"));
     }
@@ -230,32 +261,20 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
                 !msg.contains("\nSession: "));
     }
 
-    /** {@link CommitMessageBuilder#buildExhaustionFallback} uses the trimmed first line of the prompt. */
+    /**
+     * {@link CommitMessageBuilder#buildExhaustionFallback} never uses the prompt. With no
+     * determinable changes (the temp directory is not a git repository) it names the job, even when
+     * the prompt reads like an instruction that previously became a commit subject.
+     */
     @Test(timeout = 30000)
-    public void exhaustionFallbackUsesFirstPromptLine() {
-        CodingAgentJob job = job("  Add the sliding window layer  \nMore detail on a second line.");
-        assertEquals("Add the sliding window layer",
-                job.commitMessageBuilder().buildExhaustionFallback(job));
-    }
-
-    /** A first line of exactly 72 characters is kept whole; one character more is truncated to 69 + "...". */
-    @Test(timeout = 30000)
-    public void exhaustionFallbackTruncatesOnlyPast72Characters() {
-        CodingAgentJob exact = job("b".repeat(72));
-        assertEquals("b".repeat(72), exact.commitMessageBuilder().buildExhaustionFallback(exact));
-
-        CodingAgentJob longer = job("c".repeat(73));
-        assertEquals("c".repeat(69) + "...", longer.commitMessageBuilder().buildExhaustionFallback(longer));
-    }
-
-    /** A first prompt line carrying author attribution is never used; the task-id message is used instead. */
-    @Test(timeout = 30000)
-    public void exhaustionFallbackRejectsAttributedFirstLine() {
-        CodingAgentJob job = job("Co-Authored-By: Claude <noreply@anthropic.com>\nFix the bug");
+    public void exhaustionFallbackNamesJobAndNeverUsesPrompt() {
+        CodingAgentJob job = job(
+                "You are hunting for a real defect in this codebase and proving it exists by writing"
+                        + " a test that fails because of it.");
         assertEquals("Job t1 commit", job.commitMessageBuilder().buildExhaustionFallback(job));
     }
 
-    /** A blank or missing prompt falls back to the task-id message. */
+    /** A blank or missing prompt and no changes falls back to the task-id message. */
     @Test(timeout = 30000)
     public void exhaustionFallbackUsesTaskIdForBlankOrNullPrompt() {
         CodingAgentJob blank = job("  \n\t ");
@@ -263,6 +282,23 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
 
         CodingAgentJob none = job(null);
         assertEquals("Job t1 commit", none.commitMessageBuilder().buildExhaustionFallback(none));
+    }
+
+    /**
+     * An instruction-worded prompt never appears in either fallback's subject or body, which is the
+     * regression this change exists to prevent (a defect-hunt prompt had become a PR title).
+     */
+    @Test(timeout = 30000)
+    public void instructionWordedPromptNeverLeaksIntoEitherFallback() {
+        String prompt = "You are hunting for a real defect in this codebase and proving it exists ...";
+        CodingAgentJob job = job(prompt);
+        String fallback = job.commitMessageBuilder().buildFallbackMessage(job);
+        String exhaustion = job.commitMessageBuilder().buildExhaustionFallback(job);
+        assertFalse("Prompt must not appear in the commit-time fallback", fallback.contains(prompt));
+        assertFalse("Prompt must not appear in its subject",
+                fallback.split("\n", 2)[0].contains("hunting"));
+        assertFalse("Prompt must not appear in the exhaustion fallback", exhaustion.contains(prompt));
+        assertFalse("Prompt must not appear in the exhaustion subject", exhaustion.contains("hunting"));
     }
 
     /** {@link CommitMessageBuilder#isAuthored} is {@code false} when there is no {@code commit.txt}. */
