@@ -804,10 +804,15 @@ public class InstructionPromptBuilder {
             sb.append("GitHub Copilot's per-round summary) -- that content is invisible to ");
             sb.append("github_pr_review_comments and github_pr_conversation.\n\n");
 
+            sb.append("Use github_update_pr to correct a pull request's title or description ");
+            sb.append("when it no longer matches the branch; it edits only those two fields, ");
+            sb.append("and with the PR number omitted it updates the open PR for this branch.\n\n");
+
             sb.append("Use github_pr_labels to read a PR's labels together with its draft ");
             sb.append("status (a CI label such as \"ci: ready for review\" is only meaningful ");
             sb.append("once the PR is no longer a draft). It is read-only and looks up the PR ");
             sb.append("by branch when pr_number is omitted.\n\n");
+
 
             sb.append("## Out-of-Scope Review Points\n");
             sb.append("Fix an in-scope defect on this branch. But when a review comment is valid ");

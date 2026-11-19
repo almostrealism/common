@@ -17,13 +17,17 @@
 package org.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Absolute;
 import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
+import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.List;
 import java.util.OptionalDouble;
 
 /**
@@ -174,5 +178,42 @@ public class AbsoluteExpressionTest extends TestSuiteBase implements ExpressionF
 			// If it simplified to a constant, it should be 0.5, not 1.0
 			assertEquals("Simplified value should be 0.5", 0.5, simplifiedValue.getAsDouble(), 1e-10);
 		}
+	}
+
+	/** A constant integer operand folds to a constant holding its absolute value. */
+	@Test(timeout = 30000)
+	public void constantOperandFolds() {
+		Expression<Double> zero = Absolute.of(new IntegerConstant(0));
+		assertTrue(zero.doubleValue().isPresent());
+		assertEquals(0.0, zero.doubleValue().getAsDouble(), 0.0);
+
+		Expression<Double> three = Absolute.of(new IntegerConstant(-3));
+		assertTrue(three.doubleValue().isPresent());
+		assertEquals(3.0, three.doubleValue().getAsDouble(), 0.0);
+	}
+
+	/**
+	 * A non-constant integer operand is widened, so the emitted call has an FP argument.
+	 * OpenCL C's {@code fabs} has only floating-point overloads, so {@code fabs(int)} is ambiguous.
+	 */
+	@Test(timeout = 30000)
+	public void integerOperandIsWidened() {
+		Expression<Double> abs = Absolute.of(kernel());
+		assertFalse(abs.doubleValue().isPresent());
+		assertTrue(abs.getChildren().get(0).isFP());
+	}
+
+	/**
+	 * Recreating an {@link Absolute} around a child that simplification reduced to an integer
+	 * constant folds instead of rendering {@code fabs(0)} for OpenCL.
+	 */
+	@Test(timeout = 30000)
+	public void recreateWithIntegerConstantFolds() {
+		Absolute abs = new Absolute(kernel().toDouble());
+		Expression<Double> recreated = abs.recreate(List.of(new IntegerConstant(0)));
+		assertEquals(0.0, recreated.doubleValue().getAsDouble(), 0.0);
+
+		String source = recreated.getExpression(new OpenCLLanguageOperations(Precision.FP32));
+		assertFalse(source, source.contains("fabs"));
 	}
 }

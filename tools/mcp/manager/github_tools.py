@@ -14,6 +14,7 @@ moving the code that depends on it.
 import base64
 import binascii
 import re
+from typing import Optional
 from urllib.parse import quote
 
 import github_api
@@ -589,6 +590,164 @@ def github_create_pr(
         return response
     return result
 
+def _normalise_pr_field(field: str, value: str) -> str:
+    """Canonicalise a PR field for the did-the-edit-happen comparison.
+
+    GitHub rewrites CRLF to LF when it stores either field, so that is folded
+    for both. GitHub also trims surrounding whitespace from a *title* (but
+    never from a body), so only the title is stripped. The body is left
+    otherwise intact: stripping both sides would let a silently ignored PATCH
+    of ``" Body "`` pass as applied when the stored body is ``"Body"``, which
+    is exactly the false-success the comparison exists to catch.
+
+    Args:
+        field: The field name — ``"title"`` or ``"body"``. Comes first so the
+            comparison knows which canonicalisation to apply to ``value``.
+        value: The field value, possibly ``None``.
+
+    Returns:
+        The normalised value; empty string when ``value`` is falsy.
+    """
+    normalised = (value or "").replace("\r\n", "\n")
+    return normalised.strip() if field == "title" else normalised
+
+@mcp.tool()
+def github_update_pr(
+    pr_number: int = 0,
+    title: Optional[str] = None,
+    body: Optional[str] = None,
+    workstream_id: str = "",
+    branch: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """Change the title and/or description of an existing pull request.
+
+    Only the title and the description can be changed; the request never
+    carries state, base, maintainer_can_modify, labels or any other field.
+    A field left unset (``None``) is not changed. Use this to correct a pull
+    request whose title or description no longer matches the branch.
+
+    The edit is refused when the workstream (or the round owning an explicit
+    ``branch``) is archived: an archived round is read-only, as for
+    ``github_create_pr``. Direct ``org``/``repo`` addressing is not guarded.
+
+    Args:
+        pr_number: The PR number. When omitted (``0``), the open PR for the
+            workstream/branch is looked up automatically, the same way
+            ``github_request_copilot_review`` does. A negative number is
+            rejected.
+        title: New PR title. ``None`` (the default) leaves the title
+            unchanged; an empty or whitespace-only title is rejected because
+            GitHub requires a non-empty title.
+        body: New PR description. ``None`` (the default) leaves the
+            description unchanged; pass an empty string to clear it.
+        workstream_id: Workstream to resolve repo from. Defaults to token context.
+        branch: Branch hint used both to resolve the repo and, when
+            ``pr_number`` is omitted, to look up the open PR.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``. Bypasses workstream resolution; scoped tokens are
+            checked against this org via the workspace scope gate. With direct
+            addressing a ``branch`` is required when ``pr_number`` is omitted.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        dict with ok=True, number, url, title and updated_fields (the names
+        of the fields that were sent) on success; ok=False with error details
+        on failure.
+    """
+    server._require_scope("github")
+    direct_addressing = bool(org and repo)
+    if direct_addressing:
+        server._require_org_in_scope(org)
+
+    if isinstance(pr_number, bool) or not isinstance(pr_number, int) or pr_number < 0:
+        return {"ok": False, "error": "pr_number must be a non-negative integer"}
+    if title is not None and not title.strip():
+        return {"ok": False, "error": "title must not be empty or only whitespace"}
+    payload = {}
+    # None means "leave unchanged"; an empty-string body is sent so it can
+    # clear the description on purpose.
+    if title is not None:
+        payload["title"] = title
+    if body is not None:
+        payload["body"] = body
+    if not payload:
+        return {
+            "ok": False,
+            "error": "nothing to update: pass a title, a body, or both",
+        }
+
+    # An archived round is read-only, and its pull request's title and
+    # description are part of that frozen record, so the same guards as
+    # github_create_pr apply. Direct org/repo addressing carries no
+    # workstream and is scoped only by the org gate above.
+    if not direct_addressing:
+        effective_ws = workstream_id or server._get_token_workstream_id() or ""
+        ws = server._find_workstream(effective_ws) if effective_ws else None
+        archived_err = server._archived_workstream_error(
+            "update a pull request", effective_ws, ws=ws)
+        if archived_err:
+            return archived_err
+        # An explicit branch names the PR being edited, so a live workstream
+        # must not reach another round's archived branch through it.
+        if branch and branch != (ws or {}).get("defaultBranch"):
+            archived_err = server._archived_branch_error(
+                "update a pull request", (ws or {}).get("repoUrl", ""), branch)
+            if archived_err:
+                return archived_err
+
+    owner, repo, effective_pr, err = server._resolve_effective_pr(
+        pr_number=pr_number, workstream_id=workstream_id, branch=branch,
+        org=org, repo=repo)
+    if err:
+        return err
+
+    updated_fields = sorted(payload)
+    server._audit("github_update_pr", pr_number=effective_pr, fields=updated_fields)
+
+    result = server._github_request(
+        "PATCH", f"/repos/{owner}/{repo}/pulls/{effective_pr}", payload)
+    if result.get("number"):
+        # A proxy that does not forward PATCH answers with the unchanged PR
+        # (HTTP 200), so success is reported only when the response shows
+        # every sent field with its new value. The comparison is
+        # field-specific: a title is folded to LF and trimmed (GitHub trims
+        # titles), a body is only folded to LF and never trimmed, so a
+        # whitespace-only body edit answered as a GET is still caught.
+        unchanged = [
+            field for field in updated_fields
+            if _normalise_pr_field(field, result.get(field))
+            != _normalise_pr_field(field, payload[field])
+        ]
+        if unchanged:
+            return {
+                "ok": False,
+                "error": ("GitHub responded but the pull request still shows the "
+                          "old " + ", ".join(unchanged) + "; the edit did not take effect"),
+                "number": result["number"],
+                "returned": {field: result.get(field) for field in unchanged},
+            }
+        return {
+            "ok": True,
+            "number": result["number"],
+            "url": result.get("html_url"),
+            "title": result.get("title"),
+            "updated_fields": updated_fields,
+        }
+    # An API error (ok=False) is propagated as-is. Any other response without a
+    # PR object — a 204/no-body that _github_request reports as {"ok": True,
+    # "status": 204}, or any other bodyless success — cannot confirm the edit,
+    # so it is reported as a failure rather than a false success.
+    if isinstance(result, dict) and result.get("ok") is False:
+        return result
+    return {
+        "ok": False,
+        "error": ("GitHub did not return the updated pull request, so the edit "
+                  "could not be confirmed"),
+        "returned": result,
+    }
+
 @mcp.tool()
 def github_request_copilot_review(
     pr_number: int = 0,
@@ -631,44 +790,12 @@ def github_request_copilot_review(
     server._require_scope("github")
     if org and repo:
         server._require_org_in_scope(org)
-    # Direct addressing (org+repo) supplies no branch of its own. When the
-    # caller also omits pr_number we'd fall through to a PR lookup with an
-    # empty head filter, producing a misleading "No open PR found for
-    # branch ''" error. Require an explicit branch (or pr_number) in that
-    # case before even resolving the repo.
-    if (org and repo) and not pr_number and not branch:
-        return {
-            "ok": False,
-            "error": ("branch is required when using direct org/repo addressing "
-                      "without a pr_number"),
-            "next_steps": [
-                "Pass branch=<feature-branch> so the open PR can be looked up",
-                "Or pass pr_number=<number> to address the PR directly",
-            ],
-        }
-    owner, repo, effective_branch, err = server._resolve_github_repo(
-        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
+
+    owner, repo, effective_pr, err = server._resolve_effective_pr(
+        pr_number=pr_number, workstream_id=workstream_id, branch=branch,
+        org=org, repo=repo)
     if err:
         return err
-
-    effective_pr = pr_number
-    if not effective_pr:
-        if not effective_branch:
-            return {
-                "ok": False,
-                "error": "no branch available to locate an open PR",
-                "next_steps": [
-                    "Pass pr_number explicitly, or supply a branch / workstream_id "
-                    "with a defaultBranch so the open PR can be looked up",
-                ],
-            }
-        # Look up the open PR for the branch.
-        lookup = server._find_open_pr_by_branch(owner, repo, effective_branch)
-        if not lookup.get("ok"):
-            return lookup
-        if not lookup.get("found"):
-            return {"ok": False, "error": f"No open PR found for branch '{effective_branch}'"}
-        effective_pr = lookup["pr"].get("number")
 
     server._audit("github_request_copilot_review", pr_number=effective_pr)
 
