@@ -26,7 +26,12 @@ checks are the commit-message rules of the root ``CLAUDE.md``:
   private product   neither the message nor a line the change adds may name a
                     private downstream product. The names are configuration of
                     the machine, not of this public repository: they are read
-                    from ``AR_PRIVATE_PRODUCT_NAMES`` (comma-separated).
+                    from ``AR_PRIVATE_PRODUCT_NAMES`` (comma-separated). This
+                    check applies only when the repository being committed is
+                    not itself one of those products; a private product's own
+                    repository (identified by its ``origin`` remote name,
+                    compared case-insensitively) naturally names itself, so the
+                    check is skipped there while every other check still runs.
 
 Besides the content checks, a commit needs a branch other than the default
 branch, a staged change, and a message whose first line is not blank; and
@@ -114,6 +119,35 @@ def private_product_names(value: Optional[str] = None) -> list[str]:
     """Returns the configured private product names; ``value`` overrides the environment."""
     raw = os.environ.get(PRIVATE_NAMES_VARIABLE, "") if value is None else value
     return [name.strip() for name in raw.split(",") if name.strip()]
+
+
+def repository_name(origin_url: str) -> Optional[str]:
+    """Returns a repository's name from the URL of its ``origin`` remote, or None.
+
+    The name is the last path component with any trailing ``.git`` removed, for
+    both the ``git@host:owner/name.git`` and ``https://host/owner/name(.git)``
+    forms. An empty or nameless URL (no origin remote) yields None, so a caller
+    can treat the absence of an origin as "name unknown".
+    """
+    url = origin_url.strip()
+    if url.endswith(".git"):
+        url = url[:-len(".git")]
+    url = url.rstrip("/")
+    tail = re.split(r"[/:]", url)[-1] if url else ""
+    return tail or None
+
+
+def names_own_repository(repository: Optional[str], names: Iterable[str]) -> bool:
+    """Returns whether a repository's own name is one of the private product names.
+
+    The comparison is case-insensitive: a repository is its own product whatever
+    the case of either name. A ``None`` repository (no origin remote) is never a
+    match, so the product-name check stays in force when the repository is unknown.
+    """
+    if not repository:
+        return False
+    lowered = repository.lower()
+    return any(lowered == name.lower() for name in names)
 
 
 def private_product_pattern(names: Iterable[str]) -> Optional["re.Pattern[str]"]:

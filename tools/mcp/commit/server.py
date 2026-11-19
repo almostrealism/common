@@ -21,7 +21,11 @@ Configuration via environment variables:
     AR_PRIVATE_PRODUCT_NAMES  Comma-separated names of private products that a
                               commit must not mention (see commit_check.py).
                               When unset, that check is skipped and every
-                              result says so.
+                              result says so. The check is also skipped when the
+                              repository being committed is itself one of those
+                              products -- its own name naturally appears in its
+                              own commits -- as decided from the ``origin``
+                              remote URL; the result says so as a warning.
 """
 
 import os
@@ -123,6 +127,17 @@ def _review(repo_path: str) -> dict:
     names = commit_check.private_product_names()
     products = commit_check.private_product_pattern(names)
 
+    warnings = []
+    origin = _git(root, "config", "--get", "remote.origin.url")
+    repository = commit_check.repository_name(origin.stdout) if origin.returncode == 0 else None
+    if products is None:
+        warnings.append(f"{commit_check.PRIVATE_NAMES_VARIABLE} is not set, so private product "
+                        "names were not checked")
+    elif commit_check.names_own_repository(repository, names):
+        warnings.append(f"the private product name check was skipped because this repository "
+                        f"('{repository}') is itself a configured private product")
+        products = None
+
     def read_ledger(path: str) -> str:
         """Returns a tracked plan ledger's text from the staged index, not the working tree.
 
@@ -142,10 +157,6 @@ def _review(repo_path: str) -> dict:
         problems.append(commit_check.Problem("message", str(message_path), "does not exist"))
     problems.extend(commit_check.change_problems(diff, root, staged, tracked, products, read_ledger))
 
-    warnings = []
-    if products is None:
-        warnings.append(f"{commit_check.PRIVATE_NAMES_VARIABLE} is not set, so private product "
-                        "names were not checked")
     return {
         "root": root,
         "branch": branch,

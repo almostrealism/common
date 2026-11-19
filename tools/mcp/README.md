@@ -84,7 +84,7 @@ For agents working on **this repo** (almostrealism/common), additional project-l
 | ~~ar-consultant~~ | **Retired** — `consult` now lives in ar-manager, which carries the documentation corpus and so works from any repository |
 | **ar-build-validator** | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
 | **ar-test-runner** | Async test execution with structured result parsing |
-| **ar-commit** | Checked commits: commits the staged change with the message in `commit.txt` once both pass the commit-message rules |
+| **ar-commit** | Checked commits: commits the staged change with the message in `commit.txt` once both pass the commit-message rules. The private-product-name check is skipped when the repository being committed is itself a configured private product (its `origin` remote name matches one of `AR_PRIVATE_PRODUCT_NAMES`, case-insensitively); all other checks still run |
 | **ar-jmx** | JVM memory diagnostics via JDK tools |
 | **ar-profile-analyzer** | Profile XML analysis for performance investigation |
 | **ar-docs** | Documentation search |

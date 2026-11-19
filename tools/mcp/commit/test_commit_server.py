@@ -324,5 +324,91 @@ class CommitToolTest(unittest.TestCase):
         self.assertTrue(any("must not be part of the commit" in p for p in result["problems"]), result)
 
 
+class RepositoryNameTest(unittest.TestCase):
+    """The repository name is read from either origin URL form."""
+
+    def test_scp_form(self):
+        self.assertEqual("acme-private",
+                         commit_check.repository_name("git@github.com:acme/acme-private.git"))
+
+    def test_https_form_with_suffix(self):
+        self.assertEqual("acme-private",
+                         commit_check.repository_name("https://github.com/acme/acme-private.git"))
+
+    def test_https_form_without_suffix(self):
+        self.assertEqual("acme-private",
+                         commit_check.repository_name("https://github.com/acme/acme-private"))
+
+    def test_empty_url_has_no_name(self):
+        self.assertIsNone(commit_check.repository_name(""))
+
+    def test_matching_is_case_insensitive(self):
+        self.assertTrue(commit_check.names_own_repository("acmestudio", ["AcmeStudio"]))
+        self.assertTrue(commit_check.names_own_repository("AcmeStudio", ["acmestudio"]))
+        self.assertFalse(commit_check.names_own_repository("some-other-repo", ["acme-private"]))
+        self.assertFalse(commit_check.names_own_repository(None, ["acme-private"]))
+
+
+class RepositoryScopingTest(CommitToolTest):
+    """The product-name check is skipped only in a private product's own repository."""
+
+    def configure(self, names: str, origin: str = None):
+        """Sets the configured product names, and adds an ``origin`` remote when given."""
+        os.environ[commit_check.PRIVATE_NAMES_VARIABLE] = names
+        if origin is not None:
+            self.git("remote", "add", "origin", origin)
+
+    def test_matching_repository_skips_product_check(self):
+        self.configure("acme-private,AcmeStudio", "git@github.com:acme/acme-private.git")
+        self.stage("made for acme-private\n")
+        (self.root / "commit.txt").write_text("Support acme-private\n\nThe acme-private renderer.\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(any("acme-private" in w for w in result["warnings"]), result)
+
+    def test_matching_repository_still_enforces_other_checks(self):
+        self.configure("acme-private", "https://github.com/acme/acme-private.git")
+        self.stage("made for acme-private\n")
+        (self.root / "commit.txt").write_text("Support it\n\nCo-Authored-By: Someone <a@b.c>\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("attribution") for p in result["problems"]), result)
+        self.assertFalse(any(p.startswith("private product") for p in result["problems"]), result)
+
+    def test_non_matching_repository_enforces_product_check(self):
+        self.configure("acme-private", "git@github.com:acme/some-other-repo.git")
+        self.stage("made for acme-private\n")
+        (self.root / "commit.txt").write_text("Change a\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("private product: a.txt:1") for p in result["problems"]), result)
+
+    def test_no_origin_remote_enforces_product_check(self):
+        self.configure("acme-private")
+        self.stage("made for acme-private\n")
+        (self.root / "commit.txt").write_text("Change a\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("private product: a.txt:1") for p in result["problems"]), result)
+
+    def test_case_insensitive_repository_match_skips_product_check(self):
+        self.configure("AcmeStudio", "https://github.com/acme/acmestudio.git")
+        self.stage("made for AcmeStudio\n")
+        (self.root / "commit.txt").write_text("Support AcmeStudio\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(any("acmestudio" in w.lower() for w in result["warnings"]), result)
+
+
 if __name__ == "__main__":
     unittest.main()

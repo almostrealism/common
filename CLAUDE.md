@@ -413,7 +413,10 @@ a private link, temporary identifier or private product name, when the staged li
 temporary identifier or private product name, or when the branch is a default or detached one;
 fix what it reports and call it again. `mcp__ar-commit__check_commit` runs the same checks
 without committing. A successful commit deletes `commit.txt`, so write a new one for the next.
-Without a request to commit, stage only: the developer reviews and commits.
+The private-product-name check applies only when the repository being committed is not itself
+one of the configured products; in a private product's own repository (its `origin` remote name
+matches a configured name, case-insensitively) that check is skipped while every other check
+still runs. Without a request to commit, stage only: the developer reviews and commits.
 
 ## Never Attribute Authorship in a Commit Message
 
