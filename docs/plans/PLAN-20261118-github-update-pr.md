@@ -143,7 +143,7 @@ Behaviour:
   can clear a description on purpose. An empty or whitespace-only `title` is refused locally
   (GitHub requires a title), so the caller gets a clear error instead of a 422.
 - **Resolving the pull request works like `github_request_copilot_review`.** An explicit
-  `pr_number` is used as given. Otherwise the open pull request for the workstream's or the
+  `pr_number` is used as given. Otherwise the open pull request for the workstream or the
   given branch is looked up through `server._find_open_pr_by_branch`. Direct `org`/`repo`
   addressing without `pr_number` requires `branch`. The "pr_number or look it up" block is
   currently written out inside `github_request_copilot_review`. Move it into one shared resolver
@@ -155,10 +155,15 @@ Behaviour:
   not their contents, because a description can be long.
 - **The request is** `server._github_request("PATCH", f"/repos/{owner}/{repo}/pulls/{n}", payload)`.
 - **Check that the edit happened.** GitHub returns the updated pull request. Report `ok=True`
-  only when the returned `title`/`body` equal what was sent. Otherwise return `ok=False` and say
+  only when the returned `title`/`body` match what was sent. Otherwise return `ok=False` and say
   the edit did not take effect. This turns the silent "PATCH became GET" failure described above
   into an error, so it cannot come back unnoticed. Return `number`, `url`, `title`, and which
-  fields were updated.
+  fields were updated. **Match, not byte-equality:** GitHub may canonicalise a field it stores —
+  for example trimming surrounding whitespace from a title, or normalising line endings in a
+  body — so a comparison must tolerate that or a genuine edit is reported as a false failure.
+  Compare after stripping the title and normalising newlines, and see open question 4 for how far
+  to take this. The implementation must verify GitHub's actual normalisation rather than assume
+  it, because the check is only as trustworthy as the cases it does not misfire on.
 - **Archived workstreams.** Recommendation: refuse with the same
   `_archived_workstream_error("update a pull request", ...)` guard as `github_create_pr`. An
   archived round is read-only, and rewriting its pull request's description changes the frozen
@@ -220,7 +225,9 @@ Python (`tools/mcp/manager/test_github_tools.py`, using the existing patch seams
   gives a clear error. Direct `org`/`repo` without `pr_number` or `branch` is refused before
   resolution.
 - A response whose title or body differs from what was sent (the "PATCH answered as GET" case)
-  gives `ok=False`.
+  gives `ok=False`. A response that differs only by GitHub's canonicalisation — a trimmed title,
+  normalised newlines — is still accepted as `ok=True`, so the check does not misfire on a real
+  edit (see open question 4).
 - The archived-workstream guard refuses, as in the `test_create_pr_rejected_for_archived_*` tests.
   Direct addressing is not guarded.
 - `github_request_copilot_review`'s existing tests still pass on the shared resolver.
@@ -274,3 +281,12 @@ Run them as bounded selections (named classes and Python node ids), never a modu
    the description at the end of a round that changed the branch's scope, or only list the tool?
    This plan lists the tool with one sentence on when to use it, and leaves stronger guidance to
    the owner.
+4. **How strict should the "did the edit happen" check be?** The check in Approach step 1 must
+   reject a `PATCH` that was silently answered as a `GET` (the field comes back unchanged) while
+   accepting an edit that GitHub stored with its own canonicalisation (a trimmed title, normalised
+   newlines). The two look similar: both return a value that is not byte-identical to what was
+   sent. This plan recommends comparing stripped, newline-normalised values, which is enough for
+   the whitespace cases GitHub is known to apply. GitHub's exact normalisation was not verified
+   when this plan was written, so the implementation should confirm it against the live endpoint
+   (or a recorded response) before settling the comparison, and fall back to reporting the
+   returned value so a mismatch is diagnosable rather than a bare `ok=False`.
