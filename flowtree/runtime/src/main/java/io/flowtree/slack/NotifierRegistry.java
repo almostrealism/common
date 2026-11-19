@@ -406,19 +406,19 @@ public final class NotifierRegistry {
      * branch matches {@code branch} and that lists {@code repoUrl} among its
      * dependent repositories; returns the first match or {@code null}.
      *
-     * <p>Registration uses this after an exact {@code (branch, repo)} match
-     * misses, to recognise that the branch is already covered by a workstream
-     * whose primary repo is a downstream repository depending on
-     * {@code repoUrl}. A duplicate workstream is then not created. Archived
-     * candidates are excluded here, in the lookup, so the existing
+     * <p>This is the first-match convenience over
+     * {@link #findAllByBranchAndDependentRepo(String, String)}: it recognises
+     * that the branch is already covered by a workstream whose primary repo is
+     * a downstream repository depending on {@code repoUrl}. Registration uses
+     * the plural variant instead, because when several downstream workstreams
+     * share the branch it must examine all of them rather than only the first.
+     * Archived candidates are excluded here, in the lookup, so the existing
      * {@link #findByBranchAndRepo(String, String)} contract is unchanged.</p>
      *
      * @param branch  the branch name to match
      * @param repoUrl the repository URL to find among dependent repos
-     * @return the matching workstream, or {@code null} if none matches
+     * @return the first matching workstream, or {@code null} if none matches
      */
-    // TODO(review): registration now uses findAllByBranchAndDependentRepo; this
-    // singular variant is only referenced by tests — reconcile javadoc or remove.
     public Workstream findByBranchAndDependentRepo(String branch, String repoUrl) {
         if (!byWorkspace.isEmpty()) {
             for (SlackNotifier n : byWorkspace.values()) {
