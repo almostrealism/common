@@ -407,6 +407,29 @@ class RepositoryScopingTest(CommitToolTest):
         self.assertFalse(result["ok"])
         self.assertTrue(any(p.startswith("private product: a.txt:1") for p in result["problems"]), result)
 
+    def test_global_origin_does_not_bypass_product_check(self):
+        # The origin lookup is scoped to the repository-local config, so a
+        # global (or system) remote.origin.url inherited from the invoking
+        # environment cannot stand in for a missing local origin and silently
+        # disable the guard: a repository with no local origin stays fail-closed.
+        self.configure("acme-private")
+        global_config = self.root / "global.gitconfig"
+        global_config.write_text('[remote "origin"]\n\turl = git@github.com:acme/acme-private.git\n')
+        self.stage("made for acme-private\n")
+        (self.root / "commit.txt").write_text("Change a\n")
+        saved = os.environ.get("GIT_CONFIG_GLOBAL")
+        os.environ["GIT_CONFIG_GLOBAL"] = str(global_config)
+        try:
+            result = server.check_commit(str(self.root))
+        finally:
+            if saved is None:
+                os.environ.pop("GIT_CONFIG_GLOBAL", None)
+            else:
+                os.environ["GIT_CONFIG_GLOBAL"] = saved
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("private product: a.txt:1") for p in result["problems"]), result)
+
     def test_case_insensitive_repository_match_skips_product_check(self):
         self.configure("AcmeStudio", "https://github.com/acme/acmestudio.git")
         self.stage("made for AcmeStudio\n")

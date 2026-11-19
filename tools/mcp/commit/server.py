@@ -24,8 +24,11 @@ Configuration via environment variables:
                               result says so. The check is also skipped when the
                               repository being committed is itself one of those
                               products -- its own name naturally appears in its
-                              own commits -- as decided from the ``origin``
-                              remote URL; the result says so as a warning.
+                              own commits -- as decided from the repository-local
+                              ``origin`` remote URL (an inherited global or system
+                              origin is ignored, so a repository with no local
+                              origin stays fail-closed); the result says so as a
+                              warning.
 """
 
 import os
@@ -128,7 +131,7 @@ def _review(repo_path: str) -> dict:
     products = commit_check.private_product_pattern(names)
 
     warnings = []
-    origin = _git(root, "config", "--get", "remote.origin.url")
+    origin = _git(root, "config", "--local", "--get", "remote.origin.url")
     repository = commit_check.repository_name(origin.stdout) if origin.returncode == 0 else None
     if products is None:
         warnings.append(f"{commit_check.PRIVATE_NAMES_VARIABLE} is not set, so private product "
