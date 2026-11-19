@@ -41,21 +41,29 @@ import java.util.Map;
 public class RequestBodyReader implements GitHubProxyHandler.BodyReader, ConsoleFeatures {
 
     /**
+     * The largest request body the reader will read into memory. A pull
+     * request body is at most tens of kilobytes, so a few megabytes is
+     * generous while still bounding the buffer a client's {@code Content-Length}
+     * can force this to allocate — without a bound a declared length of up to
+     * {@link Integer#MAX_VALUE} would be allocated before the body reaches
+     * GitHub, an avoidable memory-exhaustion path.
+     */
+    public static final int MAX_BODY_BYTES = 4 * 1024 * 1024;
+
+    /**
      * Reads the request body from the given session.
      *
      * @param session the NanoHTTPD session
      * @return the body string, or {@code null} when there is none or it cannot be read
+     * @throws InvalidRequestBodyException when a PATCH declares a
+     *         {@code Content-Length} that is missing, unparseable, negative, or
+     *         above {@link #MAX_BODY_BYTES}
      */
     @Override
     public String read(IHTTPSession session) {
         try {
             if (Method.PATCH.equals(session.getMethod())) {
-                String length = session.getHeaders().get("content-length");
-                if (length == null || length.isEmpty()) {
-                    return null;
-                }
-                byte[] bytes = session.getInputStream().readNBytes(Integer.parseInt(length.trim()));
-                return new String(bytes, StandardCharsets.UTF_8);
+                return readPatchBody(session);
             }
             Map<String, String> bodyMap = new HashMap<>();
             session.parseBody(bodyMap);
@@ -67,9 +75,47 @@ public class RequestBodyReader implements GitHubProxyHandler.BodyReader, Console
                 return Files.readString(Path.of(contentFile), StandardCharsets.UTF_8);
             }
             return null;
-        } catch (IOException | ResponseException | IllegalArgumentException e) {
+        } catch (IOException | ResponseException e) {
             warn("Error reading body: " + e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Reads a PATCH body from the session's input stream, bounded by a
+     * validated {@code Content-Length}.
+     *
+     * <p>NanoHTTPD discards a PATCH body, so it is read straight from the
+     * stream. The declared length is checked against {@link #MAX_BODY_BYTES}
+     * <em>before</em> any buffer is allocated: a missing, unparseable,
+     * negative, or over-limit length is rejected with an
+     * {@link InvalidRequestBodyException} rather than trusted to size the
+     * allocation.</p>
+     *
+     * @param session the NanoHTTPD session
+     * @return the body string
+     * @throws IOException                 if the stream cannot be read
+     * @throws InvalidRequestBodyException if the declared length is absent or out of range
+     */
+    private String readPatchBody(IHTTPSession session) throws IOException {
+        String length = session.getHeaders().get("content-length");
+        if (length == null || length.isBlank()) {
+            throw new InvalidRequestBodyException(
+                    "a PATCH request requires a Content-Length header");
+        }
+        long declared;
+        try {
+            declared = Long.parseLong(length.trim());
+        } catch (NumberFormatException e) {
+            throw new InvalidRequestBodyException(
+                    "unparseable Content-Length header: " + length.trim());
+        }
+        if (declared < 0 || declared > MAX_BODY_BYTES) {
+            throw new InvalidRequestBodyException(
+                    "Content-Length " + declared + " is outside the accepted range 0.."
+                            + MAX_BODY_BYTES + " bytes");
+        }
+        byte[] bytes = session.getInputStream().readNBytes((int) declared);
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 }

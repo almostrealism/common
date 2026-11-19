@@ -74,6 +74,39 @@ public class InstructionPromptBuilderTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The GitHub PR section names the review tools and the github_update_pr tool,
+	 * with a sentence on when to use the latter, so an agent granted the tool is
+	 * told it exists and that it corrects a title/description that no longer
+	 * matches the branch. Present only when the workstream URL is set.
+	 */
+	@Test(timeout = 30000)
+	public void includesGithubUpdatePrGuidanceWhenUrlSet() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.setWorkstreamUrl("http://controller:8080/api/workstreams/ws1")
+			.build();
+		assertTrue("Expected the review tools to still be listed",
+			result.contains("github_pr_review_comments"));
+		assertTrue("Expected github_update_pr to be named in the GitHub section",
+			result.contains("github_update_pr"));
+		assertTrue("Expected guidance on when to use github_update_pr",
+			result.contains("no longer matches the branch"));
+	}
+
+	/**
+	 * Without a workstream URL there are no GitHub PR tools in scope, so the
+	 * github_update_pr guidance is absent.
+	 */
+	@Test(timeout = 30000)
+	public void omitsGithubUpdatePrGuidanceWithoutUrl() {
+		String result = new InstructionPromptBuilder()
+			.setPrompt("test")
+			.build();
+		assertFalse("Did not expect github_update_pr without a workstream URL",
+			result.contains("github_update_pr"));
+	}
+
+	/**
 	 * When dependent repos are present, the prompt states that the primary
 	 * repository is the target of the task and that the dependents only support
 	 * it, so the agent does not hunt for work in a dependent checkout.

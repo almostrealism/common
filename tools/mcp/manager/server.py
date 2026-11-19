@@ -51,7 +51,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 # Launched as a script (Dockerfile ENTRYPOINT, start.sh) this file is the
@@ -967,83 +967,16 @@ def _resolve_branch_context(
 # ---------------------------------------------------------------------------
 
 
-# GitHub has no `state=merged`: a merged pull request is a closed one that also
-# carries `merged_at`. Everything else maps straight onto the wire value.
-# Only `merged` needs a full page: it asks GitHub for closed pull requests and
-# filters locally, so the merged one may not be the most recent closure. The
-# others take the first result, so a single-item page is all they need.
-_PR_STATE_QUERIES = {
-    "open": "state=open",
-    "closed": "state=closed&sort=updated&direction=desc&per_page=1",
-    "merged": "state=closed&sort=updated&direction=desc&per_page=100",
-    "all": "state=all&sort=updated&direction=desc&per_page=1",
-}
-
-PR_STATES = tuple(_PR_STATE_QUERIES)
-
-
-def _find_pr_by_branch(owner: str, repo: str, branch: str,
-                       state: str = "open") -> dict:
-    """Look up a pull request for ``branch`` on ``owner/repo``.
-
-    Centralising this avoids drift between the tools that resolve a PR by
-    branch (``github_pr_find``, ``github_request_copilot_review``,
-    ``github_pr_check_status``, ``workstream_context``), which is why the
-    open-only and any-state variants are one function rather than two
-    near-identical ones.
-
-    Args:
-        owner: GitHub org (owner).
-        repo: Repository name.
-        branch: Branch to search for.
-        state: One of :data:`PR_STATES`. ``closed`` follows GitHub and
-            includes merged pull requests; ``merged`` is the subset of those
-            that were actually merged rather than abandoned.
-
-    Returns:
-        ``ok=True`` with ``found=True`` and ``pr`` (the raw GitHub object) on
-        success; ``ok=True`` with ``found=False`` when the branch has no
-        matching pull request; ``ok=False`` with an error when the call fails
-        or returns something unexpected.
-    """
-    query = _PR_STATE_QUERIES.get(state)
-    if query is None:
-        return {
-            "ok": False,
-            "error": f"Invalid state '{state}'. Must be one of: "
-                     + ", ".join(PR_STATES),
-        }
-
-    head = f"{owner}:{branch}"
-    pr_list = _github_request(
-        "GET",
-        f"/repos/{owner}/{repo}/pulls?head={quote(head, safe=':/')}&{query}",
-    )
-    if isinstance(pr_list, dict) and pr_list.get("ok") is False:
-        return pr_list
-    if not isinstance(pr_list, list):
-        return {
-            "ok": False,
-            "error": "Unexpected response listing pull requests",
-        }
-
-    if state == "merged":
-        pr_list = [pr for pr in pr_list if pr.get("merged_at")]
-
-    if not pr_list:
-        return {"ok": True, "found": False, "branch": branch}
-    return {"ok": True, "found": True, "pr": pr_list[0], "branch": branch}
-
-
-def _find_open_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
-    """Look up the first open pull request for ``branch``."""
-    return _find_pr_by_branch(owner, repo, branch, state="open")
-
-
-def _find_recent_pr_by_branch(owner: str, repo: str, branch: str) -> dict:
-    """Look up the most recently updated pull request for ``branch``,
-    whatever its state."""
-    return _find_pr_by_branch(owner, repo, branch, state="all")
+# Pull-request-by-branch lookup lives in pr_lookup for length; re-exported here
+# so the GitHub tools and the test suite keep reaching it through ``server``.
+from pr_lookup import (  # noqa: E402
+    PR_STATES,
+    _PR_STATE_QUERIES,
+    _find_pr_by_branch,
+    _find_open_pr_by_branch,
+    _find_recent_pr_by_branch,
+    _resolve_effective_pr,
+)
 
 
 

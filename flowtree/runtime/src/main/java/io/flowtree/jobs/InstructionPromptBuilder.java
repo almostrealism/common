@@ -804,6 +804,10 @@ public class InstructionPromptBuilder {
             sb.append("GitHub Copilot's per-round summary) -- that content is invisible to ");
             sb.append("github_pr_review_comments and github_pr_conversation.\n\n");
 
+            sb.append("Use github_update_pr to correct a pull request's title or description ");
+            sb.append("when it no longer matches the branch; it edits only those two fields, ");
+            sb.append("and with the PR number omitted it updates the open PR for this branch.\n\n");
+
             sb.append("## Out-of-Scope Review Points\n");
             sb.append("Fix an in-scope defect on this branch. But when a review comment is valid ");
             sb.append("and out of scope for this branch -- an edge case the branch does not need ");

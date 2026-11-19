@@ -189,10 +189,17 @@ public class GitHubProxyHandler implements ConsoleFeatures {
                     + "; supported methods are GET, POST, PUT, PATCH");
         }
 
-        // Read body for POST/PUT/PATCH requests (forwarded to GitHub as-is)
+        // Read body for POST/PUT/PATCH requests (forwarded to GitHub as-is). A
+        // reader may reject a body it will not read (see BodyReader); that
+        // rejection becomes a 4xx rather than an unbounded allocation.
         String payload = null;
         if (!"GET".equals(githubMethod)) {
-            payload = readBody.read(session);
+            try {
+                payload = readBody.read(session);
+            } catch (BodyReader.InvalidRequestBodyException e) {
+                warn("Rejecting GitHub proxy " + githubMethod + ": " + e.getMessage());
+                return error.respond("Invalid request body: " + e.getMessage());
+            }
         }
 
         // Resolve full GitHub API URL
@@ -1333,8 +1340,28 @@ public class GitHubProxyHandler implements ConsoleFeatures {
          *
          * @param session the NanoHTTPD session
          * @return the body string, or {@code null} on error
+         * @throws InvalidRequestBodyException when the request declares a body
+         *         the reader will not read — see that type
          */
         String read(IHTTPSession session);
+
+        /**
+         * Signals that a request declared a body the proxy refuses to read: a
+         * {@code Content-Length} that is missing, unparseable, negative, or
+         * above the reader's size limit. {@link GitHubProxyHandler#handle}
+         * converts it into a 4xx error response, so an abusive or malformed
+         * declaration is rejected rather than allocated for. Unchecked so a
+         * reader that never rejects keeps the plain {@link #read} contract.
+         */
+        class InvalidRequestBodyException extends RuntimeException {
+
+            /**
+             * @param message the human-readable reason the body was rejected
+             */
+            public InvalidRequestBodyException(String message) {
+                super(message);
+            }
+        }
     }
 
     /**

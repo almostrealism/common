@@ -590,26 +590,30 @@ def github_create_pr(
         return response
     return result
 
-def _normalise_pr_field(value: str) -> str:
-    """Normalise a PR title/body for the did-the-edit-happen comparison.
+def _normalise_pr_field(field: str, value: str) -> str:
+    """Canonicalise a PR field for the did-the-edit-happen comparison.
 
-    GitHub may canonicalise a field it stores — trimming surrounding
-    whitespace, or rewriting CRLF to LF — so comparing the returned value to
-    the sent value byte-for-byte would misreport a successful edit as dropped.
-    Both sides are normalised the same way before comparison: CRLF is folded to
-    LF and surrounding whitespace is stripped.
+    GitHub rewrites CRLF to LF when it stores either field, so that is folded
+    for both. GitHub also trims surrounding whitespace from a *title* (but
+    never from a body), so only the title is stripped. The body is left
+    otherwise intact: stripping both sides would let a silently ignored PATCH
+    of ``" Body "`` pass as applied when the stored body is ``"Body"``, which
+    is exactly the false-success the comparison exists to catch.
 
     Args:
+        field: The field name — ``"title"`` or ``"body"``. Comes first so the
+            comparison knows which canonicalisation to apply to ``value``.
         value: The field value, possibly ``None``.
 
     Returns:
         The normalised value; empty string when ``value`` is falsy.
     """
-    return (value or "").replace("\r\n", "\n").strip()
+    normalised = (value or "").replace("\r\n", "\n")
+    return normalised.strip() if field == "title" else normalised
 
 @mcp.tool()
 def github_update_pr(
-    pr_number: int,
+    pr_number: int = 0,
     title: Optional[str] = None,
     body: Optional[str] = None,
     workstream_id: str = "",
@@ -625,17 +629,22 @@ def github_update_pr(
     request whose title or description no longer matches the branch.
 
     Args:
-        pr_number: The PR number. Must be a positive integer.
+        pr_number: The PR number. When omitted (``0``), the open PR for the
+            workstream/branch is looked up automatically, the same way
+            ``github_request_copilot_review`` does. A negative number is
+            rejected.
         title: New PR title. ``None`` (the default) leaves the title
             unchanged; an empty or whitespace-only title is rejected because
             GitHub requires a non-empty title.
         body: New PR description. ``None`` (the default) leaves the
             description unchanged; pass an empty string to clear it.
         workstream_id: Workstream to resolve repo from. Defaults to token context.
-        branch: Branch hint.
+        branch: Branch hint used both to resolve the repo and, when
+            ``pr_number`` is omitted, to look up the open PR.
         org: GitHub org (owner) to address directly. Must be passed together
             with ``repo``. Bypasses workstream resolution; scoped tokens are
-            checked against this org via the workspace scope gate.
+            checked against this org via the workspace scope gate. With direct
+            addressing a ``branch`` is required when ``pr_number`` is omitted.
         repo: GitHub repository name. Must be passed together with ``org``.
 
     Returns:
@@ -647,8 +656,8 @@ def github_update_pr(
     if org and repo:
         server._require_org_in_scope(org)
 
-    if not isinstance(pr_number, int) or isinstance(pr_number, bool) or pr_number <= 0:
-        return {"ok": False, "error": "pr_number must be a positive integer"}
+    if isinstance(pr_number, bool) or not isinstance(pr_number, int) or pr_number < 0:
+        return {"ok": False, "error": "pr_number must be a non-negative integer"}
     if title is not None and not title.strip():
         return {"ok": False, "error": "title must not be empty or only whitespace"}
     payload = {}
@@ -664,27 +673,28 @@ def github_update_pr(
             "error": "nothing to update: pass a title, a body, or both",
         }
 
-    owner, repo, _, err = server._resolve_github_repo(
-        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
+    owner, repo, effective_pr, err = server._resolve_effective_pr(
+        pr_number=pr_number, workstream_id=workstream_id, branch=branch,
+        org=org, repo=repo)
     if err:
         return err
 
     updated_fields = sorted(payload)
-    server._audit("github_update_pr", pr_number=pr_number, fields=updated_fields)
+    server._audit("github_update_pr", pr_number=effective_pr, fields=updated_fields)
 
     result = server._github_request(
-        "PATCH", f"/repos/{owner}/{repo}/pulls/{pr_number}", payload)
+        "PATCH", f"/repos/{owner}/{repo}/pulls/{effective_pr}", payload)
     if result.get("number"):
         # A proxy that does not forward PATCH answers with the unchanged PR
         # (HTTP 200), so success is reported only when the response shows
-        # every sent field with its new value. The comparison normalises both
-        # sides (CRLF to LF, surrounding whitespace stripped) so GitHub
-        # canonicalising a stored field is not misread as the edit being
-        # dropped.
+        # every sent field with its new value. The comparison is
+        # field-specific: a title is folded to LF and trimmed (GitHub trims
+        # titles), a body is only folded to LF and never trimmed, so a
+        # whitespace-only body edit answered as a GET is still caught.
         unchanged = [
             field for field in updated_fields
-            if _normalise_pr_field(result.get(field))
-            != _normalise_pr_field(payload[field])
+            if _normalise_pr_field(field, result.get(field))
+            != _normalise_pr_field(field, payload[field])
         ]
         if unchanged:
             return {
@@ -745,44 +755,12 @@ def github_request_copilot_review(
     server._require_scope("github")
     if org and repo:
         server._require_org_in_scope(org)
-    # Direct addressing (org+repo) supplies no branch of its own. When the
-    # caller also omits pr_number we'd fall through to a PR lookup with an
-    # empty head filter, producing a misleading "No open PR found for
-    # branch ''" error. Require an explicit branch (or pr_number) in that
-    # case before even resolving the repo.
-    if (org and repo) and not pr_number and not branch:
-        return {
-            "ok": False,
-            "error": ("branch is required when using direct org/repo addressing "
-                      "without a pr_number"),
-            "next_steps": [
-                "Pass branch=<feature-branch> so the open PR can be looked up",
-                "Or pass pr_number=<number> to address the PR directly",
-            ],
-        }
-    owner, repo, effective_branch, err = server._resolve_github_repo(
-        workstream_id=workstream_id, branch=branch, owner=org, repo=repo)
+
+    owner, repo, effective_pr, err = server._resolve_effective_pr(
+        pr_number=pr_number, workstream_id=workstream_id, branch=branch,
+        org=org, repo=repo)
     if err:
         return err
-
-    effective_pr = pr_number
-    if not effective_pr:
-        if not effective_branch:
-            return {
-                "ok": False,
-                "error": "no branch available to locate an open PR",
-                "next_steps": [
-                    "Pass pr_number explicitly, or supply a branch / workstream_id "
-                    "with a defaultBranch so the open PR can be looked up",
-                ],
-            }
-        # Look up the open PR for the branch.
-        lookup = server._find_open_pr_by_branch(owner, repo, effective_branch)
-        if not lookup.get("ok"):
-            return lookup
-        if not lookup.get("found"):
-            return {"ok": False, "error": f"No open PR found for branch '{effective_branch}'"}
-        effective_pr = lookup["pr"].get("number")
 
     server._audit("github_request_copilot_review", pr_number=effective_pr)
 

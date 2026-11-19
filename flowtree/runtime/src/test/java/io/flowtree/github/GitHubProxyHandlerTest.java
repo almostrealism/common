@@ -41,6 +41,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 /**
  * Tests the derivation of a pull request title and body from the commit message
@@ -337,6 +338,59 @@ public class GitHubProxyHandlerTest extends TestSuiteBase {
                 Map.of("content-length", String.valueOf(bytes.length)), stream);
 
         assertEquals(body, new RequestBodyReader().read(session));
+    }
+
+    /**
+     * A malformed {@code Content-Length} is rejected, not parsed and trusted to
+     * size an allocation. {@link RequestBodyReader} throws rather than reading.
+     */
+    @Test(timeout = 10000)
+    public void patchWithMalformedContentLengthIsRejected() {
+        IHTTPSession session = new FakeSession(Method.PATCH, Map.of(),
+                Map.of("content-length", "not-a-number"),
+                new ByteArrayInputStream("{}".getBytes(StandardCharsets.UTF_8)));
+        try {
+            new RequestBodyReader().read(session);
+            fail("a malformed Content-Length must be rejected, not read");
+        } catch (GitHubProxyHandler.BodyReader.InvalidRequestBodyException expected) {
+            assertTrue(expected.getMessage().contains("Content-Length"));
+        }
+    }
+
+    /**
+     * A {@code Content-Length} above the reader's bound is refused with a 4xx
+     * before any buffer is allocated, and no request reaches GitHub. The stub
+     * counts every request it receives, proving the over-size body was never
+     * forwarded.
+     */
+    @Test(timeout = 30000)
+    public void patchOverSizeLimitIsRejectedWithoutReaching() throws IOException {
+        AtomicInteger hits = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            hits.incrementAndGet();
+            respond(exchange, "{}");
+        });
+        server.start();
+        try {
+            GitHubProxyHandler handler = new GitHubProxyHandler(
+                    Map.of("almostrealism", "tok"),
+                    "http://127.0.0.1:" + server.getAddress().getPort());
+            long overLimit = (long) RequestBodyReader.MAX_BODY_BYTES + 1;
+            IHTTPSession session = new FakeSession(Method.PATCH,
+                    Map.of("url", "/repos/almostrealism/common/pulls/5"),
+                    Map.of("content-length", String.valueOf(overLimit)),
+                    new ByteArrayInputStream(new byte[0]));
+
+            Response response = handler.handle(session, Method.PATCH,
+                    new RequestBodyReader(), GitHubProxyHandlerTest::errorResponse);
+
+            assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+            assertTrue(bodyOf(response).contains("Content-Length"));
+            assertEquals("an over-limit body never reaches GitHub", 0, hits.get());
+        } finally {
+            server.stop(0);
+        }
     }
 
     /**

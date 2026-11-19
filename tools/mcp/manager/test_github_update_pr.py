@@ -87,20 +87,65 @@ class TestGithubUpdatePr(unittest.TestCase):
         mock_gh.assert_not_called()
 
     @patch.object(server, "_github_request")
-    def test_non_positive_pr_number_rejected(self, mock_gh, mock_repo):
-        for bad in (0, -3):
-            result = server.github_update_pr(pr_number=bad, title="New")
-            self.assertFalse(result["ok"])
+    def test_negative_pr_number_rejected(self, mock_gh, mock_repo):
+        result = server.github_update_pr(pr_number=-3, title="New")
+        self.assertFalse(result["ok"])
         mock_gh.assert_not_called()
 
     @patch.object(server, "_github_request")
-    def test_whitespace_only_difference_is_success(self, mock_gh, mock_repo):
-        """A title GitHub trims is still the edit we sent, so ok=True."""
-        mock_gh.return_value = self._pr(title="New", body="Body text")
+    def test_looks_up_open_pr_when_number_omitted(self, mock_gh, mock_repo):
+        """With no pr_number, the open PR for the branch is looked up first."""
+        mock_gh.side_effect = [
+            [{"number": 7}],            # open-PR lookup for the branch
+            self._pr(title="New"),      # PATCH response
+        ]
+        result = server.github_update_pr(title="New")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        # The PATCH targets the looked-up PR number.
+        method, path, _ = mock_gh.call_args.args
+        self.assertEqual("PATCH", method)
+        self.assertEqual("/repos/org/repo/pulls/7", path)
+
+    @patch.object(server, "_github_request", return_value=[])
+    def test_no_open_pr_is_error(self, mock_gh, mock_repo):
+        """When the branch has no open PR, the omitted-number path errors."""
+        result = server.github_update_pr(title="New")
+        self.assertFalse(result["ok"])
+        self.assertIn("No open PR", result["error"])
+
+    @patch.object(server, "_require_org_in_scope")
+    @patch.object(server, "_github_request")
+    def test_direct_org_repo_without_pr_or_branch_refused(
+            self, mock_gh, mock_gate, mock_repo):
+        """Direct org/repo addressing needs a branch when pr_number is omitted."""
+        result = server.github_update_pr(title="New", org="org", repo="repo")
+        self.assertFalse(result["ok"])
+        self.assertIn("branch is required", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    def test_whitespace_only_title_difference_is_success(self, mock_gh, mock_repo):
+        """A title GitHub trims, and a body differing only in CRLF, are the
+        edit we sent, so ok=True."""
+        mock_gh.return_value = self._pr(title="New", body="Body text\n")
         result = server.github_update_pr(
             pr_number=7, title="  New  ", body="Body text\r\n")
         self.assertTrue(result["ok"], msg=result.get("error"))
         self.assertEqual(["body", "title"], result["updated_fields"])
+
+    @patch.object(server, "_github_request")
+    def test_body_whitespace_difference_is_not_success(self, mock_gh, mock_repo):
+        """A PATCH silently answered as a GET is caught on body whitespace.
+
+        Requesting body ``" Body "`` when the stored body is ``"Body"`` is a
+        real, unapplied change: the body comparison must not strip, so this
+        reports ok=False instead of a false success.
+        """
+        mock_gh.return_value = self._pr(body="Body")
+        result = server.github_update_pr(pr_number=7, body=" Body ")
+        self.assertFalse(result["ok"])
+        self.assertIn("body", result["error"])
+        self.assertEqual({"body": "Body"}, result["returned"])
 
     @patch.object(server, "_github_request")
     def test_unchanged_response_is_not_success(self, mock_gh, mock_repo):
