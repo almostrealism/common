@@ -52,14 +52,17 @@ public class DefaultRandomSourceTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Generates standard normal values with the counter implementation, seeded from whatever the
-	 * default source currently is.
+	 * Generates standard normal values with the counter implementation, seeded from a
+	 * generator-owned source derived from the default. This is the source a counter generator
+	 * receives in production, where {@link RandomProducer#create(TraversalPolicy, boolean, Random)}
+	 * resolves a {@code null} source through {@link DefaultRandomSource#generator()} rather than
+	 * handing out the shared {@link DefaultRandomSource#current()} source.
 	 *
 	 * @return the generated values
 	 */
 	private double[] counterFill() {
 		RandomProducer random = RandomProducer.Implementation.COUNTER
-				.create(SHAPE, true, DefaultRandomSource.current());
+				.create(SHAPE, true, DefaultRandomSource.generator());
 		PackedCollection out = random.get().evaluate();
 		double[] result = out.toArray();
 		out.destroy();

@@ -134,13 +134,20 @@ public interface RandomProducer extends CollectionProducer {
 		};
 
 		/**
-		 * Creates a generator of this implementation.
+		 * Creates a generator of this implementation from an already-resolved source.
+		 *
+		 * <p>Callers normally reach this through
+		 * {@link #create(TraversalPolicy, boolean, java.util.Random)}, which resolves a
+		 * {@code null} source against the {@link DefaultRandomSource default source} before
+		 * dispatching here. A {@code null} passed directly produces an unseeded generator, except
+		 * that {@link #JAVA} still resolves it against the default source through
+		 * {@link Random#Random(TraversalPolicy, boolean)}.</p>
 		 *
 		 * @param shape  the shape of the values
 		 * @param normal {@code true} for standard normal values, {@code false} for uniform
 		 *               values
-		 * @param source the source that seeds the generator, or {@code null} for an unseeded
-		 *               generator
+		 * @param source the already-resolved source that seeds the generator, or {@code null} as
+		 *               described above
 		 * @return the generator
 		 */
 		public abstract RandomProducer create(TraversalPolicy shape, boolean normal, java.util.Random source);

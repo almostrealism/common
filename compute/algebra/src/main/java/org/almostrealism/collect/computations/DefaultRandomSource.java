@@ -81,9 +81,9 @@ public final class DefaultRandomSource {
 	}
 
 	/**
-	 * Returns the default source to the unseeded state. {@link #current()} then returns
-	 * {@code null} again, restoring the behaviour of each generator drawing from its own fresh
-	 * {@link java.util.Random}.
+	 * Returns the default source to the unseeded state. {@link #generator()} and {@link #current()}
+	 * then return {@code null} again, restoring the behaviour of each generator drawing from its own
+	 * fresh {@link java.util.Random}.
 	 */
 	public static void clear() {
 		source = null;
@@ -91,13 +91,15 @@ public final class DefaultRandomSource {
 	}
 
 	/**
-	 * Returns the seeded default source, or {@code null} when the source is unseeded. A
-	 * {@code null} result is the signal that a generator should fall back to its own fresh
-	 * {@link java.util.Random}, leaving unseeded behaviour unchanged.
+	 * Returns the shared seeded source itself, or {@code null} when the source is unseeded. This is
+	 * the raw accessor to the one process-wide source; generators do not draw from it directly but
+	 * derive their own {@link java.util.Random} through {@link #generator()}, so that no generator
+	 * retains the shared source. It is provided for callers that need to seed a derivation from the
+	 * shared source on their own terms.
 	 *
-	 * @return the seeded default source, or {@code null} when unseeded
+	 * @return the shared seeded source, or {@code null} when unseeded
+	 * @see #generator()
 	 */
-	// TODO(review): javadoc predates generator(); generators now resolve through generator(), not current()
 	public static java.util.Random current() {
 		return source;
 	}
