@@ -355,6 +355,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"tracker_get_task",
 			"tracker_list_tasks",
 			"tracker_update_task",
+			"tracker_append_task_evidence",
 			"tracker_delete_task",
 			"tracker_search_tasks",
 			"tracker_project_summary",
@@ -1066,6 +1067,22 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			assertFalse(removed + " was replaced by the general tracker tools and must"
 				+ " not be registered", registered.contains(removed));
 		}
+	}
+
+	/**
+	 * Verifies that {@code tracker_append_task_evidence} declares exactly the
+	 * task id and the evidence text. The tool is append-only by design, so a
+	 * parameter that could name another field (status, stage, workstream,
+	 * source) must never appear in its signature.
+	 */
+	@Test(timeout = 30000)
+	public void managerAppendTaskEvidenceDeclaresOnlyTaskAndEvidence() {
+		List<Path> managerSources = McpToolDiscovery.locateManagerSources();
+		assertFalse("manager tool sources must be locatable", managerSources.isEmpty());
+
+		List<String> params =
+			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_append_task_evidence");
+		assertEquals(Arrays.asList("task_id", "evidence"), params);
 	}
 
 	/**

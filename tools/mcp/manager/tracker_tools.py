@@ -32,12 +32,18 @@ is calling:
   of a new task, edit any task in its workspace, and create releases.
 * Any other agent job may edit only the tasks linked to its own workstream —
   the task its branch was given — and may not move them out of its hands.
+* Any caller may add evidence to an open task of its workspace with
+  ``tracker_append_task_evidence``. That is append-only: the existing text is
+  kept, the new section records the calling job's provenance from its token,
+  and no other field can change. It is how a round that finds a problem an
+  open task already tracks adds to that task instead of filing a duplicate.
 * A caller with no job binding (a person) is limited only by its workspaces.
   Deleting, and changing projects and releases, are left to people: those
   tools are not granted to agents (``McpConfigBuilder``), and refuse an
   agent job's token here too.
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import urlencode
 
@@ -491,6 +497,12 @@ def tracker_create_task(
     that is outside what you were asked to do — an improvement, an edge case, a
     refactor — file it here instead of doing it on your branch.
 
+    Before filing, look for an open task that already tracks the same thing
+    (tracker_search_tasks with status="open" — for a test, search the exact
+    ``Class#method`` as a quoted phrase and then the bare class name). If one
+    does, add what you found to it with tracker_append_task_evidence and report
+    that task's id instead of filing a duplicate.
+
     If you are an agent whose workstream does not hold the ``planner`` role,
     give only the title, description, project and (optionally) release. The
     task goes into the project's backlog, unclaimed and at medium priority, for
@@ -762,6 +774,71 @@ def tracker_update_task(
     return server._tracker_put(f"/v1/tasks/{task_id}", payload)
 
 
+def _evidence_header(caller_ws: Optional[str], caller_job: Optional[str]) -> str:
+    """Return the header that opens a section of appended evidence.
+
+    It records who added the section and when: the calling job's provenance
+    (taken from its token) for an agent job, or ``person`` for a caller with no
+    job binding, and the current UTC date.
+    """
+    author = (_job_provenance(caller_ws, caller_job) if caller_ws and caller_job
+              else caller_ws or _PERSON_SOURCE)
+    today = datetime.now(timezone.utc).date().isoformat()
+    return f"### Evidence added by {author} on {today}"
+
+
+@mcp.tool()
+def tracker_append_task_evidence(task_id: str, evidence: str) -> dict:
+    """Add evidence to an existing open task, keeping everything already in it.
+
+    Use this instead of filing a duplicate when an open task already tracks
+    what you found — a flaky test someone already reported, a defect already
+    described. Any agent may append to any open task of its workspace, whether
+    or not it holds the ``planner`` role.
+
+    The task's title and existing description are kept exactly. Your text is
+    added at the end of the description under a header naming your job (from
+    your token) and today's date. Nothing else about the task changes: not its
+    status, stage, priority, project, release, workstream link, provenance or
+    blockers.
+
+    Args:
+        task_id: UUID of the open task to add evidence to (see
+            tracker_search_tasks with status="open").
+        evidence: The new evidence and diagnosis, in Markdown: what you ran or
+            read, the outcomes, and what you believe the cause is.
+
+    Returns:
+        dict with ok=True and the updated task record, or ok=False with the
+        reason: the task is closed, the evidence is blank, or the description
+        would grow past the tracker's length limit.
+    """
+    server._require_scope("write")
+    if not evidence.strip():
+        return {"ok": False, "error": "evidence is required"}
+    task, error = _fetch(f"/v1/tasks/{task_id}", "task", "task")
+    if error:
+        return error
+    if task.get("status") != "open":
+        return {"ok": False, "error": (
+            f"Task {task_id} is {task.get('status') or 'not open'}; evidence may be "
+            "added only to an open task. File a new task with tracker_create_task.")}
+    caller_ws, caller_job = _caller_job()
+    existing = task.get("description") or ""
+    section = _evidence_header(caller_ws, caller_job) + "\n\n" + evidence.strip()
+    description = (existing.rstrip("\n") + "\n\n" + section) if existing else section
+    if len(description) > _DESCRIPTION_MAX:
+        return {"ok": False, "error": (
+            f"Appending this evidence would make the description of task {task_id} "
+            f"{len(description)} characters, over the {_DESCRIPTION_MAX}-character "
+            "limit; the existing text is never truncated. Shorten the evidence, or "
+            "file a new task that references this one.")}
+    server._audit("tracker_append_task_evidence", task_id=task_id,
+                  caller_workstream_id=caller_ws)
+    # TODO(review): read-modify-write; a concurrent append or edit between the GET and this PUT is silently lost.
+    return server._tracker_put(f"/v1/tasks/{task_id}", {"description": description})
+
+
 @mcp.tool()
 def tracker_delete_task(task_id: str) -> dict:
     """Delete a tracker task permanently.
@@ -793,7 +870,9 @@ def tracker_search_tasks(
     """Full-text search over the titles and descriptions of your workspace's tasks.
 
     Uses SQLite FTS5 for efficient full-text search. Supports
-    phrase queries ("exact phrase"), NOT, AND, OR operators.
+    phrase queries ("exact phrase"), NOT, AND, OR operators. Punctuation such
+    as ``#`` is a syntax error outside a phrase, so search for a test method as
+    a quoted phrase: query='"Class#method"'.
 
     Pass fields="headlines" to receive a compact projection (no description)
     when scanning many search results. Use tracker_get_task to retrieve the
