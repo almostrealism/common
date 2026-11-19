@@ -38,8 +38,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -273,6 +276,54 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 */
 	public void setNetworks(List<GenomicNetwork> networks) {
 		replaceRecords(new ArrayList<>(networks));
+	}
+
+	/**
+	 * Reduces the population to the {@code count} highest-scoring records, removing
+	 * the rest. A caller trimming a population this way keeps its best members rather
+	 * than whichever happen to come first in the list.
+	 *
+	 * <p>Records rank by their {@link GenomicNetwork#getHealthScore() health score}
+	 * (its {@link AudioHealthScore#getScore() score}), highest first. A record with no
+	 * score yet ranks below every scored one, so unscored records are dropped before
+	 * any scored record is. Records of equal rank are kept in the order they occupy
+	 * now, so a record earlier in the current list outranks a later one carrying the
+	 * same score (and both unscored records tie by position).</p>
+	 *
+	 * <p>The kept records stay in their existing relative order: this trims the
+	 * population, it does not reorder it into score order. The change is applied
+	 * through {@link #setNetworks(List)}, so records, persistence, and listeners
+	 * behave exactly as they do for any other replacement of the population.</p>
+	 *
+	 * @param count how many of the best-scoring records to keep; at or above the
+	 *              current population size this leaves the population unchanged, and
+	 *              zero empties it
+	 * @throws IllegalArgumentException if {@code count} is negative
+	 */
+	public void retainBest(int count) {
+		if (count < 0) {
+			throw new IllegalArgumentException("count must not be negative (was " + count + ")");
+		}
+
+		List<GenomicNetwork> snapshot = getNetworks();
+		if (count >= snapshot.size()) return;
+
+		List<Integer> ranked = new ArrayList<>();
+		for (int i = 0; i < snapshot.size(); i++) ranked.add(i);
+
+		// Rank by score descending - an unscored record sits at negative infinity, so
+		// below every scored one - and break ties by current position, earliest first.
+		ranked.sort(Comparator.comparingDouble((Integer i) -> snapshot.get(i).getScoreValue())
+				.reversed().thenComparingInt(i -> i));
+
+		Set<Integer> keep = new HashSet<>(ranked.subList(0, count));
+
+		List<GenomicNetwork> retained = new ArrayList<>();
+		for (int i = 0; i < snapshot.size(); i++) {
+			if (keep.contains(i)) retained.add(snapshot.get(i));
+		}
+
+		setNetworks(retained);
 	}
 
 	/**
