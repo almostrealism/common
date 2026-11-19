@@ -180,7 +180,8 @@ implementation, not across implementations.
    test tree). These are new tests; no existing test is modified.
    - After `seed(s)`, two `randnFill()` results are identical; a different seed makes them differ,
      for both the host (`randnFill`) and counter (`Implementation.COUNTER.create(shape, normal,
-     DefaultRandomSource.current())`) implementations.
+     DefaultRandomSource.generator())`, the generator-owned source a counter generator receives
+     in production) implementations.
    - After `clear()`, `current()` is `null` and two fills differ.
    - Calling `resetRandomSeed()` twice yields the same first `randn` draw.
    - An explicit source still overrides the default.

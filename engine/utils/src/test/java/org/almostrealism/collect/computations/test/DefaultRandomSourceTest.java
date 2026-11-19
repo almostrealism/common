@@ -66,6 +66,7 @@ public class DefaultRandomSourceTest extends TestSuiteBase {
 		PackedCollection out = random.get().evaluate();
 		double[] result = out.toArray();
 		out.destroy();
+		random.destroy();
 		return result;
 	}
 
