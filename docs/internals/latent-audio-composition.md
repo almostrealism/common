@@ -24,7 +24,7 @@ validation) is covered by `AudioComposerTest` in the same package.
 
 | Part | Module | Classes |
 |---|---|---|
-| The autoencoder contract | `engine/ml` (`org.almostrealism.ml.audio`) | `AutoEncoder`, `OobleckAutoEncoder` |
+| The autoencoder contract | `engine/ml` (`org.almostrealism.ml.audio`) | `AutoEncoder` |
 | Composition | `studio/compose` (`org.almostrealism.studio.ml`) | `AudioComposer`, `ComposableAudioFeatures` |
 | Compiled-model autoencoder | `studio/compose` (`org.almostrealism.studio.ml`) | `CompiledModelAutoEncoder` |
 | ONNX autoencoder | `extern/ml-onnx` | `OnnxAutoEncoder` |
@@ -41,8 +41,10 @@ representation:
   maps a latent producer back to audio. Both are `Producer` transforms: they describe work,
   they do not perform it.
 - `getSampleRate()` is the audio rate and `getLatentSampleRate()` the latent frame rate. Their
-  ratio is the time compression of the latent (for a 44.1 kHz model with a 2048-sample hop,
-  roughly 21.5 latent frames per second of audio).
+  ratio `getSampleRate() / getLatentSampleRate()` is the time compression of the latent — the
+  number of audio samples per latent frame (2048 for a 44.1 kHz model with a 2048-sample hop).
+  `getLatentSampleRate()` itself is the frame rate, roughly 21.5 latent frames per second of
+  audio for that model.
 - `getMaximumDuration()` bounds the length of audio the model accepts.
 
 Composition happens in the latent space rather than on raw samples because the latent is
@@ -244,9 +246,9 @@ composition.
   it is given and calls `decoder.forward` on the result.
 - `OnnxAutoEncoder.decode` (`extern/ml-onnx`) wraps an ONNX Runtime call in `func(…)`.
 
-So the decoded audio is never compiled into the blend kernel. The pattern to copy is the one the
-diffusion callers use: evaluate the composed latent through the optimizer at the boundary, then
-decode the evaluated latent.
+So the decoded audio is never compiled into the blend kernel. The pattern to copy is the
+two-step one shown by the worked example below: evaluate the composed latent through the
+optimizer at the boundary, then decode the evaluated latent.
 
 ```java
 // LatentAudioCompositionExamplesTest.decodeComposedLatent
