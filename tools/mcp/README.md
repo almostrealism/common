@@ -112,7 +112,7 @@ See `flowtree/runtime/src/main/resources/workstreams-example.yaml` for full conf
 | **ar-memory** | [memory/](memory/) | Centralized HTTP memory service with embedding-based search |
 | **ar-build-validator** | [build-validator/](build-validator/) | Static analysis: checkstyle, code policy, test timeouts, duplicate code, ErrorProne |
 | **ar-test-runner** | [test-runner/](test-runner/) | Async test execution with structured result parsing |
-| **ar-commit** | [commit/](commit/) | Checked commits: refuses author attribution, private links, temporary identifiers and private product names, then commits and deletes `commit.txt` |
+| **ar-commit** | [commit/](commit/) | Checked commits: refuses author attribution, private links, temporary identifiers and private product names, then commits and deletes `commit.txt`. The private-product-name check is skipped when the repository being committed is itself a configured private product (its `origin` remote name matches one of `AR_PRIVATE_PRODUCT_NAMES`, case-insensitively); all other checks still run |
 | **ar-jmx** | [jmx/](jmx/) | JVM memory diagnostics via JDK tools (jcmd, jstat, JFR) |
 | **ar-profile-analyzer** | [profile-analyzer/](profile-analyzer/) | Profile XML analysis for performance investigation |
 
