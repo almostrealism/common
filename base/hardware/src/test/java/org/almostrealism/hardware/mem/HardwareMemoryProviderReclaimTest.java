@@ -302,6 +302,39 @@ public class HardwareMemoryProviderReclaimTest {
 	}
 
 	/**
+	 * A release of finished work that throws an {@link Error}, not only a {@link RuntimeException},
+	 * does not stop the collection pass: {@link io.almostrealism.lifecycle.Destroyable#releaseAll}
+	 * rethrows an {@link Error} as readily as a {@link RuntimeException}, so an aggregated callback
+	 * failure such as an {@link AssertionError} from Metal completion-callback draining must be
+	 * logged and swallowed too, leaving the garbage collection to free room and the allocation to
+	 * succeed on memory grounds.
+	 */
+	@Test(timeout = 30000)
+	public void reclaimCollectsWhenFinishedWorkReleaseThrowsError() {
+		long max = 100;
+		AtomicLong used = new AtomicLong(max);
+		StepProvider provider = new StepProvider() {
+			@Override
+			protected void releaseFinishedWork() {
+				steps.add("release");
+				throw new AssertionError("release failure");
+			}
+
+			@Override
+			protected void collectGarbage() {
+				super.collectGarbage();
+				used.set(0);
+			}
+		};
+
+		Assert.assertTrue("The collection must still free room after a release Error",
+				provider.reserve(used, max, 40));
+		Assert.assertEquals("The collection must run after the failed release",
+				List.of("release", "collect"), provider.steps);
+		Assert.assertEquals("The reservation must be counted", 40, used.get());
+	}
+
+	/**
 	 * A data context whose release of finished work throws does not stop the release of the
 	 * contexts after it: every context is asked, the failure is logged, and the allocation fits
 	 * using the room the later context gave back.

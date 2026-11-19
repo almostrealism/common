@@ -495,13 +495,18 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 	 * surface in the thread that happens to be allocating, which should fail or succeed on memory
 	 * grounds alone.
 	 *
+	 * <p>Both failure categories {@link Destroyable#releaseAll(Iterable)} rethrows — a
+	 * {@link RuntimeException} and an {@link Error} — are logged and swallowed, since a reclaim
+	 * release aggregates arbitrary callbacks (such as Metal completion-callback draining) whose
+	 * {@link Error} must not escape the collection any more than a {@link RuntimeException} would.</p>
+	 *
 	 * @param description names the release for the log message when it fails
 	 * @param release     the release to run
 	 */
 	private void releaseQuietly(String description, Runnable release) {
 		try {
 			release.run();
-		} catch (RuntimeException e) {
+		} catch (RuntimeException | Error e) {
 			warn(description + " failed during reclaim", e);
 		}
 	}

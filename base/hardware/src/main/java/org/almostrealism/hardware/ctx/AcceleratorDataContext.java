@@ -20,11 +20,13 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.compute.ComputeRequirement;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -239,16 +241,25 @@ public abstract class AcceleratorDataContext<M extends HardwareMemoryProvider<?>
 	 * Neither context is created and the device is not started, so a data context that has never
 	 * run any work does nothing. Scoped contexts of other threads are not visited: each is
 	 * destroyed, and so releases its work, when its scope ends.
+	 *
+	 * <p>Both releases are attempted even when the first fails, so a shared context whose release
+	 * throws (for example, a Metal runner rethrowing a finished command-buffer callback failure)
+	 * cannot leave the scoped runner's finished work pinned; the first failure is rethrown once
+	 * both have run, with any later one attached as suppressed (see
+	 * {@link Destroyable#releaseAll(Iterable)}). This matches the best-effort reclaim contract of
+	 * {@link HardwareMemoryProvider#releaseFinishedWork()}.</p>
 	 */
 	@Override
 	public void releaseFinishedWork() {
 		if (isDestroyed()) return;
 
 		ComputeContext<MemoryData> shared = sharedContext;
-		if (shared != null) shared.releaseFinishedWork();
-
 		ComputeContext<MemoryData> scoped = scopedContext.get();
-		if (scoped != null && scoped != shared) scoped.releaseFinishedWork();
+
+		List<Runnable> releases = new ArrayList<>(2);
+		if (shared != null) releases.add(shared::releaseFinishedWork);
+		if (scoped != null && scoped != shared) releases.add(scoped::releaseFinishedWork);
+		Destroyable.releaseAll(releases);
 	}
 
 	/**
