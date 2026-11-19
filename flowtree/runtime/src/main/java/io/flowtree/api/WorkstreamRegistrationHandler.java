@@ -613,19 +613,22 @@ final class WorkstreamRegistrationHandler {
         // repo instead of creating a suffixed duplicate (see method javadoc).
         // Guarded on a non-empty repoUrl: nothing to compare without one.
         if (repoUrl != null && !repoUrl.isEmpty()) {
-            Workstream dependentOf = notifiers.findByBranchAndDependentRepo(defaultBranch, repoUrl);
-            if (dependentOf != null && dependentMatchStillCovers(dependentOf, defaultBranch)) {
-                log.accept("Branch " + defaultBranch + " of " + repoUrl
-                    + " is already covered as a dependent repo of workstream "
-                    + dependentOf.getWorkstreamId() + " — reusing it");
-                return Registration.dependentRepoMatch(dependentOf);
+            List<Workstream> dependentCandidates =
+                notifiers.findAllByBranchAndDependentRepo(defaultBranch, repoUrl);
+            for (Workstream candidate : dependentCandidates) {
+                if (dependentMatchStillCovers(candidate, defaultBranch)) {
+                    log.accept("Branch " + defaultBranch + " of " + repoUrl
+                        + " is already covered as a dependent repo of workstream "
+                        + candidate.getWorkstreamId() + " — reusing it");
+                    return Registration.dependentRepoMatch(candidate);
+                }
             }
-            if (dependentOf != null) {
+            if (!dependentCandidates.isEmpty()) {
                 log.accept("Branch " + defaultBranch + " of " + repoUrl
-                    + " matched dependent-repo workstream " + dependentOf.getWorkstreamId()
-                    + ", but its primary repo " + dependentOf.getRepoUrl()
-                    + " has no open pull request on the branch — registering a workstream"
-                    + " for " + repoUrl + " instead of absorbing its pull request");
+                    + " matched " + dependentCandidates.size() + " dependent-repo"
+                    + " workstream(s), none whose primary repo has an open pull request"
+                    + " on the branch — registering a workstream for " + repoUrl
+                    + " instead of absorbing its pull request");
             }
         }
 
@@ -790,9 +793,9 @@ final class WorkstreamRegistrationHandler {
      * URL with no GitHub slug) is treated as "still covered": absent evidence to
      * the contrary the deduplication is preserved, so a transient GitHub outage
      * does not start minting duplicate workstreams. Archived candidates never
-     * reach here — {@link NotifierRegistry#findByBranchAndDependentRepo} excludes
-     * them — so an archived downstream workstream already falls through to
-     * registration.</p>
+     * reach here — {@link NotifierRegistry#findAllByBranchAndDependentRepo}
+     * excludes them — so an archived downstream workstream already falls through
+     * to registration.</p>
      *
      * @param candidate the dependent-repo workstream a lookup matched
      * @param branch    the branch the submission names

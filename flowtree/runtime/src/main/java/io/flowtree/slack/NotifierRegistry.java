@@ -417,6 +417,8 @@ public final class NotifierRegistry {
      * @param repoUrl the repository URL to find among dependent repos
      * @return the matching workstream, or {@code null} if none matches
      */
+    // TODO(review): registration now uses findAllByBranchAndDependentRepo; this
+    // singular variant is only referenced by tests — reconcile javadoc or remove.
     public Workstream findByBranchAndDependentRepo(String branch, String repoUrl) {
         if (!byWorkspace.isEmpty()) {
             for (SlackNotifier n : byWorkspace.values()) {
@@ -427,6 +429,34 @@ public final class NotifierRegistry {
         }
         return primary != null
                 ? primary.findWorkstreamByBranchAndDependentRepo(branch, repoUrl) : null;
+    }
+
+    /**
+     * Returns every non-archived workstream, across every workspace, whose
+     * default branch matches {@code branch} and that lists {@code repoUrl}
+     * among its dependent repositories.
+     *
+     * <p>Where {@link #findByBranchAndDependentRepo(String, String)} returns
+     * only the first match, this returns all of them. Registration uses it so
+     * that when several downstream workstreams depend on {@code repoUrl} and
+     * share the branch, it can reuse whichever still carries a live companion
+     * pull request rather than being bound to whichever happens to be found
+     * first. Archived candidates are excluded in the per-notifier lookup.</p>
+     *
+     * @param branch  the branch name to match
+     * @param repoUrl the repository URL to find among dependent repos
+     * @return all matching workstreams (never {@code null})
+     */
+    public List<Workstream> findAllByBranchAndDependentRepo(String branch, String repoUrl) {
+        List<Workstream> matches = new ArrayList<>();
+        if (!byWorkspace.isEmpty()) {
+            for (SlackNotifier n : byWorkspace.values()) {
+                matches.addAll(n.findWorkstreamsByBranchAndDependentRepo(branch, repoUrl));
+            }
+        } else if (primary != null) {
+            matches.addAll(primary.findWorkstreamsByBranchAndDependentRepo(branch, repoUrl));
+        }
+        return matches;
     }
 
     /**

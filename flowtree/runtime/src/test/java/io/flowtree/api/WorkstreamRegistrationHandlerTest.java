@@ -58,6 +58,10 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
     private static final String DOWNSTREAM_REPO = "git@github.com:almostrealism/downstream.git";
     /** The {@code owner/repo} slug of {@link #DOWNSTREAM_REPO}, as the PR lookup is keyed. */
     private static final String DOWNSTREAM_OWNER_REPO = "almostrealism/downstream";
+    /** Clone URL of a second downstream repository that also lists Common as a dependent. */
+    private static final String SECOND_DOWNSTREAM_REPO = "git@github.com:almostrealism/downstream-two.git";
+    /** The {@code owner/repo} slug of {@link #SECOND_DOWNSTREAM_REPO}. */
+    private static final String SECOND_DOWNSTREAM_OWNER_REPO = "almostrealism/downstream-two";
     /** Clone URL of the submitting repository. */
     private static final String COMMON_REPO = "git@github.com:almostrealism/common.git";
     /** A registration/submission body naming {@link #BRANCH} on {@link #COMMON_REPO}. */
@@ -85,6 +89,22 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
         wsDownstream.setDependentRepos(List.of(COMMON_REPO));
         wsDownstream.setArchived(archived);
         notifier.registerWorkstream(wsDownstream);
+        return notifier;
+    }
+
+    /**
+     * A notifier holding two non-archived downstream workstreams on {@link #BRANCH}
+     * that both list Common as a dependent, with distinct primary repositories
+     * ({@link #DOWNSTREAM_REPO} and {@link #SECOND_DOWNSTREAM_REPO}) so a
+     * per-candidate pull-request lookup resolves them independently.
+     */
+    private static SlackNotifier twoDownstreamNotifier() {
+        SlackNotifier notifier = downstreamNotifier(false);
+        Workstream second = new Workstream("C_DOWNSTREAM_TWO", "#w-shared-two");
+        second.setDefaultBranch(BRANCH);
+        second.setRepoUrl(SECOND_DOWNSTREAM_REPO);
+        second.setDependentRepos(List.of(COMMON_REPO));
+        notifier.registerWorkstream(second);
         return notifier;
     }
 
@@ -265,5 +285,67 @@ public class WorkstreamRegistrationHandlerTest extends TestSuiteBase {
                 result.matchedAsDependentRepo());
         assertEquals(DOWNSTREAM_REPO, result.workstream().getRepoUrl());
         assertEquals(1, notifier.getWorkstreams().size());
+    }
+
+    /**
+     * Several downstream workstreams can share the branch and depend on Common
+     * at once. The dependent lookup used to consider only the first, so a stale
+     * first candidate could bypass a valid later one. All candidates must be
+     * examined: when one primary repo has no open companion PR but another does,
+     * the live one is reused and no workstream is created for Common.
+     */
+    @Test(timeout = 10000)
+    public void multipleDependentCandidatesReuseTheOneWithLiveCompanionPr() {
+        SlackNotifier notifier = twoDownstreamNotifier();
+        WorkstreamRegistrationHandler handler = handler(notifier, (ownerRepo, branch) ->
+                SECOND_DOWNSTREAM_OWNER_REPO.equals(ownerRepo) ? prs("open") : Collections.emptyList());
+
+        WorkstreamRegistrationHandler.Registration result = handler.register(COMMON_BODY, BRANCH);
+
+        assertTrue("a live companion on any candidate must keep the dependent-repo match",
+                result.matchedAsDependentRepo());
+        assertEquals(SECOND_DOWNSTREAM_REPO, result.workstream().getRepoUrl());
+        assertEquals("no workstream must be created for Common", 2,
+                notifier.getWorkstreams().size());
+    }
+
+    /**
+     * With several downstream candidates and no open companion PR on any of
+     * their primary repos, none still covers the branch, so Common gets its own
+     * workstream rather than being absorbed by the first stale candidate.
+     */
+    @Test(timeout = 10000)
+    public void multipleDependentCandidatesWithNoOpenPrRegisterOwnWorkstream() {
+        SlackNotifier notifier = twoDownstreamNotifier();
+        WorkstreamRegistrationHandler handler = handler(notifier,
+                (ownerRepo, branch) -> Collections.emptyList());
+
+        WorkstreamRegistrationHandler.Registration result = handler.register(COMMON_BODY, BRANCH);
+
+        assertFalse("no live companion on any candidate must not be a dependent-repo match",
+                result.matchedAsDependentRepo());
+        Workstream created = notifier.findWorkstreamByBranchAndRepo(BRANCH, COMMON_REPO);
+        assertNotNull("a workstream tracking (branch, Common) must now exist", created);
+        assertEquals(COMMON_REPO, created.getRepoUrl());
+    }
+
+    /**
+     * An unknown PR state on a later candidate still preserves deduplication:
+     * with the first candidate's primary repo confirmed to have no open PR and
+     * the second's lookup unreadable ({@code null}), the second is reused rather
+     * than minting a duplicate for Common.
+     */
+    @Test(timeout = 10000)
+    public void multipleDependentCandidatesReuseAnUnknownCandidate() {
+        SlackNotifier notifier = twoDownstreamNotifier();
+        WorkstreamRegistrationHandler handler = handler(notifier, (ownerRepo, branch) ->
+                SECOND_DOWNSTREAM_OWNER_REPO.equals(ownerRepo) ? null : Collections.emptyList());
+
+        WorkstreamRegistrationHandler.Registration result = handler.register(COMMON_BODY, BRANCH);
+
+        assertTrue("an unknown candidate must preserve the dependent-repo match",
+                result.matchedAsDependentRepo());
+        assertEquals(SECOND_DOWNSTREAM_REPO, result.workstream().getRepoUrl());
+        assertEquals(2, notifier.getWorkstreams().size());
     }
 }

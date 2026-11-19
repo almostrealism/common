@@ -540,23 +540,47 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      *
      * @param branch  the branch name to match
      * @param repoUrl the repository URL to find among dependent repos
-     * @return the matching workstream, or {@code null} if none matches
+     * @return the first matching workstream, or {@code null} if none matches
      */
     public Workstream findWorkstreamByBranchAndDependentRepo(String branch, String repoUrl) {
+        List<Workstream> matches = findWorkstreamsByBranchAndDependentRepo(branch, repoUrl);
+        return matches.isEmpty() ? null : matches.get(0);
+    }
+
+    /**
+     * Returns every non-archived workstream whose {@code defaultBranch} matches
+     * {@code branch} and that lists {@code repoUrl} among its dependent
+     * repositories.
+     *
+     * <p>Where {@link #findWorkstreamByBranchAndDependentRepo} yields only the
+     * first such workstream, this yields all of them so a caller can choose
+     * among several downstream workstreams that depend on {@code repoUrl} and
+     * share the branch — the registration path reuses whichever still carries a
+     * live companion pull request rather than being bound to the first match.
+     * The matching rules are identical: identity-based repository comparison
+     * (see {@link Workstream#dependsOnRepo(String)}) and archived workstreams
+     * skipped.</p>
+     *
+     * @param branch  the branch name to match
+     * @param repoUrl the repository URL to find among dependent repos
+     * @return all matching workstreams, in iteration order (never {@code null})
+     */
+    public List<Workstream> findWorkstreamsByBranchAndDependentRepo(String branch, String repoUrl) {
+        List<Workstream> matches = new ArrayList<>();
         if (branch == null || branch.isEmpty()) {
-            return null;
+            return matches;
         }
         if (repoUrl == null || repoUrl.isEmpty()) {
-            return null;
+            return matches;
         }
 
         for (Workstream ws : workstreams.values()) {
             if (ws.isArchived()) continue;
             if (!branch.equals(ws.getDefaultBranch())) continue;
-            if (ws.dependsOnRepo(repoUrl)) return ws;
+            if (ws.dependsOnRepo(repoUrl)) matches.add(ws);
         }
 
-        return null;
+        return matches;
     }
 
     /**
