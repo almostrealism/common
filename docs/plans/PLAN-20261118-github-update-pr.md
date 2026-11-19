@@ -64,8 +64,9 @@ other `github_*` tools.
     (`content` temp file) body shapes. Implementation must check which shape NanoHTTPD uses for
     a `PATCH` body.
   - On the Python side, `github_api._github_proxy_request` builds a `urllib.request.Request` with
-    whatever `method` it is given, so ar-manager can already send a `PATCH`. Its docstring lists
-    "GET, POST, PUT".
+    whatever `method` it is given, so ar-manager can already send a `PATCH`. Its own docstring is
+    silent on the method set; the wrapper `_github_request`, which every GitHub tool calls and
+    which delegates to it, is the one whose docstring lists "GET, POST, PUT" and must be updated.
 
   If nothing changes, a `PATCH` from ar-manager is either refused by the endpoint or, once routed,
   silently turned into a `GET`. A `GET` returns the pull request unchanged with HTTP 200, so the
