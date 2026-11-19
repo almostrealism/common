@@ -56,6 +56,7 @@ GRANTED_TOOLS = (
     "github_request_copilot_review",
     "github_read_file",
     "github_pr_check_status",
+    "github_pr_labels",
     "github_list_workflow_runs",
     "github_workflow_run_status",
     "github_job_logs",
@@ -69,6 +70,8 @@ GRANTED_TOOLS = (
     "tracker_create_release",
     "tracker_create_task",
     "tracker_update_task",
+    "tracker_add_artifact",
+    "tracker_list_artifacts",
 )
 
 # Withheld from coding agents. Mirrors
@@ -92,6 +95,7 @@ EXCLUDED_TOOLS = (
     "tracker_update_release",
     "tracker_delete_release",
     "tracker_delete_task",
+    "tracker_delete_artifact",
     "workspace_secret_list_names",
     "workspace_secret_render_file",
     "workstream_introspect",

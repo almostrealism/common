@@ -1550,6 +1550,7 @@ from github_tools import (  # noqa: E402
     github_request_copilot_review,
     github_read_file,
     github_pr_check_status,
+    github_pr_labels,
     github_list_workflow_runs,
     github_workflow_run_status,
     github_job_logs,
@@ -1570,6 +1571,9 @@ from tracker_tools import (  # noqa: E402
     tracker_delete_task,
     tracker_search_tasks,
     tracker_project_summary,
+    tracker_add_artifact,
+    tracker_list_artifacts,
+    tracker_delete_artifact,
 )
 
 

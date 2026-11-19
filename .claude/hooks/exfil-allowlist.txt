@@ -43,5 +43,6 @@ macbook-pro.local
 *.almostrealism.ai
 
 [git-remotes]
+github.com/almostrealism/
 github.com/almostrealism/common
 api.github.com
