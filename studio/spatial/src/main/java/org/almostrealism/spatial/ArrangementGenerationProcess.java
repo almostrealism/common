@@ -292,8 +292,14 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 *
 	 * <p>The kept records stay in their existing relative order: this trims the
 	 * population, it does not reorder it into score order. The change is applied
-	 * through {@link #setNetworks(List)}, so records, persistence, and listeners
-	 * behave exactly as they do for any other replacement of the population.</p>
+	 * through {@link #setNetworks(List)} and so, like any other in-memory
+	 * replacement of the population, does not itself persist: a caller that wants
+	 * the trimmed population written to disk saves it with {@link #saveNetworks()}
+	 * afterwards, exactly as after any other replacement.</p>
+	 *
+	 * <p>The read, the ranking, and the replacement happen as one action under the
+	 * record lock, so a concurrent score delivery or population refresh cannot be
+	 * overwritten by a trim of a now-stale snapshot.</p>
 	 *
 	 * @param count how many of the best-scoring records to keep; at or above the
 	 *              current population size this leaves the population unchanged, and
@@ -305,25 +311,27 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 			throw new IllegalArgumentException("count must not be negative (was " + count + ")");
 		}
 
-		List<GenomicNetwork> snapshot = getNetworks();
-		if (count >= snapshot.size()) return;
+		synchronized (recordLock) {
+			List<GenomicNetwork> snapshot = getNetworks();
+			if (count >= snapshot.size()) return;
 
-		List<Integer> ranked = new ArrayList<>();
-		for (int i = 0; i < snapshot.size(); i++) ranked.add(i);
+			List<Integer> ranked = new ArrayList<>();
+			for (int i = 0; i < snapshot.size(); i++) ranked.add(i);
 
-		// Rank by score descending - an unscored record sits at negative infinity, so
-		// below every scored one - and break ties by current position, earliest first.
-		ranked.sort(Comparator.comparingDouble((Integer i) -> snapshot.get(i).getScoreValue())
-				.reversed().thenComparingInt(i -> i));
+			// Rank by score descending - an unscored record sits at negative infinity, so
+			// below every scored one - and break ties by current position, earliest first.
+			ranked.sort(Comparator.comparingDouble((Integer i) -> snapshot.get(i).getScoreValue())
+					.reversed().thenComparingInt(i -> i));
 
-		Set<Integer> keep = new HashSet<>(ranked.subList(0, count));
+			Set<Integer> keep = new HashSet<>(ranked.subList(0, count));
 
-		List<GenomicNetwork> retained = new ArrayList<>();
-		for (int i = 0; i < snapshot.size(); i++) {
-			if (keep.contains(i)) retained.add(snapshot.get(i));
+			List<GenomicNetwork> retained = new ArrayList<>();
+			for (int i = 0; i < snapshot.size(); i++) {
+				if (keep.contains(i)) retained.add(snapshot.get(i));
+			}
+
+			setNetworks(retained);
 		}
-
-		setNetworks(retained);
 	}
 
 	/**

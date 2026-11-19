@@ -472,6 +472,21 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 				original, process.getNetworks());
 	}
 
+	/**
+	 * A count of zero empties the population: this exercises the trimming path (not the
+	 * at-or-above-size no-op) all the way down to retaining no records.
+	 */
+	@Test(timeout = 60_000)
+	public void retainBestZeroEmptiesPopulation() {
+		ArrangementGenerationProcess process = populationProcess();
+		process.setNetworks(List.of(network(0, 0.20), network(1, 0.80)));
+
+		process.retainBest(0);
+
+		Assert.assertTrue("A count of zero must leave the population empty",
+				process.getNetworks().isEmpty());
+	}
+
 	/** A negative count is rejected rather than trimming anything. */
 	@Test(timeout = 60_000)
 	public void retainBestRejectsNegativeCount() {
