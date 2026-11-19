@@ -385,6 +385,7 @@ class CommitMessageBuilder {
             return null;
         }
 
+        // TODO(review): "N other files" counts distinct base names, so changed paths that share a basename (a/Foo.java, b/Foo.java) under-report the file count.
         String summary;
         if (names.size() == 1) {
             summary = "Update " + names.get(0);
