@@ -340,5 +340,6 @@ For a human holding a legitimate blocked command:
 | `.claude/hooks/lib/test_exfiltration_guard_check.py` | the behavioral authority — every rule above has cases here |
 | `.claude/hooks/lib/test_exfiltration_guard_interpreter.py` | the interpreter argument walk: what fixes the program, what after it is data, and what is refused |
 | `.claude/hooks/lib/test_exfiltration_guard_worktree.py` | `git -C` into a linked worktree: followed, and still held to the push rules; a separate repository is not |
+| `.claude/hooks/lib/test_exfiltration_guard_pinning.py` | pushing a sibling repository: allowed only when its origin is pinned in `[git-remotes]` (case-insensitively); a `[lab-hosts]` entry alone pins nothing |
 | `tools/ci/agent-protection/verify-exfiltration-guard.sh` | CI check: presence on `HEAD`, registration coverage, and (off `ci/` branches) no change against the base; its header documents the exit codes |
 | `tools/ci/agent-protection/exfil_guard_registration.py` | shared registration parsing, used by the verifier and its tests |
