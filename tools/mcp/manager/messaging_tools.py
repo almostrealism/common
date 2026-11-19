@@ -10,6 +10,7 @@ the suite's patches still apply. Helpers and constants stay in ``server.py``.
 
 import hashlib
 import time
+from urllib.parse import quote
 
 import server
 from server import mcp
@@ -319,9 +320,9 @@ def send_message(
         return err
 
     # Build the controller path
-    path = f"/api/workstreams/{server.quote(effective_ws, safe='')}"
+    path = f"/api/workstreams/{quote(effective_ws, safe='')}"
     if effective_job:
-        path += f"/jobs/{server.quote(effective_job, safe='')}"
+        path += f"/jobs/{quote(effective_job, safe='')}"
     path += "/messages"
 
     sender = _sender_identity(effective_job)
@@ -570,9 +571,9 @@ def await_message(
     server._audit("await_message", workstream_id=effective_ws,
                   job_id=effective_job, since=since, timeout_seconds=budget)
 
-    base = f"/api/workstreams/{server.quote(effective_ws, safe='')}/mailbox"
+    base = f"/api/workstreams/{quote(effective_ws, safe='')}/mailbox"
     if exclude:
-        base += f"?exclude={server.quote(exclude, safe='')}&"
+        base += f"?exclude={quote(exclude, safe='')}&"
     else:
         base += "?"
 
