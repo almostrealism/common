@@ -215,7 +215,8 @@ see the [hardware README](../../base/hardware/README.md) Memory Configuration se
 Before throwing, the provider logs a warning that names the rejected request and the bytes in use,
 followed by `HardwareMemoryProvider.describeAllocations`: the blocks it still holds, grouped by the
 stack trace that allocated them, the sites holding the most bytes first
-(`HardwareMemoryProvider.reportedAllocationSites` of them, ten by default). The rejected request is
+(`HardwareMemoryProvider.reportedAllocationSites` of them: ten by default, or the value of
+`AR_HARDWARE_ALLOCATION_REPORT_SITES`). The rejected request is
 usually not the cause — it is the allocation that happened to cross the ceiling — so read the
 largest sites to find what is holding the memory. Sites are recorded only when
 `AR_HARDWARE_ALLOCATION_TRACE_FRAMES` is positive; without it every block is reported in one

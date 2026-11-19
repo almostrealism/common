@@ -24,6 +24,7 @@ import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.SystemUtils;
 
 import io.almostrealism.code.Memory;
 
@@ -239,9 +240,11 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 
 	/**
 	 * How many allocation sites {@link #memoryMaxReached(String, long, long, long)} lists
-	 * when an allocation is rejected at the memory ceiling.
+	 * when an allocation is rejected at the memory ceiling, taken from
+	 * {@code AR_HARDWARE_ALLOCATION_REPORT_SITES} when it is set.
 	 */
-	public static int reportedAllocationSites = 10;
+	public static int reportedAllocationSites =
+			SystemUtils.getInt("AR_HARDWARE_ALLOCATION_REPORT_SITES").orElse(10);
 
 	/** Guards {@link #collecting} and {@link #collectionPasses}, and is waited on by joining threads. */
 	private final Object collectionLock = new Object();
