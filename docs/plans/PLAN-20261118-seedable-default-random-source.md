@@ -127,6 +127,15 @@ An `@After` method calls `RandomProducer.clearDefaultSource()`. This keeps the d
 staying seeded for code that runs after the test in the same fork and is not a
 `TestSuiteBase` test. It is the hidden cross-class coupling that `ParameterFunction` has today.
 
+The new `@After` method must not take a name a subclass already declares. `ParameterFunctionTest`
+(in `studio/music`) already has `@After public void clearRandomSeed()`, which resets
+`ParameterFunction`'s own static seed — a different global source. A base-class method of the
+same name would be silently overridden by that subclass method, so the base hook would never run
+for that class (its `clearDefaultSource()` call would be lost), and errorprone's `MissingOverride`
+would fail the `ar-music` test compile in the full reactor build. The base hook therefore needs a
+distinct name, such as `clearDefaultRandomSource()`. Before adding any lifecycle hook to this
+widely-extended base class, grep its subclasses for same-named `@Before`/`@After` methods.
+
 **The seed.**
 - The default is a fixed constant on `TestSuiteBase`, such as `DEFAULT_TEST_RANDOM_SEED`.
 - The `AR_TEST_RANDOM_SEED` setting overrides it for the whole run. This is how CI or a
@@ -239,7 +248,13 @@ before phase 2.
    each stays reproducible?
 2. Should the default source live on `RandomProducer` (proposed, `compute/algebra`), or lower
    (in `base/io`, next to `SystemUtils`) so that the `Math.random()` sites in modules that do
-   not use collections can share it in phase 2?
+   not use collections can share it in phase 2? Related: §2a proposes holding the state as a
+   `static final AtomicReference` on the `RandomProducer` *interface*. A process-wide mutable
+   singleton expressed as static state on an interface is an awkward fit (an interface models a
+   contract, not a mutable holder); a small dedicated type that owns the seed, the source and the
+   `seed`/`clear`/`current` operations may read more clearly and keeps the lifecycle in one place.
+   `RandomProducer.create(...)` would then consult that type instead of its own statics. This is a
+   placement/shape decision for the owner, not a change of what the plan does.
 3. Should a CI lane or QA round run with a random, logged `AR_TEST_RANDOM_SEED` to keep
    exploring the distribution? This needs a `ci/...` branch.
 4. Should `AR_RANDOM_SEED` in production also log its seed once at startup?
