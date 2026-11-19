@@ -298,8 +298,17 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 * afterwards, exactly as after any other replacement.</p>
 	 *
 	 * <p>The read, the ranking, and the replacement happen as one action under the
-	 * record lock, so a concurrent score delivery or population refresh cannot be
-	 * overwritten by a trim of a now-stale snapshot.</p>
+	 * record lock, so a concurrent replacement of the whole list - a
+	 * {@link #refreshNetworks()} or another {@link #setNetworks(List)} - cannot slip
+	 * between the snapshot and the write and be overwritten by a trim of a now-stale
+	 * list. The lock guards the record list, not the records: it does not make an
+	 * in-flight score attachment atomic with the trim. A score that an evaluation is
+	 * in the middle of delivering attaches to its record object whether or not the
+	 * trim keeps that record, and an unscored record ranks last, so a trim racing a
+	 * delivery can drop the very record the score is about to land on. Trimming is
+	 * therefore a between-evaluations operation - which is also when the record list
+	 * is stable, since {@link #refreshNetworks()} rebuilds it once per cycle - not one
+	 * to call against a population an active run is still scoring.</p>
 	 *
 	 * @param count how many of the best-scoring records to keep; at or above the
 	 *              current population size this leaves the population unchanged, and
