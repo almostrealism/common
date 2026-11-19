@@ -130,6 +130,9 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         String msg = job.commitMessageBuilder().resolve(job);
         assertTrue("Fallback subject must name the job: " + msg, msg.startsWith("Job t1 commit"));
         assertFalse("Fallback must not echo the prompt", msg.contains("do the work"));
+        assertTrue("Body provenance must cover a present-but-unusable commit.txt, not claim none was"
+                        + " written: " + msg,
+                msg.contains("did not provide a usable commit.txt"));
         assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, job.getCommitMessageSource());
     }
 
@@ -339,7 +342,8 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         String msg = job.commitMessageBuilder().buildFallbackMessage(job);
         assertFalse("Body must not echo the prompt", msg.contains("do the work please"));
         assertTrue("Body must say the harness generated the message",
-                msg.contains("The harness generated this message because the agent wrote no commit.txt."));
+                msg.contains("The harness generated this message because the agent did not provide a"
+                        + " usable commit.txt."));
         assertTrue("Body must include the exit code line",
                 msg.contains("Exit code: 0"));
     }

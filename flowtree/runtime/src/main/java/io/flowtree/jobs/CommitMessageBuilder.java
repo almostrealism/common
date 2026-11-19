@@ -225,8 +225,9 @@ class CommitMessageBuilder {
     }
 
     /**
-     * Builds a deterministic fallback commit message for a job that wrote no
-     * {@code commit.txt}. The subject is {@link #buildChangeSubject(CodingAgentJob)}
+     * Builds a deterministic fallback commit message for a job whose
+     * {@code commit.txt} was missing, empty, or unreadable. The subject is
+     * {@link #buildChangeSubject(CodingAgentJob)}
      * — the files the job actually changed, never the task prompt — so the
      * commit (and any pull request that takes its title from this subject)
      * describes what was done. The body records that the harness generated the
@@ -239,7 +240,8 @@ class CommitMessageBuilder {
     String buildFallbackMessage(CodingAgentJob job) {
         StringBuilder msg = new StringBuilder();
         msg.append(buildChangeSubject(job));
-        msg.append("\n\nThe harness generated this message because the agent wrote no commit.txt.");
+        msg.append("\n\nThe harness generated this message because the agent did not provide a"
+                + " usable commit.txt.");
 
         if (job.getSessionId() != null) {
             msg.append("\nSession: ").append(job.getSessionId());

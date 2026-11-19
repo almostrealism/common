@@ -311,7 +311,7 @@ The commit message is determined by `getCommitMessage()`, which implements a two
    Update <File> | Update <A> and <B> | Update <A> and <N> other files
                                       (or "Job <taskId> commit" when no changes can be determined)
 
-   The harness generated this message because the agent wrote no commit.txt.
+   The harness generated this message because the agent did not provide a usable commit.txt.
    Session: <session ID>
    Exit code: <exit code>
    ```
