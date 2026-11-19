@@ -69,7 +69,6 @@ GRANTED_TOOLS = (
     "tracker_create_release",
     "tracker_create_task",
     "tracker_update_task",
-    "tracker_append_task_evidence",
 )
 
 # Withheld from coding agents. Mirrors

@@ -82,7 +82,6 @@ may do depends on who makes it (see [Who may do what](#who-may-do-what)).
 | `tracker_get_task` | read | Fetch one task of your workspace by ID (full record) |
 | `tracker_list_tasks` | read | List your workspace's tasks with filtering, pagination, and optional headlines projection |
 | `tracker_update_task` | write | Update a task's fields, including its `stage` (mark it `ready` to queue it for planning) |
-| `tracker_append_task_evidence` | write, everyone | Append attributed evidence to an open task's description; changes no other field |
 | `tracker_delete_task` | write, people only | Permanently delete a task |
 | `tracker_search_tasks` | read | Full-text search over your workspace's tasks; supports headlines projection |
 | `tracker_project_summary` | read | Aggregate task counts for a project (no row fetch) |

@@ -75,11 +75,6 @@ public class McpConfigBuilder implements ConsoleFeatures {
      *   <li>{@code tracker_update_task}: a {@code planner} workstream may edit
      *       any task in its workspace; any other workstream may edit only the
      *       tasks linked to itself.</li>
-     *   <li>{@code tracker_append_task_evidence}: any agent may add a section
-     *       of evidence to the end of an open task's description in its
-     *       workspace, attributed to the calling job; it can change no other
-     *       field, so a round adds to an existing task instead of filing a
-     *       duplicate.</li>
      *   <li>{@code tracker_create_release}: {@code planner} only.</li>
      * </ul>
      *
@@ -149,7 +144,6 @@ public class McpConfigBuilder implements ConsoleFeatures {
             "tracker_list_releases",
             "tracker_create_task",
             "tracker_update_task",
-            "tracker_append_task_evidence",
             "tracker_create_release"
         ))
     );

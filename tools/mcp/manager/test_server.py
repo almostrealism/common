@@ -1163,7 +1163,6 @@ class TestToolRegistration(unittest.TestCase):
             "tracker_get_task",
             "tracker_list_tasks",
             "tracker_update_task",
-            "tracker_append_task_evidence",
             "tracker_delete_task",
             "tracker_search_tasks",
             "tracker_project_summary",
