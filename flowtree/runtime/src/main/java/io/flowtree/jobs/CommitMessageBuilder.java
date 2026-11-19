@@ -272,34 +272,47 @@ class CommitMessageBuilder {
      * Builds the commit message {@link EnforcementRunner} writes to
      * {@code commit.txt} when {@link CommitMessageRule} exhausts its retries
      * without the agent producing one, so the job can still commit. The message
-     * is a single {@link #buildChangeSubject(CodingAgentJob) change-named
-     * subject} — never the task prompt, which describes what was asked for
-     * rather than what was done, and which produced pull-request titles like
-     * the agent's own instructions.
+     * is a single change-named subject — never the task prompt, which describes
+     * what was asked for rather than what was done, and which produced
+     * pull-request titles like the agent's own instructions.
+     *
+     * <p>This runs at the end of {@link CodingAgentJob}'s work, <em>before</em>
+     * {@link GitCommitHandler} resets whatever the agent staged and re-stages
+     * through the guardrails, so the index at this point holds the agent's own
+     * arbitrary, unfiltered staging rather than the committable set. The subject
+     * is therefore read from the working tree's {@code git status} — the full
+     * change set — rather than that staged index, so it is not skewed by a
+     * partially-staged or soon-to-be-reset index. The commit-time subject
+     * ({@link #buildChangeSubject}) reads the index, because by then it is the
+     * guardrail-approved committable set.</p>
      *
      * @param job the orchestrator whose changed files and task id are read
      * @return the message to write; never {@code null}
      */
     String buildExhaustionFallback(CodingAgentJob job) {
-        return buildChangeSubject(job);
+        return subjectOrJobName(job,
+                withoutExcludedPaths(GitOperations.getChangedFiles(job.getWorkingDirectory())));
     }
 
     /**
-     * Builds a commit subject from the files the job is committing. At the
-     * commit boundary those are the files in the index, which
+     * Builds a commit subject from the files the job is committing. This is the
+     * commit boundary, so the subject is read from the files in the index, which
      * {@link GitCommitHandler} has filled with only what the staging guardrails
-     * approved, so a protected, oversized or otherwise skipped file the job also
-     * touched is never named. Before anything is staged — when
-     * {@link EnforcementRunner} writes {@link #buildExhaustionFallback} — the
-     * index is empty and the subject is read from the working tree's
-     * {@code git status} instead. Harness scratch paths are dropped from either
-     * list. Names up to two
-     * changed files ({@code "Update Foo and FooTest"}), or the first file and a
-     * count of the rest when there are more ({@code "Update Foo and 3 other
-     * files"}), keeping the subject within git's conventional 72-column limit.
-     * When no changed files can be determined — a clean tree, or a
-     * {@code git status} that could not be run — the subject names the job
-     * instead ({@code "Job {taskId} commit"}) and never the prompt.
+     * approved — a protected, oversized or otherwise skipped file the job also
+     * touched is never named. When nothing committable is staged the subject
+     * falls back to the working tree's {@code git status}. Harness scratch paths
+     * are dropped from either list.
+     *
+     * <p>The pre-staging path ({@link #buildExhaustionFallback}) deliberately
+     * does <em>not</em> go through here: before staging the index is the agent's
+     * own unfiltered staging, which this method would trust.</p>
+     *
+     * <p>Names up to two changed files ({@code "Update Foo and FooTest"}), or the
+     * first file and a count of the rest when there are more
+     * ({@code "Update Foo and 3 other files"}), keeping the subject within git's
+     * conventional 72-column limit. When no changed files can be determined — a
+     * clean tree, or a {@code git status} that could not be run — the subject
+     * names the job instead ({@code "Job {taskId} commit"}) and never the prompt.
      *
      * @param job the orchestrator whose working tree and task id are read
      * @return the subject line; never {@code null}
@@ -309,6 +322,20 @@ class CommitMessageBuilder {
         if (changed.isEmpty()) {
             changed = withoutExcludedPaths(GitOperations.getChangedFiles(job.getWorkingDirectory()));
         }
+        return subjectOrJobName(job, changed);
+    }
+
+    /**
+     * Returns the {@code "Update ..."} subject for {@code changed}, or the
+     * neutral {@code "Job {taskId} commit"} when the list names no files — the
+     * one place both subject paths turn a (possibly empty) change list into a
+     * subject, so neither can accidentally fall back to the prompt.
+     *
+     * @param job     the orchestrator whose task id names the neutral fallback
+     * @param changed the scratch-filtered changed paths
+     * @return the subject line; never {@code null}
+     */
+    private static String subjectOrJobName(CodingAgentJob job, List<String> changed) {
         String subject = summarizeChangedFiles(changed);
         return subject != null ? subject : "Job " + job.getTaskId() + " commit";
     }

@@ -282,6 +282,31 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         assertEquals("Update Gadget", job.commitMessageBuilder().buildChangeSubject(job));
     }
 
+    /**
+     * The exhaustion fallback runs before the staging guardrails reset and re-stage, so the index
+     * at that point holds the agent's own arbitrary staging rather than the committable set. It must
+     * therefore read the full working tree: a file the agent happened not to stage (here
+     * {@code Gadget.java}) is still part of the change and must be named, while the commit-time
+     * subject — read from the index after the guardrails have run — names only what is staged.
+     */
+    @Test(timeout = 30000)
+    public void exhaustionFallbackReadsWorkingTreeNotTheAgentStagedIndex()
+            throws IOException, InterruptedException {
+        initGitRepository();
+        Files.writeString(tempDir.resolve("Widget.java"), "class Widget { }\n", StandardCharsets.UTF_8);
+        Files.writeString(tempDir.resolve("Gadget.java"), "class Gadget { }\n", StandardCharsets.UTF_8);
+        git("add", "Widget.java");
+
+        CodingAgentJob job = job("do the work");
+        String exhaustion = job.commitMessageBuilder().buildExhaustionFallback(job);
+        assertTrue("Exhaustion subject must name the unstaged working-tree change: " + exhaustion,
+                exhaustion.contains("Gadget"));
+        assertTrue("Exhaustion subject must name the staged change too: " + exhaustion,
+                exhaustion.contains("Widget"));
+
+        assertEquals("Update Widget", job.commitMessageBuilder().buildChangeSubject(job));
+    }
+
     /** Initializes an empty git repository in the temporary working directory. */
     private void initGitRepository() throws IOException, InterruptedException {
         git("init", "-q");
