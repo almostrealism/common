@@ -59,6 +59,14 @@ _PERSON_SOURCE = "person"
 _TITLE_MAX = 500
 _DESCRIPTION_MAX = 10_000
 
+# Ceiling for an artifact's content, checked the same way. A comment is the
+# large case; a reference target or a memory id is short.
+_ARTIFACT_CONTENT_MAX = 10_000
+
+# The artifact types a caller may attach to a task. Duplicated from the tracker
+# store (tools/tracker/store.py) across the service boundary.
+_ARTIFACT_TYPES = ("comment", "reference", "memory")
+
 # The priority sentinel meaning "leave unchanged" on update; zero is a real
 # priority (medium), so it cannot be the sentinel.
 _PRIORITY_UNCHANGED = -999
@@ -76,9 +84,12 @@ def _require_person(tool: str) -> None:
 
     Neither harness offers these tools to an agent, since neither allowlist
     names them, but the server does not rely on every harness honouring the
-    allowlist, so the refusal is made here as well.
+    allowlist, so the refusal is made here as well. A token carrying either
+    half of an agent binding (a workstream or a job) is refused: only a caller
+    with neither is a person.
     """
-    if server._get_token_workstream_id():
+    workstream_id, job_id = _caller_job()
+    if workstream_id or job_id:
         raise PermissionError(
             f"{tool} is left to people: agent jobs may read tasks, create tasks and"
             " edit the ones they hold, but not delete them or reorganise projects"
@@ -88,6 +99,23 @@ def _require_person(tool: str) -> None:
 def _job_provenance(workstream_id: str, job_id: str) -> str:
     """Return the provenance source of a task filed by the given job."""
     return f"{FOLLOW_UP_SOURCE_PREFIX}{workstream_id}/{job_id}"
+
+
+def _artifact_author() -> Optional[str]:
+    """Return who to record as the author of an artifact, from the caller's
+    token: ``person`` for a person, or ``<workstream>/<job>`` for an agent job.
+
+    Taken from the token rather than from input, so an artifact's author cannot
+    be spoofed, the same way a filed task's provenance is. A token bound to only
+    one of a workstream and a job identifies neither a person nor a job, so it
+    returns None and the caller refuses the request rather than recording a
+    false author."""
+    workstream_id, job_id = _caller_job()
+    if workstream_id and job_id:
+        return f"{workstream_id}/{job_id}"
+    if workstream_id or job_id:
+        return None
+    return _PERSON_SOURCE
 
 
 def _with_workspace_limit(params: dict) -> dict:
@@ -825,3 +853,99 @@ def tracker_search_tasks(
     if fields and fields != "full":
         params["fields"] = fields
     return server._tracker_get(_query("/v1/search/tasks", _with_workspace_limit(params)))
+
+
+# ---------------------------------------------------------------------------
+# Task artifacts
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def tracker_add_artifact(task_id: str, artifact_type: str, content: str) -> dict:
+    """Attach an artifact to a tracker task.
+
+    An artifact is an additive note on a task: it records something about the
+    work without changing any of the task's own fields. Because it does not
+    edit the task, anyone whose workspace owns the task may add one — you do
+    not need the ``planner`` role, and the task does not have to be linked to
+    your workstream. Use this to leave a comment on a task another branch owns
+    (for example, to record new evidence on an existing open task) instead of
+    filing a duplicate.
+
+    Args:
+        task_id: UUID of the task to annotate. It must belong to your workspace.
+        artifact_type: What the artifact is:
+            - ``comment``: a free-text note (Markdown), in ``content``.
+            - ``reference``: a pointer to something else — another tracker
+              task id, a repo path, or a URL — in ``content``.
+            - ``memory``: the id of a memory in the memory database, in
+              ``content``.
+        content: The artifact's payload: the comment body, the reference
+            target, or the memory id. Required.
+
+    Returns:
+        dict with ok=True and the created ``artifact`` (its author is recorded
+        from your token, not from input).
+    """
+    server._require_scope("write")
+    if artifact_type not in _ARTIFACT_TYPES:
+        return {"ok": False,
+                "error": f"artifact_type must be one of: {list(_ARTIFACT_TYPES)}"}
+    error = server._check_length(content, "content", _ARTIFACT_CONTENT_MAX)
+    if error:
+        return error
+    if not content.strip():
+        return {"ok": False, "error": "content is required"}
+    author = _artifact_author()
+    if author is None:
+        return {"ok": False, "error": "the caller's token is bound to only one of a "
+                                      "workstream and a job, so the artifact's author "
+                                      "cannot be recorded"}
+    task, error = _fetch(f"/v1/tasks/{task_id}", "task", "task")
+    if error:
+        return error
+    server._audit("tracker_add_artifact", task_id=task_id, artifact_type=artifact_type)
+    return server._tracker_post(
+        f"/v1/tasks/{task_id}/artifacts",
+        {"artifact_type": artifact_type, "content": content, "author": author})
+
+
+@mcp.tool()
+def tracker_list_artifacts(task_id: str) -> dict:
+    """List the artifacts attached to a tracker task, oldest first.
+
+    Args:
+        task_id: UUID of the task. It must belong to your workspace.
+
+    Returns:
+        dict with ok=True and a list of ``artifacts``; each carries its
+        ``artifact_type``, ``content``, ``author`` and ``created_at``.
+    """
+    server._require_scope("read")
+    task, error = _fetch(f"/v1/tasks/{task_id}", "task", "task")
+    if error:
+        return error
+    server._audit("tracker_list_artifacts", task_id=task_id)
+    return server._tracker_get(f"/v1/tasks/{task_id}/artifacts")
+
+
+@mcp.tool()
+def tracker_delete_artifact(artifact_id: str) -> dict:
+    """Delete a task artifact.
+
+    An artifact is an append-only record of work on a task; removing one is
+    left to people, like deleting a task.
+
+    Args:
+        artifact_id: UUID of the artifact to delete. Its task must belong to
+            your workspace.
+
+    Returns:
+        dict with ok=True on success.
+    """
+    server._require_scope("write")
+    _require_person("tracker_delete_artifact")
+    _, error = _fetch(f"/v1/artifacts/{artifact_id}", "artifact", "artifact")
+    if error:
+        return error
+    server._audit("tracker_delete_artifact", artifact_id=artifact_id)
+    return server._tracker_delete(f"/v1/artifacts/{artifact_id}")
