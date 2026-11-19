@@ -310,4 +310,55 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 			process.destroy();
 		}
 	}
+
+	/**
+	 * With breeding disabled, {@link PopulationOptimizer#iterate()} never reaches the
+	 * breeding-complete hook, so the records must still be brought into step with the
+	 * loaded population when the iteration begins. Stale records from a previous
+	 * population are left in place and an iteration is run over an empty population,
+	 * which evaluates nothing: the records must afterwards match that population
+	 * (none), and no stale record may survive to receive this cycle's scores.
+	 *
+	 * @throws Exception if the process cannot be prepared
+	 */
+	@Test(timeout = 120_000)
+	public void recordsSyncOncePerIterationWhenBreedingIsDisabled() throws Exception {
+		new File("results").mkdirs();
+		File networksFile = new File("results/process-no-breeding-records.xml");
+		networksFile.delete();
+		new File(AudioSceneOptimizer.POPULATION_FILE).delete();
+
+		AudioScene<?> scene = new AudioScene<>(120.0, 2, 2, OutputLine.sampleRate);
+		scene.getGenerationManager().setSettings(new GenerationManager.Settings());
+
+		ArrangementGenerationProcess process =
+				new ArrangementGenerationProcess(networksFile.getPath());
+		boolean breeding = PopulationOptimizer.enableBreeding;
+
+		try {
+			process.prepare(scene, 1);
+			AudioSceneOptimizer optimizer = process.getOptimizer();
+
+			GenomicNetwork staleA = new GenomicNetwork(0,
+					new ProjectedGenome(PackedCollection.of(0.10, 0.20, 0.30)));
+			staleA.setHealthScore(score("results/stale-A.wav"));
+			GenomicNetwork staleB = new GenomicNetwork(1,
+					new ProjectedGenome(PackedCollection.of(0.40, 0.50, 0.60)));
+			staleB.setHealthScore(score("results/stale-B.wav"));
+			process.setNetworks(List.of(staleA, staleB));
+
+			optimizer.setPopulation(new AudioScenePopulation(process.getLocalScene(),
+					new ArrayList<>()));
+
+			PopulationOptimizer.enableBreeding = false;
+			optimizer.iterate();
+
+			Assert.assertEquals("Records from the previous population survived an"
+							+ " iteration with breeding disabled",
+					0, process.getNetworks().size());
+		} finally {
+			PopulationOptimizer.enableBreeding = breeding;
+			process.destroy();
+		}
+	}
 }

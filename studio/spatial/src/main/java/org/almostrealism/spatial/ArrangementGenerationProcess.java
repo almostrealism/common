@@ -335,10 +335,7 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 			completedThisCycle = 0;
 			if (cycleListener != null) cycleListener.run();
 		});
-		// Records sync once per cycle at the breeding-complete hook, which fires only
-		// when PopulationOptimizer.enableBreeding is true; the breeding-disabled path
-		// has no population-ready hook and is covered by a tracked follow-up.
-		optimizer.setBreedingCompleteListener(this::refreshNetworks);
+		optimizer.setPopulationReadyListener(this::refreshNetworks);
 		optimizer.setCompletionListener(() -> {
 			iterationCount++;
 			if (completionListener != null) completionListener.run();
@@ -413,7 +410,7 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 * rendered, and notifies the render listener.
 	 *
 	 * <p>The records are already in step with the population by this point: they
-	 * are rebuilt once per cycle at the breeding-complete hook, before the first
+	 * are rebuilt once per cycle at the population-ready hook, before the first
 	 * render. A signature with no record here therefore names no genome in the
 	 * current population, and is reported rather than silently rebuilding.</p>
 	 *
@@ -444,7 +441,7 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 * Returns the records carrying the given genome signature.
 	 *
 	 * <p>The records are brought into step with the population once per cycle, by
-	 * {@link #refreshNetworks()} at the breeding-complete hook, before any score
+	 * {@link #refreshNetworks()} at the population-ready hook, before any score
 	 * or render of the cycle. This method therefore only reads: it never rebuilds,
 	 * so a score already delivered this cycle is never discarded to answer a later
 	 * one. A signature that matches no record is one that truly names no genome in
@@ -465,12 +462,12 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 * per genome, discarding existing records and their scores.
 	 *
 	 * <p>Called once at the start of each cycle, through the optimizer's
-	 * breeding-complete hook, after breeding has produced the population the cycle
-	 * will evaluate and before its first score or render. Because the records then
-	 * already match the population being scored, no rebuild happens mid-cycle, so
-	 * every score the cycle delivers attaches to a record and survives to the end
-	 * of the cycle. The scores discarded here are the previous cycle's, for a
-	 * population that has been bred away.</p>
+	 * population-ready hook, once the population the cycle will evaluate is final
+	 * (after breeding, or after loading when breeding is disabled) and before its
+	 * first score or render. Because the records then already match the population
+	 * being scored, no rebuild happens mid-cycle, so every score the cycle delivers
+	 * attaches to a record and survives to the end of the cycle. The scores
+	 * discarded here are the previous cycle's.</p>
 	 */
 	public void refreshNetworks() {
 		if (optimizer == null) return;
