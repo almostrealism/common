@@ -6,7 +6,9 @@ alongside the move; shared fixtures live in ``manager_test_support``.
 """
 
 import os
+import subprocess
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -198,6 +200,26 @@ class TestGithubUpdatePr(unittest.TestCase):
             server.github_update_pr(
                 pr_number=7, title="New", org="other", repo="repo")
         mock_gh.assert_not_called()
+
+
+class TestPrLookupImport(unittest.TestCase):
+    """``pr_lookup`` loads on its own, not only by way of ``server``."""
+
+    def test_pr_lookup_imports_first_in_a_fresh_interpreter(self):
+        common_dir = os.path.join(os.path.dirname(_MANAGER_DIR), "common")
+        env = dict(os.environ)
+        env["PYTHONPATH"] = os.pathsep.join([_MANAGER_DIR, common_dir])
+        script = (
+            "import pr_lookup, server\n"
+            "assert server._find_pr_by_branch is pr_lookup._find_pr_by_branch\n"
+            "assert server.PR_STATES == ('open', 'closed', 'merged', 'all')\n"
+            "print('imported')\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script], cwd=tempfile.gettempdir(),
+            env=env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("imported", result.stdout)
 
 
 if __name__ == "__main__":

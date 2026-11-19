@@ -13,8 +13,6 @@ apply exactly as before; only their address changed.
 
 from urllib.parse import quote
 
-import server
-
 
 # GitHub has no `state=merged`: a merged pull request is a closed one that also
 # carries `merged_at`. Everything else maps straight onto the wire value.
@@ -154,3 +152,9 @@ def _resolve_effective_pr(pr_number: int, workstream_id: str, branch: str,
             "error": f"No open PR found for branch '{effective_branch}'",
         }
     return owner, repo, lookup["pr"].get("number"), None
+
+
+# Bound last: the helpers above need ``server`` only when called, and ``server``
+# imports this module's names while it loads. Importing it after they are
+# defined lets this module be imported on its own as well as through ``server``.
+import server  # noqa: E402
