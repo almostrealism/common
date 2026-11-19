@@ -682,8 +682,9 @@ the hosted jobs no longer rely on `actions/setup-java`'s `cache: maven` — whic
 saved the local repository only on a miss, from whichever hosted job finished
 first (one that did not run jacoco), and so left `jacoco-maven-plugin` out of the
 cache and re-downloaded it from Maven Central on every run. The job resolves the
-full plugin and dependency set on purpose (`mvn install -DskipTests`, then
-`dependency:go-offline`/`resolve-plugins`, the checkstyle plugin, and the
+full plugin and dependency set on purpose (`mvn test-compile`, then
+`dependency:go-offline`/`resolve-plugins` — which resolve surefire, since
+test-compile does not reach the test phase — the checkstyle plugin, and the
 jacoco-cli distribution the `analysis` job unzips) and saves it with an explicit
 `actions/cache` under a key of the pom hashes plus the manual
 `HOSTED_MAVEN_CACHE_VERSION` prefix, with a `restore-keys` fallback. Gated on

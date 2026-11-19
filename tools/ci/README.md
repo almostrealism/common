@@ -132,10 +132,11 @@ re-fetched it from Maven Central on every run — 429s and transient "not found"
 followed. Three pieces replace it, all in `.github/workflows/analysis.yaml`:
 
 1. **A `maven-cache` job** resolves the full plugin and dependency set every
-   hosted job uses — `mvn install -DskipTests` (compiler, error-prone processor
-   path, surefire, jacoco, and the `tools` test deps including CPD), plus
-   `dependency:go-offline`/`dependency:resolve-plugins` across the reactor, the
-   `maven-checkstyle-plugin` (whose pinned Checkstyle library only the
+   hosted job uses — `mvn test-compile` (compiler, error-prone processor
+   path, jacoco, and the `tools` test deps including CPD), plus
+   `dependency:go-offline`/`dependency:resolve-plugins` across the reactor
+   (which resolve surefire, since test-compile does not reach the test phase),
+   the `maven-checkstyle-plugin` (whose pinned Checkstyle library only the
    `checkstyle` job exercises), and the standalone jacoco-cli distribution the
    `analysis` job unzips — and saves it with an explicit `actions/cache/save`
    under a key built from the pom hashes and a manual version prefix

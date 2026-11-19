@@ -594,10 +594,11 @@ jobs:
   #
   # This job resolves the FULL set any hosted job uses — declared dependencies
   # and plugins across the reactor (go-offline, resolve-plugins), the compiler
-  # and error-prone processor path and surefire and jacoco (install -DskipTests
-  # compiles, binds jacoco:prepare-agent and test-compiles, so it resolves all
-  # of those), the checkstyle plugin's pinned Checkstyle library (only the
-  # checkstyle job exercises it), and the jacoco-cli distribution the analysis
+  # and error-prone processor path and jacoco (test-compile compiles main and
+  # test sources and binds jacoco:prepare-agent, so it resolves those) and
+  # surefire (resolved by resolve-plugins, since test-compile does not reach the
+  # test phase that binds it), the checkstyle plugin's pinned Checkstyle library
+  # (only the checkstyle job exercises it), and the jacoco-cli distribution the analysis
   # job unzips — then saves it with an explicit actions/cache under a key built
   # from the pom hashes and the manual HOSTED_MAVEN_CACHE_VERSION prefix, with a
   # restore-keys fallback so a pom change starts from the previous cache instead
@@ -611,10 +612,6 @@ jobs:
   # master's readable by every PR, so master runs keep a complete cache saved
   # for every PR to restore. tools/tests/test_hosted_maven_cache.py pins the
   # wiring and that this job's save key matches the restore action's.
-  # TODO(review): the parenthetical above and the maven-cache descriptions in
-  # .github/CLAUDE.md and tools/ci/README.md say `mvn install -DskipTests`, but
-  # the Warm step below runs `mvn test-compile` (surefire is resolved by
-  # resolve-plugins, not the compile). Reconcile the prose with the command.
   maven-cache:
     needs: changes
     if: needs.changes.outputs.code_changed == 'true'
@@ -676,6 +673,18 @@ jobs:
           # the cache instead of fetching it from Central.
           JACOCO_VERSION=$(sed -n 's|.*<jacoco.version>\(.*\)</jacoco.version>.*|\1|p' pom.xml | head -n1)
           mvn -B -ntp dependency:get -Dartifact="org.jacoco:jacoco:${JACOCO_VERSION}:zip"
+
+      # A best-effort warm that hit a transient transfer failure leaves
+      # `*.lastUpdated` resolver markers in ~/.m2. Maven's update policy reads
+      # those markers and skips re-fetching the artifact until the policy window
+      # elapses, so a consumer restoring this cache would be told the missing
+      # artifact was "recently tried" and fail offline instead of following the
+      # documented network fallback. Delete the markers before saving, so the
+      # cache only ever holds artifacts it actually resolved — never a record of
+      # one it failed to. Runs whenever the save does.
+      - name: Remove failed-transfer markers
+        if: ${{ always() && steps.restore.outputs.cache-hit != 'true' }}
+        run: find ~/.m2/repository -name '*.lastUpdated' -type f -delete
 
       # Save the warmed repository for subsequent runs. Skipped on an exact hit
       # (already complete) and run even if warming reported an error, so a
@@ -4033,19 +4042,16 @@ jobs:
 
           # Use JaCoCo CLI to merge all exec files
           if [ -s exec-files.txt ]; then
-            # The jacoco-cli distribution zip. Version matches <jacoco.version>
-            # in the root pom. Prefer the copy the `maven-cache` job prefetched
-            # into ~/.m2 (restored above), so a warm run makes no Central
-            # request. Fall back to Central with curl that FAILS on an HTTP
-            # error (-f) and retries transient ones with backoff, so a 429 or a
-            # rate-limit page can never be mistaken for the zip — the earlier
-            # `-sL` without `-f` left the HTTP error body in the file and then
-            # tried to unzip it.
-            # TODO(review): this version is hardcoded while the maven-cache job
-            # derives it from <jacoco.version> in pom.xml; a pom bump would make
-            # the prefetched and the looked-for versions drift (a Central fetch
-            # on upgrade). Read it from the pom here too.
-            JACOCO_VERSION=0.8.11
+            # The jacoco-cli distribution zip. Version read from <jacoco.version>
+            # in the root pom — the SAME source the `maven-cache` job uses to
+            # prefetch it, so the prefetched and the looked-for versions cannot
+            # drift on a jacoco upgrade. Prefer the copy that job prefetched into
+            # ~/.m2 (restored above), so a warm run makes no Central request.
+            # Fall back to Central with curl that FAILS on an HTTP error (-f) and
+            # retries transient ones with backoff, so a 429 or a rate-limit page
+            # can never be mistaken for the zip — the earlier `-sL` without `-f`
+            # left the HTTP error body in the file and then tried to unzip it.
+            JACOCO_VERSION=$(sed -n 's|.*<jacoco.version>\(.*\)</jacoco.version>.*|\1|p' pom.xml | head -n1)
             JACOCO_ZIP="${HOME}/.m2/repository/org/jacoco/jacoco/${JACOCO_VERSION}/jacoco-${JACOCO_VERSION}.zip"
             if [ ! -f "$JACOCO_ZIP" ]; then
               echo "jacoco-cli ${JACOCO_VERSION} not in the Maven cache; downloading from Maven Central"

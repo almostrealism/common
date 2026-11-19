@@ -223,6 +223,25 @@ class MavenCacheJobTest(unittest.TestCase):
         self.assertIn("always()", cond)
         self.assertIn("cache-hit != 'true'", cond)
 
+    def test_removes_failed_transfer_markers_before_saving(self):
+        """A best-effort warm that hit a transient failure leaves `*.lastUpdated`
+        resolver markers; Maven's update policy would then suppress the retry for
+        a consumer restoring this cache, turning a transient miss into a hard
+        failure. The markers must be deleted, under the same gate as the save and
+        ordered before it, so the saved cache never records a failed transfer."""
+        names = [s.get("name") for s in self.steps]
+        self.assertIn("Remove failed-transfer markers", names,
+                      "maven-cache must delete *.lastUpdated markers before saving")
+        self.assertLess(names.index("Remove failed-transfer markers"),
+                        names.index("Save Maven dependencies"),
+                        "the marker removal must run before the save")
+        remove = self._step("Remove failed-transfer markers")
+        self.assertRegex(remove["run"], r"\*\.lastUpdated",
+                         "the step must target *.lastUpdated marker files")
+        cond = str(remove.get("if", ""))
+        self.assertIn("always()", cond)
+        self.assertIn("cache-hit != 'true'", cond)
+
 
 class MavenConfigRetryTest(unittest.TestCase):
     def test_maven_config_sets_transport_retry_backoff(self):
@@ -271,6 +290,20 @@ class AnalysisJacocoDownloadTest(unittest.TestCase):
         run = self._merge_step_run()
         self.assertIn("unzip -tq", run,
                       "analysis must test the archive integrity before unzipping it")
+
+    def test_derives_the_jacoco_version_from_the_pom(self):
+        """The version must be read from <jacoco.version> in the root pom, the
+        same source the maven-cache warm step uses to prefetch the zip, so a
+        jacoco upgrade cannot leave analysis looking for a version the cache does
+        not hold (which would force the Central fetch this change removes)."""
+        run = self._merge_step_run()
+        self.assertRegex(
+            run,
+            r"JACOCO_VERSION=\$\(sed[^\n]*<jacoco\.version>[^\n]*pom\.xml",
+            "analysis must derive JACOCO_VERSION from <jacoco.version> in pom.xml")
+        self.assertNotRegex(
+            run, r"JACOCO_VERSION=\d",
+            "the jacoco-cli version must not be hardcoded in the analysis step")
 
 
 if __name__ == "__main__":
