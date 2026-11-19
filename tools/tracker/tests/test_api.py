@@ -593,6 +593,13 @@ class TestArtifacts(unittest.TestCase):
         resp = self._add(artifact_type="comment", content="", author="person")
         self.assertEqual(resp.status_code, 400)
 
+    def test_create_refuses_whitespace_only_content(self):
+        resp = self._add(artifact_type="comment", content="   \n\t", author="person")
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["error"], "content is required")
+        listed = self.client.get(f"/v1/tasks/{self.task_id}/artifacts")
+        self.assertEqual(listed.json()["artifacts"], [])
+
     def test_create_requires_author(self):
         resp = self._add(artifact_type="comment", content="x", author="")
         self.assertEqual(resp.status_code, 400)

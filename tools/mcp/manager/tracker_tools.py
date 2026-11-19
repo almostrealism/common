@@ -84,9 +84,12 @@ def _require_person(tool: str) -> None:
 
     Neither harness offers these tools to an agent, since neither allowlist
     names them, but the server does not rely on every harness honouring the
-    allowlist, so the refusal is made here as well.
+    allowlist, so the refusal is made here as well. A token carrying either
+    half of an agent binding (a workstream or a job) is refused: only a caller
+    with neither is a person.
     """
-    if server._get_token_workstream_id():
+    workstream_id, job_id = _caller_job()
+    if workstream_id or job_id:
         raise PermissionError(
             f"{tool} is left to people: agent jobs may read tasks, create tasks and"
             " edit the ones they hold, but not delete them or reorganise projects"
@@ -98,15 +101,20 @@ def _job_provenance(workstream_id: str, job_id: str) -> str:
     return f"{FOLLOW_UP_SOURCE_PREFIX}{workstream_id}/{job_id}"
 
 
-def _artifact_author() -> str:
+def _artifact_author() -> Optional[str]:
     """Return who to record as the author of an artifact, from the caller's
     token: ``person`` for a person, or ``<workstream>/<job>`` for an agent job.
 
     Taken from the token rather than from input, so an artifact's author cannot
-    be spoofed, the same way a filed task's provenance is."""
+    be spoofed, the same way a filed task's provenance is. A token bound to only
+    one of a workstream and a job identifies neither a person nor a job, so it
+    returns None and the caller refuses the request rather than recording a
+    false author."""
     workstream_id, job_id = _caller_job()
     if workstream_id and job_id:
         return f"{workstream_id}/{job_id}"
+    if workstream_id or job_id:
+        return None
     return _PERSON_SOURCE
 
 
@@ -887,14 +895,18 @@ def tracker_add_artifact(task_id: str, artifact_type: str, content: str) -> dict
         return error
     if not content.strip():
         return {"ok": False, "error": "content is required"}
+    author = _artifact_author()
+    if author is None:
+        return {"ok": False, "error": "the caller's token is bound to only one of a "
+                                      "workstream and a job, so the artifact's author "
+                                      "cannot be recorded"}
     task, error = _fetch(f"/v1/tasks/{task_id}", "task", "task")
     if error:
         return error
     server._audit("tracker_add_artifact", task_id=task_id, artifact_type=artifact_type)
     return server._tracker_post(
         f"/v1/tasks/{task_id}/artifacts",
-        {"artifact_type": artifact_type, "content": content,
-         "author": _artifact_author()})
+        {"artifact_type": artifact_type, "content": content, "author": author})
 
 
 @mcp.tool()

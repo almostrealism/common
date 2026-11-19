@@ -600,6 +600,29 @@ class TestTrackerArtifactTools(unittest.TestCase):
             server.tracker_delete_artifact("a1")
         mock_del.assert_not_called()
 
+    @patch.object(server, "_tracker_post")
+    @patch.object(server, "_tracker_get")
+    def test_add_artifact_refuses_partial_bindings(self, mock_get, mock_post):
+        # A token bound to only a workstream, or only a job, is neither a person
+        # nor a job: recording it as "person" would be false provenance.
+        mock_get.return_value = self._task()
+        for ws, job in (("ws-1", None), (None, "job-1")):
+            with self.subTest(workstream_id=ws, job_id=job):
+                server._set_token_context(workstream_id=ws, job_id=job)
+                result = server.tracker_add_artifact("t1", "comment", "a note")
+                self.assertFalse(result["ok"])
+                self.assertIn("author", result["error"])
+        mock_post.assert_not_called()
+
+    @patch.object(server, "_tracker_delete")
+    def test_delete_artifact_refused_for_partial_bindings(self, mock_del):
+        for ws, job in (("ws-1", None), (None, "job-1")):
+            with self.subTest(workstream_id=ws, job_id=job):
+                server._set_token_context(workstream_id=ws, job_id=job)
+                with self.assertRaises(PermissionError):
+                    server.tracker_delete_artifact("a1")
+        mock_del.assert_not_called()
+
     def test_artifact_tools_require_scope(self):
         _grant_scopes("read")
         with self.assertRaises(PermissionError):
