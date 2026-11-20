@@ -129,6 +129,7 @@ keep working when any of those rules is changed.
 | `curl -x proxy`, `--resolve`, `-K config` | block |
 | `git remote set-url` then `git push origin` | set-url blocked; push checks the pinned `host/owner/repo` |
 | Editing `.git/config` with the Write tool, then pushing | push still checks the pin → block |
+| `cd` into a clone of another repository, then `git push origin` | block unless that repository is pinned in `[git-remotes]` (`host/owner/repo` or `host/owner/`); a bare host entry or a lab host does not count as a pin |
 | `git -c remote.origin.url=… push`, `git --config-env=remote.origin.url=… push`, `git -C /other push`, `--git-dir`/`--work-tree`, `--receive-pack=` | block |
 | `GIT_DIR=/other.git git push origin`, `env GIT_WORK_TREE=… git …`, `GIT_INDEX_FILE`/`GIT_OBJECT_DIRECTORY`/`GIT_COMMON_DIR`/`GIT_ALTERNATE_OBJECT_DIRECTORIES`/`GIT_NAMESPACE` | block for every git subcommand — a leading environment assignment (or one after an `env` wrapper) that selects another repository would otherwise make git operate elsewhere while the command read as ordinary; the assignments are preserved through unwrapping and checked. A benign variable (`GIT_PAGER=cat git log`) and a repository-selecting variable on a non-git command stay allowed |
 | `git -c "$C" push` / `git --config-env "$C" push` (the value the shell computes) | block — a computed config value cannot be matched against the sensitive-key list, so git could rewrite the remote while the guard checked the on-disk origin |
@@ -280,8 +281,13 @@ State these plainly; do not assume the guard closes them.
      the tailnet range).
    - `[git-remotes]` — a host reachable only through `git push origin` and the
      sanctioned `gh` operations. Pin the repository with `host/owner/repo`
-     (`github.com/almostrealism/common`); a bare host accepts any repository
-     there, which you almost never want.
+     (`github.com/almostrealism/common`), or every repository of an owner with
+     `host/owner/` (`github.com/almostrealism/`, trailing slash required); a
+     bare host accepts any repository there, which you almost never want.
+     A `git push origin` from a clone of a repository other than the project's
+     own (for example a sibling repository of the same owner) is allowed only
+     when that repository is pinned, exactly or by owner. A bare host entry and
+     a `[lab-hosts]` entry pin nothing and never permit such a push.
 3. Commit it. The next hook invocation reads the new `HEAD`.
 4. If the change lands through a PR, run the workflow with
    `override_integrity_checks` set, exactly as for any other enforcement file —
@@ -334,5 +340,6 @@ For a human holding a legitimate blocked command:
 | `.claude/hooks/lib/test_exfiltration_guard_check.py` | the behavioral authority — every rule above has cases here |
 | `.claude/hooks/lib/test_exfiltration_guard_interpreter.py` | the interpreter argument walk: what fixes the program, what after it is data, and what is refused |
 | `.claude/hooks/lib/test_exfiltration_guard_worktree.py` | `git -C` into a linked worktree: followed, and still held to the push rules; a separate repository is not |
+| `.claude/hooks/lib/test_exfiltration_guard_pinning.py` | pushing a sibling repository: allowed only when its origin is pinned in `[git-remotes]` (case-insensitively); a `[lab-hosts]` entry alone pins nothing |
 | `tools/ci/agent-protection/verify-exfiltration-guard.sh` | CI check: presence on `HEAD`, registration coverage, and (off `ci/` branches) no change against the base; its header documents the exit codes |
 | `tools/ci/agent-protection/exfil_guard_registration.py` | shared registration parsing, used by the verifier and its tests |

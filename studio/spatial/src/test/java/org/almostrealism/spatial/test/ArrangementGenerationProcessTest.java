@@ -361,4 +361,146 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 			process.destroy();
 		}
 	}
+
+	/**
+	 * Builds a record carrying the given index and score. A {@code null} score leaves
+	 * the record unscored.
+	 *
+	 * @param index the record index
+	 * @param value the health score, or {@code null} for an unscored record
+	 * @return the record
+	 */
+	private GenomicNetwork network(int index, Double value) {
+		GenomicNetwork network = new GenomicNetwork(index, null);
+		if (value != null) {
+			network.setHealthScore(new AudioHealthScore(44_100, value,
+					"results/net-" + index + ".wav", List.of(), List.of()));
+		}
+		return network;
+	}
+
+	/**
+	 * A process holding only records, with no run prepared, for exercising population
+	 * trimming in isolation.
+	 *
+	 * @return a process over a throwaway persistence path
+	 */
+	private ArrangementGenerationProcess populationProcess() {
+		new File("results").mkdirs();
+		return new ArrangementGenerationProcess("results/retain-best-records.xml");
+	}
+
+	/**
+	 * Keeps the best-scoring records when the best are not the first in the list: a
+	 * client taking the first N would have discarded the higher-scoring records, which
+	 * is exactly what trimming by score must not do.
+	 */
+	@Test(timeout = 60_000)
+	public void retainBestKeepsHighestScoresWhenNotFirst() {
+		ArrangementGenerationProcess process = populationProcess();
+		process.setNetworks(List.of(
+				network(0, 0.41), network(1, 0.60), network(2, 0.56)));
+
+		process.retainBest(2);
+
+		List<GenomicNetwork> kept = process.getNetworks();
+		Assert.assertEquals("Two records must remain", 2, kept.size());
+		Assert.assertEquals("The 0.60 record must be kept",
+				0.60, kept.get(0).getHealthScore().getScore(), 1e-9);
+		Assert.assertEquals("The 0.56 record must be kept",
+				0.56, kept.get(1).getHealthScore().getScore(), 1e-9);
+	}
+
+	/**
+	 * Drops unscored records before any scored one: an unscored record ranks below
+	 * every scored record regardless of position.
+	 */
+	@Test(timeout = 60_000)
+	public void retainBestDropsUnscoredBeforeScored() {
+		ArrangementGenerationProcess process = populationProcess();
+		process.setNetworks(List.of(
+				network(0, 0.30), network(1, null), network(2, 0.10)));
+
+		process.retainBest(2);
+
+		List<GenomicNetwork> kept = process.getNetworks();
+		Assert.assertEquals("Two records must remain", 2, kept.size());
+		for (GenomicNetwork record : kept) {
+			Assert.assertNotNull("An unscored record was kept over a scored one",
+					record.getHealthScore());
+		}
+	}
+
+	/**
+	 * Preserves the existing relative order of the kept records: trimming removes the
+	 * lowest-scoring records but does not reorder the survivors into score order.
+	 */
+	@Test(timeout = 60_000)
+	public void retainBestPreservesRelativeOrder() {
+		ArrangementGenerationProcess process = populationProcess();
+		process.setNetworks(List.of(
+				network(0, 0.50), network(1, 0.90), network(2, 0.10)));
+
+		process.retainBest(2);
+
+		List<GenomicNetwork> kept = process.getNetworks();
+		Assert.assertEquals("Two records must remain", 2, kept.size());
+		Assert.assertEquals("The first kept record must stay first (not reordered"
+						+ " into score order)",
+				0.50, kept.get(0).getHealthScore().getScore(), 1e-9);
+		Assert.assertEquals("The higher-scoring record keeps its later position",
+				0.90, kept.get(1).getHealthScore().getScore(), 1e-9);
+	}
+
+	/**
+	 * A count at or above the population size leaves the population unchanged, keeping
+	 * every record in its current order.
+	 */
+	@Test(timeout = 60_000)
+	public void retainBestAtOrAboveSizeIsNoOp() {
+		ArrangementGenerationProcess process = populationProcess();
+		List<GenomicNetwork> original = List.of(
+				network(0, 0.20), network(1, 0.80), network(2, 0.50));
+		process.setNetworks(original);
+
+		process.retainBest(3);
+		Assert.assertEquals("A count equal to the size must change nothing",
+				original, process.getNetworks());
+
+		process.retainBest(4);
+		Assert.assertEquals("A count above the size must change nothing",
+				original, process.getNetworks());
+	}
+
+	/**
+	 * A count of zero empties the population: this exercises the trimming path (not the
+	 * at-or-above-size no-op) all the way down to retaining no records.
+	 */
+	@Test(timeout = 60_000)
+	public void retainBestZeroEmptiesPopulation() {
+		ArrangementGenerationProcess process = populationProcess();
+		process.setNetworks(List.of(network(0, 0.20), network(1, 0.80)));
+
+		process.retainBest(0);
+
+		Assert.assertTrue("A count of zero must leave the population empty",
+				process.getNetworks().isEmpty());
+	}
+
+	/** A negative count is rejected rather than trimming anything. */
+	@Test(timeout = 60_000)
+	public void retainBestRejectsNegativeCount() {
+		ArrangementGenerationProcess process = populationProcess();
+		process.setNetworks(List.of(network(0, 0.20), network(1, 0.80)));
+
+		try {
+			process.retainBest(-1);
+			Assert.fail("A negative count must throw IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		Assert.assertEquals("The population must be untouched after a rejected trim",
+				2, process.getNetworks().size());
+	}
 }
