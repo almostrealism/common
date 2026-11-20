@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
@@ -61,6 +62,21 @@ public class Min extends BinaryExpression<Double> {
 	@Override
 	public Number evaluate(Number... children) {
 		return Math.min(children[0].doubleValue(), children[1].doubleValue());
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The mirror of {@link Max#delta(CollectionExpression)}: the derivative follows the
+	 * smaller operand, selecting the derivative of the left operand where it is less than
+	 * the right operand and the derivative of the right operand otherwise.</p>
+	 */
+	@Override
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
+		return conditional(target.getShape(),
+				getLeft().lessThan(getRight()),
+				getLeft().delta(target),
+				getRight().delta(target));
 	}
 
 	@Override

@@ -50,6 +50,151 @@ JDK of the expected major — rebuild/restart it per its fleet's doc:
 | OpenCL (ROCm) | `ar-ci-cl` | [`rocm/README.md`](rocm/README.md#jdk-version-baked-into-the-image) — set `JDK_MAJOR` in `.env`, then `install-runner.sh` |
 | CUDA (NVIDIA) | `ar-ci-cuda` | [`cuda/README.md`](cuda/README.md#jdk-version-baked-into-the-shared-image) — reuses the CPU image; set `JDK_MAJOR` in `.env`, then `fleet.sh up` |
 
+## Maven dependency caching
+
+The self-hosted Linux runners (`ar-ci`, `ar-ci-cl`, `ar-ci-cuda`) are **ephemeral
+containers**: each job starts from the image with an empty local Maven
+repository. Without a cache every job re-resolves the whole plugin and
+dependency set from Maven Central — about 800 artifacts per job — and a full
+pipeline fans out to ~18 such jobs, so the repeated downloads hit Central's HTTP
+429 rate limit and fail the pipeline. (The macOS fleet never had this: it keeps a
+persistent `$HOME/.m2-ci/<runner>` on the host, so it is warm after the first
+job. GitHub-hosted jobs have no host-mounted cache either; they restore a
+deliberately-built GitHub Actions cache instead — see "Hosted (`ubuntu-latest`)
+jobs" below.)
+
+Three pieces fix it, and **all of them are safe on today's runners** — nothing
+changes until a host is rebuilt/recreated to provide the mount:
+
+1. **A shared `select-maven-repo` composite action**
+   ([`.github/actions/select-maven-repo`](../../.github/actions/select-maven-repo/action.yml))
+   runs on every self-hosted lane as the `Select Maven repository` step. It
+   points `maven.repo.local` at a **per-runner subdirectory** of a persistent,
+   shared Maven cache the host mounts at `/opt/ar-maven-cache`, so the plugin and
+   dependency set resolved once survives the ephemeral container and is reused by
+   every later job on that host. Per-runner subdirectories keep concurrent
+   runners from clobbering each other's SNAPSHOT installs (the same reason the
+   macOS fleet isolates per runner). **When the mount is absent or not writable,
+   the action falls back to the previous behaviour** — `$HOME/.m2-ci/<runner>`, or
+   `$HOME/.m2/repository` for the `ar-ci` `test` lane whose `actions/cache` step
+   warms that path — so a runner that has not been recreated with the volume
+   still builds correctly, only slower. `tools/tests/test_maven_cache.py` pins
+   the action and its wiring.
+
+2. **A persistent named volume** mounted at `/opt/ar-maven-cache` on each Linux
+   fleet (a `docker compose` volume for `ar-ci`/`ar-ci-cuda`, a podman quadlet
+   `Volume=` for `ar-ci-cl`). A named volume auto-creates, inherits the image
+   mount point's `runner` ownership (the images `mkdir`/`chown` it) so the
+   non-root runner can write, and survives container recreation.
+
+3. **Maven transport retry/backoff** baked into the runner images and the macOS
+   runner (`MAVEN_ARGS` with `aether.connector.http.retryHandler.*`), so a
+   *remaining* transient 429/5xx/dropped connection is retried with backoff
+   instead of failing the job. This is a backstop, not the fix — a warm cache
+   makes almost no Central requests in the first place.
+
+### Enabling it on a host (person steps)
+
+CI keeps working before any of this is applied; applying it makes a host's lanes
+warm. Per fleet:
+
+| Fleet | Label | How to enable / verify / roll back |
+|---|---|---|
+| CPU (Linux) | `ar-ci` | [`docker/README.md`](docker/README.md#maven-dependency-cache) |
+| GPU (macOS) | `ar-ci` | already warm via `$HOME/.m2-ci/<runner>`; nothing to mount (see [`macos/README.md`](macos/README.md#maven-dependency-cache)) |
+| OpenCL (ROCm) | `ar-ci-cl` | [`rocm/README.md`](rocm/README.md#maven-dependency-cache) |
+| CUDA (NVIDIA) | `ar-ci-cuda` | [`cuda/README.md`](cuda/README.md#maven-dependency-cache) |
+
+**Correctness guarantees.** A **cold** cache (fresh volume, or none) resolves
+everything from Central exactly as before — slower, never wrong. A **stale**
+cache is a superset of what a build needs, so extra artifacts are harmless and a
+new dependency is fetched on demand. A **poisoned or partial** artifact cannot
+persist a broken build: Maven validates checksums, each per-runner subdirectory
+is independent so one runner's corruption never reaches another, and the whole
+cache is disposable — `docker volume rm <project>_ar-maven-cache` (or `podman
+volume rm ar-ci-cl-m2`) forces a clean cold rebuild. The cache is never an input
+the build cannot reproduce from Central.
+
+**Optional cold-start seed.** The first job on a brand-new volume is still cold.
+To warm it in advance, run one throwaway build on the host (for example `mvn
+-q -DskipTests dependency:go-offline` against a checkout, writing into the
+volume's per-runner subdirectory), or simply let the first pipeline warm it —
+steady state is warm either way.
+
+### Hosted (`ubuntu-latest`) jobs
+
+The GitHub-hosted jobs have no host-mounted cache, so they use a GitHub Actions
+cache built on purpose instead of `actions/setup-java`'s `cache: maven`. That
+`cache: maven` saved the local repository only on a miss, from whichever hosted
+job finished first, and never re-saved it on a hit; the job that won that race
+did not run jacoco, so `org.jacoco:jacoco-maven-plugin` was never in the saved
+cache and every hosted job that runs `mvn test` (so `jacoco:prepare-agent`)
+re-fetched it from Maven Central on every run — 429s and transient "not found"s
+followed. Three pieces replace it — the `maven-cache` job and the hosted jobs'
+restore wiring in `.github/workflows/analysis.yaml`, the shared composite action,
+and `.mvn/maven.config`:
+
+1. **A `maven-cache` job** resolves the full plugin and dependency set every
+   hosted job uses — `mvn package -DskipTests` (compiler, error-prone processor
+   path, surefire and jacoco, and the `tools` test deps including CPD), plus
+   `dependency:go-offline`/`dependency:resolve-plugins` across the reactor, the
+   `maven-checkstyle-plugin` (whose pinned Checkstyle library only the
+   `checkstyle` job exercises), and the standalone jacoco-cli distribution the
+   `analysis` job unzips — and saves it with an explicit `actions/cache/save`
+   under a key built from the pom hashes and a manual version prefix
+   (`HOSTED_MAVEN_CACHE_VERSION`), with a `restore-keys` fallback so a pom change
+   starts from the previous cache rather than from empty. It warms best-effort
+   and nothing depends on it: it maintains the cache for subsequent runs rather
+   than sitting on the critical path. It saves only after a warm that completed:
+   a cache key is immutable, so a partial repository saved under the exact key
+   would make every later run skip warming while consumers re-download what it
+   lacks. A failed warm leaves the key unclaimed, and the next run restores the
+   previous cache through `restore-keys` and warms again. It warms through
+   `package` rather than `test-compile` because `studio/compose` unpacks
+   `engine/ml`'s `proto`-classified artifact in `generate-sources`, and that
+   artifact is attached at `ml`'s package phase — so `test-compile` leaves the
+   reactor dependency unpackaged and the unpack fails deterministically
+   (MDEP-98). `package` does not `install`, so `build` is still the only job
+   that installs the shared artifacts.
+
+2. **The shared `restore-maven-cache` composite action**
+   ([`.github/actions/restore-maven-cache`](../../.github/actions/restore-maven-cache/action.yml))
+   runs on every hosted Maven job as the `Restore Maven dependencies` step. It
+   restores **read-only** (`actions/cache/restore`, never the combined action),
+   so no consumer job can re-save a partial repository the way `cache: maven`
+   did. It excludes `org/almostrealism` — the project's own artifacts come from
+   `build`'s `maven-installed-artifacts`, not this cache. The `maven-cache` job
+   restores through the same action and then saves under the exact key the
+   action reports (`cache-primary-key`), so the save and restore keys cannot
+   drift.
+
+3. **Maven transport retry/backoff in [`.mvn/maven.config`](../../.mvn/maven.config)**
+   — the same `aether.connector.http.retryHandler.*` settings the self-hosted
+   images bake into `MAVEN_ARGS` — so a *remaining* 429/503/dropped connection
+   on a cache miss is retried rather than failing the job. These fire only on a
+   transient transport error, so a warm build (local or CI) makes no extra
+   requests and is unaffected. `maven.config` applies to every `mvn` the repo
+   runs; it holds only `-D` flags (Maven parses the file as arguments, so a `#`
+   comment line would be read as a bogus goal).
+
+**Correctness.** A cold or missing cache resolves everything from Central as
+before — slower, never wrong. A cache missing one artifact fetches that artifact
+from the network (with the retry above), it does not fail. GitHub scopes caches
+by branch — a PR run reads its own branch's cache and the default branch's, but
+not another PR's — so master runs keep a complete cache that every PR restores;
+a pom change on a PR falls back to master's cache plus the network for the delta.
+The cached repository is a fraction of GitHub's 10 GB per-repo cache budget and
+is evicted by GitHub's own LRU (and after 7 days unused), so no manual pruning is
+needed; bump `HOSTED_MAVEN_CACHE_VERSION` to invalidate it deliberately.
+
+The runners' Maven is 3.9.x (the `ubuntu-latest` image ships 3.9.x; the
+self-hosted images pin 3.9.6), whose Resolver is 1.9.x — the version the
+`retryHandler` properties belong to. An official Maven Central mirror was
+considered to spread load off `repo.maven.apache.org`, but a warm cache already
+makes almost no Central requests, and `repo1.maven.org` is Central's own CDN, so
+routing through a third party would add a less-trusted hop for no real benefit;
+it was not adopted.
+
 ## Root Scripts
 
 | Script | Purpose |
@@ -160,8 +305,8 @@ crash. A payload holding fewer jobs than its declared `total_count` also counts
 one crash, since a missing matrix run can hide behind another run of the same
 job. So a zero crash count means every failing job was seen and found
 environmental. The test step is recognised by the word "test(s)" in its name
-only — never "Maven", because the macOS/CL/CUDA lanes' "Isolate Maven repository
-per runner" setup step precedes their artifact download.
+only — never "Maven", because the self-hosted lanes' "Select Maven repository"
+setup step precedes their artifact download.
 
 `test-flowtree` originally had
 neither check — it uploaded no Surefire artifact at all — so a failure there was

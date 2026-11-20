@@ -188,8 +188,8 @@ public class CollectionConjunctionComputation extends CollectionComparisonComput
 		// Check if a != 0 and b != 0 by using eq().not()
 		return CollectionExpression.create(getShape(), index ->
 				conditional(
-						args[1].getValueAt(index).eq(e(0.0)).not()
-								.and(args[2].getValueAt(index).eq(e(0.0)).not()),
+						args[1].getValueAt(conditionIndex(index, 1)).eq(e(0.0)).not()
+								.and(args[2].getValueAt(conditionIndex(index, 2)).eq(e(0.0)).not()),
 						args[3].getValueAt(index),
 						args[4].getValueAt(index)));
 	}

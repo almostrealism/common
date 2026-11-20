@@ -3,7 +3,8 @@
 Both are the official channel to the project's origin — ``git push`` is
 the only way the harness is supposed to publish — so the rule is
 narrow: ``git push`` must go to ``origin``, ``origin`` must be this
-project's origin, and the project must be an allowlisted git remote.
+project's origin (or a repository the allowlist pins in ``[git-remotes]``,
+exactly or by owner), and it must be an allowlisted git remote.
 ``gh`` is allowed for the read/write operations on issues, PRs, runs and
 workflows, and ``gh api`` is limited to read requests; anything that
 uploads a body (``--body-file``, ``-f``, ``-F``) is a block.
@@ -285,9 +286,10 @@ def _check_git(argv, ctx, env=()):
     project = ctx.project_origin()
     if target is None or project is None:
         raise _GuardError(f"origin URL {url.strip()!r} could not be compared with the project's origin")
-    if target != project:
+    if target != project and not ctx.allowlist.pins_git_remote(target[0], target[1]):
         raise _GuardError(f"origin here is {target[0]}:{target[1]}, not the project's "
-                          f"{project[0]}:{project[1]}; pushing another repository is denied")
+                          f"{project[0]}:{project[1]}, and that repository is not pinned in "
+                          f"[git-remotes]; pushing another repository is denied")
     if not ctx.allowlist.is_git_remote(target[0], target[1]):
         raise _GuardError(f"origin {target[0]}/{target[1]} is not an allowlisted git remote")
     return f"git:push:{target[0]}/{target[1]}"

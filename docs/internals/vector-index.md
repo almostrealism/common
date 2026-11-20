@@ -56,6 +56,26 @@ serialized twice. One store directory holds:
 which is written when it reaches the target batch size, on `flush()`, or on `close()`. The
 vector index is written on `flush()` and `close()`.
 
+**What survives an interruption.** A record is durable once a flush has written and synced its
+batch file *and then* committed `index.bin`. The index is written to `index.bin.tmp`, synced,
+and moved over `index.bin` atomically, so an interruption at any point leaves the previously
+committed index readable. `hnsw.bin` is replaced the same way, through `hnsw.bin.tmp`:
+
+| Interrupted while... | After reopening |
+|---|---|
+| records are pending (not yet flushed) | those records are lost; everything committed earlier is kept |
+| a batch file is being written | the partial batch file is referenced by no index entry and is never read; its records are lost |
+| the batch is complete but the index is being written | the previous index is used; the complete batch is unreferenced and ignored, its records are lost |
+| the index has been moved into place | every record of that flush is kept |
+| `hnsw.bin` is being written | the previously saved vector index is used; it lacks the vectors added since, until the model is declared again (section 5) |
+| after an automatic flush that did not save `hnsw.bin` | records are kept; the vector index lacks some of them until the model is declared again (section 5) |
+
+Batch numbers are never reused for a file that already exists, so a store whose index was lost
+does not overwrite the batches still on disk. `scan` and `pairwiseScan` read only the batches
+the index refers to. Files are synced, but the directory entry of the rename is not, so on a
+power failure (as opposed to a process crash) the most recent commit may still be lost; the
+store is then at the previous commit, never in a mixed state.
+
 There are three vector operations on the store:
 
 - `put(id, record, vector)` stores the record and inserts (or replaces) its vector.
@@ -263,13 +283,20 @@ only a dimension.
 
 **(c) Re-embedding: `ProtobufWaveDetailsStore.setEmbeddingModel(model)`.** A store of opaque
 records cannot recompute embeddings. So when `setIndexModel` reports a rebuild, the layer above
-does the work. `ProtobufWaveDetailsStore.rebuildIndex` visits every stored record. Each record
-that already has features for the declared model is re-embedded from those features (mean
-pooled) and re-inserted with `insertEmbedding`. A record **without** the declared model's
+does the work. `ProtobufWaveDetailsStore.indexMissingEmbeddings` visits every stored record that
+has no indexed embedding. Each one that already has features for the declared model is
+re-embedded from those features (mean pooled) and inserted with `insertEmbedding`. A record **without** the declared model's
 features is left out. It enters the index when its embedding for that model is computed and
 stored. `ProtobufWaveDetailsStore.put(id, details, vector)` declares the model of the record's
 active features — rebuilding the index if that model differs from the one recorded — before it
-inserts, so a `put` cannot silently add a vector to an index built for another model. This is a
+inserts, so a `put` cannot silently add a vector to an index built for another model.
+
+The same pass also runs the first time a model is declared after the store is opened, even when
+the index is current. An automatic batch flush makes records durable without saving `hnsw.bin`,
+so after an interrupted run the saved index can lack records that are stored complete for its
+model; nothing would re-put them. This reconciliation reads only the records missing from the
+index. Saving `hnsw.bin` with every batch would close the same gap, but each save rewrites the
+whole vector index, which grows with the library, every few megabytes of records. This is a
 caller-side contract rather than a validated guarantee: the store does not check that `vector`
 was actually produced by that model, and when the record's active model identifier is `null`
 the index model is left unchanged (`setIndexModel(null)` is a no-op), so a vector supplied with a
@@ -334,7 +361,10 @@ same ground.
 - **Concurrency.** Every access to the index (insert, remove, search, model change, save and
   destroy) is serialized on one lock inside `ProtobufDiskStore`. A model change on one thread
   therefore cannot destroy an index that another thread is still using. The record side of the
-  store (the pending batch and the id index) is not synchronized in the same way.
+  store (the pending batch, the id index and the batch cache) is guarded by the store's own
+  monitor, which is always taken before the index lock and never after it, so a flush on one
+  thread and puts on another do not lose records. Vector insertion and the index save run outside
+  the store's monitor.
 
 ---
 
@@ -348,7 +378,7 @@ same ground.
 | `engine/ml/src/main/java/org/almostrealism/persist/index/DiskStore.java` | The store interface, including the `search` contract |
 | `engine/ml/src/main/java/org/almostrealism/persist/index/SearchResult.java` | One search hit: id, record, similarity |
 | `engine/ml/src/main/proto/diskstore.proto` | `DiskStoreIndex`, `HnswIndexData`, `HnswNodeData`, `HnswLayerNeighbors` |
-| `studio/compose/src/main/java/org/almostrealism/studio/persistence/ProtobufWaveDetailsStore.java` | Re-embedding on a model change (`setEmbeddingModel`, `rebuildIndex`) |
+| `studio/compose/src/main/java/org/almostrealism/studio/persistence/ProtobufWaveDetailsStore.java` | Re-embedding on a model change or reopen (`setEmbeddingModel`, `indexMissingEmbeddings`) |
 | `engine/ml/src/test/java/org/almostrealism/persist/index/test/VectorIndexExamplesTest.java` | The worked examples on this page |
 | `engine/ml/src/test/java/org/almostrealism/persist/index/test/HnswSearchTest.java` | Detailed index and store behavior, including old-format loading and edge pruning |
 | `studio/compose/src/test/java/org/almostrealism/studio/persistence/test/ProtobufWaveDetailsStoreTest.java` | The rebuild contract at the re-embedding layer |

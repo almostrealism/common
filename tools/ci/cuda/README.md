@@ -238,6 +238,35 @@ For org scope, grant the runner group access to the repository once (Org
 Settings → Actions → Runner groups → Repository access), or jobs queue forever
 against a runner that reports healthy.
 
+## Maven dependency cache
+
+Like the other ephemeral Linux fleets, these runners re-resolve the whole plugin
+and dependency set from Maven Central on every job without a persistent cache,
+which hits Central's 429 rate limit (full design: "Maven dependency caching" in
+[`../README.md`](../README.md#maven-dependency-caching)). `docker-compose.yml`
+mounts a **named volume** `ar-maven-cache` at `/opt/ar-maven-cache` — the shared
+`../docker` image already creates that mount point owned by the runner user — and
+the CI jobs point `maven.repo.local` at a per-runner subdirectory of it.
+
+**Enable it** (safe any time; CI falls back to the empty per-container repository
+until applied):
+
+```bash
+./fleet.sh up [N]       # recreates the containers so they mount the named volume
+```
+
+**Verify / roll back** (a cold cache resolves from Central, only slower):
+
+```bash
+docker volume inspect ar-ci-cuda_ar-maven-cache     # exists after `fleet.sh up`
+./fleet.sh down
+docker volume rm ar-ci-cuda_ar-maven-cache          # discard; rebuilds on next job
+./fleet.sh up [N]
+```
+
+A job log's `Select Maven repository` step prints the repository it chose
+(`using persistent shared Maven cache /opt/ar-maven-cache/<runner>` once warm).
+
 ## Files
 
 ```

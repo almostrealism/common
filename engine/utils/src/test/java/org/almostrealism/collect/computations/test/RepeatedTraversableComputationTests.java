@@ -78,4 +78,33 @@ public class RepeatedTraversableComputationTests extends TestSuiteBase {
 
 		profile.print();
 	}
+
+	/**
+	 * Evaluates a {@code toRepeated()} computation in place (the output is also the
+	 * first input) and verifies that every element, including the first, is correct.
+	 *
+	 * <p>The repeated adapter previously initialised output element 0 to zero before
+	 * the loop ran. When the output aliases an input, that write clobbered element 0
+	 * of the input before the loop read it, so element 0 came out holding only the
+	 * second operand. This test fails on element 0 unless the adapter leaves the
+	 * output uninitialised.
+	 */
+	@Test(timeout = 60000)
+	public void addInPlace() {
+		int len = 16;
+
+		PackedCollection data = new PackedCollection(len).randFill();
+		PackedCollection other = new PackedCollection(len).randFill();
+
+		double[] expected = IntStream.range(0, len)
+				.mapToDouble(i -> data.toDouble(i) + other.toDouble(i)).toArray();
+
+		Evaluable<PackedCollection> rev = ((CollectionProducerComputationAdapter)
+				add(v(shape(-1), 0), v(shape(-1), 1))).toRepeated().get();
+
+		rev.into(data).evaluate(data, other);
+
+		IntStream.range(0, len).forEach(i ->
+				assertEquals("element " + i, expected[i], data.toDouble(i)));
+	}
 }

@@ -12,6 +12,13 @@
 #   a.b.c.d            single IPv4 address
 #   host/owner/repo    ([git-remotes] only) pins the repository that may
 #                      be pushed to; a bare host accepts any repository
+#   host/owner/        ([git-remotes] only) pins every repository of that
+#                      owner (note the trailing slash)
+#
+# `git push origin` from a clone of a repository other than the project's
+# own is allowed only when that repository is pinned in [git-remotes],
+# exactly (host/owner/repo) or by owner (host/owner/). A bare host entry
+# and a [lab-hosts] entry pin nothing and never permit such a push.
 #
 # [lab-hosts]   destinations that may receive data by any transport
 #               (scp/rsync/ssh/curl uploads/nc/...). Machines the owner
@@ -43,5 +50,6 @@ macbook-pro.local
 *.almostrealism.ai
 
 [git-remotes]
+github.com/almostrealism/
 github.com/almostrealism/common
 api.github.com

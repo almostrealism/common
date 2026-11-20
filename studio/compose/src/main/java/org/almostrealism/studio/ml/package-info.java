@@ -21,8 +21,12 @@
  *
  * <p>Key classes include:</p>
  * <ul>
- *   <li>{@link org.almostrealism.studio.ml.AudioComposer} - High-level ML-based audio
- *       composer that coordinates model inference and scene generation</li>
+ *   <li>{@link org.almostrealism.studio.ml.AudioComposer} - Composes audio by blending
+ *       encoded sources in the latent space of an autoencoder, as a weighted sum or a
+ *       normalized weighted mean selected by a position vector</li>
+ *   <li>{@link org.almostrealism.studio.ml.ComposableAudioFeatures} - One encoded source of
+ *       an {@link org.almostrealism.studio.ml.AudioComposer}, scaled by the dot product of its
+ *       merge weights with the position vector and by its blend contribution</li>
  *   <li>{@link org.almostrealism.studio.ml.AudioDiffusionGenerator} - Diffusion model-based
  *       audio generation</li>
  *   <li>{@link org.almostrealism.studio.ml.AudioGenerator} - Base audio generation interface</li>

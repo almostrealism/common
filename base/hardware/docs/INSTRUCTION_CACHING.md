@@ -275,6 +275,16 @@ two stages above cannot see extend the Stage 1 result with that state:
   per-axis rates (which the standard policy descriptions omit).
 - `LoopedWeightedSumComputation` appends its inner count, operand shapes, and a structural
   rendering of its two index functions.
+- `DelegatedProducer` (and so `IsolatedProcess`, the wrapper the optimizer places around an
+  isolated kernel input) is identified by its count alone when it delegates to a computed
+  value, because a kernel receives that value as an argument whatever computed it. A direct
+  delegate of a provider is different: it returns the provider's evaluable unchanged, so the
+  kernel binds the provided memory exactly as it binds the provider, possibly folding it into
+  the aggregate argument. Its signature therefore appends `|provider=` and the provider's own
+  signature (which encodes the provided memory's layout and whether it is aggregated). Without
+  this, an isolated input read through a provider and the same input read through a
+  `CollectionContainer` shared a signature while compiling to kernels with different argument
+  layouts, and the second to load was refused as an instruction cache collision.
 
 Because the metadata signature is recorded during superclass construction, before subclass
 state is assigned, each of these classes calls `init()` again at the end of its own

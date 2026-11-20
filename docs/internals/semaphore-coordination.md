@@ -77,7 +77,13 @@ context chooses both the copy mechanism and its sequencing, and returns the comp
   makes "chain everywhere" free for all-Metal graphs instead of forcing a commit per
   dispatch (covered by `SemaphoreChainBatchingTest`). `MetalSemaphore.merge` merges two
   completions of the same runner into the later one, carrying the earlier buffer's value
-  forward so the runner still waits for it.
+  forward so the runner still waits for it. A dependency in an earlier buffer is ordered by a
+  GPU wait for its timeline value, encoded only while that buffer may still be running: no wait
+  is encoded for a dispatch whose buffer a host wait has already seen complete and drained.
+  Such a wait would not hold the GPU back, but placed between two dispatches it splits the
+  buffer's work, which costs the GPU hundreds of microseconds on Apple silicon. A loop that
+  waits once per step and chains each step on the last completion would otherwise pay that in
+  every step (covered by `MetalCommandRunnerFinishedDependencyTest`).
 - **OpenCL** consumes dependencies through event wait lists and returns a `CLSemaphore`. A
   dependency from another backend cannot be placed in a wait list, so the whole dispatch is
   deferred until it settles through `Semaphore.then`, without blocking the caller; argument

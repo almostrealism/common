@@ -225,6 +225,8 @@ public class ModelOptimizer {
     public void setLossFunction(LossProvider loss);
     public void setLogFrequency(int frequency);
     public void setLossTarget(double target);
+    public void setDivergenceThreshold(double threshold);
+    public double getDivergenceThreshold();
 
     public void optimize(int maxIterations);
     public double accuracy(BiPredicate<PackedCollection<?>, PackedCollection<?>> validator);
@@ -233,6 +235,11 @@ public class ModelOptimizer {
     public int getTotalIterations();
 }
 ```
+
+`setLossTarget` stops training once the loss falls to the target. `setDivergenceThreshold`
+is the opposite guard: it stops training when the epoch-average loss rises by more than the
+given amount between epochs, catching a run that is diverging rather than converging. The
+guard acts on the epoch average and is disabled by default (a threshold of `0`).
 
 ### LossProvider
 

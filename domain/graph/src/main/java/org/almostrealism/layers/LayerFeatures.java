@@ -717,20 +717,23 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	 * <p>The backward cell passes gradients through unchanged, as the block is the identity
 	 * on its signal path; nothing propagates into the cache.</p>
 	 *
+	 * <p>Element offsets into the cache are formed on integers inside the kernel, so they are exact
+	 * for any cache that fits in a 32-bit offset; a cache of more than {@link Integer#MAX_VALUE}
+	 * elements is rejected here rather than written at a wrapped offset.</p>
+	 *
 	 * @param inputShape the input (and output) shape, with {@code rowSize} elements in total
 	 * @param cache      the {@code [rows, rowSize]} cache to write
 	 * @param position   producer of the non-negative position, shape {@code [1]}; the row written
 	 *                   is this position modulo the cache's row count
 	 * @return a pass-through block that records its input in the cache
-	 * @throws IllegalArgumentException if the cache is not 2-D or its rows do not hold one input
+	 * @throws IllegalArgumentException if the cache is not 2-D, has more than
+	 *                                  {@link Integer#MAX_VALUE} elements, or its rows do not hold
+	 *                                  one input
 	 */
 	default Block cacheWrite(TraversalPolicy inputShape, CollectionProducer cache,
 							 Producer<PackedCollection> position) {
-		TraversalPolicy cacheShape = shape(cache);
-		if (cacheShape.getDimensions() != 2) {
-			throw new IllegalArgumentException("cacheWrite expects a [rows, rowSize] cache, got " + cacheShape);
-		}
-
+		TraversalPolicy cacheShape = shape(cache).requireDimensions("cacheWrite", 2)
+				.requireIntegerAddressable("cacheWrite");
 		int rows = cacheShape.length(0);
 		int rowSize = cacheShape.length(1);
 		if (inputShape.getTotalSize() != rowSize) {
@@ -770,15 +773,13 @@ public interface LayerFeatures extends ConvolutionLayerFeatures, NormalizationLa
 	 * @param position   producer of the non-negative position, shape {@code [1]}; the row read
 	 *                   is this position modulo the cache's row count
 	 * @return a layer producing the {@code [rowSize]} row
-	 * @throws IllegalArgumentException if the cache is not 2-D
+	 * @throws IllegalArgumentException if the cache is not 2-D or has more than
+	 *                                  {@link Integer#MAX_VALUE} elements
 	 */
 	default CellularLayer cacheRead(TraversalPolicy inputShape, CollectionProducer cache,
 									Producer<PackedCollection> position) {
-		TraversalPolicy cacheShape = shape(cache);
-		if (cacheShape.getDimensions() != 2) {
-			throw new IllegalArgumentException("cacheRead expects a [rows, rowSize] cache, got " + cacheShape);
-		}
-
+		TraversalPolicy cacheShape = shape(cache).requireDimensions("cacheRead", 2)
+				.requireIntegerAddressable("cacheRead");
 		int rows = cacheShape.length(0);
 		int rowSize = cacheShape.length(1);
 		CollectionProducer row = c(position).mod((double) rows);

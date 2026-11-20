@@ -37,6 +37,9 @@ create a new layer flag for it in the CI pipeline.
 system. It contains:
 - Job interface definitions (`Job`, `JobFactory`, `Task`)
 - Network protocol messages and serialization
+- Pluggable wire serialization: a `JobCodec` abstraction with a `JobCodecRegistry`,
+  the historic `classname::key:=value` form as the default `StringJobCodec`, and a
+  `WireEnvelope` format marker so a payload selects its own codec on the receiving node
 - Node/cluster abstractions
 - The `NodeGroup` and `WorkTree` interfaces
 

@@ -194,6 +194,19 @@ jobs no longer install a JDK with `actions/setup-java`; they run the host's
 `java` directly and verify its major version (see "JDK Version" below), so the
 host's JDK is the one Maven and the forked surefire JVMs use.
 
+## Maven dependency cache
+
+Unlike the ephemeral Linux fleets, the macOS runners are **native** and already
+keep a persistent `$HOME/.m2-ci/<runner>` local repository on the host, so they
+are warm after the first job and make few Maven Central requests — **nothing to
+mount here.** The shared `Select Maven repository` step (the `select-maven-repo`
+action) looks for a host cache at `/opt/ar-maven-cache`, finds none on macOS, and
+falls back to exactly that per-runner repository, so behaviour is unchanged. See
+"Maven dependency caching" in [`../README.md`](../README.md#maven-dependency-caching)
+for the whole design. `runner.sh` also exports `MAVEN_ARGS` with a transport
+retry/backoff, matching the Linux images, so a rare transient 429 is retried
+rather than failing the job.
+
 ## JDK Version
 
 Unlike the Linux fleets, this runner has no image — it uses the **host's** JDK.

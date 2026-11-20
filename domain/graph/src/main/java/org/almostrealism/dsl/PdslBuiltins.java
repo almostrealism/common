@@ -793,15 +793,17 @@ final class PdslBuiltins implements LayerRoutingFeatures, TemporalFeatures {
 
 	/**
 	 * Builds a log-softmax activation block: the log of the softmax of each row of a
-	 * {@code [rows, size]} input, {@code x - log(sum(exp(x)))} over the last axis, so that the
-	 * exponentials of every output row sum to one. A classifier or language model ends in this stage
-	 * when its loss is the negative log-likelihood of the target class at each row.
+	 * {@code [rows, size]} input, {@code (x - m) - log(sum(exp(x - m)))} over the last axis where
+	 * {@code m} is the row maximum, so that the exponentials of every output row sum to one. A
+	 * classifier or language model ends in this stage when its loss is the negative log-likelihood of
+	 * the target class at each row.
 	 *
 	 * <p>The input must have exactly two axes, because the layer normalizes over everything after the
 	 * first axis: a {@code [batch, positions, classes]} tensor is laid out as
-	 * {@code [batch * positions, classes]} rows with {@code reshape} first. The layer does not subtract
-	 * the row maximum before the exponential, so a row whose largest value is beyond the exponential's
-	 * single-precision range (about 88) has no finite log-probabilities.</p>
+	 * {@code [batch * positions, classes]} rows with {@code reshape} first. Subtracting the row maximum
+	 * before the exponential keeps every exponent at or below zero, so the log-probabilities stay
+	 * finite even when a row's largest logit is beyond the exponential's single-precision range
+	 * (about 88).</p>
 	 *
 	 * @param args must be empty
 	 * @return a factory that creates the row-wise log-softmax layer for a {@code [rows, size]} input

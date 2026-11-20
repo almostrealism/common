@@ -321,9 +321,6 @@ public interface ConvolutionLayerFeatures extends MatrixFeatures, ActivationFeat
 						upsampledFlat, 0, leftPadding);
 			}
 
-			upsampledFlat.reshape(batchSize, inputChannels, 1, paddedExpandedLength);
-			cp(filters).reshape(1, inputChannels, outputChannels, kernelSize);
-
 			CollectionProducer result;
 
 			{

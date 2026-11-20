@@ -206,10 +206,12 @@ factory.setAllowedTools("Read,Edit,Write,Bash,Glob,Grep");
 factory.setWorkstreamUrl("http://controller:8080/api/workstreams/ws-1/jobs/job-1");
 ```
 
-### Phase 2: Serialization (encode)
+### Phase 2: Serialization (toWire)
 
-When the factory is transmitted to a worker node, the Flowtree network calls `encode()` on
-the factory. This produces a single string using the wire protocol format:
+When the factory is transmitted to a worker node, the Flowtree network calls `toWire()` on
+the factory. `toWire()` selects the `JobCodec` named by `getWireFormat()`. The default is the
+`StringJobCodec`, which produces the `encode()` string unchanged, so the default payload is
+byte-identical to the historic form — a single string using the wire protocol format:
 
 ```
 classname::key1:=value1::key2:=value2::key3:=value3...
@@ -258,11 +260,17 @@ For `Job` implementations (as opposed to `JobFactory`), the `encode()` method on
 
 The encoded string is transmitted over the Flowtree network to a worker node. The network
 layer is transparent -- it simply passes the string. No special framing or compression is
-applied at this layer; the encoding is entirely self-contained.
+applied at this layer; the encoding is entirely self-contained. A non-default codec prefixes
+its payload with a `WireEnvelope` format marker so the receiver can pick the right codec from
+the payload alone; the default string form carries no marker.
 
-### Phase 4: Deserialization (set)
+### Phase 4: Deserialization (decode)
 
-On the receiving worker node, the Flowtree infrastructure:
+On the receiving worker node, the Flowtree infrastructure calls `Job.decode(String)` (or
+`JobFactory.decode(String)`), which routes the payload through the `JobCodecRegistry`: a
+payload carrying a `WireEnvelope` format marker is handed to the codec it names, while an
+unmarked payload is the historic string form handled by the `StringJobCodec`. For that string
+form the codec:
 
 1. Splits the encoded string on the first `::` to extract the class name.
 2. Instantiates the class using its no-argument constructor (e.g., `ClaudeCodeJob.Factory()`).
@@ -340,9 +348,12 @@ Controller Node                           Worker Node
 Factory.new()
     |
     v
-Factory.encode()
+Factory.toWire()
     |                 [wire: classname::k:=v::k:=v]
-    +-----------------------------------------------> Class.forName(classname)
+    +-----------------------------------------------> JobCodecRegistry.decode(...)
+                                                          |
+                                                          v
+                                                      Class.forName(classname)
                                                           |
                                                           v
                                                       new Factory()

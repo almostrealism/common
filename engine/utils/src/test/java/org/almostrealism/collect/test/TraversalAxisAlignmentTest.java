@@ -18,6 +18,10 @@ package org.almostrealism.collect.test;
 
 import io.almostrealism.collect.TraversalAxisAlignment;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionTraversalAxisAlignment;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -25,9 +29,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Tests for {@link TraversalAxisAlignment}, independent of any collection producer: the
- * aligned values are shapes themselves, so every traversal and repetition the alignment
- * chooses is visible in the result.
+ * Tests for {@link TraversalAxisAlignment}. Most are independent of any collection producer:
+ * the aligned values are shapes themselves, so every traversal and repetition the alignment
+ * chooses is visible in the result. The remaining tests cover the repetition rule of
+ * {@link CollectionTraversalAxisAlignment}, which depends on whether a producer's shape and
+ * count are fixed.
  */
 public class TraversalAxisAlignmentTest extends TestSuiteBase {
 
@@ -183,5 +189,117 @@ public class TraversalAxisAlignmentTest extends TestSuiteBase {
 
 		assertEquals(large, result);
 		assertEquals(List.of(2), alignment.expansions);
+	}
+
+	/**
+	 * A collection producer whose own shape is fixed, but whose count is variable because it
+	 * is computed from a variable-count input, is repeated up to the aligned size by
+	 * {@link CollectionTraversalAxisAlignment}, just as a fixed-count producer would be.
+	 */
+	@Test(timeout = 30000)
+	public void repeatsFixedShapeOfVariableCountProducer() {
+		Producer<PackedCollection> vectors = v(shape(-1, 3), 0);
+		Producer<PackedCollection> first = x(vectors);
+
+		assertTrue(shape(first).isFixedCount());
+		assertFalse(Countable.isFixedCount(first));
+		assertEquals(3, alignedTotalSize(first, vectors));
+	}
+
+	/**
+	 * A collection producer whose shape itself has a variable count is left unchanged by
+	 * {@link CollectionTraversalAxisAlignment} unless
+	 * {@link CollectionTraversalAxisAlignment#enableVariableRepeat} is set, in which case it
+	 * is repeated like any other producer.
+	 */
+	@Test(timeout = 30000)
+	public void repeatsVariableShapeOnlyWhenEnabled() {
+		Producer<PackedCollection> variable = v(shape(-1, 1), 0);
+		Producer<PackedCollection> fixed = v(shape(3), 1);
+
+		assertFalse(shape(variable).isFixedCount());
+		assertEquals(1, alignedTotalSize(variable, fixed));
+
+		boolean enabled = CollectionTraversalAxisAlignment.enableVariableRepeat;
+		CollectionTraversalAxisAlignment.enableVariableRepeat = true;
+
+		try {
+			assertEquals(3, alignedTotalSize(variable, fixed));
+		} finally {
+			CollectionTraversalAxisAlignment.enableVariableRepeat = enabled;
+		}
+	}
+
+	/**
+	 * A collection producer whose shape is fixed but whose count is intrinsically variable,
+	 * such as {@code integers()} whose value is the kernel index, is not repeated by
+	 * {@link CollectionTraversalAxisAlignment}: each kernel position is a distinct element
+	 * of it, so repeating it would read the same index at several positions.
+	 */
+	@Test(timeout = 30000)
+	public void doesNotRepeatIntrinsicallyVariableCountProducer() {
+		Producer<PackedCollection> indices = integers().add(c(2));
+		Producer<PackedCollection> fixed = c(6, 18, 48);
+
+		assertTrue(shape(indices).isFixedCount());
+		assertFalse(Countable.isFixedCount(indices));
+		assertEquals(1, alignedTotalSize(indices, fixed));
+	}
+
+	/**
+	 * Deciding whether a fixed-shape producer's variable count follows from variable shapes
+	 * inspects each node of its graph once. The producer here doubles a per-item scalar
+	 * forty times, so each level shares the previous one twice; a walk that revisited shared
+	 * subgraphs would visit 2^40 paths, while it is still repeated up to the vector size.
+	 */
+	@Test(timeout = 30000)
+	public void repeatsDeeplySharedFixedShapeProducer() {
+		Producer<PackedCollection> vectors = v(shape(-1, 3), 0);
+		Producer<PackedCollection> shared = x(vectors);
+		for (int i = 0; i < 40; i++) {
+			shared = add(shared, shared);
+		}
+
+		assertTrue(shape(shared).isFixedCount());
+		assertFalse(Countable.isFixedCount(shared));
+		assertEquals(3, alignedTotalSize(shared, vectors));
+	}
+
+	/**
+	 * A per-item scalar computed from a variable-count input broadcasts against that input's
+	 * vectors: each item's vector is scaled by its own first component, rather than each
+	 * element being multiplied by a different element of the unrepeated scalar.
+	 */
+	@Test(timeout = 60000)
+	public void fixedShapeOfVariableCountBroadcasts() {
+		Producer<PackedCollection> vectors = v(shape(-1, 3), 0);
+		Producer<PackedCollection> product = multiply(x(vectors), vectors);
+
+		PackedCollection input = pack(2.0, 3.0, 4.0, 5.0, 6.0, 7.0).reshape(shape(2, 3).traverse(1));
+
+		PackedCollection result = new PackedCollection(shape(2, 3).traverse(1));
+		product.into(result.each()).evaluate(input);
+
+		double[] expected = { 4.0, 6.0, 8.0, 25.0, 30.0, 35.0 };
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals(expected[i], result.toDouble(i), 1e-6);
+		}
+	}
+
+	/**
+	 * Aligns the two given producers with {@link CollectionTraversalAxisAlignment} and returns
+	 * the total size the first one has after alignment.
+	 *
+	 * @param first   the producer whose aligned size is reported
+	 * @param second  the producer it is aligned with
+	 * @return the total size of {@code first} after alignment
+	 */
+	private long alignedTotalSize(Producer<PackedCollection> first, Producer<PackedCollection> second) {
+		List<Producer<PackedCollection>> aligned = new ArrayList<>();
+		new CollectionTraversalAxisAlignment(List.of(first, second)).align((shape, values) -> {
+			aligned.addAll(values);
+			return shape;
+		});
+		return shape(aligned.get(0)).getTotalSizeLong();
 	}
 }

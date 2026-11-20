@@ -132,6 +132,12 @@ RUN curl -fsSL "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/b
 ENV MAVEN_HOME=/opt/maven
 ENV PATH="${MAVEN_HOME}/bin:${PATH}"
 
+# Retry a Maven Central download that fails transiently (HTTP 429 rate-limit, a
+# dropped connection, a 5xx) with backoff instead of failing the job. Matches
+# tools/ci/docker/Dockerfile; see its comment and "Maven dependency caching" in
+# tools/ci/README.md.
+ENV MAVEN_ARGS="-Daether.connector.http.retryHandler.count=10 -Daether.connector.http.retryHandler.interval=5000 -Daether.connector.http.retryHandler.intervalMax=60000"
+
 # ---------- AR environment ----------
 # AR_HARDWARE_LIBS is intentionally NOT set here — the system auto-detects a
 # suitable directory. The CL jobs set it per-step to a runner-temp path.
@@ -178,6 +184,15 @@ RUN ARCH=$(dpkg --print-architecture) && \
 # ---------- Maven local repo (shared volume mount point) ----------
 RUN mkdir -p /home/runner/.m2/repository && \
     chown -R runner:runner /home/runner
+
+# ---------- Persistent shared Maven cache mount point ----------
+# A host can mount a persistent, shared Maven repository here (a named volume in
+# the ar-ci-cl-runner@.container quadlet). Matches tools/ci/docker/Dockerfile;
+# see its comment and "Maven dependency caching" in tools/ci/README.md. Creating
+# it with runner ownership lets a fresh named volume mounted over it inherit that
+# ownership. Without the mount it stays empty and jobs fall back to $HOME.
+RUN mkdir -p /opt/ar-maven-cache && \
+    chown -R runner:runner /opt/ar-maven-cache
 
 # Copy entrypoint and settings
 COPY entrypoint.sh /home/runner/entrypoint.sh

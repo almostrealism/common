@@ -20,8 +20,6 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.MemoryBank;
 
-import java.util.function.IntFunction;
-
 /**
  * A specialized {@link RankedChoiceEvaluableForMemoryData} for {@link Vector} values.
  * This class provides vector-specific acceleration and memory management.
@@ -56,7 +54,7 @@ public class RankedChoiceEvaluableForVector extends RankedChoiceEvaluableForMemo
 	 * @return an accelerated evaluable for vectors
 	 */
 	public Evaluable<Vector> getAccelerated() {
-		return getAccelerated(3, Vector::new, (IntFunction) Vector::bank);
+		return getAccelerated(3, Vector.postprocessor());
 	}
 
 	/**

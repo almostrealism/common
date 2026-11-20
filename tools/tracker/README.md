@@ -64,7 +64,7 @@ export AR_TRACKER_AUTH_TOKEN=<your-token>
 
 ## MCP Tools
 
-ar-manager exposes 15 MCP tools for the tracker. All follow the `tracker_*` naming
+ar-manager exposes 18 MCP tools for the tracker. All follow the `tracker_*` naming
 convention and mirror the REST API. Every agent sees the same tools; what a call
 may do depends on who makes it (see [Who may do what](#who-may-do-what)).
 
@@ -85,6 +85,9 @@ may do depends on who makes it (see [Who may do what](#who-may-do-what)).
 | `tracker_delete_task` | write, people only | Permanently delete a task |
 | `tracker_search_tasks` | read | Full-text search over your workspace's tasks; supports headlines projection |
 | `tracker_project_summary` | read | Aggregate task counts for a project (no row fetch) |
+| `tracker_add_artifact` | write, everyone | Attach an artifact (comment, reference or memory id) to any task in your workspace |
+| `tracker_list_artifacts` | read | List a task's artifacts, oldest first |
+| `tracker_delete_artifact` | write, people only | Delete an artifact |
 
 ### Workspaces
 
@@ -135,6 +138,26 @@ are open, `ready` and linked change (`_AWAITING_CLOSE_OUT` in `store.py`), so a
 task a person kept in `backlog`, or moved while the branch was in review, is
 left as they left it.
 
+### Artifacts
+
+A task carries **artifacts** — additive, immutable records of work on it that
+do not change any of the task's own fields. Each has a type:
+
+- **`comment`** — a free-text note (Markdown).
+- **`reference`** — a pointer to something else: another tracker task id, a
+  repo path, or a URL.
+- **`memory`** — the id of a memory in the memory database.
+
+Because adding an artifact does not edit the task, **anyone whose workspace
+owns a task may add one** — no `planner` role, no workstream link. This is how
+one branch annotates a task another branch owns: a round that finds new
+evidence on an existing open task adds a `comment` to it with
+`tracker_add_artifact` instead of filing a duplicate task. The artifact's
+`author` is recorded from the caller's token (`person`, or
+`<workstream>/<job>` for an agent job), never from input. `tracker_list_artifacts`
+returns a task's artifacts oldest first; a task's artifacts are removed when the
+task is deleted. Deleting a single artifact is left to people.
+
 ### Who may do what
 
 ar-manager decides, from the caller's token, what each tracker call may do:
@@ -157,9 +180,13 @@ ar-manager decides, from the caller's token, what each tracker call may do:
 - **Any other agent job** may edit only the tasks linked to its own
   workstream: the task its branch was given. It may not change their project,
   workstream link or provenance.
-- **Only people** delete, and create, change or delete projects, and change or
-  delete releases. ar-manager refuses those tools to an agent job's token even
-  when a harness offers them.
+- **Anyone may add an artifact** (a comment, reference or memory id) to any
+  task their workspace owns, and read a task's artifacts — see
+  [Artifacts](#artifacts). Adding one does not edit the task, so it needs
+  neither the `planner` role nor a workstream link.
+- **Only people** delete — tasks, artifacts, projects or releases — and
+  create, change or delete projects, and change or delete releases. ar-manager
+  refuses those tools to an agent job's token even when a harness offers them.
 
 ### Context-efficiency: fetching a single task
 
@@ -258,6 +285,13 @@ POST   /v1/tasks                        Create a task
 GET    /v1/tasks/{id}                   Get a task
 PUT    /v1/tasks/{id}                   Update a task
 DELETE /v1/tasks/{id}                   Delete a task
+
+GET    /v1/tasks/{id}/artifacts         List a task's artifacts (oldest first)
+POST   /v1/tasks/{id}/artifacts         Attach an artifact
+                                        ({"artifact_type": "comment"|"reference"|"memory",
+                                        "content", "author"})
+GET    /v1/artifacts/{id}               Get an artifact
+DELETE /v1/artifacts/{id}               Delete an artifact
 
 GET    /v1/projects/{id}/tasks          Tasks for a project
 GET    /v1/releases/{id}/tasks          Tasks for a release

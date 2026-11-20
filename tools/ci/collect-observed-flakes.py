@@ -102,13 +102,20 @@ LANE_LABELS = {
 _SHARD_SUFFIX = re.compile(r"\s*\([^)]*\)\s*$")
 
 # Surefire reports a failing test as a line naming the fully-qualified class and
-# method followed by "<<< FAILURE!" or "<<< ERROR!", e.g.
+# method followed by "<<< FAILURE!" or "<<< ERROR!". The plugin this project
+# builds with separates the name from the timing with " -- ":
+#   [ERROR] org.example.FooTest.testBar -- Time elapsed: 0.1 s <<< FAILURE!
+# and older plugins wrote only whitespace there:
 #   [ERROR] org.example.FooTest.testBar  Time elapsed: 0.1 s  <<< FAILURE!
+# Both are read; requiring one of them reads no failure at all from a log in
+# the other, which looks exactly like a job that failed before any test ran.
 # The class is the dotted path up to the last segment; the method is the last
 # segment. A parameterised method carries a "[0]"-style suffix, kept out of the
-# name so repeats of one method collapse to one entry.
+# name so repeats of one method collapse to one entry. The per-class summary
+# line ("Tests run: 2, Failures: 1, ... <<< FAILURE! -- in org.example.FooTest")
+# names no method and is not matched.
 _SUREFIRE_FAILURE = re.compile(
-    r"([\w.$]+)\.([\w$]+)(?:\[[^\]]*\])?\s+Time elapsed:.*<<<\s+(?:FAILURE|ERROR)!")
+    r"([\w.$]+)\.([\w$]+)(?:\[[^\]]*\])?\s+(?:--\s+)?Time elapsed:.*<<<\s+(?:FAILURE|ERROR)!")
 
 
 def lane_of(job_name):

@@ -19,7 +19,6 @@ package io.almostrealism.scope;
 import io.almostrealism.code.ComputableBase;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.lang.CodePrintWriter;
-import io.almostrealism.relation.Parent;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -180,15 +179,15 @@ public class HybridScope<T> extends Scope<T> {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Creates a new {@link HybridScope} sharing the same explicit segment and code
-	 * generator, then populates it with the provided child scopes.</p>
+	 * <p>Creates an empty {@link HybridScope} sharing this scope's explicit segment and code
+	 * generator, and carrying its name and metadata. {@link Scope#generate(List)} copies the
+	 * reference index, compute requirements and lane count onto it.</p>
 	 */
 	@Override
-	public Parent<Scope<T>> generate(List<Scope<T>> children) {
-		Scope<T> scope = new HybridScope<>(explicit, codeGenerator);
+	protected Scope<T> createGenerated() {
+		HybridScope<T> scope = new HybridScope<>(explicit, codeGenerator);
 		scope.setName(getName());
 		scope.setMetadata(getMetadata());
-		scope.getChildren().addAll(children);
 		return scope;
 	}
 

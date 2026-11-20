@@ -27,11 +27,10 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.ShadableSurface;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.color.computations.RankedChoiceEvaluableForRGB;
-import org.almostrealism.geometry.Curve;
 import org.almostrealism.geometry.DimensionAware;
-import org.almostrealism.geometry.Intersectable;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -88,7 +87,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	 * @param lights   The scene lights to evaluate
 	 * @param context  Shader context; may be {@code null} to auto-construct per pair
 	 */
-	public LightingEngineAggregator(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces,
+	public LightingEngineAggregator(Producer<?> r, Iterable<ShadableSurface> surfaces,
 									Iterable<Light> lights, ShaderContext context) {
 		this(r, surfaces, lights, context, false);
 	}
@@ -102,7 +101,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	 * @param context  Shader context; may be {@code null} to auto-construct per pair
 	 * @param kernel   When true, all intersection ranks are pre-computed and cached for the full pixel grid
 	 */
-	public LightingEngineAggregator(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces,
+	public LightingEngineAggregator(Producer<?> r, Iterable<ShadableSurface> surfaces,
 									Iterable<Light> lights, ShaderContext context, boolean kernel) {
 		super(Intersection.e);
 		this.kernel = kernel;
@@ -182,10 +181,10 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 	 * @param lights   The scene lights
 	 * @param context  Base shader context to clone per pair, or {@code null} to construct from scratch
 	 */
-	protected void init(Producer<?> r, Iterable<Curve<PackedCollection>> surfaces, Iterable<Light> lights, ShaderContext context) {
-		for (Curve<PackedCollection> s : surfaces) {
+	protected void init(Producer<?> r, Iterable<ShadableSurface> surfaces, Iterable<Light> lights, ShaderContext context) {
+		for (ShadableSurface s : surfaces) {
 			for (Light l : lights) {
-				Collection<Curve<PackedCollection>> otherSurfaces = CollectionUtils.separate(s, surfaces);
+				Collection<ShadableSurface> otherSurfaces = CollectionUtils.separate(s, surfaces);
 				Collection<Light> otherLights = CollectionUtils.separate(l, lights);
 
 				ShaderContext c;
@@ -203,7 +202,7 @@ public class LightingEngineAggregator extends RankedChoiceEvaluableForRGB implem
 				}
 
 				// TODO Choose which engine dynamically
-				this.add(new IntersectionalLightingEngine(r, (Intersectable) s,
+				this.add(new IntersectionalLightingEngine(r, s,
 															otherSurfaces,
 															l, otherLights,
 															c));

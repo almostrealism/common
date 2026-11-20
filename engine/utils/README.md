@@ -32,6 +32,27 @@ public class MyTest extends TestSuiteBase {
 }
 ```
 
+#### Reproducible random inputs
+
+Before every test method, `TestSuiteBase` seeds the one process-wide `DefaultRandomSource`, so
+`rand`/`randn` inputs and layer weights that are given no explicit source are identical from run
+to run and independent of the order tests run in. An `@After` returns the source to unseeded so a
+test's state does not leak to other code in the same JVM fork.
+
+The seed is controlled by the `AR_TEST_SEED` setting:
+
+| `AR_TEST_SEED` | Effect |
+|----------------|--------|
+| unset | Uses `TestSuiteBase.DEFAULT_TEST_SEED` (a fixed constant), logged once per test class |
+| a number | Pins that seed for the whole run |
+| `random` | A fresh seed for every test, logged each time, to hunt order- or seed-dependent flakes |
+
+Every run logs `randomSeed=<seed>`; replay a failing run with `-DAR_TEST_SEED=<seed>`. A subclass
+whose assertions were characterized against a particular draw may override `protected long
+testSeed()`, though passing an explicit `java.util.Random` to `rand`/`randn` is usually clearer.
+The reset is an `@Before`, so a subclass field initializer that calls `rand`/`randn` (which runs
+before `@Before`) is not covered and should take an explicit source.
+
 ### TestDepth Annotation
 
 Control which tests run based on depth level:

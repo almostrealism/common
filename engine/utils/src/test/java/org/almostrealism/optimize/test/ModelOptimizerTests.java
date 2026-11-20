@@ -21,9 +21,11 @@ import io.almostrealism.streams.Semaphore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.layers.LoRALinear;
+import org.almostrealism.layers.ParameterUpdate;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
+import org.almostrealism.optimize.AdamOptimizer;
 import org.almostrealism.optimize.Dataset;
 import org.almostrealism.optimize.LossProvider;
 import org.almostrealism.optimize.MeanAbsoluteError;
@@ -36,6 +38,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
@@ -611,6 +614,204 @@ public class ModelOptimizerTests extends TestSuiteBase implements LayerFeatures 
 		for (double loss : losses) {
 			Assert.assertEquals(0.0, loss, 1e-9);
 		}
+	}
+
+	/**
+	 * A single gradient step is not guaranteed to reduce the loss of the sample it was computed
+	 * from. Training a one-parameter model {@code y = w * x} under mean squared error with a
+	 * learning rate above {@code 1 / x^2} overshoots on its first step, so the sample's loss rises
+	 * after its own update. Training must not abort on that per-sample increase: the run completes
+	 * every requested epoch, is not reported as early stopped, and the divergence it produces is
+	 * observable through the rising epoch averages.
+	 */
+	@Test(timeout = 60000)
+	public void overshootingStepDoesNotAbortTraining() {
+		double x = 2.0;
+		double y = 1.0;
+
+		// A learning rate of 0.5 exceeds 1 / x^2 = 0.25, so the first step overshoots the optimum
+		PackedCollection weights = pack(0.0).reshape(shape(1, 1));
+		Model model = new Model(shape(1), 0.5);
+		model.add(dense(shape(1), weights, null, false));
+
+		List<ValueTarget<PackedCollection>> samples =
+				Collections.singletonList(ValueTarget.of(pack(x), pack(y)));
+
+		ModelOptimizer optimizer = new ModelOptimizer(model.compile(), () -> Dataset.of(samples));
+		optimizer.setLossFunction(new MeanSquaredError(shape(1).traverseEach()));
+		optimizer.setLogFrequency(0);
+
+		TrainingResult result = optimizer.optimize(4);
+
+		Assert.assertEquals(4, result.getEpochsCompleted());
+		Assert.assertFalse("A per-sample loss increase must not be reported as an early stop",
+				result.isEarlyStopped());
+
+		List<Double> history = result.getTrainLossHistory();
+		Assert.assertTrue("Divergence is observable through the epoch averages",
+				history.get(history.size() - 1) > history.get(0));
+	}
+
+	/**
+	 * A small {@code dense -> tanh -> dense} regression model trained with {@link AdamOptimizer}
+	 * over enough epochs to plateau completes training rather than aborting. Adam mixes earlier
+	 * gradients into each step, so near the plateau the first sample's loss routinely rises after
+	 * its own update; the run must still finish and report a loss well below its starting value.
+	 */
+	@Test(timeout = 120000)
+	public void adamTrainingCompletesThroughPlateau() {
+		int inputSize = 4;
+		int hiddenSize = 6;
+		int outputSize = 2;
+
+		SequentialBlock block = new SequentialBlock(shape(inputSize));
+		block.add(dense(inputSize, hiddenSize));
+		block.add(tanh());
+		block.add(dense(hiddenSize, outputSize));
+
+		Model model = new Model(shape(inputSize), new AdamOptimizer(0.02, 0.9, 0.999));
+		model.add(block);
+		CompiledModel compiled = model.compile();
+
+		PackedCollection targetMatrix =
+				pack(0.4, -0.2, 0.1, 0.3, -0.1, 0.25, 0.15, -0.35).reshape(shape(outputSize, inputSize));
+
+		List<ValueTarget<PackedCollection>> samples = new ArrayList<>();
+		for (int i = 0; i < 10; i++) {
+			PackedCollection input = new PackedCollection(shape(inputSize));
+			input.randnFill(random);
+
+			PackedCollection target = new PackedCollection(shape(outputSize));
+			matmul(cp(targetMatrix), cp(input).reshape(shape(inputSize)))
+					.into(target.traverseEach()).evaluate();
+			samples.add(ValueTarget.of(input, target));
+		}
+
+		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> Dataset.of(samples));
+		optimizer.setLossFunction(new MeanSquaredError(shape(outputSize).traverseEach()));
+		optimizer.setLogFrequency(0);
+
+		TrainingResult result = optimizer.optimize(60);
+
+		List<Double> history = result.getTrainLossHistory();
+		Assert.assertFalse(Double.isNaN(result.getFinalTrainLoss()));
+		Assert.assertTrue("Adam training should reduce the loss well below its starting value",
+				result.getFinalTrainLoss() < history.get(0) * 0.5);
+	}
+
+	/**
+	 * The opt-in divergence guard acts on the epoch average, not on any single sample, and reports
+	 * the stop through the result rather than throwing. With a learning rate that overshoots, the
+	 * epoch-average loss rises past the configured threshold, so training stops and the result is
+	 * marked as early stopped.
+	 */
+	@Test(timeout = 60000)
+	public void divergenceGuardStopsAndReportsThroughResult() {
+		PackedCollection weights = pack(0.0).reshape(shape(1, 1));
+		Model model = new Model(shape(1), 0.5);
+		model.add(dense(shape(1), weights, null, false));
+
+		List<ValueTarget<PackedCollection>> samples =
+				Collections.singletonList(ValueTarget.of(pack(2.0), pack(1.0)));
+
+		ModelOptimizer optimizer = new ModelOptimizer(model.compile(), () -> Dataset.of(samples));
+		optimizer.setLossFunction(new MeanSquaredError(shape(1).traverseEach()));
+		optimizer.setLogFrequency(0);
+		optimizer.setDivergenceThreshold(0.5);
+
+		TrainingResult result = optimizer.optimize(5);
+
+		Assert.assertTrue("The divergence guard must report the stop through the result",
+				result.isEarlyStopped());
+		Assert.assertEquals(2, result.getEpochsCompleted());
+	}
+
+	/**
+	 * When validation early stopping ends training, the progress callback still observes the final
+	 * epoch: the stop decision is made after the epoch has been reported. With updates disabled the
+	 * validation loss never improves, so a patience of one stops training at the second epoch, and
+	 * the callback must have seen both epochs.
+	 */
+	@Test(timeout = 60000)
+	public void progressCallbackSeesFinalEpochOnEarlyStop() {
+		Model model = new Model(shape(4), ParameterUpdate.disabled());
+		model.add(dense(initialWeights(), pack(0.05, -0.1, 0.02)));
+		CompiledModel compiled = model.compile();
+
+		List<ValueTarget<PackedCollection>> train = regressionSamples(4);
+		List<ValueTarget<PackedCollection>> validation = regressionSamples(3);
+
+		ModelOptimizer optimizer = new ModelOptimizer(compiled, () -> Dataset.of(train));
+		optimizer.setValidationDataset(() -> Dataset.of(validation));
+		optimizer.setLossFunction(new MeanSquaredError(shape(3).traverseEach()));
+		optimizer.setEarlyStoppingPatience(1);
+		optimizer.setLogFrequency(0);
+
+		List<Integer> epochsSeen = new ArrayList<>();
+		optimizer.setProgressCallback(progress -> epochsSeen.add(progress.getEpoch()));
+
+		TrainingResult result = optimizer.optimize(5);
+
+		Assert.assertTrue(result.isEarlyStopped());
+		Assert.assertEquals("The progress callback must observe the final epoch before stopping",
+				Arrays.asList(0, 1), epochsSeen);
+	}
+
+	/**
+	 * A run that stops because the epoch-average loss stopped changing records the early stop rather
+	 * than leaving the loop silently. With updates disabled the average loss is identical across
+	 * epochs, so training stops at the second epoch with the result marked as early stopped.
+	 */
+	@Test(timeout = 60000)
+	public void convergenceOnEqualLossRecordsEarlyStop() {
+		Model model = new Model(shape(4), ParameterUpdate.disabled());
+		model.add(dense(initialWeights(), pack(0.05, -0.1, 0.02)));
+
+		List<ValueTarget<PackedCollection>> samples = regressionSamples(5);
+		ModelOptimizer optimizer = new ModelOptimizer(model.compile(), () -> Dataset.of(samples));
+		optimizer.setLossFunction(new MeanSquaredError(shape(3).traverseEach()));
+		optimizer.setLogFrequency(0);
+
+		TrainingResult result = optimizer.optimize(6);
+
+		Assert.assertEquals(2, result.getEpochsCompleted());
+		Assert.assertTrue("A converged run that stops must record the early stop",
+				result.isEarlyStopped());
+	}
+
+	/**
+	 * The divergence guard compares epochs within a single {@code optimize} call, never across
+	 * calls. The average loss persists on the optimizer between calls, so a guard gated on the
+	 * previous loss value would compare the first epoch of a second run against the final epoch of
+	 * the first and stop spuriously. Two single-epoch runs, neither of which contains a prior epoch
+	 * to diverge from, must therefore both complete without an early stop even though the second
+	 * run's loss is higher than the first's.
+	 */
+	@Test(timeout = 60000)
+	public void divergenceGuardDoesNotCompareAcrossRuns() {
+		PackedCollection weights = pack(0.0).reshape(shape(1, 1));
+		Model model = new Model(shape(1), 0.5);
+		model.add(dense(shape(1), weights, null, false));
+
+		List<ValueTarget<PackedCollection>> samples =
+				Collections.singletonList(ValueTarget.of(pack(2.0), pack(1.0)));
+
+		ModelOptimizer optimizer = new ModelOptimizer(model.compile(), () -> Dataset.of(samples));
+		optimizer.setLossFunction(new MeanSquaredError(shape(1).traverseEach()));
+		optimizer.setLogFrequency(0);
+		optimizer.setDivergenceThreshold(0.5);
+
+		TrainingResult first = optimizer.optimize(1);
+		Assert.assertEquals(1, first.getEpochsCompleted());
+		Assert.assertFalse("A single-epoch run has no prior epoch to diverge from",
+				first.isEarlyStopped());
+
+		TrainingResult second = optimizer.optimize(1);
+		Assert.assertEquals(1, second.getEpochsCompleted());
+		Assert.assertTrue("The second run's loss must rise above the first run's final loss",
+				second.getFinalTrainLoss() > first.getFinalTrainLoss() + 0.5);
+		Assert.assertFalse("The guard must not compare a run's first epoch against an earlier run",
+				second.isEarlyStopped());
 	}
 
 	/**

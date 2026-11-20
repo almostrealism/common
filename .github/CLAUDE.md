@@ -94,7 +94,7 @@ event that started it. The `changes` job publishes the mode as `run_tests`.
 | | Validate run | Test run |
 |-|--------------|----------|
 | Started by | `pull_request` (every push to a PR branch) | `deployment` of the branch to the `test` environment; `push` to master; `workflow_dispatch` |
-| Runs | `changes`, `build`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test-mac`, `test-media-mac`, `test-flowtree` and `analysis`; and, when `full_matrix` is `true` (master, `workflow_dispatch`), also `test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda` and `test-media-cuda` (see below) |
+| Runs | `changes`, `build`, `maven-cache`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test-mac`, `test-media-mac`, `test-flowtree` and `analysis`; and, when `full_matrix` is `true` (master, `workflow_dispatch`), also `test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda` and `test-media-cuda` (see below) |
 | Remediation | `auto-review`, `auto-resolve-python` | `auto-resolve-python`, and `auto-resolve` after the flaky-test retries |
 | Gate check | **All Checks** | **Test Checks** |
 | `run_tests` | `false` | `true` |
@@ -512,7 +512,7 @@ than its declared `total_count` counts one crash too, because an omitted matrix
 run (a crashed `test-media-cl (5)`) is invisible to id-level accounting while
 another run of the same job is present. The test step is identified
 by "test(s)" in its name alone; "Maven" is not a marker, because the accelerator
-lanes' "Isolate Maven repository per runner" setup step runs before their
+lanes' "Select Maven repository" setup step runs before their
 artifact download and restore.
 `test-flowtree` originally had no `needs.test-flowtree.result` check here at
 all — back when one job owned every prompt, a `test-flowtree` failure fell
@@ -675,6 +675,39 @@ stay as short as possible; jobs that need only git do not wait for it (see
 "Branch checks that need no build" below). It runs `mvn install -DskipTests`
 and nothing else: it does not run tests and does not upload coverage.
 
+### What the `maven-cache` job does
+
+Produces the Maven dependency repository every GitHub-hosted job restores, so
+the hosted jobs no longer rely on `actions/setup-java`'s `cache: maven` — which
+saved the local repository only on a miss, from whichever hosted job finished
+first (one that did not run jacoco), and so left `jacoco-maven-plugin` out of the
+cache and re-downloaded it from Maven Central on every run. The job resolves the
+full plugin and dependency set on purpose (`mvn package -DskipTests`, then
+`dependency:go-offline`/`resolve-plugins`, the checkstyle plugin, and the
+jacoco-cli distribution the `analysis` job unzips) and saves it with an explicit
+`actions/cache` under a key of the pom hashes plus the manual
+`HOSTED_MAVEN_CACHE_VERSION` prefix, with a `restore-keys` fallback. It warms
+through `package`, not `test-compile`, because `studio/compose` unpacks
+`engine/ml`'s `proto`-classified artifact in `generate-sources` and that artifact
+is attached at `ml`'s package phase — so `test-compile` leaves the reactor
+dependency unpackaged and the unpack fails deterministically (MDEP-98), which is
+why the warm failed on every run until this was fixed. `package` does not
+`install` (`build` remains the only job that installs), so the separation from
+`build` holds. It saves
+only when the warm step succeeded: cache keys are immutable, so a partial
+repository saved under the exact key would stop every later run from re-warming;
+a failed warm leaves the key unclaimed for the next run to fill. Gated on
+`code_changed` like `build`; depends only on `changes`. **Nothing depends on it**
+— it maintains the cache for subsequent runs (master's cache is readable by every
+PR) rather than sitting on the critical path, so a warm-cache failure never
+blocks a build or test lane. Every hosted Maven job restores it read-only through
+the shared `restore-maven-cache` composite action (so no consumer re-saves a
+partial repository), and a miss falls back to the network with the retry/backoff
+in `.mvn/maven.config`. See "Hosted (`ubuntu-latest`) jobs" under "Maven
+dependency caching" in `tools/ci/README.md`;
+`tools/tests/test_hosted_maven_cache.py` pins the wiring, including that the save
+and restore keys cannot drift.
+
 ### Re-run jobs and artifacts
 
 A retry ("Auto-Resolve Submit" re-running failed jobs) runs jobs again inside
@@ -704,8 +737,10 @@ own `mvn install -DskipTests` — the three `tools` policy checks,
 - Jobs run `mvn test -pl <module>` with no `-am`, so Maven takes every other
   module from the local repository. "Download build artifacts" fetches
   `build`'s jars into `runner.temp`, and "Restore build artifacts" copies them
-  into the repository Maven reads: `$MAVEN_REPO` where the macOS and CL jobs
-  isolate one ("Isolate Maven repository per runner" exports it), otherwise
+  into the repository Maven reads: `$MAVEN_REPO`, which the self-hosted lanes'
+  "Select Maven repository" step exports (the shared `select-maven-repo` action —
+  it prefers a host's persistent shared Maven cache and otherwise isolates per
+  runner; see "Maven dependency caching" in `tools/ci/README.md`), otherwise
   `$HOME/.m2/repository`. The copy is done by the shell on purpose: those are
   environment variables, and an action input cannot rely on seeing a value an
   earlier step wrote to `GITHUB_ENV`.

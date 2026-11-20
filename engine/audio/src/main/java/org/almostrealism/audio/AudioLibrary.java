@@ -1425,8 +1425,7 @@ public class AudioLibrary implements ConsoleFeatures {
 				}
 			}
 		} catch (Exception e) {
-			log("Failed to load similarities for " + details.getIdentifier() +
-					" (" + Optional.ofNullable(e.getMessage()).orElse(e.getClass().getSimpleName()) + ")");
+			warn("Failed to load similarities for " + details.getIdentifier(), e);
 		}
 
 		return details;

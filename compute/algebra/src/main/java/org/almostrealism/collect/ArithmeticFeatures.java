@@ -716,7 +716,7 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 		TraversalPolicy shape = shape(value);
 		return new DefaultTraversableExpressionComputation(
 				"abs", shape, true,
-				args -> new UniformCollectionExpression("abs", shape, in -> new Absolute(in[0]), args[1]),
+				args -> new UniformCollectionExpression("abs", shape, in -> Absolute.of(in[0]), args[1]),
 				value);
 	}
 

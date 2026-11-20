@@ -20,6 +20,7 @@ import io.almostrealism.compute.Process;
 import io.almostrealism.lifecycle.Destroyable;
 import io.almostrealism.profile.OperationInfo;
 import io.almostrealism.profile.OperationMetadata;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -135,6 +136,10 @@ import java.util.List;
  * //   - Count: 1024
  * //   - Fixed count: true
  * }</pre>
+ *
+ * <p>A direct delegate of a {@link Computable#isProvider() provider} also carries the
+ * provider's own signature, because a kernel binds it as that provider (see
+ * {@link #signature()}).</p>
  *
  * <h2>Limitations</h2>
  *
@@ -317,11 +322,31 @@ public class DelegatedProducer<T> implements
 	/**
 	 * Returns a signature string for this delegated producer.
 	 *
-	 * @return a signature string in format "delegate|count|isFixedCount"
+	 * <p>A kernel that reads a delegated producer receives the value of the evaluable this
+	 * producer {@link #get() returns}, so the signature identifies whatever decides how that
+	 * value is bound. When the delegated producer computes its value, the kernel receives it as
+	 * an argument whose content the kernel does not depend on, and only the count matters.
+	 * A direct delegate of a {@link Computable#isProvider() provider}, however, returns the
+	 * provider's evaluable unchanged, and the kernel binds the provided memory exactly as it
+	 * binds the provider itself: that memory may be folded into the kernel's aggregate
+	 * argument, which changes the kernel's argument layout. Two delegates of the same count,
+	 * one of a provider and one of a computed value, therefore compile to different kernels,
+	 * and the signature of a direct delegate of a provider includes the provider's signature
+	 * (which encodes the provided memory's layout and whether it is aggregated). If the
+	 * provider has no signature, neither does this producer, so no kernel reading it is
+	 * reused.</p>
+	 *
+	 * @return a signature string in format "delegate|count|isFixedCount", followed by
+	 *         "|provider=" and the provider's signature for a direct delegate of a provider,
+	 *         or {@code null} if that provider has no signature
 	 */
 	@Override
 	public String signature() {
-		return "delegate|" + getCountLong() + "|" + isFixedCount();
+		String signature = "delegate|" + getCountLong() + "|" + isFixedCount();
+		if (!direct || !Computable.provider(op)) return signature;
+
+		String provided = Signature.of(op);
+		return provided == null ? null : signature + "|provider=" + provided;
 	}
 
 	/**

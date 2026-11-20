@@ -430,7 +430,7 @@ means neither the code nor a test settles it.
 | `layernorm` | `layernorm(w, b, eps)` (`b` may be `null`; `w` required) | shape preserved; runs of `size(w)` must tile the input | `NormalizationLayerFeatures.norm` | input: passes (`SequenceAttentionAssetTest.qkLayerNormGradientsMatchJavaAssembly`); `w`, `b`: trains (registered weights) |
 | `dynamic_tanh` | `dynamic_tanh(alpha, w, b)` (`w` and `b` may be `null`; `alpha` required, one value or one per feature) | shape preserved; every element becomes `w ⊙ tanh(alpha · x) + b`, with runs of `size(w)` (or `size(b)`) tiling the input; DynamicTanh (DyT) normalization, which computes no statistic | `NormalizationLayerFeatures.dynamicTanh` | input: passes; `alpha`, `w`, `b`: trains (registered weights) (`DynamicTanhPrimitiveTest.dynamicTanhTrainsAlphaAndItsAffine`) |
 | `softmax` | `softmax()` | `[rows, size]` (≥ 2 axes) preserved; max-subtracted, over the last axis | `ActivationFeatures.softmax(shape, true)` | input: passes |
-| `log_softmax` | `log_softmax()` | `[rows, size]` (exactly 2 axes) preserved; each row's log-probabilities, `x − log Σ exp(x)` over the last axis, without subtracting the row maximum (see [Known limits](#known-limits)) | `ActivationFeatures.logSoftmax` | input: passes (`EmbeddingLogSoftmaxPrimitivesTest.logSoftmaxPassesTheGradientOfEachRow`) |
+| `log_softmax` | `log_softmax()` | `[rows, size]` (exactly 2 axes) preserved; each row's log-probabilities, `(x − m) − log Σ exp(x − m)` over the last axis where `m` is the row maximum, so the result stays finite for large logits | `ActivationFeatures.logSoftmax` | input: passes (`EmbeddingLogSoftmaxPrimitivesTest.logSoftmaxPassesTheGradientOfEachRow`) |
 | `silu` | `silu()` | preserved | `ActivationFeatures.silu` | input: passes |
 | `relu` | `relu()` | preserved | `ActivationFeatures.relu` | input: passes |
 | `gelu` | `gelu()` | preserved | `ActivationFeatures.gelu` | input: passes |
@@ -764,12 +764,6 @@ Each limit below is recorded with its evidence. Fixing any of them changes this 
   `beta` is not seen by the built layer either.
 - **`capture` cuts the gradient.** Its backward cell is empty (`PdslBuiltins.callCapture`), so
   nothing upstream of a `capture` receives a gradient.
-- **`log_softmax` is not finite for large logits.** `ActivationFeatures.logSoftmax` computes
-  `x − log Σ exp(x)` without subtracting the row maximum, so in single precision a row whose largest
-  value exceeds about 88 becomes `−∞` throughout, and a row whose values all lie below about −103
-  becomes `+∞`: `[1000, 0]` and `[100, 0]` give `−∞`, `[50, 0]` is right. Subtracting the maximum, as
-  `softmax` does, makes the backward of one existing case fail to compile (`SoftmaxTests`), so the
-  fix is tracked as its own task.
 - **Imports are ignored by `parse(String)` and `parse(Path)`.** Those methods record the `Import`
   nodes, but only `parseResource`/`parseResources` resolve them. A source string that imports an
   asset and calls its layers fails at build time with "Unknown function".

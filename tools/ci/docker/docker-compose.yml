@@ -32,6 +32,16 @@ services:
       - GITHUB_REPO=${GITHUB_REPO:-common}
       - RUNNER_PREFIX=${RUNNER_PREFIX:-ar-runner}
       - RUNNER_LABELS=ar-ci
+    volumes:
+      # Persistent, shared Maven dependency cache. Every replica on this host
+      # mounts it and uses its own <runner> subdirectory (the select-maven-repo
+      # action), so the plugin and dependency set resolved once survives the
+      # ephemeral containers and is reused instead of re-downloaded from Maven
+      # Central on every job — the fix for the Central 429 rate-limit failures.
+      # A named volume auto-creates, inherits the image mount point's runner
+      # ownership so the non-root runner can write, and persists across container
+      # recreation. See "Maven dependency caching" in tools/ci/README.md.
+      - ar-maven-cache:/opt/ar-maven-cache
     deploy:
       resources:
         limits:
@@ -43,3 +53,10 @@ services:
         max-size: "10m"
         max-file: "3"
     restart: unless-stopped
+
+volumes:
+  # Survives container recreation, so the ephemeral ar-ci runners stay warm.
+  # Remove it (`docker volume rm ar-ci_ar-maven-cache`) to force a cold rebuild
+  # of the cache; a cold cache resolves correctly, only slower.
+  ar-maven-cache:
+    driver: local

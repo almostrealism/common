@@ -529,14 +529,22 @@ public interface CollectionFeatures extends GradientFeatures {
 	 * so it stays exact for collections with more elements than single precision can count
 	 * (above {@code 2^24}); a flat index carried as a floating-point value would be rounded.</p>
 	 *
+	 * <p>The row offset is a 32-bit integer product, so a collection of more than
+	 * {@link Integer#MAX_VALUE} elements cannot be addressed exactly and is rejected here,
+	 * rather than read at a wrapped offset.</p>
+	 *
 	 * @param shape the output shape, whose last axis is the row length
 	 * @param collection the collection to read rows from, laid out as consecutive rows
 	 * @param rowIndex the producer of one row position per output row
 	 * @return a computation that gathers the rows at the specified positions
+	 * @throws IllegalArgumentException if the collection has more than {@link Integer#MAX_VALUE}
+	 *                                  elements
 	 */
 	default CollectionProducerComputation rows(TraversalPolicy shape,
 											   Producer<PackedCollection> collection,
 											   Producer<PackedCollection> rowIndex) {
+		shape(collection).requireIntegerAddressable("rows");
+
 		long rowLength = shape.length(shape.getDimensions() - 1);
 		return new DefaultTraversableExpressionComputation("rowAtIndex", shape,
 				true,

@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexRange;
@@ -394,6 +395,40 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		}
 
 		return Mod.of(children.get(0), children.get(1), fp);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Writing the modulo as {@code u - m * q}, where {@code q} is the integer quotient the
+	 * forward operation uses, away from the points where {@code q} steps its partial
+	 * derivatives are {@code 1} with respect to the dividend and {@code -q} with respect to the
+	 * modulus, so the chain rule gives {@code du/dx - q * dm/dx}. The quotient is recovered as
+	 * {@code (u - (u mod m)) / m} from this expression itself, so it always matches the forward
+	 * semantics: truncation toward zero for the floating-point {@code fmod}, and flooring for
+	 * {@link LanguageOperations#floorMod}. When the modulus does not depend on the target its
+	 * derivative is zero and this reduces to {@code du/dx}.</p>
+	 *
+	 * <p>Like {@link Max#delta(CollectionExpression)}, this differentiates the operands
+	 * directly, so it is only correct when they are raw inputs rather than references to
+	 * composite sub-computations (for example {@code (2x) mod 3}); that limitation is tracked
+	 * as a follow-up for the chain rule across computation references.</p>
+	 */
+	@Override
+	public CollectionExpression<?> delta(CollectionExpression<?> target) {
+		Expression<?> dividend = getLeft();
+		Expression<?> divisor = getRight();
+
+		CollectionExpression<?> dividendDelta = dividend.delta(target);
+		if (divisor.doubleValue().isPresent()) {
+			return dividendDelta;
+		}
+
+		CollectionExpression<?> divisorDelta = divisor.delta(target);
+		Expression<?> quotient = dividend.subtract(this).divide(divisor);
+		return CollectionExpression.create(target.getShape(), idx ->
+				dividendDelta.getValueAt(idx).subtract(
+						quotient.multiply(divisorDelta.getValueAt(idx))));
 	}
 
 	/**

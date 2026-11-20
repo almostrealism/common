@@ -21,6 +21,7 @@ import io.almostrealism.profile.OperationMetadata;
 import io.almostrealism.util.FrequencyCache;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -89,8 +90,19 @@ public class ExpressionCache {
 	/** Operation metadata associated with the current cache scope, used for timing annotations. */
 	private static ThreadLocal<OperationMetadata> currentMetadata = new ThreadLocal<>();
 
-	/** Per-depth frequency caches keyed by {@link Expression#treeDepth()}. */
-	private Map<Integer, FrequencyCache<Expression<?>, Expression<?>>> caches;
+	/**
+	 * Per-depth frequency caches keyed by {@link Expression#treeDepth()}. Only a
+	 * {@link #get(Expression) lookup} changes them, which is what lets
+	 * {@link #frequentExpressions} be kept until the next one.
+	 */
+	private final Map<Integer, FrequencyCache<Expression<?>, Expression<?>>> caches;
+
+	/**
+	 * The ranking last returned by {@link #getFrequentExpressions()}, kept until the next
+	 * {@link #get(Expression) lookup} changes the cache, or {@code null} when there is no
+	 * ranking to return again.
+	 */
+	private List<Expression<?>> frequentExpressions;
 
 	/**
 	 * Creates a new, empty {@link ExpressionCache}.
@@ -110,6 +122,9 @@ public class ExpressionCache {
 	public <T> Expression<T> get(Expression<T> expression) {
 		if (!ScopeSettings.isExpressionCacheTarget(expression))
 			return expression;
+
+		// Every lookup of a target inserts it or counts another occurrence of it
+		frequentExpressions = null;
 
 		Supplier<Expression<T>> lookup = () -> {
 			FrequencyCache<Expression<?>, Expression<?>> cache = getCache(expression.treeDepth());
@@ -135,12 +150,14 @@ public class ExpressionCache {
 
 	/**
 	 * Returns the {@link FrequencyCache} for expressions at the given tree depth,
-	 * creating it on first access.
+	 * creating it on first access. It is private to the {@link #get(Expression) lookup},
+	 * the only thing that may change it, so that a kept
+	 * {@link #getFrequentExpressions() ranking} is never out of date.
 	 *
 	 * @param depth the expression tree depth
 	 * @return the frequency cache for that depth
 	 */
-	protected FrequencyCache<Expression<?>, Expression<?>> getCache(int depth) {
+	private FrequencyCache<Expression<?>, Expression<?>> getCache(int depth) {
 		return caches.computeIfAbsent(depth,
 				k -> new FrequencyCache<>(ScopeSettings.getExpressionCacheSize(), 0.7));
 	}
@@ -153,9 +170,34 @@ public class ExpressionCache {
 	 * collected. They are sorted descending by estimated savings
 	 * (frequency &times; {@link Expression#totalComputeCost()}).</p>
 	 *
+	 * <p>The ranking depends only on which expressions the cache holds and how often each
+	 * has been seen, and only a {@link #get(Expression) lookup} changes either. The
+	 * {@link CommonSubexpressions common sub-expression replacement} of
+	 * {@link Scope#simplify} asks for the ranking for every scope of a kernel and again after
+	 * every round of replacements, usually with no lookup in between, and a kernel can have
+	 * thousands of scopes and thousands of frequent expressions. The ranking is therefore
+	 * kept, and returned again until the next lookup changes the cache, so the list returned
+	 * is shared and cannot be modified.</p>
+	 *
 	 * @return expressions ordered by descending compute savings potential
 	 */
 	public List<Expression<?>> getFrequentExpressions() {
+		if (frequentExpressions == null) {
+			frequentExpressions = rankFrequentExpressions();
+		}
+
+		return frequentExpressions;
+	}
+
+	/**
+	 * Ranks the expressions this cache holds that appear more than
+	 * {@link ScopeSettings#getExpressionCacheFrequencyThreshold()} times, as described by
+	 * {@link #getFrequentExpressions()}. Expressions with equal savings keep the order in
+	 * which the per-depth caches iterate them.
+	 *
+	 * @return an unmodifiable list of the expressions ordered by descending compute savings
+	 */
+	private List<Expression<?>> rankFrequentExpressions() {
 		int threshold = ScopeSettings.getExpressionCacheFrequencyThreshold();
 
 		List<Map.Entry<Expression<?>, Long>> candidates = new ArrayList<>();
@@ -168,7 +210,7 @@ public class ExpressionCache {
 		}
 
 		candidates.sort((a, b) -> Long.compare(b.getValue(), a.getValue()));
-		return candidates.stream().map(Map.Entry::getKey).collect(Collectors.toList());
+		return candidates.stream().map(Map.Entry::getKey).collect(Collectors.toUnmodifiableList());
 	}
 
 	/**
@@ -311,5 +353,22 @@ public class ExpressionCache {
 	 */
 	public static ExpressionCache getCurrent() {
 		return current.get();
+	}
+
+	/**
+	 * Returns the {@link #getFrequentExpressions() frequent expressions} of the cache active on
+	 * the current thread, or an empty list when no cache is active or the active cache holds
+	 * nothing. These are the candidates offered to the
+	 * {@link CommonSubexpressions common sub-expression replacement} of a {@link Scope} that is
+	 * {@link Scope#simplify simplified} while the cache is active, and, as for
+	 * {@link #getFrequentExpressions()}, the same list is returned again until a lookup changes
+	 * the cache.
+	 *
+	 * @return the ranking of the active cache, which cannot be modified
+	 */
+	public static List<Expression<?>> getCurrentFrequentExpressions() {
+		ExpressionCache cache = getCurrent();
+		if (cache == null || cache.isEmpty()) return Collections.emptyList();
+		return cache.getFrequentExpressions();
 	}
 }
