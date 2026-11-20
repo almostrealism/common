@@ -199,10 +199,14 @@ class MavenCacheJobTest(unittest.TestCase):
     def test_warm_resolves_the_full_set(self):
         warm = self._step("Warm the Maven repository")
         run = warm["run"]
-        # test-compile resolves compiler/error-prone/jacoco and test-scope deps
-        # (CPD); go-offline/resolve-plugins catch the rest; the checkstyle plugin
-        # and the jacoco-cli distribution are named explicitly.
-        self.assertIn("test-compile", run)
+        # package -DskipTests resolves compiler/error-prone/surefire/jacoco and
+        # test-scope deps (CPD) and reaches package so studio/compose can unpack
+        # engine/ml's package-attached proto artifact (test-compile cannot — it
+        # fails deterministically on MDEP-98); go-offline/resolve-plugins catch
+        # the rest; the checkstyle plugin and the jacoco-cli distribution are
+        # named explicitly.
+        self.assertRegex(run, r"mvn\s+-B\s+-ntp\s+package\s+-DskipTests")
+        self.assertNotIn("test-compile -Dcheckstyle", run)
         self.assertIn("dependency:go-offline", run)
         self.assertIn("dependency:resolve-plugins", run)
         self.assertIn("maven-checkstyle-plugin", run)

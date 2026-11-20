@@ -682,12 +682,18 @@ the hosted jobs no longer rely on `actions/setup-java`'s `cache: maven` — whic
 saved the local repository only on a miss, from whichever hosted job finished
 first (one that did not run jacoco), and so left `jacoco-maven-plugin` out of the
 cache and re-downloaded it from Maven Central on every run. The job resolves the
-full plugin and dependency set on purpose (`mvn test-compile`, then
-`dependency:go-offline`/`resolve-plugins` — which resolve surefire, since
-test-compile does not reach the test phase — the checkstyle plugin, and the
+full plugin and dependency set on purpose (`mvn package -DskipTests`, then
+`dependency:go-offline`/`resolve-plugins`, the checkstyle plugin, and the
 jacoco-cli distribution the `analysis` job unzips) and saves it with an explicit
 `actions/cache` under a key of the pom hashes plus the manual
-`HOSTED_MAVEN_CACHE_VERSION` prefix, with a `restore-keys` fallback. It saves
+`HOSTED_MAVEN_CACHE_VERSION` prefix, with a `restore-keys` fallback. It warms
+through `package`, not `test-compile`, because `studio/compose` unpacks
+`engine/ml`'s `proto`-classified artifact in `generate-sources` and that artifact
+is attached at `ml`'s package phase — so `test-compile` leaves the reactor
+dependency unpackaged and the unpack fails deterministically (MDEP-98), which is
+why the warm failed on every run until this was fixed. `package` does not
+`install` (`build` remains the only job that installs), so the separation from
+`build` holds. It saves
 only when the warm step succeeded: cache keys are immutable, so a partial
 repository saved under the exact key would stop every later run from re-warming;
 a failed warm leaves the key unclaimed for the next run to fill. Gated on

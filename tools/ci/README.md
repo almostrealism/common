@@ -132,11 +132,10 @@ re-fetched it from Maven Central on every run — 429s and transient "not found"
 followed. Three pieces replace it, all in `.github/workflows/analysis.yaml`:
 
 1. **A `maven-cache` job** resolves the full plugin and dependency set every
-   hosted job uses — `mvn test-compile` (compiler, error-prone processor
-   path, jacoco, and the `tools` test deps including CPD), plus
-   `dependency:go-offline`/`dependency:resolve-plugins` across the reactor
-   (which resolve surefire, since test-compile does not reach the test phase),
-   the `maven-checkstyle-plugin` (whose pinned Checkstyle library only the
+   hosted job uses — `mvn package -DskipTests` (compiler, error-prone processor
+   path, surefire and jacoco, and the `tools` test deps including CPD), plus
+   `dependency:go-offline`/`dependency:resolve-plugins` across the reactor, the
+   `maven-checkstyle-plugin` (whose pinned Checkstyle library only the
    `checkstyle` job exercises), and the standalone jacoco-cli distribution the
    `analysis` job unzips — and saves it with an explicit `actions/cache/save`
    under a key built from the pom hashes and a manual version prefix
@@ -147,7 +146,13 @@ followed. Three pieces replace it, all in `.github/workflows/analysis.yaml`:
    a cache key is immutable, so a partial repository saved under the exact key
    would make every later run skip warming while consumers re-download what it
    lacks. A failed warm leaves the key unclaimed, and the next run restores the
-   previous cache through `restore-keys` and warms again.
+   previous cache through `restore-keys` and warms again. It warms through
+   `package` rather than `test-compile` because `studio/compose` unpacks
+   `engine/ml`'s `proto`-classified artifact in `generate-sources`, and that
+   artifact is attached at `ml`'s package phase — so `test-compile` leaves the
+   reactor dependency unpackaged and the unpack fails deterministically
+   (MDEP-98). `package` does not `install`, so `build` is still the only job
+   that installs the shared artifacts.
 
 2. **The shared `restore-maven-cache` composite action**
    ([`.github/actions/restore-maven-cache`](../../.github/actions/restore-maven-cache/action.yml))

@@ -157,7 +157,7 @@ concurrency:
 # invalidate that cache deliberately, without waiting for a pom change.
 env:
   EXPECTED_JDK_MAJOR: "17"
-  HOSTED_MAVEN_CACHE_VERSION: "v1"
+  HOSTED_MAVEN_CACHE_VERSION: "v2"
 
 jobs:
   # ─── Change Detection ─────────────────────────────────────────────
@@ -594,10 +594,10 @@ jobs:
   #
   # This job resolves the FULL set any hosted job uses — declared dependencies
   # and plugins across the reactor (go-offline, resolve-plugins), the compiler
-  # and error-prone processor path and jacoco (test-compile compiles main and
-  # test sources and binds jacoco:prepare-agent, so it resolves those) and
-  # surefire (resolved by resolve-plugins, since test-compile does not reach the
-  # test phase that binds it), the checkstyle plugin's pinned Checkstyle library
+  # and error-prone processor path, and surefire and jacoco (package -DskipTests
+  # compiles main and test sources and reaches the test phase that binds
+  # surefire and jacoco:prepare-agent, with execution skipped, so it resolves
+  # those), the checkstyle plugin's pinned Checkstyle library
   # (only the checkstyle job exercises it), and the jacoco-cli distribution the analysis
   # job unzips — then saves it with an explicit actions/cache under a key built
   # from the pom hashes and the manual HOSTED_MAVEN_CACHE_VERSION prefix, with a
@@ -639,7 +639,6 @@ jobs:
         with:
           cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
-      # TODO(review): `mvn test-compile` fails deterministically on ar-compose (unpack-dependencies on an unpackaged reactor artifact, MDEP-98), so with the save gated on steps.warm.outcome == 'success' the cache is never saved; make the warm succeed before relying on that gate.
       # Resolve the full plugin and dependency set into ~/.m2. Best-effort: a
       # transient resolution failure must not fail this maintenance job (nothing
       # depends on it). A failed warm is NOT saved (see the save step), so the
@@ -649,20 +648,27 @@ jobs:
         if: steps.restore.outputs.cache-hit != 'true'
         continue-on-error: true
         run: |
-          # test-compile compiles main AND test sources across the reactor: it
-          # resolves the compiler and the error-prone annotation-processor path
-          # (which go-offline/resolve-plugins cannot, since it is neither a plugin
-          # nor a declared dependency), the tools module's test dependencies —
-          # CPD among them — and jacoco (prepare-agent binds at initialize, so the
-          # plugin is resolved). It does NOT install: `build` is the only job that
-          # installs and uploads the shared artifacts. -Dcheckstyle.skip=true
-          # keeps the validate-phase checkstyle from failing it on a real
-          # violation while warming.
-          mvn -B -ntp test-compile -Dcheckstyle.skip=true
+          # package -DskipTests runs the full reactor lifecycle through the
+          # package phase: it resolves the compiler and the error-prone
+          # annotation-processor path (which go-offline/resolve-plugins cannot,
+          # since it is neither a plugin nor a declared dependency), compiles main
+          # AND test sources so the tools module's test dependencies — CPD among
+          # them — and surefire and jacoco (bound to the test phase, which package
+          # reaches with execution skipped) are resolved. It must reach `package`,
+          # not stop at test-compile: studio/compose unpacks engine/ml's
+          # `proto`-classified artifact in generate-sources, and that artifact is
+          # attached by maven-assembly-plugin at ml's package phase — so under
+          # test-compile the reactor dependency is never packaged and the unpack
+          # fails deterministically (MDEP-98), which left the warm failing on
+          # every run and the success-gated save never saving. package does NOT
+          # install: `build` is the only job that installs and uploads the shared
+          # artifacts. -Dcheckstyle.skip=true keeps the validate-phase checkstyle
+          # from failing it on a real violation while warming.
+          mvn -B -ntp package -DskipTests -Dcheckstyle.skip=true
 
           # go-offline / resolve-plugins across the reactor catch the rest of the
-          # declared dependency and plugin set, including surefire and plugins
-          # bound to phases test-compile does not reach.
+          # declared dependency and plugin set, including plugins bound to phases
+          # package does not reach.
           mvn -B -ntp dependency:go-offline dependency:resolve-plugins -Dcheckstyle.skip=true
 
           # The checkstyle job runs `checkstyle:check`, which loads the plugin's
