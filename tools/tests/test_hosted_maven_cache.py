@@ -110,6 +110,20 @@ class RestoreActionShapeTest(unittest.TestCase):
         self.assertNotIn("default", cache_version,
                          "cache-version must have no default (see required=true)")
 
+    def test_action_references_no_env_context(self):
+        """GitHub evaluates ${{ }} tokens anywhere in an action.yml, including
+        the description and input fields, and the env context is not available
+        at action-definition scope — the caller passes HOSTED_MAVEN_CACHE_VERSION
+        as the cache-version input instead. A stray ${{ env.* }} (even in prose)
+        makes the action fail to load with 'Unrecognized named-value: env',
+        which breaks every hosted job that restores the cache."""
+        with open(_RESTORE_ACTION) as f:
+            text = f.read()
+        self.assertNotIn("env.", text,
+                         "restore-maven-cache action.yml must not reference the "
+                         "env context; it is unavailable at action scope and "
+                         "makes the action fail to load")
+
     def test_restores_read_only_and_excludes_project_artifacts(self):
         """It must use cache/restore (never the combined cache action, which
         would save a partial repository at the end of a consumer job) and must

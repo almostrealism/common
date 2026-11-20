@@ -24,8 +24,8 @@ inputs:
       match the value the `maven-cache` job saves under. Required with no default
       on purpose: a default would silently pin callers to one prefix, so a bump
       of HOSTED_MAVEN_CACHE_VERSION in analysis.yaml would leave a caller that
-      forgot to pass it reading a stale cache scope. Every caller passes
-      `${{ env.HOSTED_MAVEN_CACHE_VERSION }}`.
+      forgot to pass it reading a stale cache scope. Every caller passes the
+      HOSTED_MAVEN_CACHE_VERSION workflow env value.
     required: true
 outputs:
   cache-hit:
