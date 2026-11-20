@@ -18,6 +18,7 @@ package org.almostrealism.studio.persistence;
 
 import org.almostrealism.audio.api.Audio;
 import org.almostrealism.audio.midi.MidiTempo;
+import org.almostrealism.io.JsonString;
 import org.almostrealism.music.midi.MidiNoteEvent;
 
 import javax.sound.midi.InvalidMidiDataException;
@@ -542,39 +543,16 @@ public final class MidiPatternPersistence {
 	/**
 	 * Formats a single AU host MIDI command JSON line.
 	 *
-	 * @param pluginId AU plugin instance id (escaped before embedding)
+	 * @param pluginId AU plugin instance id, written as a {@link JsonString}
 	 * @param type     command type (note_on / note_off)
 	 * @param note     MIDI pitch
 	 * @param velocity MIDI velocity
 	 * @return one JSON command line
 	 */
 	private static String formatAuHostCommand(String pluginId, String type, int note, int velocity) {
-		return "{\"cmd\":\"" + AU_HOST_CMD + "\",\"id\":\"" + escape(pluginId)
-				+ "\",\"type\":\"" + type + "\",\"note\":" + note
+		return "{\"cmd\":\"" + AU_HOST_CMD + "\",\"id\":" + new JsonString(pluginId)
+				+ ",\"type\":\"" + type + "\",\"note\":" + note
 				+ ",\"velocity\":" + velocity + "}";
-	}
-
-	/**
-	 * Escapes special characters for embedding into a JSON string literal.
-	 *
-	 * @param s the input string
-	 * @return the escaped representation
-	 */
-	private static String escape(String s) {
-		if (s == null) return "";
-		StringBuilder b = new StringBuilder(s.length());
-		for (int i = 0; i < s.length(); i++) {
-			char c = s.charAt(i);
-			switch (c) {
-				case '"' -> b.append("\\\"");
-				case '\\' -> b.append("\\\\");
-				case '\n' -> b.append("\\n");
-				case '\r' -> b.append("\\r");
-				case '\t' -> b.append("\\t");
-				default -> b.append(c);
-			}
-		}
-		return b.toString();
 	}
 
 	/**

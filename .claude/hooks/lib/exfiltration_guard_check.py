@@ -189,23 +189,48 @@ class Allowlist:
         host = normalize_host(host)
         return bool(host) and any(self._matches(e, host) for e in self.lab_hosts)
 
+    @staticmethod
+    def _repo_entry_matches(entry_repo, repo):
+        """Whether the repository part of a ``host/...`` entry covers
+        ``repo`` (owner/name): ``owner/name`` pins exactly that repository,
+        ``owner/`` every repository of that owner."""
+        repo = repo.lower()
+        if entry_repo.endswith("/"):
+            return repo.split("/", 1)[0] + "/" == entry_repo
+        return entry_repo == repo
+
+    def _repository_entries(self):
+        """``(host, repo-part)`` for every ``[git-remotes]`` entry that names
+        a repository or an owner rather than a bare host."""
+        return [tuple(e.split("/", 1)) for e in self.git_remotes
+                if "/" in e and not self._is_cidr(e)]
+
     def is_git_remote(self, host, repo=None):
         """Whether ``host`` (and, when given, ``repo`` as owner/name) may be
         reached through git push / gh. A ``host/owner/name`` entry pins the
-        repository; a bare ``host`` entry accepts any repository there."""
+        repository, a ``host/owner/`` entry every repository of that owner;
+        a bare ``host`` entry accepts any repository there."""
         host = normalize_host(host)
         if not host:
             return False
         if self.is_lab_host(host):
             return True
-        for entry in self.git_remotes:
-            if "/" in entry and not self._is_cidr(entry):
-                entry_host, entry_repo = entry.split("/", 1)
-                if entry_host == host and (repo is None or entry_repo == repo.lower()):
-                    return True
-            elif self._matches(entry, host):
+        for entry_host, entry_repo in self._repository_entries():
+            if entry_host == host and (repo is None or self._repo_entry_matches(entry_repo, repo)):
                 return True
-        return False
+        return any(self._matches(e, host) for e in self.git_remotes
+                   if "/" not in e or self._is_cidr(e))
+
+    def pins_git_remote(self, host, repo):
+        """Whether a ``[git-remotes]`` entry explicitly pins ``repo``
+        (owner/name) on ``host``, exactly (``host/owner/name``) or by owner
+        (``host/owner/``). A bare host entry and a ``[lab-hosts]`` entry
+        pin nothing, so they never make another repository pushable."""
+        host = normalize_host(host)
+        if not host or not repo:
+            return False
+        return any(entry_host == host and self._repo_entry_matches(entry_repo, repo)
+                   for entry_host, entry_repo in self._repository_entries())
 
 
 # ---------------------------------------------------------------------------

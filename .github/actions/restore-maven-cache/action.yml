@@ -1,0 +1,58 @@
+name: Restore hosted Maven cache
+description: >-
+  Restore the GitHub-hosted jobs' shared Maven dependency repository. The
+  `maven-cache` job in analysis.yaml resolves the full plugin and dependency set
+  every hosted job uses — jacoco, the checkstyle plugin and its pinned Checkstyle
+  library, CPD, surefire, the compiler and error-prone processor path, the
+  jacoco-cli distribution — and saves it under a key built from the pom hashes
+  and a manual version prefix. Every hosted Maven job restores it with THIS
+  action, read-only, so no consumer job ever re-saves a partial repository the
+  way setup-java's `cache: maven` did (it saved on a miss from whichever job
+  finished first, and that job did not need jacoco, so jacoco was re-downloaded
+  from Maven Central on every run). A cache miss is not an error: Maven falls
+  back to the network for whatever the repository lacks, with the transport
+  retry/backoff in .mvn/maven.config. The `maven-cache` job saves under the
+  cache-primary-key this action reports, so the save and restore keys cannot
+  drift; tools/tests/test_hosted_maven_cache.py pins that wiring. Self-hosted
+  lanes do not use this action — they have their own host-mounted cache (see
+  select-maven-repo).
+inputs:
+  cache-version:
+    description: >-
+      Manual version prefix of the cache key, so the hosted Maven cache can be
+      invalidated deliberately (bump it) without waiting for a pom change. Must
+      match the value the `maven-cache` job saves under. Required with no default
+      on purpose: a default would silently pin callers to one prefix, so a bump
+      of HOSTED_MAVEN_CACHE_VERSION in analysis.yaml would leave a caller that
+      forgot to pass it reading a stale cache scope. Every caller passes the
+      HOSTED_MAVEN_CACHE_VERSION workflow env value.
+    required: true
+outputs:
+  cache-hit:
+    description: >-
+      'true' when the primary key was an exact hit (the repository is already
+      complete for these poms). 'false' on a restore-keys partial hit or a
+      miss. The maven-cache job warms and re-saves unless this is 'true'.
+    value: ${{ steps.restore.outputs.cache-hit }}
+  cache-primary-key:
+    description: >-
+      The exact primary key this action restored under, so the maven-cache job
+      can save under the identical key with no risk of drift.
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+runs:
+  using: composite
+  steps:
+    - name: Restore hosted Maven dependency cache
+      id: restore
+      uses: actions/cache/restore@v4
+      with:
+        # The project's own artifacts (org/almostrealism) are excluded: they are
+        # per-commit and come from `build`'s maven-installed-artifacts, not from
+        # this cache. Everything else under the local repository is third-party
+        # and safe to share across jobs and runs.
+        path: |
+          ~/.m2/repository
+          !~/.m2/repository/org/almostrealism
+        key: hosted-maven-${{ inputs.cache-version }}-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          hosted-maven-${{ inputs.cache-version }}-${{ runner.os }}-

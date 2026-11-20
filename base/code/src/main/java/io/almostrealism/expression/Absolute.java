@@ -19,8 +19,6 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.lang.LanguageOperations;
 
-import java.util.List;
-
 /**
  * Represents the absolute value mathematical operation within the expression tree.
  * <p>
@@ -32,22 +30,25 @@ import java.util.List;
  * <h2>Usage Example</h2>
  * <pre>{@code
  * Expression<Double> value = new DoubleConstant(-5.0);
- * Expression<Double> absValue = new Absolute(value);
- * // When evaluated: absValue.evaluate(new Number[]{-5.0}) returns 5.0
+ * Expression<Double> absValue = Absolute.of(value);
+ * // The constant operand is folded: absValue is a DoubleConstant with value 5.0
  * }</pre>
  *
  * <h2>Expression Tree Structure</h2>
  * <p>
  * This is a unary expression with exactly one child expression. The child expression
- * must be of type {@code Double}. The result type is also {@code Double}.
+ * must be of type {@code Double}. The result type is also {@code Double}. Evaluation,
+ * {@code recreate} and the constant-folding factory are inherited from
+ * {@link UnaryMathFunction}; only the rendering differs, because the target language
+ * names its absolute value function ({@link LanguageOperations#abs(String)}).
  * </p>
  *
- * @see Expression
+ * @see UnaryMathFunction
  * @see Math#abs(double)
  *
  * @author Michael Murray
  */
-public class Absolute extends Expression<Double> {
+public class Absolute extends UnaryMathFunction {
 
 	/**
 	 * Constructs a new absolute value expression wrapping the specified input expression.
@@ -56,7 +57,7 @@ public class Absolute extends Expression<Double> {
 	 *              must not be {@code null} and must be of type {@code Double}
 	 */
 	public Absolute(Expression<Double> input) {
-		super(Double.class, input);
+		super(input);
 	}
 
 	/**
@@ -74,16 +75,16 @@ public class Absolute extends Expression<Double> {
 		return lang.abs(getChildren().get(0).getExpression(lang));
 	}
 
-	/**
-	 * Evaluates the absolute value of the provided numeric argument.
-	 *
-	 * @param children an array containing exactly one {@link Number} element
-	 *                 representing the evaluated value of the child expression
-	 * @return the absolute value of the first element as a {@link Number}
-	 */
+	/** {@inheritDoc} Returns {@code "abs"}; the rendered call uses the language's own name. */
 	@Override
-	public Number evaluate(Number... children) {
-		return Math.abs(children[0].doubleValue());
+	protected String getFunctionName() { return "abs"; }
+
+	@Override
+	protected double applyToDouble(double operand) { return Math.abs(operand); }
+
+	@Override
+	protected Expression<Double> createNode(Expression<?> input) {
+		return of(input);
 	}
 
 	/**
@@ -106,22 +107,18 @@ public class Absolute extends Expression<Double> {
 	}
 
 	/**
-	 * Creates a new {@code Absolute} expression with the specified child expressions.
-	 * <p>
-	 * This method is used internally when transforming or simplifying expression trees.
-	 * It validates that exactly one child expression is provided.
-	 * </p>
+	 * Creates an absolute value expression, folding a constant operand to a {@link DoubleConstant}.
 	 *
-	 * @param children a list containing exactly one {@link Expression} of type {@code Double}
-	 * @return a new {@code Absolute} expression wrapping the single child
-	 * @throws UnsupportedOperationException if the children list does not contain exactly one element
+	 * <p>When the operand has a known numeric value the result is its absolute value as a
+	 * constant and no node is built. Otherwise a non-FP operand is widened with
+	 * {@link Expression#toDouble()} so the emitted call always has a floating-point argument:
+	 * OpenCL C's {@code fabs} has only floating-point overloads, so an integer operand such as
+	 * {@code fabs(0)} is ambiguous and fails kernel compilation.</p>
+	 *
+	 * @param input the expression whose absolute value should be computed
+	 * @return a {@link DoubleConstant} when the operand is constant, otherwise a new {@code Absolute}
 	 */
-	@Override
-	public Expression<Double> recreate(List<Expression<?>> children) {
-		if (children.size() != 1) {
-			throw new UnsupportedOperationException();
-		}
-
-		return new Absolute((Expression<Double>) children.get(0));
+	public static Expression<Double> of(Expression<?> input) {
+		return of(Math::abs, input, Absolute::new);
 	}
 }
