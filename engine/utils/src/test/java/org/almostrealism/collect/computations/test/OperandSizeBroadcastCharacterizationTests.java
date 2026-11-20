@@ -35,7 +35,10 @@ import java.nio.file.Path;
  * end, each pair of lengths must be equal or one of them must be 1 (a length-1 axis broadcasts,
  * and a missing leading axis counts as length 1); a scalar broadcasts against anything. A pair
  * that is not compatible by this rule is rejected when the computation is created, rather than
- * being tiled or read modulo its own length.
+ * being tiled or read modulo its own length. The one exception is the equal-total-size positional
+ * pass (see {@link #equalTotalSizeCombinesPositionally}): two operands of equal total size are
+ * combined element by element even when they are not trailing-axis compatible, so a {@code (2, 3)}
+ * matrix combines with a {@code (6)} vector positionally rather than being rejected.
  *
  * <p>Each accepted case asserts both the result shape and the per-element values, using operands
  * whose elements differ so that a wrong broadcast axis would change the result. Each rejected

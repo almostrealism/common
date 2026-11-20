@@ -470,8 +470,10 @@ binary element-wise operations:
 - Two operands are combined when, comparing their shapes axis by axis from the trailing end, each
   pair of lengths is equal or one of them is 1; a length-1 axis broadcasts, a missing leading axis
   counts as length 1, and a scalar broadcasts against anything. Any other pair is rejected when the
-  computation is created, with a message naming both shapes. Nothing is tiled along an axis that is
-  not length 1, and nothing is read modulo its own length.
+  computation is created, with a message naming both shapes — except for the equal-total-size
+  positional pass noted in point 5 below, which combines operands of equal total size element by
+  element even when they are not trailing-axis compatible (e.g. `(2, 3)` against `(6)`). Nothing is
+  tiled along an axis that is not length 1, and nothing is read modulo its own length.
 - The compatibility rule lives on `TraversalPolicy` (`isBroadcastCompatible`, `broadcastsInto`),
   beside the existing shape predicates; `TraversalAxisAlignment.align` applies it. The old
   `matchDepth`/`repetitionsToFill` tile logic and the `enableStrictSizes`/`enableDivisibleSizes`
