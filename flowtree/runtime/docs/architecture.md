@@ -567,8 +567,9 @@ handleGitOperations()
     |       (in case doWork() switched branches)
     |
     +-- 2. Find changed files
-    |       - git status --porcelain
-    |       - Parse modified, added, deleted, untracked, renamed
+    |       - git status --porcelain -z -uall (NUL-delimited)
+    |       - Parse modified, added, deleted, untracked; a rename's
+    |         destination path is read directly as its own field
     |
     +-- 3. Stage files (with guardrails)
     |       For each changed file, apply four guardrails in order:

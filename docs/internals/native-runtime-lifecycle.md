@@ -179,18 +179,24 @@ allocation smaller than the context's `offHeapSize` to a `JVMMemoryProvider`, wh
 `AR_HARDWARE_MEMORY_SCALE`, and they do not count toward the hardware provider's `memoryUsed`.
 
 Each performs the same **pre-allocation check** — the request must fit under `memoryMax` — and
-charges `memoryUsed` *before* its backend allocation call, rolling the charge back if that call
-fails, so bytes that were never allocated do not stay counted against the ceiling. The mechanism
-differs by provider but the effect is the same on all four: the check-and-increment is atomic, so
-concurrent allocations can neither lose each other's updates nor together push the total past
-`memoryMax`. `NativeMemoryProvider.allocate` and `CudaMemoryProvider.buffer` hold `synchronized`
-over their check-and-increment around the backend `calloc`/`cuMemAlloc`. `CLMemoryProvider.buffer`
-and `MetalMemoryProvider.buffer` reserve through `HardwareMemoryProvider.allocateReserved`, whose
+charges `memoryUsed` *before* its backend allocation call, so bytes are reserved up front rather
+than counted after the fact. The check-and-increment is atomic on all four providers, so concurrent
+allocations can neither lose each other's updates nor together push the total past `memoryMax`.
+`NativeMemoryProvider.allocate` and `CudaMemoryProvider.buffer` hold `synchronized` over their
+check-and-increment around the backend `calloc`/`cuMemAlloc`. `CLMemoryProvider.buffer` and
+`MetalMemoryProvider.buffer` reserve through `HardwareMemoryProvider.allocateReserved`, whose
 `reserve(...)` increments `memoryUsed` with a compare-and-set loop (reclaiming unreachable
 allocations and retrying when the reservation does not fit) before the backend
-`clCreateBuffer`/`newBuffer*` call, and returns the reservation to `memoryUsed` if that call throws.
-Treat the check as a guard against a single over-budget request: it bounds the tracked ceiling, not
-the OS limit (see the raw-allocation-failure mode below).
+`clCreateBuffer`/`newBuffer*` call.
+
+The providers differ in **how completely they roll the charge back when the backend call throws**.
+`NativeMemoryProvider` (via `allocateBackend`) and the `allocateReserved` path used by
+`CLMemoryProvider`/`MetalMemoryProvider` both catch `RuntimeException | Error` and subtract the
+reservation, so a failed allocation never stays counted against the ceiling. `CudaMemoryProvider.buffer`
+subtracts the charge only in a `catch (RuntimeException)`: if the `cuMemAlloc` path throws an `Error`
+such as `OutOfMemoryError`, the reservation remains charged to `memoryUsed`. Treat the check as a
+guard against a single over-budget request: it bounds the tracked ceiling, not the OS limit (see the
+raw-allocation-failure mode below).
 
 Distinguish two separate failure modes, because they surface differently:
 
