@@ -7,10 +7,14 @@ tracker: []
 
 # Survey: how element-wise operations reconcile operands of different sizes
 
-**Status:** investigation only. No production code is changed by the branch that adds this
-document; the only code change alongside it is a set of *characterisation* tests
-(`engine/utils/.../OperandSizeBroadcastCharacterizationTests.java`) that pin today's behaviour so
-a later change has something concrete to flip.
+**Status:** survey plus implementation. Sections 1&ndash;6 record the pre-change behaviour this
+branch surveyed and the candidate rules it proposed; **§7 records the production change the owner
+chose and the branch then made** — Rule B (trailing-axis broadcast). The branch therefore changes
+production behaviour in `TraversalAxisAlignment`, `TraversalPolicy`, `ArithmeticFeatures` and
+`ComparisonFeatures`, alongside the *characterisation* tests
+(`engine/utils/.../OperandSizeBroadcastCharacterizationTests.java`) that pinned the prior behaviour
+and were then flipped to assert Rule B. Read §1&ndash;6 as the pre-change account; §7 is the
+authoritative description of what the code now does.
 
 **Purpose.** Binary element-wise operations (`add`, `multiply`, `max`, and the rest built through
 `CollectionFeatures.compute(...)`) today accept two operands whose sizes are not
@@ -216,11 +220,17 @@ File references are in `compute/algebra/src/main/java/org/almostrealism/collect/
 Unary operations (`floor`, `abs`, `rectify`, `sum`, `mean`, aggregating `max`/`indexOfMax`) take a
 single operand and do not reconcile two sizes; they are out of scope.
 
-The two **hand-rolled** rows are the only operations that already reconcile sizes differently.
-`subtractIgnoreZero` is the one that already fails fast on a mismatch — the precedent closest to
-the owner's principle. `greaterThanConditional`'s silent collapse to `shape(1)` is the same
-mistake the 2026-08 `min`/`max` fix removed when it moved those onto the compute path, and is a
-candidate for the same treatment.
+The two **hand-rolled** rows are, *before the Rule B change*, the only operations that reconcile
+sizes differently. `subtractIgnoreZero` is the one that already fails fast on a mismatch — the
+precedent closest to the owner's principle. `greaterThanConditional`'s silent collapse to `shape(1)`
+is the same mistake the 2026-08 `min`/`max` fix removed when it moved those onto the compute path,
+and is a candidate for the same treatment.
+
+**Superseded by §7:** the Rule B change removed both hand-rolled paths. `subtractIgnoreZero` now
+builds through `add(a, minus(b))` and the shared `equals(...)` selection, so it inherits the common
+trailing-axis broadcast path (and its fail-loud rejection) rather than hand-rolling a per-item size
+check; `greaterThanConditional` was likewise moved onto the shared `compute(...)`/alignment path.
+Neither remains a separate precedent to mirror.
 
 ---
 
@@ -467,6 +477,10 @@ binary element-wise operations:
   `matchDepth`/`repetitionsToFill` tile logic and the `enableStrictSizes`/`enableDivisibleSizes`
   flags that tuned it were removed; the wrap in `CollectionVariable.getValueAt` is now reached only
   for a true size-1 (scalar) operand.
+- The two hand-rolled §2 rows were folded onto this shared path. `subtractIgnoreZero` now builds
+  through `add(a, minus(b))` and the shared `equals(...)` selection, dropping its own per-item size
+  check; the broadcast compatibility and fail-loud rejection it needs come from the common path. Its
+  previous role as "the operation that already fails fast" (§2) is therefore absorbed, not special.
 
 How the §6 open questions were settled:
 
