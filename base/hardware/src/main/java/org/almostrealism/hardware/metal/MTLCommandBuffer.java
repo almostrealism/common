@@ -98,7 +98,8 @@ public class MTLCommandBuffer extends MTLObject {
 	 * has finished only from its status (see {@link #isFinished()}).</p>
 	 *
 	 * @param handler run once this buffer has finished
-	 * @return true if the handler was registered, false if completed handlers are unavailable
+	 * @return true if the handler was registered, false if completed handlers are unavailable or
+	 *         this handler could not be registered
 	 */
 	public boolean addCompletedHandler(Runnable handler) {
 		return MTLCompletedHandler.register(getNativePointer(), handler);

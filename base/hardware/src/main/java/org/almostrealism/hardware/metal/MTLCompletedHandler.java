@@ -77,29 +77,29 @@ class MTLCompletedHandler extends BaseNative {
 				"\tif (registerName != NULL) addCompletedHandlerSelector = registerName(\"addCompletedHandler:\");\n" +
 				"\tsendAddCompletedHandler = (void (*)(void*, void*, void*)) dlsym(RTLD_DEFAULT, \"objc_msgSend\");\n" +
 				"}\n" +
-				"JNIEXPORT void JNICALL " + getFunctionName() +
+				"static jboolean failRegistration(JNIEnv* env, const char* message) {\n" +
+				"\t(*env)->ExceptionClear(env);\n" +
+				"\t(*env)->ThrowNew(env, (*env)->FindClass(env, \"java/lang/IllegalStateException\"), message);\n" +
+				"\treturn JNI_FALSE;\n" +
+				"}\n" +
+				"JNIEXPORT jboolean JNICALL " + getFunctionName() +
 				" (JNIEnv* env, jobject thisObject, jlong buffer, jobject handler) {\n" +
 				"\tif (addCompletedHandlerSelector == NULL || sendAddCompletedHandler == NULL) {\n" +
-				"\t\t(*env)->ThrowNew(env, (*env)->FindClass(env, \"java/lang/IllegalStateException\"),\n" +
-				"\t\t\t\t\"objc_msgSend could not be resolved: the Objective-C runtime was not loaded\");\n" +
-				"\t\treturn;\n" +
+				"\t\treturn failRegistration(env, \"objc_msgSend could not be resolved: the Objective-C runtime was not loaded\");\n" +
 				"\t}\n" +
 				"\tJavaVM* vm = NULL;\n" +
 				"\tif ((*env)->GetJavaVM(env, &vm) != JNI_OK) {\n" +
-				"\t\t(*env)->ThrowNew(env, (*env)->FindClass(env, \"java/lang/IllegalStateException\"),\n" +
-				"\t\t\t\t\"The Java VM could not be obtained\");\n" +
-				"\t\treturn;\n" +
+				"\t\treturn failRegistration(env, \"The Java VM could not be obtained\");\n" +
 				"\t}\n" +
 				"\tjclass runnable = (*env)->FindClass(env, \"java/lang/Runnable\");\n" +
-				"\tif (runnable == NULL) return;\n" +
+				"\tif (runnable == NULL) return failRegistration(env, \"java.lang.Runnable could not be found\");\n" +
 				"\tjmethodID run = (*env)->GetMethodID(env, runnable, \"run\", \"()V\");\n" +
 				"\t(*env)->DeleteLocalRef(env, runnable);\n" +
-				"\tif (run == NULL) return;\n" +
+				"\tif (run == NULL) return failRegistration(env, \"Runnable.run could not be found\");\n" +
 				"\tjobject callback = (*env)->NewGlobalRef(env, handler);\n" +
 				"\tif (callback == NULL) {\n" +
-				"\t\t(*env)->ThrowNew(env, (*env)->FindClass(env, \"java/lang/OutOfMemoryError\"),\n" +
-				"\t\t\t\t\"No global reference could be created for the handler\");\n" +
-				"\t\treturn;\n" +
+				"\t\t(*env)->ExceptionClear(env);\n" +
+				"\t\treturn JNI_FALSE;\n" +
 				"\t}\n" +
 				"\tvoid (^completed)(void*) = ^(void* finished) {\n" +
 				"\t\tJNIEnv* threadEnv = NULL;\n" +
@@ -120,6 +120,7 @@ class MTLCompletedHandler extends BaseNative {
 				"\t\tif (attached) (*vm)->DetachCurrentThread(vm);\n" +
 				"\t};\n" +
 				"\tsendAddCompletedHandler((void*) buffer, addCompletedHandlerSelector, (void*) completed);\n" +
+				"\treturn JNI_TRUE;\n" +
 				"}\n";
 	}
 
@@ -127,24 +128,36 @@ class MTLCompletedHandler extends BaseNative {
 	 * Registers {@code handler} to run once the given command buffer has finished, by executing
 	 * or by failing. Must be called before the buffer is committed.
 	 *
+	 * <p>The handler needs a JNI global reference while it is pending. If none can be created
+	 * (the global reference table is full) nothing is registered and false is returned, with no
+	 * exception pending: the condition is transient, so a later registration may succeed.</p>
+	 *
 	 * @param buffer  native {@code MTLCommandBuffer} pointer, not yet committed
 	 * @param handler run on a Metal thread once the buffer has finished
-	 * @throws IllegalStateException if the Objective-C runtime was not loaded with the operation
+	 * @return true if the handler was registered, false if no global reference could be created
+	 * @throws IllegalStateException if the Objective-C runtime was not loaded with the operation,
+	 *                               the Java VM could not be obtained, or {@link Runnable#run()}
+	 *                               could not be resolved
 	 */
-	public native void apply(long buffer, Runnable handler);
+	public native boolean apply(long buffer, Runnable handler);
 
 	/**
 	 * Registers {@code handler} to run once the given command buffer has finished, if completed
 	 * handlers are available on this host. A registration that fails (the Objective-C runtime could
-	 * not be resolved when the operation was loaded, or the Java VM could not be obtained) is
+	 * not be resolved when the operation was loaded, the Java VM could not be obtained, or
+	 * {@link Runnable#run()} could not be resolved) is
 	 * never allowed to reach the caller, since the caller commits the buffer next and a failure
 	 * here would leave it uncommitted. The failure is logged once with its cause, completed handlers
 	 * are reported unavailable from then on, and the caller learns that the buffer has finished
-	 * from its status instead.
+	 * from its status instead. A handler that cannot be registered only because no JNI global
+	 * reference could be created for it is not a failure of the operation: false is returned for
+	 * that buffer alone, which is likewise seen to have finished from its status, and later
+	 * registrations are attempted as usual.
 	 *
 	 * @param buffer  native {@code MTLCommandBuffer} pointer, not yet committed
 	 * @param handler run on a Metal thread once the buffer has finished
-	 * @return true if the handler was registered, false if completed handlers are unavailable
+	 * @return true if the handler was registered, false if completed handlers are unavailable or
+	 *         this handler could not be registered
 	 */
 	static boolean register(long buffer, Runnable handler) {
 		if (!isAvailable()) return false;
@@ -153,8 +166,7 @@ class MTLCompletedHandler extends BaseNative {
 		if (compiled == null) return false;
 
 		try {
-			compiled.apply(buffer, handler);
-			return true;
+			return compiled.apply(buffer, handler);
 		} catch (RuntimeException e) {
 			disable(e);
 			return false;

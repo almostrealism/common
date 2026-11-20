@@ -115,7 +115,11 @@ public class QuietCommitDeadlineTest {
 		MetalCommandRunner.quietCommitMicros = 100_000;
 		ConfinedExecutor executor = new ConfinedExecutor();
 		AtomicInteger checks = new AtomicInteger();
-		QuietCommitDeadline deadline = new QuietCommitDeadline(executor, checks::incrementAndGet);
+		CountDownLatch checked = new CountDownLatch(1);
+		QuietCommitDeadline deadline = new QuietCommitDeadline(executor, () -> {
+			checks.incrementAndGet();
+			checked.countDown();
+		});
 
 		try {
 			executor.run(() -> {
@@ -127,8 +131,9 @@ public class QuietCommitDeadlineTest {
 			Assert.assertEquals(0, checks.get());
 
 			executor.run(deadline::dispatched);
-			Thread.sleep(500);
-			Assert.assertEquals("A dispatch after a cancel schedules an expiry again", 1, checks.get());
+			Assert.assertTrue("A dispatch after a cancel schedules an expiry again",
+					checked.await(10, TimeUnit.SECONDS));
+			Assert.assertEquals(1, checks.get());
 		} finally {
 			executor.destroy();
 		}
