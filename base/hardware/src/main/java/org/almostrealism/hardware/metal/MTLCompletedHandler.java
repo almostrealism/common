@@ -181,10 +181,12 @@ class MTLCompletedHandler extends BaseNative {
 	 * been made yet. A failed attempt is logged, with its cause, when it happens; later calls
 	 * report it without trying again.
 	 *
+	 * <p>The compile runs on the calling thread while the class lock is held, so the first
+	 * commit in a JVM waits for it, as does any other commit that registers in the meantime.</p>
+	 *
 	 * @return true if the operation is compiled and no registration has failed
 	 */
 	static synchronized boolean isAvailable() {
-		// TODO(review): the first call compiles on the runner's executor thread, stalling the first commit
 		if (operation == null && failure == null) {
 			try {
 				operation = new MTLCompletedHandler(NativeCompiler.factory(Precision.FP32, false).construct());
