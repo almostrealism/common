@@ -32,7 +32,10 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -384,6 +387,58 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 			runner.destroy();
 			SubmissionStream.minIdleCommit = idle;
 			MetalCommandRunner.quietCommitMicros = quiet;
+		}
+	}
+
+	/**
+	 * Metal's completion thread stays attached to the JVM between completed handlers: consecutive
+	 * handlers run on a small number of attached {@link Thread}s named for the handler, rather than
+	 * on a new {@link Thread} attached and detached around each one, which a streaming render
+	 * (hundreds of buffers a second) cannot afford.
+	 */
+	@Test(timeout = 60000)
+	public void completedHandlersReuseAttachedThread() throws InterruptedException {
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		int count = 64;
+		List<Thread> threads = new ArrayList<>();
+
+		for (int i = 0; i < count; i++) {
+			CountDownLatch ran = new CountDownLatch(1);
+			MTLCommandBuffer buffer = metal.getMtlQueue().commandBuffer();
+
+			try {
+				Assert.assertTrue("The completed handler must be registered",
+						buffer.addCompletedHandler(() -> {
+							synchronized (threads) {
+								threads.add(Thread.currentThread());
+							}
+
+							ran.countDown();
+						}));
+				buffer.commit();
+				Assert.assertTrue("The completed handler must run",
+						ran.await(RELEASE_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+			} finally {
+				buffer.release();
+			}
+		}
+
+		synchronized (threads) {
+			Assert.assertEquals(count, threads.size());
+
+			Set<Thread> distinct = Collections.newSetFromMap(new IdentityHashMap<>());
+			distinct.addAll(threads);
+			Assert.assertTrue("Handlers must reuse attached threads, but " + distinct.size() +
+							" threads ran " + count + " handlers", distinct.size() <= count / 4);
+
+			for (Thread thread : distinct) {
+				Assert.assertEquals("Metal completed handler", thread.getName());
+			}
 		}
 	}
 
