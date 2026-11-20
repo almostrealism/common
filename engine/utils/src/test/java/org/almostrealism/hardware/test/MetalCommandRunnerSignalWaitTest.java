@@ -27,6 +27,7 @@ import org.almostrealism.hardware.metal.MetalSemaphore;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -135,13 +136,21 @@ public class MetalCommandRunnerSignalWaitTest extends TestSuiteBase {
 	 * being waited for without that buffer having executed, so its signal does not settle the
 	 * wait, which waits for the buffer's completion instead. A wait for the dispatch in the most
 	 * recently closed buffer, or in the open buffer the wait closes, is settled by the signal as
-	 * usual once the buffers before it have been drained, unless the buffer's completed handler
-	 * drained it before the wait began, which leaves the wait nothing to wait for.
+	 * usual once the buffers before it have been drained.
+	 *
+	 * <p>The second buffer is committed with nothing waiting for it, so its completed handler may
+	 * drain it before it is waited for, which leaves the wait nothing to settle; what that wait must
+	 * never do is fall back to waiting for the buffer's completion. The third buffer stays open
+	 * until it is waited for, because the quiet delay is set longer than the test, so its wait
+	 * registers before the buffer is committed and is always settled by the signal, which keeps
+	 * the signal path covered deterministically.</p>
 	 */
 	@Test(timeout = 120000)
 	public void laterClosedBufferDefersToCompletion() {
 		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
+		int quiet = MetalCommandRunner.quietCommitMicros;
 		MetalCommandRunner.enableHostSignaledBridges = true;
+		MetalCommandRunner.quietCommitMicros = (int) TimeUnit.SECONDS.toMicros(120);
 
 		try {
 			withRunner(WINDOW_MICROS, MetalCommandRunner::new, runner -> {
@@ -159,9 +168,7 @@ public class MetalCommandRunnerSignalWaitTest extends TestSuiteBase {
 				assertEquals("A buffer followed by a closed buffer must wait for its completion",
 						0.0, (double) runner.getSignalCompletionCount());
 
-				// A buffer may also finish and be drained by its completed handler before it is
-				// waited for, in which case the wait has nothing to settle
-				// TODO(review): this now passes even if no wait is ever settled by a signal; pin the race so the signal path stays covered
+				// Settled by its signal, or already drained by its completed handler
 				long signals = runner.getSignalCompletionCount();
 				long drained = runner.getDrainedWaitCount();
 				second.waitFor();
@@ -173,11 +180,13 @@ public class MetalCommandRunnerSignalWaitTest extends TestSuiteBase {
 				drained = runner.getDrainedWaitCount();
 				third.waitFor();
 				assertEquals("The buffer the wait closes must be settled by its signal",
-						(double) signaled, (double) (runner.getSignalCompletionCount() - signals
-								+ signaled * (runner.getDrainedWaitCount() - drained)));
+						(double) signaled, (double) (runner.getSignalCompletionCount() - signals));
+				assertEquals("The buffer the wait closes cannot have been drained before the wait",
+						0.0, (double) (runner.getDrainedWaitCount() - drained));
 			});
 		} finally {
 			MetalCommandRunner.enableHostSignaledBridges = bridges;
+			MetalCommandRunner.quietCommitMicros = quiet;
 		}
 	}
 

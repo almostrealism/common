@@ -294,7 +294,11 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 		}
 
 		int idle = SubmissionStream.minIdleCommit;
+		int quiet = MetalCommandRunner.quietCommitMicros;
 		SubmissionStream.minIdleCommit = 0;
+
+		// Far longer than any pause between two submissions, so the test does not depend on timing
+		MetalCommandRunner.quietCommitMicros = (int) TimeUnit.SECONDS.toMicros(60);
 		MetalCommandRunner runner = new MetalCommandRunner(metal.getMtlQueue());
 
 		try {
@@ -303,7 +307,6 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 				dispatches.add(runner.submit(null, NOTHING, null, null));
 			}
 
-			// TODO(review): flaky if a submit gap exceeds quietCommitMicros
 			Assert.assertEquals("A buffer being filled must not be committed", 0, runner.getCommitCount());
 
 			dispatches.get(dispatches.size() - 1).waitFor();
@@ -318,6 +321,7 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 		} finally {
 			runner.destroy();
 			SubmissionStream.minIdleCommit = idle;
+			MetalCommandRunner.quietCommitMicros = quiet;
 		}
 	}
 

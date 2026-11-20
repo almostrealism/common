@@ -1199,7 +1199,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 			try {
 				completionDrains++;
 				drainOldestCommitted(null, false);
-			} catch (RuntimeException e) {
+			} catch (RuntimeException | Error e) {
 				warn("completionDrainFailed firstValue=" + oldest.getFirstValue(), e);
 			}
 		}
