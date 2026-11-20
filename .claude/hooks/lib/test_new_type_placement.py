@@ -590,5 +590,85 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(0, proc.returncode, proc.stderr)
 
 
+
+class ScanTest(unittest.TestCase):
+    """The harness-facing ``scan`` and the candidate exclusions it relies on."""
+
+    def setUp(self):
+        lib = os.path.join(HOOKS, "lib")
+        if lib not in sys.path:
+            sys.path.insert(0, lib)
+        import type_equivalence
+        self.te = type_equivalence
+
+    def index(self, tmp):
+        """Loads the index of ``tmp`` with its cache kept inside ``tmp``."""
+        os.environ["AR_TYPE_INDEX_CACHE"] = os.path.join(tmp, "scan-index.json")
+        try:
+            return self.te.TypeIndex.load(tmp)
+        finally:
+            del os.environ["AR_TYPE_INDEX_CACHE"]
+
+    def write(self, tmp, rel, text):
+        full = os.path.join(tmp, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w") as f:
+            f.write(text)
+
+    def test_equivalent_in_the_same_file_is_still_a_candidate(self):
+        rel = SEQ + "ArithmeticIndexSequence.java"
+        sibling = RENAMED.replace("package org.example.seq;\n\n", "").replace(
+            "public final class", "final class")
+        combined = FIXTURE_SOURCES[rel] + "\n" + sibling
+        with tempfile.TemporaryDirectory() as tmp:
+            EndToEndTest.make_repo(self, tmp)
+            self.write(tmp, rel, combined)
+            result = self.te.assess(self.index(tmp), combined, rel, "IndexProgression", [])
+        self.assertEqual("org.example.seq.IndexProgression", result["fqn"])
+        self.assertIn("org.example.seq.ArithmeticIndexSequence",
+                      [c["fqn"] for c in result["candidates"]],
+                      "a type declared beside the new one must not be hidden from the search")
+
+    def test_scan_reports_every_added_type_and_excludes_them_as_candidates(self):
+        progression = SEQ + "IndexProgression.java"
+        cursor_source = RENAMED.replace("IndexProgression", "IndexProgressionCursor")
+        cursor = SEQ + "IndexProgressionCursor.java"
+        router = "mod/src/main/java/org/example/net/PacketRouter.java"
+        with tempfile.TemporaryDirectory() as tmp:
+            EndToEndTest.make_repo(self, tmp)
+            self.write(tmp, progression, RENAMED)
+            self.write(tmp, cursor, cursor_source)
+            self.write(tmp, router, GENUINE)
+            index = self.index(tmp)
+            unexcluded = self.te.assess(index, cursor_source, cursor, "IndexProgressionCursor", [])
+            os.environ["AR_TYPE_INDEX_CACHE"] = os.path.join(tmp, "scan-index.json")
+            try:
+                assessed, added = self.te.scan(tmp, [progression, cursor, router])
+            finally:
+                del os.environ["AR_TYPE_INDEX_CACHE"]
+        new_types = {"org.example.seq.IndexProgression", "org.example.seq.IndexProgressionCursor",
+                     "org.example.net.PacketRouter"}
+        self.assertEqual(new_types, set(added), "every added type is reported, candidates or not")
+        self.assertIn("org.example.seq.IndexProgression",
+                      [c["fqn"] for c in unexcluded["candidates"]],
+                      "the fixture must make one new type resemble the other")
+        by_fqn = {a["fqn"]: a for a in assessed}
+        self.assertIn("org.example.seq.IndexProgressionCursor", by_fqn)
+        self.assertNotIn("org.example.net.PacketRouter", by_fqn)
+        for a in assessed:
+            found = {c["fqn"] for c in a["candidates"]}
+            self.assertFalse(found & new_types, a["fqn"] + " lists a branch-new type: " + str(found))
+            self.assertIn("org.example.seq.ArithmeticIndexSequence", found)
+
+    def test_ledger_entry_matches_fully_qualified_name_only(self):
+        new = {"fqn": "org.example.other.IndexProgression", "name": "IndexProgression"}
+        by_simple = [{"type": "IndexProgression"}]
+        by_other_package = [{"type": "org.example.seq.IndexProgression"}]
+        exact = [{"type": "org.example.other.IndexProgression"}]
+        self.assertIsNone(self.te.ledger_entry(by_simple, new))
+        self.assertIsNone(self.te.ledger_entry(by_other_package, new))
+        self.assertEqual(exact[0], self.te.ledger_entry(exact, new))
+
+
 if __name__ == "__main__":
     unittest.main()

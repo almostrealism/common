@@ -176,14 +176,16 @@ enforce this, sharing one implementation of the candidate search,
   a candidate, or when `.claude/new-type-ledger.json` (tracked) justifies it. A
   justification covers every listed candidate with `cannot_extend`,
   `cannot_change_signature` and `interface_would_not_work`, and names a `test`; the schema
-  is in the module docstring of `type_equivalence.py`. Renaming the type is not a remedy.
+  is in the module docstring of `type_equivalence.py`; an entry matches its type by
+  fully-qualified name only. Renaming the type is not a remedy.
 - **The independent audit.** The FlowTree harness runs the base-branch copy of the same
   search (`NewTypeAudit`), so the audited session cannot weaken it. `DeduplicationRule`
   runs for every job and gives each flagged type to a separate session that searches
   documentation and memory as well, treats the ledger as a claim to verify, and folds the
   type into the existing abstraction unless the justification holds; a kept type gets
   `"audit": {"verdict": "kept"}` in the ledger. `FileStager` refuses to stage a flagged
-  type until that audit has kept it, and the review prompt asks of every new type whether
+  type until that audit has kept it — together with every changed file that refers to it,
+  and every file the search was to examine when it could not run — and the review prompt asks of every new type whether
   it should exist before asking whether it is correct.
 
 `python3 .claude/hooks/lib/type_equivalence.py survey --root .` scores every existing type

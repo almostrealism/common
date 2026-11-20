@@ -149,23 +149,29 @@ final class ReviewPromptBuilder {
         sb.append('\n');
     }
 
-    /** Appends the new-type section for the job's working tree; see {@link #newTypeSection}. */
+    /**
+     * Appends the new-type section for the job's working tree; see
+     * {@link #newTypeSection}. The branch adds a type when it adds a
+     * main-source file, or when the type audit finds a type added to a file
+     * that already existed.
+     */
     private static void appendNewTypes(StringBuilder sb, CodingAgentJob job) {
-        boolean newJavaSource = job.extractNewFilePaths().stream()
+        NewTypeAudit.Scan scan = job.getNewTypeAudit().examine();
+        boolean addsType = !scan.added().isEmpty() || job.extractNewFilePaths().stream()
                 .anyMatch(NewTypeAudit::isMainSource);
-        sb.append(newTypeSection(newJavaSource, job.getNewTypeAudit().scan()));
+        sb.append(newTypeSection(addsType, scan.assessments()));
     }
 
     /**
      * Returns the question every new type is asked first -- should it exist?
      * -- with the existing types the type-equivalence search found for each.
      *
-     * @param newJavaSource whether the branch adds any main-source Java file
-     * @param assessed      the new types that resemble existing ones
+     * @param addsType whether the branch adds any main-source type
+     * @param assessed the new types that resemble existing ones
      * @return the section, or an empty string when the branch adds no type
      */
-    static String newTypeSection(boolean newJavaSource, List<NewTypeAssessment> assessed) {
-        if (!newJavaSource && assessed.isEmpty()) return "";
+    static String newTypeSection(boolean addsType, List<NewTypeAssessment> assessed) {
+        if (!addsType && assessed.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         sb.append("NEW TYPES -- FIRST ASK WHETHER EACH SHOULD EXIST\n");
         sb.append("Before checking whether a new type is correct, ask whether it should ");

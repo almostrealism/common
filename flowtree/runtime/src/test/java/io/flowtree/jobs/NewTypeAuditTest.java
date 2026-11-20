@@ -110,6 +110,7 @@ public class NewTypeAuditTest extends TestSuiteBase {
         Files.copy(scannerSource(), repo.resolve(NewTypeAudit.SCANNER_PATH));
         git("add", "-A");
         git("commit", "--quiet", "-m", "initial");
+        git("update-ref", "refs/remotes/origin/master", "HEAD");
     }
 
     /** Deletes the temporary repository. */
@@ -171,13 +172,15 @@ public class NewTypeAuditTest extends TestSuiteBase {
         NewTypeAssessment unverdicted = assessment("org.example.seq.Plain", SEQ + "Plain.java", null);
 
         NewTypeAudit audit = job().getNewTypeAudit();
-        Map<String, String> before = audit.refusals(List.of(kept, unverdicted));
+        NewTypeAudit.Scan scan = new NewTypeAudit.Scan(List.of(kept, unverdicted),
+                List.of(kept.getFqn(), unverdicted.getFqn()), List.of(), null);
+        Map<String, String> before = audit.refusals(scan, Map.of());
         assertEquals("a verdict written before the audit ran must not count", 2, before.size());
         assertTrue(before.get(SEQ + "Kept.java").contains(CANDIDATE));
         assertTrue(before.get(SEQ + "Kept.java").contains(NewTypeAudit.LEDGER_PATH));
 
         audit.markAudited(List.of(kept, unverdicted));
-        Map<String, String> after = audit.refusals(List.of(kept, unverdicted));
+        Map<String, String> after = audit.refusals(scan, Map.of());
         assertNull("an audited type the audit kept may be staged", after.get(SEQ + "Kept.java"));
         assertNotNull("an audited type without the kept verdict stays refused",
                 after.get(SEQ + "Plain.java"));
@@ -221,14 +224,169 @@ public class NewTypeAuditTest extends TestSuiteBase {
         assertFalse("nothing is left for the type audit", rule.isViolated(job));
     }
 
+    /**
+     * Every changed file that refers to a refused type is refused with it,
+     * transitively, while files that do not refer to it are staged: a commit
+     * never holds a caller without the type it calls.
+     */
+    @Test(timeout = 300000)
+    public void callersOfRefusedTypeAreWithheld() throws Exception {
+        addBranchTypes();
+        String samePackage = SEQ + "ProgressionWalker.java";
+        String imported = "mod/src/main/java/org/example/app/ProgressionReport.java";
+        String transitive = "mod/src/main/java/org/example/app/ReportPrinter.java";
+        String test = "mod/src/test/java/org/example/seq/IndexProgressionTest.java";
+        String committed = "mod/src/main/java/org/example/misc/TaxBracket.java";
+        write(samePackage, "package org.example.seq;\n\n/** Walks a progression. */\n"
+                + "public final class ProgressionWalker {\n\tprivate final IndexProgression p = null;\n}\n");
+        write(imported, "package org.example.app;\n\nimport org.example.seq.IndexProgression;\n\n"
+                + "/** Reports on a progression. */\npublic final class ProgressionReport {\n"
+                + "\tpublic String of(IndexProgression p) { return \"\"; }\n}\n");
+        write(transitive, "package org.example.app;\n\n/** Prints reports. */\n"
+                + "public final class ReportPrinter {\n\tprivate final ProgressionReport r = null;\n}\n");
+        write(test, "package org.example.seq;\n\npublic class IndexProgressionTest {\n"
+                + "\tIndexProgression subject;\n}\n");
+        Path tax = repo.resolve(committed);
+        Files.writeString(tax, Files.readString(tax, StandardCharsets.UTF_8)
+                .replace("public int id()", "public int bracketId()"), StandardCharsets.UTF_8);
+
+        Map<String, String> refusals = job().getNewTypeRefusals();
+        assertTrue(refusals.toString(), refusals.get(PROGRESSION).contains("has no resolved verdict"));
+        for (String dependent : List.of(samePackage, imported, test)) {
+            assertTrue(dependent + " -> " + refusals, refusals.containsKey(dependent));
+            assertTrue(refusals.get(dependent), refusals.get(dependent)
+                    .contains("refers to org.example.seq.IndexProgression"));
+        }
+        assertTrue(refusals.toString(), refusals.get(transitive)
+                .contains("refers to org.example.app.ProgressionReport"));
+        assertFalse(refusals.toString(), refusals.containsKey(ROUTER));
+        assertFalse(refusals.toString(), refusals.containsKey(committed));
+        assertEquals(refusals.toString(), 5, refusals.size());
+    }
+
+    /** References are found by qualified name, or by simple name only where the name is visible. */
+    @Test(timeout = 30000)
+    public void firstReferencedHonoursPackageVisibility() {
+        List<String> types = List.of("org.example.seq.IndexProgression");
+        assertNull("another package without an import cannot see the simple name",
+                NewTypeAudit.firstReferenced("package org.example.app;\nclass A { IndexProgression p; }", types));
+        Assert.assertEquals("org.example.seq.IndexProgression",
+                NewTypeAudit.firstReferenced("package org.example.app;\nimport org.example.seq.*;\n"
+                        + "class A { IndexProgression p; }", types));
+        Assert.assertEquals("org.example.seq.IndexProgression",
+                NewTypeAudit.firstReferenced("package org.example.app;\n"
+                        + "class A { org.example.seq.IndexProgression p; }", types));
+        Assert.assertEquals("org.example.seq.IndexProgression",
+                NewTypeAudit.firstReferenced("package org.example.seq;\nclass A { IndexProgression p; }", types));
+        assertNull("a longer name that merely starts with the type's name is not a reference",
+                NewTypeAudit.firstReferenced("package org.example.seq;\nclass A { IndexProgressionView v; }", types));
+        assertNull("a subpackage wildcard import does not make the name visible",
+                NewTypeAudit.firstReferenced("package org.example.app;\nimport org.example.seq.sub.*;\n"
+                        + "class A { IndexProgression p; }", types));
+        assertNull(NewTypeAudit.firstReferenced("package org.example.app;\nclass A { }", List.of()));
+        Assert.assertEquals("org.example.seq.IndexProgression",
+                NewTypeAudit.declaredType(PROGRESSION, "package org.example.seq;\nclass X { }"));
+        Assert.assertEquals("Loose", NewTypeAudit.declaredType("Loose.java", "class Loose { }"));
+        assertNull(NewTypeAudit.declaredType(PROGRESSION, null));
+    }
+
+    /**
+     * When the base branch cannot be resolved the working-tree scanner is not
+     * trusted, so the audit fails closed and refuses every file it was to examine.
+     */
+    @Test(timeout = 300000)
+    public void unresolvableBaseBranchFailsClosed() throws Exception {
+        addBranchTypes();
+        git("update-ref", "-d", "refs/remotes/origin/master");
+        CodingAgentJob job = job();
+        assertTrue(job.getNewTypeAudit().scan().isEmpty());
+        Map<String, String> refusals = job.getNewTypeRefusals();
+        Assert.assertEquals(refusals.toString(), List.of(PROGRESSION, ROUTER).stream().sorted().toList(),
+                refusals.keySet().stream().sorted().toList());
+        for (String reason : refusals.values()) {
+            assertTrue(reason, reason.contains("the new-type audit could not run"));
+            assertTrue(reason, reason.contains("origin/master"));
+        }
+    }
+
+    /** A base-branch scanner that fails refuses every examined file instead of staging it. */
+    @Test(timeout = 300000)
+    public void failingScannerFailsClosed() throws Exception {
+        Path scanner = repo.resolve(NewTypeAudit.SCANNER_PATH);
+        String good = Files.readString(scanner, StandardCharsets.UTF_8);
+        Files.writeString(scanner, "import sys\nsys.exit(3)\n", StandardCharsets.UTF_8);
+        git("commit", "--quiet", "-am", "broken scanner");
+        git("update-ref", "refs/remotes/origin/broken", "HEAD");
+        Files.writeString(scanner, good, StandardCharsets.UTF_8);
+        git("commit", "--quiet", "-am", "restore scanner");
+        addBranchTypes();
+        CodingAgentJob job = job();
+        job.setBaseBranch("broken");
+        Map<String, String> refusals = job.getNewTypeRefusals();
+        assertEquals(refusals.toString(), 2, refusals.size());
+        assertTrue(refusals.toString(), refusals.get(ROUTER).contains("scanner exited with 3"));
+    }
+
+    /** The audit runs the base branch's scanner, so editing the working-tree copy changes nothing. */
+    @Test(timeout = 300000)
+    public void workingTreeScannerEditsAreIgnored() throws Exception {
+        addBranchTypes();
+        Files.writeString(repo.resolve(NewTypeAudit.SCANNER_PATH),
+                "import json\nprint(json.dumps({\"types\": [], \"added\": []}))\n", StandardCharsets.UTF_8);
+        List<NewTypeAssessment> found = job().getNewTypeAudit().scan();
+        assertEquals(describeAll(found), 1, found.size());
+        Assert.assertEquals("org.example.seq.IndexProgression", found.get(0).getFqn());
+    }
+
+    /**
+     * On the branch that introduces the scanner the base branch resolves but
+     * has no copy, so the working-tree copy is run.
+     */
+    @Test(timeout = 300000)
+    public void baseWithoutScannerRunsWorkingTreeCopy() throws Exception {
+        git("rm", "--quiet", "--cached", NewTypeAudit.SCANNER_PATH);
+        git("commit", "--quiet", "-m", "base without scanner");
+        git("update-ref", "refs/remotes/origin/bare", "HEAD");
+        git("add", NewTypeAudit.SCANNER_PATH);
+        git("commit", "--quiet", "-m", "introduce scanner");
+        addBranchTypes();
+        CodingAgentJob job = job();
+        job.setBaseBranch("bare");
+        List<NewTypeAssessment> found = job.getNewTypeAudit().scan();
+        assertEquals(describeAll(found), 1, found.size());
+        Assert.assertEquals("org.example.seq.IndexProgression", found.get(0).getFqn());
+    }
+
+    /**
+     * A type added to a file that already existed is reported as added even
+     * when it resembles nothing, so the review still asks whether it should exist.
+     */
+    @Test(timeout = 300000)
+    public void typeAddedToExistingFileIsReported() throws Exception {
+        Path palette = repo.resolve("mod/src/main/java/org/example/misc/ColorPalette.java");
+        Files.writeString(palette, Files.readString(palette, StandardCharsets.UTF_8)
+                + "\n/** Counts packets dropped by a firewall. */\nfinal class DroppedPacketTally {\n}\n",
+                StandardCharsets.UTF_8);
+        NewTypeAudit.Scan scan = job().getNewTypeAudit().examine();
+        assertFalse(scan.failed());
+        Assert.assertEquals(List.of("org.example.misc.DroppedPacketTally"), scan.added());
+        assertTrue(scan.assessments().isEmpty());
+        assertFalse(ReviewPromptBuilder.newTypeSection(!scan.added().isEmpty(), scan.assessments()).isEmpty());
+    }
+
     /** The scanner's JSON is parsed into assessments with their candidates. */
     @Test(timeout = 30000)
     public void parsesScannerOutput() throws IOException {
         String json = "{\"types\": [{\"name\": \"A\", \"fqn\": \"p.A\", \"path\": \"m/src/main/java/p/A.java\","
                 + " \"candidates\": [{\"name\": \"B\", \"fqn\": \"p.B\", \"path\": \"m/src/main/java/p/B.java\","
                 + " \"sentence\": \"A b.\", \"score\": 0.71}], \"lift\": null, \"justified\": false,"
-                + " \"gaps\": [\"no ledger entry\"], \"ledger\": null, \"audit_verdict\": null}]}";
-        List<NewTypeAssessment> parsed = NewTypeAssessment.parseAll(json);
+                + " \"gaps\": [\"no ledger entry\"], \"ledger\": null, \"audit_verdict\": null}],"
+                + " \"added\": [\"p.A\", \"p.C\"]}";
+        NewTypeAudit.Scan scan = NewTypeAudit.Scan.parse(json, List.of("m/src/main/java/p/A.java"));
+        assertFalse(scan.failed());
+        Assert.assertEquals(List.of("p.A", "p.C"), scan.added());
+        Assert.assertEquals(List.of("m/src/main/java/p/A.java"), scan.files());
+        List<NewTypeAssessment> parsed = scan.assessments();
         assertEquals(1, parsed.size());
         NewTypeAssessment a = parsed.get(0);
         Assert.assertEquals("p.A", a.getFqn());

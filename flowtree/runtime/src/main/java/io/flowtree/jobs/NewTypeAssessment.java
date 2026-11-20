@@ -17,7 +17,6 @@
 package io.flowtree.jobs;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -31,7 +30,7 @@ import java.util.List;
  *
  * <p>Assessments are produced by {@code .claude/hooks/lib/type_equivalence.py}
  * (its {@code scan} command), the same search the new-type hook uses to block a
- * duplicate at the moment it is written, and parsed by {@link #parseAll(String)}.
+ * duplicate at the moment it is written, and parsed by {@link #parseAll(JsonNode)}.
  * Only types with at least one candidate are ever assessed.</p>
  *
  * @author Michael Murray
@@ -41,9 +40,6 @@ final class NewTypeAssessment {
 
     /** Verdict a type audit records in the ledger for a type it decided to keep. */
     static final String VERDICT_KEPT = "kept";
-
-    /** Mapper for the scanner's JSON output. */
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** Fully-qualified name of the new type. */
     private final String fqn;
@@ -122,14 +118,14 @@ final class NewTypeAssessment {
     boolean isKeptByAudit() { return VERDICT_KEPT.equals(auditVerdict); }
 
     /**
-     * Parses the JSON the scanner prints: {@code {"types": [...]}}.
+     * Parses the assessments in the JSON the scanner prints:
+     * {@code {"types": [...]}}; see {@link NewTypeAudit.Scan#parse}.
      *
-     * @param json the scanner's standard output
+     * @param root the parsed standard output of the scanner
      * @return the assessments, in scanner order
-     * @throws IOException when the text is not the scanner's JSON
+     * @throws IOException when the tree is not the scanner's JSON
      */
-    static List<NewTypeAssessment> parseAll(String json) throws IOException {
-        JsonNode root = MAPPER.readTree(json);
+    static List<NewTypeAssessment> parseAll(JsonNode root) throws IOException {
         List<NewTypeAssessment> out = new ArrayList<>();
         JsonNode types = root == null ? null : root.get("types");
         if (types == null || !types.isArray()) {

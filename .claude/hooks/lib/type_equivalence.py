@@ -608,13 +608,20 @@ class TypeIndex:
         pool.update(i for i, n in counts.items() if n >= 2)
         return pool
 
-    def candidates(self, new, exclude_path=None):
-        """The indexed types ``new`` likely duplicates, best first."""
+    def candidates(self, new, exclude=()):
+        """The indexed types ``new`` likely duplicates, best first.
+
+        ``new`` itself is never a candidate, nor is any type whose
+        fully-qualified name is in ``exclude`` (the other types the same change
+        adds, which are not existing abstractions). Other types declared in the
+        same file as ``new`` remain candidates: Java allows several top-level
+        types per file, and an equivalent beside the new type is still one.
+        """
         q = self.query(new)
         found = []
         for i in self.pool(q):
             t = self.types[i]
-            if t["path"] == exclude_path or t["fqn"] == new["fqn"]:
+            if t["fqn"] == new["fqn"] or t["fqn"] in exclude:
                 continue
             s, evidence = self.scored(q, t)
             if s >= BLOCK_THRESHOLD:
@@ -651,9 +658,11 @@ def read_ledger(root):
 
 
 def ledger_entry(entries, new):
-    """The ledger entry for a type, matched by fully-qualified or simple name."""
+    """The ledger entry for a type, matched by fully-qualified name only: a
+    justification for one type must not lift the block for a namesake in
+    another package."""
     for e in entries:
-        if e.get("type") in (new["fqn"], new["name"]):
+        if e.get("type") == new["fqn"]:
             return e
     return None
 
@@ -688,15 +697,16 @@ def profile(source, path, name):
     return None
 
 
-def assess(index, source, path, name, ledger):
+def assess(index, source, path, name, ledger, exclude=()):
     """Everything known about a new type: its candidates, whether a candidate
-    is built upon structurally, the ledger entry and its gaps."""
+    is built upon structurally, the ledger entry and its gaps. ``exclude``
+    names the other types the same change adds; they are not candidates."""
     rel = os.path.relpath(os.path.abspath(path), index.root) \
         if os.path.isabs(path) else path
     new = profile(source, rel, name)
     if new is None:
         return None
-    candidates = index.candidates(new, exclude_path=rel)
+    candidates = index.candidates(new, exclude=exclude)
     entry = ledger_entry(ledger, new)
     lift = structural_lift(new, candidates) if candidates else None
     gaps = justification_gaps(entry, candidates) if candidates else []
@@ -714,10 +724,10 @@ def assess(index, source, path, name, ledger):
     }
 
 
-def added_type_names(before, after):
-    """Names of top-level types declared in ``after`` but not in ``before``."""
+def added_types(before, after, path=""):
+    """The top-level types declared in ``after`` but not in ``before``."""
     old = {t["name"] for t in parse_types(before)}
-    return [t["name"] for t in parse_types(after) if t["name"] not in old]
+    return [t for t in parse_types(after, path) if t["name"] not in old]
 
 
 def read_text(path):
@@ -736,21 +746,31 @@ def scan(root, files):
     followed by ``::`` and the path of a copy of the file as it was before the
     change (for the harness, its HEAD version). Without a copy the file is
     treated as new, so every type it declares is assessed.
+
+    Returns ``(assessed, added)``: the assessments of the added types that
+    resemble existing ones, and the fully-qualified names of every added type.
+    The added types are excluded from one another's candidates, since the
+    index is built from the working tree and they are not existing types.
     """
     index = TypeIndex.load(root)
     ledger = read_ledger(root)
-    out = []
+    additions = []
     for spec in files:
         rel, _, before_copy = spec.partition("::")
         if not is_main_source(rel):
             continue
         after = read_text(os.path.join(root, rel))
         before = read_text(before_copy) if before_copy else ""
-        for name in added_type_names(before, after):
-            result = assess(index, after, rel, name, ledger)
+        additions.append((rel, after, added_types(before, after, rel)))
+    added = [t["fqn"] for _, _, types in additions for t in types]
+    exclude = set(added)
+    out = []
+    for rel, after, types in additions:
+        for t in types:
+            result = assess(index, after, rel, t["name"], ledger, exclude=exclude)
             if result is not None and result["candidates"]:
                 out.append(result)
-    return out
+    return out, added
 
 
 def survey(root):
@@ -759,7 +779,7 @@ def survey(root):
     index = TypeIndex.load(root, keep_refs=True)
     blocking = []
     for t in index.types:
-        found = index.candidates(t, exclude_path=t["path"])
+        found = index.candidates(t)
         if found and structural_lift(t, found) is None:
             blocking.append({"fqn": t["fqn"], "top": found[0]["fqn"],
                              "score": found[0]["score"]})
@@ -780,7 +800,8 @@ def main(argv):
         return 2
     command, root, files = argv[0], os.path.abspath(argv[2]), argv[3:]
     if command == "scan":
-        print(json.dumps({"types": scan(root, files)}))
+        assessed, added = scan(root, files)
+        print(json.dumps({"types": assessed, "added": added}))
         return 0
     if command == "survey":
         print(json.dumps(survey(root), indent=1))

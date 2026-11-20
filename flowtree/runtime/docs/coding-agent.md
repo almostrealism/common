@@ -173,8 +173,13 @@ decides whether each should exist — candidates, documentation and memory searc
 session's own justification in `.claude/new-type-ledger.json`, which it verifies rather than
 trusts — and folds the type in unless the justification holds. `FileStager` refuses to
 stage a listed type until this job's audit has examined it and recorded the `kept` verdict
-in the ledger, and reports why in the skipped list. See `docs/internals/agent-hooks.md`
-("New-type equivalence gate").
+in the ledger, and reports why in the skipped list. Every other changed Java file that
+refers to a refused type (by qualified name, or by simple name from its own package or a
+wildcard import) is refused with it, transitively, so a commit never holds a caller without
+the type it calls. The audit fails closed: when the search cannot run (the base branch does
+not resolve while a working-tree scanner exists, `python3` is missing, the scan times out
+or exits non-zero), every file it was to examine is refused. See
+`docs/internals/agent-hooks.md` ("New-type equivalence gate").
 
 ### Via ar-manager MCP
 
