@@ -28,6 +28,8 @@
  *       {@code parent * childLimit + child} as a flat integer</li>
  *   <li>{@link io.almostrealism.sequence.IndexValues} — a mapping from index names to concrete values
  *       used during expression evaluation</li>
+ *   <li>{@link io.almostrealism.sequence.ArithmeticIndexSet} — the values of an index an expression
+ *       requires, held as an arithmetic progression rather than enumerated</li>
  *   <li>{@link io.almostrealism.sequence.IndexSequence} — a sequence of numeric index values
  *       that can be analyzed for patterns and converted to expressions</li>
  *   <li>{@link io.almostrealism.sequence.KernelSeries} — represents the periodicity and scale

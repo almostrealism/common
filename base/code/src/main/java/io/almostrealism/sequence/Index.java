@@ -26,8 +26,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /**
  * A named, bounded sequence generator that represents an index variable in a kernel computation.
@@ -82,7 +80,8 @@ public interface Index extends SequenceGenerator, Named {
 	 * one of its own values, from zero up to its limit, and no value of any other index
 	 * (including the indices a composite {@link IndexChild} is built from). The result is
 	 * empty when this index has no limit, or a limit above
-	 * {@link ScopeSettings#indexOptionLimit}.</p>
+	 * {@link ScopeSettings#indexOptionLimit}. The values are an {@link ArithmeticIndexSet},
+	 * so they are described without being enumerated.</p>
 	 *
 	 * <p>The index expressions ({@link DefaultIndex}, {@link IndexChild}) override
 	 * {@link io.almostrealism.expression.Expression#getIndexOptions(Index)} to answer with
@@ -101,9 +100,7 @@ public interface Index extends SequenceGenerator, Named {
 			return Optional.empty();
 		}
 
-		return Optional.of(
-				IntStream.range(0, Math.toIntExact(limit.getAsLong()))
-					.boxed().collect(Collectors.toSet()));
+		return Optional.of(ArithmeticIndexSet.range(Math.toIntExact(limit.getAsLong())));
 	}
 
 	/**

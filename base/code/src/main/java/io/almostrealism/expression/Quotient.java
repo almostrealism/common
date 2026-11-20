@@ -20,6 +20,7 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.sequence.ArithmeticIndexSequence;
+import io.almostrealism.sequence.ArithmeticIndexSet;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
@@ -34,7 +35,6 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /**
  * A division expression that represents a numerator divided by one or more denominators.
@@ -132,10 +132,13 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		int di = Math.toIntExact(d.getAsLong());
 		int limit = Math.toIntExact(n.getAsLong() / di) +
 						(n.getAsLong() % di == 0 ? 0 : 1);
-		return Optional.of(IntStream.range(0, limit)
-				.map(i -> i * di)
-				.boxed()
-				.collect(Collectors.toSet()));
+
+		// The options hold int index values, so every multiple
+		// of the divisor below the limit must be one
+		long last = (long) (limit - 1) * di;
+		if (last != (int) last) return super.getIndexOptions(index);
+
+		return Optional.of(ArithmeticIndexSet.of(0, di, limit));
 	}
 
 	@Override
