@@ -37,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * Owns the Metal command-buffer lifecycle for a {@link MetalComputeContext}.
@@ -664,12 +665,12 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 		AtomicReference<Waiter> registered = new AtomicReference<>();
 		executor.run(() -> registered.set(commitForWait(dispatch.getCommandBuffer(), requester)));
 
-		Waiter pending = registered.get();
 		if (Thread.currentThread().isInterrupted()) {
-			if (pending != null) withdrawOnExecutor(pending);
+			withdrawOnExecutor(registered::get);
 			return;
 		}
 
+		Waiter pending = registered.get();
 		if (pending == null) drainedWaits.incrementAndGet();
 		if (pending != null && !awaitSignal(pending, value, requester) && !awaitInOrder(pending, requester)) {
 			return;
@@ -705,7 +706,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 		try {
 			settled = isSettledBySignal(waiter, value);
 		} catch (RuntimeException | Error e) {
-			withdrawOnExecutor(waiter);
+			withdrawOnExecutor(() -> waiter);
 			throw e;
 		}
 
@@ -790,7 +791,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 		} finally {
 			CommandBatch through = completed;
 			if (through == null) {
-				withdrawOnExecutor(waiter);
+				withdrawOnExecutor(() -> waiter);
 			} else {
 				executor.runOrElse(() -> drainThrough(through, requester, waiter, false), waiter::withdraw);
 			}
@@ -1170,13 +1171,25 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * drains whatever the withdrawal leaves finished and unwaited (see {@link #drainFinished()}), or
 	 * withdraws it on the calling thread once the executor is gone.
 	 *
-	 * @param waiter the waiter to withdraw
+	 * <p>The waiter is obtained from {@code waiter} only when the withdrawal runs, which is behind
+	 * every task queued before it, so a withdrawal queued while the registration of the waiter is
+	 * still queued (an interrupted {@link #complete}) withdraws the waiter that registration made.
+	 * On the refused path the executor has terminated, so every queued registration has run, before
+	 * the waiter is obtained. A {@code null} waiter means the registration found the buffer already
+	 * drained, and there is nothing to withdraw.</p>
+	 *
+	 * @param waiter supplies the waiter to withdraw, or {@code null} when there is none
 	 */
-	private void withdrawOnExecutor(Waiter waiter) {
+	private void withdrawOnExecutor(Supplier<Waiter> waiter) {
+		Runnable withdrawal = () -> {
+			Waiter w = waiter.get();
+			if (w != null) w.withdraw();
+		};
+
 		executor.runOrElse(() -> {
-			waiter.withdraw();
+			withdrawal.run();
 			drainFinished();
-		}, waiter::withdraw);
+		}, withdrawal);
 	}
 
 	/**

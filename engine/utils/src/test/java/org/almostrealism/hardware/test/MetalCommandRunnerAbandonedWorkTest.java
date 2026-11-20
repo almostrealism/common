@@ -243,8 +243,9 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 
 	/**
 	 * Destroying the runner while several committed buffers still have completed handlers to come
-	 * drains every buffer, so every callback has run when destruction returns, and a handler that
-	 * arrives afterwards does nothing.
+	 * drains every buffer, so every callback has run when destruction returns. A handler arriving
+	 * after destruction only hands its drain to the destroyed executor, which refuses it (see
+	 * {@code ConfinedExecutorTest} for the refusal of a task queued after destruction).
 	 */
 	@Test(timeout = 60000)
 	public void destroyWithPendingHandlersDrainsEverything() throws InterruptedException {
@@ -272,13 +273,74 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 		}
 
 		Assert.assertEquals("Destruction must drain every buffer", 2 * buffers, callbacks.get());
+	}
 
-		long drains = runner.getCompletionDrainCount();
-		CountDownLatch late = new CountDownLatch(1);
-		Assert.assertFalse(late.await(200, TimeUnit.MILLISECONDS));
-		Assert.assertEquals("A handler arriving after destruction must not drain", drains,
-				runner.getCompletionDrainCount());
-		Assert.assertEquals(2 * buffers, callbacks.get());
+	/**
+	 * A wait that is interrupted while the registration of its waiter is still queued behind
+	 * other work on the runner's thread still has its dispatch's buffer released once the GPU
+	 * finishes it. The registration runs after the wait has returned, and the withdrawal the wait
+	 * queued behind it must withdraw the waiter that registration makes; a waiter left registered
+	 * would leave the buffer to a wait that never comes, and its memory would stay held until the
+	 * runner is destroyed.
+	 */
+	@Test(timeout = 60000)
+	public void interruptedWaitBeforeRegistrationReleasesBuffer() throws InterruptedException {
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		int quiet = MetalCommandRunner.quietCommitMicros;
+		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
+		MetalCommandRunner.enableHostSignaledBridges = true;
+
+		// Long enough that the second buffer stays open until the interrupted wait commits it
+		MetalCommandRunner.quietCommitMicros = (int) TimeUnit.SECONDS.toMicros(60);
+		MetalCommandRunner runner = new MetalCommandRunner(metal.getMtlQueue());
+
+		CountDownLatch blocking = new CountDownLatch(1);
+		CountDownLatch gate = new CountDownLatch(1);
+		CountDownLatch released = new CountDownLatch(1);
+
+		try {
+			// The first buffer's callback occupies the runner's thread when its handler drains it
+			runner.submit(null, NOTHING, null, () -> {
+				blocking.countDown();
+
+				try {
+					gate.await();
+				} catch (InterruptedException e) {
+					throw new IllegalStateException("The runner's thread must not be interrupted", e);
+				}
+			});
+
+			// A bridged dispatch closes and commits the first buffer and opens the second
+			MetalSemaphore waited = runner.submit(null, NOTHING, MetalCommandFailureTest.settled(), released::countDown);
+
+			Assert.assertTrue("The first buffer must be drained by its completed handler",
+					blocking.await(RELEASE_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+
+			Thread.currentThread().interrupt();
+			try {
+				waited.waitFor();
+			} finally {
+				Assert.assertTrue("The wait must return with the interrupt still set", Thread.interrupted());
+				gate.countDown();
+			}
+
+			Assert.assertTrue("The buffer of an interrupted wait must still be released",
+					released.await(RELEASE_TIMEOUT_SECONDS, TimeUnit.SECONDS));
+			Assert.assertEquals("Only the interrupted wait may commit the second buffer",
+					1, runner.getHostCompleteCommitCount());
+			Assert.assertEquals("Both buffers must be drained by their completed handlers",
+					2, runner.getCompletionDrainCount());
+		} finally {
+			gate.countDown();
+			runner.destroy();
+			MetalCommandRunner.quietCommitMicros = quiet;
+			MetalCommandRunner.enableHostSignaledBridges = bridges;
+		}
 	}
 
 	/**
