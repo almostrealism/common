@@ -148,7 +148,6 @@ import java.util.function.Supplier;
  * been drained, which Metal allows before it reports the buffer's completion: it keeps a committed
  * buffer, and the resources the buffer references, until the buffer completes.</p>
  */
-// TODO(review): at ~1490 lines this nears the 1500-line recommendation; split the drain/waiter bookkeeping into a collaborator
 public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> implements ConsoleFeatures {
 	/**
 	 * Maximum dispatches encoded into one open command buffer before it is committed. This is a
