@@ -209,21 +209,10 @@ public interface ArithmeticFeatures extends SlicingFeatures, ExpressionFeatures 
 	 * @see #equals(Producer, Producer, Producer, Producer)
 	 */
 	default CollectionProducer subtractIgnoreZero(Producer<PackedCollection> a, Producer<PackedCollection> b) {
-		TraversalPolicy shape = shape(a);
-		int size = shape(b).getSize();
+		CollectionProducer diff = add(a, minus(b));
+		TraversalPolicy shape = shape(diff);
 
-		if (shape.getSize() != size) {
-			if (shape.getSize() == 1) {
-				return subtractIgnoreZero(a, traverseEach(b));
-			} else if (size == 1) {
-				return subtractIgnoreZero(traverseEach(a), b);
-			}
-
-			throw new IllegalArgumentException("Cannot subtract a collection of size " + size +
-					" from a collection of size " + shape.getSize());
-		}
-
-		CollectionProducer difference = CollectionFeatures.getInstance().equals(a, b, new EpsilonConstantComputation(shape), add(a, minus(b)));
+		CollectionProducer difference = CollectionFeatures.getInstance().equals(a, b, new EpsilonConstantComputation(shape), diff);
 		return CollectionFeatures.getInstance().equals(a, c(0.0), zeros(shape), difference);
 	}
 
