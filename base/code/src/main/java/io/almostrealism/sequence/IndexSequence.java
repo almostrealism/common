@@ -291,6 +291,67 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	}
 
 	/**
+	 * Returns whether this sequence has no positions, and therefore no values.
+	 *
+	 * @return {@code true} if the length of this sequence is zero
+	 */
+	default boolean isEmpty() {
+		return lengthLong() == 0;
+	}
+
+	/**
+	 * Returns the number of distinct values this sequence takes, as counted by
+	 * {@link #distinct()}.
+	 *
+	 * @return the number of distinct values
+	 */
+	default long distinctCount() {
+		return isEmpty() ? 0 : distinct().length;
+	}
+
+	/**
+	 * Returns whether the given integer is one of the values of this sequence, at any
+	 * position. Only an integral value can match.
+	 *
+	 * @param value the candidate value
+	 * @return {@code true} if some position of this sequence takes {@code value}
+	 */
+	default boolean contains(long value) {
+		return values().anyMatch(v -> v.doubleValue() == v.longValue() && v.longValue() == value);
+	}
+
+	/**
+	 * Returns whether every value of the other sequence is also a value of this one,
+	 * regardless of the positions at which either takes it. A non-integral value of the
+	 * other sequence is never contained.
+	 *
+	 * @param other the sequence whose values are tested
+	 * @return {@code true} if the values of {@code other} are a subset of the values of this sequence
+	 */
+	default boolean containsAll(IndexSequence other) {
+		return other.values().allMatch(v -> v.doubleValue() == v.longValue() && contains(v.longValue()));
+	}
+
+	/**
+	 * Returns a sequence whose values are the values of this sequence together with the
+	 * values of the other, each value once. When either sequence already contains every
+	 * value of the other, that sequence is returned as it is, so nested domains are shared
+	 * rather than copied; otherwise the integral values of both are enumerated, in
+	 * ascending order.
+	 *
+	 * @param other the sequence whose values are added
+	 * @return a sequence taking exactly the values of both sequences
+	 */
+	default IndexSequence union(IndexSequence other) {
+		if (containsAll(other)) return this;
+		if (other.containsAll(this)) return other;
+
+		return ArrayIndexSequence.of(Long.class,
+				LongStream.concat(longValues(), other.longValues())
+						.distinct().sorted().boxed().toArray(Number[]::new));
+	}
+
+	/**
 	 * Tests whether this sequence is congruent (element-wise equal) to another sequence.
 	 *
 	 * @param other the sequence to compare with

@@ -19,6 +19,7 @@ package io.almostrealism.sequence;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 
+import java.util.NoSuchElementException;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
@@ -97,7 +98,8 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	private final long granularity;
 
 	/**
-	 * The modulus (cycle length) of the sequence, at most {@link #len}.
+	 * The modulus (cycle length) of the sequence, at most {@link #len} (one for the
+	 * empty sequence).
 	 * Position values are reduced modulo this value before further computation.
 	 */
 	private final long mod;
@@ -143,23 +145,38 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * and is stored as {@code len}, so that sequences which agree on every position
 	 * also agree on their parameters.</p>
 	 *
+	 * <p>A length of zero is the empty progression, which has no values; see
+	 * {@link #range(long)}.</p>
+	 *
 	 * @param offset the constant offset added to all values
 	 * @param scale the multiplier for computed positions
 	 * @param granularity the number of consecutive positions with the same value; must be positive
 	 * @param mod the modulus (cycle length) of the sequence; must be positive
-	 * @param len the total length of the sequence; must be positive
-	 * @throws IllegalArgumentException if granularity, mod or len is not positive
+	 * @param len the total length of the sequence; must not be negative
+	 * @throws IllegalArgumentException if granularity or mod is not positive, or len is negative
 	 */
 	public ArithmeticIndexSequence(long offset, long scale, long granularity, long mod, long len) {
-		if (granularity <= 0 || mod <= 0 || len <= 0) {
-			throw new IllegalArgumentException("Granularity, modulus and length must be positive");
+		if (granularity <= 0 || mod <= 0 || len < 0) {
+			throw new IllegalArgumentException("Granularity and modulus must be positive and length must not be negative");
 		}
 
 		this.offset = offset;
 		this.scale = scale;
 		this.granularity = granularity;
-		this.mod = Math.min(mod, len);
+		this.mod = Math.min(mod, Math.max(len, 1));
 		this.len = len;
+	}
+
+	/**
+	 * Returns the progression {@code 0, 1, ..., count - 1}, which is the empty progression
+	 * when {@code count} is zero.
+	 *
+	 * @param count the number of values; must not be negative
+	 * @return the consecutive integers from zero below {@code count}
+	 * @throws IllegalArgumentException if {@code count} is negative
+	 */
+	public static ArithmeticIndexSequence range(long count) {
+		return new ArithmeticIndexSequence(0, 1, 1, Math.max(count, 1), count);
 	}
 
 	/**
@@ -196,6 +213,7 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 */
 	@Override
 	public long min() {
+		requireValues();
 		return Math.min(offset, offset + scale * lastStep());
 	}
 
@@ -207,6 +225,7 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 */
 	@Override
 	public long max() {
+		requireValues();
 		return Math.max(offset, offset + scale * lastStep());
 	}
 
@@ -214,7 +233,75 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * Returns the largest step {@code (pos % mod) / granularity} any position reaches.
 	 */
 	private long lastStep() {
-		return (Math.min(mod, len) - 1) / granularity;
+		return (mod - 1) / granularity;
+	}
+
+	/**
+	 * Fails for the empty progression, which has no minimum or maximum.
+	 *
+	 * @throws NoSuchElementException if this sequence has no positions
+	 */
+	private void requireValues() {
+		if (len == 0) throw new NoSuchElementException("Empty sequence");
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Computed from the parameters: the number of steps a cycle reaches, or one when
+	 * the sequence is constant.</p>
+	 */
+	@Override
+	public long distinctCount() {
+		if (len == 0) return 0;
+		return isConstant() ? 1 : lastStep() + 1;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Computed from the parameters: the value is contained when it differs from the
+	 * offset by a multiple of the scale whose step is reached by some position.</p>
+	 */
+	@Override
+	public boolean contains(long value) {
+		if (len == 0) return false;
+		if (isConstant()) return value == offset;
+
+		long difference;
+
+		try {
+			difference = Math.subtractExact(value, offset);
+		} catch (ArithmeticException e) {
+			return false;
+		}
+
+		if (difference % scale != 0) return false;
+
+		long step = difference / scale;
+		return step >= 0 && step <= lastStep();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A progression with unit scale takes every integer between its minimum and its
+	 * maximum, so it contains the values of an integer sequence exactly when it contains
+	 * that sequence's minimum and maximum, and no value of the other sequence is
+	 * enumerated. Any other case is decided by the general test.</p>
+	 */
+	@Override
+	public boolean containsAll(IndexSequence other) {
+		if (other.isEmpty()) return true;
+		if (len == 0) return false;
+
+		boolean integral = other.getType() == Integer.class || other.getType() == Long.class;
+
+		if (integral && !isConstant() && Math.abs(scale) == 1) {
+			return contains(other.min()) && contains(other.max());
+		}
+
+		return IndexSequence.super.containsAll(other);
 	}
 
 	/**
@@ -519,7 +606,7 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 */
 	@Override
 	public Stream<Number> values() {
-		if (offset != 0) return IndexSequence.super.values();
+		if (offset != 0 || len == 0) return IndexSequence.super.values();
 
 		return LongStream.range(0, mod).mapToObj(this::valueAt);
 	}

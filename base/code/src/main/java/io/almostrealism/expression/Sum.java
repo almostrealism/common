@@ -22,6 +22,7 @@ import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexRange;
+import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.sequence.KernelSeries;
@@ -38,7 +39,6 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -144,23 +144,26 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		return result;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>A sum is answered by the largest domain among its terms, provided that domain
+	 * contains the domains of all the other terms; otherwise the domain is not determined.</p>
+	 */
 	@Override
-	public Optional<Set<Integer>> getIndexOptions(Index index) {
-		List<Optional<Set<Integer>>> childOptions = getChildren().stream()
-				.map(child -> child.getIndexOptions(index))
-				.collect(Collectors.toList());
-		if (childOptions.stream().anyMatch(Optional::isEmpty)) return Optional.empty();
+	public Optional<IndexSequence> getIndexOptions(Index index) {
+		List<IndexSequence> optionValues = new ArrayList<>();
 
-		List<Set<Integer>> optionValues = childOptions.stream()
-				.filter(Optional::isPresent)
-				.map(Optional::get)
-				.filter(s -> !s.isEmpty())
-				.collect(Collectors.toList());
+		for (Expression<?> child : getChildren()) {
+			Optional<IndexSequence> o = child.getIndexOptions(index);
+			if (o.isEmpty()) return Optional.empty();
+			if (!o.get().isEmpty()) optionValues.add(o.get());
+		}
 
 		if (optionValues.isEmpty())
-			return Optional.of(Collections.emptySet());
+			return Optional.of(ArithmeticIndexSequence.range(0));
 
-		Set<Integer> largest = Collections.max(optionValues, Comparator.comparingInt(Set::size));
+		IndexSequence largest = Collections.max(optionValues, Comparator.comparingLong(IndexSequence::distinctCount));
 		boolean allContained = optionValues.stream().allMatch(largest::containsAll);
 		return allContained ? Optional.of(largest) : Optional.empty();
 	}

@@ -124,6 +124,12 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	private Long max;
 
 	/**
+	 * Cached integral values of the sequence, distinct and in ascending order.
+	 * Computed lazily on first call to {@link #contains(long)}; {@code null} until then.
+	 */
+	private long[] integralValues;
+
+	/**
 	 * The number of consecutive index positions that map to the same stored value.
 	 *
 	 * <p>When accessing values via {@link #valueAt(long)}, the position is divided by
@@ -326,6 +332,24 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 		}
 
 		return max;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>The integral values are sorted once, on first call, so that every membership
+	 * test is a binary search rather than a scan of the stored values.</p>
+	 */
+	@Override
+	public boolean contains(long value) {
+		if (integralValues == null) {
+			integralValues = values()
+					.filter(v -> v.doubleValue() == v.longValue())
+					.mapToLong(Number::longValue)
+					.distinct().sorted().toArray();
+		}
+
+		return Arrays.binarySearch(integralValues, value) >= 0;
 	}
 
 	/**

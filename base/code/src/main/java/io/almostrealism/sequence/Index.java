@@ -21,13 +21,9 @@ import io.almostrealism.kernel.KernelIndexChild;
 import io.almostrealism.scope.ScopeSettings;
 import io.almostrealism.uml.Named;
 
-import java.util.Collections;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
-import java.util.Set;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /**
  * A named, bounded sequence generator that represents an index variable in a kernel computation.
@@ -89,11 +85,12 @@ public interface Index extends SequenceGenerator, Named {
 	 * this method, since the class implementation would otherwise take precedence.</p>
 	 *
 	 * @param index the index whose required values are requested
-	 * @return the required values of {@code index}, or empty if they cannot be enumerated
+	 * @return the required values of {@code index}, from zero below the limit when it is this
+	 *         index and none otherwise, or empty if they cannot be enumerated
 	 */
-	default Optional<Set<Integer>> getIndexOptions(Index index) {
+	default Optional<IndexSequence> getIndexOptions(Index index) {
 		if (!Objects.equals(this, index)) {
-			return Optional.of(Collections.emptySet());
+			return Optional.of(ArithmeticIndexSequence.range(0));
 		}
 
 		OptionalLong limit = getLimit();
@@ -101,9 +98,7 @@ public interface Index extends SequenceGenerator, Named {
 			return Optional.empty();
 		}
 
-		return Optional.of(
-				IntStream.range(0, Math.toIntExact(limit.getAsLong()))
-					.boxed().collect(Collectors.toSet()));
+		return Optional.of(ArithmeticIndexSequence.range(limit.getAsLong()));
 	}
 
 	/**
