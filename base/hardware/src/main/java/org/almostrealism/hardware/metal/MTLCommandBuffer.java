@@ -87,6 +87,25 @@ public class MTLCommandBuffer extends MTLObject {
 	}
 
 	/**
+	 * Registers a handler that Metal runs, on one of its own threads, once this buffer has
+	 * finished, by executing or by failing. Must be called before {@link #commit()}. The handler
+	 * must not block or touch state confined to another thread; it should only hand work off.
+	 *
+	 * <p>The registration is a JNI operation compiled at runtime (see {@link MTLCompletedHandler}).
+	 * A host whose toolchain cannot compile it registers nothing, which the first attempt logs with
+	 * its cause and the return value reports; so does a registration that fails, which never
+	 * throws, so the buffer can always be committed next. The caller then learns that the buffer
+	 * has finished only from its status (see {@link #isFinished()}).</p>
+	 *
+	 * @param handler run once this buffer has finished
+	 * @return true if the handler was registered, false if completed handlers are unavailable or
+	 *         this handler could not be registered
+	 */
+	public boolean addCompletedHandler(Runnable handler) {
+		return MTLCompletedHandler.register(getNativePointer(), handler);
+	}
+
+	/**
 	 * Releases the explicit retain taken when this command buffer was created (see
 	 * {@link MTL#commandBuffer(long)}). Call once the buffer is no longer referenced, so it is freed
 	 * rather than accumulating in the driver: after it has completed, or once it has been committed
