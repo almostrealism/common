@@ -98,6 +98,18 @@ class RestoreActionShapeTest(unittest.TestCase):
         self.assertEqual("composite", action["runs"]["using"])
         self.assertIn("cache-version", action.get("inputs", {}))
 
+    def test_cache_version_is_required_with_no_default(self):
+        """A default would silently pin a caller that forgot to pass the input
+        to one prefix, so a bump of HOSTED_MAVEN_CACHE_VERSION would leave it
+        reading a stale cache scope. The input must be required with no default
+        so every caller declares the version explicitly."""
+        cache_version = _action()["inputs"]["cache-version"]
+        self.assertTrue(cache_version.get("required"),
+                        "cache-version must be required so no caller falls back "
+                        "to a stale default scope")
+        self.assertNotIn("default", cache_version,
+                         "cache-version must have no default (see required=true)")
+
     def test_restores_read_only_and_excludes_project_artifacts(self):
         """It must use cache/restore (never the combined cache action, which
         would save a partial repository at the end of a consumer job) and must

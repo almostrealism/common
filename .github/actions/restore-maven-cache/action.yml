@@ -21,9 +21,12 @@ inputs:
     description: >-
       Manual version prefix of the cache key, so the hosted Maven cache can be
       invalidated deliberately (bump it) without waiting for a pom change. Must
-      match the value the `maven-cache` job saves under.
-    required: false
-    default: v1
+      match the value the `maven-cache` job saves under. Required with no default
+      on purpose: a default would silently pin callers to one prefix, so a bump
+      of HOSTED_MAVEN_CACHE_VERSION in analysis.yaml would leave a caller that
+      forgot to pass it reading a stale cache scope. Every caller passes
+      `${{ env.HOSTED_MAVEN_CACHE_VERSION }}`.
+    required: true
 outputs:
   cache-hit:
     description: >-
