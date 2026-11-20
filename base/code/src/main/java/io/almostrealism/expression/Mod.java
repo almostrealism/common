@@ -19,7 +19,6 @@ package io.almostrealism.expression;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.sequence.ArithmeticIndexSequence;
-import io.almostrealism.sequence.ArithmeticIndexSet;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexRange;
 import io.almostrealism.sequence.IndexValues;
@@ -35,6 +34,7 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * A modulo expression ({@code a % b}) for both integer and floating-point operands.
@@ -295,7 +295,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 			return super.getIndexOptions(index);
 		}
 
-		return Optional.of(ArithmeticIndexSet.range(m));
+		return Optional.of(IntStream.range(0, m).boxed().collect(Collectors.toSet()));
 	}
 
 	/**
