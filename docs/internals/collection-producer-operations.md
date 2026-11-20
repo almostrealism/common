@@ -36,6 +36,15 @@ whose count is variable, such as `shape(-1, 2)` for one pair per item of a batch
 [Reproducible random drive](neural-population-simulation.md#6-reproducible-random-drive) for
 how the two differ, what `refresh()` does, and the 2^24 seed and counter bound.
 
+When `rand`/`randn` (and so `PackedCollection.randFill()`/`randnFill()` and layer weight
+initialization) are given no explicit source, they draw from one process-wide default source,
+`DefaultRandomSource`. That source is unseeded unless the `AR_RANDOM_SEED` setting seeds it at
+startup, so with no configuration each generator draws from its own fresh `java.util.Random`
+exactly as before. Seeding it (through `AR_RANDOM_SEED`, or per test by `TestSuiteBase`) makes
+every later seedless draw reproducible, because generators consume a shared seeded source in the
+order they are constructed. Reproducibility is promised within one implementation: a given seed
+yields different values under `AR_RANDOM=counter` than under `java`.
+
 ## Element-wise Arithmetic
 
 All arithmetic operations are element-wise and return a new `CollectionProducer`.

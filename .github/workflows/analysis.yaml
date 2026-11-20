@@ -731,6 +731,7 @@ jobs:
             ".claude/hooks/lib/test_exfiltration_guard_transport.py"
             ".claude/hooks/lib/test_exfiltration_guard_interpreter.py"
             ".claude/hooks/lib/test_exfiltration_guard_worktree.py"
+            ".claude/hooks/lib/test_exfiltration_guard_pinning.py"
             ".claude/hooks/exfil-allowlist.txt"
           )
 
