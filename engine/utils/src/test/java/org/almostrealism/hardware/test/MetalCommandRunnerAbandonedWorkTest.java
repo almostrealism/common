@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Verifies that a {@link MetalCommandRunner} runs and releases work that nothing ever waits for:
  * a dispatch left in the open command buffer is committed once the buffer has gone quiet
- * ({@link MetalCommandRunner#quietCommitMicros}), and a committed buffer is drained, its
+ * ({@link SubmissionStream#quietCommitMicros}), and a committed buffer is drained, its
  * released-memory callbacks run and its {@link KernelMemoryGuard} reservations given back, as soon
  * as Metal reports it finished, with no host wait, no destroy and no explicit drain.
  *
@@ -180,8 +180,8 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 			return;
 		}
 
-		int quiet = MetalCommandRunner.quietCommitMicros;
-		MetalCommandRunner.quietCommitMicros = 0;
+		int quiet = SubmissionStream.quietCommitMicros;
+		SubmissionStream.quietCommitMicros = 0;
 		MetalCommandRunner runner = new MetalCommandRunner(metal.getMtlQueue());
 
 		try {
@@ -200,7 +200,7 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 					" quietCommits=" + runner.getQuietCommitCount());
 		} finally {
 			runner.destroy();
-			MetalCommandRunner.quietCommitMicros = quiet;
+			SubmissionStream.quietCommitMicros = quiet;
 		}
 	}
 
@@ -216,12 +216,12 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 			return;
 		}
 
-		int quiet = MetalCommandRunner.quietCommitMicros;
+		int quiet = SubmissionStream.quietCommitMicros;
 		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
 		MetalCommandRunner.enableHostSignaledBridges = true;
 
 		// Long enough that the buffer is still open when it is marked as failing
-		MetalCommandRunner.quietCommitMicros = (int) TimeUnit.SECONDS.toMicros(60);
+		SubmissionStream.quietCommitMicros = (int) TimeUnit.SECONDS.toMicros(60);
 		MetalCommandFailureTest.FailingRunner runner = new MetalCommandFailureTest.FailingRunner(metal.getMtlQueue());
 
 		try {
@@ -244,7 +244,7 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 				Assert.assertTrue("Expected the recorded failure, got " + e, e.getMessage().contains(MetalCommandFailureTest.ERROR));
 			}
 		} finally {
-			MetalCommandRunner.quietCommitMicros = quiet;
+			SubmissionStream.quietCommitMicros = quiet;
 			MetalCommandRunner.enableHostSignaledBridges = bridges;
 			runner.destroy();
 		}
@@ -300,12 +300,12 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 			return;
 		}
 
-		int quiet = MetalCommandRunner.quietCommitMicros;
+		int quiet = SubmissionStream.quietCommitMicros;
 		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
 		MetalCommandRunner.enableHostSignaledBridges = true;
 
 		// Long enough that the second buffer stays open until the interrupted wait commits it
-		MetalCommandRunner.quietCommitMicros = (int) TimeUnit.SECONDS.toMicros(60);
+		SubmissionStream.quietCommitMicros = (int) TimeUnit.SECONDS.toMicros(60);
 		MetalCommandRunner runner = new MetalCommandRunner(metal.getMtlQueue());
 
 		CountDownLatch blocking = new CountDownLatch(1);
@@ -347,7 +347,7 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 		} finally {
 			gate.countDown();
 			runner.destroy();
-			MetalCommandRunner.quietCommitMicros = quiet;
+			SubmissionStream.quietCommitMicros = quiet;
 			MetalCommandRunner.enableHostSignaledBridges = bridges;
 		}
 	}
@@ -365,11 +365,11 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 		}
 
 		int idle = SubmissionStream.minIdleCommit;
-		int quiet = MetalCommandRunner.quietCommitMicros;
+		int quiet = SubmissionStream.quietCommitMicros;
 		SubmissionStream.minIdleCommit = 0;
 
 		// Far longer than any pause between two submissions, so the test does not depend on timing
-		MetalCommandRunner.quietCommitMicros = (int) TimeUnit.SECONDS.toMicros(60);
+		SubmissionStream.quietCommitMicros = (int) TimeUnit.SECONDS.toMicros(60);
 		MetalCommandRunner runner = new MetalCommandRunner(metal.getMtlQueue());
 
 		try {
@@ -392,7 +392,7 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 		} finally {
 			runner.destroy();
 			SubmissionStream.minIdleCommit = idle;
-			MetalCommandRunner.quietCommitMicros = quiet;
+			SubmissionStream.quietCommitMicros = quiet;
 		}
 	}
 

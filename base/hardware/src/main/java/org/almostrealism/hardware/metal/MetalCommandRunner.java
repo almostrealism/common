@@ -59,7 +59,7 @@ import java.util.function.Supplier;
  *
  * <p>A buffer stops accepting dispatches when it is <em>closed</em> (a host wait, the
  * {@link #MAX_OPEN} bound, the GPU running out of work once the buffer holds
- * {@link SubmissionStream#minIdleCommit} dispatches, the buffer going {@link #quietCommitMicros quiet}, or a bridged
+ * {@link SubmissionStream#minIdleCommit} dispatches, the buffer going {@link SubmissionStream#quietCommitMicros quiet}, or a bridged
  * dispatch that must start a fresh buffer), and is
  * <em>committed</em> to the GPU only once every host-signaled bridge encoded into it has been
  * signaled, in the order the buffers were closed. The GPU therefore never holds a buffer that waits
@@ -132,10 +132,12 @@ import java.util.function.Supplier;
  *       operation compiled at runtime (see {@link MTLCommandBuffer#addCompletedHandler}); a host
  *       that cannot compile it has a finished buffer drained by the runner's next drain instead.</li>
  *   <li><b>A quiet open batch is committed.</b> An open batch holding dispatches is committed once
- *       no dispatch has been encoded into it for {@link #quietCommitMicros} (see
- *       {@link QuietCommitDeadline}), measured from the last dispatch, so back-to-back dispatches
- *       still share a buffer. The deadline fires on a shared timer thread, which only hands the
- *       check to {@link #executor}; the commit happens there.</li>
+ *       no dispatch has been encoded into it for {@link SubmissionStream#quietCommitMicros}, the
+ *       quiet-commit policy every batching stream shares (see
+ *       {@link SubmissionStream#closeWhenQuiet()}), measured from the last dispatch, so
+ *       back-to-back dispatches still share a buffer. The runner supplies only what is native to
+ *       Metal: the check runs on {@link #executor} ({@link #runOnStreamThread}), and a buffer that
+ *       waits for a host-signaled bridge is not yet committable ({@link #canCommitOpenBatch()}).</li>
  * </ul>
  *
  * <p>Objective-C memory: every executor task runs inside its own autorelease pool (see
@@ -216,19 +218,6 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	public static int handOffSpinMicros = SystemUtils.getInt("AR_HARDWARE_METAL_HANDOFF_SPIN").orElse(50);
 
 	/**
-	 * How long, in microseconds, an open command buffer holding dispatches may go without a new
-	 * dispatch before it is committed, even though nothing waits for it (see
-	 * {@link QuietCommitDeadline}). Without this, dispatches nobody waits for could stay in the open
-	 * buffer, never run, and keep the memory their arguments reserve. The delay is measured from the
-	 * last dispatch, so it never commits a buffer that is still being filled back to back. A buffer
-	 * that waits for a host-signaled bridge, or that would be held behind one, is checked again
-	 * after another delay instead. Read each time a deadline is scheduled; a value of zero or less
-	 * commits as soon as the runner's thread is free. Controlled by
-	 * {@code AR_HARDWARE_METAL_QUIET_COMMIT}.
-	 */
-	public static int quietCommitMicros = SystemUtils.getInt("AR_HARDWARE_METAL_QUIET_COMMIT").orElse(10000);
-
-	/**
 	 * Confines all command-buffer operations to one thread, running each inside its own
 	 * autorelease pool ({@link MTLAutoreleasePool#run}), so transient autoreleased Metal objects
 	 * (compute command encoders, and the command buffer's own autorelease reference) are drained
@@ -274,8 +263,6 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	private volatile long maxOpenCommits;
 	/** Commits performed while destroying the runner. Executor-thread written; volatile reads. */
 	private volatile long destroyCommits;
-	/** Commits of an open buffer that went quiet ({@link #quietCommitMicros}). Executor-thread written. */
-	private volatile long quietCommits;
 	/** Buffers drained after their completed handler fired, with no wait. Executor-thread written. */
 	private volatile long completionDrains;
 	/** Commits forced so a bridged dispatch starts a fresh buffer. Executor-thread written. */
@@ -337,9 +324,6 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * when it is committed. Executor-thread only.
 	 */
 	private final ArrayDeque<CommandBatch> held = new ArrayDeque<>();
-
-	/** The deadline by which the open batch is committed once it goes quiet. Executor-thread only. */
-	private final QuietCommitDeadline quiet = new QuietCommitDeadline(executor, this::commitIfQuiet);
 
 	/**
 	 * Run by the Metal thread that reports a committed buffer finished: hands a drain of the
@@ -594,7 +578,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 			if (dispatches >= MAX_OPEN && closeOpenBatch()) {
 				maxOpenCommits++;
 			} else if (!closeEarlyIfIdle(dispatches)) {
-				quiet.dispatched();
+				closeWhenQuiet();
 			}
 		});
 
@@ -841,7 +825,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * released-memory callbacks — the same list a dispatch's own {@code onComplete}
 	 * argument joins (see {@link #submit}) — so it runs when the buffer is drained, after it
 	 * has been committed on its own schedule ({@link #MAX_OPEN} cadence, an early commit to an
-	 * idle GPU, see {@link SubmissionStream#minIdleCommit}, the {@link #quietCommitMicros quiet
+	 * idle GPU, see {@link SubmissionStream#minIdleCommit}, the {@link SubmissionStream#quietCommitMicros quiet
 	 * delay}, or a genuine host wait) and has finished, without any wait for it. A buffer that
 	 * has already been drained runs the callback immediately. Invoked by
 	 * {@link MetalSemaphore#whenComplete(Runnable)}.
@@ -1078,6 +1062,42 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	}
 
 	/**
+	 * Queues {@code task} on the executor without waiting, unless the runner has been destroyed
+	 * ({@link ConfinedExecutor#runLater}), so the quiet-commit check of
+	 * {@link SubmissionStream#closeWhenQuiet()} runs where every command-buffer operation does.
+	 *
+	 * @param task the work to run on the executor thread
+	 * @return true if the task was queued, false once the runner has been destroyed
+	 */
+	@Override
+	protected boolean runOnStreamThread(Runnable task) {
+		return executor.runLater(task);
+	}
+
+	/**
+	 * Returns the number of dispatches encoded into the open buffer, or zero when none is open.
+	 * Must run on the executor thread.
+	 *
+	 * @return the open buffer's dispatch count
+	 */
+	@Override
+	protected int getOpenBatchSize() {
+		return openBatch == null ? 0 : openBatch.getDispatchCount();
+	}
+
+	/**
+	 * Returns whether the open buffer would be committed at once if it were closed now: every
+	 * host-signaled bridge encoded into it has been signaled, and no buffer closed before it is
+	 * still held for one (see {@link #commitReadyOnExecutor()}). Must run on the executor thread.
+	 *
+	 * @return true if closing the open buffer now would commit it to the GPU
+	 */
+	@Override
+	protected boolean canCommitOpenBatch() {
+		return openBatch != null && openBatch.isReady() && held.isEmpty();
+	}
+
+	/**
 	 * Commits, in the order they were closed, every closed buffer whose host-signaled bridges have
 	 * all been signaled, stopping at the first that still waits for one: a buffer committed ahead
 	 * of one closed before it would run ahead of it on the queue. Must run on the executor thread.
@@ -1219,27 +1239,6 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	}
 
 	/**
-	 * Commits the open batch if no dispatch has been encoded into it for
-	 * {@link #quietCommitMicros}, which the open batch's {@link QuietCommitDeadline} hands to the
-	 * executor when it expires. A batch that is still being filled is checked again once the rest
-	 * of its quiet time has passed. A batch that waits for a host-signaled bridge, or that would be
-	 * held behind a closed buffer that does, could not run if it were closed now, so it is checked
-	 * again after another delay. Must run on the executor thread.
-	 */
-	private void commitIfQuiet() {
-		long remaining = quiet.expire();
-		if (openBatch == null || openBatch.getDispatchCount() == 0) return;
-
-		if (remaining > 0) {
-			quiet.schedule(remaining);
-		} else if (!openBatch.isReady() || !held.isEmpty()) {
-			quiet.postpone();
-		} else if (closeOpenBatch()) {
-			quietCommits++;
-		}
-	}
-
-	/**
 	 * Waits for the oldest committed buffer, unless its timeline signal has already shown that it
 	 * executed, verifies it actually executed, runs its callbacks, and releases it. Must run on
 	 * the executor thread.
@@ -1296,13 +1295,6 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * @return the number of buffers drained on completion
 	 */
 	public long getCompletionDrainCount() { return completionDrains; }
-
-	/**
-	 * Returns the number of commits of an open buffer that went {@link #quietCommitMicros quiet}.
-	 *
-	 * @return the number of commits caused by the quiet delay
-	 */
-	public long getQuietCommitCount() { return quietCommits; }
 
 	/**
 	 * Returns the number of committed buffers that finished with the Metal error status.
@@ -1424,7 +1416,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 */
 	private void destroyExecutor() {
 		executor.destroy(() -> {
-			quiet.cancel();
+			cancelQuietCommit();
 			if (closeOpenBatch()) destroyCommits++;
 
 			while (!held.isEmpty()) commitOldestHeld();

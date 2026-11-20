@@ -148,9 +148,9 @@ public class MetalCommandRunnerSignalWaitTest extends TestSuiteBase {
 	@Test(timeout = 120000)
 	public void laterClosedBufferDefersToCompletion() {
 		boolean bridges = MetalCommandRunner.enableHostSignaledBridges;
-		int quiet = MetalCommandRunner.quietCommitMicros;
+		int quiet = SubmissionStream.quietCommitMicros;
 		MetalCommandRunner.enableHostSignaledBridges = true;
-		MetalCommandRunner.quietCommitMicros = (int) TimeUnit.SECONDS.toMicros(120);
+		SubmissionStream.quietCommitMicros = (int) TimeUnit.SECONDS.toMicros(120);
 
 		try {
 			withRunner(WINDOW_MICROS, MetalCommandRunner::new, runner -> {
@@ -186,7 +186,7 @@ public class MetalCommandRunnerSignalWaitTest extends TestSuiteBase {
 			});
 		} finally {
 			MetalCommandRunner.enableHostSignaledBridges = bridges;
-			MetalCommandRunner.quietCommitMicros = quiet;
+			SubmissionStream.quietCommitMicros = quiet;
 		}
 	}
 

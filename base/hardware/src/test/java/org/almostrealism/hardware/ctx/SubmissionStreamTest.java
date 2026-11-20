@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.ctx;
 
+import io.almostrealism.concurrent.ConfinedExecutor;
 import io.almostrealism.streams.LatchSemaphore;
 import org.junit.Assert;
 import org.junit.Test;
@@ -23,6 +24,7 @@ import org.junit.Test;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Validates {@link SubmissionStream}, the backend-independent coordination the Metal and CUDA
@@ -556,6 +558,119 @@ public class SubmissionStreamTest {
 			Assert.assertEquals(0, s.readings);
 		} finally {
 			Thread.interrupted();
+		}
+	}
+
+	/**
+	 * A device-free stream that holds submissions back in an open batch owned by a
+	 * {@link ConfinedExecutor}, whose batch size and whether the batch could run if committed are
+	 * set by the test, and which counts the batches the quiet-commit policy closes.
+	 */
+	private static final class QuietStream extends SubmissionStream<TestCompletion> {
+		/** The stream's own thread, which owns the open batch. */
+		private final ConfinedExecutor executor = new ConfinedExecutor();
+		/** Counted down each time a batch is closed. */
+		private final CountDownLatch closed = new CountDownLatch(1);
+		/** The number of submissions in the open batch. Stream-thread only. */
+		private int size;
+		/** Whether {@link #canCommitOpenBatch()} reports the open batch committable. */
+		private volatile boolean committable = true;
+		/** The number of batches closed. */
+		private final AtomicInteger closes = new AtomicInteger();
+
+		/** Creates a stream with a hold bound of one. */
+		private QuietStream() {
+			super("quiet stream", TestCompletion.class, 1, "on stream thread");
+		}
+
+		/**
+		 * Adds submissions to the open batch on the stream's thread, arming the quiet deadline for
+		 * each, as a batching runner does for every submission the open batch keeps.
+		 *
+		 * @param count the number of submissions to add
+		 */
+		private void submit(int count) {
+			executor.run(() -> {
+				for (int i = 0; i < count; i++) {
+					size++;
+					closeWhenQuiet();
+				}
+			});
+		}
+
+		/** Cancels the quiet deadline and destroys the stream's thread, as a runner's teardown does. */
+		private void destroy() {
+			executor.destroy(this::cancelQuietCommit);
+		}
+
+		@Override
+		protected boolean isStreamThread() { return executor.isConfinedThread(); }
+
+		@Override
+		protected boolean runOnStreamThread(Runnable task) { return executor.runLater(task); }
+
+		@Override
+		protected int getOpenBatchSize() { return size; }
+
+		@Override
+		protected boolean canCommitOpenBatch() { return committable; }
+
+		@Override
+		protected boolean closeOpenBatch() {
+			if (size == 0) return false;
+			size = 0;
+			closes.incrementAndGet();
+			closed.countDown();
+			return true;
+		}
+	}
+
+	/**
+	 * An open batch that no submission joins for the quiet delay is closed on the stream's own
+	 * thread, once, however many submissions it holds, and counted as a quiet commit.
+	 */
+	@Test(timeout = 20000)
+	public void quietBatchIsClosedAndCounted() throws InterruptedException {
+		int saved = SubmissionStream.quietCommitMicros;
+		SubmissionStream.quietCommitMicros = 20_000;
+		QuietStream s = new QuietStream();
+
+		try {
+			s.submit(3);
+			Assert.assertTrue("A quiet batch must be closed", s.closed.await(10, TimeUnit.SECONDS));
+			Thread.sleep(200);
+			Assert.assertEquals(1, s.closes.get());
+			Assert.assertEquals(1, s.getQuietCommitCount());
+		} finally {
+			s.destroy();
+			SubmissionStream.quietCommitMicros = saved;
+		}
+	}
+
+	/**
+	 * A quiet batch that could not run if it were committed now is not closed; the check is
+	 * postponed, and the batch is closed once it can run.
+	 */
+	@Test(timeout = 20000)
+	public void quietBatchThatCannotRunIsPostponed() throws InterruptedException {
+		int saved = SubmissionStream.quietCommitMicros;
+		SubmissionStream.quietCommitMicros = 5_000;
+		QuietStream s = new QuietStream();
+		s.committable = false;
+
+		try {
+			s.submit(1);
+			Thread.sleep(300);
+			Assert.assertEquals("A batch that cannot run must not be closed", 0, s.closes.get());
+			Assert.assertEquals(0, s.getQuietCommitCount());
+
+			s.committable = true;
+			Assert.assertTrue("The postponed check must close the batch once it can run",
+					s.closed.await(10, TimeUnit.SECONDS));
+			Assert.assertEquals(1, s.getQuietCommitCount());
+		} finally {
+			s.destroy();
+			SubmissionStream.quietCommitMicros = saved;
 		}
 	}
 
