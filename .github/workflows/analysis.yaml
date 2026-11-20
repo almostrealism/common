@@ -310,9 +310,15 @@ jobs:
           # left false, which skips build/test-integrity-check entirely —
           # including the guard verification and enforcement-tampering steps
           # that would otherwise catch a weakened registration or allowlist.
+          #
+          # .mvn/ holds Maven build inputs with no code extension — maven.config
+          # (the transport retry/backoff every CI Maven invocation reads) and
+          # the wrapper pins. A change there alters how every Maven job resolves
+          # and must therefore run build, maven-cache and the Maven validation
+          # jobs rather than being classified docs-only.
           CODE_FILES=$(git diff --name-only "$BASE" HEAD -- \
             '*.java' '*.xml' '*.yaml' '*.yml' '*.sh' '*.py' '*.groovy' '*.properties' \
-            '*/Dockerfile' 'Dockerfile' '.claude/settings.json' '.claude/hooks/' \
+            '*/Dockerfile' 'Dockerfile' '.claude/settings.json' '.claude/hooks/' '.mvn/' \
             | grep -v '^docs/' | grep -v '\.md$' || true)
           if [ -z "$CODE_FILES" ]; then
             echo "code=false" >> "$GITHUB_OUTPUT"

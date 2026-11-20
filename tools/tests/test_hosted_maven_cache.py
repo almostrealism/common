@@ -306,6 +306,21 @@ class MavenConfigRetryTest(unittest.TestCase):
             self.assertTrue(line.startswith("-D"),
                             f"unexpected non-flag line in maven.config: {line!r}")
 
+    def test_mvn_config_dir_triggers_the_code_pipeline(self):
+        """.mvn/ holds build inputs with no code extension (maven.config, the
+        wrapper pins). The changes job must list it in the code-change pathspec,
+        otherwise a PR that only edits Maven transport config is classified
+        docs-only and skips build, maven-cache and the Maven validation jobs even
+        though a build input changed."""
+        text = _read(_WORKFLOW)
+        match = re.search(r"CODE_FILES=\$\(git diff[^)]*\)", text)
+        self.assertIsNotNone(
+            match, "the changes job must assign CODE_FILES from a git diff pathspec")
+        self.assertIn(
+            "'.mvn/'", match.group(0),
+            ".mvn/ must be in the code-change pathspec so a maven.config-only "
+            "change still runs the build and Maven validation jobs")
+
 
 class AnalysisJacocoDownloadTest(unittest.TestCase):
     def _merge_step_run(self):
