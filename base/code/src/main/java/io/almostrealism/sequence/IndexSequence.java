@@ -33,6 +33,7 @@ import java.util.function.UnaryOperator;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
+import java.util.stream.Stream;
 
 /**
  * A {@link Sequence} of {@link Number}s which represent index values used in kernel computations.
@@ -336,8 +337,9 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * Returns a sequence whose values are the values of this sequence together with the
 	 * values of the other, each value once. When either sequence already contains every
 	 * value of the other, that sequence is returned as it is, so nested domains are shared
-	 * rather than copied; otherwise the integral values of both are enumerated, in
-	 * ascending order.
+	 * rather than copied; otherwise the values of both are enumerated, in ascending
+	 * order, as {@link Long}s when every one of them is integral and as {@link Double}s
+	 * otherwise, so that no value is truncated.
 	 *
 	 * @param other the sequence whose values are added
 	 * @return a sequence taking exactly the values of both sequences
@@ -346,8 +348,17 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 		if (containsAll(other)) return this;
 		if (other.containsAll(this)) return other;
 
-		return ArrayIndexSequence.of(Long.class,
-				LongStream.concat(longValues(), other.longValues())
+		boolean integral = Stream.concat(values(), other.values())
+				.allMatch(v -> v.doubleValue() == v.longValue());
+
+		if (integral) {
+			return ArrayIndexSequence.of(Long.class,
+					LongStream.concat(longValues(), other.longValues())
+							.distinct().sorted().boxed().toArray(Number[]::new));
+		}
+
+		return ArrayIndexSequence.of(Double.class,
+				DoubleStream.concat(doubleValues(), other.doubleValues())
 						.distinct().sorted().boxed().toArray(Number[]::new));
 	}
 

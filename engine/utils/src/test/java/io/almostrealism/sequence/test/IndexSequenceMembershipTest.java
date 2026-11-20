@@ -164,6 +164,72 @@ public class IndexSequenceMembershipTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A progression whose values wrap around the {@code long} range is counted and
+	 * searched by the values {@link ArithmeticIndexSequence#valueAt(long)} actually
+	 * takes, not by the closed forms that assume exact arithmetic.
+	 */
+	@Test(timeout = 30000)
+	public void wrappingProgressionMatchesValues() {
+		ArithmeticIndexSequence repeating = new ArithmeticIndexSequence(0, Long.MIN_VALUE, 1, 3, 3);
+		ArithmeticIndexSequence overflowing = new ArithmeticIndexSequence(Long.MAX_VALUE, 2, 1, 2, 2);
+		ArithmeticIndexSequence descending = new ArithmeticIndexSequence(Long.MIN_VALUE, -1, 1, 3, 3);
+		ArithmeticIndexSequence unitAtEdge = new ArithmeticIndexSequence(Long.MAX_VALUE - 1, 1, 1, 4, 4);
+
+		Assert.assertEquals(Set.of(0L, Long.MIN_VALUE), positionValues(repeating));
+		Assert.assertEquals(2, repeating.distinctCount());
+		Assert.assertTrue(repeating.contains(0));
+		Assert.assertTrue(repeating.contains(Long.MIN_VALUE));
+		Assert.assertFalse(repeating.contains(Long.MAX_VALUE));
+
+		Assert.assertEquals(Long.MIN_VALUE + 1, overflowing.valueAt(1).longValue());
+		Assert.assertEquals(2, overflowing.distinctCount());
+		Assert.assertTrue(overflowing.contains(Long.MAX_VALUE));
+		Assert.assertTrue(overflowing.contains(Long.MIN_VALUE + 1));
+		Assert.assertFalse(overflowing.contains(Long.MIN_VALUE));
+
+		List<ArithmeticIndexSequence> wrapping = List.of(repeating, overflowing, descending, unitAtEdge);
+
+		for (ArithmeticIndexSequence seq : wrapping) {
+			Set<Long> values = positionValues(seq);
+			Assert.assertEquals(seq.toString(), values.size(), seq.distinctCount());
+
+			for (long v : values) {
+				Assert.assertTrue(seq + " contains " + v, seq.contains(v));
+				Assert.assertEquals(seq + " contains " + (v ^ 1),
+						values.contains(v ^ 1), seq.contains(v ^ 1));
+			}
+		}
+
+		Assert.assertTrue(unitAtEdge.containsAll(ArrayIndexSequence.of(Long.class,
+				new Number[] { Long.MIN_VALUE, Long.MAX_VALUE })));
+		Assert.assertFalse(unitAtEdge.containsAll(ArrayIndexSequence.of(Long.class,
+				new Number[] { 0L, Long.MAX_VALUE })));
+
+		IndexSequence union = overflowing.union(ArrayIndexSequence.of(new int[] { 7 }));
+		Assert.assertEquals(Set.of(Long.MAX_VALUE, Long.MIN_VALUE + 1, 7L), positionValues(union));
+		Assert.assertEquals(3, union.distinctCount());
+	}
+
+	/**
+	 * A union involving non-integral values keeps every value as it is, rather than
+	 * truncating it to an integer.
+	 */
+	@Test(timeout = 30000)
+	public void unionPreservesNonIntegralValues() {
+		IndexSequence halves = ArrayIndexSequence.of(Double.class, new double[] { 0.5, 1.0, 2.5 });
+		IndexSequence union = ArithmeticIndexSequence.range(2).union(halves);
+
+		Assert.assertArrayEquals(new double[] { 0.0, 0.5, 1.0, 2.5 },
+				union.doubleValues().distinct().sorted().toArray(), 0.0);
+		Assert.assertEquals(4, union.distinctCount());
+		Assert.assertFalse(union.contains(2));
+		Assert.assertTrue(union.contains(0));
+
+		IndexSequence reversed = halves.union(ArithmeticIndexSequence.range(2));
+		Assert.assertArrayEquals(union.doubleValues().toArray(), reversed.doubleValues().toArray(), 0.0);
+	}
+
+	/**
 	 * Returns the set of values a sequence takes over all of its positions.
 	 */
 	private Set<Long> positionValues(IndexSequence seq) {

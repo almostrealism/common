@@ -246,49 +246,65 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	}
 
 	/**
-	 * {@inheritDoc}
+	 * Returns whether {@link #valueAt(long)} leaves the {@code long} range at some step,
+	 * so that its values wrap around and no longer form a progression. The values of a
+	 * cycle are monotonic in exact arithmetic, so they wrap exactly when the value at the
+	 * last step does.
 	 *
-	 * <p>Computed from the parameters: the number of steps a cycle reaches, or one when
-	 * the sequence is constant.</p>
+	 * @return {@code true} if {@code offset + scale * lastStep()} overflows a {@code long}
 	 */
-	@Override
-	public long distinctCount() {
-		if (len == 0) return 0;
-		return isConstant() ? 1 : lastStep() + 1;
+	private boolean wraps() {
+		long steps = lastStep();
+		long product = scale * steps;
+		if (Math.multiplyHigh(scale, steps) != (product >> 63)) return true;
+
+		long sum = offset + product;
+		return ((offset ^ sum) & (product ^ sum)) < 0;
 	}
 
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>Computed from the parameters: the value is contained when it differs from the
-	 * offset by a multiple of the scale whose step is reached by some position.</p>
+	 * <p>Computed from the parameters: the number of steps a cycle reaches, or one when
+	 * the sequence is constant. A progression whose values wrap around the {@code long}
+	 * range can repeat a value, so its values are counted by the general method.</p>
+	 */
+	@Override
+	public long distinctCount() {
+		if (len == 0) return 0;
+		if (isConstant()) return 1;
+		return wraps() ? IndexSequence.super.distinctCount() : lastStep() + 1;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Computed from the parameters: the value is contained when it lies between the
+	 * minimum and the maximum and differs from the offset by a multiple of the scale.
+	 * A progression whose values wrap around the {@code long} range is decided by the
+	 * general method, which compares the values {@link #valueAt(long)} actually takes.</p>
 	 */
 	@Override
 	public boolean contains(long value) {
 		if (len == 0) return false;
 		if (isConstant()) return value == offset;
+		if (wraps()) return IndexSequence.super.contains(value);
+		if (value < min() || value > max()) return false;
 
-		long difference;
-
-		try {
-			difference = Math.subtractExact(value, offset);
-		} catch (ArithmeticException e) {
-			return false;
-		}
-
-		if (difference % scale != 0) return false;
-
-		long step = difference / scale;
-		return step >= 0 && step <= lastStep();
+		// Within the range of a progression that does not wrap, the
+		// difference from the offset cannot overflow
+		long difference = value - offset;
+		return difference % scale == 0;
 	}
 
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>A progression with unit scale takes every integer between its minimum and its
-	 * maximum, so it contains the values of an integer sequence exactly when it contains
-	 * that sequence's minimum and maximum, and no value of the other sequence is
-	 * enumerated. Any other case is decided by the general test.</p>
+	 * <p>A progression with unit scale whose values do not wrap takes every integer
+	 * between its minimum and its maximum, so it contains the values of an integer
+	 * sequence exactly when it contains that sequence's minimum and maximum, and no value
+	 * of the other sequence is enumerated. Any other case is decided by the general
+	 * test.</p>
 	 */
 	@Override
 	public boolean containsAll(IndexSequence other) {
@@ -297,7 +313,7 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 
 		boolean integral = other.getType() == Integer.class || other.getType() == Long.class;
 
-		if (integral && !isConstant() && Math.abs(scale) == 1) {
+		if (integral && !isConstant() && Math.abs(scale) == 1 && !wraps()) {
 			return contains(other.min()) && contains(other.max());
 		}
 
