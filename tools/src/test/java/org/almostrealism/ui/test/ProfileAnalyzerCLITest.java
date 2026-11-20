@@ -538,6 +538,26 @@ public class ProfileAnalyzerCLITest extends OperationProfileTestBase {
 	}
 
 	/**
+	 * The source-summary command resolves a node's source by its name when no source is
+	 * registered under its key: the node named "Inner Add" has its source registered under
+	 * that name, so the summary analyzes that source (a single non-function line) even
+	 * though nothing is registered under the node's key.
+	 */
+	@Test(timeout = 60000)
+	public void sourceSummaryResolvesSourceByNodeName() throws IOException {
+		JsonNode json = run("source-summary", saveSampleProfile(), INNER_KEY);
+
+		Assert.assertEquals("Inner Add", json.get("node_name").asText());
+		Assert.assertEquals(1, json.get("total_lines").asInt());
+		Assert.assertEquals("The matched source carries one argument", 1, json.get("argument_count").asInt());
+		Assert.assertEquals("A non-function source line defines no functions",
+				0, json.get("total_functions").asInt());
+		Assert.assertEquals(0, json.get("for_loops").asInt());
+		Assert.assertEquals(0, json.get("if_statements").asInt());
+		Assert.assertEquals(0, json.get("math_operations").get("total").asInt());
+	}
+
+	/**
 	 * The summary reports the number of compiled operations by consulting the operation
 	 * sources stored on the root of the profile (keyed by node key), which for this
 	 * fixture are the matrix-multiply and copy nodes.
@@ -548,6 +568,37 @@ public class ProfileAnalyzerCLITest extends OperationProfileTestBase {
 
 		Assert.assertEquals("MatMul and Copy have sources registered under their keys",
 				2, json.get("compiled_operations").asInt());
+	}
+
+	/**
+	 * A profile that carries timing data but no operation sources reports zero compiled
+	 * operations in its summary, and every node in its slowest listing reports
+	 * {@code has_source} as false — exercising the no-sources path of the compiled-node
+	 * lookup.
+	 */
+	@Test(timeout = 60000)
+	public void profileWithoutSourcesReportsNoCompiledOperations() throws IOException {
+		OperationProfileNode child = node("k-a", "A");
+		child.setMetric(metric("x run", 1.0));
+		OperationProfileNode root = node(ROOT_KEY, "Root");
+		root.setChildren(new ArrayList<>(List.of(child)));
+
+		File file = Files.createTempFile("profile-analyzer-cli-nosrc", ".xml").toFile();
+		file.deleteOnExit();
+		root.save(file);
+		String path = file.getAbsolutePath();
+
+		JsonNode summary = run("summary", path);
+		Assert.assertEquals(2, summary.get("node_count").asInt());
+		Assert.assertEquals("No operation sources means no compiled operations",
+				0, summary.get("compiled_operations").asInt());
+
+		JsonNode slowest = run("slowest", path);
+		JsonNode entries = slowest.get("slowest");
+		Assert.assertEquals(1, entries.size());
+		Assert.assertEquals("k-a", entries.get(0).get("key").asText());
+		Assert.assertFalse("A profile without sources reports no source for any node",
+				entries.get(0).get("has_source").asBoolean());
 	}
 
 	/**
