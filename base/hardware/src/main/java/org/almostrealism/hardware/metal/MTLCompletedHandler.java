@@ -35,8 +35,14 @@ import org.almostrealism.hardware.jni.NativeCompiler;
  * pointer is the Objective-C object itself (metal-cpp's objects are), and Metal copies the block
  * it is given, so the stack block the operation builds outlives the call.</p>
  *
- * <p>Metal runs the handler on one of its own threads, which the block attaches to the JVM for
- * the call. The block holds a global reference to the handler only until it has run, and does not
+ * <p>Metal runs the handler on one of its own threads, which the block attaches to the JVM the
+ * first time it runs a handler and leaves attached, so that the thread's next handler costs only
+ * the call: Metal runs handlers serially, at the rate buffers finish (hundreds per second in a
+ * streaming render), and attaching and detaching a thread around each one creates and retires a
+ * {@link Thread} per buffer, which is slow enough to fall behind the GPU and delay every wait
+ * for a buffer's completion. The thread is detached when it exits, by the destructor of a
+ * thread-specific key; if the key cannot be set, the thread is detached after the call as
+ * before. The block holds a global reference to the handler only until it has run, and does not
  * use the buffer: Metal keeps a committed buffer until its completed handlers have run,
  * independently of the retain {@link MTL#commandBuffer(long)} took for the caller.</p>
  *
@@ -69,6 +75,7 @@ class MTLCompletedHandler extends BaseNative {
 	@Override
 	public String getFunctionDefinition() {
 		return "#include <dlfcn.h>\n" +
+				"#include <pthread.h>\n" +
 				"#include <stddef.h>\n" +
 				"static void* addCompletedHandlerSelector;\n" +
 				"static void (*sendAddCompletedHandler)(void*, void*, void*);\n" +
@@ -76,6 +83,27 @@ class MTLCompletedHandler extends BaseNative {
 				"\tvoid* (*registerName)(const char*) = (void* (*)(const char*)) dlsym(RTLD_DEFAULT, \"sel_registerName\");\n" +
 				"\tif (registerName != NULL) addCompletedHandlerSelector = registerName(\"addCompletedHandler:\");\n" +
 				"\tsendAddCompletedHandler = (void (*)(void*, void*, void*)) dlsym(RTLD_DEFAULT, \"objc_msgSend\");\n" +
+				"}\n" +
+				"static pthread_key_t completionThreadKey;\n" +
+				"static int completionThreadKeyCreated;\n" +
+				"static pthread_once_t completionThreadKeyOnce = PTHREAD_ONCE_INIT;\n" +
+				"static void detachCompletionThread(void* vm) {\n" +
+				"\t(*(JavaVM*) vm)->DetachCurrentThread((JavaVM*) vm);\n" +
+				"}\n" +
+				"static void createCompletionThreadKey(void) {\n" +
+				"\tcompletionThreadKeyCreated = pthread_key_create(&completionThreadKey, detachCompletionThread) == 0;\n" +
+				"}\n" +
+				"static JNIEnv* attachCompletionThread(JavaVM* vm, int* detachAfter) {\n" +
+				"\tJNIEnv* threadEnv = NULL;\n" +
+				"\t*detachAfter = 0;\n" +
+				"\tjint status = (*vm)->GetEnv(vm, (void**) &threadEnv, JNI_VERSION_1_8);\n" +
+				"\tif (status == JNI_OK) return threadEnv;\n" +
+				"\tif (status != JNI_EDETACHED) return NULL;\n" +
+				"\tJavaVMAttachArgs args = { JNI_VERSION_1_8, (char*) \"Metal completed handler\", NULL };\n" +
+				"\tif ((*vm)->AttachCurrentThreadAsDaemon(vm, (void**) &threadEnv, &args) != JNI_OK) return NULL;\n" +
+				"\tpthread_once(&completionThreadKeyOnce, createCompletionThreadKey);\n" +
+				"\tif (!completionThreadKeyCreated || pthread_setspecific(completionThreadKey, vm) != 0) *detachAfter = 1;\n" +
+				"\treturn threadEnv;\n" +
 				"}\n" +
 				"static jboolean failRegistration(JNIEnv* env, const char* message) {\n" +
 				"\t(*env)->ExceptionClear(env);\n" +
@@ -102,22 +130,16 @@ class MTLCompletedHandler extends BaseNative {
 				"\t\treturn JNI_FALSE;\n" +
 				"\t}\n" +
 				"\tvoid (^completed)(void*) = ^(void* finished) {\n" +
-				"\t\tJNIEnv* threadEnv = NULL;\n" +
-				"\t\tint attached = 0;\n" +
-				"\t\tjint status = (*vm)->GetEnv(vm, (void**) &threadEnv, JNI_VERSION_1_8);\n" +
-				"\t\tif (status == JNI_EDETACHED) {\n" +
-				"\t\t\tif ((*vm)->AttachCurrentThreadAsDaemon(vm, (void**) &threadEnv, NULL) != JNI_OK) return;\n" +
-				"\t\t\tattached = 1;\n" +
-				"\t\t} else if (status != JNI_OK) {\n" +
-				"\t\t\treturn;\n" +
-				"\t\t}\n" +
+				"\t\tint detachAfter = 0;\n" +
+				"\t\tJNIEnv* threadEnv = attachCompletionThread(vm, &detachAfter);\n" +
+				"\t\tif (threadEnv == NULL) return;\n" +
 				"\t\t(*threadEnv)->CallVoidMethod(threadEnv, callback, run);\n" +
 				"\t\tif ((*threadEnv)->ExceptionCheck(threadEnv)) {\n" +
 				"\t\t\t(*threadEnv)->ExceptionDescribe(threadEnv);\n" +
 				"\t\t\t(*threadEnv)->ExceptionClear(threadEnv);\n" +
 				"\t\t}\n" +
 				"\t\t(*threadEnv)->DeleteGlobalRef(threadEnv, callback);\n" +
-				"\t\tif (attached) (*vm)->DetachCurrentThread(vm);\n" +
+				"\t\tif (detachAfter) (*vm)->DetachCurrentThread(vm);\n" +
 				"\t};\n" +
 				"\tsendAddCompletedHandler((void*) buffer, addCompletedHandlerSelector, (void*) completed);\n" +
 				"\treturn JNI_TRUE;\n" +
