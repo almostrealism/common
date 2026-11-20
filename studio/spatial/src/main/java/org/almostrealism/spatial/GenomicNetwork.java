@@ -104,6 +104,18 @@ public class GenomicNetwork extends GenomicTimeseries {
 	}
 
 	/**
+	 * Returns this network's {@link AudioHealthScore#getScore() health score} as a
+	 * value for ranking, or {@link Double#NEGATIVE_INFINITY} when no score has been
+	 * delivered yet, so that an unscored network ranks below every scored one.
+	 *
+	 * @return the delivered score, or {@link Double#NEGATIVE_INFINITY} when none has
+	 *         been delivered
+	 */
+	public double getScoreValue() {
+		return healthScore == null ? Double.NEGATIVE_INFINITY : healthScore.getScore();
+	}
+
+	/**
 	 * Sets the audio health score and triggers wave details loading.
 	 *
 	 * @param healthScore the health score containing the output audio
