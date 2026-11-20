@@ -140,6 +140,48 @@ public class TraversalAxisAlignmentTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A single-element value broadcasts into a shape that has a length-1 axis between its
+	 * longer axes: that axis holds no repetition, so it does not split the broadcast.
+	 */
+	@Test(timeout = 10000)
+	public void scalarBroadcastsAcrossUnitAxis() {
+		ShapeAlignment alignment = new ShapeAlignment(shape(6, 1, 3, 3), shape(1));
+		List<TraversalPolicy> aligned = new ArrayList<>();
+
+		TraversalPolicy result = alignment.align((shape, values) -> {
+			aligned.addAll(values);
+			return shape;
+		});
+
+		assertEquals(54, result.getTotalSizeLong());
+		assertEquals(List.of(54), alignment.expansions);
+		assertEquals(54, aligned.get(1).getTotalSizeLong());
+	}
+
+	/**
+	 * When several values share the largest total size, the one with the most axes is the
+	 * result, so a value that differs from it only by a leading length-1 axis broadcasts into
+	 * it and is not rejected for having fewer axes.
+	 */
+	@Test(timeout = 10000)
+	public void largestShapeWithMostAxesIsTheResult() {
+		ShapeAlignment alignment = new ShapeAlignment(shape(41), shape(1), shape(1, 41), shape(1, 41));
+		List<TraversalPolicy> aligned = new ArrayList<>();
+
+		TraversalPolicy result = alignment.align((shape, values) -> {
+			aligned.addAll(values);
+			return shape;
+		});
+
+		assertEquals(2, result.getDimensions());
+		assertEquals(41, result.getTotalSizeLong());
+		assertEquals(List.of(41), alignment.expansions);
+		for (TraversalPolicy value : aligned) {
+			assertEquals(41, value.getTotalSizeLong());
+		}
+	}
+
+	/**
 	 * A vector aligns with the trailing axis of a square matrix: broadcasting a {@code (2)}
 	 * against a {@code (2, 2)} resolves to the trailing axis (the whole vector repeated for
 	 * every row), not the coincidentally equal leading axis. The vector is repeated once up to

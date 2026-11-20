@@ -190,7 +190,7 @@ public class LoRALinear implements CellularLayer, Learning, Named, LayerFeatures
 
 			// Base dense computation: y = Wx + b
 			CollectionProducer baseResult = baseBias != null
-					? matmul(p(baseWeights), in).add(traverse(1, p(baseBias)))
+					? matmul(p(baseWeights), in).add(cp(baseBias).reshape(outputSize, 1))
 					: matmul(p(baseWeights), in);
 
 			// LoRA computation: (alpha/rank) * x @ A @ B

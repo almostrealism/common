@@ -33,7 +33,8 @@ import java.util.stream.IntStream;
  * already have equal total size this combines them positionally without repeating any of them.</p>
  *
  * <p>Failing that, the values have differing total sizes and are reconciled by trailing-axis
- * broadcasting: the largest shape is the result, and each smaller value must
+ * broadcasting: the largest shape (of those, the one with the most axes) is the result, and
+ * each other value must
  * {@link TraversalPolicy#broadcastsInto broadcast into} it — comparing shapes axis by axis from
  * the trailing end, each length must be equal or 1. A value that broadcasts is
  * {@link #expand repeated} along its length-1 (and missing leading) axes up to the result; a pair
@@ -128,7 +129,8 @@ public abstract class TraversalAxisAlignment<V> {
 		}
 
 		TraversalPolicy target = shapes.stream()
-				.max(Comparator.comparing(TraversalPolicy::getTotalSizeLong))
+				.max(Comparator.comparing(TraversalPolicy::getTotalSizeLong)
+						.thenComparing(TraversalPolicy::getDimensions))
 				.orElseThrow();
 
 		for (TraversalPolicy shape : shapes) {
@@ -158,7 +160,9 @@ public abstract class TraversalAxisAlignment<V> {
 	 * {@code shape} against {@code target} (its length-1 axes, and the leading axes it lacks, where
 	 * {@code target} is longer) must form a single contiguous block, which this construction
 	 * repeats; a shape that broadcasts along non-adjacent axes cannot be reconciled this way and
-	 * must be given an explicit {@code repeat}.
+	 * must be given an explicit {@code repeat}. An axis that is length 1 in {@code target} holds
+	 * no repetition and does not separate the axes on either side of it, so a single-element
+	 * value broadcasts into every shape.
 	 *
 	 * @param shape  the shape being broadcast into {@code target}
 	 * @param target the broadcast result shape
@@ -171,10 +175,11 @@ public abstract class TraversalAxisAlignment<V> {
 		boolean open = false, closed = false;
 
 		for (int i = 0; i < target.getDimensions(); i++) {
-			long length = i < off ? 1 : shape.lengthLong(i - off);
-			boolean broadcast = length == 1 && target.lengthLong(i) > 1;
+			if (target.lengthLong(i) == 1) continue;
 
-			if (broadcast) {
+			long length = i < off ? 1 : shape.lengthLong(i - off);
+
+			if (length == 1) {
 				if (closed) {
 					throw new IllegalArgumentException("Cannot broadcast " + shape + " into " +
 							target + " along non-adjacent axes; add an explicit repeat");
