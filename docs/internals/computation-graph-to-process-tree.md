@@ -311,14 +311,16 @@ Runnable compiled = optimized.get();
 ### Which entry points optimize
 
 `Process` is not the only way a graph reaches `get()`. The convenience methods on
-`Producer` are the common route, and most of them do **not** optimize:
+`Producer` are the common route. `evaluate(args)` optimizes; the lower-level entry
+points (`get()`, `evaluateExplicit(args)`, `into(...)`) do **not**:
 
 | Call | Optimizes? |
 |---|---|
 | `producer.get()` | No |
-| `producer.evaluate(args)` | No — `get().evaluate(args)` |
+| `producer.evaluate(args)` | **Yes** — `Process.optimized(this).get().evaluate(args)` |
+| `producer.evaluateExplicit(args)` | No — `get().evaluate(args)` |
 | `producer.into(destination)` | No — `get().into(destination)` |
-| `producer.evaluateOptimized(args)` | **Yes** — `Process.optimized(this).get().evaluate(args)` |
+| `producer.evaluateOptimized(args)` | **Yes** — deprecated alias of `evaluate(args)` |
 | `Process.optimized(producer).get()` | **Yes** |
 | `operationList.optimize().get()` | **Yes** |
 
