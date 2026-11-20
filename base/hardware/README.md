@@ -161,9 +161,13 @@ the Java class, compiled at runtime by `NativeCompiler` with the toolchain the J
 uses. The shared-memory and direct-buffer helpers of `org.almostrealism.nio` (`mmap`, buffer
 addresses, `malloc`) are compiled this way, and so is `MTLSignaledValue`, which reads the
 value an `MTLSharedEvent` has been signaled to (`MTLEvent.isSignaled`) by sending
-`signaledValue` through the Objective-C runtime that `libMTL.dylib` has loaded. A host
-without that toolchain cannot read Metal event values, so its Metal host waits do not poll
-for command-buffer signals (see [Completion Wait Latency](#8-completion-wait-latency-metal)).
+`signaledValue` through the Objective-C runtime that `libMTL.dylib` has loaded, and
+`MTLCompletedHandler`, which registers a Java `Runnable` as a command buffer's completed
+handler (`MTLCommandBuffer.addCompletedHandler`) by sending `addCompletedHandler:` with a
+clang block the same way. A host without that toolchain cannot read Metal event values, so
+its Metal host waits do not poll for command-buffer signals (see
+[Completion Wait Latency](#8-completion-wait-latency-metal)), and it registers no completed
+handlers, so a finished buffer nobody waits for is drained by the runner's next drain.
 
 `MTL.cpp` is Objective-C++ built against [metal-cpp](https://developer.apple.com/metal/cpp/).
 The amalgamated metal-cpp single header is committed as
