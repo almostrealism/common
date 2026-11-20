@@ -59,8 +59,9 @@ dependency set from Maven Central — about 800 artifacts per job — and a full
 pipeline fans out to ~18 such jobs, so the repeated downloads hit Central's HTTP
 429 rate limit and fail the pipeline. (The macOS fleet never had this: it keeps a
 persistent `$HOME/.m2-ci/<runner>` on the host, so it is warm after the first
-job. GitHub-hosted jobs keep `actions/setup-java`'s `cache: maven`, which is
-GitHub's own cache and appropriate for them.)
+job. GitHub-hosted jobs have no host-mounted cache either; they restore a
+deliberately-built GitHub Actions cache instead — see "Hosted (`ubuntu-latest`)
+jobs" below.)
 
 Three pieces fix it, and **all of them are safe on today's runners** — nothing
 changes until a host is rebuilt/recreated to provide the mount:
@@ -129,7 +130,9 @@ job finished first, and never re-saved it on a hit; the job that won that race
 did not run jacoco, so `org.jacoco:jacoco-maven-plugin` was never in the saved
 cache and every hosted job that runs `mvn test` (so `jacoco:prepare-agent`)
 re-fetched it from Maven Central on every run — 429s and transient "not found"s
-followed. Three pieces replace it, all in `.github/workflows/analysis.yaml`:
+followed. Three pieces replace it — the `maven-cache` job and the hosted jobs'
+restore wiring in `.github/workflows/analysis.yaml`, the shared composite action,
+and `.mvn/maven.config`:
 
 1. **A `maven-cache` job** resolves the full plugin and dependency set every
    hosted job uses — `mvn package -DskipTests` (compiler, error-prone processor
