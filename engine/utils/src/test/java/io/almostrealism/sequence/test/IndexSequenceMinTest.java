@@ -213,4 +213,40 @@ public class IndexSequenceMinTest extends TestSuiteBase {
 		Assert.assertFalse(seq.isConstant());
 		Assert.assertEquals(inexactAsDouble, seq.min());
 	}
+
+	/**
+	 * {@link IndexSequence#max()} must not dispatch on the type of the first element
+	 * either. With an {@link Integer} first and a positive fractional {@link Double}
+	 * later, a {@code longValues()}-based maximum truncates {@code 2.5} to {@code 2},
+	 * which is less than an element that is present.
+	 */
+	@Test(timeout = 10000)
+	public void mixedIntegerAndFractionalElementsAreCeiled() {
+		IndexSequence seq = ArrayIndexSequence.of(new Number[] { 0, 2.5 });
+
+		Assert.assertFalse(seq.isConstant());
+		Assert.assertEquals(3, seq.max());
+	}
+
+	/**
+	 * The constant short-circuit of {@link IndexSequence#max()} must ceil a fractional
+	 * value, and exact numeric types must be ceiled without a {@code double} round-trip
+	 * and saturated outside the {@code long} range.
+	 */
+	@Test(timeout = 10000)
+	public void maximumIsAnExactUpperBound() {
+		IndexSequence constant = ArrayIndexSequence.of(Double.valueOf(2.5), 4);
+		Assert.assertTrue(constant.isConstant());
+		Assert.assertEquals(3, constant.max());
+
+		// 2^53 + 1: the smallest positive long not exactly representable as a double.
+		long inexactAsDouble = 9007199254740993L;
+		BigDecimal justBelow = new BigDecimal(BigInteger.valueOf(inexactAsDouble)).subtract(new BigDecimal("0.5"));
+		Assert.assertEquals(inexactAsDouble, IndexSequence.ceilToLong(justBelow));
+		Assert.assertEquals(inexactAsDouble, IndexSequence.ceilToLong(new AtomicLong(inexactAsDouble)));
+
+		BigInteger aboveRange = BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.ONE);
+		Assert.assertEquals(Long.MAX_VALUE, IndexSequence.ceilToLong(aboveRange));
+		Assert.assertEquals(Long.MAX_VALUE, ArrayIndexSequence.of(aboveRange, 2).max());
+	}
 }
