@@ -1,6 +1,7 @@
 package org.almostrealism.ml.qwen3;
 
 import org.almostrealism.io.Console;
+import org.almostrealism.ml.Tokenizer;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
@@ -180,6 +181,36 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 
 		int[] helloWorldTokens = tokenizer.encode("Hello World!", false, false);
 		log("'Hello World!' encoded to: " + Arrays.toString(helloWorldTokens));
+	}
+
+	/**
+	 * Exercises a {@link Qwen3Tokenizer} purely through the {@link Tokenizer} supertype it now
+	 * inherits from {@link org.almostrealism.ml.tokenization.ByteLevelBPETokenizer}. Holding the
+	 * tokenizer in a {@code Tokenizer}-typed variable and driving it only through the contract's
+	 * members proves the alignment: a byte-level BPE tokenizer is usable anywhere a {@code Tokenizer}
+	 * is expected (for example {@code StableAudio3.setTokenizer(Tokenizer)}), and the default
+	 * {@code int}-array view is consistent with the {@code long}-array one.
+	 */
+	@Test(timeout = 5000)
+	public void testUsableThroughTokenizerSupertype() {
+		Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
+
+		String text = "Hello World!";
+		long[] ids = tokenizer.encodeAsLong(text);
+		assertNotNull(ids);
+		assertTrue("Should encode to at least one token", ids.length > 0);
+
+		String decoded = tokenizer.decodeAsLong(ids);
+		assertNotNull(decoded);
+
+		// The default int-array view must agree with the long-array contract method.
+		int[] intIds = tokenizer.encodeAsInt(text);
+		assertEquals("encodeAsInt should match encodeAsLong length", ids.length, intIds.length);
+		for (int i = 0; i < ids.length; i++) {
+			assertEquals("Token " + i + " should match across int/long views", ids[i], intIds[i]);
+		}
+
+		log("Through Tokenizer supertype, '" + text + "' -> " + ids.length + " tokens");
 	}
 
 	/**

@@ -251,16 +251,6 @@ public class Qwen3Tokenizer extends ByteLevelBPETokenizer implements ConsoleFeat
 	}
 
 	/**
-	 * Encode text to token IDs using byte-level BPE.
-	 *
-	 * @param text Input text to encode
-	 * @return Array of token IDs
-	 */
-	public int[] encode(String text) {
-		return encode(text, true);
-	}
-
-	/**
 	 * Encode text to token IDs with control over special tokens.
 	 *
 	 * @param text Input text
