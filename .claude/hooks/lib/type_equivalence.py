@@ -2,43 +2,68 @@
 """Search for existing Java types that a new type may duplicate.
 
 This is the single implementation of the "does this concept already exist?"
-question asked about every new top-level Java type. Two consumers use it:
+question asked about every new top-level Java type, and the single Java
+declaration parser the new-type checks use. Two consumers use it:
 
-  * ``.claude/hooks/warn-new-type-placement.py`` imports it and BLOCKS the
-    Write/Edit that gives birth to a type with likely equivalents;
+  * ``.claude/hooks/warn-new-type-placement.py`` imports it, BLOCKS the
+    Write/Edit that gives birth to a type that duplicates an existing concept,
+    and WARNS, listing the candidates, about a type that only resembles one;
   * the FlowTree harness (``io.flowtree.jobs.NewTypeAudit``) runs it as a
     command-line program (``scan``) to decide which new types the type audit
     must examine and which ones may not be staged until it has.
 
 Keeping both on one implementation means the hook and the harness can never
-disagree about what a candidate is.
+disagree about what a candidate is. The harness runs the base branch's copy of
+this file on its own, from a temporary location, so the module imports nothing
+from the working tree: a session must not be able to weaken the search by
+editing a file it would load.
 
-How candidates are scored
+How candidates are judged
 -------------------------
 Every main-source type of the repository (a ``.java`` file under some
 ``src/main/java``) is indexed once with: its simple name split into stemmed
-camel-case words, the first sentence of its javadoc, a bag of stemmed words
-from its whole javadoc description, its public method names, the types it
-extends or implements, its package and its module. A new type is scored
-against each indexed type on:
+camel-case words, the words of its javadoc first sentence and of its whole
+javadoc description, its public method signatures (name and arity), the types
+it extends or implements, and the type names its code refers to.
 
-  * shared name words, weighted by rarity (``Index`` is in hundreds of names,
-    ``Arithmetic`` in a handful);
-  * overlap between the new type's javadoc first sentence and the candidate's
-    javadoc;
-  * overlap in public method names and in extended/implemented types;
-  * the same package, or failing that the same module.
+A new type is compared with each indexed type on three signals of the SAME
+CONCEPT:
+
+  * ``doc``: the two javadoc first sentences describe the same thing - each
+    sentence's words, weighted by rarity, are looked for in the other type's
+    javadoc, in both directions;
+  * ``methods``: shared public method signatures;
+  * ``name``: shared name words, weighted by rarity (``Index`` is in hundreds
+    of names, ``Arithmetic`` in a handful).
+
+A candidate BLOCKS only when at least two of those signals are strong and the
+combined concept score reaches ``BLOCK_THRESHOLD``. Shared vocabulary alone, or
+a shared package, never blocks: the package is not scored at all. Two
+relationships are evidence of DIFFERENT roles, and demote a candidate to a
+warning unless the new type is a near-copy of it (``NEAR_COPY``):
+
+  * siblings - both extend or implement the same non-trivial supertype, as
+    two cells of one cell interface do;
+  * collaborators - the candidate refers to the new type, or one of the two
+    extends the other.
+
+A candidate below the block bar but above ``WARN_THRESHOLD`` is reported as a
+warning.
+
+A block lifts when the new type genuinely BUILDS ON a candidate: it extends or
+implements it and overrides or calls its members, or it calls the candidate's
+methods through a field, parameter or local of its type, or constructs it. A
+marker interface or an unused field does not lift anything.
 
 The index is cached in the system temporary directory, keyed by repository
 root, and refreshed incrementally: a file whose modification time and size are
-unchanged is not parsed again. A warm lookup stats the files and scores; it
-does not read them.
+unchanged is not parsed again.
 
 The justification ledger
 ------------------------
 ``.claude/new-type-ledger.json`` (see ``LEDGER_PATH``) is the tracked file in
-which a session records why a new type must exist although candidates were
-found. Its shape::
+which a session records why a new type must exist although it blocks. Its
+shape::
 
     {"types": [
       {"type": "org.example.NewType",
@@ -54,12 +79,20 @@ found. Its shape::
       }
     ]}
 
-An entry lifts the hook's block only when it covers EVERY listed candidate
-with all three reasons and names a test. The ``audit`` member is written by
-the harness's type-audit session, never by the session that wrote the type;
-the harness only trusts it for a type that session actually audited.
+An entry lifts the hook's block only when it covers EVERY blocking candidate
+with all three reasons and names a test that exists in the repository's test
+sources and refers to the new type. The ``audit`` member is written by the
+harness's type-audit session, never by the session that wrote the type; the
+harness only trusts it for a type that session actually audited.
+
+Calibration
+-----------
+``calibrate`` treats every existing type under some directories as if it were
+new and reports how many would block; ``test_new_type_placement.py`` holds that
+rate down while checking that real duplicates still block.
 """
 
+import bisect
 import hashlib
 import json
 import math
@@ -67,6 +100,7 @@ import os
 import re
 import sys
 import tempfile
+
 
 def _own_digest():
     """Digest of this module's source: a change to the parser invalidates
@@ -84,24 +118,36 @@ LEDGER_PATH = os.path.join(".claude", "new-type-ledger.json")
 
 MAIN_SOURCE = "/src/main/java/"
 
+TEST_SOURCES = ("/src/test/", "/src/it/")
+
 SKIP_DIRS = {".git", "target", "node_modules", "build", "out", ".idea",
              "results", "__pycache__", ".claude", ".mvn", "venv", ".venv"}
 
 BLOCK_THRESHOLD = 0.5
 
-MAX_CANDIDATES = 5
+WARN_THRESHOLD = 0.4
 
-# A new type whose code refers to a candidate (as a parameter, return type,
-# local or call) is more often its collaborator than its duplicate - a
-# FileStager that consumes a FileStagingConfig - so such a candidate needs a
-# stronger match to be listed. It still can be: a reference proves use, not
-# that the new type is not a second copy.
-COLLABORATOR_FACTOR = 0.75
+STRONG_NAME = 0.55
+
+STRONG_DOC = 0.5
+
+STRONG_METHODS = 0.6
+
+NEAR_COPY = {"methods": 0.85, "doc": 0.85}
+
+NAMED_DOC = 0.35
+
+MAX_CANDIDATES = 5
 
 REASON_FIELDS = ("cannot_extend", "cannot_change_signature",
                  "interface_would_not_work")
 
 MIN_REASON_CHARS = 20
+
+TRIVIAL_SUPERS = {"Object", "Serializable", "Cloneable", "Comparable",
+                  "AutoCloseable", "Closeable", "Iterable", "Runnable",
+                  "Exception", "RuntimeException", "Enum", "Record",
+                  "ConsoleFeatures", "CodeFeatures", "Destroyable"}
 
 TYPE = re.compile(
     r'(?:(?:public|private|protected|static|final|abstract|sealed'
@@ -119,12 +165,22 @@ METHOD = re.compile(
     r'(?:^|[;{}])\s*((?:@\w+(?:\([^)]*\))?\s+)*'
     r'(?:(?:public|protected|private|static|final|abstract|default'
     r'|synchronized|native|strictfp)\s+)*)'
-    r'(?:<[^>{};]*>\s*)?[\w$.]+(?:<[^{};()]*>)?(?:\[\])*\s+([a-z]\w*)\s*\(')
+    r'(?:<[^>{};]*>\s*)?([\w$.]+(?:<[^{};()]*>)?(?:\[\])*)\s+([a-z]\w*)\s*\(')
 
 FIELD = re.compile(
     r'(?:^|[;{}])\s*(?:@\w+(?:\([^)]*\))?\s+)*'
     r'(?:(?:public|protected|private|static|final|transient|volatile)\s+)*'
     r'([A-Z][\w$.]*)(?:<[^;{}()=]*>)?(?:\[\])*\s+[a-z]\w*\s*[;=]')
+
+TYPED_VAR = re.compile(
+    r'\b([A-Z]\w*)(?:<[^;{}()=]*?>)?(?:\[\])*\s+([a-z]\w*)\s*(?=[;=,):])')
+
+CALL = re.compile(r'(?:\b([A-Za-z_]\w*)\s*\.\s*|(?<![\w.$]))([a-z]\w*)\s*\(')
+
+CONSTRUCT = re.compile(r'\bnew\s+([A-Z]\w*)')
+
+KEYWORDS = {"if", "for", "while", "switch", "return", "new", "catch",
+            "synchronized", "throw", "else", "super", "this", "assert", "try"}
 
 INLINE_TAG = re.compile(r'\{@(?:link|linkplain|code|literal|value)\s+([^}]*)\}')
 
@@ -155,7 +211,8 @@ see note does do how what who where whose about java value
 COMMON_METHODS = {"equals", "hashCode", "toString", "get", "set", "of",
                   "build", "builder", "close", "run", "apply", "accept",
                   "getName", "valueOf", "values", "create", "init", "size",
-                  "isEmpty", "main", "compareTo", "clone", "iterator"}
+                  "isEmpty", "main", "compareTo", "clone", "iterator",
+                  "destroy", "describe", "getDescription"}
 
 
 def stem(word):
@@ -240,8 +297,6 @@ def depth_at(code):
         positions.append(m.start())
         depths.append(depth)
 
-    import bisect
-
     def at(pos):
         i = bisect.bisect_left(positions, pos) - 1
         return depths[i] if i >= 0 else 0
@@ -262,10 +317,15 @@ def parse_types(source, path=""):
     """Parses the top-level types of a Java source into index entries.
 
     Each entry is a dict with ``name``, ``kind``, ``package``, ``fqn``,
-    ``path``, ``module``, ``sentence`` (javadoc first sentence), ``doc``
-    (stemmed javadoc words), ``words`` (stemmed name words), ``methods``,
-    ``supers`` (simple names extended or implemented) and ``fields`` (simple
-    type names of member fields).
+    ``path``, ``module``, ``sentence`` (javadoc first sentence),
+    ``sentence_words`` (its stemmed words), ``doc`` (stemmed javadoc words),
+    ``words`` (stemmed name words), ``methods`` (public method names),
+    ``sigs`` (public ``name/arity`` signatures), ``declared`` (every method
+    name declared), ``supers`` (simple names extended or implemented),
+    ``fields`` (simple type names of member fields), ``refs`` (type names the
+    code refers to), and the use sites ``typed_vars`` (``"Type name"`` for
+    each field, parameter and local), ``calls`` (``"receiver.method"``, with
+    an empty receiver for an unqualified call) and ``constructs``.
     """
     source = source or ""
     code = strip_code(source)
@@ -278,7 +338,7 @@ def parse_types(source, path=""):
         if at(m.start()) != 0:
             continue
         before = code[max(0, m.start() - 1):m.start()]
-        if before and (before.isalnum() or before in "_.$"):
+        if before and (before.isalnum() or before in "_.$@"):
             continue
         kind, name = m.group(1), m.group(2)
         brace = code.find("{", m.end())
@@ -289,8 +349,10 @@ def parse_types(source, path=""):
             supers.extend(split_types(clause.group(1)))
         end = matching_brace(code, brace) if brace >= 0 else len(code)
         body = code[brace + 1:end] if brace >= 0 else ""
-        methods, fields = members(body, kind)
+        methods, sigs, declared, fields, api = members(body, kind)
         description = javadoc_before(source, m.start())
+        sentence = first_sentence(description)
+        text = header + " " + body
         entries.append({
             "name": name,
             "kind": kind,
@@ -298,15 +360,26 @@ def parse_types(source, path=""):
             "fqn": (package + "." + name) if package else name,
             "path": path,
             "module": module,
-            "sentence": first_sentence(description),
-            "doc": sorted(text_words(description))[:80],
+            "sentence": sentence,
+            "sentence_words": sorted(text_words(sentence)),
+            "doc": sorted(text_words(description))[:240],
             "words": sorted(name_words(name)),
             "methods": sorted(methods)[:60],
+            "sigs": sorted(sigs)[:60],
+            "declared": sorted(declared)[:120],
             "supers": sorted(set(supers)),
             "fields": sorted(fields)[:60],
-            "refs": sorted(set(re.findall(r'\b[A-Z]\w*', header + " " + body)) - {name}),
+            "api": sorted(api - {name})[:60],
+            "refs": sorted(set(re.findall(r'\b[A-Z]\w*', text)) - {name}),
+            "typed_vars": sorted({a + " " + b for a, b in TYPED_VAR.findall(text)}),
+            "calls": sorted({(r or "") + "." + c for r, c in CALL.findall(body)
+                             if c not in KEYWORDS}),
+            "constructs": sorted(set(CONSTRUCT.findall(body))),
         })
     return entries
+
+
+USE_SITES = ("typed_vars", "calls", "constructs")
 
 
 def matching_brace(code, open_pos):
@@ -319,28 +392,62 @@ def matching_brace(code, open_pos):
     return len(code)
 
 
+def parameters(body, open_paren):
+    """``(arity, text)`` of the parameter list opening at ``open_paren``."""
+    depth = 0
+    angle = 0
+    commas = 0
+    empty = True
+    limit = min(len(body), open_paren + 2000)
+    for i in range(open_paren, limit):
+        ch = body[i]
+        if ch == "(":
+            depth += 1
+            continue
+        if ch == ")":
+            depth -= 1
+            if depth == 0:
+                return (0 if empty else commas + 1), body[open_paren + 1:i]
+            continue
+        if ch == "<":
+            angle += 1
+        elif ch == ">":
+            angle -= 1
+        elif ch == "," and depth == 1 and angle <= 0:
+            commas += 1
+        if not ch.isspace():
+            empty = False
+    return commas + 1, body[open_paren + 1:limit]
+
+
 def members(body, kind):
-    """(public method names, member field type names) declared directly in a
-    type body. Interface methods count as public unless marked private."""
+    """The members declared directly in a type body: ``(public method names,
+    public "name/arity" signatures, every declared method name, member field
+    type names, type names in public method signatures)``. Interface methods
+    count as public unless marked private."""
     at = depth_at(body)
     methods = set()
+    sigs = set()
+    declared = set()
+    api = set()
     for m in METHOD.finditer(body):
-        if at(m.start(2)) != 0:
+        if at(m.start(3)) != 0:
             continue
-        modifiers = m.group(1) or ""
-        name = m.group(2)
-        if name in ("if", "for", "while", "switch", "return", "new", "catch",
-                    "synchronized", "throw", "else", "super", "this"):
+        modifiers = (m.group(1) or "").split()
+        name = m.group(3)
+        if name in KEYWORDS:
             continue
-        public = "public" in modifiers.split() or (
-            kind == "interface" and "private" not in modifiers.split())
-        if public:
+        declared.add(name)
+        if "public" in modifiers or (kind == "interface" and "private" not in modifiers):
+            count, params = parameters(body, m.end() - 1)
             methods.add(name)
+            sigs.add(name + "/" + str(count))
+            api.update(re.findall(r'\b[A-Z]\w*', m.group(2) + " " + params))
     fields = set()
     for m in FIELD.finditer(body):
         if at(m.start(1)) == 0 and m.group(1) not in ("return", "throw", "new"):
             fields.add(m.group(1).split(".")[-1])
-    return methods, fields
+    return methods, sigs, declared, fields, api
 
 
 def javadoc_before(source, pos):
@@ -374,6 +481,13 @@ def is_main_source(path):
     return MAIN_SOURCE in "/" + path.replace(os.sep, "/").lstrip("/")
 
 
+def is_test_source(path):
+    """True for a path inside a test tree, whose types are never checked for
+    equivalents: a FooTest beside Foo is the point, not a duplicate."""
+    normalized = "/" + path.replace(os.sep, "/").lstrip("/")
+    return any(t in normalized for t in TEST_SOURCES)
+
+
 def find_root(path):
     """Repository root for ``path``: ``AR_TYPE_INDEX_ROOT`` when set, else the
     nearest ancestor holding a ``.git`` entry, else ``CLAUDE_PROJECT_DIR``,
@@ -402,8 +516,9 @@ def cache_path(root):
     return os.path.join(tempfile.gettempdir(), "ar-type-index-" + user + "-" + key + ".json")
 
 
-def main_sources(root):
-    """Yields (relative path, stat) for every main-source Java file."""
+def java_sources(root, accept):
+    """Yields (relative path, stat) for every Java file whose relative path
+    ``accept`` admits."""
     stack = [root]
     while stack:
         d = stack.pop()
@@ -415,14 +530,52 @@ def main_sources(root):
             if e.is_dir(follow_symlinks=False):
                 if e.name not in SKIP_DIRS and not e.name.startswith("."):
                     stack.append(e.path)
-            elif e.name.endswith(".java"):
+            elif e.name.endswith(".java") and e.name not in ("package-info.java",
+                                                              "module-info.java"):
                 rel = os.path.relpath(e.path, root)
-                if is_main_source(rel) and e.name != "package-info.java" \
-                        and e.name != "module-info.java":
+                if accept(rel):
                     try:
                         yield rel, e.stat()
                     except OSError:
                         continue
+
+
+def weighted(words, df, count):
+    """Summed rarity of ``words`` given document frequencies ``df``: rare
+    words count for more."""
+    return sum(math.log((count + 1.0) / (1.0 + df.get(w, 0))) + 0.1 for w in words)
+
+
+EQUIVALENT_HEADS = [{stem(w) for w in group} for group in (
+    ("set", "sequence", "list", "collection", "array", "series", "progression",
+     "range", "vector", "values", "run"),
+    ("map", "table", "dictionary", "lookup", "registry"),
+)]
+
+
+def name_shape(name):
+    """``(head, qualifiers)`` of a type name: its last stemmed camel-case word
+    and the set of the others. ``ArithmeticIndexSet`` gives ``("set",
+    {"arithmetic", "index"})``."""
+    parts = [stem(w) for w in CAMEL.findall(name) if len(w) > 1]
+    if not parts:
+        return "", set()
+    return parts[-1], set(parts[:-1])
+
+
+def same_concept_name(a, b):
+    """Whether two name shapes say the same concept: equal non-empty
+    qualifiers (or one's contained in the other's) on heads that are equal or
+    equivalent (``EQUIVALENT_HEADS``) - and the names are not identical in
+    their qualifiers' absence."""
+    (head_a, quals_a), (head_b, quals_b) = a, b
+    if not quals_a or not quals_b:
+        return False
+    if not (quals_a <= quals_b or quals_b <= quals_a):
+        return False
+    if head_a == head_b:
+        return quals_a == quals_b
+    return any(head_a in g and head_b in g for g in EQUIVALENT_HEADS)
 
 
 class TypeIndex:
@@ -434,18 +587,17 @@ class TypeIndex:
         self.df_words = df_words
         self.df_doc = df_doc
         self.count = max(1, len(types))
+        self._postings = None
+        self._by_name = None
+        self._own = {}
 
     @classmethod
-    def load(cls, root, keep_refs=False):
-        """Loads the cached index for ``root``, refreshing what is stale.
-
-        ``keep_refs`` keeps the names each type refers to, which only the
-        whole-repository ``survey`` needs (a new type's own references are
-        read from its source); that index is cached separately.
-        """
+    def load(cls, root):
+        """Loads the cached index for ``root``, refreshing what is stale."""
         root = os.path.abspath(root)
-        path = cache_path(root) + (".refs" if keep_refs else "")
+        path = cache_path(root)
         cached = {}
+        data = {}
         try:
             with open(path) as f:
                 data = json.load(f)
@@ -455,7 +607,7 @@ class TypeIndex:
             cached = {}
         files = {}
         changed = False
-        for rel, st in main_sources(root):
+        for rel, st in java_sources(root, is_main_source):
             entry = cached.get(rel)
             if entry and entry.get("mtime") == st.st_mtime and entry.get("size") == st.st_size:
                 files[rel] = entry
@@ -466,16 +618,15 @@ class TypeIndex:
             except OSError:
                 continue
             parsed = parse_types(text, rel)
-            if not keep_refs:
-                for t in parsed:
-                    t.pop("refs", None)
+            for t in parsed:
+                for key in USE_SITES:
+                    t.pop(key, None)
             files[rel] = {"mtime": st.st_mtime, "size": st.st_size, "types": parsed}
             changed = True
         if set(files) != set(cached):
             changed = True
-        df = None if changed else (data.get("df_words"), data.get("df_doc"))
         types = [t for entry in files.values() for t in entry["types"]]
-        if df is None or df[0] is None:
+        if changed or data.get("df_words") is None:
             df_words, df_doc = {}, {}
             for t in types:
                 for w in t["words"]:
@@ -483,7 +634,7 @@ class TypeIndex:
                 for w in t["doc"]:
                     df_doc[w] = df_doc.get(w, 0) + 1
         else:
-            df_words, df_doc = df
+            df_words, df_doc = data["df_words"], data["df_doc"]
         if changed:
             try:
                 tmp = path + "." + str(os.getpid())
@@ -495,127 +646,211 @@ class TypeIndex:
                 pass
         return cls(root, types, df_words, df_doc)
 
-    def idf(self, word, df):
-        """Rarity weight of a word: rare words count for more."""
-        return math.log((self.count + 1.0) / (1.0 + df.get(word, 0))) + 0.1
-
     def name_weight(self, words):
         """Summed rarity of a set of name words."""
-        return sum(self.idf(w, self.df_words) for w in words)
+        return weighted(words, self.df_words, self.count)
 
     def doc_weight(self, words):
         """Summed rarity of a set of javadoc words."""
-        return sum(self.idf(w, self.df_doc) for w in words)
+        return weighted(words, self.df_doc, self.count)
 
     def query(self, new):
         """The parts of ``new`` every comparison needs, computed once."""
         words = set(new["words"])
-        sentence = text_words(new["sentence"]) | words
+        sentence = set(new["sentence_words"])
         return {"new": new, "words": words, "name_weight": self.name_weight(words),
+                "shape": name_shape(new["name"]),
                 "sentence": sentence, "sentence_weight": self.doc_weight(sentence),
-                "methods": set(new["methods"]) - COMMON_METHODS,
-                "supers": set(new["supers"]), "refs": set(new.get("refs", ())),
-                "builds_on": set(new["supers"]) | set(new["fields"])}
+                "doc": set(new["doc"]) | words,
+                "sigs": self.own_sigs(new),
+                "supers": set(new["supers"]) - TRIVIAL_SUPERS}
+
+    def by_name(self, name):
+        """The indexed types with simple name ``name``."""
+        if self._by_name is None:
+            self._by_name = {}
+            for t in self.types:
+                self._by_name.setdefault(t["name"], []).append(t)
+        return self._by_name.get(name, ())
+
+    def contract(self, t, depth=0):
+        """The public signatures ``t`` inherits from the indexed types it
+        extends or implements, transitively."""
+        out = set()
+        if depth > 6:
+            return out
+        for s in t.get("supers", ()):
+            for parent in self.by_name(s):
+                out.update(parent.get("sigs", ()))
+                out.update(self.contract(parent, depth + 1))
+        return out
+
+    def own_sigs(self, t):
+        """The public signatures ``t`` declares beyond the contract it inherits
+        and beyond the ubiquitous ones (``COMMON_METHODS``): implementing an
+        interface's methods says nothing about which concept a type is."""
+        key = t["fqn"] + "@" + t["path"]
+        cached = self._own.get(key)
+        if cached is None:
+            inherited = self.contract(t)
+            cached = {s for s in t.get("sigs", ())
+                      if s not in inherited and s.split("/")[0] not in COMMON_METHODS}
+            self._own[key] = cached
+        return cached
 
     def components(self, q, candidate):
-        """The separate similarity signals between a query and a candidate:
-        ``(name, doc, methods, supers, locality)``, each in [0, 1]."""
-        new = q["new"]
+        """The separate signals of the same concept between a query and a
+        candidate: ``(name, doc, methods)``, each in [0, 1]."""
         cw = set(candidate["words"])
         shared = q["words"] & cw
         name = 0.0
         if shared:
             name = 2 * self.name_weight(shared) / (q["name_weight"] + self.name_weight(cw))
-        doc_shared = q["sentence"] & (set(candidate["doc"]) | cw)
-        doc = self.doc_weight(doc_shared) / q["sentence_weight"] if doc_shared else 0.0
-        cm = set(candidate["methods"]) - COMMON_METHODS
-        nm = q["methods"]
-        methods = len(nm & cm) / len(nm | cm) if nm and cm else 0.0
-        cs = set(candidate["supers"])
-        ns = q["supers"]
-        supers = len(ns & cs) / len(ns | cs) if ns and cs else 0.0
-        if new["package"] and new["package"] == candidate["package"]:
-            locality = 1.0
-        elif new["module"] and new["module"] == candidate["module"]:
-            locality = 0.5
-        else:
-            locality = 0.0
-        return name, doc, methods, supers, locality
+        forward = 0.0
+        if q["sentence"]:
+            hit = q["sentence"] & (set(candidate["doc"]) | cw)
+            forward = self.doc_weight(hit) / q["sentence_weight"]
+        cs = set(candidate.get("sentence_words", ()))
+        backward = 0.0
+        if cs:
+            backward = self.doc_weight(cs & q["doc"]) / self.doc_weight(cs)
+        doc = (forward + backward) / 2.0
+        csigs = self.own_sigs(candidate)
+        common = len(q["sigs"] & csigs)
+        methods = 0.0
+        if common:
+            methods = common / math.sqrt(len(q["sigs"]) * len(csigs))
+            if common < 2:
+                methods *= 0.5
+        return name, doc, methods
 
     @staticmethod
-    def combine(name, doc, methods, supers, locality):
-        """One score from the separate signals.
+    def concept(name, doc, methods):
+        """One score of how likely two types are the same concept."""
+        return 0.30 * name + 0.45 * doc + 0.25 * methods
 
-        Name and javadoc carry the score; methods and supertypes add to it;
-        locality amplifies a match that already exists but never makes one
-        (two unrelated types in one package are not equivalent).
+    @staticmethod
+    def near_copy(q, candidate, doc):
+        """Whether ``new`` is a copy of the candidate: nearly the same public
+        signatures, inherited ones included, described in nearly the same
+        words."""
+        mine = {s for s in q["new"].get("sigs", ()) if s.split("/")[0] not in COMMON_METHODS}
+        theirs = {s for s in candidate.get("sigs", ()) if s.split("/")[0] not in COMMON_METHODS}
+        shared = len(mine & theirs)
+        return shared >= 3 and shared / float(len(mine | theirs)) >= NEAR_COPY["methods"] \
+            and doc >= NEAR_COPY["doc"]
+
+    def relation(self, q, candidate, trusted):
+        """The relationship that marks a candidate as playing a different role
+        from the new type, or ``""``:
+
+          * ``sibling``: both extend or implement one non-trivial supertype;
+          * ``role variant``: one name is the other's plus more words
+            (``Grain`` and ``GrainParameters``, ``Receptor`` and
+            ``CollectionReceptor``) - a part, a context, a specialization;
+          * ``collaborator``: the new type's public methods take or return the
+            candidate, or the candidate refers to the new type;
+          * ``subtype of the new type``: the candidate extends it.
+
+        ``trusted`` is false for a candidate the same change modified: a
+        reference it gained may be there only to defeat this check.
         """
-        if name < 0.2 and doc < 0.35 and methods < 0.3:
-            return 0.0
-        base = 0.50 * name + 0.35 * doc + 0.10 * methods + 0.05 * supers
-        return min(1.0, base * (1.0 + 0.3 * locality))
+        new = q["new"]
+        if q["supers"] & (set(candidate["supers"]) - TRIVIAL_SUPERS):
+            return "sibling"
+        cw = set(candidate["words"])
+        # TODO(review): "role variant"/"collaborator" are gameable lifts - FastArithmeticIndexSequence (same methods) or a dummy method returning the candidate escapes the block.
+        if q["words"] != cw and (q["words"] < cw or cw < q["words"]):
+            return "role variant"
+        if candidate["name"] in new.get("api", ()):
+            return "collaborator"
+        if trusted and new["name"] in candidate["supers"]:
+            return "subtype of the new type"
+        if trusted and new["name"] in candidate.get("refs", ()):
+            return "collaborator"
+        return ""
 
-    def score(self, new, candidate):
-        """Similarity of ``new`` to ``candidate`` in [0, 1], with the evidence."""
-        q = self.query(new)
-        return self.scored(q, candidate)
+    def scored(self, q, candidate, trusted=True):
+        """The verdict on one candidate: ``None`` when it is not worth
+        reporting, else a dict with ``score``, ``blocks`` and ``evidence``.
 
-    def scored(self, q, candidate):
-        """Score and evidence of a candidate against a prepared query."""
-        name, doc, methods, supers, locality = self.components(q, candidate)
-        total = self.combine(name, doc, methods, supers, locality)
-        if total <= 0.0:
-            return 0.0, {}
-        collaborator = candidate["name"] in q["refs"] - q["builds_on"]
-        if collaborator:
-            total *= COLLABORATOR_FACTOR
+        A candidate blocks when the new type is a near-copy of it, or, absent
+        a relation (see ``relation``), when
+
+          * the own public signatures agree and the name or the javadoc agrees
+            too (``behaviour``), or
+          * the names say the same concept in another shape - the same
+            qualifiers on an equivalent head, ``ArithmeticIndexSet`` beside
+            ``ArithmeticIndexSequence`` - and the javadoc agrees (``naming``).
+
+        A shared vocabulary - names and javadoc built from the same domain
+        words, with no shared behaviour - is reported but does not block.
+        """
+        name, doc, methods = self.components(q, candidate)
+        total = self.concept(name, doc, methods)
+        naming = same_concept_name(q["shape"], name_shape(candidate["name"])) \
+            and doc >= NAMED_DOC
+        if total < WARN_THRESHOLD and not naming:
+            return None
+        relation = self.relation(q, candidate, trusted)
+        copy = self.near_copy(q, candidate, doc)
+        behaviour = methods >= STRONG_METHODS and (name >= STRONG_NAME or doc >= STRONG_DOC) \
+            and total >= BLOCK_THRESHOLD
+        blocks = copy or (not relation and (behaviour or naming))
         cw = set(candidate["words"])
         evidence = {
-            "collaborator": collaborator,
+            "signals": {"name": round(name, 3), "doc": round(doc, 3),
+                        "methods": round(methods, 3)},
+            "relation": relation,
+            "near_copy": copy,
+            "same_concept_name": naming,
             "shared_name_words": sorted(q["words"] & cw),
-            "shared_doc_words": sorted((q["sentence"] & set(candidate["doc"])) - q["words"])[:8],
-            "shared_methods": sorted(q["methods"] & set(candidate["methods"]))[:8],
-            "shared_supertypes": sorted(q["supers"] & set(candidate["supers"])),
-            "locality": "same package" if locality == 1.0
-            else "same module" if locality else "",
+            "shared_doc_words": sorted(q["sentence"] & set(candidate["doc"]))[:8],
+            "shared_methods": sorted(q["sigs"] & self.own_sigs(candidate))[:8],
         }
-        return round(total, 3), evidence
+        return {"score": round(max(total, BLOCK_THRESHOLD if blocks else 0.0), 3),
+                "blocks": blocks, "evidence": evidence}
 
     def postings(self):
-        """Inverted indexes from name word, and from javadoc word, to the
+        """Inverted indexes from name word, javadoc word and signature to the
         positions of the types using it."""
-        if getattr(self, "_postings", None) is None:
-            names, docs = {}, {}
+        if self._postings is None:
+            names, docs, sigs = {}, {}, {}
             for i, t in enumerate(self.types):
                 for w in t["words"]:
                     names.setdefault(w, []).append(i)
                 for w in set(t["doc"]) | set(t["words"]):
                     docs.setdefault(w, []).append(i)
-            self._postings = (names, docs)
+                for s in t.get("sigs", ()):
+                    sigs.setdefault(s, []).append(i)
+            self._postings = (names, docs, sigs)
         return self._postings
 
     def pool(self, q):
-        """Positions of the types that can reach the threshold at all: those
-        sharing a name word, or at least two javadoc words, with the query."""
-        names, docs = self.postings()
+        """Positions of the types that can reach the warning threshold: those
+        sharing a name word, two javadoc words or two signatures."""
+        names, docs, sigs = self.postings()
         pool = set()
         for w in q["words"]:
             pool.update(names.get(w, ()))
-        counts = {}
-        for w in q["sentence"]:
-            for i in docs.get(w, ()):
-                counts[i] = counts.get(i, 0) + 1
-        pool.update(i for i, n in counts.items() if n >= 2)
+        for postings, keys in ((docs, q["sentence"]), (sigs, q["sigs"])):
+            counts = {}
+            for k in keys:
+                for i in postings.get(k, ()):
+                    counts[i] = counts.get(i, 0) + 1
+            pool.update(i for i, n in counts.items() if n >= 2)
         return pool
 
-    def candidates(self, new, exclude=()):
-        """The indexed types ``new`` likely duplicates, best first.
+    def candidates(self, new, exclude=(), untrusted=()):
+        """The indexed types ``new`` may duplicate, blocking ones first.
 
         ``new`` itself is never a candidate, nor is any type whose
         fully-qualified name is in ``exclude`` (the other types the same change
-        adds, which are not existing abstractions). Other types declared in the
-        same file as ``new`` remain candidates: Java allows several top-level
-        types per file, and an equivalent beside the new type is still one.
+        adds, which are not existing abstractions). ``untrusted`` names the
+        paths the same change modified (see ``relation``). Other types declared
+        in the same file as ``new`` remain candidates: Java allows several
+        top-level types per file, and an equivalent beside the new type is
+        still one.
         """
         q = self.query(new)
         found = []
@@ -623,26 +858,55 @@ class TypeIndex:
             t = self.types[i]
             if t["fqn"] == new["fqn"] or t["fqn"] in exclude:
                 continue
-            s, evidence = self.scored(q, t)
-            if s >= BLOCK_THRESHOLD:
+            verdict = self.scored(q, t, trusted=t["path"] not in untrusted)
+            if verdict is not None:
                 found.append({"name": t["name"], "fqn": t["fqn"], "path": t["path"],
-                              "sentence": t["sentence"], "score": s,
-                              "evidence": evidence})
-        found.sort(key=lambda c: -c["score"])
+                              "sentence": t["sentence"], "methods": t["methods"],
+                              **verdict})
+        found.sort(key=lambda c: (not c["blocks"], -c["score"]))
         return found[:MAX_CANDIDATES]
 
 
+def uses(new, candidate):
+    """Whether ``new``'s code actually uses ``candidate``: it constructs it,
+    calls one of its static methods, or calls a method on a field, parameter
+    or local declared with its type."""
+    cname = candidate["name"]
+    if cname in new.get("constructs", ()):
+        return True
+    names = {v.split(" ", 1)[1] for v in new.get("typed_vars", ())
+             if v.split(" ", 1)[0] == cname}
+    for call in new.get("calls", ()):
+        receiver, method = call.split(".", 1)
+        if receiver == cname or (receiver in names and method not in COMMON_METHODS):
+            return True
+    return False
+
+
+def builds_on(new, candidate):
+    """How ``new`` genuinely builds on ``candidate``, or ``None``: it extends
+    or implements it AND overrides or calls one of its methods, or it uses
+    it (see ``uses``). Naming a supertype it never uses, or holding a field it
+    never calls, is not building on it."""
+    cm = set(candidate.get("methods", ())) - COMMON_METHODS
+    if candidate["name"] in new["supers"]:
+        called = {c.split(".", 1)[1] for c in new.get("calls", ())
+                  if c.split(".", 1)[0] in ("", "super", "this")}
+        if cm & (set(new.get("declared", ())) | called):
+            return "extends or implements"
+    if uses(new, candidate):
+        return "delegates to"
+    return None
+
+
 def structural_lift(new, candidates):
-    """The candidate ``new`` builds on, and how: it extends or implements the
-    candidate, or holds a member field of the candidate's type (delegation).
-    Returns ``(relation, candidate name)`` or ``None``."""
-    supers = set(new["supers"])
-    fields = set(new["fields"])
+    """The first blocking candidate ``new`` builds on, and how, as
+    ``(relation, candidate name)``; ``None`` when it builds on none."""
     for c in candidates:
-        if c["name"] in supers:
-            return ("extends or implements", c["name"])
-        if c["name"] in fields:
-            return ("delegates to", c["name"])
+        if c.get("blocks"):
+            how = builds_on(new, c)
+            if how:
+                return (how, c["name"])
     return None
 
 
@@ -667,17 +931,50 @@ def ledger_entry(entries, new):
     return None
 
 
-def justification_gaps(entry, candidates):
-    """What a ledger entry fails to justify; empty when it lifts the block."""
+def test_gap(root, test, new):
+    """Why the test a ledger entry names does not demonstrate anything about
+    ``new``, or ``None`` when it exists and refers to it.
+
+    ``test`` is ``Class#method`` or ``Class``; the class must be a test source
+    of the repository, the method (when named) must be declared in it, and the
+    file must refer to ``new`` by its simple name.
+    """
+    if not isinstance(test, str) or not test.strip():
+        return "no test named that demonstrates the distinction (\"test\")"
+    cls, _, method = test.strip().partition("#")
+    simple = cls.split(".")[-1]
+    if not re.match(r'^[A-Za-z_]\w*$', simple):
+        return "the named test \"" + test + "\" is not Class#method"
+    for rel, _ in java_sources(root, is_test_source):
+        if os.path.basename(rel) != simple + ".java":
+            continue
+        try:
+            with open(os.path.join(root, rel), errors="replace") as f:
+                code = strip_code(f.read())
+        except OSError:
+            continue
+        if method and not re.search(r'\b' + re.escape(method) + r'\s*\(', code):
+            return "the named test class " + rel + " declares no method " + method
+        if not re.search(r'(?<![\w$])' + re.escape(new["name"]) + r'(?![\w$])', code):
+            return "the named test " + rel + " never refers to " + new["name"]
+        return None
+    return "the named test class " + simple + " does not exist in the test sources"
+
+
+def justification_gaps(root, entry, new, candidates):
+    """What a ledger entry fails to justify about the blocking candidates;
+    empty when it lifts the block."""
     if entry is None:
         return ["no ledger entry for this type in " + LEDGER_PATH]
     gaps = []
-    test = entry.get("test")
-    if not isinstance(test, str) or not test.strip():
-        gaps.append("no test named that demonstrates the distinction (\"test\")")
+    gap = test_gap(root, entry.get("test"), new)
+    if gap:
+        gaps.append(gap)
     justified = entry.get("candidates")
     justified = justified if isinstance(justified, dict) else {}
     for c in candidates:
+        if not c.get("blocks"):
+            continue
         reasons = justified.get(c["fqn"]) or justified.get(c["name"])
         if not isinstance(reasons, dict):
             gaps.append("candidate " + c["fqn"] + " is not justified")
@@ -697,27 +994,33 @@ def profile(source, path, name):
     return None
 
 
-def assess(index, source, path, name, ledger, exclude=()):
-    """Everything known about a new type: its candidates, whether a candidate
-    is built upon structurally, the ledger entry and its gaps. ``exclude``
-    names the other types the same change adds; they are not candidates."""
+def assess(index, source, path, name, ledger, exclude=(), untrusted=()):
+    """Everything known about a new type: its candidates (each marked as
+    blocking or only resembling), whether it builds on a blocking candidate,
+    the ledger entry and its gaps, and whether it ``blocks``. ``exclude``
+    names the other types the same change adds; ``untrusted`` the paths it
+    modified."""
     rel = os.path.relpath(os.path.abspath(path), index.root) \
         if os.path.isabs(path) else path
     new = profile(source, rel, name)
     if new is None:
         return None
-    candidates = index.candidates(new, exclude=exclude)
+    candidates = index.candidates(new, exclude=exclude, untrusted=untrusted)
+    blocking = [c for c in candidates if c["blocks"]]
     entry = ledger_entry(ledger, new)
-    lift = structural_lift(new, candidates) if candidates else None
-    gaps = justification_gaps(entry, candidates) if candidates else []
+    lift = structural_lift(new, blocking) if blocking else None
+    gaps = justification_gaps(index.root, entry, new, blocking) if blocking else []
     audit = entry.get("audit") if entry else None
+    for c in candidates:
+        c.pop("methods", None)
     return {
         "name": new["name"],
         "fqn": new["fqn"],
         "path": rel,
         "candidates": candidates,
         "lift": ("%s %s" % lift) if lift else None,
-        "justified": bool(candidates) and not gaps,
+        "justified": bool(blocking) and not gaps,
+        "blocks": bool(blocking) and lift is None and bool(gaps),
         "gaps": gaps,
         "ledger": entry,
         "audit_verdict": audit.get("verdict") if isinstance(audit, dict) else None,
@@ -747,64 +1050,89 @@ def scan(root, files):
     change (for the harness, its HEAD version). Without a copy the file is
     treated as new, so every type it declares is assessed.
 
-    Returns ``(assessed, added)``: the assessments of the added types that
-    resemble existing ones, and the fully-qualified names of every added type.
-    The added types are excluded from one another's candidates, since the
-    index is built from the working tree and they are not existing types.
+    Only main-source files are assessed; every file, test sources included,
+    is listed with the types it declares, so that the harness can withhold
+    every type of a file it refuses.
+
+    Returns ``(assessed, added, declared)``: the assessments of the added
+    types that resemble existing ones, the fully-qualified names of every
+    added type, and, for every file given, the fully-qualified names of every
+    top-level type it declares. The added types are excluded from one
+    another's candidates, since the index is built from the working tree and
+    they are not existing types; and every examined file is untrusted as a
+    collaborator, since the change modified it.
     """
     index = TypeIndex.load(root)
     ledger = read_ledger(root)
     additions = []
+    declared = {}
     for spec in files:
         rel, _, before_copy = spec.partition("::")
+        after = read_text(os.path.join(root, rel))
+        declared[rel] = [t["fqn"] for t in parse_types(after, rel)]
         if not is_main_source(rel):
             continue
-        after = read_text(os.path.join(root, rel))
         before = read_text(before_copy) if before_copy else ""
         additions.append((rel, after, added_types(before, after, rel)))
     added = [t["fqn"] for _, _, types in additions for t in types]
     exclude = set(added)
+    untrusted = {rel for rel in declared if is_main_source(rel)}
     out = []
     for rel, after, types in additions:
         for t in types:
-            result = assess(index, after, rel, t["name"], ledger, exclude=exclude)
+            result = assess(index, after, rel, t["name"], ledger,
+                            exclude=exclude, untrusted=untrusted)
             if result is not None and result["candidates"]:
                 out.append(result)
-    return out, added
+    return out, added, declared
 
 
-def survey(root):
-    """How many existing types would block if each were added today: every
-    indexed type is scored against all the others."""
-    index = TypeIndex.load(root, keep_refs=True)
+def calibrate(root, prefixes=()):
+    """How existing types fare when each is treated as if it were new.
+
+    Every indexed type whose path starts with one of ``prefixes`` (every type
+    when none is given) is assessed against all the others, from its own
+    source, with an empty ledger. Returns the number of types, how many would
+    only warn, how many would block, and the blocking ones with their top
+    candidate.
+    """
+    index = TypeIndex.load(root)
+    sample = [t for t in index.types
+              if not prefixes or t["path"].startswith(tuple(prefixes))]
+    sources = {}
+    warned = 0
     blocking = []
-    for t in index.types:
-        found = index.candidates(t)
-        if found and structural_lift(t, found) is None:
-            blocking.append({"fqn": t["fqn"], "top": found[0]["fqn"],
-                             "score": found[0]["score"]})
-    histogram = {}
-    for b in blocking:
-        bucket = "%.1f" % (int(b["score"] * 10) / 10.0)
-        histogram[bucket] = histogram.get(bucket, 0) + 1
-    ranked = sorted(blocking, key=lambda b: -b["score"])
-    return {"types": len(index.types), "blocking": len(blocking),
-            "top_score_histogram": dict(sorted(histogram.items())),
-            "strongest": ranked[:20], "weakest": ranked[-20:]}
+    for t in sample:
+        if t["path"] not in sources:
+            sources[t["path"]] = read_text(os.path.join(index.root, t["path"]))
+        result = assess(index, sources[t["path"]], t["path"], t["name"], [])
+        if result is None or not result["candidates"]:
+            continue
+        if result["blocks"]:
+            top = result["candidates"][0]
+            blocking.append({"fqn": t["fqn"], "top": top["fqn"], "score": top["score"],
+                             "evidence": top["evidence"]})
+        else:
+            warned += 1
+    blocking.sort(key=lambda b: -b["score"])
+    return {"types": len(sample), "warned": warned, "blocked": len(blocking),
+            "block_rate": round(len(blocking) / float(max(1, len(sample))), 4),
+            "blocking": blocking}
 
 
 def main(argv):
-    """``scan --root DIR FILE[::BEFORE]...`` or ``survey --root DIR``; prints JSON."""
+    """``scan --root DIR FILE[::BEFORE]...`` or ``calibrate --root DIR
+    [PREFIX...]``; prints JSON."""
     if len(argv) < 3 or argv[1] != "--root":
-        print("usage: type_equivalence.py (scan|survey) --root DIR [FILE[::BEFORE]...]", file=sys.stderr)
+        print("usage: type_equivalence.py (scan|calibrate) --root DIR [ARG...]", file=sys.stderr)
         return 2
-    command, root, files = argv[0], os.path.abspath(argv[2]), argv[3:]
+    command, root, rest = argv[0], os.path.abspath(argv[2]), argv[3:]
     if command == "scan":
-        assessed, added = scan(root, files)
-        print(json.dumps({"types": assessed, "added": added}))
+        assessed, added, declared = scan(root, rest)
+        print(json.dumps({"types": assessed, "added": added, "declared": declared}))
         return 0
-    if command == "survey":
-        print(json.dumps(survey(root), indent=1))
+    if command == "calibrate":
+        print(json.dumps(calibrate(root, rest), indent=1))
         return 0
     print("unknown command: " + command, file=sys.stderr)
     return 2

@@ -113,12 +113,17 @@ public class NewTypeAuditTest extends TestSuiteBase {
         git("update-ref", "refs/remotes/origin/master", "HEAD");
     }
 
-    /** Deletes the temporary repository. */
+    /** Deletes the temporary repository and the audit outcomes recorded beside it. */
     @After
     public void tearDown() throws IOException {
-        if (repo == null || !Files.exists(repo)) return;
-        try (Stream<Path> walk = Files.walk(repo)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+        if (repo == null) return;
+        Path outcomes = repo.getParent().resolve(ObjectOrientedReviewLedger.LEDGER_DIR)
+                .resolve(repo.getFileName().toString());
+        for (Path dir : List.of(repo, outcomes)) {
+            if (!Files.exists(dir)) continue;
+            try (Stream<Path> walk = Files.walk(dir)) {
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+            }
         }
     }
 
@@ -147,12 +152,31 @@ public class NewTypeAuditTest extends TestSuiteBase {
         assertTrue(job.getNewTypeAudit().scan().isEmpty());
     }
 
-    /** A new type that extends its candidate is assessed but never refused or audited. */
+    /**
+     * A new type that extends its candidate without overriding or calling
+     * anything of it does not build on it, so it is still refused.
+     */
+    @Test(timeout = 300000)
+    public void namingCandidateAsSupertypeWithoutUsingItIsRefused() throws Exception {
+        write(PROGRESSION, "package org.example.seq;\n\n"
+                + "/** An arithmetic progression of index values. */\n"
+                + "public final class IndexProgression extends ArithmeticIndexSequence {\n"
+                + "\tpublic long first() { return 0; }\n}\n");
+        CodingAgentJob job = job();
+        List<NewTypeAssessment> found = job.getNewTypeAudit().scan();
+        assertEquals(describeAll(found), 1, found.size());
+        assertTrue(describeAll(found), found.get(0).isDuplicate());
+        assertFalse(found.get(0).buildsOnCandidate());
+        assertTrue(job.getNewTypeRefusals().containsKey(PROGRESSION));
+    }
+
+    /** A new type that extends its candidate and overrides it is assessed but never refused or audited. */
     @Test(timeout = 300000)
     public void typeBuildingOnCandidateIsNeitherAuditedNorRefused() throws Exception {
         write(PROGRESSION, "package org.example.seq;\n\n"
                 + "/** An arithmetic progression of index values. */\n"
-                + "public final class IndexProgression extends ArithmeticIndexSequence {\n}\n");
+                + "public final class IndexProgression extends ArithmeticIndexSequence {\n"
+                + "\tpublic long valueAt(int pos) { return super.valueAt(pos) + 1; }\n}\n");
         CodingAgentJob job = job();
         List<NewTypeAssessment> found = job.getNewTypeAudit().scan();
         assertEquals(describeAll(found), 1, found.size());
@@ -166,24 +190,28 @@ public class NewTypeAuditTest extends TestSuiteBase {
      * ledger records the kept verdict; a verdict written before the audit ran,
      * or an audit without the verdict, leaves it refused.
      */
-    @Test(timeout = 30000)
-    public void refusalLiftsOnlyAfterAuditKeepsType() {
-        NewTypeAssessment kept = assessment("org.example.seq.Kept", SEQ + "Kept.java", "kept");
-        NewTypeAssessment unverdicted = assessment("org.example.seq.Plain", SEQ + "Plain.java", null);
-
+    @Test(timeout = 300000)
+    public void refusalLiftsOnlyAfterAuditKeepsType() throws Exception {
+        addBranchTypes();
+        String fqn = "org.example.seq.IndexProgression";
         NewTypeAudit audit = job().getNewTypeAudit();
-        NewTypeAudit.Scan scan = new NewTypeAudit.Scan(List.of(kept, unverdicted),
-                List.of(kept.getFqn(), unverdicted.getFqn()), List.of(), null);
-        Map<String, String> before = audit.refusals(scan, Map.of());
-        assertEquals("a verdict written before the audit ran must not count", 2, before.size());
-        assertTrue(before.get(SEQ + "Kept.java").contains(CANDIDATE));
-        assertTrue(before.get(SEQ + "Kept.java").contains(NewTypeAudit.LEDGER_PATH));
+        Map<String, String> before = audit.refusals();
+        assertNotNull("an unaudited duplicate is refused", before.get(PROGRESSION));
+        assertTrue(before.get(PROGRESSION).contains(CANDIDATE));
+        assertTrue(before.get(PROGRESSION).contains(NewTypeAudit.LEDGER_PATH));
 
-        audit.markAudited(List.of(kept, unverdicted));
-        Map<String, String> after = audit.refusals(scan, Map.of());
-        assertNull("an audited type the audit kept may be staged", after.get(SEQ + "Kept.java"));
+        audit.markAudited(List.of(fqn));
         assertNotNull("an audited type without the kept verdict stays refused",
-                after.get(SEQ + "Plain.java"));
+                audit.refusals().get(PROGRESSION));
+
+        Files.writeString(repo.resolve(NewTypeAudit.LEDGER_PATH),
+                "{\"types\": [{\"type\": \"" + fqn + "\","
+                        + " \"audit\": {\"verdict\": \"kept\", \"reason\": \"verified\"}}]}");
+        assertNotNull("a verdict written outside the audit session must not count",
+                audit.refusals().get(PROGRESSION));
+
+        audit.markAudited(List.of(fqn));
+        assertNull("an audited type the audit kept may be staged", audit.refusals().get(PROGRESSION));
     }
 
     /** The staging guardrail skips a refused new type with the reason and stages the rest. */
@@ -219,9 +247,41 @@ public class NewTypeAuditTest extends TestSuiteBase {
         assertFalse(job.getNewTypeRefusals().isEmpty());
 
         rule.onCorrectionAttempted(job);
-        assertTrue(job.getNewTypeAudit().isAudited("org.example.seq.IndexProgression"));
+        NewTypeAssessment progression = job.getNewTypeAudit().scan().get(0);
+        Assert.assertEquals(NewTypeAudit.KEPT, job.getNewTypeAudit().outcome(progression));
         assertTrue(job.getNewTypeRefusals().isEmpty());
         assertFalse("nothing is left for the type audit", rule.isViolated(job));
+
+        assertTrue("a later job on the branch reuses the recorded outcome",
+                job().getNewTypeRefusals().isEmpty());
+
+        Files.writeString(repo.resolve(NewTypeAudit.LEDGER_PATH),
+                "{\"types\": [{\"type\": \"org.example.seq.IndexProgression\","
+                        + " \"audit\": {\"verdict\": \"kept\", \"reason\": \"rewritten later\"}}]}");
+        CodingAgentJob later = job();
+        assertFalse("a justification changed after the audit is audited again",
+                later.getNewTypeAudit().unaudited().isEmpty());
+        assertTrue(later.getNewTypeRefusals().containsKey(PROGRESSION));
+    }
+
+    /**
+     * Every top-level type of a refused file is withheld, not only the one the
+     * file is named for, so a caller of a second type in that file is refused too.
+     */
+    @Test(timeout = 300000)
+    public void secondTopLevelTypeOfRefusedFileIsWithheld() throws Exception {
+        addBranchTypes();
+        Path progression = repo.resolve(PROGRESSION);
+        Files.writeString(progression, Files.readString(progression, StandardCharsets.UTF_8)
+                + "\n/** One step of a progression. */\nfinal class ProgressionStep {\n}\n",
+                StandardCharsets.UTF_8);
+        String caller = SEQ + "StepCounter.java";
+        write(caller, "package org.example.seq;\n\n/** Counts steps. */\n"
+                + "public final class StepCounter {\n\tprivate final ProgressionStep s = null;\n}\n");
+        Map<String, String> refusals = job().getNewTypeRefusals();
+        assertTrue(refusals.toString(), refusals.containsKey(PROGRESSION));
+        assertTrue(refusals.toString(), refusals.get(caller).contains("refers to org.example.seq.ProgressionStep"));
+        assertFalse(refusals.toString(), refusals.containsKey(ROUTER));
     }
 
     /**
@@ -269,25 +329,30 @@ public class NewTypeAuditTest extends TestSuiteBase {
     public void firstReferencedHonoursPackageVisibility() {
         List<String> types = List.of("org.example.seq.IndexProgression");
         assertNull("another package without an import cannot see the simple name",
-                NewTypeAudit.firstReferenced("package org.example.app;\nclass A { IndexProgression p; }", types));
+                referenced("package org.example.app;\nclass A { IndexProgression p; }", types));
         Assert.assertEquals("org.example.seq.IndexProgression",
-                NewTypeAudit.firstReferenced("package org.example.app;\nimport org.example.seq.*;\n"
+                referenced("package org.example.app;\nimport org.example.seq.*;\n"
                         + "class A { IndexProgression p; }", types));
         Assert.assertEquals("org.example.seq.IndexProgression",
-                NewTypeAudit.firstReferenced("package org.example.app;\n"
+                referenced("package org.example.app;\n"
                         + "class A { org.example.seq.IndexProgression p; }", types));
         Assert.assertEquals("org.example.seq.IndexProgression",
-                NewTypeAudit.firstReferenced("package org.example.seq;\nclass A { IndexProgression p; }", types));
+                referenced("package org.example.seq;\nclass A { IndexProgression p; }", types));
         assertNull("a longer name that merely starts with the type's name is not a reference",
-                NewTypeAudit.firstReferenced("package org.example.seq;\nclass A { IndexProgressionView v; }", types));
+                referenced("package org.example.seq;\nclass A { IndexProgressionView v; }", types));
         assertNull("a subpackage wildcard import does not make the name visible",
-                NewTypeAudit.firstReferenced("package org.example.app;\nimport org.example.seq.sub.*;\n"
+                referenced("package org.example.app;\nimport org.example.seq.sub.*;\n"
                         + "class A { IndexProgression p; }", types));
-        assertNull(NewTypeAudit.firstReferenced("package org.example.app;\nclass A { }", List.of()));
+        assertNull(referenced("package org.example.app;\nclass A { }", List.of()));
         Assert.assertEquals("org.example.seq.IndexProgression",
-                NewTypeAudit.declaredType(PROGRESSION, "package org.example.seq;\nclass X { }"));
-        Assert.assertEquals("Loose", NewTypeAudit.declaredType("Loose.java", "class Loose { }"));
-        assertNull(NewTypeAudit.declaredType(PROGRESSION, null));
+                new JavaSourceFile(PROGRESSION, "package org.example.seq;\nclass X { }").namedType());
+        Assert.assertEquals("Loose", new JavaSourceFile("Loose.java", "class Loose { }").namedType());
+        assertTrue(NewTypeAudit.Scan.none().declaredBy(PROGRESSION, null).isEmpty());
+    }
+
+    /** Returns the first of {@code types} that a source with {@code text} refers to. */
+    private static String referenced(String text, List<String> types) {
+        return new JavaSourceFile("A.java", text).firstReferenced(types);
     }
 
     /**
@@ -307,6 +372,11 @@ public class NewTypeAuditTest extends TestSuiteBase {
             assertTrue(reason, reason.contains("the new-type audit could not run"));
             assertTrue(reason, reason.contains("origin/master"));
         }
+        assertNotNull(job.getNewTypeAudit().getFailure());
+        CodingAgentJobEvent event = CodingAgentJobEvent.forJob(job, null);
+        Assert.assertEquals("a backstop that did not run is visible in the job outcome",
+                JobCompletionEvent.Status.DEGRADED, event.getStatus());
+        assertTrue(event.getErrorMessage(), event.getErrorMessage().contains("new-type audit could not run"));
     }
 
     /** A base-branch scanner that fails refuses every examined file instead of staging it. */
@@ -379,9 +449,10 @@ public class NewTypeAuditTest extends TestSuiteBase {
     public void parsesScannerOutput() throws IOException {
         String json = "{\"types\": [{\"name\": \"A\", \"fqn\": \"p.A\", \"path\": \"m/src/main/java/p/A.java\","
                 + " \"candidates\": [{\"name\": \"B\", \"fqn\": \"p.B\", \"path\": \"m/src/main/java/p/B.java\","
-                + " \"sentence\": \"A b.\", \"score\": 0.71}], \"lift\": null, \"justified\": false,"
-                + " \"gaps\": [\"no ledger entry\"], \"ledger\": null, \"audit_verdict\": null}],"
-                + " \"added\": [\"p.A\", \"p.C\"]}";
+                + " \"sentence\": \"A b.\", \"score\": 0.71, \"blocks\": true}], \"lift\": null,"
+                + " \"justified\": false, \"gaps\": [\"no ledger entry\"], \"ledger\": null,"
+                + " \"audit_verdict\": null}], \"added\": [\"p.A\", \"p.C\"],"
+                + " \"declared\": {\"m/src/main/java/p/A.java\": [\"p.A\", \"p.AStep\"]}}";
         NewTypeAudit.Scan scan = NewTypeAudit.Scan.parse(json, List.of("m/src/main/java/p/A.java"));
         assertFalse(scan.failed());
         Assert.assertEquals(List.of("p.A", "p.C"), scan.added());
@@ -395,7 +466,11 @@ public class NewTypeAuditTest extends TestSuiteBase {
         assertNull(a.getLedgerEntry());
         assertFalse(a.isKeptByAudit());
         Assert.assertEquals(List.of("no ledger entry"), a.getGaps());
-        assertTrue(a.describe().contains("resembles p.B"));
+        assertTrue(a.isDuplicate());
+        assertTrue(a.describe().contains("duplicates p.B"));
+        Assert.assertEquals(List.of("p.A", "p.AStep"), scan.declaredBy("m/src/main/java/p/A.java", null));
+        Assert.assertEquals(List.of("p.D"), scan.declaredBy("m/src/main/java/p/D.java",
+                new JavaSourceFile("m/src/main/java/p/D.java", "package p;\nclass D { }")));
     }
 
     /** Writes the two types the branch adds: a renamed equivalent and a new concept. */
@@ -415,14 +490,6 @@ public class NewTypeAuditTest extends TestSuiteBase {
         CodingAgentJob job = new CodingAgentJob("audit-test", "p");
         job.setWorkingDirectory(repo.toString());
         return job;
-    }
-
-    /** Returns an assessment of a type resembling {@link #CANDIDATE}, with the given ledger verdict. */
-    private static NewTypeAssessment assessment(String fqn, String path, String verdict) {
-        return new NewTypeAssessment(fqn, path,
-                List.of(new NewTypeAssessment.Candidate(CANDIDATE, SEQ + "ArithmeticIndexSequence.java",
-                        0.6, "An index sequence.")),
-                null, false, List.of(), verdict == null ? null : "{}", verdict);
     }
 
     /** Returns the candidate names of an assessment. */

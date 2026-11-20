@@ -7,10 +7,11 @@ blocks in two cases and warns otherwise:
 
   * a name CLAUDE.md forbids outright (a *Util / *Utils / *Helper / *Exporter /
     *Converter / *Manager class);
-  * a main-source type for which the repository already has LIKELY
-    EQUIVALENTS - candidates found by lib/type_equivalence.py from shared
-    name words, javadoc overlap, shared public methods and supertypes, and
-    package or module locality.
+  * a main-source type that DUPLICATES a concept the repository already has -
+    lib/type_equivalence.py finds the same concept from shared public method
+    signatures, javadoc describing the same thing and names that say the same
+    thing. Shared vocabulary or a shared package alone never blocks; a type
+    that only resembles existing ones gets a warning that lists them.
 
 The second block exists because of a real incident. A session needed a method
 returning Set<Integer> to stop boxing, and wrote ArithmeticIndexSet - an
@@ -23,10 +24,12 @@ introduced for the existing hierarchy to implement; the existing type could
 have been extended. Three review passes then checked the new class's
 correctness and never asked whether it should exist.
 
-The block lifts only when the new type extends, implements or holds a field of
-(delegates to) a candidate, or when .claude/new-type-ledger.json carries a
-justification covering EVERY listed candidate (see lib/type_equivalence.py for
-its shape). A justified type is still re-examined by the harness's type audit
+The block lifts only when the new type genuinely builds on a candidate - it
+extends or implements it and overrides or calls its members, or calls it
+through a field, parameter or local - or when .claude/new-type-ledger.json
+carries a justification covering EVERY blocking candidate and naming a test
+that exists and refers to the new type (see lib/type_equivalence.py for its
+shape). A justified type is still re-examined by the harness's type audit
 (DeduplicationRule), which treats the ledger as a claim to verify, and the
 harness refuses to stage it until that audit has settled it.
 
@@ -64,23 +67,25 @@ requirements are honoured: the match is on the declared type name, not the file
 name; and a pre-existing type of that name merely being edited never fires,
 because the decision is made from the before/after comparison, not the after
 text alone.
+
+Every Java declaration this hook reads is parsed by lib/type_equivalence.py:
+there is one parser for the hook and the harness. A failure anywhere in the
+assessment fails open - the write proceeds - with a warning on stderr and in
+the session's system message, never a traceback.
 """
 
 import json
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
 
-import type_equivalence  # noqa: E402
-
-TYPE = re.compile(
-    r'^[ \t]*(?:@\w+(?:\([^)]*\))?\s+)*'
-    r'(?:(?:public|private|protected|static|final|abstract|sealed'
-    r'|non-sealed|strictfp)\s+)*'
-    r'\b(class|interface|enum|record)\s+(\w+)',
-    re.MULTILINE)
+try:
+    import type_equivalence  # noqa: E402
+    IMPORT_FAILURE = None
+except Exception as failure:  # the hook must fail open, see main()
+    type_equivalence = None
+    IMPORT_FAILURE = failure
 
 BLOCKED_SUFFIXES = ("Util", "Utils", "Helper", "Exporter", "Converter", "Manager")
 
@@ -160,14 +165,17 @@ defect, however correct it is. Take the FIRST remedy that works, in order:
 These are NOT reasons for a new type, because signatures and hierarchies can be
 changed: "the existing type does not implement interface X"; "the method
 signature requires Y"; "the existing type is in a different shape". Renaming
-the new type is NOT a remedy either: the search matches javadoc, methods and
-supertypes as well as names, and the harness's type audit re-runs it.
+the new type is NOT a remedy either: the search matches javadoc and method
+signatures as well as names, and the harness's type audit re-runs it.
 
-This block lifts when the new type extends, implements or delegates to (holds a
-field of) a candidate, or when {ledger} justifies it. A justification covers
-EVERY listed candidate; for each it says why the candidate cannot be extended,
-why the signature cannot change, and why an interface the candidate implements
-would not work; and it names a test that demonstrates the distinction:
+This block lifts when the new type genuinely builds on a candidate - extends or
+implements it AND overrides or calls its members, or calls its methods through
+a field, parameter or local (an unused field or a marker interface does not
+count) - or when {ledger} justifies it. A justification covers EVERY listed
+candidate; for each it says why the candidate cannot be extended, why the
+signature cannot change, and why an interface the candidate implements would
+not work; and it names a test, in the repository's test sources, that refers
+to the new type and demonstrates the distinction:
 
   {{"types": [{{"type": "{fqn}",
               "test": "SomeTest#distinguishesFromCandidate",
@@ -190,21 +198,10 @@ def read_payload():
 
 
 def top_level_types(source):
-    """Return (kind, name) tuples for top-level type declarations in the source.
-
-    Top-level means declared at brace depth zero. A nested or local type is an
-    ordinary part of an existing type's body - not the birth of a new top-level
-    concept - so it is deliberately excluded. Brace depth is counted from the
-    raw text, which is heuristic (it does not discount braces inside strings or
-    comments) but sufficient for the ordinary shapes this reminder targets.
-    """
-    found = []
-    for m in TYPE.finditer(source or ""):
-        prefix = source[:m.start()]
-        depth = prefix.count("{") - prefix.count("}")
-        if depth == 0:
-            found.append((m.group(1), m.group(2)))
-    return found
+    """``(kind, name)`` of each top-level type declared in ``source``, as
+    lib/type_equivalence.py parses it: a nested or local type is part of an
+    existing type's body, not the birth of a new concept."""
+    return [(t["kind"], t["name"]) for t in type_equivalence.parse_types(source)]
 
 
 def change_texts(tool, tool_input):
@@ -259,11 +256,9 @@ def discovery_on_record():
 
 
 def added_types(before, after):
-    """Top-level type declarations present in `after` but not in `before`."""
-    before_types = top_level_types(before)
-    after_types = top_level_types(after)
-    return [entry for entry in after_types
-            if after_types.count(entry) > before_types.count(entry)]
+    """``(kind, name)`` of each top-level type declared in ``after`` but not in
+    ``before``."""
+    return [(t["kind"], t["name"]) for t in type_equivalence.added_types(before, after)]
 
 
 def blocked(added):
@@ -272,58 +267,55 @@ def blocked(added):
             if name.endswith(BLOCKED_SUFFIXES)]
 
 
-def is_test_source(path):
-    """True for a test-tree source, which is never checked for equivalents: a
-    FooTest beside Foo is the point, not a duplicate."""
-    normalized = path.replace(os.sep, "/")
-    return "/src/test/" in normalized or "/src/it/" in normalized
-
-
 def assess_added(path, after, added):
     """Assesses each added type against the repository's existing types.
 
-    Returns ``(blocking, lifted)``: the assessments that block, and those
-    whose candidates are answered by structure or by the ledger. Any failure
-    to build the index degrades to "nothing found" - the warning still fires
-    - rather than blocking a write on infrastructure trouble.
+    Returns ``(blocking, lifted, warned)``: the assessments that block; those
+    whose blocking candidates are answered by structure or by the ledger; and
+    those that only resemble existing types. A test source is never assessed.
     """
-    if is_test_source(path):
-        return [], []
-    try:
-        root = type_equivalence.find_root(path)
-        index = type_equivalence.TypeIndex.load(root)
-        ledger = type_equivalence.read_ledger(root)
-    except Exception:
-        return [], []
+    if type_equivalence.is_test_source(path):
+        return [], [], []
+    root = type_equivalence.find_root(path)
+    index = type_equivalence.TypeIndex.load(root)
+    ledger = type_equivalence.read_ledger(root)
     rel = os.path.relpath(os.path.abspath(path), root)
-    blocking, lifted = [], []
+    blocking, lifted, warned = [], [], []
     for _, name in added:
         result = type_equivalence.assess(index, after, rel, name, ledger)
         if result is None or not result["candidates"]:
             continue
-        if result["lift"] or result["justified"]:
+        if result["blocks"]:
+            blocking.append(result)
+        elif any(c["blocks"] for c in result["candidates"]):
             lifted.append(result)
         else:
-            blocking.append(result)
-    return blocking, lifted
+            warned.append(result)
+    return blocking, lifted, warned
 
 
-def describe(result):
-    """The block-message section for one assessed type."""
-    lines = ["New type " + result["fqn"] + " resembles existing type(s):", ""]
+def describe(result, blocking_only=True):
+    """The message section for one assessed type: its blocking candidates, or
+    every candidate when ``blocking_only`` is false."""
+    lines = ["New type " + result["fqn"] + (" duplicates" if blocking_only else " resembles")
+             + " existing type(s):", ""]
     for c in result["candidates"]:
+        if blocking_only and not c["blocks"]:
+            continue
         ev = c["evidence"]
         why = []
-        if ev.get("shared_name_words"):
-            why.append("name words " + ", ".join(ev["shared_name_words"]))
-        if ev.get("shared_doc_words"):
-            why.append("javadoc " + ", ".join(ev["shared_doc_words"]))
+        if ev.get("near_copy"):
+            why.append("nearly the same signatures and javadoc")
+        if ev.get("same_concept_name"):
+            why.append("a name for the same concept")
         if ev.get("shared_methods"):
             why.append("methods " + ", ".join(ev["shared_methods"]))
-        if ev.get("shared_supertypes"):
-            why.append("supertypes " + ", ".join(ev["shared_supertypes"]))
-        if ev.get("locality"):
-            why.append(ev["locality"])
+        if ev.get("shared_doc_words"):
+            why.append("javadoc " + ", ".join(ev["shared_doc_words"]))
+        if ev.get("shared_name_words"):
+            why.append("name words " + ", ".join(ev["shared_name_words"]))
+        if ev.get("relation"):
+            why.append("but a " + ev["relation"] + ", so not a duplicate")
         lines.append("  - " + c["fqn"] + "  (score " + str(c["score"]) + ")")
         lines.append("      " + c["path"])
         if c.get("sentence"):
@@ -337,52 +329,52 @@ def describe(result):
     return "\n".join(lines) + "\n"
 
 
-def main():
-    payload = read_payload()
+def verdict(payload):
+    """The hook's decision for one PreToolUse payload: ``(exit code, stdout,
+    stderr)``."""
     tool = payload.get("tool_name")
     tool_input = payload.get("tool_input") or {}
     path = tool_input.get("file_path", "")
 
     if tool not in ("Edit", "MultiEdit", "Write") or not path.endswith(".java"):
-        sys.exit(0)
+        return 0, "", ""
 
     texts = change_texts(tool, tool_input)
     if texts is None or texts[0] == texts[1]:
-        sys.exit(0)
+        return 0, "", ""
     before, after = texts
 
     added = added_types(before, after)
     if not added:
-        sys.exit(0)
+        return 0, "", ""
 
-    forbidden = blocked(added)
+    forbidden = sorted({name for _, name in blocked(added)})
     if forbidden:
-        forbidden_names = ", ".join(sorted({name for _, name in forbidden}))
-        message = BLOCK_MESSAGE.format(
-            path=path, names=forbidden_names,
-            first=sorted({name for _, name in forbidden})[0])
-        print(message, file=sys.stderr)
-        sys.exit(2)
+        return 2, "", BLOCK_MESSAGE.format(path=path, names=", ".join(forbidden),
+                                           first=forbidden[0])
 
-    blocking, lifted = assess_added(path, after, added)
+    blocking, lifted, warned = assess_added(path, after, added)
     if blocking:
         details = "\n".join(describe(r) for r in blocking)
         first = blocking[0]
-        print(DUPLICATE_MESSAGE.format(
+        top = [c for c in first["candidates"] if c["blocks"]][0]
+        return 2, "", DUPLICATE_MESSAGE.format(
             path=path, details=details, ledger=type_equivalence.LEDGER_PATH,
-            fqn=first["fqn"], first=first["candidates"][0]["fqn"]),
-            file=sys.stderr)
-        sys.exit(2)
+            fqn=first["fqn"], first=top["fqn"])
 
     names = ", ".join(kind + " " + name for kind, name in added)
     context = TYPE_REMINDER.format(names=names)
     for r in lifted:
         how = ("it " + r["lift"]) if r["lift"] else (
             "its justification in " + type_equivalence.LEDGER_PATH + " covers every candidate")
-        context += ("\n\n" + r["fqn"] + " resembles "
-                    + ", ".join(c["fqn"] for c in r["candidates"])
+        context += ("\n\n" + r["fqn"] + " duplicates "
+                    + ", ".join(c["fqn"] for c in r["candidates"] if c["blocks"])
                     + "; allowed because " + how + ". The harness's type audit"
                     " will still verify that it should exist.")
+    for r in warned:
+        context += ("\n\n" + describe(r, blocking_only=False)
+                    + "None of these is clearly the same concept, so nothing is blocked;"
+                    " read them before deciding the new type is needed.")
     if not discovery_on_record():
         context += NO_DISCOVERY_REMINDER.format(names=names)
 
@@ -392,15 +384,36 @@ def main():
         summary = ("New type(s) introduced (" + names + ") with no discovery on"
                    " record - an equivalent may already exist. See context.")
 
-    out = {
+    return 0, json.dumps({
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "additionalContext": context,
         },
         "systemMessage": summary,
-    }
-    print(json.dumps(out))
-    sys.exit(0)
+    }), ""
+
+
+def main():
+    """Runs the hook. Any failure to reach a verdict fails open: the write
+    proceeds, and the failure is reported on stderr and as the session's system
+    message so that a check that did not run is noticed."""
+    payload = read_payload()
+    try:
+        if IMPORT_FAILURE is not None:
+            raise IMPORT_FAILURE
+        code, out, err = verdict(payload)
+    except Exception as failure:
+        warning = ("warn-new-type-placement: the new-type check did not run ("
+                   + type(failure).__name__ + ": " + str(failure) + "); the write"
+                   " was allowed without it.")
+        print(warning, file=sys.stderr)
+        print(json.dumps({"systemMessage": warning}))
+        sys.exit(0)
+    if out:
+        print(out)
+    if err:
+        print(err, file=sys.stderr)
+    sys.exit(code)
 
 
 if __name__ == "__main__":

@@ -30,13 +30,13 @@ import java.util.List;
  * {@link EnforcementRunner} adds this rule to every job, with the method audit
  * switched on only for {@link CodingAgentJob#DEDUP_LOCAL}. The types come from
  * {@link NewTypeAudit#unaudited}: those the type-equivalence search found to
- * resemble an existing type and that do not extend, implement or delegate to
- * it. The session examines each against its candidates, the documentation and
+ * duplicate an existing type and that do not genuinely build on it. The session examines each against its candidates, the documentation and
  * memory search, and the session's own justification in
  * {@value NewTypeAudit#LEDGER_PATH}, and folds the type into the existing
  * abstraction unless the justification actually holds. Once the session has
- * run, {@link NewTypeAudit#markAudited} records the types it was given, which
- * is what lets {@link FileStager} stage a type the session kept.</p>
+ * run, {@link NewTypeAudit#markAudited} records the outcome for each type it
+ * was given, which is what lets {@link FileStager} stage a type the session
+ * kept.</p>
  *
  * <p>Uses set-snapshot comparison (inherited from {@link SetComparisonRule}) to
  * determine when to stop looping: after a correction session that produces no
@@ -152,14 +152,15 @@ class DeduplicationRule extends SetComparisonRule {
     }
 
     /**
-     * Applies the set comparison, then records the types the session was given
-     * as audited, so that {@link NewTypeAudit#refusals} can release the ones it
-     * kept and {@link #extractItems} does not hand them out again.
+     * Applies the set comparison, then records the outcome for each type the
+     * session was given, as the session left it, so that
+     * {@link NewTypeAudit#refusals} can release the ones it kept and
+     * {@link #extractItems} does not hand them out again.
      */
     @Override
     public void onCorrectionAttempted(CodingAgentJob job) {
         super.onCorrectionAttempted(job);
-        job.getNewTypeAudit().markAudited(pendingTypes);
+        job.getNewTypeAudit().markAudited(pendingTypes.stream().map(NewTypeAssessment::getFqn).toList());
         pendingTypes = List.of();
     }
 
@@ -181,8 +182,7 @@ class DeduplicationRule extends SetComparisonRule {
                                            boolean truncated,
                                            int totalCount,
                                            String baseBranch) {
-        String baseRef = "origin/"
-                + (baseBranch == null || baseBranch.isBlank() ? "master" : baseBranch);
+        String baseRef = baseRef(baseBranch);
         StringBuilder sb = new StringBuilder();
         sb.append("DEDUPLICATION AUDIT — MANDATORY PRE-COMMIT REVIEW\n\n");
         sb.append("This branch has new commits relative to its base branch. Those ");
@@ -357,6 +357,17 @@ class DeduplicationRule extends SetComparisonRule {
     }
 
     /**
+     * Returns the remote ref of the base branch that the prompts cite.
+     *
+     * @param baseBranch the configured base branch; {@code null} or blank
+     *                   falls back to {@code "master"}
+     * @return {@code origin/<baseBranch>}
+     */
+    private static String baseRef(String baseBranch) {
+        return "origin/" + (baseBranch == null || baseBranch.isBlank() ? "master" : baseBranch);
+    }
+
+    /**
      * Builds the type-audit prompt: for each new type that resembles existing
      * types, the session decides whether it should exist at all, treating the
      * ledger justification as a claim to verify, and folds the type into the
@@ -368,8 +379,7 @@ class DeduplicationRule extends SetComparisonRule {
      * @return the full prompt string
      */
     static String buildTypeAuditPrompt(List<NewTypeAssessment> types, String baseBranch) {
-        String baseRef = "origin/"
-                + (baseBranch == null || baseBranch.isBlank() ? "master" : baseBranch);
+        String baseRef = baseRef(baseBranch);
         StringBuilder sb = new StringBuilder();
         sb.append("NEW TYPE AUDIT -- SHOULD EACH OF THESE TYPES EXIST?\n\n");
         sb.append("This branch adds new top-level Java types that resemble types the ");
@@ -390,8 +400,8 @@ class DeduplicationRule extends SetComparisonRule {
         sb.append('\n');
 
         sb.append("SEARCH BEYOND THE CANDIDATE LIST\n");
-        sb.append("The candidates come from a lexical search: shared name words, javadoc ");
-        sb.append("overlap, shared methods and supertypes, package locality. It misses ");
+        sb.append("The candidates come from a lexical search: shared public method signatures, ");
+        sb.append("javadoc describing the same thing, names for the same concept. It misses ");
         sb.append("equivalents that use different words. For each new type, also:\n");
         sb.append("  - call mcp__ar-manager__consult with the concept the type represents ");
         sb.append("(what it IS, in plain words), not its name;\n");

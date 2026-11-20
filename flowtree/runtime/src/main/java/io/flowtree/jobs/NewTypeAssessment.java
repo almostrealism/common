@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * What the repository's type-equivalence search found for one new top-level
@@ -47,7 +48,7 @@ final class NewTypeAssessment {
     /** Repository-relative path of the file declaring it. */
     private final String path;
 
-    /** Existing types the new type likely duplicates, best first. */
+    /** Existing types the new type duplicates or resembles, duplicates first. */
     private final List<Candidate> candidates;
 
     /** How the new type builds on a candidate, or {@code null} when it does not. */
@@ -102,8 +103,30 @@ final class NewTypeAssessment {
     /** Returns how the type builds on a candidate, or {@code null} when it does not. */
     String getLift() { return lift; }
 
-    /** Returns whether the type extends, implements or delegates to a candidate. */
+    /**
+     * Returns whether the type genuinely builds on a duplicated candidate: it
+     * extends or implements it and overrides or calls its members, or calls it
+     * through a field, parameter or local.
+     */
     boolean buildsOnCandidate() { return lift != null; }
+
+    /**
+     * Returns whether the search found the type to duplicate a candidate --
+     * the same concept, not merely a shared vocabulary. Only a duplicate is
+     * audited and refused; a type that merely resembles others is only
+     * reported.
+     */
+    boolean isDuplicate() {
+        return candidates.stream().anyMatch(Candidate::isBlocking);
+    }
+
+    /**
+     * Returns whether the type still needs the type audit's decision: it
+     * duplicates a candidate and does not build on one.
+     */
+    boolean isUnsettled() {
+        return isDuplicate() && !buildsOnCandidate();
+    }
 
     /** Returns whether the ledger justifies the type against every candidate. */
     boolean isJustified() { return justified; }
@@ -135,7 +158,8 @@ final class NewTypeAssessment {
             List<Candidate> candidates = new ArrayList<>();
             for (JsonNode c : t.path("candidates")) {
                 candidates.add(new Candidate(c.path("fqn").asText(), c.path("path").asText(),
-                        c.path("score").asDouble(), c.path("sentence").asText("")));
+                        c.path("score").asDouble(), c.path("sentence").asText(""),
+                        c.path("blocks").asBoolean(false)));
             }
             List<String> gaps = new ArrayList<>();
             for (JsonNode g : t.path("gaps")) gaps.add(g.asText());
@@ -164,7 +188,7 @@ final class NewTypeAssessment {
         StringBuilder sb = new StringBuilder();
         sb.append("  ").append(fqn).append("  (").append(path).append(")\n");
         for (Candidate c : candidates) {
-            sb.append("      resembles ").append(c.getFqn())
+            sb.append(c.isBlocking() ? "      duplicates " : "      resembles ").append(c.getFqn())
               .append("  (").append(c.getPath()).append(", score ")
               .append(String.format("%.2f", c.getScore())).append(")\n");
             if (!c.getSentence().isEmpty()) {
@@ -205,11 +229,9 @@ final class NewTypeAssessment {
      * @return the one-line reason
      */
     String refusalReason() {
-        StringBuilder sb = new StringBuilder("new type ").append(fqn).append(" resembles ");
-        for (int i = 0; i < candidates.size(); i++) {
-            if (i > 0) sb.append(", ");
-            sb.append(candidates.get(i).getFqn());
-        }
+        StringBuilder sb = new StringBuilder("new type ").append(fqn).append(" duplicates ");
+        sb.append(candidates.stream().filter(Candidate::isBlocking).map(Candidate::getFqn)
+                .collect(Collectors.joining(", ")));
         sb.append(" and has no resolved verdict -- use, extend or improve the existing type,"
                 + " or record a justification in " + NewTypeAudit.LEDGER_PATH
                 + " for the type audit to verify");
@@ -233,6 +255,9 @@ final class NewTypeAssessment {
         /** First sentence of the existing type's javadoc; empty when it has none. */
         private final String sentence;
 
+        /** Whether the search found the new type to be the same concept as this one. */
+        private final boolean blocking;
+
         /**
          * Creates a candidate.
          *
@@ -240,12 +265,15 @@ final class NewTypeAssessment {
          * @param path     repository-relative path declaring it
          * @param score    similarity score in [0, 1]
          * @param sentence first sentence of its javadoc, or empty
+         * @param blocking whether the new type is the same concept as this one,
+         *                 rather than only resembling it
          */
-        Candidate(String fqn, String path, double score, String sentence) {
+        Candidate(String fqn, String path, double score, String sentence, boolean blocking) {
             this.fqn = fqn;
             this.path = path;
             this.score = score;
             this.sentence = sentence;
+            this.blocking = blocking;
         }
 
         /** Returns the fully-qualified name of the existing type. */
@@ -259,5 +287,8 @@ final class NewTypeAssessment {
 
         /** Returns the first sentence of the existing type's javadoc, or empty. */
         String getSentence() { return sentence; }
+
+        /** Returns whether the new type is the same concept as this one, not only similar. */
+        boolean isBlocking() { return blocking; }
     }
 }

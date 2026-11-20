@@ -1,16 +1,4 @@
 {
-  "about": "Justifications for new Java types that the new-type hook (.claude/hooks/warn-new-type-placement.py) found to resemble existing types. Each entry covers every candidate the hook listed: why the candidate cannot be extended, why the signature that seemed to need a new type cannot change, why an interface the candidate implements would not work, and a test that demonstrates the distinction. The harness's type audit (DeduplicationRule) treats each entry as a claim to verify and records its own verdict under \"audit\". Schema: .claude/hooks/lib/type_equivalence.py.",
-  "types": [
-    {
-      "type": "io.flowtree.jobs.NewTypeAudit",
-      "test": "NewTypeAuditTest#refusalLiftsOnlyAfterAuditKeepsType",
-      "candidates": {
-        "io.flowtree.jobs.NewTypeAssessment": {
-          "cannot_extend": "NewTypeAssessment is an immutable value describing one scanned type. NewTypeAudit is the per-job, mutable record of which types this job's audit session examined, plus the scan that produces assessments. Extending the value with that state would make every parsed assessment carry the whole job's audit set.",
-          "cannot_change_signature": "No existing signature forced this type. DeduplicationRule, FileStagingConfig.forJob and ReviewPromptBuilder each need one object per job that both scans the working tree and remembers which types a previous enforcement pass audited; a list of assessments returned by a method cannot remember what a later session examined.",
-          "interface_would_not_work": "An interface implemented by NewTypeAssessment would still need an implementation that holds the per-job audited set across enforcement passes. The value type has nowhere to keep that state, so the interface would add a type without removing this one."
-        }
-      }
-    }
-  ]
+  "about": "Justifications for new Java types that the new-type hook (.claude/hooks/warn-new-type-placement.py) found to duplicate existing types. Each entry covers every blocking candidate the hook listed: why the candidate cannot be extended, why the signature that seemed to need a new type cannot change, why an interface the candidate implements would not work, and a test, in the repository's test sources and referring to the new type, that demonstrates the distinction. The harness's type audit (DeduplicationRule) treats each entry as a claim to verify and records its own verdict under \"audit\". Schema: .claude/hooks/lib/type_equivalence.py.",
+  "types": []
 }

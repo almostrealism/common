@@ -20,6 +20,7 @@ guard against the two ways a hook test passes vacuously:
 import json
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -128,7 +129,8 @@ for _concept, _doc in (("ColorPalette", "A named collection of display colors.")
 NAMESAKE = (
     "package org.example.seq;\n\n"
     "import java.util.AbstractSet;\n\n"
-    "/**\n * An immutable set of the integers {@code start + k * step}.\n */\n"
+    "/**\n * An immutable set of the integers {@code start + k * step}: an arithmetic\n"
+    " * progression of index values.\n */\n"
     "public final class ArithmeticIndexSet extends AbstractSet<Integer> {\n"
     "\tpublic boolean contains(Object o) { return false; }\n"
     "}\n")
@@ -148,7 +150,31 @@ GENUINE = (
     "}\n")
 
 BUILDS_ON_CANDIDATE = NAMESAKE.replace(
+    "extends AbstractSet<Integer>", "extends ArithmeticIndexSequence").replace(
+    "\tpublic boolean contains(Object o) { return false; }\n",
+    "\tpublic boolean contains(Object o) { return false; }\n"
+    "\tpublic long valueAt(int pos) { return super.valueAt(pos); }\n")
+
+# Names the candidate as a supertype but neither overrides nor calls anything
+# of it: the shape of a marker that only exists to lift the block.
+NAMES_CANDIDATE_ONLY = NAMESAKE.replace(
     "extends AbstractSet<Integer>", "extends ArithmeticIndexSequence")
+
+# Holds a field of the candidate's type and never calls it.
+UNUSED_FIELD = RENAMED.replace(
+    "public final class IndexProgression {\n",
+    "public final class IndexProgression {\n"
+    "\tprivate final ArithmeticIndexSequence sequence = null;\n")
+
+TEST_REL = "mod/src/test/java/org/example/seq/IndexProgressionTest.java"
+
+TEST_SOURCE = (
+    "package org.example.seq;\n\n"
+    "public class IndexProgressionTest {\n"
+    "\tpublic void distinguishesFromSequence() {\n"
+    "\t\tnew IndexProgression();\n"
+    "\t}\n"
+    "}\n")
 
 REASONS = {
     "cannot_extend": "the candidate is final in a sibling library we do not own",
@@ -426,16 +452,24 @@ class EndToEndTest(unittest.TestCase):
         finally:
             del os.environ["AR_TYPE_INDEX_CACHE"]
         result = type_equivalence.assess(index, source, rel, name, [])
-        return [c["fqn"] for c in result["candidates"]]
+        return [c["fqn"] for c in result["candidates"] if c["blocks"]]
 
-    def write_ledger(self, tmp, fqn, candidates):
+    def write_ledger(self, tmp, fqn, candidates,
+                     test="IndexProgressionTest#distinguishesFromSequence"):
         path = os.path.join(tmp, ".claude", "new-type-ledger.json")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as f:
             json.dump({"types": [{
                 "type": fqn,
-                "test": "ArithmeticIndexSetTest#distinguishesFromSequence",
+                "test": test,
                 "candidates": {c: REASONS for c in candidates}}]}, f)
+
+    def write_test(self, tmp, rel=TEST_REL, text=TEST_SOURCE):
+        """Adds a test source to the synthetic repository."""
+        full = os.path.join(tmp, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w") as f:
+            f.write(text)
 
     def test_namesake_type_blocks(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -506,11 +540,34 @@ class EndToEndTest(unittest.TestCase):
         context = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
         self.assertIn("extends or implements ArithmeticIndexSequence", context)
 
+    def test_naming_candidate_as_supertype_without_using_it_still_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "ArithmeticIndexSet.java"
+            self.assertIn("org.example.seq.ArithmeticIndexSequence",
+                          self.candidates_for(tmp, rel, NAMES_CANDIDATE_ONLY,
+                                              "ArithmeticIndexSet"))
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), NAMES_CANDIDATE_ONLY))
+        self.assertEqual(2, proc.returncode, proc.stdout)
+        self.assertIn("org.example.seq.ArithmeticIndexSequence", proc.stderr)
+
+    def test_unused_field_of_candidate_still_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "IndexProgression.java"
+            self.assertIn("org.example.seq.ArithmeticIndexSequence",
+                          self.candidates_for(tmp, rel, UNUSED_FIELD, "IndexProgression"))
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), UNUSED_FIELD))
+        self.assertEqual(2, proc.returncode, proc.stdout)
+        self.assertIn("org.example.seq.ArithmeticIndexSequence", proc.stderr)
+
     def test_type_delegating_to_candidate_passes(self):
-        delegating = RENAMED.replace(
-            "public final class IndexProgression {\n",
-            "public final class IndexProgression {\n"
-            "\tprivate final ArithmeticIndexSequence sequence = null;\n")
+        delegating = UNUSED_FIELD.replace(
+            "\tpublic long valueAt(int pos) { return 0; }\n",
+            "\tpublic long valueAt(int pos) { return sequence.valueAt(pos); }\n")
+        self.assertNotEqual(UNUSED_FIELD, delegating, "the fixture must call the field")
         with tempfile.TemporaryDirectory() as tmp:
             self.make_repo(tmp)
             rel = SEQ + "IndexProgression.java"
@@ -530,11 +587,62 @@ class EndToEndTest(unittest.TestCase):
             self.assertGreaterEqual(len(found), 2,
                                     "the fixture must list several candidates")
             self.write_ledger(tmp, "org.example.seq.IndexProgression", found)
+            self.write_test(tmp)
             proc = self.run_in_repo(tmp, self.write_payload(
                 os.path.join(tmp, rel), RENAMED))
         self.assertEqual(0, proc.returncode, proc.stderr)
         context = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
         self.assertIn("covers every candidate", context)
+
+    def test_ledger_naming_a_missing_test_still_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "IndexProgression.java"
+            found = self.candidates_for(tmp, rel, RENAMED, "IndexProgression")
+            self.assertTrue(found, "the fixture must block without a ledger entry")
+            self.write_ledger(tmp, "org.example.seq.IndexProgression", found)
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), RENAMED))
+        self.assertEqual(2, proc.returncode, proc.stdout)
+        self.assertIn("does not exist in the test sources", proc.stderr)
+
+    def test_ledger_naming_a_test_that_ignores_the_type_still_blocks(self):
+        unrelated = TEST_SOURCE.replace("new IndexProgression();", "int unused = 0;")
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "IndexProgression.java"
+            found = self.candidates_for(tmp, rel, RENAMED, "IndexProgression")
+            self.assertTrue(found, "the fixture must block without a ledger entry")
+            self.write_ledger(tmp, "org.example.seq.IndexProgression", found)
+            self.write_test(tmp, text=unrelated)
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), RENAMED))
+        self.assertEqual(2, proc.returncode, proc.stdout)
+        self.assertIn("never refers to IndexProgression", proc.stderr)
+
+    def test_ledger_naming_a_missing_test_method_still_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "IndexProgression.java"
+            found = self.candidates_for(tmp, rel, RENAMED, "IndexProgression")
+            self.assertTrue(found, "the fixture must block without a ledger entry")
+            self.write_ledger(tmp, "org.example.seq.IndexProgression", found,
+                              test="IndexProgressionTest#noSuchMethod")
+            self.write_test(tmp)
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), RENAMED))
+        self.assertEqual(2, proc.returncode, proc.stdout)
+        self.assertIn("declares no method noSuchMethod", proc.stderr)
+
+    def test_assessment_failure_fails_open_with_a_warning(self):
+        payload = {"tool_name": "MultiEdit",
+                   "tool_input": {"file_path": os.path.join(REPO, "Broken.java"),
+                                  "edits": ["not an edit object"]}}
+        proc = self.run_payload(payload, discovery=True)
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        self.assertIn("the new-type check did not run", proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertIn("did not run", json.loads(proc.stdout)["systemMessage"])
 
     def test_ledger_missing_a_candidate_still_blocks(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -631,8 +739,8 @@ class ScanTest(unittest.TestCase):
 
     def test_scan_reports_every_added_type_and_excludes_them_as_candidates(self):
         progression = SEQ + "IndexProgression.java"
-        cursor_source = RENAMED.replace("IndexProgression", "IndexProgressionCursor")
-        cursor = SEQ + "IndexProgressionCursor.java"
+        cursor_source = RENAMED.replace("IndexProgression", "IndexSeries")
+        cursor = SEQ + "IndexSeries.java"
         router = "mod/src/main/java/org/example/net/PacketRouter.java"
         with tempfile.TemporaryDirectory() as tmp:
             EndToEndTest.make_repo(self, tmp)
@@ -640,20 +748,21 @@ class ScanTest(unittest.TestCase):
             self.write(tmp, cursor, cursor_source)
             self.write(tmp, router, GENUINE)
             index = self.index(tmp)
-            unexcluded = self.te.assess(index, cursor_source, cursor, "IndexProgressionCursor", [])
+            unexcluded = self.te.assess(index, cursor_source, cursor, "IndexSeries", [])
             os.environ["AR_TYPE_INDEX_CACHE"] = os.path.join(tmp, "scan-index.json")
             try:
-                assessed, added = self.te.scan(tmp, [progression, cursor, router])
+                assessed, added, declared = self.te.scan(tmp, [progression, cursor, router])
             finally:
                 del os.environ["AR_TYPE_INDEX_CACHE"]
-        new_types = {"org.example.seq.IndexProgression", "org.example.seq.IndexProgressionCursor",
+        new_types = {"org.example.seq.IndexProgression", "org.example.seq.IndexSeries",
                      "org.example.net.PacketRouter"}
         self.assertEqual(new_types, set(added), "every added type is reported, candidates or not")
+        self.assertEqual(["org.example.seq.IndexSeries"], declared[cursor])
         self.assertIn("org.example.seq.IndexProgression",
                       [c["fqn"] for c in unexcluded["candidates"]],
                       "the fixture must make one new type resemble the other")
         by_fqn = {a["fqn"]: a for a in assessed}
-        self.assertIn("org.example.seq.IndexProgressionCursor", by_fqn)
+        self.assertIn("org.example.seq.IndexSeries", by_fqn)
         self.assertNotIn("org.example.net.PacketRouter", by_fqn)
         for a in assessed:
             found = {c["fqn"] for c in a["candidates"]}
@@ -668,6 +777,162 @@ class ScanTest(unittest.TestCase):
         self.assertIsNone(self.te.ledger_entry(by_simple, new))
         self.assertIsNone(self.te.ledger_entry(by_other_package, new))
         self.assertEqual(exact[0], self.te.ledger_entry(exact, new))
+
+
+# The calibration sample: every existing main-source type under these
+# directories, each assessed as if it were new.
+CALIBRATION_PREFIXES = ("engine/audio/", "studio/music/", "domain/graph/")
+
+# The most of that sample allowed to block. A guard that blocks legitimate
+# classes often is learned around and then ignored.
+MAX_EXISTING_BLOCK_RATE = 0.03
+
+SEQUENCE_PACKAGE = "base/code/src/main/java/io/almostrealism/sequence/"
+
+# The incident the duplicate-type block exists for, written against the real
+# repository: a set of an arithmetic progression of indices beside
+# ArithmeticIndexSequence.
+REAL_SET = """package io.almostrealism.sequence;
+
+import java.util.AbstractSet;
+import java.util.Iterator;
+
+/**
+ * An immutable set of the integers {@code start + k * step} for {@code k} in
+ * {@code [0, count)}: an arithmetic progression of indices held as its three
+ * parameters, so membership is answered without boxing every index.
+ */
+public final class ArithmeticIndexSet extends AbstractSet<Integer> {
+	private final int start;
+	private final int step;
+	private final int count;
+
+	public ArithmeticIndexSet(int start, int step, int count) {
+		this.start = start;
+		this.step = step;
+		this.count = count;
+	}
+
+	public int getStart() { return start; }
+
+	public int getStep() { return step; }
+
+	@Override
+	public boolean contains(Object o) {
+		if (!(o instanceof Integer)) return false;
+		int d = (Integer) o - start;
+		return d >= 0 && d % step == 0 && d / step < count;
+	}
+
+	@Override
+	public Iterator<Integer> iterator() {
+		return java.util.stream.IntStream.range(0, count).map(k -> start + k * step).iterator();
+	}
+
+	@Override
+	public int size() { return count; }
+}
+"""
+
+# The same concept under another name.
+REAL_PROGRESSION = """package io.almostrealism.sequence;
+
+/**
+ * An arithmetic progression of index values, {@code offset + scale * pos}.
+ */
+public final class IndexProgression {
+	private final long offset;
+	private final long scale;
+	private final long len;
+
+	public IndexProgression(long offset, long scale, long len) {
+		this.offset = offset;
+		this.scale = scale;
+		this.len = len;
+	}
+
+	public Number valueAt(long pos) { return offset + scale * pos; }
+
+	public long lengthLong() { return len; }
+
+	public long getOffset() { return offset; }
+
+	public long getScale() { return scale; }
+}
+"""
+
+# Existing classes copied under a new name: a copy is the plainest duplicate.
+COPIES = (("ArithmeticIndexSequence", "StridedIndexRun"),
+          ("FileWaveDataProvider", "RecordedSampleSource"),
+          ("PatternLayerManager", "PatternTierOrganizer"),
+          ("CachedStateCell", "MemoizedStateNode"))
+
+# Existing types a review found the earlier scorer blocked although they are
+# not duplicates: collaborators, siblings of one supertype, and types that
+# merely share a vocabulary.
+NOT_DUPLICATES = ("WavFile", "CellList", "AudioLibrary", "AudioLibraryPersistence",
+                  "DynamicAudioCell", "PolymorphicAudioCell")
+
+
+class CalibrationTest(unittest.TestCase):
+    """The scorer over the real repository: existing types treated as new
+    rarely block, and real duplicates still do. Prints both numbers."""
+
+    @classmethod
+    def setUpClass(cls):
+        lib = os.path.join(HOOKS, "lib")
+        if lib not in sys.path:
+            sys.path.insert(0, lib)
+        import type_equivalence
+        cls.te = type_equivalence
+        cls.index = type_equivalence.TypeIndex.load(REPO)
+
+    def assess(self, source, rel, name):
+        result = self.te.assess(self.index, source, rel, name, [])
+        self.assertIsNotNone(result, "the fixture must declare " + name)
+        return result
+
+    def path_of(self, name):
+        found = [t["path"] for t in self.index.types if t["name"] == name]
+        self.assertTrue(found, name + " must exist in the repository for this test")
+        return found[0]
+
+    def test_existing_types_rarely_block(self):
+        report = self.te.calibrate(REPO, CALIBRATION_PREFIXES)
+        print("\ncalibration: %d existing types, %d blocked (%.1f%%), %d warned"
+              % (report["types"], report["blocked"], 100 * report["block_rate"],
+                 report["warned"]), file=sys.stderr)
+        self.assertGreaterEqual(report["types"], 200, "the calibration sample is too small to mean anything")
+        self.assertLessEqual(report["block_rate"], MAX_EXISTING_BLOCK_RATE,
+                             json.dumps(report["blocking"], indent=1))
+
+    def test_reviewed_non_duplicates_do_not_block(self):
+        for name in NOT_DUPLICATES:
+            rel = self.path_of(name)
+            with open(os.path.join(REPO, rel)) as f:
+                result = self.assess(f.read(), rel, name)
+            self.assertFalse(result["blocks"], name + " blocks: " + json.dumps(result["candidates"]))
+
+    def test_true_positives_still_block(self):
+        cases = [(REAL_SET, SEQUENCE_PACKAGE + "ArithmeticIndexSet.java", "ArithmeticIndexSet",
+                  "io.almostrealism.sequence.ArithmeticIndexSequence"),
+                 (REAL_PROGRESSION, SEQUENCE_PACKAGE + "IndexProgression.java", "IndexProgression",
+                  "io.almostrealism.sequence.ArithmeticIndexSequence")]
+        for old, new in COPIES:
+            rel = self.path_of(old)
+            with open(os.path.join(REPO, rel)) as f:
+                text = re.sub(r'\b' + old + r'\b', new, f.read())
+            original = [t["fqn"] for t in self.index.types if t["path"] == rel and t["name"] == old][0]
+            cases.append((text, os.path.dirname(rel) + "/" + new + ".java", new, original))
+        blocked = 0
+        for source, rel, name, original in cases:
+            result = self.assess(source, rel, name)
+            blocking = [c["fqn"] for c in result["candidates"] if c["blocks"]]
+            if result["blocks"] and original in blocking:
+                blocked += 1
+            else:
+                self.fail(name + " does not block on " + original + ": " + json.dumps(result["candidates"]))
+        print("\ncalibration: %d of %d true positives blocked" % (blocked, len(cases)), file=sys.stderr)
 
 
 if __name__ == "__main__":
