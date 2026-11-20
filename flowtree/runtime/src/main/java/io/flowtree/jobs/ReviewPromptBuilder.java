@@ -78,6 +78,7 @@ final class ReviewPromptBuilder {
         appendContext(sb, job);
         appendTaskPrompt(sb, job);
         appendNewFiles(sb, job);
+        appendNewTypes(sb, job);
         appendDoDirectly(sb);
         appendDefer(sb);
         appendHowToDefer(sb, job);
@@ -146,6 +147,42 @@ final class ReviewPromptBuilder {
               .append(" more not listed ...)\n");
         }
         sb.append('\n');
+    }
+
+    /** Appends the new-type section for the job's working tree; see {@link #newTypeSection}. */
+    private static void appendNewTypes(StringBuilder sb, CodingAgentJob job) {
+        boolean newJavaSource = job.extractNewFilePaths().stream()
+                .anyMatch(NewTypeAudit::isMainSource);
+        sb.append(newTypeSection(newJavaSource, job.getNewTypeAudit().scan()));
+    }
+
+    /**
+     * Returns the question every new type is asked first -- should it exist?
+     * -- with the existing types the type-equivalence search found for each.
+     *
+     * @param newJavaSource whether the branch adds any main-source Java file
+     * @param assessed      the new types that resemble existing ones
+     * @return the section, or an empty string when the branch adds no type
+     */
+    static String newTypeSection(boolean newJavaSource, List<NewTypeAssessment> assessed) {
+        if (!newJavaSource && assessed.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        sb.append("NEW TYPES -- FIRST ASK WHETHER EACH SHOULD EXIST\n");
+        sb.append("Before checking whether a new type is correct, ask whether it should ");
+        sb.append("exist. A new type that re-implements a concept the codebase already has ");
+        sb.append("is a defect however correct it is: the problem is solved with the ");
+        sb.append("existing abstraction, improved if necessary -- use it as it is, change ");
+        sb.append("the signature or caller that made a new type seem necessary, extend it ");
+        sb.append("or introduce an interface it implements. \"The existing type does not ");
+        sb.append("implement X\" and \"the signature requires Y\" are not reasons: ");
+        sb.append("signatures and hierarchies can change. If a new type should not exist, ");
+        sb.append("that is the finding; its correctness is moot.\n");
+        if (!assessed.isEmpty()) {
+            sb.append("These new types resemble existing ones:\n");
+            for (NewTypeAssessment type : assessed) sb.append(type.describe());
+        }
+        sb.append('\n');
+        return sb.toString();
     }
 
     /** Appends the "fixes you may make directly" category list. */

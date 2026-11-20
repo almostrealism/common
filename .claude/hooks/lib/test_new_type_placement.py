@@ -61,6 +61,101 @@ NEW_CLASS = (
     "}\n"
 )
 
+# A synthetic repository modelled on the incident the duplicate-type block
+# exists for: an arithmetic index sequence, the interface it implements, and
+# unrelated neighbours that must never be reported as candidates.
+SEQ = "mod/src/main/java/org/example/seq/"
+
+FIXTURE_SOURCES = {
+    SEQ + "IndexSequence.java": (
+        "package org.example.seq;\n\n"
+        "/**\n * A sequence of index values, addressed by position.\n */\n"
+        "public interface IndexSequence {\n"
+        "\tlong valueAt(int pos);\n"
+        "\tint length();\n"
+        "}\n"),
+    SEQ + "ArithmeticIndexSequence.java": (
+        "package org.example.seq;\n\n"
+        "/**\n"
+        " * An {@link IndexSequence} that represents arithmetic sequences of index\n"
+        " * values: {@code offset + scale * pos}. Memory access in kernels often\n"
+        " * follows such regular arithmetic progressions.\n"
+        " */\n"
+        "public class ArithmeticIndexSequence implements IndexSequence {\n"
+        "\tprivate final long offset;\n"
+        "\tprivate final long scale;\n"
+        "\tprivate final int len;\n\n"
+        "\tpublic ArithmeticIndexSequence(long offset, long scale, int len) {\n"
+        "\t\tthis.offset = offset;\n\t\tthis.scale = scale;\n\t\tthis.len = len;\n"
+        "\t}\n\n"
+        "\tpublic long valueAt(int pos) { return offset + scale * pos; }\n\n"
+        "\tpublic int length() { return len; }\n\n"
+        "\tpublic ArithmeticIndexSequence scaled(long factor) {\n"
+        "\t\treturn new ArithmeticIndexSequence(offset * factor, scale * factor, len);\n"
+        "\t}\n"
+        "\t// members\n"
+        "}\n"),
+    "mod/src/main/java/org/example/audio/WaveFilter.java": (
+        "package org.example.audio;\n\n"
+        "/** A low-pass filter applied to audio waveforms. */\n"
+        "public class WaveFilter {\n"
+        "\tpublic double cutoff() { return 0; }\n"
+        "}\n"),
+    "mod/src/main/java/org/example/text/TokenStream.java": (
+        "package org.example.text;\n\n"
+        "/** Tokens read from a body of text, one word at a time. */\n"
+        "public class TokenStream {\n"
+        "\tpublic String next() { return null; }\n"
+        "}\n"),
+}
+
+# Unrelated neighbours, so that word rarity in the fixture behaves as it does
+# in a real repository rather than in a four-type toy.
+for _concept, _doc in (("ColorPalette", "A named collection of display colors."),
+                       ("MeshVertex", "A point of a triangle mesh in model space."),
+                       ("CurrencyAmount", "A sum of money in one currency."),
+                       ("RetryPolicy", "When and how often a failed request is retried."),
+                       ("ShaderProgram", "A compiled program run on the graphics card."),
+                       ("UserAccount", "The login and profile of a person using the service."),
+                       ("ChordVoicing", "The notes of a musical chord and their octaves."),
+                       ("SensorReading", "One measurement reported by a hardware sensor."),
+                       ("LogRotation", "When old log files are archived and removed."),
+                       ("TaxBracket", "A range of income taxed at a single rate.")):
+    FIXTURE_SOURCES["mod/src/main/java/org/example/misc/" + _concept + ".java"] = (
+        "package org.example.misc;\n\n/** " + _doc + " */\npublic class " + _concept
+        + " {\n\tpublic int id() { return 0; }\n}\n")
+
+NAMESAKE = (
+    "package org.example.seq;\n\n"
+    "import java.util.AbstractSet;\n\n"
+    "/**\n * An immutable set of the integers {@code start + k * step}.\n */\n"
+    "public final class ArithmeticIndexSet extends AbstractSet<Integer> {\n"
+    "\tpublic boolean contains(Object o) { return false; }\n"
+    "}\n")
+
+RENAMED = (
+    "package org.example.seq;\n\n"
+    "/**\n * An arithmetic progression of index values.\n */\n"
+    "public final class IndexProgression {\n"
+    "\tpublic long valueAt(int pos) { return 0; }\n"
+    "}\n")
+
+GENUINE = (
+    "package org.example.net;\n\n"
+    "/**\n * Routes network packets between peers over a mesh.\n */\n"
+    "public final class PacketRouter {\n"
+    "\tpublic void route(byte[] packet) { }\n"
+    "}\n")
+
+BUILDS_ON_CANDIDATE = NAMESAKE.replace(
+    "extends AbstractSet<Integer>", "extends ArithmeticIndexSequence")
+
+REASONS = {
+    "cannot_extend": "the candidate is final in a sibling library we do not own",
+    "cannot_change_signature": "the signature is fixed by a published external SPI",
+    "interface_would_not_work": "the SPI requires a concrete class, not an interface",
+}
+
 
 def load_hook():
     """Imports the hook script as a module."""
@@ -293,6 +388,206 @@ class EndToEndTest(unittest.TestCase):
                 self.write_payload(path, "class FooHelper {}\n"))
         self.assertEqual(0, proc.returncode, proc.stderr)
         self.assertEqual("", proc.stdout.strip())
+
+    # -- Duplicate-type block, against a synthetic repository -------------
+
+    def make_repo(self, tmp):
+        """Lays FIXTURE_SOURCES out as a repository rooted at ``tmp``."""
+        os.mkdir(os.path.join(tmp, ".git"))
+        for rel, text in FIXTURE_SOURCES.items():
+            full = os.path.join(tmp, rel)
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "w") as f:
+                f.write(text)
+        return tmp
+
+    def run_in_repo(self, tmp, payload):
+        """Runs the hook against the synthetic repository at ``tmp``, with
+        the index cached inside it so no real cache is touched."""
+        env = dict(os.environ, USER=TEST_USER,
+                   AR_TYPE_INDEX_CACHE=os.path.join(tmp, "index.json"))
+        env.pop("AR_TYPE_INDEX_ROOT", None)
+        with open(DISCOVERY_MARKER, "w") as f:
+            f.write("1")
+        return subprocess.run(
+            [sys.executable, HOOK], input=json.dumps(payload),
+            capture_output=True, text=True, cwd=tmp, env=env, timeout=120)
+
+    def candidates_for(self, tmp, rel, source, name):
+        """The candidates the scorer reports in-process: the fixture check
+        that keeps a block or pass from being vacuous."""
+        lib = os.path.join(HOOKS, "lib")
+        if lib not in sys.path:
+            sys.path.insert(0, lib)
+        import type_equivalence
+        os.environ["AR_TYPE_INDEX_CACHE"] = os.path.join(tmp, "probe.json")
+        try:
+            index = type_equivalence.TypeIndex.load(tmp)
+        finally:
+            del os.environ["AR_TYPE_INDEX_CACHE"]
+        result = type_equivalence.assess(index, source, rel, name, [])
+        return [c["fqn"] for c in result["candidates"]]
+
+    def write_ledger(self, tmp, fqn, candidates):
+        path = os.path.join(tmp, ".claude", "new-type-ledger.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump({"types": [{
+                "type": fqn,
+                "test": "ArithmeticIndexSetTest#distinguishesFromSequence",
+                "candidates": {c: REASONS for c in candidates}}]}, f)
+
+    def test_namesake_type_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "ArithmeticIndexSet.java"
+            self.assertAdds("", NAMESAKE, "ArithmeticIndexSet")
+            self.assertIn("org.example.seq.ArithmeticIndexSequence",
+                          self.candidates_for(tmp, rel, NAMESAKE, "ArithmeticIndexSet"))
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), NAMESAKE))
+        self.assertEqual(2, proc.returncode, proc.stdout)
+        self.assertIn("org.example.seq.ArithmeticIndexSequence", proc.stderr)
+        self.assertIn(SEQ + "ArithmeticIndexSequence.java", proc.stderr)
+        self.assertNotIn("WaveFilter", proc.stderr)
+        self.assertNotIn("TokenStream", proc.stderr)
+
+    def test_block_message_orders_remedies_and_rejects_excuses(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "ArithmeticIndexSet.java"
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), NAMESAKE))
+        self.assertEqual(2, proc.returncode, proc.stdout)
+        text = proc.stderr
+        order = [text.find("1. USE"), text.find("2. CHANGE THE SIGNATURE"),
+                 text.find("3. EXTEND OR IMPROVE"), text.find("4. Only then")]
+        self.assertTrue(all(i >= 0 for i in order), text)
+        self.assertEqual(sorted(order), order, "remedies must appear in order")
+        self.assertIn("the existing type does not implement interface X", text)
+        self.assertIn("the method\nsignature requires Y", text)
+        self.assertIn("Renaming\nthe new type is NOT a remedy", text)
+
+    def test_renamed_equivalent_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "IndexProgression.java"
+            self.assertAdds("", RENAMED, "IndexProgression")
+            self.assertIn("org.example.seq.ArithmeticIndexSequence",
+                          self.candidates_for(tmp, rel, RENAMED, "IndexProgression"))
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), RENAMED))
+        self.assertEqual(2, proc.returncode, proc.stdout)
+        self.assertIn("org.example.seq.ArithmeticIndexSequence", proc.stderr)
+
+    def test_genuinely_new_concept_keeps_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = "mod/src/main/java/org/example/net/PacketRouter.java"
+            self.assertAdds("", GENUINE, "PacketRouter")
+            self.assertEqual([], self.candidates_for(tmp, rel, GENUINE, "PacketRouter"))
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), GENUINE))
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        context = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("PacketRouter", context)
+        self.assertIn("generality ladder", context)
+
+    def test_type_extending_candidate_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "ArithmeticIndexSet.java"
+            self.assertIn("org.example.seq.ArithmeticIndexSequence",
+                          self.candidates_for(tmp, rel, BUILDS_ON_CANDIDATE,
+                                              "ArithmeticIndexSet"))
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), BUILDS_ON_CANDIDATE))
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        context = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("extends or implements ArithmeticIndexSequence", context)
+
+    def test_type_delegating_to_candidate_passes(self):
+        delegating = RENAMED.replace(
+            "public final class IndexProgression {\n",
+            "public final class IndexProgression {\n"
+            "\tprivate final ArithmeticIndexSequence sequence = null;\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "IndexProgression.java"
+            self.assertIn("org.example.seq.ArithmeticIndexSequence",
+                          self.candidates_for(tmp, rel, delegating, "IndexProgression"))
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), delegating))
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        context = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("delegates to ArithmeticIndexSequence", context)
+
+    def test_ledger_covering_every_candidate_lifts_block(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "IndexProgression.java"
+            found = self.candidates_for(tmp, rel, RENAMED, "IndexProgression")
+            self.assertGreaterEqual(len(found), 2,
+                                    "the fixture must list several candidates")
+            self.write_ledger(tmp, "org.example.seq.IndexProgression", found)
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), RENAMED))
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        context = json.loads(proc.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("covers every candidate", context)
+
+    def test_ledger_missing_a_candidate_still_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "IndexProgression.java"
+            found = self.candidates_for(tmp, rel, RENAMED, "IndexProgression")
+            self.assertGreaterEqual(len(found), 2,
+                                    "the fixture must list several candidates")
+            self.write_ledger(tmp, "org.example.seq.IndexProgression", found[:-1])
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), RENAMED))
+        self.assertEqual(2, proc.returncode, proc.stdout)
+        self.assertIn("candidate " + found[-1] + " is not justified", proc.stderr)
+
+    def test_ledger_without_test_still_blocks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "IndexProgression.java"
+            found = self.candidates_for(tmp, rel, RENAMED, "IndexProgression")
+            self.write_ledger(tmp, "org.example.seq.IndexProgression", found)
+            path = os.path.join(tmp, ".claude", "new-type-ledger.json")
+            with open(path) as f:
+                data = json.load(f)
+            del data["types"][0]["test"]
+            with open(path, "w") as f:
+                json.dump(data, f)
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), RENAMED))
+        self.assertEqual(2, proc.returncode, proc.stdout)
+        self.assertIn("no test named", proc.stderr)
+
+    def test_edit_to_existing_type_in_repo_never_fires(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = SEQ + "ArithmeticIndexSequence.java"
+            before = FIXTURE_SOURCES[rel]
+            new_method = "\tpublic long first() {\n\t\treturn offset;\n\t}\n"
+            after = before.replace("\t// members\n", new_method)
+            self.assertPresentUnchanged(before, after, "ArithmeticIndexSequence")
+            proc = self.run_in_repo(tmp, self.edit_payload(
+                os.path.join(tmp, rel), "\t// members\n", new_method))
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        self.assertEqual("", proc.stdout.strip(), "an ordinary edit must emit nothing")
+
+    def test_new_test_class_is_not_checked_for_equivalents(self):
+        test_source = NAMESAKE.replace("ArithmeticIndexSet", "ArithmeticIndexSequenceTest")
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            rel = "mod/src/test/java/org/example/seq/ArithmeticIndexSequenceTest.java"
+            self.assertAdds("", test_source, "ArithmeticIndexSequenceTest")
+            proc = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, rel), test_source))
+        self.assertEqual(0, proc.returncode, proc.stderr)
 
 
 if __name__ == "__main__":

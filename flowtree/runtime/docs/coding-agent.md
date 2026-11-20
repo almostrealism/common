@@ -161,6 +161,21 @@ The prompt is deliberately aggressive. Key points:
 
 `DEDUP_LOCAL` runs exactly one additional session. It does not re-trigger `validateChanges()` (which is called from `GitManagedJob.run()`, not from within `executeSingleRun()`), and `deduplicationMode` is never propagated to spawned sessions, so there is no mechanism for the check to chain.
 
+### The New-Type Audit
+
+The type audit runs for every job, whatever `deduplicationMode` says. `EnforcementRunner`
+always adds `DeduplicationRule`; its method audit is on only for `DEDUP_LOCAL`, its type
+audit always. `NewTypeAudit` runs the repository's type-equivalence search
+(`.claude/hooks/lib/type_equivalence.py`, the base-branch copy) over the main-source Java
+files the working tree changes relative to `HEAD`, and lists every new type that resembles
+an existing one and does not extend, implement or delegate to it. The rule's session
+decides whether each should exist — candidates, documentation and memory search, and the
+session's own justification in `.claude/new-type-ledger.json`, which it verifies rather than
+trusts — and folds the type in unless the justification holds. `FileStager` refuses to
+stage a listed type until this job's audit has examined it and recorded the `kept` verdict
+in the ledger, and reports why in the skipped list. See `docs/internals/agent-hooks.md`
+("New-type equivalence gate").
+
 ### Via ar-manager MCP
 
 The `workstream_submit_task` tool exposes the `deduplication_mode` parameter.

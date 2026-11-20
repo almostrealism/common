@@ -1,10 +1,34 @@
 #!/usr/bin/env python3
-"""PreToolUse (Edit/MultiEdit/Write) hook: placement reminder for every new type.
+"""PreToolUse (Edit/MultiEdit/Write) hook: new types must not duplicate old ones.
 
 Fires when a change to a Java source file introduces a top-level type
 declaration (class / interface / enum / record) that was not there before. It
-warns by default; it blocks in exactly one case - a name CLAUDE.md forbids
-outright (a *Util / *Utils / *Helper / *Exporter / *Converter / *Manager class).
+blocks in two cases and warns otherwise:
+
+  * a name CLAUDE.md forbids outright (a *Util / *Utils / *Helper / *Exporter /
+    *Converter / *Manager class);
+  * a main-source type for which the repository already has LIKELY
+    EQUIVALENTS - candidates found by lib/type_equivalence.py from shared
+    name words, javadoc overlap, shared public methods and supertypes, and
+    package or module locality.
+
+The second block exists because of a real incident. A session needed a method
+returning Set<Integer> to stop boxing, and wrote ArithmeticIndexSet - an
+immutable set of start + k*step - beside ArithmeticIndexSequence in the same
+package, importing it on the line below the existing class's import. Its
+reasoning ("the method returns Set, the existing type is not a Set, so I need
+a new type") was false at every step: the method's only callers were the code
+being optimized, so its signature could change; an interface could have been
+introduced for the existing hierarchy to implement; the existing type could
+have been extended. Three review passes then checked the new class's
+correctness and never asked whether it should exist.
+
+The block lifts only when the new type extends, implements or holds a field of
+(delegates to) a candidate, or when .claude/new-type-ledger.json carries a
+justification covering EVERY listed candidate (see lib/type_equivalence.py for
+its shape). A justified type is still re-examined by the harness's type audit
+(DeduplicationRule), which treats the ledger as a claim to verify, and the
+harness refuses to stage it until that audit has settled it.
 
 This is the type-level counterpart of warn-method-placement.py, and it exists
 because a new type is the change that arrives with the LEAST deliberation and is
@@ -46,6 +70,10 @@ import json
 import os
 import re
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+
+import type_equivalence  # noqa: E402
 
 TYPE = re.compile(
     r'^[ \t]*(?:@\w+(?:\([^)]*\))?\s+)*'
@@ -112,6 +140,46 @@ mixin) - never in a helper class.
 
 If you believe this is a genuinely new concept whose name merely happens to end
 that way, rename it to name the concept rather than the operation."""
+
+DUPLICATE_MESSAGE = """BLOCKED: NEW TYPE WITH LIKELY EXISTING EQUIVALENTS in {path}
+
+{details}
+The rule: solve the problem with the existing abstraction, improving it if
+necessary. A second implementation of a concept the codebase already has is a
+defect, however correct it is. Take the FIRST remedy that works, in order:
+
+ 1. USE the candidate as it is.
+ 2. CHANGE THE SIGNATURE OR CALLER that made a new type seem necessary. A
+    method that "returns Set<Integer>" can return the existing type instead,
+    especially when its only callers are the code you are changing.
+ 3. EXTEND OR IMPROVE the candidate - add the method, the constructor, the
+    capability it lacks - or INTRODUCE AN INTERFACE that the candidate
+    implements, and code against that interface.
+ 4. Only then, a new type.
+
+These are NOT reasons for a new type, because signatures and hierarchies can be
+changed: "the existing type does not implement interface X"; "the method
+signature requires Y"; "the existing type is in a different shape". Renaming
+the new type is NOT a remedy either: the search matches javadoc, methods and
+supertypes as well as names, and the harness's type audit re-runs it.
+
+This block lifts when the new type extends, implements or delegates to (holds a
+field of) a candidate, or when {ledger} justifies it. A justification covers
+EVERY listed candidate; for each it says why the candidate cannot be extended,
+why the signature cannot change, and why an interface the candidate implements
+would not work; and it names a test that demonstrates the distinction:
+
+  {{"types": [{{"type": "{fqn}",
+              "test": "SomeTest#distinguishesFromCandidate",
+              "candidates": {{
+                "{first}": {{
+                  "cannot_extend": "...",
+                  "cannot_change_signature": "...",
+                  "interface_would_not_work": "..."}}}}}}]}}
+
+A justified type is still audited independently before it can be committed: the
+harness's type audit treats the justification as a claim to verify, and folds
+the type into the existing abstraction when it does not hold."""
 
 
 def read_payload():
@@ -204,6 +272,71 @@ def blocked(added):
             if name.endswith(BLOCKED_SUFFIXES)]
 
 
+def is_test_source(path):
+    """True for a test-tree source, which is never checked for equivalents: a
+    FooTest beside Foo is the point, not a duplicate."""
+    normalized = path.replace(os.sep, "/")
+    return "/src/test/" in normalized or "/src/it/" in normalized
+
+
+def assess_added(path, after, added):
+    """Assesses each added type against the repository's existing types.
+
+    Returns ``(blocking, lifted)``: the assessments that block, and those
+    whose candidates are answered by structure or by the ledger. Any failure
+    to build the index degrades to "nothing found" - the warning still fires
+    - rather than blocking a write on infrastructure trouble.
+    """
+    if is_test_source(path):
+        return [], []
+    try:
+        root = type_equivalence.find_root(path)
+        index = type_equivalence.TypeIndex.load(root)
+        ledger = type_equivalence.read_ledger(root)
+    except Exception:
+        return [], []
+    rel = os.path.relpath(os.path.abspath(path), root)
+    blocking, lifted = [], []
+    for _, name in added:
+        result = type_equivalence.assess(index, after, rel, name, ledger)
+        if result is None or not result["candidates"]:
+            continue
+        if result["lift"] or result["justified"]:
+            lifted.append(result)
+        else:
+            blocking.append(result)
+    return blocking, lifted
+
+
+def describe(result):
+    """The block-message section for one assessed type."""
+    lines = ["New type " + result["fqn"] + " resembles existing type(s):", ""]
+    for c in result["candidates"]:
+        ev = c["evidence"]
+        why = []
+        if ev.get("shared_name_words"):
+            why.append("name words " + ", ".join(ev["shared_name_words"]))
+        if ev.get("shared_doc_words"):
+            why.append("javadoc " + ", ".join(ev["shared_doc_words"]))
+        if ev.get("shared_methods"):
+            why.append("methods " + ", ".join(ev["shared_methods"]))
+        if ev.get("shared_supertypes"):
+            why.append("supertypes " + ", ".join(ev["shared_supertypes"]))
+        if ev.get("locality"):
+            why.append(ev["locality"])
+        lines.append("  - " + c["fqn"] + "  (score " + str(c["score"]) + ")")
+        lines.append("      " + c["path"])
+        if c.get("sentence"):
+            lines.append("      \"" + c["sentence"][:160] + "\"")
+        if why:
+            lines.append("      shared: " + "; ".join(why))
+    if result["ledger"] is not None and result["gaps"]:
+        lines.append("")
+        lines.append("The ledger entry for this type does not lift the block:")
+        lines.extend("  - " + g for g in result["gaps"])
+    return "\n".join(lines) + "\n"
+
+
 def main():
     payload = read_payload()
     tool = payload.get("tool_name")
@@ -231,8 +364,25 @@ def main():
         print(message, file=sys.stderr)
         sys.exit(2)
 
+    blocking, lifted = assess_added(path, after, added)
+    if blocking:
+        details = "\n".join(describe(r) for r in blocking)
+        first = blocking[0]
+        print(DUPLICATE_MESSAGE.format(
+            path=path, details=details, ledger=type_equivalence.LEDGER_PATH,
+            fqn=first["fqn"], first=first["candidates"][0]["fqn"]),
+            file=sys.stderr)
+        sys.exit(2)
+
     names = ", ".join(kind + " " + name for kind, name in added)
     context = TYPE_REMINDER.format(names=names)
+    for r in lifted:
+        how = ("it " + r["lift"]) if r["lift"] else (
+            "its justification in " + type_equivalence.LEDGER_PATH + " covers every candidate")
+        context += ("\n\n" + r["fqn"] + " resembles "
+                    + ", ".join(c["fqn"] for c in r["candidates"])
+                    + "; allowed because " + how + ". The harness's type audit"
+                    " will still verify that it should exist.")
     if not discovery_on_record():
         context += NO_DISCOVERY_REMINDER.format(names=names)
 

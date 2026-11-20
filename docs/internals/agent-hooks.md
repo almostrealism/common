@@ -154,6 +154,41 @@ hook blocks a run with no path, with a directory, or above 5 test files or 40 no
 They parse command text and are backstops; the enforced surfaces are job submission, the
 controller's submit endpoint and the MCP test runner.
 
+## New-type equivalence gate
+
+An agent must not add a type that re-implements a concept the codebase already has; the
+problem is solved with the existing abstraction, improved if necessary. Three pieces
+enforce this, sharing one implementation of the candidate search,
+`.claude/hooks/lib/type_equivalence.py`:
+
+- **The hook** (`warn-new-type-placement.py`) runs on every Write/Edit/MultiEdit that adds
+  a top-level main-source Java type. It scores the new type against every main-source
+  type of the repository — shared stemmed name words weighted by rarity, overlap between
+  the new type's javadoc first sentence and each existing type's javadoc, shared public
+  methods and supertypes, same package or module — and blocks (exit 2) when likely
+  equivalents exist, listing them with paths and the remedies in order: use the candidate,
+  change the signature or caller, extend or improve the candidate or introduce an
+  interface it implements, and only then a new type. A type with no likely equivalent gets
+  the placement warning. Test sources are not checked. The index is cached in the system
+  temporary directory per repository root and refreshed incrementally by file modification
+  time; a warm lookup takes a fraction of a second.
+- **Lifting the block.** It lifts when the new type extends, implements or holds a field of
+  a candidate, or when `.claude/new-type-ledger.json` (tracked) justifies it. A
+  justification covers every listed candidate with `cannot_extend`,
+  `cannot_change_signature` and `interface_would_not_work`, and names a `test`; the schema
+  is in the module docstring of `type_equivalence.py`. Renaming the type is not a remedy.
+- **The independent audit.** The FlowTree harness runs the base-branch copy of the same
+  search (`NewTypeAudit`), so the audited session cannot weaken it. `DeduplicationRule`
+  runs for every job and gives each flagged type to a separate session that searches
+  documentation and memory as well, treats the ledger as a claim to verify, and folds the
+  type into the existing abstraction unless the justification holds; a kept type gets
+  `"audit": {"verdict": "kept"}` in the ledger. `FileStager` refuses to stage a flagged
+  type until that audit has kept it, and the review prompt asks of every new type whether
+  it should exist before asking whether it is correct.
+
+`python3 .claude/hooks/lib/type_equivalence.py survey --root .` scores every existing type
+against all the others, which estimates how often the gate fires.
+
 ## Private-link hook
 
 `block-private-url` applies the root `CLAUDE.md` rule "Never Publish a Private Link". It

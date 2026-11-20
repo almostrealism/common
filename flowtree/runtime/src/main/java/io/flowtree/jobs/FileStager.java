@@ -42,6 +42,9 @@ import java.util.regex.Pattern;
  *       are skipped.</li>
  *   <li><b>Test file protection</b> -- if enabled, files matching protected
  *       path patterns that exist on the base branch are blocked.</li>
+ *   <li><b>Unresolved new types</b> -- a file declaring a new type that
+ *       resembles an existing one, and that the job's type audit has not
+ *       settled, is skipped with the reason (see {@link NewTypeAudit}).</li>
  *   <li><b>File size</b> -- files exceeding the maximum size threshold are
  *       skipped (deleted files are exempt).</li>
  *   <li><b>Binary detection</b> -- files with more than 10% null bytes in
@@ -372,6 +375,14 @@ public class FileStager implements ConsoleFeatures {
                         log("Allowed (" + verdict.getReason() + "): " + file);
                     }
                 }
+            }
+
+            // Guardrail 2b: a new type resembling an existing one, unsettled by the type audit
+            String newTypeRefusal = isDeleted ? null : config.getNewTypeRefusal(file);
+            if (newTypeRefusal != null) {
+                log("Blocked (unresolved new type): " + file);
+                skippedFiles.add(file + " (" + newTypeRefusal + ")");
+                continue;
             }
 
             // Guardrail 3: File size (skip deleted files)
