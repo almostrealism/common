@@ -178,18 +178,19 @@ allocation smaller than the context's `offHeapSize` to a `JVMMemoryProvider`, wh
 `memoryMax` check. Those small allocations are bounded only by the JVM heap (`-Xmx`), not by
 `AR_HARDWARE_MEMORY_SCALE`, and they do not count toward the hardware provider's `memoryUsed`.
 
-Each performs the same **pre-allocation check** —
-`if (memoryUsed + requested > memoryMax) throw new HardwareException(...)` — before the backend
-allocation call. The accounting order *after* the check differs by provider:
-`NativeMemoryProvider.allocate` and `CudaMemoryProvider.buffer` increment `memoryUsed` *before* their
-backend `calloc`/`cuMemAlloc` (and `CudaMemoryProvider.buffer` rolls the increment back if that
-allocation throws), whereas `CLMemoryProvider.buffer` and `MetalMemoryProvider.buffer` increment
-`memoryUsed` only *after* the backend `clCreateBuffer`/`newBuffer*` call returns successfully. Treat
-the check as a guard against a single over-budget request, not a hard serialized ceiling:
-`NativeMemoryProvider.allocate` and `CudaMemoryProvider.buffer` hold `synchronized` over their
-check-and-increment, so it is atomic. `CLMemoryProvider.buffer` and `MetalMemoryProvider.buffer` run
-the check and the `memoryUsed` increment without synchronization, so two concurrent allocations can
-each pass the check and push the total past `memoryMax`.
+Each performs the same **pre-allocation check** — the request must fit under `memoryMax` — and
+charges `memoryUsed` *before* its backend allocation call, rolling the charge back if that call
+fails, so bytes that were never allocated do not stay counted against the ceiling. The mechanism
+differs by provider but the effect is the same on all four: the check-and-increment is atomic, so
+concurrent allocations can neither lose each other's updates nor together push the total past
+`memoryMax`. `NativeMemoryProvider.allocate` and `CudaMemoryProvider.buffer` hold `synchronized`
+over their check-and-increment around the backend `calloc`/`cuMemAlloc`. `CLMemoryProvider.buffer`
+and `MetalMemoryProvider.buffer` reserve through `HardwareMemoryProvider.allocateReserved`, whose
+`reserve(...)` increments `memoryUsed` with a compare-and-set loop (reclaiming unreachable
+allocations and retrying when the reservation does not fit) before the backend
+`clCreateBuffer`/`newBuffer*` call, and returns the reservation to `memoryUsed` if that call throws.
+Treat the check as a guard against a single over-budget request: it bounds the tracked ceiling, not
+the OS limit (see the raw-allocation-failure mode below).
 
 Distinguish two separate failure modes, because they surface differently:
 

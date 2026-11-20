@@ -582,10 +582,12 @@ handleGitOperations()
     |
     +-- 4. Commit
     |       - Read commit message from commit.txt if present
-    |       - Otherwise generate from prompt text
+    |       - Otherwise generate from the files the job changed
+    |         (never from the prompt text)
     |       - git -c user.name=... -c user.email=... commit -m <message>
+    |         (commit.txt is excluded from staging, so it never reaches
+    |          the commit; no separate cleanup step)
     |       - Record commitHash
-    |       - Clean up commit.txt
     |
     +-- 5. Push to origin
     |       - git push -u origin <targetBranch>:<targetBranch>

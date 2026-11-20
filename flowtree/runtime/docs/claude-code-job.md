@@ -304,7 +304,7 @@ After `doWork()` returns, `GitManagedJob.run()` handles:
 
 The commit message is determined by `getCommitMessage()`, which implements a two-tier strategy:
 
-1. **Agent-written message**: If the agent wrote a `commit.txt` file in the working directory root, its contents (trimmed) are used as the commit message. This allows the agent to craft a meaningful description of its changes. After the commit succeeds, `commit.txt` is deleted to prevent reuse by subsequent runs.
+1. **Agent-written message**: If the agent wrote a `commit.txt` file in the working directory root, its contents (trimmed) are used as the commit message. This allows the agent to craft a meaningful description of its changes. `commit.txt` is itself an excluded path, so it never reaches the commit; any stale `commit.txt` from a previous run is removed when the next run starts.
 
 2. **Auto-generated message**: If no `commit.txt` exists or it is empty, a commit message is generated from the files the job is committing (the staged index, which holds only what the staging guardrails approved; or `git status` when nothing is staged yet; harness scratch paths are removed either way) — never from the prompt, which describes what was asked for rather than what was done:
    ```
