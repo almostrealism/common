@@ -65,10 +65,20 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 	private static final long ATTACHED_CHECK_MILLIS = 100;
 
 	/**
+	 * The quiet delay, in microseconds, of a test whose back-to-back submissions must share one
+	 * buffer and still be committed by the delay: long enough that no scheduler pause between the
+	 * submissions reaches it, short enough to expire well within {@link #RELEASE_TIMEOUT_SECONDS}.
+	 */
+	private static final int ABANDONED_QUIET_MICROS = (int) TimeUnit.SECONDS.toMicros(2);
+
+	/**
 	 * Dispatches whose argument memory is reserved, submitted back to back and never waited for,
 	 * with no reference to their arguments left in the test, still have their reservations given
 	 * back and their callbacks run. They share one command buffer, which the quiet delay commits
-	 * and the completed handler drains.
+	 * and the completed handler drains. The quiet delay is set to {@link #ABANDONED_QUIET_MICROS}
+	 * rather than left at its default, so a scheduler pause between the submissions (each of which
+	 * allocates and reserves an argument) cannot commit the buffer before the last of them joins
+	 * it, while the delay still expires well within {@link #RELEASE_TIMEOUT_SECONDS}.
 	 */
 	@Test(timeout = 60000)
 	public void abandonedDispatchesReleaseTheirReservations() throws InterruptedException {
@@ -79,7 +89,9 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 		}
 
 		int idle = SubmissionStream.minIdleCommit;
+		int quiet = SubmissionStream.quietCommitMicros;
 		SubmissionStream.minIdleCommit = 0;
+		SubmissionStream.quietCommitMicros = ABANDONED_QUIET_MICROS;
 		MetalCommandRunner runner = new MetalCommandRunner(metal.getMtlQueue());
 
 		try {
@@ -103,6 +115,7 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 		} finally {
 			runner.destroy();
 			SubmissionStream.minIdleCommit = idle;
+			SubmissionStream.quietCommitMicros = quiet;
 		}
 	}
 
