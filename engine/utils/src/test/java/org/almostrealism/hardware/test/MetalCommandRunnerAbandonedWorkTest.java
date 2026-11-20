@@ -59,6 +59,12 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 	private static final long RELEASE_TIMEOUT_SECONDS = 20;
 
 	/**
+	 * How long a test watches a completed handler's thread after the handler has returned: a
+	 * thread detached after its handler terminates well within this, an attached one outlives it.
+	 */
+	private static final long ATTACHED_CHECK_MILLIS = 100;
+
+	/**
 	 * Dispatches whose argument memory is reserved, submitted back to back and never waited for,
 	 * with no reference to their arguments left in the test, still have their reservations given
 	 * back and their callbacks run. They share one command buffer, which the quiet delay commits
@@ -391,10 +397,12 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Metal's completion thread stays attached to the JVM between completed handlers: consecutive
-	 * handlers run on a small number of attached {@link Thread}s named for the handler, rather than
-	 * on a new {@link Thread} attached and detached around each one, which a streaming render
-	 * (hundreds of buffers a second) cannot afford.
+	 * Metal's completion thread stays attached to the JVM after a completed handler returns, rather
+	 * than being attached and detached around each handler, which a streaming render (hundreds of
+	 * buffers a second) cannot afford. The test asserts what the handler owns: the {@link Thread}
+	 * that ran each handler is named for the handler and is still alive (still attached) a moment
+	 * after the handler has returned. How many native threads Metal spreads the handlers over is
+	 * Metal's choice, so the number of distinct threads is only logged.
 	 */
 	@Test(timeout = 60000)
 	public void completedHandlersReuseAttachedThread() throws InterruptedException {
@@ -426,6 +434,19 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 			} finally {
 				buffer.release();
 			}
+
+			Thread handlerThread;
+
+			synchronized (threads) {
+				handlerThread = threads.get(threads.size() - 1);
+			}
+
+			// A thread detached after its handler terminates as soon as the handler returns;
+			// one left attached is still alive when the join gives up
+			handlerThread.join(ATTACHED_CHECK_MILLIS);
+			Assert.assertTrue("Handler " + i + "'s thread must stay attached after the handler returns",
+					handlerThread.isAlive());
+			Assert.assertEquals("Metal completed handler", handlerThread.getName());
 		}
 
 		synchronized (threads) {
@@ -433,12 +454,7 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 
 			Set<Thread> distinct = Collections.newSetFromMap(new IdentityHashMap<>());
 			distinct.addAll(threads);
-			Assert.assertTrue("Handlers must reuse attached threads, but " + distinct.size() +
-							" threads ran " + count + " handlers", distinct.size() <= count / 4);
-
-			for (Thread thread : distinct) {
-				Assert.assertEquals("Metal completed handler", thread.getName());
-			}
+			log(distinct.size() + " attached threads ran " + count + " completed handlers");
 		}
 	}
 
