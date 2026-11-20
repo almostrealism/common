@@ -18,8 +18,8 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.concurrent.ConfinedExecutor;
 
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -41,15 +41,21 @@ import java.util.concurrent.TimeUnit;
  * <p>The expiry fires on a timer thread shared by every runner, which does nothing but queue the
  * check on the runner's executor ({@link ConfinedExecutor#runLater}), so all command-buffer state stays
  * confined to that executor. Everything else here is confined to the runner's executor thread
- * as well.</p>
+ * as well. A pending expiry holds the runner's check, and so the runner, until it fires, so the
+ * runner {@link #cancel() cancels} it when it is destroyed, and the timer drops a cancelled expiry
+ * at once rather than when it would have fired.</p>
  */
 final class QuietCommitDeadline {
-	/** The timer thread every runner's deadlines fire on. */
-	private static final ScheduledExecutorService timer = Executors.newSingleThreadScheduledExecutor(r -> {
+	/** The timer thread every runner's deadlines fire on, which drops a cancelled expiry at once. */
+	private static final ScheduledThreadPoolExecutor timer = new ScheduledThreadPoolExecutor(1, r -> {
 		Thread t = new Thread(r, "Metal quiet commit");
 		t.setDaemon(true);
 		return t;
 	});
+
+	static {
+		timer.setRemoveOnCancelPolicy(true);
+	}
 
 	/** The shortest time {@link #postpone()} waits before checking a quiet batch again. */
 	private static final long MIN_POSTPONE_NANOS = TimeUnit.MILLISECONDS.toNanos(1);
@@ -65,6 +71,9 @@ final class QuietCommitDeadline {
 
 	/** Whether an expiry is scheduled and has not been checked yet. Executor-thread only. */
 	private boolean pending;
+
+	/** The expiry scheduled most recently, or {@code null} before the first. Executor-thread only. */
+	private ScheduledFuture<?> expiry;
 
 	/**
 	 * Creates the deadline of one runner's open batch.
@@ -106,7 +115,18 @@ final class QuietCommitDeadline {
 	 */
 	void schedule(long nanos) {
 		pending = true;
-		timer.schedule(() -> executor.runLater(check),Math.max(nanos, 0), TimeUnit.NANOSECONDS);
+		expiry = timer.schedule(() -> executor.runLater(check), Math.max(nanos, 0), TimeUnit.NANOSECONDS);
+	}
+
+	/**
+	 * Cancels the pending expiry, if any, so the timer no longer holds the runner's check. Called
+	 * by the runner's final task as it is destroyed, after which nothing schedules an expiry again.
+	 * Executor-thread only.
+	 */
+	void cancel() {
+		if (expiry != null) expiry.cancel(false);
+		expiry = null;
+		pending = false;
 	}
 
 	/**

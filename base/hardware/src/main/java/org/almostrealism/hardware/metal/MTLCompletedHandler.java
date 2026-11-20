@@ -42,13 +42,17 @@ import org.almostrealism.hardware.jni.NativeCompiler;
  *
  * <p>The operation is compiled once per JVM, on first use, with the toolchain the JNI backend
  * compiles with. A host without that toolchain cannot compile it, which {@link #isAvailable()}
- * reports once, with the cause.</p>
+ * reports once, with the cause. A registration that fails is reported the same way by
+ * {@link #register}, which disables the operation rather than throw.</p>
  */
 class MTLCompletedHandler extends BaseNative {
 	/** The operation, once compiled. */
 	private static volatile MTLCompletedHandler operation;
 
-	/** Why the operation could not be compiled, once an attempt has failed. Guarded by the class. */
+	/**
+	 * Why the operation could not be compiled, or a registration failed, once either has happened.
+	 * Guarded by the class.
+	 */
 	private static RuntimeException failure;
 
 	/**
@@ -130,14 +134,46 @@ class MTLCompletedHandler extends BaseNative {
 	public native void apply(long buffer, Runnable handler);
 
 	/**
-	 * Returns the operation, compiling it if this is the first use in the JVM.
+	 * Registers {@code handler} to run once the given command buffer has finished, if completed
+	 * handlers are available on this host. A registration that fails (the Objective-C runtime could
+	 * not be resolved when the operation was loaded, or the Java VM could not be obtained) is
+	 * never allowed to reach the caller, since the caller commits the buffer next and a failure
+	 * here would leave it uncommitted. The failure is logged once with its cause, completed handlers
+	 * are reported unavailable from then on, and the caller learns that the buffer has finished
+	 * from its status instead.
 	 *
-	 * @return the compiled operation
-	 * @throws RuntimeException if the operation cannot be compiled, now or by an earlier attempt
+	 * @param buffer  native {@code MTLCommandBuffer} pointer, not yet committed
+	 * @param handler run on a Metal thread once the buffer has finished
+	 * @return true if the handler was registered, false if completed handlers are unavailable
 	 */
-	static MTLCompletedHandler get() {
+	static boolean register(long buffer, Runnable handler) {
+		if (!isAvailable()) return false;
+
 		MTLCompletedHandler compiled = operation;
-		return compiled == null ? compile() : compiled;
+		if (compiled == null) return false;
+
+		try {
+			compiled.apply(buffer, handler);
+			return true;
+		} catch (RuntimeException e) {
+			disable(e);
+			return false;
+		}
+	}
+
+	/**
+	 * Records that a registration failed, so that {@link #isAvailable()} reports completed
+	 * handlers unavailable from now on, and logs the cause the first time.
+	 *
+	 * @param cause why the registration failed
+	 */
+	private static synchronized void disable(RuntimeException cause) {
+		if (failure != null) return;
+
+		failure = cause;
+		operation = null;
+		Hardware.console.warn("Metal completed handlers could not be registered, so finished " +
+				"command buffers are released only when the runner next drains", cause);
 	}
 
 	/**
@@ -145,39 +181,20 @@ class MTLCompletedHandler extends BaseNative {
 	 * been made yet. A failed attempt is logged, with its cause, when it happens; later calls
 	 * report it without trying again.
 	 *
-	 * @return true if {@link #get()} returns the operation, false if it throws
+	 * @return true if the operation is compiled and no registration has failed
 	 */
 	static synchronized boolean isAvailable() {
+		// TODO(review): the first call compiles on the runner's executor thread, stalling the first commit
 		if (operation == null && failure == null) {
 			try {
-				compile();
+				operation = new MTLCompletedHandler(NativeCompiler.factory(Precision.FP32, false).construct());
 			} catch (RuntimeException e) {
+				failure = e;
 				Hardware.console.warn("Metal completed handlers cannot be registered on this host, so " +
 						"finished command buffers are released only when the runner next drains", e);
 			}
 		}
 
 		return operation != null;
-	}
-
-	/**
-	 * Compiles the operation, unless it has been compiled already or an attempt has failed.
-	 *
-	 * @return the compiled operation
-	 * @throws RuntimeException if the operation cannot be compiled, now or by an earlier attempt
-	 */
-	private static synchronized MTLCompletedHandler compile() {
-		if (operation != null) return operation;
-		if (failure != null) {
-			throw new IllegalStateException("Metal completed handlers cannot be registered on this host", failure);
-		}
-
-		try {
-			operation = new MTLCompletedHandler(NativeCompiler.factory(Precision.FP32, false).construct());
-			return operation;
-		} catch (RuntimeException e) {
-			failure = e;
-			throw e;
-		}
 	}
 }

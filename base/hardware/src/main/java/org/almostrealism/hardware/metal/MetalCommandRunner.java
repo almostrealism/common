@@ -1413,8 +1413,9 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	}
 
 	/**
-	 * Destroys the executor with a final task that commits anything still open, drains every
-	 * committed buffer running its callbacks, and releases the timeline event. Destroying an
+	 * Destroys the executor with a final task that cancels the quiet deadline, commits anything
+	 * still open, drains every committed buffer running its callbacks, and releases the timeline
+	 * event. Destroying an
 	 * executor that is already destroyed does nothing.
 	 *
 	 * <p>A closed buffer whose bridge was never signaled is committed by the final task as well:
@@ -1423,6 +1424,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 */
 	private void destroyExecutor() {
 		executor.destroy(() -> {
+			quiet.cancel();
 			if (closeOpenBatch()) destroyCommits++;
 
 			while (!held.isEmpty()) commitOldestHeld();

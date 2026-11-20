@@ -189,17 +189,21 @@ final class CommandBatch {
 	 * reports the completion. {@code onFinished} must only hand work off, since the runner's state
 	 * is confined to its executor thread. On a host where completed handlers are unavailable
 	 * nothing is registered, and the batch is seen to have finished only through the buffer's
-	 * status ({@link #isFinished()}). Executor-thread only.
+	 * status ({@link #isFinished()}). The batch is committed even if registering the handler
+	 * fails, so a thread awaiting the commit is never left waiting. Executor-thread only.
 	 *
 	 * @param onFinished run on a Metal thread once the batch has finished, by executing or failing
 	 */
 	void commit(Runnable onFinished) {
-		buffer.addCompletedHandler(() -> {
-			completionReported = true;
-			onFinished.run();
-		});
-		buffer.commit();
-		committed.countDown();
+		try {
+			buffer.addCompletedHandler(() -> {
+				completionReported = true;
+				onFinished.run();
+			});
+		} finally {
+			buffer.commit();
+			committed.countDown();
+		}
 	}
 
 	/**

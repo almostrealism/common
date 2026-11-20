@@ -93,16 +93,15 @@ public class MTLCommandBuffer extends MTLObject {
 	 *
 	 * <p>The registration is a JNI operation compiled at runtime (see {@link MTLCompletedHandler}).
 	 * A host whose toolchain cannot compile it registers nothing, which the first attempt logs with
-	 * its cause and the return value reports; the caller then learns that the buffer has finished
-	 * only from its status (see {@link #isFinished()}).</p>
+	 * its cause and the return value reports; so does a registration that fails, which never
+	 * throws, so the buffer can always be committed next. The caller then learns that the buffer
+	 * has finished only from its status (see {@link #isFinished()}).</p>
 	 *
 	 * @param handler run once this buffer has finished
 	 * @return true if the handler was registered, false if completed handlers are unavailable
 	 */
 	public boolean addCompletedHandler(Runnable handler) {
-		if (!MTLCompletedHandler.isAvailable()) return false;
-		MTLCompletedHandler.get().apply(getNativePointer(), handler);
-		return true;
+		return MTLCompletedHandler.register(getNativePointer(), handler);
 	}
 
 	/**
