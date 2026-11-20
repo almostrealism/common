@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
@@ -30,6 +31,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -194,8 +196,8 @@ public class ConstantRepeatedDeltaComputation extends ConstantRepeatedProducerCo
 	 * subsequent evaluations use updated arguments.
 	 */
 	@Override
-	public void resetArguments() {
-		super.resetArguments();
+	public void resetArguments(Set<ScopeLifecycle> visited) {
+		super.resetArguments(visited);
 		targetVariable = null;
 	}
 

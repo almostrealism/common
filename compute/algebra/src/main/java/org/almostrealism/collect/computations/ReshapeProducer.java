@@ -53,6 +53,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * A producer that reshapes collections by modifying their dimensional structure or traversal patterns.
@@ -516,9 +518,12 @@ public class ReshapeProducer
 
 	@Override
 	public void resetArguments() {
-		if (producer instanceof ScopeLifecycle) {
-			((ScopeLifecycle) producer).resetArguments();
-		}
+		ScopeLifecycle.resetArguments(this);
+	}
+
+	@Override
+	public void resetArguments(Set<ScopeLifecycle> visited) {
+		ScopeLifecycle.resetArguments(Stream.of(producer), visited);
 	}
 
 	/**

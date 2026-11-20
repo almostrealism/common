@@ -17,6 +17,7 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.OrderingSegments;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalOrdering;
@@ -34,6 +35,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.RepeatedProducerComputation;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * The product of a matrix whose {@link TraversalOrdering} {@link TraversalOrdering#segments(int)
@@ -191,8 +193,8 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 * {@link #prepareScope(ArgumentProvider, KernelStructureContext)}.</p>
 	 */
 	@Override
-	public void resetArguments() {
-		super.resetArguments();
+	public void resetArguments(Set<ScopeLifecycle> visited) {
+		super.resetArguments(visited);
 		segments = null;
 	}
 
