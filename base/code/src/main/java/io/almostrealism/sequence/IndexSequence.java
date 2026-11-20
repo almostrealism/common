@@ -29,6 +29,8 @@ import org.almostrealism.io.TimingMetric;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.IntUnaryOperator;
 import java.util.function.LongUnaryOperator;
@@ -394,20 +396,17 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 			return floorToLong(valueAt(0));
 		}
 
-		if (valueAt(0) instanceof Integer) {
-			return intValues().min().orElseThrow();
-		} else if (valueAt(0) instanceof Long) {
-			return longValues().min().orElseThrow();
-		} else {
-			// Floor each element individually with floorToLong rather than routing
-			// the whole sequence through double. A plain
-			// (long) Math.floor(doubleValues().min()) would lose precision for large
-			// BigInteger/BigDecimal elements and could report a "minimum" that is
-			// greater than an actual element. Because floorToLong is monotonic, the
-			// smallest floored value is also a lower bound for every element,
-			// mirroring max()'s use of an upper-bound rounding.
-			return values().mapToLong(IndexSequence::floorToLong).min().orElseThrow();
-		}
+		// Every element is floored individually with floorToLong. The type of the
+		// first element cannot be used to choose a primitive fast path, because
+		// ArrayIndexSequence accepts mixed Number implementations: a sequence such
+		// as [0, -2.5] would otherwise be routed through intValues(), truncating
+		// -2.5 to -2 and reporting a "minimum" greater than an element that is
+		// present. floorToLong tests Integer and Long first, so homogeneous int/long
+		// storage still costs only a type check and an exact longValue() per
+		// element. Routing through double instead would lose precision for large
+		// integral and BigDecimal elements. Because floorToLong is monotonic, the
+		// smallest floored value is a lower bound for every element.
+		return values().mapToLong(IndexSequence::floorToLong).min().orElseThrow();
 	}
 
 	/**
@@ -420,8 +419,10 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * precision, and converting a {@link BigDecimal} to {@code double} can round it
 	 * <em>upward</em> before flooring, both of which can produce a result that is no
 	 * longer a true lower bound. This method therefore preserves integral values
-	 * exactly, floors {@link BigDecimal} with exact decimal arithmetic, and only
-	 * falls back to {@link Math#floor} for genuinely floating-point types.</p>
+	 * exactly ({@link Byte}, {@link Short}, {@link Integer}, {@link Long},
+	 * {@link AtomicInteger}, {@link AtomicLong} and {@link BigInteger}), floors
+	 * {@link BigDecimal} with exact decimal arithmetic, and only falls back to
+	 * {@link Math#floor} for other (floating-point) types.</p>
 	 *
 	 * <p>Values whose floor lies outside the {@code long} range are saturated to
 	 * {@link Long#MIN_VALUE} or {@link Long#MAX_VALUE} rather than silently wrapped,
@@ -435,19 +436,23 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 *         to the {@code long} range
 	 */
 	static long floorToLong(Number value) {
+		// Integer and Long are checked first because they are by far the most
+		// common element types; this keeps min() cheap for integral sequences.
+		if (value instanceof Integer || value instanceof Long
+				|| value instanceof Short || value instanceof Byte
+				|| value instanceof AtomicInteger || value instanceof AtomicLong) {
+			// These types all hold exact integral values within the long range, so
+			// longValue() is exact, whereas a double round-trip would lose precision
+			// for magnitudes above 2^53.
+			return value.longValue();
+		}
+
 		if (value instanceof BigDecimal) {
 			return clampToLong(((BigDecimal) value).setScale(0, RoundingMode.FLOOR).toBigInteger());
 		}
 
 		if (value instanceof BigInteger) {
 			return clampToLong((BigInteger) value);
-		}
-
-		if (value instanceof Long || value instanceof Integer
-				|| value instanceof Short || value instanceof Byte) {
-			// These box types all fit within the long range, so longValue() is exact,
-			// whereas a double round-trip would lose precision for large magnitudes.
-			return value.longValue();
 		}
 
 		// Float/Double (and any other fractional representation) must be floored so
@@ -481,6 +486,7 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	default long max() {
 		if (isConstant()) return valueAt(0).longValue();
 
+		// TODO(review): first-element type dispatch breaks the upper bound for mixed storage, e.g. [0, 2.5] -> 2; mirror min() with a per-element ceilToLong
 		if (valueAt(0) instanceof Double) {
 			return (long) Math.ceil(doubleValues().max().orElseThrow());
 		} else {

@@ -24,6 +24,7 @@ import org.junit.Test;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Tests the bounding contract of {@link IndexSequence#min()} and
@@ -177,5 +178,39 @@ public class IndexSequenceMinTest extends TestSuiteBase {
 		// A constant sequence holding the out-of-range value must stay a lower bound.
 		IndexSequence seq = ArrayIndexSequence.of(belowRange, 2);
 		Assert.assertEquals(Long.MIN_VALUE, seq.min());
+	}
+
+	/**
+	 * {@link ArrayIndexSequence#of(Number[])} accepts mixed {@link Number}
+	 * implementations, so the type of the first element must not select a primitive
+	 * fast path. With an {@link Integer} first and a negative fractional
+	 * {@link Double} later, an {@code intValues()}-based minimum truncates
+	 * {@code -2.5} to {@code -2}, which is greater than an element that is present.
+	 */
+	@Test(timeout = 10000)
+	public void mixedIntegerAndFractionalElementsAreFloored() {
+		IndexSequence seq = ArrayIndexSequence.of(new Number[] { 0, -2.5 });
+
+		Assert.assertFalse(seq.isConstant());
+		Assert.assertEquals(-3, seq.min());
+	}
+
+	/**
+	 * Integral {@link Number} implementations other than the primitive box types
+	 * must also be handled exactly. An {@link AtomicLong} holding {@code 2^53 + 1}
+	 * rounds to {@code 2^53} through {@code doubleValue()}, so a double-based
+	 * minimum would report a value below the true minimum element.
+	 */
+	@Test(timeout = 10000)
+	public void atomicLongAboveDoublePrecisionIsExact() {
+		// 2^53 + 1: the smallest positive long not exactly representable as a double.
+		long inexactAsDouble = 9007199254740993L;
+		Assert.assertEquals(inexactAsDouble, IndexSequence.floorToLong(new AtomicLong(inexactAsDouble)));
+
+		IndexSequence seq = ArrayIndexSequence.of(new Number[] {
+				new AtomicLong(inexactAsDouble + 2), new AtomicLong(inexactAsDouble) });
+
+		Assert.assertFalse(seq.isConstant());
+		Assert.assertEquals(inexactAsDouble, seq.min());
 	}
 }
