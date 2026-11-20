@@ -218,6 +218,34 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	}
 
 	/**
+	 * Queues a task on the confined thread without waiting for it, unless this executor has been
+	 * destroyed, in which case the task is dropped. Unlike {@link #run(Runnable)} this may be
+	 * called from any thread, the confined thread and threads the caller does not own (such as a
+	 * native completion callback) included, since nothing waits for the task.
+	 *
+	 * <p>This is for work the confined state owes itself when something outside it happens, and
+	 * that is unnecessary once the executor is gone because its final task did the same work. No
+	 * caller is left to receive a failure of the task, so a failure is logged.</p>
+	 *
+	 * @param task the work to run later on the confined thread
+	 * @return true if the task was queued, false if this executor has been destroyed
+	 */
+	public boolean runLater(Runnable task) {
+		synchronized (submission) {
+			if (destroyed) return false;
+
+			executor.submit(() -> taskScope.accept(() -> {
+				try {
+					task.run();
+				} catch (RuntimeException | Error e) {
+					warn("A task queued to run later on the confined thread failed", e);
+				}
+			}));
+			return true;
+		}
+	}
+
+	/**
 	 * Returns whether this executor still accepts work.
 	 *
 	 * @return true until {@link #destroy()} has been called

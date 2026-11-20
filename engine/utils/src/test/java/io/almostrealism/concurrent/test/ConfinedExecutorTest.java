@@ -780,6 +780,60 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link ConfinedExecutor#runLater} queues work on the confined thread without waiting for it,
+	 * inside the task scope, and may be called from the confined thread itself. A failure of such
+	 * work is logged and does not stop later work.
+	 */
+	@Test(timeout = 10000)
+	public void runLaterQueuesWithoutWaiting() throws InterruptedException {
+		AtomicReference<Thread> scoped = new AtomicReference<>();
+		ConfinedExecutor executor = new ConfinedExecutor(task -> {
+			scoped.set(Thread.currentThread());
+			task.run();
+		});
+
+		try {
+			CountDownLatch release = new CountDownLatch(1);
+			CountDownLatch ran = new CountDownLatch(2);
+			AtomicReference<Thread> taskThread = new AtomicReference<>();
+
+			Assert.assertTrue(executor.runLater(() -> awaitLatch(release)));
+			Assert.assertTrue(executor.runLater(() -> {
+				throw new IllegalStateException("queued work failed");
+			}));
+			Assert.assertTrue(executor.runLater(() -> {
+				taskThread.set(Thread.currentThread());
+				Assert.assertTrue("The confined thread may queue more work",
+						executor.runLater(ran::countDown));
+				ran.countDown();
+			}));
+
+			Assert.assertEquals("runLater must not wait for queued work", 2, ran.getCount());
+			release.countDown();
+
+			Assert.assertTrue(ran.await(5, TimeUnit.SECONDS));
+			Assert.assertNotSame(Thread.currentThread(), taskThread.get());
+			Assert.assertSame(taskThread.get(), scoped.get());
+		} finally {
+			executor.destroy();
+		}
+	}
+
+	/**
+	 * Once the executor has been destroyed, {@link ConfinedExecutor#runLater} drops the work and
+	 * reports that it did.
+	 */
+	@Test(timeout = 10000)
+	public void runLaterDropsWorkAfterDestroy() {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		executor.destroy();
+
+		AtomicBoolean ran = new AtomicBoolean();
+		Assert.assertFalse(executor.runLater(() -> ran.set(true)));
+		Assert.assertFalse(ran.get());
+	}
+
+	/**
 	 * Runs one task on a new executor with the given window, lets the confined thread sit idle,
 	 * and returns the state it settles in. Before returning, checks that the idle thread still
 	 * picks up a second task.
