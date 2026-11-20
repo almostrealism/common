@@ -439,7 +439,7 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 		if (isExactLong(value)) return value.longValue();
 
 		if (value instanceof BigDecimal) {
-			return clampToLong(((BigDecimal) value).setScale(0, RoundingMode.FLOOR).toBigInteger());
+			return clampToLong((BigDecimal) value, RoundingMode.FLOOR);
 		}
 
 		if (value instanceof BigInteger) {
@@ -488,6 +488,30 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	}
 
 	/**
+	 * Rounds a {@link BigDecimal} {@code value} to an integral {@code long} using
+	 * {@code mode}, saturating to {@link Long#MIN_VALUE} or {@link Long#MAX_VALUE}
+	 * when it lies outside the representable range.
+	 *
+	 * <p>The {@code long} bounds are checked <em>before</em> the value is rescaled, so a
+	 * value whose result is already known to saturate (such as {@code 1E+1000000000})
+	 * never materializes its full integral representation as a {@link BigInteger} and so
+	 * cannot exhaust memory. {@link BigDecimal#compareTo} compares adjusted exponents
+	 * rather than digit strings, so these bound checks stay cheap for extreme
+	 * magnitudes. Only an in-range value is rescaled, and its
+	 * {@link BigDecimal#longValue()} is then exact.</p>
+	 *
+	 * @param value  the value to round
+	 * @param mode   the rounding mode ({@link RoundingMode#FLOOR} for a lower bound,
+	 *               {@link RoundingMode#CEILING} for an upper bound)
+	 * @return {@code value} rounded to a {@code long}, saturated to the representable range
+	 */
+	static long clampToLong(BigDecimal value, RoundingMode mode) {
+		if (value.compareTo(BigDecimal.valueOf(Long.MAX_VALUE)) > 0) return Long.MAX_VALUE;
+		if (value.compareTo(BigDecimal.valueOf(Long.MIN_VALUE)) < 0) return Long.MIN_VALUE;
+		return value.setScale(0, mode).longValue();
+	}
+
+	/**
 	 * Returns the maximum value in this sequence, as an upper bound for every element.
 	 *
 	 * <p>Mirroring {@link #min()}, every element is ceiled individually with
@@ -521,7 +545,7 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 		if (isExactLong(value)) return value.longValue();
 
 		if (value instanceof BigDecimal) {
-			return clampToLong(((BigDecimal) value).setScale(0, RoundingMode.CEILING).toBigInteger());
+			return clampToLong((BigDecimal) value, RoundingMode.CEILING);
 		}
 
 		if (value instanceof BigInteger) {

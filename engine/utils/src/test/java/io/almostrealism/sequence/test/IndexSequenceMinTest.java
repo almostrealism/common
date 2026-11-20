@@ -181,6 +181,30 @@ public class IndexSequenceMinTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A {@link BigDecimal} whose magnitude is known to saturate must not materialize its
+	 * full integral representation before clamping. {@code new BigDecimal("1E+1000000000")}
+	 * rounds to a billion-digit {@link BigInteger} under {@code setScale(0, ...).toBigInteger()},
+	 * which would exhaust memory even though the result is already known to be
+	 * {@link Long#MAX_VALUE}. The {@code long} bounds must be checked first, so this test
+	 * both pins the saturated result and, via its timeout, that it is reached cheaply.
+	 */
+	@Test(timeout = 10000)
+	public void extremeMagnitudeBigDecimalSaturatesWithoutMaterializing() {
+		BigDecimal huge = new BigDecimal("1E+1000000000");
+		Assert.assertEquals(Long.MAX_VALUE, IndexSequence.floorToLong(huge));
+		Assert.assertEquals(Long.MAX_VALUE, IndexSequence.ceilToLong(huge));
+
+		BigDecimal hugeNegative = new BigDecimal("-1E+1000000000");
+		Assert.assertEquals(Long.MIN_VALUE, IndexSequence.floorToLong(hugeNegative));
+		Assert.assertEquals(Long.MIN_VALUE, IndexSequence.ceilToLong(hugeNegative));
+
+		// The same value flowing through a constant sequence stays a correct bound.
+		IndexSequence seq = ArrayIndexSequence.of(huge, 2);
+		Assert.assertEquals(Long.MAX_VALUE, seq.min());
+		Assert.assertEquals(Long.MAX_VALUE, seq.max());
+	}
+
+	/**
 	 * {@link ArrayIndexSequence#of(Number[])} accepts mixed {@link Number}
 	 * implementations, so the type of the first element must not select a primitive
 	 * fast path. With an {@link Integer} first and a negative fractional
