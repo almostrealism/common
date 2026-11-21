@@ -24,13 +24,34 @@ import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
 
 try:
     from .health import HealthCache, health_ttl
+    from .inference_diagnosis import (
+        CREDENTIAL_MISSING, MALFORMED_RESPONSE, NOT_CONFIGURED, UNREACHABLE,
+        classify_transport_error, endpoint_of, http_error_message,
+        probe_http_get,
+    )
+    # Re-exported so ``from inference import SYSTEM_PROMPT`` keeps working after
+    # prompt construction moved to its own module (see inference_prompts.py).
+    from .inference_prompts import (  # noqa: F401
+        REFORMULATE_SYSTEM_PROMPT, SPECULATION_PHRASES, SYSTEM_PROMPT,
+        build_consult_prompt, has_speculation,
+    )
 except ImportError:
     # Loaded by path (see consultant/inference.py) rather than as a package.
     from health import HealthCache, health_ttl
+    from inference_diagnosis import (
+        CREDENTIAL_MISSING, MALFORMED_RESPONSE, NOT_CONFIGURED, UNREACHABLE,
+        classify_transport_error, endpoint_of, http_error_message,
+        probe_http_get,
+    )
+    from inference_prompts import (  # noqa: F401
+        REFORMULATE_SYSTEM_PROMPT, SPECULATION_PHRASES, SYSTEM_PROMPT,
+        build_consult_prompt, has_speculation,
+    )
 
 log = logging.getLogger(__name__)
 
@@ -41,12 +62,44 @@ class InferenceUnavailable(RuntimeError):
     Backends raise this instead of letting transport errors (``URLError``,
     ``OSError``, ``TimeoutError``) escape, so callers can distinguish "the
     model is down" from a genuine bug in the calling code.
+
+    It carries a :mod:`inference_diagnosis` ``classification`` (and the
+    provider's HTTP status, when the failure was an HTTP error) so the
+    degraded result a caller shows can name *why* the model is down, not only
+    that it is. The classification defaults to :data:`UNREACHABLE` for a
+    hand-raised instance; the transport paths use :meth:`from_exception` to
+    classify the actual error.
     """
 
-    def __init__(self, backend: str, detail: str):
+    def __init__(self, backend: str, detail: str,
+                 classification: str = UNREACHABLE,
+                 http_status: Optional[int] = None):
         super().__init__(f"{backend} unavailable: {detail}")
         self.backend = backend
         self.detail = detail
+        self.classification = classification
+        self.http_status = http_status
+
+    @classmethod
+    def from_exception(cls, backend: str,
+                       exc: BaseException) -> "InferenceUnavailable":
+        """Build a classified instance from a caught transport exception.
+
+        Reads an :class:`~urllib.error.HTTPError` body once (for its provider
+        message), so the caller must not have read it already.
+
+        Args:
+            backend: The backend's human-readable name.
+            exc: The exception caught around the request.
+
+        Returns:
+            An :class:`InferenceUnavailable` whose classification, HTTP status
+            and detail describe ``exc``.
+        """
+        classification, status, detail = classify_transport_error(exc)
+        message = f"HTTP {status}: {detail}" if status is not None else detail
+        return cls(backend, message, classification=classification,
+                   http_status=status)
 
 
 @dataclass(frozen=True)
@@ -61,197 +114,52 @@ class Synthesis:
     This exists so degradation is a value a caller must handle rather than
     a banner string it has to sniff for: retrieval results stay usable when
     only the summarization step is lost.
+
+    ``cause`` carries the structured diagnosis of a failure (``None`` on
+    success): the selected backend and why it was selected, the
+    ``scheme://host`` it contacted, a :mod:`inference_diagnosis`
+    ``classification``, the provider's HTTP status and message when there was
+    one, and a one-sentence ``operator_hint``. A caller surfaces it so a
+    degraded answer is diagnosable rather than mute.
     """
 
     text: Optional[str]
     backend: str
     reason: Optional[str] = None
+    cause: Optional[dict] = None
 
     @property
     def degraded(self) -> bool:
         """True when no model output is available."""
         return self.text is None
 
+    @property
+    def agent_instruction(self) -> Optional[str]:
+        """What an agent must tell the person it works for when degraded.
 
-# ---------------------------------------------------------------------------
-# System prompt used across all backends
-# ---------------------------------------------------------------------------
-
-SYSTEM_PROMPT = """\
-You are the Almost Realism Documentation Consultant. You answer questions \
-about the AR framework from the evidence list provided to you.
-
-Every evidence item has an ID and a tier label. The tier says what the item \
-may be used for:
-- DOC and INDEX items (tier A) state present fact for the snapshot. Cite them.
-- A "NOTE current" item (tier B) may supply a fact the documentation lacks. \
-An answer that rests on one is labelled as resting on a note.
-- A "NOTE branch-local" item (tier B') is true only on its own branch. Report \
-it only as "on branch X, ..."; never as a fact about master.
-- A "NOTE historical" or "NOTE stale" item (tier C) may supply history and \
-rationale ("this used to...", "it was introduced because..."), never a \
-present-tense fact. For a stale note, say which names are gone.
-
-RULES:
-1. Read ALL evidence items before answering. The answer is usually there.
-2. Cite every claim with the ID of the item that states it, in square \
-brackets: [D1], [N2], [I1]. Never write a file name or a line number as a \
-citation; the server adds the locations.
-3. Cite an item only for a claim it actually states. A claim about one script, \
-class or file needs an item that names that script, class or file. If no item \
-states it, the claim is unknown: leave it out, or say it is not documented.
-4. Copy names, paths, prefixes and numbers exactly as the item writes them. \
-Never derive one from another name.
-5. Answer "Not documented" only when no item is relevant to the question.
-6. Be CONCISE — 2-5 sentences. NO hedging ("might be", "could be").
-7. When two items disagree, report the disagreement; do not silently pick one.
-8. A question can take a fact for granted that no item establishes — "what \
-does X use arrays for" assumes X uses them. Do not adopt the assumption.
-9. End with two lines:
-BASIS: documentation | documentation+notes | notes | none
-CONFLICTS: <ID> vs <ID> — <one line>; or none
-
-EXAMPLES:
-Evidence: [D1] DOC — collection-producer-operations.md § Entering the Graph: \
-"Use cp() to wrap a PackedCollection... cp(data).multiply(2.0).evaluate()"
-Q: "How do I use cp() to chain operations?"
-A: "Wrap a PackedCollection with `cp()` and chain operations on the producer: \
-`cp(data).multiply(2.0).evaluate()`; nothing executes until `evaluate()` [D1].
-BASIS: documentation
-CONFLICTS: none"
-
-Evidence: [N1] NOTE current — branch=qa/retro-20261015 state=merged: \
-"open-pr-backlog.sh skips a planning round while 7 or more PRs are open"
-Q: "When does a planning round skip?"
-A: "A planning round is skipped while 7 or more PRs are open [N1].
-BASIS: notes
-CONFLICTS: none"
-
-Evidence: [N2] NOTE stale — names absent from snapshot: ClaudeCodeJob: \
-"ClaudeCodeJob.runCorrectionSession re-runs the review"
-Q: "Where does the review record its verdicts?"
-A: "Not documented. Historically, ClaudeCodeJob (no longer in the snapshot) \
-re-ran the review through runCorrectionSession [N2].
-BASIS: none
-CONFLICTS: none"
-
-Evidence: [D3] DOC: "the job times out after 30 minutes"; [N4] NOTE current: \
-"the job timeout is 45 minutes"
-Q: "What is the job timeout?"
-A: "The documentation gives 30 minutes [D3], but a current note says \
-45 minutes [N4].
-BASIS: documentation+notes
-CONFLICTS: D3 vs N4 — timeout 30 vs 45 minutes"
-"""
-
-# The persona for rewriting a note. Kept apart from SYSTEM_PROMPT because that
-# prompt's answering contract (cite evidence IDs, finish with BASIS:/CONFLICTS:
-# lines) would leak into the stored text of a rewritten note.
-REFORMULATE_SYSTEM_PROMPT = """\
-You rewrite notes that agents wrote about their work on the Almost Realism \
-framework, so that they use the project's own terminology. Keep the note's \
-meaning, its specific names, paths and numbers, and its scope: never add a \
-claim the note or the documentation excerpt does not make. Return only the \
-rewritten note.
-"""
-
-# Hedging phrases that indicate an answer is guessing rather than grounded in
-# the documentation, which SYSTEM_PROMPT forbids. Lower-case, because
-# has_speculation matches them against the lower-cased answer.
-SPECULATION_PHRASES = (
-    "does not contain",
-    "does not specifically",
-    "not mentioned",
-    "speculative",
-    "hypothetical",
-    "based on typical",
-    "i can infer",
-    "you may need to refer",
-    "not covered in",
-    "might be",
-    "could be",
-)
-
-
-def has_speculation(text: Optional[str]) -> bool:
-    """True when an answer contains any of the SPECULATION_PHRASES.
-
-    Matching is case-insensitive; a missing answer (``None``) has none.
-    """
-    low = (text or "").lower()
-    return any(phrase in low for phrase in SPECULATION_PHRASES)
+        Returns ``None`` when synthesis succeeded. Otherwise it is an explicit
+        instruction naming the classified reason, so the agent does not quietly
+        proceed as though the answer were synthesized — the failure the whole
+        diagnosis exists to make visible.
+        """
+        if not self.degraded:
+            return None
+        cause = self.cause or {}
+        classification = cause.get("classification") or "unknown"
+        where = cause.get("endpoint") or "no endpoint"
+        hint = cause.get("operator_hint") or ""
+        instruction = (
+            "Tell the person you are working for that documentation and memory "
+            "synthesis is unavailable right now, quoting the reason: "
+            f"\"{classification}\" from {cause.get('backend', 'the backend')} "
+            f"({where}). Retrieval still works; only the synthesized summary is "
+            "missing.")
+        return f"{instruction} Operator: {hint}" if hint else instruction
 
 
 # ---------------------------------------------------------------------------
 # Abstract backend
 # ---------------------------------------------------------------------------
-
-def build_consult_prompt(
-    question: str,
-    evidence="",
-    extra_context: Optional[str] = None,
-    history: Optional[str] = None,
-    instructions: Optional[str] = None,
-) -> str:
-    """Assemble the prompt for an evidence-grounded question.
-
-    Module-level rather than a backend method because callers differ in how
-    they invoke the model — ar-consultant routes synthesis through its
-    request-history recorder, ``memory_recall`` asks for a summary rather
-    than an answer — while the evidence contract must not differ at all. Two
-    tools answering from one corpus have to present evidence the same way.
-
-    The evidence is a single list of items, each with an ID, a tier label and
-    its provenance (see ``consult_evidence.EvidenceList``). The model cites the
-    IDs; the tier rules in :data:`SYSTEM_PROMPT` say what each tier may
-    supply. Notes are therefore no longer a separate, uniformly forbidden
-    section: a current note may answer, a stale one only supplies history.
-
-    Args:
-        question: What the caller asked.
-        evidence: The evidence list — an object with ``render()`` or an
-            already rendered string.
-        extra_context: Anything supplied alongside the question, such as a
-            code snippet or an error message.
-        history: Condensed earlier turns of a conversation, when this is a
-            follow-up.
-        instructions: Replaces the default answering instructions, for a
-            caller (such as a summary) that wants a different output.
-
-    Returns:
-        The assembled prompt.
-    """
-    parts = []
-
-    # The question goes first so the model knows what to look for while
-    # reading the evidence that follows.
-    parts.append(f"## Question\n\n{question}")
-
-    if history:
-        parts.append(
-            "## Earlier In This Conversation\n\n"
-            "Earlier questions and answers, for reference only. Evidence IDs "
-            f"are the same as before.\n\n{history}")
-
-    if extra_context:
-        parts.append(f"## Additional Context from Agent\n\n{extra_context}")
-
-    rendered = evidence.render() if hasattr(evidence, "render") else evidence
-    parts.append(
-        "## Evidence\n\nEach item is headed by its ID and tier label. Read "
-        "every item — the answer is usually here.\n\n"
-        + (rendered or "(No evidence found for this query)"))
-
-    parts.append(instructions or (
-        "## Instructions\n\n"
-        "Answer the question from the evidence list under the tier rules. "
-        "Cite each claim with the ID of the item that states it, e.g. [D1]. "
-        "Include a code example if an item provides one. Finish with the "
-        "BASIS: and CONFLICTS: lines."
-    ))
-
-    return "\n\n".join(parts)
-
 
 class InferenceBackend(ABC):
     """Abstract interface for LLM inference.
@@ -265,6 +173,105 @@ class InferenceBackend(ABC):
 
     def __init__(self):
         self._health = HealthCache(self._probe)
+        self._last_success_at: Optional[str] = None
+
+    @property
+    def endpoint(self) -> str:
+        """The ``scheme://host[:port]`` this backend contacts, or ``""``.
+
+        Never a path (which for some providers bears a token) and never a
+        credential — see :func:`inference_diagnosis.endpoint_of`. A backend
+        that runs in-process (MLX, passthrough) has no endpoint and returns
+        the empty string.
+        """
+        return ""
+
+    @property
+    def selection(self) -> str:
+        """Why this backend is the one serving requests.
+
+        For a backend pinned with ``AR_CONSULTANT_BACKEND`` this reports the
+        explicit choice; :class:`AutoBackend` overrides it to report which
+        candidate auto-detection settled on and which it skipped.
+        """
+        configured = os.environ.get("AR_CONSULTANT_BACKEND", "").strip()
+        if configured and configured.lower() != "auto":
+            return f"explicit AR_CONSULTANT_BACKEND={configured}"
+        return f"backend {self.name}"
+
+    def operator_hint(self, classification: str) -> str:
+        """One sentence telling an operator what to check for a failure.
+
+        Names the environment variable or secret file that governs this
+        backend — never a secret's value. Subclasses override with the
+        variables specific to them; the default is backend-agnostic.
+
+        Args:
+            classification: The :mod:`inference_diagnosis` classification.
+
+        Returns:
+            A single sentence of operator guidance.
+        """
+        return ("Confirm an inference backend is configured and reachable: set "
+                "AR_CONSULTANT_BACKEND or start a local model "
+                "(see tools/mcp/consultant/README.md).")
+
+    def probe_diagnosis(self) -> dict:
+        """Probe the backend now and report the outcome, classified.
+
+        Unlike :attr:`available` this is not cached — it is the health tool's
+        on-demand check. The default reports what the cached probe says, with
+        no finer classification; subclasses that contact a server override it
+        to classify a live failure.
+
+        Returns:
+            ``{available, backend, endpoint, selection, classification,
+            http_status, detail, operator_hint}``.
+        """
+        available = self.available
+        classification = None if available else UNREACHABLE
+        return self._diagnosis(available, classification, None, "")
+
+    def _diagnosis(self, available: bool, classification: Optional[str],
+                   http_status: Optional[int], detail: str) -> dict:
+        """Assemble a probe/diagnosis dict with this backend's identity."""
+        return {
+            "available": available,
+            "backend": self.name,
+            "endpoint": self.endpoint,
+            "selection": self.selection,
+            "classification": classification,
+            "http_status": http_status,
+            "detail": detail,
+            "operator_hint": "" if available else self.operator_hint(
+                classification or UNREACHABLE),
+        }
+
+    def _cause(self, classification: str, http_status: Optional[int],
+               detail: str) -> dict:
+        """The structured ``cause`` attached to a degraded :class:`Synthesis`."""
+        return {
+            "backend": self.name,
+            "backend_selection": self.selection,
+            "endpoint": self.endpoint,
+            "classification": classification,
+            "http_status": http_status,
+            "detail": detail,
+            "operator_hint": self.operator_hint(classification),
+        }
+
+    def _note_success(self) -> None:
+        """Record that synthesis just succeeded, for the health tool."""
+        self._last_success_at = datetime.now(timezone.utc).isoformat()
+
+    @property
+    def last_success_at(self) -> Optional[str]:
+        """ISO-8601 UTC time of the last successful synthesis, or ``None``.
+
+        Process-local: it reflects this server's own history since start, not a
+        durable record.
+        """
+        return self._last_success_at
 
     @abstractmethod
     def generate(
@@ -364,10 +371,16 @@ class InferenceBackend(ABC):
         except InferenceUnavailable as e:
             self.invalidate_availability()
             log.warning("Synthesis degraded: %s", e)
-            return Synthesis(None, self.name, e.detail)
+            return Synthesis(
+                None, self.name, e.detail,
+                cause=self._cause(e.classification, e.http_status, e.detail))
 
         if not text or not text.strip():
-            return Synthesis(None, self.name, "model returned an empty response")
+            detail = "model returned an empty response"
+            return Synthesis(
+                None, self.name, detail,
+                cause=self._cause(MALFORMED_RESPONSE, None, detail))
+        self._note_success()
         return Synthesis(text, self.name)
 
     def consult(
@@ -485,6 +498,29 @@ class OllamaBackend(InferenceBackend):
     def name(self) -> str:
         return f"ollama ({self.model})"
 
+    @property
+    def endpoint(self) -> str:
+        return endpoint_of(self.base_url)
+
+    def operator_hint(self, classification: str) -> str:
+        return ("Confirm Ollama is running (``ollama serve``) at the host named "
+                "by AR_CONSULTANT_OLLAMA_URL and that the model named by "
+                "AR_CONSULTANT_MODEL has been pulled.")
+
+    def probe_diagnosis(self) -> dict:
+        def _accept(data: dict):
+            models = [m.get("name", "") for m in data.get("models", [])]
+            base = self.model.split(":")[0]
+            if any(base in m for m in models):
+                return None
+            return (NOT_CONFIGURED,
+                    f"model '{self.model}' is not pulled on the Ollama server")
+
+        probe = probe_http_get(f"{self.base_url}/api/tags", timeout=3,
+                               accept=_accept)
+        return self._diagnosis(probe["available"], probe["classification"],
+                               probe["http_status"], probe["detail"])
+
     def _probe(self) -> bool:
         try:
             req = urllib.request.Request(
@@ -540,7 +576,7 @@ class OllamaBackend(InferenceBackend):
                 data = json.loads(resp.read())
                 return data.get("message", {}).get("content", "")
         except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
-            raise InferenceUnavailable(self.name, str(e)) from e
+            raise InferenceUnavailable.from_exception(self.name, e) from e
 
 
 # ---------------------------------------------------------------------------
@@ -596,12 +632,11 @@ class OpenAIChatBackend(InferenceBackend):
         try:
             with urllib.request.urlopen(req, timeout=self.TIMEOUT_SECONDS) as resp:
                 data = json.loads(resp.read())
-        except urllib.error.HTTPError as e:
-            raise InferenceUnavailable(
-                self.name, f"HTTP {e.code}: {self.error_detail(e)}",
-            ) from e
         except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
-            raise InferenceUnavailable(self.name, str(e)) from e
+            # URLError covers HTTPError (its subclass); from_exception reads the
+            # HTTP error body once to recover the provider's message and maps
+            # the status (401/403, 402/429, ...) to a classification.
+            raise InferenceUnavailable.from_exception(self.name, e) from e
 
         choices = data.get("choices", [])
         if not choices:
@@ -621,19 +656,10 @@ class OpenAIChatBackend(InferenceBackend):
     def error_detail(error: urllib.error.HTTPError) -> str:
         """Extract a provider's error message from an HTTP error response.
 
-        OpenAI-compatible servers report failures as
-        ``{"error": {"message": ...}}``. That message (for example "insufficient
-        credits") is far more useful to whoever reads a degraded consult than
-        the bare status line.
+        Delegates to :func:`inference_diagnosis.http_error_message`, the single
+        implementation shared with the failure classifier.
         """
-        try:
-            payload = json.loads(error.read())
-            message = payload.get("error", {}).get("message")
-            if message:
-                return str(message)
-        except (OSError, ValueError, AttributeError):
-            pass
-        return str(error.reason)
+        return http_error_message(error)
 
 
 # ---------------------------------------------------------------------------
@@ -686,6 +712,42 @@ class LlamaCppBackend(OpenAIChatBackend):
     @property
     def name(self) -> str:
         return f"llamacpp ({self.base_url})"
+
+    @property
+    def endpoint(self) -> str:
+        return endpoint_of(self.base_url)
+
+    def operator_hint(self, classification: str) -> str:
+        return ("Confirm a llama.cpp server (llama-server) is running and that "
+                "AR_CONSULTANT_LLAMACPP_URL points at it.")
+
+    def _probe_url_diagnosis(self, url: str) -> dict:
+        """Probe one llama.cpp ``/health`` endpoint, classifying the outcome."""
+        def _accept(data: dict):
+            status = data.get("status", "")
+            if status == "ok":
+                return None
+            return (MALFORMED_RESPONSE,
+                    f"llama.cpp server returned status: {status!r}")
+
+        return probe_http_get(f"{url}/health", timeout=5, accept=_accept)
+
+    def probe_diagnosis(self) -> dict:
+        probe = self._probe_url_diagnosis(self.base_url)
+        # Mirror _probe's fallback: a localhost default that is down tries the
+        # remote host, and a recovered URL reclaims base_url.
+        if not probe["available"] and not self._explicit_url \
+                and not self._in_container:
+            for alt in (self._default_url, self.REMOTE_HOST_BASE_URL):
+                if alt == self.base_url:
+                    continue
+                alt_probe = self._probe_url_diagnosis(alt)
+                if alt_probe["available"]:
+                    self.base_url = alt
+                    probe = alt_probe
+                    break
+        return self._diagnosis(probe["available"], probe["classification"],
+                               probe["http_status"], probe["detail"])
 
     def _check_health(self, url: str) -> bool:
         """Check if a llama.cpp server is reachable and healthy at the given URL."""
@@ -902,6 +964,49 @@ class OpenRouterBackend(OpenAIChatBackend):
         return f"openrouter ({self.model})"
 
     @property
+    def endpoint(self) -> str:
+        return endpoint_of(self.base_url)
+
+    def operator_hint(self, classification: str) -> str:
+        from inference_diagnosis import (
+            CREDENTIAL_MISSING as _MISSING,
+            CREDENTIAL_REJECTED as _REJECTED,
+            QUOTA_EXHAUSTED as _QUOTA,
+        )
+        if classification == _MISSING:
+            return ("Provide the openrouter-api-key secret via "
+                    "AR_CONSULTANT_OPENROUTER_API_KEY_FILE (or "
+                    "AR_CONSULTANT_OPENROUTER_API_KEY).")
+        if classification == _REJECTED:
+            return ("OpenRouter rejected the key; rotate the openrouter-api-key "
+                    "secret named by AR_CONSULTANT_OPENROUTER_API_KEY_FILE.")
+        if classification == _QUOTA:
+            return ("The OpenRouter account has no remaining credit; add credit "
+                    "or point AR_CONSULTANT_OPENROUTER_API_KEY_FILE at a funded "
+                    "key.")
+        return ("Confirm network egress to OpenRouter and that "
+                "AR_CONSULTANT_OPENROUTER_URL / AR_CONSULTANT_OPENROUTER_MODEL "
+                "are correct.")
+
+    def probe_diagnosis(self) -> dict:
+        if not self.configured:
+            return self._diagnosis(
+                False, CREDENTIAL_MISSING, None,
+                "no OpenRouter API key is configured")
+
+        def _accept(data: dict):
+            remaining = data.get("data", {}).get("limit_remaining")
+            if remaining is not None and remaining <= 0:
+                from inference_diagnosis import QUOTA_EXHAUSTED as _QUOTA
+                return (_QUOTA, "the OpenRouter key has no remaining credit")
+            return None
+
+        probe = probe_http_get(f"{self.base_url}/key", timeout=5,
+                               accept=_accept, headers=self.request_headers())
+        return self._diagnosis(probe["available"], probe["classification"],
+                               probe["http_status"], probe["detail"])
+
+    @property
     def configured(self) -> bool:
         """Whether an API key is present at all."""
         return bool(self._api_key)
@@ -979,7 +1084,9 @@ class OpenRouterBackend(OpenAIChatBackend):
         temperature: float = 0.3,
     ) -> str:
         if not self.configured:
-            raise InferenceUnavailable(self.name, "no OpenRouter API key is configured")
+            raise InferenceUnavailable(
+                self.name, "no OpenRouter API key is configured",
+                classification=CREDENTIAL_MISSING)
         return super().generate(
             prompt, system=system, max_tokens=max_tokens, temperature=temperature,
         )
@@ -1018,11 +1125,24 @@ class MLXBackend(InferenceBackend):
             self._model, self._tokenizer = load(self._model_path)
         except Exception as e:
             log.error("Failed to load MLX model '%s': %s", self._model_path, e)
-            raise InferenceUnavailable(self.name, f"model load failed: {e}") from e
+            raise InferenceUnavailable(
+                self.name, f"model load failed: {e}",
+                classification=NOT_CONFIGURED) from e
 
     @property
     def name(self) -> str:
         return f"mlx ({self._model_path})"
+
+    def operator_hint(self, classification: str) -> str:
+        return ("Install mlx-lm (Apple Silicon only) and set "
+                "AR_CONSULTANT_MLX_MODEL, or select another backend with "
+                "AR_CONSULTANT_BACKEND.")
+
+    def probe_diagnosis(self) -> dict:
+        available = self._probe()
+        return self._diagnosis(
+            available, None if available else NOT_CONFIGURED, None,
+            "" if available else "mlx-lm is not installed")
 
     def _probe(self) -> bool:
         try:
@@ -1092,6 +1212,16 @@ class PassthroughBackend(InferenceBackend):
     def name(self) -> str:
         return "passthrough (no model)"
 
+    def operator_hint(self, classification: str) -> str:
+        return ("No inference model is configured or reachable; set "
+                "AR_CONSULTANT_BACKEND or start a local llama.cpp / Ollama "
+                "server (see tools/mcp/consultant/README.md).")
+
+    def probe_diagnosis(self) -> dict:
+        return self._diagnosis(
+            False, NOT_CONFIGURED, None,
+            "no inference model is configured or reachable")
+
     def _probe(self) -> bool:
         return False
 
@@ -1111,9 +1241,10 @@ class PassthroughBackend(InferenceBackend):
         max_tokens: int = 1024,
         temperature: float = 0.3,
     ) -> Synthesis:
+        detail = "no inference model is configured or reachable"
         return Synthesis(
-            None, self.name,
-            "no inference model is configured or reachable",
+            None, self.name, detail,
+            cause=self._cause(NOT_CONFIGURED, None, detail),
         )
 
 
@@ -1171,6 +1302,61 @@ class AutoBackend(InferenceBackend):
     def name(self) -> str:
         return self.delegate.name
 
+    @property
+    def endpoint(self) -> str:
+        return self.delegate.endpoint
+
+    def operator_hint(self, classification: str) -> str:
+        return self.delegate.operator_hint(classification)
+
+    @property
+    def selection(self) -> str:
+        """Which candidate auto-detection settled on, and which it skipped.
+
+        Reads the currently resolved delegate (cached), so it is cheap enough
+        to compute on the degraded path. Auto-detection takes the first
+        reachable candidate, so every candidate before the chosen one was
+        skipped as unavailable; when nothing is reachable the fallback answers
+        and all candidates were skipped.
+        """
+        delegate = self.delegate
+        order = [c.name for c in self._candidates]
+        if isinstance(delegate, PassthroughBackend):
+            return ("auto-detection reached no backend; every candidate was "
+                    "unavailable, in order: " + ", ".join(order))
+        skipped = []
+        for candidate in self._candidates:
+            if candidate is delegate:
+                break
+            skipped.append(candidate.name)
+        summary = f"auto-detected {delegate.name}"
+        if skipped:
+            summary += "; skipped unavailable: " + ", ".join(skipped)
+        return summary
+
+    def probe_diagnosis(self) -> dict:
+        """Probe every candidate now, reporting the chosen one and the trace.
+
+        This is the health tool's full scan: each candidate is probed afresh
+        (not the cached delegate), so the report reflects the present. The
+        first available candidate is the one that would serve requests; its
+        diagnosis is returned, with a ``candidates`` list giving every
+        candidate's own probe so a down backend can be told apart from a
+        misconfigured one.
+        """
+        candidate_probes = [c.probe_diagnosis() for c in self._candidates]
+        chosen = next(
+            (p for p in candidate_probes if p.get("available")), None)
+        if chosen is not None:
+            result = dict(chosen)
+        else:
+            result = self._diagnosis(
+                False, NOT_CONFIGURED, None,
+                "no candidate backend is reachable")
+        result["selection"] = self.selection
+        result["candidates"] = candidate_probes
+        return result
+
     def _probe(self) -> bool:
         return not isinstance(self.delegate, PassthroughBackend)
 
@@ -1205,15 +1391,26 @@ class AutoBackend(InferenceBackend):
             prompt, system=system, max_tokens=max_tokens,
             temperature=temperature,
         )
-        if result.degraded and delegate is not self._fallback:
-            # A real backend just failed a real request, which is stronger
-            # evidence than its cached probe. Re-resolve so the next call
-            # can reach a different backend that is actually up.
-            #
-            # Not done when the fallback answered: nothing was attempted, so
-            # there is no new evidence, and invalidating would re-probe every
-            # candidate on every call for as long as the outage lasts.
-            self.invalidate_availability()
+        if result.degraded:
+            # Restate the selection in terms of auto-detection (which candidate
+            # was chosen and which skipped) rather than the delegate's own,
+            # env-based account, so the cause names the real reason this backend
+            # is the one that failed. The classification, endpoint and hint are
+            # the delegate's — they describe the actual failure.
+            cause = dict(result.cause or {})
+            cause["backend_selection"] = self.selection
+            result = Synthesis(None, result.backend, result.reason, cause=cause)
+            if delegate is not self._fallback:
+                # A real backend just failed a real request, which is stronger
+                # evidence than its cached probe. Re-resolve so the next call
+                # can reach a different backend that is actually up.
+                #
+                # Not done when the fallback answered: nothing was attempted, so
+                # there is no new evidence, and invalidating would re-probe
+                # every candidate on every call for as long as the outage lasts.
+                self.invalidate_availability()
+        else:
+            self._note_success()
         return result
 
 

@@ -181,6 +181,8 @@ def memory_recall(
     # and are returned either way; synthesis is a convenience over them.
     summary = None
     degraded_reason = None
+    degraded_cause = None
+    degraded_instruction = None
     llm = server._get_llm()
     if llm is None:
         degraded_reason = "no inference backend could be constructed"
@@ -205,6 +207,8 @@ def memory_recall(
             synthesis = llm.synthesize(prompt, system=SYSTEM_PROMPT)
             if synthesis.degraded:
                 degraded_reason = synthesis.reason
+                degraded_cause = synthesis.cause
+                degraded_instruction = synthesis.agent_instruction
             else:
                 body, _, _, _ = consult_engine.parse_trailer(synthesis.text)
                 summary = evidence.expand(body) or None
@@ -239,6 +243,15 @@ def memory_recall(
             "field is complete and unaffected — memory retrieval does not "
             "depend on the inference backend."
         )
+        # Carry the structured cause and the explicit agent instruction so the
+        # backend failure is diagnosable and is reported to the person, not
+        # silently passed over. inference_health gives the same diagnosis on
+        # demand.
+        if degraded_cause:
+            result["cause"] = degraded_cause
+        result["agent_action_required"] = degraded_instruction or (
+            "Tell the person you are working for that memory synthesis is "
+            f"unavailable right now: {degraded_reason}.")
     if notice:
         result["notice"] = notice
 
@@ -352,6 +365,7 @@ def memory_store(
 
     rewrite = None
     degraded_reason = None
+    degraded_cause = None
     if want_reformulation:
         llm = server._get_llm()
         if llm is None:
@@ -360,6 +374,7 @@ def memory_store(
             synthesis = llm.reformulate(content)
             if synthesis.degraded:
                 degraded_reason = synthesis.reason
+                degraded_cause = synthesis.cause
             else:
                 rewrite = synthesis.text
 
@@ -399,6 +414,10 @@ def memory_store(
             f"Stored your original text unreformulated ({degraded_reason}). "
             "The memory is saved and searchable; only the rewrite is missing."
         )
+        # Same structured cause as the read tools, so a persistent backend
+        # outage can be diagnosed from any tool that touches inference.
+        if degraded_cause:
+            entry["cause"] = degraded_cause
     entry["next_steps"] = [
         "Use memory_recall to search for this and other memories",
         "Use workstream_context to see all memories for this branch",
@@ -476,6 +495,68 @@ def memory_namespaces(
             "Use workstream_context for the full narrative of a branch",
         ],
     }
+
+@mcp.tool()
+def inference_health() -> dict:
+    """Report the health of the inference backend behind consult/memory_recall.
+
+    ``consult`` and ``memory_recall`` return their retrieval results even when
+    the model that would synthesize an answer is unreachable, flagging the
+    result as ``degraded`` with a structured ``cause``. This tool diagnoses that
+    condition on demand, without issuing a synthesis request: it names the
+    configured backend and why it was selected, probes it now and classifies the
+    outcome with the same taxonomy a degraded result carries, and reports when
+    synthesis last succeeded in this server process.
+
+    It is the read-only sibling of ``controller_health`` for the inference
+    dependency. It contacts no GitHub or controller resource and never returns a
+    credential or a secret-bearing URL.
+
+    Returns:
+        Dictionary with ``ok=True`` and: ``backend`` (the selected backend's
+        name), ``backend_selection`` (why it is the one in use — an explicit
+        ``AR_CONSULTANT_BACKEND`` value, or which candidate auto-detection
+        settled on and which it skipped), ``endpoint`` (the ``scheme://host`` it
+        contacts, never a path or token), ``available`` (the probe result),
+        ``classification`` (a failure class when unavailable, else ``null``),
+        ``http_status`` and ``detail`` (the provider's status and message when
+        there was one), ``operator_hint`` (what an operator should check),
+        ``last_synthesis_success`` (ISO-8601 UTC time of the last success in
+        this process, or ``null``), and — for auto-detection — a ``candidates``
+        list giving each backend's own probe. ``ok=False`` when no backend could
+        be constructed.
+    """
+    server._require_scope("read")
+    server._audit("inference_health")
+
+    llm = server._get_llm()
+    if llm is None:
+        return {
+            "ok": False,
+            "error": "No inference backend could be constructed.",
+            "next_steps": [
+                "Confirm the inference dependencies are importable in this image",
+                "Set AR_CONSULTANT_BACKEND or start a local model "
+                "(see tools/mcp/consultant/README.md)",
+            ],
+        }
+
+    probe = llm.probe_diagnosis()
+    result = {
+        "ok": True,
+        "backend": probe.get("backend"),
+        "backend_selection": probe.get("selection"),
+        "endpoint": probe.get("endpoint"),
+        "available": probe.get("available"),
+        "classification": probe.get("classification"),
+        "http_status": probe.get("http_status"),
+        "detail": probe.get("detail"),
+        "operator_hint": probe.get("operator_hint"),
+        "last_synthesis_success": llm.last_success_at,
+    }
+    if "candidates" in probe:
+        result["candidates"] = probe["candidates"]
+    return result
 
 @mcp.tool()
 def consult(

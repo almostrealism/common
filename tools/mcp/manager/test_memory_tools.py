@@ -242,6 +242,39 @@ class TestMemoryReformulatedText(unittest.TestCase):
         self.assertTrue(result["degraded"])
         self.assertIn("backend is down", result["note"])
 
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_recall_surfaces_the_structured_cause_and_instruction(
+        self, mock_client_fn, mock_llm,
+    ):
+        """A degraded recall carries the classified cause and the explicit
+        instruction to tell the person synthesis is unavailable."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search.return_value = [self._reformulated_memory()]
+        mock_client_fn.return_value = client
+        cause = {
+            "backend": "llamacpp (http://host:8084)",
+            "backend_selection": "auto-detected llamacpp",
+            "endpoint": "http://host:8084",
+            "classification": "connection_refused",
+            "http_status": None,
+            "detail": "[Errno 111] Connection refused",
+            "operator_hint": "Confirm a llama.cpp server is running.",
+        }
+        llm = MagicMock()
+        llm.synthesize.return_value = Synthesis(
+            None, "llamacpp (http://host:8084)", "down", cause=cause)
+        mock_llm.return_value = llm
+
+        result = server.memory_recall(query="test", scope="all")
+
+        self.assertTrue(result["degraded"])
+        self.assertEqual("connection_refused", result["cause"]["classification"])
+        self.assertEqual("http://host:8084", result["cause"]["endpoint"])
+        self.assertIn("connection_refused", result["agent_action_required"])
+        self.assertIn("Tell the person", result["agent_action_required"])
+
     @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
     @patch.object(server, "_get_memory_client")
     def test_workstream_context_unwraps_the_dual_source(self, mock_client_fn, _gh):
@@ -258,6 +291,66 @@ class TestMemoryReformulatedText(unittest.TestCase):
         memory = result["memories"][0]
         self.assertEqual("what the agent actually wrote", memory["content"])
         self.assertNotIn("source", memory)
+
+
+class TestInferenceHealth(unittest.TestCase):
+    """``inference_health`` reports the backend diagnosis on demand."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    @patch.object(server, "_get_llm", return_value=None)
+    def test_reports_when_no_backend_can_be_built(self, _mock_llm):
+        result = server.inference_health()
+        self.assertFalse(result["ok"])
+        self.assertIn("No inference backend", result["error"])
+
+    @patch.object(server, "_get_llm")
+    def test_reports_an_available_backend(self, mock_llm):
+        llm = MagicMock()
+        llm.probe_diagnosis.return_value = {
+            "available": True, "backend": "llamacpp (http://host:8084)",
+            "selection": "auto-detected llamacpp", "endpoint": "http://host:8084",
+            "classification": None, "http_status": None, "detail": "",
+            "operator_hint": "",
+        }
+        llm.last_success_at = "2026-11-21T00:00:00+00:00"
+        mock_llm.return_value = llm
+
+        result = server.inference_health()
+
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["available"])
+        self.assertEqual("auto-detected llamacpp", result["backend_selection"])
+        self.assertEqual("http://host:8084", result["endpoint"])
+        self.assertEqual("2026-11-21T00:00:00+00:00",
+                         result["last_synthesis_success"])
+
+    @patch.object(server, "_get_llm")
+    def test_reports_a_classified_failure_with_candidates(self, mock_llm):
+        llm = MagicMock()
+        llm.probe_diagnosis.return_value = {
+            "available": False, "backend": "openrouter (minimax/minimax-m3)",
+            "selection": "auto-detection reached no backend",
+            "endpoint": "https://openrouter.ai",
+            "classification": "credential_rejected", "http_status": 401,
+            "detail": "invalid key",
+            "operator_hint": "Rotate the openrouter-api-key secret.",
+            "candidates": [{"backend": "llamacpp", "available": False,
+                            "classification": "connection_refused"}],
+        }
+        llm.last_success_at = None
+        mock_llm.return_value = llm
+
+        result = server.inference_health()
+
+        self.assertTrue(result["ok"])
+        self.assertFalse(result["available"])
+        self.assertEqual("credential_rejected", result["classification"])
+        self.assertEqual(401, result["http_status"])
+        self.assertIsNone(result["last_synthesis_success"])
+        self.assertEqual(1, len(result["candidates"]))
+
 
 class TestMemoryBranchContext(unittest.TestCase):
 

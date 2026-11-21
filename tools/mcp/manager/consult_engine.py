@@ -527,6 +527,15 @@ class ConsultTurn:
                 "evidence and related_memories fields were retrieved "
                 "successfully and hold the documentation matching this "
                 "question — read them directly." + keyword_guidance(self.keywords))
+            # The structured cause and the explicit instruction make an
+            # inference-backend failure diagnosable and impossible to pass over:
+            # the agent is told to report it, quoting the classified reason.
+            if synthesis is not None and synthesis.cause:
+                result["cause"] = synthesis.cause
+            result["agent_action_required"] = (
+                synthesis.agent_instruction if synthesis is not None else (
+                    "Tell the person you are working for that documentation and "
+                    f"memory synthesis is unavailable right now: {reason}."))
             self._finish(result, [])
             return result
 

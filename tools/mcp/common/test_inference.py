@@ -407,6 +407,18 @@ class LlamaCppLiveTest(unittest.TestCase):
         self.assertTrue(result.degraded)
         self.assertIsInstance(result, Synthesis)
 
+    def test_connection_refused_is_classified_in_the_cause(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+        result = self.backend.synthesize("prompt")
+
+        self.assertEqual("connection_refused", result.cause["classification"])
+        self.assertTrue(result.cause["endpoint"].startswith("http://127.0.0.1"))
+        # The endpoint names where the request went, not the /health or
+        # completions path.
+        self.assertNotIn("/health", result.cause["endpoint"])
+
 
 class _OpenRouterHandler(BaseHTTPRequestHandler):
     """Stand-in for OpenRouter's ``/key`` and ``/chat/completions`` endpoints.
@@ -653,6 +665,40 @@ class OpenRouterTest(unittest.TestCase):
         auto = AutoBackend(candidates=[local, self.backend()])
 
         self.assertEqual(auto.synthesize("prompt").text, "a hosted summary")
+
+    def test_insufficient_credit_degrades_as_quota_exhausted(self):
+        _OpenRouterHandler.completion_status = 402
+
+        result = self.backend().synthesize("prompt")
+
+        self.assertTrue(result.degraded)
+        self.assertEqual("quota_exhausted", result.cause["classification"])
+        self.assertEqual(402, result.cause["http_status"])
+        self.assertIn("Insufficient credits", result.cause["detail"])
+        self.assertIn("127.0.0.1", result.cause["endpoint"])
+        self.assertNotIn("/api/v1", result.cause["endpoint"])
+
+    def test_rejected_key_degrades_as_credential_rejected(self):
+        result = self.backend(api_key="wrong-key").synthesize("prompt")
+
+        self.assertTrue(result.degraded)
+        self.assertEqual("credential_rejected", result.cause["classification"])
+        self.assertEqual(401, result.cause["http_status"])
+
+    def test_probe_diagnosis_reports_exhausted_credit(self):
+        _OpenRouterHandler.limit_remaining = 0
+
+        probe = self.backend().probe_diagnosis()
+
+        self.assertFalse(probe["available"])
+        self.assertEqual("quota_exhausted", probe["classification"])
+
+    def test_probe_diagnosis_available_when_credit_remains(self):
+        probe = self.backend().probe_diagnosis()
+
+        self.assertTrue(probe["available"])
+        self.assertIsNone(probe["classification"])
+        self.assertIn("127.0.0.1", probe["endpoint"])
 
 
 if __name__ == "__main__":

@@ -22,9 +22,14 @@ _spec = importlib.util.spec_from_file_location("common_inference", _COMMON_INFER
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 
-# Re-export everything
+# Re-export everything. The prompt-construction names live in
+# ``inference_prompts`` now and are re-exported by the shared ``inference``
+# module, so they are reached here through ``_mod`` exactly as before.
 SYSTEM_PROMPT = _mod.SYSTEM_PROMPT
+REFORMULATE_SYSTEM_PROMPT = _mod.REFORMULATE_SYSTEM_PROMPT
+SPECULATION_PHRASES = _mod.SPECULATION_PHRASES
 has_speculation = _mod.has_speculation
+build_consult_prompt = _mod.build_consult_prompt
 InferenceBackend = _mod.InferenceBackend
 InferenceUnavailable = _mod.InferenceUnavailable
 Synthesis = _mod.Synthesis
