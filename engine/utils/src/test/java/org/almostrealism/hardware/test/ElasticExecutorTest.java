@@ -18,10 +18,13 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.streams.ElasticExecutor;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Verifies the two properties {@link io.almostrealism.streams.Semaphore#CALLBACK_EXECUTOR} relies
@@ -112,5 +115,84 @@ public class ElasticExecutorTest extends TestSuiteBase {
 
 		assertTrue("Every blocked task must be released by the task after it",
 				done.await(20, TimeUnit.SECONDS));
+	}
+
+	/**
+	 * When the first threads cannot be created, the tasks that asked for them stay queued and run
+	 * once a later starvation check succeeds in starting a thread, and the failed attempts are not
+	 * counted as threads: a failed start counted as still starting would keep every later check
+	 * from starting a replacement, leaving the queued tasks stuck forever.
+	 */
+	@Test(timeout = 30000)
+	public void failedThreadStartIsRetried() throws InterruptedException {
+		int failures = 3;
+		AtomicInteger attempts = new AtomicInteger();
+		ThreadFactory factory = r -> {
+			if (attempts.incrementAndGet() <= failures) {
+				throw new OutOfMemoryError("unable to create native thread (simulated)");
+			}
+
+			return new Thread(r, "failing-start");
+		};
+
+		ElasticExecutor executor = new ElasticExecutor("failing-start", factory,
+				TimeUnit.MILLISECONDS.toNanos(1), 5000);
+		CountDownLatch done = new CountDownLatch(1);
+
+		try {
+			executor.execute(done::countDown);
+			Assert.fail("The failure to create the first thread must reach the caller");
+		} catch (OutOfMemoryError expected) {
+			assertEquals("A thread that was never started is not counted", 0, executor.getThreadCount());
+		}
+
+		assertTrue("A task queued while no thread could be created must run once one can be",
+				done.await(20, TimeUnit.SECONDS));
+		assertEquals("Each starvation check retries the start once until it succeeds",
+				failures + 1, attempts.get());
+		assertEquals("Only the thread that started is counted", 1, executor.getThreadCount());
+	}
+
+	/**
+	 * Tasks that each block until every one of them has started need a thread apiece, and still
+	 * get them when every other thread start fails, because each failed start is rolled back and
+	 * retried by the next starvation check.
+	 */
+	@Test(timeout = 30000)
+	public void blockedTasksSurviveFailedThreadStarts() throws InterruptedException {
+		AtomicInteger attempts = new AtomicInteger();
+		ThreadFactory factory = r -> {
+			if (attempts.incrementAndGet() % 2 == 0) {
+				throw new OutOfMemoryError("unable to create native thread (simulated)");
+			}
+
+			return new Thread(r, "blocked-failing-start");
+		};
+
+		ElasticExecutor executor = new ElasticExecutor("blocked-failing-start", factory,
+				TimeUnit.MILLISECONDS.toNanos(1), 5000);
+		int tasks = 10;
+		CountDownLatch started = new CountDownLatch(tasks);
+		CountDownLatch done = new CountDownLatch(tasks);
+
+		for (int i = 0; i < tasks; i++) {
+			executor.execute(() -> {
+				started.countDown();
+
+				try {
+					started.await();
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+
+				done.countDown();
+			});
+		}
+
+		assertTrue("Every task must get a thread despite the failed starts",
+				done.await(20, TimeUnit.SECONDS));
+		assertEquals("Each task ran on a thread of its own", tasks, executor.getThreadCount());
+		assertEquals("Every failed start was retried exactly once before the next succeeded",
+				2 * tasks - 1, attempts.get());
 	}
 }

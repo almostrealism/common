@@ -20,6 +20,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -47,8 +48,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * keep-alive period.</p>
  */
 public final class ElasticExecutor implements Executor {
-	/** The name of every thread this executor starts. */
-	private final String threadName;
+	/** Creates the threads that run tasks. */
+	private final ThreadFactory threadFactory;
 	/** How long a queued task may wait for a thread before one is started for it. */
 	private final long starvationNanos;
 	/** How long an idle thread waits for work before it ends. */
@@ -72,14 +73,30 @@ public final class ElasticExecutor implements Executor {
 	private final ScheduledThreadPoolExecutor checks;
 
 	/**
-	 * Creates an executor.
+	 * Creates an executor whose task threads are named {@code threadName}.
 	 *
 	 * @param threadName      the name of the threads it starts
 	 * @param starvationNanos how long a queued task may wait before a thread is started for it
 	 * @param keepAliveMillis how long an idle thread waits for work before it ends
 	 */
 	public ElasticExecutor(String threadName, long starvationNanos, long keepAliveMillis) {
-		this.threadName = threadName;
+		this(threadName, r -> new Thread(r, threadName), starvationNanos, keepAliveMillis);
+	}
+
+	/**
+	 * Creates an executor whose task threads are created by {@code threadFactory}. Every thread it
+	 * returns is made a daemon before it is started. A factory that throws, or returns a thread that
+	 * cannot be started, fails the {@link #execute} or starvation check that asked for the thread;
+	 * the tasks stay queued and a later starvation check asks again.
+	 *
+	 * @param threadName      the name prefix of the threads that run starvation checks
+	 * @param threadFactory   creates the threads that run tasks
+	 * @param starvationNanos how long a queued task may wait before a thread is started for it
+	 * @param keepAliveMillis how long an idle thread waits for work before it ends
+	 */
+	public ElasticExecutor(String threadName, ThreadFactory threadFactory,
+						   long starvationNanos, long keepAliveMillis) {
+		this.threadFactory = threadFactory;
 		this.starvationNanos = starvationNanos;
 		this.keepAliveMillis = keepAliveMillis;
 
@@ -108,19 +125,22 @@ public final class ElasticExecutor implements Executor {
 	 * when there is no thread at all, one is started for it at once; otherwise a thread is started
 	 * only if it is still queued after the starvation interval (see {@link #checkStarvation()}).
 	 *
+	 * <p>If the thread started for the task cannot be created, the failure is rethrown, but the
+	 * task has been accepted: it stays queued, and a later starvation check starts a thread for
+	 * it, so the caller must not submit it again.</p>
+	 *
 	 * @param task the work to run
 	 */
 	@Override
 	public synchronized void execute(Runnable task) {
 		queue.addLast(new Queued(task, System.nanoTime()));
+		scheduleCheck(starvationNanos);
 
 		if (idle > 0) {
 			notify();
 		} else if (threads == 0) {
 			startThread();
 		}
-
-		scheduleCheck(starvationNanos);
 	}
 
 	/**
@@ -154,22 +174,34 @@ public final class ElasticExecutor implements Executor {
 
 		long waited = System.nanoTime() - queue.peekFirst().getQueuedAt();
 		if (waited >= starvationNanos) {
-			if (idle == 0 && starting == 0) startThread();
 			scheduleCheck(starvationNanos);
+			if (idle == 0 && starting == 0) startThread();
 		} else {
 			scheduleCheck(starvationNanos - waited);
 		}
 	}
 
-	// TODO(review): if t.start() throws, threads/starting stay incremented and starvation checks never start another thread
-	/** Starts one thread. Called with this executor's monitor held. */
+	/**
+	 * Starts one thread. Called with this executor's monitor held.
+	 *
+	 * <p>If the thread cannot be created or started (the JVM is out of native threads, for
+	 * instance), the counts are restored before the failure is rethrown. A thread that never
+	 * started must not be counted as starting, or no later starvation check would start another
+	 * for the tasks it left queued.</p>
+	 */
 	private void startThread() {
 		threads++;
 		starting++;
 
-		Thread t = new Thread(this::work, threadName);
-		t.setDaemon(true);
-		t.start();
+		try {
+			Thread t = threadFactory.newThread(this::work);
+			t.setDaemon(true);
+			t.start();
+		} catch (RuntimeException | Error e) {
+			threads--;
+			starting--;
+			throw e;
+		}
 	}
 
 	/**
@@ -179,6 +211,7 @@ public final class ElasticExecutor implements Executor {
 	private void work() {
 		boolean ended = false;
 
+		// TODO(review): a starvation check can run between this decrement and take(), starting an extra thread; the exact-count ElasticExecutorTest assertions can then flake
 		synchronized (this) {
 			starting--;
 		}

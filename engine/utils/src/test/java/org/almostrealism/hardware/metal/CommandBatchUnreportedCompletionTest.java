@@ -108,6 +108,47 @@ public class CommandBatchUnreportedCompletionTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A listener registered after a batch without a completed handler has already finished is
+	 * notified at once, and the completion is still reported, exactly once, so that the runner
+	 * drains the batch instead of leaving it retained until an unrelated wait.
+	 */
+	@Test(timeout = 60000)
+	public void listenerAfterFinishStillReports() throws InterruptedException {
+		MTLCommandQueue queue = queue();
+		if (queue == null) return;
+
+		MTLEvent gate = queue.getDevice().newSharedEvent();
+		CommandBatch batch = gatedBatch(queue, gate);
+		AtomicInteger reports = new AtomicInteger();
+		CountDownLatch reported = new CountDownLatch(1);
+		batch.commit(() -> {
+			reports.incrementAndGet();
+			reported.countDown();
+		});
+
+		gate.setSignaledValue(1);
+		batch.awaitCompletionUninterruptibly();
+		assertTrue(batch.isFinished());
+		assertEquals("Nothing has needed the completion reported yet", 0, reports.get());
+
+		AtomicInteger notified = new AtomicInteger();
+		batch.whenFinished(notified::incrementAndGet);
+		assertEquals("A listener on a finished batch is notified at once", 1, notified.get());
+
+		assertTrue("The completion of a finished batch must still be reported to the runner",
+				reported.await(30, TimeUnit.SECONDS));
+
+		batch.whenFinished(notified::incrementAndGet);
+		Thread.sleep(200);
+		assertEquals("The completion is reported once however many listeners arrive", 1, reports.get());
+		assertEquals(2, notified.get());
+
+		batch.drain();
+		assertEquals("A listener is notified only once", 2, notified.get());
+		assertTrue(batch.getBuffer().isReleased());
+	}
+
+	/**
 	 * A batch committed without a completed handler and with no listener starts no thread to
 	 * report its completion, which then only a wait or drain observes, as before.
 	 */

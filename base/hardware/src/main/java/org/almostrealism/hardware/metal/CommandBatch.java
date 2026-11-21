@@ -321,14 +321,18 @@ final class CommandBatch {
 	 * batch finish ({@link #notifyIfFinished()}), even while a thread is registered to wait on it
 	 * and so keeps it from being drained without that thread. If the batch was committed without
 	 * a completed handler, its completion is observed by a waiting thread so that the listener is
-	 * still notified (see {@link #observeIfUnreported()}). A listener must only hand work off,
-	 * since it runs on the executor thread. Executor-thread only.
+	 * still notified (see {@link #observeIfUnreported()}). That thread is started even when the
+	 * batch has already finished and the listener is notified at once, since nothing else then
+	 * reports the completion to the runner, which would leave the batch undrained and its buffer
+	 * retained until an unrelated wait. A listener must only hand work off, since it runs on the
+	 * executor thread. Executor-thread only.
 	 *
 	 * @param listener the listener to notify once the batch has finished
 	 */
 	void whenFinished(Runnable listener) {
 		onFinishedListeners.add(listener);
-		if (!notifyIfFinished()) observeIfUnreported();
+		notifyIfFinished();
+		observeIfUnreported();
 	}
 
 	/**
