@@ -18,6 +18,7 @@ package org.almostrealism.spatial.test;
 
 import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.spatial.ArrangementGenerationProcess;
 import org.almostrealism.spatial.GenomicNetwork;
@@ -32,6 +33,8 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -223,6 +226,81 @@ public class ArrangementGenerationElitismTest extends TestSuiteBase {
 					secondCopy, duplicate.getGenome());
 			Assert.assertNull("The second matching genome's record must start unscored",
 					duplicate.getHealthScore());
+		});
+	}
+
+	/**
+	 * A run persists its records in the optimizer's final, health-ordered population
+	 * order rather than the pre-scoring order the records were last rebuilt in. The
+	 * records start in pre-scoring order - the carried elite first, a stronger child
+	 * after it - while the optimizer's population holds the health order a scored
+	 * cycle leaves (the child first). After {@link ArrangementGenerationProcess#run()}
+	 * both the reloaded records and the population file the next run reads from must
+	 * lead with the child, so the next run's elite is the best genome, not the old
+	 * one. The run is configured for zero cycles, so it renders nothing.
+	 *
+	 * @throws Exception if the process cannot be prepared or run
+	 */
+	@Test(timeout = 120_000)
+	public void runPersistsRecordsInHealthOrder() throws Exception {
+		withPreparedProcess("results/process-elite-order.xml", (process, optimizer) -> {
+			ProjectedGenome oldElite = new ProjectedGenome(PackedCollection.of(0.11, 0.21, 0.31));
+			ProjectedGenome strongChild = new ProjectedGenome(PackedCollection.of(0.61, 0.51, 0.41));
+
+			GenomicNetwork eliteRecord = new GenomicNetwork(0, oldElite);
+			eliteRecord.setHealthScore(score("results/old-elite.wav"));
+			GenomicNetwork childRecord = new GenomicNetwork(1, strongChild);
+			childRecord.setHealthScore(score("results/strong-child.wav"));
+			process.setNetworks(List.of(eliteRecord, childRecord));
+
+			// The health order a scored cycle leaves the population in.
+			optimizer.setPopulation(new AudioScenePopulation(process.getLocalScene(),
+					new ArrayList<>(List.of(strongChild, oldElite))));
+			optimizer.setIterationsPerRun(0);
+
+			try {
+				process.run();
+
+				List<GenomicNetwork> records = process.getNetworks();
+				Assert.assertEquals("Both genomes must keep a record", 2, records.size());
+				Assert.assertEquals("The best genome must lead the persisted records",
+						strongChild.signature(), records.get(0).getGenome().signature());
+				Assert.assertEquals("The weaker genome must follow it",
+						oldElite.signature(), records.get(1).getGenome().signature());
+
+				List<Genome<PackedCollection>> persisted;
+				try (FileInputStream in = new FileInputStream(AudioSceneOptimizer.POPULATION_FILE)) {
+					persisted = AudioScenePopulation.read(in);
+				}
+
+				Assert.assertEquals("The population file must hold both genomes", 2, persisted.size());
+				Assert.assertEquals("The population file the next run reads must lead with the best genome",
+						strongChild.signature(), persisted.get(0).signature());
+			} catch (IOException e) {
+				throw new RuntimeException(e);
+			}
+		});
+	}
+
+	/**
+	 * Rebuilding the records against an optimizer that holds no population leaves the
+	 * records exactly as they are, rather than failing or emptying them.
+	 *
+	 * @throws Exception if the process cannot be prepared
+	 */
+	@Test(timeout = 120_000)
+	public void refreshWithoutPopulationKeepsRecords() throws Exception {
+		withPreparedProcess("results/process-elite-nopop.xml", (process, optimizer) -> {
+			GenomicNetwork record = new GenomicNetwork(0,
+					new ProjectedGenome(PackedCollection.of(0.12, 0.22, 0.32)));
+			process.setNetworks(List.of(record));
+
+			optimizer.setPopulation(null);
+			process.refreshNetworks();
+
+			List<GenomicNetwork> records = process.getNetworks();
+			Assert.assertEquals("The records must be left unchanged", 1, records.size());
+			Assert.assertSame("The existing record must be kept", record, records.get(0));
 		});
 	}
 

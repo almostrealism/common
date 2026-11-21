@@ -468,10 +468,18 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 * Runs the prepared optimizer, then persists and reloads the records so the
 	 * process ends in the same state a fresh session would load.
 	 *
+	 * <p>Before persisting, the records are brought into the order of the optimizer's
+	 * final population, which the last cycle left in descending health order. The
+	 * records were last rebuilt before that cycle scored anything, so they still hold
+	 * the pre-scoring order (carried elites first, then children); persisting them in
+	 * that order would overwrite the health-ordered population file, and the next run
+	 * would carry whichever genome came first rather than the best one.</p>
+	 *
 	 * @throws IOException if the records cannot be persisted
 	 */
 	public void run() throws IOException {
 		optimizer.run();
+		refreshNetworks();
 		saveNetworks();
 		loadNetworks();
 	}
@@ -587,7 +595,11 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	 * (after breeding, or after loading when breeding is disabled) and before its
 	 * first score or render. Because the records then already match the population
 	 * being scored, no rebuild happens mid-cycle, so every score the cycle delivers
-	 * attaches to a record and survives to the end of the cycle.</p>
+	 * attaches to a record and survives to the end of the cycle. {@link #run()} calls
+	 * it once more after the last cycle, so the records take the health order the
+	 * cycle left the population in before they are persisted. Without a population
+	 * (an optimizer that has not yet read or bred one) the records are left as they
+	 * are.</p>
 	 *
 	 * <p>A genome the optimizer carries over unchanged (an
 	 * {@link org.almostrealism.optimize.PopulationOptimizer#getEliteCount() elite})
@@ -604,6 +616,7 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 		if (optimizer == null) return;
 
 		AudioScenePopulation population = (AudioScenePopulation) optimizer.getPopulation();
+		if (population == null) return;
 
 		synchronized (recordLock) {
 			Map<String, Deque<GenomicNetwork>> existing = new HashMap<>();
