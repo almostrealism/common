@@ -180,6 +180,27 @@ async function run(): Promise<void> {
     "a short lawful edit is allowed",
   )
 
+  // apply_patch Update: a hunk with no context inserts at the end of the file,
+  // so a comment added after a trailing three-comment wall makes it four.
+  fs.writeFileSync(path.join(project, "D.java"),
+    "package p;\n\n/** D. */\nclass D {\n}\n// tail a\n// tail b\n// tail c\n")
+  expect(
+    await threw(before, "apply_patch", { patchText: wrap("*** Update File: D.java\n@@\n+// tail d") }),
+    "apply_patch inserting without context after a trailing wall blocks",
+  )
+  expect(
+    !(await threw(before, "apply_patch", { patchText: wrap("*** Update File: D.java\n@@\n+class E {\n+}") })),
+    "apply_patch inserting code without context is allowed",
+  )
+
+  // A file-writing call whose arguments are not an object cannot be judged.
+  for (const tool of ["write", "edit", "apply_patch"]) {
+    for (const args of [null, "A.java", 3, ["A.java"]]) {
+      expect(await threw(before, tool, args), `${tool} with arguments ${JSON.stringify(args)} is refused`)
+    }
+  }
+  expect(!(await threw(before, "read", null)), "a tool that writes no file is not judged")
+
   // A file the policy does not govern is left alone.
   expect(
     !(await threw(before, "write", { filePath: "notes.md", content: "// a\n// b\n// c\n// d\n// e\n" })),

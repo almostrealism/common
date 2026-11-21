@@ -531,9 +531,12 @@ def _read(path):
 def resulting_text(old, tool_input):
     """Return the content a Write/Edit/MultiEdit payload leaves in the file.
 
-    Returns ``(new, trusted)``. When an edit names text the file does not
-    hold, the result cannot be reconstructed; the added text is then judged
-    on its own, whole, which is the stricter reading.
+    Returns ``(new, trusted)``. An edit with no ``old_string`` on a file that
+    already holds text is an insertion with no context, which ``apply_patch``
+    places at the end of the file, so it is judged there, together with the
+    comment it may extend. When an edit names text the file does not hold,
+    the result cannot be reconstructed; the added text is then judged on its
+    own, whole, which is the stricter reading.
     """
     for whole in ("content", "new_source"):
         if isinstance(tool_input.get(whole), str):
@@ -553,6 +556,9 @@ def resulting_text(old, tool_input):
             new = new.replace(target, edit["new_string"], count)
         elif not target and not new:
             new = edit["new_string"]
+        elif not target:
+            sep = "" if new.endswith(("\n", "\r")) else "\n"
+            new = new + sep + edit["new_string"]
         else:
             return "\n".join(e.get("new_string", "") for e in edits
                              if isinstance(e, dict)), False

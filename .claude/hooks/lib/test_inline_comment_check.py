@@ -4,6 +4,7 @@
 import io
 import json
 import os
+import re
 import tempfile
 import unittest
 
@@ -309,6 +310,26 @@ class TestTheEditGate(Base):
                                      "new_string": "\n".join(wall(5))})
         self.assertTrue(found)
 
+    def test_a_context_free_insertion_is_judged_at_the_end_of_the_file(self):
+        old = "\n".join(["package p;", "", "/** A. */", "class A {", "}"]
+                        + wall(3, "old")) + "\n"
+        path, new, found = check.decide_payload(
+            {"tool_input": {"file_path": "A.java",
+                            "edits": [{"old_string": "", "new_string": "// one more"}]}},
+            read=lambda _: old)
+        self.assertEqual(old + "// one more", new)
+        self.assertEqual([(6, "4 consecutive comment lines (max 3)")], found)
+
+    def test_a_context_free_insertion_of_code_is_allowed(self):
+        old = "\n".join(["package p;", "", "/** A. */", "class A {", "}"]
+                        + wall(3, "old"))
+        path, new, found = check.decide_payload(
+            {"tool_input": {"file_path": "A.java",
+                            "edits": [{"old_string": "", "new_string": "class B {\n}"}]}},
+            read=lambda _: old)
+        self.assertEqual(old + "\nclass B {\n}", new)
+        self.assertEqual([], found)
+
     def test_an_opencode_payload_is_read(self):
         found = check.decide_payload(
             {"tool_input": {"filePath": "A.java", "content": method(*wall(5), "int x;")}},
@@ -474,6 +495,22 @@ class TestDeclarationComments(Base):
 
     def test_a_comment_above_a_statement_is_not_documentation_in_java(self):
         self.blocked(method(*self.LONG, "int x = 1;"))
+
+
+class TestTheCiGateRuns(unittest.TestCase):
+    """The checkstyle job runs only when the changes job sees a code file."""
+
+    def test_every_governed_extension_counts_as_a_code_change(self):
+        root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))))
+        with open(os.path.join(root, ".github", "workflows", "analysis.yaml"),
+                  encoding="utf-8") as handle:
+            workflow = handle.read()
+        match = re.search(r"CODE_FILES=\$\(git diff[^)]*\)", workflow)
+        self.assertIsNotNone(match, "the changes job must assign CODE_FILES")
+        missing = [ext for ext in check.SOURCE_EXTENSIONS
+                   if "'*%s'" % ext not in match.group(0)]
+        self.assertEqual([], missing, "a change to only these files would skip the gate")
 
 
 class GovernsTest(unittest.TestCase):

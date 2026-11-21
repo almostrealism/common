@@ -632,7 +632,10 @@ Only the last one holds for every route — a shell command, another agent
 runtime, a merge, a person — so it is the gate; the others exist to say so
 earlier. The step diffs the head against its merge base (`--unified=0`) and
 runs `--diff`, publishes `inline_comments_passed`, and `check-quality-gates.sh`
-reports a finding to `auto-review` as `inline-comments`. Because a pull
+reports a finding to `auto-review` as `inline-comments`. Every extension the
+module governs is in the `changes` job's `CODE_FILES` pathspec, so a change to
+only (say) TypeScript sources still runs `checkstyle`;
+`test_inline_comment_check.py` pins that. Because a pull
 request's checkout is its head, a head that predates the module's diff mode is
 judged with `origin/<base>`'s copy rather than skipped: this is an enforcement
 check, so "the branch predates it" is not a pass.

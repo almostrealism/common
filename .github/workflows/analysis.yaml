@@ -316,8 +316,14 @@ jobs:
           # the wrapper pins. A change there alters how every Maven job resolves
           # and must therefore run build, maven-cache and the Maven validation
           # jobs rather than being classified docs-only.
+          #
+          # Every source extension the inline-comment check governs is listed
+          # too, so a change to only those files still runs that checkstyle step.
           CODE_FILES=$(git diff --name-only "$BASE" HEAD -- \
             '*.java' '*.xml' '*.yaml' '*.yml' '*.sh' '*.py' '*.groovy' '*.properties' \
+            '*.pdsl' '*.proto' '*.kt' '*.kts' '*.c' '*.h' '*.hpp' '*.cpp' '*.cc' '*.cl' \
+            '*.metal' '*.m' '*.mm' '*.glsl' '*.js' '*.cjs' '*.mjs' '*.jsx' '*.ts' '*.cts' \
+            '*.mts' '*.tsx' '*.gradle' '*.scala' '*.swift' '*.go' '*.rs' '*.cs' \
             '*/Dockerfile' 'Dockerfile' '.claude/settings.json' '.claude/hooks/' '.mvn/' \
             | grep -v '^docs/' | grep -v '\.md$' || true)
           if [ -z "$CODE_FILES" ]; then

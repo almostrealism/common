@@ -19,6 +19,8 @@
  *   - `apply_patch`: an `Add File` section is the whole new file; an `Update
  *     File` section is turned back into the replacements its hunks describe,
  *     so the core reads the file, applies them and judges the result. A hunk
+ *     with no context or removed line inserts at the end of the file, where
+ *     the core places it. A hunk
  *     whose context no longer matches the file falls back to judging the added
  *     text whole, the stricter reading. An update carrying `Move to` is judged
  *     at its destination, with the prior text read from the file it moves.
@@ -130,11 +132,24 @@ function patchInputs(patch: string): ToolInput[] {
   return inputs
 }
 
-/** Returns the core payloads for a tool call, or none when the tool writes no file. */
+/** The tools whose calls write a file this policy judges. */
+const FILE_WRITING_TOOLS = ["write", "edit", "apply_patch"]
+
+/** Returns the core payloads for a tool call, or none when the tool writes no file.
+ *
+ * A file-writing call whose arguments are not an object cannot be judged, so
+ * it is refused rather than read as a call that writes nothing.
+ */
 function toolInputs(tool: string, args: unknown): ToolInput[] {
-  if (!args || typeof args !== "object") return []
-  const fields = args as Record<string, unknown>
   const name = tool.toLowerCase()
+  if (!FILE_WRITING_TOOLS.includes(name)) return []
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    throw new Error(
+      "BLOCKED: the " + name + " call carries no argument object, so the inline-comment " +
+        "check cannot judge it; an edit it could not judge is not allowed through.",
+    )
+  }
+  const fields = args as Record<string, unknown>
 
   if (name === "write") {
     return [{ file_path: text(fields, "filePath", "file_path"), content: text(fields, "content") }]
