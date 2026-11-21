@@ -450,6 +450,12 @@ Notes on the declarations:
   per event), not text to and from a flat id sequence, so it is not a `Tokenizer` — the method shapes
   and the element type differ. This is coincidental naming, recorded so a later round does not
   mistake it for an orphan of this family.
+- **Llama2 tokenizes through the static `BPE` utility (`engine/ml`, `org.almostrealism.ml.BPE`),
+  not through a `Tokenizer` type.** `BPE.encode(String, String[], float[], int, int[])` is a
+  stateless helper `Llama2` calls directly with the vocabulary it already holds; there is no
+  instance tokenizer to carry the relationship, so it stands outside this family. The "every text
+  tokenizer implements it" framing above is about tokenizer *types* — a static utility is not one.
+  Recorded so a later round does not read it as a `Tokenizer` implementation left unaligned.
 
 ---
 
