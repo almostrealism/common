@@ -1440,7 +1440,10 @@ class AutoBackend(InferenceBackend):
         if chosen is not None:
             result = dict(chosen)
         else:
-            result = self._diagnosis(
+            # Identity comes from the fixed fallback, not ``self._diagnosis``,
+            # whose provider/endpoint/hint resolve through the cached (or
+            # re-probed) delegate and could contradict this snapshot.
+            result = self._fallback._diagnosis(
                 False, NOT_CONFIGURED, None,
                 "no candidate backend is reachable")
         # Derive the selection from this same snapshot rather than from the

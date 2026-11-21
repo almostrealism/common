@@ -34,6 +34,7 @@ PR_STATE_VALUES = ("open", "closed")
 #: A 7-to-40 character hex string: a raw commit SHA, which a test-run deployment
 #: must refuse (see .github/CLAUDE.md "Starting a test run" — never deploy a
 #: fork-controlled commit).
+# TODO(review): this also refuses legitimate all-hex branch names (e.g. "20261121"); consider checking refs/heads first.
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
 

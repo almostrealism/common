@@ -411,6 +411,76 @@ class ProbeNonObjectJsonTest(unittest.TestCase):
         self.assertTrue(probe["available"])
         self.assertEqual([{"status": "ok"}], seen)
 
+    def test_empty_body_is_malformed_not_an_empty_object(self):
+        # An empty 2xx used to become ``{}``, which a presence-only predicate
+        # (OpenRouter's limit_remaining check) accepted as available.
+        url = self._serve("")
+        calls = []
+
+        def accept(data):
+            calls.append(data)
+            return None
+
+        probe = probe_http_get(url, timeout=3, accept=accept)
+        self.assertFalse(probe["available"])
+        self.assertEqual(MALFORMED_RESPONSE, probe["classification"])
+        self.assertIsNone(probe["http_status"])
+        self.assertIn("empty", probe["detail"])
+        self.assertEqual([], calls)
+
+    def test_whitespace_body_is_malformed(self):
+        url = self._serve("  \n")
+        probe = probe_http_get(url, timeout=3)
+        self.assertFalse(probe["available"])
+        self.assertEqual(MALFORMED_RESPONSE, probe["classification"])
+
+    def test_predicate_shape_error_is_classified_malformed(self):
+        # ``{"data": []}`` makes an OpenRouter-style predicate call ``.get`` on
+        # a list; the probe must report malformed_response, not raise.
+        url = self._serve(json.dumps({"data": []}))
+
+        def accept(data):
+            return data.get("data", {}).get("limit_remaining")
+
+        probe = probe_http_get(url, timeout=3, accept=accept)
+        self.assertFalse(probe["available"])
+        self.assertEqual(MALFORMED_RESPONSE, probe["classification"])
+        self.assertIn("unexpected shape", probe["detail"])
+
+    def test_predicate_null_nested_value_is_classified_malformed(self):
+        url = self._serve(json.dumps({"data": None}))
+
+        def accept(data):
+            return data.get("data", {}).get("limit_remaining")
+
+        probe = probe_http_get(url, timeout=3, accept=accept)
+        self.assertFalse(probe["available"])
+        self.assertEqual(MALFORMED_RESPONSE, probe["classification"])
+
+    def test_predicate_type_and_key_errors_are_classified_malformed(self):
+        url = self._serve(json.dumps({"models": [None]}))
+
+        def by_type(data):
+            return data["models"][0]["name"]
+
+        def by_key(data):
+            return data["absent"]
+
+        for accept in (by_type, by_key):
+            probe = probe_http_get(url, timeout=3, accept=accept)
+            self.assertFalse(probe["available"])
+            self.assertEqual(MALFORMED_RESPONSE, probe["classification"])
+
+    def test_openrouter_probe_with_list_data_is_malformed(self):
+        # The real OpenRouter predicate, end to end through probe_diagnosis.
+        url = self._serve(json.dumps({"data": []}))
+        backend = OpenRouterBackend(api_key="k", base_url=url[:-len("/key")])
+
+        probe = backend.probe_diagnosis()
+
+        self.assertFalse(probe["available"])
+        self.assertEqual(MALFORMED_RESPONSE, probe["classification"])
+
 
 if __name__ == "__main__":
     unittest.main()

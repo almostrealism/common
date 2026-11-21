@@ -216,7 +216,12 @@ def probe_http_get(url: str, timeout: float = 5.0,
         req = urllib.request.Request(url, method="GET", headers=headers or {})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read()
-        data = json.loads(body) if body else {}
+        # An empty 2xx body is not an empty object: substituting ``{}`` would
+        # let a predicate that only rejects on a field's presence (OpenRouter's
+        # ``limit_remaining``) call a broken provider available.
+        if not body or not body.strip():
+            return _malformed("provider returned an empty response")
+        data = json.loads(body)
     except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
         classification, status, detail = classify_transport_error(e)
         return {"available": False, "classification": classification,
@@ -229,18 +234,36 @@ def probe_http_get(url: str, timeout: float = 5.0,
     # and the health tool would call a broken provider available. Report it as a
     # malformed response instead.
     if not isinstance(data, dict):
-        return {"available": False, "classification": MALFORMED_RESPONSE,
-                "http_status": None,
-                "detail": "provider returned a non-object JSON response"}
+        return _malformed("provider returned a non-object JSON response")
 
     if accept is not None:
-        rejection = accept(data)
+        try:
+            rejection = accept(data)
+        except (AttributeError, TypeError, KeyError, IndexError) as e:
+            # The object's nested shape is not what the predicate expects (for
+            # example ``{"data": []}``); that is a malformed response, not a
+            # crash of the health check.
+            return _malformed(
+                f"provider response has an unexpected shape: {e}")
         if rejection is not None:
             classification, detail = rejection
             return {"available": False, "classification": classification,
                     "http_status": None, "detail": detail}
     return {"available": True, "classification": None,
             "http_status": None, "detail": ""}
+
+
+def _malformed(detail: str) -> dict:
+    """The :func:`probe_http_get` result for an unusable 2xx response.
+
+    Args:
+        detail: A secret-free description of what was wrong with the body.
+
+    Returns:
+        An unavailable probe classified :data:`MALFORMED_RESPONSE`.
+    """
+    return {"available": False, "classification": MALFORMED_RESPONSE,
+            "http_status": None, "detail": detail}
 
 
 #: The detail reported when the inference module itself cannot be imported, so

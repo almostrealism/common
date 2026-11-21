@@ -350,6 +350,36 @@ class AutoBackendTest(unittest.TestCase):
         self.assertEqual("not_configured", probe["classification"])
         self.assertIn("every candidate was unavailable", probe["selection"])
 
+    def test_no_candidate_diagnosis_does_not_name_the_cached_delegate(self):
+        # The cached delegate still believes "died-since" is up (its health is
+        # inside the TTL), but the fresh scan finds it down. The all-down
+        # diagnosis must carry the fallback's identity, not the stale
+        # delegate's backend, endpoint or operator hint.
+        os.environ["AR_INFERENCE_HEALTH_TTL"] = "3600"
+
+        class _DiedSince(_FixedProbeBackend):
+            def probe_diagnosis(self):
+                return self._diagnosis(False, "connection_refused", None, "")
+
+            def operator_hint(self, classification):
+                return "stale delegate hint"
+
+        stale = _DiedSince("died-since", available=True)
+        auto = AutoBackend(candidates=[stale])
+        self.assertIs(auto.delegate, stale)
+
+        probe = auto.probe_diagnosis()
+
+        self.assertFalse(probe["available"])
+        self.assertEqual("not_configured", probe["classification"])
+        self.assertEqual(PassthroughBackend().provider, probe["backend"])
+        self.assertEqual("", probe["endpoint"])
+        self.assertNotEqual("stale delegate hint", probe["operator_hint"])
+        self.assertIn("AR_CONSULTANT_BACKEND", probe["operator_hint"])
+        self.assertIn("every candidate was unavailable", probe["selection"])
+        self.assertEqual(["died-since"],
+                         [c["backend"] for c in probe["candidates"]])
+
 
 class CreateBackendTest(unittest.TestCase):
     """Every configuration produces a backend that degrades rather than raises."""

@@ -372,6 +372,7 @@ def memory_store(
     rewrite = None
     degraded_reason = None
     degraded_cause = None
+    degraded_instruction = None
     if want_reformulation:
         llm = server._get_llm()
         if llm is None:
@@ -382,6 +383,7 @@ def memory_store(
             if synthesis.degraded:
                 degraded_reason = synthesis.reason
                 degraded_cause = synthesis.cause
+                degraded_instruction = synthesis.agent_instruction
             else:
                 rewrite = synthesis.text
 
@@ -421,10 +423,14 @@ def memory_store(
             f"Stored your original text unreformulated ({degraded_reason}). "
             "The memory is saved and searchable; only the rewrite is missing."
         )
-        # Same structured cause as the read tools, so a persistent backend
-        # outage can be diagnosed from any tool that touches inference.
+        # Same structured cause and agent instruction as the read tools, so a
+        # persistent backend outage is diagnosable from any tool that touches
+        # inference and is reported to the person rather than passed over.
         if degraded_cause:
             entry["cause"] = degraded_cause
+        entry["agent_action_required"] = degraded_instruction or (
+            "Tell the person you are working for that memory reformulation "
+            f"is unavailable right now: {degraded_reason}.")
     entry["next_steps"] = [
         "Use memory_recall to search for this and other memories",
         "Use workstream_context to see all memories for this branch",
