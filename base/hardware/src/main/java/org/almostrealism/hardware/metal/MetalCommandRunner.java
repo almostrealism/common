@@ -964,15 +964,20 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * drop the references to their arguments, which is what lets memory those dispatches used be
 	 * collected and freed.
 	 *
-	 * <p>A buffer is otherwise drained only by a host wait for one of its dispatches or a later one
-	 * ({@link #complete}), and committed only when it fills, when the GPU is idle as a dispatch is
-	 * encoded, or for such a wait. Work submitted without anything waiting for it afterwards, such as
-	 * work abandoned by a caller that failed before its wait, therefore keeps its arguments, and
-	 * every block they reference, reachable until some later wait on this runner. This method is for
-	 * a caller that needs that memory back without waiting for any dispatch: a memory provider that
-	 * has reached its ceiling (see
-	 * {@link org.almostrealism.hardware.mem.HardwareMemoryProvider#releaseFinishedWork()}). A buffer
-	 * committed here is drained by a later call, once it has finished.</p>
+	 * <p>A committed buffer the GPU has finished is drained without any host wait by its completed
+	 * handler ({@link #drainFinished()}, see the class documentation), so finished work nothing waits
+	 * for is normally released as soon as the GPU reports it. The buffer this method reaches that no
+	 * handler does is the open one: it is committed only when it fills, when the GPU is idle as a
+	 * dispatch is encoded, or for a host wait ({@link #complete}), so dispatches left in an open
+	 * buffer that none of those events ever commits — such as work abandoned by a caller that failed
+	 * before its wait — have no completed handler yet and keep their arguments, and every block they
+	 * reference, reachable until some later submit or wait commits the buffer. This method is for a
+	 * caller that needs that memory back without waiting for any dispatch: a memory provider that has
+	 * reached its ceiling (see
+	 * {@link org.almostrealism.hardware.mem.HardwareMemoryProvider#releaseFinishedWork()}). It
+	 * commits that open buffer and drains the committed buffers already finished rather than waiting
+	 * for their handlers; a buffer committed here but not yet finished is drained by its completed
+	 * handler, or by a later call, once it has.</p>
 	 *
 	 * <p>Nothing here waits for the GPU, and a buffer still waiting for a host-signaled bridge is
 	 * left for the bridge to commit, so the call cannot stall on work that is not finished. A
