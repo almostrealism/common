@@ -398,6 +398,81 @@ public class NewTypeAuditTest extends TestSuiteBase {
         assertTrue(a.describe().contains("resembles p.B"));
     }
 
+    /**
+     * A refused file withholds every top-level type it declares, not only the
+     * one it is named for: a dependent that refers only to a package-private
+     * sibling is withheld too, so the commit never holds an uncompilable subset.
+     */
+    @Test(timeout = 300000)
+    public void secondaryTopLevelTypeInRefusedFileIsWithheld() throws Exception {
+        write(PROGRESSION, "package org.example.seq;\n\n"
+                + "/** An arithmetic progression of index values. */\n"
+                + "public final class IndexProgression {\n"
+                + "\tpublic long valueAt(int pos) { return 0; }\n}\n\n"
+                + "/** An unrelated gadget widget. */\nfinal class GadgetWidget {\n}\n");
+        String dependent = "mod/src/main/java/org/example/app/GadgetUser.java";
+        write(dependent, "package org.example.app;\n\n"
+                + "import org.example.seq.GadgetWidget;\n\n"
+                + "/** Uses only the sibling type. */\npublic final class GadgetUser {\n"
+                + "\tprivate final GadgetWidget w = null;\n}\n");
+        Map<String, String> refusals = job().getNewTypeRefusals();
+        assertTrue(refusals.toString(), refusals.containsKey(PROGRESSION));
+        assertTrue(dependent + " -> " + refusals, refusals.containsKey(dependent));
+        assertTrue(refusals.get(dependent), refusals.get(dependent)
+                .contains("refers to org.example.seq.GadgetWidget"));
+    }
+
+    /** Every top-level type a source declares is found; a nested type is not. */
+    @Test(timeout = 30000)
+    public void declaredTypesFindsEveryTopLevelType() {
+        String source = "package org.example.seq;\n\n/** doc with { a brace } */\n"
+                + "public final class Primary {\n\tvoid m() { int x = 0; }\n}\n\n"
+                + "final class Secondary { }\n\ninterface Tertiary { }\n";
+        Assert.assertEquals(List.of("org.example.seq.Primary", "org.example.seq.Secondary",
+                "org.example.seq.Tertiary"), NewTypeAudit.declaredTypes(source));
+        assertTrue(NewTypeAudit.declaredTypes(null).isEmpty());
+        Assert.assertEquals(List.of("p.Outer"),
+                NewTypeAudit.declaredTypes("package p;\nclass Outer { class Inner {} }\n"));
+    }
+
+    /** Malformed scanner output fails the scan closed rather than passing as audited. */
+    @Test(timeout = 30000)
+    public void malformedScannerOutputFailsClosed() throws Exception {
+        List<String> files = List.of("m/src/main/java/p/A.java");
+        assertFalse(NewTypeAudit.Scan.parse("{\"types\": [], \"added\": []}", files).failed());
+        assertParseFailsClosed("the root is not an object", "[]", files);
+        assertParseFailsClosed("the \"added\" array is missing", "{\"types\": []}", files);
+        assertParseFailsClosed("a type entry has no fqn",
+                "{\"added\": [], \"types\": [{\"path\": \"p/A.java\", \"candidates\": []}]}", files);
+        assertParseFailsClosed("a candidate has no path", "{\"added\": [], \"types\": [{\"fqn\": \"p.A\","
+                + " \"path\": \"p/A.java\", \"candidates\": [{\"fqn\": \"p.B\"}]}]}", files);
+    }
+
+    /** Asserts that {@link NewTypeAudit.Scan#parse} rejects {@code json} with an {@link IOException}. */
+    private static void assertParseFailsClosed(String why, String json, List<String> files) {
+        try {
+            NewTypeAudit.Scan.parse(json, files);
+            Assert.fail("expected malformed scanner output to fail closed (" + why + "): " + json);
+        } catch (IOException expected) {
+            Assert.assertNotNull(expected.getMessage());
+        }
+    }
+
+    /** A failed {@code git status} query makes the audit a failed scan, never an empty one. */
+    @Test(timeout = 30000)
+    public void statusQueryFailureFailsClosed() throws Exception {
+        Path nonRepo = Files.createTempDirectory("not-a-repo");
+        try {
+            CodingAgentJob job = new CodingAgentJob("audit-test", "p");
+            job.setWorkingDirectory(nonRepo.toString());
+            NewTypeAudit.Scan scan = job.getNewTypeAudit().examine();
+            assertTrue(scan.failed());
+            assertTrue(scan.failure(), scan.failure().contains("git status"));
+        } finally {
+            Files.deleteIfExists(nonRepo);
+        }
+    }
+
     /** Writes the two types the branch adds: a renamed equivalent and a new concept. */
     private void addBranchTypes() throws IOException {
         write(PROGRESSION, "package org.example.seq;\n\n"

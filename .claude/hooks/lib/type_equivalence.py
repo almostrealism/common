@@ -678,7 +678,7 @@ def justification_gaps(entry, candidates):
     justified = entry.get("candidates")
     justified = justified if isinstance(justified, dict) else {}
     for c in candidates:
-        reasons = justified.get(c["fqn"]) or justified.get(c["name"])
+        reasons = justified.get(c["fqn"])
         if not isinstance(reasons, dict):
             gaps.append("candidate " + c["fqn"] + " is not justified")
             continue

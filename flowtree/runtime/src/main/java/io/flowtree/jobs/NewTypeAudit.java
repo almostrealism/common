@@ -93,6 +93,18 @@ class NewTypeAudit {
     /** A Java source's package declaration. */
     private static final Pattern PACKAGE = Pattern.compile("(?m)^\\s*package\\s+([\\w.]+)\\s*;");
 
+    /** A top-level type declaration keyword and name. */
+    private static final Pattern TYPE_DECL = Pattern.compile(
+            "(?:(?:public|private|protected|static|final|abstract|sealed"
+            + "|non-sealed|strictfp)\\s+)*"
+            + "\\b(?:class|interface|enum|record)\\s+([A-Za-z_]\\w*)");
+
+    /** Comments and string/char literals, so braces inside them are not counted. */
+    private static final Pattern CODE_NOISE = Pattern.compile(
+            "//[^\\n]*|/\\*.*?\\*/|\"\"\"(?:.|\\n)*?\"\"\""
+            + "|\"(?:\\\\.|[^\"\\\\\\n])*\"|'(?:\\\\.|[^'\\\\\\n])*'",
+            Pattern.DOTALL);
+
     /** Parses the scanner's JSON output. */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -140,14 +152,27 @@ class NewTypeAudit {
      * log and recorded in the result, so that {@link #refusals()} can refuse
      * what the search could not examine.
      *
+     * <p>A failed {@code git status} query yields a failed scan rather than an
+     * empty one, so it is never read as "no Java files to audit"; the throwing
+     * {@link GitOperations#requireChangedFiles} is what distinguishes it from a
+     * clean tree, and the commit path's own call then refuses the commit.</p>
+     *
      * @return the scan; {@link Scan#none()} when there is nothing to examine
-     *         or the repository has no scanner
+     *         or the repository has no scanner, and a failed scan when the
+     *         {@code git status} query itself could not run
      */
     Scan examine() {
         String workDir = job.getWorkingDirectory();
         if (workDir == null) return Scan.none();
+        List<String> changed;
+        try {
+            changed = GitOperations.requireChangedFiles(workDir);
+        } catch (IOException e) {
+            job.warn("New-type audit could not list changed files: " + e.getMessage());
+            return Scan.failed(List.of(), "git status query failed: " + e.getMessage());
+        }
         List<String> files = new ArrayList<>();
-        for (String file : GitOperations.getChangedFiles(workDir)) {
+        for (String file : changed) {
             if (isMainSource(file) && !GitOperations.isExcludedPath(file)
                     && new File(workDir, file).isFile()) {
                 files.add(file);
@@ -212,6 +237,11 @@ class NewTypeAudit {
      * working-tree copy only when the base branch resolves and has none (the
      * branch that introduces the scanner).
      *
+     * <p>The base tree is listed with {@code ls-tree}, which exits zero whether
+     * or not the path is present (empty listing when absent), so a lookup that
+     * exits non-zero is a failure rather than an absence and fails closed
+     * rather than trusting the mutable working-tree copy.</p>
+     *
      * @param git  git access
      * @param root the repository root
      * @return the program text, or {@code null} when the repository has no
@@ -231,8 +261,13 @@ class NewTypeAudit {
             throw new IOException("base branch " + base + " cannot be resolved, so the scanner"
                     + " cannot be read from it; the working-tree copy is not trusted");
         }
-        String spec = base + ":" + SCANNER_PATH;
-        if (git.execute("cat-file", "-e", spec) == 0) {
+        String listing = stdoutOrNull(git, "ls-tree", "--name-only", base, "--", SCANNER_PATH);
+        if (listing == null) {
+            throw new IOException("cannot look up " + SCANNER_PATH + " in " + base
+                    + "; the working-tree copy is not trusted");
+        }
+        if (!listing.isBlank()) {
+            String spec = base + ":" + SCANNER_PATH;
             String program = stdoutOrNull(git, "show", spec);
             if (program == null || program.isBlank()) {
                 throw new IOException("cannot read " + spec);
@@ -359,10 +394,8 @@ class NewTypeAudit {
             out.merge(a.getPath(), a.refusalReason(), (x, y) -> x + "; " + y);
             withheld.add(a.getFqn());
         }
-        // TODO(review): only the file-named type is withheld; secondary top-level types in a refused file are not.
         for (String file : out.keySet()) {
-            String declared = declaredType(file, sources.get(file));
-            if (declared != null) withheld.add(declared);
+            addDeclaredTypes(withheld, file, sources.get(file));
         }
         withholdDependents(out, withheld, sources);
         return out;
@@ -389,8 +422,7 @@ class NewTypeAudit {
                 refused.put(source.getKey(), "refers to " + type
                         + ", a new type that is not staged; staging this file without it"
                         + " would commit code that does not compile");
-                String declared = declaredType(source.getKey(), source.getValue());
-                if (declared != null) withheld.add(declared);
+                addDeclaredTypes(withheld, source.getKey(), source.getValue());
                 grew = true;
             }
         }
@@ -440,6 +472,80 @@ class NewTypeAudit {
         if (name.endsWith(".java")) name = name.substring(0, name.length() - ".java".length());
         String pkg = packageOf(source);
         return pkg.isEmpty() ? name : pkg + "." + name;
+    }
+
+    /**
+     * Adds to {@code withheld} the fully-qualified name of every top-level type
+     * a refused file declares: the one it is named for and any secondary type
+     * beside it. A refused file may hold more than one top-level type, and a
+     * package-private one whose name differs from the file; a dependent that
+     * refers only to such a secondary type must be withheld too, or the commit
+     * would not compile.
+     *
+     * @param withheld the withheld type names; extended in place
+     * @param file     the repository-relative path of the refused {@code .java} file
+     * @param source   the file's text, or {@code null} when it is not known
+     */
+    private static void addDeclaredTypes(Set<String> withheld, String file, String source) {
+        String named = declaredType(file, source);
+        if (named != null) withheld.add(named);
+        withheld.addAll(declaredTypes(source));
+    }
+
+    /**
+     * Returns the fully-qualified name of every top-level type a Java source
+     * declares: a type declared at brace depth zero, in the source's package.
+     *
+     * @param source the Java source text, or {@code null}
+     * @return the top-level type names, in declaration order; empty when
+     *         {@code source} is {@code null}
+     */
+    static List<String> declaredTypes(String source) {
+        if (source == null) return List.of();
+        String pkg = packageOf(source);
+        String code = stripCode(source);
+        List<String> out = new ArrayList<>();
+        Matcher m = TYPE_DECL.matcher(code);
+        while (m.find()) {
+            String prefix = code.substring(0, m.start());
+            if (count(prefix, '{') == count(prefix, '}')) {
+                String name = m.group(1);
+                out.add(pkg.isEmpty() ? name : pkg + "." + name);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Returns {@code source} with comments and string literals blanked out, so
+     * a brace inside one is not counted when finding top-level declarations.
+     *
+     * @param source the Java source text
+     * @return the source with comment and literal content replaced by spaces
+     */
+    private static String stripCode(String source) {
+        Matcher m = CODE_NOISE.matcher(source);
+        StringBuilder sb = new StringBuilder();
+        while (m.find()) {
+            m.appendReplacement(sb, Matcher.quoteReplacement(m.group().replaceAll("[^\\n]", " ")));
+        }
+        m.appendTail(sb);
+        return sb.toString();
+    }
+
+    /**
+     * Returns how many times {@code ch} occurs in {@code text}.
+     *
+     * @param text the text to scan
+     * @param ch   the character to count
+     * @return the number of occurrences
+     */
+    private static int count(String text, char ch) {
+        int n = 0;
+        for (int i = 0; i < text.length(); i++) {
+            if (text.charAt(i) == ch) n++;
+        }
+        return n;
     }
 
     /**
@@ -515,9 +621,19 @@ class NewTypeAudit {
          */
         static Scan parse(String json, List<String> files) throws IOException {
             JsonNode root = MAPPER.readTree(json);
+            if (root == null || !root.isObject()) {
+                throw new IOException("scanner output is not a JSON object");
+            }
+            JsonNode addedNode = root.get("added");
+            if (addedNode == null || !addedNode.isArray()) {
+                throw new IOException("scanner output has no \"added\" array");
+            }
             List<String> added = new ArrayList<>();
-            if (root != null) {
-                for (JsonNode fqn : root.path("added")) added.add(fqn.asText());
+            for (JsonNode fqn : addedNode) {
+                if (!fqn.isTextual() || fqn.asText().isBlank()) {
+                    throw new IOException("scanner output has a blank \"added\" entry");
+                }
+                added.add(fqn.asText());
             }
             return new Scan(NewTypeAssessment.parseAll(root), List.copyOf(added),
                     List.copyOf(files), null);

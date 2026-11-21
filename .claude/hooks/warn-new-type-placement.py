@@ -272,13 +272,6 @@ def blocked(added):
             if name.endswith(BLOCKED_SUFFIXES)]
 
 
-def is_test_source(path):
-    """True for a test-tree source, which is never checked for equivalents: a
-    FooTest beside Foo is the point, not a duplicate."""
-    normalized = path.replace(os.sep, "/")
-    return "/src/test/" in normalized or "/src/it/" in normalized
-
-
 def assess_added(path, after, added):
     """Assesses each added type against the repository's existing types.
 
@@ -286,8 +279,13 @@ def assess_added(path, after, added):
     whose candidates are answered by structure or by the ledger. Any failure
     to build the index degrades to "nothing found" - the warning still fires
     - rather than blocking a write on infrastructure trouble.
+
+    Only a main-source type is scored against the index of production types;
+    a type in a test tree (a FooTest beside Foo is the point, not a duplicate)
+    or in any other tree is never blocked here, matching the main-source-only
+    gate this hook documents.
     """
-    if is_test_source(path):
+    if not type_equivalence.is_main_source(path):
         return [], []
     try:
         root = type_equivalence.find_root(path)

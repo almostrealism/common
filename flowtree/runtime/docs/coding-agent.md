@@ -176,9 +176,12 @@ stage a listed type until this job's audit has examined it and recorded the `kep
 in the ledger, and reports why in the skipped list. Every other changed Java file that
 refers to a refused type (by qualified name, or by simple name from its own package or a
 wildcard import) is refused with it, transitively, so a commit never holds a caller without
-the type it calls. The audit fails closed: when the search cannot run (the base branch does
-not resolve while a working-tree scanner exists, `python3` is missing, the scan times out
-or exits non-zero), every file it was to examine is refused. See
+the type it calls. A refused file withholds every top-level type it declares, not only the
+one it is named for, so a dependent that uses a package-private sibling is refused too. The
+audit fails closed: when the search cannot run (the base branch does not resolve while a
+working-tree scanner exists, `python3` is missing, the scan times out, exits non-zero, or
+returns output that is not the scanner's JSON schema), every file it was to examine is
+refused. See
 `docs/internals/agent-hooks.md` ("New-type equivalence gate").
 
 ### Via ar-manager MCP

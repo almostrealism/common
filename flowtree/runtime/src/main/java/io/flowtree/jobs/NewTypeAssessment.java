@@ -132,21 +132,51 @@ final class NewTypeAssessment {
             throw new IOException("scanner output has no \"types\" array");
         }
         for (JsonNode t : types) {
+            if (!t.isObject()) {
+                throw new IOException("scanner output has a non-object type entry");
+            }
+            String fqn = requireText(t, "fqn");
+            String path = requireText(t, "path");
+            JsonNode candidatesNode = t.get("candidates");
+            if (candidatesNode == null || !candidatesNode.isArray()) {
+                throw new IOException("scanner output type " + fqn + " has no \"candidates\" array");
+            }
             List<Candidate> candidates = new ArrayList<>();
-            for (JsonNode c : t.path("candidates")) {
-                candidates.add(new Candidate(c.path("fqn").asText(), c.path("path").asText(),
+            for (JsonNode c : candidatesNode) {
+                if (!c.isObject()) {
+                    throw new IOException("scanner output type " + fqn + " has a non-object candidate");
+                }
+                candidates.add(new Candidate(requireText(c, "fqn"), requireText(c, "path"),
                         c.path("score").asDouble(), c.path("sentence").asText("")));
             }
             List<String> gaps = new ArrayList<>();
             for (JsonNode g : t.path("gaps")) gaps.add(g.asText());
             JsonNode ledger = t.get("ledger");
             JsonNode audit = ledger == null ? null : ledger.get("audit");
-            out.add(new NewTypeAssessment(t.path("fqn").asText(), t.path("path").asText(),
+            out.add(new NewTypeAssessment(fqn, path,
                     candidates, textOrNull(t.get("lift")), t.path("justified").asBoolean(false),
                     gaps, ledger == null || ledger.isNull() ? null : ledger.toPrettyString(),
                     audit == null ? null : textOrNull(audit.get("verdict"))));
         }
         return out;
+    }
+
+    /**
+     * Returns the required text field {@code field} of {@code node}, failing
+     * closed when it is absent, non-textual or blank: a malformed scanner entry
+     * must not pass as a successful audit (see {@link NewTypeAudit.Scan#parse}).
+     *
+     * @param node  the JSON object
+     * @param field the required field name
+     * @return the field's text
+     * @throws IOException when the field is absent, non-textual or blank
+     */
+    private static String requireText(JsonNode node, String field) throws IOException {
+        JsonNode value = node.get(field);
+        if (value == null || !value.isTextual() || value.asText().isBlank()) {
+            throw new IOException("scanner output entry is missing a \"" + field + "\" string");
+        }
+        return value.asText();
     }
 
     /** Returns the node's text, or {@code null} for an absent or JSON-null node. */

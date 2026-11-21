@@ -224,6 +224,18 @@ class ParserTest(unittest.TestCase):
         self.assertEqual({"FooHelper", "StringUtils", "TaskManager"},
                          blocked_names)
 
+    def test_assess_added_skips_non_main_source(self):
+        """A type outside src/main/java is never scored against the index: a
+        generated or examples tree is not blocked, matching the main-source gate.
+        """
+        added = [("class", "IndexProgression")]
+        self.assertEqual(([], []),
+                         self.hook.assess_added("/x/src/generated/java/p/IndexProgression.java",
+                                                RENAMED, added))
+        self.assertEqual(([], []),
+                         self.hook.assess_added("/x/src/test/java/p/IndexProgression.java",
+                                                RENAMED, added))
+
 
 class EndToEndTest(unittest.TestCase):
     """The verdict over the PreToolUse contract: exit 2 blocks, exit 0 allows."""
@@ -668,6 +680,20 @@ class ScanTest(unittest.TestCase):
         self.assertIsNone(self.te.ledger_entry(by_simple, new))
         self.assertIsNone(self.te.ledger_entry(by_other_package, new))
         self.assertEqual(exact[0], self.te.ledger_entry(exact, new))
+
+    def test_justification_matches_candidate_keys_by_fqn_only(self):
+        candidates = [{"fqn": "a.Foo", "name": "Foo"}, {"fqn": "b.Foo", "name": "Foo"}]
+        reasons = {"cannot_extend": "the candidate is final elsewhere",
+                   "cannot_change_signature": "the signature is fixed by an SPI",
+                   "interface_would_not_work": "the SPI requires a concrete class"}
+        by_simple = {"test": "T#m", "candidates": {"Foo": reasons}}
+        gaps = self.te.justification_gaps(by_simple, candidates)
+        self.assertTrue(any("a.Foo" in g for g in gaps),
+                        "a simple-name key must not justify a.Foo: " + str(gaps))
+        self.assertTrue(any("b.Foo" in g for g in gaps),
+                        "a simple-name key must not justify b.Foo: " + str(gaps))
+        by_fqn = {"test": "T#m", "candidates": {"a.Foo": reasons, "b.Foo": reasons}}
+        self.assertEqual([], self.te.justification_gaps(by_fqn, candidates))
 
 
 if __name__ == "__main__":
