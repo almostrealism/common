@@ -19,6 +19,7 @@ package io.almostrealism.expression.test;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Constant;
+import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Mask;
@@ -969,6 +970,94 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		}
 
 		Assert.assertEquals("((kernel0 % " + (4 * m * n) + ") / " + n + ") * " + n, e.getExpression(lang));
+	}
+
+	/**
+	 * A product built by repeatedly multiplying the previous product renders as a flat chain
+	 * rather than one bracket per multiplication, so a long chain stays within the bracket
+	 * nesting limit native compilers impose (256 for clang).
+	 */
+	@Test(timeout = 30000)
+	public void leftNestedProductRendersFlat() {
+		Expression<?> x = new DefaultIndex("x", 1000);
+		Expression<?> e = x;
+
+		for (int i = 0; i < 500; i++) {
+			e = e.multiply(x);
+		}
+
+		String rendered = e.getExpression(lang);
+		int depth = 0;
+		int maxDepth = 0;
+
+		for (char c : rendered.toCharArray()) {
+			if (c == '(') maxDepth = Math.max(maxDepth, ++depth);
+			if (c == ')') depth--;
+		}
+
+		Assert.assertTrue("rendered product is nested " + maxDepth + " brackets deep", maxDepth < 8);
+	}
+
+	/**
+	 * A sum built by adding to a previous sum renders as {@code a + b + c}, which the generated
+	 * languages evaluate in the same order as {@code (a + b) + c}.
+	 */
+	@Test(timeout = 30000)
+	public void nestedSumRendersWithoutRedundantBrackets() {
+		Expression<?> a = new DefaultIndex("a", 10);
+		Expression<?> b = new DefaultIndex("b", 10);
+		Expression<?> c = new DefaultIndex("c", 10);
+
+		Assert.assertEquals("a + b + c", a.add(b).add(c).getExpression(lang));
+	}
+
+	/**
+	 * Subtraction is not associative, so only a difference nested as the first operand may drop
+	 * its brackets: {@code (a - b) - c} renders as {@code a - b - c}, which the generated
+	 * languages evaluate left to right, while {@code a - (b - c)} keeps its brackets.
+	 */
+	@Test(timeout = 30000)
+	public void nestedDifferenceKeepsBracketsOnlyWhereNeeded() {
+		DefaultIndex a = new DefaultIndex("a", 10);
+		DefaultIndex b = new DefaultIndex("b", 10);
+		DefaultIndex c = new DefaultIndex("c", 10);
+
+		Assert.assertEquals("a - b - c",
+				new Difference<>(new Difference<>(a, b), c).getExpression(lang));
+		Assert.assertEquals("a - (b - c)",
+				new Difference<>(a, new Difference<>(b, c)).getExpression(lang));
+	}
+
+	/**
+	 * Division is not associative, so only a quotient nested as the numerator may drop its
+	 * brackets: {@code (a / b) / c} renders as {@code a / b / c}, while {@code a / (b / c)}
+	 * keeps its brackets.
+	 */
+	@Test(timeout = 30000)
+	public void nestedQuotientKeepsBracketsOnlyWhereNeeded() {
+		DefaultIndex a = new DefaultIndex("a", 10);
+		DefaultIndex b = new DefaultIndex("b", 10);
+		DefaultIndex c = new DefaultIndex("c", 10);
+
+		Assert.assertEquals("a / b / c",
+				Quotient.of(Quotient.of(a, b), c).getExpression(lang));
+		Assert.assertEquals("a / (b / c)",
+				Quotient.of(a, Quotient.of(b, c)).getExpression(lang));
+	}
+
+	/**
+	 * A first operand applying a different operator keeps its brackets, since the chain it
+	 * belongs to is not the one being continued: a difference used as the first term of a sum
+	 * renders as {@code (a - b) + c}.
+	 */
+	@Test(timeout = 30000)
+	public void differentOperatorFirstOperandKeepsBrackets() {
+		DefaultIndex a = new DefaultIndex("a", 10);
+		DefaultIndex b = new DefaultIndex("b", 10);
+		DefaultIndex c = new DefaultIndex("c", 10);
+
+		Assert.assertEquals("(a - b) + c",
+				Sum.of(new Difference<>(a, b), c).getExpression(lang));
 	}
 
 	/**

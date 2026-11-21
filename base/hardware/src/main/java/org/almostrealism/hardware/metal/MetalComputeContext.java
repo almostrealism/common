@@ -431,6 +431,16 @@ public class MetalComputeContext extends AbstractComputeContext implements Conso
 	public MetalCommandRunner getCommandRunner() { return runner; }
 
 	/**
+	 * Releases what this context's finished work still holds through its command runner (see
+	 * {@link MetalCommandRunner#releaseFinishedWork()}), which keeps a command buffer's argument
+	 * references and memory reservations until it drains the buffer.
+	 */
+	@Override
+	public void releaseFinishedWork() {
+		if (runner != null) runner.releaseFinishedWork();
+	}
+
+	/**
 	 * Removes a destroyed instruction set from the cache.
 	 *
 	 * @param name Scope name

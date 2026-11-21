@@ -21,7 +21,6 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
  * An n-ary infix expression that joins two or more sub-expressions with the same operator.
@@ -77,11 +76,46 @@ public class NAryExpression<T> extends Expression<T> {
 		return true;
 	}
 
+	/**
+	 * Renders the operands joined by the operator.
+	 *
+	 * <p>Every operator an n-ary expression renders is left-associative in the generated
+	 * languages, so {@code (a op b) op c} and {@code a op b op c} evaluate identically, in
+	 * the same order and with the same intermediate rounding. The first operand is therefore
+	 * rendered without parentheses when it applies the same operator (see
+	 * {@link #continuesChain(Expression)}). This keeps a long left-nested chain, such as a
+	 * product built by repeated multiplication, from emitting one bracket per link: the
+	 * native compilers reject source nested deeper than a fixed limit (256 for clang).</p>
+	 *
+	 * @param lang the language to render for
+	 * @return the rendered expression
+	 */
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return getChildren().stream()
-				.map(expression -> expression.getWrappedExpression(lang))
-				.collect(Collectors.joining(" " + operator + " "));
+		List<Expression<?>> children = getChildren();
+		StringBuilder rendered = new StringBuilder();
+
+		for (int i = 0; i < children.size(); i++) {
+			Expression<?> child = children.get(i);
+			if (i > 0) rendered.append(" ").append(operator).append(" ");
+			rendered.append(i == 0 && continuesChain(child) ?
+					child.getExpression(lang) : child.getWrappedExpression(lang));
+		}
+
+		return rendered.toString();
+	}
+
+	/**
+	 * Returns whether {@code operand}, used as the first operand of this expression, is an
+	 * n-ary expression of the same kind applying the same operator, so that rendering it
+	 * without parentheses leaves the evaluation unchanged.
+	 *
+	 * @param operand the candidate first operand
+	 * @return {@code true} if the operand continues this expression's operator chain
+	 */
+	protected boolean continuesChain(Expression<?> operand) {
+		return operand.getClass() == getClass()
+				&& operator.equals(((NAryExpression<?>) operand).getOperator());
 	}
 
 	@Override

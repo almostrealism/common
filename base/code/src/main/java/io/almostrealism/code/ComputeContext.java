@@ -196,6 +196,20 @@ public interface ComputeContext<MEM> {
 	}
 
 	/**
+	 * Releases what this context's finished work still holds, without waiting for any work to
+	 * finish: the memory reservations and argument references a dispatch keeps until the context
+	 * observes its completion. A memory provider calls this when an allocation does not fit under
+	 * its ceiling, so that memory held only by finished work, which no thread may ever wait for,
+	 * can be freed before the allocation is rejected. A context may also hand its device work it
+	 * is holding back, so that the work runs and its memory can be released by a later call.
+	 *
+	 * <p>A context that releases what each dispatch holds as soon as the dispatch completes, which
+	 * is what this assumes unless a context overrides it, holds nothing for finished work, so
+	 * there is nothing to release.</p>
+	 */
+	default void releaseFinishedWork() { }
+
+	/**
 	 * Destroys this compute context and releases all associated resources.
 	 * After calling this method, the context should not be used.
 	 */

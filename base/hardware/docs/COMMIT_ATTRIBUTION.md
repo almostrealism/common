@@ -56,6 +56,7 @@ count by cause:
 | `getQuietCommitCount()` | Commits of an open buffer that no dispatch joined for `SubmissionStream.quietCommitMicros`, so work nobody waits for still runs and releases its memory (see below) |
 | `getBridgeCommitCount()` | Commits forced so a dispatch that bridges a *foreign* dependency starts a fresh buffer (see below) |
 | `getDestroyCommitCount()` | Commits performed while tearing the runner down |
+| `getReleaseCommitCount()` | Commits made by `releaseFinishedWork()`, which a memory provider at its ceiling requests so that dispatches no thread waits for run and the memory they hold can be released |
 
 The cause counters are counted when the runner *closes* a buffer, while `getCommitCount()`
 is counted when a closed buffer is actually *committed*. A closed buffer is committed only

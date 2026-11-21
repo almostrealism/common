@@ -19,6 +19,7 @@ package org.almostrealism.music.pattern;
 import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.audio.BatchedPatternRenderer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.mem.HardwareMemoryProvider;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.notes.NoteAudioContext;
@@ -147,6 +148,13 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 	private static final ConcurrentMap<List<Integer>, BatchedPatternRenderer> rendererCache =
 			new ConcurrentHashMap<>();
 
+	// A process whose scene stays live keeps a renderer for every shape it has ever rendered, so
+	// the cache is also dropped when an allocation does not fit under a memory ceiling; clearing it
+	// during a render is safe (see clearCompiledRenderers)
+	static {
+		HardwareMemoryProvider.addCeilingRelease(BatchedPatternLayerRenderer::clearCompiledRenderers);
+	}
+
 	/**
 	 * Drops every compiled renderer from the JVM-wide {@link #rendererCache}.
 	 *
@@ -168,7 +176,11 @@ public final class BatchedPatternLayerRenderer implements PatternFeatures, Destr
 	 * in-flight render is safe — it affects only subsequent lookups.</p>
 	 *
 	 * <p>Invoked when the last {@link org.almostrealism.studio.AudioScene} is destroyed,
-	 * the point at which no render can be in progress, so no useful sharing is lost.</p>
+	 * the point at which no render can be in progress, so no useful sharing is lost. A
+	 * process that keeps one scene live for as long as it runs never reaches that point, so
+	 * this is also registered as a {@link HardwareMemoryProvider#addCeilingRelease ceiling
+	 * release}: when an allocation does not fit under a memory ceiling the cache is dropped,
+	 * and the shapes still in use are recompiled as they are next rendered.</p>
 	 */
 	public static void clearCompiledRenderers() {
 		rendererCache.clear();

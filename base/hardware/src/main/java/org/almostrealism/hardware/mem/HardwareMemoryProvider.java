@@ -16,9 +16,12 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.DataContext;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.lifecycle.Destroyable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
@@ -34,6 +37,7 @@ import java.util.LongSummaryStatistics;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -224,6 +228,13 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 	 */
 	public static int reclaimAttempts = 10;
 
+	/**
+	 * Releases registered with {@link #addCeilingRelease(Runnable)}, run by every provider before
+	 * each collection it requests while reclaiming room for an allocation (see
+	 * {@link #releaseCeilingCaches()}).
+	 */
+	private static final List<Runnable> ceilingReleases = new CopyOnWriteArrayList<>();
+
 	/** How long {@link #reclaim(BooleanSupplier)} waits after each collection for releases to complete. */
 	public static long reclaimWaitMs = 100;
 
@@ -379,6 +390,11 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 	 * pass, this joins it and returns when it completes rather than starting another, so
 	 * concurrent reclaimers do not multiply the number of full collections requested.
 	 *
+	 * <p>The releases that precede the collection are best-effort: a release that throws is logged
+	 * and the collection still runs, so the allocation that triggered reclaim fails or succeeds on
+	 * memory grounds rather than surfacing a release failure in whichever thread happens to be
+	 * allocating.</p>
+	 *
 	 * @return {@code false} if the thread was interrupted while waiting
 	 */
 	private boolean collectionPass() {
@@ -402,6 +418,8 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 		}
 
 		try {
+			releaseQuietly("Release of finished work", this::releaseFinishedWork);
+			releaseQuietly("Release of ceiling caches", this::releaseCeilingCaches);
 			collectGarbage();
 			Thread.sleep(reclaimWaitMs);
 			return true;
@@ -415,6 +433,118 @@ public abstract class HardwareMemoryProvider<T extends RAM> extends AbstractMemo
 				collectionLock.notifyAll();
 			}
 		}
+	}
+
+	/**
+	 * Returns the data context whose device this provider allocates on.
+	 *
+	 * <p>A data context created in isolation, such as the one {@link Hardware#dataContext}
+	 * runs a callable in, is not among {@link Hardware#getAllDataContexts()}, so this is how a
+	 * provider reaches the work of the context it serves when it has to reclaim room (see
+	 * {@link #releaseFinishedWork()}).</p>
+	 *
+	 * @return the owning data context, or {@code null} for memory no data context owns, such as
+	 *         memory the {@link Hardware} itself manages
+	 */
+	public DataContext<MemoryData> getContext() { return null; }
+
+	/**
+	 * Asks every {@link #getReclaimContexts() reclaim context} to release what finished
+	 * kernel work still holds (see {@link DataContext#releaseFinishedWork()}). Called once per
+	 * {@link #collectionPass() collection pass}, before the collection.
+	 *
+	 * <p>A dispatch's {@link KernelMemoryGuard} reservations hold its arguments' memory strongly,
+	 * and a backend that batches dispatches gives them back only when it observes the batch
+	 * complete, which for work no thread waits for may never happen. Memory held that way is
+	 * reachable, so no collection can free it, and an allocation that needs it would be rejected
+	 * however many collections were requested. Releasing finished work first makes that memory
+	 * unreachable, and the collection that follows frees it; work the backend commits here is
+	 * released by a later pass once the device has finished it.</p>
+	 *
+	 * <p>Every context is asked even when an earlier one fails, so one context's failure cannot
+	 * leave the finished work of the others pinned; the first failure is rethrown once all have
+	 * been attempted (see {@link Destroyable#releaseAll(Iterable)}).</p>
+	 */
+	protected void releaseFinishedWork() {
+		Destroyable.releaseAll(getReclaimContexts().stream()
+				.<Runnable>map(context -> context::releaseFinishedWork)
+				.collect(Collectors.toList()));
+	}
+
+	/**
+	 * Returns the data contexts whose finished work {@link #releaseFinishedWork()} releases: every
+	 * data context of the local {@link Hardware}, followed by this provider's own
+	 * {@link #getContext() data context} when it is not one of them.
+	 *
+	 * @return a new list of the contexts to release, each appearing once
+	 */
+	protected List<DataContext<MemoryData>> getReclaimContexts() {
+		Hardware hw = Hardware.getLocalHardware();
+		List<DataContext<MemoryData>> contexts =
+				new ArrayList<>(hw == null ? List.of() : hw.getAllDataContexts());
+
+		DataContext<MemoryData> owner = getContext();
+		if (owner != null && !contexts.contains(owner)) contexts.add(owner);
+		return contexts;
+	}
+
+	/**
+	 * Runs a release that precedes a {@link #collectGarbage() collection} in a
+	 * {@link #collectionPass() collection pass}, logging a failure rather than letting it
+	 * propagate. A reclaim release is best-effort: its failure must not skip the collection or
+	 * surface in the thread that happens to be allocating, which should fail or succeed on memory
+	 * grounds alone.
+	 *
+	 * <p>Both failure categories {@link Destroyable#releaseAll(Iterable)} rethrows — a
+	 * {@link RuntimeException} and an {@link Error} — are logged and swallowed, since a reclaim
+	 * release aggregates arbitrary callbacks (such as Metal completion-callback draining) whose
+	 * {@link Error} must not escape the collection any more than a {@link RuntimeException} would.</p>
+	 *
+	 * @param description names the release for the log message when it fails
+	 * @param release     the release to run
+	 */
+	private void releaseQuietly(String description, Runnable release) {
+		try {
+			release.run();
+		} catch (RuntimeException | Error e) {
+			warn(description + " failed during reclaim", e);
+		}
+	}
+
+	/**
+	 * Registers a release that drops memory a cache keeps only to save work, so that the memory
+	 * can be freed when an allocation does not fit under a provider's ceiling. Every provider
+	 * runs every registered release before each collection it requests while reclaiming room
+	 * (see {@link #releaseCeilingCaches()}); the collection then frees whatever the release made
+	 * unreachable.
+	 *
+	 * <p>A release must be safe to run at any time from any thread, including while the cache is
+	 * in use: it may only drop the cache's own references, so that work already holding an entry
+	 * keeps it for as long as it needs it, and a later lookup rebuilds what was dropped. It must
+	 * not allocate device memory.</p>
+	 *
+	 * @param release drops the cache's references to memory it can rebuild
+	 */
+	public static void addCeilingRelease(Runnable release) {
+		ceilingReleases.add(release);
+	}
+
+	/**
+	 * Removes a release registered with {@link #addCeilingRelease(Runnable)}.
+	 *
+	 * @param release the release to remove
+	 */
+	public static void removeCeilingRelease(Runnable release) {
+		ceilingReleases.remove(release);
+	}
+
+	/**
+	 * Runs every release registered with {@link #addCeilingRelease(Runnable)}. Called once per
+	 * {@link #collectionPass() collection pass}, before the collection. A release that throws does
+	 * not stop the others; the first failure is rethrown once all have run.
+	 */
+	protected void releaseCeilingCaches() {
+		Destroyable.releaseAll(ceilingReleases);
 	}
 
 	/**

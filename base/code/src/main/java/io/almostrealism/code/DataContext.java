@@ -66,6 +66,24 @@ public interface DataContext<MEM> extends Named {
 	List<ComputeContext<MEM>> getComputeContexts();
 
 	/**
+	 * Asks the compute contexts this data context has already created to release what their
+	 * finished work still holds (see {@link ComputeContext#releaseFinishedWork()}). A memory
+	 * provider calls this when an allocation does not fit under its ceiling, so it must never
+	 * create a compute context or start a device: {@link #getComputeContexts()} may do both, and
+	 * may also see only the calling thread's contexts, so an implementation must visit the contexts
+	 * it holds directly rather than go through that accessor. An implementation visits the contexts
+	 * it can reach without creating one and without interfering with a scope another thread is
+	 * actively using &mdash; a shared context and the calling thread's scoped context. A scoped
+	 * context in use by another thread releases its own finished work when that scope ends, so it
+	 * is not visited here. A destroyed data context has no work left to release.
+	 *
+	 * <p>A data context whose compute contexts release what each dispatch holds as soon as the
+	 * dispatch completes, which is what this assumes unless a data context overrides it, holds
+	 * nothing for finished work, so there is nothing to release.</p>
+	 */
+	default void releaseFinishedWork() { }
+
+	/**
 	 * Returns the compute context through which work on the given {@link Memory}, which this
 	 * context manages, should be performed &mdash; a copy into it, for example.
 	 *

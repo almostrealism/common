@@ -24,6 +24,9 @@ import org.almostrealism.audio.tone.DefaultKeyboardTuning;
 import org.almostrealism.audio.tone.Scale;
 import org.almostrealism.audio.tone.WesternChromatic;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.mem.HardwareMemoryProvider;
+import org.almostrealism.hardware.mem.NativeRef;
+import org.almostrealism.hardware.mem.RAM;
 import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.data.ChannelInfo;
 import org.almostrealism.music.notes.FileNoteSource;
@@ -38,6 +41,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.DoubleFunction;
 import java.util.function.DoubleUnaryOperator;
 
@@ -380,6 +384,88 @@ public class PatternRenderTest extends TestSuiteBase implements AudioTestFeature
 		} finally {
 			PatternLayerManager.enableBatched = batched;
 		}
+	}
+
+	/**
+	 * The compiled renderer cache is registered as a ceiling release, so a memory provider
+	 * reclaiming room for an allocation that does not fit drops every compiled renderer before
+	 * it collects garbage, even while a scene is still live. A process that keeps one scene
+	 * open never reaches {@code AudioScene.destroy()}, so this is the only point at which its
+	 * cache is released.
+	 */
+	@Test(timeout = 300000)
+	@TestDepth(2)
+	public void ceilingReclaimReleasesCompiledRenderers() {
+		boolean batched = PatternLayerManager.enableBatched;
+		PatternLayerManager.enableBatched = true;
+
+		try (PatternSystemManager psm = system()) {
+			renderAtOnce(psm);
+			Assert.assertTrue("a batched render must compile at least one renderer",
+					BatchedPatternLayerRenderer.compiledRendererCount() > 0);
+
+			CeilingProvider provider = new CeilingProvider();
+			Assert.assertTrue("the allocation must fit after one collection", provider.reserveAtCeiling());
+			Assert.assertEquals("exactly one collection must be requested", 1, provider.collections);
+			Assert.assertEquals("reclaiming at the ceiling releases every compiled renderer",
+					0, provider.renderersAtCollection);
+		} finally {
+			PatternLayerManager.enableBatched = batched;
+		}
+	}
+
+	/**
+	 * A memory provider that is always at its ceiling and records how many compiled renderers
+	 * remained cached when each collection was requested. The collection frees the whole
+	 * ceiling, so the first pass lets the allocation fit.
+	 */
+	private static class CeilingProvider extends HardwareMemoryProvider<RAM> {
+		/** The provider's ceiling, all of which is in use until a collection frees it. */
+		private static final long CEILING = 1024;
+
+		/** Bytes in use against {@link #CEILING}. */
+		private final AtomicLong used = new AtomicLong(CEILING);
+
+		/** Collections requested so far. */
+		private int collections;
+
+		/** Compiled renderers still cached at the most recent collection. */
+		private int renderersAtCollection = -1;
+
+		/**
+		 * Reserves a quarter of the ceiling while the whole ceiling is in use, so the provider
+		 * must reclaim before the reservation fits.
+		 *
+		 * @return whether the reservation fit
+		 */
+		boolean reserveAtCeiling() {
+			return reserve(used, CEILING, CEILING / 4);
+		}
+
+		@Override
+		protected void collectGarbage() {
+			collections++;
+			renderersAtCollection = BatchedPatternLayerRenderer.compiledRendererCount();
+			used.set(0);
+		}
+
+		@Override
+		protected void deallocate(NativeRef<RAM> ref) {
+			throw new UnsupportedOperationException("This provider never allocates");
+		}
+
+		@Override
+		public void getMem(RAM mem, int sOffset, double[] out, int oOffset, int length) {
+			throw new UnsupportedOperationException("This provider never allocates");
+		}
+
+		@Override
+		public int getNumberSize() {
+			throw new UnsupportedOperationException("This provider never allocates");
+		}
+
+		@Override
+		public String getName() { return "ceiling-provider"; }
 	}
 
 	/**

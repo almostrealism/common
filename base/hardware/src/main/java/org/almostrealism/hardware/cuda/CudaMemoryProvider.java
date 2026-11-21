@@ -151,6 +151,14 @@ public class CudaMemoryProvider extends HardwareMemoryProvider<CudaMemory> {
 	@Override
 	public String getName() { return context.getName(); }
 
+	/**
+	 * Returns the CUDA data context whose CUDA context owns this provider's allocations.
+	 *
+	 * @return the owning {@link CudaDataContext}
+	 */
+	@Override
+	public CudaDataContext getContext() { return context; }
+
 	@Override
 	public int getNumberSize() { return numberSize; }
 
