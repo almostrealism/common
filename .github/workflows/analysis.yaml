@@ -1878,6 +1878,7 @@ jobs:
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
       identifiers_passed: ${{ steps.identifiers.outcome == 'success' }}
+      inline_comments_passed: ${{ steps.comments.outcome == 'success' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1952,6 +1953,43 @@ jobs:
           git ls-files -z | python3 scripts/check-temporary-identifiers.py --diff "${RUNNER_TEMP}/change.diff" 2>&1 | tee "${RUNNER_TEMP}/identifier-output.txt"
           exit ${PIPESTATUS[1]}
 
+      # Design and rationale belong in javadoc; an inline comment is a line or
+      # two of nuance. The hooks that say so run only inside an agent session
+      # and only on the tools they are registered for, so this step is the one
+      # place the rule holds whatever wrote the change: an edit tool, a shell
+      # command, another agent runtime, a merge or a person. The check reads
+      # each changed file as it stands on this head and charges the change for
+      # every comment it wrote a line of, so a comment built up a few lines at
+      # a time is judged whole and a pre-existing one that the change left
+      # alone is not judged at all. It is the same module the hooks and the
+      # commit tool call, and it runs no commands itself.
+      - name: Check for long inline comments
+        id: comments
+        if: ${{ !cancelled() }}
+        env:
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+        run: |
+          # The checkout is the pull request's head, which may predate the
+          # diff mode of this module. This is an enforcement check, so a head
+          # without it is judged by the base branch's copy instead of being
+          # let through; only when neither has it is there nothing to run.
+          CHECKER=.claude/hooks/lib/inline_comment_check.py
+          if ! grep -q 'def decide_diff' "$CHECKER" 2>/dev/null; then
+            CHECKER="${RUNNER_TEMP}/inline_comment_check.py"
+            if ! git show "origin/${BASE_BRANCH}:.claude/hooks/lib/inline_comment_check.py" > "$CHECKER" \
+                || ! grep -q 'def decide_diff' "$CHECKER"; then
+              echo "::error::Neither this head nor origin/${BASE_BRANCH} carries an inline-comment check with a diff mode; the check could not run."
+              exit 1
+            fi
+            echo "::notice::This head predates the inline-comment diff check; using origin/${BASE_BRANCH}'s copy."
+          fi
+          if ! git diff --merge-base "origin/${BASE_BRANCH}" -M --unified=0 --no-color --no-ext-diff > "${RUNNER_TEMP}/comment-change.diff"; then
+            echo "::error::Could not diff this head against its merge base with origin/${BASE_BRANCH}; the inline-comment check could not run."
+            exit 1
+          fi
+          python3 "$CHECKER" --diff "${RUNNER_TEMP}/comment-change.diff" 2>&1 | tee "${RUNNER_TEMP}/comment-output.txt"
+          exit ${PIPESTATUS[0]}
+
       - name: Summary
         if: ${{ !cancelled() }}
         run: |
@@ -1974,6 +2012,14 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             cat "${RUNNER_TEMP}/identifier-output.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no output captured)" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "${{ steps.comments.outcome }}" = "failure" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Long inline comments in this change.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat "${RUNNER_TEMP}/comment-output.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no output captured)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -2055,6 +2101,21 @@ jobs:
       # drive the --stdin adapter contract, so they need git and a HOME.
       - name: Run exfiltration guard hook tests
         run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_exfiltration_guard_*.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # The inline-comment policy is one module asked the same question by the
+      # edit hook, the shell-write check, the commit tool and the checkstyle
+      # job. Its suite is the list of ways round it, each one refused; the
+      # other two cover the routes that call it.
+      - name: Run inline comment policy tests
+        run: |
+          python3 -m unittest discover -v -s .claude/hooks/lib -p "test_inline_comment_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s .claude/hooks/lib -p "test_source_write_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s tools/mcp/commit -p "test_commit_server.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # A file written with the edit tools to the session scratchpad or the
+      # temporary directory is one the person being worked for cannot read.
+      - name: Run scratch write hook tests
+        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_scratch_write_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # The interface-bypass hook decides whether an edit is refused outright,
       # so its tests drive the same --stdin contract end to end, and need git to
@@ -4430,6 +4491,7 @@ jobs:
           DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
           CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
           TEMPORARY_IDENTIFIERS_PASSED: ${{ needs.checkstyle.outputs.identifiers_passed }}
+          INLINE_COMMENTS_PASSED: ${{ needs.checkstyle.outputs.inline_comments_passed }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
         run: |
           ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"

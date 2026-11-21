@@ -165,6 +165,55 @@ class CommitToolTest(GitRepositoryTestCase):
         self.assertFalse(result["ok"])
         self.assertTrue(any(p.startswith("private product: a.txt:1") for p in result["problems"]), result)
 
+    def test_long_inline_comment_in_added_lines_is_refused(self):
+        wall = "".join("\t\t// narrating what was done here %d\n" % i for i in range(6))
+        (self.root / "A.java").write_text("class A {\n\tvoid m() {\n" + wall + "\t\tint x;\n\t}\n}\n")
+        self.git("add", "A.java")
+        (self.root / "commit.txt").write_text("Add A\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("inline comment: A.java:3") for p in result["problems"]), result)
+
+    def test_line_added_to_a_committed_comment_is_refused(self):
+        body = "class A {\n\tvoid m() {\n\t\t// one\n\t\t// two\n\t\t// three\n%s\t\tint x;\n\t}\n}\n"
+        (self.root / "A.java").write_text(body % "")
+        self.git("add", "A.java")
+        self.git("commit", "-q", "-m", "Three lines")
+        (self.root / "A.java").write_text(body % "\t\t// four\n")
+        self.git("add", "A.java")
+        (self.root / "commit.txt").write_text("Grow the comment\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertTrue(any("4 consecutive" in p for p in result["problems"]), result)
+
+    def test_committed_comment_left_alone_is_accepted(self):
+        wall = "".join("\t\t// narrating what was done here %d\n" % i for i in range(6))
+        body = "class A {\n\tvoid m() {\n" + wall + "\t\tint x;\n\t}\n\tint y%s;\n}\n"
+        (self.root / "A.java").write_text(body % "")
+        self.git("add", "A.java")
+        self.git("commit", "-q", "-m", "Old wall")
+        (self.root / "A.java").write_text(body % " = 2")
+        self.git("add", "A.java")
+        (self.root / "commit.txt").write_text("Set y\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(any(p.startswith("inline comment") for p in result["problems"]), result)
+
+    def test_staged_snapshot_is_judged_not_the_working_tree(self):
+        wall = "".join("\t\t// narrating what was done here %d\n" % i for i in range(6))
+        (self.root / "A.java").write_text("class A {\n\tvoid m() {\n" + wall + "\t\tint x;\n\t}\n}\n")
+        self.git("add", "A.java")
+        (self.root / "A.java").write_text("class A {\n\tvoid m() {\n\t\tint x;\n\t}\n}\n")
+        (self.root / "commit.txt").write_text("Add A\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertTrue(any(p.startswith("inline comment") for p in result["problems"]), result)
+
     def test_missing_message_and_empty_change_are_refused(self):
         result = server.check_commit(str(self.root))
 

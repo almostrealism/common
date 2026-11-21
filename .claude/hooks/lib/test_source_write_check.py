@@ -79,6 +79,25 @@ class ViolationTest(RepositoryTestCase):
 
         self.assertEqual([], check.violations(self.root))
 
+    def test_a_line_appended_to_a_committed_comment_is_reported(self):
+        """One short line is enough when it lands on a comment already there."""
+        short = "// one\n// two\n// three\n"
+        self.write("Foo.java", "class Foo {\nvoid m() {\n" + short + "int x;\n}\n}\n")
+        self._run("git", "add", "-A")
+        self._run("git", "commit", "-q", "-m", "three lines")
+
+        self.write("Foo.java", "class Foo {\nvoid m() {\n" + short + "// four\nint x;\n}\n}\n")
+
+        found = check.violations(self.root)
+        self.assertEqual(1, len(found))
+        self.assertIn("4 consecutive", found[0])
+
+    def test_a_block_comment_written_by_a_script_is_reported(self):
+        block = "/*\n" + "\n".join(" * narrating at length" for _ in range(6)) + "\n */\n"
+        self.write("Foo.java", "class Foo {\nvoid m() {\n" + block + "int x;\n}\n}\n")
+
+        self.assertEqual(1, len(check.violations(self.root)))
+
     def test_a_standing_violation_is_reported_once(self):
         self.write("Foo.java", "class Foo {\n" + WALL + "\n}\n")
 

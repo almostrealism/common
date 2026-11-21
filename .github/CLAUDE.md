@@ -614,6 +614,46 @@ under the exfiltration guard. The `checkstyle` gating above matters more for
 this rule: a docs-only pull request's added lines are never part of a later
 change's diff, so they are not judged at all.
 
+**A long inline comment is refused whatever wrote it.** Design and rationale
+belong in javadoc; an inline comment is a line or two of nuance. One module,
+`.claude/hooks/lib/inline_comment_check.py`, decides this, and every gate asks
+it the same question about the same thing — the file as it will exist, and
+which of its lines the change wrote:
+
+| Gate | Where | What it can do |
+|------|-------|----------------|
+| Edit hook (`block-excessive-comments.sh`) | Claude Code `Write`/`Edit`/`MultiEdit` | refuses the edit |
+| opencode plugin (`block-excessive-comments.ts`) | opencode `write`/`edit`/`apply_patch` | refuses the edit |
+| Shell-write check (`check-source-writes.sh`) | after a Claude Code `Bash` call | reports; the file is already written |
+| Commit tool (`ar-commit`) | the staged snapshot | refuses the commit |
+| `Check for long inline comments` | a step of the `checkstyle` job | fails the job |
+
+Only the last one holds for every route — a shell command, another agent
+runtime, a merge, a person — so it is the gate; the others exist to say so
+earlier. The step diffs the head against its merge base (`--unified=0`) and
+runs `--diff`, publishes `inline_comments_passed`, and `check-quality-gates.sh`
+reports a finding to `auto-review` as `inline-comments`. Because a pull
+request's checkout is its head, a head that predates the module's diff mode is
+judged with `origin/<base>`'s copy rather than skipped: this is an enforcement
+check, so "the branch predates it" is not a pass.
+
+The module lexes the file rather than matching line starts, so `//` comments,
+`/* */` blocks and a `/** */` block that documents nothing (inside a method
+body, after code, before a closing brace) are all inline commentary, while
+strings and text blocks are not. Four limits apply: comment-only lines in one
+group (3), characters in one comment (180), characters in one group (300), and
+comment lines and characters in any 15 lines of code (7 and 450), which is what
+catches commentary alternated with one-line statements. A finding is charged to
+a change when the change wrote any line of the group, so adding to or rewording
+an old comment answers for the whole of it; a pre-existing comment the change
+left alone is not judged. Javadoc on a declaration and the header before a
+file's first line of code are exempt. PDSL and Protocol Buffers have no
+documentation comment, so there the comment directly above a declaration (a
+top-level PDSL item; any Protocol Buffers line that is not a closing brace) is
+its documentation and may be any length, and every other comment is held to the
+limits. There is no suppression marker. `test_inline_comment_check.py` is the
+list of ways round the policy, each one refused; add the next one found there.
+
 **The `ci/...` carve-out covers `.claude/hooks/` too, and covers comparisons
 only.** Both the enforcement-tampering check and the exfiltration guard's
 integrity comparison treat a `ci/` branch as out of scope, for the reason the
