@@ -42,7 +42,6 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.OptionalLong;
-import java.util.Set;
 import java.util.stream.IntStream;
 
 /**
@@ -86,7 +85,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	 */
 	@Test(timeout = 30000)
 	public void kernelIndexOptions() {
-		Assert.assertEquals(20, kernel().withLimit(20).getIndexOptions(kernel()).orElseThrow().size());
+		Assert.assertEquals(20, kernel().withLimit(20).getIndexOptions(kernel()).orElseThrow().distinctCount());
 	}
 
 	/**
@@ -96,10 +95,10 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void modIndexOptions() {
 		KernelIndex k = kernel();
 		Expression<?> r = k.imod(20);
-		Assert.assertEquals(20, r.getIndexOptions(k).orElseThrow().size());
-		Assert.assertEquals(20, r.divide(5).getIndexOptions(k).orElseThrow().size());
-		Assert.assertEquals(20, r.divide(5).imod(2).getIndexOptions(k).orElseThrow().size());
-		Assert.assertEquals(20, r.divide(5).imod(2).add(r).getIndexOptions(k).orElseThrow().size());
+		Assert.assertEquals(20, r.getIndexOptions(k).orElseThrow().distinctCount());
+		Assert.assertEquals(20, r.divide(5).getIndexOptions(k).orElseThrow().distinctCount());
+		Assert.assertEquals(20, r.divide(5).imod(2).getIndexOptions(k).orElseThrow().distinctCount());
+		Assert.assertEquals(20, r.divide(5).imod(2).add(r).getIndexOptions(k).orElseThrow().distinctCount());
 	}
 
 	/**
@@ -109,8 +108,8 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void divideIndexOptions1() {
 		KernelIndex k = kernel().withLimit(100);
 		Expression<?> r = k.divide(20);
-		Assert.assertEquals(r.sequence().distinct().length, r.getIndexOptions(k).orElseThrow().size());
-		Assert.assertEquals(5, r.multiply(25).getIndexOptions(k).orElseThrow().size());
+		Assert.assertEquals(r.sequence().distinct().length, r.getIndexOptions(k).orElseThrow().distinctCount());
+		Assert.assertEquals(5, r.multiply(25).getIndexOptions(k).orElseThrow().distinctCount());
 		Assert.assertTrue(r.getIndexOptions(k).orElseThrow().contains(20));
 	}
 
@@ -122,8 +121,8 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		KernelIndex k = kernel().withLimit(6);
 		Expression<?> r = k.divide(4);
 
-		Set<Integer> options = r.getIndexOptions(k).orElseThrow();
-		Assert.assertEquals(r.sequence().distinct().length, options.size());
+		IndexSequence options = r.getIndexOptions(k).orElseThrow();
+		Assert.assertEquals(r.sequence().distinct().length, options.distinctCount());
 		Assert.assertTrue(options.contains(4));
 	}
 
@@ -863,7 +862,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 								.add(kernel.imod(2));
 		log(e.getExpression(lang));
 
-		Optional<Set<Integer>> options = e.getIndexOptions(kernel);
+		Optional<IndexSequence> options = e.getIndexOptions(kernel);
 
 		// Ideally it would identify 5, but if it cannot
 		// - it should at least be explicitly uncertain
@@ -882,7 +881,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 				.add(kernel.imod(2));
 		log(e.getExpression(lang));
 
-		Optional<Set<Integer>> options = e.getIndexOptions(kernel);
+		Optional<IndexSequence> options = e.getIndexOptions(kernel);
 
 		// Ideally it would identify 7, but if it cannot
 		// - it should at least be explicitly uncertain

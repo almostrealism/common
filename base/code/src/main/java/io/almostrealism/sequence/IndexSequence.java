@@ -26,6 +26,8 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
 
+import java.math.BigDecimal;
+import java.util.TreeSet;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.IntUnaryOperator;
 import java.util.function.LongUnaryOperator;
@@ -33,6 +35,7 @@ import java.util.function.UnaryOperator;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
+import java.util.stream.Stream;
 
 /**
  * A {@link Sequence} of {@link Number}s which represent index values used in kernel computations.
@@ -291,6 +294,149 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	}
 
 	/**
+	 * Returns whether this sequence has no positions, and therefore no values.
+	 *
+	 * @return {@code true} if the length of this sequence is zero
+	 */
+	default boolean isEmpty() {
+		return lengthLong() == 0;
+	}
+
+	/**
+	 * Returns the number of distinct values this sequence takes, as counted by
+	 * {@link #distinct()}.
+	 *
+	 * @return the number of distinct values
+	 */
+	default long distinctCount() {
+		return isEmpty() ? 0 : distinct().length;
+	}
+
+	/**
+	 * Returns whether the given integer is one of the values of this sequence, at any
+	 * position. Only an integral value can match.
+	 *
+	 * @param value the candidate value
+	 * @return {@code true} if some position of this sequence takes {@code value}
+	 */
+	default boolean contains(long value) {
+		return values().anyMatch(v -> isLongValue(v) && v.longValue() == value);
+	}
+
+	/**
+	 * Returns whether the given value is an integer that a {@code long} represents
+	 * exactly, so that {@link Number#longValue()} neither truncates nor saturates it.
+	 * Integer types always are; a floating-point value is when it is integral and lies
+	 * in {@code [-2^63, 2^63)}.
+	 *
+	 * @param value the value to test
+	 * @return {@code true} if {@code value.longValue()} is exactly {@code value}
+	 */
+	static boolean isLongValue(Number value) {
+		if (isIntegerType(value)) return true;
+
+		double d = value.doubleValue();
+		return d == Math.rint(d) && d >= -0x1p63 && d < 0x1p63;
+	}
+
+	/**
+	 * Returns whether the given value is held in a boxed integer type no wider than a
+	 * {@code long}, as opposed to a floating-point one.
+	 *
+	 * @param value the value to test
+	 * @return {@code true} if {@code value} is a {@link Long}, {@link Integer},
+	 *         {@link Short} or {@link Byte}
+	 */
+	private static boolean isIntegerType(Number value) {
+		return value instanceof Long || value instanceof Integer
+				|| value instanceof Short || value instanceof Byte;
+	}
+
+	/**
+	 * Returns whether every value of the other sequence is also a value of this one,
+	 * regardless of the positions at which either takes it. A non-integral value of the
+	 * other sequence is never contained.
+	 *
+	 * @param other the sequence whose values are tested
+	 * @return {@code true} if the values of {@code other} are a subset of the values of this sequence
+	 */
+	default boolean containsAll(IndexSequence other) {
+		return other.values().allMatch(v -> isLongValue(v) && contains(v.longValue()));
+	}
+
+	/**
+	 * Returns a sequence whose values are the values of this sequence together with the
+	 * values of the other, each value once. When either sequence already contains every
+	 * value of the other, that sequence is returned as it is, so nested domains are shared
+	 * rather than copied; otherwise the values of both are enumerated, in ascending
+	 * order, each value that is {@link #isLongValue(Number) exactly a long} as a
+	 * {@link Long} and any other value as a {@link Double}, so that no value is truncated
+	 * or saturated into the {@code long} range and distinct large integers are not merged
+	 * through {@code double}. A union holding any non-integral value has the type
+	 * {@link Double}.
+	 *
+	 * @param other the sequence whose values are added
+	 * @return a sequence taking exactly the values of both sequences
+	 */
+	default IndexSequence union(IndexSequence other) {
+		if (containsAll(other)) return this;
+		if (other.containsAll(this)) return other;
+
+		boolean integral = Stream.concat(values(), other.values())
+				.allMatch(IndexSequence::isLongValue);
+
+		if (integral) {
+			return ArrayIndexSequence.of(Long.class,
+					LongStream.concat(longValues(), other.longValues())
+							.distinct().sorted().boxed().toArray(Number[]::new));
+		}
+
+		TreeSet<Number> exact = new TreeSet<>(IndexSequence::compareExact);
+		Stream.concat(values(), other.values())
+				.map(v -> isLongValue(v) ? (Number) v.longValue() : (Number) v.doubleValue())
+				.forEach(exact::add);
+		return ArrayIndexSequence.of(Double.class, exact.toArray(new Number[0]));
+	}
+
+	/**
+	 * Compares two values exactly, so that distinct integers beyond the range in which a
+	 * {@code double} represents every integer are never treated as equal. Two values that
+	 * are both {@link #isLongValue(Number) exactly a long} are compared as {@code long}s;
+	 * a non-finite value is compared as a {@code double}; any other pair is compared as
+	 * exact decimal values.
+	 *
+	 * @param a the first value
+	 * @param b the second value
+	 * @return a negative number, zero or a positive number as {@code a} is less than,
+	 *         equal to or greater than {@code b}
+	 */
+	static int compareExact(Number a, Number b) {
+		if (isLongValue(a) && isLongValue(b)) {
+			return Long.compare(a.longValue(), b.longValue());
+		}
+
+		if (!isIntegerType(a) && !isIntegerType(b)) {
+			return Double.compare(a.doubleValue(), b.doubleValue());
+		}
+
+		if (!Double.isFinite(a.doubleValue()) || !Double.isFinite(b.doubleValue())) {
+			return Double.compare(a.doubleValue(), b.doubleValue());
+		}
+
+		return toExactDecimal(a).compareTo(toExactDecimal(b));
+	}
+
+	/**
+	 * Returns the exact decimal value of a finite number.
+	 *
+	 * @param value the value, which must be finite
+	 * @return {@code value} as a {@link BigDecimal}, without rounding
+	 */
+	private static BigDecimal toExactDecimal(Number value) {
+		return isLongValue(value) ? BigDecimal.valueOf(value.longValue()) : new BigDecimal(value.doubleValue());
+	}
+
+	/**
 	 * Tests whether this sequence is congruent (element-wise equal) to another sequence.
 	 *
 	 * @param other the sequence to compare with
@@ -386,12 +532,12 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	default long min() {
 		if (isConstant()) return valueAt(0).longValue();
 
-		if (valueAt(0) instanceof Integer) {
+		if (isFloatingPoint()) {
+			return ceilToLong(values().min(IndexSequence::compareExact).orElseThrow());
+		} else if (valueAt(0) instanceof Integer) {
 			return intValues().min().orElseThrow();
-		} else if (valueAt(0) instanceof Long) {
-			return longValues().min().orElseThrow();
 		} else {
-			return (long) Math.ceil(doubleValues().min().orElseThrow());
+			return longValues().min().orElseThrow();
 		}
 	}
 
@@ -403,11 +549,37 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	default long max() {
 		if (isConstant()) return valueAt(0).longValue();
 
-		if (valueAt(0) instanceof Double) {
-			return (long) Math.ceil(doubleValues().max().orElseThrow());
+		if (isFloatingPoint()) {
+			return ceilToLong(values().max(IndexSequence::compareExact).orElseThrow());
 		} else {
 			return longValues().max().orElseThrow();
 		}
+	}
+
+	/**
+	 * Returns whether the values of this sequence may be floating-point, either because
+	 * its declared type is or because its first value is. Such a sequence can hold
+	 * integral values as {@link Long}s beside non-integral ones (see
+	 * {@link #union(IndexSequence)}), so its bounds must not be chosen by the
+	 * representation of a single value.
+	 *
+	 * @return {@code true} if this sequence may hold floating-point values
+	 */
+	private boolean isFloatingPoint() {
+		Class<? extends Number> type = getType();
+		return type == Double.class || type == Float.class
+				|| valueAt(0) instanceof Double || valueAt(0) instanceof Float;
+	}
+
+	/**
+	 * Returns the smallest {@code long} at least the given value, taking a value that is
+	 * {@link #isLongValue(Number) exactly a long} as it is.
+	 *
+	 * @param value the value to round
+	 * @return {@code value} rounded up to a {@code long}, saturated to the {@code long} range
+	 */
+	private static long ceilToLong(Number value) {
+		return isLongValue(value) ? value.longValue() : (long) Math.ceil(value.doubleValue());
 	}
 
 	/**
