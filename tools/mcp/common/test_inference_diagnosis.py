@@ -133,6 +133,16 @@ class EndpointOfTest(unittest.TestCase):
         self.assertEqual("", endpoint_of(""))
         self.assertEqual("", endpoint_of("not-a-url"))
 
+    def test_malformed_port_is_dropped_without_raising(self):
+        # urllib's SplitResult.port raises ValueError for a non-numeric port;
+        # the diagnostic path must degrade rather than crash on a bad URL.
+        self.assertEqual("http://host", endpoint_of("http://host:bad"))
+
+    def test_out_of_range_port_is_dropped_without_raising(self):
+        self.assertEqual(
+            "https://host.docker.internal",
+            endpoint_of("https://host.docker.internal:99999/api"))
+
 
 class _ClassifiedFake(InferenceBackend):
     """A backend that fails a request with a chosen classification."""

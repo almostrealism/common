@@ -175,15 +175,24 @@ def endpoint_of(url: str) -> str:
         url: The backend's base or completions URL.
 
     Returns:
-        ``scheme://host`` (with ``:port`` when the URL names one), or an empty
-        string when ``url`` has no scheme and host (e.g. a local, hostless
-        backend).
+        ``scheme://host`` (with ``:port`` when the URL names a valid one), or an
+        empty string when ``url`` has no scheme and host (e.g. a local, hostless
+        backend). A malformed or out-of-range port is dropped rather than
+        raising, so this stays safe to call on the diagnostic path where a
+        misconfigured ``AR_CONSULTANT_*_URL`` must still degrade to a structured,
+        secret-free diagnosis.
     """
     parts = urllib.parse.urlsplit(url)
     host = parts.hostname or ""
     if not parts.scheme or not host:
         return ""
-    netloc = f"{host}:{parts.port}" if parts.port else host
+    try:
+        port = parts.port
+    except ValueError:
+        # A malformed or out-of-range port (e.g. "http://host:bad"). Drop it;
+        # the scheme and host still name where the request went.
+        port = None
+    netloc = f"{host}:{port}" if port else host
     return f"{parts.scheme}://{netloc}"
 
 
