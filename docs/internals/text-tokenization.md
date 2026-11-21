@@ -39,12 +39,13 @@ Which classes implement the interface, and which do not, is deliberate and worth
 - `ByteTokenizer` **implements** `Tokenizer`.
 - `SentencePieceBPETokenizer` **implements** `Tokenizer`.
 - `extern/ml-djl`'s `SentencePieceTokenizer` **implements** `Tokenizer`.
-- `Qwen3Tokenizer` **does not** implement `Tokenizer`. It extends `ByteLevelBPETokenizer` and
-  exposes its own `encode(String, boolean, boolean)` and the inherited `decode(int[])`, returning
-  `int` arrays rather than the interface's `encodeAsLong` / `decodeAsLong`. Its special tokens are
+- `Qwen3Tokenizer` **implements** `Tokenizer`, inherited through `ByteLevelBPETokenizer` (which
+  declares the interface and implements the `encodeAsLong` / `decodeAsLong` contract once for every
+  subclass). It adds its own special-token-aware `encode(String, boolean, boolean)` on top of the
+  inherited `int`-array pipeline, so a caller can either stay on the contract's `encodeAsLong` /
+  `decodeAsLong` (which add no special tokens) or request BOS/EOS explicitly. Its special tokens are
   the public constants `BOS_TOKEN` (151643) and `EOS_TOKEN` (151645); the `getBOSToken()` /
-  `getEOSToken()` it inherits are `protected`. Whether it *should* implement `Tokenizer` is an open
-  API decision tracked separately (tracker task `0b5eb918`); this page documents the class as it is.
+  `getEOSToken()` it inherits are `protected`.
 - `Llama2` tokenizes through the static `BPE.encode(...)` utility, not through an instance of any
   tokenizer class at all (see the family tree).
 
