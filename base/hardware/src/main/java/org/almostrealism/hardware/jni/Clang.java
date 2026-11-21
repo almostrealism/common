@@ -104,6 +104,12 @@ public class Clang extends LlvmCommandProvider {
 	private Boolean clangFrontend;
 
 	/**
+	 * Whether the warning that a configured bracket depth is ignored for a non-clang compiler
+	 * has already been emitted, so it appears once per provider rather than once per command.
+	 */
+	private boolean ignoredDepthWarned;
+
+	/**
 	 * Creates a new Clang instance with default settings.
 	 * Uses "gcc" as the compiler command with platform-appropriate
 	 * library format (dynamiclib for macOS, shared for Linux).
@@ -176,7 +182,8 @@ public class Clang extends LlvmCommandProvider {
 
 		if (isClangFrontend()) {
 			command.add("-fbracket-depth=" + bracketDepth.getAsInt());
-		} else {
+		} else if (!ignoredDepthWarned) {
+			ignoredDepthWarned = true;
 			warn("AR_HARDWARE_NATIVE_BRACKET_DEPTH is ignored because the compiler is not clang");
 		}
 	}
