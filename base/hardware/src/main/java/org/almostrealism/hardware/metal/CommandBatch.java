@@ -56,6 +56,11 @@ final class CommandBatch {
 	private final long firstValue;
 	/** Released-memory callbacks to run once the batch has finished. Executor-thread only. */
 	private final List<Runnable> onComplete = new ArrayList<>();
+	/**
+	 * Listeners to notify once the batch has finished, as soon as that is seen and before it is
+	 * drained (see {@link #whenFinished(Runnable)}). Executor-thread only.
+	 */
+	private final List<Runnable> onFinished = new ArrayList<>();
 	/** Settles once the batch has been committed to the GPU, which only the executor thread does. */
 	private final LatchSemaphore committed = new LatchSemaphore(1);
 	/** The number of dispatches encoded into the batch. Executor-thread only. */
@@ -261,7 +266,43 @@ final class CommandBatch {
 	}
 
 	/**
-	 * Runs the released-memory callbacks of the finished batch, then records it as drained,
+	 * Adds a listener to notify once the batch has finished on the GPU, by executing or failing,
+	 * or at once if it already has. Unlike a {@link #whenComplete released-memory callback}, which
+	 * runs only when the batch is drained, a listener is notified as soon as the runner sees the
+	 * batch finish ({@link #notifyIfFinished()}), even while a thread is registered to wait on it
+	 * and so keeps it from being drained without that thread. A listener must only hand work off,
+	 * since it runs on the executor thread. Executor-thread only.
+	 *
+	 * @param listener the listener to notify once the batch has finished
+	 */
+	void whenFinished(Runnable listener) {
+		onFinished.add(listener);
+		notifyIfFinished();
+	}
+
+	/**
+	 * Notifies, once each, the listeners registered with {@link #whenFinished(Runnable)} if the
+	 * batch has finished on the GPU. Executor-thread only.
+	 *
+	 * @return true if the batch has finished
+	 */
+	boolean notifyIfFinished() {
+		if (!isCommitted() || !isFinished()) return false;
+
+		notifyFinished();
+		return true;
+	}
+
+	/** Notifies, and then drops, every listener registered with {@link #whenFinished(Runnable)}. */
+	private void notifyFinished() {
+		List<Runnable> listeners = new ArrayList<>(onFinished);
+		onFinished.clear();
+		listeners.forEach(Runnable::run);
+	}
+
+	/**
+	 * Notifies the listeners registered with {@link #whenFinished(Runnable)}, if any remain, then
+	 * runs the released-memory callbacks of the finished batch, then records it as drained,
 	 * releasing its command buffer unless a thread still waits on it. Every callback runs and the
 	 * buffer is released even if a callback fails; the first failure is rethrown afterwards (see
 	 * {@link Destroyable#releaseAll}). The callbacks are dropped once they have run, so that
@@ -270,6 +311,8 @@ final class CommandBatch {
 	 * Executor-thread only.
 	 */
 	void drain() {
+		notifyFinished();
+
 		try {
 			Destroyable.releaseAll(onComplete, this::drained);
 		} finally {

@@ -34,10 +34,16 @@ These are phrased so a reviewer can check a diff against them.
 5. **Pending work holds no thread.** Work ordered after a completion is started by
    `Semaphore.onSettled`, which `then`, `onComplete`, `all` and the native dispatch are built on.
    A completion that is told when its work settles (`LatchSemaphore`, which every native,
-   composite and CUDA completion is, and `DeferredSemaphore`) registers the callback and holds no
-   thread; one that only progresses when waited for (`MetalSemaphore`, `CLSemaphore`) keeps the
-   default, which waits on a `CALLBACK_EXECUTOR` thread and so also drives it. A chain of N
-   submissions is therefore N registrations, not N parked threads (`ChainedSubmissionTest`).
+   composite and CUDA completion is, `DeferredSemaphore`, and `MetalSemaphore`, whose command
+   buffer reports its completion through a completed handler) registers the callback and holds no
+   thread; it is handed to `CALLBACK_EXECUTOR` only once the work has settled, so it holds a thread
+   only while it runs. One that only progresses when waited for (`CLSemaphore`, and a
+   `MetalSemaphore` on a host that cannot register completed handlers) keeps the default,
+   `Semaphore.settleByWaiting`, which waits on a `CALLBACK_EXECUTOR` thread and so also drives it.
+   A chain of N submissions is therefore N registrations, not N parked threads
+   (`ChainedSubmissionTest`, `MetalSemaphoreSettlementTest`). `CALLBACK_EXECUTOR` stays unbounded:
+   a callback may wait for a completion that only another queued callback starts (a
+   `DeferredSemaphore`'s work), so a bound could deadlock.
 6. **A host read of device-visible memory is a boundary.** `toDouble`/`toArray` at the top
    of the call stack is safe only because the caller waited. Internal machinery must never
    host-read memory whose producing semaphore it did not wait on or chain. This is the bug
@@ -158,8 +164,15 @@ must respect it:
 
 - `MetalSemaphore.whenSettled` is passive by design. It joins the command buffer's
   completion callbacks and never commits the open buffer, so batching is preserved.
-- Those callbacks run only when a host thread drains the buffer
-  (`MetalCommandRunner.complete`/`destroy`), not when the GPU finishes.
+- `MetalSemaphore.onSettled` drives instead: it commits the buffer if it is still open, as a
+  wait would, and registers a finish listener on the buffer (`CommandBatch.whenFinished`),
+  which hands the callback to `CALLBACK_EXECUTOR` as soon as the runner sees the buffer finish,
+  before it is drained. No thread waits for the buffer meanwhile.
+- Those callbacks run when the buffer is drained: by a host wait
+  (`MetalCommandRunner.complete`/`destroy`), or by the drain the buffer's completed handler hands
+  to the runner's confined thread when the GPU finishes. On a host that cannot compile the
+  completed-handler operation only a wait drains a buffer, so there `onSettled` falls back to
+  waiting on a callback thread.
 - A host wait learns that the GPU has finished from the buffer's timeline signal when it can:
   `complete` polls the timeline for the waited value, through the policy every
   `SubmissionStream` shares (`pollForCompletion`, `completionSpinMicros`), reading the
