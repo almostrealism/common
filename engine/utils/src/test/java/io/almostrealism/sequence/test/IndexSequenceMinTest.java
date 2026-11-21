@@ -28,7 +28,8 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Tests the bounding contract of {@link IndexSequence#min()} and
- * {@link IndexSequence#max()} for floating-point sequences.
+ * {@link IndexSequence#max()} for fractional, arbitrary-precision, atomic and
+ * mixed-type sequences.
  *
  * <p>{@link IndexSequence#min()} is documented as returning "the minimum value in
  * this sequence" and {@link IndexSequence#max()} "the maximum value". Because the
@@ -161,6 +162,11 @@ public class IndexSequenceMinTest extends TestSuiteBase {
 	 * such as {@code Long.MIN_VALUE - 1} wraps to {@link Long#MAX_VALUE} under the
 	 * naive conversion, which is greater than the element and so grossly violates the
 	 * lower-bound contract.
+	 *
+	 * <p>No {@code long} is a lower bound for an element below {@link Long#MIN_VALUE},
+	 * so the saturated {@link Long#MIN_VALUE} is the documented approximation ("unbounded
+	 * below") rather than a true bound. A constant sequence holding such an element
+	 * reports the same saturated value from {@link IndexSequence#min()}.</p>
 	 */
 	@Test(timeout = 10000)
 	public void outOfRangeValuesSaturateToLongBounds() {
@@ -175,7 +181,6 @@ public class IndexSequenceMinTest extends TestSuiteBase {
 				new BigDecimal(BigInteger.valueOf(Long.MIN_VALUE)).subtract(new BigDecimal("0.5"));
 		Assert.assertEquals(Long.MIN_VALUE, IndexSequence.floorToLong(decimalBelowRange));
 
-		// A constant sequence holding the out-of-range value must stay a lower bound.
 		IndexSequence seq = ArrayIndexSequence.of(belowRange, 2);
 		Assert.assertEquals(Long.MIN_VALUE, seq.min());
 	}
@@ -198,7 +203,6 @@ public class IndexSequenceMinTest extends TestSuiteBase {
 		Assert.assertEquals(Long.MIN_VALUE, IndexSequence.floorToLong(hugeNegative));
 		Assert.assertEquals(Long.MIN_VALUE, IndexSequence.ceilToLong(hugeNegative));
 
-		// The same value flowing through a constant sequence stays a correct bound.
 		IndexSequence seq = ArrayIndexSequence.of(huge, 2);
 		Assert.assertEquals(Long.MAX_VALUE, seq.min());
 		Assert.assertEquals(Long.MAX_VALUE, seq.max());

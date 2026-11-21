@@ -398,7 +398,12 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * Because {@code floorToLong} is monotonic, the smallest floored value is a lower
 	 * bound for every element.</p>
 	 *
-	 * @return the minimum value as a {@code long}
+	 * <p>The bound is exact only for elements whose floor fits in a {@code long}. An
+	 * element below {@link Long#MIN_VALUE} has no {@code long} lower bound, so it is
+	 * saturated to {@link Long#MIN_VALUE}. That value is the smallest {@code long}, not a
+	 * true bound for such an element; callers should treat it as "unbounded below".</p>
+	 *
+	 * @return the minimum value as a {@code long}, saturated to the {@code long} range
 	 */
 	default long min() {
 		if (isConstant()) {
@@ -427,8 +432,10 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * {@link Long#MIN_VALUE} or {@link Long#MAX_VALUE} rather than silently wrapped,
 	 * since {@link Number#longValue()} truncates the high bits of an out-of-range
 	 * {@link BigInteger}/{@link BigDecimal} and could otherwise return a value far
-	 * greater than the element. {@link Long#MIN_VALUE} is the smallest representable
-	 * lower bound.</p>
+	 * greater than the element. A value below {@link Long#MIN_VALUE} has no
+	 * {@code long} lower bound at all, so the saturated {@link Long#MIN_VALUE} is the
+	 * closest representable approximation, not a true bound. Likewise, a value above
+	 * {@link Long#MAX_VALUE} saturates to {@link Long#MAX_VALUE}.</p>
 	 *
 	 * @param value  the value to floor
 	 * @return the largest {@code long} that does not exceed {@code value}, saturated
@@ -445,8 +452,6 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 			return clampToLong((BigInteger) value);
 		}
 
-		// Float/Double (and any other fractional representation) must be floored so
-		// the result never exceeds the element: longValue() truncates toward zero.
 		double floored = Math.floor(value.doubleValue());
 		if (floored <= Long.MIN_VALUE) return Long.MIN_VALUE;
 		if (floored >= Long.MAX_VALUE) return Long.MAX_VALUE;
@@ -521,7 +526,11 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * {@link #ceilToLong(Number)} is monotonic, the largest ceiled value is an upper
 	 * bound for every element.</p>
 	 *
-	 * @return the maximum value as a {@code long}
+	 * <p>As with {@link #min()}, the bound is exact only for elements whose ceiling fits
+	 * in a {@code long}. An element above {@link Long#MAX_VALUE} saturates to
+	 * {@link Long#MAX_VALUE}, which callers should treat as "unbounded above".</p>
+	 *
+	 * @return the maximum value as a {@code long}, saturated to the {@code long} range
 	 */
 	default long max() {
 		if (isConstant()) return ceilToLong(valueAt(0));
@@ -534,7 +543,9 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * {@link #floorToLong(Number)}: integral types are returned exactly,
 	 * {@link BigDecimal} is ceiled with exact decimal arithmetic, and other
 	 * (floating-point) types use {@link Math#ceil}. Values outside the {@code long}
-	 * range are saturated to {@link Long#MIN_VALUE} or {@link Long#MAX_VALUE}.
+	 * range are saturated to {@link Long#MIN_VALUE} or {@link Long#MAX_VALUE}. A value
+	 * above {@link Long#MAX_VALUE} has no {@code long} upper bound, so its saturated
+	 * result is the closest representable approximation, not a true bound.
 	 *
 	 * @param value  the value to ceil
 	 * @return the smallest {@code long} that is not less than {@code value},
