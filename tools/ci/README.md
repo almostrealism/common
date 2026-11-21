@@ -101,9 +101,19 @@ warm. Per fleet:
 | Fleet | Label | How to enable / verify / roll back |
 |---|---|---|
 | CPU (Linux) | `ar-ci` | [`docker/README.md`](docker/README.md#maven-dependency-cache) |
+| Build-only (Linux) | `ar-build` | [`docker/README.md`](docker/README.md#running-a-build-only-runner-the-ar-build-label) |
 | GPU (macOS) | `ar-ci` | already warm via `$HOME/.m2-ci/<runner>`; nothing to mount (see [`macos/README.md`](macos/README.md#maven-dependency-cache)) |
 | OpenCL (ROCm) | `ar-ci-cl` | [`rocm/README.md`](rocm/README.md#maven-dependency-cache) |
 | CUDA (NVIDIA) | `ar-ci-cuda` | [`cuda/README.md`](cuda/README.md#maven-dependency-cache) |
+
+The **build-only** runner (`ar-build`) is optional: it runs the `build` job off
+the GitHub-hosted runner when the `BUILD_RUNS_ON` repository variable selects it.
+It is the same CPU image with its own label and Maven cache volume, so it warms
+through `select-maven-repo` like the other Linux fleets. See "Running a
+build-only runner" in [`docker/README.md`](docker/README.md#running-a-build-only-runner-the-ar-build-label)
+for the operator steps and the `BUILD_RUNS_ON` variable, and "The `BUILD_RUNS_ON`
+repository variable" in [`../../.github/CLAUDE.md`](../../.github/CLAUDE.md) for
+why the runner is variable-selected rather than hard-coded.
 
 **Correctness guarantees.** A **cold** cache (fresh volume, or none) resolves
 everything from Central exactly as before — slower, never wrong. A **stale**

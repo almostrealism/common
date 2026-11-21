@@ -8,7 +8,9 @@ These tests keep a new or copied job from quietly bringing the rebuild back,
 and keep every job that restores the artifacts ordered after ``build``.
 """
 
+import json
 import os
+import re
 import unittest
 
 import yaml
@@ -49,7 +51,13 @@ class BuildArtifactSharingTest(unittest.TestCase):
         uploads = [s["with"] for s in _steps_using(_jobs()["build"], "actions/upload-artifact")
                    if s["with"].get("name") == _ARTIFACT]
         self.assertEqual(1, len(uploads))
-        self.assertEqual("~/.m2/repository/org/almostrealism", uploads[0]["path"])
+        # build can run on a hosted or a self-hosted runner (see BuildRunnerSelectionTest).
+        # It uploads from whatever repository it installed into, as resolved by the
+        # shell in the clear step (MAVEN_REPO when the self-hosted "Select Maven
+        # repository" step set it, ~/.m2/repository otherwise) and published as that
+        # step's output; an action input never reads a GITHUB_ENV value directly.
+        self.assertEqual("${{ steps.project-artifacts.outputs.path }}",
+                         uploads[0]["path"])
         self.assertEqual("error", uploads[0]["if-no-files-found"])
 
     def test_every_job_that_restores_the_artifacts_waits_for_build(self):
@@ -136,6 +144,323 @@ class BuildArtifactSharingTest(unittest.TestCase):
                 if "maven.repo.local" in run:
                     with self.subTest(job=name):
                         self.assertIn("MAVEN_REPO=", run)
+
+
+def _step_named(job, name):
+    for s in job.get("steps", []):
+        if s.get("name") == name:
+            return s
+    return None
+
+
+class BuildRunnerSelectionTest(unittest.TestCase):
+    """`build` is the only dual-mode job: its runner is chosen by the
+    BUILD_RUNS_ON repository variable (a self-hosted move the owner can make and
+    undo without a commit), defaulting to GitHub-hosted ubuntu-latest, and its
+    JDK/Maven/clear/upload steps are correct on either runner. These pin that
+    wiring so a future edit cannot quietly hard-code the runner or break one of
+    the two environments. See "What the `build` job covers" and "The
+    BUILD_RUNS_ON repository variable" in .github/CLAUDE.md."""
+
+    def setUp(self):
+        self.build = _jobs()["build"]
+
+    def test_runs_on_is_the_variable_with_a_hosted_fallback(self):
+        """A JSON label list from the variable, parsed with fromJSON, falling back
+        to ubuntu-latest when unset — so an offline self-hosted runner cannot queue
+        build forever (the variable is cleared to revert), and today's hosted
+        behaviour is the default."""
+        runs_on = self.build["runs-on"]
+        self.assertIn("vars.BUILD_RUNS_ON", runs_on)
+        self.assertIn("fromJSON(vars.BUILD_RUNS_ON)", runs_on)
+        self.assertIn("'ubuntu-latest'", runs_on)
+
+    def test_fork_pull_requests_never_select_the_self_hosted_runner(self):
+        """build runs the pull request's head; a self-hosted runner holds the
+        runner-registration token and a persistent Maven repository, so the
+        variable may only take effect for a non-pull_request event or a head in
+        this repository. The guard must sit between the variable check and
+        fromJSON, so a fork PR falls through to 'ubuntu-latest'."""
+        runs_on = " ".join(str(self.build["runs-on"]).split())
+        guard = ("(github.event_name != 'pull_request' || "
+                 "github.event.pull_request.head.repo.full_name == github.repository)")
+        self.assertIn(guard, runs_on)
+        self.assertLess(runs_on.index("vars.BUILD_RUNS_ON &&"), runs_on.index(guard))
+        self.assertLess(runs_on.index(guard), runs_on.index("fromJSON(vars.BUILD_RUNS_ON)"))
+        self.assertLess(runs_on.index("fromJSON(vars.BUILD_RUNS_ON)"),
+                        runs_on.index("|| 'ubuntu-latest'"))
+
+    def test_runs_on_selects_by_event_and_head_repository(self):
+        """Evaluate the runs-on expression for each case: unset variable, fork PR,
+        same-repository PR, and a non-PR event (deployment, push, dispatch)."""
+        labels = '["self-hosted","linux","ar-build"]'
+        cases = [
+            ("", "pull_request", "almostrealism/common", "ubuntu-latest"),
+            ("", "deployment", None, "ubuntu-latest"),
+            (labels, "pull_request", "someone/common", "ubuntu-latest"),
+            (labels, "pull_request", "almostrealism/common", ["self-hosted", "linux", "ar-build"]),
+            (labels, "deployment", None, ["self-hosted", "linux", "ar-build"]),
+            (labels, "push", None, ["self-hosted", "linux", "ar-build"]),
+        ]
+        for variable, event, head, expected in cases:
+            with self.subTest(variable=variable, event=event, head=head):
+                self.assertEqual(expected, _evaluate_runs_on(
+                    self.build["runs-on"], variable, event, head, "almostrealism/common"))
+
+    def test_jdk_is_selected_by_runner_environment(self):
+        """Hosted downloads the JDK with setup-java; self-hosted selects the
+        shipped JDK with the shared select-jdk action (as the test lanes do)."""
+        setup = _step_named(self.build, "Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}")
+        self.assertIsNotNone(setup, "build must keep setup-java for the hosted runner")
+        self.assertTrue(str(setup.get("uses", "")).startswith("actions/setup-java"))
+        self.assertEqual("${{ runner.environment == 'github-hosted' }}",
+                         _wrap(setup["if"]))
+
+        select = _step_named(self.build, "Select and verify JDK")
+        self.assertIsNotNone(select, "build must use select-jdk on the self-hosted runner")
+        self.assertEqual("./.github/actions/select-jdk", str(select.get("uses", "")).rstrip("/"))
+        self.assertEqual("${{ env.EXPECTED_JDK_MAJOR }}", select["with"]["expected-major"])
+        self.assertEqual("${{ runner.environment == 'self-hosted' }}",
+                         _wrap(select["if"]))
+
+    def test_maven_repo_is_selected_by_runner_environment(self):
+        """Hosted restores the deliberately-built GitHub-backed cache; self-hosted
+        prefers its host's shared cache via select-maven-repo (exports MAVEN_REPO)."""
+        restore = _step_named(self.build, "Restore Maven dependencies")
+        self.assertIsNotNone(restore, "build must restore the hosted Maven cache")
+        self.assertEqual("./.github/actions/restore-maven-cache",
+                         str(restore.get("uses", "")).rstrip("/"))
+        self.assertEqual("${{ runner.environment == 'github-hosted' }}",
+                         _wrap(restore["if"]))
+
+        select = _step_named(self.build, "Select Maven repository")
+        self.assertIsNotNone(select, "build must select the Maven repo on a self-hosted runner")
+        self.assertEqual("./.github/actions/select-maven-repo",
+                         str(select.get("uses", "")).rstrip("/"))
+        self.assertEqual("${{ runner.environment == 'self-hosted' }}",
+                         _wrap(select["if"]))
+
+    def test_clear_step_targets_the_repository_maven_reads(self):
+        """Clearing org/almostrealism must hit the per-runner MAVEN_REPO where the
+        self-hosted step set it (never the shared cache root another runner uses),
+        else ~/.m2/repository — the same resolution the restore steps use."""
+        clear = _step_named(self.build, "Clear previously installed project artifacts")
+        self.assertIsNotNone(clear)
+        self.assertIn('${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism', clear["run"])
+
+    def test_clear_step_publishes_the_path_the_upload_reads(self):
+        """The clear step resolves the repository once and publishes it as its
+        `path` output, which is what the upload names — so the cleared, installed
+        and uploaded trees are one and the same on either runner."""
+        clear = _step_named(self.build, "Clear previously installed project artifacts")
+        self.assertEqual("project-artifacts", clear.get("id"))
+        self.assertIn('rm -rf "${path}"', clear["run"])
+        self.assertIn('echo "path=${path}" >> "${GITHUB_OUTPUT}"', clear["run"])
+        upload = _step_named(self.build, "Upload installed artifacts")
+        self.assertEqual("${{ steps.project-artifacts.outputs.path }}", upload["with"]["path"])
+
+    def test_build_still_only_installs_and_uploads(self):
+        """build stays the critical-path minimum: mvn install -DskipTests and the
+        artifact upload, no tests and no extra Maven phases."""
+        mvn = [str(s.get("run", "")) for s in self.build["steps"] if "mvn " in str(s.get("run", ""))]
+        self.assertEqual(1, len(mvn), "build must run exactly one mvn invocation")
+        self.assertIn("mvn install -DskipTests", mvn[0])
+        self.assertNotIn("mvn test", mvn[0])
+
+
+class RunsOnExpressionEvaluatorTest(unittest.TestCase):
+    """The runs-on evaluator parses workflow text that the pull request controls
+    and the `python-tests` job runs from the checked-out head, so it must never
+    execute that text — only the fixed &&/||/==/!=/fromJSON grammar is allowed,
+    and anything else is rejected rather than run."""
+
+    def test_rejects_injected_python(self):
+        """A crafted runs-on value cannot reach an interpreter: attacker payloads
+        that would run under eval raise before any evaluation instead."""
+        for payload in (
+            "__import__('os').system('touch /tmp/pwned')",
+            "().__class__.__bases__[0].__subclasses__()",
+            "'x' if 1 else 'y'",
+            "[c for c in 'ab']",
+            "vars.BUILD_RUNS_ON.__class__",
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValueError):
+                    _evaluate_runs_on("${{ %s }}" % payload, "", "push", None, "almostrealism/common")
+
+    def test_rejects_unknown_context_and_function(self):
+        """Only the contexts build's runs-on reads and fromJSON are in scope."""
+        with self.assertRaises(ValueError):
+            _evaluate_runs_on("${{ secrets.GITHUB_TOKEN }}", "", "push", None, "almostrealism/common")
+        with self.assertRaises(ValueError):
+            _evaluate_runs_on("${{ toJSON(github.repository) }}", "", "push", None, "almostrealism/common")
+
+    def test_rejects_unbalanced_parentheses(self):
+        with self.assertRaises(ValueError):
+            _evaluate_runs_on("${{ (github.event_name == 'push' }}", "", "push", None, "almostrealism/common")
+
+    def test_short_circuits_fromjson_when_variable_unset(self):
+        """fromJSON('') would raise; the && chain must short-circuit before it when
+        BUILD_RUNS_ON is unset, just as the runner does."""
+        self.assertEqual("ubuntu-latest", _evaluate_runs_on(
+            _jobs()["build"]["runs-on"], "", "deployment", None, "almostrealism/common"))
+
+    def test_boolean_and_comparison_semantics(self):
+        """== / != yield booleans and || returns the first truthy operand."""
+        self.assertEqual("b", _evaluate_runs_on(
+            "${{ github.event_name == 'push' && 'a' || 'b' }}", "", "pull_request", None, "r"))
+        self.assertEqual("a", _evaluate_runs_on(
+            "${{ github.event_name != 'push' && 'a' || 'b' }}", "", "pull_request", None, "r"))
+
+
+def _evaluate_runs_on(expression, variable, event_name, head_repo, repository):
+    """Evaluate a GitHub Actions runs-on expression built from &&, ||, ==, !=,
+    parentheses, string literals, fromJSON and the contexts build's runs-on
+    reads. GitHub's && and || return an operand (the first falsy, or the last,
+    respectively), exactly as Python's `and`/`or` do, and an empty string and
+    null are falsy in both, so this yields the value the runner would receive.
+
+    The expression is tokenized and parsed into an AST that a whitelisted
+    evaluator walks; it is never handed to `eval`. The workflow file is part of
+    the pull request and the `python-tests` job runs this suite from the
+    checked-out head, so evaluating workflow text with `eval` — even with
+    `__builtins__` cleared, which object introspection can escape — would turn
+    attacker-controlled `runs-on` text into code execution in CI."""
+    text = " ".join(str(expression).split())
+    if text.startswith("${{") and text.endswith("}}"):
+        text = text[3:-2]
+    context = {
+        "vars.BUILD_RUNS_ON": variable,
+        "github.event.pull_request.head.repo.full_name": head_repo,
+        "github.event_name": event_name,
+        "github.repository": repository,
+    }
+    node, rest = _parse_or(_tokenize(text))
+    if rest:
+        raise ValueError("unexpected trailing tokens in runs-on expression: %r" % rest)
+    return _evaluate_node(node, context)
+
+
+_TOKEN_PATTERN = re.compile(r"""
+      \s+                       # whitespace (discarded)
+    | (?P<op>&&|\|\||==|!=)      # boolean and comparison operators
+    | (?P<punct>[(),])          # grouping and the argument separator
+    | '(?P<string>[^']*)'       # single-quoted string literal
+    | (?P<name>[A-Za-z_][A-Za-z0-9_.]*)  # context path or function name
+""", re.VERBOSE)
+
+
+def _tokenize(text):
+    """Split a runs-on expression into ('op'|'punct'|'string'|'name', value)
+    tokens, rejecting any character the grammar does not define."""
+    tokens = []
+    pos = 0
+    while pos < len(text):
+        match = _TOKEN_PATTERN.match(text, pos)
+        if not match or match.end() == pos:
+            raise ValueError("unexpected character in runs-on expression at %d: %r"
+                             % (pos, text[pos:pos + 10]))
+        pos = match.end()
+        kind = match.lastgroup
+        if kind is not None:
+            tokens.append((kind, match.group(kind)))
+    return tokens
+
+
+def _parse_or(tokens):
+    """|| has the lowest precedence and is left-associative."""
+    node, tokens = _parse_and(tokens)
+    while tokens and tokens[0] == ("op", "||"):
+        right, tokens = _parse_and(tokens[1:])
+        node = ("or", node, right)
+    return node, tokens
+
+
+def _parse_and(tokens):
+    """&& binds tighter than || and looser than comparison."""
+    node, tokens = _parse_comparison(tokens)
+    while tokens and tokens[0] == ("op", "&&"):
+        right, tokens = _parse_comparison(tokens[1:])
+        node = ("and", node, right)
+    return node, tokens
+
+
+def _parse_comparison(tokens):
+    """== and != compare two primaries and bind tightest."""
+    node, tokens = _parse_primary(tokens)
+    if tokens and tokens[0] in (("op", "=="), ("op", "!=")):
+        operator = tokens[0][1]
+        right, tokens = _parse_primary(tokens[1:])
+        node = ("eq" if operator == "==" else "ne", node, right)
+    return node, tokens
+
+
+def _parse_primary(tokens):
+    """A parenthesised expression, a string literal, a fromJSON call, or a
+    context path."""
+    if not tokens:
+        raise ValueError("unexpected end of runs-on expression")
+    kind, value = tokens[0]
+    if (kind, value) == ("punct", "("):
+        node, tokens = _parse_or(tokens[1:])
+        if not tokens or tokens[0] != ("punct", ")"):
+            raise ValueError("unbalanced parenthesis in runs-on expression")
+        return node, tokens[1:]
+    if kind == "string":
+        return ("str", value), tokens[1:]
+    if kind == "name":
+        if len(tokens) > 1 and tokens[1] == ("punct", "("):
+            if value != "fromJSON":
+                raise ValueError("unsupported function in runs-on expression: %r" % value)
+            argument, tokens = _parse_or(tokens[2:])
+            if not tokens or tokens[0] != ("punct", ")"):
+                raise ValueError("unbalanced call in runs-on expression")
+            return ("call", value, argument), tokens[1:]
+        return ("name", value), tokens[1:]
+    raise ValueError("unexpected token in runs-on expression: %r" % ((kind, value),))
+
+
+def _truthy(value):
+    """GitHub coerces operands of && and || to a boolean the way Python does for
+    the operands this grammar produces: '' and null are falsy, an empty list is
+    falsy, everything else is truthy."""
+    if isinstance(value, (str, list, dict)):
+        return len(value) > 0
+    return bool(value)
+
+
+def _evaluate_node(node, context):
+    """Walk the AST, short-circuiting && and || so fromJSON is only parsed when
+    reached — exactly as the runner evaluates the expression."""
+    kind = node[0]
+    if kind == "str":
+        return node[1]
+    if kind == "name":
+        if node[1] not in context:
+            raise ValueError("unknown context in runs-on expression: %r" % node[1])
+        return context[node[1]]
+    if kind == "call":
+        return json.loads(_evaluate_node(node[2], context))
+    if kind == "and":
+        left = _evaluate_node(node[1], context)
+        return _evaluate_node(node[2], context) if _truthy(left) else left
+    if kind == "or":
+        left = _evaluate_node(node[1], context)
+        return left if _truthy(left) else _evaluate_node(node[2], context)
+    if kind in ("eq", "ne"):
+        equal = _evaluate_node(node[1], context) == _evaluate_node(node[2], context)
+        return equal if kind == "eq" else not equal
+    raise ValueError("unknown node in runs-on expression: %r" % (node,))
+
+
+def _wrap(value):
+    """GitHub normalises a bare job/step `if` expression by wrapping it in
+    ${{ }}; yaml.safe_load gives it back as the raw string, so compare against
+    the wrapped form regardless of how it was written in the file."""
+    text = str(value).strip()
+    if text.startswith("${{") and text.endswith("}}"):
+        return text
+    return "${{ %s }}" % text
 
 
 if __name__ == "__main__":

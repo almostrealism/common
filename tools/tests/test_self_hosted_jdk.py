@@ -53,6 +53,14 @@ def _steps_using(job, action):
     return [s for s in job.get("steps", []) if str(s.get("uses", "")).startswith(action)]
 
 
+# `build` is the one dual-mode job: its runner is chosen by the BUILD_RUNS_ON
+# repository variable, so its runs-on is an opaque expression that _is_self_hosted
+# cannot classify, and it carries BOTH setup-java (hosted) and select-jdk
+# (self-hosted), each guarded by runner.environment. The hosted-only guards below
+# exempt it; BuildJobJdkSelectionTest pins its environment-keyed JDK wiring.
+_VARIABLE_RUNNER_JOBS = {"build"}
+
+
 class SelfHostedJdkTest(unittest.TestCase):
     def test_at_least_one_self_hosted_job_exists(self):
         """A smoke check so a refactor that renamed every lane cannot make the
@@ -111,6 +119,8 @@ class SelfHostedJdkTest(unittest.TestCase):
 
     def test_setup_java_only_appears_on_hosted_jobs(self):
         for name, job in _jobs().items():
+            if name in _VARIABLE_RUNNER_JOBS:
+                continue  # dual-mode: setup-java is guarded by runner.environment
             if _steps_using(job, "actions/setup-java"):
                 with self.subTest(job=name):
                     self.assertEqual(["ubuntu-latest"], _runs_on(job))
@@ -153,8 +163,8 @@ class SelfHostedJdkTest(unittest.TestCase):
         See test_hosted_maven_cache.py for the rest of that wiring."""
         seen = 0
         for name, job in _jobs().items():
-            if _is_self_hosted(job):
-                continue
+            if _is_self_hosted(job) or name in _VARIABLE_RUNNER_JOBS:
+                continue  # build is dual-mode; BuildJobJdkSelectionTest pins it
             runs_mvn = any(re.search(r"(^|\s)mvn\s", str(s.get("run", "")))
                            for s in job.get("steps", []))
             if not runs_mvn:
@@ -197,6 +207,39 @@ class SelfHostedJdkTest(unittest.TestCase):
                     self.assertNotRegex(str(step.get("name", "")), r"JDK\s+\d",
                                         f"{name} has a step name with a hard-coded "
                                         "JDK major; use ${{ env.EXPECTED_JDK_MAJOR }}")
+
+
+class BuildJobJdkSelectionTest(unittest.TestCase):
+    """`build` runs on a hosted OR a self-hosted runner (chosen by the
+    BUILD_RUNS_ON repository variable), so it keeps both JDK paths, each guarded
+    by runner.environment: setup-java on a GitHub-hosted runner, the shared
+    select-jdk action on a self-hosted one — exactly what the test lanes use.
+    This pins that both exist and are correctly guarded, since the all-jobs
+    guards above exempt build (its variable runs-on cannot be classified)."""
+
+    def _step(self, name):
+        for s in _jobs()["build"]["steps"]:
+            if s.get("name") == name:
+                return s
+        self.fail("build has no step named %r" % name)
+
+    def test_hosted_uses_setup_java_guarded_on_the_environment(self):
+        setup = self._step("Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}")
+        self.assertTrue(str(setup.get("uses", "")).startswith("actions/setup-java"))
+        self.assertIn("runner.environment == 'github-hosted'", str(setup.get("if", "")))
+        self.assertIn("env.EXPECTED_JDK_MAJOR", str(setup.get("with", {}).get("java-version", "")))
+
+    def test_self_hosted_uses_the_shared_select_jdk_action_guarded(self):
+        select = self._step("Select and verify JDK")
+        self.assertEqual(_SELECT_JDK_ACTION, str(select.get("uses", "")).rstrip("/"))
+        self.assertIn("runner.environment == 'self-hosted'", str(select.get("if", "")))
+        self.assertIn("env.EXPECTED_JDK_MAJOR",
+                      str(select.get("with", {}).get("expected-major", "")))
+
+    def test_build_does_not_inline_a_jdk_probe(self):
+        inline = [s for s in _jobs()["build"]["steps"]
+                  if "java -version" in str(s.get("run", ""))]
+        self.assertEqual([], inline, "build must not inline a JDK probe; use the shared action")
 
 
 def _action():

@@ -31,7 +31,13 @@ services:
       - GITHUB_OWNER=${GITHUB_OWNER:-almostrealism}
       - GITHUB_REPO=${GITHUB_REPO:-common}
       - RUNNER_PREFIX=${RUNNER_PREFIX:-ar-runner}
-      - RUNNER_LABELS=ar-ci
+      # The CPU test lane's label by default. Overridable so the same image can
+      # run a build-only runner alongside a test fleet on one host: a separate
+      # compose project with RUNNER_LABELS=ar-build (and its own RUNNER_PREFIX)
+      # takes the `build` job's ar-build label and nothing else, so builds never
+      # queue behind the tens-of-minutes test jobs. See "Running a build-only
+      # runner" in README.md.
+      - RUNNER_LABELS=${RUNNER_LABELS:-ar-ci}
     volumes:
       # Persistent, shared Maven dependency cache. Every replica on this host
       # mounts it and uses its own <runner> subdirectory (the select-maven-repo

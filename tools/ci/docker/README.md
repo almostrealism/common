@@ -51,6 +51,64 @@ docker compose down
 docker compose up -d --build --scale runner=5
 ```
 
+## Running a build-only runner (the `ar-build` label)
+
+The `build` job in `.github/workflows/analysis.yaml` can be moved off the
+GitHub-hosted runner onto a self-hosted one, chosen by the `BUILD_RUNS_ON`
+repository variable (see "The `BUILD_RUNS_ON` repository variable" in
+[`../../../.github/CLAUDE.md`](../../../.github/CLAUDE.md)). The runner it lands
+on should carry a single **`ar-build`** label — not `ar-ci` (the CPU test lane)
+and not `ar-ci-cuda` (the CUDA capability) — so build jobs never queue behind the
+tens-of-minutes test jobs. `build` produces only jars, so this runner needs no
+GPU, no sample library, and no particular architecture.
+
+This image is exactly that runner: the plain CPU fleet image with a different
+label and its own Maven cache. Run it as a **separate compose project** so it
+coexists with any test fleet on the same host (including the CUDA fleet on the
+DGX Spark — see [`../cuda/README.md`](../cuda/README.md)) without tearing down
+the other's containers or sharing its Maven cache volume:
+
+```bash
+cd tools/ci/docker
+cp .env.example .env        # set GITHUB_PAT; set RUNNER_SCOPE=org on a shared host
+
+# A distinct project name (-p), label, and RUNNER_PREFIX. The project name gives
+# this fleet its own Maven cache volume (ar-build_ar-maven-cache), isolated from
+# the test fleets'. No GPU reservation and no sample mount: this compose file has
+# neither, which is exactly right for build-only.
+RUNNER_LABELS=ar-build RUNNER_PREFIX=dgx-build \
+  docker compose -p ar-build up -d --build --scale runner=1
+```
+
+Then enable the variable **after the runner reports online** (Settings → Actions
+→ Variables, repository scope):
+
+```
+BUILD_RUNS_ON = ["self-hosted","linux","ar-build"]
+```
+
+Verify the runner registered with the right label:
+
+```bash
+gh api orgs/almostrealism/actions/runners \
+    --jq '.runners[] | select(.labels[].name == "ar-build") | {name, status}'
+```
+
+**Roll back** to the GitHub-hosted build with no commit: delete the
+`BUILD_RUNS_ON` variable. `build` returns to `ubuntu-latest` on the next run.
+Stop the build-only runner when it is no longer wanted:
+
+```bash
+cd tools/ci/docker
+RUNNER_LABELS=ar-build docker compose -p ar-build down
+```
+
+One `ar-build` runner is enough: it holds a single `build` at a time, and a
+validate run starts at most one `build` per push. The first job on a fresh
+runner resolves the dependency set from Maven Central into its
+`ar-build_ar-maven-cache` volume; later jobs reuse it (see "Maven dependency
+cache" below).
+
 ## How It Works
 
 Each runner container:

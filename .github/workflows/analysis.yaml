@@ -542,7 +542,29 @@ jobs:
   build:
     needs: changes
     if: needs.changes.outputs.code_changed == 'true'
-    runs-on: ubuntu-latest
+    # The runner is chosen by the BUILD_RUNS_ON repository variable: a JSON label
+    # list (e.g. ["self-hosted","linux","ar-build"]) parsed with fromJSON, falling
+    # back to GitHub-hosted ubuntu-latest when the variable is unset — today's
+    # behaviour. Using a variable, not a hard-coded self-hosted runs-on, is
+    # deliberate: build sits on the critical path of every job that compiles,
+    # tests or analyses the project, so a self-hosted build runner going offline
+    # would queue build forever and block every pull request. The variable lets
+    # the owner move build onto a self-hosted runner — and switch straight back —
+    # with no commit. See "The BUILD_RUNS_ON repository variable" in
+    # .github/CLAUDE.md.
+    #
+    # A pull request from a fork always builds on ubuntu-latest, whatever the
+    # variable says. build checks out and runs the pull request's head, and a
+    # self-hosted runner holds the runner-registration token and a persistent
+    # Maven repository later jobs read; a fork's code must never reach either.
+    # Every other self-hosted lane is already out of a fork's reach (test runs
+    # start only from the owner's deployment event), so build is the one place
+    # that needs the guard.
+    runs-on: >-
+      ${{ vars.BUILD_RUNS_ON &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository) &&
+          fromJSON(vars.BUILD_RUNS_ON) || 'ubuntu-latest' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -550,38 +572,72 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
+      # JDK, keyed on the runner's environment. A GitHub-hosted runner downloads
+      # the JDK with actions/setup-java (its tool cache makes that fast); a
+      # self-hosted runner already ships the JDK and selects it with the shared
+      # select-jdk action exactly as the self-hosted test lanes do (no download).
       - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
+        if: runner.environment == 'github-hosted'
         uses: actions/setup-java@v5
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
 
-      # Restore the deliberately-built Maven repository the `maven-cache` job
+      - name: Select and verify JDK
+        if: runner.environment == 'self-hosted'
+        uses: ./.github/actions/select-jdk
+        with:
+          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
+
+      # Maven repository, keyed on the runner's environment. A GitHub-hosted
+      # runner restores the deliberately-built repository the `maven-cache` job
       # produces, rather than setup-java's `cache: maven` (which saved a partial
       # repository on a miss from whichever hosted job finished first — one that
       # did not need jacoco — so jacoco was re-downloaded from Central every run).
+      # A self-hosted runner has no such GitHub-backed cache; it prefers its
+      # host's persistent shared cache and otherwise isolates per runner (the
+      # shared select-maven-repo action, which exports MAVEN_REPO).
       - name: Restore Maven dependencies
+        if: runner.environment == 'github-hosted'
         uses: ./.github/actions/restore-maven-cache
         with:
           cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
+      - name: Select Maven repository
+        if: runner.environment == 'self-hosted'
+        uses: ./.github/actions/select-maven-repo
+
       # Every job that needs the project's artifacts restores them from this
       # job rather than running its own `mvn install` (see "Sharing the build"
-      # in .github/CLAUDE.md). The Maven cache restored above may carry
-      # artifacts installed by an earlier commit; clearing them first means the
-      # upload holds this commit's artifacts and nothing else.
+      # in .github/CLAUDE.md). The repository Maven uses may carry artifacts
+      # installed by an earlier commit — the restored hosted cache, or a
+      # self-hosted runner's persistent per-runner repository — so clear them
+      # first; the upload then holds this commit's artifacts and nothing else.
+      # The target is the repository Maven actually reads: MAVEN_REPO where the
+      # self-hosted step set it (a per-runner subdirectory, never the shared
+      # root, so another runner's repository is never touched), otherwise
+      # ~/.m2/repository. Resolved once, by the shell, where both are plain env
+      # vars, and published as the step's `path` output for the upload below —
+      # the same rule the restore steps follow: an action input never relies on
+      # an expression reading a value an earlier step wrote to GITHUB_ENV.
       - name: Clear previously installed project artifacts
-        run: rm -rf ~/.m2/repository/org/almostrealism
+        id: project-artifacts
+        run: |
+          path="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          rm -rf "${path}"
+          echo "path=${path}" >> "${GITHUB_OUTPUT}"
 
       - name: Build
         run: mvn install -DskipTests -Dcheckstyle.skip=true
 
+      # From the same repository Maven installed into: the path the clear step
+      # resolved, so the upload can never disagree with what Maven read.
       - name: Upload installed artifacts
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
           name: maven-installed-artifacts
-          path: ~/.m2/repository/org/almostrealism
+          path: ${{ steps.project-artifacts.outputs.path }}
           # Long enough for the flaky-test retries and a manual re-run.
           retention-days: 3
           if-no-files-found: error
