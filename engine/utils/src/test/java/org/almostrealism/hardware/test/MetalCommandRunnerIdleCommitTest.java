@@ -31,6 +31,7 @@ import org.junit.Test;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertNull;
 
 /**
  * Validates when {@link MetalCommandRunner} commits its open command buffer before it is full:
@@ -348,6 +349,8 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 
 		buffer.release();
 		assertTrue("A released buffer must be reported finished", buffer.isFinished());
+		assertFalse("A buffer released after completing must not report an error", buffer.isError());
+		assertNull("A buffer released after completing has no error description", buffer.getError());
 	}
 
 	/**

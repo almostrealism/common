@@ -42,6 +42,12 @@ package org.almostrealism.hardware.metal;
  * @see MTLComputeCommandEncoder
  */
 public class MTLCommandBuffer extends MTLObject {
+	/** Whether the buffer had the error status when it was released. */
+	private boolean releasedWithError;
+
+	/** The buffer's error description captured when it was released, or {@code null}. */
+	private String releasedError;
+
 	/**
 	 * Creates a command buffer wrapper for a native pointer.
 	 *
@@ -110,11 +116,16 @@ public class MTLCommandBuffer extends MTLObject {
 	 * {@link MTL#commandBuffer(long)}). Call once the buffer is no longer referenced, so it is freed
 	 * rather than accumulating in the driver: after it has completed, or once it has been committed
 	 * and its work is known to have finished, since Metal keeps a committed buffer until it
-	 * completes. Mutually excluded with {@link #isFinished()}.
+	 * completes. Mutually excluded with {@link #isFinished()}, {@link #isError()} and
+	 * {@link #getError()}; the buffer's terminal error state is captured first, so those queries
+	 * keep answering after the native buffer is gone.
 	 */
 	@Override
 	public synchronized void release() {
-		MTL.releaseCommandBuffer(getNativePointer());
+		long pointer = getNativePointer();
+		releasedWithError = MTL.commandBufferStatus(pointer) == 5;
+		releasedError = releasedWithError ? MTL.commandBufferError(pointer) : null;
+		MTL.releaseCommandBuffer(pointer);
 		super.release();
 	}
 
@@ -134,10 +145,13 @@ public class MTLCommandBuffer extends MTLObject {
 	 * Returns true when this buffer finished with the error status, meaning some or all
 	 * of its dispatches never executed (for example after a GPU fault or watchdog kill).
 	 *
+	 * <p>Mutually excluded with {@link #release()}; a released buffer reports the status it had
+	 * when it was released.</p>
+	 *
 	 * @return true when the buffer's status is error
 	 */
-	public boolean isError() {
-		// TODO(review): isError/getError are not excluded with release(); decide whether off-executor callers need the same guard as isFinished
+	public synchronized boolean isError() {
+		if (isReleased()) return releasedWithError;
 		return MTL.commandBufferStatus(getNativePointer()) == 5;
 	}
 
@@ -160,9 +174,13 @@ public class MTLCommandBuffer extends MTLObject {
 	/**
 	 * Returns the localized error description when {@link #isError()} is true.
 	 *
+	 * <p>Mutually excluded with {@link #release()}; a released buffer reports the error
+	 * description captured when it was released.</p>
+	 *
 	 * @return the error description, or {@code null} when there is no error
 	 */
-	public String getError() {
+	public synchronized String getError() {
+		if (isReleased()) return releasedError;
 		return MTL.commandBufferError(getNativePointer());
 	}
 
