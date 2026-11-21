@@ -672,12 +672,22 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * {@inheritDoc}
 	 *
 	 * <p>Returns a stream of the distinct values in one cycle of the sequence
-	 * (up to the modulus). If the offset is non-zero, falls back to the default
-	 * implementation.</p>
+	 * (up to the modulus). A progression whose values wrap around the {@code long}
+	 * range streams each of its {@link #distinctCount()} values once, one per step
+	 * within a period, so that operations built on the values ({@link #min()},
+	 * {@link #max()}, {@link #union(IndexSequence)}, {@link #containsAll(IndexSequence)})
+	 * are bounded by the number of distinct values rather than by the length. Otherwise,
+	 * if the offset is non-zero, falls back to the default implementation.</p>
 	 */
 	@Override
 	public Stream<Number> values() {
-		if (offset != 0 || len == 0) return IndexSequence.super.values();
+		if (len == 0) return IndexSequence.super.values();
+
+		if (wraps()) {
+			return LongStream.range(0, distinctCount()).mapToObj(step -> offset + scale * step);
+		}
+
+		if (offset != 0) return IndexSequence.super.values();
 
 		return LongStream.range(0, mod).mapToObj(this::valueAt);
 	}

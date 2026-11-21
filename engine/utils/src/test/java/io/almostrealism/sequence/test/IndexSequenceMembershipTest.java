@@ -24,6 +24,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
@@ -340,6 +341,63 @@ public class IndexSequenceMembershipTest extends TestSuiteBase {
 				new Number[] { 5L, 5 + Long.MIN_VALUE })));
 		Assert.assertFalse(periodic.containsAll(ArrayIndexSequence.of(Long.class,
 				new Number[] { 5L, 7L })));
+	}
+
+	/**
+	 * A wrapping progression of enormous length with only four distinct values streams
+	 * those four values once each, so its bounds, distinct values and unions with other
+	 * sequences are found without enumerating its positions.
+	 */
+	@Test(timeout = 30000)
+	public void periodicWrappingProgressionValuesAreBounded() {
+		ArithmeticIndexSequence periodic = new ArithmeticIndexSequence(
+				5, 1L << 62, 1, Long.MAX_VALUE, Long.MAX_VALUE);
+		long[] expected = { 5 + Long.MIN_VALUE, 5 - (1L << 62), 5, 5 + (1L << 62) };
+
+		Assert.assertArrayEquals(expected, periodic.longValues().sorted().toArray());
+		Assert.assertEquals(4, periodic.distinct().length);
+		Assert.assertEquals(5 + Long.MIN_VALUE, periodic.min());
+		Assert.assertEquals(5 + (1L << 62), periodic.max());
+
+		IndexSequence union = periodic.union(ArrayIndexSequence.of(Long.class, new Number[] { 7L, 5L }));
+		Assert.assertArrayEquals(new long[] { 5 + Long.MIN_VALUE, 5 - (1L << 62), 5, 7, 5 + (1L << 62) },
+				union.longValues().toArray());
+
+		IndexSequence reversed = ArrayIndexSequence.of(Long.class, new Number[] { 7L, 5L }).union(periodic);
+		Assert.assertArrayEquals(union.longValues().toArray(), reversed.longValues().toArray());
+
+		Assert.assertTrue(ArrayIndexSequence.of(Long.class, new Number[] { 5L, 5 + Long.MIN_VALUE,
+				5 - (1L << 62), 5 + (1L << 62), 9L }).containsAll(periodic));
+		Assert.assertFalse(ArithmeticIndexSequence.range(10).containsAll(periodic));
+	}
+
+	/**
+	 * Wrapping progressions of several scales and granularities stream each distinct
+	 * value once, and those values are exactly the ones taken at their positions.
+	 */
+	@Test(timeout = 30000)
+	public void wrappingValuesMatchPositions() {
+		long[] scales = { 1L << 62, 3L << 61, Long.MAX_VALUE, -(1L << 62) };
+		int checked = 0;
+
+		for (long scale : scales) {
+			for (long granularity = 1; granularity <= 3; granularity++) {
+				for (long len = 2; len <= 12; len++) {
+					ArithmeticIndexSequence seq = new ArithmeticIndexSequence(
+							Long.MAX_VALUE - 1, scale, granularity, len, len);
+					if (!wrapsAt(Long.MAX_VALUE - 1, scale, (len - 1) / granularity)) continue;
+					checked++;
+
+					Set<Long> positions = positionValues(seq);
+					long[] streamed = seq.longValues().toArray();
+					Assert.assertEquals(seq.toString(), positions.size(), streamed.length);
+					Assert.assertEquals(seq.toString(), positions,
+							Arrays.stream(streamed).boxed().collect(Collectors.toSet()));
+				}
+			}
+		}
+
+		Assert.assertTrue(checked > 40);
 	}
 
 	/**
