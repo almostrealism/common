@@ -158,6 +158,13 @@ jobs:
           # checkout. Point rebuild.sh at the host's copy, which lives beside
           # the other deploy secrets.
           FLOWTREE_AGENT_ENV: ${{ vars.FLOWTREE_AGENT_ENV }}
+          # The controller stack's operator settings (AR_CONSULTANT_BACKEND and
+          # the rest) live in a file outside the checkout, beside the deploy
+          # secrets, so a checkout clean does not erase them the way it erases
+          # the gitignored compose .env. rebuild.sh carries that file into the
+          # compose .env. The repository variable overrides the location;
+          # unset, rebuild.sh defaults to ${SECRETS_DIR}/controller.env.
+          FLOWTREE_CONTROLLER_ENV: ${{ vars.FLOWTREE_CONTROLLER_ENV }}
         run: |
           if [ -z "${FLOWTREE_AGENT_ENV}" ] \
              && [ -f /Users/Shared/flowtree/secrets/agent.env ]; then
@@ -199,6 +206,51 @@ jobs:
             echo "::error::Running ar-manager has no usable documentation corpus ($COUNT files)."
             exit 1
           fi
+
+      - name: Report effective operator settings
+        # Surface the non-secret operator settings the running services actually
+        # came up with, so a deploy that reset one to its compose default — the
+        # AR_CONSULTANT_BACKEND reset this guards against — is visible on the
+        # deploy that caused it. Names and non-secret values only: a setting
+        # whose name looks like a credential is redacted (none is listed here),
+        # the whole-container environment is never dumped, and only the named
+        # settings are read, so no secret file content can reach the summary.
+        env:
+          COMPOSE_FILE: flowtree/runtime/controller/docker-compose.yml
+        run: |
+          is_secret_name() {
+            case "$1" in
+              *KEY*|*TOKEN*|*SECRET*|*PASSWORD*|*PASSWD*|*CREDENTIAL*) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+          {
+            echo "### Effective controller operator settings"
+            echo ""
+            echo "| Service | Setting | Value |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          report() {
+            local service="$1" name="$2" value
+            if is_secret_name "$name"; then
+              value='`<redacted>`'
+            else
+              value="$(docker compose -f "$COMPOSE_FILE" exec -T "$service" printenv "$name" 2>/dev/null || true)"
+              if [ -n "$value" ]; then
+                value="\`${value}\`"
+              else
+                value='_unset → compose default_'
+              fi
+            fi
+            echo "| $service | $name | $value |" >> "$GITHUB_STEP_SUMMARY"
+          }
+          report ar-manager AR_CONSULTANT_BACKEND
+          report ar-manager AR_CONSULTANT_LLAMACPP_URL
+          report ar-manager AR_CONSULTANT_OPENROUTER_MODEL
+          report ar-manager AR_CONSULTANT_OPENROUTER_REASONING
+          report ar-manager AR_CONSULTANT_OPENROUTER_DATA_COLLECTION
+          report ar-manager AR_CONSULTANT_OPENROUTER_URL
+          report flowtree-controller AR_MANAGER_URL
 
       - name: Verify the agent pool was replaced
         if: env.DEPLOY_AGENTS == 'true'

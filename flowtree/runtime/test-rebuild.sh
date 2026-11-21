@@ -89,12 +89,16 @@ trap cleanup EXIT
 # run_case NAME EXPECT_EXIT MUST_CONTAIN MUST_NOT_CONTAIN -- SERVICES... -- ENV=VAL...
 #
 # Runs rebuild.sh with fresh temp SECRETS_DIR/FLEET_DB_DATA_DIR/
-# FLEET_GRAFANA_DATA_DIR and a fresh FLEET_COMPOSE_ENV_FILE (optionally
-# seeded beforehand via the SEED_DB_FILE / SEED_SECRETS_FILE globals a caller
-# sets before invoking), the given service-name arguments, and the given
+# FLEET_GRAFANA_DATA_DIR, a fresh FLEET_COMPOSE_ENV_FILE and a fresh
+# FLOWTREE_CONTROLLER_ENV (operator settings file, created with the contents of
+# the SEED_CONTROLLER_ENV global when a caller sets it and otherwise absent),
+# optionally seeding the data/secret files via the SEED_DB_FILE /
+# SEED_SECRETS_FILE globals, the given service-name arguments, and the given
 # extra environment variables. Every path the script writes is a temp path:
 # a case must neither see what an earlier case persisted nor leave anything
-# in the checkout it runs from.
+# in the checkout it runs from. After the run the compose env file's contents
+# are captured in the LAST_COMPOSE_ENV global so a check can assert what
+# rebuild.sh carried into it.
 run_case() {
   local name="$1" expect_exit="$2" must_contain="$3" must_not_contain="$4"
   shift 4
@@ -105,11 +109,15 @@ run_case() {
   done
   shift
 
-  local tmp_secrets tmp_db tmp_grafana tmp_compose_env out actual_exit
+  local tmp_secrets tmp_db tmp_grafana tmp_compose_env tmp_controller_dir out actual_exit
   tmp_secrets="$(mktemp -d)"
   tmp_db="$(mktemp -d)"
   tmp_grafana="$(mktemp -d)"
   tmp_compose_env="$(mktemp -d)/.env"
+  # The operator settings file lives in its own temp dir and is created only
+  # when the case seeds it, so an unseeded case exercises the file-absent path.
+  tmp_controller_dir="$(mktemp -d)"
+  local tmp_controller_env="$tmp_controller_dir/controller.env"
   out="$(mktemp)"
   : > "$MOCK_DOCKER_LOG"
 
@@ -124,16 +132,26 @@ run_case() {
     : > "$tmp_secrets/${SEED_EMPTY_SECRETS_FILE}"
     chmod 600 "$tmp_secrets/${SEED_EMPTY_SECRETS_FILE}"
   fi
+  if [ -n "${SEED_CONTROLLER_ENV:-}" ]; then
+    printf '%s\n' "${SEED_CONTROLLER_ENV}" > "$tmp_controller_env"
+  fi
 
   env -i PATH="$MOCK_BIN:$PATH" HOME="${HOME:-/tmp}" \
       SECRETS_DIR="$tmp_secrets" \
       FLEET_DB_DATA_DIR="$tmp_db" \
       FLEET_GRAFANA_DATA_DIR="$tmp_grafana" \
       FLEET_COMPOSE_ENV_FILE="$tmp_compose_env" \
+      FLOWTREE_CONTROLLER_ENV="$tmp_controller_env" \
       MOCK_DOCKER_LOG="$MOCK_DOCKER_LOG" \
       "$@" \
       bash "$SCRIPT" ${services[@]+"${services[@]}"} >"$out" 2>&1
   actual_exit=$?
+
+  if [ -f "$tmp_compose_env" ]; then
+    LAST_COMPOSE_ENV="$(cat "$tmp_compose_env")"
+  else
+    LAST_COMPOSE_ENV=""
+  fi
 
   local ok=true
   if [ "$actual_exit" != "$expect_exit" ]; then
@@ -157,8 +175,9 @@ run_case() {
     sed 's/^/    /' "$out"
   fi
 
-  rm -rf "$tmp_secrets" "$tmp_db" "$tmp_grafana" "$(dirname "$tmp_compose_env")" "$out"
-  unset SEED_DB_FILE SEED_SECRETS_FILE SEED_EMPTY_SECRETS_FILE
+  rm -rf "$tmp_secrets" "$tmp_db" "$tmp_grafana" "$(dirname "$tmp_compose_env")" \
+    "$tmp_controller_dir" "$out"
+  unset SEED_DB_FILE SEED_SECRETS_FILE SEED_EMPTY_SECRETS_FILE SEED_CONTROLLER_ENV
 }
 
 echo "rebuild.sh fleet-setup tests"
@@ -397,6 +416,83 @@ run_case "a failed agent build leaves the controller stack running" 1 \
     "${AGENT_ENV_ARGS[@]}" TRANSCRIPT_DIR_HOST="$(mktemp -d)" \
     MOCK_DOCKER_FAIL_ON="agent/docker-compose.yml build"
 check_docker_log "no container is replaced when an agent image fails to build" absent "${SWAP_UP}"
+
+# ── Operator settings carried from a file outside the checkout ───────
+#
+# The compose project's env file is gitignored and a deploy's checkout clean
+# deletes it, so operator settings kept only there reset to their compose
+# defaults on every deploy. rebuild.sh instead carries them from the operator
+# settings file (FLOWTREE_CONTROLLER_ENV), which lives outside the checkout, into
+# the compose env file. These cases assert the file is honoured when present,
+# ignored when absent, and that an operator value wins over the computed one.
+
+# check_compose_env NAME CONDITION...: records pass/fail for NAME by whether
+# CONDITION (run against the LAST_COMPOSE_ENV captured by the most recent case)
+# succeeds.
+check_compose_env() {
+  local name="$1"
+  shift
+  if "$@"; then
+    PASS=$((PASS + 1))
+    echo "  PASS: $name"
+  else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("$name")
+    echo "  FAIL: $name"
+    echo "    --- compose env file ---"
+    printf '%s\n' "$LAST_COMPOSE_ENV" | sed 's/^/    /'
+  fi
+}
+
+compose_env_has()   { printf '%s\n' "$LAST_COMPOSE_ENV" | grep -qF -- "$1"; }
+compose_env_lacks() { ! printf '%s\n' "$LAST_COMPOSE_ENV" | grep -qF -- "$1"; }
+# The computed FLEET_BIND_ADDR must appear exactly once — write_compose_env
+# strips the operator file's own FLEET_BIND_ADDR before appending the resolved
+# one, so an operator who also set it in the file gets no duplicate.
+fleet_addr_once() {
+  [ "$(printf '%s\n' "$LAST_COMPOSE_ENV" | grep -c '^FLEET_BIND_ADDR=')" -eq 1 ]
+}
+
+echo ""
+echo "rebuild.sh operator settings tests"
+
+SEED_CONTROLLER_ENV="AR_CONSULTANT_BACKEND=openrouter"
+run_case "an operator settings file is carried into the compose env on a full deploy" 0 \
+    "" "" \
+    -- \
+    FLEET_BIND_ADDR=100.64.1.2
+check_compose_env "the operator's AR_CONSULTANT_BACKEND reaches the compose env" \
+    compose_env_has "AR_CONSULTANT_BACKEND=openrouter"
+check_compose_env "the computed FLEET_BIND_ADDR is still written alongside it" \
+    compose_env_has "FLEET_BIND_ADDR=100.64.1.2"
+
+run_case "with no operator settings file the compose env holds only the computed value" 0 \
+    "" "" \
+    -- \
+    FLEET_BIND_ADDR=100.64.1.2
+check_compose_env "an absent settings file leaves no operator value behind" \
+    compose_env_lacks "AR_CONSULTANT_BACKEND="
+check_compose_env "an absent settings file still persists the computed FLEET_BIND_ADDR" \
+    compose_env_has "FLEET_BIND_ADDR=100.64.1.2"
+
+SEED_CONTROLLER_ENV="FLEET_BIND_ADDR=100.64.9.9"
+run_case "an operator FLEET_BIND_ADDR in the settings file wins over detection" 0 \
+    "Fleet services will bind to 100.64.9.9" "" \
+    fleet-db --
+check_compose_env "the operator's FLEET_BIND_ADDR is the one written to the compose env" \
+    compose_env_has "FLEET_BIND_ADDR=100.64.9.9"
+check_compose_env "the operator's FLEET_BIND_ADDR is not duplicated in the compose env" \
+    fleet_addr_once
+
+SEED_CONTROLLER_ENV="FLEET_BIND_ADDR=100.64.9.9"
+run_case "an exported FLEET_BIND_ADDR wins over the settings file" 0 \
+    "Fleet services will bind to 100.64.1.2" "" \
+    fleet-db -- \
+    FLEET_BIND_ADDR=100.64.1.2
+check_compose_env "the exported FLEET_BIND_ADDR is the one written to the compose env" \
+    compose_env_has "FLEET_BIND_ADDR=100.64.1.2"
+check_compose_env "the settings-file FLEET_BIND_ADDR it overrode is not written" \
+    compose_env_lacks "FLEET_BIND_ADDR=100.64.9.9"
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
