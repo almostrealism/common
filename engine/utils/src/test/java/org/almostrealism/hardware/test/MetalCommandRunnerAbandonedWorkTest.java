@@ -345,17 +345,12 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 					blocking.await(RELEASE_TIMEOUT_SECONDS, TimeUnit.SECONDS));
 
 			Thread.currentThread().interrupt();
-			HardwareException interrupted = null;
 			try {
-				waited.waitFor();
-			} catch (HardwareException e) {
-				interrupted = e;
+				assertWaitThrows("An interrupted wait for pending work must throw", waited);
 			} finally {
 				Assert.assertTrue("The wait must end with the interrupt still set", Thread.interrupted());
 				gate.countDown();
 			}
-
-			Assert.assertNotNull("An interrupted wait for pending work must throw", interrupted);
 
 			Assert.assertTrue("The buffer of an interrupted wait must still be released",
 					released.await(RELEASE_TIMEOUT_SECONDS, TimeUnit.SECONDS));
@@ -369,6 +364,23 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 			SubmissionStream.quietCommitMicros = quiet;
 			MetalCommandRunner.enableHostSignaledBridges = bridges;
 		}
+	}
+
+	/**
+	 * Fails unless waiting for {@code waited} throws a {@link HardwareException}, the way a wait
+	 * that an interrupt ends before the work is known to be done must report it.
+	 *
+	 * @param message the failure message if the wait returns normally
+	 * @param waited  the completion to wait for
+	 */
+	private static void assertWaitThrows(String message, MetalSemaphore waited) {
+		try {
+			waited.waitFor();
+		} catch (HardwareException expected) {
+			return;
+		}
+
+		Assert.fail(message);
 	}
 
 	/**

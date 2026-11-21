@@ -133,7 +133,6 @@ public class MetalSemaphore extends StreamSemaphore<MetalCommandRunner> {
 	 * @throws org.almostrealism.hardware.HardwareException if the dispatch, or one recorded as
 	 *         failed before it on the same runner, did not execute
 	 */
-	// TODO(review): DeferredSemaphore's default waitForUninterruptibly rethrows waitFor's interrupt exception
 	@Override
 	public void waitForUninterruptibly() {
 		getStream().complete(this, false);
