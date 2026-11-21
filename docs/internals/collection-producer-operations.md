@@ -110,9 +110,14 @@ data.magnitude(0)     // L2 norm along axis 0
 data.subtractMean()   // subtract the global mean from every element
 data.subtractMean(0)  // subtract the axis-0 mean
 
-// Index of maximum
-data.indexOfMax()     // index of the largest element
+// Index of extremum
+data.indexOfMax()     // index of the largest element (instance method)
+indexOfMin(cp(data))  // index of the smallest element (AggregationFeatures)
 ```
+
+`indexOfMax()` is available as a `CollectionProducer` instance method; `indexOfMin` is
+exposed only as the `AggregationFeatures.indexOfMin(Producer)` feature method. Both find the
+index within each group along the traversal axis, and ties resolve to the first occurrence.
 
 ## Shape Operations
 
