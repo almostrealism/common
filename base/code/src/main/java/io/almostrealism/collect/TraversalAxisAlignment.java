@@ -136,7 +136,7 @@ public abstract class TraversalAxisAlignment<V> {
 		for (TraversalPolicy shape : shapes) {
 			if (!shape.broadcastsInto(target)) {
 				throw new IllegalArgumentException("Cannot combine shapes " + shapes +
-						" element-wise: " + shape + " is not broadcast compatible with " + target +
+						" element-wise: " + shape + " is not broadcast-compatible with " + target +
 						" (axes must be equal or 1 from the trailing end)");
 			}
 		}

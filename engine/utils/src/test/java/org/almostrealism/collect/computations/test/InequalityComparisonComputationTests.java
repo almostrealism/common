@@ -333,12 +333,28 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 		Producer<PackedCollection> trueBranch = v(shape(-1, 6), 1);
 		Producer<PackedCollection> falseBranch = v(shape(-1, 6), 2);
 
+		PackedCollection condition = pack(1.0, -1.0).reshape(1, 2).traverse(1);
+		PackedCollection trueValues =
+				pack(10, 11, 12, 13, 14, 15).reshape(1, 6).traverse(1);
+		PackedCollection falseValues =
+				pack(20, 21, 22, 23, 24, 25).reshape(1, 6).traverse(1);
+		PackedCollection result = new PackedCollection(1, 6);
+
 		try {
-			greaterThan(cond, c(0.0), trueBranch, falseBranch);
+			greaterThan(cond, c(0.0), trueBranch, falseBranch).get().into(result.each())
+					.evaluate(condition, trueValues, falseValues);
 			Assert.fail("A sub-item condition operand wider than a per-row scalar should be rejected");
-		} catch (IllegalArgumentException expected) {
-			Assert.assertTrue("Expected a broadcast-compatibility rejection naming the shapes",
-					expected.getMessage().contains("broadcast compatible"));
+		} catch (RuntimeException expected) {
+			// The fail-loud rejection surfaces as an IllegalArgumentException, wrapped in the
+			// HardwareException raised when the kernel fails to compile.
+			Throwable cause = expected;
+			while (cause != null && !(cause instanceof IllegalArgumentException)) {
+				cause = cause.getCause();
+			}
+			Assert.assertNotNull(
+					"Expected an IllegalArgumentException for the non-scalar narrower operand",
+					cause);
+			Assert.assertTrue(cause.getMessage().contains("broadcast-compatible"));
 		}
 	}
 
@@ -355,12 +371,26 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 		Producer<PackedCollection> trueBranch = v(shape(-1, 3), 1);
 		Producer<PackedCollection> falseBranch = v(shape(-1, 3), 2);
 
+		PackedCollection condition = pack(1.0, -1.0).reshape(1, 2).traverse(1);
+		PackedCollection trueValues = pack(10, 11, 12).reshape(1, 3).traverse(1);
+		PackedCollection falseValues = pack(20, 21, 22).reshape(1, 3).traverse(1);
+		PackedCollection result = new PackedCollection(1, 3);
+
 		try {
-			greaterThan(cond, c(0.0), trueBranch, falseBranch);
+			greaterThan(cond, c(0.0), trueBranch, falseBranch).get().into(result.each())
+					.evaluate(condition, trueValues, falseValues);
 			Assert.fail("A condition operand width that does not divide the output item should be rejected");
-		} catch (IllegalArgumentException expected) {
-			Assert.assertTrue("Expected a broadcast-compatibility rejection naming the shapes",
-					expected.getMessage().contains("broadcast compatible"));
+		} catch (RuntimeException expected) {
+			// The fail-loud rejection surfaces as an IllegalArgumentException, wrapped in the
+			// HardwareException raised when the kernel fails to compile.
+			Throwable cause = expected;
+			while (cause != null && !(cause instanceof IllegalArgumentException)) {
+				cause = cause.getCause();
+			}
+			Assert.assertNotNull(
+					"Expected an IllegalArgumentException for the broadcast-incompatible operand width",
+					cause);
+			Assert.assertTrue(cause.getMessage().contains("broadcast-compatible"));
 		}
 	}
 }
