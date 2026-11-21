@@ -10,6 +10,21 @@ SECRETS_DIR="${SECRETS_DIR:-/Users/Shared/flowtree/secrets}"
 # working tree, conventionally under ${SECRETS_DIR}.
 AGENT_ENV="${FLOWTREE_AGENT_ENV:-flowtree/runtime/agent/.env}"
 
+# The controller stack's operator settings file. The compose project's own
+# env file (COMPOSE_ENV_FILE below) is gitignored, and a deploy runs from a
+# fresh checkout whose `actions/checkout` clean step (git clean -ffdx) deletes
+# ignored files — so any operator setting left only in that file is erased by
+# every deploy, which is how AR_CONSULTANT_BACKEND silently reset to its
+# compose default. This file lives OUTSIDE the working tree (beside the deploy
+# secrets by default) so a checkout clean never touches it, and the operator
+# edits it without a commit. Every non-FLEET_BIND_ADDR line it holds is carried
+# into COMPOSE_ENV_FILE on each rebuild (see write_compose_env), which is what
+# compose actually interpolates. One file for every operator setting, rather
+# than a repository variable per setting: it mirrors the agent pool's env file,
+# needs no CI change when a new setting is added, and can hold a value a
+# repository variable should not. Overridable like AGENT_ENV.
+CONTROLLER_ENV="${FLOWTREE_CONTROLLER_ENV:-${SECRETS_DIR}/controller.env}"
+
 # ── Usage ──────────────────────────────────────────────────────────
 usage() {
   cat <<'EOF'
@@ -49,6 +64,17 @@ project, and a replacement that does not become healthy is rolled back to
 the images that were running before.
 
 Environment variables consulted on every run:
+  FLOWTREE_CONTROLLER_ENV
+                         path to the controller stack's operator settings file
+                         (default: ${SECRETS_DIR}/controller.env). It lives
+                         outside the working tree so a deploy's checkout clean
+                         never deletes it. Every setting in it (for example
+                         AR_CONSULTANT_BACKEND=openrouter) is carried into the
+                         compose project's env file, which compose interpolates.
+                         Precedence for a value this script also computes
+                         (FLEET_BIND_ADDR): an exported environment variable
+                         wins, then this file, then the computed default — so a
+                         value the operator sets always wins over the default.
   DEPLOY_WAIT_TIMEOUT    seconds the preflight, the swap and a rollback each
                          wait for services to become healthy (default: 6000)
   PREFLIGHT_TMP_ROOT     directory for the preflight's throwaway state
@@ -186,16 +212,106 @@ FLEET_GRAFANA_DATA_DIR="${FLEET_GRAFANA_DATA_DIR:-/Users/Shared/flowtree/grafana
 # its value to the next run — and leave it behind for the next deploy.
 COMPOSE_ENV_FILE="${FLEET_COMPOSE_ENV_FILE:-flowtree/runtime/controller/.env}"
 
-persist_fleet_bind_addr() {
-  local tmp="${COMPOSE_ENV_FILE}.tmp"
-  { [ -f "${COMPOSE_ENV_FILE}" ] && grep -v '^FLEET_BIND_ADDR=' "${COMPOSE_ENV_FILE}"; \
-    echo "FLEET_BIND_ADDR=$1"; } > "${tmp}" || true
+# write_compose_env ADDR: rewrite the compose project's env file from the
+# operator settings file (CONTROLLER_ENV) plus the computed FLEET_BIND_ADDR.
+# The compose env file is fully derived — it is NOT where operator settings are
+# kept, because a deploy deletes it; CONTROLLER_ENV is. Every line of
+# CONTROLLER_ENV except its own FLEET_BIND_ADDR is carried through verbatim, and
+# FLEET_BIND_ADDR is appended from ADDR (which already reflects an operator
+# override, see the detection below), so the operator's address wins and is
+# never duplicated.
+#
+# The operator file may hold credentials, so the derived file is created 0600
+# (umask 077 before it exists, then an explicit chmod) and keeps that mode when
+# it is moved into place. A settings file that exists but cannot be read stops
+# the rebuild: carrying only FLEET_BIND_ADDR would silently reset every
+# operator setting to its compose default — the failure this file prevents.
+# grep's status 1 (every line was FLEET_BIND_ADDR) is not an error.
+write_compose_env() {
+  local tmp="${COMPOSE_ENV_FILE}.tmp" status=0
+  rm -f "${tmp}"
+  ( umask 077 && : > "${tmp}" )
+  chmod 600 "${tmp}"
+  if [ -f "${CONTROLLER_ENV}" ]; then
+    grep -v '^FLEET_BIND_ADDR=' "${CONTROLLER_ENV}" >> "${tmp}" || status=$?
+    if [ "${status}" -gt 1 ]; then
+      rm -f "${tmp}"
+      echo "ERROR: could not read the operator settings file ${CONTROLLER_ENV};" \
+        "refusing to deploy with every operator setting reset to its default" >&2
+      exit 1
+    fi
+  fi
+  echo "FLEET_BIND_ADDR=$1" >> "${tmp}"
   mv "${tmp}" "${COMPOSE_ENV_FILE}"
+}
+
+# require_readable_controller_env: validate the operator settings file once,
+# before either operator_setting or write_compose_env reads it. An absent file
+# is the legitimate "operator set nothing" case and is allowed. But a path that
+# exists and is NOT a readable regular file — a directory, a dangling symlink,
+# or a file whose permissions deny reading — must stop the deploy here: reading
+# no further would carry only FLEET_BIND_ADDR into the compose env and reset
+# every operator setting to its compose default, the exact failure this file
+# prevents. Validating up front also means the refusal is reported with this
+# clear message rather than as a raw sed/grep read error from whichever lookup
+# happened to touch the file first (operator_setting runs before
+# write_compose_env on the fleet path and would otherwise abort the script
+# under set -e with an opaque "Permission denied").
+require_readable_controller_env() {
+  # Neither a regular path nor a symlink present. This is either the legitimate
+  # "operator set nothing" case or a path that cannot be stat-ed because its
+  # directory is not searchable. Tell them apart: a directory that exists but
+  # has no execute bit hides whatever is at the path, so treating it as absent
+  # would carry only FLEET_BIND_ADDR and reset every operator setting — the
+  # failure this guard exists to prevent. Fail closed for that. A directory
+  # that is genuinely missing (a fresh host that never created the file) is the
+  # allowed absent case and still proceeds.
+  if [ ! -e "${CONTROLLER_ENV}" ] && [ ! -L "${CONTROLLER_ENV}" ]; then
+    local parent
+    parent="$(dirname "${CONTROLLER_ENV}")"
+    if [ -d "${parent}" ] && [ ! -x "${parent}" ]; then
+      echo "ERROR: the operator settings file ${CONTROLLER_ENV} cannot be reached because its" >&2
+      echo "  directory ${parent} is not searchable; refusing to deploy with every operator" >&2
+      echo "  setting reset to its default." >&2
+      exit 1
+    fi
+    return 0
+  fi
+  if [ ! -f "${CONTROLLER_ENV}" ]; then
+    echo "ERROR: the operator settings file ${CONTROLLER_ENV} exists but is not a regular" >&2
+    echo "  file; refusing to deploy with every operator setting reset to its default." >&2
+    exit 1
+  fi
+  if [ ! -r "${CONTROLLER_ENV}" ]; then
+    echo "ERROR: could not read the operator settings file ${CONTROLLER_ENV};" >&2
+    echo "  refusing to deploy with every operator setting reset to its default." >&2
+    exit 1
+  fi
+}
+
+# operator_setting KEY: the last value KEY is assigned in the operator settings
+# file, or empty when the file has none. Used so an operator-set FLEET_BIND_ADDR
+# in that file wins over detection, matching the env-var override.
+operator_setting() {
+  # Return empty-and-successful when the file is absent, not a non-zero exit:
+  # the caller assigns this in a bare `FLEET_BIND_ADDR="$(operator_setting ...)"`
+  # under `set -e`, where a failing command substitution aborts the script
+  # before detection can run.
+  [ -f "${CONTROLLER_ENV}" ] || return 0
+  sed -n "s/^$1=//p" "${CONTROLLER_ENV}" | tail -1
 }
 
 persisted_fleet_bind_addr() {
   [ -f "${COMPOSE_ENV_FILE}" ] && sed -n 's/^FLEET_BIND_ADDR=//p' "${COMPOSE_ENV_FILE}" | tail -1
 }
+
+# Both branches below read the operator settings file (operator_setting and
+# write_compose_env). Validate it once, before either does, so an unreadable or
+# non-regular file fails closed with a clear message instead of an opaque read
+# error. --agents-only touches neither branch and so never needs the file.
+if [ "${AGENTS_ONLY}" = false ]; then
+  require_readable_controller_env
+fi
 
 if [ "${AGENTS_ONLY}" = false ] && [ "${FLEET_SERVICES_SELECTED}" = true ]; then
   for secret_pair in "fleet-db-password:${FLEET_DB_DATA_DIR}" "grafana-admin-password:${FLEET_GRAFANA_DATA_DIR}"; do
@@ -240,6 +356,12 @@ if [ "${AGENTS_ONLY}" = false ] && [ "${FLEET_SERVICES_SELECTED}" = true ]; then
   # address at all is a hard stop: the compose file refuses to start the
   # stack without one, and silently binding to every interface is exactly
   # what the fleet design forbids.
+  # An operator value set in the settings file wins over detection, just as an
+  # exported FLEET_BIND_ADDR does (the guard above already honours that): the
+  # operator declares the address once, in the file that survives a deploy.
+  if [ -z "${FLEET_BIND_ADDR:-}" ]; then
+    FLEET_BIND_ADDR="$(operator_setting FLEET_BIND_ADDR)"
+  fi
   if [ -z "${FLEET_BIND_ADDR:-}" ]; then
     if command -v tailscale >/dev/null 2>&1; then
       FLEET_BIND_ADDR="$(tailscale ip -4 2>/dev/null | head -1 || true)"
@@ -273,18 +395,21 @@ if [ "${AGENTS_ONLY}" = false ] && [ "${FLEET_SERVICES_SELECTED}" = true ]; then
       ;;
   esac
   export FLEET_BIND_ADDR
-  persist_fleet_bind_addr "${FLEET_BIND_ADDR}"
+  write_compose_env "${FLEET_BIND_ADDR}"
   echo "Fleet services will bind to ${FLEET_BIND_ADDR}"
 elif [ "${AGENTS_ONLY}" = false ]; then
   # docker compose interpolates every service definition in the file before
   # selecting which ones to build/start, even for a single named non-fleet
   # service, so the fleet ports' mandatory ${FLEET_BIND_ADDR:?} still needs a
   # value here even though fleet-db/fleet-grafana are not being touched.
-  # The address a full rebuild persisted is the right one to reuse; only a
+  # An operator value wins, then the address a full rebuild persisted; only a
   # host that never ran a full rebuild falls back to loopback, and that value
-  # is never used to publish anything in this branch.
+  # is never used to publish anything in this branch. The compose env file is
+  # still rewritten from the operator settings so this service sees them too.
+  export FLEET_BIND_ADDR="${FLEET_BIND_ADDR:-$(operator_setting FLEET_BIND_ADDR)}"
   export FLEET_BIND_ADDR="${FLEET_BIND_ADDR:-$(persisted_fleet_bind_addr)}"
   export FLEET_BIND_ADDR="${FLEET_BIND_ADDR:-127.0.0.1}"
+  write_compose_env "${FLEET_BIND_ADDR}"
 fi
 
 # ── Maven build (needed by both controller and agent images) ───────
