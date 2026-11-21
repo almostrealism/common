@@ -229,15 +229,17 @@ final class CommandBatch {
 	 * Blocks until the batch has been committed, which is what makes waiting for its completion
 	 * meaningful, and has then finished on the GPU, by executing or by failing. The wait for the
 	 * commit ends early if the calling thread is interrupted, restoring the interrupt status (see
-	 * {@link LatchSemaphore#awaitCountDown()}); a batch already committed is not waited for that
-	 * way, so an interrupt alone never ends a wait whose commit has happened. The wait for the
+	 * {@link LatchSemaphore#awaitCountDown()}); the commit is checked again after an interrupted
+	 * wait, because the latch reports an interrupt even once it has been counted down, so an
+	 * interrupt alone never ends a wait whose commit has happened, including one that happens
+	 * while the wait begins. The wait for the
 	 * GPU is never ended by an interrupt. Only the executor thread commits a batch, so it must not
 	 * call this for a batch that may not have been committed yet.
 	 *
 	 * @return true once the batch has finished, false if the wait for the commit was interrupted
 	 */
 	boolean awaitCompletion() {
-		if (!isCommitted() && !committed.awaitCountDown()) return false;
+		if (!committed.awaitCountDown() && !isCommitted()) return false;
 
 		buffer.waitUntilCompleted();
 		return true;
