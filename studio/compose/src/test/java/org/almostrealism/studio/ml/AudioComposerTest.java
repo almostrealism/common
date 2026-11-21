@@ -38,6 +38,9 @@ public class AudioComposerTest extends TestSuiteBase {
 	/** Dimensionality of the merge weight vectors used by these tests. */
 	private static final int DIM = 2;
 
+	/** Dimensionality of the merge weight vectors of the indicator-source tests. */
+	private static final int INDICATOR_DIM = 4;
+
 	/** Number of rows in the test feature tensors. */
 	private static final int ROWS = 2;
 
@@ -49,6 +52,9 @@ public class AudioComposerTest extends TestSuiteBase {
 
 	/** Values of the second test source, used to compute expected results. */
 	private static final double[] SOURCE_B = { -2, 0.5, 7, 1, -3, 10 };
+
+	/** Values of the third test source, used to compute expected results. */
+	private static final double[] SOURCE_C = { 0.5, -4, 2, 8, 1, -6 };
 
 	/**
 	 * Two sources with orthogonal unit weight vectors are each scaled by the
@@ -202,9 +208,10 @@ public class AudioComposerTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A normalized blend divides each source's scale by the total of the scales, so the
-	 * composed latent depends on the proportions the position selects and not on its
-	 * magnitude: positions that differ only in length compose the same latent.
+	 * A normalized blend gives each source the softmax share of its score, so explicit
+	 * weights compose deterministic proportions in which the higher-scoring source has the
+	 * larger share and the shares sum to one; positions that differ only in length scale
+	 * the scores and so sharpen or flatten the same ordering.
 	 */
 	@Test(timeout = 60000)
 	public void normalizedBlendIsWeightedMean() {
@@ -213,14 +220,15 @@ public class AudioComposerTest extends TestSuiteBase {
 		composer.addSource(sourceA(), weightVector(1.0, 0.0));
 		composer.addSource(sourceB(), weightVector(0.0, 1.0));
 
-		assertValues(expected(0.8, 0.2), latent(composer, 2.0, 0.5));
-		assertValues(expected(0.8, 0.2), latent(composer, 20.0, 5.0));
-		assertValues(expected(0.8, 0.2), latent(composer, 0.2, 0.05));
+		assertValues(expected(softmax(2.0, 0.5)), latent(composer, 2.0, 0.5));
+		assertValues(expected(softmax(20.0, 5.0)), latent(composer, 20.0, 5.0));
+		assertValues(expected(softmax(0.2, 0.05)), latent(composer, 0.2, 0.05));
 	}
 
 	/**
-	 * In a normalized blend, a position at which no source has a positive scale yields
-	 * the plain mean of the sources rather than silence or a division by zero.
+	 * In a normalized blend, a position at which no source has a positive score still mixes
+	 * both sources in the proportions of their scores, rather than falling back to a fixed
+	 * mean; only equal scores give the even mix.
 	 */
 	@Test(timeout = 60000)
 	public void normalizedBlendWithNoSelectedSourceIsMean() {
@@ -229,13 +237,14 @@ public class AudioComposerTest extends TestSuiteBase {
 		composer.addSource(sourceA(), weightVector(1.0, 0.0));
 		composer.addSource(sourceB(), weightVector(0.0, 1.0));
 
-		assertValues(expected(0.5, 0.5), latent(composer, -1.0, -3.0));
+		assertValues(expected(softmax(-1.0, -3.0)), latent(composer, -1.0, -3.0));
+		assertValues(expected(0.5, 0.5), latent(composer, -2.0, -2.0));
 	}
 
 	/**
-	 * In a normalized blend, a position very close to the origin still composes the
-	 * proportions it selects: a tiny positive scale is not diluted towards the plain mean,
-	 * and a source selected alone by a tiny scale is the whole latent.
+	 * In a normalized blend, a position very close to the origin composes nearly the even
+	 * mix, approached continuously, and a negative score reduces a source's share without
+	 * removing it from the blend.
 	 */
 	@Test(timeout = 60000)
 	public void normalizedBlendNearOriginKeepsProportions() {
@@ -244,9 +253,9 @@ public class AudioComposerTest extends TestSuiteBase {
 		composer.addSource(sourceA(), weightVector(1.0, 0.0));
 		composer.addSource(sourceB(), weightVector(0.0, 1.0));
 
-		assertValues(expected(0.8, 0.2), latent(composer, 2e-12, 5e-13));
-		assertValues(expected(1.0, 0.0), latent(composer, 1e-12, -1.0));
-		assertValues(expected(0.0, 1.0), latent(composer, -1.0, 1e-12));
+		assertValues(expected(0.5, 0.5), latent(composer, 2e-12, 5e-13));
+		assertValues(expected(softmax(1e-12, -1.0)), latent(composer, 1e-12, -1.0));
+		assertValues(expected(softmax(-1.0, 1e-12)), latent(composer, -1.0, 1e-12));
 	}
 
 	/**
@@ -311,6 +320,193 @@ public class AudioComposerTest extends TestSuiteBase {
 	}
 
 	/**
+	 * In a normalized blend with the default random weights, every random position mixes
+	 * every source: each share is strictly positive, the shares sum to one, and no two
+	 * positions compose the same latent. Checked for two and three sources, whose shares
+	 * are read directly off {@link #indicatorSource(int) indicator sources}.
+	 */
+	@Test(timeout = 120000)
+	public void randomPositionsMixEverySource() {
+		for (int count = 2; count <= 3; count++) {
+			AudioComposer composer = new AudioComposer(new StubAutoEncoder(), INDICATOR_DIM, 37L + count);
+			composer.setNormalizedBlend(true);
+			for (int i = 0; i < count; i++) {
+				composer.addSource(indicatorSource(i));
+			}
+
+			Random positions = new Random(41L + count);
+			List<double[]> mixes = new ArrayList<>();
+			for (int p = 0; p < 12; p++) {
+				double[] latent = latent(composer, gaussian(positions));
+
+				Assert.assertEquals("Shares of " + Arrays.toString(latent) + " do not sum to one",
+						1.0, latent[0], 1e-5);
+				double total = 0;
+				for (int i = 0; i < count; i++) {
+					double share = latent[1 + i];
+					Assert.assertTrue("Source " + i + " of " + count + " has share " + share,
+							share > 1e-6);
+					total += share;
+				}
+				Assert.assertEquals(1.0, total, 1e-5);
+
+				for (double[] previous : mixes) {
+					Assert.assertTrue("Positions composed the same mix " + Arrays.toString(latent),
+							maxDifference(previous, latent) > 1e-4);
+				}
+				mixes.add(latent);
+			}
+		}
+	}
+
+	/**
+	 * In a normalized blend of three sources with random weights, every cell of the composed
+	 * latent stays within the range of the sources at that cell, so its magnitude never
+	 * exceeds the largest source magnitude, at positions of very different lengths.
+	 */
+	@Test(timeout = 120000)
+	public void threeSourceBlendStaysWithinSources() {
+		double[][] sources = { SOURCE_A, SOURCE_B, SOURCE_C };
+		double largest = Arrays.stream(sources).mapToDouble(AudioComposerTest::norm).max().orElse(0.0);
+		Random positions = new Random(43L);
+
+		for (int i = 0; i < 8; i++) {
+			AudioComposer composer = composer(200L + i);
+			composer.setNormalizedBlend(true);
+			composer.addSource(sourceA());
+			composer.addSource(sourceB());
+			composer.addSource(sourceC());
+
+			double scale = Math.pow(10, positions.nextInt(5) - 2);
+			double[] actual = latent(composer,
+					scale * positions.nextGaussian(), scale * positions.nextGaussian());
+
+			for (int j = 0; j < actual.length; j++) {
+				double low = Math.min(SOURCE_A[j], Math.min(SOURCE_B[j], SOURCE_C[j]));
+				double high = Math.max(SOURCE_A[j], Math.max(SOURCE_B[j], SOURCE_C[j]));
+				Assert.assertTrue("Cell " + j + " = " + actual[j] + " is outside [" + low + ", " + high + "]",
+						actual[j] >= low - 1e-4 && actual[j] <= high + 1e-4);
+			}
+
+			Assert.assertTrue(norm(actual) <= largest + 1e-4);
+		}
+	}
+
+	/**
+	 * In a normalized blend, a contribution of zero excludes a source at every position,
+	 * while the remaining sources keep positive shares that sum to one.
+	 */
+	@Test(timeout = 60000)
+	public void zeroContributionExcludesSource() {
+		AudioComposer composer = new AudioComposer(new StubAutoEncoder(), INDICATOR_DIM, 47L);
+		composer.setNormalizedBlend(true);
+		for (int i = 0; i < 3; i++) {
+			composer.addSource(indicatorSource(i));
+		}
+		composer.getSource(1).setContribution(0.0);
+
+		Random positions = new Random(53L);
+		for (int p = 0; p < 4; p++) {
+			double[] latent = latent(composer, gaussian(positions));
+
+			Assert.assertEquals(1.0, latent[0], 1e-5);
+			Assert.assertEquals(0.0, latent[2], 1e-9);
+			Assert.assertTrue(latent[1] > 1e-6);
+			Assert.assertTrue(latent[3] > 1e-6);
+			Assert.assertEquals(1.0, latent[1] + latent[3], 1e-5);
+		}
+	}
+
+	/**
+	 * In a normalized blend, a canonical merge position, built from explicit orthogonal
+	 * weight vectors and a position whose components are the per-source contributions,
+	 * gives deterministic shares in the order of those contributions; setting the same
+	 * contributions on the sources and evaluating at the origin gives shares exactly in
+	 * their ratio.
+	 */
+	@Test(timeout = 60000)
+	public void mergePositionFollowsContributions() {
+		double[] contributions = { 0.3, 0.6, 0.1 };
+		List<Producer<PackedCollection>> axes = List.of(
+				cp(pack(1.0, 0.0, 0.0, 0.0)), cp(pack(0.0, 1.0, 0.0, 0.0)), cp(pack(0.0, 0.0, 1.0, 0.0)));
+
+		AudioComposer composer = new AudioComposer(new StubAutoEncoder(), INDICATOR_DIM, 59L);
+		composer.setNormalizedBlend(true);
+		for (int i = 0; i < 3; i++) {
+			composer.addSource(indicatorSource(i), axes.get(i));
+		}
+
+		Producer<PackedCollection> mergePosition = cp(pack(0.3, 0.6, 0.1, 0.0));
+		double[] merged = latent(composer, mergePosition);
+		Assert.assertTrue(merged[2] > merged[1] && merged[1] > merged[3] && merged[3] > 0);
+		Assert.assertEquals(1.0, merged[1] + merged[2] + merged[3], 1e-5);
+		assertValues(merged, latent(composer, mergePosition));
+
+		for (int i = 0; i < 3; i++) {
+			composer.getSource(i).setContribution(contributions[i]);
+		}
+
+		double[] weighted = latent(composer, cp(pack(0.0, 0.0, 0.0, 0.0)));
+		for (int i = 0; i < 3; i++) {
+			Assert.assertEquals(contributions[i], weighted[1 + i], 1e-5);
+		}
+	}
+
+	/** A non-positive blend temperature is rejected. */
+	@Test(timeout = 60000)
+	public void nonPositiveTemperatureIsRejected() {
+		AudioComposer composer = composer(61L);
+		Assert.assertEquals(1.0, composer.getBlendTemperature(), 0.0);
+
+		try {
+			composer.setBlendTemperature(0.0);
+			Assert.fail("Expected a zero blend temperature to be rejected");
+		} catch (IllegalArgumentException e) {
+			Assert.assertEquals(1.0, composer.getBlendTemperature(), 0.0);
+		}
+	}
+
+	/**
+	 * Returns a source whose first cell is {@code 1}, whose cell {@code 1 + index} is
+	 * {@code 1}, and whose other cells are {@code 0}. In a normalized blend of such sources
+	 * the composed latent's first cell is the total of the shares and its cell
+	 * {@code 1 + index} is the share of source {@code index}.
+	 */
+	private Producer<PackedCollection> indicatorSource(int index) {
+		PackedCollection values = switch (index) {
+			case 0 -> pack(1, 1, 0, 0, 0, 0);
+			case 1 -> pack(1, 0, 1, 0, 0, 0);
+			case 2 -> pack(1, 0, 0, 1, 0, 0);
+			default -> throw new IllegalArgumentException("No indicator source " + index);
+		};
+
+		return cp(values.reshape(shape(ROWS, COLS)));
+	}
+
+	/**
+	 * Returns a length-{@link #INDICATOR_DIM} position with independent unit Gaussian
+	 * components, sampled from the given random source.
+	 */
+	private Producer<PackedCollection> gaussian(Random random) {
+		return cp(randn(shape(INDICATOR_DIM), 0.0, 1.0, random).evaluate());
+	}
+
+	/** Returns the largest absolute element-wise difference of two arrays. */
+	private static double maxDifference(double[] a, double[] b) {
+		double difference = 0;
+		for (int i = 0; i < a.length; i++) {
+			difference = Math.max(difference, Math.abs(a[i] - b[i]));
+		}
+
+		return difference;
+	}
+
+	/** Returns the Euclidean norm of the given values. */
+	private static double norm(double[] values) {
+		return Math.sqrt(Arrays.stream(values).map(v -> v * v).sum());
+	}
+
+	/**
 	 * Composes the two test sources with orthogonal unit weight vectors using the
 	 * given seed.
 	 */
@@ -332,7 +528,12 @@ public class AudioComposerTest extends TestSuiteBase {
 	 * reductions are isolated rather than embedded once per consumer.
 	 */
 	private double[] latent(AudioComposer composer, double x, double y) {
-		return composer.getInterpolatedLatent(cp(pack(x, y))).evaluateOptimized().toArray();
+		return latent(composer, cp(pack(x, y)));
+	}
+
+	/** Evaluates the interpolated latent of the composer at the given position. */
+	private double[] latent(AudioComposer composer, Producer<PackedCollection> position) {
+		return composer.getInterpolatedLatent(position).evaluateOptimized().toArray();
 	}
 
 	/**
@@ -356,6 +557,11 @@ public class AudioComposerTest extends TestSuiteBase {
 		return cp(pack(-2, 0.5, 7, 1, -3, 10).reshape(shape(ROWS, COLS)));
 	}
 
+	/** Returns the third test source, holding {@link #SOURCE_C} in shape {@code (ROWS, COLS)}. */
+	private Producer<PackedCollection> sourceC() {
+		return cp(pack(0.5, -4, 2, 8, 1, -6).reshape(shape(ROWS, COLS)));
+	}
+
 	/** Returns the merge weight vector {@code (x, y)}. */
 	private Producer<PackedCollection> weightVector(double x, double y) {
 		return cp(pack(x, y));
@@ -369,6 +575,22 @@ public class AudioComposerTest extends TestSuiteBase {
 		}
 
 		return result;
+	}
+
+	/** Computes {@code shares[0] * SOURCE_A + shares[1] * SOURCE_B} element-wise. */
+	private static double[] expected(double[] shares) {
+		return expected(shares[0], shares[1]);
+	}
+
+	/**
+	 * Computes the softmax of the given scores at unit temperature, the shares a normalized
+	 * blend gives sources with unit contributions.
+	 */
+	private static double[] softmax(double... scores) {
+		double reference = Arrays.stream(scores).max().orElse(0.0);
+		double[] shares = Arrays.stream(scores).map(s -> Math.exp(s - reference)).toArray();
+		double total = Arrays.stream(shares).sum();
+		return Arrays.stream(shares).map(s -> s / total).toArray();
 	}
 
 	/** Asserts that the actual values equal the expected values. */
