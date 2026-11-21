@@ -195,7 +195,7 @@ def lex(path, text, header=True):
         """
         end = start
         while end < n and text[end] != "`":
-            if text[end] == "\\":
+            if text[end] == "\\" and text[end + 1:end + 2] not in ("\r", "\n"):
                 end += 1
             elif interpolates and text.startswith("${", end):
                 lines[-1].code = True

@@ -233,6 +233,12 @@ class TestOtherLanguages(Base):
     def test_generated_sources_are_not_governed(self):
         self.assertFalse(check.governs("a/target/generated-sources/A.java"))
 
+    def test_a_line_continuation_in_a_template_keeps_line_numbers_aligned(self):
+        text = "\n".join(["const s = `a\\", "b`", "function f() {"]
+                         + wall(5) + ["  return 1", "}"])
+        found = self.blocked(text, path="a.ts")
+        self.assertEqual(4, found[0][0])
+
 
 class TestWhatAChangeOwns(Base):
     def setUp(self):
