@@ -230,6 +230,33 @@ public class IndexSequenceMembershipTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Integral values near the ends of the {@code long} range, which a {@code double}
+	 * cannot represent exactly, are still members, and a union keeps neighbouring
+	 * large values distinct rather than collapsing them through {@code double}.
+	 */
+	@Test(timeout = 30000)
+	public void largeIntegralValuesAreMembers() {
+		IndexSequence large = ArrayIndexSequence.of(Long.class,
+				new Number[] { Long.MAX_VALUE, Long.MIN_VALUE, 1L });
+
+		Assert.assertTrue(large.contains(Long.MAX_VALUE));
+		Assert.assertTrue(large.contains(Long.MIN_VALUE));
+		Assert.assertTrue(large.contains(1));
+		Assert.assertFalse(large.contains(Long.MAX_VALUE - 1));
+
+		IndexSequence neighbour = ArrayIndexSequence.of(Long.class,
+				new Number[] { Long.MAX_VALUE - 1 });
+		IndexSequence union = large.union(neighbour);
+
+		Assert.assertEquals(4, union.distinctCount());
+		Assert.assertTrue(union.contains(Long.MAX_VALUE));
+		Assert.assertTrue(union.contains(Long.MAX_VALUE - 1));
+		Assert.assertTrue(union.contains(Long.MIN_VALUE));
+		Assert.assertTrue(union.containsAll(large));
+		Assert.assertTrue(union.containsAll(neighbour));
+	}
+
+	/**
 	 * Returns the set of values a sequence takes over all of its positions.
 	 */
 	private Set<Long> positionValues(IndexSequence seq) {

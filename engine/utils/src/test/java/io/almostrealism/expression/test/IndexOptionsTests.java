@@ -80,6 +80,23 @@ public class IndexOptionsTests extends TestSuiteBase {
 	}
 
 	/**
+	 * An index with a zero or negative limit admits no values, so its domain is empty
+	 * rather than undetermined, as the enumerated analysis found.
+	 */
+	@Test(timeout = 30000)
+	public void nonPositiveLimitIsEmptyDomain() {
+		for (long limit : new long[] { 0, -1, -50 }) {
+			DefaultIndex i = new DefaultIndex("i", limit);
+			assertSameOptions(i, i);
+
+			Optional<IndexSequence> options = i.getIndexOptions(i);
+			Assert.assertTrue(options.isPresent());
+			Assert.assertTrue(options.get().isEmpty());
+			Assert.assertEquals(0, options.get().distinctCount());
+		}
+	}
+
+	/**
 	 * Remainders of an index, including a modulus beyond the option limit, a modulus that
 	 * does not fit an {@code int} and a negative modulus.
 	 */

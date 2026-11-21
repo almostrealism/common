@@ -98,7 +98,8 @@ public interface Index extends SequenceGenerator, Named {
 			return Optional.empty();
 		}
 
-		return Optional.of(ArithmeticIndexSequence.range(limit.getAsLong()));
+		// A non-positive limit admits no values
+		return Optional.of(ArithmeticIndexSequence.range(Math.max(limit.getAsLong(), 0)));
 	}
 
 	/**
