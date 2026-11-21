@@ -267,13 +267,18 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	 * Sets the number of top-ranked genomes to carry unchanged into the next
 	 * generation (elitism).
 	 * <p>
-	 * At the start of each breeding generation the population is in descending
-	 * health order, so the first {@code eliteCount} genomes are the best scoring.
-	 * Those genome objects are carried into the next generation unchanged - keeping
-	 * their identity, so a consumer tracking a genome (and the record and score it
-	 * holds) across generations can recognize them - and the remaining slots are
-	 * filled with children and fresh genomes exactly as without elitism. This
-	 * guarantees the best genomes are never discarded by a generation.
+	 * The elites are the leading genomes of the population as breeding begins. After
+	 * any prior {@link #iterate()} - and for a population loaded already in health
+	 * order - the population is in descending health order at that point, so those
+	 * leading {@code eliteCount} genomes are the best scoring. A freshly initialized
+	 * population that has never been evaluated is instead in its initial order; its
+	 * leading genomes are then carried as they stand, which sidelines nothing because
+	 * no genome has a score yet. Those genome objects are carried into the next
+	 * generation unchanged - keeping their identity, so a consumer tracking a genome
+	 * (and the record and score it holds) across generations can recognize them - and
+	 * the remaining slots are filled with children and fresh genomes exactly as
+	 * without elitism. This guarantees the best genomes, once evaluated, are never
+	 * discarded by a generation.
 	 * </p>
 	 * <p>
 	 * The count is clamped at use to what the generation can actually carry: no
@@ -446,14 +451,18 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	 * <h3>Elitism</h3>
 	 * <p>
 	 * When {@link #getEliteCount()} is positive, the first that-many genomes of the
-	 * current population - the best scoring, since the population is in descending
-	 * health order at the start of a generation - are carried into the next
-	 * generation unchanged, keeping their genome identity. Children then fill the
-	 * slots after the elites (rather than, as without elitism, replacing the whole
+	 * current population are carried into the next generation unchanged, keeping their
+	 * genome identity. Whenever the population has already been evaluated - after any
+	 * prior call to this method, or when loaded already in health order - it is in
+	 * descending health order at this point, so those leading genomes are the best
+	 * scoring; on a freshly initialized population that has never been evaluated they
+	 * are simply its leading members by initial order, carried as they stand (no
+	 * genome has a score yet, so none is sidelined). Children then fill the slots
+	 * after the elites (rather than, as without elitism, replacing the whole
 	 * population) and fresh genomes fill any remainder up to {@link #popSize}. This
-	 * guarantees the best genomes are never discarded by a generation. With an elite
-	 * count of {@code 0} the behavior is purely generational: the population is
-	 * replaced entirely by children and fresh genomes.
+	 * guarantees the best genomes, once evaluated, are never discarded by a
+	 * generation. With an elite count of {@code 0} the behavior is purely
+	 * generational: the population is replaced entirely by children and fresh genomes.
 	 * </p>
 	 * <p>
 	 * Elitism preserves genomes, not evaluations: step 3 re-evaluates the whole next
@@ -471,9 +480,9 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 		List<Genome<G>> sorted = population.getGenomes();
 
 		if (enableBreeding) {
-			// Carry the best-scoring genomes unchanged into the next generation (elitism).
-			// The population is in descending health order here, so the first members are
-			// the best. Carry no more than the population holds and no more than popSize.
+			// Carry the leading genomes unchanged into the next generation (elitism); see
+			// the method javadoc for when those are the best-scoring. Carry no more than
+			// the population holds and no more than popSize.
 			int eliteN = Math.max(0, Math.min(eliteCount, Math.min(sorted.size(), popSize)));
 			List<Genome<G>> elites = new ArrayList<>(sorted.subList(0, eliteN));
 
