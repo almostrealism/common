@@ -16,12 +16,12 @@
 
 package org.almostrealism.hardware.jni;
 
-import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.SystemUtils;
 
 import java.io.File;
 import java.util.List;
 import java.util.Locale;
+import java.util.OptionalInt;
 
 /**
  * {@link LlvmCommandProvider} implementation for Clang/LLVM compiler with optional custom linker support.
@@ -74,18 +74,28 @@ import java.util.Locale;
  * clang -fuse-ld=lld -O3 -I/usr/lib/jvm/.../include -shared -fPIC code.c -o lib.so
  * </pre>
  *
+ * <h2>Bracket Nesting Depth</h2>
+ *
+ * <p>Clang rejects source whose brackets nest deeper than a built-in limit
+ * ({@code bracket nesting level exceeded maximum of N}). By default the framework passes no
+ * {@code -fbracket-depth} flag, so clang's own limit applies and over-deep generated source
+ * fails loudly. Setting {@code AR_HARDWARE_NATIVE_BRACKET_DEPTH} passes
+ * {@code -fbracket-depth=<value>} instead. This exists only as an escape hatch: generated source
+ * nested that deeply is a symptom of a defect in how an expression tree was built (for example,
+ * nested products that were never merged into one product), and raising the limit hides that
+ * defect. The right response to a nesting failure is to find out why the expression is that
+ * deep, not to set this.</p>
+ *
  * @see LlvmCommandProvider
  * @see Lld
  */
 public class Clang extends LlvmCommandProvider {
-	/** The bracket nesting limit clang applies when {@code -fbracket-depth} is not given. */
-	public static final int DEFAULT_BRACKET_DEPTH = 256;
-
 	/**
-	 * The bracket nesting levels allowed per level of expression depth: one expression node can
-	 * render as a parenthesized operation wrapped in a cast and a function call.
+	 * The bracket nesting depth passed to clang with {@code -fbracket-depth}, configured via
+	 * {@code AR_HARDWARE_NATIVE_BRACKET_DEPTH}, or empty (the default) to pass no flag and leave
+	 * clang's own limit in place. An escape hatch only; see the class documentation.
 	 */
-	public static final int BRACKETS_PER_EXPRESSION_LEVEL = 4;
+	private static OptionalInt bracketDepth = SystemUtils.getInt("AR_HARDWARE_NATIVE_BRACKET_DEPTH");
 
 	/** The custom linker name or path to use with {@code -fuse-ld}, or null for default linker. */
 	private String linker;
@@ -152,36 +162,50 @@ public class Clang extends LlvmCommandProvider {
 	}
 
 	/**
-	 * Raises clang's bracket nesting limit so that it accepts every expression the framework
-	 * permits.
-	 *
-	 * <p>Generated source nests parentheses as deeply as the expression tree it renders: a product
-	 * of several hundred factors becomes several hundred nested parentheses. Older clang releases
-	 * reject anything nested more than 256 deep by default ({@code bracket nesting level exceeded
-	 * maximum of 256}), while newer ones accept it, so the same kernel compiles on one host and
-	 * fails on another. The framework bounds expression depth by {@link ScopeSettings#maxDepth},
-	 * so the limit passed here is derived from that bound rather than left to the toolchain's
-	 * default. The flag is clang-specific, and GCC (which has no such limit) rejects it, so it is
-	 * only added when the configured compiler identifies itself as clang.</p>
+	 * Adds {@code -fbracket-depth} when a bracket depth has been configured (see
+	 * {@link #getBracketDepth()}) and the compiler identifies itself as clang. GCC rejects the
+	 * flag, so it is never passed to GCC. When no depth is configured nothing is added and clang's
+	 * own default limit applies, which is the intended behavior: over-deep generated source should
+	 * fail rather than be accepted.
 	 *
 	 * @param command the command list to add the flag to
 	 */
 	@Override
 	protected void appendFrontendOptions(List<String> command) {
+		if (bracketDepth.isEmpty()) return;
+
 		if (isClangFrontend()) {
-			command.add("-fbracket-depth=" + getBracketDepth());
+			command.add("-fbracket-depth=" + bracketDepth.getAsInt());
+		} else {
+			warn("AR_HARDWARE_NATIVE_BRACKET_DEPTH is ignored because the compiler is not clang");
 		}
 	}
 
 	/**
-	 * Returns the bracket nesting depth passed to clang: {@value #BRACKETS_PER_EXPRESSION_LEVEL}
-	 * nesting levels for each level of the deepest expression {@link ScopeSettings#maxDepth}
-	 * permits, which covers the parentheses, casts and calls a single expression node renders.
+	 * Returns the configured bracket nesting depth passed to clang with {@code -fbracket-depth},
+	 * read from {@code AR_HARDWARE_NATIVE_BRACKET_DEPTH}. It is empty unless explicitly set, in
+	 * which case clang's own default limit applies.
 	 *
-	 * @return the value for {@code -fbracket-depth}
+	 * <p>This is an escape hatch, not a tuning knob. Deeply nested generated source means an
+	 * expression tree was built badly, and raising the limit hides that defect; when clang reports
+	 * that the bracket nesting limit was exceeded, find out why the expression is that deep.</p>
+	 *
+	 * @return the configured depth, or empty when no flag is passed
 	 */
-	public static int getBracketDepth() {
-		return Math.max(DEFAULT_BRACKET_DEPTH, BRACKETS_PER_EXPRESSION_LEVEL * ScopeSettings.maxDepth);
+	public static OptionalInt getBracketDepth() {
+		return bracketDepth;
+	}
+
+	/**
+	 * Sets the bracket nesting depth for subsequent compilations, overriding
+	 * {@code AR_HARDWARE_NATIVE_BRACKET_DEPTH}. Pass {@link OptionalInt#empty()} to pass no
+	 * {@code -fbracket-depth} flag and leave clang's own limit in place. The same caution as
+	 * {@link #getBracketDepth()} applies.
+	 *
+	 * @param depth the depth to pass to clang, or empty for clang's default
+	 */
+	public static void setBracketDepth(OptionalInt depth) {
+		bracketDepth = depth;
 	}
 
 	/**

@@ -16,83 +16,86 @@
 
 package org.almostrealism.hardware.test;
 
-import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.hardware.jni.Clang;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalInt;
 
 /**
- * Verifies that native compilation accepts source nested more deeply than clang's historical
- * default bracket limit of {@value Clang#DEFAULT_BRACKET_DEPTH}.
+ * Verifies that the bracket nesting depth passed to clang is an explicit, optional setting.
  *
- * <p>A product of several hundred factors renders as several hundred nested parentheses. Older
- * clang releases reject that by default ({@code bracket nesting level exceeded maximum of 256})
- * while newer ones accept it, so a kernel compiled on one host and failed on another. The
- * {@link Clang} command now raises the limit from the framework's own expression depth bound.</p>
+ * <p>With {@code AR_HARDWARE_NATIVE_BRACKET_DEPTH} unset, no {@code -fbracket-depth} flag is
+ * passed and clang's own limit applies, so over-deep generated source fails loudly. With it set,
+ * the flag carries the configured value and clang enforces exactly that limit.</p>
  */
 public class ClangBracketDepthTest extends TestSuiteBase {
-	/** Nesting depth of the generated test source, well beyond the historical default limit. */
-	private static final int NESTING = 600;
+	/** A deliberately low depth, so honouring it is observable with shallow source. */
+	private static final int CONFIGURED_DEPTH = 32;
 
-	/**
-	 * The compile command carries {@code -fbracket-depth} exactly when the compiler is clang,
-	 * since GCC rejects the flag, and the depth it requests covers the framework's expression bound.
-	 */
+	/** Nesting depth of the generated test source, beyond {@link #CONFIGURED_DEPTH}. */
+	private static final int NESTING = 64;
+
+	/** With no bracket depth configured, the compile command carries no bracket-depth flag. */
 	@Test(timeout = 60000)
-	public void bracketDepthFlagMatchesCompiler() {
-		Clang clang = new Clang();
-		List<String> command = clang.getCommand("input.c", "output", true);
-		String flag = "-fbracket-depth=" + Clang.getBracketDepth();
+	public void unsetDepthPassesNoFlag() {
+		OptionalInt previous = Clang.getBracketDepth();
 
-		Assert.assertTrue(Clang.getBracketDepth() >= ScopeSettings.maxDepth);
-		Assert.assertTrue(Clang.getBracketDepth() > Clang.DEFAULT_BRACKET_DEPTH);
-
-		if (clang.isClangFrontend()) {
-			Assert.assertTrue("clang command is missing " + flag + ": " + command, command.contains(flag));
-		} else {
-			Assert.assertTrue("non-clang command must not carry -fbracket-depth: " + command,
+		try {
+			Clang.setBracketDepth(OptionalInt.empty());
+			List<String> command = new Clang().getCommand("input.c", "output", true);
+			Assert.assertTrue("unexpected -fbracket-depth in " + command,
 					command.stream().noneMatch(arg -> arg.startsWith("-fbracket-depth")));
+		} finally {
+			Clang.setBracketDepth(previous);
 		}
 	}
 
 	/**
-	 * Compiles source nested {@value #NESTING} parentheses deep with the {@link Clang} command,
-	 * preceded by an explicit {@code -fbracket-depth=256} that stands in for the default of an older
-	 * clang. Clang honours the last occurrence of the flag, so the compile succeeds only if the
-	 * command itself raises the limit, which is what an older toolchain needs. A non-clang compiler
-	 * (GCC) has no such limit and compiles the same source with the command as built.
+	 * With a bracket depth configured, a clang command carries {@code -fbracket-depth} with that
+	 * value and clang enforces it: source nested {@value #NESTING} deep is rejected against a
+	 * configured limit of {@value #CONFIGURED_DEPTH}, and the error names that limit. A compiler
+	 * that is not clang (GCC rejects the flag) never receives it.
 	 */
 	@Test(timeout = 120000)
-	public void deeplyNestedSourceCompilesUnderOldDefaultLimit() throws IOException, InterruptedException {
-		Clang clang = new Clang();
+	public void configuredDepthIsPassedAndHonoured() throws IOException, InterruptedException {
+		OptionalInt previous = Clang.getBracketDepth();
 		Path dir = Files.createTempDirectory("bracket-depth");
 		Path source = dir.resolve("nested.c");
 		Path output = dir.resolve("libnested.so");
-		Files.writeString(source, "double nested(double x) { return " + "(".repeat(NESTING) + "x" +
-				" * x)".repeat(NESTING) + "; }\n", StandardCharsets.UTF_8);
-
-		List<String> command = new ArrayList<>(clang.getCommand(source.toString(), output.toString(), true));
-		if (clang.isClangFrontend()) {
-			command.add(1, "-fbracket-depth=" + Clang.DEFAULT_BRACKET_DEPTH);
-		}
-
-		Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
-		String log = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-		int exit = process.waitFor();
 
 		try {
-			Assert.assertEquals("compile failed: " + log, 0, exit);
-			Assert.assertTrue(new File(output.toString()).exists());
+			Clang.setBracketDepth(OptionalInt.of(CONFIGURED_DEPTH));
+			Clang clang = new Clang();
+			List<String> command = clang.getCommand(source.toString(), output.toString(), true);
+
+			if (!clang.isClangFrontend()) {
+				Assert.assertTrue("non-clang command must not carry -fbracket-depth: " + command,
+						command.stream().noneMatch(arg -> arg.startsWith("-fbracket-depth")));
+				return;
+			}
+
+			String flag = "-fbracket-depth=" + CONFIGURED_DEPTH;
+			Assert.assertTrue("clang command is missing " + flag + ": " + command, command.contains(flag));
+
+			Files.writeString(source, "double nested(double x) { return " + "(".repeat(NESTING) + "x" +
+					" * x)".repeat(NESTING) + "; }\n", StandardCharsets.UTF_8);
+
+			Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+			String log = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+			int exit = process.waitFor();
+
+			Assert.assertNotEquals("compile should exceed the configured limit: " + log, 0, exit);
+			Assert.assertTrue("compile did not fail on the configured limit: " + log,
+					log.contains("maximum of " + CONFIGURED_DEPTH));
 		} finally {
+			Clang.setBracketDepth(previous);
 			Files.deleteIfExists(source);
 			Files.deleteIfExists(output);
 			Files.deleteIfExists(dir);

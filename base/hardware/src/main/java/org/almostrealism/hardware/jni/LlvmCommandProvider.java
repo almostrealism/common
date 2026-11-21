@@ -43,7 +43,7 @@ import java.util.List;
  * <h2>Generated Command Structure</h2>
  *
  * <pre>
- * [compiler] [linker-flags] [opt-flags] [includes] -shared/-dynamiclib [input] -o [output]
+ * [compiler] [linker-flags] [opt-flags] [frontend-flags] [includes] -shared/-dynamiclib [input] -o [output]
  *
  * Example (macOS):
  * clang -O3 -I/Library/Java/.../include -I/Library/Java/.../include/darwin
