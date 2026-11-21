@@ -25,16 +25,17 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * A job's audit of the new top-level Java types in its working tree that
@@ -56,21 +57,28 @@ import java.util.regex.Pattern;
  * none (the branch that introduces it) is the working-tree copy used. A
  * repository with neither has no type audit. A search that cannot run (an
  * unresolvable base branch, a missing interpreter, a timeout, malformed output)
- * fails closed: every file it was to examine is refused.</p>
+ * fails closed: every changed Java file is refused, and {@link #getFailure()}
+ * reports why, which the job's completion status makes visible.</p>
  *
- * <p>A refused file never leaves its callers behind: every other changed Java
- * file that refers to a type in a refused file is refused with it, so the
- * harness never commits code that refers to a type it withheld.</p>
+ * <p>A refused file never leaves its callers behind: every type the file
+ * declares is withheld, and every other changed Java file that refers to a
+ * withheld type is refused with it, transitively, so the harness never commits
+ * code that refers to a type it withheld.</p>
  *
  * <p>Only types the working tree adds relative to {@code HEAD} are examined: a
  * type the harness has already committed passed this gate when it was
  * committed.</p>
  *
- * <p>A type is settled when it extends, implements or delegates to a candidate,
- * or when this job's audit session examined it and recorded the
- * {@value NewTypeAssessment#VERDICT_KEPT} verdict in {@value #LEDGER_PATH}. A
- * verdict already in the ledger before this job's audit ran does not count:
- * the session that wrote the type could have written it too.</p>
+ * <p>Only a type the search found to duplicate a candidate is audited or
+ * refused; one that merely resembles others is reported to the review. A
+ * duplicate is settled when it genuinely builds on a candidate, or when an
+ * audit session examined it and left the {@value NewTypeAssessment#VERDICT_KEPT}
+ * verdict in {@value #LEDGER_PATH}. Audit outcomes are recorded in an
+ * {@link ObjectOrientedReviewLedger} of the branch, keyed by a digest of the
+ * type's source together with its ledger entry, as the audit session left
+ * them. A verdict written into the ledger by any other session does not count,
+ * and any later change to the type or to its justification is audited
+ * again.</p>
  *
  * @author Michael Murray
  * @see NewTypeAssessment
@@ -84,26 +92,23 @@ class NewTypeAudit {
     /** Repository-relative path of the tracked justification ledger. */
     static final String LEDGER_PATH = ".claude/new-type-ledger.json";
 
+    /** Recorded for a duplicate the audit session examined and did not keep. */
+    static final String AUDITED = "AUDITED";
+
+    /** Recorded for a duplicate the audit session examined and kept. */
+    static final String KEPT = "KEPT";
+
+    /** File name suffix of the branch ledger that holds the audit outcomes. */
+    static final String LEDGER_SUFFIX = ".new-types.tsv";
+
     /** Upper bound on one scan; a cold index of a large repository takes seconds. */
     static final long SCAN_TIMEOUT_SECONDS = 300;
 
     /** Path fragment identifying a main-source Java file. */
     private static final String MAIN_SOURCE = "src/main/java/";
 
-    /** A Java source's package declaration. */
-    private static final Pattern PACKAGE = Pattern.compile("(?m)^\\s*package\\s+([\\w.]+)\\s*;");
-
-    /** A top-level type declaration keyword and name. */
-    private static final Pattern TYPE_DECL = Pattern.compile(
-            "(?:(?:public|private|protected|static|final|abstract|sealed"
-            + "|non-sealed|strictfp)\\s+)*"
-            + "\\b(?:class|interface|enum|record)\\s+([A-Za-z_]\\w*)");
-
-    /** Comments and string/char literals, so braces inside them are not counted. */
-    private static final Pattern CODE_NOISE = Pattern.compile(
-            "//[^\\n]*|/\\*.*?\\*/|\"\"\"(?:.|\\n)*?\"\"\""
-            + "|\"(?:\\\\.|[^\"\\\\\\n])*\"|'(?:\\\\.|[^'\\\\\\n])*'",
-            Pattern.DOTALL);
+    /** Digest of a type's source and justification, keying its audit outcome. */
+    private static final String DIGEST = "SHA-256";
 
     /** Parses the scanner's JSON output. */
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -111,8 +116,11 @@ class NewTypeAudit {
     /** The job whose working tree this audit examines. */
     private final GitManagedJob job;
 
-    /** Fully-qualified names of the types this job's audit session has examined. */
-    private final Set<String> audited = new LinkedHashSet<>();
+    /** The branch's record of audit outcomes; resolved on first use. */
+    private ObjectOrientedReviewLedger outcomes;
+
+    /** Why the last scan could not run, or {@code null} when it ran. */
+    private String failure;
 
     /**
      * Creates the audit of {@code job}'s working tree.
@@ -147,17 +155,18 @@ class NewTypeAudit {
     }
 
     /**
-     * Runs the type-equivalence search over every changed main-source file in
-     * the job's working tree. A failure is reported through the job's warning
-     * log and recorded in the result, so that {@link #refusals()} can refuse
-     * what the search could not examine.
+     * Runs the type-equivalence search over every changed Java file in the
+     * job's working tree: the main-source ones are assessed, and every one is
+     * listed with the types it declares. A failure is recorded in the result,
+     * so that {@link #refusals()} can refuse what the search could not
+     * examine, and kept as {@link #getFailure()} for the job's outcome.
      *
      * <p>A failed {@code git status} query yields a failed scan rather than an
      * empty one, so it is never read as "no Java files to audit"; the throwing
      * {@link GitOperations#requireChangedFiles} is what distinguishes it from a
      * clean tree, and the commit path's own call then refuses the commit.</p>
      *
-     * @return the scan; {@link Scan#none()} when there is nothing to examine
+     * @return the scan; {@link Scan#none()} when no main-source file changed
      *         or the repository has no scanner, and a failed scan when the
      *         {@code git status} query itself could not run
      */
@@ -173,15 +182,30 @@ class NewTypeAudit {
         }
         List<String> files = new ArrayList<>();
         for (String file : changed) {
-            if (isMainSource(file) && !GitOperations.isExcludedPath(file)
+            if (file.endsWith(".java") && !GitOperations.isExcludedPath(file)
                     && new File(workDir, file).isFile()) {
                 files.add(file);
             }
         }
-        if (files.isEmpty()) return Scan.none();
+        if (files.stream().noneMatch(NewTypeAudit::isMainSource)) return Scan.none();
         Scan scan = scan(new File(workDir), files);
-        if (scan.failed()) job.warn("New-type scan failed: " + scan.failure());
+        // TODO(review): failure is never cleared, so a transient failure followed by a successful scan still reports DEGRADED "no Java file staged".
+        if (scan.failed()) {
+            failure = scan.failure();
+            job.warn("New-type scan failed: " + scan.failure());
+        }
         return scan;
+    }
+
+    /**
+     * Returns why a scan of this job could not run, or {@code null} when every
+     * scan ran. A scan that did not run refused every changed Java file, so a
+     * job reporting this did not commit its Java changes.
+     *
+     * @return the failure, or {@code null}
+     */
+    String getFailure() {
+        return failure;
     }
 
     /**
@@ -189,7 +213,7 @@ class NewTypeAudit {
      * scanner and passing each file's {@code HEAD} copy when it has one.
      *
      * @param root  the repository root
-     * @param files repository-relative main-source files to examine
+     * @param files repository-relative Java files to examine
      * @return the scan, recording the failure when the scanner could not run
      */
     private Scan scan(File root, List<String> files) {
@@ -205,7 +229,7 @@ class NewTypeAudit {
             List<String> command = new ArrayList<>(List.of(
                     "python3", script.toString(), "scan", "--root", root.getAbsolutePath()));
             for (String file : files) {
-                String head = stdoutOrNull(git, "show", "HEAD:" + file);
+                String head = git.executeForStdoutOrNull("show", "HEAD:" + file);
                 if (head == null) {
                     command.add(file);
                 } else {
@@ -261,34 +285,20 @@ class NewTypeAudit {
             throw new IOException("base branch " + base + " cannot be resolved, so the scanner"
                     + " cannot be read from it; the working-tree copy is not trusted");
         }
-        String listing = stdoutOrNull(git, "ls-tree", "--name-only", base, "--", SCANNER_PATH);
+        String listing = git.executeForStdoutOrNull("ls-tree", "--name-only", base, "--", SCANNER_PATH);
         if (listing == null) {
             throw new IOException("cannot look up " + SCANNER_PATH + " in " + base
                     + "; the working-tree copy is not trusted");
         }
         if (!listing.isBlank()) {
             String spec = base + ":" + SCANNER_PATH;
-            String program = stdoutOrNull(git, "show", spec);
+            String program = git.executeForStdoutOrNull("show", spec);
             if (program == null || program.isBlank()) {
                 throw new IOException("cannot read " + spec);
             }
             return program;
         }
         return local.isFile() ? Files.readString(local.toPath(), StandardCharsets.UTF_8) : null;
-    }
-
-    /**
-     * Runs a git command and returns its standard output when it succeeds.
-     *
-     * @param git  git access
-     * @param args the git arguments
-     * @return the standard output, or {@code null} when the command failed
-     * @throws IOException          when git cannot be started
-     * @throws InterruptedException when interrupted while waiting
-     */
-    private static String stdoutOrNull(FileStager.GitOperations git, String... args)
-            throws IOException, InterruptedException {
-        return git.execute(args) == 0 ? git.executeForStdout(args) : null;
     }
 
     /**
@@ -322,47 +332,96 @@ class NewTypeAudit {
     }
 
     /**
-     * Returns the assessed types that do not build on a candidate and that
-     * this job's audit session has not examined yet.
+     * Returns the duplicates that do not build on a candidate and that no
+     * audit session has examined in their present form.
      *
      * @return the types the type audit still has to examine
      */
     List<NewTypeAssessment> unaudited() {
         List<NewTypeAssessment> out = new ArrayList<>();
         for (NewTypeAssessment a : scan()) {
-            if (!a.buildsOnCandidate() && !audited.contains(a.getFqn())) out.add(a);
+            if (a.isUnsettled() && outcome(a) == null) out.add(a);
         }
         return out;
     }
 
     /**
-     * Records that this job's audit session examined {@code types}.
+     * Records the outcome of an audit session that was given the types named
+     * in {@code fqns}, from a scan of the working tree the session left:
+     * {@value #KEPT} for a type whose ledger entry now carries the
+     * {@value NewTypeAssessment#VERDICT_KEPT} verdict, {@value #AUDITED}
+     * otherwise. A type the session folded in is no longer in the scan and
+     * needs no record.
      *
-     * @param types the types the session was given
+     * @param fqns fully-qualified names of the types the session was given
      */
-    void markAudited(Collection<NewTypeAssessment> types) {
-        for (NewTypeAssessment a : types) audited.add(a.getFqn());
+    void markAudited(Collection<String> fqns) {
+        for (NewTypeAssessment a : examine().assessments()) {
+            if (!fqns.contains(a.getFqn())) continue;
+            outcomes().record(a.getFqn(), contentId(a), a.isKeptByAudit() ? KEPT : AUDITED);
+        }
     }
 
     /**
-     * Returns whether this job's audit session has examined the named type.
+     * Returns the recorded audit outcome for a type in its present form.
      *
-     * @param fqn the type's fully-qualified name
-     * @return {@code true} once {@link #markAudited} has recorded it
+     * @param a the assessment of the type
+     * @return {@value #KEPT}, {@value #AUDITED}, or {@code null} when no audit
+     *         session examined this form of the type
      */
-    boolean isAudited(String fqn) {
-        return audited.contains(fqn);
+    String outcome(NewTypeAssessment a) {
+        return outcomes().verdict(a.getFqn(), contentId(a));
+    }
+
+    /**
+     * Returns the digest that keys a type's audit outcome: its declaring
+     * file's current text together with its ledger entry, so that an edit to
+     * either is audited again.
+     *
+     * @param a the assessment of the type
+     * @return the hexadecimal digest
+     */
+    private String contentId(NewTypeAssessment a) {
+        String text = "";
+        String workDir = job.getWorkingDirectory();
+        if (workDir != null) {
+            try {
+                text = Files.readString(Path.of(workDir, a.getPath()), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                text = "";
+            }
+        }
+        String entry = a.getLedgerEntry() == null ? "" : a.getLedgerEntry();
+        try {
+            byte[] digest = MessageDigest.getInstance(DIGEST)
+                    .digest((text + "\u0000" + entry).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(DIGEST + " is unavailable", e);
+        }
+    }
+
+    /**
+     * Returns the branch's record of audit outcomes, resolving it once.
+     *
+     * @return the ledger; over no file when the branch cannot be resolved
+     */
+    private ObjectOrientedReviewLedger outcomes() {
+        if (outcomes == null) {
+            outcomes = ObjectOrientedReviewLedger.forBranch(job, LEDGER_SUFFIX, Set.of(AUDITED, KEPT));
+        }
+        return outcomes;
     }
 
     /**
      * Returns the files the harness must not stage, each with the reason:
      * <ul>
-     *   <li>every file declaring an assessed type that neither builds on a
-     *       candidate nor was kept by this job's audit session;</li>
-     *   <li>every file the search was to examine, when it could not run;</li>
-     *   <li>every other changed Java file that refers to a type in a refused
-     *       file, transitively, so that no commit stages a caller without the
-     *       type it calls.</li>
+     *   <li>every file declaring a duplicate that neither builds on a
+     *       candidate nor was kept by an audit session;</li>
+     *   <li>every changed Java file, when the search could not run;</li>
+     *   <li>every other changed Java file that refers to a type declared in a
+     *       refused file, transitively, so that no commit stages a caller
+     *       without the type it calls.</li>
      * </ul>
      *
      * @return repository-relative path to refusal reason; empty when nothing is refused
@@ -372,208 +431,93 @@ class NewTypeAudit {
     }
 
     /**
-     * Returns the refusals {@link #refusals()} reports for an already-run scan
-     * and the changed Java sources that may refer to the refused types.
+     * Returns the refusals {@link #refusals()} reports for a scan of the
+     * working tree and the changed Java sources that may refer to the refused
+     * types.
      *
      * @param scan    the scan result
-     * @param sources repository-relative path to text of every changed Java file
+     * @param sources repository-relative path to every changed Java source
      * @return repository-relative path to refusal reason
      */
-    Map<String, String> refusals(Scan scan, Map<String, String> sources) {
+    private Map<String, String> refusals(Scan scan, Map<String, JavaSourceFile> sources) {
         Map<String, String> out = new LinkedHashMap<>();
         Set<String> withheld = new LinkedHashSet<>();
         if (scan.failed()) {
             for (String file : scan.files()) {
                 out.put(file, "the new-type audit could not run (" + scan.failure()
-                        + "); no changed main-source file is staged until it does");
+                        + "); no changed Java file is staged until it does");
             }
         }
         for (NewTypeAssessment a : scan.assessments()) {
-            if (a.buildsOnCandidate()) continue;
-            if (isAudited(a.getFqn()) && a.isKeptByAudit()) continue;
+            if (!a.isUnsettled() || KEPT.equals(outcome(a))) continue;
             out.merge(a.getPath(), a.refusalReason(), (x, y) -> x + "; " + y);
             withheld.add(a.getFqn());
         }
         for (String file : out.keySet()) {
-            addDeclaredTypes(withheld, file, sources.get(file));
+            withheld.addAll(scan.declaredBy(file, sources.get(file)));
         }
-        withholdDependents(out, withheld, sources);
+        withholdDependents(scan, out, withheld, sources);
         return out;
     }
 
     /**
      * Adds to {@code refused} every source that refers to a withheld type,
-     * adding the type each newly refused file declares to {@code withheld},
+     * adding the types each newly refused file declares to {@code withheld},
      * until no further file is affected.
      *
+     * @param scan     the scan, which knows the types each examined file declares
      * @param refused  path to refusal reason; extended in place
      * @param withheld fully-qualified names of the types that will not be staged; extended in place
-     * @param sources  repository-relative path to text of every changed Java file
+     * @param sources  repository-relative path to every changed Java source
      */
-    private static void withholdDependents(Map<String, String> refused, Set<String> withheld,
-                                           Map<String, String> sources) {
+    private static void withholdDependents(Scan scan, Map<String, String> refused,
+                                           Set<String> withheld, Map<String, JavaSourceFile> sources) {
         boolean grew = !withheld.isEmpty();
         while (grew) {
             grew = false;
-            for (Map.Entry<String, String> source : sources.entrySet()) {
+            for (Map.Entry<String, JavaSourceFile> source : sources.entrySet()) {
                 if (refused.containsKey(source.getKey())) continue;
-                String type = firstReferenced(source.getValue(), withheld);
+                String type = source.getValue().firstReferenced(withheld);
                 if (type == null) continue;
                 refused.put(source.getKey(), "refers to " + type
                         + ", a new type that is not staged; staging this file without it"
                         + " would commit code that does not compile");
-                addDeclaredTypes(withheld, source.getKey(), source.getValue());
+                withheld.addAll(scan.declaredBy(source.getKey(), source.getValue()));
                 grew = true;
             }
         }
     }
 
     /**
-     * Returns the first of {@code types} that {@code source} refers to: by its
-     * fully-qualified name (an import or a qualified use), or by its simple
-     * name when {@code source} is in the same package or imports that package
-     * whole. A mention in a comment counts; withholding one file too many is
-     * safe, staging one too many is not.
+     * Returns every changed Java file in the job's working tree that is not
+     * excluded from staging and still exists.
      *
-     * @param source the Java source text
-     * @param types  fully-qualified type names
-     * @return the first referenced type, or {@code null}
+     * @return repository-relative paths; empty when the job has no working directory
      */
-    static String firstReferenced(String source, Collection<String> types) {
-        String pkg = packageOf(source);
-        for (String fqn : types) {
-            if (Pattern.compile("(?<![\\w.$])" + Pattern.quote(fqn) + "(?![\\w$])").matcher(source).find()) {
-                return fqn;
-            }
-            int dot = fqn.lastIndexOf('.');
-            String typePkg = dot < 0 ? "" : fqn.substring(0, dot);
-            String simple = fqn.substring(dot + 1);
-            boolean visible = typePkg.equals(pkg) || Pattern.compile(
-                    "\\bimport\\s+" + Pattern.quote(typePkg) + "\\s*\\.\\s*\\*\\s*;").matcher(source).find();
-            if (visible && Pattern.compile("(?<![\\w.$])" + Pattern.quote(simple) + "(?![\\w$])")
-                    .matcher(source).find()) {
-                return fqn;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Returns the fully-qualified name of the top-level type a Java file is
-     * named for: its package followed by the file's base name.
-     *
-     * @param path   the repository-relative path of a {@code .java} file
-     * @param source the file's text, or {@code null} when it is not known
-     * @return the type name, or {@code null} when {@code source} is {@code null}
-     */
-    static String declaredType(String path, String source) {
-        if (source == null) return null;
-        String name = new File(path).getName();
-        if (name.endsWith(".java")) name = name.substring(0, name.length() - ".java".length());
-        String pkg = packageOf(source);
-        return pkg.isEmpty() ? name : pkg + "." + name;
-    }
-
-    /**
-     * Adds to {@code withheld} the fully-qualified name of every top-level type
-     * a refused file declares: the one it is named for and any secondary type
-     * beside it. A refused file may hold more than one top-level type, and a
-     * package-private one whose name differs from the file; a dependent that
-     * refers only to such a secondary type must be withheld too, or the commit
-     * would not compile.
-     *
-     * @param withheld the withheld type names; extended in place
-     * @param file     the repository-relative path of the refused {@code .java} file
-     * @param source   the file's text, or {@code null} when it is not known
-     */
-    private static void addDeclaredTypes(Set<String> withheld, String file, String source) {
-        String named = declaredType(file, source);
-        if (named != null) withheld.add(named);
-        withheld.addAll(declaredTypes(source));
-    }
-
-    /**
-     * Returns the fully-qualified name of every top-level type a Java source
-     * declares: a type declared at brace depth zero, in the source's package.
-     *
-     * @param source the Java source text, or {@code null}
-     * @return the top-level type names, in declaration order; empty when
-     *         {@code source} is {@code null}
-     */
-    static List<String> declaredTypes(String source) {
-        if (source == null) return List.of();
-        String pkg = packageOf(source);
-        String code = stripCode(source);
+    private List<String> changedJavaFiles() {
         List<String> out = new ArrayList<>();
-        Matcher m = TYPE_DECL.matcher(code);
-        while (m.find()) {
-            String prefix = code.substring(0, m.start());
-            if (count(prefix, '{') == count(prefix, '}')) {
-                String name = m.group(1);
-                out.add(pkg.isEmpty() ? name : pkg + "." + name);
+        String workDir = job.getWorkingDirectory();
+        if (workDir == null) return out;
+        for (String file : GitOperations.getChangedFiles(workDir)) {
+            if (file.endsWith(".java") && !GitOperations.isExcludedPath(file)
+                    && new File(workDir, file).isFile()) {
+                out.add(file);
             }
         }
         return out;
     }
 
     /**
-     * Returns {@code source} with comments and string literals blanked out, so
-     * a brace inside one is not counted when finding top-level declarations.
+     * Returns every changed Java source in the job's working tree: the files
+     * that may refer to a refused type.
      *
-     * @param source the Java source text
-     * @return the source with comment and literal content replaced by spaces
+     * @return repository-relative path to source
      */
-    private static String stripCode(String source) {
-        Matcher m = CODE_NOISE.matcher(source);
-        StringBuilder sb = new StringBuilder();
-        while (m.find()) {
-            m.appendReplacement(sb, Matcher.quoteReplacement(m.group().replaceAll("[^\\n]", " ")));
-        }
-        m.appendTail(sb);
-        return sb.toString();
-    }
-
-    /**
-     * Returns how many times {@code ch} occurs in {@code text}.
-     *
-     * @param text the text to scan
-     * @param ch   the character to count
-     * @return the number of occurrences
-     */
-    private static int count(String text, char ch) {
-        int n = 0;
-        for (int i = 0; i < text.length(); i++) {
-            if (text.charAt(i) == ch) n++;
-        }
-        return n;
-    }
-
-    /**
-     * Returns the package a Java source declares.
-     *
-     * @param source the Java source text
-     * @return the package name, or an empty string for the default package
-     */
-    private static String packageOf(String source) {
-        Matcher m = PACKAGE.matcher(source);
-        return m.find() ? m.group(1) : "";
-    }
-
-    /**
-     * Returns the text of every changed Java file in the job's working tree:
-     * the files that may refer to a refused type.
-     *
-     * @return repository-relative path to file text
-     */
-    private Map<String, String> changedJavaSources() {
-        Map<String, String> out = new LinkedHashMap<>();
-        String workDir = job.getWorkingDirectory();
-        if (workDir == null) return out;
-        for (String file : GitOperations.getChangedFiles(workDir)) {
-            File f = new File(workDir, file);
-            if (!file.endsWith(".java") || GitOperations.isExcludedPath(file) || !f.isFile()) continue;
+    private Map<String, JavaSourceFile> changedJavaSources() {
+        Map<String, JavaSourceFile> out = new LinkedHashMap<>();
+        for (String file : changedJavaFiles()) {
             try {
-                out.put(file, Files.readString(f.toPath(), StandardCharsets.UTF_8));
+                out.put(file, JavaSourceFile.read(job.getWorkingDirectory(), file));
             } catch (IOException e) {
                 job.warn("Cannot read " + file + " for the new-type audit: " + e.getMessage());
             }
@@ -587,15 +531,17 @@ class NewTypeAudit {
      * @param assessments the added types that resemble existing ones
      * @param added       fully-qualified names of every type the changes add,
      *                    whether or not it resembles an existing one
-     * @param files       the main-source files the search examined, or was to examine
+     * @param files       the Java files the search examined, or was to examine
+     * @param declared    repository-relative path of each examined file to the
+     *                    fully-qualified names of every top-level type it declares
      * @param failure     why the search could not run, or {@code null} when it ran
      */
     record Scan(List<NewTypeAssessment> assessments, List<String> added,
-                List<String> files, String failure) {
+                List<String> files, Map<String, List<String>> declared, String failure) {
 
         /** Returns the scan of a tree with nothing to examine, or with no scanner. */
         static Scan none() {
-            return new Scan(List.of(), List.of(), List.of(), null);
+            return new Scan(List.of(), List.of(), List.of(), Map.of(), null);
         }
 
         /**
@@ -606,13 +552,13 @@ class NewTypeAudit {
          * @return the failed scan
          */
         static Scan failed(List<String> files, String failure) {
-            return new Scan(List.of(), List.of(), List.copyOf(files),
+            return new Scan(List.of(), List.of(), List.copyOf(files), Map.of(),
                     failure == null ? "unknown failure" : failure);
         }
 
         /**
          * Parses the JSON the scanner prints:
-         * {@code {"types": [...], "added": [...]}}.
+         * {@code {"types": [...], "added": [...], "declared": {...}}}.
          *
          * @param json  the scanner's standard output
          * @param files the files the search examined
@@ -635,8 +581,29 @@ class NewTypeAudit {
                 }
                 added.add(fqn.asText());
             }
+            Map<String, List<String>> declared = new LinkedHashMap<>();
+            root.path("declared").fields().forEachRemaining(e -> {
+                List<String> types = new ArrayList<>();
+                for (JsonNode fqn : e.getValue()) types.add(fqn.asText());
+                declared.put(e.getKey(), List.copyOf(types));
+            });
             return new Scan(NewTypeAssessment.parseAll(root), List.copyOf(added),
-                    List.copyOf(files), null);
+                    List.copyOf(files), Map.copyOf(declared), null);
+        }
+
+        /**
+         * Returns the fully-qualified names of the top-level types a file
+         * declares: as the scanner parsed them when it examined the file, or
+         * else the type the file is named for.
+         *
+         * @param path   the repository-relative path of the file
+         * @param source the file's source, or {@code null} when it is not known
+         * @return the type names; empty when none is known
+         */
+        List<String> declaredBy(String path, JavaSourceFile source) {
+            List<String> types = declared.get(path);
+            if (types != null && !types.isEmpty()) return types;
+            return source == null ? List.of() : List.of(source.namedType());
         }
 
         /** Returns whether the search could not run. */

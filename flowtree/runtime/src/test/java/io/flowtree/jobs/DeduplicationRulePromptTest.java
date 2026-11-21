@@ -260,7 +260,7 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
                 Collections.singletonList(new NewTypeAssessment.Candidate(
                         "org.example.seq.ArithmeticIndexSequence",
                         "mod/src/main/java/org/example/seq/ArithmeticIndexSequence.java",
-                        0.62, "An index sequence of arithmetic values.")),
+                        0.62, "An index sequence of arithmetic values.", true)),
                 null, false, Collections.singletonList("no test named"),
                 "{\"type\": \"org.example.seq.ArithmeticIndexSet\"}", null);
         return DeduplicationRule.buildTypeAuditPrompt(Collections.singletonList(type), "master");
@@ -271,7 +271,7 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
     public void typePromptListsTypesAndCandidates() {
         String text = typePrompt();
         assertTrue(text.contains("org.example.seq.ArithmeticIndexSet"));
-        assertTrue(text.contains("resembles org.example.seq.ArithmeticIndexSequence"));
+        assertTrue(text.contains("duplicates org.example.seq.ArithmeticIndexSequence"));
         assertTrue(text.contains("mod/src/main/java/org/example/seq/ArithmeticIndexSequence.java"));
         assertTrue(text.contains("SHOULD EACH OF THESE TYPES EXIST"));
     }
@@ -342,7 +342,7 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
     public void reviewPromptAsksWhetherNewTypesShouldExist() {
         NewTypeAssessment type = new NewTypeAssessment("p.A", "m/src/main/java/p/A.java",
                 Collections.singletonList(new NewTypeAssessment.Candidate(
-                        "p.B", "m/src/main/java/p/B.java", 0.7, "")),
+                        "p.B", "m/src/main/java/p/B.java", 0.7, "", false)),
                 null, false, Collections.emptyList(), null, null);
         String section = ReviewPromptBuilder.newTypeSection(true, Collections.singletonList(type));
         assertTrue(section.contains("FIRST ASK WHETHER EACH SHOULD EXIST"));

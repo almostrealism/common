@@ -599,6 +599,11 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
      * message rather than {@link Status#FAILED}, so a harness git hiccup is not
      * conflated with an agent failure.</p>
      *
+     * <p>A job whose new-type audit could not run ({@link NewTypeAudit#getFailure()})
+     * is reported {@link Status#DEGRADED} with the reason: the audit refused every
+     * changed Java file, and a backstop that did not run must be noticed rather
+     * than read as a clean result.</p>
+     *
      * <p>A job with {@link CodingAgentJob#isEnforceChanges()} on that exited
      * cleanly with nothing committed is reported {@link Status#DEGRADED}. It
      * had to produce a change, and {@link EnforceChangesRule} has spent its
@@ -632,6 +637,13 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
                     "Post-completion command did not exit zero within "
                     + job.getMaxPostCompletionPasses()
                     + " pass(es) — gate abandoned, work may be incomplete");
+        }
+        String typeAuditFailure = job.getNewTypeAudit().getFailure();
+        if (typeAuditFailure != null) {
+            return degraded(job.getTaskId(), job.getTaskString(),
+                    "The new-type audit could not run (" + typeAuditFailure
+                    + "), so no changed Java file was staged; skipped: "
+                    + String.join("; ", job.getSkippedFiles()));
         }
         if (job.workOutcome().allChangesDropped()) {
             return degraded(job.getTaskId(), job.getTaskString(),
