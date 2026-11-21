@@ -19,7 +19,6 @@ screen — that guard covers the content-bearing GitHub tools (``github_create_p
 ``github_update_pr``, the comment tools).
 """
 
-import re
 from typing import Optional
 
 import server
@@ -30,12 +29,6 @@ from server import mcp
 #: and a merged PR cannot be reopened, which the tool reports rather than
 #: attempts.
 PR_STATE_VALUES = ("open", "closed")
-
-#: A 7-to-40 character hex string: a raw commit SHA, which a test-run deployment
-#: must refuse (see .github/CLAUDE.md "Starting a test run" — never deploy a
-#: fork-controlled commit).
-# TODO(review): this also refuses legitimate all-hex branch names (e.g. "20261121"); consider checking refs/heads first.
-_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 
 
 @mcp.tool()
@@ -206,18 +199,29 @@ def _resolve_pr_for_state(state: str, pr_number: int, workstream_id: str,
 
 
 def _test_run_branch_error(branch: str) -> Optional[str]:
-    """Reject anything that is not a plain branch name of the workspace repo.
+    """Reject anything that cannot be a plain branch name of the workspace repo.
 
     A test-run deployment of a fork-controlled commit would run
     fork-controlled workflow code with the repository's secrets, so
     .github/CLAUDE.md requires that a test run name a branch and resolve it
     against ``refs/heads`` — never a raw SHA, a pull ref, or a fork head.
 
+    Only the forms that can never be a plain branch name are rejected here: a
+    fork head (``owner:branch``), a pull-request ref (``refs/pull/...`` or the
+    bare ``pull/...``), and a fully-qualified ref (``refs/...``). A name whose
+    shape merely resembles a commit SHA (an all-hex string such as a date-like
+    ``"20261121"``), or an ordinary branch that contains ``pull`` as a path
+    segment (``feature/pull/fix``), is a legitimate ``refs/heads`` name and is
+    left to the exact ``refs/heads`` lookup in :func:`github_start_test_run`.
+    That lookup is the real gate — it confirms a real branch and 404s a raw SHA
+    that is not also a branch — so a name-shape guess here would only refuse
+    legitimate branch names.
+
     Args:
         branch: The branch name as resolved for the request.
 
     Returns:
-        An error message when ``branch`` is not a bare branch name, else
+        An error message when ``branch`` cannot be a bare branch name, else
         ``None``.
     """
     candidate = (branch or "").strip()
@@ -226,14 +230,10 @@ def _test_run_branch_error(branch: str) -> Optional[str]:
     if ":" in candidate:
         return ("a fork head ('owner:branch') is not allowed; name a branch of "
                 "the workspace's own repository")
-    if candidate.startswith("refs/pull/") or candidate.startswith("pull/") \
-            or "/pull/" in candidate:
+    if candidate.startswith("refs/pull/") or candidate.startswith("pull/"):
         return "a pull request ref is not allowed; name a branch (refs/heads/...)"
     if candidate.startswith("refs/"):
         return "pass a plain branch name, not a fully-qualified ref"
-    if _SHA_RE.fullmatch(candidate):
-        return ("a raw commit SHA is not allowed; name a branch so the "
-                "deployment resolves against refs/heads")
     return None
 
 

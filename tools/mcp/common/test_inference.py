@@ -598,6 +598,72 @@ class LlamaCppProviderLabelTest(unittest.TestCase):
             self.assertNotIn("secret", value)
 
 
+class _OllamaTagsHandler(BaseHTTPRequestHandler):
+    """Minimal stand-in for Ollama's ``/api/tags`` listing endpoint.
+
+    A test sets :attr:`body` to a structurally malformed value (a list, or a
+    ``models`` entry that is not an object) to drive the probe's shape-safe
+    path.
+    """
+
+    body = {"models": [{"name": "qwen2.5-coder:32b"}]}
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def do_GET(self):
+        payload = json.dumps(_OllamaTagsHandler.body).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+
+class OllamaProbeSafetyTest(unittest.TestCase):
+    """A malformed ``/api/tags`` body must not escape the cached health probe.
+
+    ``OllamaBackend.available`` feeds ``AutoBackend`` auto-detection, so a 2xx
+    body of the wrong shape used to raise ``AttributeError``/``TypeError`` out
+    of ``consult``/``memory_recall`` instead of reporting the backend down.
+    """
+
+    def setUp(self):
+        os.environ["AR_INFERENCE_HEALTH_TTL"] = "0"
+        self.addCleanup(os.environ.pop, "AR_INFERENCE_HEALTH_TTL", None)
+        _OllamaTagsHandler.body = {"models": [{"name": "qwen2.5-coder:32b"}]}
+        self.addCleanup(setattr, _OllamaTagsHandler, "body",
+                        {"models": [{"name": "qwen2.5-coder:32b"}]})
+        self.server = _LocalHTTPServer(("127.0.0.1", 0), _OllamaTagsHandler)
+        thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(self.server.shutdown)
+        port = self.server.server_address[1]
+        self.backend = OllamaBackend(
+            model="qwen2.5-coder:32b", base_url=f"http://127.0.0.1:{port}")
+
+    def test_available_when_model_is_listed(self):
+        self.assertTrue(self.backend.available)
+
+    def test_list_body_reports_down_without_raising(self):
+        _OllamaTagsHandler.body = []
+        self.assertFalse(self.backend.available)
+        self.assertEqual("malformed_response",
+                         self.backend.probe_diagnosis()["classification"])
+
+    def test_non_object_model_entry_reports_down_without_raising(self):
+        _OllamaTagsHandler.body = {"models": ["not-an-object"]}
+        self.assertFalse(self.backend.available)
+        self.assertEqual("malformed_response",
+                         self.backend.probe_diagnosis()["classification"])
+
+    def test_model_not_pulled_reports_down(self):
+        _OllamaTagsHandler.body = {"models": [{"name": "other-model:7b"}]}
+        self.assertFalse(self.backend.available)
+        self.assertEqual("not_configured",
+                         self.backend.probe_diagnosis()["classification"])
+
+
 class _OpenRouterHandler(BaseHTTPRequestHandler):
     """Stand-in for OpenRouter's ``/key`` and ``/chat/completions`` endpoints.
 

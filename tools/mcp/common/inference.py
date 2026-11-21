@@ -537,29 +537,25 @@ class OllamaBackend(InferenceBackend):
                                probe["http_status"], probe["detail"])
 
     def _probe(self) -> bool:
-        try:
-            req = urllib.request.Request(
-                f"{self.base_url}/api/tags",
-                method="GET",
-            )
-            with urllib.request.urlopen(req, timeout=3) as resp:
-                data = json.loads(resp.read())
-                models = [m.get("name", "") for m in data.get("models", [])]
-                # Check if our model (or a prefix of it) is available
-                model_base = self.model.split(":")[0]
-                found = any(model_base in m for m in models)
-                if not found:
-                    log.warning(
-                        "Ollama is running but model '%s' not found. "
-                        "Available: %s. Pull it with: ollama pull %s",
-                        self.model,
-                        ", ".join(models) or "(none)",
-                        self.model,
-                    )
-                return found
-        except (urllib.error.URLError, OSError, TimeoutError, ValueError):
-            log.info("Ollama not reachable at %s", self.base_url)
-            return False
+        """Liveness via the shared, shape-safe diagnosis path.
+
+        Delegates to :meth:`probe_diagnosis` so that a 2xx body of the wrong
+        shape — a JSON list, or a ``models`` entry that is not an object —
+        classifies as unavailable instead of raising ``AttributeError``/
+        ``TypeError`` out of the cached health read and, through
+        ``AutoBackend.delegate``, out of ``consult``/``memory_recall``.
+        Sharing the one probe keeps the auto-detection path and the health tool
+        from disagreeing about whether the same server is reachable.
+        """
+        diagnosis = self.probe_diagnosis()
+        if not diagnosis["available"]:
+            if diagnosis["classification"] == NOT_CONFIGURED:
+                log.warning(
+                    "Ollama is running but model '%s' is not pulled; pull it "
+                    "with: ollama pull %s", self.model, self.model)
+            else:
+                log.info("Ollama not reachable at %s", self.base_url)
+        return diagnosis["available"]
 
     def generate(
         self,

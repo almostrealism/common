@@ -191,14 +191,39 @@ class TestGithubStartTestRun(unittest.TestCase):
              "required_contexts": [], "transient_environment": True},
             payload)
 
-    @patch.object(server, "_github_request")
-    def test_raw_sha_refused(self, mock_gh, mock_repo):
-        # Built at runtime (a 40-character hex string) so no literal commit-id
-        # appears in the source; it exercises the raw-SHA refusal.
+    @patch.object(server, "_github_request",
+                  return_value={"ok": False, "error": "GitHub returned HTTP 404"})
+    def test_raw_sha_without_branch_refused_by_ref_lookup(self, mock_gh, mock_repo):
+        # A raw commit SHA is no longer rejected by its name shape; it reaches
+        # the exact refs/heads lookup, which 404s because no branch is named by
+        # it. Built at runtime (a 40-character hex string) so no literal
+        # commit-id appears in the source.
         result = server.github_start_test_run(branch="ab" * 20)
         self.assertFalse(result["ok"])
-        self.assertIn("SHA", result["error"])
-        mock_gh.assert_not_called()
+        self.assertIn("not found on refs/heads", result["error"])
+        # The lookup ran (GET); the deployment POST did not.
+        self.assertEqual(1, mock_gh.call_count)
+        self.assertEqual("GET", mock_gh.call_args.args[0])
+
+    @patch.object(server, "_github_request")
+    def test_hex_branch_name_is_accepted_when_it_exists(self, mock_gh, mock_repo):
+        # A branch whose name is all hex (a date-like "20261121") is a valid
+        # refs/heads name and must not be refused as if it were a raw SHA.
+        mock_gh.side_effect = [self._ref("20261121"), self._deployment()]
+        result = server.github_start_test_run(branch="20261121")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual("20261121", result["branch"])
+        # It reached the deployment POST rather than being refused by name.
+        self.assertEqual("POST", mock_gh.call_args.args[0])
+
+    @patch.object(server, "_github_request")
+    def test_branch_with_pull_path_segment_is_accepted(self, mock_gh, mock_repo):
+        # "feature/pull/fix" contains "pull" as a path segment but is an
+        # ordinary branch, not a pull-request ref.
+        mock_gh.side_effect = [self._ref("feature/pull/fix"), self._deployment()]
+        result = server.github_start_test_run(branch="feature/pull/fix")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual("feature/pull/fix", result["branch"])
 
     @patch.object(server, "_github_request")
     def test_fork_head_refused(self, mock_gh, mock_repo):
@@ -210,6 +235,13 @@ class TestGithubStartTestRun(unittest.TestCase):
     @patch.object(server, "_github_request")
     def test_pull_ref_refused(self, mock_gh, mock_repo):
         result = server.github_start_test_run(branch="refs/pull/12/head")
+        self.assertFalse(result["ok"])
+        self.assertIn("pull request ref", result["error"])
+        mock_gh.assert_not_called()
+
+    @patch.object(server, "_github_request")
+    def test_bare_pull_ref_refused(self, mock_gh, mock_repo):
+        result = server.github_start_test_run(branch="pull/12/head")
         self.assertFalse(result["ok"])
         self.assertIn("pull request ref", result["error"])
         mock_gh.assert_not_called()
