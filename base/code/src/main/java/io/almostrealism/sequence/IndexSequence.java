@@ -26,6 +26,8 @@ import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
 
+import java.math.BigDecimal;
+import java.util.TreeSet;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.IntUnaryOperator;
 import java.util.function.LongUnaryOperator;
@@ -357,9 +359,11 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * values of the other, each value once. When either sequence already contains every
 	 * value of the other, that sequence is returned as it is, so nested domains are shared
 	 * rather than copied; otherwise the values of both are enumerated, in ascending
-	 * order, as {@link Long}s when every one of them is {@link #isLongValue(Number) exactly
-	 * a long} and as {@link Double}s otherwise, so that no value is truncated or saturated
-	 * into the {@code long} range.
+	 * order, each value that is {@link #isLongValue(Number) exactly a long} as a
+	 * {@link Long} and any other value as a {@link Double}, so that no value is truncated
+	 * or saturated into the {@code long} range and distinct large integers are not merged
+	 * through {@code double}. A union holding any non-integral value has the type
+	 * {@link Double}.
 	 *
 	 * @param other the sequence whose values are added
 	 * @return a sequence taking exactly the values of both sequences
@@ -377,9 +381,45 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 							.distinct().sorted().boxed().toArray(Number[]::new));
 		}
 
-		return ArrayIndexSequence.of(Double.class,
-				DoubleStream.concat(doubleValues(), other.doubleValues())
-						.distinct().sorted().boxed().toArray(Number[]::new));
+		TreeSet<Number> exact = new TreeSet<>(IndexSequence::compareExact);
+		Stream.concat(values(), other.values())
+				.map(v -> isLongValue(v) ? (Number) v.longValue() : (Number) v.doubleValue())
+				.forEach(exact::add);
+		return ArrayIndexSequence.of(Double.class, exact.toArray(new Number[0]));
+	}
+
+	/**
+	 * Compares two values exactly, so that distinct integers beyond the range in which a
+	 * {@code double} represents every integer are never treated as equal. Two values that
+	 * are both {@link #isLongValue(Number) exactly a long} are compared as {@code long}s;
+	 * a non-finite value is compared as a {@code double}; any other pair is compared as
+	 * exact decimal values.
+	 *
+	 * @param a the first value
+	 * @param b the second value
+	 * @return a negative number, zero or a positive number as {@code a} is less than,
+	 *         equal to or greater than {@code b}
+	 */
+	static int compareExact(Number a, Number b) {
+		if (isLongValue(a) && isLongValue(b)) {
+			return Long.compare(a.longValue(), b.longValue());
+		}
+
+		if (!Double.isFinite(a.doubleValue()) || !Double.isFinite(b.doubleValue())) {
+			return Double.compare(a.doubleValue(), b.doubleValue());
+		}
+
+		return toExactDecimal(a).compareTo(toExactDecimal(b));
+	}
+
+	/**
+	 * Returns the exact decimal value of a finite number.
+	 *
+	 * @param value the value, which must be finite
+	 * @return {@code value} as a {@link BigDecimal}, without rounding
+	 */
+	private static BigDecimal toExactDecimal(Number value) {
+		return isLongValue(value) ? BigDecimal.valueOf(value.longValue()) : new BigDecimal(value.doubleValue());
 	}
 
 	/**

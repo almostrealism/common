@@ -257,6 +257,32 @@ public class IndexSequenceMembershipTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A union that has to enumerate a non-integral value keeps neighbouring large
+	 * integers distinct, rather than rounding both to the same {@code double}, and keeps
+	 * an integral floating-point value equal to the integer it represents.
+	 */
+	@Test(timeout = 30000)
+	public void mixedUnionKeepsLargeIntegralValuesDistinct() {
+		IndexSequence large = ArrayIndexSequence.of(Long.class,
+				new Number[] { Long.MAX_VALUE, Long.MAX_VALUE - 1, 3L });
+		IndexSequence fractional = ArrayIndexSequence.of(Double.class,
+				new double[] { 0.5, 3.0 });
+
+		for (IndexSequence union : new IndexSequence[] { large.union(fractional), fractional.union(large) }) {
+			Assert.assertEquals(4, union.distinctCount());
+			Assert.assertTrue(union.contains(Long.MAX_VALUE));
+			Assert.assertTrue(union.contains(Long.MAX_VALUE - 1));
+			Assert.assertTrue(union.contains(3));
+			Assert.assertFalse(union.contains(0));
+			Assert.assertTrue(union.containsAll(large));
+			Assert.assertEquals(0.5, union.valueAt(0).doubleValue(), 0.0);
+			Assert.assertEquals(3L, union.valueAt(1).longValue());
+			Assert.assertEquals(Long.MAX_VALUE - 1, union.valueAt(2).longValue());
+			Assert.assertEquals(Long.MAX_VALUE, union.valueAt(3).longValue());
+		}
+	}
+
+	/**
 	 * The empty progression takes no value, so it is not constant, while a progression
 	 * with a single position is.
 	 */
