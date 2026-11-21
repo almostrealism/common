@@ -49,7 +49,12 @@ class BuildArtifactSharingTest(unittest.TestCase):
         uploads = [s["with"] for s in _steps_using(_jobs()["build"], "actions/upload-artifact")
                    if s["with"].get("name") == _ARTIFACT]
         self.assertEqual(1, len(uploads))
-        self.assertEqual("~/.m2/repository/org/almostrealism", uploads[0]["path"])
+        # build can run on a hosted or a self-hosted runner (see BuildRunnerSelectionTest).
+        # It uploads from whatever repository it installed into: MAVEN_REPO when the
+        # self-hosted "Select Maven repository" step set it, ~/.m2/repository otherwise
+        # (env.MAVEN_REPO is empty on a hosted runner, where that step is skipped).
+        self.assertEqual("${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism",
+                         uploads[0]["path"])
         self.assertEqual("error", uploads[0]["if-no-files-found"])
 
     def test_every_job_that_restores_the_artifacts_waits_for_build(self):
@@ -136,6 +141,95 @@ class BuildArtifactSharingTest(unittest.TestCase):
                 if "maven.repo.local" in run:
                     with self.subTest(job=name):
                         self.assertIn("MAVEN_REPO=", run)
+
+
+def _step_named(job, name):
+    for s in job.get("steps", []):
+        if s.get("name") == name:
+            return s
+    return None
+
+
+class BuildRunnerSelectionTest(unittest.TestCase):
+    """`build` is the only dual-mode job: its runner is chosen by the
+    BUILD_RUNS_ON repository variable (a self-hosted move the owner can make and
+    undo without a commit), defaulting to GitHub-hosted ubuntu-latest, and its
+    JDK/Maven/clear/upload steps are correct on either runner. These pin that
+    wiring so a future edit cannot quietly hard-code the runner or break one of
+    the two environments. See "What the `build` job covers" and "The
+    BUILD_RUNS_ON repository variable" in .github/CLAUDE.md."""
+
+    def setUp(self):
+        self.build = _jobs()["build"]
+
+    def test_runs_on_is_the_variable_with_a_hosted_fallback(self):
+        """A JSON label list from the variable, parsed with fromJSON, falling back
+        to ubuntu-latest when unset — so an offline self-hosted runner cannot queue
+        build forever (the variable is cleared to revert), and today's hosted
+        behaviour is the default."""
+        runs_on = self.build["runs-on"]
+        self.assertIn("vars.BUILD_RUNS_ON", runs_on)
+        self.assertIn("fromJSON(vars.BUILD_RUNS_ON)", runs_on)
+        self.assertIn("'ubuntu-latest'", runs_on)
+
+    def test_jdk_is_selected_by_runner_environment(self):
+        """Hosted downloads the JDK with setup-java; self-hosted selects the
+        shipped JDK with the shared select-jdk action (as the test lanes do)."""
+        setup = _step_named(self.build, "Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}")
+        self.assertIsNotNone(setup, "build must keep setup-java for the hosted runner")
+        self.assertTrue(str(setup.get("uses", "")).startswith("actions/setup-java"))
+        self.assertEqual("${{ runner.environment == 'github-hosted' }}",
+                         _wrap(setup["if"]))
+
+        select = _step_named(self.build, "Select and verify JDK")
+        self.assertIsNotNone(select, "build must use select-jdk on the self-hosted runner")
+        self.assertEqual("./.github/actions/select-jdk", str(select.get("uses", "")).rstrip("/"))
+        self.assertEqual("${{ env.EXPECTED_JDK_MAJOR }}", select["with"]["expected-major"])
+        self.assertEqual("${{ runner.environment == 'self-hosted' }}",
+                         _wrap(select["if"]))
+
+    def test_maven_repo_is_selected_by_runner_environment(self):
+        """Hosted restores the deliberately-built GitHub-backed cache; self-hosted
+        prefers its host's shared cache via select-maven-repo (exports MAVEN_REPO)."""
+        restore = _step_named(self.build, "Restore Maven dependencies")
+        self.assertIsNotNone(restore, "build must restore the hosted Maven cache")
+        self.assertEqual("./.github/actions/restore-maven-cache",
+                         str(restore.get("uses", "")).rstrip("/"))
+        self.assertEqual("${{ runner.environment == 'github-hosted' }}",
+                         _wrap(restore["if"]))
+
+        select = _step_named(self.build, "Select Maven repository")
+        self.assertIsNotNone(select, "build must select the Maven repo on a self-hosted runner")
+        self.assertEqual("./.github/actions/select-maven-repo",
+                         str(select.get("uses", "")).rstrip("/"))
+        self.assertEqual("${{ runner.environment == 'self-hosted' }}",
+                         _wrap(select["if"]))
+
+    def test_clear_step_targets_the_repository_maven_reads(self):
+        """Clearing org/almostrealism must hit the per-runner MAVEN_REPO where the
+        self-hosted step set it (never the shared cache root another runner uses),
+        else ~/.m2/repository — the same resolution the restore steps use."""
+        clear = _step_named(self.build, "Clear previously installed project artifacts")
+        self.assertIsNotNone(clear)
+        self.assertIn('${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism', clear["run"])
+
+    def test_build_still_only_installs_and_uploads(self):
+        """build stays the critical-path minimum: mvn install -DskipTests and the
+        artifact upload, no tests and no extra Maven phases."""
+        mvn = [str(s.get("run", "")) for s in self.build["steps"] if "mvn " in str(s.get("run", ""))]
+        self.assertEqual(1, len(mvn), "build must run exactly one mvn invocation")
+        self.assertIn("mvn install -DskipTests", mvn[0])
+        self.assertNotIn("mvn test", mvn[0])
+
+
+def _wrap(value):
+    """GitHub normalises a bare job/step `if` expression by wrapping it in
+    ${{ }}; yaml.safe_load gives it back as the raw string, so compare against
+    the wrapped form regardless of how it was written in the file."""
+    text = str(value).strip()
+    if text.startswith("${{") and text.endswith("}}"):
+        return text
+    return "${{ %s }}" % text
 
 
 if __name__ == "__main__":

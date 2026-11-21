@@ -65,6 +65,14 @@ def _is_self_hosted(job):
     return "self-hosted" in _runs_on(job)
 
 
+# `build` runs on a hosted OR a self-hosted runner, chosen by the BUILD_RUNS_ON
+# repository variable. Its runs-on is an opaque expression (not a label list), so
+# _is_self_hosted classifies it as hosted, yet it carries select-maven-repo for
+# the self-hosted case, guarded by runner.environment. The hosted-only rule below
+# exempts it; BuildJobMavenRepoTest pins both of its Maven-repo paths.
+_VARIABLE_RUNNER_JOBS = {"build"}
+
+
 def _read(path):
     with open(path) as f:
         return f.read()
@@ -112,8 +120,8 @@ class SelfHostedMavenRepoWiringTest(unittest.TestCase):
         none and restores its GitHub-backed cache via restore-maven-cache
         instead (see test_hosted_maven_cache.py)."""
         for name, job in _jobs().items():
-            if _is_self_hosted(job):
-                continue
+            if _is_self_hosted(job) or name in _VARIABLE_RUNNER_JOBS:
+                continue  # build is dual-mode; BuildJobMavenRepoTest pins it
             with self.subTest(job=name):
                 self.assertEqual([], [s for s in job.get("steps", [])
                                       if str(s.get("uses", "")).rstrip("/") == _SELECT_REPO_ACTION],
@@ -144,6 +152,36 @@ class SelfHostedMavenRepoWiringTest(unittest.TestCase):
                 fallback = str(uses[0].get("with", {}).get("fallback", "per-runner"))
                 self.assertEqual("per-runner", fallback,
                                  f"{name} must keep the per-runner fallback")
+
+
+class BuildJobMavenRepoTest(unittest.TestCase):
+    """`build`'s runner is chosen by the BUILD_RUNS_ON repository variable, so it
+    carries both Maven-repo paths, each guarded by runner.environment: a hosted
+    runner restores the GitHub-backed cache via restore-maven-cache, a self-hosted
+    runner selects its host's shared cache via select-maven-repo (which exports
+    MAVEN_REPO). The hosted-only rule above exempts build; this pins both paths."""
+
+    def _step(self, name):
+        for s in _jobs()["build"]["steps"]:
+            if s.get("name") == name:
+                return s
+        self.fail("build has no step named %r" % name)
+
+    def test_hosted_restores_the_github_backed_cache_guarded(self):
+        restore = self._step("Restore Maven dependencies")
+        self.assertEqual("./.github/actions/restore-maven-cache",
+                         str(restore.get("uses", "")).rstrip("/"))
+        self.assertIn("runner.environment == 'github-hosted'", str(restore.get("if", "")))
+
+    def test_self_hosted_selects_the_shared_repo_guarded(self):
+        select = self._step("Select Maven repository")
+        self.assertEqual(_SELECT_REPO_ACTION, str(select.get("uses", "")).rstrip("/"))
+        self.assertIn("runner.environment == 'self-hosted'", str(select.get("if", "")))
+
+    def test_build_does_not_set_maven_repo_local_inline(self):
+        inline = [s for s in _jobs()["build"]["steps"]
+                  if "maven.repo.local" in str(s.get("run", ""))]
+        self.assertEqual([], inline, "build must use the shared action, not an inline isolate step")
 
 
 def _action():

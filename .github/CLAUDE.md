@@ -101,9 +101,20 @@ event that started it. The `changes` job publishes the mode as `run_tests`.
 
 Why: an agent's review loop pushes many commits before it reaches a stopping
 point, and each push used to start the full suite on the self-hosted fleet,
-only to have the next push cancel it. Validate runs use hosted runners only
-and finish in minutes. The long-running lanes run once, after the loop has
-settled.
+only to have the next push cancel it. Validate runs finish in minutes. The
+long-running lanes run once, after the loop has settled.
+
+Validate runs are hosted-only **by default**. The one exception is `build`,
+whose runner is chosen by the `BUILD_RUNS_ON` repository variable (see "The
+`BUILD_RUNS_ON` repository variable" below): with it set to a self-hosted label
+list, a validate run uses one self-hosted build runner per push. The trade-off
+is deliberate — `build` took 12–13 minutes on `ubuntu-latest` and sits on the
+critical path of every test lane, the three tools policy checks, `test-flowtree`
+and `analysis`, so moving it to a fast self-hosted runner shortens every run —
+and it is bounded: a build runner holds no GPU and runs no tests (it produces
+only jars), so one self-hosted runner per push is the whole cost, and the
+variable reverts it to hosted with no commit. Every other validate-run job
+stays hosted.
 
 **A pull request's test run covers one backend.** A `deployment` test run
 runs the Metal lanes (`test-mac`, `test-media-mac`), which cover every module
@@ -674,6 +685,69 @@ blocker for every job that compiles, tests or analyses the project, so it MUST
 stay as short as possible; jobs that need only git do not wait for it (see
 "Branch checks that need no build" below). It runs `mvn install -DskipTests`
 and nothing else: it does not run tests and does not upload coverage.
+
+**Its runner is chosen by the `BUILD_RUNS_ON` repository variable**, defaulting
+to GitHub-hosted `ubuntu-latest` (see "The `BUILD_RUNS_ON` repository variable"
+below). Because it can run on either a hosted or a self-hosted runner, its JDK
+and Maven-repository steps are keyed on `runner.environment`:
+
+- **JDK.** `github-hosted` keeps `actions/setup-java`; `self-hosted` uses the
+  shared `./.github/actions/select-jdk` action (no download), exactly as the
+  self-hosted test lanes do.
+- **Maven repository.** `github-hosted` restores the deliberately-built cache
+  the `maven-cache` job produces, through `restore-maven-cache`; `self-hosted`
+  uses `./.github/actions/select-maven-repo` (its host's persistent shared cache,
+  else a per-runner subdirectory) and exports `MAVEN_REPO`.
+- **Clear and upload.** The "Clear previously installed project artifacts" step
+  and the artifact upload both use the repository Maven actually reads —
+  `$MAVEN_REPO` when the self-hosted step set it, otherwise `~/.m2/repository`.
+  On a self-hosted runner `MAVEN_REPO` is a per-runner subdirectory of the shared
+  cache, never the shared root, so clearing `org/almostrealism` never touches a
+  repository another runner shares. The upload path is
+  `${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism`; `env.MAVEN_REPO`
+  is empty on a hosted runner (the select step was skipped there).
+
+`build` is **not** given `-T` (parallel reactor). `studio/compose` unpacks
+`engine/ml`'s `proto`-classified artifact, which is attached at `ml`'s package
+phase (the MDEP-98 ordering the `maven-cache` warm works around); a parallel
+reactor is error-prone around that cross-module package-phase attachment, and a
+clean `-T` build could not be verified here, so the conservative single-threaded
+`mvn install -DskipTests` stands. The serial build is already short enough that
+the runner choice, not `-T`, is where the time is won.
+
+### The `BUILD_RUNS_ON` repository variable
+
+Chooses the runner for the `build` job. It is a repository **variable** holding
+a JSON label list, parsed with `fromJSON`:
+
+```yaml
+runs-on: ${{ vars.BUILD_RUNS_ON && fromJSON(vars.BUILD_RUNS_ON) || 'ubuntu-latest' }}
+```
+
+- **Unset (the default):** `build` runs on GitHub-hosted `ubuntu-latest`, exactly
+  as before. This is the fail-safe default, not a misconfiguration to "fix".
+- **Set to a self-hosted label list** (e.g. `["self-hosted","linux","ar-build"]`):
+  `build` runs on a self-hosted runner carrying those labels.
+
+It is a variable, not a hard-coded `runs-on`, on purpose. `build` sits on the
+critical path of every job that compiles, tests or analyses the project, so a
+hard-coded self-hosted `runs-on` would queue `build` forever — and block every
+pull request — the moment that runner went offline. The variable lets the owner
+move `build` onto a self-hosted runner, and switch straight back, with no commit
+(**the rollback is: clear the variable**). It changes without a commit and is
+never present on a fork.
+
+The intended target is a dedicated **build-only** self-hosted runner carrying a
+single `ar-build` label — not the CUDA fleet's `ar-ci-cuda` capability label and
+not `ar-ci`. `ar-ci-cuda` means "this runner has a proven CUDA GPU" and `ar-ci`
+takes the CPU test lane (`test`), both of which run for tens of minutes; a build
+runner needs neither a GPU nor those queues, and `build` must not wait behind
+them. The operator runs such a runner as a separate instance on the CUDA fleet's
+host (the DGX Spark) — a separate compose project off the plain CPU image, with
+its own `ar-build` label and its own Maven cache volume, no GPU reservation. The
+operator steps are in [`../tools/ci/docker/README.md`](../tools/ci/docker/README.md)
+("Running a build-only runner"); the variable is set only after that runner is
+online. Arm64 vs x86 does not matter here: `build` produces only jars.
 
 ### What the `maven-cache` job does
 

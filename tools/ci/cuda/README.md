@@ -57,6 +57,18 @@ the CPU lane in the runner count and the memory limit: `test` runs as a single
 job (no matrix), so one runner holds it at once. `test-media` runs on a hosted
 runner and needs no capacity here.
 
+### Also serving the `build` job (`ar-build`)
+
+This host can additionally run the `build` job off the GitHub-hosted runner, when
+the `BUILD_RUNS_ON` repository variable selects it. Do **not** add `ar-build` to
+these CUDA runners: `build` would then queue behind `test-cuda` /
+`test-media-cuda` (and `test`, if `RUNNER_EXTRA_LABELS=ar-ci`), which run for tens
+of minutes, defeating the point of moving it off the hosted runner. Run a
+**separate** build-only runner instead — the plain CPU image with only the
+`ar-build` label, its own compose project and Maven cache, and no GPU reservation.
+The operator steps are "Running a build-only runner" in
+[`../docker/README.md`](../docker/README.md#running-a-build-only-runner-the-ar-build-label).
+
 ## JDK Version (Baked Into the Shared Image)
 
 This fleet has no image of its own — it builds the Linux CPU fleet's image
