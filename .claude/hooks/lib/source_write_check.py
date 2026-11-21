@@ -106,12 +106,17 @@ def comment_findings(repo_root, path):
     change relative to HEAD wrote any line of the comment it sits in, so a
     line appended to a comment that was already there is answerable for the
     whole of it. A file git does not track yet is judged in full.
+
+    A file that is no longer there, because the change deleted it, has no
+    commentary to judge and yields no findings. Any other failure to read it
+    propagates, so the caller reports the file as unchecked instead of
+    passing it as clean.
     """
     try:
         with open(os.path.join(repo_root, path), encoding="utf-8",
                   errors="replace", newline="") as handle:
             text = handle.read()
-    except OSError:
+    except FileNotFoundError:
         return "", []
 
     diff = _git(repo_root, "diff", "-U0", "HEAD", "--", path)
@@ -194,6 +199,18 @@ def _fresh(seen, kind, path, subject):
     return True
 
 
+def unreadable_reason(path, error):
+    """Return the report for a changed source file that could not be read.
+
+    The policy was not applied to it, and saying nothing would read as a pass,
+    so the file is named along with the error that stopped the check.
+    """
+    return ("%s changed but could not be read (%s), so the inline-comment "
+            "policy was not checked against it. The edit, commit and CI gates "
+            "refuse a file they cannot read; make it readable and check it."
+            % (path, error))
+
+
 def violations(repo_root):
     """Return what the guards say about each source file that changed."""
     if operation_in_progress(repo_root):
@@ -206,7 +223,13 @@ def violations(repo_root):
     examined = changed[:MAX_FILES]
 
     for path in examined:
-        text, findings = comment_findings(repo_root, path)
+        try:
+            text, findings = comment_findings(repo_root, path)
+        except OSError as error:
+            if _fresh(seen, "unreadable", path, str(error)):
+                found.append(unreadable_reason(path, error))
+            continue
+
         if findings and _fresh(seen, "comments", path, text):
             found.append(inline_comment_check.block_reason(path, text, findings))
 
@@ -254,7 +277,7 @@ def main(argv=None):
             "additionalContext": report,
         },
         "systemMessage": "Source file modified outside the edit tools; "
-                         "inline-comment policy exceeded.",
+                         "a source guard has findings to report.",
     }))
 
     return 0

@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 import source_write_check as check
 
@@ -137,6 +138,47 @@ class ViolationTest(RepositoryTestCase):
 
         self.assertFalse(check.operation_in_progress(self.root))
         self.assertEqual(1, len(check.violations(self.root)))
+
+    def test_an_unreadable_changed_file_is_reported_as_unchecked(self):
+        """A file the check could not read has not been found clean."""
+        self.write("Foo.java", "class Foo {\n" + WALL + "\n}\n")
+        denied = PermissionError(13, "Permission denied")
+
+        with mock.patch("source_write_check.open", create=True,
+                        side_effect=denied):
+            found = check.violations(self.root)
+
+        self.assertEqual(1, len(found))
+        self.assertIn("Foo.java", found[0])
+        self.assertIn("could not be read", found[0])
+        self.assertIn("Permission denied", found[0])
+
+    def test_an_unreadable_file_is_reported_whatever_it_holds(self):
+        """What the file holds cannot matter: the check never saw it."""
+        self.write("Foo.java", "class Foo { int x; }\n")
+        denied = PermissionError(13, "Permission denied")
+
+        with mock.patch("source_write_check.open", create=True,
+                        side_effect=denied):
+            self.assertEqual(1, len(check.violations(self.root)))
+
+    def test_a_deleted_file_is_not_reported(self):
+        """Deletion removes commentary; there is nothing left to judge."""
+        os.remove(os.path.join(self.root, "Foo.java"))
+
+        self.assertIn("Foo.java", check.changed_source_files(self.root))
+        self.assertEqual([], check.violations(self.root))
+
+    def test_the_report_names_the_unreadable_file_through_main(self):
+        self.write("Foo.java", "class Foo { int x; }\n")
+        denied = PermissionError(13, "Permission denied")
+
+        with mock.patch("source_write_check.open", create=True,
+                        side_effect=denied), \
+                mock.patch("builtins.print") as printed:
+            self.assertEqual(0, check.main([self.root]))
+
+        self.assertIn("could not be read", printed.call_args[0][0])
 
 
 class ReplayedGuardTest(RepositoryTestCase):

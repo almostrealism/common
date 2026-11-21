@@ -1,7 +1,8 @@
 // Adapter-level test for the block-excessive-comments opencode plugin: it
 // drives the plugin's own `tool.execute.before` handler over a real checkout,
 // covering the `apply_patch` Update route that must judge the resulting file
-// (not the added fragment) and the `write`/`edit` routes. Needs Python 3.
+// (not the added fragment), the `write`/`edit` routes, and the refusal of an
+// edit when the core cannot run or crashes. Needs Python 3.
 //
 // Run from the repo root, with a TypeScript-aware runner:
 //   bun .opencode/plugins/__tests__/block-excessive-comments.test.ts
@@ -67,6 +68,49 @@ function fileWithWall(count: number): string {
 
 function wrap(body: string): string {
   return `*** Begin Patch\n${body}\n*** End Patch\n`
+}
+
+/** Runs `body` with `PATH` naming only a directory whose `python3` is the given script, or none. */
+async function withPython(script: string | null, body: () => Promise<void>): Promise<void> {
+  const bin = fs.mkdtempSync(path.join(os.tmpdir(), "bec-bin-"))
+  if (script !== null) {
+    fs.writeFileSync(path.join(bin, "python3"), script, { mode: 0o755 })
+  }
+  const saved = process.env.PATH
+  process.env.PATH = bin
+  try {
+    await body()
+  } finally {
+    process.env.PATH = saved
+  }
+}
+
+/**
+ * The plugin refuses an edit whenever the core does not reach a verdict: when
+ * python3 cannot be started, when the core crashes, and when it exits 2
+ * without a reason. A core that hangs past the timeout is not exercised here.
+ */
+async function coreFailures(before: NonNullable<Hooks["tool.execute.before"]>): Promise<void> {
+  const lawful = { filePath: "A.java", oldString: "int x = 1;", newString: "int x = 3;" }
+  const patch = { patchText: wrap("*** Update File: A.java\n@@\n-\t\tint x = 1;\n+\t\tint x = 2;") }
+
+  await withPython(null, async () => {
+    expect(await threw(before, "edit", lawful), "an edit is refused when python3 cannot be started")
+    expect(await threw(before, "apply_patch", patch), "an apply_patch is refused when python3 cannot be started")
+  })
+
+  await withPython("#!/bin/sh\necho 'Traceback: boom' >&2\nexit 1\n", async () => {
+    expect(await threw(before, "edit", lawful), "an edit is refused when the core crashes")
+    expect(await threw(before, "apply_patch", patch), "an apply_patch is refused when the core crashes")
+  })
+
+  await withPython("#!/bin/sh\nexit 2\n", async () => {
+    expect(await threw(before, "edit", lawful), "an edit is refused when the core blocks without a reason")
+  })
+
+  await withPython("#!/bin/sh\nexit 0\n", async () => {
+    expect(!(await threw(before, "edit", lawful)), "an edit the core allows goes through")
+  })
 }
 
 async function run(): Promise<void> {
@@ -141,6 +185,8 @@ async function run(): Promise<void> {
     !(await threw(before, "write", { filePath: "notes.md", content: "// a\n// b\n// c\n// d\n// e\n" })),
     "a non-source file is not governed",
   )
+
+  await coreFailures(before)
 
   if (failures > 0) {
     console.error(`\n${failures} assertion(s) failed`)
