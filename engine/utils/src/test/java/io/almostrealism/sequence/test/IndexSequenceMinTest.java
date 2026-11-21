@@ -47,6 +47,10 @@ public class IndexSequenceMinTest extends TestSuiteBase {
 	 * is in the sequence, so {@code min() <= -2.5} must hold. Rounding the minimum up
 	 * to {@code -2} violates this, because {@code -2 > -2.5} — the reported "minimum"
 	 * is larger than a real element.
+	 *
+	 * <p>The exact floored value {@code -3} is asserted rather than a mere inequality,
+	 * because a value such as {@link Long#MIN_VALUE} would satisfy a lower-bound
+	 * inequality without being the intended result.</p>
 	 */
 	@Test(timeout = 10000)
 	public void minimumIsALowerBoundForFractionalValues() {
@@ -54,10 +58,6 @@ public class IndexSequenceMinTest extends TestSuiteBase {
 
 		long min = seq.min();
 
-		// -2.5 floors to -3; assert the exact rounded value rather than a mere
-		// inequality so the test pins the Math.floor behaviour (a value such as
-		// Long.MIN_VALUE would satisfy a lower-bound inequality but is not the
-		// intended result).
 		Assert.assertEquals(
 				"min() == " + min + " but the sequence minimum -2.5 must floor to -3",
 				-3, min);

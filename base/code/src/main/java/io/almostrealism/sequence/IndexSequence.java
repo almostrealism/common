@@ -384,28 +384,27 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	}
 
 	/**
-	 * Returns the minimum value in this sequence.
+	 * Returns the minimum value in this sequence, as a lower bound for every element.
+	 *
+	 * <p>Every element, including the single value of a constant sequence, is floored
+	 * individually with {@link #floorToLong(Number)}; {@link Number#longValue()} would
+	 * truncate toward zero (e.g. {@code -2} for {@code -2.5}), reporting a "minimum"
+	 * greater than an element that is present. The type of the first element cannot
+	 * choose a primitive fast path, because {@link ArrayIndexSequence} accepts mixed
+	 * {@link Number} implementations such as {@code [0, -2.5]}. {@code floorToLong}
+	 * tests {@link Integer} and {@link Long} first, so homogeneous integral storage
+	 * still costs only a type check per element, and it avoids the precision loss of
+	 * routing large integral and {@link BigDecimal} elements through {@code double}.
+	 * Because {@code floorToLong} is monotonic, the smallest floored value is a lower
+	 * bound for every element.</p>
 	 *
 	 * @return the minimum value as a {@code long}
 	 */
 	default long min() {
 		if (isConstant()) {
-			// A constant fractional value must still be floored so the result
-			// is a lower bound: longValue() truncates toward zero (e.g. -2 for
-			// -2.5), which is greater than the element actually present.
 			return floorToLong(valueAt(0));
 		}
 
-		// Every element is floored individually with floorToLong. The type of the
-		// first element cannot be used to choose a primitive fast path, because
-		// ArrayIndexSequence accepts mixed Number implementations: a sequence such
-		// as [0, -2.5] would otherwise be routed through intValues(), truncating
-		// -2.5 to -2 and reporting a "minimum" greater than an element that is
-		// present. floorToLong tests Integer and Long first, so homogeneous int/long
-		// storage still costs only a type check and an exact longValue() per
-		// element. Routing through double instead would lose precision for large
-		// integral and BigDecimal elements. Because floorToLong is monotonic, the
-		// smallest floored value is a lower bound for every element.
 		return values().mapToLong(IndexSequence::floorToLong).min().orElseThrow();
 	}
 
