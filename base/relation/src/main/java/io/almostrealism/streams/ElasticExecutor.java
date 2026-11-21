@@ -211,15 +211,11 @@ public final class ElasticExecutor implements Executor {
 	private void work() {
 		boolean ended = false;
 
-		// TODO(review): a starvation check can run between this decrement and take(), starting an extra thread; the exact-count ElasticExecutorTest assertions can then flake
-		synchronized (this) {
-			starting--;
-		}
-
 		try {
-			Runnable task;
-			while ((task = take()) != null) {
+			Runnable task = take(true);
+			while (task != null) {
 				task.run();
+				task = take(false);
 			}
 
 			ended = true;
@@ -236,9 +232,17 @@ public final class ElasticExecutor implements Executor {
 	 * Takes the oldest queued task, waiting for one for up to the keep-alive period, or returns
 	 * {@code null} and stops counting the calling thread when none arrives in that time.
 	 *
+	 * <p>On a thread's first call the thread stops counting as starting here, while the monitor is
+	 * held for the same call that either takes a queued task or counts the thread as idle. A
+	 * starvation check therefore never sees the thread as neither starting nor idle while it is
+	 * about to take the oldest task, and does not start a surplus thread for that task.</p>
+	 *
+	 * @param first whether this is the calling thread's first call
 	 * @return the task to run next, or {@code null} if the calling thread should end
 	 */
-	private synchronized Runnable take() {
+	private synchronized Runnable take(boolean first) {
+		if (first) starting--;
+
 		long deadline = System.currentTimeMillis() + keepAliveMillis;
 
 		while (queue.isEmpty()) {
