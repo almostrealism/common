@@ -222,11 +222,88 @@ def probe_http_get(url: str, timeout: float = 5.0,
         return {"available": False, "classification": classification,
                 "http_status": status, "detail": detail}
 
+    # A 2xx with a syntactically valid but non-object body (an array, a string,
+    # a number) cannot carry the fields a backend-specific ``accept`` predicate
+    # inspects. Substituting ``{}`` here would hide that: an OpenRouter ``/key``
+    # response of ``[]`` has no ``limit_remaining``, so the predicate would pass
+    # and the health tool would call a broken provider available. Report it as a
+    # malformed response instead.
+    if not isinstance(data, dict):
+        return {"available": False, "classification": MALFORMED_RESPONSE,
+                "http_status": None,
+                "detail": "provider returned a non-object JSON response"}
+
     if accept is not None:
-        rejection = accept(data if isinstance(data, dict) else {})
+        rejection = accept(data)
         if rejection is not None:
             classification, detail = rejection
             return {"available": False, "classification": classification,
                     "http_status": None, "detail": detail}
     return {"available": True, "classification": None,
             "http_status": None, "detail": ""}
+
+
+#: The detail reported when the inference module itself cannot be imported, so
+#: no backend object exists to diagnose the failure.
+NOT_CONFIGURED_DETAIL = "no inference backend could be constructed"
+
+#: The operator hint for that case — there is no backend-specific guidance to
+#: give, so it names the general levers.
+NOT_CONFIGURED_HINT = (
+    "Confirm the inference dependencies are importable in this image, then set "
+    "AR_CONSULTANT_BACKEND or start a local model "
+    "(see tools/mcp/consultant/README.md).")
+
+
+def not_configured_cause(detail: str = NOT_CONFIGURED_DETAIL) -> dict:
+    """The structured ``cause`` for when no backend object exists at all.
+
+    A backend normally builds its own ``cause`` from its identity (see
+    ``InferenceBackend._cause``). When backend construction fails outright —
+    the inference module cannot be imported — there is no instance to ask, yet
+    a degraded consult or recall must still carry the same classification,
+    endpoint and operator-hint fields every other degraded path does. This
+    mirrors that shape with a :data:`NOT_CONFIGURED` classification.
+
+    Args:
+        detail: A secret-free description of the failure.
+
+    Returns:
+        A ``cause`` dict matching ``InferenceBackend._cause``'s keys.
+    """
+    return {
+        "backend": None,
+        "backend_selection": "no inference backend is configured",
+        "endpoint": "",
+        "classification": NOT_CONFIGURED,
+        "http_status": None,
+        "detail": detail,
+        "operator_hint": NOT_CONFIGURED_HINT,
+    }
+
+
+def not_configured_diagnosis(detail: str = NOT_CONFIGURED_DETAIL) -> dict:
+    """The structured probe diagnosis for the no-backend-object case.
+
+    The health tool reports a backend's :meth:`probe_diagnosis`; when no
+    backend could be constructed it has nothing to probe, so this gives it the
+    same-shaped diagnosis (an ``available``/``selection`` pair in place of the
+    ``cause``'s ``backend_selection``) rather than dropping to a bare error.
+
+    Args:
+        detail: A secret-free description of the failure.
+
+    Returns:
+        A diagnosis dict matching ``InferenceBackend._diagnosis``'s keys.
+    """
+    cause = not_configured_cause(detail)
+    return {
+        "available": False,
+        "backend": cause["backend"],
+        "endpoint": cause["endpoint"],
+        "selection": cause["backend_selection"],
+        "classification": cause["classification"],
+        "http_status": cause["http_status"],
+        "detail": cause["detail"],
+        "operator_hint": cause["operator_hint"],
+    }

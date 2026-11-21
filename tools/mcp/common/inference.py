@@ -30,7 +30,8 @@ from typing import Optional
 try:
     from .health import HealthCache, health_ttl
     from .inference_diagnosis import (
-        CREDENTIAL_MISSING, MALFORMED_RESPONSE, NOT_CONFIGURED, UNREACHABLE,
+        CREDENTIAL_MISSING, CREDENTIAL_REJECTED, MALFORMED_RESPONSE,
+        NOT_CONFIGURED, QUOTA_EXHAUSTED, UNREACHABLE,
         classify_transport_error, endpoint_of, http_error_message,
         probe_http_get,
     )
@@ -44,7 +45,8 @@ except ImportError:
     # Loaded by path (see consultant/inference.py) rather than as a package.
     from health import HealthCache, health_ttl
     from inference_diagnosis import (
-        CREDENTIAL_MISSING, MALFORMED_RESPONSE, NOT_CONFIGURED, UNREACHABLE,
+        CREDENTIAL_MISSING, CREDENTIAL_REJECTED, MALFORMED_RESPONSE,
+        NOT_CONFIGURED, QUOTA_EXHAUSTED, UNREACHABLE,
         classify_transport_error, endpoint_of, http_error_message,
         probe_http_get,
     )
@@ -187,6 +189,19 @@ class InferenceBackend(ABC):
         return ""
 
     @property
+    def provider(self) -> str:
+        """A secret-free label for this backend in diagnostic fields.
+
+        :attr:`name` is for logs and may embed a configured URL (which can
+        carry a path or token); the ``backend`` and ``backend_selection`` a
+        degraded result reports must never. Defaults to :attr:`name`, which is
+        safe for every backend whose name is a provider-and-model string;
+        backends whose name embeds a URL override it with a sanitized form
+        built from :attr:`endpoint`.
+        """
+        return self.name
+
+    @property
     def selection(self) -> str:
         """Why this backend is the one serving requests.
 
@@ -197,7 +212,7 @@ class InferenceBackend(ABC):
         configured = os.environ.get("AR_CONSULTANT_BACKEND", "").strip()
         if configured and configured.lower() != "auto":
             return f"explicit AR_CONSULTANT_BACKEND={configured}"
-        return f"backend {self.name}"
+        return f"backend {self.provider}"
 
     def operator_hint(self, classification: str) -> str:
         """One sentence telling an operator what to check for a failure.
@@ -237,7 +252,7 @@ class InferenceBackend(ABC):
         """Assemble a probe/diagnosis dict with this backend's identity."""
         return {
             "available": available,
-            "backend": self.name,
+            "backend": self.provider,
             "endpoint": self.endpoint,
             "selection": self.selection,
             "classification": classification,
@@ -251,7 +266,7 @@ class InferenceBackend(ABC):
                detail: str) -> dict:
         """The structured ``cause`` attached to a degraded :class:`Synthesis`."""
         return {
-            "backend": self.name,
+            "backend": self.provider,
             "backend_selection": self.selection,
             "endpoint": self.endpoint,
             "classification": classification,
@@ -574,9 +589,17 @@ class OllamaBackend(InferenceBackend):
             # Allow generous timeout for large model generation
             with urllib.request.urlopen(req, timeout=120) as resp:
                 data = json.loads(resp.read())
-                return data.get("message", {}).get("content", "")
+                message = data.get("message", {})
+                return message.get("content", "")
         except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
             raise InferenceUnavailable.from_exception(self.name, e) from e
+        except (AttributeError, TypeError) as e:
+            # A 2xx body of the wrong shape (a list, or a ``message`` that is not
+            # an object) classifies as malformed rather than escaping as an
+            # uncaught AttributeError/TypeError.
+            raise InferenceUnavailable(
+                self.name, f"malformed response: {e}",
+                classification=MALFORMED_RESPONSE) from e
 
 
 # ---------------------------------------------------------------------------
@@ -632,12 +655,40 @@ class OpenAIChatBackend(InferenceBackend):
         try:
             with urllib.request.urlopen(req, timeout=self.TIMEOUT_SECONDS) as resp:
                 data = json.loads(resp.read())
+            content = self.extract_content(data, max_tokens)
         except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
             # URLError covers HTTPError (its subclass); from_exception reads the
             # HTTP error body once to recover the provider's message and maps
             # the status (401/403, 402/429, ...) to a classification.
             raise InferenceUnavailable.from_exception(self.name, e) from e
+        except (AttributeError, TypeError, KeyError, IndexError) as e:
+            # A 2xx whose JSON is syntactically valid but structurally wrong (a
+            # list instead of an object, or a ``message`` that is not an object)
+            # would otherwise escape this handler as an uncaught
+            # AttributeError/TypeError, failing the call outright. Classify it as
+            # a malformed response so synthesize() degrades like every other
+            # unreachable-model path.
+            raise InferenceUnavailable(
+                self.name, f"malformed response: {e}",
+                classification=MALFORMED_RESPONSE) from e
+        return content
 
+    def extract_content(self, data: dict, max_tokens: int) -> str:
+        """Pull the completion text out of an OpenAI-shaped response body.
+
+        Raises the structural errors (``AttributeError``/``TypeError``/
+        ``KeyError``/``IndexError``) that a malformed body produces so
+        :meth:`generate` can classify them; a well-formed body with no choices
+        yields the empty string.
+
+        Args:
+            data: The parsed JSON response body.
+            max_tokens: The request's generation cap, for the budget-exhausted
+                diagnostic.
+
+        Returns:
+            The completion text, or ``""`` when the response carries none.
+        """
         choices = data.get("choices", [])
         if not choices:
             return ""
@@ -712,6 +763,17 @@ class LlamaCppBackend(OpenAIChatBackend):
     @property
     def name(self) -> str:
         return f"llamacpp ({self.base_url})"
+
+    @property
+    def provider(self) -> str:
+        """``llamacpp`` labelled by its sanitized endpoint, never the raw URL.
+
+        :attr:`name` embeds ``base_url`` verbatim for logs, and a configured
+        ``AR_CONSULTANT_LLAMACPP_URL`` may carry a path or token; a diagnostic
+        field must not. :func:`inference_diagnosis.endpoint_of` drops both.
+        """
+        endpoint = self.endpoint
+        return f"llamacpp ({endpoint})" if endpoint else "llamacpp"
 
     @property
     def endpoint(self) -> str:
@@ -968,19 +1030,14 @@ class OpenRouterBackend(OpenAIChatBackend):
         return endpoint_of(self.base_url)
 
     def operator_hint(self, classification: str) -> str:
-        from inference_diagnosis import (
-            CREDENTIAL_MISSING as _MISSING,
-            CREDENTIAL_REJECTED as _REJECTED,
-            QUOTA_EXHAUSTED as _QUOTA,
-        )
-        if classification == _MISSING:
+        if classification == CREDENTIAL_MISSING:
             return ("Provide the openrouter-api-key secret via "
                     "AR_CONSULTANT_OPENROUTER_API_KEY_FILE (or "
                     "AR_CONSULTANT_OPENROUTER_API_KEY).")
-        if classification == _REJECTED:
+        if classification == CREDENTIAL_REJECTED:
             return ("OpenRouter rejected the key; rotate the openrouter-api-key "
                     "secret named by AR_CONSULTANT_OPENROUTER_API_KEY_FILE.")
-        if classification == _QUOTA:
+        if classification == QUOTA_EXHAUSTED:
             return ("The OpenRouter account has no remaining credit; add credit "
                     "or point AR_CONSULTANT_OPENROUTER_API_KEY_FILE at a funded "
                     "key.")
@@ -997,8 +1054,8 @@ class OpenRouterBackend(OpenAIChatBackend):
         def _accept(data: dict):
             remaining = data.get("data", {}).get("limit_remaining")
             if remaining is not None and remaining <= 0:
-                from inference_diagnosis import QUOTA_EXHAUSTED as _QUOTA
-                return (_QUOTA, "the OpenRouter key has no remaining credit")
+                return (QUOTA_EXHAUSTED,
+                        "the OpenRouter key has no remaining credit")
             return None
 
         probe = probe_http_get(f"{self.base_url}/key", timeout=5,
@@ -1320,7 +1377,7 @@ class AutoBackend(InferenceBackend):
         and all candidates were skipped.
         """
         delegate = self.delegate
-        order = [c.name for c in self._candidates]
+        order = [c.provider for c in self._candidates]
         if isinstance(delegate, PassthroughBackend):
             return ("auto-detection reached no backend; every candidate was "
                     "unavailable, in order: " + ", ".join(order))
@@ -1328,8 +1385,41 @@ class AutoBackend(InferenceBackend):
         for candidate in self._candidates:
             if candidate is delegate:
                 break
-            skipped.append(candidate.name)
-        summary = f"auto-detected {delegate.name}"
+            skipped.append(candidate.provider)
+        summary = f"auto-detected {delegate.provider}"
+        if skipped:
+            summary += "; skipped unavailable: " + ", ".join(skipped)
+        return summary
+
+    @staticmethod
+    def _selection_from_probes(candidate_probes: list,
+                               chosen: Optional[dict]) -> str:
+        """Describe the selection from a single probe snapshot.
+
+        :attr:`selection` reads the cached delegate, which can name a different
+        candidate than a fresh scan just chose (a backend recovered or died
+        between TTLs). The health tool must report one consistent picture, so it
+        derives the selection from the same ``candidate_probes`` it reports —
+        each probe's ``backend`` is that candidate's sanitized label.
+
+        Args:
+            candidate_probes: Each candidate's fresh probe, in candidate order.
+            chosen: The first available probe, or ``None`` when none answered.
+
+        Returns:
+            The same account :attr:`selection` gives, but keyed to this snapshot.
+        """
+        order = [p.get("backend") for p in candidate_probes]
+        if chosen is None:
+            return ("auto-detection reached no backend; every candidate was "
+                    "unavailable, in order: "
+                    + ", ".join(str(p) for p in order))
+        skipped = []
+        for probe in candidate_probes:
+            if probe is chosen:
+                break
+            skipped.append(str(probe.get("backend")))
+        summary = f"auto-detected {chosen.get('backend')}"
         if skipped:
             summary += "; skipped unavailable: " + ", ".join(skipped)
         return summary
@@ -1353,7 +1443,12 @@ class AutoBackend(InferenceBackend):
             result = self._diagnosis(
                 False, NOT_CONFIGURED, None,
                 "no candidate backend is reachable")
-        result["selection"] = self.selection
+        # Derive the selection from this same snapshot rather than from the
+        # cached delegate, which could name a different candidate if health
+        # changed between TTLs — making the chosen backend and the reported
+        # selection disagree.
+        result["selection"] = self._selection_from_probes(
+            candidate_probes, chosen)
         result["candidates"] = candidate_probes
         return result
 

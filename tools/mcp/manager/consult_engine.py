@@ -43,6 +43,7 @@ from consult_evidence import (
     TIER_CURRENT, TIER_ORDER, TIER_STALE, EvidenceList, marker_ids,
 )
 from consult_tiers import Caller, classify_mentions, extract_mentions, tier
+from inference_diagnosis import not_configured_cause
 from snapshot_index import SnapshotIndex
 
 # Notes retrieved per namespace, and the most presented after tier selection.
@@ -512,7 +513,9 @@ class ConsultTurn:
 
         if llm is None:
             synthesis, reason = None, "no inference backend could be constructed"
+            no_backend_cause = not_configured_cause(reason)
         else:
+            no_backend_cause = None
             history = self.conversation.history() if self.conversation else None
             synthesis = llm.consult(self.question, evidence=self.evidence,
                                     extra_context=self.context or None,
@@ -532,6 +535,12 @@ class ConsultTurn:
             # the agent is told to report it, quoting the classified reason.
             if synthesis is not None and synthesis.cause:
                 result["cause"] = synthesis.cause
+            elif no_backend_cause is not None:
+                # No backend object existed to build a cause, so the degraded
+                # result would otherwise lose the classification/endpoint/hint
+                # that every other degraded path carries. Supply the
+                # not-configured cause so the no-backend case is diagnosable too.
+                result["cause"] = no_backend_cause
             result["agent_action_required"] = (
                 synthesis.agent_instruction if synthesis is not None else (
                     "Tell the person you are working for that documentation and "

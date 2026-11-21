@@ -53,6 +53,27 @@ class TestMemoryRecall(unittest.TestCase):
 
     @patch.object(server, "_get_llm", return_value=None)
     @patch.object(server, "_get_memory_client")
+    def test_no_backend_carries_a_structured_not_configured_cause(
+            self, mock_client_fn, _):
+        # When no backend object exists at all, the degraded recall must still
+        # carry the structured cause every other degraded path does — not just
+        # a free-form note.
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search.return_value = [
+            {"id": "m1", "content": "a note", "score": 0.5}]
+        mock_client_fn.return_value = client
+
+        result = server.memory_recall(query="test", scope="all")
+
+        self.assertTrue(result["degraded"])
+        self.assertEqual("not_configured", result["cause"]["classification"])
+        self.assertIsNone(result["cause"]["backend"])
+        self.assertTrue(result["cause"]["operator_hint"])
+        self.assertIn("agent_action_required", result)
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
     def test_no_results(self, mock_client_fn, _):
         _grant_all_scopes()
         client = MagicMock()
@@ -304,6 +325,15 @@ class TestInferenceHealth(unittest.TestCase):
         result = server.inference_health()
         self.assertFalse(result["ok"])
         self.assertIn("No inference backend", result["error"])
+        # The no-backend case is exactly what this tool diagnoses, so it still
+        # carries the structured fields a live probe returns, classified
+        # not_configured.
+        self.assertFalse(result["available"])
+        self.assertEqual("not_configured", result["classification"])
+        self.assertIsNone(result["backend"])
+        self.assertEqual("", result["endpoint"])
+        self.assertTrue(result["operator_hint"])
+        self.assertIsNone(result["last_synthesis_success"])
 
     @patch.object(server, "_get_llm")
     def test_reports_an_available_backend(self, mock_llm):
@@ -670,6 +700,11 @@ class TestConsult(unittest.TestCase):
         self.assertNotIn("answer", result)
         self.assertEqual(result["sources"], ["docs/internals/a.md"])
         self.assertIn("read them directly", result["note"])
+        # The no-backend case carries the structured not_configured cause, the
+        # same shape a PassthroughBackend failure would attach.
+        self.assertEqual("not_configured", result["cause"]["classification"])
+        self.assertIsNone(result["cause"]["backend"])
+        self.assertIn("agent_action_required", result)
 
     @patch.object(server, "_get_memory_client", return_value=None)
     @patch.object(server, "_get_llm")
@@ -1056,6 +1091,27 @@ class TestMemoryStoreReformulation(unittest.TestCase):
         client.store.assert_called_once()
         self.assertTrue(result["ok"])
         self.assertFalse(result["reformulated_stored"])
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
+    def test_no_backend_store_carries_a_structured_cause(
+            self, mock_client_fn, _):
+        # With reformulation requested but no backend constructable, the stored
+        # original is flagged degraded with the structured not_configured cause.
+        client = MagicMock()
+        client.store.return_value = {"id": "plain-nb"}
+        mock_client_fn.return_value = client
+
+        result = server.memory_store(
+            content="raw note",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            reformulate=True,
+        )
+
+        self.assertTrue(result["degraded"])
+        self.assertEqual("not_configured", result["cause"]["classification"])
+        self.assertIsNone(result["cause"]["backend"])
 
     @patch.object(server, "_get_llm")
     @patch.object(server, "_get_memory_client")

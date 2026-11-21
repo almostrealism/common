@@ -22,6 +22,7 @@ import server
 from consult_conversations import (
     ConversationError, ConversationStore, caller_identity,
 )
+from inference_diagnosis import not_configured_cause, not_configured_diagnosis
 from memory_text import prefers_reformulated, present, projected
 from server import mcp
 
@@ -186,6 +187,11 @@ def memory_recall(
     llm = server._get_llm()
     if llm is None:
         degraded_reason = "no inference backend could be constructed"
+        # No backend object exists to build a cause, so supply the structured
+        # not-configured cause directly — the degraded recall then carries the
+        # same classification/endpoint/hint fields every other degraded path
+        # does, as the README promises.
+        degraded_cause = not_configured_cause(degraded_reason)
     else:
         try:
             from inference import SYSTEM_PROMPT, build_consult_prompt
@@ -370,6 +376,7 @@ def memory_store(
         llm = server._get_llm()
         if llm is None:
             degraded_reason = "no inference backend could be constructed"
+            degraded_cause = not_configured_cause(degraded_reason)
         else:
             synthesis = llm.reformulate(content)
             if synthesis.degraded:
@@ -524,16 +531,32 @@ def inference_health() -> dict:
         ``last_synthesis_success`` (ISO-8601 UTC time of the last success in
         this process, or ``null``), and — for auto-detection — a ``candidates``
         list giving each backend's own probe. ``ok=False`` when no backend could
-        be constructed.
+        be constructed, in which case the same structured fields are still
+        present with a ``not_configured`` classification.
     """
     server._require_scope("read")
     server._audit("inference_health")
 
     llm = server._get_llm()
     if llm is None:
+        # No backend object exists to probe, but that is the exact condition the
+        # health tool is meant to diagnose. Report the same structured fields a
+        # live probe returns, classified not_configured, so a caller is not left
+        # with only a bare error. ok=False still signals that construction
+        # failed.
+        diagnosis = not_configured_diagnosis()
         return {
             "ok": False,
             "error": "No inference backend could be constructed.",
+            "backend": diagnosis["backend"],
+            "backend_selection": diagnosis["selection"],
+            "endpoint": diagnosis["endpoint"],
+            "available": diagnosis["available"],
+            "classification": diagnosis["classification"],
+            "http_status": diagnosis["http_status"],
+            "detail": diagnosis["detail"],
+            "operator_hint": diagnosis["operator_hint"],
+            "last_synthesis_success": None,
             "next_steps": [
                 "Confirm the inference dependencies are importable in this image",
                 "Set AR_CONSULTANT_BACKEND or start a local model "

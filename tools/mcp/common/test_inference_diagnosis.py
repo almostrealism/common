@@ -11,9 +11,12 @@ import io
 import json
 import os
 import socket
+import socketserver
 import sys
+import threading
 import unittest
 import urllib.error
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -37,6 +40,9 @@ from inference_diagnosis import (  # noqa: E402
     UNREACHABLE,
     classify_transport_error,
     endpoint_of,
+    not_configured_cause,
+    not_configured_diagnosis,
+    probe_http_get,
 )
 
 
@@ -285,6 +291,125 @@ class BackendProbeDiagnosisTest(unittest.TestCase):
             self.skipTest("mlx-lm is installed in this environment")
         self.assertEqual(NOT_CONFIGURED, probe["classification"])
         self.assertEqual("", probe["endpoint"])
+
+
+class NotConfiguredBuildersTest(unittest.TestCase):
+    """The no-backend-object builders mirror the cause/diagnosis shapes.
+
+    When the inference module cannot even be imported there is no backend to
+    ask, yet a degraded result must still carry the same fields. These check the
+    standalone builders produce exactly those fields, classified not_configured
+    and never bearing a secret.
+    """
+
+    def test_cause_has_every_cause_field_classified_not_configured(self):
+        cause = not_configured_cause()
+        self.assertEqual(
+            {"backend", "backend_selection", "endpoint", "classification",
+             "http_status", "detail", "operator_hint"},
+            set(cause))
+        self.assertEqual(NOT_CONFIGURED, cause["classification"])
+        self.assertIsNone(cause["backend"])
+        self.assertIsNone(cause["http_status"])
+        self.assertEqual("", cause["endpoint"])
+        self.assertTrue(cause["operator_hint"])
+
+    def test_diagnosis_has_every_probe_field_classified_not_configured(self):
+        diagnosis = not_configured_diagnosis()
+        self.assertEqual(
+            {"available", "backend", "endpoint", "selection", "classification",
+             "http_status", "detail", "operator_hint"},
+            set(diagnosis))
+        self.assertFalse(diagnosis["available"])
+        self.assertEqual(NOT_CONFIGURED, diagnosis["classification"])
+        self.assertEqual(diagnosis["selection"], cause_selection(diagnosis))
+
+    def test_detail_is_carried_through(self):
+        self.assertEqual("custom reason",
+                         not_configured_cause("custom reason")["detail"])
+        self.assertEqual("custom reason",
+                         not_configured_diagnosis("custom reason")["detail"])
+
+
+def cause_selection(diagnosis):
+    """The selection a not_configured diagnosis reports (helper for the test)."""
+    return not_configured_cause(diagnosis["detail"])["backend_selection"]
+
+
+class _JsonBodyHandler(BaseHTTPRequestHandler):
+    """Answers every GET with a fixed, class-configured JSON body."""
+
+    body = "[]"
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def do_GET(self):
+        payload = _JsonBodyHandler.body.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+
+class _LocalHTTPServer(HTTPServer):
+    """HTTPServer that skips the reverse-DNS lookup when binding."""
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
+
+class ProbeNonObjectJsonTest(unittest.TestCase):
+    """A 2xx whose JSON is not an object is malformed, not available.
+
+    A valid-but-non-object body (``[]``, a bare number) carries none of the
+    fields a backend-specific ``accept`` predicate inspects. Substituting ``{}``
+    would make a broken provider look healthy — the exact way a malformed health
+    response could report a provider available.
+    """
+
+    def _serve(self, body):
+        _JsonBodyHandler.body = body
+        server = _LocalHTTPServer(("127.0.0.1", 0), _JsonBodyHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.shutdown)
+        return f"http://127.0.0.1:{server.server_address[1]}/key"
+
+    def test_json_array_body_is_malformed(self):
+        url = self._serve("[]")
+        probe = probe_http_get(url, timeout=3)
+        self.assertFalse(probe["available"])
+        self.assertEqual(MALFORMED_RESPONSE, probe["classification"])
+
+    def test_accept_predicate_is_not_consulted_for_a_non_object(self):
+        # The predicate would have accepted anything; the non-object check must
+        # fire first so a list body cannot slip past as available.
+        url = self._serve("[1, 2, 3]")
+        calls = []
+
+        def accept(data):
+            calls.append(data)
+            return None
+
+        probe = probe_http_get(url, timeout=3, accept=accept)
+        self.assertFalse(probe["available"])
+        self.assertEqual(MALFORMED_RESPONSE, probe["classification"])
+        self.assertEqual([], calls)
+
+    def test_object_body_still_reaches_the_predicate(self):
+        url = self._serve(json.dumps({"status": "ok"}))
+        seen = []
+
+        def accept(data):
+            seen.append(data)
+            return None
+
+        probe = probe_http_get(url, timeout=3, accept=accept)
+        self.assertTrue(probe["available"])
+        self.assertEqual([{"status": "ok"}], seen)
 
 
 if __name__ == "__main__":

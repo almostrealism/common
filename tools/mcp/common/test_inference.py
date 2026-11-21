@@ -56,6 +56,38 @@ class FakeBackend(InferenceBackend):
         return self.text
 
 
+class _FixedProbeBackend(InferenceBackend):
+    """A backend whose probe outcome is a fixed value, decoupled from health.
+
+    Real server-backed backends probe live in ``probe_diagnosis`` while the
+    auto delegate reads cached health; this stand-in reproduces that by
+    returning a constant probe regardless of the cache, so a test can drive the
+    snapshot the health scan sees directly.
+    """
+
+    def __init__(self, label, available):
+        self._label = label
+        self._available = available
+        super().__init__()
+
+    @property
+    def name(self):
+        return self._label
+
+    def _probe(self):
+        return self._available
+
+    def probe_diagnosis(self):
+        return self._diagnosis(
+            self._available, None if self._available else "connection_refused",
+            None, "")
+
+    def generate(self, prompt, system=None, max_tokens=1024, temperature=0.3):
+        if not self._available:
+            raise InferenceUnavailable(self.name, "down")
+        return "ok"
+
+
 class HealthCacheTest(unittest.TestCase):
     """``available`` must track the present, not the state at construction."""
 
@@ -269,6 +301,55 @@ class AutoBackendTest(unittest.TestCase):
 
         self.assertEqual(auto.synthesize("prompt").text, "from second")
 
+    def test_selection_from_probes_names_the_chosen_and_skips_the_rest(self):
+        # The static builder works off the probe snapshot alone, so the reported
+        # selection can never disagree with the backend the snapshot chose.
+        probes = [
+            {"backend": "llamacpp (http://host:8084)", "available": False},
+            {"backend": "openrouter (minimax/minimax-m3)", "available": True},
+        ]
+        chosen = probes[1]
+
+        selection = AutoBackend._selection_from_probes(probes, chosen)
+
+        self.assertIn("auto-detected openrouter (minimax/minimax-m3)", selection)
+        self.assertIn("skipped unavailable: llamacpp (http://host:8084)",
+                      selection)
+
+    def test_selection_from_probes_reports_all_unavailable_when_none_chosen(self):
+        probes = [{"backend": "llamacpp", "available": False},
+                  {"backend": "ollama", "available": False}]
+
+        selection = AutoBackend._selection_from_probes(probes, None)
+
+        self.assertIn("every candidate was unavailable", selection)
+        self.assertIn("llamacpp, ollama", selection)
+
+    def test_probe_diagnosis_selection_matches_the_probed_backend(self):
+        # Even when the cached delegate is the first candidate, a fresh scan
+        # that chooses the second must report the second in its selection — the
+        # selection is derived from the same snapshot, not the stale delegate.
+        down = _FixedProbeBackend("down-one", available=False)
+        up = _FixedProbeBackend("up-two", available=True)
+        auto = AutoBackend(candidates=[down, up])
+
+        probe = auto.probe_diagnosis()
+
+        self.assertTrue(probe["available"])
+        self.assertEqual("up-two", probe["backend"])
+        self.assertIn("auto-detected up-two", probe["selection"])
+        self.assertIn("skipped unavailable: down-one", probe["selection"])
+
+    def test_probe_diagnosis_selection_reports_every_down_candidate(self):
+        auto = AutoBackend(candidates=[FakeBackend(healthy=False),
+                                       FakeBackend(healthy=False)])
+
+        probe = auto.probe_diagnosis()
+
+        self.assertFalse(probe["available"])
+        self.assertEqual("not_configured", probe["classification"])
+        self.assertIn("every candidate was unavailable", probe["selection"])
+
 
 class CreateBackendTest(unittest.TestCase):
     """Every configuration produces a backend that degrades rather than raises."""
@@ -311,6 +392,10 @@ class _LlamaCppHandler(BaseHTTPRequestHandler):
     """Minimal stand-in for llama-server's health and completions endpoints."""
 
     healthy = True
+    #: The completion body a POST returns. A test sets it to a structurally
+    #: malformed value (a list, or a ``message`` that is not an object) to drive
+    #: the malformed-response path.
+    completion = {"choices": [{"message": {"content": "a real summary"}}]}
 
     def log_message(self, fmt, *args):
         pass
@@ -333,9 +418,7 @@ class _LlamaCppHandler(BaseHTTPRequestHandler):
         if not _LlamaCppHandler.healthy:
             self.send_error(503)
             return
-        self._respond(
-            {"choices": [{"message": {"content": "a real summary"}}]}
-        )
+        self._respond(_LlamaCppHandler.completion)
 
 
 class _LocalHTTPServer(HTTPServer):
@@ -360,6 +443,10 @@ class LlamaCppLiveTest(unittest.TestCase):
         self.addCleanup(os.environ.pop, "AR_INFERENCE_HEALTH_TTL", None)
 
         _LlamaCppHandler.healthy = True
+        _LlamaCppHandler.completion = {
+            "choices": [{"message": {"content": "a real summary"}}]}
+        self.addCleanup(setattr, _LlamaCppHandler, "completion",
+                        {"choices": [{"message": {"content": "a real summary"}}]})
         self.server = _LocalHTTPServer(("127.0.0.1", 0), _LlamaCppHandler)
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
@@ -418,6 +505,67 @@ class LlamaCppLiveTest(unittest.TestCase):
         # The endpoint names where the request went, not the /health or
         # completions path.
         self.assertNotIn("/health", result.cause["endpoint"])
+
+    def test_non_object_completion_body_degrades_as_malformed(self):
+        # A 2xx whose JSON is a list instead of an object used to raise an
+        # uncaught AttributeError out of generate(); it must degrade like any
+        # other unusable response.
+        _LlamaCppHandler.completion = []
+
+        result = self.backend.synthesize("prompt")
+
+        self.assertTrue(result.degraded)
+        self.assertEqual("malformed_response", result.cause["classification"])
+
+    def test_non_object_message_field_degrades_as_malformed(self):
+        _LlamaCppHandler.completion = {
+            "choices": [{"message": "not an object"}]}
+
+        result = self.backend.synthesize("prompt")
+
+        self.assertTrue(result.degraded)
+        self.assertEqual("malformed_response", result.cause["classification"])
+
+    def test_cause_backend_is_sanitized_not_the_raw_url(self):
+        # The llama.cpp name embeds base_url (for logs); the diagnostic fields
+        # must carry the sanitized endpoint label instead, so a configured URL
+        # that bore a path or token could never leak through cause.backend.
+        self.server.shutdown()
+        self.server.server_close()
+
+        cause = self.backend.synthesize("prompt").cause
+
+        self.assertTrue(cause["backend"].startswith("llamacpp ("))
+        self.assertNotIn("/health", cause["backend"])
+        self.assertNotIn("/v1/chat", cause["backend"])
+
+
+class LlamaCppProviderLabelTest(unittest.TestCase):
+    """The diagnostic label never carries a configured URL's path or token."""
+
+    def test_provider_drops_path_and_userinfo(self):
+        backend = LlamaCppBackend(
+            base_url="http://user:tok3n@host.example:8084/secret/path")
+        self.assertEqual("llamacpp (http://host.example:8084)", backend.provider)
+        self.assertNotIn("tok3n", backend.provider)
+        self.assertNotIn("secret", backend.provider)
+
+    def test_cause_and_selection_use_the_sanitized_label(self):
+        os.environ["AR_INFERENCE_HEALTH_TTL"] = "0"
+        self.addCleanup(os.environ.pop, "AR_INFERENCE_HEALTH_TTL", None)
+        # A token-bearing URL at a port nothing listens on: the request is
+        # refused (so it degrades) and the diagnostic fields must still omit the
+        # token and path, even though ``name`` embeds the raw URL for logs.
+        backend = LlamaCppBackend(
+            base_url="http://user:tok3n@127.0.0.1:1/secret/path")
+
+        result = backend.synthesize("prompt")
+
+        self.assertTrue(result.degraded)
+        for value in (result.cause["backend"],
+                      result.cause["backend_selection"]):
+            self.assertNotIn("tok3n", value)
+            self.assertNotIn("secret", value)
 
 
 class _OpenRouterHandler(BaseHTTPRequestHandler):
