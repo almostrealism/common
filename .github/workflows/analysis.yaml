@@ -552,7 +552,19 @@ jobs:
     # the owner move build onto a self-hosted runner — and switch straight back —
     # with no commit. See "The BUILD_RUNS_ON repository variable" in
     # .github/CLAUDE.md.
-    runs-on: ${{ vars.BUILD_RUNS_ON && fromJSON(vars.BUILD_RUNS_ON) || 'ubuntu-latest' }}
+    #
+    # A pull request from a fork always builds on ubuntu-latest, whatever the
+    # variable says. build checks out and runs the pull request's head, and a
+    # self-hosted runner holds the runner-registration token and a persistent
+    # Maven repository later jobs read; a fork's code must never reach either.
+    # Every other self-hosted lane is already out of a fork's reach (test runs
+    # start only from the owner's deployment event), so build is the one place
+    # that needs the guard.
+    runs-on: >-
+      ${{ vars.BUILD_RUNS_ON &&
+          (github.event_name != 'pull_request' ||
+           github.event.pull_request.head.repo.full_name == github.repository) &&
+          fromJSON(vars.BUILD_RUNS_ON) || 'ubuntu-latest' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -604,22 +616,28 @@ jobs:
       # The target is the repository Maven actually reads: MAVEN_REPO where the
       # self-hosted step set it (a per-runner subdirectory, never the shared
       # root, so another runner's repository is never touched), otherwise
-      # ~/.m2/repository. Resolved by the shell, where both are plain env vars.
+      # ~/.m2/repository. Resolved once, by the shell, where both are plain env
+      # vars, and published as the step's `path` output for the upload below —
+      # the same rule the restore steps follow: an action input never relies on
+      # an expression reading a value an earlier step wrote to GITHUB_ENV.
       - name: Clear previously installed project artifacts
-        run: rm -rf "${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+        id: project-artifacts
+        run: |
+          path="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          rm -rf "${path}"
+          echo "path=${path}" >> "${GITHUB_OUTPUT}"
 
       - name: Build
         run: mvn install -DskipTests -Dcheckstyle.skip=true
 
-      # From the same repository Maven installed into. env.MAVEN_REPO is set only
-      # by the self-hosted Select Maven repository step above; on a hosted runner
-      # that step is skipped, so the ~/.m2/repository fallback applies there.
+      # From the same repository Maven installed into: the path the clear step
+      # resolved, so the upload can never disagree with what Maven read.
       - name: Upload installed artifacts
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
           name: maven-installed-artifacts
-          path: ${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism
+          path: ${{ steps.project-artifacts.outputs.path }}
           # Long enough for the flaky-test retries and a manual re-run.
           retention-days: 3
           if-no-files-found: error

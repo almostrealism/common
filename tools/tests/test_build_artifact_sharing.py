@@ -8,6 +8,7 @@ These tests keep a new or copied job from quietly bringing the rebuild back,
 and keep every job that restores the artifacts ordered after ``build``.
 """
 
+import json
 import os
 import unittest
 
@@ -50,10 +51,11 @@ class BuildArtifactSharingTest(unittest.TestCase):
                    if s["with"].get("name") == _ARTIFACT]
         self.assertEqual(1, len(uploads))
         # build can run on a hosted or a self-hosted runner (see BuildRunnerSelectionTest).
-        # It uploads from whatever repository it installed into: MAVEN_REPO when the
-        # self-hosted "Select Maven repository" step set it, ~/.m2/repository otherwise
-        # (env.MAVEN_REPO is empty on a hosted runner, where that step is skipped).
-        self.assertEqual("${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism",
+        # It uploads from whatever repository it installed into, as resolved by the
+        # shell in the clear step (MAVEN_REPO when the self-hosted "Select Maven
+        # repository" step set it, ~/.m2/repository otherwise) and published as that
+        # step's output; an action input never reads a GITHUB_ENV value directly.
+        self.assertEqual("${{ steps.project-artifacts.outputs.path }}",
                          uploads[0]["path"])
         self.assertEqual("error", uploads[0]["if-no-files-found"])
 
@@ -172,6 +174,38 @@ class BuildRunnerSelectionTest(unittest.TestCase):
         self.assertIn("fromJSON(vars.BUILD_RUNS_ON)", runs_on)
         self.assertIn("'ubuntu-latest'", runs_on)
 
+    def test_fork_pull_requests_never_select_the_self_hosted_runner(self):
+        """build runs the pull request's head; a self-hosted runner holds the
+        runner-registration token and a persistent Maven repository, so the
+        variable may only take effect for a non-pull_request event or a head in
+        this repository. The guard must sit between the variable check and
+        fromJSON, so a fork PR falls through to 'ubuntu-latest'."""
+        runs_on = " ".join(str(self.build["runs-on"]).split())
+        guard = ("(github.event_name != 'pull_request' || "
+                 "github.event.pull_request.head.repo.full_name == github.repository)")
+        self.assertIn(guard, runs_on)
+        self.assertLess(runs_on.index("vars.BUILD_RUNS_ON &&"), runs_on.index(guard))
+        self.assertLess(runs_on.index(guard), runs_on.index("fromJSON(vars.BUILD_RUNS_ON)"))
+        self.assertLess(runs_on.index("fromJSON(vars.BUILD_RUNS_ON)"),
+                        runs_on.index("|| 'ubuntu-latest'"))
+
+    def test_runs_on_selects_by_event_and_head_repository(self):
+        """Evaluate the runs-on expression for each case: unset variable, fork PR,
+        same-repository PR, and a non-PR event (deployment, push, dispatch)."""
+        labels = '["self-hosted","linux","ar-build"]'
+        cases = [
+            ("", "pull_request", "almostrealism/common", "ubuntu-latest"),
+            ("", "deployment", None, "ubuntu-latest"),
+            (labels, "pull_request", "someone/common", "ubuntu-latest"),
+            (labels, "pull_request", "almostrealism/common", ["self-hosted", "linux", "ar-build"]),
+            (labels, "deployment", None, ["self-hosted", "linux", "ar-build"]),
+            (labels, "push", None, ["self-hosted", "linux", "ar-build"]),
+        ]
+        for variable, event, head, expected in cases:
+            with self.subTest(variable=variable, event=event, head=head):
+                self.assertEqual(expected, _evaluate_runs_on(
+                    self.build["runs-on"], variable, event, head, "almostrealism/common"))
+
     def test_jdk_is_selected_by_runner_environment(self):
         """Hosted downloads the JDK with setup-java; self-hosted selects the
         shipped JDK with the shared select-jdk action (as the test lanes do)."""
@@ -213,6 +247,17 @@ class BuildRunnerSelectionTest(unittest.TestCase):
         self.assertIsNotNone(clear)
         self.assertIn('${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism', clear["run"])
 
+    def test_clear_step_publishes_the_path_the_upload_reads(self):
+        """The clear step resolves the repository once and publishes it as its
+        `path` output, which is what the upload names — so the cleared, installed
+        and uploaded trees are one and the same on either runner."""
+        clear = _step_named(self.build, "Clear previously installed project artifacts")
+        self.assertEqual("project-artifacts", clear.get("id"))
+        self.assertIn('rm -rf "${path}"', clear["run"])
+        self.assertIn('echo "path=${path}" >> "${GITHUB_OUTPUT}"', clear["run"])
+        upload = _step_named(self.build, "Upload installed artifacts")
+        self.assertEqual("${{ steps.project-artifacts.outputs.path }}", upload["with"]["path"])
+
     def test_build_still_only_installs_and_uploads(self):
         """build stays the critical-path minimum: mvn install -DskipTests and the
         artifact upload, no tests and no extra Maven phases."""
@@ -220,6 +265,35 @@ class BuildRunnerSelectionTest(unittest.TestCase):
         self.assertEqual(1, len(mvn), "build must run exactly one mvn invocation")
         self.assertIn("mvn install -DskipTests", mvn[0])
         self.assertNotIn("mvn test", mvn[0])
+
+
+def _evaluate_runs_on(expression, variable, event_name, head_repo, repository):
+    """Evaluate a GitHub Actions runs-on expression built from &&, ||, ==, !=,
+    string literals, fromJSON and the contexts build's runs-on reads. GitHub's
+    && and || return an operand, exactly as Python's `and`/`or` do, and an empty
+    string and null are falsy in both, so a token-for-token translation gives
+    the value the runner would receive."""
+    text = " ".join(str(expression).split())
+    if text.startswith("${{") and text.endswith("}}"):
+        text = text[3:-2]
+    names = {
+        "vars.BUILD_RUNS_ON": "build_runs_on",
+        "github.event.pull_request.head.repo.full_name": "head_repo",
+        "github.event_name": "event_name",
+        "github.repository": "repository",
+        "fromJSON": "from_json",
+    }
+    for source, target in names.items():
+        text = text.replace(source, target)
+    text = text.replace("&&", " and ").replace("||", " or ")
+    namespace = {
+        "build_runs_on": variable,
+        "head_repo": head_repo,
+        "event_name": event_name,
+        "repository": repository,
+        "from_json": json.loads,
+    }
+    return eval(text, {"__builtins__": {}}, namespace)  # noqa: S307 - fixed workflow text
 
 
 def _wrap(value):

@@ -107,7 +107,8 @@ long-running lanes run once, after the loop has settled.
 Validate runs are hosted-only **by default**. The one exception is `build`,
 whose runner is chosen by the `BUILD_RUNS_ON` repository variable (see "The
 `BUILD_RUNS_ON` repository variable" below): with it set to a self-hosted label
-list, a validate run uses one self-hosted build runner per push. The trade-off
+list, a validate run of a pull request from this repository (never a fork's)
+uses one self-hosted build runner per push. The trade-off
 is deliberate — `build` took 12–13 minutes on `ubuntu-latest` and sits on the
 critical path of every test lane, the three tools policy checks, `test-flowtree`
 and `analysis`, so moving it to a fast self-hosted runner shortens every run —
@@ -703,9 +704,11 @@ and Maven-repository steps are keyed on `runner.environment`:
   `$MAVEN_REPO` when the self-hosted step set it, otherwise `~/.m2/repository`.
   On a self-hosted runner `MAVEN_REPO` is a per-runner subdirectory of the shared
   cache, never the shared root, so clearing `org/almostrealism` never touches a
-  repository another runner shares. The upload path is
-  `${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism`; `env.MAVEN_REPO`
-  is empty on a hosted runner (the select step was skipped there).
+  repository another runner shares. The clear step resolves the path once, in
+  the shell, and publishes it as its `path` output; the upload's `path` input is
+  `${{ steps.project-artifacts.outputs.path }}`. It never reads `env.MAVEN_REPO`
+  in an action input, for the same reason the restore steps copy in the shell
+  (see "Sharing the build").
 
 `build` is **not** given `-T` (parallel reactor). `studio/compose` unpacks
 `engine/ml`'s `proto`-classified artifact, which is attached at `ml`'s package
@@ -721,13 +724,27 @@ Chooses the runner for the `build` job. It is a repository **variable** holding
 a JSON label list, parsed with `fromJSON`:
 
 ```yaml
-runs-on: ${{ vars.BUILD_RUNS_ON && fromJSON(vars.BUILD_RUNS_ON) || 'ubuntu-latest' }}
+runs-on: >-
+  ${{ vars.BUILD_RUNS_ON &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository) &&
+      fromJSON(vars.BUILD_RUNS_ON) || 'ubuntu-latest' }}
 ```
 
 - **Unset (the default):** `build` runs on GitHub-hosted `ubuntu-latest`, exactly
   as before. This is the fail-safe default, not a misconfiguration to "fix".
 - **Set to a self-hosted label list** (e.g. `["self-hosted","linux","ar-build"]`):
-  `build` runs on a self-hosted runner carrying those labels.
+  `build` runs on a self-hosted runner carrying those labels — except for a
+  pull request from a fork, which always builds on `ubuntu-latest`.
+
+**A fork's pull request never reaches the self-hosted build runner.** `build`
+checks out and runs the pull request's head, and a self-hosted runner holds the
+runner-registration token and a persistent Maven repository that later jobs
+read, so fork code on it could take the token or poison the cache. Every other
+self-hosted lane is already out of a fork's reach — test runs start only from a
+`deployment` of a branch of this repository (see "Starting a test run") — which
+leaves `build`'s `pull_request` validate run as the one path that needs the
+head-repository guard. Never drop it from the expression.
 
 It is a variable, not a hard-coded `runs-on`, on purpose. `build` sits on the
 critical path of every job that compiles, tests or analyses the project, so a
