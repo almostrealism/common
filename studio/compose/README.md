@@ -222,6 +222,16 @@ the source's blend contribution (`setContribution(double)`, default `1.0`).
 Explicit weights plus contributions make the composed latent a deterministic
 function of the sources.
 
+By default the composed latent is the weighted sum of the scaled sources;
+`AudioComposer.setNormalizedBlend(true)` makes it a weighted mean instead: each
+source's share is a softmax of its score (`getScore`, the unclamped dot product)
+over the blend temperature (`setBlendTemperature`, default `1.0`), multiplied by
+its contribution, so a random position mixes every source in proportions that
+vary continuously with the position. A contribution of zero or below excludes a
+source; if every source is excluded the latent is their plain mean. See
+[Latent Audio Composition](../../docs/internals/latent-audio-composition.md) for a
+worked example of both modes and of decoding the composed latent.
+
 ## Persistence Package
 
 The `org.almostrealism.studio.persistence` package handles audio library storage.

@@ -345,10 +345,12 @@ public class EnforcementRunnerExhaustionTest extends TestSuiteBase {
     // ── Item 3 tests: commit-message fallback content ───────────────────────────
 
     /**
-     * The fallback commit message uses the job prompt's first line (truncated to 72 chars).
+     * The fallback commit message never uses the job prompt. With no determinable changes (the
+     * sandbox is not a git repository) it names the job, even when the prompt reads like a
+     * descriptive first line that previously became the commit subject.
      */
     @Test(timeout = 30000)
-    public void fallbackCommitMessageUsesPromptFirstLine() throws IOException {
+    public void fallbackCommitMessageNeverUsesPrompt() throws IOException {
         CodingAgentJob job = new CodingAgentJob("t1", "Fix the authentication bug in UserService\n\nMore details here") {
             @Override
             protected void runCorrectionSession(String correctionPrompt, String activity) { }
@@ -362,7 +364,9 @@ public class EnforcementRunnerExhaustionTest extends TestSuiteBase {
 
         String msg = readCommitTxt();
         assertNotNull(msg);
-        assertEquals("Fix the authentication bug in UserService", msg.trim());
+        assertEquals("Job t1 commit", msg.trim());
+        assertFalse("The prompt must not leak into the fallback",
+                msg.contains("Fix the authentication bug in UserService"));
     }
 
     /**
@@ -388,10 +392,11 @@ public class EnforcementRunnerExhaustionTest extends TestSuiteBase {
     }
 
     /**
-     * When the prompt first line exceeds 72 characters, it is truncated with "...".
+     * A long, instruction-worded prompt never appears in the fallback and never sets its length:
+     * with no determinable changes the fallback is the short neutral job-named subject.
      */
     @Test(timeout = 30000)
-    public void fallbackCommitMessageTruncatesLongFirstLine() throws IOException {
+    public void fallbackCommitMessageIgnoresLongPrompt() throws IOException {
         String longPrompt = "This is a very long first line that definitely exceeds seventy-two characters and should be truncated";
         CodingAgentJob job = new CodingAgentJob("t1", longPrompt) {
             @Override
@@ -406,9 +411,9 @@ public class EnforcementRunnerExhaustionTest extends TestSuiteBase {
 
         String msg = readCommitTxt();
         assertNotNull(msg);
-        assertTrue("Fallback must be truncated to 72 chars with ellipsis",
-                msg.trim().length() <= 72);
-        assertTrue("Truncated message should end with ...", msg.trim().endsWith("..."));
+        assertEquals("Job t1 commit", msg.trim());
+        assertFalse("No part of the long prompt may leak into the fallback",
+                msg.contains("very long first line"));
     }
 
     /**

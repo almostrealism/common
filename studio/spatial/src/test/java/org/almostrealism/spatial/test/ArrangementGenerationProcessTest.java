@@ -16,13 +16,18 @@
 
 package org.almostrealism.spatial.test;
 
+import org.almostrealism.audio.line.OutputLine;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.heredity.ProjectedGenome;
 import org.almostrealism.optimize.PopulationOptimizer;
 import org.almostrealism.spatial.ArrangementGenerationProcess;
 import org.almostrealism.spatial.GenomicNetwork;
 import org.almostrealism.studio.AudioScene;
+import org.almostrealism.studio.generative.GenerationManager;
 import org.almostrealism.studio.health.AudioHealthScore;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
 import org.almostrealism.studio.optimize.AudioSceneOptimizer;
+import org.almostrealism.studio.optimize.AudioScenePopulation;
 import org.almostrealism.util.TestDepth;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -207,5 +212,295 @@ public class ArrangementGenerationProcessTest extends TestSuiteBase {
 		} finally {
 			process.destroy();
 		}
+	}
+
+	/**
+	 * Builds a health score carrying the given output path. The path need not name
+	 * an existing file: the record attaches the score and derives its key from the
+	 * path without reading audio from disk.
+	 *
+	 * @param output the output file path the score reports
+	 * @return a health score reporting that output
+	 */
+	private AudioHealthScore score(String output) {
+		return new AudioHealthScore(44_100, 0.5, output, List.of(), List.of());
+	}
+
+	/**
+	 * Reproduces the score loss that occurred when records were rebuilt lazily on the
+	 * first unmatched signature rather than once per cycle: a cycle's population
+	 * {@code [A', C]} where {@code A'} shares the previous population's {@code A}
+	 * signature, with scores delivered {@code A'} then {@code C}. Driven through the
+	 * optimizer's real breeding-complete and health-delivery hooks, without rendering
+	 * audio, so the record-synchronization behavior is exercised in isolation.
+	 *
+	 * <p>Before the fix the {@code A'} score attached to the stale {@code A} record and
+	 * the later {@code C} signature triggered a rebuild that discarded it, leaving the
+	 * {@code A'} record unscored. After the fix the records are rebuilt once, at the
+	 * breeding-complete hook, so both delivered scores survive the cycle.</p>
+	 *
+	 * @throws Exception if the process cannot be prepared
+	 */
+	@Test(timeout = 120_000)
+	public void scoresSurviveWhenABredChildRepeatsAPriorSignature() throws Exception {
+		new File("results").mkdirs();
+		File networksFile = new File("results/process-cycle-records.xml");
+		networksFile.delete();
+		new File(AudioSceneOptimizer.POPULATION_FILE).delete();
+
+		AudioScene<?> scene = new AudioScene<>(120.0, 2, 2, OutputLine.sampleRate);
+		// A bare scene's generator list is uninitialized; prepare() clones the scene,
+		// so give it an empty generator set to snapshot.
+		scene.getGenerationManager().setSettings(new GenerationManager.Settings());
+
+		ArrangementGenerationProcess process =
+				new ArrangementGenerationProcess(networksFile.getPath());
+
+		try {
+			process.prepare(scene, 1);
+			AudioSceneOptimizer optimizer = process.getOptimizer();
+
+			// A and A' share parameters, hence a signature; B and C differ from both.
+			ProjectedGenome genomeA = new ProjectedGenome(PackedCollection.of(0.10, 0.20, 0.30));
+			ProjectedGenome genomeB = new ProjectedGenome(PackedCollection.of(0.40, 0.50, 0.60));
+			ProjectedGenome genomeAPrime = new ProjectedGenome(PackedCollection.of(0.10, 0.20, 0.30));
+			ProjectedGenome genomeC = new ProjectedGenome(PackedCollection.of(0.70, 0.80, 0.90));
+
+			String signatureA = genomeA.signature();
+			String signatureC = genomeC.signature();
+			Assert.assertEquals("A and A' must share a signature",
+					signatureA, genomeAPrime.signature());
+			Assert.assertNotEquals("C must not share A's signature",
+					signatureA, signatureC);
+
+			GenomicNetwork recordA = new GenomicNetwork(0, genomeA);
+			recordA.setHealthScore(score("results/prev-A.wav"));
+			GenomicNetwork recordB = new GenomicNetwork(1, genomeB);
+			recordB.setHealthScore(score("results/prev-B.wav"));
+			process.setNetworks(List.of(recordA, recordB));
+
+			optimizer.setPopulation(new AudioScenePopulation(process.getLocalScene(),
+					new ArrayList<>(List.of(genomeAPrime, genomeC))));
+
+			// Breeding has produced the population; the records sync to it once here.
+			optimizer.breedingComplete();
+
+			// Scores arrive A' then C, through the optimizer's own delivery path.
+			optimizer.getHealthListener().accept(signatureA, score("results/cycle-A.wav"));
+			optimizer.getHealthListener().accept(signatureC, score("results/cycle-C.wav"));
+
+			List<GenomicNetwork> records = process.getNetworks();
+			Assert.assertEquals("The cycle's population has two records",
+					2, records.size());
+
+			for (GenomicNetwork record : records) {
+				Assert.assertNotNull("Record for signature "
+						+ record.getGenome().signature()
+						+ " carries no score after the cycle", record.getHealthScore());
+			}
+
+			GenomicNetwork aPrimeRecord = records.stream()
+					.filter(g -> signatureA.equals(g.getGenome().signature()))
+					.findFirst().orElse(null);
+			Assert.assertNotNull("No record carries A's signature", aPrimeRecord);
+			Assert.assertNotNull("The score delivered before the later signature"
+					+ " was lost when the records were rebuilt",
+					aPrimeRecord.getHealthScore());
+		} finally {
+			process.destroy();
+		}
+	}
+
+	/**
+	 * With breeding disabled, {@link PopulationOptimizer#iterate()} never reaches the
+	 * breeding-complete hook, so the records must still be brought into step with the
+	 * loaded population when the iteration begins. Stale records from a previous
+	 * population are left in place and an iteration is run over an empty population,
+	 * which evaluates nothing: the records must afterwards match that population
+	 * (none), and no stale record may survive to receive this cycle's scores.
+	 *
+	 * @throws Exception if the process cannot be prepared
+	 */
+	@Test(timeout = 120_000)
+	public void recordsSyncOncePerIterationWhenBreedingIsDisabled() throws Exception {
+		new File("results").mkdirs();
+		File networksFile = new File("results/process-no-breeding-records.xml");
+		networksFile.delete();
+		new File(AudioSceneOptimizer.POPULATION_FILE).delete();
+
+		AudioScene<?> scene = new AudioScene<>(120.0, 2, 2, OutputLine.sampleRate);
+		scene.getGenerationManager().setSettings(new GenerationManager.Settings());
+
+		ArrangementGenerationProcess process =
+				new ArrangementGenerationProcess(networksFile.getPath());
+		boolean breeding = PopulationOptimizer.enableBreeding;
+
+		try {
+			process.prepare(scene, 1);
+			AudioSceneOptimizer optimizer = process.getOptimizer();
+
+			GenomicNetwork staleA = new GenomicNetwork(0,
+					new ProjectedGenome(PackedCollection.of(0.10, 0.20, 0.30)));
+			staleA.setHealthScore(score("results/stale-A.wav"));
+			GenomicNetwork staleB = new GenomicNetwork(1,
+					new ProjectedGenome(PackedCollection.of(0.40, 0.50, 0.60)));
+			staleB.setHealthScore(score("results/stale-B.wav"));
+			process.setNetworks(List.of(staleA, staleB));
+
+			optimizer.setPopulation(new AudioScenePopulation(process.getLocalScene(),
+					new ArrayList<>()));
+
+			PopulationOptimizer.enableBreeding = false;
+			optimizer.iterate();
+
+			Assert.assertEquals("Records from the previous population survived an"
+							+ " iteration with breeding disabled",
+					0, process.getNetworks().size());
+		} finally {
+			PopulationOptimizer.enableBreeding = breeding;
+			process.destroy();
+		}
+	}
+
+	/**
+	 * Builds a record carrying the given index and score. A {@code null} score leaves
+	 * the record unscored.
+	 *
+	 * @param index the record index
+	 * @param value the health score, or {@code null} for an unscored record
+	 * @return the record
+	 */
+	private GenomicNetwork network(int index, Double value) {
+		GenomicNetwork network = new GenomicNetwork(index, null);
+		if (value != null) {
+			network.setHealthScore(new AudioHealthScore(44_100, value,
+					"results/net-" + index + ".wav", List.of(), List.of()));
+		}
+		return network;
+	}
+
+	/**
+	 * A process holding only records, with no run prepared, for exercising population
+	 * trimming in isolation.
+	 *
+	 * @return a process over a throwaway persistence path
+	 */
+	private ArrangementGenerationProcess populationProcess() {
+		new File("results").mkdirs();
+		return new ArrangementGenerationProcess("results/retain-best-records.xml");
+	}
+
+	/**
+	 * Keeps the best-scoring records when the best are not the first in the list: a
+	 * client taking the first N would have discarded the higher-scoring records, which
+	 * is exactly what trimming by score must not do.
+	 */
+	@Test(timeout = 60_000)
+	public void retainBestKeepsHighestScoresWhenNotFirst() {
+		ArrangementGenerationProcess process = populationProcess();
+		process.setNetworks(List.of(
+				network(0, 0.41), network(1, 0.60), network(2, 0.56)));
+
+		process.retainBest(2);
+
+		List<GenomicNetwork> kept = process.getNetworks();
+		Assert.assertEquals("Two records must remain", 2, kept.size());
+		Assert.assertEquals("The 0.60 record must be kept",
+				0.60, kept.get(0).getHealthScore().getScore(), 1e-9);
+		Assert.assertEquals("The 0.56 record must be kept",
+				0.56, kept.get(1).getHealthScore().getScore(), 1e-9);
+	}
+
+	/**
+	 * Drops unscored records before any scored one: an unscored record ranks below
+	 * every scored record regardless of position.
+	 */
+	@Test(timeout = 60_000)
+	public void retainBestDropsUnscoredBeforeScored() {
+		ArrangementGenerationProcess process = populationProcess();
+		process.setNetworks(List.of(
+				network(0, 0.30), network(1, null), network(2, 0.10)));
+
+		process.retainBest(2);
+
+		List<GenomicNetwork> kept = process.getNetworks();
+		Assert.assertEquals("Two records must remain", 2, kept.size());
+		for (GenomicNetwork record : kept) {
+			Assert.assertNotNull("An unscored record was kept over a scored one",
+					record.getHealthScore());
+		}
+	}
+
+	/**
+	 * Preserves the existing relative order of the kept records: trimming removes the
+	 * lowest-scoring records but does not reorder the survivors into score order.
+	 */
+	@Test(timeout = 60_000)
+	public void retainBestPreservesRelativeOrder() {
+		ArrangementGenerationProcess process = populationProcess();
+		process.setNetworks(List.of(
+				network(0, 0.50), network(1, 0.90), network(2, 0.10)));
+
+		process.retainBest(2);
+
+		List<GenomicNetwork> kept = process.getNetworks();
+		Assert.assertEquals("Two records must remain", 2, kept.size());
+		Assert.assertEquals("The first kept record must stay first (not reordered"
+						+ " into score order)",
+				0.50, kept.get(0).getHealthScore().getScore(), 1e-9);
+		Assert.assertEquals("The higher-scoring record keeps its later position",
+				0.90, kept.get(1).getHealthScore().getScore(), 1e-9);
+	}
+
+	/**
+	 * A count at or above the population size leaves the population unchanged, keeping
+	 * every record in its current order.
+	 */
+	@Test(timeout = 60_000)
+	public void retainBestAtOrAboveSizeIsNoOp() {
+		ArrangementGenerationProcess process = populationProcess();
+		List<GenomicNetwork> original = List.of(
+				network(0, 0.20), network(1, 0.80), network(2, 0.50));
+		process.setNetworks(original);
+
+		process.retainBest(3);
+		Assert.assertEquals("A count equal to the size must change nothing",
+				original, process.getNetworks());
+
+		process.retainBest(4);
+		Assert.assertEquals("A count above the size must change nothing",
+				original, process.getNetworks());
+	}
+
+	/**
+	 * A count of zero empties the population: this exercises the trimming path (not the
+	 * at-or-above-size no-op) all the way down to retaining no records.
+	 */
+	@Test(timeout = 60_000)
+	public void retainBestZeroEmptiesPopulation() {
+		ArrangementGenerationProcess process = populationProcess();
+		process.setNetworks(List.of(network(0, 0.20), network(1, 0.80)));
+
+		process.retainBest(0);
+
+		Assert.assertTrue("A count of zero must leave the population empty",
+				process.getNetworks().isEmpty());
+	}
+
+	/** A negative count is rejected rather than trimming anything. */
+	@Test(timeout = 60_000)
+	public void retainBestRejectsNegativeCount() {
+		ArrangementGenerationProcess process = populationProcess();
+		process.setNetworks(List.of(network(0, 0.20), network(1, 0.80)));
+
+		try {
+			process.retainBest(-1);
+			Assert.fail("A negative count must throw IllegalArgumentException");
+		} catch (IllegalArgumentException expected) {
+			// expected
+		}
+
+		Assert.assertEquals("The population must be untouched after a rejected trim",
+				2, process.getNetworks().size());
 	}
 }

@@ -139,11 +139,18 @@ class SelfHostedJdkTest(unittest.TestCase):
     def test_hosted_maven_jobs_get_jdk_and_cache_from_setup_java(self):
         """A hosted runner starts clean and is not provisioned like the
         self-hosted images, so a hosted job that runs Maven must take its JDK
-        and its dependency cache from setup-java (``cache: maven``), and must
-        not use the self-hosted select-jdk action, which only selects a JDK the
-        runner already carries. Moving a lane from self-hosted to hosted (as
-        test-media was) without swapping these steps would either fail to find
-        the JDK or re-resolve every dependency on each run."""
+        from setup-java, and must not use the self-hosted select-jdk action,
+        which only selects a JDK the runner already carries. Moving a lane from
+        self-hosted to hosted (as test-media was) without swapping these steps
+        would fail to find the JDK.
+
+        It takes its dependency cache from the shared restore-maven-cache action
+        (the deliberately-built repository the maven-cache job produces), NOT
+        from setup-java's ``cache: maven``. setup-java's cache saved a partial
+        repository on a miss from whichever hosted job finished first — one that
+        did not need jacoco — and re-downloaded jacoco from Maven Central every
+        run; the restore action is read-only against a cache built on purpose.
+        See test_hosted_maven_cache.py for the rest of that wiring."""
         seen = 0
         for name, job in _jobs().items():
             if _is_self_hosted(job):
@@ -160,8 +167,14 @@ class SelfHostedJdkTest(unittest.TestCase):
                 setup = _steps_using(job, "actions/setup-java")
                 self.assertEqual(1, len(setup),
                                  f"{name} is hosted and runs Maven, so it needs one setup-java step")
-                self.assertEqual("maven", str(setup[0].get("with", {}).get("cache", "")),
-                                 f"{name} setup-java must restore the Maven cache")
+                self.assertNotEqual("maven", str(setup[0].get("with", {}).get("cache", "")),
+                                    f"{name} setup-java must NOT use cache: maven; it restores the "
+                                    "deliberately-built cache via restore-maven-cache instead")
+                restore = [s for s in job.get("steps", [])
+                           if str(s.get("uses", "")).rstrip("/") == "./.github/actions/restore-maven-cache"]
+                self.assertEqual(1, len(restore),
+                                 f"{name} is hosted and runs Maven, so it must restore the Maven "
+                                 "cache via ./.github/actions/restore-maven-cache exactly once")
         self.assertGreater(seen, 0, "expected at least one hosted Maven job to guard")
 
     def test_test_media_runs_hosted_while_test_stays_self_hosted(self):

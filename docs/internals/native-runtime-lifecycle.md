@@ -178,18 +178,25 @@ allocation smaller than the context's `offHeapSize` to a `JVMMemoryProvider`, wh
 `memoryMax` check. Those small allocations are bounded only by the JVM heap (`-Xmx`), not by
 `AR_HARDWARE_MEMORY_SCALE`, and they do not count toward the hardware provider's `memoryUsed`.
 
-Each performs the same **pre-allocation check** —
-`if (memoryUsed + requested > memoryMax) throw new HardwareException(...)` — before the backend
-allocation call. The accounting order *after* the check differs by provider:
-`NativeMemoryProvider.allocate` and `CudaMemoryProvider.buffer` increment `memoryUsed` *before* their
-backend `calloc`/`cuMemAlloc` (and `CudaMemoryProvider.buffer` rolls the increment back if that
-allocation throws), whereas `CLMemoryProvider.buffer` and `MetalMemoryProvider.buffer` increment
-`memoryUsed` only *after* the backend `clCreateBuffer`/`newBuffer*` call returns successfully. Treat
-the check as a guard against a single over-budget request, not a hard serialized ceiling:
+Each performs the same **pre-allocation check** — the request must fit under `memoryMax` — and
+charges `memoryUsed` *before* its backend allocation call, so bytes are reserved up front rather
+than counted after the fact. The check-and-increment is atomic on all four providers, so concurrent
+allocations can neither lose each other's updates nor together push the total past `memoryMax`.
 `NativeMemoryProvider.allocate` and `CudaMemoryProvider.buffer` hold `synchronized` over their
-check-and-increment, so it is atomic. `CLMemoryProvider.buffer` and `MetalMemoryProvider.buffer` run
-the check and the `memoryUsed` increment without synchronization, so two concurrent allocations can
-each pass the check and push the total past `memoryMax`.
+check-and-increment around the backend `calloc`/`cuMemAlloc`. `CLMemoryProvider.buffer` and
+`MetalMemoryProvider.buffer` reserve through `HardwareMemoryProvider.allocateReserved`, whose
+`reserve(...)` increments `memoryUsed` with a compare-and-set loop (reclaiming unreachable
+allocations and retrying when the reservation does not fit) before the backend
+`clCreateBuffer`/`newBuffer*` call.
+
+The providers differ in **how completely they roll the charge back when the backend call throws**.
+`NativeMemoryProvider` (via `allocateBackend`) and the `allocateReserved` path used by
+`CLMemoryProvider`/`MetalMemoryProvider` both catch `RuntimeException | Error` and subtract the
+reservation, so a failed allocation never stays counted against the ceiling. `CudaMemoryProvider.buffer`
+subtracts the charge only in a `catch (RuntimeException)`: if the `cuMemAlloc` path throws an `Error`
+such as `OutOfMemoryError`, the reservation remains charged to `memoryUsed`. Treat the check as a
+guard against a single over-budget request: it bounds the tracked ceiling, not the OS limit (see the
+raw-allocation-failure mode below).
 
 Distinguish two separate failure modes, because they surface differently:
 
@@ -275,6 +282,33 @@ is non-zero. The reservation records *addresses*, not arguments, precisely
 because an argument may be destroyed mid-flight and can then name no address at all. As a second,
 independent layer, the same operators call `Reference.reachabilityFence(data)`/`(args)` after
 dispatch to stop the JIT from treating the holders as dead before the native call returns.
+
+**When a Metal reservation is given back.** `MetalOperator` releases its reservation from the
+dispatch's `onComplete` callback, which `MetalCommandRunner` runs when it drains the dispatch's
+command buffer — and the runner drains a buffer as soon as the GPU has finished it, whether or not
+any thread ever waits for it. Two mechanisms make that unconditional:
+
+- *Completion is pushed, not polled.* Every command buffer is committed with a Metal completed
+  handler (`CommandBatch.commit(Runnable)`, registered by `MTLCompletedHandler`, a JNI operation
+  compiled at runtime by `NativeCompiler`; a host without that toolchain registers none, and its
+  finished buffers are drained by the runner's next drain). The handler runs on a
+  Metal thread and does nothing but hand a drain of the finished buffers to the runner's own
+  `ConfinedExecutor` (`ConfinedExecutor.runLater`), which drains them oldest first, each task in its
+  own autorelease pool. A buffer a waiting thread is registered on is left to that wait; a failed
+  buffer is recorded in the runner's `FailureRecord` by whichever drain reaches it, so later waits
+  still throw; after `destroy()` the hand-off is refused, because destruction has drained everything.
+- *A quiet open batch is committed.* An open command buffer that holds dispatches is committed once
+  no dispatch has been encoded into it for `SubmissionStream.quietCommitMicros`
+  (`AR_HARDWARE_QUIET_COMMIT`), measured from the last dispatch, so back-to-back dispatches
+  still share a buffer. This is the quiet-commit policy `SubmissionStream` gives every stream that
+  batches submissions, beside its idle-commit policy (`SubmissionStream.closeWhenQuiet()`, timed by
+  `QuietCommitDeadline`, whose shared timer thread only hands the check to the stream's own thread).
+  The Metal runner supplies only its native parts: the check runs on its executor, and a buffer that
+  waits for a host-signaled bridge is postponed rather than committed.
+
+So a caller that submits work and then fails before its wait does not leave that work's memory
+reserved until some unrelated later wait: the work runs, and its reservations are given back when the
+GPU finishes it. In normal operation the backstop below therefore never fires for Metal dispatches.
 
 The hold-back is **not indefinite.** `HardwareMemoryProvider.sweepDeferred()` runs on the
 deallocation-process thread (every `DEFERRED_SWEEP_INTERVAL_MS`, regardless of the

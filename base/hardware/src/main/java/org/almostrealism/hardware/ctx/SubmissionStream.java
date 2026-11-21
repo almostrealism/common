@@ -60,6 +60,10 @@ import java.util.function.Supplier;
  *       the device does not see until it is committed (a command buffer) closes that unit early
  *       because the device has run out of work ({@link #closeEarlyIfIdle}, {@link #minIdleCommit}),
  *       and how many units were closed for that reason ({@link #getIdleCommitCount()}).</li>
+ *   <li><b>The quiet-commit policy</b> &mdash; when such a stream commits an open unit that no
+ *       submission has been added to for a while, so that work nobody waits for still runs and
+ *       releases the memory it holds ({@link #closeWhenQuiet()}, {@link #quietCommitMicros}), and
+ *       how many units were committed for that reason ({@link #getQuietCommitCount()}).</li>
  *   <li><b>The completion-polling policy</b> &mdash; how long a host wait for a submission polls
  *       the device's own record of its progress before it blocks on the completion notification
  *       ({@link #pollForCompletion}, {@link #completionSpinMicros}).</li>
@@ -89,6 +93,24 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 	 * leaves the device idle while it holds work it could run, so it has no use for this policy.</p>
 	 */
 	public static int minIdleCommit = SystemUtils.getInt("AR_HARDWARE_IDLE_COMMIT").orElse(64);
+
+	/**
+	 * How long, in microseconds, an open batch holding submissions may go without a new submission
+	 * before it is committed, even though nothing waits for it (see {@link #closeWhenQuiet()}).
+	 * A batch runs only once it is committed, and is otherwise committed only when it is full, when
+	 * the device is idle as a submission is added, or when a host wait needs it, so without this,
+	 * submissions nobody waits for could stay in the open batch, never run, and keep the memory
+	 * their arguments reserve. The delay is measured from the last submission, so it never commits
+	 * a batch that is still being filled back to back. A batch that could not run if it were
+	 * committed now (see {@link #canCommitOpenBatch()}) is checked again after another delay
+	 * instead. Read each time a deadline is scheduled; a value of zero or less commits as soon as
+	 * the stream's thread is free. Controlled by {@code AR_HARDWARE_QUIET_COMMIT}.
+	 *
+	 * <p>Only a stream that holds submissions back in a batch has anything to commit. A stream
+	 * that launches every submission as it is admitted (such as the CUDA runner) never calls
+	 * {@link #closeWhenQuiet()}, so this has no effect on it.</p>
+	 */
+	public static int quietCommitMicros = SystemUtils.getInt("AR_HARDWARE_QUIET_COMMIT").orElse(10000);
 
 	/**
 	 * How long, in microseconds, a host wait for a submission polls the device's own record of its
@@ -155,6 +177,15 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 
 	/** The number of batches closed early by {@link #closeEarlyIfIdle}. */
 	private final AtomicLong idleCommits = new AtomicLong();
+
+	/** The number of batches committed by {@link #commitIfQuiet()} once they went quiet. */
+	private final AtomicLong quietCommits = new AtomicLong();
+
+	/**
+	 * The deadline by which the open batch is committed once it goes quiet. Its expiry hands the
+	 * check to the stream's own thread ({@link #runOnStreamThread}). Stream-thread only.
+	 */
+	private final QuietCommitDeadline quiet = new QuietCommitDeadline(() -> runOnStreamThread(this::commitIfQuiet));
 
 	/**
 	 * How long a host wait polls for its submission to finish (see {@link #completionSpinMicros}),
@@ -370,6 +401,94 @@ public abstract class SubmissionStream<C extends StreamCompletion> {
 	 * @return the number of idle commits
 	 */
 	public long getIdleCommitCount() { return idleCommits.get(); }
+
+	/**
+	 * Queues {@code task} on the stream's own thread, the one that owns the open batch, without
+	 * waiting for it, unless the stream can no longer run it. May be called from any thread; the
+	 * quiet-commit deadline calls it from its timer thread, which must never touch the open batch
+	 * itself.
+	 *
+	 * <p>Only a stream that holds submissions back in a batch arms the deadline (see
+	 * {@link #closeWhenQuiet()}), so only such a stream is asked to run anything here; a stream
+	 * that launches every submission as it is admitted never is, which is why the task is dropped
+	 * unless a batching stream overrides this.</p>
+	 *
+	 * @param task the work to run on the stream's own thread
+	 * @return true if the task was queued, false if it was dropped
+	 */
+	protected boolean runOnStreamThread(Runnable task) { return false; }
+
+	/**
+	 * Returns the number of submissions in the open batch, or zero when no batch is open.
+	 * Consulted by the quiet-commit check on the stream's own thread. A stream that launches every
+	 * submission as it is admitted holds no open batch, which is what this returns unless a
+	 * batching stream overrides it.
+	 *
+	 * @return the number of submissions held in the open batch
+	 */
+	protected int getOpenBatchSize() { return 0; }
+
+	/**
+	 * Returns whether the open batch could run on the device if it were committed now. A batch that
+	 * waits for a host-signaled dependency, or that would be held behind an earlier batch that does,
+	 * could not, so the quiet-commit check postpones it instead of committing it. Consulted on the
+	 * stream's own thread, only while {@link #getOpenBatchSize()} is positive. A stream whose
+	 * batches never wait for the host can always commit, which is what this returns unless a
+	 * stream overrides it.
+	 *
+	 * @return true if committing the open batch now would let the device run it
+	 */
+	protected boolean canCommitOpenBatch() { return true; }
+
+	/**
+	 * Records that a submission was just added to the open batch and left there, so that the batch
+	 * is committed once {@link #quietCommitMicros} pass without another (see
+	 * {@link #commitIfQuiet()}). A stream that batches submissions calls this for every submission
+	 * the open batch keeps, typically when {@link #closeEarlyIfIdle} did not close it. Only one
+	 * expiry is pending at a time, so this costs a clock read. Must be called on the stream's own
+	 * thread.
+	 */
+	protected void closeWhenQuiet() {
+		quiet.submitted();
+	}
+
+	/**
+	 * Cancels the pending quiet-commit expiry, if any, so the timer no longer holds this stream.
+	 * Called on the stream's own thread as the stream is destroyed, after which it adds no
+	 * submission to a batch again.
+	 */
+	protected void cancelQuietCommit() {
+		quiet.cancel();
+	}
+
+	/**
+	 * Commits the open batch if no submission has been added to it for {@link #quietCommitMicros},
+	 * which the quiet-commit deadline hands to the stream's own thread when it expires. A batch
+	 * that is still being filled is checked again once the rest of its quiet time has passed. A
+	 * batch that could not run if it were committed now (see {@link #canCommitOpenBatch()}) is
+	 * checked again after another delay. Every batch closed here is counted by
+	 * {@link #getQuietCommitCount()}. Runs on the stream's own thread.
+	 */
+	private void commitIfQuiet() {
+		long remaining = quiet.expire();
+		if (getOpenBatchSize() == 0) return;
+
+		if (remaining > 0) {
+			quiet.schedule(remaining);
+		} else if (!canCommitOpenBatch()) {
+			quiet.postpone();
+		} else if (closeOpenBatch()) {
+			quietCommits.incrementAndGet();
+		}
+	}
+
+	/**
+	 * Returns the number of batches committed because they went quiet (see
+	 * {@link #closeWhenQuiet()}).
+	 *
+	 * @return the number of quiet commits
+	 */
+	public long getQuietCommitCount() { return quietCommits.get(); }
 
 	/**
 	 * Returns whether the stream can read its device's progress without waiting, which

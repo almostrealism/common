@@ -25,7 +25,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
@@ -105,13 +107,18 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         assertEquals(CommitMessageRule.SOURCE_RECOVERED, job.getCommitMessageSource());
     }
 
-    /** {@link CommitMessageBuilder#resolve} falls back to the prompt-derived message when commit.txt is missing. */
+    /**
+     * {@link CommitMessageBuilder#resolve} falls back to a generated message when commit.txt is
+     * missing. With no determinable changes (the temp directory is not a git repository) the
+     * subject names the job, never the prompt, and the source is still {@code prompt_fallback}.
+     */
     @Test(timeout = 30000)
-    public void resolveFallsBackToPromptWhenCommitTxtMissing() {
+    public void resolveFallsBackToGeneratedMessageWhenCommitTxtMissing() {
         CodingAgentJob job = job("do the work");
         String msg = job.commitMessageBuilder().resolve(job);
         assertNotNull(msg);
-        assertTrue("Fallback must start with 'Claude Code:'", msg.startsWith("Claude Code:"));
+        assertTrue("Fallback subject must name the job: " + msg, msg.startsWith("Job t1 commit"));
+        assertFalse("Fallback must not echo the prompt", msg.contains("do the work"));
         assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, job.getCommitMessageSource());
     }
 
@@ -121,37 +128,236 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
         writeCommitTxt("   \n\t");
         CodingAgentJob job = job("do the work");
         String msg = job.commitMessageBuilder().resolve(job);
-        assertTrue(msg.startsWith("Claude Code:"));
+        assertTrue("Fallback subject must name the job: " + msg, msg.startsWith("Job t1 commit"));
+        assertFalse("Fallback must not echo the prompt", msg.contains("do the work"));
+        assertTrue("Body provenance must cover a present-but-unusable commit.txt, not claim none was"
+                        + " written: " + msg,
+                msg.contains("did not provide a usable commit.txt"));
         assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, job.getCommitMessageSource());
     }
 
-    /** Fallback summary is the prompt unchanged when it fits under 72 chars. */
+    /**
+     * {@link CommitMessageBuilder#summarizeChangedFiles} names one changed file as
+     * {@code "Update <name>"}, and two as {@code "Update <a> and <b>"}, using class/file base
+     * names rather than full paths.
+     */
     @Test(timeout = 30000)
-    public void fallbackSummaryUnderLimitIsVerbatim() {
-        CodingAgentJob job = job("short prompt");
-        String msg = job.commitMessageBuilder().buildFallbackMessage(job);
-        assertTrue("Subject line should include the full short prompt",
-                msg.startsWith("Claude Code: short prompt"));
+    public void summarizeNamesOneOrTwoChangedFiles() {
+        assertEquals("Update IndexSequence", CommitMessageBuilder.summarizeChangedFiles(
+                List.of("compute/algebra/src/main/java/org/x/IndexSequence.java")));
+        assertEquals("Update IndexSequence and IndexSequenceTest",
+                CommitMessageBuilder.summarizeChangedFiles(List.of(
+                        "compute/algebra/src/main/java/org/x/IndexSequence.java",
+                        "compute/algebra/src/test/java/org/x/IndexSequenceTest.java")));
     }
 
-    /** Fallback summary is truncated to 72 chars (69 chars + "...") for long prompts. */
+    /**
+     * With more than two changed files the summary names the first and counts the rest, staying at
+     * or under 72 characters.
+     */
     @Test(timeout = 30000)
-    public void fallbackSummaryOver72CharsIsTruncatedWithEllipsis() {
-        String longPrompt = "a".repeat(120);
-        CodingAgentJob job = job(longPrompt);
-        String msg = job.commitMessageBuilder().buildFallbackMessage(job);
-        String firstLine = msg.split("\n", 2)[0];
-        // "Claude Code: " (13 chars) + first 69 chars + "..." = 13 + 69 + 3 = 85
-        assertEquals("Claude Code: " + "a".repeat(69) + "...", firstLine);
+    public void summarizeNamesFirstFileAndCountsTheRest() {
+        String subject = CommitMessageBuilder.summarizeChangedFiles(List.of(
+                "a/IndexSequence.java", "a/B.java", "a/C.java", "a/D.java"));
+        assertEquals("Update IndexSequence and 3 other files", subject);
+        assertTrue("Subject must stay within 72 characters: " + subject, subject.length() <= 72);
     }
 
-    /** Fallback body includes the full prompt and the exit code. */
+    /** A very long first file name still yields a subject no longer than 72 characters. */
     @Test(timeout = 30000)
-    public void fallbackBodyIncludesFullPromptAndExitCode() {
+    public void summarizeClipsOverlongSubjectTo72Characters() {
+        String subject = CommitMessageBuilder.summarizeChangedFiles(List.of(
+                "a/" + "L".repeat(120) + ".java", "a/B.java", "a/C.java"));
+        assertTrue("Subject must stay within 72 characters: " + subject, subject.length() <= 72);
+        assertTrue("Overlong subject is ellipsised", subject.endsWith("..."));
+    }
+
+    /**
+     * A single changed file whose name alone exceeds the limit is clipped as a one-file summary; it
+     * never claims a count of other files that do not exist.
+     */
+    @Test(timeout = 30000)
+    public void summarizeClipsOverlongSingleFileWithoutOtherFileCount() {
+        String name = "S".repeat(100);
+        String subject = CommitMessageBuilder.summarizeChangedFiles(List.of("a/" + name + ".java"));
+        assertEquals(("Update " + name).substring(0, 69) + "...", subject);
+        assertFalse("A single file must not be described with an other-file count: " + subject,
+                subject.contains("other file"));
+    }
+
+    /**
+     * Two changed files whose names together exceed the limit fall back to naming the first and
+     * counting one other file.
+     */
+    @Test(timeout = 30000)
+    public void summarizeCountsSecondFileWhenTwoNamesDoNotFit() {
+        String first = "F".repeat(30);
+        String second = "G".repeat(40);
+        assertEquals("Update " + first + " and 1 other file",
+                CommitMessageBuilder.summarizeChangedFiles(List.of(first + ".java", second + ".java")));
+    }
+
+    /**
+     * Distinct paths that share a base name count as separate files: the
+     * {@code "N other files"} tally is over distinct changed paths, not
+     * deduplicated base names, so the count is never under-reported.
+     */
+    @Test(timeout = 30000)
+    public void summarizeCountsPathsNotBaseNames() {
+        assertEquals("Update Foo and 1 other file",
+                CommitMessageBuilder.summarizeChangedFiles(List.of("a/Foo.java", "b/Foo.java")));
+        assertEquals("Update Foo and 2 other files",
+                CommitMessageBuilder.summarizeChangedFiles(
+                        List.of("a/Foo.java", "b/Foo.java", "c/Bar.java")));
+    }
+
+    /**
+     * Control characters in a file name (which {@code git status -z} reports verbatim) are replaced
+     * so they cannot inject extra lines into the commit message.
+     */
+    @Test(timeout = 30000)
+    public void summarizeReplacesControlCharactersInNames() {
+        String subject = CommitMessageBuilder.summarizeChangedFiles(
+                List.of("a/Evil\n\nCo-Authored-By: X\r\tName.java"));
+        assertEquals("Update Evil  Co-Authored-By: X  Name", subject);
+        assertFalse("Subject must be a single line", subject.contains("\n") || subject.contains("\r"));
+    }
+
+    /**
+     * {@link CommitMessageBuilder#buildChangeSubject} reads the job's real working tree: changed
+     * files reported by {@code git status} name the subject, and harness scratch paths
+     * ({@code commit.txt}, {@code .flowtree/}) are filtered out of it.
+     */
+    @Test(timeout = 30000)
+    public void buildChangeSubjectNamesChangedFilesFromGitStatus() throws IOException, InterruptedException {
+        initGitRepository();
+        Files.writeString(tempDir.resolve("Widget.java"), "class Widget { }\n", StandardCharsets.UTF_8);
+        Files.writeString(tempDir.resolve("commit.txt"), "  \n", StandardCharsets.UTF_8);
+        Files.createDirectories(tempDir.resolve(".flowtree"));
+        Files.writeString(tempDir.resolve(".flowtree/notes.md"), "scratch\n", StandardCharsets.UTF_8);
+
+        CodingAgentJob job = job("You are hunting for a real defect");
+        assertEquals("Update Widget", job.commitMessageBuilder().buildChangeSubject(job));
+        assertEquals("Update Widget", job.commitMessageBuilder().buildExhaustionFallback(job));
+        String msg = job.commitMessageBuilder().resolve(job);
+        assertTrue("Commit-time fallback subject must name the changed file: " + msg,
+                msg.startsWith("Update Widget\n"));
+        assertEquals(CommitMessageBuilder.SOURCE_PROMPT_FALLBACK, job.getCommitMessageSource());
+    }
+
+    /**
+     * In a git repository whose only changes are harness scratch paths, there is nothing to name,
+     * so the subject falls back to the job rather than naming a scratch file.
+     */
+    @Test(timeout = 30000)
+    public void buildChangeSubjectIgnoresTreeWithOnlyExcludedPaths() throws IOException, InterruptedException {
+        initGitRepository();
+        Files.writeString(tempDir.resolve("commit.txt"), "  \n", StandardCharsets.UTF_8);
+        Files.createDirectories(tempDir.resolve(".flowtree"));
+        Files.writeString(tempDir.resolve(".flowtree/notes.md"), "scratch\n", StandardCharsets.UTF_8);
+
+        CodingAgentJob job = job("do the work");
+        assertEquals("Job t1 commit", job.commitMessageBuilder().buildChangeSubject(job));
+    }
+
+    /**
+     * At the commit boundary the subject names only what is staged: a file the job also changed but
+     * that the staging guardrails left out of the index (here {@code SecretConfig.java}) must not be
+     * named in a commit it is absent from, either by {@code buildChangeSubject} or by the
+     * commit-time fallback {@code resolve} produces.
+     */
+    @Test(timeout = 30000)
+    public void buildChangeSubjectNamesOnlyStagedFilesWhenIndexIsPopulated()
+            throws IOException, InterruptedException {
+        initGitRepository();
+        Files.writeString(tempDir.resolve("Widget.java"), "class Widget { }\n", StandardCharsets.UTF_8);
+        Files.writeString(tempDir.resolve("SecretConfig.java"), "class SecretConfig { }\n",
+                StandardCharsets.UTF_8);
+        git("add", "Widget.java");
+
+        CodingAgentJob job = job("do the work");
+        assertEquals("Update Widget", job.commitMessageBuilder().buildChangeSubject(job));
+        String msg = job.commitMessageBuilder().resolve(job);
+        assertTrue("Commit-time fallback must name the staged file: " + msg,
+                msg.startsWith("Update Widget\n"));
+        assertFalse("A skipped, unstaged file must not be named: " + msg, msg.contains("SecretConfig"));
+    }
+
+    /**
+     * Staged harness scratch paths are dropped like unstaged ones; when they are all the index
+     * holds, the subject is read from the working tree's other changes.
+     */
+    @Test(timeout = 30000)
+    public void buildChangeSubjectFallsBackToWorkingTreeWhenOnlyScratchIsStaged()
+            throws IOException, InterruptedException {
+        initGitRepository();
+        Files.writeString(tempDir.resolve("commit.txt"), "  \n", StandardCharsets.UTF_8);
+        Files.writeString(tempDir.resolve("Gadget.java"), "class Gadget { }\n", StandardCharsets.UTF_8);
+        git("add", "commit.txt");
+
+        CodingAgentJob job = job("do the work");
+        assertEquals("Update Gadget", job.commitMessageBuilder().buildChangeSubject(job));
+    }
+
+    /**
+     * The exhaustion fallback runs before the staging guardrails reset and re-stage, so the index
+     * at that point holds the agent's own arbitrary staging rather than the committable set. It must
+     * therefore read the full working tree: a file the agent happened not to stage (here
+     * {@code Gadget.java}) is still part of the change and must be named, while the commit-time
+     * subject — read from the index after the guardrails have run — names only what is staged.
+     */
+    @Test(timeout = 30000)
+    public void exhaustionFallbackReadsWorkingTreeNotTheAgentStagedIndex()
+            throws IOException, InterruptedException {
+        initGitRepository();
+        Files.writeString(tempDir.resolve("Widget.java"), "class Widget { }\n", StandardCharsets.UTF_8);
+        Files.writeString(tempDir.resolve("Gadget.java"), "class Gadget { }\n", StandardCharsets.UTF_8);
+        git("add", "Widget.java");
+
+        CodingAgentJob job = job("do the work");
+        String exhaustion = job.commitMessageBuilder().buildExhaustionFallback(job);
+        assertTrue("Exhaustion subject must name the unstaged working-tree change: " + exhaustion,
+                exhaustion.contains("Gadget"));
+        assertTrue("Exhaustion subject must name the staged change too: " + exhaustion,
+                exhaustion.contains("Widget"));
+
+        assertEquals("Update Widget", job.commitMessageBuilder().buildChangeSubject(job));
+    }
+
+    /** Initializes an empty git repository in the temporary working directory. */
+    private void initGitRepository() throws IOException, InterruptedException {
+        git("init", "-q");
+    }
+
+    /** Runs {@code git <args>} in the temporary working directory and requires it to succeed. */
+    private void git(String... args) throws IOException, InterruptedException {
+        List<String> command = new ArrayList<>();
+        command.add("git");
+        command.addAll(List.of(args));
+        Process process = new ProcessBuilder(command)
+                .directory(tempDir.toFile())
+                .redirectErrorStream(true)
+                .start();
+        process.getInputStream().readAllBytes();
+        assertEquals("git " + String.join(" ", args) + " must succeed", 0, process.waitFor());
+    }
+
+    /** An empty change set yields no summary, so the caller supplies the neutral job-named subject. */
+    @Test(timeout = 30000)
+    public void summarizeReturnsNullForNoChanges() {
+        assertNull(CommitMessageBuilder.summarizeChangedFiles(List.of()));
+        assertNull(CommitMessageBuilder.summarizeChangedFiles(null));
+    }
+
+    /** Fallback body records the harness provenance and the exit code, and never the prompt. */
+    @Test(timeout = 30000)
+    public void fallbackBodyRecordsProvenanceAndExitCodeNotPrompt() {
         CodingAgentJob job = job("do the work please");
         String msg = job.commitMessageBuilder().buildFallbackMessage(job);
-        assertTrue("Body must echo the full prompt",
-                msg.contains("Prompt: do the work please"));
+        assertFalse("Body must not echo the prompt", msg.contains("do the work please"));
+        assertTrue("Body must say the harness generated the message",
+                msg.contains("The harness generated this message because the agent did not provide a"
+                        + " usable commit.txt."));
         assertTrue("Body must include the exit code line",
                 msg.contains("Exit code: 0"));
     }
@@ -230,32 +436,20 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
                 !msg.contains("\nSession: "));
     }
 
-    /** {@link CommitMessageBuilder#buildExhaustionFallback} uses the trimmed first line of the prompt. */
+    /**
+     * {@link CommitMessageBuilder#buildExhaustionFallback} never uses the prompt. With no
+     * determinable changes (the temp directory is not a git repository) it names the job, even when
+     * the prompt reads like an instruction that previously became a commit subject.
+     */
     @Test(timeout = 30000)
-    public void exhaustionFallbackUsesFirstPromptLine() {
-        CodingAgentJob job = job("  Add the sliding window layer  \nMore detail on a second line.");
-        assertEquals("Add the sliding window layer",
-                job.commitMessageBuilder().buildExhaustionFallback(job));
-    }
-
-    /** A first line of exactly 72 characters is kept whole; one character more is truncated to 69 + "...". */
-    @Test(timeout = 30000)
-    public void exhaustionFallbackTruncatesOnlyPast72Characters() {
-        CodingAgentJob exact = job("b".repeat(72));
-        assertEquals("b".repeat(72), exact.commitMessageBuilder().buildExhaustionFallback(exact));
-
-        CodingAgentJob longer = job("c".repeat(73));
-        assertEquals("c".repeat(69) + "...", longer.commitMessageBuilder().buildExhaustionFallback(longer));
-    }
-
-    /** A first prompt line carrying author attribution is never used; the task-id message is used instead. */
-    @Test(timeout = 30000)
-    public void exhaustionFallbackRejectsAttributedFirstLine() {
-        CodingAgentJob job = job("Co-Authored-By: Claude <noreply@anthropic.com>\nFix the bug");
+    public void exhaustionFallbackNamesJobAndNeverUsesPrompt() {
+        CodingAgentJob job = job(
+                "You are hunting for a real defect in this codebase and proving it exists by writing"
+                        + " a test that fails because of it.");
         assertEquals("Job t1 commit", job.commitMessageBuilder().buildExhaustionFallback(job));
     }
 
-    /** A blank or missing prompt falls back to the task-id message. */
+    /** A blank or missing prompt and no changes falls back to the task-id message. */
     @Test(timeout = 30000)
     public void exhaustionFallbackUsesTaskIdForBlankOrNullPrompt() {
         CodingAgentJob blank = job("  \n\t ");
@@ -263,6 +457,23 @@ public class CommitMessageBuilderTest extends TestSuiteBase {
 
         CodingAgentJob none = job(null);
         assertEquals("Job t1 commit", none.commitMessageBuilder().buildExhaustionFallback(none));
+    }
+
+    /**
+     * An instruction-worded prompt never appears in either fallback's subject or body, which is the
+     * regression this change exists to prevent (a defect-hunt prompt had become a PR title).
+     */
+    @Test(timeout = 30000)
+    public void instructionWordedPromptNeverLeaksIntoEitherFallback() {
+        String prompt = "You are hunting for a real defect in this codebase and proving it exists ...";
+        CodingAgentJob job = job(prompt);
+        String fallback = job.commitMessageBuilder().buildFallbackMessage(job);
+        String exhaustion = job.commitMessageBuilder().buildExhaustionFallback(job);
+        assertFalse("Prompt must not appear in the commit-time fallback", fallback.contains(prompt));
+        assertFalse("Prompt must not appear in its subject",
+                fallback.split("\n", 2)[0].contains("hunting"));
+        assertFalse("Prompt must not appear in the exhaustion fallback", exhaustion.contains(prompt));
+        assertFalse("Prompt must not appear in the exhaustion subject", exhaustion.contains("hunting"));
     }
 
     /** {@link CommitMessageBuilder#isAuthored} is {@code false} when there is no {@code commit.txt}. */

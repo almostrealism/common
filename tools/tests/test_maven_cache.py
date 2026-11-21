@@ -19,8 +19,10 @@ These tests pin the three ends that have to agree:
   Maven transport retry/backoff, and the fleet definitions mounting a persistent
   named volume there.
 
-Hosted (``ubuntu-latest``) jobs are exempt: they keep ``actions/setup-java``'s
-``cache: maven`` (GitHub's cache), which is appropriate for GitHub-hosted jobs.
+Hosted (``ubuntu-latest``) jobs do not use this host-mounted cache — they have
+no such mount. They restore a deliberately-built GitHub-backed cache instead,
+through the ``restore-maven-cache`` action; ``tools/tests/test_hosted_maven_cache.py``
+pins that wiring.
 """
 
 import os
@@ -107,7 +109,8 @@ class SelfHostedMavenRepoWiringTest(unittest.TestCase):
 
     def test_hosted_jobs_do_not_use_the_self_hosted_repo_action(self):
         """The shared cache is a self-hosted-host mount; a GitHub-hosted job has
-        none and must keep setup-java's GitHub-backed Maven cache instead."""
+        none and restores its GitHub-backed cache via restore-maven-cache
+        instead (see test_hosted_maven_cache.py)."""
         for name, job in _jobs().items():
             if _is_self_hosted(job):
                 continue
