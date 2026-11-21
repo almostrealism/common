@@ -18,6 +18,7 @@ package io.almostrealism.expression.test;
 
 import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.NAryExpression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.expression.Sum;
@@ -101,6 +102,27 @@ public class NAryExpressionRenderingTest extends TestSuiteBase {
 				Difference.of(Difference.of(a, b), c).getExpression(lang));
 		Assert.assertEquals("(a + b) * c",
 				Product.of(Sum.of(a, b), c).getExpression(lang));
+	}
+
+	/**
+	 * A leading operand of the same expression class keeps its parentheses when its operator
+	 * differs, since {@code (x & y) | z} and {@code x & y | z} need not group the same way,
+	 * and loses them only when the operator matches.
+	 */
+	@Test(timeout = 60000)
+	public void sameClassWithDifferentOperatorKeepsParentheses() {
+		Expression<?> x = new StaticReference<>(Integer.class, "x");
+		Expression<?> y = new StaticReference<>(Integer.class, "y");
+		Expression<?> z = new StaticReference<>(Integer.class, "z");
+
+		Expression<?> and = new NAryExpression<>(Integer.class, "&", x, y);
+
+		Assert.assertEquals("(x & y) | z",
+				new NAryExpression<>(Integer.class, "|", and, z).getExpression(lang));
+		Assert.assertEquals("x & y & z",
+				new NAryExpression<>(Integer.class, "&", and, z).getExpression(lang));
+		Assert.assertEquals("z & (x & y)",
+				new NAryExpression<>(Integer.class, "&", z, and).getExpression(lang));
 	}
 
 	/**
