@@ -705,9 +705,11 @@ runner, its JDK and Maven-repository steps are keyed on `runner.environment`:
   `$MAVEN_REPO` when the self-hosted step set it, otherwise `~/.m2/repository`.
   On a self-hosted runner `MAVEN_REPO` is a per-runner subdirectory of the shared
   cache, never the shared root, so clearing `org/almostrealism` never touches a
-  repository another runner shares. The upload path is
-  `${{ env.MAVEN_REPO || '~/.m2/repository' }}/org/almostrealism`; `env.MAVEN_REPO`
-  is empty on a hosted runner (the select step was skipped there).
+  repository another runner shares. The clear step resolves the path once, in
+  the shell, and publishes it as its `path` output; the upload's `path` input is
+  `${{ steps.project-artifacts.outputs.path }}`. It never reads `env.MAVEN_REPO`
+  in an action input, for the same reason the restore steps copy in the shell
+  (see "Sharing the build").
 
 `build` is **not** given `-T` (parallel reactor). `studio/compose` unpacks
 `engine/ml`'s `proto`-classified artifact, which is attached at `ml`'s package
