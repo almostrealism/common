@@ -67,6 +67,14 @@ import java.util.Map;
  * System.out.println("Vocab size: " + tokenizer.getVocabSize());
  * }</pre>
  *
+ * <h2>Special Tokens and the {@link org.almostrealism.ml.Tokenizer} Contract</h2>
+ * <p>Through its superclass this tokenizer is a {@link org.almostrealism.ml.Tokenizer}, whose
+ * {@code encodeAsLong}/{@code encodeAsInt} views never add special tokens. A caller that wants
+ * BOS and EOS uses {@link #encode(String, boolean)} with {@code true} (the behaviour of the
+ * one-argument {@code encode(String)} this class formerly declared, which the contract's own
+ * {@code encode(String)} now occupies), or {@link #encode(String, boolean, boolean)} to choose
+ * each independently.</p>
+ *
  * @see ByteLevelBPETokenizer
  * @see Qwen3
  * @author Michael Murray

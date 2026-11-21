@@ -3,6 +3,7 @@ package org.almostrealism.ml.qwen3;
 import org.almostrealism.io.Console;
 import org.almostrealism.ml.Tokenizer;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.io.File;
@@ -193,15 +194,42 @@ public class Qwen3TokenizerTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 5000)
 	public void testUsableThroughTokenizerSupertype() {
-		Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
+		Qwen3Tokenizer qwen = Qwen3Tokenizer.createTestTokenizer();
+		Tokenizer tokenizer = qwen;
 
 		String text = "Hello World!";
 		long[] ids = tokenizer.encodeAsLong(text);
 		assertNotNull(ids);
 		assertTrue("Should encode to at least one token", ids.length > 0);
 
+		// The contract view carries no special tokens: it is exactly encode(text, false).
+		int[] plain = qwen.encode(text, false);
+		assertEquals("encodeAsLong should match encode(text, false) length", plain.length, ids.length);
+		for (int i = 0; i < ids.length; i++) {
+			assertEquals("Token " + i + " should match encode(text, false)", plain[i], ids[i]);
+			assertTrue("encodeAsLong must not add BOS", ids[i] != Qwen3Tokenizer.BOS_TOKEN);
+			assertTrue("encodeAsLong must not add EOS", ids[i] != Qwen3Tokenizer.EOS_TOKEN);
+		}
+
+		// The special-token-aware path stays available on the concrete type.
+		int[] withSpecial = qwen.encode(text, true);
+		assertEquals("encode(text, true) should add exactly BOS and EOS",
+				plain.length + 2, withSpecial.length);
+		assertEquals(Qwen3Tokenizer.BOS_TOKEN, withSpecial[0]);
+		assertEquals(Qwen3Tokenizer.EOS_TOKEN, withSpecial[withSpecial.length - 1]);
+
 		String decoded = tokenizer.decodeAsLong(ids);
-		assertNotNull(decoded);
+		Assert.assertEquals("decodeAsLong should agree with decode(int[])", qwen.decode(plain), decoded);
+
+		// An id outside the int range names no vocabulary entry and is ignored, not wrapped.
+		long[] withOutOfRange = new long[ids.length + 2];
+		withOutOfRange[0] = Long.MAX_VALUE;
+		for (int i = 0; i < ids.length; i++) {
+			withOutOfRange[i + 1] = ids[i];
+		}
+		withOutOfRange[ids.length + 1] = ((long) Integer.MIN_VALUE) - 1;
+		Assert.assertEquals("Out-of-int-range ids should be ignored", decoded,
+				tokenizer.decodeAsLong(withOutOfRange));
 
 		// The default int-array view must agree with the long-array contract method.
 		int[] intIds = tokenizer.encodeAsInt(text);
