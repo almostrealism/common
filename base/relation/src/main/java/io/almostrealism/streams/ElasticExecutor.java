@@ -34,11 +34,13 @@ import java.util.concurrent.atomic.AtomicInteger;
  * thread takes the next, and the queue is drained by however few threads keep up with it.</p>
  *
  * <p>A task may still block for as long as it needs, including on work that only another queued
- * task will start. Whenever a task has been queued for {@link #getStarvationNanos() the starvation
- * interval} without a thread taking it, a new thread is started for it, so every task starts
- * within about that interval of the moment it would have started on a cached pool, and no
- * dependency between tasks can leave one waiting forever. The thread count therefore grows with
- * the number of tasks that are blocked at once, never with the number submitted at once.</p>
+ * task will start. Whenever the oldest queued task has waited {@link #getStarvationNanos() the
+ * starvation interval} without a thread taking it, and no thread is idle or still starting, one
+ * new thread is started, and another each interval for as long as that remains so. No dependency
+ * between tasks can therefore leave one waiting forever: a chain of N tasks each blocked on the
+ * next is given its threads within about N intervals. The thread count grows with the number of
+ * tasks that are blocked at once, never with the number submitted at once, even when the first
+ * thread of a burst takes longer than the interval to start.</p>
  *
  * <p>A task that throws ends its thread, and the throwable reaches that thread's
  * uncaught-exception handler, as on a thread pool. Threads are daemons and end once idle for the
@@ -58,6 +60,11 @@ public final class ElasticExecutor implements Executor {
 	private int idle;
 	/** Threads started and not yet ended. Guarded by this executor's monitor. */
 	private int threads;
+	/**
+	 * Threads started that have not yet begun to take tasks, and so will take a queued task
+	 * shortly. Guarded by this executor's monitor.
+	 */
+	private int starting;
 	/** Whether a starvation check is scheduled. Guarded by this executor's monitor. */
 	private boolean checkScheduled;
 
@@ -99,7 +106,7 @@ public final class ElasticExecutor implements Executor {
 	/**
 	 * Queues {@code task} to run on one of this executor's threads. An idle thread takes it, or,
 	 * when there is no thread at all, one is started for it at once; otherwise a thread is started
-	 * for it only if it is still queued after the starvation interval.
+	 * only if it is still queued after the starvation interval (see {@link #checkStarvation()}).
 	 *
 	 * @param task the work to run
 	 */
@@ -130,39 +137,35 @@ public final class ElasticExecutor implements Executor {
 	}
 
 	/**
-	 * Starts a thread for every queued task that has waited at least the starvation interval and
-	 * that no idle thread is about to take, then schedules the next check for the oldest task that
-	 * has not waited that long yet, if any task remains queued.
+	 * Starts one thread if the oldest queued task has waited at least the starvation interval and
+	 * no thread is idle or still starting, either of which is about to take it, then schedules the
+	 * next check while any task remains queued: after the starvation interval if the oldest task is
+	 * starving, otherwise when it will be.
+	 *
+	 * <p>At most one thread is started per check. Every queued task can be starving only because
+	 * the threads that would run it have not started yet, or are working through the tasks ahead
+	 * of it; starting a thread for each of them would turn a burst of short tasks into a thread per
+	 * task. A thread started per interval while the oldest task still starves gives a chain of
+	 * blocked tasks a thread each, one interval apart.</p>
 	 */
 	private synchronized void checkStarvation() {
 		checkScheduled = false;
+		if (queue.isEmpty()) return;
 
-		long now = System.nanoTime();
-		int starving = 0;
-		long nextDue = -1;
-
-		for (Queued q : queue) {
-			long waited = now - q.getQueuedAt();
-			if (waited >= starvationNanos) {
-				starving++;
-			} else {
-				nextDue = starvationNanos - waited;
-				break;
-			}
-		}
-
-		for (int i = idle; i < starving; i++) {
-			startThread();
-		}
-
-		if (!queue.isEmpty()) {
-			scheduleCheck(nextDue < 0 ? starvationNanos : nextDue);
+		long waited = System.nanoTime() - queue.peekFirst().getQueuedAt();
+		if (waited >= starvationNanos) {
+			if (idle == 0 && starting == 0) startThread();
+			scheduleCheck(starvationNanos);
+		} else {
+			scheduleCheck(starvationNanos - waited);
 		}
 	}
 
+	// TODO(review): if t.start() throws, threads/starting stay incremented and starvation checks never start another thread
 	/** Starts one thread. Called with this executor's monitor held. */
 	private void startThread() {
 		threads++;
+		starting++;
 
 		Thread t = new Thread(this::work, threadName);
 		t.setDaemon(true);
@@ -175,6 +178,10 @@ public final class ElasticExecutor implements Executor {
 	 */
 	private void work() {
 		boolean ended = false;
+
+		synchronized (this) {
+			starting--;
+		}
 
 		try {
 			Runnable task;

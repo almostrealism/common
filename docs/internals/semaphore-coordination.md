@@ -167,12 +167,16 @@ must respect it:
 - `MetalSemaphore.onSettled` drives instead: it commits the buffer if it is still open, as a
   wait would, and registers a finish listener on the buffer (`CommandBatch.whenFinished`),
   which hands the callback to `CALLBACK_EXECUTOR` as soon as the runner sees the buffer finish,
-  before it is drained. No thread waits for the buffer meanwhile.
-- Those callbacks run when the buffer is drained: by a host wait
-  (`MetalCommandRunner.complete`/`destroy`), or by the drain the buffer's completed handler hands
-  to the runner's confined thread when the GPU finishes. On a host that cannot compile the
-  completed-handler operation only a wait drains a buffer, so there `onSettled` falls back to
-  waiting on a callback thread.
+  before it is drained. No thread waits for the buffer meanwhile. If the completed handler of
+  that one buffer could not be registered (no JNI global reference was available, or the
+  operation was disabled after `onSettled` checked it), `CommandBatch` starts one callback thread
+  that waits for that buffer and reports its completion in the handler's place, so the listener
+  never depends on an unrelated drain.
+- The passive `whenSettled`/`whenComplete` callbacks, by contrast, run only when the buffer is
+  drained: by a host wait (`MetalCommandRunner.complete`/`destroy`), or by the drain the buffer's
+  completed handler hands to the runner's confined thread when the GPU finishes. On a host that
+  cannot compile the completed-handler operation only a wait drains a buffer, so there
+  `onSettled` falls back to waiting on a callback thread.
 - A host wait learns that the GPU has finished from the buffer's timeline signal when it can:
   `complete` polls the timeline for the waited value, through the policy every
   `SubmissionStream` shares (`pollForCompletion`, `completionSpinMicros`), reading the

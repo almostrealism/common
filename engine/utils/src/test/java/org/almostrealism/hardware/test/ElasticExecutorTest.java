@@ -49,6 +49,41 @@ public class ElasticExecutorTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A burst queued behind a thread that is busy for many starvation intervals starts a few
+	 * threads, not one per starving task: every task of the burst starves while the only thread
+	 * is busy, and starting a thread for each of them is the thread-per-callback cost the executor
+	 * exists to avoid.
+	 */
+	@Test(timeout = 30000)
+	public void burstBehindBusyThreadSharesThreads() throws InterruptedException {
+		ElasticExecutor executor = new ElasticExecutor("busy", TimeUnit.MILLISECONDS.toNanos(1), 5000);
+		int tasks = 200;
+		CountDownLatch busy = new CountDownLatch(1);
+		CountDownLatch done = new CountDownLatch(tasks);
+
+		executor.execute(() -> {
+			busy.countDown();
+
+			try {
+				Thread.sleep(20);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
+		});
+		assertTrue(busy.await(10, TimeUnit.SECONDS));
+
+		for (int i = 0; i < tasks; i++) {
+			executor.execute(done::countDown);
+		}
+
+		assertTrue(done.await(20, TimeUnit.SECONDS));
+		log("tasks=" + tasks + " threads=" + executor.getThreadCount());
+		assertTrue("A burst of " + tasks + " short tasks behind a busy thread used " +
+						executor.getThreadCount() + " threads",
+				executor.getThreadCount() < tasks / 4);
+	}
+
+	/**
 	 * Every task blocks until the task submitted after it has run, so the chain can only finish if
 	 * each blocked task's successor gets a thread of its own.
 	 */

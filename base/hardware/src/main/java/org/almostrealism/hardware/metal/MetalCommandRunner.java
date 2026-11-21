@@ -862,7 +862,6 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * @param callback the callback to run once the dispatch's buffer has settled
 	 */
 	public void onSettled(MetalSemaphore dispatch, Runnable callback) {
-		// TODO(review): if one buffer's completed handler fails to register, its listeners wait for an unrelated drain
 		Runnable deliver = () -> Semaphore.CALLBACK_EXECUTOR.execute(callback);
 		Runnable register = () -> {
 			commitIfOpen(dispatch.getCommandBuffer(), dispatch.getRequester());
