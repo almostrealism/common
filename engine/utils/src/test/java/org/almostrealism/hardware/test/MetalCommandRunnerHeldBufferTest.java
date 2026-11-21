@@ -18,6 +18,7 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.concurrent.DefaultLatchSemaphore;
 import io.almostrealism.streams.Semaphore;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.metal.MetalCommandRunner;
 import org.almostrealism.hardware.metal.MetalComputeContext;
 import org.almostrealism.util.TestSuiteBase;
@@ -157,7 +158,8 @@ public class MetalCommandRunnerHeldBufferTest extends TestSuiteBase {
 	/**
 	 * A host wait for a dispatch whose buffer is closed but held back for an unsettled bridge is
 	 * a wait for the foreign work, since the buffer is not on the GPU yet. An interrupt must end
-	 * that wait, leaving the caller's interrupt status set, without committing the held buffer.
+	 * that wait by throwing, since the work has not run, leaving the caller's interrupt status
+	 * set, without committing the held buffer.
 	 * Once the foreign work settles the buffer is committed, and a later wait for the same
 	 * dispatch completes normally, so the abandoned waiter did not leave the buffer wedged.
 	 */
@@ -187,10 +189,11 @@ public class MetalCommandRunnerHeldBufferTest extends TestSuiteBase {
 			Thread waiter = new Thread(() -> {
 				try {
 					bridged.waitFor();
-					interruptRestored.set(Thread.currentThread().isInterrupted());
 				} catch (Throwable t) {
 					waitFailure.set(t);
 				}
+
+				interruptRestored.set(Thread.currentThread().isInterrupted());
 			});
 			waiter.start();
 
@@ -209,7 +212,8 @@ public class MetalCommandRunnerHeldBufferTest extends TestSuiteBase {
 			waiter.join(30000);
 
 			assertFalse("An interrupt must end the wait for a held buffer", waiter.isAlive());
-			assertNull(waitFailure.get());
+			assertTrue("An interrupted wait for a held buffer must throw, not return",
+					waitFailure.get() instanceof HardwareException);
 			assertTrue("The interrupt status must be restored", interruptRestored.get());
 			assertEquals("The held buffer must not be committed before its bridge is signaled",
 					commits, runner.getCommitCount());

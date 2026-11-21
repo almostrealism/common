@@ -113,12 +113,30 @@ public class MetalSemaphore extends StreamSemaphore<MetalCommandRunner> {
 	 * the runner observes by the buffer's timeline signal or by its completion (see
 	 * {@link MetalCommandRunner#complete}).
 	 *
+	 * <p>An interrupt never makes this return before the work has finished: a wait that an
+	 * interrupt ends throws instead, with the interrupt status left set.</p>
+	 *
 	 * @throws org.almostrealism.hardware.HardwareException if the dispatch, or one recorded as
-	 *         failed before it on the same runner, did not execute (see {@link MetalCommandRunner})
+	 *         failed before it on the same runner, did not execute (see {@link MetalCommandRunner}),
+	 *         or if an interrupt ended the wait before the work was known to be done
 	 */
 	@Override
 	public void waitFor() {
-		getStream().complete(this);
+		getStream().complete(this, true);
+	}
+
+	/**
+	 * Blocks until the dispatch's command buffer has finished, as {@link #waitFor()} does, but
+	 * waits through any interrupt instead of throwing, restoring the interrupt status afterwards
+	 * (see {@link MetalCommandRunner#complete}).
+	 *
+	 * @throws org.almostrealism.hardware.HardwareException if the dispatch, or one recorded as
+	 *         failed before it on the same runner, did not execute
+	 */
+	// TODO(review): DeferredSemaphore's default waitForUninterruptibly rethrows waitFor's interrupt exception
+	@Override
+	public void waitForUninterruptibly() {
+		getStream().complete(this, false);
 	}
 
 	/**

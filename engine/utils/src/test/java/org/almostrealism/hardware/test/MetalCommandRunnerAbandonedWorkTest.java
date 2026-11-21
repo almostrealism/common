@@ -299,9 +299,10 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 
 	/**
 	 * A wait that is interrupted while the registration of its waiter is still queued behind
-	 * other work on the runner's thread still has its dispatch's buffer released once the GPU
-	 * finishes it. The registration runs after the wait has returned, and the withdrawal the wait
-	 * queued behind it must withdraw the waiter that registration makes; a waiter left registered
+	 * other work on the runner's thread throws rather than returning as though the dispatch had
+	 * finished, and still has its dispatch's buffer released once the GPU finishes it. The
+	 * registration runs after the wait has ended, and the withdrawal the wait queued behind it
+	 * must withdraw the waiter that registration makes; a waiter left registered
 	 * would leave the buffer to a wait that never comes, and its memory would stay held until the
 	 * runner is destroyed.
 	 */
@@ -344,12 +345,17 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 					blocking.await(RELEASE_TIMEOUT_SECONDS, TimeUnit.SECONDS));
 
 			Thread.currentThread().interrupt();
+			HardwareException interrupted = null;
 			try {
 				waited.waitFor();
+			} catch (HardwareException e) {
+				interrupted = e;
 			} finally {
-				Assert.assertTrue("The wait must return with the interrupt still set", Thread.interrupted());
+				Assert.assertTrue("The wait must end with the interrupt still set", Thread.interrupted());
 				gate.countDown();
 			}
+
+			Assert.assertNotNull("An interrupted wait for pending work must throw", interrupted);
 
 			Assert.assertTrue("The buffer of an interrupted wait must still be released",
 					released.await(RELEASE_TIMEOUT_SECONDS, TimeUnit.SECONDS));
