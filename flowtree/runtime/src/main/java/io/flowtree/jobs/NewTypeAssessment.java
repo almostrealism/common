@@ -155,9 +155,21 @@ final class NewTypeAssessment {
             throw new IOException("scanner output has no \"types\" array");
         }
         for (JsonNode t : types) {
+            if (!t.isObject()) {
+                throw new IOException("scanner output has a non-object \"types\" entry");
+            }
+            String fqn = requireText(t, "fqn");
+            String path = requireText(t, "path");
+            JsonNode candidateNodes = t.get("candidates");
+            if (candidateNodes == null || !candidateNodes.isArray()) {
+                throw new IOException("type " + fqn + " has no \"candidates\" array");
+            }
             List<Candidate> candidates = new ArrayList<>();
-            for (JsonNode c : t.path("candidates")) {
-                candidates.add(new Candidate(c.path("fqn").asText(), c.path("path").asText(),
+            for (JsonNode c : candidateNodes) {
+                if (!c.isObject()) {
+                    throw new IOException("type " + fqn + " has a non-object candidate");
+                }
+                candidates.add(new Candidate(requireText(c, "fqn"), requireText(c, "path"),
                         c.path("score").asDouble(), c.path("sentence").asText(""),
                         c.path("blocks").asBoolean(false)));
             }
@@ -165,9 +177,9 @@ final class NewTypeAssessment {
             for (JsonNode g : t.path("gaps")) gaps.add(g.asText());
             JsonNode ledger = t.get("ledger");
             JsonNode audit = ledger == null ? null : ledger.get("audit");
-            out.add(new NewTypeAssessment(t.path("fqn").asText(), t.path("path").asText(),
-                    candidates, textOrNull(t.get("lift")), t.path("justified").asBoolean(false),
-                    gaps, ledger == null || ledger.isNull() ? null : ledger.toPrettyString(),
+            out.add(new NewTypeAssessment(fqn, path, candidates, textOrNull(t.get("lift")),
+                    t.path("justified").asBoolean(false), gaps,
+                    ledger == null || ledger.isNull() ? null : ledger.toPrettyString(),
                     audit == null ? null : textOrNull(audit.get("verdict"))));
         }
         return out;
@@ -176,6 +188,24 @@ final class NewTypeAssessment {
     /** Returns the node's text, or {@code null} for an absent or JSON-null node. */
     private static String textOrNull(JsonNode node) {
         return node == null || node.isNull() ? null : node.asText();
+    }
+
+    /**
+     * Returns the non-blank text of {@code node}'s {@code field}, failing the
+     * parse when it is absent, non-textual, or blank, so that malformed scanner
+     * output is refused rather than defaulted to an empty name or path.
+     *
+     * @param node  the object whose field is read
+     * @param field the field name
+     * @return the field's text
+     * @throws IOException when the field is absent, non-textual, or blank
+     */
+    private static String requireText(JsonNode node, String field) throws IOException {
+        JsonNode value = node.get(field);
+        if (value == null || !value.isTextual() || value.asText().isBlank()) {
+            throw new IOException("scanner output is missing a non-blank \"" + field + "\"");
+        }
+        return value.asText();
     }
 
     /**

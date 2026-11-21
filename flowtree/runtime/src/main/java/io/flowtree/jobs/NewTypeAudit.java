@@ -165,10 +165,17 @@ class NewTypeAudit {
      *         or the repository has no scanner
      */
     Scan examine() {
-        List<String> files = changedJavaFiles();
+        failure = null;
+        List<String> files;
+        try {
+            files = changedJavaFiles();
+        } catch (IOException e) {
+            failure = "git status query failed: " + e.getMessage();
+            job.warn("New-type scan failed: " + failure);
+            return Scan.failed(List.of(), failure);
+        }
         if (files.stream().noneMatch(NewTypeAudit::isMainSource)) return Scan.none();
         Scan scan = scan(new File(job.getWorkingDirectory()), files);
-        // TODO(review): failure is never cleared, so a transient failure followed by a successful scan still reports DEGRADED "no Java file staged".
         if (scan.failed()) {
             failure = scan.failure();
             job.warn("New-type scan failed: " + scan.failure());
@@ -177,9 +184,11 @@ class NewTypeAudit {
     }
 
     /**
-     * Returns why a scan of this job could not run, or {@code null} when every
-     * scan ran. A scan that did not run refused every changed Java file, so a
-     * job reporting this did not commit its Java changes.
+     * Returns why the most recent scan of this job could not run, or
+     * {@code null} when it ran. Each {@link #examine()} resets this before
+     * scanning, so an earlier transient failure does not survive a later
+     * successful scan. A scan that did not run refused every changed Java file,
+     * so a job reporting this did not commit its Java changes.
      *
      * @return the failure, or {@code null}
      */
@@ -244,9 +253,11 @@ class NewTypeAudit {
      * @param root the repository root
      * @return the program text, or {@code null} when the repository has no
      *         scanner at all (no type audit)
-     * @throws IOException when the base branch cannot be read while a
-     *                     working-tree scanner exists: running that copy would
-     *                     let the audited session choose its own search
+     * @throws IOException when the base branch cannot be read, or when listing
+     *                     the scanner in it fails (a lookup error is not the
+     *                     same as a genuinely absent path): running the
+     *                     working-tree copy would let the audited session
+     *                     choose its own search
      * @throws InterruptedException when interrupted while waiting
      */
     private String scannerProgram(FileStager.GitOperations git, File root)
@@ -259,8 +270,14 @@ class NewTypeAudit {
             throw new IOException("base branch " + base + " cannot be resolved, so the scanner"
                     + " cannot be read from it; the working-tree copy is not trusted");
         }
-        String spec = base + ":" + SCANNER_PATH;
-        if (git.execute("cat-file", "-e", spec) == 0) {
+        Set<String> inBase = git.executeForPaths("ls-tree", "--name-only", "-z", base, "--", SCANNER_PATH);
+        if (inBase == null) {
+            throw new IOException("cannot list " + SCANNER_PATH + " in " + base
+                    + "; the base-branch scanner copy cannot be verified, so the"
+                    + " working-tree copy is not trusted");
+        }
+        if (!inBase.isEmpty()) {
+            String spec = base + ":" + SCANNER_PATH;
             String program = git.executeForStdoutOrNull("show", spec);
             if (program == null || program.isBlank()) {
                 throw new IOException("cannot read " + spec);
@@ -459,15 +476,18 @@ class NewTypeAudit {
 
     /**
      * Returns every changed Java file in the job's working tree that is not
-     * excluded from staging and still exists.
+     * excluded from staging and still exists. Lists the changes with the
+     * throwing {@link GitOperations#requireChangedFiles(String)}, so a failed
+     * {@code git status} is reported rather than read as "nothing changed".
      *
      * @return repository-relative paths; empty when the job has no working directory
+     * @throws IOException when the working tree's changes cannot be listed
      */
-    private List<String> changedJavaFiles() {
+    private List<String> changedJavaFiles() throws IOException {
         List<String> out = new ArrayList<>();
         String workDir = job.getWorkingDirectory();
         if (workDir == null) return out;
-        for (String file : GitOperations.getChangedFiles(workDir)) {
+        for (String file : GitOperations.requireChangedFiles(workDir)) {
             if (file.endsWith(".java") && !GitOperations.isExcludedPath(file)
                     && new File(workDir, file).isFile()) {
                 out.add(file);
@@ -484,7 +504,14 @@ class NewTypeAudit {
      */
     private Map<String, JavaSourceFile> changedJavaSources() {
         Map<String, JavaSourceFile> out = new LinkedHashMap<>();
-        for (String file : changedJavaFiles()) {
+        List<String> files;
+        try {
+            files = changedJavaFiles();
+        } catch (IOException e) {
+            job.warn("Cannot list changed files for the new-type audit: " + e.getMessage());
+            return out;
+        }
+        for (String file : files) {
             try {
                 out.put(file, JavaSourceFile.read(job.getWorkingDirectory(), file));
             } catch (IOException e) {
@@ -536,16 +563,26 @@ class NewTypeAudit {
          */
         static Scan parse(String json, List<String> files) throws IOException {
             JsonNode root = MAPPER.readTree(json);
-            List<String> added = new ArrayList<>();
-            Map<String, List<String>> declared = new LinkedHashMap<>();
-            if (root != null) {
-                for (JsonNode fqn : root.path("added")) added.add(fqn.asText());
-                root.path("declared").fields().forEachRemaining(e -> {
-                    List<String> types = new ArrayList<>();
-                    for (JsonNode fqn : e.getValue()) types.add(fqn.asText());
-                    declared.put(e.getKey(), List.copyOf(types));
-                });
+            if (root == null || !root.isObject()) {
+                throw new IOException("scanner output is not a JSON object");
             }
+            JsonNode addedNode = root.get("added");
+            if (addedNode == null || !addedNode.isArray()) {
+                throw new IOException("scanner output has no \"added\" array");
+            }
+            List<String> added = new ArrayList<>();
+            for (JsonNode fqn : addedNode) {
+                if (!fqn.isTextual() || fqn.asText().isBlank()) {
+                    throw new IOException("scanner output has a blank \"added\" entry");
+                }
+                added.add(fqn.asText());
+            }
+            Map<String, List<String>> declared = new LinkedHashMap<>();
+            root.path("declared").fields().forEachRemaining(e -> {
+                List<String> types = new ArrayList<>();
+                for (JsonNode fqn : e.getValue()) types.add(fqn.asText());
+                declared.put(e.getKey(), List.copyOf(types));
+            });
             return new Scan(NewTypeAssessment.parseAll(root), List.copyOf(added),
                     List.copyOf(files), Map.copyOf(declared), null);
         }

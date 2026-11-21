@@ -379,6 +379,50 @@ public class NewTypeAuditTest extends TestSuiteBase {
         assertTrue(event.getErrorMessage(), event.getErrorMessage().contains("new-type audit could not run"));
     }
 
+    /**
+     * A transient scan failure does not survive a later successful scan: once
+     * the base branch resolves again, {@link NewTypeAudit#getFailure()} is
+     * cleared and the job's outcome is no longer forced to {@code DEGRADED}.
+     */
+    @Test(timeout = 300000)
+    public void transientFailureIsClearedByLaterSuccess() throws Exception {
+        addBranchTypes();
+        CodingAgentJob job = job();
+        git("update-ref", "-d", "refs/remotes/origin/master");
+        assertTrue(job.getNewTypeAudit().scan().isEmpty());
+        assertNotNull("a scan that cannot run records the failure", job.getNewTypeAudit().getFailure());
+
+        git("update-ref", "refs/remotes/origin/master", "HEAD");
+        List<NewTypeAssessment> found = job.getNewTypeAudit().scan();
+        assertEquals(describeAll(found), 1, found.size());
+        assertNull("a later successful scan clears the earlier failure",
+                job.getNewTypeAudit().getFailure());
+        CodingAgentJobEvent event = CodingAgentJobEvent.forJob(job, null);
+        Assert.assertFalse("a successful audit no longer degrades the job outcome",
+                event.getStatus() == JobCompletionEvent.Status.DEGRADED
+                        && String.valueOf(event.getErrorMessage()).contains("new-type audit could not run"));
+    }
+
+    /**
+     * A failed {@code git status} query is reported as a scan failure, not read
+     * as "no Java file changed": a working directory that is not a git
+     * repository makes the listing throw, and the audit fails closed.
+     */
+    @Test(timeout = 60000)
+    public void statusQueryFailureFailsClosed() throws Exception {
+        Path notRepo = Files.createTempDirectory("new-type-not-a-repo");
+        try {
+            CodingAgentJob job = new CodingAgentJob("audit-test", "p");
+            job.setWorkingDirectory(notRepo.toString());
+            NewTypeAudit.Scan scan = job.getNewTypeAudit().examine();
+            assertTrue("a git-status failure is a failed scan", scan.failed());
+            assertNotNull("the failure is reported for the job outcome",
+                    job.getNewTypeAudit().getFailure());
+        } finally {
+            Files.deleteIfExists(notRepo);
+        }
+    }
+
     /** A base-branch scanner that fails refuses every examined file instead of staging it. */
     @Test(timeout = 300000)
     public void failingScannerFailsClosed() throws Exception {
@@ -471,6 +515,35 @@ public class NewTypeAuditTest extends TestSuiteBase {
         Assert.assertEquals(List.of("p.A", "p.AStep"), scan.declaredBy("m/src/main/java/p/A.java", null));
         Assert.assertEquals(List.of("p.D"), scan.declaredBy("m/src/main/java/p/D.java",
                 new JavaSourceFile("m/src/main/java/p/D.java", "package p;\nclass D { }")));
+    }
+
+    /**
+     * Schema-invalid but syntactically valid scanner output fails the parse
+     * (and so the scan) rather than passing as a successful, empty audit: a
+     * scanner that silently omits the changed type must not bypass staging.
+     */
+    @Test(timeout = 30000)
+    public void malformedScannerOutputFailsClosed() {
+        List<String> files = List.of("m/src/main/java/p/A.java");
+        assertParseFails("[]", files, "a non-object root");
+        assertParseFails("{\"types\": []}", files, "no \"added\" array");
+        assertParseFails("{\"types\": [], \"added\": [\"\"]}", files, "a blank \"added\" entry");
+        assertParseFails("{\"added\": [], \"types\": [{\"candidates\": []}]}", files,
+                "a type entry missing fqn/path");
+        assertParseFails("{\"added\": [], \"types\": [{\"fqn\": \"p.A\", \"path\": \"p/A.java\"}]}",
+                files, "a type entry missing its candidates array");
+        assertParseFails("{\"added\": [], \"types\": [{\"fqn\": \"p.A\", \"path\": \"p/A.java\","
+                + " \"candidates\": [{\"path\": \"p/B.java\"}]}]}", files, "a candidate missing fqn");
+    }
+
+    /** Asserts that {@link NewTypeAudit.Scan#parse} rejects {@code json}. */
+    private static void assertParseFails(String json, List<String> files, String why) {
+        try {
+            NewTypeAudit.Scan.parse(json, files);
+            Assert.fail("parse must reject " + why + ": " + json);
+        } catch (IOException expected) {
+            // the scan fails closed, so the changed file is refused
+        }
     }
 
     /** Writes the two types the branch adds: a renamed equivalent and a new concept. */

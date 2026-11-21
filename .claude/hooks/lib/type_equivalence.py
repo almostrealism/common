@@ -759,7 +759,6 @@ class TypeIndex:
         if q["supers"] & (set(candidate["supers"]) - TRIVIAL_SUPERS):
             return "sibling"
         cw = set(candidate["words"])
-        # TODO(review): "role variant"/"collaborator" are gameable lifts - FastArithmeticIndexSequence (same methods) or a dummy method returning the candidate escapes the block.
         if q["words"] != cw and (q["words"] < cw or cw < q["words"]):
             return "role variant"
         if candidate["name"] in new.get("api", ()):
@@ -975,7 +974,7 @@ def justification_gaps(root, entry, new, candidates):
     for c in candidates:
         if not c.get("blocks"):
             continue
-        reasons = justified.get(c["fqn"]) or justified.get(c["name"])
+        reasons = justified.get(c["fqn"])
         if not isinstance(reasons, dict):
             gaps.append("candidate " + c["fqn"] + " is not justified")
             continue

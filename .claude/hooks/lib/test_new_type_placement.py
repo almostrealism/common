@@ -514,6 +514,24 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(2, proc.returncode, proc.stdout)
         self.assertIn("org.example.seq.ArithmeticIndexSequence", proc.stderr)
 
+    def test_namesake_outside_main_source_is_not_blocked(self):
+        """The duplicate block scores main sources only: the same type that
+        blocks under ``src/main/java`` is allowed under a generated-source
+        tree, matching the harness scanner's ``is_main_source`` guard. Only
+        the source tree differs between the two runs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            self.make_repo(tmp)
+            main_rel = SEQ + "ArithmeticIndexSet.java"
+            gen_rel = "mod/src/main/generated/org/example/seq/ArithmeticIndexSet.java"
+            self.assertAdds("", NAMESAKE, "ArithmeticIndexSet")
+            blocked = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, main_rel), NAMESAKE))
+            allowed = self.run_in_repo(tmp, self.write_payload(
+                os.path.join(tmp, gen_rel), NAMESAKE))
+        self.assertEqual(2, blocked.returncode, blocked.stdout)
+        self.assertEqual(0, allowed.returncode, allowed.stderr)
+        self.assertNotIn("ArithmeticIndexSequence", allowed.stderr)
+
     def test_genuinely_new_concept_keeps_warning(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.make_repo(tmp)
@@ -777,6 +795,23 @@ class ScanTest(unittest.TestCase):
         self.assertIsNone(self.te.ledger_entry(by_simple, new))
         self.assertIsNone(self.te.ledger_entry(by_other_package, new))
         self.assertEqual(exact[0], self.te.ledger_entry(exact, new))
+
+    def test_justification_matches_candidate_keys_by_fqn_only(self):
+        """A candidate justification must be keyed by the fully-qualified name;
+        a simple-name key no longer satisfies an FQN candidate, so one
+        ``"Foo"`` entry cannot justify both ``a.Foo`` and ``b.Foo``."""
+        new = {"fqn": "org.example.other.Thing", "name": "Thing"}
+        candidates = [{"fqn": "org.example.seq.ArithmeticIndexSequence",
+                       "name": "ArithmeticIndexSequence", "blocks": True}]
+        by_simple = {"test": None, "candidates": {"ArithmeticIndexSequence": REASONS}}
+        by_fqn = {"test": None,
+                  "candidates": {"org.example.seq.ArithmeticIndexSequence": REASONS}}
+        not_justified = ("candidate org.example.seq.ArithmeticIndexSequence"
+                         " is not justified")
+        self.assertIn(not_justified,
+                      self.te.justification_gaps(".", by_simple, new, candidates))
+        self.assertNotIn(not_justified,
+                         self.te.justification_gaps(".", by_fqn, new, candidates))
 
 
 # The calibration sample: every existing main-source type under these

@@ -272,9 +272,12 @@ def assess_added(path, after, added):
 
     Returns ``(blocking, lifted, warned)``: the assessments that block; those
     whose blocking candidates are answered by structure or by the ledger; and
-    those that only resemble existing types. A test source is never assessed.
+    those that only resemble existing types. Only a main source is assessed,
+    matching the harness scanner: a type outside ``src/main/java`` (a test
+    tree, a generated-source tree, an examples module) is never scored against
+    production types.
     """
-    if type_equivalence.is_test_source(path):
+    if not type_equivalence.is_main_source(path):
         return [], [], []
     root = type_equivalence.find_root(path)
     index = type_equivalence.TypeIndex.load(root)
