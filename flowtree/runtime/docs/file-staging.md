@@ -669,7 +669,7 @@ seven categories.
 | Pattern | Rationale |
 |---------|-----------|
 | `claude-output/**` | Directory where the Claude Code agent writes its output artifacts. |
-| `commit.txt` | Temporary file used to pass commit messages to the git operations step. Cleaned up after commit. |
+| `commit.txt` | Temporary file used to pass commit messages to the git operations step. Read for its message but never committed (it is an excluded path); a leftover from a previous run is removed when the next run starts, not after the commit. |
 | `.claude/projects/**` | Per-project local memory/session state Claude Code writes under `<project>/.claude/projects/<id>/`. Genuinely machine-local. |
 | `.claude/*.local.json` | Machine-local settings (per-user overrides of `settings.json`). |
 | `.claude/scheduled_tasks.lock` | Lock file regenerated on every Claude Code run. |
