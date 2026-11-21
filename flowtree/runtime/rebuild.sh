@@ -220,10 +220,28 @@ COMPOSE_ENV_FILE="${FLEET_COMPOSE_ENV_FILE:-flowtree/runtime/controller/.env}"
 # FLEET_BIND_ADDR is appended from ADDR (which already reflects an operator
 # override, see the detection below), so the operator's address wins and is
 # never duplicated.
+#
+# The operator file may hold credentials, so the derived file is created 0600
+# (umask 077 before it exists, then an explicit chmod) and keeps that mode when
+# it is moved into place. A settings file that exists but cannot be read stops
+# the rebuild: carrying only FLEET_BIND_ADDR would silently reset every
+# operator setting to its compose default — the failure this file prevents.
+# grep's status 1 (every line was FLEET_BIND_ADDR) is not an error.
 write_compose_env() {
-  local tmp="${COMPOSE_ENV_FILE}.tmp"
-  { [ -f "${CONTROLLER_ENV}" ] && grep -v '^FLEET_BIND_ADDR=' "${CONTROLLER_ENV}"; \
-    echo "FLEET_BIND_ADDR=$1"; } > "${tmp}" || true
+  local tmp="${COMPOSE_ENV_FILE}.tmp" status=0
+  rm -f "${tmp}"
+  ( umask 077 && : > "${tmp}" )
+  chmod 600 "${tmp}"
+  if [ -f "${CONTROLLER_ENV}" ]; then
+    grep -v '^FLEET_BIND_ADDR=' "${CONTROLLER_ENV}" >> "${tmp}" || status=$?
+    if [ "${status}" -gt 1 ]; then
+      rm -f "${tmp}"
+      echo "ERROR: could not read the operator settings file ${CONTROLLER_ENV};" \
+        "refusing to deploy with every operator setting reset to its default" >&2
+      exit 1
+    fi
+  fi
+  echo "FLEET_BIND_ADDR=$1" >> "${tmp}"
   mv "${tmp}" "${COMPOSE_ENV_FILE}"
 }
 

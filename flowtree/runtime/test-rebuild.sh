@@ -134,6 +134,9 @@ run_case() {
   fi
   if [ -n "${SEED_CONTROLLER_ENV:-}" ]; then
     printf '%s\n' "${SEED_CONTROLLER_ENV}" > "$tmp_controller_env"
+    if [ -n "${SEED_CONTROLLER_ENV_MODE:-}" ]; then
+      chmod "${SEED_CONTROLLER_ENV_MODE}" "$tmp_controller_env"
+    fi
   fi
 
   env -i PATH="$MOCK_BIN:$PATH" HOME="${HOME:-/tmp}" \
@@ -149,8 +152,10 @@ run_case() {
 
   if [ -f "$tmp_compose_env" ]; then
     LAST_COMPOSE_ENV="$(cat "$tmp_compose_env")"
+    LAST_COMPOSE_ENV_PERMS="$(ls -l "$tmp_compose_env" | cut -c1-10)"
   else
     LAST_COMPOSE_ENV=""
+    LAST_COMPOSE_ENV_PERMS=""
   fi
 
   local ok=true
@@ -177,7 +182,8 @@ run_case() {
 
   rm -rf "$tmp_secrets" "$tmp_db" "$tmp_grafana" "$(dirname "$tmp_compose_env")" \
     "$tmp_controller_dir" "$out"
-  unset SEED_DB_FILE SEED_SECRETS_FILE SEED_EMPTY_SECRETS_FILE SEED_CONTROLLER_ENV
+  unset SEED_DB_FILE SEED_SECRETS_FILE SEED_EMPTY_SECRETS_FILE SEED_CONTROLLER_ENV \
+    SEED_CONTROLLER_ENV_MODE
 }
 
 echo "rebuild.sh fleet-setup tests"
@@ -446,6 +452,9 @@ check_compose_env() {
 
 compose_env_has()   { printf '%s\n' "$LAST_COMPOSE_ENV" | grep -qF -- "$1"; }
 compose_env_lacks() { ! printf '%s\n' "$LAST_COMPOSE_ENV" | grep -qF -- "$1"; }
+# The operator file can hold credentials, so the derived compose env file must
+# be readable by its owner only, whatever the umask.
+compose_env_owner_only() { [ "$LAST_COMPOSE_ENV_PERMS" = "-rw-------" ]; }
 # The computed FLEET_BIND_ADDR must appear exactly once — write_compose_env
 # strips the operator file's own FLEET_BIND_ADDR before appending the resolved
 # one, so an operator who also set it in the file gets no duplicate.
@@ -465,6 +474,8 @@ check_compose_env "the operator's AR_CONSULTANT_BACKEND reaches the compose env"
     compose_env_has "AR_CONSULTANT_BACKEND=openrouter"
 check_compose_env "the computed FLEET_BIND_ADDR is still written alongside it" \
     compose_env_has "FLEET_BIND_ADDR=100.64.1.2"
+check_compose_env "the compose env carrying operator settings is owner-only (0600)" \
+    compose_env_owner_only
 
 run_case "with no operator settings file the compose env holds only the computed value" 0 \
     "" "" \
@@ -493,6 +504,22 @@ check_compose_env "the exported FLEET_BIND_ADDR is the one written to the compos
     compose_env_has "FLEET_BIND_ADDR=100.64.1.2"
 check_compose_env "the settings-file FLEET_BIND_ADDR it overrode is not written" \
     compose_env_lacks "FLEET_BIND_ADDR=100.64.9.9"
+
+SEED_CONTROLLER_ENV="AR_CONSULTANT_BACKEND=openrouter"
+SEED_CONTROLLER_ENV_MODE=000
+run_case "an unreadable operator settings file stops the deploy instead of resetting settings" 1 \
+    "could not read the operator settings file" "Fleet services will bind to" \
+    -- \
+    FLEET_BIND_ADDR=100.64.1.2
+check_compose_env "an unreadable settings file writes no compose env with the settings dropped" \
+    compose_env_lacks "FLEET_BIND_ADDR=100.64.1.2"
+
+SEED_CONTROLLER_ENV="FLEET_BIND_ADDR=100.64.9.9"
+run_case "a settings file holding only FLEET_BIND_ADDR is not mistaken for a read failure" 0 \
+    "Fleet services will bind to 100.64.9.9" "could not read" \
+    fleet-db --
+check_compose_env "the address-only settings file still yields one FLEET_BIND_ADDR" \
+    fleet_addr_once
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
