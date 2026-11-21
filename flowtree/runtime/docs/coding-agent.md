@@ -161,6 +161,29 @@ The prompt is deliberately aggressive. Key points:
 
 `DEDUP_LOCAL` runs exactly one additional session. It does not re-trigger `validateChanges()` (which is called from `GitManagedJob.run()`, not from within `executeSingleRun()`), and `deduplicationMode` is never propagated to spawned sessions, so there is no mechanism for the check to chain.
 
+### The New-Type Audit
+
+The type audit runs for every job, whatever `deduplicationMode` says. `EnforcementRunner`
+always adds `DeduplicationRule`; its method audit is on only for `DEDUP_LOCAL`, its type
+audit always. `NewTypeAudit` runs the repository's type-equivalence search
+(`.claude/hooks/lib/type_equivalence.py`, the base-branch copy) over the Java files the
+working tree changes relative to `HEAD`, and lists every new main-source type that duplicates
+an existing one — the same concept, not merely a shared vocabulary — and does not genuinely
+build on it. The rule's session decides whether each should exist — candidates, documentation
+and memory search, and the session's own justification in `.claude/new-type-ledger.json`,
+which it verifies rather than trusts — and folds the type in unless the justification holds.
+Its outcome is recorded in the branch's `ObjectOrientedReviewLedger` (`*.new-types.tsv`),
+keyed by a digest of the type's source and its ledger entry, so the verdict holds only for
+the form the audit examined. `FileStager` refuses to stage a listed type until an audit has
+kept it, and reports why in the skipped list. Every top-level type of a refused file is
+withheld, and every other changed Java file that refers to a withheld type (by qualified
+name, or by simple name from its own package or a wildcard import) is refused with it,
+transitively, so a commit never holds a caller without the type it calls. The audit fails
+closed: when the search cannot run (the base branch does not resolve while a working-tree
+scanner exists, `python3` is missing, the scan times out or exits non-zero), every changed
+Java file is refused and the job completes `DEGRADED` with the reason. See
+`docs/internals/agent-hooks.md` ("New-type equivalence gate").
+
 ### Via ar-manager MCP
 
 The `workstream_submit_task` tool exposes the `deduplication_mode` parameter.

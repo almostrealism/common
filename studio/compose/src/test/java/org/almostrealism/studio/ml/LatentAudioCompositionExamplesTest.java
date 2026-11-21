@@ -56,8 +56,9 @@ public class LatentAudioCompositionExamplesTest extends TestSuiteBase {
 	}
 
 	/**
-	 * The normalized blend divides the scales by their total, so the position decides only
-	 * the proportions of the sources: (0.5, 0.25) and (2, 1) compose the same latent.
+	 * The normalized blend gives each source the softmax share of its score, so the position
+	 * decides only the proportions of the sources, which sum to one: (0.5, 0.25) gives A the
+	 * share 1 / (1 + e^-0.25) and (2, 1) the larger share 1 / (1 + e^-1).
 	 */
 	@Test(timeout = 60000)
 	public void normalizedBlend() {
@@ -67,18 +68,18 @@ public class LatentAudioCompositionExamplesTest extends TestSuiteBase {
 		double[] near = composer.getInterpolatedLatent(cp(pack(0.5, 0.25))).evaluateOptimized().toArray();
 		double[] far = composer.getInterpolatedLatent(cp(pack(2.0, 1.0))).evaluateOptimized().toArray();
 
-		// (2/3) * (1, 2, 3, 4) + (1/3) * (8, 4, 0, -4)
-		double[] expected = { 10.0 / 3.0, 8.0 / 3.0, 2.0, 4.0 / 3.0 };
-		Assert.assertArrayEquals(expected, near, TOLERANCE);
-		Assert.assertArrayEquals(expected, far, TOLERANCE);
+		// 0.5622 * (1, 2, 3, 4) + 0.4378 * (8, 4, 0, -4)
+		Assert.assertArrayEquals(new double[] { 4.064764, 2.875647, 1.686530, 0.497412 }, near, TOLERANCE);
+		// 0.7311 * (1, 2, 3, 4) + 0.2689 * (8, 4, 0, -4)
+		Assert.assertArrayEquals(new double[] { 2.882590, 2.537883, 2.193176, 1.848469 }, far, TOLERANCE);
 	}
 
 	/**
-	 * When no source has a positive scale the unselected guard makes the normalized blend
-	 * the plain mean of the sources rather than a division by zero.
+	 * When every source has the same score, however negative, the normalized blend is the
+	 * plain mean of the sources.
 	 */
 	@Test(timeout = 60000)
-	public void unselectedGuardIsPlainMean() {
+	public void equalScoresGivePlainMean() {
 		AudioComposer composer = twoSourceComposer(new GainDecoder());
 		composer.setNormalizedBlend(true);
 

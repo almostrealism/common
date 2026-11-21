@@ -65,6 +65,12 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 	private boolean normalizedBlend;
 
 	/**
+	 * Temperature dividing the source scores in a normalized blend; see
+	 * {@link #setBlendTemperature(double)}.
+	 */
+	private double blendTemperature;
+
+	/**
 	 * Creates a composer using the given autoencoder and latent dimension, seeded with the
 	 * current time.
 	 *
@@ -99,6 +105,7 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 		this.random = random;
 		this.features = new ArrayList<>();
 		this.deviation = 1.0;
+		this.blendTemperature = 1.0;
 	}
 
 	/** Returns the standard deviation used to sample weight vectors. */
@@ -117,19 +124,69 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 	 * weighted sum. In a weighted sum the magnitude of the latent follows the magnitude of
 	 * the position: a random position can scale every source far above or below its own
 	 * level, and the decoded audio is then near-silent or clipped. In a weighted mean the
-	 * position decides only the proportions of the sources, each cell's scales are divided
-	 * by their total, and the latent stays at the level of the sources it mixes, however
-	 * close to the origin the position is. Only a cell at which no source has a positive
-	 * scale, so that the total is zero, yields the plain mean of the sources instead.
-	 * A source whose blend contribution
-	 * ({@link ComposableAudioFeatures#setContribution(double)}) drives its scale below zero
-	 * cannot be a proportion of a weighted mean, so it is excluded from the blend rather
-	 * than allowed to make the total negative.
+	 * position decides only the proportions of the sources, which sum to one, so the latent
+	 * stays within the range of the sources it mixes.
+	 *
+	 * <p>
+	 * The proportions are a softmax of the sources'
+	 * {@link ComposableAudioFeatures#getScore(Producer) scores} (the dot product of each
+	 * merge weight vector with the position) divided by the
+	 * {@link #setBlendTemperature(double) blend temperature}, each multiplied by the
+	 * source's blend contribution ({@link ComposableAudioFeatures#setContribution(double)})
+	 * before the division by their total. Mathematically every blended source therefore has
+	 * a strictly positive share, and the shares vary continuously with the position: a
+	 * random position mixes all of the sources in its own proportions rather than selecting
+	 * some of them. In floating point, a share whose exponent is far enough below zero (a
+	 * large score gap relative to a small temperature) underflows to exactly zero, so a
+	 * vanishing temperature selects the highest-scoring source alone.
+	 * With the other inputs held fixed, raising a source's score raises its share, so among
+	 * sources of equal contribution a higher score always gives a larger share; a source
+	 * with a much smaller contribution can still receive a smaller share despite a higher
+	 * score. A position built from per-source values (for example, explicit orthogonal
+	 * weight vectors, unit contributions, and a position whose components are those values)
+	 * therefore reproduces their ordering deterministically, and equal scores give shares in
+	 * the ratio of the contributions. A position at the origin,
+	 * where every score is zero, yields the contribution-weighted mean of the sources.
+	 * </p>
+	 *
+	 * <p>
+	 * A source whose contribution is zero or negative cannot be a share of a weighted mean
+	 * and is excluded from the blend ({@link ComposableAudioFeatures#isBlended()}). If every
+	 * source is excluded, the composed latent is the plain mean of the sources.
+	 * </p>
 	 *
 	 * @param normalizedBlend {@code true} to compose a weighted mean of the sources
 	 */
 	public void setNormalizedBlend(boolean normalizedBlend) {
 		this.normalizedBlend = normalizedBlend;
+	}
+
+	/**
+	 * Returns the temperature that divides the source scores in a normalized blend; see
+	 * {@link #setBlendTemperature(double)}.
+	 *
+	 * @return the blend temperature
+	 */
+	public double getBlendTemperature() { return blendTemperature; }
+
+	/**
+	 * Sets the temperature that divides the source scores before the softmax of a
+	 * normalized blend ({@link #setNormalizedBlend(boolean)}). The default of {@code 1.0}
+	 * suits the default weights, which are unit vectors, scored against a position with
+	 * unit Gaussian components: each score then has unit variance, and random positions
+	 * give clearly different, but never exclusive, mixes. A smaller temperature sharpens the
+	 * blend towards the highest-scoring source; a larger one flattens it towards the mean.
+	 * The weighted sum does not use the temperature.
+	 *
+	 * @param blendTemperature the positive temperature
+	 * @throws IllegalArgumentException if the temperature is not positive
+	 */
+	public void setBlendTemperature(double blendTemperature) {
+		if (!(blendTemperature > 0)) {
+			throw new IllegalArgumentException("Blend temperature must be positive but is " + blendTemperature);
+		}
+
+		this.blendTemperature = blendTemperature;
 	}
 
 	/**
@@ -276,6 +333,15 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 	/**
 	 * Get the interpolated latent features (before decoding to audio).
 	 *
+	 * <p>
+	 * In a {@link #setNormalizedBlend(boolean) normalized blend} each blended source's
+	 * {@link ComposableAudioFeatures#getScore(Producer) score} is built once and read both
+	 * by the per-cell reference, the largest score, and by that source's softmax term. The
+	 * reference is subtracted before exponentiating so that no term overflows; it does not
+	 * change the proportions. Each term is weighted by the source's contribution
+	 * ({@link ComposableAudioFeatures#contributed(CollectionProducer)}).
+	 * </p>
+	 *
 	 * @param value the position vector to use for interpolation
 	 * @return interpolated latent features [64, 256]
 	 */
@@ -285,21 +351,40 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 		}
 
 		if (normalizedBlend) {
-			List<CollectionProducer> scales = new ArrayList<>();
-			for (ComposableAudioFeatures source : features) {
-				// A weighted mean requires non-negative weights
-				scales.add(max(source.getScale(value), c(0.0)));
+			List<ComposableAudioFeatures> blended = features.stream()
+					.filter(ComposableAudioFeatures::isBlended).toList();
+
+			if (blended.isEmpty()) {
+				// No source can be a share of the mean, so every source counts equally
+				List<Producer<?>> terms = new ArrayList<>();
+				features.forEach(source -> terms.add(source.scaled(c(1.0 / features.size()))));
+				return add(terms);
 			}
 
-			CollectionProducer total = add(new ArrayList<Producer<?>>(scales));
-			CollectionProducer unselected = greaterThan(total, c(0.0), c(0.0), c(1.0));
+			List<CollectionProducer> scores = blended.stream()
+					.map(source -> source.getScore(value)).toList();
 
+			CollectionProducer reference = scores.get(0);
+			for (int i = 1; i < scores.size(); i++) {
+				reference = max(reference, scores.get(i));
+			}
+
+			List<Producer<?>> weights = new ArrayList<>();
 			List<Producer<?>> terms = new ArrayList<>();
-			for (int i = 0; i < features.size(); i++) {
-				terms.add(features.get(i).scaled(scales.get(i).add(unselected)));
+			for (int i = 0; i < blended.size(); i++) {
+				ComposableAudioFeatures source = blended.get(i);
+				// Multiplying by the reciprocal keeps a vanishing temperature finite: its
+				// literal saturates to the largest finite value, while the temperature itself
+				// would narrow to zero below FP64 and divide zero by zero
+				CollectionProducer weight = source.contributed(exp(scores.get(i)
+						.subtract(reference).multiply(c(1.0 / blendTemperature))));
+				weights.add(weight);
+				terms.add(source.scaled(weight));
 			}
 
-			return add(terms).divide(total.add(unselected.multiply(c(features.size()))));
+			// The highest-scoring source has weight equal to its positive contribution,
+			// so the total is never zero
+			return add(terms).divide(add(weights));
 		}
 
 		List<Producer<?>> components = new ArrayList<>();

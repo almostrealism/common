@@ -848,13 +848,14 @@ This logging is valuable for auditing which identity was used for a particular
 commit, especially in multi-tenant environments where different jobs may use
 different identities.
 
-### commit.txt Cleanup
+### commit.txt Handling
 
-After a successful commit, `GitManagedJob` checks for a `commit.txt` file in
-the working directory. This file is used as a temporary mechanism for passing
-commit messages (e.g., from a Claude Code agent's output). If the file exists,
-it is deleted to prevent it from being reused by a subsequent job run with a
-stale message. A warning is logged if the deletion fails, but it does not
+`commit.txt` is a temporary mechanism for passing commit messages (e.g., from a
+Claude Code agent's output). It is one of the paths `GitOperations.isExcludedPath`
+names, so the staging guardrails never add it to a commit — the file is read for
+its message but never committed. To keep a stale message from being reused, a
+leftover `commit.txt` from a previous run is removed when the next run starts,
+not after the commit; a warning is logged if that removal fails, but it does not
 cause the job to fail.
 
 ---
@@ -1098,10 +1099,11 @@ After `doWork()` completes and `validateChanges()` returns true, the
 
 1. **Ensure target branch.** Verifies the working directory is on the correct
    branch (calls `ensureOnTargetBranch()` again as a safety check).
-2. **Find changed files.** Runs `git status --porcelain` and parses the
-   output to build a list of modified, added, deleted, and untracked files.
-   Renamed files are detected by the `->` separator in the status output; the
-   new name is used.
+2. **Find changed files.** Runs `git status --porcelain -z -uall` and parses the
+   NUL-delimited output to build a list of modified, added, deleted, and
+   untracked files. The `-z` form is used precisely because it never quotes a
+   path and never uses the `->` rename separator: for a rename or copy the
+   destination path is read directly as its own field.
 3. **Stage files with guardrails.** Each changed file is run through the
    four guardrails (pattern exclusion, test file protection, size limit,
    binary detection). Files that pass are staged via `git add`.
