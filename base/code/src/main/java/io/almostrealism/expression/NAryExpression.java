@@ -21,7 +21,6 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 /**
  * An n-ary infix expression that joins two or more sub-expressions with the same operator.
@@ -77,11 +76,45 @@ public class NAryExpression<T> extends Expression<T> {
 		return true;
 	}
 
+	/**
+	 * Renders the operands joined by the operator. Every operand is parenthesised except a
+	 * leading one that {@link #continuesChain(Expression) continues this chain}: the infix
+	 * operators an {@link NAryExpression} renders are left-associative in every target
+	 * language, so {@code (a op b) op c} and {@code a op b op c} parse to the same tree and
+	 * evaluate in the same order. Omitting those parentheses keeps a long left-nested chain,
+	 * such as a product built by repeated binary multiplication, from emitting one nesting
+	 * level per operation, which a native compiler rejects past its bracket nesting limit.
+	 *
+	 * @param lang the language the expression is rendered for
+	 * @return the rendered expression
+	 */
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return getChildren().stream()
-				.map(expression -> expression.getWrappedExpression(lang))
-				.collect(Collectors.joining(" " + operator + " "));
+		List<Expression<?>> children = getChildren();
+		StringBuilder rendered = new StringBuilder();
+
+		for (int i = 0; i < children.size(); i++) {
+			Expression<?> child = children.get(i);
+
+			if (i > 0) rendered.append(" ").append(operator).append(" ");
+			rendered.append(i == 0 && continuesChain(child) ?
+					child.getExpression(lang) : child.getWrappedExpression(lang));
+		}
+
+		return rendered.toString();
+	}
+
+	/**
+	 * Returns whether {@code operand}, as the leading operand of this expression, continues
+	 * the same left-associative chain: it is the same kind of expression joining its own
+	 * operands with the same operator ({@link #compareAttributes(Expression) the same
+	 * attributes}), so it needs no parentheses there.
+	 *
+	 * @param operand the leading operand
+	 * @return whether the operand may be rendered without parentheses
+	 */
+	private boolean continuesChain(Expression<?> operand) {
+		return operand.getClass() == getClass() && compareAttributes(operand);
 	}
 
 	@Override
