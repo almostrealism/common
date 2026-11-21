@@ -62,21 +62,30 @@ public class ArrangementGenerationElitismTest extends TestSuiteBase {
 		return new AudioHealthScore(44_100, 0.5, output, List.of(), List.of());
 	}
 
+	/** A check run against a process that has been prepared but never renders. */
+	private interface PreparedCheck {
+		/**
+		 * Runs the check.
+		 *
+		 * @param process   the prepared process
+		 * @param optimizer the optimizer the process prepared
+		 */
+		void run(ArrangementGenerationProcess process, AudioSceneOptimizer optimizer);
+	}
+
 	/**
-	 * A carried-over genome - the optimizer's elite, the same genome object in the
-	 * next population - keeps the record it already had, and its score, when the
-	 * records are rebuilt at the breeding-complete hook. Without re-delivering any
-	 * score, the elite's record must still be its original object carrying its
-	 * original score, while a genome new to the population starts with a fresh,
-	 * unscored record. Driven through the optimizer's real breeding-complete hook,
-	 * without rendering audio.
+	 * Prepares a process over a small scene, with the health computation's standard
+	 * duration shrunk so preparation (which never renders here) allocates little, runs
+	 * the given check against it, and restores the duration and destroys the process
+	 * afterwards.
 	 *
+	 * @param networksPath the records file the process persists to
+	 * @param check        the check to run against the prepared process
 	 * @throws Exception if the process cannot be prepared
 	 */
-	@Test(timeout = 120_000)
-	public void carriedOverGenomeKeepsItsRecordAndScore() throws Exception {
+	private void withPreparedProcess(String networksPath, PreparedCheck check) throws Exception {
 		new File("results").mkdirs();
-		File networksFile = new File("results/process-elite-records.xml");
+		File networksFile = new File(networksPath);
 		networksFile.delete();
 		new File(AudioSceneOptimizer.POPULATION_FILE).delete();
 
@@ -93,8 +102,27 @@ public class ArrangementGenerationElitismTest extends TestSuiteBase {
 		try {
 			HealthComputationAdapter.setStandardDuration(2);
 			process.prepare(scene, 1);
-			AudioSceneOptimizer optimizer = process.getOptimizer();
+			check.run(process, process.getOptimizer());
+		} finally {
+			HealthComputationAdapter.setStandardDuration(standardDuration);
+			process.destroy();
+		}
+	}
 
+	/**
+	 * A carried-over genome - the optimizer's elite, the same genome object in the
+	 * next population - keeps the record it already had, and its score, when the
+	 * records are rebuilt at the breeding-complete hook. Without re-delivering any
+	 * score, the elite's record must still be its original object carrying its
+	 * original score, while a genome new to the population starts with a fresh,
+	 * unscored record. Driven through the optimizer's real breeding-complete hook,
+	 * without rendering audio.
+	 *
+	 * @throws Exception if the process cannot be prepared
+	 */
+	@Test(timeout = 120_000)
+	public void carriedOverGenomeKeepsItsRecordAndScore() throws Exception {
+		withPreparedProcess("results/process-elite-records.xml", (process, optimizer) -> {
 			Assert.assertEquals("prepare must apply the default elite count to the optimizer,"
 							+ " so the best networks are carried across cycles",
 					ArrangementGenerationProcess.DEFAULT_ELITE_COUNT, optimizer.getEliteCount());
@@ -133,10 +161,69 @@ public class ArrangementGenerationElitismTest extends TestSuiteBase {
 					.findFirst().orElse(null);
 			Assert.assertNotNull("The newcomer must have a record", fresh);
 			Assert.assertNull("The newcomer must start unscored", fresh.getHealthScore());
-		} finally {
-			HealthComputationAdapter.setStandardDuration(standardDuration);
-			process.destroy();
-		}
+		});
+	}
+
+	/**
+	 * Records are matched by genome signature rather than object identity, and each
+	 * existing record is reused at most once. The population holds two distinct genome
+	 * objects that both carry the signature of the one existing record (as happens
+	 * when persistence round-trips a genome into a new object, and a bred child
+	 * repeats it), placed after an unrelated newcomer. Exactly one of them must take
+	 * over the existing record - with its score, its genome replaced by the population's
+	 * object and its index moved to the genome's new position - while the other gets a
+	 * fresh, unscored record of its own.
+	 *
+	 * @throws Exception if the process cannot be prepared
+	 */
+	@Test(timeout = 120_000)
+	public void signatureMatchedRecordIsReusedAtMostOnce() throws Exception {
+		withPreparedProcess("results/process-elite-signatures.xml", (process, optimizer) -> {
+			ProjectedGenome original = new ProjectedGenome(PackedCollection.of(0.15, 0.25, 0.35));
+			ProjectedGenome firstCopy = new ProjectedGenome(PackedCollection.of(0.15, 0.25, 0.35));
+			ProjectedGenome secondCopy = new ProjectedGenome(PackedCollection.of(0.15, 0.25, 0.35));
+			ProjectedGenome newcomer = new ProjectedGenome(PackedCollection.of(0.60, 0.50, 0.40));
+			Assert.assertEquals("The copies must share the original's signature",
+					original.signature(), firstCopy.signature());
+
+			GenomicNetwork existingRecord = new GenomicNetwork(0, original);
+			AudioHealthScore existingScore = score("results/signature.wav");
+			existingRecord.setHealthScore(existingScore);
+			process.setNetworks(List.of(existingRecord));
+
+			optimizer.setPopulation(new AudioScenePopulation(process.getLocalScene(),
+					new ArrayList<>(List.of(newcomer, firstCopy, secondCopy))));
+			optimizer.breedingComplete();
+
+			List<GenomicNetwork> records = process.getNetworks();
+			Assert.assertEquals("Every population genome must have exactly one record",
+					3, records.size());
+
+			for (int i = 0; i < records.size(); i++) {
+				Assert.assertEquals("Records must be indexed by population position",
+						i, records.get(i).getIndex());
+			}
+
+			Assert.assertSame("The newcomer must lead the records, as it leads the population",
+					newcomer, records.get(0).getGenome());
+			Assert.assertNull("The newcomer must start unscored", records.get(0).getHealthScore());
+
+			GenomicNetwork reused = records.get(1);
+			Assert.assertSame("The first genome matching the signature must reuse the existing record",
+					existingRecord, reused);
+			Assert.assertSame("The reused record must hold the population's genome object",
+					firstCopy, reused.getGenome());
+			Assert.assertSame("The reused record must keep its score",
+					existingScore, reused.getHealthScore());
+
+			GenomicNetwork duplicate = records.get(2);
+			Assert.assertNotSame("An existing record must not be reused twice",
+					existingRecord, duplicate);
+			Assert.assertSame("The second matching genome must get its own record",
+					secondCopy, duplicate.getGenome());
+			Assert.assertNull("The second matching genome's record must start unscored",
+					duplicate.getHealthScore());
+		});
 	}
 
 	/**
