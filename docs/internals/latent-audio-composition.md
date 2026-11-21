@@ -157,8 +157,11 @@ wᵢ = cᵢ · exp((scoreᵢ − m) / τ)        latent = Σ wᵢ·xᵢ / Σ w�
 `ComposableAudioFeatures.contributed` applies the source's contribution `cᵢ`; `m` is the largest score of the
 blended sources, which keeps every exponent non-positive (so nothing overflows) without
 changing the proportions. The shares sum to one, so the latent stays within the range of the
-sources it mixes, and every blended source has a strictly positive share that varies
-continuously with the position. A random position therefore mixes **all** the sources in its own
+sources it mixes, and mathematically every blended source has a strictly positive share that
+varies continuously with the position. (In floating point a share whose exponent lies far below
+zero — a large score gap over a small temperature — underflows to exactly zero, which is how a
+vanishing temperature selects the top source alone; `AudioComposerTest.tinyTemperatureSelectsHighestScore`.)
+A random position therefore mixes **all** the sources in its own
 proportions — the intended use is blending similar material, such as several drum loops — rather
 than selecting the sources whose score happens to be positive.
 

@@ -133,9 +133,12 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 	 * merge weight vector with the position) divided by the
 	 * {@link #setBlendTemperature(double) blend temperature}, each multiplied by the
 	 * source's blend contribution ({@link ComposableAudioFeatures#setContribution(double)})
-	 * before the division by their total. Every blended source therefore has a strictly
-	 * positive share, and the shares vary continuously with the position: a random position
-	 * mixes all of the sources in its own proportions rather than selecting some of them.
+	 * before the division by their total. Mathematically every blended source therefore has
+	 * a strictly positive share, and the shares vary continuously with the position: a
+	 * random position mixes all of the sources in its own proportions rather than selecting
+	 * some of them. In floating point, a share whose exponent is far enough below zero (a
+	 * large score gap relative to a small temperature) underflows to exactly zero, so a
+	 * vanishing temperature selects the highest-scoring source alone.
 	 * With the other inputs held fixed, raising a source's score raises its share, so among
 	 * sources of equal contribution a higher score always gives a larger share; a source
 	 * with a much smaller contribution can still receive a smaller share despite a higher
