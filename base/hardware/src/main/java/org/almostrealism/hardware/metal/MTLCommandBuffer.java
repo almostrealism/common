@@ -110,10 +110,10 @@ public class MTLCommandBuffer extends MTLObject {
 	 * {@link MTL#commandBuffer(long)}). Call once the buffer is no longer referenced, so it is freed
 	 * rather than accumulating in the driver: after it has completed, or once it has been committed
 	 * and its work is known to have finished, since Metal keeps a committed buffer until it
-	 * completes.
+	 * completes. Mutually excluded with {@link #isFinished()}.
 	 */
 	@Override
-	public void release() {
+	public synchronized void release() {
 		MTL.releaseCommandBuffer(getNativePointer());
 		super.release();
 	}
@@ -137,6 +137,7 @@ public class MTLCommandBuffer extends MTLObject {
 	 * @return true when the buffer's status is error
 	 */
 	public boolean isError() {
+		// TODO(review): isError/getError are not excluded with release(); decide whether off-executor callers need the same guard as isFinished
 		return MTL.commandBufferStatus(getNativePointer()) == 5;
 	}
 
@@ -144,10 +145,16 @@ public class MTLCommandBuffer extends MTLObject {
 	 * Returns true once this buffer has finished on the GPU, whether it completed or ended with
 	 * an error (see {@link #isError()}). Unlike {@link #waitUntilCompleted()}, this never blocks.
 	 *
-	 * @return true when the buffer's status is completed or error
+	 * <p>Mutually excluded with {@link #release()}, so a poll from another thread that races the
+	 * buffer's release (a runner releases a buffer as soon as the GPU has finished it, whether or
+	 * not anything waits for it) reads either the live buffer's status or the released state,
+	 * never a freed native pointer. A released buffer reports {@code true}: it is released only
+	 * once its work is known to have finished (see {@link #release()}).</p>
+	 *
+	 * @return true when the buffer's status is completed or error, or the buffer has been released
 	 */
-	public boolean isFinished() {
-		return MTL.commandBufferStatus(getNativePointer()) >= 4;
+	public synchronized boolean isFinished() {
+		return isReleased() || MTL.commandBufferStatus(getNativePointer()) >= 4;
 	}
 
 	/**
