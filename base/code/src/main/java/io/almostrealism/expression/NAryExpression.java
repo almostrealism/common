@@ -19,8 +19,10 @@ package io.almostrealism.expression;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.lang.LanguageOperations;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  * An n-ary infix expression that joins two or more sub-expressions with the same operator.
@@ -76,46 +78,11 @@ public class NAryExpression<T> extends Expression<T> {
 		return true;
 	}
 
-	/**
-	 * Renders the operands joined by the operator.
-	 *
-	 * <p>Every operator an n-ary expression renders is left-associative in the generated
-	 * languages, so {@code (a op b) op c} and {@code a op b op c} evaluate identically, in
-	 * the same order and with the same intermediate rounding. The first operand is therefore
-	 * rendered without parentheses when it applies the same operator (see
-	 * {@link #continuesChain(Expression)}). This keeps a long left-nested chain, such as a
-	 * product built by repeated multiplication, from emitting one bracket per link: the
-	 * native compilers reject source nested deeper than a fixed limit (256 for clang).</p>
-	 *
-	 * @param lang the language to render for
-	 * @return the rendered expression
-	 */
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		List<Expression<?>> children = getChildren();
-		StringBuilder rendered = new StringBuilder();
-
-		for (int i = 0; i < children.size(); i++) {
-			Expression<?> child = children.get(i);
-			if (i > 0) rendered.append(" ").append(operator).append(" ");
-			rendered.append(i == 0 && continuesChain(child) ?
-					child.getExpression(lang) : child.getWrappedExpression(lang));
-		}
-
-		return rendered.toString();
-	}
-
-	/**
-	 * Returns whether {@code operand}, used as the first operand of this expression, is an
-	 * n-ary expression of the same kind applying the same operator, so that rendering it
-	 * without parentheses leaves the evaluation unchanged.
-	 *
-	 * @param operand the candidate first operand
-	 * @return {@code true} if the operand continues this expression's operator chain
-	 */
-	protected boolean continuesChain(Expression<?> operand) {
-		return operand.getClass() == getClass()
-				&& operator.equals(((NAryExpression<?>) operand).getOperator());
+		return getChildren().stream()
+				.map(expression -> expression.getWrappedExpression(lang))
+				.collect(Collectors.joining(" " + operator + " "));
 	}
 
 	@Override
@@ -162,6 +129,68 @@ public class NAryExpression<T> extends Expression<T> {
 		}
 
 		return ln ? Long.class : Integer.class;
+	}
+
+	/**
+	 * Returns the given operands with every operand that is itself an expression of
+	 * {@code kind} replaced, in place, by that operand's own operands, so that an associative
+	 * operation applied to the result of the same operation becomes one expression rather
+	 * than a nested pair: {@code (a * b) * c} is the single product {@code a * b * c}.
+	 *
+	 * <p>Only an operand whose class is exactly {@code kind} is merged; a subclass represents
+	 * something more specific than the bare operation and is kept whole. An operand is also
+	 * kept whole when merging it would change the arithmetic its own operands are combined
+	 * in (see {@link #sharesArithmetic(Expression, List)}).</p>
+	 *
+	 * <p>This is for associative operations only. The caller is the factory of {@code kind}
+	 * and is responsible for {@code kind} being one.</p>
+	 *
+	 * @param kind     the exact class of nested expression to merge
+	 * @param operands the operands of the expression being created
+	 * @return the merged operands, or {@code operands} itself when there was nothing to merge
+	 */
+	protected static List<Expression<?>> mergeOperands(Class<? extends NAryExpression> kind,
+													   List<Expression<?>> operands) {
+		if (operands.stream().noneMatch(e -> e.getClass() == kind)) return operands;
+
+		List<Expression<?>> merged = new ArrayList<>();
+		boolean altered = false;
+
+		for (Expression<?> operand : operands) {
+			if (operand.getClass() == kind && sharesArithmetic(operand, operands)) {
+				merged.addAll(operand.getChildren());
+				altered = true;
+			} else {
+				merged.add(operand);
+			}
+		}
+
+		return altered ? merged : operands;
+	}
+
+	/**
+	 * Returns whether the operands of {@code nested} would be combined in the same arithmetic
+	 * if they were operands of an expression over {@code operands} directly.
+	 *
+	 * <p>A nested integer expression is evaluated in integer arithmetic, wrapping on overflow
+	 * at its own width, before its result is widened to join a floating-point or wider
+	 * integer sibling. Merged, its operands could be combined with that sibling first and
+	 * would not wrap, so such an expression is not merged. A nested floating-point expression
+	 * always shares the arithmetic of the expression that contains it.</p>
+	 *
+	 * @param nested   an operand that is a candidate for merging
+	 * @param operands every operand of the containing expression, including {@code nested}
+	 * @return {@code true} if merging {@code nested} leaves the arithmetic unchanged
+	 */
+	protected static boolean sharesArithmetic(Expression<?> nested, List<Expression<?>> operands) {
+		if (nested.isFP()) return true;
+
+		for (Expression<?> operand : operands) {
+			if (operand.isFP()) return false;
+			if (!Objects.equals(operand.getType(), nested.getType())) return false;
+		}
+
+		return true;
 	}
 
 	/**

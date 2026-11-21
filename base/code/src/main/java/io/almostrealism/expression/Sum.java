@@ -511,6 +511,12 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	 * zero-pruning, arithmetic-generator combination, opposite-term cancellation,
 	 * constant collection, coefficient extraction, and mod-pattern detection.
 	 *
+	 * <p>A term that is itself a sum is merged into the sum being created (see
+	 * {@link NAryExpression#mergeOperands(Class, List)}), so a sum never has a sum of the
+	 * same arithmetic as a term, and like terms and constants are combined across what would
+	 * otherwise be separate levels. The merge follows the rewrites that recognize a two-term
+	 * form, so those still see the terms as they were given.</p>
+	 *
 	 * @param values the operand expressions to add together
 	 * @param <T>    the numeric result type
 	 * @return the simplified expression or a new {@link Sum}
@@ -620,6 +626,9 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 				return (Expression) Index.child((Index) args.get(index[0]), idx);
 			}
 		}
+
+		List<Expression<?>> merged = mergeOperands(Sum.class, operands);
+		if (merged != operands) return create(merged.toArray(new Expression[0]));
 
 		if (operands.size() > 1) {
 			// Combine any like terms

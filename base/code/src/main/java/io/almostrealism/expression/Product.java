@@ -407,6 +407,12 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	 * Creates a product expression, applying zero-detection, constant-folding, and
 	 * Mask-promotion before returning the result.
 	 *
+	 * <p>A factor that is itself a product is merged into the product being created (see
+	 * {@link NAryExpression#mergeOperands(Class, List)}), so a product never has a product
+	 * of the same arithmetic as a factor and the constants of both are folded together. The
+	 * merge follows the rewrites that recognize a two-factor form, such as a negation, so
+	 * those still see the factors as they were given.</p>
+	 *
 	 * @param values the operand expressions to multiply together
 	 * @return the simplified expression or a new {@link Product}
 	 * @throws IllegalArgumentException if no operands are provided
@@ -487,6 +493,10 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				return Minus.of(operands.get(0));
 			}
 		}
+
+		List<Expression<?>> factors = (List) operands;
+		List<Expression<?>> merged = mergeOperands(Product.class, factors);
+		if (merged != factors) return create(merged.toArray(new Expression[0]));
 
 		if (enableSort)
 			operands = operands.stream().sorted(depthOrder()).collect(Collectors.toList());
