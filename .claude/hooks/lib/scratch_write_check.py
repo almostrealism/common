@@ -92,7 +92,8 @@ def main(argv=None, stdin=None, stderr=None, project_dir=None):
 
     try:
         tool_input = json.loads(stdin.read()).get("tool_input") or {}
-        path = tool_input.get("file_path") or tool_input.get("filePath") or ""
+        path = (tool_input.get("file_path") or tool_input.get("filePath")
+                or tool_input.get("notebook_path") or "")
     except Exception:
         return 0
 

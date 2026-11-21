@@ -474,11 +474,17 @@ def block_reason(where, text, found):
 
 
 def _read(path):
-    """Return a file's text, or the empty string when it does not exist."""
+    """Return a file's text, or the empty string when it does not exist.
+
+    Only a missing file reads as empty: that is a new file an edit is creating,
+    which has no prior text to judge. A file that exists but cannot be read (a
+    permission or I/O error) is not judgeable, so the error propagates and the
+    gate fails closed rather than treating an unreadable change as clean.
+    """
     try:
         with open(path, encoding="utf-8", errors="replace", newline="") as handle:
             return handle.read()
-    except OSError:
+    except FileNotFoundError:
         return ""
 
 
@@ -520,7 +526,8 @@ def decide_payload(data, read=_read):
     if not isinstance(tool_input, dict):
         raise ValueError("payload without tool_input")
 
-    path = tool_input.get("file_path") or tool_input.get("filePath") or ""
+    path = (tool_input.get("file_path") or tool_input.get("filePath")
+            or tool_input.get("notebook_path") or "")
     if not isinstance(path, str) or not governs(path):
         return path, "", []
 

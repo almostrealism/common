@@ -16,9 +16,11 @@
  *   - `edit`: `filePath`, `oldString`, `newString` and `replaceAll`. The core
  *     reads the file, applies the replacement and judges the result, so a
  *     line added to a comment that is already there is measured with it.
- *   - `apply_patch`: each file's added lines are handed to the core as a
- *     fragment it cannot place in the file, which it judges whole. That is
- *     the stricter reading, and the CI check judges the resulting file.
+ *   - `apply_patch`: an `Add File` section is the whole new file; an `Update
+ *     File` section is turned back into the replacements its hunks describe,
+ *     so the core reads the file, applies them and judges the result. A hunk
+ *     whose context no longer matches the file falls back to judging the added
+ *     text whole, the stricter reading.
  *
  * Unlike the adapters whose core failure only loses a warning, this one
  * refuses the edit when the core cannot be run or does not reach a verdict:
@@ -33,9 +35,6 @@ import { fileURLToPath } from "node:url"
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const CORE = path.resolve(HERE, "..", "..", ".claude", "hooks", "lib", "inline_comment_check.py")
 
-/** Text an edit names that no file holds, so the core judges the fragment whole. */
-const UNPLACEABLE = "\u0000unplaceable\u0000"
-
 type ToolInput = Record<string, unknown>
 
 /** Returns the string held under the first of the given keys, or the empty string. */
@@ -46,28 +45,81 @@ function text(args: Record<string, unknown>, ...keys: string[]): string {
   return ""
 }
 
-/** Returns one core payload per file an `apply_patch` call adds lines to. */
-function patchInputs(patch: string): ToolInput[] {
-  const files: { path: string; lines: string[] }[] = []
-  let current: { path: string; lines: string[] } | null = null
+/** An apply_patch hunk as the two blocks it replaces: the old text and the new. */
+type Replacement = { old_string: string; new_string: string }
 
-  for (const line of patch.split(/\r\n|\r|\n/)) {
-    const header = line.match(/^\*\*\* (?:Update|Add) File: (.+)$/)
-    if (header) {
-      current = { path: header[1].trim(), lines: [] }
-      files.push(current)
-    } else if (line.startsWith("*** ")) {
-      current = null
-    } else if (current && line.startsWith("+")) {
-      current.lines.push(line.slice(1))
+/** The lines an `Add File` body introduces, stripped of their leading `+`. */
+function addedLines(body: string[]): string[] {
+  return body.filter((line) => line.startsWith("+")).map((line) => line.slice(1))
+}
+
+/** Turns an `Update File` body into the replacements its hunks describe.
+ *
+ * A context or removed line is part of the text the file holds now; a context
+ * or added line is part of the text it will hold. The core applies each
+ * replacement to the file it reads, so the result is judged whole; a hunk the
+ * core cannot place falls back to judging its added text whole.
+ */
+function hunkReplacements(body: string[]): Replacement[] {
+  const edits: Replacement[] = []
+  let before: string[] = []
+  let after: string[] = []
+  const flush = () => {
+    if (before.length || after.length) {
+      edits.push({ old_string: before.join("\n"), new_string: after.join("\n") })
     }
+    before = []
+    after = []
   }
 
-  return files.map((file) => ({
-    file_path: file.path,
-    old_string: UNPLACEABLE,
-    new_string: file.lines.join("\n"),
-  }))
+  for (const line of body) {
+    if (line.startsWith("@@")) {
+      flush()
+    } else if (line.startsWith("+")) {
+      after.push(line.slice(1))
+    } else if (line.startsWith("-")) {
+      before.push(line.slice(1))
+    } else {
+      const value = line.startsWith(" ") ? line.slice(1) : line
+      before.push(value)
+      after.push(value)
+    }
+  }
+  flush()
+  return edits
+}
+
+/** Returns one core payload per file an `apply_patch` call writes to. */
+function patchInputs(patch: string): ToolInput[] {
+  const inputs: ToolInput[] = []
+  let kind: "add" | "update" | null = null
+  let file = ""
+  let body: string[] = []
+  const flush = () => {
+    if (kind === "add") {
+      inputs.push({ file_path: file, content: addedLines(body).join("\n") })
+    } else if (kind === "update") {
+      inputs.push({ file_path: file, edits: hunkReplacements(body) })
+    }
+    kind = null
+    file = ""
+    body = []
+  }
+
+  for (const line of patch.split(/\r\n|\r|\n/)) {
+    const header = line.match(/^\*\*\* (Update|Add) File: (.+)$/)
+    if (header) {
+      flush()
+      kind = header[1] === "Add" ? "add" : "update"
+      file = header[2].trim()
+    } else if (line.startsWith("*** ")) {
+      flush()
+    } else if (kind) {
+      body.push(line)
+    }
+  }
+  flush()
+  return inputs
 }
 
 /** Returns the core payloads for a tool call, or none when the tool writes no file. */
@@ -93,12 +145,17 @@ function toolInputs(tool: string, args: unknown): ToolInput[] {
   return []
 }
 
-/** Asks the core about one payload and throws when it does not allow the edit. */
-function requireAllowed(toolInput: ToolInput): void {
+/** Asks the core about one payload and throws when it does not allow the edit.
+ *
+ * The core reads the edited file to judge the result, so it runs in the
+ * project directory where a relative `file_path` resolves to the real file.
+ */
+function requireAllowed(toolInput: ToolInput, projectDir: string): void {
   const result = spawnSync("python3", [CORE, "--stdin"], {
     input: JSON.stringify({ tool_input: toolInput }),
     encoding: "utf-8",
     timeout: 10_000,
+    cwd: projectDir,
   })
 
   if (result.status === 0) return
@@ -114,11 +171,12 @@ function requireAllowed(toolInput: ToolInput): void {
   )
 }
 
-export const BlockExcessiveCommentsPlugin: Plugin = async () => {
+export const BlockExcessiveCommentsPlugin: Plugin = async ({ directory }) => {
+  const projectDir = directory || path.resolve(HERE, "..", "..")
   return {
     "tool.execute.before": async (input, output) => {
       for (const toolInput of toolInputs(input.tool, output.args)) {
-        if (toolInput.file_path) requireAllowed(toolInput)
+        if (toolInput.file_path) requireAllowed(toolInput, projectDir)
       }
     },
   }

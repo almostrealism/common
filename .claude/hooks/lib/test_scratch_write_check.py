@@ -76,6 +76,10 @@ class MainTest(unittest.TestCase):
         payload = json.dumps({"tool_input": {"filePath": "/tmp/a.py"}})
         self.assertEqual(2, self.run_main(payload)[0])
 
+    def test_a_notebook_edit_to_the_temporary_directory_is_refused(self):
+        payload = json.dumps({"tool_input": {"notebook_path": "/tmp/a.ipynb"}})
+        self.assertEqual(2, self.run_main(payload)[0])
+
     def test_a_payload_without_a_path_exits_zero(self):
         self.assertEqual(0, self.run_main("{}")[0])
         self.assertEqual(0, self.run_main("not json")[0])

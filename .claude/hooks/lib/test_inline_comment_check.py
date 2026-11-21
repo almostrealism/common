@@ -3,6 +3,8 @@
 
 import io
 import json
+import os
+import tempfile
 import unittest
 
 import inline_comment_check as check
@@ -285,6 +287,12 @@ class TestTheEditGate(Base):
             read=lambda _: "")[2]
         self.assertTrue(found)
 
+    def test_a_notebook_edit_path_is_read(self):
+        found = check.decide_payload(
+            {"tool_input": {"notebook_path": "A.java", "new_source": method(*wall(5), "int x;")}},
+            read=lambda _: "")[2]
+        self.assertTrue(found)
+
     def test_an_unrelated_edit_to_a_file_with_an_old_wall_is_allowed(self):
         old = method(*wall(6), "int x = 1;")
         self.assertEqual([], self.edit(old, {"old_string": "int x = 1;",
@@ -339,6 +347,32 @@ class TestTheDiffGate(Base):
     def test_a_deleted_file_is_ignored(self):
         diff = "--- a/A.java\n+++ /dev/null\n@@ -1,3 +0,0 @@\n-a\n-b\n-c\n"
         self.assertEqual([], check.decide_diff(diff, read=lambda _: ""))
+
+
+class TestReadingFailsClosed(Base):
+    def test_a_missing_file_reads_as_empty(self):
+        self.assertEqual("", check._read("/no/such/path/A.java"))
+
+    def test_an_unreadable_file_is_not_swallowed(self):
+        with self.assertRaises(OSError):
+            check._read(".")
+
+    def test_the_diff_gate_propagates_a_read_failure(self):
+        def boom(_):
+            raise PermissionError("denied")
+        diff = "--- a/A.java\n+++ b/A.java\n@@ -0,0 +1,1 @@\n+// x\n"
+        with self.assertRaises(PermissionError):
+            check.decide_diff(diff, read=boom)
+
+    def test_the_diff_gate_blocks_an_unreadable_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            unreadable = os.path.join(directory, "A.java")
+            os.mkdir(unreadable)
+            diff = ("--- a/%s\n+++ b/%s\n@@ -0,0 +1,1 @@\n+// x\n"
+                    % (unreadable, unreadable))
+            err = io.StringIO()
+            self.assertEqual(2, check.main(["--diff", "-"], io.StringIO(diff), err))
+            self.assertIn("BLOCKED", err.getvalue())
 
 
 class TestDeclarationComments(Base):
