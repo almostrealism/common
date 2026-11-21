@@ -291,7 +291,7 @@ is a medium task touching two files plus one `knownIssue` flag, runs on any node
 ### 2026-11-04 (later) — Skip the per-dispatch copy-in of an unread folded aggregate slice (condensed)
 
 **Category:** Performance · **Branch:** `project/plan-20261104-182220` ·
-**Plan:** [`PLAN-20261104-aggregate-copy-in-skip-unread.md`](PLAN-20261104-aggregate-copy-in-skip-unread.md)
+**Plan:** `PLAN-20261104-aggregate-copy-in-skip-unread.md`
 
 Applied the copy-back arc symmetrically to the copy-in: the rolling KV cache (PR #818) landed
 correct but dispatch-bound, issuing a device copy-in before every dispatch even for a folded slice
@@ -306,7 +306,7 @@ measurement; correctness on any backend.
 ### 2026-11-04 — Document text tokenization, from a string to the token ids a model consumes (condensed)
 
 **Category:** Documentation · **Branch:** `project/plan-20261104-133539` ·
-**Plan:** [`PLAN-20261104-text-tokenization-docs.md`](PLAN-20261104-text-tokenization-docs.md)
+**Plan:** `PLAN-20261104-text-tokenization-docs.md`
 
 The input layer of every language model was undocumented: no internals page on tokenization,
 `llms.txt`'s only tokenizer line pointed at the wrong class (the `extern/ml-djl` wrapper, not
@@ -320,7 +320,7 @@ Ran on any node. Merged (PR #838).
 ### 2026-11-03 (later) — Document the vector-index subsystem (HNSW + disk store + model-keyed rebuild) (condensed)
 
 **Category:** Documentation · **Branch:** `project/plan-20261103-172701` ·
-**Plan:** [`PLAN-20261103-vector-index-docs.md`](PLAN-20261103-vector-index-docs.md)
+**Plan:** `PLAN-20261103-vector-index-docs.md`
 
 A whole vector similarity-search subsystem reached `master` (PR #827 and surrounding commits) —
 `engine/ml`'s `org.almostrealism.persist.index` (`HnswIndex`, `ProtobufDiskStore`, `SimilarityMetric`)
@@ -385,7 +385,7 @@ it missed its throughput criterion, which opened the aggregate-copy arc that fol
 ### 2026-11-02 — Document the neuron-level connectome simulation pipeline (condensed)
 
 **Category:** Documentation · **Branch:** `project/plan-20261102-014251` ·
-**Plan:** [`PLAN-20261102-neuron-level-connectome-simulation-docs.md`](PLAN-20261102-neuron-level-connectome-simulation-docs.md)
+**Plan:** `PLAN-20261102-neuron-level-connectome-simulation-docs.md`
 
 The neuron-level connectome subsystem had merged (PRs #806, #809) — `NeuronConnectome` (CSR
 synapse counts through `StateDictionary`, synaptic input as one sparse `matmul`), `ConnectomeNetwork`
@@ -418,7 +418,7 @@ window. Needed a Metal node for the measurement.
 ### 2026-10-28 (later) — Give the attention key/value caches an owner the caller can clear and release (condensed)
 
 **Category:** Code Quality (correctness) · **Branch:** `project/plan-20261028-165007` ·
-**Plan:** [`PLAN-20261028-attention-cache-ownership.md`](PLAN-20261028-attention-cache-ownership.md)
+**Plan:** `PLAN-20261028-attention-cache-ownership.md`
 
 The decode-throughput measurement (PR #768) had cashed the KV-cache arc with an unexpected result
 and exposed a correctness defect beneath the flagship LM generation path: `CausalLanguageModel.decodeModel`
@@ -448,7 +448,7 @@ which set up the 10-28 (later) and 10-29 cycles. Needed a Metal node.
 ### 2026-10-27 — Document simulating a spiking neural population, from state to recorded spikes (condensed)
 
 **Category:** Documentation · **Branch:** `project/plan-20261027-081706` ·
-**Plan:** [`PLAN-20261027-neural-population-simulation-docs.md`](PLAN-20261027-neural-population-simulation-docs.md)
+**Plan:** `PLAN-20261027-neural-population-simulation-docs.md`
 
 A whole simulation substrate had arrived through the connectome Phase-1 tracker tasks with only
 Javadoc — `CounterRandom`/`AR_RANDOM`, `SimulationRunner`, `LeakyIntegrateAndFirePopulation`, the
@@ -477,7 +477,7 @@ depending on none of the unbuilt `PDSL_FOR_RESEARCH_AND_EDUCATION.md` features. 
 ### 2026-10-26 — Decode the self-hosted LM one token at a time with a key/value cache (condensed)
 
 **Category:** Proof of Value (self-hosted LM generation) · **Branch:** `project/plan-20261026-022005` ·
-**Plan:** [`PLAN-20261026-kv-cache-single-position-decode.md`](PLAN-20261026-kv-cache-single-position-decode.md)
+**Plan:** `PLAN-20261026-kv-cache-single-position-decode.md`
 
 With sampling unified, the remaining ceiling on generation was the full-forward-per-byte decode. The
 cached single-position `attention(...)` family and `causalMask(shape, position)` already existed; what
