@@ -16,8 +16,6 @@
 
 package org.almostrealism.ml.tokenization;
 
-import org.almostrealism.ml.Tokenizer;
-
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
 import java.io.FileInputStream;
@@ -61,7 +59,7 @@ import java.util.Set;
  * would not reproduce it. A caller that wants them can use
  * {@link #encode(String, boolean)} directly.</p>
  */
-public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements Tokenizer {
+public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer {
 
 	/** Marks a word boundary in a SentencePiece vocabulary. */
 	public static final char BOUNDARY = '▁';
@@ -449,37 +447,6 @@ public class SentencePieceBPETokenizer extends ByteLevelBPETokenizer implements 
 	@Override
 	protected int getMergePriority(String pair) {
 		return mergePriority.getOrDefault(pair, Integer.MAX_VALUE);
-	}
-
-	@Override
-	public long[] encodeAsLong(String text) {
-		int[] tokens = encode(text, false);
-
-		long[] result = new long[tokens.length];
-		for (int i = 0; i < tokens.length; i++) {
-			result[i] = tokens[i];
-		}
-
-		return result;
-	}
-
-	/**
-	 * Decodes {@code long} token ids. An id outside the {@code int} range cannot name a vocabulary
-	 * entry, so it is mapped to {@code -1} and ignored by {@link #decode(int[])} like any other
-	 * invalid id, rather than narrowed by a cast that could wrap it onto a real token.
-	 *
-	 * @param tokens the token ids to decode
-	 * @return the decoded text
-	 */
-	@Override
-	public String decodeAsLong(long[] tokens) {
-		int[] ids = new int[tokens.length];
-		for (int i = 0; i < tokens.length; i++) {
-			long id = tokens[i];
-			ids[i] = id < Integer.MIN_VALUE || id > Integer.MAX_VALUE ? -1 : (int) id;
-		}
-
-		return decode(ids);
 	}
 
 	/**
