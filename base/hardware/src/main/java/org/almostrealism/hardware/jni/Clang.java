@@ -16,10 +16,12 @@
 
 package org.almostrealism.hardware.jni;
 
+import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.SystemUtils;
 
 import java.io.File;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * {@link LlvmCommandProvider} implementation for Clang/LLVM compiler with optional custom linker support.
@@ -76,8 +78,20 @@ import java.util.List;
  * @see Lld
  */
 public class Clang extends LlvmCommandProvider {
+	/** The bracket nesting limit clang applies when {@code -fbracket-depth} is not given. */
+	public static final int DEFAULT_BRACKET_DEPTH = 256;
+
+	/**
+	 * The bracket nesting levels allowed per level of expression depth: one expression node can
+	 * render as a parenthesized operation wrapped in a cast and a function call.
+	 */
+	public static final int BRACKETS_PER_EXPRESSION_LEVEL = 4;
+
 	/** The custom linker name or path to use with {@code -fuse-ld}, or null for default linker. */
 	private String linker;
+
+	/** Whether the compiler identifies itself as clang, or null until it has been checked. */
+	private Boolean clangFrontend;
 
 	/**
 	 * Creates a new Clang instance with default settings.
@@ -131,9 +145,57 @@ public class Clang extends LlvmCommandProvider {
 	 * @param command the command list to add the linker flag to
 	 */
 	@Override
-	protected void addLinker(List<String> command) {
+	protected void appendLinkerOptions(List<String> command) {
 		if (linker != null) {
 			command.add("-fuse-ld=" + linker);
 		}
+	}
+
+	/**
+	 * Raises clang's bracket nesting limit so that it accepts every expression the framework
+	 * permits.
+	 *
+	 * <p>Generated source nests parentheses as deeply as the expression tree it renders: a product
+	 * of several hundred factors becomes several hundred nested parentheses. Older clang releases
+	 * reject anything nested more than 256 deep by default ({@code bracket nesting level exceeded
+	 * maximum of 256}), while newer ones accept it, so the same kernel compiles on one host and
+	 * fails on another. The framework bounds expression depth by {@link ScopeSettings#maxDepth},
+	 * so the limit passed here is derived from that bound rather than left to the toolchain's
+	 * default. The flag is clang-specific, and GCC (which has no such limit) rejects it, so it is
+	 * only added when the configured compiler identifies itself as clang.</p>
+	 *
+	 * @param command the command list to add the flag to
+	 */
+	@Override
+	protected void appendFrontendOptions(List<String> command) {
+		if (isClangFrontend()) {
+			command.add("-fbracket-depth=" + getBracketDepth());
+		}
+	}
+
+	/**
+	 * Returns the bracket nesting depth passed to clang: {@value #BRACKETS_PER_EXPRESSION_LEVEL}
+	 * nesting levels for each level of the deepest expression {@link ScopeSettings#maxDepth}
+	 * permits, which covers the parentheses, casts and calls a single expression node renders.
+	 *
+	 * @return the value for {@code -fbracket-depth}
+	 */
+	public static int getBracketDepth() {
+		return Math.max(DEFAULT_BRACKET_DEPTH, BRACKETS_PER_EXPRESSION_LEVEL * ScopeSettings.maxDepth);
+	}
+
+	/**
+	 * Returns whether the configured compiler is clang, determined once by running it with
+	 * {@code --version}. On macOS the {@code gcc} command is Apple's clang; on Linux it is
+	 * usually GCC.
+	 *
+	 * @return {@code true} if the compiler reports itself as clang
+	 */
+	public boolean isClangFrontend() {
+		if (clangFrontend == null) {
+			clangFrontend = getVersion().toLowerCase(Locale.ROOT).contains("clang");
+		}
+
+		return clangFrontend;
 	}
 }
