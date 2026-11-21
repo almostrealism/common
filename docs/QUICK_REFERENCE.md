@@ -394,12 +394,11 @@ optimizer.step(parameters, gradients);
 
 ```java
 // Configure the optimizer
-ModelOptimizer optimizer = new ModelOptimizer(model);
-optimizer.setLossProvider(new MeanSquaredError());
-optimizer.setParameterUpdate(new AdamOptimizer(learningRate));
+ModelOptimizer optimizer = new ModelOptimizer(model, () -> dataset);
+optimizer.setLossFunction(new MeanSquaredError(outputShape));
 
 // Run training — ModelOptimizer manages the loop
-optimizer.train(dataset, epochs, batchSize);
+optimizer.optimize(epochs);
 ```
 
 See [training-loop-examples.md](internals/training-loop-examples.md) for detailed patterns.

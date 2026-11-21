@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Durable record of which production classes a {@link ObjectOrientedDesignRule} review has already
@@ -42,7 +43,12 @@ import java.util.Map;
  * containers that bind-mount the same repository. The file is a plain tab-separated list, one
  * verdict per line: {@code <blobId>\t<verdict>\t<classPath>}.</p>
  *
+ * <p>The same mechanism records the verdicts of the new-type audit ({@link NewTypeAudit}), in a
+ * ledger of its own with its own settled verdicts: there the key is a digest of the type's source
+ * and its justification, and the path is the type's fully-qualified name.</p>
+ *
  * @see ObjectOrientedDesignRule
+ * @see NewTypeAudit
  * @see WorkspaceLock
  */
 class ObjectOrientedReviewLedger {
@@ -50,8 +56,17 @@ class ObjectOrientedReviewLedger {
     /** Separator between the two keys and the verdict on a ledger line. */
     private static final String SEPARATOR = "\t";
 
+    /** The verdicts the design review records: {@code CLEAN} and {@code FIXED}. */
+    static final Set<String> REVIEW_VERDICTS = Set.of("CLEAN", "FIXED");
+
+    /** Directory, under the workspace parent, that holds every branch ledger. */
+    static final String LEDGER_DIR = ".flowtree-locks/oop-verdicts";
+
     /** The backing file for this branch's verdicts. */
     private final Path file;
+
+    /** The verdicts worth remembering; any other value is never recorded. */
+    private final Set<String> settled;
 
     /** Recorded verdicts, keyed by {@code blobId + SEPARATOR + classPath}; loaded lazily. */
     private Map<String, String> verdicts;
@@ -62,7 +77,53 @@ class ObjectOrientedReviewLedger {
      * @param file the per-branch ledger file
      */
     ObjectOrientedReviewLedger(Path file) {
+        this(file, REVIEW_VERDICTS);
+    }
+
+    /**
+     * Creates a ledger backed by the given file that remembers the given verdicts.
+     *
+     * @param file    the per-branch ledger file
+     * @param settled the verdicts worth remembering
+     */
+    ObjectOrientedReviewLedger(Path file, Set<String> settled) {
         this.file = file;
+        this.settled = Set.copyOf(settled);
+    }
+
+    /**
+     * Returns the ledger for the branch {@code job} works on -- its target branch, or its base branch
+     * when it has no target -- backed by
+     * {@code <parent>/.flowtree-locks/oop-verdicts/<repo>/<branch><suffix>} beside the job's
+     * checkout. A job without a working directory or branch gets a ledger over no file, which never
+     * skips or records.
+     *
+     * @param job     the job whose branch the ledger is for
+     * @param suffix  the file name suffix that tells the ledgers of one branch apart
+     * @param settled the verdicts worth remembering
+     * @return the ledger
+     */
+    static ObjectOrientedReviewLedger forBranch(GitManagedJob job, String suffix, Set<String> settled) {
+        String branch = job.getTargetBranch() != null ? job.getTargetBranch() : job.getBaseBranch();
+        return new ObjectOrientedReviewLedger(branchFile(job.getWorkingDirectory(), branch, suffix), settled);
+    }
+
+    /**
+     * Returns the ledger file for a branch of the repository checked out at {@code workingDirectory}.
+     *
+     * @param workingDirectory the repository checkout, or {@code null}
+     * @param branch           the branch, or {@code null}
+     * @param suffix           the file name suffix that tells the ledgers of one branch apart
+     * @return the file, or {@code null} when it cannot be resolved
+     */
+    private static Path branchFile(String workingDirectory, String branch, String suffix) {
+        if (workingDirectory == null || branch == null || branch.isEmpty()) return null;
+        Path repoRoot = Path.of(workingDirectory);
+        Path parent = repoRoot.getParent();
+        if (parent == null) return null;
+        String repoName = repoRoot.getFileName() != null ? repoRoot.getFileName().toString() : "repo";
+        return parent.resolve(LEDGER_DIR).resolve(repoName)
+                .resolve(branch.replaceAll("[^A-Za-z0-9._-]", "-") + suffix);
     }
 
     /**
@@ -70,21 +131,33 @@ class ObjectOrientedReviewLedger {
      *
      * @param classPath the repository-relative path of the class
      * @param blobId    the git blob id of the content to check
-     * @return whether a {@code CLEAN} or {@code FIXED} verdict is recorded for exactly this content
+     * @return whether a settled verdict is recorded for exactly this content
      */
     boolean isReviewed(String classPath, String blobId) {
-        if (blobId == null || classPath == null) return false;
-        return load().containsKey(key(blobId, classPath));
+        return verdict(classPath, blobId) != null;
+    }
+
+    /**
+     * Returns the verdict recorded for the given content.
+     *
+     * @param classPath the repository-relative path of the class
+     * @param blobId    the git blob id of the content to check
+     * @return the settled verdict recorded for exactly this content, or {@code null}
+     */
+    String verdict(String classPath, String blobId) {
+        if (blobId == null || classPath == null) return null;
+        return load().get(key(blobId, classPath));
     }
 
     /**
      * Records a verdict for a class's content, so that a later job skips the class while its
-     * content is unchanged. Only {@code CLEAN} and {@code FIXED} verdicts are retained; any other
-     * value leaves the ledger unchanged, so an unreviewed or failed class is judged again.
+     * content is unchanged. Only settled verdicts are retained ({@code CLEAN} and {@code FIXED} by
+     * default); any other value leaves the ledger unchanged, so an unreviewed or failed class is
+     * judged again.
      *
      * @param classPath the repository-relative path of the class
      * @param blobId    the git blob id of the judged content
-     * @param verdict   the verdict, {@code CLEAN} or {@code FIXED}
+     * @param verdict   the verdict; one of the settled verdicts
      */
     void record(String classPath, String blobId, String verdict) {
         if (blobId == null || classPath == null || !isSettled(verdict)) return;
@@ -96,10 +169,10 @@ class ObjectOrientedReviewLedger {
 
     /**
      * @param verdict a verdict string, possibly {@code null}
-     * @return whether it is a settled verdict worth remembering ({@code CLEAN} or {@code FIXED})
+     * @return whether it is a settled verdict worth remembering
      */
-    private static boolean isSettled(String verdict) {
-        return "CLEAN".equals(verdict) || "FIXED".equals(verdict);
+    private boolean isSettled(String verdict) {
+        return verdict != null && settled.contains(verdict);
     }
 
     /**

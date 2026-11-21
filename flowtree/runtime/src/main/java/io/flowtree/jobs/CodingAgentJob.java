@@ -91,9 +91,10 @@ public class CodingAgentJob extends GitManagedJob {
     public static final String DEDUP_SPAWN = "spawn";
 
     /**
-     * Deduplication mode that disables the deduplication scan entirely.
-     * This is the default; opt in to deduplication by passing
-     * {@link #DEDUP_LOCAL} or {@link #DEDUP_SPAWN} explicitly.
+     * Deduplication mode that disables the method deduplication scan. This is
+     * the default; opt in by passing {@link #DEDUP_LOCAL} or
+     * {@link #DEDUP_SPAWN} explicitly. The new-type audit is not affected: it
+     * runs for every job (see {@link DeduplicationRule}).
      */
     public static final String DEDUP_NONE = "none";
 
@@ -177,6 +178,8 @@ public class CodingAgentJob extends GitManagedJob {
     private int maxReviewPasses = DEFAULT_MAX_REVIEW_PASSES;
     /** Active {@link ReviewRule} instance set by {@link EnforcementRunner} while assembling rules; owns review telemetry. */
     private ReviewRule activeReviewRule;
+    /** The audit of new types resembling existing ones; consulted by enforcement, review and staging. */
+    private final NewTypeAudit newTypeAudit = new NewTypeAudit(this);
 
     /**
      * When {@code true}, a retrospective session runs after all other phases,
@@ -729,6 +732,13 @@ public class CodingAgentJob extends GitManagedJob {
 
     /** Returns the active {@link ReviewRule} for the current review session, or {@code null}. */
     ReviewRule getActiveReviewRule() { return activeReviewRule; }
+
+    /** Returns this job's audit of new types that resemble existing ones. */
+    NewTypeAudit getNewTypeAudit() { return newTypeAudit; }
+
+    /** Refuses the new types this job's {@link NewTypeAudit} has not settled. */
+    @Override
+    Map<String, String> getNewTypeRefusals() { return newTypeAudit.refusals(); }
 
     /** Marks that the post-completion command rule hit its retry cap. */
     void setPostCompletionCapHit(boolean postCompletionCapHit) { this.postCompletionCapHit = postCompletionCapHit; }

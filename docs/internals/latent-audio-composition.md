@@ -95,16 +95,18 @@ Each source also has a scalar **contribution**, `ComposableAudioFeatures.setCont
 
 ### The scale of a source
 
-For a position vector `p`, a source's scale is computed by `ComposableAudioFeatures.getScale`:
-the dot product of its weight vector with `p`, clamped to be non-negative, then multiplied by
-the contribution. As a graph:
+For a position vector `p`, a source's **score** is computed by `ComposableAudioFeatures.getScore`:
+the dot product of its weight vector with `p`. Its **scale**, used by the weighted sum, is
+computed by `ComposableAudioFeatures.getScale`: the score clamped to be non-negative, then
+multiplied by the contribution. As a graph:
 
 ```java
 // Fragment: ComposableAudioFeatures.getScale
-CollectionProducer scale = c(weights).multiply(tiled).traverse(2).sum();
-scale = max(scale.reshape(scale.getShape().trim()), c(0));
+CollectionProducer scale = max(getScore(value), c(0));
 return contribution == 1.0 ? scale : scale.multiply(c(contribution));
 ```
+
+The normalized blend uses the score itself, not the clamped scale (section 4).
 
 The weights are stored as a `(T, B, L)` tensor, one length-`L` vector per latent cell. A
 length-`L` vector is broadcast to every `(T, B)` cell (`broadcastWeights`), so **with vector
@@ -142,10 +144,26 @@ silence or clipping.
 
 ### Opt-in: the normalized blend
 
-`setNormalizedBlend(true)` makes the composed latent a weighted **mean**. Each scale is clamped
-again with `max(getScale(p), 0)`, the scales are summed into `total`, and the result is
-`Σ sᵢ·xᵢ / total`. The position then decides only the *proportions* of the sources, and the
-latent stays at the level of the sources it mixes:
+`setNormalizedBlend(true)` makes the composed latent a weighted **mean**. Each source's share is
+a softmax of its **score** — `ComposableAudioFeatures.getScore(p)`, the unclamped dot product of
+its weight vector with `p` — divided by the blend temperature (`setBlendTemperature`, default
+`1.0`) and multiplied by its contribution:
+
+```
+wᵢ = cᵢ · exp((scoreᵢ − m) / τ)        latent = Σ wᵢ·xᵢ / Σ wᵢ
+```
+
+`AudioComposer.getInterpolatedLatent` builds each score once and forms the exponential, and
+`ComposableAudioFeatures.contributed` applies the source's contribution `cᵢ`; `m` is the largest score of the
+blended sources, which keeps every exponent non-positive (so nothing overflows) without
+changing the proportions. The shares sum to one, so the latent stays within the range of the
+sources it mixes, and mathematically every blended source has a strictly positive share that
+varies continuously with the position. (In floating point a share whose exponent lies far below
+zero — a large score gap over a small temperature — underflows to exactly zero, which is how a
+vanishing temperature selects the top source alone; `AudioComposerTest.tinyTemperatureSelectsHighestScore`.)
+A random position therefore mixes **all** the sources in its own
+proportions — the intended use is blending similar material, such as several drum loops — rather
+than selecting the sources whose score happens to be positive.
 
 ```java
 // LatentAudioCompositionExamplesTest.normalizedBlend
@@ -154,37 +172,34 @@ composer.setNormalizedBlend(true);
 
 double[] near = composer.getInterpolatedLatent(cp(pack(0.5, 0.25))).evaluateOptimized().toArray();
 double[] far = composer.getInterpolatedLatent(cp(pack(2.0, 1.0))).evaluateOptimized().toArray();
-
-// (2/3) * (1, 2, 3, 4) + (1/3) * (8, 4, 0, -4)
-double[] expected = { 10.0 / 3.0, 8.0 / 3.0, 2.0, 4.0 / 3.0 };
 ```
 
-Both positions select A and B in the ratio 2 : 1, so both compose
-`(3.3333, 2.6667, 2.0, 1.3333)`.
+At `(0.5, 0.25)` source A's share is `1 / (1 + e^-0.25) ≈ 0.5622`, composing
+`(4.0648, 2.8756, 1.6865, 0.4974)`; at `(2, 1)` it is `1 / (1 + e^-1) ≈ 0.7311`, composing
+`(2.8826, 2.5379, 2.1932, 1.8485)`. Unlike a ratio of clamped scores, the softmax is not
+invariant to the length of the position: a longer position sharpens the blend towards the
+highest-scoring source, and a position near the origin approaches the even mix.
 
-**The unselected guard.** A cell where no source has a positive scale has `total == 0`. Rather
-than divide by zero, the graph computes `unselected = greaterThan(total, 0, 0, 1)` — `0` where
-`total > 0`, `1` where it is zero — and composes
-
-```
-Σ (sᵢ + unselected)·xᵢ / (total + unselected·n)
-```
-
-which is exactly the weighted mean where `total > 0` and the plain mean `Σ xᵢ / n` where it is
-zero:
+With the other inputs held fixed, raising a source's score raises its share, so among sources of
+equal contribution a higher score always gives a larger share (a source with a much smaller
+contribution can still receive a smaller share despite a higher score). A canonical merge
+position — explicit orthogonal weight vectors, unit contributions, and a position whose components
+are the per-source values — therefore reproduces the ordering of those values deterministically. Setting the contributions on the sources
+instead makes the shares exactly their ratio wherever the scores are equal, for example at the
+origin (`AudioComposerTest.mergePositionFollowsContributions`). Equal scores with unit
+contributions give the plain mean:
 
 ```java
-// LatentAudioCompositionExamplesTest.unselectedGuardIsPlainMean
+// LatentAudioCompositionExamplesTest.equalScoresGivePlainMean
 double[] latent = composer.getInterpolatedLatent(cp(pack(-1.0, -1.0))).evaluateOptimized().toArray();
 
 // ((1, 2, 3, 4) + (8, 4, 0, -4)) / 2
 Assert.assertArrayEquals(new double[] { 4.5, 3.0, 1.5, 0.0 }, latent, TOLERANCE);
 ```
 
-**Negative contributions are excluded.** A negative contribution drives a source's scale below
-zero after the dot-product clamp. A negative value cannot be a proportion of a mean, and could
-make `total` zero or negative, so the normalized blend's second clamp removes the source from
-the mix instead:
+**Non-positive contributions are excluded.** A contribution of zero or below cannot be a share of
+a mean, so `ComposableAudioFeatures.isBlended()` is `false` and the source is left out of the
+blend entirely:
 
 ```java
 // LatentAudioCompositionExamplesTest.negativeContributionIsExcluded
@@ -195,15 +210,17 @@ double[] latent = composer.getInterpolatedLatent(cp(pack(0.5, 0.25))).evaluateOp
 Assert.assertArrayEquals(new double[] { 1.0, 2.0, 3.0, 4.0 }, latent, TOLERANCE);
 ```
 
-If every source is excluded this way, `total` is zero and the guard again yields the plain
-mean (`AudioComposerTest.normalizedBlendWithAllNegativeContributionsIsMean`).
+Because the contributions are configuration rather than data, the exclusion is decided when the
+graph is built. If every source is excluded, the composed latent is the plain mean of the sources
+(`AudioComposerTest.normalizedBlendWithAllNegativeContributionsIsMean`). Otherwise the
+highest-scoring blended source has weight `cᵢ > 0`, so the total is never zero.
 
 ---
 
 ## 5. THE FUNDAMENTAL RULE in the small
 
-Nothing in the blend runs in Java. The dot products, clamps, `total`, the `unselected` guard and
-the division are all `CollectionProducer` compositions; `getInterpolatedLatent` returns a graph
+Nothing in the blend runs in Java. The dot products, clamps, the reference maximum, the
+exponentials, the total and the division are all `CollectionProducer` compositions; `getInterpolatedLatent` returns a graph
 and the native compiler turns it into a kernel. The only `evaluate` calls are at the top of the
 call stack — the production callers and the tests.
 
@@ -217,9 +234,9 @@ PackedCollection latent = composer.getInterpolatedLatent(cp(position)).evaluate(
 PackedCollection latent = composer.getInterpolatedLatent(cp(position)).evaluateOptimized();
 ```
 
-The reason is the shape of the normalized blend's graph. Each `getScale` reduction is read
-twice (by `total` and by its own term), and `total` is read by `unselected`, by every term and
-by the divisor. `Producer.evaluate()` does not optimize, so it would inline each reduction into
+The reason is the shape of the normalized blend's graph. Each score reduction is read by the
+reference maximum and by its own weight, the reference is read by every weight, and each weight
+is read by its term and by the total. `Producer.evaluate()` does not optimize, so it would inline each reduction into
 every one of its readers, and the expression grows with the number of sources. In the default
 weighted sum each reduction has a single reader, so plain evaluation would compile the same
 kernel — but the production callers use `evaluateOptimized()` regardless, so switching the blend
@@ -301,7 +318,7 @@ pattern above.
 |---|---|
 | `engine/ml/src/main/java/org/almostrealism/ml/audio/AutoEncoder.java` | The autoencoder contract |
 | `studio/compose/src/main/java/org/almostrealism/studio/ml/AudioComposer.java` | Sources, weight sampling, both blend modes |
-| `studio/compose/src/main/java/org/almostrealism/studio/ml/ComposableAudioFeatures.java` | Weight broadcasting, `getScale`, contributions |
+| `studio/compose/src/main/java/org/almostrealism/studio/ml/ComposableAudioFeatures.java` | Weight broadcasting, `getScore`, `getScale`, `contributed`, contributions |
 | `studio/compose/src/main/java/org/almostrealism/studio/ml/CompiledModelAutoEncoder.java` | Lambda-producer encode and decode around compiled models |
 | `studio/compose/src/test/java/org/almostrealism/studio/ml/LatentAudioCompositionExamplesTest.java` | The examples on this page |
 | `studio/compose/src/test/java/org/almostrealism/studio/ml/AudioComposerTest.java` | Edge cases of the blend contract |

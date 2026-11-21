@@ -31,6 +31,7 @@ import org.junit.Test;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertNull;
 
 /**
  * Validates when {@link MetalCommandRunner} commits its open command buffer before it is full:
@@ -207,11 +208,13 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 			MetalSemaphore first = null;
 			for (int i = 0; i < THRESHOLD; i++) {
 				first = runner.submit(null, buffer -> { }, null, null);
+
+				// Marked before the buffer is committed, so its completion reports the failure
+				if (i == 0) runner.failing = first.getCommandBuffer();
 			}
 
 			assertEquals("An idle GPU must be given the first buffer once it holds the threshold",
 					1.0, (double) runner.getIdleCommitCount());
-			runner.failing = first.getCommandBuffer();
 
 			awaitFinished(first);
 
@@ -231,11 +234,11 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Only the last committed buffer decides whether the GPU is idle. When an earlier buffer
-	 * failed but a later one finished without an error, the later one has signaled a timeline
-	 * value above every value of the failed one, so a buffer that waits for the failed buffer is
-	 * not stalled and is committed early. The failure is not lost: it is recorded when the failed
-	 * buffer is drained, and waiting for the dependent dispatch reports it.
+	 * A failed buffer is recorded as soon as Metal reports its completion, with nothing waiting
+	 * for it, because the runner drains every buffer when it finishes. The failure is not lost: a
+	 * later buffer, which an idle GPU would otherwise be given early, is not committed early once
+	 * the failure is recorded, and waiting for a dispatch that depends on the failed buffer reports
+	 * it.
 	 */
 	@Test(timeout = 60000)
 	public void earlierFailedBufferIsReportedWhenWaitedFor() {
@@ -253,28 +256,29 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 			MetalSemaphore first = null;
 			for (int i = 0; i < THRESHOLD; i++) {
 				first = runner.submit(null, buffer -> { }, null, null);
+
+				// Marked before the buffer is committed, so its completion reports the failure
+				if (i == 0) runner.failing = first.getCommandBuffer();
 			}
 
+			assertEquals(1.0, (double) runner.getIdleCommitCount());
 			awaitFinished(first);
 
-			MetalSemaphore second = null;
-			for (int i = 0; i < THRESHOLD; i++) {
-				second = runner.submit(null, buffer -> { }, null, null);
+			long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+			while (runner.getErrorCompletionCount() == 0) {
+				assertTrue("The failed buffer must be recorded without a wait", System.nanoTime() < deadline);
+				Thread.onSpinWait();
 			}
-
-			assertEquals(2.0, (double) runner.getIdleCommitCount());
-			awaitFinished(second);
-			runner.failing = first.getCommandBuffer();
 
 			MetalSemaphore dependent = runner.submit(null, buffer -> { }, first, null);
 			for (int i = 0; i < THRESHOLD - 1; i++) {
 				runner.submit(null, buffer -> { }, null, null);
 			}
 
-			assertNotSame(second.getCommandBuffer(), dependent.getCommandBuffer());
-			assertEquals("A later buffer that finished must let the next one be committed early",
-					3.0, (double) runner.getCommitCount());
-			assertEquals(3.0, (double) runner.getIdleCommitCount());
+			assertNotSame(first.getCommandBuffer(), dependent.getCommandBuffer());
+			assertEquals("A buffer after a recorded failure must not be committed early",
+					1.0, (double) runner.getCommitCount());
+			assertEquals(1.0, (double) runner.getIdleCommitCount());
 
 			try {
 				dependent.waitFor();
@@ -282,6 +286,8 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 			} catch (HardwareException expected) {
 				assertTrue(expected.getMessage(), expected.getMessage().contains(FailingRunner.ERROR));
 			}
+
+			assertEquals(1.0, (double) runner.getErrorCompletionCount());
 		} finally {
 			runner.destroy();
 			SubmissionStream.minIdleCommit = threshold;
@@ -324,8 +330,33 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A runner releases a command buffer as soon as the GPU has finished it, whether or not
+	 * anything waits for it, so a thread polling the buffer can find it already released. A
+	 * released buffer is reported as finished rather than failing on its freed native pointer.
+	 */
+	@Test(timeout = 60000)
+	public void releasedBufferIsReportedFinished() {
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MTLCommandBuffer buffer = metal.getMtlQueue().commandBuffer();
+		buffer.commit();
+		buffer.waitUntilCompleted();
+		assertTrue("A completed buffer must be finished", buffer.isFinished());
+
+		buffer.release();
+		assertTrue("A released buffer must be reported finished", buffer.isFinished());
+		assertFalse("A buffer released after completing must not report an error", buffer.isError());
+		assertNull("A buffer released after completing has no error description", buffer.getError());
+	}
+
+	/**
 	 * Waits, without committing or draining anything, until the GPU has finished the command
-	 * buffer a dispatch was encoded into.
+	 * buffer a dispatch was encoded into. The runner may already have drained and released that
+	 * buffer, which {@link MTLCommandBuffer#isFinished()} reports as finished.
 	 *
 	 * @param dispatch a dispatch whose buffer has been committed
 	 */

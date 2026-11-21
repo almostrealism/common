@@ -747,6 +747,17 @@ public abstract class GitManagedJob extends EnvironmentManagedJob {
         return repoSetup != null ? repoSetup.getMergeParent() : null;
     }
 
+    /**
+     * Returns the new-type files the harness must not stage yet, each with the
+     * reason; see {@link NewTypeAudit#refusals()}. A job that runs
+     * no type audit refuses nothing.
+     *
+     * @return repository-relative path to refusal reason; empty by default
+     */
+    Map<String, String> getNewTypeRefusals() {
+        return Map.of();
+    }
+
     // ==================== Job Interface ====================
 
     /**
