@@ -47,7 +47,7 @@ import static org.junit.Assert.assertSame;
  */
 public class MetalCommandFailureTest extends TestSuiteBase {
 	/** The error text the failing runner reports. */
-	private static final String ERROR = "Simulated command buffer timeout";
+	static final String ERROR = "Simulated command buffer timeout";
 
 	/** A dispatch that encodes nothing. */
 	private static final MetalCommand NOTHING = buffer -> { };
@@ -317,9 +317,10 @@ public class MetalCommandFailureTest extends TestSuiteBase {
 	/**
 	 * A runner that reports one chosen command buffer as failed once it completes, as Metal does
 	 * for a buffer the GPU watchdog killed. The buffer still executes; only its reported status
-	 * differs, which is all the runner's failure handling reads.
+	 * differs, which is all the runner's failure handling reads. Shared with the other Metal
+	 * runner tests of this package that exercise the failure path.
 	 */
-	private static final class FailingRunner extends MetalCommandRunner {
+	static final class FailingRunner extends MetalCommandRunner {
 		/** The command buffer to report as failed, or {@code null}. */
 		private volatile MTLCommandBuffer failing;
 
@@ -328,7 +329,7 @@ public class MetalCommandFailureTest extends TestSuiteBase {
 		 *
 		 * @param queue the Metal command queue
 		 */
-		private FailingRunner(MTLCommandQueue queue) {
+		FailingRunner(MTLCommandQueue queue) {
 			super(queue);
 		}
 
@@ -337,7 +338,7 @@ public class MetalCommandFailureTest extends TestSuiteBase {
 		 *
 		 * @param dispatch a dispatch of this runner
 		 */
-		private void failBufferOf(MetalSemaphore dispatch) {
+		void failBufferOf(MetalSemaphore dispatch) {
 			failing = dispatch.getCommandBuffer();
 		}
 

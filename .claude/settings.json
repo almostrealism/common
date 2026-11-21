@@ -378,7 +378,7 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-new-type-placement.py\"",
-            "description": "Placement reminder for every new top-level Java type; BLOCK a new type whose declared name ends in a suffix CLAUDE.md forbids (Util/Helper/Exporter/Converter...); escalate the wording when no discovery (Grep/Glob/Agent/consult) is on record"
+            "description": "Placement reminder for every new top-level Java type; BLOCK a new main-source type with likely existing equivalents (lib/type_equivalence.py) unless it extends/implements/delegates to one or .claude/new-type-ledger.json justifies it against every candidate; BLOCK a name CLAUDE.md forbids (Util/Helper/Exporter/Converter...); escalate the wording when no discovery (Grep/Glob/Agent/consult) is on record"
           },
           {
             "type": "command",

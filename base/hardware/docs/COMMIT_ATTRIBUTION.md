@@ -53,6 +53,7 @@ count by cause:
 | `getHostCompleteCommitCount()` | Commits forced by a host-side wait (`complete()`, reached through `MetalSemaphore.waitFor()`) |
 | `getMaxOpenCommitCount()` | Commits from the open buffer reaching its dispatch bound — the expected steady-state cadence while the GPU is busy |
 | `getIdleCommitCount()` | Commits made early, once the open buffer holds `minIdleCommit` dispatches, because the GPU had finished everything committed before it — the steady-state cadence while the GPU keeps up (see below) |
+| `getQuietCommitCount()` | Commits of an open buffer that no dispatch joined for `SubmissionStream.quietCommitMicros`, so work nobody waits for still runs and releases its memory (see below) |
 | `getBridgeCommitCount()` | Commits forced so a dispatch that bridges a *foreign* dependency starts a fresh buffer (see below) |
 | `getDestroyCommitCount()` | Commits performed while tearing the runner down |
 
@@ -83,6 +84,19 @@ holds submissions back in a batch the device does not see until it is committed 
 commits by overriding both and calling `closeEarlyIfIdle` after each submission. A runner that launches every submission as it is
 admitted, as the CUDA runner does, never holds work back from an idle device, so there is
 nothing for it to commit early.
+
+**Quiet commits.** An open buffer is otherwise committed only when it is full, when the GPU is
+idle as a dispatch is encoded, or when a host wait needs it, so dispatches nobody waits for could
+stay in it, never run, and keep the memory their arguments reserve. Once an open buffer holding
+dispatches has gone `SubmissionStream.quietCommitMicros` (`AR_HARDWARE_QUIET_COMMIT`) without a
+new dispatch, it is committed. The delay is measured from the last dispatch, so back-to-back
+dispatches still share a buffer, and a buffer that waits for a host-signaled bridge, or would be
+held behind one, is checked again later instead. Like the idle-commit policy, this one belongs to
+`SubmissionStream` (`closeWhenQuiet()`, timed by `QuietCommitDeadline`). A batching runner supplies
+only `runOnStreamThread`, `getOpenBatchSize` and `canCommitOpenBatch`. Once committed, a buffer
+is drained when Metal reports it finished, through its completed handler, whether or not any
+thread waits for it; `getCompletionDrainCount()` counts those drains, and
+`getDrainedWaitCount()` counts the waits that found their buffer already drained.
 
 **Bridge commits.** A dispatch whose `dependsOn` is a foreign `Semaphore` (produced by
 another backend, another Metal context, or a composite latch) is ordered by encoding a
