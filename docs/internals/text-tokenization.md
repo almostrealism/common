@@ -171,10 +171,11 @@ Assert.assertEquals(byteCount, ids.length);
 Assert.assertEquals(SentencePieceTokenizerFixture.UNKNOWN, tokenizer.decodeAsLong(ids));
 ```
 
-`Qwen3Tokenizer` is driven through its own API — `encode(String, boolean, boolean)` for
-`(text, addBos, addEos)` and the inherited `decode(int[])` — not the `Tokenizer` interface. Its
-special tokens are the public `BOS_TOKEN` / `EOS_TOKEN` constants, and the control tokens are
-skipped on decode:
+`Qwen3Tokenizer` implements `Tokenizer`, inherited through `ByteLevelBPETokenizer`, so a caller
+that wants plain ids takes them straight off the contract with `encodeAsLong` / `decodeAsLong`,
+which add no special tokens. BOS/EOS are not part of the `Tokenizer` contract, so they stay on the
+concrete API: `encode(String, boolean, boolean)` for `(text, addBos, addEos)`, with the public
+`BOS_TOKEN` / `EOS_TOKEN` constants, and the control tokens are skipped on decode:
 
 ```java
 Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
