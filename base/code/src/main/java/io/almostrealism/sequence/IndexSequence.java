@@ -333,13 +333,23 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * @return {@code true} if {@code value.longValue()} is exactly {@code value}
 	 */
 	static boolean isLongValue(Number value) {
-		if (value instanceof Long || value instanceof Integer
-				|| value instanceof Short || value instanceof Byte) {
-			return true;
-		}
+		if (isIntegerType(value)) return true;
 
 		double d = value.doubleValue();
 		return d == Math.rint(d) && d >= -0x1p63 && d < 0x1p63;
+	}
+
+	/**
+	 * Returns whether the given value is held in a boxed integer type no wider than a
+	 * {@code long}, as opposed to a floating-point one.
+	 *
+	 * @param value the value to test
+	 * @return {@code true} if {@code value} is a {@link Long}, {@link Integer},
+	 *         {@link Short} or {@link Byte}
+	 */
+	private static boolean isIntegerType(Number value) {
+		return value instanceof Long || value instanceof Integer
+				|| value instanceof Short || value instanceof Byte;
 	}
 
 	/**
@@ -403,6 +413,10 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	static int compareExact(Number a, Number b) {
 		if (isLongValue(a) && isLongValue(b)) {
 			return Long.compare(a.longValue(), b.longValue());
+		}
+
+		if (!isIntegerType(a) && !isIntegerType(b)) {
+			return Double.compare(a.doubleValue(), b.doubleValue());
 		}
 
 		if (!Double.isFinite(a.doubleValue()) || !Double.isFinite(b.doubleValue())) {
@@ -518,12 +532,12 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	default long min() {
 		if (isConstant()) return valueAt(0).longValue();
 
-		if (valueAt(0) instanceof Integer) {
+		if (isFloatingPoint()) {
+			return ceilToLong(values().min(IndexSequence::compareExact).orElseThrow());
+		} else if (valueAt(0) instanceof Integer) {
 			return intValues().min().orElseThrow();
-		} else if (valueAt(0) instanceof Long) {
-			return longValues().min().orElseThrow();
 		} else {
-			return (long) Math.ceil(doubleValues().min().orElseThrow());
+			return longValues().min().orElseThrow();
 		}
 	}
 
@@ -535,11 +549,37 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	default long max() {
 		if (isConstant()) return valueAt(0).longValue();
 
-		if (valueAt(0) instanceof Double) {
-			return (long) Math.ceil(doubleValues().max().orElseThrow());
+		if (isFloatingPoint()) {
+			return ceilToLong(values().max(IndexSequence::compareExact).orElseThrow());
 		} else {
 			return longValues().max().orElseThrow();
 		}
+	}
+
+	/**
+	 * Returns whether the values of this sequence may be floating-point, either because
+	 * its declared type is or because its first value is. Such a sequence can hold
+	 * integral values as {@link Long}s beside non-integral ones (see
+	 * {@link #union(IndexSequence)}), so its bounds must not be chosen by the
+	 * representation of a single value.
+	 *
+	 * @return {@code true} if this sequence may hold floating-point values
+	 */
+	private boolean isFloatingPoint() {
+		Class<? extends Number> type = getType();
+		return type == Double.class || type == Float.class
+				|| valueAt(0) instanceof Double || valueAt(0) instanceof Float;
+	}
+
+	/**
+	 * Returns the smallest {@code long} at least the given value, taking a value that is
+	 * {@link #isLongValue(Number) exactly a long} as it is.
+	 *
+	 * @param value the value to round
+	 * @return {@code value} rounded up to a {@code long}, saturated to the {@code long} range
+	 */
+	private static long ceilToLong(Number value) {
+		return isLongValue(value) ? value.longValue() : (long) Math.ceil(value.doubleValue());
 	}
 
 	/**

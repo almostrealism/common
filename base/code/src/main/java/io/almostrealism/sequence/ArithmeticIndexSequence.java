@@ -271,13 +271,61 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 *
 	 * <p>Computed from the parameters: the number of steps a cycle reaches, or one when
 	 * the sequence is constant. A progression whose values wrap around the {@code long}
-	 * range can repeat a value, so its values are counted by the general method.</p>
+	 * range repeats with the period {@link #wrapPeriod()} of its steps, so it takes the
+	 * smaller of that period and the number of steps.</p>
 	 */
 	@Override
 	public long distinctCount() {
 		if (len == 0) return 0;
 		if (isConstant()) return 1;
-		return wraps() ? IndexSequence.super.distinctCount() : lastStep() + 1;
+
+		long steps = lastStep() + 1;
+		if (!wraps()) return steps;
+
+		long period = wrapPeriod();
+		return period <= 0 ? steps : Math.min(steps, period);
+	}
+
+	/**
+	 * Returns the number of steps after which {@code scale * step} repeats in wrapping
+	 * {@code long} arithmetic: {@code 2^(64 - t)} where {@code t} is the number of
+	 * trailing zero bits of the scale. A period of {@code 2^63} or more does not fit in a
+	 * {@code long} and is reported as zero; no progression has that many steps, so its
+	 * values never repeat.
+	 *
+	 * @return the period of the steps, or zero if it exceeds the {@code long} range
+	 */
+	private long wrapPeriod() {
+		int t = Long.numberOfTrailingZeros(scale);
+		return t <= 1 ? 0 : 1L << (64 - t);
+	}
+
+	/**
+	 * Returns whether some step of a progression whose values wrap around the
+	 * {@code long} range takes the given value, by solving
+	 * {@code scale * step == value - offset} modulo {@code 2^64} rather than enumerating
+	 * the steps. With {@code t} the trailing zero bits of the scale, a solution exists
+	 * exactly when the difference is a multiple of {@code 2^t}, and the smallest one is
+	 * the quotient of the difference and the scale, both divided by {@code 2^t}, taken
+	 * with the multiplicative inverse of the (then odd) scale modulo {@code 2^(64 - t)}.
+	 *
+	 * @param value the candidate value
+	 * @return {@code true} if a step at most {@link #lastStep()} takes {@code value}
+	 */
+	private boolean wrappedContains(long value) {
+		long difference = value - offset;
+		int t = Long.numberOfTrailingZeros(scale);
+		if (Long.numberOfTrailingZeros(difference) < t) return false;
+
+		long odd = scale >>> t;
+		long inverse = odd;
+		for (int i = 0; i < 5; i++) {
+			inverse *= 2 - odd * inverse;
+		}
+
+		long step = (difference >>> t) * inverse;
+		if (t > 0) step &= -1L >>> t;
+		return Long.compareUnsigned(step, lastStep()) <= 0;
 	}
 
 	/**
@@ -285,14 +333,15 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 *
 	 * <p>Computed from the parameters: the value is contained when it lies between the
 	 * minimum and the maximum and differs from the offset by a multiple of the scale.
-	 * A progression whose values wrap around the {@code long} range is decided by the
-	 * general method, which compares the values {@link #valueAt(long)} actually takes.</p>
+	 * A progression whose values wrap around the {@code long} range is decided by solving
+	 * for the step in wrapping arithmetic, which matches the values
+	 * {@link #valueAt(long)} actually takes.</p>
 	 */
 	@Override
 	public boolean contains(long value) {
 		if (len == 0) return false;
 		if (isConstant()) return value == offset;
-		if (wraps()) return IndexSequence.super.contains(value);
+		if (wraps()) return wrappedContains(value);
 		if (value < min() || value > max()) return false;
 
 		// Within the range of a progression that does not wrap, the

@@ -283,6 +283,115 @@ public class IndexSequenceMembershipTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The bounds of a union holding integral values as {@link Long}s beside non-integral
+	 * ones are found over all of its values, whichever representation its first value
+	 * has, so a fractional maximum is rounded up rather than truncated.
+	 */
+	@Test(timeout = 30000)
+	public void mixedUnionBoundsUseEveryValue() {
+		IndexSequence halves = ArrayIndexSequence.of(Double.class, new double[] { 0.5, 1.0, 2.5 });
+
+		IndexSequence union = ArithmeticIndexSequence.range(2).union(halves);
+		Assert.assertTrue(union.valueAt(0) instanceof Long);
+		Assert.assertEquals(3, union.max());
+		Assert.assertEquals(0, union.min());
+
+		IndexSequence negative = ArrayIndexSequence.of(Double.class, new double[] { -2.5, 0.5 });
+		IndexSequence below = negative.union(ArrayIndexSequence.of(Long.class, new Number[] { 4L }));
+		Assert.assertEquals(-2, below.min());
+		Assert.assertEquals(4, below.max());
+
+		IndexSequence large = ArrayIndexSequence.of(Long.class,
+				new Number[] { Long.MAX_VALUE - 1, -7L });
+		IndexSequence mixed = large.union(halves);
+		Assert.assertEquals(Long.MAX_VALUE - 1, mixed.max());
+		Assert.assertEquals(-7, mixed.min());
+	}
+
+	/**
+	 * A progression whose values wrap around the {@code long} range over a very large
+	 * number of steps is counted and searched from its parameters, without enumerating
+	 * its values, and the results agree with wrapping arithmetic.
+	 */
+	@Test(timeout = 30000)
+	public void largeWrappingProgressionIsNotEnumerated() {
+		ArithmeticIndexSequence huge = new ArithmeticIndexSequence(
+				Long.MAX_VALUE, 1, 1, Long.MAX_VALUE, Long.MAX_VALUE);
+		// Values Long.MAX_VALUE, then Long.MIN_VALUE up to -3 after wrapping
+		Assert.assertEquals(Long.MAX_VALUE, huge.distinctCount());
+		Assert.assertTrue(huge.contains(Long.MAX_VALUE));
+		Assert.assertTrue(huge.contains(Long.MIN_VALUE));
+		Assert.assertTrue(huge.contains(-3));
+		Assert.assertFalse(huge.contains(-2));
+		Assert.assertFalse(huge.contains(Long.MAX_VALUE - 1));
+
+		// Scale 2^62 repeats every four steps: offset, offset + 2^62, offset - 2^63, offset - 2^62
+		ArithmeticIndexSequence periodic = new ArithmeticIndexSequence(
+				5, 1L << 62, 1, Long.MAX_VALUE, Long.MAX_VALUE);
+		Assert.assertEquals(4, periodic.distinctCount());
+		Assert.assertTrue(periodic.contains(5));
+		Assert.assertTrue(periodic.contains(5 + (1L << 62)));
+		Assert.assertTrue(periodic.contains(5 + Long.MIN_VALUE));
+		Assert.assertTrue(periodic.contains(5 - (1L << 62)));
+		Assert.assertFalse(periodic.contains(6));
+		Assert.assertFalse(periodic.contains(5 + (1L << 61)));
+
+		Assert.assertTrue(periodic.containsAll(ArrayIndexSequence.of(Long.class,
+				new Number[] { 5L, 5 + Long.MIN_VALUE })));
+		Assert.assertFalse(periodic.containsAll(ArrayIndexSequence.of(Long.class,
+				new Number[] { 5L, 7L })));
+	}
+
+	/**
+	 * For short wrapping progressions with a range of scales, offsets and step counts,
+	 * the distinct count and membership derived from the parameters match the values
+	 * {@link ArithmeticIndexSequence#valueAt(long)} takes at every position.
+	 */
+	@Test(timeout = 30000)
+	public void wrappingClosedFormsMatchEnumeration() {
+		long[] scales = { 3, -5, 1L << 62, -(1L << 62), 3L << 61, Long.MIN_VALUE,
+				Long.MAX_VALUE, (Long.MAX_VALUE / 3) * 2 };
+		long[] offsets = { 0, 1, Long.MAX_VALUE, Long.MIN_VALUE, Long.MAX_VALUE - 4, -9 };
+		int checked = 0;
+
+		for (long scale : scales) {
+			for (long offset : offsets) {
+				for (long len = 1; len <= 9; len++) {
+					ArithmeticIndexSequence seq = new ArithmeticIndexSequence(offset, scale, 1, len, len);
+					if (!wrapsAt(offset, scale, len - 1)) continue;
+					checked++;
+
+					Set<Long> values = positionValues(seq);
+					Assert.assertEquals(seq.toString(), values.size(), seq.distinctCount());
+
+					for (long v : values) {
+						Assert.assertTrue(seq + " contains " + v, seq.contains(v));
+						for (long probe : new long[] { v + 1, v - 1, v ^ (1L << 62), v + scale }) {
+							Assert.assertEquals(seq + " contains " + probe,
+									values.contains(probe), seq.contains(probe));
+						}
+					}
+				}
+			}
+		}
+
+		Assert.assertTrue(checked > 50);
+	}
+
+	/**
+	 * Returns whether {@code offset + scale * steps} leaves the {@code long} range in
+	 * exact arithmetic.
+	 */
+	private static boolean wrapsAt(long offset, long scale, long steps) {
+		try {
+			Math.addExact(offset, Math.multiplyExact(scale, steps));
+			return false;
+		} catch (ArithmeticException e) {
+			return true;
+		}
+	}
+
+	/**
 	 * The empty progression takes no value, so it is not constant, while a progression
 	 * with a single position is.
 	 */
