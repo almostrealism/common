@@ -81,9 +81,16 @@ emit() {
     echo "::notice::Branch ${BRANCH} changes a protected file — granting $1=$2"
 }
 
+# Match against the changed-file list with a here-string rather than a pipe.
+# Under `set -o pipefail`, `grep -q` can close the pipe the moment it sees a
+# match, which delivers SIGPIPE to an upstream `printf` still writing a large
+# list; pipefail would then surface that 141 as the whole expression's status
+# and the grant would be silently skipped. A here-string has no upstream
+# process to signal, so the early exit is harmless.
+
 # A CI/workflow file blocked unless the branch declares the pipeline as its
 # subject with a ci/ name. On a ci/ branch the locks are already lifted.
-if printf '%s\n' "$CHANGED" | grep -qE "$CI_FILE_PATTERN"; then
+if grep -qE "$CI_FILE_PATTERN" <<< "$CHANGED"; then
     if [[ "$BRANCH" == ci/* ]]; then
         echo "::notice::Branch ${BRANCH} changes CI/workflow files but is a ci/ branch, which is already exempt — no sensitive-file grant needed for them"
     else
@@ -92,6 +99,6 @@ if printf '%s\n' "$CHANGED" | grep -qE "$CI_FILE_PATTERN"; then
 fi
 
 # Anything under .claude/ is refused by the agent runtime regardless of branch.
-if printf '%s\n' "$CHANGED" | grep -qE "$CLAUDE_FILE_PATTERN"; then
+if grep -qE "$CLAUDE_FILE_PATTERN" <<< "$CHANGED"; then
     emit BYPASS_AGENT_PERMISSION_PROMPTS true
 fi

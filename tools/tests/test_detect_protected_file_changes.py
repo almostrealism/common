@@ -19,11 +19,19 @@ _SCRIPT = os.path.join(_REPO_ROOT, "tools", "ci", "detect-protected-file-changes
 
 # A gh stand-in: prints the newline-separated filenames in FAKE_FILES (the
 # script passes --jq '.files[].filename', so gh already yields bare names), or
-# fails like an unreachable API when FAKE_GH_FAIL is set.
+# fails like an unreachable API when FAKE_GH_FAIL is set. When FAKE_HUGE is set
+# it instead emits a protected CI file followed by FAKE_HUGE generated paths, a
+# changed-file list far larger than a pipe's buffer — the shape that trips the
+# SIGPIPE skip this script guards against.
 _FAKE_GH = """#!/usr/bin/env bash
 if [ -n "${FAKE_GH_FAIL:-}" ]; then
   echo "gh: could not reach api" >&2
   exit 1
+fi
+if [ -n "${FAKE_HUGE:-}" ]; then
+  printf 'tools/ci/foo.sh\\n'
+  seq 1 "$FAKE_HUGE" | sed 's/^/f/'
+  exit 0
 fi
 printf '%s\\n' "$FAKE_FILES"
 """
@@ -107,6 +115,25 @@ class DetectProtectedFileChangesTest(unittest.TestCase):
                                   "engine/ml/src/test/java/FooTest.java"])
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual({}, self.grants())
+
+    def test_a_ci_file_early_in_a_large_list_still_grants(self):
+        # Regression: the match is read with a here-string, not a pipe, so
+        # grep -q closing the stream on an early match cannot SIGPIPE the
+        # upstream producer and, under `set -o pipefail`, make the `if` false
+        # — which would silently drop the CI grant on a long file list. The
+        # protected file comes first in a list far larger than a pipe's
+        # buffer, the exact shape that trips the pipe form.
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("SENSITIVE_FILE_PROTECTION_ENABLED",
+                            "BYPASS_AGENT_PERMISSION_PROMPTS")}
+        env.update(PATH=self.dir.name + os.pathsep + env.get("PATH", ""),
+                   BRANCH="qa/x", BASE_BRANCH="master",
+                   GITHUB_REPOSITORY="almostrealism/common",
+                   GITHUB_ENV=self.github_env, FAKE_HUGE="40000")
+        result = subprocess.run(["bash", _SCRIPT], env=env,
+                                capture_output=True, text=True, timeout=120)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual({"SENSITIVE_FILE_PROTECTION_ENABLED": "false"}, self.grants())
 
     def test_a_vendored_tools_ci_path_is_not_mistaken_for_a_ci_file(self):
         # The pattern is anchored at the start of the path.
