@@ -318,7 +318,26 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * @return {@code true} if some position of this sequence takes {@code value}
 	 */
 	default boolean contains(long value) {
-		return values().anyMatch(v -> v.doubleValue() == v.longValue() && v.longValue() == value);
+		return values().anyMatch(v -> isLongValue(v) && v.longValue() == value);
+	}
+
+	/**
+	 * Returns whether the given value is an integer that a {@code long} represents
+	 * exactly, so that {@link Number#longValue()} neither truncates nor saturates it.
+	 * Integer types always are; a floating-point value is when it is integral and lies
+	 * in {@code [-2^63, 2^63)}.
+	 *
+	 * @param value the value to test
+	 * @return {@code true} if {@code value.longValue()} is exactly {@code value}
+	 */
+	static boolean isLongValue(Number value) {
+		if (value instanceof Long || value instanceof Integer
+				|| value instanceof Short || value instanceof Byte) {
+			return true;
+		}
+
+		double d = value.doubleValue();
+		return d == Math.rint(d) && d >= -0x1p63 && d < 0x1p63;
 	}
 
 	/**
@@ -330,7 +349,7 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * @return {@code true} if the values of {@code other} are a subset of the values of this sequence
 	 */
 	default boolean containsAll(IndexSequence other) {
-		return other.values().allMatch(v -> v.doubleValue() == v.longValue() && contains(v.longValue()));
+		return other.values().allMatch(v -> isLongValue(v) && contains(v.longValue()));
 	}
 
 	/**
@@ -338,8 +357,9 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * values of the other, each value once. When either sequence already contains every
 	 * value of the other, that sequence is returned as it is, so nested domains are shared
 	 * rather than copied; otherwise the values of both are enumerated, in ascending
-	 * order, as {@link Long}s when every one of them is integral and as {@link Double}s
-	 * otherwise, so that no value is truncated.
+	 * order, as {@link Long}s when every one of them is {@link #isLongValue(Number) exactly
+	 * a long} and as {@link Double}s otherwise, so that no value is truncated or saturated
+	 * into the {@code long} range.
 	 *
 	 * @param other the sequence whose values are added
 	 * @return a sequence taking exactly the values of both sequences
@@ -349,7 +369,7 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 		if (other.containsAll(this)) return other;
 
 		boolean integral = Stream.concat(values(), other.values())
-				.allMatch(v -> v.doubleValue() == v.longValue());
+				.allMatch(IndexSequence::isLongValue);
 
 		if (integral) {
 			return ArrayIndexSequence.of(Long.class,

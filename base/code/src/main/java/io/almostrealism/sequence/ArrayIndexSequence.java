@@ -344,7 +344,7 @@ public class ArrayIndexSequence extends ArrayItem<Number> implements IndexSequen
 	public boolean contains(long value) {
 		if (integralValues == null) {
 			integralValues = values()
-					.filter(v -> v.doubleValue() == v.longValue())
+					.filter(IndexSequence::isLongValue)
 					.mapToLong(Number::longValue)
 					.distinct().sorted().toArray();
 		}

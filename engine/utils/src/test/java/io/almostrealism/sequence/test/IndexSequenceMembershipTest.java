@@ -257,6 +257,75 @@ public class IndexSequenceMembershipTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The empty progression takes no value, so it is not constant, while a progression
+	 * with a single position is.
+	 */
+	@Test(timeout = 30000)
+	public void emptyProgressionIsNotConstant() {
+		Assert.assertFalse(ArithmeticIndexSequence.range(0).isConstant());
+		Assert.assertFalse(new ArithmeticIndexSequence(9, 0, 1, 1, 0).isConstant());
+		Assert.assertTrue(ArithmeticIndexSequence.range(1).isConstant());
+		Assert.assertTrue(new ArithmeticIndexSequence(9, 0, 1, 4, 4).isConstant());
+	}
+
+	/**
+	 * A progression whose values wrap around the {@code long} range reports the bounds of
+	 * the values it actually takes, so that a contiguous progression spanning its wrapped
+	 * endpoints does not claim to contain it and a union keeps every one of its values.
+	 */
+	@Test(timeout = 30000)
+	public void wrappingProgressionBounds() {
+		// Values 0, Long.MIN_VALUE, 0 (Long.MIN_VALUE * 2 wraps to 0)
+		ArithmeticIndexSequence wrapping = new ArithmeticIndexSequence(0, Long.MIN_VALUE, 1, 3, 3);
+		Assert.assertEquals(Set.of(0L, Long.MIN_VALUE), positionValues(wrapping));
+		Assert.assertEquals(Long.MIN_VALUE, wrapping.min());
+		Assert.assertEquals(0, wrapping.max());
+
+		ArithmeticIndexSequence pair = new ArithmeticIndexSequence(0, 1, 1, 2, 2);
+		Assert.assertFalse(pair.containsAll(wrapping));
+		Assert.assertTrue(wrapping.containsAll(ArithmeticIndexSequence.range(1)));
+
+		IndexSequence union = pair.union(wrapping);
+		Assert.assertEquals(Set.of(0L, 1L, Long.MIN_VALUE), positionValues(union));
+		Assert.assertTrue(union.contains(Long.MIN_VALUE));
+		Assert.assertEquals(Long.MIN_VALUE, union.min());
+		Assert.assertEquals(1, union.max());
+	}
+
+	/**
+	 * Only values a {@code long} represents exactly count as integral: a floating-point
+	 * value at or beyond {@code 2^63} is neither a member under {@code Long.MAX_VALUE} nor
+	 * saturated into the long range by a union.
+	 */
+	@Test(timeout = 30000)
+	public void outOfRangeFloatingValuesAreNotLongs() {
+		double twoTo63 = Math.scalb(1.0, 63);
+
+		Assert.assertTrue(IndexSequence.isLongValue(Long.MAX_VALUE));
+		Assert.assertTrue(IndexSequence.isLongValue(Long.MIN_VALUE));
+		Assert.assertTrue(IndexSequence.isLongValue(7));
+		Assert.assertTrue(IndexSequence.isLongValue(-twoTo63));
+		Assert.assertTrue(IndexSequence.isLongValue(3.0));
+		Assert.assertFalse(IndexSequence.isLongValue(twoTo63));
+		Assert.assertFalse(IndexSequence.isLongValue(3.5));
+		Assert.assertFalse(IndexSequence.isLongValue(Double.NaN));
+		Assert.assertFalse(IndexSequence.isLongValue(Double.POSITIVE_INFINITY));
+		Assert.assertFalse(IndexSequence.isLongValue(Double.NEGATIVE_INFINITY));
+
+		IndexSequence huge = ArrayIndexSequence.of(Double.class, new Number[] { twoTo63 });
+		Assert.assertFalse(huge.contains(Long.MAX_VALUE));
+
+		IndexSequence one = ArrayIndexSequence.of(Long.class, new Number[] { 1L });
+		Assert.assertFalse(one.containsAll(huge));
+
+		IndexSequence union = one.union(huge);
+		Assert.assertEquals(2, union.distinctCount());
+		Assert.assertTrue(union.contains(1));
+		Assert.assertFalse(union.contains(Long.MAX_VALUE));
+		Assert.assertEquals(twoTo63, union.doubleValues().max().orElseThrow(), 0.0);
+	}
+
+	/**
 	 * Returns the set of values a sequence takes over all of its positions.
 	 */
 	private Set<Long> positionValues(IndexSequence seq) {

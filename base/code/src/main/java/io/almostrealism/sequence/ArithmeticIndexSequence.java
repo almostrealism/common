@@ -209,11 +209,13 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * {@inheritDoc}
 	 *
 	 * <p>Computed from the parameters: the smaller of the values at step zero and at
-	 * the last step of a cycle.</p>
+	 * the last step of a cycle. A progression whose values wrap around the {@code long}
+	 * range has no such bound, so its minimum is found by the general method.</p>
 	 */
 	@Override
 	public long min() {
 		requireValues();
+		if (wraps()) return IndexSequence.super.min();
 		return Math.min(offset, offset + scale * lastStep());
 	}
 
@@ -221,11 +223,13 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * {@inheritDoc}
 	 *
 	 * <p>Computed from the parameters: the larger of the values at step zero and at
-	 * the last step of a cycle.</p>
+	 * the last step of a cycle. A progression whose values wrap around the {@code long}
+	 * range has no such bound, so its maximum is found by the general method.</p>
 	 */
 	@Override
 	public long max() {
 		requireValues();
+		if (wraps()) return IndexSequence.super.max();
 		return Math.max(offset, offset + scale * lastStep());
 	}
 
@@ -561,10 +565,12 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 *
 	 * <p>An arithmetic sequence is constant when it has a single position, when its
 	 * scale is zero, or when its granularity is at least its modulus so that every
-	 * position maps to step zero.</p>
+	 * position maps to step zero. The empty sequence takes no value at all, so it is
+	 * never constant.</p>
 	 */
 	@Override
 	public boolean isConstant() {
+		if (len == 0) return false;
 		return len == 1 || scale == 0 || granularity >= mod;
 	}
 
