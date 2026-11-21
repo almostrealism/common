@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import tempfile
 import unittest
 
 
@@ -43,6 +44,11 @@ class ParseTest(unittest.TestCase):
         state = core.record({}, LISTED, json.dumps({"ok": False, "error": "x"}), 100)
         self.assertEqual({}, state)
 
+    def test_base_filtered_listing_is_not_recorded(self):
+        filtered = {"org": "acme", "repo": "app", "base": "develop"}
+        state = core.record({}, filtered, NONE_OPEN, 100)
+        self.assertEqual({}, state, "a base-filtered listing is not repository-wide")
+
 
 class GateTest(unittest.TestCase):
 
@@ -56,10 +62,22 @@ class GateTest(unittest.TestCase):
         decision, _, _ = core.gate(state, create(), 100 + core.FRESHNESS_SECONDS + 1)
         self.assertEqual("deny", decision["action"])
 
-    def test_missing_repo_is_denied(self):
+    def test_workstream_context_is_keyed_and_gated(self):
+        # No org/repo: the call is resolved from workstream_id, a normal supported
+        # form. A listing in that context is recorded and a create in it is allowed.
+        listed = {"workstream_id": "ws-7"}
+        created = {"workstream_id": "ws-7", "head": "fix/two", "title": "t", "body": "b"}
+        state = core.record({}, listed, NONE_OPEN, 100)
+        self.assertIn("ws:ws-7", state.get("repos", {}))
+        decision, _, _ = core.gate(state, created, 200)
+        self.assertEqual("allow", decision["action"])
+
+    def test_token_context_without_listing_is_denied_for_freshness(self):
+        # A create with no addressing (token context) is not rejected for missing
+        # org/repo; it is denied only because no fresh listing exists yet.
         decision, _, _ = core.gate({}, {"title": "t", "body": "b"}, 100)
         self.assertEqual("deny", decision["action"])
-        self.assertIn("org and repo", decision["reason"])
+        self.assertIn("github_list_open_prs", decision["reason"])
 
     def test_no_open_pull_request_allows(self):
         state = core.record({}, LISTED, NONE_OPEN, 100)
@@ -101,6 +119,26 @@ class GateTest(unittest.TestCase):
         decision, _, _ = core.gate(state, create(title="Something else"), 210)
         self.assertEqual("deny", decision["action"])
 
+    def test_changed_body_is_not_a_confirmation(self):
+        # The confirmation fingerprint covers the whole tool input, so changing a
+        # material field the first call did not show (the body) is a new request.
+        state = core.record({}, LISTED, OPEN, 100)
+        first = create()
+        _, state, _ = core.gate(state, first, 200)
+        changed = dict(first, body="a completely different description")
+        decision, _, override = core.gate(state, changed, 210)
+        self.assertEqual("deny", decision["action"])
+        self.assertIsNone(override)
+
+    def test_empty_head_resolves_to_current_branch(self):
+        # github_create_pr defaults head to the current branch; the gate resolves
+        # the same branch so an open PR from it is seen as the same branch, not a
+        # different-branch PR that forces a confirmation.
+        state = core.record({}, LISTED, OPEN, 100)
+        same = {"org": "acme", "repo": "app", "title": "t", "body": "x"}
+        decision, _, _ = core.gate(state, same, 200, head="fix/one")
+        self.assertEqual("allow", decision["action"])
+
 
 class BashTest(unittest.TestCase):
 
@@ -109,9 +147,46 @@ class BashTest(unittest.TestCase):
                         "gh -R acme/app pr create"):
             self.assertEqual("deny", core.bash(command)["action"], command)
 
+    def test_quoted_and_escaped_spellings_are_denied(self):
+        # Shell-aware tokenization: these all run as `gh pr create` and must not
+        # slip past a match on the raw command text.
+        for command in ('gh "pr" create --title t', "gh pr cre'ate'",
+                        'gh pr create --body "a b"', "gh \\\npr create"):
+            self.assertEqual("deny", core.bash(command)["action"], command)
+
+    def test_unparseable_gh_command_fails_closed(self):
+        # Unbalanced quotes: the gate cannot tokenize it to prove it is safe.
+        decision = core.bash('gh pr create --title "unterminated')
+        self.assertEqual("deny", decision["action"])
+
+    def test_unparseable_non_gh_command_is_allowed(self):
+        # A malformed command that has nothing to do with gh must not be blocked.
+        self.assertEqual("allow", core.bash('echo "unterminated')["action"])
+
     def test_other_gh_commands_allow(self):
         for command in ("gh pr view 104", "gh pr list", "git push origin fix/one"):
             self.assertEqual("allow", core.bash(command)["action"], command)
+
+
+class CurrentBranchTest(unittest.TestCase):
+
+    def test_reads_branch_from_git_head(self):
+        with tempfile.TemporaryDirectory() as project:
+            os.mkdir(os.path.join(project, ".git"))
+            with open(os.path.join(project, ".git", "HEAD"), "w", encoding="utf-8") as f:
+                f.write("ref: refs/heads/ci/pr-creation-gate\n")
+            self.assertEqual("ci/pr-creation-gate", core.current_branch(project))
+
+    def test_detached_head_is_empty(self):
+        with tempfile.TemporaryDirectory() as project:
+            os.mkdir(os.path.join(project, ".git"))
+            with open(os.path.join(project, ".git", "HEAD"), "w", encoding="utf-8") as f:
+                f.write("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2\n")
+            self.assertEqual("", core.current_branch(project))
+
+    def test_missing_git_dir_is_empty(self):
+        with tempfile.TemporaryDirectory() as project:
+            self.assertEqual("", core.current_branch(project))
 
 
 class RegistrationTest(unittest.TestCase):

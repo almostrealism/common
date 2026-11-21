@@ -31,6 +31,7 @@ says so on stderr: the gate must never stop work because it is broken.
 import json
 import os
 import re
+import shlex
 import sys
 import time
 
@@ -38,13 +39,36 @@ FRESHNESS_SECONDS = 600
 CONFIRM_SECONDS = 600
 
 GH_PR_CREATE = re.compile(r"\bgh\b[^;&|\n]*\bpr\s+create\b")
+GH_COMMAND = re.compile(r"\bgh\b")
 
 
-def repo_key(org, repo):
-    """Returns the state key for a repository, or None when either part is missing."""
-    if not org or not repo:
-        return None
-    return (org.strip() + "/" + repo.strip()).lower()
+def context_key(tool_input):
+    """Returns the state key for the repository context a github tool call addresses.
+
+    ``github_create_pr`` and ``github_list_open_prs`` resolve a repository the same
+    way: an explicit ``org``/``repo`` pair addresses it directly, otherwise a
+    ``workstream_id`` resolves it, otherwise the token context does. The gate keys
+    its state the same way so that a listing and a create made in the same context
+    share a key. The result is never ``None``: a token-context call is a normal,
+    supported form, not a missing-argument error.
+    """
+    org = (tool_input.get("org") or "").strip()
+    repo = (tool_input.get("repo") or "").strip()
+    if org and repo:
+        return (org + "/" + repo).lower()
+    workstream_id = (tool_input.get("workstream_id") or "").strip()
+    if workstream_id:
+        return "ws:" + workstream_id
+    return "token-context"
+
+
+def list_hint(tool_input):
+    """Returns how the agent should phrase the github_list_open_prs call for this context."""
+    org = (tool_input.get("org") or "").strip()
+    repo = (tool_input.get("repo") or "").strip()
+    if org and repo:
+        return "github_list_open_prs with org=\"" + org + "\" repo=\"" + repo + "\""
+    return "github_list_open_prs for the same repository (same workstream_id or token context)"
 
 
 def parse_open_prs(tool_response):
@@ -72,10 +96,18 @@ def parse_open_prs(tool_response):
 
 
 def record(state, tool_input, tool_response, now):
-    """Returns the state with the listed repository's open pull requests stored."""
-    key = repo_key(tool_input.get("org", ""), tool_input.get("repo", ""))
+    """Returns the state with the listed repository's open pull requests stored.
+
+    A listing filtered by ``base`` sees only the pull requests against that one
+    base branch, so it cannot answer the repository-wide question the gate asks
+    ("is any pull request open on this repository?"). Such a listing is ignored
+    rather than recorded as authoritative.
+    """
+    if (tool_input.get("base") or "").strip():
+        return state
+    key = context_key(tool_input)
     prs = parse_open_prs(tool_response)
-    if key is None or prs is None:
+    if prs is None:
         return state
     new_state = dict(state)
     repos = dict(new_state.get("repos", {}))
@@ -89,32 +121,32 @@ def deny(reason):
     return {"action": "deny", "reason": reason}
 
 
-def gate(state, tool_input, now):
+def gate(state, tool_input, now, head=None):
     """Decides a ``github_create_pr`` call.
+
+    ``head`` is the effective head branch: the ``head`` the call passes, or, when
+    it omits one, the branch ar-manager would default to (the current checkout).
+    ``main`` resolves it; when called without one this falls back to the value in
+    ``tool_input`` so the pure function stays usable on its own.
 
     Returns ``(decision, new_state, override)`` where ``override`` is the ledger
     entry to append when a confirmed second pull request goes through, else None.
     """
-    org = tool_input.get("org", "")
-    repo = tool_input.get("repo", "")
-    key = repo_key(org, repo)
-    if key is None:
-        return deny("Pass org and repo to github_create_pr explicitly, so the pull request gate can "
-                    "check that repository's open pull requests."), state, None
+    key = context_key(tool_input)
+    if head is None:
+        head = (tool_input.get("head") or "").strip()
 
     listed = state.get("repos", {}).get(key)
     if listed is None or now - listed.get("ts", 0) > FRESHNESS_SECONDS:
-        return deny("Before opening a pull request on " + key + ", call github_list_open_prs with org=\""
-                    + org + "\" repo=\"" + repo + "\". Every pull request runs the whole CI pipeline on the "
-                    "shared runners, so check whether this work belongs on a pull request that is "
-                    "already open."), state, None
+        return deny("Before opening a pull request on " + key + ", call " + list_hint(tool_input)
+                    + ". Every pull request runs the whole CI pipeline on the shared runners, so check "
+                    "whether this work belongs on a pull request that is already open."), state, None
 
-    head = tool_input.get("head", "")
     others = [p for p in listed.get("prs", []) if p.get("head") != head]
     if not others:
         return {"action": "allow"}, state, None
 
-    fingerprint = key + "|" + head + "|" + tool_input.get("title", "")
+    fingerprint = key + "|" + head + "|" + json.dumps(tool_input, sort_keys=True, default=str)
     pending = dict(state.get("pending", {}))
     asked = pending.pop(fingerprint, None)
     if asked is not None and now - asked <= CONFIRM_SECONDS:
@@ -139,11 +171,43 @@ def gate(state, tool_input, now):
 
 
 def bash(command):
-    """Decides a Bash command: ``gh pr create`` is denied because it would bypass the gate."""
-    if GH_PR_CREATE.search(command or ""):
+    """Decides a Bash command: ``gh pr create`` is denied because it would bypass the gate.
+
+    The command is matched both as written and after shell-aware tokenization, so
+    that quoted or escaped spellings the shell still runs as ``gh pr create`` --
+    ``gh "pr" create``, ``gh pr cre'ate'`` -- do not slip past a match on the raw
+    text. A command that mentions ``gh`` but cannot be tokenized (unbalanced
+    quotes) fails closed: the gate cannot prove it is safe, so it denies it.
+    """
+    command = command or ""
+    joined = command.replace("\\\n", "")  # the shell removes a backslash-newline line continuation
+    try:
+        normalized = " ".join(shlex.split(joined))
+    except ValueError:
+        normalized = None
+    if GH_PR_CREATE.search(joined) or (normalized is not None and GH_PR_CREATE.search(normalized)):
         return deny("Open pull requests with github_create_pr, not gh pr create, so the pull request "
                     "gate can check the repository's open pull requests first.")
+    if normalized is None and GH_COMMAND.search(command):
+        return deny("This gh command could not be parsed, so the pull request gate cannot confirm it "
+                    "is not gh pr create. Open pull requests with github_create_pr instead.")
     return {"action": "allow"}
+
+
+def current_branch(project_dir):
+    """Returns the current checkout's branch from ``.git/HEAD``, or "" when unavailable.
+
+    This is the branch ar-manager defaults ``head`` to when ``github_create_pr`` is
+    called without one, so the gate resolves it the same way to avoid mistaking the
+    call's own branch for a different-branch pull request.
+    """
+    try:
+        with open(os.path.join(project_dir, ".git", "HEAD"), "r", encoding="utf-8") as f:
+            ref = f.read().strip()
+    except OSError:
+        return ""
+    prefix = "ref: refs/heads/"
+    return ref[len(prefix):] if ref.startswith(prefix) else ""
 
 
 def load(path, default):
@@ -169,7 +233,8 @@ def main(mode):
     """Runs one hook invocation: reads the harness payload from stdin and prints the decision."""
     payload = json.load(sys.stdin)
     tool_input = payload.get("tool_input") or {}
-    base = os.path.join(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd(), ".claude")
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    base = os.path.join(project_dir, ".claude")
     state_path = os.path.join(base, "pr-gate.local.json")
     ledger_path = os.path.join(base, "pr-gate-overrides.local.json")
     now = int(time.time())
@@ -182,7 +247,8 @@ def main(mode):
         decision = bash(tool_input.get("command", ""))
     elif mode == "gate":
         state = load(state_path, {})
-        decision, new_state, override = gate(state, tool_input, now)
+        head = (tool_input.get("head") or "").strip() or current_branch(project_dir)
+        decision, new_state, override = gate(state, tool_input, now, head)
         if new_state is not state:
             save(state_path, new_state)
         if override is not None:
