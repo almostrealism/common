@@ -236,6 +236,24 @@ pull request descriptions with a link to its session. Such a link opens only for
 owner, and `attribution` in `.claude/settings.json` does not suppress the reminder, so
 this hook is what keeps the link out.
 
+## Pull request gate
+
+Every pull request runs the whole CI pipeline on the shared runner fleet, so one round of
+work split into several small pull requests multiplies its runner cost. `pr-gate.sh` (core
+`pr_gate_check.py`) puts that in front of the agent when it reaches for a new pull request:
+
+- `record` (PostToolUse on ar-manager `github_list_open_prs`) stores the repository's open
+  pull requests as ar-manager returned them.
+- `gate` (PreToolUse on `github_create_pr`) denies the call unless that repository's open
+  pull requests were listed in the last ten minutes, and denies a call without explicit
+  `org` and `repo`. When another pull request is open on a different branch, the first
+  attempt is denied with a reminder naming it: commit to the open branch unless the change
+  truly must be reviewed separately. The identical call repeated within ten minutes goes
+  through and is appended to `.claude/pr-gate-overrides.local.json` for the developer.
+- `bash` (PreToolUse on Bash) denies `gh pr create`, which would bypass the gate.
+
+State is kept in `.claude/pr-gate.local.json`; both files are git-ignored.
+
 ## Testing a hook
 
 - Core: `python3 -m pytest .claude/hooks/lib/test_<core>.py`.
