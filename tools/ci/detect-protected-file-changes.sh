@@ -66,9 +66,15 @@ HEAD_REF="${HEAD_SHA:-$BRANCH}"
 CI_FILE_PATTERN='^(\.github/workflows/|\.github/actions/|tools/ci/)'
 CLAUDE_FILE_PATTERN='^\.claude/'
 
+# --paginate splits the comparison by commits (gh asks for 100 per page), and
+# the compare API lists the changed files on the first page only, so a branch
+# with more than 100 commits yields later pages without a file list. The filter
+# treats a missing list as empty; `.files[]` alone would fail on those pages and
+# withhold the grant from every long branch.
+# TODO(review): the compare API returns at most 300 files, so a protected file past that cap goes ungranted (fail-safe, but silent).
 if ! CHANGED=$(gh api --paginate \
         "repos/${GITHUB_REPOSITORY}/compare/${BASE_BRANCH}...${HEAD_REF}" \
-        --jq '.files[].filename' 2>&1); then
+        --jq '(.files // [])[].filename' 2>&1); then
     echo "::error::Could not list the files ${BRANCH} changes relative to ${BASE_BRANCH}; withholding the sensitive-file grant"
     echo "$CHANGED" >&2
     exit 1

@@ -22,11 +22,24 @@ _SCRIPT = os.path.join(_REPO_ROOT, "tools", "ci", "detect-protected-file-changes
 # fails like an unreachable API when FAKE_GH_FAIL is set. When FAKE_HUGE is set
 # it instead emits a protected CI file followed by FAKE_HUGE generated paths, a
 # changed-file list far larger than a pipe's buffer — the shape that trips the
-# SIGPIPE skip this script guards against.
+# SIGPIPE skip this script guards against. When FAKE_PAGES is set it behaves
+# like a paginated compare response for a long branch: it applies the script's
+# own --jq filter, with real jq, to a first page that lists the changed files
+# and a later page that carries only commits, as the compare API does.
 _FAKE_GH = """#!/usr/bin/env bash
 if [ -n "${FAKE_GH_FAIL:-}" ]; then
   echo "gh: could not reach api" >&2
   exit 1
+fi
+if [ -n "${FAKE_PAGES:-}" ]; then
+  filter=""
+  while [ $# -gt 0 ]; do
+    if [ "$1" = "--jq" ]; then filter="$2"; shift; fi
+    shift
+  done
+  printf '%s\\n' '{"commits":[{}],"files":[{"filename":"tools/ci/foo.sh"}]}' \\
+      '{"commits":[{}]}' | jq -r "$filter"
+  exit $?
 fi
 if [ -n "${FAKE_HUGE:-}" ]; then
   printf 'tools/ci/foo.sh\\n'
@@ -132,6 +145,23 @@ class DetectProtectedFileChangesTest(unittest.TestCase):
                    GITHUB_ENV=self.github_env, FAKE_HUGE="40000")
         result = subprocess.run(["bash", _SCRIPT], env=env,
                                 capture_output=True, text=True, timeout=120)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual({"SENSITIVE_FILE_PROTECTION_ENABLED": "false"}, self.grants())
+
+    def test_a_later_page_without_a_file_list_still_grants(self):
+        # Regression: a branch with more than one page of commits gets later
+        # compare pages that carry no file list. The filter must read those as
+        # empty rather than fail on them, or the step fails and the grant the
+        # first page called for is withheld.
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("SENSITIVE_FILE_PROTECTION_ENABLED",
+                            "BYPASS_AGENT_PERMISSION_PROMPTS")}
+        env.update(PATH=self.dir.name + os.pathsep + env.get("PATH", ""),
+                   BRANCH="qa/x", BASE_BRANCH="master",
+                   GITHUB_REPOSITORY="almostrealism/common",
+                   GITHUB_ENV=self.github_env, FAKE_PAGES="1")
+        result = subprocess.run(["bash", _SCRIPT], env=env,
+                                capture_output=True, text=True, timeout=60)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual({"SENSITIVE_FILE_PROTECTION_ENABLED": "false"}, self.grants())
 
