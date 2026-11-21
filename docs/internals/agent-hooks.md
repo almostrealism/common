@@ -245,11 +245,14 @@ work split into several small pull requests multiplies its runner cost. `pr-gate
 - `record` (PostToolUse on ar-manager `github_list_open_prs`) stores the repository's open
   pull requests as ar-manager returned them.
 - `gate` (PreToolUse on `github_create_pr`) denies the call unless that repository's open
-  pull requests were listed in the last ten minutes, and denies a call without explicit
-  `org` and `repo`. When another pull request is open on a different branch, the first
-  attempt is denied with a reminder naming it: commit to the open branch unless the change
-  truly must be reviewed separately. The identical call repeated within ten minutes goes
-  through and is appended to `.claude/pr-gate-overrides.local.json` for the developer.
+  pull requests were listed in the last ten minutes. It keys that freshness by the same
+  context the call resolves the repository against — an explicit `org`/`repo` pair, else a
+  `workstream_id`, else the token context — so a listing and a create made the same way
+  share a key, and the normal workstream and token-context forms are supported rather than
+  rejected. When another pull request is open on a different branch, the first attempt is
+  denied with a reminder naming it: commit to the open branch unless the change truly must
+  be reviewed separately. The identical call repeated within ten minutes goes through and
+  is appended to `.claude/pr-gate-overrides.local.json` for the developer.
 - `bash` (PreToolUse on Bash) denies `gh pr create`, which would bypass the gate.
 
 State is kept in `.claude/pr-gate.local.json`; both files are git-ignored.
