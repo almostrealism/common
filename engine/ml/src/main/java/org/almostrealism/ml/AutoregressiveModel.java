@@ -86,7 +86,7 @@ import java.util.function.ToIntFunction;
  * model.setTemperature(0.7);
  *
  * // Set prompt tokens
- * Integer[] promptTokens = Arrays.stream(tokenizer.encode("Once upon a time"))
+ * Integer[] promptTokens = Arrays.stream(tokenizer.encodeAsInt("Once upon a time"))
  *                                 .boxed().toArray(Integer[]::new);
  * model.setPrompt(promptTokens, promptTokens.length);
  * model.setCurrentToken(BOS_TOKEN);
