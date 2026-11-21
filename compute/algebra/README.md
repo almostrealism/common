@@ -319,6 +319,7 @@ data.mean()        // Mean of all elements
 data.mean(1)       // Mean along axis 1 -> shape (10)
 data.variance()    // Variance
 data.max()         // Maximum value
+data.min()         // Minimum value
 data.magnitude()   // L2 norm
 data.indexOfMax()  // Index of maximum element
 ```
@@ -454,7 +455,9 @@ sum(a)                 // Sum all elements
 mean(a)                // Mean of all elements
 variance(a)            // Variance
 max(a)                 // Maximum value
+min(a)                 // Minimum value
 indexOfMax(a)          // Index of maximum
+indexOfMin(a)          // Index of minimum
 magnitude(a)           // L2 norm
 subtractMean(a)        // a - mean(a)
 ```
