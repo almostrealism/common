@@ -1047,6 +1047,24 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	}
 
 	/**
+	 * An integer product that is a factor of a wider integer product is not merged into it.
+	 * The narrower product wraps on overflow at its own width before its result is widened to
+	 * join the wider factor; merged, its factors could be combined with the wider factor first
+	 * and would not wrap, which is a different value. The nested product therefore stays an
+	 * operand of its own.
+	 */
+	@Test(timeout = 30000)
+	public void integerProductIsNotMergedIntoWiderIntegerProduct() {
+		DefaultIndex a = new DefaultIndex("a", 100000);
+		DefaultIndex b = new DefaultIndex("b", 100000);
+
+		Expression<?> product = Product.of(Product.of(a, b), e(3000000000L));
+		Assert.assertEquals(2, product.getChildren().size());
+		Assert.assertTrue(product.getChildren().stream().anyMatch(c -> c instanceof Product));
+		Assert.assertTrue(product.getExpression(lang).contains("(a * b)"));
+	}
+
+	/**
 	 * Subtraction and division are not associative, so a difference of a difference and a
 	 * quotient of a quotient are not merged and keep their brackets on either side.
 	 */
