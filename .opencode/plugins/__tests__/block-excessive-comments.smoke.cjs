@@ -72,10 +72,8 @@ console.log("== Add File becomes whole content ==")
 
 console.log("== the project directory is load-bearing ==")
 {
-  // Run in the project directory, the core resolves `file_path` to the real
-  // file, finds the existing wall as context, and charges the result. Without
-  // the right cwd it would judge the added text whole instead -- the stricter
-  // reading, never a silent pass-through.
+  // In the project directory the core finds the real file and its existing
+  // wall, so the grown wall is charged.
   const grow = { file_path: "A.java", edits: [{
     old_string: "\t\t// wall c\n\t\tint x = 1;",
     new_string: "\t\t// wall c\n\t\t// wall d\n\t\tint x = 1;",

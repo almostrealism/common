@@ -208,6 +208,28 @@ class TestOtherLanguages(Base):
     def test_a_template_literal_is_not_a_comment(self):
         self.allowed("\n".join(["const s = `"] + wall(8) + ["`"]), path="a.ts")
 
+    def test_a_comment_inside_a_template_interpolation_is_checked(self):
+        for ext in (".ts", ".js", ".cjs", ".tsx"):
+            self.blocked("\n".join(["const s = `head ${f("] + wall(5) + [")} tail`"]),
+                         path="a" + ext)
+
+    def test_literal_text_after_an_interpolation_is_still_not_a_comment(self):
+        text = "\n".join(["const s = `${a({b: 1})} then"] + wall(8) + ["${c} end`", "const t = 1"])
+        self.allowed(text, path="a.ts")
+
+    def test_a_template_nested_in_an_interpolation_is_lexed(self):
+        inner = "\n".join(["const s = `x ${`y ${g("] + wall(5) + [")} z`} w`"])
+        self.blocked(inner, path="a.ts")
+        literal = "\n".join(["const s = `x ${`y"] + wall(8) + ["z`} w`"])
+        self.allowed(literal, path="a.ts")
+
+    def test_code_after_a_template_is_lexed_normally(self):
+        text = "\n".join(["const s = `a ${b} c`", "function f() {"] + wall(5) + ["  return 1", "}"])
+        self.blocked(text, path="a.ts")
+
+    def test_a_dollar_brace_outside_javascript_does_not_open_an_interpolation(self):
+        self.allowed("\n".join(["val s = `x ${"] + wall(8) + ["`"]), path="a.go")
+
     def test_generated_sources_are_not_governed(self):
         self.assertFalse(check.governs("a/target/generated-sources/A.java"))
 
@@ -292,6 +314,27 @@ class TestTheEditGate(Base):
             {"tool_input": {"notebook_path": "A.java", "new_source": method(*wall(5), "int x;")}},
             read=lambda _: "")[2]
         self.assertTrue(found)
+
+    def test_a_moved_file_is_read_from_its_source_and_judged_at_its_destination(self):
+        reads = []
+
+        def read(path):
+            reads.append(path)
+            return self.old
+
+        found = check.decide_payload(
+            {"tool_input": {"file_path": "B.java", "move_from": "A.txt",
+                            "edits": [{"old_string": "\t\tint x = 1;",
+                                       "new_string": "\t\t// one more\n\t\tint x = 1;"}]}},
+            read=read)[2]
+        self.assertEqual(["A.txt"], reads)
+        self.assertTrue(found)
+
+    def test_a_move_without_edits_adds_no_comment(self):
+        found = check.decide_payload(
+            {"tool_input": {"file_path": "B.java", "move_from": "A.java", "edits": []}},
+            read=lambda _: method(*wall(6), "int x = 1;"))[2]
+        self.assertEqual([], found)
 
     def test_an_unrelated_edit_to_a_file_with_an_old_wall_is_allowed(self):
         old = method(*wall(6), "int x = 1;")
@@ -432,6 +475,8 @@ class GovernsTest(unittest.TestCase):
     def test_source_files_are_governed(self):
         self.assertTrue(check.governs("src/Foo.java"))
         self.assertTrue(check.governs("a/b/Thing.ts"))
+        for name in ("smoke.cjs", "m.mjs", "c.cts", "m.mts"):
+            self.assertTrue(check.governs(name), name)
 
     def test_other_files_are_not(self):
         self.assertFalse(check.governs("README.md"))

@@ -20,7 +20,8 @@
  *     File` section is turned back into the replacements its hunks describe,
  *     so the core reads the file, applies them and judges the result. A hunk
  *     whose context no longer matches the file falls back to judging the added
- *     text whole, the stricter reading.
+ *     text whole, the stricter reading. An update carrying `Move to` is judged
+ *     at its destination, with the prior text read from the file it moves.
  *
  * Unlike the adapters whose core failure only loses a warning, this one
  * refuses the edit when the core cannot be run or does not reach a verdict:
@@ -94,24 +95,31 @@ function patchInputs(patch: string): ToolInput[] {
   const inputs: ToolInput[] = []
   let kind: "add" | "update" | null = null
   let file = ""
+  let destination = ""
   let body: string[] = []
   const flush = () => {
     if (kind === "add") {
       inputs.push({ file_path: file, content: addedLines(body).join("\n") })
+    } else if (kind === "update" && destination) {
+      inputs.push({ file_path: destination, move_from: file, edits: hunkReplacements(body) })
     } else if (kind === "update") {
       inputs.push({ file_path: file, edits: hunkReplacements(body) })
     }
     kind = null
     file = ""
+    destination = ""
     body = []
   }
 
   for (const line of patch.split(/\r\n|\r|\n/)) {
     const header = line.match(/^\*\*\* (Update|Add) File: (.+)$/)
+    const move = line.match(/^\*\*\* Move to: (.+)$/)
     if (header) {
       flush()
       kind = header[1] === "Add" ? "add" : "update"
       file = header[2].trim()
+    } else if (move && kind === "update") {
+      destination = move[1].trim()
     } else if (line.startsWith("*** ")) {
       flush()
     } else if (kind) {

@@ -63,8 +63,12 @@ MAX_WINDOW_VOLUME = 450
 #: Files whose comments this policy governs: every C-family source language.
 SOURCE_EXTENSIONS = (".java", ".pdsl", ".proto", ".kt", ".kts", ".c", ".h", ".hpp",
                      ".cpp", ".cc", ".cl", ".metal", ".m", ".mm", ".glsl", ".js",
-                     ".jsx", ".ts", ".tsx", ".groovy", ".gradle", ".scala",
-                     ".swift", ".go", ".rs", ".cs")
+                     ".cjs", ".mjs", ".jsx", ".ts", ".cts", ".mts", ".tsx",
+                     ".groovy", ".gradle", ".scala", ".swift", ".go", ".rs", ".cs")
+
+#: Languages whose backtick template literals hold ``${...}`` expressions,
+#: which are code (and may hold comments) inside the literal text.
+INTERPOLATING_EXTENSIONS = (".js", ".cjs", ".mjs", ".jsx", ".ts", ".cts", ".mts", ".tsx")
 
 #: Languages with no documentation comment, where the comment above a
 #: declaration is its documentation.
@@ -169,8 +173,10 @@ def lex(path, text, header=True):
     stack = []
     statement = []
     docs = []
-    templates = path.endswith((".js", ".jsx", ".ts", ".tsx", ".kt", ".kts",
-                               ".groovy", ".go", ".swift", ".scala"))
+    templates = path.endswith(INTERPOLATING_EXTENSIONS + (".kt", ".kts", ".groovy",
+                                                          ".go", ".swift", ".scala"))
+    interpolates = path.endswith(INTERPOLATING_EXTENSIONS)
+    holes = []
     i, n = 0, len(text)
 
     def newline():
@@ -179,6 +185,33 @@ def lex(path, text, header=True):
 
     def enclosing():
         return stack[-1] if stack else "type"
+
+    def template(start):
+        """Consume template text from ``start``; return where lexing resumes.
+
+        Lexing resumes after the closing backtick, or after the ``${`` that
+        opens an interpolation, whose expression is then lexed as code until
+        its matching ``}`` hands back to this function.
+        """
+        end = start
+        while end < n and text[end] != "`":
+            if text[end] == "\\":
+                end += 1
+            elif interpolates and text.startswith("${", end):
+                lines[-1].code = True
+                lines[-1].filler = False
+                holes.append(0)
+                return end + 2
+            elif text[end] in "\r\n":
+                if text[end] == "\r" and text[end:end + 2] == "\r\n":
+                    end += 1
+                lines[-1].code = True
+                lines[-1].filler = False
+                newline()
+            end += 1
+        lines[-1].code = True
+        lines[-1].filler = False
+        return end + 1
 
     while i < n:
         ch = text[i]
@@ -231,19 +264,23 @@ def lex(path, text, header=True):
             i = end
             continue
 
-        if ch == '"' or ch == "'" or (ch == "`" and templates):
+        if ch == "`" and templates:
+            statement.append('""')
+            i = template(i + 1)
+            continue
+
+        if ch == "}" and holes and holes[-1] == 0:
+            holes.pop()
+            i = template(i + 1)
+            continue
+
+        if ch == '"' or ch == "'":
             end = i + 1
             while end < n and text[end] != ch:
                 if text[end] == "\\":
                     end += 1
-                elif text[end] in "\r\n" and ch != "`":
-                    break
                 elif text[end] in "\r\n":
-                    if text[end] == "\r" and text[end:end + 2] == "\r\n":
-                        end += 1
-                    lines[-1].code = True
-                    lines[-1].filler = False
-                    newline()
+                    break
                 end += 1
             lines[-1].code = True
             lines[-1].filler = False
@@ -257,6 +294,9 @@ def lex(path, text, header=True):
             lines[-1].code = True
             if ch not in "{;":
                 lines[-1].filler = False
+
+        if holes and ch in "{}":
+            holes[-1] += 1 if ch == "{" else -1
 
         if ch == "{":
             stack.append(_brace_kind("".join(statement), enclosing(), path.endswith(".java")))
@@ -521,7 +561,12 @@ def resulting_text(old, tool_input):
 
 
 def decide_payload(data, read=_read):
-    """Return ``(path, text, findings)`` for a PreToolUse payload."""
+    """Return ``(path, text, findings)`` for a PreToolUse payload.
+
+    A payload carrying ``move_from`` describes a file moved to ``file_path``
+    as it is edited: the prior text is read from ``move_from`` and the result
+    is judged under the destination path, where it will live.
+    """
     tool_input = data.get("tool_input")
     if not isinstance(tool_input, dict):
         raise ValueError("payload without tool_input")
@@ -531,7 +576,8 @@ def decide_payload(data, read=_read):
     if not isinstance(path, str) or not governs(path):
         return path, "", []
 
-    old = read(path)
+    source = tool_input.get("move_from")
+    old = read(source if isinstance(source, str) and source else path)
     new, trusted = resulting_text(old, tool_input)
     found = (decide_edit(path, old, new) if trusted
              else violations(path, new, header=False))

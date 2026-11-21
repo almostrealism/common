@@ -92,6 +92,20 @@ async function run(): Promise<void> {
     "apply_patch with a benign change is allowed",
   )
 
+  // apply_patch Move to: the moved file is judged at its destination.
+  expect(
+    await threw(before, "apply_patch", {
+      patchText: wrap("*** Update File: A.java\n*** Move to: C.java\n@@\n \t\t// wall c\n+\t\t// wall d\n \t\tint x = 1;"),
+    }),
+    "apply_patch moving a file while growing its wall blocks",
+  )
+  expect(
+    !(await threw(before, "apply_patch", {
+      patchText: wrap("*** Update File: A.java\n*** Move to: C.java\n@@\n-\t\tint x = 1;\n+\t\tint x = 2;"),
+    })),
+    "apply_patch moving a file with a benign change is allowed",
+  )
+
   // apply_patch Add File: the whole new file is judged, so a five-comment wall blocks.
   expect(
     await threw(before, "apply_patch", {
