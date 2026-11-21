@@ -245,6 +245,35 @@ write_compose_env() {
   mv "${tmp}" "${COMPOSE_ENV_FILE}"
 }
 
+# require_readable_controller_env: validate the operator settings file once,
+# before either operator_setting or write_compose_env reads it. An absent file
+# is the legitimate "operator set nothing" case and is allowed. But a path that
+# exists and is NOT a readable regular file — a directory, a dangling symlink,
+# or a file whose permissions deny reading — must stop the deploy here: reading
+# no further would carry only FLEET_BIND_ADDR into the compose env and reset
+# every operator setting to its compose default, the exact failure this file
+# prevents. Validating up front also means the refusal is reported with this
+# clear message rather than as a raw sed/grep read error from whichever lookup
+# happened to touch the file first (operator_setting runs before
+# write_compose_env on the fleet path and would otherwise abort the script
+# under set -e with an opaque "Permission denied").
+require_readable_controller_env() {
+  # Neither a regular path nor a symlink present: absent, which is allowed.
+  if [ ! -e "${CONTROLLER_ENV}" ] && [ ! -L "${CONTROLLER_ENV}" ]; then
+    return 0
+  fi
+  if [ ! -f "${CONTROLLER_ENV}" ]; then
+    echo "ERROR: the operator settings file ${CONTROLLER_ENV} exists but is not a regular" >&2
+    echo "  file; refusing to deploy with every operator setting reset to its default." >&2
+    exit 1
+  fi
+  if [ ! -r "${CONTROLLER_ENV}" ]; then
+    echo "ERROR: could not read the operator settings file ${CONTROLLER_ENV};" >&2
+    echo "  refusing to deploy with every operator setting reset to its default." >&2
+    exit 1
+  fi
+}
+
 # operator_setting KEY: the last value KEY is assigned in the operator settings
 # file, or empty when the file has none. Used so an operator-set FLEET_BIND_ADDR
 # in that file wins over detection, matching the env-var override.
@@ -260,6 +289,14 @@ operator_setting() {
 persisted_fleet_bind_addr() {
   [ -f "${COMPOSE_ENV_FILE}" ] && sed -n 's/^FLEET_BIND_ADDR=//p' "${COMPOSE_ENV_FILE}" | tail -1
 }
+
+# Both branches below read the operator settings file (operator_setting and
+# write_compose_env). Validate it once, before either does, so an unreadable or
+# non-regular file fails closed with a clear message instead of an opaque read
+# error. --agents-only touches neither branch and so never needs the file.
+if [ "${AGENTS_ONLY}" = false ]; then
+  require_readable_controller_env
+fi
 
 if [ "${AGENTS_ONLY}" = false ] && [ "${FLEET_SERVICES_SELECTED}" = true ]; then
   for secret_pair in "fleet-db-password:${FLEET_DB_DATA_DIR}" "grafana-admin-password:${FLEET_GRAFANA_DATA_DIR}"; do

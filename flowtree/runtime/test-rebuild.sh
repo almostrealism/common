@@ -138,6 +138,12 @@ run_case() {
       chmod "${SEED_CONTROLLER_ENV_MODE}" "$tmp_controller_env"
     fi
   fi
+  # Create the settings path as a directory instead of a file, to exercise the
+  # non-regular-file guard (a directory or dangling symlink must fail closed,
+  # not be mistaken for an absent file).
+  if [ -n "${SEED_CONTROLLER_ENV_DIR:-}" ]; then
+    mkdir -p "$tmp_controller_env"
+  fi
 
   env -i PATH="$MOCK_BIN:$PATH" HOME="${HOME:-/tmp}" \
       SECRETS_DIR="$tmp_secrets" \
@@ -183,7 +189,7 @@ run_case() {
   rm -rf "$tmp_secrets" "$tmp_db" "$tmp_grafana" "$(dirname "$tmp_compose_env")" \
     "$tmp_controller_dir" "$out"
   unset SEED_DB_FILE SEED_SECRETS_FILE SEED_EMPTY_SECRETS_FILE SEED_CONTROLLER_ENV \
-    SEED_CONTROLLER_ENV_MODE
+    SEED_CONTROLLER_ENV_MODE SEED_CONTROLLER_ENV_DIR
 }
 
 echo "rebuild.sh fleet-setup tests"
@@ -520,6 +526,30 @@ run_case "a settings file holding only FLEET_BIND_ADDR is not mistaken for a rea
     fleet-db --
 check_compose_env "the address-only settings file still yields one FLEET_BIND_ADDR" \
     fleet_addr_once
+
+# An unreadable settings file must stop the deploy even when no FLEET_BIND_ADDR
+# is exported — the path where the bind-address lookup reads the file first.
+# Without the up-front readability guard the lookup aborts under set -e with a
+# raw "sed: Permission denied" instead of the explicit refusal, and never on
+# the intended message.
+SEED_CONTROLLER_ENV="AR_CONSULTANT_BACKEND=openrouter"
+SEED_CONTROLLER_ENV_MODE=000
+run_case "an unreadable settings file stops the fleet path before the bind-address lookup" 1 \
+    "could not read the operator settings file" "Permission denied" \
+    fleet-db --
+check_compose_env "an unreadable settings file on the no-address path writes no compose env" \
+    compose_env_lacks "FLEET_BIND_ADDR="
+
+# A path that exists but is not a regular file (a directory here, as a stand-in
+# for a dangling symlink too) must fail closed rather than be taken for an
+# absent file, which would carry only FLEET_BIND_ADDR and reset every setting.
+SEED_CONTROLLER_ENV_DIR=1
+run_case "a non-regular settings path stops the deploy instead of resetting settings" 1 \
+    "is not a regular" "Fleet services will bind to" \
+    -- \
+    FLEET_BIND_ADDR=100.64.1.2
+check_compose_env "a non-regular settings path writes no compose env with the settings dropped" \
+    compose_env_lacks "FLEET_BIND_ADDR=100.64.1.2"
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
