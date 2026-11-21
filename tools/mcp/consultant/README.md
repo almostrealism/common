@@ -64,8 +64,18 @@ In the controller deployment it is the consultant's own key, kept apart from
 the OpenRouter keys the opencode agents use:
 `/Users/Shared/flowtree/secrets/consultant__openrouter-api-key.json` on the host,
 mounted at `/secrets/consultant__openrouter-api-key.json` (see
-`flowtree/runtime/controller/docker-compose.yml`). Set `AR_CONSULTANT_BACKEND`
-in the controller's `.env`.
+`flowtree/runtime/controller/docker-compose.yml`).
+
+Set `AR_CONSULTANT_BACKEND=openrouter` in the controller stack's **operator
+settings file** — `/Users/Shared/flowtree/secrets/controller.env` on the host
+(overridable with the `FLOWTREE_CONTROLLER_ENV` repository variable), beside the
+other deploy secrets. Do **not** put it in the compose project's
+`flowtree/runtime/controller/.env`: that file is gitignored and a deploy's
+checkout clean deletes it, so a setting kept only there resets to the compose
+default (`llamacpp`) on the next deploy. `rebuild.sh` reads the operator
+settings file and carries it into the compose `.env`, and the deploy workflow
+prints the effective backend in its job summary so a reset is visible. See
+`flowtree/runtime/README.md` ("Controller operator settings").
 
 Two request defaults are deliberate:
 
