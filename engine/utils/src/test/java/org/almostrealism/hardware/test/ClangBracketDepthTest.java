@@ -58,6 +58,34 @@ public class ClangBracketDepthTest extends TestSuiteBase {
 	}
 
 	/**
+	 * With a bracket depth configured but a compiler that cannot be identified as clang (here a
+	 * path that cannot be run at all, so {@code --version} yields nothing), the flag is never
+	 * passed, on the first command or on any later one. This exercises the non-clang branch on
+	 * every host, including hosts whose default compiler is clang.
+	 */
+	@Test(timeout = 60000)
+	public void unidentifiedCompilerNeverReceivesFlag() {
+		OptionalInt previous = Clang.getBracketDepth();
+
+		try {
+			Clang.setBracketDepth(OptionalInt.of(CONFIGURED_DEPTH));
+			Clang compiler = new Clang("/nonexistent/ar-bracket-depth-compiler", true);
+
+			Assert.assertEquals("", compiler.getVersion());
+			Assert.assertFalse(compiler.isClangFrontend());
+
+			for (int i = 0; i < 3; i++) {
+				List<String> command = compiler.getCommand("input.c", "output", true);
+				Assert.assertEquals("/nonexistent/ar-bracket-depth-compiler", command.get(0));
+				Assert.assertTrue("unidentified compiler must not receive -fbracket-depth: " + command,
+						command.stream().noneMatch(arg -> arg.startsWith("-fbracket-depth")));
+			}
+		} finally {
+			Clang.setBracketDepth(previous);
+		}
+	}
+
+	/**
 	 * With a bracket depth configured, a clang command carries {@code -fbracket-depth} with that
 	 * value and clang enforces it: source nested {@value #NESTING} deep is rejected against a
 	 * configured limit of {@value #CONFIGURED_DEPTH}, and the error names that limit. A compiler
