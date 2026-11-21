@@ -37,10 +37,14 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
@@ -93,6 +97,22 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 		public boolean isKnown() { return total > 0; }
 	}
 
+	/**
+	 * Default number of top-scoring networks carried unchanged into the next
+	 * optimization cycle.
+	 *
+	 * <p>One is the smallest positive elite count, and it is what the reported
+	 * defect needs: a cycle used to be able to discard the best-scoring network
+	 * entirely, replacing it with a far weaker newcomer. Carrying one elite
+	 * guarantees the single best network always survives a cycle, which also makes
+	 * a {@link #retainBest(int) trim-to-best} durable rather than undone by the
+	 * next cycle. In the small populations these runs use (on the order of ten
+	 * networks) one is deliberately conservative: it protects the best result while
+	 * leaving the rest of the population free for breeding and fresh exploration. A
+	 * caller wanting more protection raises it with {@link #setEliteCount(int)}.</p>
+	 */
+	public static final int DEFAULT_ELITE_COUNT = 1;
+
 	/** Destination for persisted population records. */
 	private final String networksFile;
 
@@ -124,6 +144,13 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 
 	/** Number of completed optimization cycles. */
 	private int iterationCount;
+
+	/**
+	 * Number of top-scoring networks carried unchanged into the next optimization
+	 * cycle. Applied to the optimizer in {@link #prepare}. Defaults to
+	 * {@link #DEFAULT_ELITE_COUNT}.
+	 */
+	private int eliteCount = DEFAULT_ELITE_COUNT;
 
 	/** Health evaluations delivered so far in the current cycle. */
 	private volatile int completedThisCycle;
@@ -356,6 +383,29 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 		}
 	}
 
+	/**
+	 * Returns the number of top-scoring networks carried unchanged into the next
+	 * optimization cycle.
+	 *
+	 * @return the elite count
+	 */
+	public int getEliteCount() { return eliteCount; }
+
+	/**
+	 * Sets the number of top-scoring networks carried unchanged into the next
+	 * optimization cycle. Takes effect on the next {@link #prepare}.
+	 *
+	 * @param eliteCount the elite count; must not be negative
+	 * @throws IllegalArgumentException if {@code eliteCount} is negative
+	 */
+	public void setEliteCount(int eliteCount) {
+		if (eliteCount < 0) {
+			throw new IllegalArgumentException("eliteCount must not be negative (was " + eliteCount + ")");
+		}
+
+		this.eliteCount = eliteCount;
+	}
+
 	/** Returns the optimizer for the current run, or {@code null} before {@link #prepare}. */
 	public AudioSceneOptimizer getOptimizer() { return optimizer; }
 
@@ -368,8 +418,9 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	/**
 	 * Persists the current records, then builds an optimizer over a clone of the
 	 * given scene and wires score delivery, error, and cycle callbacks. The
-	 * optimizer is available from {@link #getOptimizer()} for configuration
-	 * before {@link #run()}.
+	 * optimizer carries {@link #getEliteCount()} top-scoring networks unchanged into
+	 * each cycle, so the best networks are not discarded by a cycle. The optimizer is
+	 * available from {@link #getOptimizer()} for configuration before {@link #run()}.
 	 *
 	 * <p>Finally calls {@code optimizer.init()} to wire the master output file
 	 * and the per-channel stem files on the health computation. Without this
@@ -388,6 +439,7 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 
 		localScene = scene.clone();
 		optimizer = AudioSceneOptimizer.build(localScene, cycles);
+		optimizer.setEliteCount(eliteCount);
 		if (waveDetailsProcessor != null)
 			optimizer.setWaveDetailsProcessor(waveDetailsProcessor);
 		optimizer.setHealthListener(this::attachScore);
@@ -526,28 +578,60 @@ public class ArrangementGenerationProcess implements ConsoleFeatures, Destroyabl
 	}
 
 	/**
-	 * Rebuilds the records from the optimizer's current population, one record
-	 * per genome, discarding existing records and their scores.
+	 * Rebuilds the records from the optimizer's current population, one record per
+	 * genome, keeping the record a carried-over genome already has - and its score -
+	 * and creating a fresh record for every genome new to this cycle.
 	 *
 	 * <p>Called once at the start of each cycle, through the optimizer's
 	 * population-ready hook, once the population the cycle will evaluate is final
 	 * (after breeding, or after loading when breeding is disabled) and before its
 	 * first score or render. Because the records then already match the population
 	 * being scored, no rebuild happens mid-cycle, so every score the cycle delivers
-	 * attaches to a record and survives to the end of the cycle. The scores
-	 * discarded here are the previous cycle's.</p>
+	 * attaches to a record and survives to the end of the cycle.</p>
+	 *
+	 * <p>A genome the optimizer carries over unchanged (an
+	 * {@link org.almostrealism.optimize.PopulationOptimizer#getEliteCount() elite})
+	 * keeps the record it already had, matched by genome signature, so its delivered
+	 * score is not discarded only to be recomputed: the record a caller is already
+	 * holding stays scored across the rebuild. Records are matched by signature and
+	 * each existing record is reused at most once, so a population carrying two
+	 * genomes of the same signature reuses one existing record and builds the other
+	 * fresh. A record whose genome is no longer in the population is dropped, and the
+	 * scores dropped this way are the previous cycle's genomes that did not survive
+	 * it.</p>
 	 */
 	public void refreshNetworks() {
 		if (optimizer == null) return;
 
-		List<GenomicNetwork> rebuilt = new ArrayList<>();
-
 		AudioScenePopulation population = (AudioScenePopulation) optimizer.getPopulation();
-		for (Genome<PackedCollection> genome : population.getGenomes()) {
-			rebuilt.add(new GenomicNetwork(rebuilt.size(), genome));
-		}
 
-		replaceRecords(rebuilt);
+		synchronized (recordLock) {
+			Map<String, Deque<GenomicNetwork>> existing = new HashMap<>();
+			for (GenomicNetwork record : networks) {
+				if (record.getGenome() != null) {
+					existing.computeIfAbsent(record.getGenome().signature(),
+							s -> new ArrayDeque<>()).add(record);
+				}
+			}
+
+			List<GenomicNetwork> rebuilt = new ArrayList<>();
+			for (Genome<PackedCollection> genome : population.getGenomes()) {
+				Deque<GenomicNetwork> matches = existing.get(genome.signature());
+				GenomicNetwork record = matches == null ? null : matches.poll();
+
+				if (record == null) {
+					record = new GenomicNetwork(rebuilt.size(), genome);
+				} else {
+					record.setIndex(rebuilt.size());
+					record.setGenome(genome);
+				}
+
+				rebuilt.add(record);
+			}
+
+			networks.clear();
+			networks.addAll(rebuilt);
+		}
 	}
 
 	/**
