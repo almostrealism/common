@@ -10,6 +10,7 @@ and keep every job that restores the artifacts ordered after ``build``.
 
 import json
 import os
+import re
 import unittest
 
 import yaml
@@ -267,33 +268,189 @@ class BuildRunnerSelectionTest(unittest.TestCase):
         self.assertNotIn("mvn test", mvn[0])
 
 
+class RunsOnExpressionEvaluatorTest(unittest.TestCase):
+    """The runs-on evaluator parses workflow text that the pull request controls
+    and the `python-tests` job runs from the checked-out head, so it must never
+    execute that text — only the fixed &&/||/==/!=/fromJSON grammar is allowed,
+    and anything else is rejected rather than run."""
+
+    def test_rejects_injected_python(self):
+        """A crafted runs-on value cannot reach an interpreter: attacker payloads
+        that would run under eval raise before any evaluation instead."""
+        for payload in (
+            "__import__('os').system('touch /tmp/pwned')",
+            "().__class__.__bases__[0].__subclasses__()",
+            "'x' if 1 else 'y'",
+            "[c for c in 'ab']",
+            "vars.BUILD_RUNS_ON.__class__",
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValueError):
+                    _evaluate_runs_on("${{ %s }}" % payload, "", "push", None, "almostrealism/common")
+
+    def test_rejects_unknown_context_and_function(self):
+        """Only the contexts build's runs-on reads and fromJSON are in scope."""
+        with self.assertRaises(ValueError):
+            _evaluate_runs_on("${{ secrets.GITHUB_TOKEN }}", "", "push", None, "almostrealism/common")
+        with self.assertRaises(ValueError):
+            _evaluate_runs_on("${{ toJSON(github.repository) }}", "", "push", None, "almostrealism/common")
+
+    def test_rejects_unbalanced_parentheses(self):
+        with self.assertRaises(ValueError):
+            _evaluate_runs_on("${{ (github.event_name == 'push' }}", "", "push", None, "almostrealism/common")
+
+    def test_short_circuits_fromjson_when_variable_unset(self):
+        """fromJSON('') would raise; the && chain must short-circuit before it when
+        BUILD_RUNS_ON is unset, just as the runner does."""
+        self.assertEqual("ubuntu-latest", _evaluate_runs_on(
+            _jobs()["build"]["runs-on"], "", "deployment", None, "almostrealism/common"))
+
+    def test_boolean_and_comparison_semantics(self):
+        """== / != yield booleans and || returns the first truthy operand."""
+        self.assertEqual("b", _evaluate_runs_on(
+            "${{ github.event_name == 'push' && 'a' || 'b' }}", "", "pull_request", None, "r"))
+        self.assertEqual("a", _evaluate_runs_on(
+            "${{ github.event_name != 'push' && 'a' || 'b' }}", "", "pull_request", None, "r"))
+
+
 def _evaluate_runs_on(expression, variable, event_name, head_repo, repository):
     """Evaluate a GitHub Actions runs-on expression built from &&, ||, ==, !=,
-    string literals, fromJSON and the contexts build's runs-on reads. GitHub's
-    && and || return an operand, exactly as Python's `and`/`or` do, and an empty
-    string and null are falsy in both, so a token-for-token translation gives
-    the value the runner would receive."""
+    parentheses, string literals, fromJSON and the contexts build's runs-on
+    reads. GitHub's && and || return an operand (the first falsy, or the last,
+    respectively), exactly as Python's `and`/`or` do, and an empty string and
+    null are falsy in both, so this yields the value the runner would receive.
+
+    The expression is tokenized and parsed into an AST that a whitelisted
+    evaluator walks; it is never handed to `eval`. The workflow file is part of
+    the pull request and the `python-tests` job runs this suite from the
+    checked-out head, so evaluating workflow text with `eval` — even with
+    `__builtins__` cleared, which object introspection can escape — would turn
+    attacker-controlled `runs-on` text into code execution in CI."""
     text = " ".join(str(expression).split())
     if text.startswith("${{") and text.endswith("}}"):
         text = text[3:-2]
-    names = {
-        "vars.BUILD_RUNS_ON": "build_runs_on",
-        "github.event.pull_request.head.repo.full_name": "head_repo",
-        "github.event_name": "event_name",
-        "github.repository": "repository",
-        "fromJSON": "from_json",
+    context = {
+        "vars.BUILD_RUNS_ON": variable,
+        "github.event.pull_request.head.repo.full_name": head_repo,
+        "github.event_name": event_name,
+        "github.repository": repository,
     }
-    for source, target in names.items():
-        text = text.replace(source, target)
-    text = text.replace("&&", " and ").replace("||", " or ")
-    namespace = {
-        "build_runs_on": variable,
-        "head_repo": head_repo,
-        "event_name": event_name,
-        "repository": repository,
-        "from_json": json.loads,
-    }
-    return eval(text, {"__builtins__": {}}, namespace)  # noqa: S307 - fixed workflow text
+    node, rest = _parse_or(_tokenize(text))
+    if rest:
+        raise ValueError("unexpected trailing tokens in runs-on expression: %r" % rest)
+    return _evaluate_node(node, context)
+
+
+_TOKEN_PATTERN = re.compile(r"""
+      \s+                       # whitespace (discarded)
+    | (?P<op>&&|\|\||==|!=)      # boolean and comparison operators
+    | (?P<punct>[(),])          # grouping and the argument separator
+    | '(?P<string>[^']*)'       # single-quoted string literal
+    | (?P<name>[A-Za-z_][A-Za-z0-9_.]*)  # context path or function name
+""", re.VERBOSE)
+
+
+def _tokenize(text):
+    """Split a runs-on expression into ('op'|'punct'|'string'|'name', value)
+    tokens, rejecting any character the grammar does not define."""
+    tokens = []
+    pos = 0
+    while pos < len(text):
+        match = _TOKEN_PATTERN.match(text, pos)
+        if not match or match.end() == pos:
+            raise ValueError("unexpected character in runs-on expression at %d: %r"
+                             % (pos, text[pos:pos + 10]))
+        pos = match.end()
+        kind = match.lastgroup
+        if kind is not None:
+            tokens.append((kind, match.group(kind)))
+    return tokens
+
+
+def _parse_or(tokens):
+    """|| has the lowest precedence and is left-associative."""
+    node, tokens = _parse_and(tokens)
+    while tokens and tokens[0] == ("op", "||"):
+        right, tokens = _parse_and(tokens[1:])
+        node = ("or", node, right)
+    return node, tokens
+
+
+def _parse_and(tokens):
+    """&& binds tighter than || and looser than comparison."""
+    node, tokens = _parse_comparison(tokens)
+    while tokens and tokens[0] == ("op", "&&"):
+        right, tokens = _parse_comparison(tokens[1:])
+        node = ("and", node, right)
+    return node, tokens
+
+
+def _parse_comparison(tokens):
+    """== and != compare two primaries and bind tightest."""
+    node, tokens = _parse_primary(tokens)
+    if tokens and tokens[0] in (("op", "=="), ("op", "!=")):
+        operator = tokens[0][1]
+        right, tokens = _parse_primary(tokens[1:])
+        node = ("eq" if operator == "==" else "ne", node, right)
+    return node, tokens
+
+
+def _parse_primary(tokens):
+    """A parenthesised expression, a string literal, a fromJSON call, or a
+    context path."""
+    if not tokens:
+        raise ValueError("unexpected end of runs-on expression")
+    kind, value = tokens[0]
+    if (kind, value) == ("punct", "("):
+        node, tokens = _parse_or(tokens[1:])
+        if not tokens or tokens[0] != ("punct", ")"):
+            raise ValueError("unbalanced parenthesis in runs-on expression")
+        return node, tokens[1:]
+    if kind == "string":
+        return ("str", value), tokens[1:]
+    if kind == "name":
+        if len(tokens) > 1 and tokens[1] == ("punct", "("):
+            if value != "fromJSON":
+                raise ValueError("unsupported function in runs-on expression: %r" % value)
+            argument, tokens = _parse_or(tokens[2:])
+            if not tokens or tokens[0] != ("punct", ")"):
+                raise ValueError("unbalanced call in runs-on expression")
+            return ("call", value, argument), tokens[1:]
+        return ("name", value), tokens[1:]
+    raise ValueError("unexpected token in runs-on expression: %r" % ((kind, value),))
+
+
+def _truthy(value):
+    """GitHub coerces operands of && and || to a boolean the way Python does for
+    the operands this grammar produces: '' and null are falsy, an empty list is
+    falsy, everything else is truthy."""
+    if isinstance(value, (str, list, dict)):
+        return len(value) > 0
+    return bool(value)
+
+
+def _evaluate_node(node, context):
+    """Walk the AST, short-circuiting && and || so fromJSON is only parsed when
+    reached — exactly as the runner evaluates the expression."""
+    kind = node[0]
+    if kind == "str":
+        return node[1]
+    if kind == "name":
+        if node[1] not in context:
+            raise ValueError("unknown context in runs-on expression: %r" % node[1])
+        return context[node[1]]
+    if kind == "call":
+        return json.loads(_evaluate_node(node[2], context))
+    if kind == "and":
+        left = _evaluate_node(node[1], context)
+        return _evaluate_node(node[2], context) if _truthy(left) else left
+    if kind == "or":
+        left = _evaluate_node(node[1], context)
+        return left if _truthy(left) else _evaluate_node(node[2], context)
+    if kind in ("eq", "ne"):
+        equal = _evaluate_node(node[1], context) == _evaluate_node(node[2], context)
+        return equal if kind == "eq" else not equal
+    raise ValueError("unknown node in runs-on expression: %r" % (node,))
 
 
 def _wrap(value):
