@@ -234,6 +234,15 @@ jobs:
             local service="$1" name="$2" value
             if is_secret_name "$name"; then
               value='`<redacted>`'
+            # A service with no running container cannot be read, and printenv's
+            # own exit status cannot tell an unset variable from a failed exec
+            # (both are empty and non-zero). Probe the running state first so a
+            # service that is down is reported as such rather than as "reset to
+            # compose default" — the reset this step exists to surface, which a
+            # false reading of it would hide.
+            elif ! docker compose -f "$COMPOSE_FILE" ps --status running --services 2>/dev/null \
+                | grep -qx "$service"; then
+              value='_unavailable (service not running)_'
             else
               value="$(docker compose -f "$COMPOSE_FILE" exec -T "$service" printenv "$name" 2>/dev/null || true)"
               if [ -n "$value" ]; then

@@ -258,8 +258,23 @@ write_compose_env() {
 # write_compose_env on the fleet path and would otherwise abort the script
 # under set -e with an opaque "Permission denied").
 require_readable_controller_env() {
-  # Neither a regular path nor a symlink present: absent, which is allowed.
+  # Neither a regular path nor a symlink present. This is either the legitimate
+  # "operator set nothing" case or a path that cannot be stat-ed because its
+  # directory is not searchable. Tell them apart: a directory that exists but
+  # has no execute bit hides whatever is at the path, so treating it as absent
+  # would carry only FLEET_BIND_ADDR and reset every operator setting — the
+  # failure this guard exists to prevent. Fail closed for that. A directory
+  # that is genuinely missing (a fresh host that never created the file) is the
+  # allowed absent case and still proceeds.
   if [ ! -e "${CONTROLLER_ENV}" ] && [ ! -L "${CONTROLLER_ENV}" ]; then
+    local parent
+    parent="$(dirname "${CONTROLLER_ENV}")"
+    if [ -d "${parent}" ] && [ ! -x "${parent}" ]; then
+      echo "ERROR: the operator settings file ${CONTROLLER_ENV} cannot be reached because its" >&2
+      echo "  directory ${parent} is not searchable; refusing to deploy with every operator" >&2
+      echo "  setting reset to its default." >&2
+      exit 1
+    fi
     return 0
   fi
   if [ ! -f "${CONTROLLER_ENV}" ]; then

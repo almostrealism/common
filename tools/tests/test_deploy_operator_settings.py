@@ -111,6 +111,17 @@ class DeployWorkflowWiringTest(_DeployWorkflow):
         self.assertIn("docker compose", run)
         self.assertIn("printenv", run)
 
+    def test_a_service_that_is_down_is_not_reported_as_a_reset(self):
+        step = self._step("Report effective operator settings")
+        run = step["run"]
+        # A service with no running container is reported as unavailable, not as
+        # "reset to compose default" — printenv's exit status alone cannot tell
+        # an unset variable from a failed exec, so the running state is probed
+        # first. Without this a down service would read as the very reset this
+        # step exists to surface.
+        self.assertIn("ps --status running --services", run)
+        self.assertIn("unavailable", run)
+
     def test_the_summary_never_prints_a_secret(self):
         step = self._step("Report effective operator settings")
         run = step["run"]

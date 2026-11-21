@@ -144,6 +144,15 @@ run_case() {
   if [ -n "${SEED_CONTROLLER_ENV_DIR:-}" ]; then
     mkdir -p "$tmp_controller_env"
   fi
+  # Seed the settings file but make its directory unsearchable (no execute
+  # bit), so the path cannot be stat-ed. This stands in for a configured
+  # location under an inaccessible parent or an unavailable mount: the file is
+  # present but `[ -e ]`/`[ -L ]` are both false, which must fail closed rather
+  # than be taken for an absent file. Restored before cleanup below.
+  if [ -n "${SEED_CONTROLLER_ENV_PARENT_UNSEARCHABLE:-}" ]; then
+    printf '%s\n' "AR_CONSULTANT_BACKEND=openrouter" > "$tmp_controller_env"
+    chmod 000 "$tmp_controller_dir"
+  fi
 
   env -i PATH="$MOCK_BIN:$PATH" HOME="${HOME:-/tmp}" \
       SECRETS_DIR="$tmp_secrets" \
@@ -186,10 +195,13 @@ run_case() {
     sed 's/^/    /' "$out"
   fi
 
+  # Restore search on the controller dir in case a case removed it, so rm can
+  # recurse into it.
+  chmod 700 "$tmp_controller_dir" 2>/dev/null || true
   rm -rf "$tmp_secrets" "$tmp_db" "$tmp_grafana" "$(dirname "$tmp_compose_env")" \
     "$tmp_controller_dir" "$out"
   unset SEED_DB_FILE SEED_SECRETS_FILE SEED_EMPTY_SECRETS_FILE SEED_CONTROLLER_ENV \
-    SEED_CONTROLLER_ENV_MODE SEED_CONTROLLER_ENV_DIR
+    SEED_CONTROLLER_ENV_MODE SEED_CONTROLLER_ENV_DIR SEED_CONTROLLER_ENV_PARENT_UNSEARCHABLE
 }
 
 echo "rebuild.sh fleet-setup tests"
@@ -549,6 +561,18 @@ run_case "a non-regular settings path stops the deploy instead of resetting sett
     -- \
     FLEET_BIND_ADDR=100.64.1.2
 check_compose_env "a non-regular settings path writes no compose env with the settings dropped" \
+    compose_env_lacks "FLEET_BIND_ADDR=100.64.1.2"
+
+# A settings file that is present but unreachable because its directory is not
+# searchable must fail closed too, not be taken for an absent file — the same
+# silent-reset failure as the unreadable-file and non-regular-path cases, by a
+# different route (an inaccessible parent or an unavailable mount).
+SEED_CONTROLLER_ENV_PARENT_UNSEARCHABLE=1
+run_case "an unsearchable settings directory stops the deploy instead of resetting settings" 1 \
+    "is not searchable" "Fleet services will bind to" \
+    -- \
+    FLEET_BIND_ADDR=100.64.1.2
+check_compose_env "an unsearchable settings directory writes no compose env with the settings dropped" \
     compose_env_lacks "FLEET_BIND_ADDR=100.64.1.2"
 
 echo ""
