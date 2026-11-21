@@ -256,6 +256,44 @@ Servers discover each other through explicit connection (host + port) or through
 
 ---
 
+## Runner Monitoring and Build-Runner Selection
+
+The controller monitors the organization's self-hosted GitHub Actions runners
+and answers "which runner should a job use?" for CI. It uses the controller's
+existing GitHub credentials and GitHub client (`GitHubProxyHandler`) — there is
+no second HTTP client and no second token path.
+
+- **`RunnerMonitor`** (`io.flowtree.github`) reads the runners from
+  `GET /orgs/{org}/actions/runners` (paginated) through
+  `GitHubProxyHandler.listOrganizationRunners` and caches the list for a few
+  seconds, so a burst of pipeline runs does not hit GitHub's rate limit. Each
+  `GitHubRunner` carries its name, status (online/offline), busy flag, and
+  labels.
+- **`GET /api/runners/select?required=<label>&fleets=<csv>&org=<org>`** answers
+  which runner a job should use. It returns the `runs-on` label list of the
+  first fleet, in preference order, that has an online, idle runner carrying the
+  required label (e.g. `ar-build`) and the fleet's own labels — or
+  `["ubuntu-latest"]` when none does. The response carries `fleet`, `hosted`,
+  `listed` and a `reason`; when the controller's token cannot list the runners
+  (it lacks the organization "Self-hosted runners" read permission), `listed` is
+  `false` and the reason says so, so the caller is never silently answered
+  hosted with no explanation.
+- **`GET /api/runners?org=<org>`** returns the runner list itself, read-only, for
+  diagnostics. The ar-manager MCP tool `github_list_runners` surfaces it.
+- The default fleet preference is the CUDA fleet (`ar-ci-cuda`), then the
+  OpenCL/ROCm fleet (`ar-ci-cl`), then the Linux CPU fleet (`ar-ci`), then macOS
+  last (its runners are the scarcest). The owner reorders it with no commit by
+  setting `AR_CI_RUNNER_FLEET_PREFERENCE` (a comma-separated list of fleet
+  labels) on the controller; `AR_CI_RUNNER_ORG` changes the monitored
+  organization.
+
+Both endpoints are under the same auth as the other `/api/...` routes CI calls.
+The `build` job's `select-build-runner` job in `.github/workflows/analysis.yaml`
+is the consumer; see "Controller-driven build-runner selection" in
+[`../../.github/CLAUDE.md`](../../.github/CLAUDE.md).
+
+---
+
 ## Module Structure
 
 ```

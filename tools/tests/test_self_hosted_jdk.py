@@ -53,11 +53,12 @@ def _steps_using(job, action):
     return [s for s in job.get("steps", []) if str(s.get("uses", "")).startswith(action)]
 
 
-# `build` is the one dual-mode job: its runner is chosen by the BUILD_RUNS_ON
-# repository variable, so its runs-on is an opaque expression that _is_self_hosted
-# cannot classify, and it carries BOTH setup-java (hosted) and select-jdk
-# (self-hosted), each guarded by runner.environment. The hosted-only guards below
-# exempt it; BuildJobJdkSelectionTest pins its environment-keyed JDK wiring.
+# `build` is the one dual-mode job: its runner is chosen by the
+# select-build-runner job (which asks the controller), so its runs-on is an
+# opaque expression that _is_self_hosted cannot classify, and it carries BOTH
+# setup-java (hosted) and select-jdk (self-hosted), each guarded by
+# runner.environment. The hosted-only guards below exempt it;
+# BuildJobJdkSelectionTest pins its environment-keyed JDK wiring.
 _VARIABLE_RUNNER_JOBS = {"build"}
 
 
@@ -211,11 +212,12 @@ class SelfHostedJdkTest(unittest.TestCase):
 
 class BuildJobJdkSelectionTest(unittest.TestCase):
     """`build` runs on a hosted OR a self-hosted runner (chosen by the
-    BUILD_RUNS_ON repository variable), so it keeps both JDK paths, each guarded
-    by runner.environment: setup-java on a GitHub-hosted runner, the shared
+    select-build-runner job), so it keeps both JDK paths, each guarded by
+    runner.environment: setup-java on a GitHub-hosted runner, the shared
     select-jdk action on a self-hosted one — exactly what the test lanes use.
     This pins that both exist and are correctly guarded, since the all-jobs
-    guards above exempt build (its variable runs-on cannot be classified)."""
+    guards above exempt build (its selector-driven runs-on cannot be
+    classified)."""
 
     def _step(self, name):
         for s in _jobs()["build"]["steps"]:

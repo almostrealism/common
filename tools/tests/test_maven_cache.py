@@ -65,8 +65,8 @@ def _is_self_hosted(job):
     return "self-hosted" in _runs_on(job)
 
 
-# `build` runs on a hosted OR a self-hosted runner, chosen by the BUILD_RUNS_ON
-# repository variable. Its runs-on is an opaque expression (not a label list), so
+# `build` runs on a hosted OR a self-hosted runner, chosen by the
+# select-build-runner job (which asks the controller). Its runs-on is an opaque expression (not a label list), so
 # _is_self_hosted classifies it as hosted, yet it carries select-maven-repo for
 # the self-hosted case, guarded by runner.environment. The hosted-only rule below
 # exempts it; BuildJobMavenRepoTest pins both of its Maven-repo paths.
@@ -155,7 +155,7 @@ class SelfHostedMavenRepoWiringTest(unittest.TestCase):
 
 
 class BuildJobMavenRepoTest(unittest.TestCase):
-    """`build`'s runner is chosen by the BUILD_RUNS_ON repository variable, so it
+    """`build`'s runner is chosen by the select-build-runner job, so it
     carries both Maven-repo paths, each guarded by runner.environment: a hosted
     runner restores the GitHub-backed cache via restore-maven-cache, a self-hosted
     runner selects its host's shared cache via select-maven-repo (which exports

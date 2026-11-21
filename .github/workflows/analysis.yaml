@@ -539,20 +539,80 @@ jobs:
             done
           done
 
-  build:
+  # Asks the FlowTree controller which runner build should use, so build lands
+  # on whichever self-hosted fleet has an idle runner carrying ar-build (keeping
+  # the fleets busy) and falls back to GitHub-hosted otherwise. It runs only
+  # inline shell over one API call, checks out no pull-request code, and never
+  # fails build: any problem emits ["ubuntu-latest"]. See "Controller-driven
+  # build-runner selection" in .github/CLAUDE.md.
+  select-build-runner:
     needs: changes
     if: needs.changes.outputs.code_changed == 'true'
-    # The runner is chosen by the BUILD_RUNS_ON repository variable: a JSON label
-    # list (e.g. ["self-hosted","linux","ar-build"]) parsed with fromJSON, falling
-    # back to GitHub-hosted ubuntu-latest when the variable is unset — today's
-    # behaviour. Using a variable, not a hard-coded self-hosted runs-on, is
-    # deliberate: build sits on the critical path of every job that compiles,
-    # tests or analyses the project, so a self-hosted build runner going offline
-    # would queue build forever and block every pull request. The variable lets
-    # the owner move build onto a self-hosted runner — and switch straight back —
-    # with no commit. See "The BUILD_RUNS_ON repository variable" in
-    # .github/CLAUDE.md.
-    runs-on: ${{ vars.BUILD_RUNS_ON && fromJSON(vars.BUILD_RUNS_ON) || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
+    outputs:
+      runs_on: ${{ steps.select.outputs.runs_on }}
+    steps:
+      - name: Select the build runner
+        id: select
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          # Emergency override: set the repository variable BUILD_FORCE_HOSTED to
+          # any value to force build back onto ubuntu-latest with no commit.
+          FORCE_HOSTED: ${{ vars.BUILD_FORCE_HOSTED }}
+          # A fork PR never builds on a self-hosted runner (which holds a PAT and
+          # a persistent Maven volume); forks get no secrets anyway, so the call
+          # below would fail open regardless — this just makes it explicit.
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          REQUIRED_LABEL: ar-build
+        run: |
+          # No `set -e`: every failure path below falls open to the hosted
+          # runner. A selector problem must never block or fail build.
+          set -uo pipefail
+          HOSTED='["ubuntu-latest"]'
+          emit() {
+            echo "runs_on=$1" >> "$GITHUB_OUTPUT"
+            echo "::notice::build runs-on $1 — $2"
+          }
+          if [ -n "${FORCE_HOSTED:-}" ]; then
+            emit "$HOSTED" "forced hosted by the BUILD_FORCE_HOSTED variable"; exit 0
+          fi
+          if [ "${IS_FORK}" = "true" ]; then
+            emit "$HOSTED" "fork pull request builds on a hosted runner"; exit 0
+          fi
+          if [ -z "${CONTROLLER_URL:-}" ]; then
+            emit "$HOSTED" "no controller URL configured"; exit 0
+          fi
+          CURL_ARGS=(-sS -f -G --connect-timeout 5 --max-time 15 -H "Accept: application/json")
+          if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
+            CURL_ARGS+=(-H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}")
+            CURL_ARGS+=(-H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}")
+          fi
+          BODY=$(curl "${CURL_ARGS[@]}" \
+              --data-urlencode "required=${REQUIRED_LABEL}" \
+              "${CONTROLLER_URL%/}/api/runners/select") || {
+            emit "$HOSTED" "controller unreachable; failing open to hosted"; exit 0
+          }
+          RUNS_ON=$(echo "$BODY" | jq -c \
+              'if (.ok == true and (.runs_on | type) == "array" and (.runs_on | length) > 0) then .runs_on else empty end' \
+              2>/dev/null) || RUNS_ON=""
+          if [ -z "$RUNS_ON" ]; then
+            emit "$HOSTED" "unexpected controller answer (${BODY}); failing open to hosted"; exit 0
+          fi
+          REASON=$(echo "$BODY" | jq -r '.reason // ""' 2>/dev/null || echo "")
+          emit "$RUNS_ON" "controller selection — ${REASON}"
+
+  build:
+    needs: [changes, select-build-runner]
+    if: needs.changes.outputs.code_changed == 'true'
+    # The runner is chosen by the select-build-runner job, which asks the
+    # FlowTree controller for the first idle self-hosted fleet carrying ar-build
+    # and falls back to ["ubuntu-latest"] on any problem. build therefore reads
+    # an opaque JSON label list here; its JDK and Maven steps are keyed on
+    # runner.environment so both runners work. See "Controller-driven
+    # build-runner selection" in .github/CLAUDE.md.
+    runs-on: ${{ fromJSON(needs.select-build-runner.outputs.runs_on) }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4

@@ -1153,6 +1153,7 @@ class TestToolRegistration(unittest.TestCase):
             "github_list_workflow_runs",
             "github_workflow_run_status",
             "github_job_logs",
+            "github_list_runners",
             "tracker_list_projects",
             "tracker_create_project",
             "tracker_update_project",

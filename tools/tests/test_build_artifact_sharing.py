@@ -152,25 +152,48 @@ def _step_named(job, name):
 
 class BuildRunnerSelectionTest(unittest.TestCase):
     """`build` is the only dual-mode job: its runner is chosen by the
-    BUILD_RUNS_ON repository variable (a self-hosted move the owner can make and
-    undo without a commit), defaulting to GitHub-hosted ubuntu-latest, and its
-    JDK/Maven/clear/upload steps are correct on either runner. These pin that
+    select-build-runner job, which asks the FlowTree controller for the first
+    idle self-hosted fleet carrying ar-build and falls open to ubuntu-latest, and
+    its JDK/Maven/clear/upload steps are correct on either runner. These pin that
     wiring so a future edit cannot quietly hard-code the runner or break one of
-    the two environments. See "What the `build` job covers" and "The
-    BUILD_RUNS_ON repository variable" in .github/CLAUDE.md."""
+    the two environments. See "What the `build` job covers" and "Controller-driven
+    build-runner selection" in .github/CLAUDE.md."""
 
     def setUp(self):
         self.build = _jobs()["build"]
+        self.selector = _jobs()["select-build-runner"]
 
-    def test_runs_on_is_the_variable_with_a_hosted_fallback(self):
-        """A JSON label list from the variable, parsed with fromJSON, falling back
-        to ubuntu-latest when unset — so an offline self-hosted runner cannot queue
-        build forever (the variable is cleared to revert), and today's hosted
-        behaviour is the default."""
-        runs_on = self.build["runs-on"]
-        self.assertIn("vars.BUILD_RUNS_ON", runs_on)
-        self.assertIn("fromJSON(vars.BUILD_RUNS_ON)", runs_on)
-        self.assertIn("'ubuntu-latest'", runs_on)
+    def test_runs_on_comes_from_the_selector_job(self):
+        """build parses the selector's runs_on output with fromJSON, and lists the
+        selector in needs so it is available — so an offline self-hosted fleet
+        cannot queue build forever (the selector falls open to hosted)."""
+        self.assertEqual("${{ fromJSON(needs.select-build-runner.outputs.runs_on) }}",
+                         _wrap(self.build["runs-on"]))
+        self.assertIn("select-build-runner", _needs(self.build))
+
+    def test_selector_is_hosted_and_checks_out_no_pull_request_code(self):
+        """The selector holds the controller credential, so it runs on a hosted
+        runner, checks out nothing (no PR code), and exposes runs_on."""
+        self.assertEqual("ubuntu-latest", self.selector["runs-on"])
+        self.assertEqual("${{ steps.select.outputs.runs_on }}",
+                         _wrap(self.selector["outputs"]["runs_on"]))
+        self.assertEqual([], _steps_using(self.selector, "actions/checkout"))
+        self.assertTrue(all("checkout" not in str(s.get("uses", ""))
+                            for s in self.selector["steps"]))
+
+    def test_selector_fails_open_and_has_an_emergency_override(self):
+        """Any problem emits ["ubuntu-latest"]; a repository variable forces hosted;
+        the one API call is GET /api/runners/select for the ar-build label."""
+        run = next(str(s.get("run", "")) for s in self.selector["steps"]
+                   if "runs_on=" in str(s.get("run", "")))
+        self.assertIn('["ubuntu-latest"]', run)
+        self.assertIn("/api/runners/select", run)
+        self.assertIn("required=${REQUIRED_LABEL}", run)
+        env = next(s.get("env", {}) for s in self.selector["steps"] if s.get("id") == "select")
+        self.assertEqual("ar-build", env["REQUIRED_LABEL"])
+        self.assertIn("BUILD_FORCE_HOSTED", str(env["FORCE_HOSTED"]))
+        # It must not fail build: no `set -e` that would abort on a failed curl.
+        self.assertNotIn("set -euo pipefail", run)
 
     def test_jdk_is_selected_by_runner_environment(self):
         """Hosted downloads the JDK with setup-java; self-hosted selects the
