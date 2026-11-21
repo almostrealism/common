@@ -406,6 +406,59 @@ Notes on the declarations:
 
 ---
 
+## 7. Tokenization
+
+Converting between human-readable text and sequences of integer token ids, for language-model
+inference. One interface names the concept and every text tokenizer implements it; the shared
+byte-level BPE pipeline is a base class that implements the interface once for all of its
+subclasses.
+
+| Type | Declared as | Module (package) | Members |
+|---|---|---|---|
+| `Tokenizer` | interface (no supertype) | `engine/ml` (`org.almostrealism.ml`) | `encodeAsLong(String) : long[]`, `decodeAsLong(long[]) : String`; defaults `encodeAsInt`/`decodeAsInt` (delegate to the `long` forms) and `encode(String) : PackedCollection` / `decode(PackedCollection) : String` (throw by default — an opt-in for GPU-resident token tensors) |
+| `ByteLevelBPETokenizer` | `abstract class implements Tokenizer` | `engine/ml` (`org.almostrealism.ml.tokenization`) | the byte-level BPE pipeline: `encode(String, boolean) : int[]` (with a special-token flag), `decode(int[]) : String`, and the `encodeAsLong`/`decodeAsLong` contract methods that adapt them |
+| `SentencePieceBPETokenizer` | `extends ByteLevelBPETokenizer` | `engine/ml` (`org.almostrealism.ml.tokenization`) | overrides only how text becomes symbols and back; inherits the `Tokenizer` relationship |
+| `Qwen3Tokenizer` | `extends ByteLevelBPETokenizer implements ConsoleFeatures` | `engine/ml` (`org.almostrealism.ml.qwen3`) | adds a three-argument `encode(String, boolean, boolean)` and Qwen3 vocabulary loading; inherits the `Tokenizer` relationship |
+| `ByteTokenizer` | `class implements Tokenizer` | `engine/ml` (`org.almostrealism.ml.tokenization`) | a raw UTF-8 byte tokenizer, not BPE-based, so it implements `Tokenizer` directly |
+| `SentencePieceTokenizer` | `class implements Tokenizer` | `extern/ml-djl` (`org.almostrealism.ml`) | a thin adapter over the DJL SentencePiece runtime |
+
+Notes on the declarations:
+
+- The realignment this family records: `ByteLevelBPETokenizer` *is a* `Tokenizer` — converting text
+  to and from token ids is exactly the `Tokenizer` contract. Previously the base class implemented
+  the full BPE pipeline but declared no supertype, while each concrete tokenizer restated the
+  relationship: `SentencePieceBPETokenizer` carried `implements Tokenizer` and its own
+  `encodeAsLong`/`decodeAsLong`, and `Qwen3Tokenizer` — though the `Tokenizer` javadoc already named
+  it an example — implemented only `ConsoleFeatures` and so could **not** be passed where a
+  `Tokenizer` was expected. The contract methods are now implemented once on the base (adapting its
+  `int[]` pipeline to the `long[]` contract), so every subclass is a `Tokenizer`. A reader who learns
+  this can hand a `Qwen3Tokenizer` to any `Tokenizer` consumer — `StableAudio3.setTokenizer`,
+  `AudioGenerator`, `ConditionalAudioSystem`, `LegacyAudioGenerator` (all `studio/compose`, which
+  depends on `engine/ml`).
+- Every member of `Tokenizer` is correct for `ByteLevelBPETokenizer`: `encodeAsLong`/`decodeAsLong`
+  are the special-token-free view of its `encode(String, boolean)`/`decode(int[])` pipeline;
+  `encodeAsInt`/`decodeAsInt` are interface defaults over those; and `encode(String)` /
+  `decode(PackedCollection)` are the interface's own throwing defaults — an opt-in capability no BPE
+  tokenizer overrides, so leaving them unimplemented honours the contract rather than violating it.
+  The richer `encode(String, boolean)` entry point stays, because it carries a special-token flag the
+  `Tokenizer` contract does not express; it is not a redundant synonym of `encodeAsLong`.
+
+### Gaps
+
+- **`MidiTokenizer` (`studio/compose`, `org.almostrealism.studio.midi`) shares the name but not the
+  concept.** It converts MIDI events to and from *compound* tokens (`int[][]`, several attributes
+  per event), not text to and from a flat id sequence, so it is not a `Tokenizer` — the method shapes
+  and the element type differ. This is coincidental naming, recorded so a later round does not
+  mistake it for an orphan of this family.
+- **Llama2 tokenizes through the static `BPE` utility (`engine/ml`, `org.almostrealism.ml.BPE`),
+  not through a `Tokenizer` type.** `BPE.encode(String, String[], float[], int, int[])` is a
+  stateless helper `Llama2` calls directly with the vocabulary it already holds; there is no
+  instance tokenizer to carry the relationship, so it stands outside this family. The "every text
+  tokenizer implements it" framing above is about tokenizer *types* — a static utility is not one.
+  Recorded so a later round does not read it as a `Tokenizer` implementation left unaligned.
+
+---
+
 ## How to use this map
 
 To find where a concept lives and what it builds on, start from Part I and follow the link to the
@@ -415,10 +468,10 @@ use Part II as follows.
 Before introducing a type with a `value`/`normal`/`getValueAt`/`getNormalAt` pair, a
 ray-`intersect`, a `neighbors`/node structure, or a state-advancing step the simulation loop
 owner drives (a `tick`/`step`), or an operation that transforms a source buffer of audio into a
-destination buffer, find the family above and extend the existing interface rather
+destination buffer, or a converter between text and token ids, find the family above and extend the existing interface rather
 than a `*Features` mixin alone — a population whose step takes no argument *is a* `Temporal`
-(family 5), and a source-to-destination audio transform *is an* `AudioProcessor` (family 6, in its
-producer-valued form). A grid of sampled values is the one
+(family 5), a source-to-destination audio transform *is an* `AudioProcessor` (family 6, in its
+producer-valued form), and a text-to-token-id converter *is a* `Tokenizer` (family 7). A grid of sampled values is the one
 case where that advice is reversed: family 4 records that **no interface names "a field
 sampled on a grid"**, and the finite-difference calculus is delivered deliberately through the
 `FieldCalculusFeatures` mixin — so reuse that mixin rather than reimplementing its operators or

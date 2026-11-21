@@ -272,7 +272,7 @@ Qwen3Tokenizer tokenizer = new Qwen3Tokenizer("./qwen3_weights/tokenizer.bin");
 
 // Encode text
 String text = "Hello, world!";
-int[] tokens = tokenizer.encode(text);  // With BOS/EOS by default
+int[] tokens = tokenizer.encode(text, true);  // With BOS/EOS
 int[] tokensNoSpecial = tokenizer.encode(text, false, false);  // No special tokens
 
 // Decode tokens
