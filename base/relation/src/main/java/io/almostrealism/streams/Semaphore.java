@@ -43,9 +43,9 @@ public interface Semaphore {
 	/**
 	 * Shared executor that {@link #onSettled(Runnable)} callbacks (and everything built on it)
 	 * run on. An implementation that is told when its work settles hands each callback here only
-	 * once it has settled, so the callback holds a thread only while it runs. The fallback for an
-	 * implementation that cannot be told ({@link #settleByWaiting(Runnable)}) also waits here, and
-	 * so holds a thread for as long as its work is pending.
+	 * once it has settled, so the callback holds a thread only while it runs. The default
+	 * {@link #onSettled(Runnable)}, for an implementation that cannot be told, also waits here,
+	 * and so holds a thread for as long as its work is pending.
 	 *
 	 * <p>Completions often settle together (every dispatch of a command buffer that has just
 	 * finished), so their callbacks arrive in bursts. This is an {@link ElasticExecutor}: a burst
@@ -199,9 +199,8 @@ public interface Semaphore {
 	 * every implementation that the callback runs without anyone waiting on this semaphore:
 	 * the operation is driven to completion if it would not otherwise reach it.
 	 *
-	 * <p>The default waits for the operation on a {@link #CALLBACK_EXECUTOR} thread (see
-	 * {@link #settleByWaiting(Runnable)}), which both drives it (a
-	 * {@link #waitFor()} that commits a command buffer, for example) and observes it, at the cost
+	 * <p>The default waits for the operation on a {@link #CALLBACK_EXECUTOR} thread, which
+	 * both drives it (a {@link #waitFor()} that commits a command buffer, for example) and observes it, at the cost
 	 * of one thread for as long as the operation is pending. An implementation that is told when
 	 * its operation settles &mdash; a latch counted down by the work itself, a completion that is
 	 * itself started by another's settlement, a device that reports a finished command buffer
@@ -217,21 +216,6 @@ public interface Semaphore {
 	 * @param r the callback to invoke once {@link #waitFor()} returns or throws
 	 */
 	default void onSettled(Runnable r) {
-		settleByWaiting(r);
-	}
-
-	/**
-	 * Runs {@code r} once this has completed or failed by waiting for it on a
-	 * {@link #CALLBACK_EXECUTOR} thread. This is how {@link #onSettled(Runnable)} is implemented
-	 * by default, for a completion that cannot be told when its work settles, or that only
-	 * progresses when it is waited for. It holds that thread for as long as the work is pending,
-	 * so an implementation that overrides {@link #onSettled(Runnable)} to observe its own
-	 * settlement falls back to this only when that observation is unavailable. Callers register
-	 * callbacks with {@link #onSettled(Runnable)}, never with this.
-	 *
-	 * @param r the callback to invoke once {@link #waitFor()} returns or throws
-	 */
-	default void settleByWaiting(Runnable r) {
 		CALLBACK_EXECUTOR.execute(() -> {
 			try {
 				waitFor();

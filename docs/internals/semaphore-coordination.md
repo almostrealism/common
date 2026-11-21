@@ -38,8 +38,8 @@ These are phrased so a reviewer can check a diff against them.
    buffer reports its completion through a completed handler) registers the callback and holds no
    thread; it is handed to `CALLBACK_EXECUTOR` only once the work has settled, so it holds a thread
    only while it runs. One that only progresses when waited for (`CLSemaphore`, and a
-   `MetalSemaphore` on a host that cannot register completed handlers) keeps the default,
-   `Semaphore.settleByWaiting`, which waits on a `CALLBACK_EXECUTOR` thread and so also drives it.
+   `MetalSemaphore` on a host that cannot register completed handlers) keeps the default
+   `Semaphore.onSettled`, which waits on a `CALLBACK_EXECUTOR` thread and so also drives it.
    A chain of N submissions is therefore N registrations, not N parked threads
    (`ChainedSubmissionTest`, `MetalSemaphoreSettlementTest`). `CALLBACK_EXECUTOR` stays unbounded:
    a callback may wait for a completion that only another queued callback starts (a
