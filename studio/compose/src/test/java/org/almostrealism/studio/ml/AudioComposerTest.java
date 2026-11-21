@@ -231,7 +231,7 @@ public class AudioComposerTest extends TestSuiteBase {
 	 * mean; only equal scores give the even mix.
 	 */
 	@Test(timeout = 60000)
-	public void normalizedBlendWithNoSelectedSourceIsMean() {
+	public void normalizedBlendWithNegativeScoresMixesBySoftmax() {
 		AudioComposer composer = composer(19L);
 		composer.setNormalizedBlend(true);
 		composer.addSource(sourceA(), weightVector(1.0, 0.0));
@@ -463,6 +463,29 @@ public class AudioComposerTest extends TestSuiteBase {
 			Assert.fail("Expected a zero blend temperature to be rejected");
 		} catch (IllegalArgumentException e) {
 			Assert.assertEquals(1.0, composer.getBlendTemperature(), 0.0);
+		}
+	}
+
+	/**
+	 * A vanishing blend temperature sharpens the normalized blend to the highest-scoring
+	 * source alone, and never produces a non-finite latent, even at the smallest positive
+	 * temperature, whose reciprocal is not representable.
+	 */
+	@Test(timeout = 60000)
+	public void tinyTemperatureSelectsHighestScore() {
+		for (double temperature : new double[] { 1e-3, 1e-30, Double.MIN_VALUE }) {
+			AudioComposer composer = composer(67L);
+			composer.setNormalizedBlend(true);
+			composer.setBlendTemperature(temperature);
+			composer.addSource(sourceA(), weightVector(1.0, 0.0));
+			composer.addSource(sourceB(), weightVector(0.0, 1.0));
+
+			double[] latent = latent(composer, 2.0, 0.5);
+			for (double v : latent) {
+				Assert.assertTrue("Non-finite latent at temperature " + temperature, Double.isFinite(v));
+			}
+
+			assertValues(expected(1.0, 0.0), latent);
 		}
 	}
 

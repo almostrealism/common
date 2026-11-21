@@ -177,15 +177,17 @@ At `(0.5, 0.25)` source A's share is `1 / (1 + e^-0.25) ≈ 0.5622`, composing
 invariant to the length of the position: a longer position sharpens the blend towards the
 highest-scoring source, and a position near the origin approaches the even mix.
 
-A higher score always gives a larger share, so a canonical merge position — explicit orthogonal
-weight vectors and a position whose components are the per-source contributions — reproduces the
-ordering of those contributions deterministically. Setting the contributions on the sources
+With the other inputs held fixed, raising a source's score raises its share, so among sources of
+equal contribution a higher score always gives a larger share (a source with a much smaller
+contribution can still receive a smaller share despite a higher score). A canonical merge
+position — explicit orthogonal weight vectors, unit contributions, and a position whose components
+are the per-source values — therefore reproduces the ordering of those values deterministically. Setting the contributions on the sources
 instead makes the shares exactly their ratio wherever the scores are equal, for example at the
 origin (`AudioComposerTest.mergePositionFollowsContributions`). Equal scores with unit
 contributions give the plain mean:
 
 ```java
-// LatentAudioCompositionExamplesTest.unselectedGuardIsPlainMean
+// LatentAudioCompositionExamplesTest.equalScoresGivePlainMean
 double[] latent = composer.getInterpolatedLatent(cp(pack(-1.0, -1.0))).evaluateOptimized().toArray();
 
 // ((1, 2, 3, 4) + (8, 4, 0, -4)) / 2

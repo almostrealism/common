@@ -79,7 +79,7 @@ public class LatentAudioCompositionExamplesTest extends TestSuiteBase {
 	 * plain mean of the sources.
 	 */
 	@Test(timeout = 60000)
-	public void unselectedGuardIsPlainMean() {
+	public void equalScoresGivePlainMean() {
 		AudioComposer composer = twoSourceComposer(new GainDecoder());
 		composer.setNormalizedBlend(true);
 

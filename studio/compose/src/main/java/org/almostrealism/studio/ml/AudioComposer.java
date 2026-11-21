@@ -136,10 +136,13 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 	 * before the division by their total. Every blended source therefore has a strictly
 	 * positive share, and the shares vary continuously with the position: a random position
 	 * mixes all of the sources in its own proportions rather than selecting some of them.
-	 * A higher score always gives a larger share, so a position built from per-source
-	 * contributions (for example, explicit orthogonal weight vectors and a position whose
-	 * components are those contributions) reproduces their ordering deterministically, and
-	 * equal scores give shares in the ratio of the contributions. A position at the origin,
+	 * With the other inputs held fixed, raising a source's score raises its share, so among
+	 * sources of equal contribution a higher score always gives a larger share; a source
+	 * with a much smaller contribution can still receive a smaller share despite a higher
+	 * score. A position built from per-source values (for example, explicit orthogonal
+	 * weight vectors, unit contributions, and a position whose components are those values)
+	 * therefore reproduces their ordering deterministically, and equal scores give shares in
+	 * the ratio of the contributions. A position at the origin,
 	 * where every score is zero, yields the contribution-weighted mean of the sources.
 	 * </p>
 	 *
@@ -367,6 +370,9 @@ public class AudioComposer implements Factor<PackedCollection>, Destroyable, Cod
 			List<Producer<?>> terms = new ArrayList<>();
 			for (int i = 0; i < blended.size(); i++) {
 				ComposableAudioFeatures source = blended.get(i);
+				// Multiplying by the reciprocal keeps a vanishing temperature finite: its
+				// literal saturates to the largest finite value, while the temperature itself
+				// would narrow to zero below FP64 and divide zero by zero
 				CollectionProducer weight = source.contributed(exp(scores.get(i)
 						.subtract(reference).multiply(c(1.0 / blendTemperature))));
 				weights.add(weight);
