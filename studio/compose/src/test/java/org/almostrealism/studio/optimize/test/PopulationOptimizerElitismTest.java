@@ -368,6 +368,62 @@ public class PopulationOptimizerElitismTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * When the elite count fills the whole population, no slots remain for children, so
+	 * breeding must not run at all: constructing children only to discard them wastes the
+	 * per-child computation {@link org.almostrealism.heredity.GenomeBreeder#combine} performs.
+	 * The next generation is exactly the carried elites.
+	 */
+	@Test(timeout = 60_000)
+	public void fullElitismBreedsNoChildren() {
+		int popSize = PopulationOptimizer.popSize;
+		int maxChildren = PopulationOptimizer.maxChildren;
+		boolean breeding = PopulationOptimizer.enableBreeding;
+
+		try {
+			PopulationOptimizer.popSize = 4;
+			PopulationOptimizer.maxChildren = 4;
+			PopulationOptimizer.enableBreeding = true;
+
+			ProjectedGenome best = genome(0.90, 0.1, 0.1);
+			ProjectedGenome second = genome(0.80, 0.1, 0.1);
+			ProjectedGenome third = genome(0.70, 0.1, 0.1);
+			ProjectedGenome fourth = genome(0.60, 0.1, 0.1);
+
+			AtomicInteger breedCount = new AtomicInteger();
+			Supplier<GenomeBreeder<PackedCollection>> breeder = () ->
+					(GenomeBreeder<PackedCollection>) (g1, g2) -> {
+						breedCount.incrementAndGet();
+						return genome(0.0, 1.0, 0.0);
+					};
+			Supplier<Supplier<Genome<PackedCollection>>> generator = () ->
+					() -> genome(0.0, -1.0, 0.0);
+
+			List<Genome<PackedCollection>> genomes =
+					new ArrayList<>(List.of(best, second, third, fourth));
+			PopulationOptimizer<PackedCollection, PackedCollection, ScoredOrganism, HealthScore> optimizer =
+					new PopulationOptimizer<>(new ScoredPopulation(genomes), ScoredHealth::new,
+							ScoredPopulation::new, breeder, generator);
+			optimizer.setEliteCount(4);
+			optimizer.getHealthComputation();
+			optimizer.getGenerator();
+
+			optimizer.iterate();
+
+			Assert.assertEquals("No child may be bred when elites fill the population",
+					0, breedCount.get());
+			Assert.assertEquals("The whole population must be the carried elites",
+					4, optimizer.getPopulation().size());
+			Assert.assertTrue("Every elite must be carried over",
+					contains(optimizer, best) && contains(optimizer, second)
+							&& contains(optimizer, third) && contains(optimizer, fourth));
+		} finally {
+			PopulationOptimizer.popSize = popSize;
+			PopulationOptimizer.maxChildren = maxChildren;
+			PopulationOptimizer.enableBreeding = breeding;
+		}
+	}
+
 	/** A negative elite count is rejected. */
 	@Test(timeout = 60_000)
 	public void negativeEliteCountRejected() {

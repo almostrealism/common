@@ -477,6 +477,10 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 			int eliteN = Math.max(0, Math.min(eliteCount, Math.min(sorted.size(), popSize)));
 			List<Genome<G>> elites = new ArrayList<>(sorted.subList(0, eliteN));
 
+			// Breed only into the slots the elites leave free; with no elitism keep the
+			// legacy maxChildren bound (which may exceed popSize).
+			int breedLimit = eliteN > 0 ? Math.min(maxChildren, popSize - eliteN) : maxChildren;
+
 			// Fresh genetic material
 			List<Genome<G>> genomes = new ArrayList<>();
 
@@ -490,26 +494,26 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 			while (itr.hasNext()) {
 				g1 = g2;
 				g2 = itr.next();
-				if (genomes.size() >= maxChildren) break;
+				if (genomes.size() >= breedLimit) break;
 
 				// Combine chromosomes to produce new offspring
 				breed(genomes, g1, g2);
 
-				if (StrictMath.random() < secondaryOffspringPotential && genomes.size() < maxChildren) {
+				if (StrictMath.random() < secondaryOffspringPotential && genomes.size() < breedLimit) {
 					// Combine chromosomes to produce a second offspring
 					breed(genomes, g1, g2);
 				} else {
 					continue w;
 				}
 
-				if (StrictMath.random() < tertiaryOffspringPotential && genomes.size() < maxChildren) {
+				if (StrictMath.random() < tertiaryOffspringPotential && genomes.size() < breedLimit) {
 					// Combine chromosomes to produce a third offspring
 					breed(genomes, g1, g2);
 				} else {
 					continue w;
 				}
 
-				if (StrictMath.random() < quaternaryOffspringPotential && genomes.size() < maxChildren) {
+				if (StrictMath.random() < quaternaryOffspringPotential && genomes.size() < breedLimit) {
 					// Combine chromosomes to produce a fourth offspring
 					breed(genomes, g1, g2);
 				} else {
@@ -523,11 +527,9 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 			this.population.getGenomes().clear();
 
 			// Elites first, then children fill the slots after them (see iterate()).
+			// Breeding was already bounded to the capacity the elites leave free.
 			this.population.getGenomes().addAll(elites);
-			for (Genome<G> child : genomes) {
-				if (eliteN > 0 && this.population.getGenomes().size() >= popSize) break;
-				this.population.getGenomes().add(child);
-			}
+			this.population.getGenomes().addAll(genomes);
 
 			int add = popSize - this.population.getGenomes().size();
 
