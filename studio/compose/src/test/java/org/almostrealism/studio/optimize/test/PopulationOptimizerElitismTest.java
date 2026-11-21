@@ -424,6 +424,64 @@ public class PopulationOptimizerElitismTest extends TestSuiteBase {
 		}
 	}
 
+	/**
+	 * A bred child whose signature matches a carried elite is a clone and must not be
+	 * added to the next generation: elitism carries the elite, and {@link PopulationOptimizer#breed}
+	 * dedups children against the carried elites as well as against each other, so the
+	 * population never holds two genomes of that signature (which would be evaluated
+	 * twice and attach one delivered score to two records). The freed slot is taken by
+	 * a fresh genome, so the population still reaches its target size.
+	 */
+	@Test(timeout = 60_000)
+	public void childMatchingEliteSignatureIsNotDuplicated() {
+		int popSize = PopulationOptimizer.popSize;
+		int maxChildren = PopulationOptimizer.maxChildren;
+		boolean breeding = PopulationOptimizer.enableBreeding;
+
+		try {
+			PopulationOptimizer.popSize = 4;
+			PopulationOptimizer.maxChildren = 4;
+			PopulationOptimizer.enableBreeding = true;
+
+			ProjectedGenome best = genome(0.90, 0.1, 0.1);
+			ProjectedGenome second = genome(0.80, 0.1, 0.1);
+
+			// Every bred child is a distinct object carrying the best elite's exact
+			// parameters, so it shares the elite's signature.
+			Supplier<GenomeBreeder<PackedCollection>> breeder = () ->
+					(GenomeBreeder<PackedCollection>) (g1, g2) -> genome(0.90, 0.1, 0.1);
+			AtomicInteger unique = new AtomicInteger();
+			Supplier<Supplier<Genome<PackedCollection>>> generator = () ->
+					() -> genome(0.0, -unique.incrementAndGet(), 0.0);
+
+			List<Genome<PackedCollection>> genomes =
+					new ArrayList<>(List.of(best, second));
+			PopulationOptimizer<PackedCollection, PackedCollection, ScoredOrganism, HealthScore> optimizer =
+					new PopulationOptimizer<>(new ScoredPopulation(genomes), ScoredHealth::new,
+							ScoredPopulation::new, breeder, generator);
+			optimizer.setEliteCount(1);
+			optimizer.getHealthComputation();
+			optimizer.getGenerator();
+
+			optimizer.iterate();
+
+			Assert.assertTrue("The carried elite must survive by identity",
+					contains(optimizer, best));
+
+			String eliteSignature = best.signature();
+			long sharing = optimizer.getPopulation().getGenomes().stream()
+					.filter(g -> eliteSignature.equals(g.signature())).count();
+			Assert.assertEquals("A child must not duplicate the carried elite's signature",
+					1, sharing);
+			Assert.assertEquals("The population must still be filled to its target size",
+					4, optimizer.getPopulation().size());
+		} finally {
+			PopulationOptimizer.popSize = popSize;
+			PopulationOptimizer.maxChildren = maxChildren;
+			PopulationOptimizer.enableBreeding = breeding;
+		}
+	}
+
 	/** A negative elite count is rejected. */
 	@Test(timeout = 60_000)
 	public void negativeEliteCountRejected() {

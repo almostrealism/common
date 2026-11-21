@@ -461,8 +461,11 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	 * after the elites (rather than, as without elitism, replacing the whole
 	 * population) and fresh genomes fill any remainder up to {@link #popSize}. This
 	 * guarantees the best genomes, once evaluated, are never discarded by a
-	 * generation. With an elite count of {@code 0} the behavior is purely
-	 * generational: the population is replaced entirely by children and fresh genomes.
+	 * generation. A bred child whose signature matches a carried elite is a clone and
+	 * is dropped by {@link #breed}, so an elite is never duplicated by a child (which
+	 * would otherwise be evaluated twice); any freed slot is taken by a fresh genome.
+	 * With an elite count of {@code 0} the behavior is purely generational: the
+	 * population is replaced entirely by children and fresh genomes.
 	 * </p>
 	 * <p>
 	 * Elitism preserves genomes, not evaluations: step 3 re-evaluates the whole next
@@ -480,18 +483,12 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 		List<Genome<G>> sorted = population.getGenomes();
 
 		if (enableBreeding) {
-			// Carry the leading genomes unchanged into the next generation (elitism); see
-			// the method javadoc for when those are the best-scoring. Carry no more than
-			// the population holds and no more than popSize.
 			int eliteN = Math.max(0, Math.min(eliteCount, Math.min(sorted.size(), popSize)));
-			List<Genome<G>> elites = new ArrayList<>(sorted.subList(0, eliteN));
 
-			// Breed only into the slots the elites leave free; with no elitism keep the
-			// legacy maxChildren bound (which may exceed popSize).
-			int breedLimit = eliteN > 0 ? Math.min(maxChildren, popSize - eliteN) : maxChildren;
-
-			// Fresh genetic material
-			List<Genome<G>> genomes = new ArrayList<>();
+			// Seed the breeding list with the elites so breed() dedups children against
+			// them too (see iterate() javadoc); breedLimit then bounds the whole list.
+			List<Genome<G>> genomes = new ArrayList<>(sorted.subList(0, eliteN));
+			int breedLimit = eliteN > 0 ? Math.min(eliteN + maxChildren, popSize) : maxChildren;
 
 			// Mate in order of health
 			Iterator<Genome<G>> itr = sorted.iterator();
@@ -530,14 +527,12 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 				}
 			}
 
-			console().println("Generating new population with " + elites.size()
-					+ " elites and " + genomes.size() + " children");
+			console().println("Generating new population with " + eliteN
+					+ " elites and " + (genomes.size() - eliteN) + " children");
 
 			this.population.getGenomes().clear();
 
-			// Elites first, then children fill the slots after them (see iterate()).
-			// Breeding was already bounded to the capacity the elites leave free.
-			this.population.getGenomes().addAll(elites);
+			// Elites lead the list, children follow; breeding was bounded to the free slots.
 			this.population.getGenomes().addAll(genomes);
 
 			int add = popSize - this.population.getGenomes().size();
