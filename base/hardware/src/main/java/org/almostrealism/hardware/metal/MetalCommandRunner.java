@@ -1299,13 +1299,17 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * drained in queue order, so a buffer drained here has been removed from {@link #committed}
 	 * and no later drain sees it again. Every finished buffer's {@link CommandBatch#whenFinished
 	 * finish listeners} are notified first, including those of a buffer a waiter keeps from being
-	 * drained here. A failure of a buffer's released-memory callbacks has no
-	 * waiter to reach, so it is logged and the later buffers are still drained. Must run on the
-	 * executor thread.
+	 * drained here. A failure of a buffer's finish listeners or released-memory callbacks has no
+	 * waiter to reach, so it is logged and the later buffers are still notified and drained. Must
+	 * run on the executor thread.
 	 */
 	private void drainFinished() {
 		for (CommandBatch c : committed) {
-			if (!c.notifyIfFinished()) break;
+			try {
+				if (!c.notifyIfFinished()) break;
+			} catch (RuntimeException | Error e) {
+				warn("finishNotificationFailed firstValue=" + c.getFirstValue(), e);
+			}
 		}
 
 		while (!committed.isEmpty()) {

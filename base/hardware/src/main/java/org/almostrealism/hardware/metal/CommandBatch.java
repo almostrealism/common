@@ -324,15 +324,20 @@ final class CommandBatch {
 	 * still notified (see {@link #observeIfUnreported()}). That thread is started even when the
 	 * batch has already finished and the listener is notified at once, since nothing else then
 	 * reports the completion to the runner, which would leave the batch undrained and its buffer
-	 * retained until an unrelated wait. A listener must only hand work off, since it runs on the
-	 * executor thread. Executor-thread only.
+	 * retained until an unrelated wait. That thread is started even if notifying a listener fails.
+	 * A listener must only hand work off, since it runs on the executor thread. Executor-thread
+	 * only.
 	 *
 	 * @param listener the listener to notify once the batch has finished
 	 */
 	void whenFinished(Runnable listener) {
 		onFinishedListeners.add(listener);
-		notifyIfFinished();
-		observeIfUnreported();
+
+		try {
+			notifyIfFinished();
+		} finally {
+			observeIfUnreported();
+		}
 	}
 
 	/**
@@ -348,28 +353,35 @@ final class CommandBatch {
 		return true;
 	}
 
-	/** Notifies, and then drops, every listener registered with {@link #whenFinished(Runnable)}. */
+	/**
+	 * Drops, and then notifies, every listener registered with {@link #whenFinished(Runnable)}.
+	 * Every listener is notified even if an earlier one fails, since a dropped listener is never
+	 * notified again; the first failure is rethrown afterwards (see {@link Destroyable#releaseAll}).
+	 */
 	private void notifyFinished() {
 		List<Runnable> listeners = new ArrayList<>(onFinishedListeners);
 		onFinishedListeners.clear();
-		listeners.forEach(Runnable::run);
+		Destroyable.releaseAll(listeners);
 	}
 
 	/**
 	 * Notifies the listeners registered with {@link #whenFinished(Runnable)}, if any remain, then
 	 * runs the released-memory callbacks of the finished batch, then records it as drained,
-	 * releasing its command buffer unless a thread still waits on it. Every callback runs and the
-	 * buffer is released even if a callback fails; the first failure is rethrown afterwards (see
+	 * releasing its command buffer unless a thread still waits on it. Every listener and callback
+	 * runs and the buffer is released even if one of them fails; the first failure is rethrown
+	 * afterwards (see
 	 * {@link Destroyable#releaseAll}). The callbacks are dropped once they have run, so that
 	 * whatever they refer to is not kept reachable by something that outlives the drain, such as
 	 * the callback of a bridge whose foreign work settles only after the batch failed.
 	 * Executor-thread only.
 	 */
 	void drain() {
-		notifyFinished();
+		List<Runnable> drains = new ArrayList<>(onComplete.size() + 1);
+		drains.add(this::notifyFinished);
+		drains.addAll(onComplete);
 
 		try {
-			Destroyable.releaseAll(onComplete, this::drained);
+			Destroyable.releaseAll(drains, this::drained);
 		} finally {
 			onComplete.clear();
 		}

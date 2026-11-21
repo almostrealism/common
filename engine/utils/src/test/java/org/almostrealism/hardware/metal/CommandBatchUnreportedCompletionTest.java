@@ -18,6 +18,7 @@ package org.almostrealism.hardware.metal;
 
 import org.almostrealism.hardware.test.SemaphoreChainBatchingTest;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.concurrent.CountDownLatch;
@@ -168,6 +169,81 @@ public class CommandBatchUnreportedCompletionTest extends TestSuiteBase {
 		assertEquals("Nothing needs the completion reported", 0, reports.get());
 
 		batch.drain();
+		assertTrue(batch.getBuffer().isReleased());
+	}
+
+	/**
+	 * A finish listener that fails (as handing a callback over does when no thread can be created
+	 * for it) does not stop the drain from notifying the listeners after it, running the
+	 * released-memory callbacks and releasing the buffer; the failure is rethrown afterwards.
+	 */
+	@Test(timeout = 60000)
+	public void failingListenerDoesNotStopDrain() throws InterruptedException {
+		MTLCommandQueue queue = queue();
+		if (queue == null) return;
+
+		MTLEvent gate = queue.getDevice().newSharedEvent();
+		CommandBatch batch = gatedBatch(queue, gate);
+		CountDownLatch reported = new CountDownLatch(1);
+		batch.commit(reported::countDown);
+
+		IllegalStateException failure = new IllegalStateException("listener failed");
+		AtomicInteger notified = new AtomicInteger();
+		AtomicInteger released = new AtomicInteger();
+		batch.whenFinished(() -> { throw failure; });
+		batch.whenFinished(notified::incrementAndGet);
+		batch.whenComplete(released::incrementAndGet);
+
+		gate.setSignaledValue(1);
+		assertTrue(reported.await(30, TimeUnit.SECONDS));
+
+		try {
+			batch.drain();
+			Assert.fail("The listener's failure must be rethrown by the drain");
+		} catch (IllegalStateException e) {
+			Assert.assertSame(failure, e);
+		}
+
+		assertEquals("A listener after a failing one is still notified", 1, notified.get());
+		assertEquals("The released-memory callbacks still run", 1, released.get());
+		assertTrue("The buffer is still released", batch.getBuffer().isReleased());
+	}
+
+	/**
+	 * A listener that fails when it is notified at once, because the batch it is added to has
+	 * already finished, still has the completion of a batch without a completed handler reported,
+	 * and a later listener is still notified.
+	 */
+	@Test(timeout = 60000)
+	public void failingListenerAfterFinishStillReports() throws InterruptedException {
+		MTLCommandQueue queue = queue();
+		if (queue == null) return;
+
+		MTLEvent gate = queue.getDevice().newSharedEvent();
+		CommandBatch batch = gatedBatch(queue, gate);
+		CountDownLatch reported = new CountDownLatch(1);
+		batch.commit(reported::countDown);
+
+		gate.setSignaledValue(1);
+		batch.awaitCompletionUninterruptibly();
+
+		IllegalStateException failure = new IllegalStateException("listener failed");
+		try {
+			batch.whenFinished(() -> { throw failure; });
+			Assert.fail("The listener's failure must reach the caller");
+		} catch (IllegalStateException e) {
+			Assert.assertSame(failure, e);
+		}
+
+		assertTrue("The completion must be reported even though the listener failed",
+				reported.await(30, TimeUnit.SECONDS));
+
+		AtomicInteger notified = new AtomicInteger();
+		batch.whenFinished(notified::incrementAndGet);
+		assertEquals("A later listener is notified at once", 1, notified.get());
+
+		batch.drain();
+		assertEquals("A listener is notified only once", 1, notified.get());
 		assertTrue(batch.getBuffer().isReleased());
 	}
 
