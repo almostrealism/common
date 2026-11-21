@@ -217,6 +217,7 @@ it was not adopted.
 | `stage-submit-request.sh` | Write a built prompt and its submission parameters to a request directory for a remediation job to upload |
 | `submit-agent-job.sh` | Submit an agent job to the FlowTree controller, creating the workstream for the repository and branch when none is registered; `REQUIRED_LABELS` routes it to a Node with matching capability labels. `PROTECT_TEST_FILES` defaults to `"false"`: it turns on the harness's per-job test lock (see `flowtree/runtime/docs/file-staging.md`), which only the jobs sent to make failing tests pass, and a few QA rounds, request — everything else is held to `test-integrity-check`. `ENFORCE_CHANGES` (default `"false"`) requires the job to produce a change. A run that leaves none is re-run up to `MAX_ENFORCE_CHANGES_RETRIES` times over the whole job (omitted: the controller default; `"0"`: never re-run), and a job that still commits nothing once that cap is spent is reported DEGRADED rather than SUCCESS |
 | `submit-staged-request.sh` | Submit a staged request directory from a trusted (default-branch) checkout, exporting only the documented `submit.env` keys. When the controller rejects the submission, posts a short alert to the branch's workstream (`POST /api/workstreams/{id}/messages`) and `$GITHUB_STEP_SUMMARY` naming the remediation kind (`REMEDIATION_KIND`), branch, run, HTTP status and the controller's error, then still fails the job |
+| `detect-protected-file-changes.sh` | Run by each `*-submit` job before it submits: read the branch's changed files from the trusted compare API and, when they include a protected file, write the operator grant that lets the agent edit it to `$GITHUB_ENV` — `BYPASS_AGENT_PERMISSION_PROMPTS=true` for a `.claude/` change, `SENSITIVE_FILE_PROTECTION_ENABLED=false` for a CI/workflow change on a non-`ci/` branch (a `ci/` branch is already exempt). `submit-agent-job.sh` forwards both from the environment. A branch that changes no protected file keeps today's protections |
 | `sync-music-samples.sh` | Seed the curated audio sample library onto a runner (any fleet) |
 
 ## Reusable workflows
@@ -274,6 +275,18 @@ pull request code holds the controller credentials.
 `tools/tests/test_remediation_job_exclusivity.py` pins the conditions that keep
 the three apart, the attempt threshold matching `MAX_ATTEMPTS`, and the
 credential isolation.
+
+Each `*-submit` job (and `auto-resolve-submit.yaml`'s own submit job) runs
+`detect-protected-file-changes.sh` just before it submits: when the branch's
+own diff against its base already changes a protected file, the job is launched
+with the operator grant needed to edit that kind of file, so a remediation that
+finds a real issue in the branch's protected work can fix it rather than only
+report it. A `.claude/` change grants `BYPASS_AGENT_PERMISSION_PROMPTS=true`
+(the agent runtime otherwise refuses those writes); a CI/workflow change on a
+non-`ci/` branch grants `SENSITIVE_FILE_PROTECTION_ENABLED=false` (a `ci/`
+branch is already exempt). Both come from the trusted compare API, never the
+staged request, and both forward to `submit-agent-job.sh` through the
+environment. A branch that changes no protected file keeps today's protections.
 
 ### Auto-resolve's required-test-job coverage
 
