@@ -39,12 +39,13 @@ Which classes implement the interface, and which do not, is deliberate and worth
 - `ByteTokenizer` **implements** `Tokenizer`.
 - `SentencePieceBPETokenizer` **implements** `Tokenizer`.
 - `extern/ml-djl`'s `SentencePieceTokenizer` **implements** `Tokenizer`.
-- `Qwen3Tokenizer` **does not** implement `Tokenizer`. It extends `ByteLevelBPETokenizer` and
-  exposes its own `encode(String, boolean, boolean)` and the inherited `decode(int[])`, returning
-  `int` arrays rather than the interface's `encodeAsLong` / `decodeAsLong`. Its special tokens are
+- `Qwen3Tokenizer` **implements** `Tokenizer`, inherited through `ByteLevelBPETokenizer` (which
+  declares the interface and implements the `encodeAsLong` / `decodeAsLong` contract once for every
+  subclass). It adds its own special-token-aware `encode(String, boolean, boolean)` on top of the
+  inherited `int`-array pipeline, so a caller can either stay on the contract's `encodeAsLong` /
+  `decodeAsLong` (which add no special tokens) or request BOS/EOS explicitly. Its special tokens are
   the public constants `BOS_TOKEN` (151643) and `EOS_TOKEN` (151645); the `getBOSToken()` /
-  `getEOSToken()` it inherits are `protected`. Whether it *should* implement `Tokenizer` is an open
-  API decision tracked separately (tracker task `0b5eb918`); this page documents the class as it is.
+  `getEOSToken()` it inherits are `protected`.
 - `Llama2` tokenizes through the static `BPE.encode(...)` utility, not through an instance of any
   tokenizer class at all (see the family tree).
 
@@ -170,10 +171,11 @@ Assert.assertEquals(byteCount, ids.length);
 Assert.assertEquals(SentencePieceTokenizerFixture.UNKNOWN, tokenizer.decodeAsLong(ids));
 ```
 
-`Qwen3Tokenizer` is driven through its own API — `encode(String, boolean, boolean)` for
-`(text, addBos, addEos)` and the inherited `decode(int[])` — not the `Tokenizer` interface. Its
-special tokens are the public `BOS_TOKEN` / `EOS_TOKEN` constants, and the control tokens are
-skipped on decode:
+`Qwen3Tokenizer` implements `Tokenizer`, inherited through `ByteLevelBPETokenizer`, so a caller
+that wants plain ids takes them straight off the contract with `encodeAsLong` / `decodeAsLong`,
+which add no special tokens. BOS/EOS are not part of the `Tokenizer` contract, so they stay on the
+concrete API: `encode(String, boolean, boolean)` for `(text, addBos, addEos)`, with the public
+`BOS_TOKEN` / `EOS_TOKEN` constants, and the control tokens are skipped on decode:
 
 ```java
 Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();

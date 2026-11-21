@@ -1,5 +1,7 @@
 package org.almostrealism.ml.tokenization;
 
+import org.almostrealism.ml.Tokenizer;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -48,12 +50,23 @@ import java.util.function.Consumer;
  * String decoded = tokenizer.decode(tokens);
  * }</pre>
  *
+ * <h2>Relationship to {@link Tokenizer}</h2>
+ * <p>A byte-level BPE tokenizer <em>is a</em> {@link Tokenizer}: converting text to and from a
+ * sequence of integer token ids is exactly the {@code Tokenizer} contract. This class satisfies
+ * that contract once, for every subclass, by adapting its own {@code int[]}-valued pipeline to the
+ * {@code long[]}-valued {@link Tokenizer#encodeAsLong(String)} / {@link Tokenizer#decodeAsLong(long[])}
+ * methods. The richer {@link #encode(String, boolean)} entry point (with its special-token flag)
+ * remains available for callers that need it; {@code encodeAsLong} is the special-token-free view the
+ * {@code Tokenizer} contract defines. Subclasses such as {@link SentencePieceBPETokenizer} and the
+ * Qwen3 tokenizer therefore need not restate the relationship.</p>
+ *
  * @see PreTokenizer
  * @see ByteLevelEncoder
  * @see RegexPreTokenizer
+ * @see Tokenizer
  * @author Michael Murray
  */
-public abstract class ByteLevelBPETokenizer {
+public abstract class ByteLevelBPETokenizer implements Tokenizer {
 
     /** The pre-tokenization strategy used to split input text into segments. */
     protected final PreTokenizer preTokenizer;
@@ -136,6 +149,48 @@ public abstract class ByteLevelBPETokenizer {
         }
 
         return result;
+    }
+
+    /**
+     * Encodes text to token ids as a {@code long} array, without adding special tokens.
+     *
+     * <p>This is the {@link Tokenizer#encodeAsLong(String)} view of {@link #encode(String, boolean)}:
+     * it runs the full BPE pipeline with {@code addSpecialTokens = false} and widens the resulting
+     * {@code int} ids to {@code long}. A caller that wants beginning- or end-of-sequence tokens uses
+     * {@link #encode(String, boolean)} directly.</p>
+     *
+     * @param text the text to encode
+     * @return the token ids
+     */
+    @Override
+    public long[] encodeAsLong(String text) {
+        int[] tokens = encode(text, false);
+
+        long[] result = new long[tokens.length];
+        for (int i = 0; i < tokens.length; i++) {
+            result[i] = tokens[i];
+        }
+
+        return result;
+    }
+
+    /**
+     * Decodes {@code long} token ids. An id outside the {@code int} range cannot name a vocabulary
+     * entry, so it is mapped to {@code -1} and ignored by {@link #decode(int[])} like any other
+     * invalid id, rather than narrowed by a cast that could wrap it onto a real token.
+     *
+     * @param tokens the token ids to decode
+     * @return the decoded text
+     */
+    @Override
+    public String decodeAsLong(long[] tokens) {
+        int[] ids = new int[tokens.length];
+        for (int i = 0; i < tokens.length; i++) {
+            long id = tokens[i];
+            ids[i] = id < Integer.MIN_VALUE || id > Integer.MAX_VALUE ? -1 : (int) id;
+        }
+
+        return decode(ids);
     }
 
     /**

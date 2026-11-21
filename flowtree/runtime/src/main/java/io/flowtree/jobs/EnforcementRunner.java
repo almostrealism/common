@@ -118,9 +118,10 @@ class EnforcementRunner implements ConsoleFeatures {
         ReviewRule reviewRule = job.isReviewEnabled() ? new ReviewRule(job.getMaxReviewPasses()) : null;
         job.setActiveReviewRule(reviewRule);
         if (reviewRule != null) rules.add(reviewRule);
-        if (CodingAgentJob.DEDUP_LOCAL.equals(job.getDeduplicationMode())) {
-            rules.add(new DeduplicationRule(job.getMaxDeduplicationPasses()));
-        }
+        // The type audit runs for every job, whatever its deduplication mode; the
+        // method audit only when the job asks for it inline (see DeduplicationRule).
+        rules.add(new DeduplicationRule(job.getMaxDeduplicationPasses(),
+                CodingAgentJob.DEDUP_LOCAL.equals(job.getDeduplicationMode())));
         if (job.isEnforceOrganizationalPlacement()) {
             rules.add(new OrganizationalPlacementRule());
         }
