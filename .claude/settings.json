@@ -197,8 +197,13 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-scratch-deliverable.sh",
+            "description": "Block files written to the session scratchpad or the temporary directory, which the person being worked for cannot read"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-excessive-comments.sh",
-            "description": "Block edits adding a run of 4+ consecutive inline // comment lines - CLAUDE.md forbids excessive inline comments"
+            "description": "Block edits that leave a long inline comment in the resulting file - design belongs in javadoc"
           },
           {
             "type": "command",
@@ -252,8 +257,13 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-scratch-deliverable.sh",
+            "description": "Block files written to the session scratchpad or the temporary directory, which the person being worked for cannot read"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-excessive-comments.sh",
-            "description": "Block edits adding a run of 4+ consecutive inline // comment lines - CLAUDE.md forbids excessive inline comments"
+            "description": "Block edits that leave a long inline comment in the resulting file - design belongs in javadoc"
           },
           {
             "type": "command",
@@ -282,8 +292,13 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-scratch-deliverable.sh",
+            "description": "Block files written to the session scratchpad or the temporary directory, which the person being worked for cannot read"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-excessive-comments.sh",
-            "description": "Block edits adding a run of 4+ consecutive inline // comment lines - CLAUDE.md forbids excessive inline comments"
+            "description": "Block edits that leave a long inline comment in the resulting file - design belongs in javadoc"
           },
           {
             "type": "command",
@@ -307,8 +322,13 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-scratch-deliverable.sh",
+            "description": "Block files written to the session scratchpad or the temporary directory, which the person being worked for cannot read"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-excessive-comments.sh",
-            "description": "Block writes adding a run of 4+ consecutive inline // comment lines - CLAUDE.md forbids excessive inline comments"
+            "description": "Block writes that leave a long inline comment in the resulting file - design belongs in javadoc"
           },
           {
             "type": "command",

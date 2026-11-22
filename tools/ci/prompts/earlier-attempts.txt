@@ -1,0 +1,45 @@
+## Find out what has already been tried, and what was refused
+
+You are probably not the first session sent after this failure. A failure
+stays on the list until a fix is merged, so every round is handed it again, and
+an earlier round's fix may be sitting in an open pull request, or may have been
+turned down by the owner. A fix the owner has turned down is not available to
+you, however reasonable it looks when you arrive at it yourself.
+
+Before you change any code:
+
+1. List the open pull requests with `github_list_open_prs`. For each one whose
+   title or branch could concern the same test, component or error, read its
+   inline comments with `github_pr_review_comments` (pass
+   `include_resolved=true`) and its discussion with `github_pr_conversation`.
+2. Search the tracker with `tracker_search_tasks`, and memories with
+   `memory_recall` using `scope="repo"`, for the failing test's name, the
+   component in the stack trace and the words of the error message.
+3. Write down, in your summary, each earlier attempt you found: the pull
+   request, what it changed, and what the owner said about it.
+
+Then hold your own fix to what you found:
+
+- **An approach the owner rejected is rejected for you too.** Do not submit it
+  again under another name or in another file. If the owner said where the
+  real defect is, that is the defect to fix. If fixing it is more than this
+  round can do, say so and file it; do not substitute the rejected fix.
+- **An open pull request that already makes the right fix means this failure
+  is being handled.** Do not open a second one. Report the pull request and
+  move to the next failure.
+
+## Fix the cause, not the place the failure surfaced
+
+The error names where something finally broke: a compiler rejecting generated
+source, a limit exceeded, a timeout, an allocation refused. That is rarely
+where the defect is. Ask what produced the thing that broke, and why it has
+the shape it has.
+
+Changing how a result is written out so that it no longer shows the problem,
+or raising the limit, the timeout or the tolerance that reported it, makes the
+test pass and leaves the defect in place. Generated source that is too large or
+too deeply nested, for example, means the expression it was generated from was
+built or simplified wrongly; the fix is in that expression, not in the code
+that prints it and not in the compiler's settings. A fix of that concealing
+kind is worse than no fix, because it removes the only signal that the defect
+exists.
