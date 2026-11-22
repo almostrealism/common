@@ -200,14 +200,14 @@ public interface Semaphore {
 	 * the operation is driven to completion if it would not otherwise reach it.
 	 *
 	 * <p>The default waits for the operation on a {@link #CALLBACK_EXECUTOR} thread, which
-	 * both drives it (a {@link #waitFor()} that commits a command buffer, for example) and observes it, at the cost
-	 * of one thread for as long as the operation is pending. An implementation that is told when
-	 * its operation settles &mdash; a latch counted down by the work itself, a completion that is
-	 * itself started by another's settlement, a device that reports a finished command buffer
-	 * &mdash; overrides this to register the callback instead, holding no thread while the work
-	 * runs.
-	 * That is what lets a caller chain any number of submissions before it waits: a chain is
-	 * then a list of registered callbacks, not a list of parked threads.</p>
+	 * both drives it (a {@link #waitFor()} that commits a command buffer, for example) and
+	 * observes it, at the cost of one thread for as long as the operation is pending. An
+	 * implementation that is told when its operation settles &mdash; a latch counted down by the
+	 * work itself, a completion that is itself started by another's settlement, a device that
+	 * reports a finished command buffer &mdash; overrides this to register the callback instead,
+	 * holding no thread while the work runs. That is what lets a caller chain any number of
+	 * submissions before it waits: a chain is then a list of registered callbacks, not a list of
+	 * parked threads.</p>
 	 *
 	 * <p>The failure itself is not handled here: it is reported to whoever waits on this
 	 * semaphore, and a callback that needs it calls {@link #waitFor()}, which returns or
