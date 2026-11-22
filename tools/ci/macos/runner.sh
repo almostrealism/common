@@ -140,7 +140,14 @@ RUNNER_GROUP="${RUNNER_GROUP:-Default}"
 # meant for. A single-purpose runner must therefore OMIT the labels of the jobs
 # it should ignore, not merely add its own. See "Dedicating a Runner to One Job"
 # in the README.
-RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,macos,ar-ci}"
+#
+# ar-build lets the controller send the bounded `build` job to this macOS CI
+# runner when it is idle, so it stays busy between Metal test jobs. (A deploy
+# runner overrides RUNNER_LABELS to self-hosted,macos,ar-deploy and so carries
+# neither ar-ci nor ar-build — builds never land on it.) Runners are ephemeral
+# and re-register on every job, so this committed default is the only durable
+# place for the labels.
+RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,macos,ar-ci,ar-build}"
 RUNNER_WORKDIR="${RUNNER_WORKDIR:-${RUNNER_DIR}/_work}"
 
 # ---------- Resolved configuration ----------
