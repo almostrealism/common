@@ -72,6 +72,25 @@ public class CumulativeProductTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests the inclusive cumulative product for fixed input values, pinning the exact output of
+	 * the scan's accumulation loop to independently computed constants. Each iteration reads the
+	 * running product back through the shared accumulator reference on
+	 * {@code RepeatedProducerComputation}, so a fixed input isolates that read from the randomness
+	 * of {@link #cumulativeProductInclusive()}.
+	 */
+	@Test(timeout = 60000)
+	public void cumulativeProductFixedValues() {
+		PackedCollection input = pack(2.0, 3.0, 0.5, 4.0, 1.5);
+		PackedCollection result = cumulativeProduct(cp(input), false).get().evaluate();
+
+		double[] expected = { 2.0, 6.0, 3.0, 12.0, 18.0 };
+		Assert.assertEquals(expected.length, result.getShape().getTotalSize());
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals(expected[i], result.valueAt(i));
+		}
+	}
+
+	/**
 	 * Tests that packing a numeric {@link Tensor} produces a collection with the
 	 * tensor's shape and its element values in position order.
 	 */

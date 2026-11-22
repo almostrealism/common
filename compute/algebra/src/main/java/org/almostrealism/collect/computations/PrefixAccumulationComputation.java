@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
@@ -178,11 +177,9 @@ public abstract class PrefixAccumulationComputation extends TraversableRepeatedP
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionVariable output = (CollectionVariable) args[0];
-
-		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
-		Expression currentValue = output.reference(k.multiply(output.length()));
-		return combine(currentValue, factor(args[1], k, localIndex));
+		// TODO(review): verify delta path — master read args[0] (delta's own output), now getOutputVariable()
+		Expression<?> currentValue = getCurrentOutputValue(globalIndex);
+		return combine(currentValue, factor(args[1], kernelIndex(globalIndex), localIndex));
 	}
 
 	/**

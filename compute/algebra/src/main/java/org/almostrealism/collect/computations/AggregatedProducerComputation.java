@@ -18,7 +18,6 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.ComputableProcessContext;
@@ -465,10 +464,8 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionVariable var = (CollectionVariable) args[0];
-
-		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
-		Expression currentValue = var.reference(k.multiply(var.length()));
+		// TODO(review): verify delta path — master read args[0] (delta's own output), now getOutputVariable()
+		Expression<?> currentValue = getCurrentOutputValue(globalIndex);
 		return combine(currentValue, args[1].getValueAt(globalIndex.multiply(count).add(localIndex)));
 	}
 

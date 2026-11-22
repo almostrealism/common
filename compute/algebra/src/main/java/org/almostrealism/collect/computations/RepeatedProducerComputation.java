@@ -308,9 +308,35 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 	 * @return An {@link Expression} representing the destination memory location
 	 */
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset)	{
-		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
 		ArrayVariable<?> out = getOutputVariable();
-		return out.reference(k.multiply(out.length()).add(offset));
+		return out.reference(kernelIndex(globalIndex).multiply(out.length()).add(offset));
+	}
+
+	/**
+	 * Resolves {@code globalIndex} to the {@link KernelIndex} that identifies the output element
+	 * owned by the executing kernel thread. When {@code globalIndex} already is a
+	 * {@link KernelIndex} it is returned unchanged; otherwise a fresh {@link KernelIndex} is
+	 * substituted, so that reads and writes of the output always address the thread's own element
+	 * rather than an arbitrary index that happened to be supplied.
+	 *
+	 * @param globalIndex The index supplied to the loop body
+	 * @return {@code globalIndex} when it is a {@link KernelIndex}, otherwise a new {@link KernelIndex}
+	 */
+	protected Expression<?> kernelIndex(Expression<?> globalIndex) {
+		return globalIndex.isKernelIndex() ? globalIndex : new KernelIndex();
+	}
+
+	/**
+	 * References the current value of the output accumulator element for {@code globalIndex} — the
+	 * same element {@link #getDestination(Expression, Expression, Expression)} writes to with a zero
+	 * offset. Accumulating loop bodies read this to combine the running total with the next term.
+	 *
+	 * @param globalIndex The global index of the output element
+	 * @return An {@link Expression} referencing the current value of the output element
+	 */
+	protected Expression<?> getCurrentOutputValue(Expression<?> globalIndex) {
+		ArrayVariable<?> out = getOutputVariable();
+		return out.reference(kernelIndex(globalIndex).multiply(out.length()));
 	}
 
 	/**
