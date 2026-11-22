@@ -577,6 +577,66 @@ public class IndexSequenceMembershipTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A union holding arbitrary-precision values keeps them exact: a fractional
+	 * {@link BigDecimal} whose {@code double} equals a neighbouring {@link Long} is not
+	 * merged with it, and an integer beyond the {@code long} range is not rounded.
+	 */
+	@Test(timeout = 30000)
+	public void unionKeepsArbitraryPrecisionValues() {
+		BigDecimal fractional = new BigDecimal("9007199254740993.5");
+		IndexSequence decimals = ArrayIndexSequence.of(Double.class, new Number[] { fractional });
+		IndexSequence longs = ArrayIndexSequence.of(Long.class, new Number[] { 9007199254740994L });
+		Assert.assertEquals(fractional.doubleValue(), 9007199254740994.0, 0.0);
+
+		for (IndexSequence union : List.of(decimals.union(longs), longs.union(decimals))) {
+			Assert.assertEquals(2, union.distinctCount());
+			Assert.assertTrue(union.contains(9007199254740994L));
+			Assert.assertFalse(union.contains(9007199254740993L));
+			Assert.assertTrue(union.values().anyMatch(fractional::equals));
+			Assert.assertEquals(9007199254740993L, union.min());
+			Assert.assertEquals(9007199254740994L, union.max());
+		}
+
+		BigInteger above = BigInteger.ONE.shiftLeft(63).add(BigInteger.ONE);
+		IndexSequence big = ArrayIndexSequence.of(Double.class, new Number[] { above, above.add(BigInteger.ONE) });
+		IndexSequence union = big.union(ArrayIndexSequence.of(new int[] { 1 }));
+		Assert.assertEquals(3, union.distinctCount());
+		Assert.assertTrue(union.values().anyMatch(above::equals));
+		Assert.assertTrue(union.values().anyMatch(above.add(BigInteger.ONE)::equals));
+
+		IndexSequence infinite = ArrayIndexSequence.of(Double.class,
+				new Number[] { Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY });
+		IndexSequence ordered = infinite.union(decimals);
+		Assert.assertEquals(3, ordered.distinctCount());
+		Assert.assertEquals(Double.NEGATIVE_INFINITY, ordered.valueAt(0).doubleValue(), 0.0);
+		Assert.assertEquals(fractional, ordered.valueAt(1));
+		Assert.assertEquals(Double.POSITIVE_INFINITY, ordered.valueAt(2).doubleValue(), 0.0);
+	}
+
+	/**
+	 * A union never enumerates a sequence with more distinct values than the other to
+	 * test whether the smaller one contains it, and a union too large to enumerate fails
+	 * instead of running for an unbounded time.
+	 */
+	@Test(timeout = 30000)
+	public void unionOfHugeDomainIsNotEnumerated() {
+		ArithmeticIndexSequence wrapping = new ArithmeticIndexSequence(
+				Long.MAX_VALUE, 1, 1, Long.MAX_VALUE, Long.MAX_VALUE);
+		ArithmeticIndexSequence plain = ArithmeticIndexSequence.range(Long.MAX_VALUE);
+		IndexSequence inside = ArrayIndexSequence.of(new int[] { 3 });
+		IndexSequence outside = ArrayIndexSequence.of(new int[] { -1 });
+
+		Assert.assertSame(plain, plain.union(inside));
+		Assert.assertSame(plain, inside.union(plain));
+		Assert.assertSame(wrapping, wrapping.union(ArrayIndexSequence.of(Long.class, new Number[] { Long.MIN_VALUE })));
+
+		for (ArithmeticIndexSequence huge : List.of(wrapping, plain)) {
+			assertFails(UnsupportedOperationException.class, () -> huge.union(outside));
+			assertFails(UnsupportedOperationException.class, () -> outside.union(huge));
+		}
+	}
+
+	/**
 	 * Returns the set of values a sequence takes over all of its positions.
 	 */
 	private Set<Long> positionValues(IndexSequence seq) {

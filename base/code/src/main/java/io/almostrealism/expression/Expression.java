@@ -510,6 +510,7 @@ public abstract class Expression<T> implements
 		for (Expression<?> e : getChildren()) {
 			Optional<IndexSequence> o = e.getIndexOptions(index);
 			if (o.isEmpty()) return Optional.empty();
+			if (o.get().distinctCount() >= ScopeSettings.indexOptionLimit) return Optional.empty();
 
 			options = options.union(o.get());
 			if (options.distinctCount() >= ScopeSettings.indexOptionLimit) return Optional.empty();

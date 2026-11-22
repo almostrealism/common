@@ -372,19 +372,34 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * Returns a sequence whose values are the values of this sequence together with the
 	 * values of the other, each value once. When either sequence already contains every
 	 * value of the other, that sequence is returned as it is, so nested domains are shared
-	 * rather than copied; otherwise the values of both are enumerated, in ascending
-	 * order, each value that is {@link #isLongValue(Number) exactly a long} as a
-	 * {@link Long} and any other value as a {@link Double}, so that no value is truncated
-	 * or saturated into the {@code long} range and distinct large integers are not merged
-	 * through {@code double}. A union holding any non-integral value has the type
-	 * {@link Double}.
+	 * rather than copied. A sequence is never tested as the container of one with more
+	 * {@link #distinctCount() distinct values}, which it cannot contain, so that a small
+	 * sequence never enumerates a large one to find that out.
+	 *
+	 * <p>Otherwise the values of both are enumerated, in ascending order, each value that
+	 * is {@link #isLongValue(Number) exactly a long} as a {@link Long}, a
+	 * {@link BigDecimal} or {@link BigInteger} as it is, and any other value as a
+	 * {@link Double}, so that no value is truncated or saturated into the {@code long}
+	 * range, no arbitrary-precision value is rounded, and distinct large integers are not
+	 * merged through {@code double}. A union holding any non-integral value has the type
+	 * {@link Double}.</p>
 	 *
 	 * @param other the sequence whose values are added
 	 * @return a sequence taking exactly the values of both sequences
+	 * @throws UnsupportedOperationException if neither sequence contains the other and
+	 *         together they have more distinct values than an array can hold
 	 */
 	default IndexSequence union(IndexSequence other) {
-		if (containsAll(other)) return this;
-		if (other.containsAll(this)) return other;
+		long count = distinctCount();
+		long otherCount = other.distinctCount();
+		if (count >= otherCount && containsAll(other)) return this;
+		if (otherCount >= count && other.containsAll(this)) return other;
+
+		long capacity = Integer.MAX_VALUE - 8;
+		if (count > capacity - otherCount) {
+			throw new UnsupportedOperationException("Union of " + count + " and "
+					+ otherCount + " distinct values is too large to enumerate");
+		}
 
 		boolean integral = Stream.concat(values(), other.values())
 				.allMatch(IndexSequence::isLongValue);
@@ -397,7 +412,8 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 
 		TreeSet<Number> exact = new TreeSet<>(IndexSequence::compareExact);
 		Stream.concat(values(), other.values())
-				.map(v -> isLongValue(v) ? (Number) v.longValue() : (Number) v.doubleValue())
+				.map(v -> isLongValue(v) ? (Number) v.longValue()
+						: isArbitraryPrecision(v) ? v : (Number) v.doubleValue())
 				.forEach(exact::add);
 		return ArrayIndexSequence.of(Double.class, exact.toArray(new Number[0]));
 	}
@@ -406,7 +422,9 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * Compares two values exactly, so that distinct integers beyond the range in which a
 	 * {@code double} represents every integer are never treated as equal. Two values that
 	 * are both {@link #isLongValue(Number) exactly a long} are compared as {@code long}s;
-	 * a non-finite value is compared as a {@code double}; any other pair is compared as
+	 * two floating-point values are compared as {@code double}s; a non-finite
+	 * floating-point value is ordered as a {@code double} against every finite one; any
+	 * other pair, including any {@link BigDecimal} or {@link BigInteger}, is compared as
 	 * exact decimal values.
 	 *
 	 * @param a the first value
@@ -419,25 +437,44 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 			return Long.compare(a.longValue(), b.longValue());
 		}
 
-		if (!isExactLong(a) && !isExactLong(b)) {
+		boolean exactA = isExactLong(a) || isArbitraryPrecision(a);
+		boolean exactB = isExactLong(b) || isArbitraryPrecision(b);
+		if (!exactA && !exactB) {
 			return Double.compare(a.doubleValue(), b.doubleValue());
 		}
 
-		if (!Double.isFinite(a.doubleValue()) || !Double.isFinite(b.doubleValue())) {
-			return Double.compare(a.doubleValue(), b.doubleValue());
-		}
-
-		return toExactDecimal(a).compareTo(toExactDecimal(b));
+		BigDecimal x = toExactDecimal(a);
+		BigDecimal y = toExactDecimal(b);
+		if (x == null) return Double.compare(a.doubleValue(), 0.0);
+		if (y == null) return Double.compare(0.0, b.doubleValue());
+		return x.compareTo(y);
 	}
 
 	/**
-	 * Returns the exact decimal value of a finite number.
+	 * Returns whether the value is a {@link BigDecimal} or {@link BigInteger}, whose
+	 * value a {@code double} may not represent exactly.
 	 *
-	 * @param value the value, which must be finite
-	 * @return {@code value} as a {@link BigDecimal}, without rounding
+	 * @param value the value to test
+	 * @return {@code true} if {@code value} has arbitrary precision
+	 */
+	private static boolean isArbitraryPrecision(Number value) {
+		return value instanceof BigDecimal || value instanceof BigInteger;
+	}
+
+	/**
+	 * Returns the exact decimal value of a number, or {@code null} for a non-finite
+	 * floating-point value, which has none.
+	 *
+	 * @param value the value
+	 * @return {@code value} as a {@link BigDecimal} without rounding, or {@code null}
 	 */
 	private static BigDecimal toExactDecimal(Number value) {
-		return isLongValue(value) ? BigDecimal.valueOf(value.longValue()) : new BigDecimal(value.doubleValue());
+		if (value instanceof BigDecimal) return (BigDecimal) value;
+		if (value instanceof BigInteger) return new BigDecimal((BigInteger) value);
+		if (isLongValue(value)) return BigDecimal.valueOf(value.longValue());
+
+		double d = value.doubleValue();
+		return Double.isFinite(d) ? new BigDecimal(d) : null;
 	}
 
 	/**
