@@ -148,6 +148,31 @@ class DetectProtectedFileChangesTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual({"SENSITIVE_FILE_PROTECTION_ENABLED": "false"}, self.grants())
 
+    def test_a_list_at_the_compare_cap_warns_that_a_grant_may_be_missed(self):
+        # The compare API lists at most 300 changed files. A list that reaches
+        # the cap may be truncated, so a protected file past it would go
+        # ungranted. The grant still fires for the files that are listed, and a
+        # warning makes the possible under-grant visible in the log.
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("SENSITIVE_FILE_PROTECTION_ENABLED",
+                            "BYPASS_AGENT_PERMISSION_PROMPTS")}
+        env.update(PATH=self.dir.name + os.pathsep + env.get("PATH", ""),
+                   BRANCH="qa/x", BASE_BRANCH="master",
+                   GITHUB_REPOSITORY="almostrealism/common",
+                   GITHUB_ENV=self.github_env, FAKE_HUGE="400")
+        result = subprocess.run(["bash", _SCRIPT], env=env,
+                                capture_output=True, text=True, timeout=120)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual({"SENSITIVE_FILE_PROTECTION_ENABLED": "false"}, self.grants())
+        self.assertIn("::warning::", result.stdout)
+        self.assertIn("caps the changed-file list at 300", result.stdout)
+
+    def test_a_short_list_does_not_warn_about_the_compare_cap(self):
+        # Below the cap there is no truncation to warn about.
+        result = self.run_detect(["tools/ci/foo.sh", "src/main/java/Foo.java"])
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("::warning::", result.stdout)
+
     def test_a_later_page_without_a_file_list_still_grants(self):
         # Regression: a branch with more than one page of commits gets later
         # compare pages that carry no file list. The filter must read those as

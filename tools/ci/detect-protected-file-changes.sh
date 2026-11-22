@@ -71,13 +71,27 @@ CLAUDE_FILE_PATTERN='^\.claude/'
 # with more than 100 commits yields later pages without a file list. The filter
 # treats a missing list as empty; `.files[]` alone would fail on those pages and
 # withhold the grant from every long branch.
-# TODO(review): the compare API returns at most 300 files, so a protected file past that cap goes ungranted (fail-safe, but silent).
 if ! CHANGED=$(gh api --paginate \
         "repos/${GITHUB_REPOSITORY}/compare/${BASE_BRANCH}...${HEAD_REF}" \
         --jq '(.files // [])[].filename' 2>&1); then
     echo "::error::Could not list the files ${BRANCH} changes relative to ${BASE_BRANCH}; withholding the sensitive-file grant"
     echo "$CHANGED" >&2
     exit 1
+fi
+
+# The compare API lists at most 300 changed files, so on a branch that changes
+# more than that, a protected file past the cap is absent from this list and its
+# grant is never emitted. That fails safe — the job keeps the default
+# protections — but it would be invisible, so warn when the list reaches the cap
+# and the under-grant becomes possible. A reader who sees a remediation job
+# blocked on a protected file it can't edit then has the reason in the log.
+if [ -n "$CHANGED" ]; then
+    CHANGED_COUNT=$(grep -c '' <<< "$CHANGED")
+else
+    CHANGED_COUNT=0
+fi
+if [ "$CHANGED_COUNT" -ge 300 ]; then
+    echo "::warning::${BRANCH} changes ${CHANGED_COUNT} files; the compare API caps the changed-file list at 300, so a protected file past the cap is not listed here and keeps the default protections — if a remediation job cannot edit a protected file it changed, this cap is why"
 fi
 
 emit() {
