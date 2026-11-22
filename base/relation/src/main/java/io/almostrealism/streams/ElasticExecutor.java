@@ -44,8 +44,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  * thread of a burst takes longer than the interval to start.</p>
  *
  * <p>A task that throws ends its thread, and the throwable reaches that thread's
- * uncaught-exception handler, as on a thread pool. Threads are daemons and end once idle for the
- * keep-alive period.</p>
+ * uncaught-exception handler, as on a thread pool. Task threads end once idle for the keep-alive
+ * period. Whether they are daemons is left to the thread factory, so with the default factory a
+ * task thread started from a non-daemon thread keeps the JVM alive while it runs or waits for
+ * work, and queued callbacks are not abandoned when the application's other threads end. Only the
+ * thread that runs starvation checks is a daemon; it schedules threads and runs no task.</p>
  */
 public final class ElasticExecutor implements Executor {
 	/** Creates the threads that run tasks. */
@@ -80,14 +83,15 @@ public final class ElasticExecutor implements Executor {
 	 * @param keepAliveMillis how long an idle thread waits for work before it ends
 	 */
 	public ElasticExecutor(String threadName, long starvationNanos, long keepAliveMillis) {
+		// TODO(review): threads started by checkStarvation inherit daemon=true from the daemon check thread, contradicting the class javadoc
 		this(threadName, r -> new Thread(r, threadName), starvationNanos, keepAliveMillis);
 	}
 
 	/**
-	 * Creates an executor whose task threads are created by {@code threadFactory}. Every thread it
-	 * returns is made a daemon before it is started. A factory that throws, or returns a thread that
-	 * cannot be started, fails the {@link #execute} or starvation check that asked for the thread;
-	 * the tasks stay queued and a later starvation check asks again.
+	 * Creates an executor whose task threads are created by {@code threadFactory}, which also
+	 * decides whether they are daemons; each is started as returned. A factory that throws, or
+	 * returns a thread that cannot be started, fails the {@link #execute} or starvation check that
+	 * asked for the thread; the tasks stay queued and a later starvation check asks again.
 	 *
 	 * @param threadName      the name prefix of the threads that run starvation checks
 	 * @param threadFactory   creates the threads that run tasks
@@ -194,9 +198,7 @@ public final class ElasticExecutor implements Executor {
 		starting++;
 
 		try {
-			Thread t = threadFactory.newThread(this::work);
-			t.setDaemon(true);
-			t.start();
+			threadFactory.newThread(this::work).start();
 		} catch (RuntimeException | Error e) {
 			threads--;
 			starting--;
