@@ -242,7 +242,7 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		Expression<?> currentValue = getCurrentOutputValue(globalIndex);
+		Expression<?> currentValue = getCurrentOutputValue(getOutputVariable(), globalIndex);
 
 		Expression<?> position = segments.start(rowOf(globalIndex)).add(localIndex);
 		Expression<?> column = segments.offset(position);

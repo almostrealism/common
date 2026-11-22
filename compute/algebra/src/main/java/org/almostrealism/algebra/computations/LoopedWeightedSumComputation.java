@@ -255,7 +255,7 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		Expression<?> currentValue = getCurrentOutputValue(globalIndex);
+		Expression<?> currentValue = getCurrentOutputValue(getOutputVariable(), globalIndex);
 		return combine(currentValue, computeInnerSum(args, globalIndex, localIndex));
 	}
 
