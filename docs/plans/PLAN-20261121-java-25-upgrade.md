@@ -106,7 +106,9 @@ changed". Expected trouble, in the order it is likely to appear:
   called from `NativeCompiler`, `CU` and `MTL` (the other matches in the tree
   are Javadoc). Java 25 warns on native access that has not been enabled and is
   moving toward refusing it. The test and run configurations need the
-  enable-native-access option; none sets it today.
+  enable-native-access option; none sets it today. `MTL` is the Metal backend
+  that runs on the Apple Silicon hosts, so this is not an x86-only concern — the
+  macOS lanes load native code too, and Phase 2 carries the configuration work.
 - **Module flags.** The root `pom.xml` passes both flags to the compiler
   plugin: `--add-exports` for eight `jdk.compiler` packages and `--add-opens`
   for two more. Each must be rechecked against Java 25's stricter encapsulation.
@@ -134,6 +136,12 @@ the owner.
   could not test.
 - Raise the dependencies that Phase 1 shows failing, and the ones that are old
   enough to carry known vulnerabilities regardless of Java (next section).
+- Add the enable-native-access option Phase 1 identified. The tests run under
+  the root `pom.xml`'s `maven-surefire-plugin`, which sets no `argLine` today,
+  so the test JVM gets it there; the run configurations need it wherever their
+  own JVM options live. Without this, the native backends that `System.load`
+  drives (`NativeCompiler`, `CU`, `MTL`) move from warning to refusal as Java 25
+  tightens, and the failure is on the macOS lanes as much as the Linux ones.
 
 ## Phase 3 — CI and images (one `ci/...` branch)
 
@@ -278,6 +286,11 @@ inspected.
 - **How long the overlap lasts.** It ends when no open pull request still
   expects 17. With a long-lived open pull request the cost of either option
   above grows, so a cut-off (rebase or close) may be needed.
+- **How native access is granted** (Phase 2). `--enable-native-access` takes a
+  module, or `ALL-UNNAMED` for code on the classpath, which is where everything
+  here loads from. The choice between granting it broadly and naming only the
+  modules that load native code, and between setting it in the committed build
+  (the surefire `argLine`) versus a launch-time option, is the owner's.
 
 ## Not verified
 
