@@ -253,7 +253,9 @@ work split into several small pull requests multiplies its runner cost. `pr-gate
   denied with a reminder naming it: commit to the open branch unless the change truly must
   be reviewed separately. The identical call repeated within ten minutes goes through and
   is appended to `.claude/pr-gate-overrides.local.json` for the developer.
-- `bash` (PreToolUse on Bash) denies `gh pr create`, which would bypass the gate.
+- `bash` (PreToolUse on Bash) denies `gh pr create`, which would bypass the gate — including
+  quoted, escaped, or dynamically-expanded spellings the shell still runs as `gh pr create`
+  but the gate cannot prove are something else.
 
 State is kept in `.claude/pr-gate.local.json`; both files are git-ignored.
 

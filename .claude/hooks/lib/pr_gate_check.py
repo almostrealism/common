@@ -19,8 +19,10 @@ It is invoked by ``.claude/hooks/pr-gate.sh`` in three modes:
            the first attempt with a reminder naming it; the identical call
            repeated within ``CONFIRM_SECONDS`` goes through and is written to
            the override ledger.
-  bash     PreToolUse on Bash. Denies ``gh pr create``, which would bypass
-           the gate, and points at ``github_create_pr``.
+  bash     PreToolUse on Bash. Denies ``gh pr create`` -- including quoted,
+           escaped, or dynamically-expanded spellings it cannot prove are
+           something else -- which would bypass the gate, and points at
+           ``github_create_pr``.
 
 The decision functions are pure (state in, state out); ``main`` owns the
 files. State lives in ``.claude/pr-gate.local.json`` and the override ledger
@@ -170,24 +172,66 @@ def gate(state, tool_input, now, head=None):
                 "developer."), new_state, None
 
 
+def is_dynamic_token(token):
+    """Returns True when a shell token carries an unresolved expansion (``$`` or backtick)."""
+    return "$" in token or "`" in token
+
+
+def subcommand_is_dynamic(tokens):
+    """Returns True when a ``gh`` command builds its subcommand from a shell expansion.
+
+    ``gh pr "$sub"``, ``gh $cmd`` and ``gh "$sub" create`` all run as ``gh pr create`` for
+    the right expansion, yet no literal ``pr create`` appears for the regex to catch. The
+    gate cannot expand them, so it denies a ``gh`` command whose subcommand -- or, after
+    ``pr``, whose sub-subcommand -- is a dynamic token. Leading global options (and the
+    value of ``-R``/``--repo``) are skipped so the real subcommand is the token examined.
+    """
+    if "gh" not in tokens:
+        return False
+    rest = tokens[tokens.index("gh") + 1:]
+    index = 0
+    while index < len(rest) and rest[index].startswith("-"):
+        flag = rest[index]
+        index += 1
+        if flag in ("-R", "--repo") and index < len(rest):
+            index += 1
+    if index >= len(rest):
+        return False
+    if is_dynamic_token(rest[index]):
+        return True
+    if rest[index] != "pr":
+        return False
+    index += 1
+    while index < len(rest) and rest[index].startswith("-"):
+        index += 1
+    return index < len(rest) and is_dynamic_token(rest[index])
+
+
 def bash(command):
     """Decides a Bash command: ``gh pr create`` is denied because it would bypass the gate.
 
     The command is matched both as written and after shell-aware tokenization, so
     that quoted or escaped spellings the shell still runs as ``gh pr create`` --
     ``gh "pr" create``, ``gh pr cre'ate'`` -- do not slip past a match on the raw
-    text. A command that mentions ``gh`` but cannot be tokenized (unbalanced
-    quotes) fails closed: the gate cannot prove it is safe, so it denies it.
+    text. A ``gh`` command that builds its subcommand from a shell expansion
+    (``gh pr "$sub"``, ``gh $cmd``) is denied too: the gate cannot expand it, so it
+    cannot prove it is not ``gh pr create``. A command that mentions ``gh`` but
+    cannot be tokenized (unbalanced quotes) fails closed for the same reason.
     """
     command = command or ""
     joined = command.replace("\\\n", "")  # the shell removes a backslash-newline line continuation
     try:
-        normalized = " ".join(shlex.split(joined))
+        tokens = shlex.split(joined)
     except ValueError:
-        normalized = None
+        tokens = None
+    normalized = " ".join(tokens) if tokens is not None else None
     if GH_PR_CREATE.search(joined) or (normalized is not None and GH_PR_CREATE.search(normalized)):
         return deny("Open pull requests with github_create_pr, not gh pr create, so the pull request "
                     "gate can check the repository's open pull requests first.")
+    if tokens is not None and subcommand_is_dynamic(tokens):
+        return deny("This gh command builds its subcommand from a shell expansion, so the pull request "
+                    "gate cannot confirm it is not gh pr create. Open pull requests with "
+                    "github_create_pr instead.")
     if normalized is None and GH_COMMAND.search(command):
         return deny("This gh command could not be parsed, so the pull request gate cannot confirm it "
                     "is not gh pr create. Open pull requests with github_create_pr instead.")
@@ -195,12 +239,7 @@ def bash(command):
 
 
 def current_branch(project_dir):
-    """Returns the current checkout's branch from ``.git/HEAD``, or "" when unavailable.
-
-    This is the branch ar-manager defaults ``head`` to when ``github_create_pr`` is
-    called without one, so the gate resolves it the same way to avoid mistaking the
-    call's own branch for a different-branch pull request.
-    """
+    """Returns the current checkout's branch from ``.git/HEAD``, or "" when unavailable."""
     try:
         with open(os.path.join(project_dir, ".git", "HEAD"), "r", encoding="utf-8") as f:
             ref = f.read().strip()
@@ -208,6 +247,26 @@ def current_branch(project_dir):
         return ""
     prefix = "ref: refs/heads/"
     return ref[len(prefix):] if ref.startswith(prefix) else ""
+
+
+def resolve_head(tool_input, project_dir):
+    """Returns the effective head branch github_create_pr will use for this call.
+
+    When the call passes ``head``, that is the head. When it omits one, the server default
+    depends on the addressing: a workstream/token-context call defaults to the workstream's
+    default branch, which for an agent session is the current checkout, so the gate reads it
+    from ``.git/HEAD``; a direct ``org``/``repo`` call defaults to the remote repository's
+    default branch, which the gate cannot determine locally, so it leaves the head
+    unresolved ("") and lets the confirmation path handle the ambiguity rather than guess.
+    """
+    head = (tool_input.get("head") or "").strip()
+    if head:
+        return head
+    org = (tool_input.get("org") or "").strip()
+    repo = (tool_input.get("repo") or "").strip()
+    if org and repo:
+        return ""
+    return current_branch(project_dir)
 
 
 def load(path, default):
@@ -247,7 +306,7 @@ def main(mode):
         decision = bash(tool_input.get("command", ""))
     elif mode == "gate":
         state = load(state_path, {})
-        head = (tool_input.get("head") or "").strip() or current_branch(project_dir)
+        head = resolve_head(tool_input, project_dir)
         decision, new_state, override = gate(state, tool_input, now, head)
         if new_state is not state:
             save(state_path, new_state)

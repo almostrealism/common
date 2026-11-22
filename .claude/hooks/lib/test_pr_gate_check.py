@@ -154,6 +154,20 @@ class BashTest(unittest.TestCase):
                         'gh pr create --body "a b"', "gh \\\npr create"):
             self.assertEqual("deny", core.bash(command)["action"], command)
 
+    def test_dynamic_subcommand_is_denied(self):
+        # The subcommand (or, after `pr`, the sub-subcommand) is built from a shell
+        # expansion the gate cannot resolve, so `gh pr create` may be what runs.
+        for command in ('sub=create; gh pr "$sub"', "gh pr $sub", "gh pr ${sub}",
+                        "gh pr $(echo create)", "gh $cmd", 'gh "$sub" create',
+                        "gh -R acme/app pr `echo create`"):
+            self.assertEqual("deny", core.bash(command)["action"], command)
+
+    def test_dynamic_argument_to_safe_gh_subcommand_is_allowed(self):
+        # An expansion in an argument of an already-safe subcommand is not a
+        # subcommand, so it must not be blocked.
+        for command in ('gh pr view "$num"', "gh pr list --jq '$.title'", 'gh api "$url"'):
+            self.assertEqual("allow", core.bash(command)["action"], command)
+
     def test_unparseable_gh_command_fails_closed(self):
         # Unbalanced quotes: the gate cannot tokenize it to prove it is safe.
         decision = core.bash('gh pr create --title "unterminated')
@@ -187,6 +201,30 @@ class CurrentBranchTest(unittest.TestCase):
     def test_missing_git_dir_is_empty(self):
         with tempfile.TemporaryDirectory() as project:
             self.assertEqual("", core.current_branch(project))
+
+
+class ResolveHeadTest(unittest.TestCase):
+
+    def test_explicit_head_is_returned(self):
+        self.assertEqual("fix/two", core.resolve_head({"head": "fix/two"}, "/nonexistent"))
+
+    def test_direct_org_repo_without_head_is_unresolved(self):
+        # github_create_pr with explicit org/repo defaults head to the REMOTE repo
+        # default branch, which the gate cannot read locally, so it stays "".
+        with tempfile.TemporaryDirectory() as project:
+            os.mkdir(os.path.join(project, ".git"))
+            with open(os.path.join(project, ".git", "HEAD"), "w", encoding="utf-8") as f:
+                f.write("ref: refs/heads/feature\n")
+            self.assertEqual("", core.resolve_head({"org": "acme", "repo": "app"}, project))
+
+    def test_workstream_without_head_resolves_to_current_branch(self):
+        # A workstream/token-context call defaults head to the workstream default
+        # branch, which for an agent session is the current checkout.
+        with tempfile.TemporaryDirectory() as project:
+            os.mkdir(os.path.join(project, ".git"))
+            with open(os.path.join(project, ".git", "HEAD"), "w", encoding="utf-8") as f:
+                f.write("ref: refs/heads/feature\n")
+            self.assertEqual("feature", core.resolve_head({"workstream_id": "ws-7"}, project))
 
 
 class RegistrationTest(unittest.TestCase):
