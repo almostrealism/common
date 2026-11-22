@@ -19,6 +19,7 @@ package org.almostrealism.studio.optimize.test;
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.audio.line.OutputLine;
 import org.almostrealism.audio.notes.NoteAudioProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
@@ -28,6 +29,7 @@ import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.optimize.PopulationOptimizer;
 import org.almostrealism.studio.arrange.EfxManager;
 import org.almostrealism.studio.arrange.MixdownManager;
+import org.almostrealism.studio.health.HealthComputationAdapter;
 import org.almostrealism.studio.health.SilenceDurationHealthComputation;
 import org.almostrealism.studio.health.StableDurationHealthComputation;
 import org.almostrealism.studio.optimize.AudioPopulationOptimizer;
@@ -110,6 +112,12 @@ public class AudioSceneOptimizerConfigTest extends TestSuiteBase {
 	private boolean nativeContextVerbose;
 	/** Saved {@code StableDurationHealthComputation.profile}, also the profile assigned to the hardware. */
 	private OperationProfile healthProfile;
+	/** Saved {@code AudioSceneOptimizer.enableShort}, the flag that gates the short-duration override. */
+	private boolean shortMode;
+	/** Saved {@code HealthComputationAdapter.standardDurationSeconds}. */
+	private int standardDurationSeconds;
+	/** Saved {@code HealthComputationAdapter.standardDurationFrames}. */
+	private int standardDurationFrames;
 
 	/** Captures all global flags the methods under test mutate. */
 	@Before
@@ -144,6 +152,9 @@ public class AudioSceneOptimizerConfigTest extends TestSuiteBase {
 		waveOutputVerbose = WaveOutput.enableVerbose;
 		nativeContextVerbose = NativeComputeContext.enableVerbose;
 		healthProfile = StableDurationHealthComputation.profile;
+		shortMode = AudioSceneOptimizer.enableShort;
+		standardDurationSeconds = HealthComputationAdapter.standardDurationSeconds;
+		standardDurationFrames = HealthComputationAdapter.standardDurationFrames;
 	}
 
 	/** Restores all captured global flags. */
@@ -180,6 +191,9 @@ public class AudioSceneOptimizerConfigTest extends TestSuiteBase {
 		NativeComputeContext.enableVerbose = nativeContextVerbose;
 		StableDurationHealthComputation.profile = healthProfile;
 		Hardware.getLocalHardware().assignProfile(healthProfile);
+		AudioSceneOptimizer.enableShort = shortMode;
+		HealthComputationAdapter.standardDurationSeconds = standardDurationSeconds;
+		HealthComputationAdapter.standardDurationFrames = standardDurationFrames;
 	}
 
 	/** The full feature level (7) enables every processing stage, up to and including reverb. */
@@ -341,5 +355,28 @@ public class AudioSceneOptimizerConfigTest extends TestSuiteBase {
 		Assert.assertTrue("hardware verbose logging enables above verbosity 2", Hardware.enableVerbose);
 		Assert.assertTrue("pattern system logging enables above verbosity 2",
 				PatternSystemManager.enableVerbose);
+	}
+
+	/**
+	 * With short mode enabled, {@code setFeatureLevel} collapses the process-global standard
+	 * evaluation duration to sixteen seconds (the fast-iteration setting used by benchmark and
+	 * short optimization runs); with short mode off it leaves the duration untouched. This pins the
+	 * only branch in {@code setFeatureLevel} that reaches outside the mixdown/pattern flags, and the
+	 * fixture restores both {@code enableShort} and the duration globals so the change does not leak.
+	 */
+	@Test(timeout = 60000)
+	public void shortModeFeatureLevelCollapsesStandardDuration() {
+		AudioSceneOptimizer.enableShort = false;
+		HealthComputationAdapter.setStandardDuration(230);
+		AudioSceneOptimizer.setFeatureLevel(3);
+		Assert.assertEquals("short mode off leaves the standard duration unchanged",
+				230, HealthComputationAdapter.standardDurationSeconds);
+
+		AudioSceneOptimizer.enableShort = true;
+		AudioSceneOptimizer.setFeatureLevel(3);
+		Assert.assertEquals("short mode shortens the standard duration to sixteen seconds",
+				16, HealthComputationAdapter.standardDurationSeconds);
+		Assert.assertEquals("standard frame count tracks the shortened duration",
+				16 * OutputLine.sampleRate, HealthComputationAdapter.standardDurationFrames);
 	}
 }
