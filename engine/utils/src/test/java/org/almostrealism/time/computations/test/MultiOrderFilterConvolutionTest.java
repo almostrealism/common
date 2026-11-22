@@ -128,11 +128,8 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 		int filterOrder = 20;
 		int sampleRate = 44100;
 
-		PackedCollection signal = new PackedCollection(signalSize);
-		sin(integers(0, signalSize).multiply(2.0 * Math.PI / 16.0))
-				.add(sin(integers(0, signalSize).multiply(2.0 * Math.PI / 4.0)).multiply(0.5))
-				.into(signal.traverseEach()).evaluate();
-		PackedCollection cutoffs = integers(0, signalSize).multiply(40.0).add(200.0).evaluate();
+		PackedCollection signal = twoToneSignal(signalSize);
+		PackedCollection cutoffs = rampCutoffs(signalSize);
 
 		PackedCollection result = lowPass(
 				traverseEach(cp(signal)), cp(cutoffs), sampleRate, filterOrder).get().evaluate();
@@ -151,11 +148,8 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 		int filterOrder = 20;
 		int sampleRate = 44100;
 
-		PackedCollection signal = new PackedCollection(signalSize);
-		sin(integers(0, signalSize).multiply(2.0 * Math.PI / 16.0))
-				.add(sin(integers(0, signalSize).multiply(2.0 * Math.PI / 4.0)).multiply(0.5))
-				.into(signal.traverseEach()).evaluate();
-		PackedCollection cutoffs = integers(0, signalSize).multiply(40.0).add(200.0).evaluate();
+		PackedCollection signal = twoToneSignal(signalSize);
+		PackedCollection cutoffs = rampCutoffs(signalSize);
 
 		PackedCollection bank = lowPassCoefficients(cp(cutoffs), sampleRate, filterOrder)
 				.evaluate().reshape(shape(signalSize, filterOrder + 1));
@@ -163,6 +157,31 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 		PackedCollection result = filter.get().evaluate();
 
 		assertPerSampleLowPass(signal, cutoffs, result, sampleRate, filterOrder);
+	}
+
+	/**
+	 * A test signal mixing a period-16 sine with a half-amplitude period-4 sine, so a
+	 * low-pass with a moving cutoff visibly changes how much of the upper tone survives.
+	 *
+	 * @param signalSize number of samples
+	 * @return the signal, shape {@code [signalSize]}
+	 */
+	private PackedCollection twoToneSignal(int signalSize) {
+		PackedCollection signal = new PackedCollection(signalSize);
+		sin(integers(0, signalSize).multiply(2.0 * Math.PI / 16.0))
+				.add(sin(integers(0, signalSize).multiply(2.0 * Math.PI / 4.0)).multiply(0.5))
+				.into(signal.traverseEach()).evaluate();
+		return signal;
+	}
+
+	/**
+	 * A per-sample cutoff curve rising linearly from 200 Hz by 40 Hz per sample.
+	 *
+	 * @param signalSize number of samples
+	 * @return the cutoffs in Hz, shape {@code [signalSize]}
+	 */
+	private PackedCollection rampCutoffs(int signalSize) {
+		return integers(0, signalSize).multiply(40.0).add(200.0).evaluate();
 	}
 
 	/**
