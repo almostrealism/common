@@ -51,6 +51,21 @@ docker compose down
 docker compose up -d --build --scale runner=5
 ```
 
+## The `ar-build` label
+
+Every runner in this fleet registers with `ar-ci,ar-build` (see
+`docker-compose.yml`). `ar-ci` takes the CPU test lane (`test`); `ar-build` lets
+the FlowTree controller send the bounded `build` job here when one of these
+runners is idle, so a machine already up for tests also takes jar builds instead
+of sitting idle, and `build` falls back to a GitHub-hosted runner when no fleet
+is free. `build` produces only jars, so it needs no GPU and no particular
+architecture, and it is bounded, so sharing the fleet with the test lane costs at
+most a short queue. The runners are ephemeral and re-register on every job, so
+this committed label is the only durable place for it — a label added through the
+GitHub UI would not persist. See "Controller-driven build-runner selection" in
+[`../../../.github/CLAUDE.md`](../../../.github/CLAUDE.md) for how the controller
+chooses the runner.
+
 ## How It Works
 
 Each runner container:

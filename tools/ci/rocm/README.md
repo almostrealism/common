@@ -68,6 +68,16 @@ carries `ar-ci` and serves `test`; sharing the label would pull
 general CPU test jobs onto this machine and put the CL lane behind an unrelated
 queue.
 
+Each runner also carries `ar-build` (`RUNNER_LABELS=ar-ci-cl,ar-build` in
+`ar-ci-cl-runner@.container`). Unlike `ar-ci`, that does not pull a long test
+lane onto this host: the FlowTree controller sends the bounded `build` job here
+only when a CL runner is idle, keeping the machine busy between CL jobs, and
+`build` produces only jars and falls back to a GitHub-hosted runner when no fleet
+is free. The runners are ephemeral and re-register on every job, so this
+committed label is the only durable place for it. See "Controller-driven
+build-runner selection" in
+[`../../../.github/CLAUDE.md`](../../../.github/CLAUDE.md).
+
 ## What This Image Is Not
 
 It ships the ICD loader and an ICD entry, but **no ROCm userspace**. The host's
