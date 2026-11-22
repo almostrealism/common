@@ -25,7 +25,9 @@ import org.junit.Test;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 
 /**
@@ -279,5 +281,69 @@ public class SemaphoreThenTest extends TestSuiteBase {
 
 		assertTrue("The interrupt status must be restored after a failure", Thread.interrupted());
 		assertSame(failure, thrown);
+	}
+
+	/**
+	 * {@link Semaphore#waitForUninterruptibly()} on a chained semaphore waits through interrupts
+	 * for the completion its work started even when that completion's interrupted
+	 * {@link Semaphore#waitFor()} throws rather than returning early, as a Metal completion's
+	 * does. Repeating the chained semaphore's own {@link Semaphore#waitFor()} would end the wait
+	 * with that exception before the work had finished.
+	 */
+	@Test(timeout = 30000)
+	public void waitForUninterruptiblyWaitsThroughThrowingCompletion() throws InterruptedException {
+		LatchSemaphore pending = new LatchSemaphore(1);
+		Semaphore throwingCompletion = new Semaphore() {
+			@Override
+			public void waitFor() {
+				pending.waitFor();
+				if (Thread.currentThread().isInterrupted()) {
+					throw new IllegalStateException("Interrupted before the work was known to be done");
+				}
+			}
+
+			@Override
+			public void waitForUninterruptibly() {
+				pending.waitForUninterruptibly();
+			}
+		};
+
+		LatchSemaphore dependency = new LatchSemaphore(1);
+		dependency.countDown();
+		Semaphore chained = dependency.then(() -> throwingCompletion);
+
+		AtomicBoolean released = new AtomicBoolean(false);
+		AtomicBoolean completedFirst = new AtomicBoolean(false);
+		AtomicBoolean interruptKept = new AtomicBoolean(false);
+		AtomicReference<Throwable> waitFailure = new AtomicReference<>();
+
+		Thread waiter = new Thread(() -> {
+			Thread.currentThread().interrupt();
+
+			try {
+				chained.waitForUninterruptibly();
+				completedFirst.set(released.get());
+			} catch (Throwable t) {
+				waitFailure.set(t);
+			}
+
+			interruptKept.set(Thread.currentThread().isInterrupted());
+		}, "SemaphoreThenTest chained uninterruptible waiter");
+
+		waiter.start();
+		waiter.join(200);
+		assertTrue("An interrupt pending on entry must not end the wait", waiter.isAlive());
+		waiter.interrupt();
+		waiter.join(200);
+		assertTrue("An interrupt arriving during the wait must not end it", waiter.isAlive());
+
+		released.set(true);
+		pending.countDown();
+		waiter.join(10000);
+
+		assertFalse(waiter.isAlive());
+		assertNull("The wait must not end with the completion's interrupt exception", waitFailure.get());
+		assertTrue("The wait must return only after the completion finished", completedFirst.get());
+		assertTrue("The interrupt status must be restored", interruptKept.get());
 	}
 }
