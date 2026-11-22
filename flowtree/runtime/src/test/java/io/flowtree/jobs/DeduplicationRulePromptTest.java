@@ -250,4 +250,108 @@ public class DeduplicationRulePromptTest extends TestSuiteBase {
         assertTrue("Blank base branch should resolve to origin/master",
                 text.contains("git diff origin/master...HEAD --name-only"));
     }
+
+    // ── Type audit: does each new type need to exist? ───────────────────────
+
+    /** Builds a type-audit prompt for one new type with a partial ledger justification. */
+    private static String typePrompt() {
+        NewTypeAssessment type = new NewTypeAssessment("org.example.seq.ArithmeticIndexSet",
+                "mod/src/main/java/org/example/seq/ArithmeticIndexSet.java",
+                Collections.singletonList(new NewTypeAssessment.Candidate(
+                        "org.example.seq.ArithmeticIndexSequence",
+                        "mod/src/main/java/org/example/seq/ArithmeticIndexSequence.java",
+                        0.62, "An index sequence of arithmetic values.", true)),
+                null, false, Collections.singletonList("no test named"),
+                "{\"type\": \"org.example.seq.ArithmeticIndexSet\"}", null);
+        return DeduplicationRule.buildTypeAuditPrompt(Collections.singletonList(type), "master");
+    }
+
+    /** The type prompt names each new type, its candidates and their paths. */
+    @Test(timeout = 30000)
+    public void typePromptListsTypesAndCandidates() {
+        String text = typePrompt();
+        assertTrue(text.contains("org.example.seq.ArithmeticIndexSet"));
+        assertTrue(text.contains("duplicates org.example.seq.ArithmeticIndexSequence"));
+        assertTrue(text.contains("mod/src/main/java/org/example/seq/ArithmeticIndexSequence.java"));
+        assertTrue(text.contains("SHOULD EACH OF THESE TYPES EXIST"));
+    }
+
+    /** The ledger justification is presented as a claim to verify, with its gaps. */
+    @Test(timeout = 30000)
+    public void typePromptTreatsJustificationAsClaim() {
+        String text = typePrompt();
+        assertTrue(text.contains("a CLAIM to verify, not a fact"));
+        assertTrue(text.contains("VERIFY THE JUSTIFICATION"));
+        assertTrue(text.contains("the justification is incomplete"));
+        assertTrue(text.contains("no test named"));
+    }
+
+    /** The audit reaches beyond the lexical candidates: consult, docs and memory search. */
+    @Test(timeout = 30000)
+    public void typePromptRequiresDocumentationAndMemorySearch() {
+        String text = typePrompt();
+        assertTrue(text.contains("mcp__ar-manager__consult"));
+        assertTrue(text.contains("mcp__ar-docs__search_ar_docs"));
+        assertTrue(text.contains("mcp__ar-manager__memory_recall"));
+    }
+
+    /** The remedies come in order, and the excuses of the incident are rejected. */
+    @Test(timeout = 30000)
+    public void typePromptOrdersRemediesAndRejectsExcuses() {
+        String text = typePrompt();
+        int use = text.indexOf("1. Use the candidate as it is");
+        int signature = text.indexOf("2. Change the signature or caller");
+        int extend = text.indexOf("3. Extend or improve the candidate");
+        int last = text.indexOf("4. Only then");
+        assertTrue(use >= 0 && use < signature && signature < extend && extend < last);
+        assertTrue(text.contains("\"the existing type does not implement interface X\""));
+        assertTrue(text.contains("\"the method signature requires Y\""));
+        assertTrue(text.contains("reverting the whole change is not one"));
+    }
+
+    /** Folding the type in is the default; keeping it requires a recorded verdict. */
+    @Test(timeout = 30000)
+    public void typePromptFoldsUnlessJustified() {
+        String text = typePrompt();
+        assertTrue(text.contains("FOLD IT IN"));
+        assertTrue(text.contains("\"verdict\": \"" + NewTypeAssessment.VERDICT_KEPT + "\""));
+        assertTrue(text.contains(NewTypeAudit.LEDGER_PATH));
+        assertTrue(text.contains("A verdict written before this audit ran does not count"));
+    }
+
+    /** The type audit is assembled for every job; the method audit only for DEDUP_LOCAL. */
+    @Test(timeout = 30000)
+    public void typeAuditRunsForEveryDeduplicationMode() {
+        for (String mode : Arrays.asList(null, CodingAgentJob.DEDUP_NONE,
+                CodingAgentJob.DEDUP_SPAWN, CodingAgentJob.DEDUP_LOCAL)) {
+            CodingAgentJob job = new CodingAgentJob("t1", "p");
+            job.setDeduplicationMode(mode);
+            List<EnforcementRule> rules = new EnforcementRunner(job).buildActiveRules();
+            DeduplicationRule rule = null;
+            for (EnforcementRule r : rules) {
+                if (r instanceof DeduplicationRule) rule = (DeduplicationRule) r;
+            }
+            assertTrue("deduplication rule missing for mode " + mode, rule != null);
+            assertTrue("method audit for mode " + mode,
+                    rule.isAuditingMethods() == CodingAgentJob.DEDUP_LOCAL.equals(mode));
+        }
+    }
+
+    /** The review prompt asks first whether each new type should exist, with its candidates. */
+    @Test(timeout = 30000)
+    public void reviewPromptAsksWhetherNewTypesShouldExist() {
+        NewTypeAssessment type = new NewTypeAssessment("p.A", "m/src/main/java/p/A.java",
+                Collections.singletonList(new NewTypeAssessment.Candidate(
+                        "p.B", "m/src/main/java/p/B.java", 0.7, "", false)),
+                null, false, Collections.emptyList(), null, null);
+        String section = ReviewPromptBuilder.newTypeSection(true, Collections.singletonList(type));
+        assertTrue(section.contains("FIRST ASK WHETHER EACH SHOULD EXIST"));
+        assertTrue(section.contains(
+                "Before checking whether a new type is correct, ask whether it should exist"));
+        assertTrue(section.contains("resembles p.B"));
+        assertTrue("a branch without new types gets no section",
+                ReviewPromptBuilder.newTypeSection(false, Collections.emptyList()).isEmpty());
+        assertFalse("a new type without candidates still gets the question",
+                ReviewPromptBuilder.newTypeSection(true, Collections.emptyList()).isEmpty());
+    }
 }

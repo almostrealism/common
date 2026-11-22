@@ -31,6 +31,7 @@ import org.junit.Test;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertNull;
 
 /**
  * Validates when {@link MetalCommandRunner} commits its open command buffer before it is full:
@@ -329,8 +330,33 @@ public class MetalCommandRunnerIdleCommitTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A runner releases a command buffer as soon as the GPU has finished it, whether or not
+	 * anything waits for it, so a thread polling the buffer can find it already released. A
+	 * released buffer is reported as finished rather than failing on its freed native pointer.
+	 */
+	@Test(timeout = 60000)
+	public void releasedBufferIsReportedFinished() {
+		MetalComputeContext metal = SemaphoreChainBatchingTest.metalContext();
+		if (metal == null) {
+			log("skipping, no MetalComputeContext available");
+			return;
+		}
+
+		MTLCommandBuffer buffer = metal.getMtlQueue().commandBuffer();
+		buffer.commit();
+		buffer.waitUntilCompleted();
+		assertTrue("A completed buffer must be finished", buffer.isFinished());
+
+		buffer.release();
+		assertTrue("A released buffer must be reported finished", buffer.isFinished());
+		assertFalse("A buffer released after completing must not report an error", buffer.isError());
+		assertNull("A buffer released after completing has no error description", buffer.getError());
+	}
+
+	/**
 	 * Waits, without committing or draining anything, until the GPU has finished the command
-	 * buffer a dispatch was encoded into.
+	 * buffer a dispatch was encoded into. The runner may already have drained and released that
+	 * buffer, which {@link MTLCommandBuffer#isFinished()} reports as finished.
 	 *
 	 * @param dispatch a dispatch whose buffer has been committed
 	 */

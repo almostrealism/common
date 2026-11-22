@@ -257,7 +257,7 @@ class CredentialIsolationTests(unittest.TestCase):
             with self.subTest(job=submitter):
                 job = jobs[submitter]
                 self.assertEqual(["changes", producer], job["needs"])
-                env = [step.get("env", {}) for step in job["steps"] if "run" in step][0]
+                env = _named_step(job, "Submit agent job").get("env", {})
                 self.assertEqual("${{ needs.changes.outputs.branch }}", env["BRANCH"])
                 self.assertEqual("${{ needs.changes.outputs.base_branch }}", env["BASE_BRANCH"])
                 self.assertIn("needs.%s.outputs.staged == 'true'" % producer, _condition(job))
@@ -269,9 +269,13 @@ class CredentialIsolationTests(unittest.TestCase):
                 downloads = [s for s in job["steps"]
                              if str(s.get("uses", "")).startswith("actions/download-artifact")]
                 self.assertEqual([artifact], [s["with"]["name"] for s in downloads])
+                # Every run step invokes a trusted tools/ci/ script (the submit
+                # itself and the protected-file grant), never the pull request's
+                # own code.
                 runs = [s["run"] for s in job["steps"] if "run" in s]
-                self.assertEqual(1, len(runs))
-                self.assertIn("tools/ci/submit-staged-request.sh", runs[0])
+                self.assertTrue(any("tools/ci/submit-staged-request.sh" in r for r in runs))
+                for run in runs:
+                    self.assertRegex(run, r"tools/ci/[\w.-]+\.sh")
 
     def test_auto_review_always_selects_a_prompt(self):
         """Every route auto-review can pick has a staging step; there is no route
@@ -296,7 +300,7 @@ class CredentialIsolationTests(unittest.TestCase):
         expected = {"auto-resolve-python-submit": "true", "auto-review-submit": "false"}
         for submitter, value in expected.items():
             with self.subTest(job=submitter):
-                env = [s.get("env", {}) for s in jobs[submitter]["steps"] if "run" in s][0]
+                env = _named_step(jobs[submitter], "Submit agent job").get("env", {})
                 self.assertEqual(value, env["PROTECT_TEST_FILES"])
 
     def test_auto_review_waits_for_the_copilot_review(self):
@@ -306,7 +310,7 @@ class CredentialIsolationTests(unittest.TestCase):
         starts with that review available to it.
         """
         job = _jobs()["auto-review-submit"]
-        env = [step.get("env", {}) for step in job["steps"] if "run" in step][0]
+        env = _named_step(job, "Submit agent job").get("env", {})
         self.assertGreaterEqual(int(env["DELAY_SECONDS"]), 300)
 
     def test_auto_review_submit_drops_the_delay_when_copilot_is_dark(self):
@@ -315,7 +319,7 @@ class CredentialIsolationTests(unittest.TestCase):
         submit step drops its default hold to 0. The 300s default is unchanged;
         the run step overrides it only when COPILOT_AVAILABLE is false."""
         job = _jobs()["auto-review-submit"]
-        step = [s for s in job["steps"] if "run" in s][0]
+        step = _named_step(job, "Submit agent job")
         env = step.get("env", {})
         self.assertEqual("300", env["DELAY_SECONDS"])
         self.assertIn("copilot_available", env["COPILOT_AVAILABLE"])
@@ -356,9 +360,13 @@ class CredentialIsolationTests(unittest.TestCase):
                 self.assertNotIn("STARTED_AFTER", step.get("env") or {})
 
 
+def _named_step(job, name):
+    return next(s for s in job["steps"] if s.get("name") == name)
+
+
 def _submit_step():
     job = _load(_SUBMIT_WORKFLOW)["jobs"]["submit"]
-    return next(s for s in job["steps"] if s.get("name") == "Submit agent job")
+    return _named_step(job, "Submit agent job")
 
 
 class AutoResolveSubmitStepTests(unittest.TestCase):

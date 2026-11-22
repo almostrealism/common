@@ -154,6 +154,68 @@ hook blocks a run with no path, with a directory, or above 5 test files or 40 no
 They parse command text and are backstops; the enforced surfaces are job submission, the
 controller's submit endpoint and the MCP test runner.
 
+## New-type equivalence gate
+
+An agent must not add a type that re-implements a concept the codebase already has; the
+problem is solved with the existing abstraction, improved if necessary. Three pieces
+enforce this, sharing one implementation of the candidate search,
+`.claude/hooks/lib/type_equivalence.py`:
+
+- **The hook** (`warn-new-type-placement.py`) runs on every Write/Edit/MultiEdit that adds
+  a top-level main-source Java type, and reads every declaration through the library's
+  parser. It compares the new type with every main-source type of the repository on three
+  signals of the same concept: shared public method signatures (name and arity, beyond the
+  contract a supertype already dictates), javadoc first sentences that describe the same
+  thing (in both directions, words weighted by rarity), and names that say the same thing.
+  It blocks (exit 2) only on that evidence: shared signatures together with a matching name
+  or javadoc; a name with the same qualifiers on an equivalent head (`ArithmeticIndexSet`
+  beside `ArithmeticIndexSequence`) whose javadoc agrees; or a near-copy. Shared vocabulary
+  alone, or a shared package, never blocks. Siblings of one supertype, collaborators (the
+  new type's public methods take or return the candidate, or the candidate refers to it),
+  role variants (`Grain` and `GrainParameters`) and subtypes are reported as warnings unless
+  the new type is a near-copy. The block lists the duplicates with paths and the remedies in
+  order: use the candidate, change the signature or caller, extend or improve the candidate
+  or introduce an interface it implements, and only then a new type. A type that only
+  resembles others gets the placement warning with those types listed. Test sources are not
+  checked. A failure anywhere in the assessment fails open, with a warning on stderr and in
+  the session's system message. The index is cached in the system temporary directory per
+  repository root and refreshed incrementally by file modification time.
+- **Lifting the block.** It lifts when the new type genuinely builds on a candidate: it
+  extends or implements it and overrides or calls its members, or calls its methods through
+  a field, parameter or local of its type, or constructs it. A marker supertype or an unused
+  field does not count. It also lifts when `.claude/new-type-ledger.json` (tracked)
+  justifies it: the entry covers every blocking candidate with `cannot_extend`,
+  `cannot_change_signature` and `interface_would_not_work`, and names a `test`
+  (`Class#method`) that exists in the repository's test sources, declares that method and
+  refers to the new type. The schema is in the module docstring of `type_equivalence.py`; an
+  entry matches its type by fully-qualified name only. Renaming the type is not a remedy.
+- **The independent audit.** The FlowTree harness runs the base-branch copy of the same
+  search (`NewTypeAudit`), so the audited session cannot weaken it. `DeduplicationRule`
+  runs for every job and gives each duplicate to a separate session that searches
+  documentation and memory as well, treats the ledger as a claim to verify, and folds the
+  type into the existing abstraction unless the justification holds; a kept type gets
+  `"audit": {"verdict": "kept"}` in the ledger. The outcome of each audit is recorded in the
+  branch's `ObjectOrientedReviewLedger` (the same content-keyed mechanism the design review
+  uses), keyed by a digest of the type's source and its ledger entry as the audit left them,
+  so a verdict written by any other session does not count and a later edit is audited
+  again. `FileStager` refuses to stage a duplicate until an audit has kept it — together with
+  every changed file that refers to any type the refused file declares, transitively — and
+  refuses every changed Java file when the search could not run, which also makes the job
+  `DEGRADED` with the reason. The review prompt asks of every new type whether it should
+  exist before asking whether it is correct.
+
+`python3 .claude/hooks/lib/type_equivalence.py calibrate --root . [PREFIX...]` treats every
+existing type under the prefixes as if it were new and reports how many would block. The
+`CalibrationTest` in `.claude/hooks/lib/test_new_type_placement.py` holds that rate at or
+below 3% over `engine/audio`, `studio/music` and `domain/graph`, and checks that real
+duplicates (an arithmetic-progression set and progression beside `ArithmeticIndexSequence`,
+and existing classes copied under new names) still block.
+
+`tools/mcp/common/snapshot_index.py` keeps its own Java type pattern: it indexes nested
+types and annotation types for the documentation corpus, and the harness runs
+`type_equivalence.py` as a single self-contained file from the base branch, so the scanner
+cannot import a parser from the working tree without letting the audited session change it.
+
 ## Private-link hook
 
 `block-private-url` applies the root `CLAUDE.md` rule "Never Publish a Private Link". It
@@ -173,6 +235,29 @@ Claude Code harnesses can be configured to remind the model to end commit messag
 pull request descriptions with a link to its session. Such a link opens only for its
 owner, and `attribution` in `.claude/settings.json` does not suppress the reminder, so
 this hook is what keeps the link out.
+
+## Pull request gate
+
+Every pull request runs the whole CI pipeline on the shared runner fleet, so one round of
+work split into several small pull requests multiplies its runner cost. `pr-gate.sh` (core
+`pr_gate_check.py`) puts that in front of the agent when it reaches for a new pull request:
+
+- `record` (PostToolUse on ar-manager `github_list_open_prs`) stores the repository's open
+  pull requests as ar-manager returned them.
+- `gate` (PreToolUse on `github_create_pr`) denies the call unless that repository's open
+  pull requests were listed in the last ten minutes. It keys that freshness by the same
+  context the call resolves the repository against — an explicit `org`/`repo` pair, else a
+  `workstream_id`, else the token context — so a listing and a create made the same way
+  share a key, and the normal workstream and token-context forms are supported rather than
+  rejected. When another pull request is open on a different branch, the first attempt is
+  denied with a reminder naming it: commit to the open branch unless the change truly must
+  be reviewed separately. The identical call repeated within ten minutes goes through and
+  is appended to `.claude/pr-gate-overrides.local.json` for the developer.
+- `bash` (PreToolUse on Bash) denies `gh pr create`, which would bypass the gate — including
+  quoted, escaped, or dynamically-expanded spellings the shell still runs as `gh pr create`
+  but the gate cannot prove are something else.
+
+State is kept in `.claude/pr-gate.local.json`; both files are git-ignored.
 
 ## Testing a hook
 

@@ -72,8 +72,11 @@ The controller generates a temporary HMAC token at job submission time:
 | `github_pr_labels` | Read a PR's labels and draft status |
 | `github_create_pr` | Create a pull request |
 | `github_update_pr` | Change an existing pull request's title and/or description |
+| `github_set_pr_state` | Close or reopen a pull request (state only) |
+| `github_start_test_run` | Start a branch's CI test run via the controller's GitHub credential |
 | `workstream_get_status` | Get job timing statistics |
 | `controller_health` | Check controller liveness |
+| `inference_health` | Diagnose the inference backend behind `consult`/`memory_recall` |
 
 **Note:** ar-manager currently calls the GitHub API directly for PR operations. We plan to route these through the controller proxy (like messages) in a future update.
 

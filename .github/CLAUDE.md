@@ -626,6 +626,49 @@ under the exfiltration guard. The `checkstyle` gating above matters more for
 this rule: a docs-only pull request's added lines are never part of a later
 change's diff, so they are not judged at all.
 
+**A long inline comment is refused whatever wrote it.** Design and rationale
+belong in javadoc; an inline comment is a line or two of nuance. One module,
+`.claude/hooks/lib/inline_comment_check.py`, decides this, and every gate asks
+it the same question about the same thing — the file as it will exist, and
+which of its lines the change wrote:
+
+| Gate | Where | What it can do |
+|------|-------|----------------|
+| Edit hook (`block-excessive-comments.sh`) | Claude Code `Write`/`Edit`/`MultiEdit` | refuses the edit |
+| opencode plugin (`block-excessive-comments.ts`) | opencode `write`/`edit`/`apply_patch` | refuses the edit |
+| Shell-write check (`check-source-writes.sh`) | after a Claude Code `Bash` call | reports; the file is already written |
+| Commit tool (`ar-commit`) | the staged snapshot | refuses the commit |
+| `Check for long inline comments` | a step of the `checkstyle` job | fails the job |
+
+Only the last one holds for every route — a shell command, another agent
+runtime, a merge, a person — so it is the gate; the others exist to say so
+earlier. The step diffs the head against its merge base (`--unified=0`) and
+runs `--diff`, publishes `inline_comments_passed`, and `check-quality-gates.sh`
+reports a finding to `auto-review` as `inline-comments`. Every extension the
+module governs is in the `changes` job's `CODE_FILES` pathspec, so a change to
+only (say) TypeScript sources still runs `checkstyle`;
+`test_inline_comment_check.py` pins that. Because a pull
+request's checkout is its head, a head that predates the module's diff mode is
+judged with `origin/<base>`'s copy rather than skipped: this is an enforcement
+check, so "the branch predates it" is not a pass.
+
+The module lexes the file rather than matching line starts, so `//` comments,
+`/* */` blocks and a `/** */` block that documents nothing (inside a method
+body, after code, before a closing brace) are all inline commentary, while
+strings and text blocks are not. Four limits apply: comment-only lines in one
+group (3), characters in one comment (180), characters in one group (300), and
+comment lines and characters in any 15 lines of code (7 and 450), which is what
+catches commentary alternated with one-line statements. A finding is charged to
+a change when the change wrote any line of the group, so adding to or rewording
+an old comment answers for the whole of it; a pre-existing comment the change
+left alone is not judged. Javadoc on a declaration and the header before a
+file's first line of code are exempt. PDSL and Protocol Buffers have no
+documentation comment, so there the comment directly above a declaration (a
+top-level PDSL item; any Protocol Buffers line that is not a closing brace) is
+its documentation and may be any length, and every other comment is held to the
+limits. There is no suppression marker. `test_inline_comment_check.py` is the
+list of ways round the policy, each one refused; add the next one found there.
+
 **The `ci/...` carve-out covers `.claude/hooks/` too, and covers comparisons
 only.** Both the enforcement-tampering check and the exfiltration guard's
 integrity comparison treat a `ci/` branch as out of scope, for the reason the
@@ -1286,6 +1329,29 @@ works because the address is on disk, not merely exported inside
 `rebuild.sh`. A full rebuild recreates
 `fleet-db` too — the data directory persists, and the collectors on every
 host reconnect on their own — so nothing in the deploy needs to drain for it.
+
+**Operator settings survive a deploy only in a file outside the checkout.**
+The compose `.env` is gitignored, and a deploy's `actions/checkout` clean step
+(`git clean -ffdx`) deletes it, then `rebuild.sh` regenerates it — so any
+operator setting (`AR_CONSULTANT_BACKEND` and the rest of the consultant family,
+image pins, port overrides) kept only there resets to its compose default on
+every deploy. That is the `AR_CONSULTANT_BACKEND` reset this file once caused.
+The durable home is the **operator settings file**, located through
+`FLOWTREE_CONTROLLER_ENV` (the repository variable; default
+`/Users/Shared/flowtree/secrets/controller.env`, beside the deploy secrets,
+exactly as `FLOWTREE_AGENT_ENV` locates the agent env). `rebuild.sh` reads it
+and carries every line into the compose `.env`; one file holds every setting
+rather than a repository variable per setting. For a value `rebuild.sh` computes
+(`FLEET_BIND_ADDR`) an operator value wins: an exported variable, then the file,
+then detection. After the stack is up the workflow's `Report effective operator
+settings` step prints the running services' non-secret settings (the backend
+name, for one) to the job summary — names and non-secret values only,
+credential-named settings redacted — so a reset is visible on the deploy that
+causes it. To switch the consultant to OpenRouter durably, put
+`AR_CONSULTANT_BACKEND=openrouter` in that file, not in the compose `.env`.
+`test-rebuild.sh` (through `tools/tests/test_rebuild_sh.py`) covers the carry
+and the precedence, and `tools/tests/test_deploy_operator_settings.py` pins the
+workflow wiring.
 
 The agent `.env` is gitignored, so it is never present in the runner's checkout.
 `rebuild.sh` reads `FLOWTREE_AGENT_ENV` to find the host's copy; the workflow

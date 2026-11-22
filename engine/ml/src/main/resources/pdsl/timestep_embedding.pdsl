@@ -1,0 +1,58 @@
+/**
+ * Timestep (continuous-scalar) embedding of a diffusion transformer — a Fourier feature projection
+ * of the scalar followed by a two-layer SiLU MLP that lifts those features to the transformer's
+ * embedding width. It is the conditioning head a diffusion model uses to turn a noise level (or any
+ * scalar conditioner) into a vector every transformer block can read.
+ *
+ * This file replaces the Java assembly that used to live in
+ * DiffusionTransformerFeatures.timestepEmbedding(int, int, Block, ...), which built this composition
+ * as a SequentialBlock: `new SequentialBlock(shape(batch, 1)); add(features); add(siluMlp(...))`. That
+ * method now only binds the MLP projections and loads this asset, so there is one definition of the
+ * composition and it is here. Both sub-structures were already assets — the Fourier projection is
+ * fourier_features.pdsl and the MLP is silu_mlp.pdsl (imported below) — and the glue tying them
+ * together was the last piece still assembled in Java; both of those asset headers flagged this move
+ * as pending. This file reads as the data-flow diagram that the SequentialBlock hid.
+ *
+ * The Fourier feature stage arrives as the `features` block rather than being written out here,
+ * because the diffusion transformer builds it two different ways and injects whichever it needs:
+ *
+ *   - the learned projection (DiffusionTransformerFeatures.fourierFeatures), whose frequency matrix
+ *     is a trainable weight bound through fourier_features.pdsl's `dense` stage; and
+ *   - the deterministic projection (DiffusionTransformerFeatures.expoFourierFeatures), a weightless
+ *     producer over a fixed geometric frequency ladder that must stay fixed and so is NOT the
+ *     fourier_features.pdsl asset.
+ *
+ * Both map a [batch, 1] scalar to the same [batch, 2·half] Fourier features and feed the same MLP,
+ * so the choice of projection belongs to the caller (which frequencies to use, trainable or not),
+ * not to this structure. That is why `features` is a block parameter, exactly as the attention and
+ * feed-forward sub-blocks arrive as blocks in self_attention_sublayer.pdsl and
+ * feed_forward_sublayer.pdsl: the language names neither the frequency source nor the trainability
+ * as a value a stage can select.
+ *
+ * Data flow of one forward pass over a scalar conditioner [batch, 1]:
+ *
+ *   [batch, 1] scalar timestep
+ *     features                               Fourier features [cos(2π·t·f) | sin(2π·t·f)]  [batch, 2·half]
+ *     silu_mlp(w_in, b_in, w_out, b_out)     dense → silu → dense                          [batch, embed_dim]
+ *
+ * Stage 1 is the injected Fourier feature block: it projects the scalar onto a frequency ladder and
+ * emits the cosine of every frequency followed by the sine of every frequency. Stage 2 is the
+ * silu_mlp layer of silu_mlp.pdsl (dense(w_in, b_in) → silu() → dense(w_out, b_out)), the non-gated
+ * projection head that embeds those features into the model width. `w_in`/`w_out` are the two
+ * projections and `b_in`/`b_out` their biases; the timestep callers bind both biases, so this is the
+ * biased form of the MLP.
+ */
+
+import "/pdsl/silu_mlp.pdsl"
+
+/**
+ * Fourier features of the scalar, then the SiLU MLP: [batch, 1] -> [batch, embed_dim].
+ *
+ *   features                             the Fourier feature block        [batch, 2·half]
+ *   silu_mlp(w_in, b_in, w_out, b_out)   dense → silu → dense             [batch, embed_dim]
+ */
+layer timestep_embedding(features: block,
+                         w_in: weight, b_in: weight, w_out: weight, b_out: weight) {
+    features
+    silu_mlp(w_in, b_in, w_out, b_out)
+}
