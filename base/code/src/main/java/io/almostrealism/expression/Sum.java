@@ -26,7 +26,6 @@ import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.scope.ScopeSettings;
 import org.almostrealism.io.Console;
 
 import java.util.ArrayList;
@@ -161,7 +160,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			return Optional.of(Collections.emptySet());
 
 		Set<Integer> largest = Collections.max(optionValues, Comparator.comparingInt(Set::size));
-		boolean allContained = optionValues.stream().allMatch(largest::containsAll);
+		boolean allContained = optionValues.stream().allMatch(s -> s == largest || largest.containsAll(s));
 		return allContained ? Optional.of(largest) : Optional.empty();
 	}
 
@@ -278,7 +277,9 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 		if (context.getTraversalProvider() != null &&
 				children.stream().allMatch(Expression::isSingleIndexMasked)) {
-			if (withinReorderingBudget(context, children)) {
+			long nodes = 1L + children.stream().mapToLong(Expression::countNodes).sum();
+
+			if (context.isReorderingWithinBudget(nodes)) {
 				if (enableGenerateReordering) {
 					return context.getTraversalProvider()
 							.generateReordering(generate(children))
@@ -287,39 +288,11 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 					throw new UnsupportedOperationException();
 				}
 			}
-			// Over budget: fall through to the inlined sum below. Reordering would shrink the
-			// emitted kernel body, but its compile-time cost (count * nodeCount per the
-			// per-index simplify in KernelTraversalOperationGenerator) exceeds the configured
-			// budget. See ScopeSettings.maxReorderingBudget.
+			// Over budget: fall through to the inlined sum below, since reordering would
+			// cost more compile time than the smaller kernel body saves
 		}
 
 		return generate(children).populate(this);
-	}
-
-	/**
-	 * Predicts the compile-time cost of invoking
-	 * {@link io.almostrealism.kernel.KernelTraversalProvider#generateReordering(Expression)}
-	 * on a Sum with the given children and compares it to
-	 * {@link ScopeSettings#maxReorderingBudget}. The cost proxy is
-	 * {@code count * (1 + Sigma child.countNodes())}, matching the actual work done by the
-	 * generator (one full per-index simplification pass per kernel index, each visiting every
-	 * node once). If the kernel count is unknown the budget is considered satisfied and the
-	 * generator's own internal gating (fixed-count check, minimumChildren, defaultMaxEntries)
-	 * takes over.
-	 *
-	 * @param context  the simplification context, used for the kernel maximum
-	 * @param children the flattened, sorted children of the Sum being simplified
-	 * @return {@code true} if the predicted product is within budget
-	 */
-	private static boolean withinReorderingBudget(KernelStructureContext context,
-												  List<Expression<?>> children) {
-		OptionalLong maximum = context.getKernelMaximum();
-		if (!maximum.isPresent() || maximum.getAsLong() <= 0) return true;
-		long count = maximum.getAsLong();
-		long nodes = 1L + children.stream().mapToLong(Expression::countNodes).sum();
-		long budget = ScopeSettings.maxReorderingBudget;
-		if (budget > 0 && count > budget / Math.max(1L, nodes)) return false;
-		return count * nodes <= budget;
 	}
 
 	@Override
@@ -372,12 +345,12 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	 * {@inheritDoc}
 	 *
 	 * <p>An integer sum follows a progression when every term does and the terms
-	 * combine under {@link ArithmeticIndexSequence#plus(ArithmeticIndexSequence)}.</p>
+	 * add up under {@link ArithmeticIndexSequence#sumOf(List)}.</p>
 	 */
 	@Override
 	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
 		List<ArithmeticIndexSequence> terms = arithmeticTerms(index, len);
-		return terms == null ? null : combine(terms);
+		return terms == null ? null : ArithmeticIndexSequence.sumOf(terms);
 	}
 
 	/**
@@ -398,23 +371,6 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		}
 
 		return terms;
-	}
-
-	/**
-	 * Adds the given progressions together under
-	 * {@link ArithmeticIndexSequence#plus(ArithmeticIndexSequence)}.
-	 *
-	 * @param terms the progressions to add; must not be empty
-	 * @return their sum, or {@code null} if it is not a progression
-	 */
-	public static ArithmeticIndexSequence combine(List<ArithmeticIndexSequence> terms) {
-		ArithmeticIndexSequence result = terms.get(0);
-
-		for (int i = 1; result != null && i < terms.size(); i++) {
-			result = result.plus(terms.get(i));
-		}
-
-		return result;
 	}
 
 	/**
@@ -680,7 +636,7 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	 * @param targetIndex the index of {@code target} in {@code children}, or {@code -1}
 	 * @param children    all sibling operands in the enclosing sum
 	 * @param prune       when {@code true}, removes processed operands from {@code children}
-	 * @return a {@link Term} with the combined coefficient, or {@code null} if no coefficient
+	 * @return a {@link Term} with the combined coefficient, or empty if no coefficient
 	 *         could be extracted
 	 */
 	private static Optional<Term> extractCoefficients(Expression<?> target, int targetIndex, List<Expression<?>> children, boolean prune) {

@@ -215,9 +215,9 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>An integer modulus by a positive constant follows a progression when the
-	 * dividend does and the reduction is exact under
-	 * {@link ArithmeticIndexSequence#modExactly(long)}.</p>
+	 * <p>An integer modulus by a positive constant follows a progression when the terms
+	 * of the dividend do and their sum reduces exactly under
+	 * {@link ArithmeticIndexSequence#remainderOf(List, long)}.</p>
 	 */
 	@Override
 	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
@@ -227,23 +227,7 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 		if (m.isEmpty() || m.getAsLong() <= 0) return null;
 
 		List<ArithmeticIndexSequence> terms = getChildren().get(0).arithmeticTerms(index, len);
-		if (terms == null) return null;
-
-		// A term that is a multiple of the modulus at every position cannot affect the
-		// remainder, provided the remaining terms are never negative (so that truncating
-		// and flooring remainders agree), and is dropped before the reduction
-		List<ArithmeticIndexSequence> remaining = terms.stream()
-				.filter(t -> !t.isMultipleOf(m.getAsLong()))
-				.collect(Collectors.toList());
-
-		if (remaining.isEmpty()) {
-			return new ArithmeticIndexSequence(0, 0, 1, len, len);
-		} else if (remaining.size() < terms.size() && remaining.stream().anyMatch(t -> t.min() < 0)) {
-			return null;
-		}
-
-		ArithmeticIndexSequence dividend = Sum.combine(remaining);
-		return dividend == null ? null : dividend.modExactly(m.getAsLong());
+		return terms == null ? null : ArithmeticIndexSequence.remainderOf(terms, m.getAsLong());
 	}
 
 	/**

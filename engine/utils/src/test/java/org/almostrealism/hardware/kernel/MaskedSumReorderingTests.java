@@ -28,6 +28,7 @@ import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTraversalProvider;
+import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.relation.Producer;
@@ -702,6 +703,33 @@ public class MaskedSumReorderingTests extends TestSuiteBase implements Expressio
 					+ " even with the landmine flag", result instanceof Sum);
 		} finally {
 			Sum.enableGenerateReordering = previousReorder;
+			ScopeSettings.maxReorderingBudget = previousBudget;
+		}
+	}
+
+	/**
+	 * {@link KernelStructureContext#isReorderingWithinBudget(long)} predicts the cost of a
+	 * reordering as the kernel maximum times the node count of the expression reordered and
+	 * compares it with {@link ScopeSettings#maxReorderingBudget}. A product too large for a
+	 * {@code long} is over budget, and a context that does not know its kernel maximum leaves
+	 * the decision to the traversal provider.
+	 */
+	@Test(timeout = 30000)
+	public void reorderingBudgetBoundsKernelMaximumTimesNodeCount() {
+		int previousBudget = ScopeSettings.maxReorderingBudget;
+
+		try {
+			ScopeSettings.maxReorderingBudget = 1024;
+
+			KernelStructureContext context = new NoOpKernelStructureContext(16);
+			Assert.assertTrue(context.isReorderingWithinBudget(64));
+			Assert.assertFalse(context.isReorderingWithinBudget(65));
+			Assert.assertFalse("an overflowing product must not wrap into the budget",
+					context.isReorderingWithinBudget(Long.MAX_VALUE));
+
+			Assert.assertTrue("an unknown kernel maximum is within any budget",
+					new NoOpKernelStructureContext().isReorderingWithinBudget(Long.MAX_VALUE));
+		} finally {
 			ScopeSettings.maxReorderingBudget = previousBudget;
 		}
 	}

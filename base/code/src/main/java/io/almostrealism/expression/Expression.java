@@ -488,27 +488,30 @@ public abstract class Expression<T> implements
 	 *   <li>Some members of the set would exceed {@link Integer#MAX_VALUE}</li>
 	 * </ul>
 	 *
-	 * <p>This base implementation combines the options required by each child. The index
-	 * expressions ({@link io.almostrealism.sequence.DefaultIndex},
+	 * <p>This base implementation combines the options required by each child, returning a
+	 * child's own set when it already holds the others (returned sets are never modified). The
+	 * index expressions ({@link io.almostrealism.sequence.DefaultIndex},
 	 * {@link io.almostrealism.sequence.IndexChild}) override it to answer for themselves
-	 * ({@link Index#getIndexOptions(Index)}), and
-	 * operations whose structure narrows the domain (such as {@link Sum}, {@link Mod} and
-	 * {@link Quotient}) override it to account for that structure.</p>
+	 * ({@link Index#getIndexOptions(Index)}), and operations whose structure narrows the
+	 * domain (such as {@link Sum}, {@link Mod} and {@link Quotient}) override it to account
+	 * for that structure.</p>
 	 *
 	 * @param index the index to analyze
 	 * @return an {@link Optional} containing the set of required index values,
 	 *         or empty if the domain cannot be determined or would be too large
 	 */
 	public Optional<Set<Integer>> getIndexOptions(Index index) {
-		Set<Integer> options = new HashSet<>();
+		Set<Integer> options = Collections.emptySet();
 
 		for (Expression<?> e : getChildren()) {
 			Optional<Set<Integer>> o = e.getIndexOptions(index);
-
-			if (o.isPresent() && options.size() < ScopeSettings.indexOptionLimit) {
-				options.addAll(o.get());
-			} else {
+			if (o.isEmpty() || options.size() >= ScopeSettings.indexOptionLimit) {
 				return Optional.empty();
+			} else if (o.get().containsAll(options)) {
+				options = o.get();
+			} else if (!options.containsAll(o.get())) {
+				options = new HashSet<>(options);
+				options.addAll(o.get());
 			}
 		}
 

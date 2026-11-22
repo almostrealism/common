@@ -303,6 +303,114 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 	}
 
 	/**
+	 * {@link ArithmeticIndexSequence#sumOf(List)} adds its terms in order under
+	 * {@link ArithmeticIndexSequence#plus(ArithmeticIndexSequence)}: a single term is its own
+	 * sum, several terms agree with the element-wise sum, and a partial sum that is not an
+	 * arithmetic sequence (terms stepping at different granularities) leaves the whole sum
+	 * not representable.
+	 */
+	@Test(timeout = 30000)
+	public void sumOfAddsTermsInOrder() {
+		ArithmeticIndexSequence a = new ArithmeticIndexSequence(1, 2, 1, 8, 8);
+		ArithmeticIndexSequence b = new ArithmeticIndexSequence(3, 5, 1, 8, 8);
+		ArithmeticIndexSequence constant = new ArithmeticIndexSequence(4, 0, 1, 8, 8);
+		ArithmeticIndexSequence coarse = new ArithmeticIndexSequence(0, 1, 2, 8, 8);
+
+		Assert.assertSame(a, ArithmeticIndexSequence.sumOf(List.of(a)));
+
+		ArithmeticIndexSequence sum = ArithmeticIndexSequence.sumOf(List.of(a, b, constant));
+		Assert.assertEquals(a.plus(b).plus(constant), sum);
+
+		for (long pos = 0; pos < 8; pos++) {
+			long expected = a.valueAt(pos).longValue() + b.valueAt(pos).longValue()
+					+ constant.valueAt(pos).longValue();
+			Assert.assertEquals("mismatch at position " + pos, expected, sum.valueAt(pos).longValue());
+		}
+
+		Assert.assertNull("terms of different granularity have no arithmetic sum",
+				ArithmeticIndexSequence.sumOf(List.of(a, coarse, constant)));
+	}
+
+	/**
+	 * {@link ArithmeticIndexSequence#quotientOf(List, long)} divides the sum of its terms
+	 * exactly. When the terms do not add up to an arithmetic sequence, it drops a
+	 * non-negative remainder bounded below a factor of the divisor:
+	 * {@code (8 * (i % 10) + i % 3 + i % 5) / 8} is {@code i % 10}. A remainder that can
+	 * reach that factor, or a coarse term that can be negative, leaves the quotient
+	 * underivable, and a zero divisor is rejected.
+	 */
+	@Test(timeout = 30000)
+	public void quotientOfDropsBoundedRemainder() {
+		long len = 240;
+		ArithmeticIndexSequence coarse = new ArithmeticIndexSequence(0, 8, 1, 10, len);
+		ArithmeticIndexSequence remainderA = new ArithmeticIndexSequence(0, 1, 1, 3, len);
+		ArithmeticIndexSequence remainderB = new ArithmeticIndexSequence(0, 1, 1, 5, len);
+
+		ArithmeticIndexSequence quotient = ArithmeticIndexSequence.quotientOf(List.of(coarse, remainderA, remainderB), 8);
+		Assert.assertEquals(new ArithmeticIndexSequence(0, 1, 1, 10, len), quotient);
+
+		for (long pos = 0; pos < len; pos++) {
+			long expected = (coarse.valueAt(pos).longValue() + remainderA.valueAt(pos).longValue()
+					+ remainderB.valueAt(pos).longValue()) / 8;
+			Assert.assertEquals("mismatch at position " + pos, expected, quotient.valueAt(pos).longValue());
+		}
+
+		ArithmeticIndexSequence x = new ArithmeticIndexSequence(0, 2, 1, len, len);
+		ArithmeticIndexSequence y = new ArithmeticIndexSequence(8, 6, 1, len, len);
+		Assert.assertEquals(new ArithmeticIndexSequence(2, 2, 1, len, len),
+				ArithmeticIndexSequence.quotientOf(List.of(x, y), 4));
+
+		ArithmeticIndexSequence reachesFactor = new ArithmeticIndexSequence(0, 1, 1, 9, len);
+		Assert.assertNull("a remainder reaching the shared factor can carry into the quotient",
+				ArithmeticIndexSequence.quotientOf(List.of(coarse, reachesFactor), 8));
+		Assert.assertNull("a possibly negative coarse term keeps the remainder",
+				ArithmeticIndexSequence.quotientOf(List.of(coarse.negated(), remainderA), 8));
+
+		try {
+			ArithmeticIndexSequence.quotientOf(List.of(coarse), 0);
+			Assert.fail("A zero divisor must be rejected");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains("zero"));
+		}
+	}
+
+	/**
+	 * {@link ArithmeticIndexSequence#remainderOf(List, long)} drops the terms that are
+	 * multiples of the modulus before reducing the sum of the rest:
+	 * {@code (12 * (i % 5) + i % 4) % 4} is {@code i % 4}. When every term is a multiple
+	 * the remainder is zero everywhere; when a dropped term leaves a possibly negative
+	 * rest, truncating and flooring remainders disagree and nothing is derived; and a
+	 * modulus that is not positive is rejected.
+	 */
+	@Test(timeout = 30000)
+	public void remainderOfDropsMultiplesOfTheModulus() {
+		long len = 240;
+		ArithmeticIndexSequence multiple = new ArithmeticIndexSequence(0, 12, 1, 5, len);
+		ArithmeticIndexSequence rest = new ArithmeticIndexSequence(0, 1, 1, 4, len);
+
+		ArithmeticIndexSequence remainder = ArithmeticIndexSequence.remainderOf(List.of(multiple, rest), 4);
+		Assert.assertEquals(rest, remainder);
+
+		for (long pos = 0; pos < len; pos++) {
+			long expected = (multiple.valueAt(pos).longValue() + rest.valueAt(pos).longValue()) % 4;
+			Assert.assertEquals("mismatch at position " + pos, expected, remainder.valueAt(pos).longValue());
+		}
+
+		ArithmeticIndexSequence otherMultiple = new ArithmeticIndexSequence(8, 4, 1, 3, len);
+		Assert.assertEquals(new ArithmeticIndexSequence(0, 0, 1, len, len),
+				ArithmeticIndexSequence.remainderOf(List.of(multiple, otherMultiple), 4));
+		Assert.assertNull("dropping a multiple beside a negative rest changes a truncating remainder",
+				ArithmeticIndexSequence.remainderOf(List.of(multiple, rest.negated()), 4));
+
+		try {
+			ArithmeticIndexSequence.remainderOf(List.of(rest), 0);
+			Assert.fail("A modulus that is not positive must be rejected");
+		} catch (IllegalArgumentException expected) {
+			Assert.assertTrue(expected.getMessage().contains("positive"));
+		}
+	}
+
+	/**
 	 * {@link ArithmeticIndexSequence#scaled(long)} multiplies both the offset and the
 	 * scale by the operand. When that multiplication overflows, the result must be
 	 * reported as not representable rather than silently wrapping into an arithmetic

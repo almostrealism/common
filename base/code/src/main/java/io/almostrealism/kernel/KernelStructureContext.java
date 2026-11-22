@@ -17,6 +17,7 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.scope.ScopeSettings;
 
 import java.util.OptionalLong;
 
@@ -135,6 +136,29 @@ public interface KernelStructureContext {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Returns {@code true} if reordering an expression with the given number of nodes through
+	 * the {@link #getTraversalProvider() traversal provider} fits within
+	 * {@link ScopeSettings#maxReorderingBudget}.
+	 *
+	 * <p>The reordering simplifies the expression once for every kernel index, visiting each
+	 * of its nodes every time, so its compile-time cost is predicted as
+	 * {@code getKernelMaximum() * nodeCount}. When the kernel maximum is not known the budget
+	 * is considered satisfied, and the provider's own limits decide whether to reorder.</p>
+	 *
+	 * @param nodeCount the number of nodes in the expression that would be reordered
+	 * @return {@code true} if the predicted cost of the reordering is within the budget
+	 */
+	default boolean isReorderingWithinBudget(long nodeCount) {
+		OptionalLong maximum = getKernelMaximum();
+		if (!maximum.isPresent() || maximum.getAsLong() <= 0) return true;
+
+		long count = maximum.getAsLong();
+		long budget = ScopeSettings.maxReorderingBudget;
+		if (budget > 0 && count > budget / Math.max(1L, nodeCount)) return false;
+		return count * nodeCount <= budget;
 	}
 
 	/**

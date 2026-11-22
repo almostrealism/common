@@ -615,6 +615,35 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 	}
 
 	/**
+	 * An expression without a domain analysis of its own needs every value of an index that
+	 * any of its operands needs: the same values whether one operand already needs all of
+	 * them (a constant needs none) or only the operands together do. An operand without an
+	 * enumerable domain, or a union of {@link ScopeSettings#indexOptionLimit} values, leaves
+	 * the expression without one.
+	 */
+	@Test(timeout = 30000)
+	public void operandsCombineIndexOptionsIntoTheirUnion() {
+		DefaultIndex row = new DefaultIndex("row", 4);
+		Expression<?> residues = row.imod(2);
+		Expression<?> halves = row.divide(2);
+		Assert.assertEquals(Set.of(0, 1), residues.getIndexOptions(row).orElseThrow());
+		Assert.assertEquals(Set.of(0, 2), halves.getIndexOptions(row).orElseThrow());
+
+		Assert.assertEquals(Set.of(0, 1, 2, 3), Product.of(row, e(3)).getIndexOptions(row).orElseThrow());
+		Assert.assertEquals(Set.of(0, 1, 2, 3), Product.of(row, residues).getIndexOptions(row).orElseThrow());
+		Assert.assertEquals(Set.of(0, 1, 2), Product.of(residues, halves).getIndexOptions(row).orElseThrow());
+		Assert.assertEquals(Set.of(0, 1, 2), Product.of(halves, e(5), residues).getIndexOptions(row).orElseThrow());
+		Assert.assertTrue(Product.of(e(3), ref("x")).getIndexOptions(row).orElseThrow().isEmpty());
+
+		DefaultIndex free = new DefaultIndex("free");
+		Assert.assertTrue(Product.of(free, e(3)).getIndexOptions(free).isEmpty());
+
+		DefaultIndex wide = new DefaultIndex("wide", ScopeSettings.indexOptionLimit);
+		Assert.assertEquals(ScopeSettings.indexOptionLimit, wide.getIndexOptions(wide).orElseThrow().size());
+		Assert.assertTrue(Product.of(wide, e(3)).getIndexOptions(wide).isEmpty());
+	}
+
+	/**
 	 * Indices and constants are never targets of series simplification, which could only
 	 * reproduce them, while any other expression defers to the configured policy.
 	 */
