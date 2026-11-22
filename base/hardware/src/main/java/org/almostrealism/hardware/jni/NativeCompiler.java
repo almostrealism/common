@@ -578,24 +578,39 @@ private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pr
 	 * <p>The consumer starts the process using {@link ProcessBuilder}, inherits its I/O, waits for
 	 * completion, and throws a {@link HardwareException} if the exit value is non-zero.</p>
 	 *
+	 * <p>An interrupt while waiting ends the compilation: the compiler process is destroyed
+	 * rather than left running unattended, where it would keep competing for the CPU with every
+	 * compilation that follows, and a {@link HardwareException} is thrown with the interrupt
+	 * status left set.</p>
+	 *
 	 * @param name Name of the compilation target, included in error messages
 	 * @return Consumer that accepts a compiler command line and runs it
 	 */
 	protected Consumer<List<String>> runner(String name) {
 		return command -> {
+			Process process;
+
 			try {
-				Process process = new ProcessBuilder(command).inheritIO().start();
-				process.waitFor();
-
-				if (process.exitValue() != 0) {
-					if (enableVerbose) {
-						log(Arrays.toString(command.toArray()));
-					}
-
-					throw new HardwareException("Native compiler failure (" + process.exitValue() + ") on " + name);
-				}
-			} catch (IOException | InterruptedException e) {
+				process = new ProcessBuilder(command).inheritIO().start();
+			} catch (IOException e) {
 				throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
+			}
+
+			try {
+				process.waitFor();
+			} catch (InterruptedException e) {
+				process.destroyForcibly();
+				Thread.currentThread().interrupt();
+				throw new HardwareException("Interrupted while compiling native code for " + name,
+						new UnsupportedOperationException(e));
+			}
+
+			if (process.exitValue() != 0) {
+				if (enableVerbose) {
+					log(Arrays.toString(command.toArray()));
+				}
+
+				throw new HardwareException("Native compiler failure (" + process.exitValue() + ") on " + name);
 			}
 		};
 	}
