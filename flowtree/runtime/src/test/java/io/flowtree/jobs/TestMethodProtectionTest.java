@@ -519,4 +519,51 @@ public class TestMethodProtectionTest extends TestSuiteBase {
         Set<String> result = new TestMethodProtection().resolveMergeBaseFiles(FAKE_MERGE_BASE, throwing);
         assertNull(result);
     }
+
+    /**
+     * A pre-existing test method documented by a one-line javadoc that contains
+     * {@code //} (a URI such as {@code resource://localhost/...}) must still be
+     * protected: inserting an early return into it is blocked.
+     *
+     * <p>The extractor strips {@code //} line comments before it recognizes block
+     * comments, so on such a line it deletes the javadoc's own closing
+     * {@code *}{@code /} and treats every following line as comment until the next
+     * one. The method between the two javadocs is never reported, on either side of
+     * the comparison, so any edit to it reads as "no test method changes". The
+     * repository's {@code ServerTest#parseResourceUriLocalhostResolvesToNull} has
+     * exactly this shape.</p>
+     */
+    @Test(timeout = 30000)
+    public void methodAfterOneLineJavadocWithDoubleSlashIsProtected() throws IOException {
+        String base =
+                "package com.example;\n\n" +
+                "import org.junit.Test;\n\n" +
+                "public class FooTest {\n" +
+                "    /** Parsing a {@code resource://localhost/...} URI resolves to null. */\n" +
+                "    @Test\n" +
+                "    public void testFoo() {\n" +
+                "        assertEquals(1, 1);\n" +
+                "    }\n\n" +
+                "    /** A second documented test. */\n" +
+                "    @Test\n" +
+                "    public void testBar() {\n" +
+                "        assertEquals(2, 2);\n" +
+                "    }\n" +
+                "}\n";
+
+        Path tempDir = tempWorkingDirectory();
+        try {
+            String current = base.replace(
+                    "    public void testFoo() {\n        assertEquals(1, 1);",
+                    "    public void testFoo() {\n        if (true) return;\n        assertEquals(1, 1);");
+            writeCurrent(tempDir, current);
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(base, realAwkScriptContent()));
+            assertFalse("Edit to testFoo was allowed: " + verdict.getReason(), verdict.isAllowed());
+            assertTrue(verdict.getReason().contains("testFoo"));
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
 }
