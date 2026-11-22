@@ -114,6 +114,10 @@ public class AudioPopulationOptimizerTest extends TestSuiteBase {
 	 * A persistence file holding two genomes is read back into a population of those two genomes,
 	 * each carrying its original parameters — the round trip that lets an optimization run resume
 	 * from where a previous run left off.
+	 *
+	 * <p>The expected values are the saved genomes' own parameters rather than the double literals
+	 * they were built from: on an FP32 backend {@code PackedCollection.of(0.1)} already holds the
+	 * nearest float, and persistence must reproduce exactly what was held, at any precision.</p>
 	 */
 	@Test(timeout = 120000)
 	public void readPopulationLoadsPersistedGenomes() throws Exception {
@@ -140,10 +144,11 @@ public class AudioPopulationOptimizerTest extends TestSuiteBase {
 			Assert.assertEquals(2, optimizer.getPopulation().size());
 
 			List<Genome<PackedCollection>> loaded = optimizer.getPopulation().getGenomes();
-			Assert.assertArrayEquals(new double[] { 0.1, 0.2, 0.3 },
-					((ProjectedGenome) loaded.get(0)).getParameters().toArray(), 1.0e-9);
-			Assert.assertArrayEquals(new double[] { 0.9, -0.5 },
-					((ProjectedGenome) loaded.get(1)).getParameters().toArray(), 1.0e-9);
+			for (int i = 0; i < saved.size(); i++) {
+				Assert.assertArrayEquals("genome " + i + " must round-trip exactly",
+						((ProjectedGenome) saved.get(i)).getParameters().toArray(),
+						((ProjectedGenome) loaded.get(i)).getParameters().toArray(), 0.0);
+			}
 		} finally {
 			optimizer.destroy();
 			scene.destroy();
