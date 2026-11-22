@@ -104,18 +104,18 @@ point, and each push used to start the full suite on the self-hosted fleet,
 only to have the next push cancel it. Validate runs finish in minutes. The
 long-running lanes run once, after the loop has settled.
 
-Validate runs are hosted-only **by default**. The one exception is `build`,
-whose runner is chosen by the `BUILD_RUNS_ON` repository variable (see "The
-`BUILD_RUNS_ON` repository variable" below): with it set to a self-hosted label
-list, a validate run of a pull request from this repository (never a fork's)
-uses one self-hosted build runner per push. The trade-off
-is deliberate — `build` took 12–13 minutes on `ubuntu-latest` and sits on the
+Most validate-run jobs are hosted. The one that can move is `build`, whose
+runner the `select-build-runner` job chooses per run (see "Controller-driven
+build-runner selection" below): it asks the FlowTree controller for the first
+self-hosted fleet with an idle runner carrying `ar-build`, and falls back to
+`ubuntu-latest` when none does or the controller cannot answer. The trade-off is
+deliberate — `build` took 12–13 minutes on `ubuntu-latest` and sits on the
 critical path of every test lane, the three tools policy checks, `test-flowtree`
-and `analysis`, so moving it to a fast self-hosted runner shortens every run —
-and it is bounded: a build runner holds no GPU and runs no tests (it produces
-only jars), so one self-hosted runner per push is the whole cost, and the
-variable reverts it to hosted with no commit. Every other validate-run job
-stays hosted.
+and `analysis`, so running it on a fast self-hosted runner shortens every run —
+and it is bounded: `build` holds no GPU and runs no tests (it produces only
+jars), so it lands on whichever fleet is idle rather than dedicating a machine to
+it, and it reverts to hosted on its own whenever no fleet is free. Every other
+validate-run job stays hosted.
 
 **A pull request's test run covers one backend.** A `deployment` test run
 runs the Metal lanes (`test-mac`, `test-media-mac`), which cover every module
@@ -730,10 +730,11 @@ stay as short as possible; jobs that need only git do not wait for it (see
 "Branch checks that need no build" below). It runs `mvn install -DskipTests`
 and nothing else: it does not run tests and does not upload coverage.
 
-**Its runner is chosen by the `BUILD_RUNS_ON` repository variable**, defaulting
-to GitHub-hosted `ubuntu-latest` (see "The `BUILD_RUNS_ON` repository variable"
-below). Because it can run on either a hosted or a self-hosted runner, its JDK
-and Maven-repository steps are keyed on `runner.environment`:
+**Its runner is chosen by the `select-build-runner` job**, which asks the
+FlowTree controller for an idle self-hosted fleet carrying `ar-build` and falls
+back to GitHub-hosted `ubuntu-latest` (see "Controller-driven build-runner
+selection" below). Because it can run on either a hosted or a self-hosted
+runner, its JDK and Maven-repository steps are keyed on `runner.environment`:
 
 - **JDK.** `github-hosted` keeps `actions/setup-java`; `self-hosted` uses the
   shared `./.github/actions/select-jdk` action (no download), exactly as the
@@ -761,53 +762,65 @@ clean `-T` build could not be verified here, so the conservative single-threaded
 `mvn install -DskipTests` stands. The serial build is already short enough that
 the runner choice, not `-T`, is where the time is won.
 
-### The `BUILD_RUNS_ON` repository variable
+### Controller-driven build-runner selection
 
-Chooses the runner for the `build` job. It is a repository **variable** holding
-a JSON label list, parsed with `fromJSON`:
+The `build` job's runner is chosen at run time by a small `select-build-runner`
+job, so `build` lands on whichever self-hosted fleet is idle rather than on a
+machine dedicated to it. The two jobs are wired like this:
 
 ```yaml
-runs-on: >-
-  ${{ vars.BUILD_RUNS_ON &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository) &&
-      fromJSON(vars.BUILD_RUNS_ON) || 'ubuntu-latest' }}
+  select-build-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      runs_on: ${{ steps.select.outputs.runs_on }}
+    # one inline-shell step: curl GET /api/runners/select?required=ar-build
+
+  build:
+    needs: [changes, select-build-runner]
+    runs-on: ${{ fromJSON(needs.select-build-runner.outputs.runs_on) }}
 ```
 
-- **Unset (the default):** `build` runs on GitHub-hosted `ubuntu-latest`, exactly
-  as before. This is the fail-safe default, not a misconfiguration to "fix".
-- **Set to a self-hosted label list** (e.g. `["self-hosted","linux","ar-build"]`):
-  `build` runs on a self-hosted runner carrying those labels — except for a
-  pull request from a fork, which always builds on `ubuntu-latest`.
+**What the selector asks.** It calls the FlowTree controller's
+`GET /api/runners/select?required=ar-build` through the Cloudflare Access tunnel
+(`FLOWTREE_CONTROLLER_URL` plus the `FLOWTREE_CF_ACCESS_CLIENT_ID` /
+`FLOWTREE_CF_ACCESS_CLIENT_SECRET` service token, the same credential the QA and
+remediation submitters hold). The controller monitors the organization's
+self-hosted runners through its existing GitHub token (`RunnerMonitor` /
+`GitHubProxyHandler.listOrganizationRunners`, cached a few seconds) and returns
+the `runs-on` label list of the first fleet, in a configured preference order,
+that has an online, idle runner carrying `ar-build` — or `["ubuntu-latest"]`
+when none does. The default preference is the CUDA fleet (`ar-ci-cuda`), then the
+OpenCL/ROCm fleet (`ar-ci-cl`), then the Linux CPU fleet (`ar-ci`), then macOS
+last (its runners are the scarcest). The owner reorders it with no commit by
+setting `AR_CI_RUNNER_FLEET_PREFERENCE` on the controller.
 
-**A fork's pull request never reaches the self-hosted build runner.** `build`
-checks out and runs the pull request's head, and a self-hosted runner holds the
-runner-registration token and a persistent Maven repository that later jobs
-read, so fork code on it could take the token or poison the cache. Every other
-self-hosted lane is already out of a fork's reach — test runs start only from a
-`deployment` of a branch of this repository (see "Starting a test run") — which
-leaves `build`'s `pull_request` validate run as the one path that needs the
-head-repository guard. Never drop it from the expression.
+**It never blocks or fails `build`.** The selector runs only inline shell over
+that one API call, checks out no pull-request code (it holds the controller
+credential, so the trust rule "No job that runs pull request code holds
+controller credentials" applies — it is written like `register-workstream` and
+`cancel-superseded-test-runs`), and **falls open to `["ubuntu-latest"]` on any
+problem** (controller unreachable, timeout, bad JSON), with a notice in the step
+summary. A fork pull request always builds hosted (it gets no secrets anyway,
+and must never reach a self-hosted runner holding a PAT and a persistent Maven
+volume). The repository variable `BUILD_FORCE_HOSTED`, set to any value, is the
+emergency override that forces `ubuntu-latest` with no commit.
 
-It is a variable, not a hard-coded `runs-on`, on purpose. `build` sits on the
-critical path of every job that compiles, tests or analyses the project, so a
-hard-coded self-hosted `runs-on` would queue `build` forever — and block every
-pull request — the moment that runner went offline. The variable lets the owner
-move `build` onto a self-hosted runner, and switch straight back, with no commit
-(**the rollback is: clear the variable**). It changes without a commit and is
-never present on a fork.
+**The race is accepted, not engineered away.** A runner the controller reported
+idle can become busy between selection and assignment; GitHub then queues
+`build` until a runner matching the chosen labels is free. This is a brief wait,
+not a failure, and trying to prevent it (reservations, retries) would add far
+more complexity than it saves.
 
-The intended target is a dedicated **build-only** self-hosted runner carrying a
-single `ar-build` label — not the CUDA fleet's `ar-ci-cuda` capability label and
-not `ar-ci`. `ar-ci-cuda` means "this runner has a proven CUDA GPU" and `ar-ci`
-takes the CPU test lane (`test`), both of which run for tens of minutes; a build
-runner needs neither a GPU nor those queues, and `build` must not wait behind
-them. The operator runs such a runner as a separate instance on the CUDA fleet's
-host (the DGX Spark) — a separate compose project off the plain CPU image, with
-its own `ar-build` label and its own Maven cache volume, no GPU reservation. The
-operator steps are in [`../tools/ci/docker/README.md`](../tools/ci/docker/README.md)
-("Running a build-only runner"); the variable is set only after that runner is
-online. Arm64 vs x86 does not matter here: `build` produces only jars.
+**Why a self-hosted fleet carries `ar-build` is a correctness point, not a
+convenience.** The selection only ever lands `build` on a runner that is online,
+idle and carrying `ar-build`; `build` produces only jars, so it needs no GPU and
+no particular architecture, and it is bounded, so sharing a fleet with its test
+lane costs at most a short queue, never correctness. If the controller's token
+loses the organization "Self-hosted runners" read permission, the `/api/runners`
+endpoint says so in its response and the selector falls open to hosted — it is
+never silently stuck hosted with no explanation. The `select-build-runner` job is
+scoped to `build` today, but the endpoint takes the required label and fleet
+preference as inputs, so another job could reuse it.
 
 ### What the `maven-cache` job does
 

@@ -59,15 +59,18 @@ runner and needs no capacity here.
 
 ### Also serving the `build` job (`ar-build`)
 
-This host can additionally run the `build` job off the GitHub-hosted runner, when
-the `BUILD_RUNS_ON` repository variable selects it. Do **not** add `ar-build` to
-these CUDA runners: `build` would then queue behind `test-cuda` /
-`test-media-cuda` (and `test`, if `RUNNER_EXTRA_LABELS=ar-ci`), which run for tens
-of minutes, defeating the point of moving it off the hosted runner. Run a
-**separate** build-only runner instead — the plain CPU image with only the
-`ar-build` label, its own compose project and Maven cache, and no GPU reservation.
-The operator steps are "Running a build-only runner" in
-[`../docker/README.md`](../docker/README.md#running-a-build-only-runner-the-ar-build-label).
+Every runner in this fleet also carries `ar-build` (baked into
+`docker-compose.yml` as `ar-ci-cuda,ar-build`). The FlowTree controller sends the
+bounded `build` job here when a CUDA runner is idle, keeping the GPU host busy
+between CUDA jobs rather than dedicating a separate machine to builds. `build`
+produces only jars, so it holds the GPU for nothing and is short; the controller
+prefers an idle CUDA runner for it over the other fleets (see the default fleet
+order in "Controller-driven build-runner selection" in
+[`../../../.github/CLAUDE.md`](../../../.github/CLAUDE.md)) and falls back to a
+GitHub-hosted runner when no fleet is free. Sharing the fleet costs `build` at
+most a short queue behind `test-cuda` / `test-media-cuda`, never a dedicated
+machine. The runners are ephemeral and re-register on every job, so this
+committed label is the only durable place for it.
 
 ## JDK Version (Baked Into the Shared Image)
 

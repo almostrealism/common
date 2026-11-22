@@ -100,20 +100,23 @@ warm. Per fleet:
 
 | Fleet | Label | How to enable / verify / roll back |
 |---|---|---|
-| CPU (Linux) | `ar-ci` | [`docker/README.md`](docker/README.md#maven-dependency-cache) |
-| Build-only (Linux) | `ar-build` | [`docker/README.md`](docker/README.md#running-a-build-only-runner-the-ar-build-label) |
-| GPU (macOS) | `ar-ci` | already warm via `$HOME/.m2-ci/<runner>`; nothing to mount (see [`macos/README.md`](macos/README.md#maven-dependency-cache)) |
-| OpenCL (ROCm) | `ar-ci-cl` | [`rocm/README.md`](rocm/README.md#maven-dependency-cache) |
-| CUDA (NVIDIA) | `ar-ci-cuda` | [`cuda/README.md`](cuda/README.md#maven-dependency-cache) |
+| CPU (Linux) | `ar-ci`, `ar-build` | [`docker/README.md`](docker/README.md#maven-dependency-cache) |
+| GPU (macOS) | `ar-ci`, `ar-build` | already warm via `$HOME/.m2-ci/<runner>`; nothing to mount (see [`macos/README.md`](macos/README.md#maven-dependency-cache)) |
+| OpenCL (ROCm) | `ar-ci-cl`, `ar-build` | [`rocm/README.md`](rocm/README.md#maven-dependency-cache) |
+| CUDA (NVIDIA) | `ar-ci-cuda`, `ar-build` | [`cuda/README.md`](cuda/README.md#maven-dependency-cache) |
 
-The **build-only** runner (`ar-build`) is optional: it runs the `build` job off
-the GitHub-hosted runner when the `BUILD_RUNS_ON` repository variable selects it.
-It is the same CPU image with its own label and Maven cache volume, so it warms
-through `select-maven-repo` like the other Linux fleets. See "Running a
-build-only runner" in [`docker/README.md`](docker/README.md#running-a-build-only-runner-the-ar-build-label)
-for the operator steps and the `BUILD_RUNS_ON` variable, and "The `BUILD_RUNS_ON`
-repository variable" in [`../../.github/CLAUDE.md`](../../.github/CLAUDE.md) for
-why the runner is variable-selected rather than hard-coded.
+Every self-hosted fleet also carries the **`ar-build`** label (baked into each
+fleet's committed configuration). The FlowTree controller sends the bounded
+`build` job to whichever fleet has an idle runner carrying it, keeping machines
+busy rather than dedicating one to builds; `build` produces only jars, so it
+needs no GPU and no particular architecture, and it falls back to a GitHub-hosted
+runner when no fleet is free. The runners are ephemeral and re-register on every
+job, so a label added through the GitHub UI or API would not persist — the
+committed configuration is the only durable place for it. See "Controller-driven
+build-runner selection" in [`../../.github/CLAUDE.md`](../../.github/CLAUDE.md)
+for how the runner is chosen, and "Runner monitoring and build-runner selection"
+in [`../../flowtree/runtime/README.md`](../../flowtree/runtime/README.md) for the
+controller endpoint.
 
 **Correctness guarantees.** A **cold** cache (fresh volume, or none) resolves
 everything from Central exactly as before — slower, never wrong. A **stale**

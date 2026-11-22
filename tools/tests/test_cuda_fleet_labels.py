@@ -1,11 +1,13 @@
 """Guard: the CUDA fleet's labels and per-runner memory limit.
 
 ``tools/ci/cuda/docker-compose.yml`` registers every runner with the
-``ar-ci-cuda`` capability label, followed by whatever ``RUNNER_EXTRA_LABELS``
-lists (``ar-ci`` lets one GPU host also serve the CPU lane). The CUDA jobs
-must only ever land on this fleet, so ``ar-ci-cuda`` must come first and must
-never be replaced, and an empty ``RUNNER_EXTRA_LABELS`` must not leave a
-trailing comma that registers an empty label.
+``ar-ci-cuda`` capability label and ``ar-build`` (so the controller can send the
+bounded ``build`` job here when the fleet is idle), followed by whatever
+``RUNNER_EXTRA_LABELS`` lists (``ar-ci`` lets one GPU host also serve the CPU
+lane). The CUDA jobs must only ever land on this fleet, so ``ar-ci-cuda`` must
+come first and must never be replaced, ``ar-build`` must always be present, and
+an empty ``RUNNER_EXTRA_LABELS`` must not leave a trailing comma that registers
+an empty label.
 
 The memory limit applies to every replica, so the compose default must fit the
 largest fleet the documentation suggests (three runners on a 128 GB host).
@@ -65,18 +67,22 @@ class CudaFleetLabelsTest(unittest.TestCase):
         self.assertEqual(0, proc.returncode, proc.stderr)
         return proc.stdout
 
-    def test_unset_extra_labels_is_cuda_only(self):
-        self.assertEqual("ar-ci-cuda", self._render())
+    def test_unset_extra_labels_is_cuda_and_build(self):
+        self.assertEqual("ar-ci-cuda,ar-build", self._render())
 
     def test_empty_extra_labels_leaves_no_trailing_comma(self):
-        self.assertEqual("ar-ci-cuda", self._render(""))
+        self.assertEqual("ar-ci-cuda,ar-build", self._render(""))
 
     def test_cpu_lane_label_is_appended_after_the_capability(self):
-        self.assertEqual("ar-ci-cuda,ar-ci", self._render("ar-ci"))
+        self.assertEqual("ar-ci-cuda,ar-build,ar-ci", self._render("ar-ci"))
 
     def test_multiple_extra_labels_keep_the_capability_first(self):
         labels = self._render("ar-ci,extra").split(",")
-        self.assertEqual(["ar-ci-cuda", "ar-ci", "extra"], labels)
+        self.assertEqual(["ar-ci-cuda", "ar-build", "ar-ci", "extra"], labels)
+
+    def test_build_label_is_always_present(self):
+        self.assertIn("ar-build", self._render().split(","))
+        self.assertIn("ar-build", self._render("ar-ci").split(","))
 
     def test_env_example_opts_into_the_cpu_lane(self):
         self.assertEqual("ar-ci", _env_example_value("RUNNER_EXTRA_LABELS"))
