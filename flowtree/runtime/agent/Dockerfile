@@ -8,7 +8,20 @@
 # The image provides the same development environment as rings/devtools
 # plus pre-built FlowTree JARs and an auto-start entrypoint.
 
-FROM eclipse-temurin:17-jdk-jammy
+# JDK_MAJOR is the single source of truth for the Java major version in this
+# image, mirroring the ARG JDK_MAJOR in the CI runner image (tools/ci/docker).
+# It drives both the base runtime and the Maven stage below, so a JDK upgrade is
+# this one build arg plus a rebuild. It is declared before the first FROM
+# because only a global ARG can be used in a FROM line.
+#
+# The Maven image is named as its own stage because COPY --from does not expand
+# variables: the build fails with "variable expansion is not supported for
+# --from". A FROM line does expand them, so the stage carries the variable and
+# the COPY below refers to the stage by name.
+ARG JDK_MAJOR=17
+FROM maven:3-eclipse-temurin-${JDK_MAJOR} AS maven
+
+FROM eclipse-temurin:${JDK_MAJOR}-jdk-jammy
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -48,7 +61,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # MavenInstallSpace uses to give each job its own space for installed
 # artifacts. On 3.6 every job would again resolve whatever another branch's
 # job installed last.
-COPY --from=maven:3-eclipse-temurin-17 /usr/share/maven /usr/share/maven
+#
+# Only Maven's own files are copied out of the maven stage declared at the top;
+# nothing else from it enters the final image, and Maven runs on the base
+# image's JDK. That stage's suffix moves with JDK_MAJOR purely for consistency,
+# so the Dockerfile does not read as pinning two majors.
+COPY --from=maven /usr/share/maven /usr/share/maven
 RUN ln -s /usr/share/maven/bin/mvn /usr/bin/mvn
 
 # ── Node.js 20 ─────────────────────────────────────────────────────

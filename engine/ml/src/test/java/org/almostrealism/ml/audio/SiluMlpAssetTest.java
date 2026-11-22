@@ -124,6 +124,77 @@ public class SiluMlpAssetTest extends TestSuiteBase implements DiffusionTransfor
 	}
 
 	/**
+	 * The full {@link DiffusionTransformerFeatures#timestepEmbedding} path built from the asset — the
+	 * learned Fourier feature block followed by the asset-backed MLP — reproduces an independent host
+	 * reference that computes the whole composition in plain double precision: the
+	 * {@code [cos(2π·t·f) | sin(2π·t·f)]} Fourier features of the scalar, then {@code linear -> SiLU ->
+	 * linear}. Unlike {@link #timestepEmbeddingMatchesJavaAssembly}, which compares against a
+	 * {@link SequentialBlock} that reuses the very same Fourier block, this pins the composition end to
+	 * end against math, so a drift shared by the asset and the reconstructed assembly would still be
+	 * caught.
+	 */
+	@Test(timeout = 300000)
+	public void timestepEmbeddingMatchesIndependentReference() {
+		int batch = 1;
+		int fourierDim = 8;
+		int half = fourierDim / 2;
+		int embedDim = 5;
+
+		Weights w = new Weights(fourierDim, embedDim, embedDim, 29L);
+		PackedCollection freq = w.uniform(-0.5, 0.5, half, 1);
+		PackedCollection timestep = PackedCollection.of(0.37).reshape(shape(batch, 1));
+
+		Block migrated = timestepEmbedding(batch, embedDim,
+				fourierFeatures(batch, 1, fourierDim, freq), w.wIn, w.bIn, w.wOut, w.bOut);
+
+		double[] expected = timestepReference(w, timestep, freq, batch, half);
+		double[] actual = run(migrated, timestep, shape(batch, 1));
+		log("timestepEmbedding independent reference -> " + literal(expected));
+		assertClose("timestepEmbedding vs independent reference", expected, actual);
+	}
+
+	/**
+	 * The {@link DiffusionTransformerFeatures#timestepEmbedding} path the
+	 * {@link org.almostrealism.ml.audio.DiffusionTransformer} uses with the deterministic
+	 * {@link DiffusionTransformerFeatures#expoFourierFeatures} frequency ladder, at a batch size
+	 * greater than one, reproduces both the independent host reference and the {@link SequentialBlock}
+	 * assembly it replaced. The locked {@link #timestepEmbeddingMatchesJavaAssembly} covers only batch
+	 * one with a learned Fourier block, so this pins the second caller path — the weightless
+	 * deterministic projection injected into the same asset — and the multi-row layout of the injected
+	 * block.
+	 */
+	@Test(timeout = 300000)
+	public void timestepEmbeddingExpoPathMatchesReferences() {
+		int batch = 2;
+		int fourierDim = 8;
+		int half = fourierDim / 2;
+		int embedDim = 5;
+		double minFreq = 0.5;
+		double maxFreq = 50.0;
+
+		Weights w = new Weights(fourierDim, embedDim, embedDim, 41L);
+		PackedCollection freq = expoFourierFrequencies(fourierDim, minFreq, maxFreq).evaluate();
+		PackedCollection timestep = PackedCollection.of(0.37, 0.61).reshape(shape(batch, 1));
+
+		Block migrated = timestepEmbedding(batch, embedDim,
+				expoFourierFeatures(batch, fourierDim, minFreq, maxFreq), w.wIn, w.bIn, w.wOut, w.bOut);
+
+		SequentialBlock assembly = new SequentialBlock(shape(batch, 1));
+		assembly.add(expoFourierFeatures(batch, fourierDim, minFreq, maxFreq));
+		assembly.add(dense(w.wIn, w.bIn));
+		assembly.add(silu(shape(batch, embedDim)));
+		assembly.add(dense(w.wOut, w.bOut));
+
+		double[] expected = timestepReference(w, timestep, freq, batch, half);
+		double[] migratedOut = run(migrated, timestep, shape(batch, 1));
+		double[] assemblyOut = run(assembly, timestep, shape(batch, 1));
+		log("timestepEmbedding expo migrated -> " + literal(migratedOut));
+		log("timestepEmbedding expo assembly -> " + literal(assemblyOut));
+		assertClose("expo asset vs independent reference", expected, migratedOut);
+		assertClose("expo asset vs java assembly", assemblyOut, migratedOut);
+	}
+
+	/**
 	 * {@link org.almostrealism.ml.DiffusionFeatures#timestepEmbeddings} builds through the asset and
 	 * produces a finite embedding of the expected width. Its weights are randomly initialised, so no
 	 * value can be pinned; this exercises the caller-#2 conversion end to end.
@@ -217,6 +288,37 @@ public class SiluMlpAssetTest extends TestSuiteBase implements DiffusionTransfor
 		mlp.add(silu(shape(1, w.hidden)));
 		mlp.add(dense(w.wOut, w.bOut));
 		return mlp;
+	}
+
+	/**
+	 * The full timestep-embedding arithmetic in plain double precision: the
+	 * {@code [cos(2π·t·f) | sin(2π·t·f)]} Fourier features of the scalar over the frequency matrix,
+	 * followed by the configuration's {@code linear -> SiLU -> linear} MLP through {@link HostReference}.
+	 * An oracle for the whole composition, independent of the asset and of the Fourier feature block the
+	 * migrated path is built from. The Fourier layout — all cosines then all sines, per row — is the one
+	 * {@link FourierFeaturesAssetTest} independently pins for both the learned and the deterministic
+	 * projection, so {@code w.in} is {@code 2 · half}.
+	 *
+	 * @param w           the MLP configuration (its input width is {@code 2 · half})
+	 * @param timestep    the scalar input, shape {@code [batch, 1]}
+	 * @param frequencies the frequency matrix, shape {@code [half, 1]}
+	 * @param batch       the batch size
+	 * @param half        the number of frequencies
+	 * @return the expected {@code [batch, embedDim]} embedding, row-major
+	 */
+	private double[] timestepReference(Weights w, PackedCollection timestep,
+									   PackedCollection frequencies, int batch, int half) {
+		double[] t = timestep.toArray();
+		double[] f = frequencies.toArray();
+		double[] fourier = new double[batch * 2 * half];
+		for (int b = 0; b < batch; b++) {
+			for (int k = 0; k < half; k++) {
+				double phase = 2.0 * Math.PI * t[b] * f[k];
+				fourier[b * 2 * half + k] = Math.cos(phase);
+				fourier[b * 2 * half + half + k] = Math.sin(phase);
+			}
+		}
+		return new HostReference(w).forward(fourier, true);
 	}
 
 	/**

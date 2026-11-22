@@ -27,7 +27,11 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.TimingMetric;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.IntUnaryOperator;
 import java.util.function.LongUnaryOperator;
@@ -333,23 +337,10 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	 * @return {@code true} if {@code value.longValue()} is exactly {@code value}
 	 */
 	static boolean isLongValue(Number value) {
-		if (isIntegerType(value)) return true;
+		if (isExactLong(value)) return true;
 
 		double d = value.doubleValue();
 		return d == Math.rint(d) && d >= -0x1p63 && d < 0x1p63;
-	}
-
-	/**
-	 * Returns whether the given value is held in a boxed integer type no wider than a
-	 * {@code long}, as opposed to a floating-point one.
-	 *
-	 * @param value the value to test
-	 * @return {@code true} if {@code value} is a {@link Long}, {@link Integer},
-	 *         {@link Short} or {@link Byte}
-	 */
-	private static boolean isIntegerType(Number value) {
-		return value instanceof Long || value instanceof Integer
-				|| value instanceof Short || value instanceof Byte;
 	}
 
 	/**
@@ -415,7 +406,7 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 			return Long.compare(a.longValue(), b.longValue());
 		}
 
-		if (!isIntegerType(a) && !isIntegerType(b)) {
+		if (!isExactLong(a) && !isExactLong(b)) {
 			return Double.compare(a.doubleValue(), b.doubleValue());
 		}
 
@@ -525,61 +516,188 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	}
 
 	/**
-	 * Returns the minimum value in this sequence.
+	 * Returns the minimum value in this sequence, as a lower bound for every element.
 	 *
-	 * @return the minimum value as a {@code long}
+	 * <p>Every element, including the single value of a constant sequence, is floored
+	 * individually with {@link #floorToLong(Number)}; {@link Number#longValue()} would
+	 * truncate toward zero (e.g. {@code -2} for {@code -2.5}), reporting a "minimum"
+	 * greater than an element that is present. The type of the first element cannot
+	 * choose a primitive fast path, because {@link ArrayIndexSequence} accepts mixed
+	 * {@link Number} implementations such as {@code [0, -2.5]}. {@code floorToLong}
+	 * tests {@link Integer} and {@link Long} first, so homogeneous integral storage
+	 * still costs only a type check per element, and it avoids the precision loss of
+	 * routing large integral and {@link BigDecimal} elements through {@code double}.
+	 * Because {@code floorToLong} is monotonic, the smallest floored value is a lower
+	 * bound for every element.</p>
+	 *
+	 * <p>The bound is exact only for elements whose floor fits in a {@code long}. An
+	 * element below {@link Long#MIN_VALUE} has no {@code long} lower bound, so it is
+	 * saturated to {@link Long#MIN_VALUE}. That value is the smallest {@code long}, not a
+	 * true bound for such an element; callers should treat it as "unbounded below".</p>
+	 *
+	 * @return the minimum value as a {@code long}, saturated to the {@code long} range
 	 */
 	default long min() {
-		if (isConstant()) return valueAt(0).longValue();
-
-		if (isFloatingPoint()) {
-			return ceilToLong(values().min(IndexSequence::compareExact).orElseThrow());
-		} else if (valueAt(0) instanceof Integer) {
-			return intValues().min().orElseThrow();
-		} else {
-			return longValues().min().orElseThrow();
+		if (isConstant()) {
+			return floorToLong(valueAt(0));
 		}
+
+		return values().mapToLong(IndexSequence::floorToLong).min().orElseThrow();
 	}
 
 	/**
-	 * Returns the maximum value in this sequence.
+	 * Floors a {@link Number} value to a {@code long} lower bound without
+	 * losing precision for exact numeric representations.
 	 *
-	 * @return the maximum value as a {@code long}
+	 * <p>{@link ArrayIndexSequence} accepts arbitrary {@link Number} values, so a
+	 * plain {@code (long) Math.floor(value.doubleValue())} is not safe: converting a
+	 * large integral value such as {@link BigInteger} to {@code double} loses
+	 * precision, and converting a {@link BigDecimal} to {@code double} can round it
+	 * <em>upward</em> before flooring, both of which can produce a result that is no
+	 * longer a true lower bound. This method therefore preserves integral values
+	 * exactly ({@link Byte}, {@link Short}, {@link Integer}, {@link Long},
+	 * {@link AtomicInteger}, {@link AtomicLong} and {@link BigInteger}), floors
+	 * {@link BigDecimal} with exact decimal arithmetic, and only falls back to
+	 * {@link Math#floor} for other (floating-point) types.</p>
+	 *
+	 * <p>Values whose floor lies outside the {@code long} range are saturated to
+	 * {@link Long#MIN_VALUE} or {@link Long#MAX_VALUE} rather than silently wrapped,
+	 * since {@link Number#longValue()} truncates the high bits of an out-of-range
+	 * {@link BigInteger}/{@link BigDecimal} and could otherwise return a value far
+	 * greater than the element. A value below {@link Long#MIN_VALUE} has no
+	 * {@code long} lower bound at all, so the saturated {@link Long#MIN_VALUE} is the
+	 * closest representable approximation, not a true bound. Likewise, a value above
+	 * {@link Long#MAX_VALUE} saturates to {@link Long#MAX_VALUE}.</p>
+	 *
+	 * @param value  the value to floor
+	 * @return the largest {@code long} that does not exceed {@code value}, saturated
+	 *         to the {@code long} range
+	 */
+	static long floorToLong(Number value) {
+		if (isExactLong(value)) return value.longValue();
+
+		if (value instanceof BigDecimal) {
+			return clampToLong((BigDecimal) value, RoundingMode.FLOOR);
+		}
+
+		if (value instanceof BigInteger) {
+			return clampToLong((BigInteger) value);
+		}
+
+		double floored = Math.floor(value.doubleValue());
+		if (floored <= Long.MIN_VALUE) return Long.MIN_VALUE;
+		if (floored >= Long.MAX_VALUE) return Long.MAX_VALUE;
+		return (long) floored;
+	}
+
+	/**
+	 * Returns whether {@code value} is one of the integral {@link Number} types whose
+	 * {@link Number#longValue()} is exact ({@link Integer}, {@link Long}, {@link Short},
+	 * {@link Byte}, {@link AtomicInteger} and {@link AtomicLong}). For these types a
+	 * {@code double} round-trip would lose precision above 2^53, so
+	 * {@link #floorToLong(Number)} and {@link #ceilToLong(Number)} use
+	 * {@code longValue()} directly. {@link Integer} and {@link Long} are tested first
+	 * because they are by far the most common element types.
+	 *
+	 * @param value  the value to test
+	 * @return {@code true} if {@code value.longValue()} represents it exactly
+	 */
+	private static boolean isExactLong(Number value) {
+		return value instanceof Integer || value instanceof Long
+				|| value instanceof Short || value instanceof Byte
+				|| value instanceof AtomicInteger || value instanceof AtomicLong;
+	}
+
+	/**
+	 * Clamps an arbitrary-precision integral {@code value} to the {@code long} range,
+	 * saturating to {@link Long#MIN_VALUE} or {@link Long#MAX_VALUE} when it does not
+	 * fit. This avoids the silent high-bit truncation of
+	 * {@link BigInteger#longValue()} for out-of-range magnitudes.
+	 *
+	 * @param value  the integral value to clamp
+	 * @return {@code value} as a {@code long}, saturated to the representable range
+	 */
+	static long clampToLong(BigInteger value) {
+		if (value.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) return Long.MAX_VALUE;
+		if (value.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0) return Long.MIN_VALUE;
+		return value.longValue();
+	}
+
+	/**
+	 * Rounds a {@link BigDecimal} {@code value} to an integral {@code long} using
+	 * {@code mode}, saturating to {@link Long#MIN_VALUE} or {@link Long#MAX_VALUE}
+	 * when it lies outside the representable range.
+	 *
+	 * <p>The {@code long} bounds are checked <em>before</em> the value is rescaled, so a
+	 * value whose result is already known to saturate (such as {@code 1E+1000000000})
+	 * never materializes its full integral representation as a {@link BigInteger} and so
+	 * cannot exhaust memory. {@link BigDecimal#compareTo} compares adjusted exponents
+	 * rather than digit strings, so these bound checks stay cheap for extreme
+	 * magnitudes. Only an in-range value is rescaled, and its
+	 * {@link BigDecimal#longValue()} is then exact.</p>
+	 *
+	 * @param value  the value to round
+	 * @param mode   the rounding mode ({@link RoundingMode#FLOOR} for a lower bound,
+	 *               {@link RoundingMode#CEILING} for an upper bound)
+	 * @return {@code value} rounded to a {@code long}, saturated to the representable range
+	 */
+	static long clampToLong(BigDecimal value, RoundingMode mode) {
+		if (value.compareTo(BigDecimal.valueOf(Long.MAX_VALUE)) > 0) return Long.MAX_VALUE;
+		if (value.compareTo(BigDecimal.valueOf(Long.MIN_VALUE)) < 0) return Long.MIN_VALUE;
+		return value.setScale(0, mode).longValue();
+	}
+
+	/**
+	 * Returns the maximum value in this sequence, as an upper bound for every element.
+	 *
+	 * <p>Mirroring {@link #min()}, every element is ceiled individually with
+	 * {@link #ceilToLong(Number)} rather than dispatching on the type of the first
+	 * element: {@link ArrayIndexSequence} accepts mixed {@link Number} storage, and a
+	 * sequence such as {@code [0, 2.5]} would otherwise be routed through
+	 * {@link #longValues()}, truncating {@code 2.5} to {@code 2}. Because
+	 * {@link #ceilToLong(Number)} is monotonic, the largest ceiled value is an upper
+	 * bound for every element.</p>
+	 *
+	 * <p>As with {@link #min()}, the bound is exact only for elements whose ceiling fits
+	 * in a {@code long}. An element above {@link Long#MAX_VALUE} saturates to
+	 * {@link Long#MAX_VALUE}, which callers should treat as "unbounded above".</p>
+	 *
+	 * @return the maximum value as a {@code long}, saturated to the {@code long} range
 	 */
 	default long max() {
-		if (isConstant()) return valueAt(0).longValue();
+		if (isConstant()) return ceilToLong(valueAt(0));
+		return values().mapToLong(IndexSequence::ceilToLong).max().orElseThrow();
+	}
 
-		if (isFloatingPoint()) {
-			return ceilToLong(values().max(IndexSequence::compareExact).orElseThrow());
-		} else {
-			return longValues().max().orElseThrow();
+	/**
+	 * Ceils a {@link Number} value to a {@code long} upper bound without losing
+	 * precision for exact numeric representations. This is the counterpart of
+	 * {@link #floorToLong(Number)}: integral types are returned exactly,
+	 * {@link BigDecimal} is ceiled with exact decimal arithmetic, and other
+	 * (floating-point) types use {@link Math#ceil}. Values outside the {@code long}
+	 * range are saturated to {@link Long#MIN_VALUE} or {@link Long#MAX_VALUE}. A value
+	 * above {@link Long#MAX_VALUE} has no {@code long} upper bound, so its saturated
+	 * result is the closest representable approximation, not a true bound.
+	 *
+	 * @param value  the value to ceil
+	 * @return the smallest {@code long} that is not less than {@code value},
+	 *         saturated to the {@code long} range
+	 */
+	static long ceilToLong(Number value) {
+		if (isExactLong(value)) return value.longValue();
+
+		if (value instanceof BigDecimal) {
+			return clampToLong((BigDecimal) value, RoundingMode.CEILING);
 		}
-	}
 
-	/**
-	 * Returns whether the values of this sequence may be floating-point, either because
-	 * its declared type is or because its first value is. Such a sequence can hold
-	 * integral values as {@link Long}s beside non-integral ones (see
-	 * {@link #union(IndexSequence)}), so its bounds must not be chosen by the
-	 * representation of a single value.
-	 *
-	 * @return {@code true} if this sequence may hold floating-point values
-	 */
-	private boolean isFloatingPoint() {
-		Class<? extends Number> type = getType();
-		return type == Double.class || type == Float.class
-				|| valueAt(0) instanceof Double || valueAt(0) instanceof Float;
-	}
+		if (value instanceof BigInteger) {
+			return clampToLong((BigInteger) value);
+		}
 
-	/**
-	 * Returns the smallest {@code long} at least the given value, taking a value that is
-	 * {@link #isLongValue(Number) exactly a long} as it is.
-	 *
-	 * @param value the value to round
-	 * @return {@code value} rounded up to a {@code long}, saturated to the {@code long} range
-	 */
-	private static long ceilToLong(Number value) {
-		return isLongValue(value) ? value.longValue() : (long) Math.ceil(value.doubleValue());
+		double ceiled = Math.ceil(value.doubleValue());
+		if (ceiled <= Long.MIN_VALUE) return Long.MIN_VALUE;
+		if (ceiled >= Long.MAX_VALUE) return Long.MAX_VALUE;
+		return (long) ceiled;
 	}
 
 	/**

@@ -286,7 +286,8 @@ public class IndexSequenceMembershipTest extends TestSuiteBase {
 	/**
 	 * The bounds of a union holding integral values as {@link Long}s beside non-integral
 	 * ones are found over all of its values, whichever representation its first value
-	 * has, so a fractional maximum is rounded up rather than truncated.
+	 * has, so a fractional maximum is rounded up and a fractional minimum is rounded
+	 * down rather than truncated.
 	 */
 	@Test(timeout = 30000)
 	public void mixedUnionBoundsUseEveryValue() {
@@ -299,7 +300,7 @@ public class IndexSequenceMembershipTest extends TestSuiteBase {
 
 		IndexSequence negative = ArrayIndexSequence.of(Double.class, new double[] { -2.5, 0.5 });
 		IndexSequence below = negative.union(ArrayIndexSequence.of(Long.class, new Number[] { 4L }));
-		Assert.assertEquals(-2, below.min());
+		Assert.assertEquals(-3, below.min());
 		Assert.assertEquals(4, below.max());
 
 		IndexSequence large = ArrayIndexSequence.of(Long.class,

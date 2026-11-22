@@ -18,6 +18,8 @@ package io.flowtree.jobs;
 
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -74,6 +76,12 @@ public final class FileStagingConfig {
     private final String mergeParent;
 
     /**
+     * New-type files that may not be staged, each mapped to the reason; see
+     * {@link NewTypeAudit#refusals()}.
+     */
+    private final Map<String, String> newTypeRefusals;
+
+    /**
      * Private constructor — use {@link #builder()} to create instances.
      *
      * @param builder the populated builder
@@ -86,6 +94,7 @@ public final class FileStagingConfig {
         this.protectCiFiles = builder.protectCiFiles;
         this.baseBranch = builder.baseBranch;
         this.mergeParent = builder.mergeParent;
+        this.newTypeRefusals = Collections.unmodifiableMap(new LinkedHashMap<>(builder.newTypeRefusals));
     }
 
     /**
@@ -127,6 +136,7 @@ public final class FileStagingConfig {
                 .baseBranch(job.getBaseBranch())
                 .maxFileSizeBytes(job.getMaxFileSizeBytes())
                 .mergeParent(job.getHarnessMergeParent())
+                .newTypeRefusals(job.getNewTypeRefusals())
                 .build();
     }
 
@@ -256,6 +266,18 @@ public final class FileStagingConfig {
     }
 
     /**
+     * Returns why {@code file} may not be staged because it declares a new type
+     * that resembles an existing one and has no resolved verdict, or
+     * {@code null} when no such refusal applies.
+     *
+     * @param file the repository-relative path
+     * @return the refusal reason, or {@code null}
+     */
+    public String getNewTypeRefusal(String file) {
+        return newTypeRefusals.get(file);
+    }
+
+    /**
      * Returns the base branch used for test file existence checks.
      *
      * @return the base branch name
@@ -327,6 +349,9 @@ public final class FileStagingConfig {
 
         /** @see FileStagingConfig#mergeParent */
         private String mergeParent;
+
+        /** @see FileStagingConfig#newTypeRefusals */
+        private Map<String, String> newTypeRefusals = new LinkedHashMap<>();
 
         /**
          * Private constructor — use {@link FileStagingConfig#builder()} to obtain instances.
@@ -410,6 +435,18 @@ public final class FileStagingConfig {
          */
         public Builder mergeParent(String mergeParent) {
             this.mergeParent = mergeParent;
+            return this;
+        }
+
+        /**
+         * Sets the new-type files that may not be staged, each with the reason
+         * reported in the skipped list.
+         *
+         * @param newTypeRefusals repository-relative path to refusal reason
+         * @return this builder
+         */
+        public Builder newTypeRefusals(Map<String, String> newTypeRefusals) {
+            this.newTypeRefusals = new LinkedHashMap<>(newTypeRefusals);
             return this;
         }
 

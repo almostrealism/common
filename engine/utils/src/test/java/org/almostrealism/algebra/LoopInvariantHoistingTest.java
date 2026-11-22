@@ -36,7 +36,9 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -585,12 +587,7 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 
 		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
 
-		List<Class<?>> types = simplified.getStatements().stream()
-				.filter(s -> s instanceof ExpressionAssignment)
-				.map(s -> (ExpressionAssignment<?>) s)
-				.filter(ExpressionAssignment::isDeclaration)
-				.filter(a -> a.getDestination() instanceof StaticReference
-						&& ((StaticReference<?>) a.getDestination()).getName().startsWith("f_licm_"))
+		List<Class<?>> types = licmDeclarations(simplified.getStatements()).stream()
 				.<Class<?>>map(a -> a.getDestination().getType())
 				.collect(Collectors.toList());
 		Assert.assertEquals("one invariant sub-expression should be extracted from " + name, 1, types.size());
@@ -739,6 +736,130 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 		//  but should not be more than 2 at most)
 		Assert.assertTrue("At least one f_licm_* declaration should be created",
 				licmDeclarations >= 1);
+	}
+
+	/**
+	 * Verifies that the individually-trivial invariant factors of a merged product are
+	 * grouped into a single hoisted declaration. Merging nested products at creation turns
+	 * {@code x * x * x * i} into one product whose three {@code x} factors are each too
+	 * shallow to hoist on their own, so only grouping the invariant operands of a
+	 * {@link io.almostrealism.expression.Expression#isOperandGroupable() groupable}
+	 * expression extracts the invariant {@code x * x * x}.
+	 *
+	 * <p>Asserts that exactly one {@code f_licm_*} declaration is created (the three
+	 * invariant factors collapsed into one, not hoisted separately or left inside the loop)
+	 * and that the hoisted value depends on the invariant factor but not on the loop
+	 * index.</p>
+	 */
+	@Test(timeout = 30000)
+	public void mergedInvariantFactorsGroupedAndHoisted() {
+		Variable<Integer, ?> idx = Variable.integer("_test_i");
+		Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+		loop.setName("groupedLicmTest");
+
+		Scope<Void> child = new Scope<>("body");
+
+		// x * x * x * i merges to a single product of three invariant factors and the
+		// variant loop index; each x is a trivial factor that is not hoisted on its own.
+		Expression<Double> x = new StaticReference<>(Double.class, "genome_val");
+		Expression<Double> i = new StaticReference<>(Double.class, "_test_i");
+		Expression<?> variantExpr = x.multiply(x).multiply(x).multiply(i);
+
+		child.getStatements().add(new ExpressionAssignment(
+				true,
+				new StaticReference<>(Double.class, "f_result"),
+				variantExpr));
+		loop.getChildren().add(child);
+
+		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+
+		List<ExpressionAssignment<?>> licm = licmDeclarations(simplified.getStatements());
+		Assert.assertEquals("Grouped invariant factors should be hoisted as a single declaration",
+				1, licm.size());
+
+		Set<String> hoistedNames = new HashSet<>();
+		appendReferenceNames(licm.get(0).getExpression(), hoistedNames);
+		Assert.assertTrue("Hoisted declaration should depend on the invariant factor",
+				hoistedNames.contains("genome_val"));
+		Assert.assertFalse("Hoisted declaration should not depend on the loop index",
+				hoistedNames.contains("_test_i"));
+	}
+
+	/**
+	 * Tests that sibling loops, whose hoisted declarations all land in the block that contains
+	 * them, never give two of those declarations the same name. Each loop extracts the grouped
+	 * invariant factors of {@code x * x * x * i}, and a kernel with both loops must still declare each
+	 * name only once.
+	 */
+	@Test(timeout = 10000)
+	public void siblingLoopsHoistDistinctNames() {
+		Set<String> names = new HashSet<>();
+
+		for (String index : List.of("_test_a", "_test_b")) {
+			Variable<Integer, ?> idx = Variable.integer(index);
+			Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+			Scope<Void> child = new Scope<>("body");
+
+			Expression<Double> x = new StaticReference<>(Double.class, "genome_val");
+			Expression<Double> i = new StaticReference<>(Double.class, index);
+			child.getStatements().add(new ExpressionAssignment(true,
+					new StaticReference<>(Double.class, "f_result" + index),
+					x.multiply(x).multiply(x).multiply(i)));
+			loop.getChildren().add(child);
+
+			Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+			List<ExpressionAssignment<?>> licm = licmDeclarations(simplified.getStatements());
+			Assert.assertFalse("Each loop should hoist its invariant factors", licm.isEmpty());
+
+			for (ExpressionAssignment<?> declaration : licm) {
+				Assert.assertTrue("Hoisted name " + declaration.getDeclaredName() + " is declared twice",
+						names.add(declaration.getDeclaredName()));
+			}
+		}
+	}
+
+	/**
+	 * Tests the sibling-loop case as a kernel presents it: both loops are children of one
+	 * enclosing scope, the enclosing scope is simplified as a whole, and every declaration in
+	 * the resulting tree (which is rendered into a single block) is checked for a repeated
+	 * name. Each loop hoists the same invariant {@code x * x * x}, and each hoisted name must
+	 * carry the index of the loop it was extracted from.
+	 */
+	@Test(timeout = 10000)
+	public void siblingLoopsInOneScopeHoistDistinctNames() {
+		List<String> indices = List.of("_test_p", "_test_q", "_test_r");
+		Scope<Void> kernel = new Scope<>("kernel");
+
+		for (String index : indices) {
+			Variable<Integer, ?> idx = Variable.integer(index);
+			Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+			Scope<Void> body = new Scope<>("body");
+
+			Expression<Double> x = new StaticReference<>(Double.class, "genome_val");
+			Expression<Double> i = new StaticReference<>(Double.class, index);
+			body.getStatements().add(new ExpressionAssignment(true,
+					new StaticReference<>(Double.class, "f_result" + index),
+					x.multiply(x).multiply(x).multiply(i)));
+			loop.getChildren().add(body);
+			kernel.getChildren().add(loop);
+		}
+
+		Scope<Void> simplified = kernel.simplify(new NoOpKernelStructureContext(), 0);
+		Assert.assertEquals(indices.size(), simplified.getChildren().size());
+
+		Set<String> names = new HashSet<>();
+		for (ExpressionAssignment<?> declaration : simplified.collectDeclarations()) {
+			Assert.assertTrue("Declaration " + declaration.getDeclaredName() + " appears twice in the kernel",
+					names.add(declaration.getDeclaredName()));
+		}
+
+		for (int n = 0; n < indices.size(); n++) {
+			List<Statement<?>> statements = simplified.getChildren().get(n).getStatements();
+			List<ExpressionAssignment<?>> hoisted = licmDeclarations(statements);
+			Assert.assertEquals("Loop " + indices.get(n) + " should hoist one grouped declaration",
+					1, hoisted.size());
+			Assert.assertEquals("f_licm_" + indices.get(n) + "_0", hoisted.get(0).getDeclaredName());
+		}
 	}
 
 	/**
@@ -1158,10 +1279,10 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Counts how many declaration statements in the given list have a destination
-	 * name starting with the specified prefix (e.g., "f_licm_").
+	 * Returns the declaration statements in the given list whose destination name starts
+	 * with the specified prefix (e.g., {@code "f_licm_"}).
 	 */
-	private long countDeclarationsWithPrefix(List<Statement<?>> statements, String prefix) {
+	private List<ExpressionAssignment<?>> declarationsWithPrefix(List<Statement<?>> statements, String prefix) {
 		return statements.stream()
 				.filter(s -> s instanceof ExpressionAssignment)
 				.map(s -> (ExpressionAssignment<?>) s)
@@ -1172,7 +1293,37 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 							&& ((StaticReference<?>) dest).getName() != null
 							&& ((StaticReference<?>) dest).getName().startsWith(prefix);
 				})
-				.count();
+				.collect(Collectors.toList());
+	}
+
+	/**
+	 * Counts how many declaration statements in the given list have a destination
+	 * name starting with the specified prefix (e.g., "f_licm_").
+	 */
+	private long countDeclarationsWithPrefix(List<Statement<?>> statements, String prefix) {
+		return declarationsWithPrefix(statements, prefix).size();
+	}
+
+	/**
+	 * Returns the declaration statements in the given list whose destination name starts
+	 * with {@code f_licm_}, the prefix used for hoisted loop-invariant declarations.
+	 */
+	private List<ExpressionAssignment<?>> licmDeclarations(List<Statement<?>> statements) {
+		return declarationsWithPrefix(statements, "f_licm_");
+	}
+
+	/**
+	 * Adds the names of every {@link StaticReference} appearing anywhere in the given
+	 * expression tree to the supplied set.
+	 */
+	private static void appendReferenceNames(Expression<?> expr, Set<String> names) {
+		if (expr instanceof StaticReference) {
+			names.add(((StaticReference<?>) expr).getName());
+		}
+
+		for (Expression<?> child : expr.getChildren()) {
+			appendReferenceNames(child, names);
+		}
 	}
 
 	/**

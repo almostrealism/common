@@ -681,6 +681,14 @@ public abstract class Expression<T> implements
 	public boolean isVariableReference() { return false; }
 
 	/**
+	 * Returns {@code true} if any subset of the children of this expression may be combined,
+	 * through {@link #generate(List)} of that subset, into one child that takes their place
+	 * without changing the value of this expression. Only an associative and commutative
+	 * operation whose children share one arithmetic, such as {@link Sum}, can promise this.
+	 */
+	public boolean isOperandGroupable() { return false; }
+
+	/**
 	 * Returns a simplified form of the equality {@code this == other} that follows from
 	 * the structure of this expression, if there is one. {@link Equals} consults the
 	 * left-hand side of every equality it creates; subtypes that know how an equality
