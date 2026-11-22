@@ -375,6 +375,29 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 	}
 
 	/**
+	 * {@link ArithmeticIndexSequence#quotientOf(List, long)} has no representable result
+	 * for a divisor of {@link Long#MIN_VALUE}. It must report that as {@code null}, as
+	 * {@link ArithmeticIndexSequence#dividedExactly(long)} does. It must not throw while
+	 * looking for a bounded remainder, because the absolute value of that divisor
+	 * overflows and the zero term's common factor of {@code 0} has a greatest common
+	 * divisor of {@code 2^63} with it.
+	 */
+	@Test(timeout = 30000)
+	public void quotientOfMinimumDivisorIsNotRepresentable() {
+		long len = 240;
+		ArithmeticIndexSequence zero = new ArithmeticIndexSequence(0, 0, 1, len, len);
+		ArithmeticIndexSequence coarse = new ArithmeticIndexSequence(0, 8, 1, 10, len);
+		ArithmeticIndexSequence fine = new ArithmeticIndexSequence(0, 1, 1, 3, len);
+
+		Assert.assertNull("terms of different modulus have no arithmetic sum",
+				ArithmeticIndexSequence.sumOf(List.of(zero, coarse, fine)));
+		Assert.assertNull(ArithmeticIndexSequence.quotientOf(List.of(zero, coarse, fine), Long.MIN_VALUE));
+		Assert.assertNull(ArithmeticIndexSequence.quotientOf(List.of(coarse), Long.MIN_VALUE));
+		Assert.assertEquals(new ArithmeticIndexSequence(0, -1, 1, 10, len),
+				ArithmeticIndexSequence.quotientOf(List.of(coarse), -8));
+	}
+
+	/**
 	 * {@link ArithmeticIndexSequence#remainderOf(List, long)} drops the terms that are
 	 * multiples of the modulus before reducing the sum of the rest:
 	 * {@code (12 * (i % 5) + i % 4) % 4} is {@code i % 4}. When every term is a multiple

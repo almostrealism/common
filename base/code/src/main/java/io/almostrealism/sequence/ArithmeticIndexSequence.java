@@ -437,7 +437,8 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * The terms sharing a factor with the divisor form {@code T}, and {@code c} is the
 	 * largest factor of the divisor dividing all of them. Negative terms, a remainder whose
 	 * bound cannot be added without overflow, and a divisor that shares no factor with any
-	 * term all leave the remainder in place.</p>
+	 * term all leave the remainder in place. A divisor of {@link Long#MIN_VALUE} has no
+	 * representable quotient, as under {@link #dividedExactly(long)}.</p>
 	 *
 	 * @param terms the sequences whose sum is divided; must not be empty, and must all have the same length
 	 * @param divisor the divisor; must not be zero
@@ -447,6 +448,10 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	public static ArithmeticIndexSequence quotientOf(List<ArithmeticIndexSequence> terms, long divisor) {
 		if (divisor == 0) {
 			throw new IllegalArgumentException("Division by zero");
+		} else if (divisor == Long.MIN_VALUE) {
+			// No quotient by -2^63 is representable (see dividedExactly), and its absolute
+			// value would overflow back to a negative divisor
+			return null;
 		}
 
 		ArithmeticIndexSequence numerator = sumOf(terms);
