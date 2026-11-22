@@ -53,11 +53,19 @@ macOS host this plan was written on, and no container runtime was running there.
    was created with until then.
 3. Rebuild the CI runner images (`tools/ci/docker`, `tools/ci/rocm`; the CUDA
    fleet reuses the first) the same way and restart the runners.
-4. On any x86-64 host that cannot be rebuilt the same day, add the AVX-512
-   mitigation flag to the JVM options until it can.
-5. Record `java -version` from inside each running container and on each host.
-   This is the evidence that the patch landed; a rebuild that hit a cached layer
-   changes nothing.
+4. On any x86-64 host that cannot be rebuilt the same day, cap the JVM's AVX
+   level below 512 until it can. On HotSpot this is `-XX:UseAVX=2` (allow AVX2,
+   disable AVX-512); confirm the exact flag against the vendor advisory before
+   relying on it, and set it where that host's JVM options live — the
+   container's `JAVA_TOOL_OPTIONS` or entrypoint, or the service's launch
+   options — not in any repository file.
+5. Record `java -version` from inside each running container and on each host,
+   and compare each build against the advisory's minimum fixed build for that
+   line. `java -version` on its own is not evidence: a rebuild that hit a cached
+   layer changes nothing, and a floating tag that has not yet republished the
+   fixed build serves the old one. Read the fixed build numbers from the vendor
+   advisory first (they are listed as unverified in "Not verified" below); the
+   patch has landed only when every captured build is at or past them.
 
 Nothing in this phase changes a file in the repository.
 
@@ -81,20 +89,26 @@ Run the build and a bounded set of tests under a Java 25 JDK with the compiler
 level left at 17. This separates "the runtime changed" from "the language level
 changed". Expected trouble, in the order it is likely to appear:
 
-- **Build plugins.** The coverage agent and the static-analysis plugins must
-  understand Java 25 class files. The coverage plugin is the usual first
-  failure: it refuses class files newer than it knows.
+- **Build plugins.** With the compiler level left at 17, the class files are
+  still Java 17, so this phase tests whether each plugin *runs* on the Java 25
+  runtime — not whether it understands Java 25 class files, which only becomes a
+  question in Phase 2 once the target is raised. The coverage agent and the
+  static-analysis plugins are the usual first failures here: an old plugin can
+  fail to load or instrument on a JVM newer than it supports.
 - **Groovy** in `extern/ml-script` is several years old and predates Java 25
   bytecode.
-- **Native access.** The JNI backends load native libraries (five source files
-  call `System.load`). Java 25 warns on native access that has not been enabled
-  and is moving toward refusing it. The test and run configurations need the
+- **Native access.** The JNI backends load native libraries: `System.load` is
+  called from `NativeCompiler`, `CU` and `MTL` (the other matches in the tree
+  are Javadoc). Java 25 warns on native access that has not been enabled and is
+  moving toward refusing it. The test and run configurations need the
   enable-native-access option; none sets it today.
-- **Module flags.** One build file each uses `--add-opens` and `--add-exports`.
-  Each must be rechecked against Java 25's stricter encapsulation.
-- **Finalizers.** Five files define `finalize()`. Finalization is deprecated
-  for removal; these should move to the `Destroyable` lifecycle the project
-  already has. Not a blocker for 25, but it is the right time.
+- **Module flags.** The root `pom.xml` passes both flags to the compiler
+  plugin: `--add-exports` for eight `jdk.compiler` packages and `--add-opens`
+  for two more. Each must be rechecked against Java 25's stricter encapsulation.
+- **Finalizers.** Four files define `finalize()` (`MemoryDataAdapter`,
+  `DistributedResource`, `Connection`, `ScpDownloader`). Finalization is
+  deprecated for removal; these should move to the `Destroyable` lifecycle the
+  project already has. Not a blocker for 25, but it is the right time.
 - **Generated native code and JNI headers.** The hardware backends compile C
   against the JDK's headers. Confirm on each lane, not just on one host.
 
@@ -117,16 +131,27 @@ the owner.
 - Set `EXPECTED_JDK_MAJOR` to 25. Every hosted and self-hosted lane follows.
 - Change the `JDK_MAJOR` default in both runner Dockerfiles, and make the agent
   and controller Dockerfiles take the major as a build argument as the runner
-  images do, so the next upgrade is one value.
+  images do, so the next upgrade is one value. The agent Dockerfile has **two**
+  Java 17 pins — the `eclipse-temurin:17-jdk-jammy` base and the
+  `maven:3-eclipse-temurin-17` stage it copies Maven from — and both must move
+  together, or the image pairs a Java 25 runtime with a Java 17 Maven. The
+  controller Dockerfile has one (`eclipse-temurin:17-jre-jammy`).
 - Replace the literal major in the macOS tool-path defaults and install hint
   with the variable.
 - Update `tools/tests/test_self_hosted_jdk.py` expectations where they name the
   major.
 
 Sequencing matters: the self-hosted lanes fail fast when the installed JDK does
-not match the expected major. Install Java 25 alongside 17 on every runner
-**before** this branch merges, and remove 17 only after. Open pull requests
-whose head predates the change will need a rebase.
+not match the expected major, and the runner images bake exactly one JDK
+(`temurin-${JDK_MAJOR}-jdk`), so flipping `JDK_MAJOR` to 25 *replaces* 17 in the
+image rather than adding to it. A single flip strands one side either way —
+rebuilding the images first breaks open pull requests still expecting 17;
+merging the workflow change first breaks the new lanes. Bridge the gap: build
+and register Java 25 runner images **alongside** the existing 17 images (and, on
+any host-provisioned runner, install 25 next to 17) before the workflow change
+merges, keep both expected majors runnable through the transition, and retire
+the 17 images only after. Open pull requests whose head predates the change will
+still need a rebase onto the new expected major.
 
 ## Phase 4 — Hosts
 
@@ -160,20 +185,26 @@ inspected.
 
 - Runner images are built on an Ubuntu release from 2022; the agent and
   controller images on the same generation.
-- Four Python service images use Python 3.11, which now receives security fixes
-  only.
+- Three Python service images (`tools/tracker`, `tools/mcp/manager`,
+  `tools/mcp/memory`) are built on Python 3.11, which now receives security
+  fixes only.
 - The dashboard image is pinned to a release about two years old.
 - Python requirements are mostly unpinned, so what is installed depends on when
   each image was last built. Rebuilding is the upgrade; it is also unreproducible.
 
 **CI**
 
-- `actions/checkout`, `upload-artifact`, `download-artifact` and `cache` are on
-  a major version that targets a deprecated Node runtime; the runner already
-  prints a deprecation warning on every job.
-- One third-party action is referenced by a moving branch name rather than a
-  release or commit.
-- CI uses three different Python minor versions across jobs.
+- The core GitHub-maintained actions are current: `checkout`, `upload-artifact`,
+  `download-artifact` and `cache` are at `@v4` (Node 20) and `setup-java` and
+  `setup-python` at `@v5`, so none prints a deprecated-Node-runtime warning. No
+  action older than `@v4` remains in the workflows. (An earlier draft of this
+  plan flagged a deprecation warning here; that was wrong — it would apply to
+  `@v3`, which the workflows no longer use.)
+- The one third-party action pinned to a moving branch,
+  `JetBrains/qodana-action@main`, sits inside a fully commented-out Qodana step
+  in `analysis.yaml`, so it does not run today. Pin it to a release or commit
+  **if** that step is ever re-enabled; it is not an active risk as it stands.
+- CI uses three different Python minor versions across jobs (3.10, 3.11, 3.12).
 
 **The macOS agent host**
 
