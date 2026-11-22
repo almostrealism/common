@@ -426,6 +426,9 @@ class _LlamaCppHandler(BaseHTTPRequestHandler):
     #: malformed value (a list, or a ``message`` that is not an object) to drive
     #: the malformed-response path.
     completion = {"choices": [{"message": {"content": "a real summary"}}]}
+    #: The ``/health`` body a GET returns; a test sets a non-object to drive
+    #: the shape-safety path of the cached probe.
+    health = {"status": "ok"}
 
     def log_message(self, fmt, *args):
         pass
@@ -442,7 +445,7 @@ class _LlamaCppHandler(BaseHTTPRequestHandler):
         if not _LlamaCppHandler.healthy:
             self.send_error(503)
             return
-        self._respond({"status": "ok"})
+        self._respond(_LlamaCppHandler.health)
 
     def do_POST(self):
         if not _LlamaCppHandler.healthy:
@@ -477,6 +480,8 @@ class LlamaCppLiveTest(unittest.TestCase):
             "choices": [{"message": {"content": "a real summary"}}]}
         self.addCleanup(setattr, _LlamaCppHandler, "completion",
                         {"choices": [{"message": {"content": "a real summary"}}]})
+        _LlamaCppHandler.health = {"status": "ok"}
+        self.addCleanup(setattr, _LlamaCppHandler, "health", {"status": "ok"})
         self.server = _LocalHTTPServer(("127.0.0.1", 0), _LlamaCppHandler)
         thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         thread.start()
@@ -484,6 +489,20 @@ class LlamaCppLiveTest(unittest.TestCase):
 
         port = self.server.server_address[1]
         self.backend = LlamaCppBackend(base_url=f"http://127.0.0.1:{port}")
+
+    def test_non_object_health_body_reports_down_without_raising(self):
+        # The cached probe feeds AutoBackend.delegate; a list body used to raise
+        # AttributeError out of it instead of reporting the server down.
+        _LlamaCppHandler.health = []
+
+        self.assertFalse(self.backend.available)
+        self.assertEqual("malformed_response",
+                         self.backend.probe_diagnosis()["classification"])
+
+    def test_health_status_other_than_ok_reports_down(self):
+        _LlamaCppHandler.health = {"status": "loading model"}
+
+        self.assertFalse(self.backend.available)
 
     def test_synthesizes_while_the_server_is_up(self):
         self.assertTrue(self.backend.available)
@@ -673,6 +692,9 @@ class _OpenRouterHandler(BaseHTTPRequestHandler):
 
     key = "test-key"
     limit_remaining = 10.0
+    #: When not ``None``, the raw ``/key`` body returned instead of the usual
+    #: ``{"data": {"limit_remaining": ...}}`` object.
+    key_body = None
     completion_status = 200
     completion = {
         "choices": [{"message": {"content": "a hosted summary"},
@@ -698,6 +720,9 @@ class _OpenRouterHandler(BaseHTTPRequestHandler):
         _OpenRouterHandler.requests.append(("GET", self.path, None))
         if not self._authorized():
             self._respond(401, {"error": {"message": "invalid key"}})
+            return
+        if self.key_body is not None:
+            self._respond(200, self.key_body)
             return
         self._respond(200, {"data": {"limit_remaining": self.limit_remaining}})
 
@@ -733,6 +758,7 @@ class OpenRouterTest(unittest.TestCase):
                 self.addCleanup(os.environ.__setitem__, var, saved)
 
         _OpenRouterHandler.limit_remaining = 10.0
+        _OpenRouterHandler.key_body = None
         _OpenRouterHandler.completion_status = 200
         _OpenRouterHandler.completion = {
             "choices": [{"message": {"content": "a hosted summary"},
@@ -839,6 +865,30 @@ class OpenRouterTest(unittest.TestCase):
         _OpenRouterHandler.limit_remaining = 0
 
         self.assertFalse(self.backend().available)
+
+    def test_non_object_key_body_reports_down_without_raising(self):
+        # available feeds AutoBackend.delegate, so a malformed /key body must
+        # report the backend down rather than raise out of consult/recall.
+        _OpenRouterHandler.key_body = []
+
+        backend = self.backend()
+
+        self.assertFalse(backend.available)
+        self.assertEqual("malformed_response",
+                         backend.probe_diagnosis()["classification"])
+
+    def test_non_object_key_data_reports_down_without_raising(self):
+        _OpenRouterHandler.key_body = {"data": []}
+
+        self.assertFalse(self.backend().available)
+
+    def test_auto_detection_skips_a_malformed_openrouter_probe(self):
+        _OpenRouterHandler.key_body = []
+        fallback = FakeBackend(healthy=True, text="fallback")
+
+        auto = AutoBackend(candidates=[self.backend(), fallback])
+
+        self.assertIs(auto.delegate, fallback)
 
     def test_provider_error_message_reaches_the_reason(self):
         _OpenRouterHandler.completion_status = 402

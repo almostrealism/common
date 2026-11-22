@@ -22,7 +22,9 @@ import server
 from consult_conversations import (
     ConversationError, ConversationStore, caller_identity,
 )
-from inference_diagnosis import not_configured_cause, not_configured_diagnosis
+from inference_diagnosis import (
+    UNREACHABLE, not_configured_cause, not_configured_diagnosis,
+)
 from memory_text import prefers_reformulated, present, projected
 from server import mcp
 
@@ -219,7 +221,12 @@ def memory_recall(
                 body, _, _, _ = consult_engine.parse_trailer(synthesis.text)
                 summary = evidence.expand(body) or None
         except Exception as e:
+            # Backend failures arrive as a degraded Synthesis, so this is an
+            # unexpected error; log its traceback and still classify the result.
+            logging.getLogger("ar-manager").exception(
+                "Memory recall synthesis raised for %r", query)
             degraded_reason = f"LLM synthesis failed: {e}"
+            degraded_cause = llm.failure_cause(UNREACHABLE, None, degraded_reason)
 
     result = {
         "ok": True,

@@ -291,7 +291,7 @@ def not_configured_cause(detail: str = NOT_CONFIGURED_DETAIL) -> dict:
     """The structured ``cause`` for when no backend object exists at all.
 
     A backend normally builds its own ``cause`` from its identity (see
-    ``InferenceBackend._cause``). When backend construction fails outright —
+    ``InferenceBackend.failure_cause``). When backend construction fails outright —
     the inference module cannot be imported — there is no instance to ask, yet
     a degraded consult or recall must still carry the same classification,
     endpoint and operator-hint fields every other degraded path does. This
@@ -301,7 +301,7 @@ def not_configured_cause(detail: str = NOT_CONFIGURED_DETAIL) -> dict:
         detail: A secret-free description of the failure.
 
     Returns:
-        A ``cause`` dict matching ``InferenceBackend._cause``'s keys.
+        A ``cause`` dict matching ``InferenceBackend.failure_cause``'s keys.
     """
     return {
         "backend": None,

@@ -262,9 +262,23 @@ class InferenceBackend(ABC):
                 classification or UNREACHABLE),
         }
 
-    def _cause(self, classification: str, http_status: Optional[int],
-               detail: str) -> dict:
-        """The structured ``cause`` attached to a degraded :class:`Synthesis`."""
+    def failure_cause(self, classification: str, http_status: Optional[int],
+                      detail: str) -> dict:
+        """The structured ``cause`` attached to a degraded :class:`Synthesis`.
+
+        Public so a caller that degrades outside :meth:`synthesize` (for
+        example on an unexpected error while building a prompt) can still
+        report the same backend identity, endpoint and operator hint.
+
+        Args:
+            classification: The :mod:`inference_diagnosis` classification.
+            http_status: The provider's HTTP status, when one was received.
+            detail: A secret-free description of the failure.
+
+        Returns:
+            ``{backend, backend_selection, endpoint, classification,
+            http_status, detail, operator_hint}``.
+        """
         return {
             "backend": self.provider,
             "backend_selection": self.selection,
@@ -388,13 +402,13 @@ class InferenceBackend(ABC):
             log.warning("Synthesis degraded: %s", e)
             return Synthesis(
                 None, self.name, e.detail,
-                cause=self._cause(e.classification, e.http_status, e.detail))
+                cause=self.failure_cause(e.classification, e.http_status, e.detail))
 
         if not text or not text.strip():
             detail = "model returned an empty response"
             return Synthesis(
                 None, self.name, detail,
-                cause=self._cause(MALFORMED_RESPONSE, None, detail))
+                cause=self.failure_cause(MALFORMED_RESPONSE, None, detail))
         self._note_success()
         return Synthesis(text, self.name)
 
@@ -785,6 +799,7 @@ class LlamaCppBackend(OpenAIChatBackend):
             status = data.get("status", "")
             if status == "ok":
                 return None
+            # TODO(review): a well-formed non-ok status (e.g. "loading model") is not malformed; consider UNREACHABLE.
             return (MALFORMED_RESPONSE,
                     f"llama.cpp server returned status: {status!r}")
 
@@ -808,21 +823,17 @@ class LlamaCppBackend(OpenAIChatBackend):
                                probe["http_status"], probe["detail"])
 
     def _check_health(self, url: str) -> bool:
-        """Check if a llama.cpp server is reachable and healthy at the given URL."""
-        try:
-            req = urllib.request.Request(f"{url}/health", method="GET")
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read())
-                status = data.get("status", "")
-                if status == "ok":
-                    return True
-                log.warning(
-                    "llama.cpp server at %s returned status: %s", url, status,
-                )
-                return False
-        except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
-            log.info("llama.cpp server not reachable at %s: %s", url, e)
-            return False
+        """Check if a llama.cpp server is reachable and healthy at the given URL.
+
+        Uses the shape-safe :meth:`_probe_url_diagnosis`, so a ``/health`` body
+        that is not a JSON object reports the server down instead of raising
+        out of the cached health read and ``AutoBackend.delegate``.
+        """
+        probe = self._probe_url_diagnosis(url)
+        if not probe["available"]:
+            log.info("llama.cpp server not healthy at %s: %s", url,
+                     probe["detail"])
+        return probe["available"]
 
     def _probe(self) -> bool:
         if self._check_health(self.base_url):
@@ -1110,24 +1121,17 @@ class OpenRouterBackend(OpenAIChatBackend):
         A key with no credit left is reported down: every completion would
         fail with HTTP 402, and an auto-detecting caller should move on to a
         backend that can answer.
-        """
-        if not self.configured:
-            return False
-        req = urllib.request.Request(
-            f"{self.base_url}/key", headers=self.request_headers(), method="GET",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                data = json.loads(resp.read()).get("data", {})
-        except (urllib.error.URLError, OSError, TimeoutError, ValueError) as e:
-            log.info("OpenRouter not reachable at %s: %s", self.base_url, e)
-            return False
 
-        remaining = data.get("limit_remaining")
-        if remaining is not None and remaining <= 0:
-            log.warning("OpenRouter API key has no credit remaining")
-            return False
-        return True
+        Delegates to the shape-safe :meth:`probe_diagnosis`, so a ``/key``
+        body that is not the expected object (``[]``, ``{"data": []}``)
+        reports the backend down instead of raising out of
+        ``AutoBackend.delegate``.
+        """
+        diagnosis = self.probe_diagnosis()
+        if not diagnosis["available"]:
+            log.info("OpenRouter unavailable at %s: %s", self.base_url,
+                     diagnosis["detail"])
+        return diagnosis["available"]
 
     def generate(
         self,
@@ -1297,7 +1301,7 @@ class PassthroughBackend(InferenceBackend):
         detail = "no inference model is configured or reachable"
         return Synthesis(
             None, self.name, detail,
-            cause=self._cause(NOT_CONFIGURED, None, detail),
+            cause=self.failure_cause(NOT_CONFIGURED, None, detail),
         )
 
 
