@@ -137,6 +137,47 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 		PackedCollection result = lowPass(
 				traverseEach(cp(signal)), cp(cutoffs), sampleRate, filterOrder).get().evaluate();
 
+		assertPerSampleLowPass(signal, cutoffs, result, sampleRate, filterOrder);
+	}
+
+	/**
+	 * Verifies that a materialized {@code [samples, taps]} coefficient bank, which carries
+	 * the default traversal axis 0 rather than the axis an expression produces, is still
+	 * read as one tap row per sample with the tap count taken from the trailing dimension.
+	 */
+	@Test(timeout = 30000)
+	public void convolutionWithMaterializedPerSampleBank() {
+		int signalSize = 256;
+		int filterOrder = 20;
+		int sampleRate = 44100;
+
+		PackedCollection signal = new PackedCollection(signalSize);
+		sin(integers(0, signalSize).multiply(2.0 * Math.PI / 16.0))
+				.add(sin(integers(0, signalSize).multiply(2.0 * Math.PI / 4.0)).multiply(0.5))
+				.into(signal.traverseEach()).evaluate();
+		PackedCollection cutoffs = integers(0, signalSize).multiply(40.0).add(200.0).evaluate();
+
+		PackedCollection bank = lowPassCoefficients(cp(cutoffs), sampleRate, filterOrder)
+				.evaluate().reshape(shape(signalSize, filterOrder + 1));
+		MultiOrderFilter filter = MultiOrderFilter.create(traverseEach(cp(signal)), cp(bank));
+		PackedCollection result = filter.get().evaluate();
+
+		assertPerSampleLowPass(signal, cutoffs, result, sampleRate, filterOrder);
+	}
+
+	/**
+	 * Asserts that every output sample equals the input convolved with the reference
+	 * low-pass taps for that sample's own cutoff, reading zeros beyond the signal.
+	 *
+	 * @param signal      the filtered input
+	 * @param cutoffs     the per-sample cutoff frequencies in Hz
+	 * @param result      the filter output
+	 * @param sampleRate  the sample rate in Hz
+	 * @param filterOrder the filter order (number of taps minus one)
+	 */
+	private void assertPerSampleLowPass(PackedCollection signal, PackedCollection cutoffs,
+										PackedCollection result, int sampleRate, int filterOrder) {
+		int signalSize = signal.getMemLength();
 		double[] in = signal.toArray();
 		double[] cut = cutoffs.toArray();
 		double[] out = result.toArray();

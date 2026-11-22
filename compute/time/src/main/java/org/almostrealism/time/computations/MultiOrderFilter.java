@@ -253,6 +253,10 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 	 * single-channel form does at the start and end of the signal). The whole bank
 	 * runs as one kernel.</p>
 	 *
+	 * <p>With a single channel and a multi-dimensional coefficient bank (a time-varying
+	 * {@code [samples, taps]} filter), the tap count is the bank's trailing dimension,
+	 * whatever traversal axis the bank carries.</p>
+	 *
 	 * @param shape The output shape (typically matches series shape)
 	 * @param series Producer providing the input signal
 	 * @param coefficients Producer providing the filter coefficients
@@ -289,6 +293,8 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 						+ " do not divide into " + channels + " rows");
 			}
 			this.filterOrder = (int) (coeffTotal / channels) - 1;
+		} else if (coeffShape.getDimensions() > 1) {
+			this.filterOrder = coeffShape.length(coeffShape.getDimensions() - 1) - 1;
 		} else {
 			this.filterOrder = coeffShape.getSize() - 1;
 		}
