@@ -37,7 +37,7 @@ What that means here:
 | Controller container | Depends on the deploy host | Yes: HTTP endpoints, tokens, webhook payloads | **Highest. Check first** |
 | Agent containers on Linux nodes | x86-64 | Job input and tool output | High if the processor has AVX-512 VBMI |
 | CUDA and OpenCL runner images | x86-64 | Only repository content under test | Lower, still patch |
-| macOS runners and agent hosts | Apple Silicon | n/a | Not reachable by this flaw; the JDKs are still years stale |
+| macOS runners and agent hosts | Apple Silicon (assumed) | n/a | Not reachable by this flaw if Apple Silicon; the JDKs are still years stale. An Intel Mac in the fleet would be x86-64 and in scope — confirm the architecture of each host |
 | Hosted CI jobs | Hosted | n/a | `setup-java` installs the current patch on each run |
 
 Whether a given Linux host has AVX-512 VBMI is a one-line check
@@ -330,6 +330,10 @@ inspected.
 
 - The fixed build numbers for the vulnerability, against the vendor advisory.
 - The processor features, JDK builds and image ages on the Linux hosts.
+- That every macOS runner and agent host is Apple Silicon. Only the one macOS
+  host this plan was written on was inspected; any Intel Mac in the fleet is
+  x86-64 and therefore in scope for the flaw, so the architecture of each macOS
+  host still needs confirming.
 - Which dependency versions are the current ones. The table above states how
   old each pin is, not what to move to.
 - Any behaviour on Java 25. Nothing has been built or run on it yet.
