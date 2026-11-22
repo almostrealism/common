@@ -67,7 +67,12 @@ class CudaFleetLabelsTest(unittest.TestCase):
         self.assertEqual(0, proc.returncode, proc.stderr)
         return proc.stdout
 
-    def test_unset_extra_labels_is_cuda_and_build(self):
+    def test_unset_extra_labels_is_cuda_only(self):
+        """With no extra labels the runner carries only the CUDA fleet's own labels.
+
+        Those are the ``ar-ci-cuda`` capability and the ``ar-build`` label every
+        fleet registers; no other lane is served.
+        """
         self.assertEqual("ar-ci-cuda,ar-build", self._render())
 
     def test_empty_extra_labels_leaves_no_trailing_comma(self):
