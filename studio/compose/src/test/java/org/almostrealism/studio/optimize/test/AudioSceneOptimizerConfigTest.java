@@ -198,9 +198,29 @@ public class AudioSceneOptimizerConfigTest extends TestSuiteBase {
 		Assert.assertTrue(MixdownManager.enableWetInAdjustment);
 		Assert.assertTrue(MixdownManager.enableMasterFilterDown);
 		Assert.assertTrue("reverb requires level > 6", MixdownManager.enableReverb);
+		Assert.assertTrue("stem output is enabled at every non-negative feature level",
+				AudioPopulationOptimizer.enableStemOutput);
 		Assert.assertFalse("sources-only is a negative-level mode", MixdownManager.enableSourcesOnly);
 		Assert.assertFalse(StableDurationHealthComputation.enableTimeout);
 		Assert.assertFalse(SilenceDurationHealthComputation.enableSilenceCheck);
+	}
+
+	/**
+	 * Level 5 sits just below the wet-in / master-filter-down boundary: the main filter sweep is on
+	 * (gated above 4) while {@code enableWetInAdjustment} and {@code enableMasterFilterDown} remain
+	 * off because both require a level strictly above 5. Reverb (above 6) is off, and stem output is
+	 * on as it is at every non-negative level. This pins the strict {@code > 5} threshold that the
+	 * level-7 test only exercises from the enabled side.
+	 */
+	@Test(timeout = 60000)
+	public void featureLevelFiveLeavesWetAndMasterFilterOff() {
+		AudioSceneOptimizer.setFeatureLevel(5);
+
+		Assert.assertTrue("main filter sweep enables above level 4", MixdownManager.enableMainFilterUp);
+		Assert.assertFalse("wet-in adjustment requires above level 5", MixdownManager.enableWetInAdjustment);
+		Assert.assertFalse("master filter down requires above level 5", MixdownManager.enableMasterFilterDown);
+		Assert.assertFalse("reverb requires above level 6", MixdownManager.enableReverb);
+		Assert.assertTrue(AudioPopulationOptimizer.enableStemOutput);
 	}
 
 	/**
@@ -283,5 +303,43 @@ public class AudioSceneOptimizerConfigTest extends TestSuiteBase {
 				PopulationOptimizer.enableVerbose);
 		Assert.assertSame("the created profile must be assigned to the health computation",
 				profile, StableDurationHealthComputation.profile);
+	}
+
+	/**
+	 * Verbosity 4 crosses the level-4 logging threshold but not the level-5 one: the wave-output and
+	 * native-context logs turn on (both gated above 3) while {@code HardwareOperator.enableVerboseLog}
+	 * stays off because it requires a verbosity strictly above 4. This pins the strict {@code > 4}
+	 * boundary separating those two bands.
+	 */
+	@Test(timeout = 60000)
+	public void verbosityFourEnablesWaveOutputButNotVerboseLog() {
+		AudioSceneOptimizer.setVerbosity(4, false);
+
+		Assert.assertTrue("wave output logging enables above verbosity 3", WaveOutput.enableVerbose);
+		Assert.assertTrue("native context logging enables above verbosity 3",
+				NativeComputeContext.enableVerbose);
+		Assert.assertFalse("verbose operator logging requires above verbosity 4",
+				HardwareOperator.enableVerboseLog);
+	}
+
+	/**
+	 * Verbosity 5 is above every logging threshold, so the highest-band switches the lower-verbosity
+	 * tests never reach are all on: the wave-output and native-context logs (above 3), the verbose
+	 * operator log (above 4), and the level-3 operator/hardware/pattern logs (above 2). This pins the
+	 * top of the verbosity-to-logging mapping, which the verbosity-3 test leaves unverified.
+	 */
+	@Test(timeout = 60000)
+	public void veryHighVerbosityEnablesEveryLoggingThreshold() {
+		AudioSceneOptimizer.setVerbosity(5, false);
+
+		Assert.assertTrue("wave output logging enables above verbosity 3", WaveOutput.enableVerbose);
+		Assert.assertTrue("native context logging enables above verbosity 3",
+				NativeComputeContext.enableVerbose);
+		Assert.assertTrue("verbose operator logging enables above verbosity 4",
+				HardwareOperator.enableVerboseLog);
+		Assert.assertTrue("operator logging enables above verbosity 2", HardwareOperator.enableLog);
+		Assert.assertTrue("hardware verbose logging enables above verbosity 2", Hardware.enableVerbose);
+		Assert.assertTrue("pattern system logging enables above verbosity 2",
+				PatternSystemManager.enableVerbose);
 	}
 }
