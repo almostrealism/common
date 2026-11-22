@@ -53,6 +53,27 @@ class TestMemoryRecall(unittest.TestCase):
 
     @patch.object(server, "_get_llm", return_value=None)
     @patch.object(server, "_get_memory_client")
+    def test_no_backend_carries_a_structured_not_configured_cause(
+            self, mock_client_fn, _):
+        # When no backend object exists at all, the degraded recall must still
+        # carry the structured cause every other degraded path does — not just
+        # a free-form note.
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search.return_value = [
+            {"id": "m1", "content": "a note", "score": 0.5}]
+        mock_client_fn.return_value = client
+
+        result = server.memory_recall(query="test", scope="all")
+
+        self.assertTrue(result["degraded"])
+        self.assertEqual("not_configured", result["cause"]["classification"])
+        self.assertIsNone(result["cause"]["backend"])
+        self.assertTrue(result["cause"]["operator_hint"])
+        self.assertIn("agent_action_required", result)
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
     def test_no_results(self, mock_client_fn, _):
         _grant_all_scopes()
         client = MagicMock()
@@ -242,6 +263,39 @@ class TestMemoryReformulatedText(unittest.TestCase):
         self.assertTrue(result["degraded"])
         self.assertIn("backend is down", result["note"])
 
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_recall_surfaces_the_structured_cause_and_instruction(
+        self, mock_client_fn, mock_llm,
+    ):
+        """A degraded recall carries the classified cause and the explicit
+        instruction to tell the person synthesis is unavailable."""
+        _grant_all_scopes()
+        client = MagicMock()
+        client.search.return_value = [self._reformulated_memory()]
+        mock_client_fn.return_value = client
+        cause = {
+            "backend": "llamacpp (http://host:8084)",
+            "backend_selection": "auto-detected llamacpp",
+            "endpoint": "http://host:8084",
+            "classification": "connection_refused",
+            "http_status": None,
+            "detail": "[Errno 111] Connection refused",
+            "operator_hint": "Confirm a llama.cpp server is running.",
+        }
+        llm = MagicMock()
+        llm.synthesize.return_value = Synthesis(
+            None, "llamacpp (http://host:8084)", "down", cause=cause)
+        mock_llm.return_value = llm
+
+        result = server.memory_recall(query="test", scope="all")
+
+        self.assertTrue(result["degraded"])
+        self.assertEqual("connection_refused", result["cause"]["classification"])
+        self.assertEqual("http://host:8084", result["cause"]["endpoint"])
+        self.assertIn("connection_refused", result["agent_action_required"])
+        self.assertIn("Tell the person", result["agent_action_required"])
+
     @patch.object(server, "_github_request", return_value={"ok": False, "error": "off"})
     @patch.object(server, "_get_memory_client")
     def test_workstream_context_unwraps_the_dual_source(self, mock_client_fn, _gh):
@@ -258,6 +312,7 @@ class TestMemoryReformulatedText(unittest.TestCase):
         memory = result["memories"][0]
         self.assertEqual("what the agent actually wrote", memory["content"])
         self.assertNotIn("source", memory)
+
 
 class TestMemoryBranchContext(unittest.TestCase):
 
@@ -577,6 +632,11 @@ class TestConsult(unittest.TestCase):
         self.assertNotIn("answer", result)
         self.assertEqual(result["sources"], ["docs/internals/a.md"])
         self.assertIn("read them directly", result["note"])
+        # The no-backend case carries the structured not_configured cause, the
+        # same shape a PassthroughBackend failure would attach.
+        self.assertEqual("not_configured", result["cause"]["classification"])
+        self.assertIsNone(result["cause"]["backend"])
+        self.assertIn("agent_action_required", result)
 
     @patch.object(server, "_get_memory_client", return_value=None)
     @patch.object(server, "_get_llm")
@@ -963,6 +1023,96 @@ class TestMemoryStoreReformulation(unittest.TestCase):
         client.store.assert_called_once()
         self.assertTrue(result["ok"])
         self.assertFalse(result["reformulated_stored"])
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
+    def test_no_backend_store_carries_a_structured_cause(
+            self, mock_client_fn, _):
+        # With reformulation requested but no backend constructable, the stored
+        # original is flagged degraded with the structured not_configured cause.
+        client = MagicMock()
+        client.store.return_value = {"id": "plain-nb"}
+        mock_client_fn.return_value = client
+
+        result = server.memory_store(
+            content="raw note",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            reformulate=True,
+        )
+
+        self.assertTrue(result["degraded"])
+        self.assertEqual("not_configured", result["cause"]["classification"])
+        self.assertIsNone(result["cause"]["backend"])
+
+    @patch.object(server, "_get_llm", return_value=None)
+    @patch.object(server, "_get_memory_client")
+    def test_no_backend_store_tells_the_agent_to_report_it(
+            self, mock_client_fn, _):
+        client = MagicMock()
+        client.store.return_value = {"id": "plain-nb2"}
+        mock_client_fn.return_value = client
+
+        result = server.memory_store(
+            content="raw note",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            reformulate=True,
+        )
+
+        instruction = result["agent_action_required"]
+        self.assertIn("Tell the person", instruction)
+        self.assertIn("no inference backend could be constructed", instruction)
+
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_degraded_store_carries_the_synthesis_instruction(
+            self, mock_client_fn, mock_llm_fn):
+        client = MagicMock()
+        client.store.return_value = {"id": "plain-ci"}
+        mock_client_fn.return_value = client
+        degraded = Synthesis(None, "fake", "refused", cause={
+            "backend": "llamacpp", "backend_selection": "auto",
+            "endpoint": "http://127.0.0.1:8080",
+            "classification": "connection_refused", "http_status": None,
+            "detail": "refused", "operator_hint": "start llama.cpp"})
+        llm = MagicMock()
+        llm.reformulate.return_value = degraded
+        mock_llm_fn.return_value = llm
+
+        result = server.memory_store(
+            content="raw note",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            reformulate=True,
+        )
+
+        self.assertEqual(degraded.agent_instruction,
+                         result["agent_action_required"])
+        self.assertIn("connection_refused", result["agent_action_required"])
+        self.assertEqual("connection_refused",
+                         result["cause"]["classification"])
+
+    @patch.object(server, "_get_llm")
+    @patch.object(server, "_get_memory_client")
+    def test_successful_store_has_no_agent_instruction(
+            self, mock_client_fn, mock_llm_fn):
+        client = MagicMock()
+        client.store_dual.return_value = {"id": "dual-ok"}
+        mock_client_fn.return_value = client
+        llm = MagicMock()
+        llm.reformulate.return_value = Synthesis("Rewritten", "fake")
+        mock_llm_fn.return_value = llm
+
+        result = server.memory_store(
+            content="raw note",
+            repo_url="https://github.com/org/repo",
+            branch="feature/x",
+            reformulate=True,
+        )
+
+        self.assertNotIn("agent_action_required", result)
+        self.assertNotIn("degraded", result)
 
     @patch.object(server, "_get_llm")
     @patch.object(server, "_get_memory_client")
