@@ -21,6 +21,7 @@ import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.NAryExpression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.sequence.Index;
@@ -649,6 +650,12 @@ public class Repeated<T> extends Scope<T> {
 	 *       left in place.</li>
 	 * </ul>
 	 *
+	 * <p>When the expression is an associative and commutative operation (see
+	 * {@link NAryExpression#isOperandGroupable()}), its trivial invariant operands are also
+	 * grouped: their combination, such as the {@code x * x * x} of {@code x * x * x * i}, is
+	 * extracted as one declaration when it is substantial. Without this, invariant factors
+	 * merged into a variant product would never be hoisted.</p>
+	 *
 	 * <p>This uses {@link Expression#generate} with explicit child lists instead of
 	 * {@link Expression#replace}, which avoids issues where structural equality matching
 	 * could replace unintended sub-expressions in complex expression trees.</p>
@@ -679,6 +686,7 @@ public class Repeated<T> extends Scope<T> {
 		if (children.isEmpty()) return expr;
 
 		List<Expression<?>> newChildren = new ArrayList<>(children);
+		List<Integer> trivialInvariants = new ArrayList<>();
 		boolean changed = false;
 
 		for (int i = 0; i < children.size(); i++) {
@@ -686,16 +694,10 @@ public class Repeated<T> extends Scope<T> {
 
 			if (isLoopInvariant(child, variantNames, loopIndices)) {
 				if (isSubstantialForExtraction(child, minDepth)) {
-					StaticReference<?> ref = extracted.get(child);
-					if (ref == null) {
-						Class<?> type = child.getDeclarationType();
-						ref = new StaticReference<>(type,
-								"f_licm_" + extractIdx[0]++);
-						extracted.put(child, ref);
-						declarations.add(new ExpressionAssignment(true, ref, child));
-					}
-					newChildren.set(i, ref);
+					newChildren.set(i, extractInvariant(child, extracted, extractIdx, declarations));
 					changed = true;
+				} else {
+					trivialInvariants.add(i);
 				}
 			} else {
 				Expression<?> replaced = replaceInvariantSubExpressions(
@@ -707,8 +709,54 @@ public class Repeated<T> extends Scope<T> {
 			}
 		}
 
+		if (trivialInvariants.size() > 1 && trivialInvariants.size() < children.size()
+				&& expr instanceof NAryExpression && ((NAryExpression<?>) expr).isOperandGroupable()) {
+			List<Expression<?>> group = new ArrayList<>();
+			trivialInvariants.forEach(i -> group.add(children.get(i)));
+
+			Expression<?> combined = expr.generate(group);
+			if (isSubstantialForExtraction(combined, minDepth)) {
+				List<Expression<?>> grouped = new ArrayList<>();
+				for (int i = 0; i < newChildren.size(); i++) {
+					if (i == trivialInvariants.get(0)) {
+						grouped.add(extractInvariant(combined, extracted, extractIdx, declarations));
+					} else if (!trivialInvariants.contains(i)) {
+						grouped.add(newChildren.get(i));
+					}
+				}
+
+				newChildren = grouped;
+				changed = true;
+			}
+		}
+
 		if (!changed) return expr;
 		return expr.generate(newChildren);
+	}
+
+	/**
+	 * Returns the reference to the hoisted declaration of the given loop-invariant
+	 * expression, adding a new {@code f_licm_*} declaration for it unless a structurally
+	 * equal expression has already been extracted.
+	 *
+	 * @param invariant the loop-invariant expression to extract
+	 * @param extracted map of already-extracted sub-expressions to their references (for dedup)
+	 * @param extractIdx counter for generating unique declaration names
+	 * @param declarations list to receive the new declaration, if one is created
+	 * @return the reference that replaces {@code invariant} in the loop body
+	 */
+	private static StaticReference<?> extractInvariant(Expression<?> invariant,
+													   Map<Expression<?>, StaticReference<?>> extracted,
+													   int[] extractIdx,
+													   List<Statement<?>> declarations) {
+		StaticReference<?> ref = extracted.get(invariant);
+		if (ref == null) {
+			ref = new StaticReference<>(invariant.getDeclarationType(), "f_licm_" + extractIdx[0]++);
+			extracted.put(invariant, ref);
+			declarations.add(new ExpressionAssignment(true, ref, invariant));
+		}
+
+		return ref;
 	}
 
 	/**

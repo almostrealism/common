@@ -230,6 +230,17 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		return Sum.of(children.toArray(new Expression[0]));
 	}
 
+	/**
+	 * Addition is associative and commutative, so terms may be grouped whenever they are
+	 * all added in the arithmetic of the sum itself.
+	 *
+	 * @return {@code true} if every term has the type of this sum
+	 */
+	@Override
+	public boolean isOperandGroupable() {
+		return hasUniformOperandType();
+	}
+
 	@Override
 	public CollectionExpression<?> delta(CollectionExpression<?> target) {
 		CollectionExpression delta = sum(target.getShape(),

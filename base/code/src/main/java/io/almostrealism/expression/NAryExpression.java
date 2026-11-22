@@ -132,6 +132,35 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	/**
+	 * Returns whether any subset of the operands of this expression may be combined, through
+	 * {@link #generate(List)} of that subset, into a single operand that takes their place
+	 * without changing the value of this expression. That holds when the operation is
+	 * associative and commutative and every operand is combined in the same arithmetic.
+	 *
+	 * <p>An n-ary expression in general makes no such promise; the arithmetic operations that
+	 * do override this method.</p>
+	 *
+	 * @return {@code true} if operands of this expression may be grouped
+	 */
+	public boolean isOperandGroupable() {
+		return false;
+	}
+
+	/**
+	 * Returns whether every operand of this expression has the same type as the expression
+	 * itself, so that combining any subset of them first leaves the arithmetic unchanged.
+	 *
+	 * @return {@code true} if all operands share the type of this expression
+	 */
+	protected boolean hasUniformOperandType() {
+		for (Expression<?> operand : getChildren()) {
+			if (!Objects.equals(operand.getType(), getType())) return false;
+		}
+
+		return true;
+	}
+
+	/**
 	 * Returns the given operands with every operand that is itself an expression of
 	 * {@code kind} replaced, in place, by that operand's own operands, so that an associative
 	 * operation applied to the result of the same operation becomes one expression rather

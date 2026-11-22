@@ -342,6 +342,17 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		return (Expression) Product.of(children.toArray(new Expression[0]));
 	}
 
+	/**
+	 * Multiplication is associative and commutative, so factors may be grouped whenever
+	 * they are all multiplied in the arithmetic of the product itself.
+	 *
+	 * @return {@code true} if every factor has the type of this product
+	 */
+	@Override
+	public boolean isOperandGroupable() {
+		return hasUniformOperandType();
+	}
+
 	@Override
 	public CollectionExpression<?> delta(CollectionExpression<?> target) {
 		List<Expression<?>> operands = getChildren();
