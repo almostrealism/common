@@ -503,6 +503,11 @@ class LlamaCppLiveTest(unittest.TestCase):
         _LlamaCppHandler.health = {"status": "loading model"}
 
         self.assertFalse(self.backend.available)
+        # A well-formed non-ok status means the server is up but not ready; it
+        # is UNREACHABLE, not a malformed (shape-broken) response.
+        diagnosis = self.backend.probe_diagnosis()
+        self.assertEqual("unreachable", diagnosis["classification"])
+        self.assertIn("not ready", diagnosis["detail"])
 
     def test_synthesizes_while_the_server_is_up(self):
         self.assertTrue(self.backend.available)

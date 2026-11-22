@@ -799,9 +799,11 @@ class LlamaCppBackend(OpenAIChatBackend):
             status = data.get("status", "")
             if status == "ok":
                 return None
-            # TODO(review): a well-formed non-ok status (e.g. "loading model") is not malformed; consider UNREACHABLE.
-            return (MALFORMED_RESPONSE,
-                    f"llama.cpp server returned status: {status!r}")
+            # A well-formed object with a non-ok status (e.g. "loading model")
+            # is not malformed: the server is up but not ready to serve. Report
+            # it UNREACHABLE and reserve MALFORMED_RESPONSE for shape errors.
+            return (UNREACHABLE,
+                    f"llama.cpp server is up but not ready (status: {status!r})")
 
         return probe_http_get(f"{url}/health", timeout=5, accept=_accept)
 
