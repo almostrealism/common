@@ -73,6 +73,26 @@
         ]
       },
       {
+        "matcher": "mcp__.*ar-manager__github_create_pr",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pr-gate.sh gate",
+            "description": "Deny a new pull request until the repository's open pull requests were just listed, and make a second open pull request a deliberate, logged confirmation \u2014 every pull request costs a whole CI run"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pr-gate.sh bash",
+            "description": "Deny gh pr create, which would bypass the pull request gate on github_create_pr"
+          }
+        ]
+      },
+      {
         "matcher": "*",
         "hooks": [
           {
@@ -501,6 +521,16 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/track-consultant-call.sh",
             "description": "Record timestamp of consultant call for enforce-consultant-first.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*ar-manager__github_list_open_prs",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pr-gate.sh record",
+            "description": "Record a repository's open pull requests for the pull request gate on github_create_pr"
           }
         ]
       },
