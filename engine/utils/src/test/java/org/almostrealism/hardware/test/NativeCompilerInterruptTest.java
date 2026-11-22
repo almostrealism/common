@@ -69,6 +69,30 @@ public class NativeCompilerInterruptTest extends TestSuiteBase {
 	 */
 	@Test(timeout = 60000)
 	public void interruptedCompilationDestroysProcess() throws Exception {
+		assertInterruptDestroys("echo $$ > %s; exec sleep 50",
+				"The compiler process was still running when the interrupted wait ended");
+	}
+
+	/**
+	 * Interrupting the wait for a compiler driver also destroys the processes the driver started:
+	 * a gcc or clang driver runs its work in children (cc1, as) that a kill of the driver alone
+	 * leaves running. The shell here stands in for the driver and the sleep for its child.
+	 */
+	@Test(timeout = 60000)
+	public void interruptedCompilationDestroysDescendants() throws Exception {
+		assertInterruptDestroys("sleep 50 & echo $! > %s; wait",
+				"A child of the compiler process was still running when the interrupted wait ended");
+	}
+
+	/**
+	 * Runs a shell script as a compiler invocation, interrupts the wait for it once the script has
+	 * recorded a process id, and asserts that the runner throws, leaves the interrupt status set,
+	 * and returns only after the recorded process has exited.
+	 *
+	 * @param script         shell script with one {@code %s} for the file it writes a process id to
+	 * @param stillAliveText assertion message used when the recorded process is still running
+	 */
+	private static void assertInterruptDestroys(String script, String stillAliveText) throws Exception {
 		Path dir = Files.createTempDirectory("native-compiler-interrupt");
 		Path pidFile = dir.resolve("pid");
 		RunnerCompiler compiler = new RunnerCompiler(dir.toString());
@@ -78,7 +102,7 @@ public class NativeCompilerInterruptTest extends TestSuiteBase {
 
 		Thread waiter = new Thread(() -> {
 			try {
-				compiler.run(List.of("/bin/sh", "-c", "echo $$ > " + pidFile + "; exec sleep 50"));
+				compiler.run(List.of("/bin/sh", "-c", String.format(script, pidFile)));
 			} catch (Throwable t) {
 				thrown.set(t);
 			} finally {
@@ -96,7 +120,7 @@ public class NativeCompilerInterruptTest extends TestSuiteBase {
 				thrown.get() instanceof HardwareException);
 		Assert.assertTrue("The interrupt status was not left set", interruptedAfter.get());
 
-		Assert.assertFalse("The compiler process was still running when the interrupted wait ended",
+		Assert.assertFalse(stillAliveText,
 				ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
 	}
 

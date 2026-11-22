@@ -41,8 +41,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * Compiler infrastructure for converting generated C code into native shared libraries loaded via JNI.
@@ -627,8 +630,13 @@ private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pr
 	}
 
 	/**
-	 * Forcibly destroys a compiler process whose wait was interrupted and waits, for at most
-	 * {@link #DESTROY_WAIT_SECONDS} seconds, for it to exit.
+	 * Forcibly destroys a compiler process whose wait was interrupted, together with its
+	 * descendants, and waits, for at most {@link #DESTROY_WAIT_SECONDS} seconds each, for them to exit.
+	 *
+	 * <p>A compiler driver such as gcc or clang runs its work in child processes (cc1, as, ld),
+	 * which a kill of the driver alone leaves running. The descendants are captured before the
+	 * driver is destroyed, because once it exits they are reparented and no longer reachable
+	 * through {@link Process#descendants()}.</p>
 	 *
 	 * <p>{@link Process#destroyForcibly()} only requests termination, so returning straight after
 	 * it would let the compiler keep running while the next compilation starts. The caller's
@@ -640,14 +648,23 @@ private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pr
 	 * @param name    name of the compilation target, included in the warning if it outlives the wait
 	 */
 	private void awaitDestroyed(Process process, String name) {
+		List<ProcessHandle> descendants = process.descendants().collect(Collectors.toList());
+		descendants.forEach(ProcessHandle::destroyForcibly);
+
 		boolean exited;
 
-		// TODO(review): also destroy process.descendants(); a gcc driver's cc1/as children survive a kill of the driver
 		try {
 			exited = process.destroyForcibly().waitFor(DESTROY_WAIT_SECONDS, TimeUnit.SECONDS);
+			for (ProcessHandle descendant : descendants) {
+				descendant.onExit().get(DESTROY_WAIT_SECONDS, TimeUnit.SECONDS);
+			}
 		} catch (InterruptedException e) {
 			exited = !process.isAlive();
+		} catch (ExecutionException | TimeoutException e) {
+			exited = false;
 		}
+
+		exited = exited && descendants.stream().noneMatch(ProcessHandle::isAlive);
 
 		if (!exited) {
 			warn("Compiler process for " + name + " was still running after it was destroyed");
