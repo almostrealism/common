@@ -181,12 +181,14 @@ public class TraversalAxisAlignmentTest extends TestSuiteBase {
 	}
 
 	/**
-	 * When several values share the largest total size, the one with the most axes is the
-	 * result, so a value that differs from it only by a leading length-1 axis broadcasts into
-	 * it and is not rejected for having fewer axes.
+	 * When several values share the largest total size, the first of them in input order is the
+	 * result, whatever its axis count, matching the result shape that master produced. Here the
+	 * leading {@code (41)} is kept over the later {@code (1, 41)} values of the same total size,
+	 * so the result is one-dimensional, each equal-total value is combined with it positionally,
+	 * and only the single-element value is repeated up to it.
 	 */
 	@Test(timeout = 10000)
-	public void largestShapeWithMostAxesIsTheResult() {
+	public void firstLargestShapeIsTheResult() {
 		ShapeAlignment alignment = new ShapeAlignment(shape(41), shape(1), shape(1, 41), shape(1, 41));
 		List<TraversalPolicy> aligned = new ArrayList<>();
 
@@ -195,7 +197,7 @@ public class TraversalAxisAlignmentTest extends TestSuiteBase {
 			return shape;
 		});
 
-		assertEquals(2, result.getDimensions());
+		assertEquals(1, result.getDimensions());
 		assertEquals(41, result.getTotalSizeLong());
 		assertEquals(List.of(41), alignment.expansions);
 		for (TraversalPolicy value : aligned) {

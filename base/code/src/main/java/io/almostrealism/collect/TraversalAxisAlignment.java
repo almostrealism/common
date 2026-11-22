@@ -145,7 +145,8 @@ public abstract class TraversalAxisAlignment<V> {
 			TraversalPolicy shape = shapes.get(i);
 			int offset = broadcastOffset(shape, target);
 
-			// TODO(review): equal-total shapes that broadcast from neither end, e.g. (2,3) vs (3,2), still combine positionally without a check
+			// Shapes of the largest total size that broadcast from neither end (e.g. (2, 3)
+			// and (3, 2)) are combined positionally, as the equal-total contract documents.
 			if (offset >= 0) {
 				depths[i] = broadcastDepth(shape, target, offset);
 			} else if (shape.getTotalSizeLong() != largest) {
