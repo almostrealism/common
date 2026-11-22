@@ -137,10 +137,17 @@ the owner.
 - Raise the dependencies that Phase 1 shows failing, and the ones that are old
   enough to carry known vulnerabilities regardless of Java (next section).
 - Add the enable-native-access option Phase 1 identified. The tests run under
-  the root `pom.xml`'s `maven-surefire-plugin`, which sets no `argLine` today,
-  so the test JVM gets it there; the run configurations need it wherever their
-  own JVM options live. Without this, the native backends that `System.load`
-  drives (`NativeCompiler`, `CU`, `MTL`) move from warning to refusal as Java 25
+  the root `pom.xml`'s `maven-surefire-plugin`, which sets no `argLine` of its
+  own today; the run configurations need it wherever their own JVM options live.
+  Surefire's `argLine` is not actually empty at test time, though: the root
+  `pom.xml` binds the `jacoco-maven-plugin` `prepare-agent` goal, which writes
+  the coverage agent into the `argLine` property during the build. A plain
+  `<argLine>--enable-native-access=ALL-UNNAMED</argLine>` would overwrite that
+  injected value and silently drop coverage on every module, so the option must
+  be appended to the property jacoco fills rather than replace it — the late-
+  replacement form `<argLine>@{argLine} --enable-native-access=ALL-UNNAMED</argLine>`.
+  Without the option at all, the native backends that `System.load` drives
+  (`NativeCompiler`, `CU`, `MTL`) move from warning to refusal as Java 25
   tightens, and the failure is on the macOS lanes as much as the Linux ones.
 
 ## Phase 3 — CI and images (one `ci/...` branch)
