@@ -162,6 +162,16 @@ class BashTest(unittest.TestCase):
                         "gh -R acme/app pr `echo create`"):
             self.assertEqual("deny", core.bash(command)["action"], command)
 
+    def test_dynamic_subcommand_after_a_safe_gh_command_is_denied(self):
+        # Every gh invocation is examined, not only the first one in the command.
+        for command in ("gh pr list && gh $cmd", 'gh pr view 104; gh pr "$sub"',
+                        "gh api /x | gh -R acme/app pr `echo create`"):
+            self.assertEqual("deny", core.bash(command)["action"], command)
+
+    def test_chained_safe_gh_commands_are_allowed(self):
+        for command in ("gh pr list && gh pr view 104", 'gh pr list; gh api "$url"'):
+            self.assertEqual("allow", core.bash(command)["action"], command)
+
     def test_dynamic_argument_to_safe_gh_subcommand_is_allowed(self):
         # An expansion in an argument of an already-safe subcommand is not a
         # subcommand, so it must not be blocked.
@@ -200,6 +210,43 @@ class CurrentBranchTest(unittest.TestCase):
 
     def test_missing_git_dir_is_empty(self):
         with tempfile.TemporaryDirectory() as project:
+            self.assertEqual("", core.current_branch(project))
+
+    def test_reads_branch_in_linked_worktree_with_relative_gitdir(self):
+        # In a linked worktree .git is a file naming the worktree's git directory.
+        with tempfile.TemporaryDirectory() as root:
+            project = os.path.join(root, "wt")
+            worktree_git = os.path.join(root, "main", ".git", "worktrees", "wt")
+            os.makedirs(project)
+            os.makedirs(worktree_git)
+            with open(os.path.join(worktree_git, "HEAD"), "w", encoding="utf-8") as f:
+                f.write("ref: refs/heads/feature/wt\n")
+            with open(os.path.join(project, ".git"), "w", encoding="utf-8") as f:
+                f.write("gitdir: ../main/.git/worktrees/wt\n")
+            self.assertEqual("feature/wt", core.current_branch(project))
+
+    def test_reads_branch_in_linked_worktree_with_absolute_gitdir(self):
+        with tempfile.TemporaryDirectory() as root:
+            project = os.path.join(root, "wt")
+            worktree_git = os.path.join(root, "elsewhere", "wt")
+            os.makedirs(project)
+            os.makedirs(worktree_git)
+            with open(os.path.join(worktree_git, "HEAD"), "w", encoding="utf-8") as f:
+                f.write("ref: refs/heads/feature/abs\n")
+            with open(os.path.join(project, ".git"), "w", encoding="utf-8") as f:
+                f.write("gitdir: " + worktree_git + "\n")
+            self.assertEqual("feature/abs", core.current_branch(project))
+
+    def test_malformed_git_file_is_empty(self):
+        with tempfile.TemporaryDirectory() as project:
+            with open(os.path.join(project, ".git"), "w", encoding="utf-8") as f:
+                f.write("not a gitdir line\n")
+            self.assertEqual("", core.current_branch(project))
+
+    def test_git_file_naming_missing_directory_is_empty(self):
+        with tempfile.TemporaryDirectory() as project:
+            with open(os.path.join(project, ".git"), "w", encoding="utf-8") as f:
+                f.write("gitdir: does/not/exist\n")
             self.assertEqual("", core.current_branch(project))
 
 

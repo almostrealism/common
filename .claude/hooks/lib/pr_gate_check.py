@@ -185,10 +185,17 @@ def subcommand_is_dynamic(tokens):
     gate cannot expand them, so it denies a ``gh`` command whose subcommand -- or, after
     ``pr``, whose sub-subcommand -- is a dynamic token. Leading global options (and the
     value of ``-R``/``--repo``) are skipped so the real subcommand is the token examined.
+    Every ``gh`` invocation in the command is examined, so a dynamic one chained after a
+    safe one (``gh pr list && gh $cmd``) is still denied.
     """
-    if "gh" not in tokens:
-        return False
-    rest = tokens[tokens.index("gh") + 1:]
+    return any(invocation_is_dynamic(tokens[i + 1:]) for i, t in enumerate(tokens) if t == "gh")
+
+
+def invocation_is_dynamic(rest):
+    """Returns True when the tokens following one ``gh`` give it a dynamic subcommand.
+
+    See ``subcommand_is_dynamic``; ``rest`` is everything after that ``gh`` token.
+    """
     index = 0
     while index < len(rest) and rest[index].startswith("-"):
         flag = rest[index]
@@ -238,10 +245,37 @@ def bash(command):
     return {"action": "allow"}
 
 
-def current_branch(project_dir):
-    """Returns the current checkout's branch from ``.git/HEAD``, or "" when unavailable."""
+def git_dir(project_dir):
+    """Returns the git directory of the checkout at ``project_dir``, or "" when there is none.
+
+    In a main checkout ``.git`` is that directory. In a linked worktree (``git worktree add``)
+    ``.git`` is a file holding ``gitdir: <path>``, relative to the worktree when not absolute,
+    and the worktree's own ``HEAD`` lives in the directory it names.
+    """
+    dot_git = os.path.join(project_dir, ".git")
+    if os.path.isdir(dot_git):
+        return dot_git
     try:
-        with open(os.path.join(project_dir, ".git", "HEAD"), "r", encoding="utf-8") as f:
+        with open(dot_git, "r", encoding="utf-8") as f:
+            line = f.readline().strip()
+    except OSError:
+        return ""
+    prefix = "gitdir:"
+    if not line.startswith(prefix):
+        return ""
+    return os.path.join(project_dir, line[len(prefix):].strip())
+
+
+def current_branch(project_dir):
+    """Returns the current checkout's branch from its ``HEAD``, or "" when unavailable.
+
+    Works for a main checkout and for a linked worktree alike; see ``git_dir``.
+    """
+    directory = git_dir(project_dir)
+    if not directory:
+        return ""
+    try:
+        with open(os.path.join(directory, "HEAD"), "r", encoding="utf-8") as f:
             ref = f.read().strip()
     except OSError:
         return ""
