@@ -41,6 +41,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 /**
@@ -311,6 +312,9 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 	 * that runtime performance remains acceptable for numerical kernels.
 	 */
 	private static final int REDUCED_OPT_THRESHOLD = 50000;
+
+	/** Seconds to wait for a forcibly destroyed compiler process to exit. */
+	private static final long DESTROY_WAIT_SECONDS = 10;
 
 	/** GCC pragma directive prepended to large generated source files to use {@code -O1} instead of {@code -O3}. */
 private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pragma GCC optimize(\"O1\")\n#endif\n";
@@ -606,7 +610,7 @@ private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pr
 			try {
 				process.waitFor();
 			} catch (InterruptedException e) {
-				process.destroyForcibly();
+				awaitDestroyed(process, name);
 				Thread.currentThread().interrupt();
 				throw new HardwareException("Interrupted while compiling native code for " + name,
 						new UnsupportedOperationException(e));
@@ -620,6 +624,34 @@ private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pr
 				throw new HardwareException("Native compiler failure (" + process.exitValue() + ") on " + name);
 			}
 		};
+	}
+
+	/**
+	 * Forcibly destroys a compiler process whose wait was interrupted and waits, for at most
+	 * {@link #DESTROY_WAIT_SECONDS} seconds, for it to exit.
+	 *
+	 * <p>{@link Process#destroyForcibly()} only requests termination, so returning straight after
+	 * it would let the compiler keep running while the next compilation starts. The caller's
+	 * interrupt status must already be clear (as it is after an {@link InterruptedException}),
+	 * otherwise the wait for exit would end at once; a further interrupt during this wait ends
+	 * it early, and the caller restores the interrupt status afterwards in either case.</p>
+	 *
+	 * @param process the compiler process to destroy
+	 * @param name    name of the compilation target, included in the warning if it outlives the wait
+	 */
+	private void awaitDestroyed(Process process, String name) {
+		boolean exited;
+
+		// TODO(review): also destroy process.descendants(); a gcc driver's cc1/as children survive a kill of the driver
+		try {
+			exited = process.destroyForcibly().waitFor(DESTROY_WAIT_SECONDS, TimeUnit.SECONDS);
+		} catch (InterruptedException e) {
+			exited = !process.isAlive();
+		}
+
+		if (!exited) {
+			warn("Compiler process for " + name + " was still running after it was destroyed");
+		}
 	}
 
 	@Override

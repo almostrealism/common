@@ -27,8 +27,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -65,8 +63,9 @@ public class NativeCompilerInterruptTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Interrupting the wait for a compiler process destroys the process, throws, and leaves the
-	 * interrupt status set.
+	 * Interrupting the wait for a compiler process destroys the process, waits for it to exit,
+	 * throws, and leaves the interrupt status set: the process is already gone when the runner
+	 * returns, rather than merely asked to terminate.
 	 */
 	@Test(timeout = 60000)
 	public void interruptedCompilationDestroysProcess() throws Exception {
@@ -97,12 +96,7 @@ public class NativeCompilerInterruptTest extends TestSuiteBase {
 				thrown.get() instanceof HardwareException);
 		Assert.assertTrue("The interrupt status was not left set", interruptedAfter.get());
 
-		Optional<ProcessHandle> process = ProcessHandle.of(pid);
-		if (process.isPresent()) {
-			process.get().onExit().get(10, TimeUnit.SECONDS);
-		}
-
-		Assert.assertFalse("The compiler process outlived the interrupted wait",
+		Assert.assertFalse("The compiler process was still running when the interrupted wait ended",
 				ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
 	}
 
