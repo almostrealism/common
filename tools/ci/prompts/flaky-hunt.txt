@@ -48,6 +48,8 @@ Work the list in order, and choose a lead like this:
   justifies, or file a tracker task that records the attempts, the lane and the
   failure output alongside your diagnosis.
 
+@include earlier-attempts.txt
+
 ## Start from what earlier rounds learned
 
 This round recurs. When the observed-flake list above is empty, or once you have
