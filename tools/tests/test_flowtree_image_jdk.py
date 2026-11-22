@@ -96,14 +96,26 @@ class FlowtreeImageJdkTest(unittest.TestCase):
                       "the agent base image must use ${JDK_MAJOR}")
         self.assertIn("maven:3-eclipse-temurin-${JDK_MAJOR}", text,
                       "the agent Maven stage must use ${JDK_MAJOR}")
-        # The build arg is used in the FROM line (so it is declared globally,
-        # before FROM) and again in a COPY --from within the stage (so it is
-        # re-imported into the stage with a bare `ARG JDK_MAJOR`). Both must be
-        # present for the Maven COPY --from expansion to resolve.
-        self.assertRegex(text, r"ARG JDK_MAJOR=\d+\s+FROM eclipse-temurin",
-                         "ARG JDK_MAJOR must be declared globally, immediately before FROM")
-        self.assertIn("\nARG JDK_MAJOR\n", text,
-                      "ARG JDK_MAJOR must be re-imported into the stage for the Maven COPY --from")
+        # Both uses are FROM lines, which only a global ARG can feed, so the
+        # declaration must come before the first FROM.
+        self.assertLess(text.index("ARG JDK_MAJOR="), text.index("\nFROM "),
+                        "ARG JDK_MAJOR must be declared globally, before the first FROM")
+        self.assertIn("FROM maven:3-eclipse-temurin-${JDK_MAJOR} AS maven", text,
+                      "the Maven image must be a named stage so its FROM line carries the variable")
+
+    def test_no_copy_from_uses_a_variable(self):
+        """``COPY --from`` does not expand variables: the build stops with
+        "variable expansion is not supported for --from". An image named with a
+        build arg must be declared as a stage in a FROM line and copied from by
+        stage name."""
+        for path in (_AGENT, _CONTROLLER):
+            text = _read(path)
+            with self.subTest(path=path):
+                sources = re.findall(r"--from=(\S+)", text)
+                self.assertEqual([], [s for s in sources if "$" in s],
+                                 f"{path} uses a variable in COPY --from")
+        self.assertIn("COPY --from=maven ", _read(_AGENT),
+                      "the agent image must copy Maven from the named stage")
 
     def test_controller_base_uses_the_build_arg(self):
         text = _read(_CONTROLLER)
