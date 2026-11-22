@@ -45,10 +45,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <p>A task that throws ends its thread, and the throwable reaches that thread's
  * uncaught-exception handler, as on a thread pool. Task threads end once idle for the keep-alive
- * period. Whether they are daemons is left to the thread factory, so with the default factory a
- * task thread started from a non-daemon thread keeps the JVM alive while it runs or waits for
- * work, and queued callbacks are not abandoned when the application's other threads end. Only the
- * thread that runs starvation checks is a daemon; it schedules threads and runs no task.</p>
+ * period. Whether they are daemons is left to the thread factory. The default factory makes none
+ * of them daemons, so a task thread keeps the JVM alive while it runs or waits for work, and
+ * queued callbacks are not abandoned when the application's other threads end. Only the thread
+ * that runs starvation checks is a daemon; it schedules threads and runs no task.</p>
  */
 public final class ElasticExecutor implements Executor {
 	/** Creates the threads that run tasks. */
@@ -76,15 +76,20 @@ public final class ElasticExecutor implements Executor {
 	private final ScheduledThreadPoolExecutor checks;
 
 	/**
-	 * Creates an executor whose task threads are named {@code threadName}.
+	 * Creates an executor whose task threads are named {@code threadName} and are never daemons,
+	 * whichever thread starts them: an {@link #execute} caller, or the daemon thread that runs
+	 * starvation checks, from which a new thread would otherwise inherit daemon status.
 	 *
 	 * @param threadName      the name of the threads it starts
 	 * @param starvationNanos how long a queued task may wait before a thread is started for it
 	 * @param keepAliveMillis how long an idle thread waits for work before it ends
 	 */
 	public ElasticExecutor(String threadName, long starvationNanos, long keepAliveMillis) {
-		// TODO(review): threads started by checkStarvation inherit daemon=true from the daemon check thread, contradicting the class javadoc
-		this(threadName, r -> new Thread(r, threadName), starvationNanos, keepAliveMillis);
+		this(threadName, r -> {
+			Thread t = new Thread(r, threadName);
+			t.setDaemon(false);
+			return t;
+		}, starvationNanos, keepAliveMillis);
 	}
 
 	/**

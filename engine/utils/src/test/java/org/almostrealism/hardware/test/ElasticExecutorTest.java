@@ -24,6 +24,7 @@ import org.junit.Test;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -115,6 +116,49 @@ public class ElasticExecutorTest extends TestSuiteBase {
 
 		assertTrue("Every blocked task must be released by the task after it",
 				done.await(20, TimeUnit.SECONDS));
+	}
+
+	/**
+	 * With the default factory no task thread is a daemon, whichever path started it: the thread
+	 * {@link ElasticExecutor#execute} starts on a daemon caller, and the thread a starvation check
+	 * starts on the daemon starvation-check thread, from which it would otherwise inherit daemon
+	 * status and leave queued callbacks to be abandoned when the JVM exits.
+	 */
+	@Test(timeout = 30000)
+	public void defaultTaskThreadsAreNeverDaemons() throws InterruptedException {
+		ElasticExecutor executor = new ElasticExecutor("non-daemon", TimeUnit.MILLISECONDS.toNanos(1), 5000);
+		AtomicBoolean[] daemon = { new AtomicBoolean(true), new AtomicBoolean(true) };
+		CountDownLatch release = new CountDownLatch(1);
+		CountDownLatch done = new CountDownLatch(2);
+
+		Thread submitter = new Thread(() -> {
+			executor.execute(() -> {
+				daemon[0].set(Thread.currentThread().isDaemon());
+
+				try {
+					release.await();
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+
+				done.countDown();
+			});
+
+			executor.execute(() -> {
+				daemon[1].set(Thread.currentThread().isDaemon());
+				release.countDown();
+				done.countDown();
+			});
+		}, "daemon submitter");
+		submitter.setDaemon(true);
+		submitter.start();
+		submitter.join();
+
+		assertTrue("The second task needs a thread started by a starvation check",
+				done.await(20, TimeUnit.SECONDS));
+		assertEquals("Both tasks ran on threads of their own", 2, executor.getThreadCount());
+		assertFalse("A thread started by execute on a daemon caller is not a daemon", daemon[0].get());
+		assertFalse("A thread started by a starvation check is not a daemon", daemon[1].get());
 	}
 
 	/**
