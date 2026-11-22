@@ -57,6 +57,21 @@ the CPU lane in the runner count and the memory limit: `test` runs as a single
 job (no matrix), so one runner holds it at once. `test-media` runs on a hosted
 runner and needs no capacity here.
 
+### Also serving the `build` job (`ar-build`)
+
+Every runner in this fleet also carries `ar-build` (baked into
+`docker-compose.yml` as `ar-ci-cuda,ar-build`). The FlowTree controller sends the
+bounded `build` job here when a CUDA runner is idle, keeping the GPU host busy
+between CUDA jobs rather than dedicating a separate machine to builds. `build`
+produces only jars, so it holds the GPU for nothing and is short; the controller
+prefers an idle CUDA runner for it over the other fleets (see the default fleet
+order in "Controller-driven build-runner selection" in
+[`../../../.github/CLAUDE.md`](../../../.github/CLAUDE.md)) and falls back to a
+GitHub-hosted runner when no fleet is free. Sharing the fleet costs `build` at
+most a short queue behind `test-cuda` / `test-media-cuda`, never a dedicated
+machine. The runners are ephemeral and re-register on every job, so this
+committed label is the only durable place for it.
+
 ## JDK Version (Baked Into the Shared Image)
 
 This fleet has no image of its own — it builds the Linux CPU fleet's image
