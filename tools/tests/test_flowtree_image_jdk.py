@@ -62,6 +62,18 @@ class FlowtreeImageJdkTest(unittest.TestCase):
                 self.assertRegex(_default_jdk_major(text), r"^\d+$",
                                  f"{path} ARG JDK_MAJOR default must be a bare major number")
 
+    def test_both_images_declare_the_same_jdk_major(self):
+        """The agent and controller defaults must match. Each image's compose
+        entry and rebuild.sh build it from that image's own ARG JDK_MAJOR
+        default, so a one-sided upgrade would strand the deployment on mixed
+        majors — an agent on one Java and the controller on another — while every
+        other check here still passes. Compare the two defaults directly."""
+        agent_major = _default_jdk_major(_read(_AGENT))
+        controller_major = _default_jdk_major(_read(_CONTROLLER))
+        self.assertEqual(agent_major, controller_major,
+                         "the agent and controller Dockerfiles must default to the "
+                         f"same JDK major (agent={agent_major}, controller={controller_major})")
+
     def test_no_dockerfile_hard_codes_a_temurin_major(self):
         """Every temurin reference must go through ${JDK_MAJOR}; a literal major
         (e.g. a reintroduced ``eclipse-temurin:17-jre-jammy`` or
