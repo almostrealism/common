@@ -23,6 +23,8 @@ import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -41,7 +43,7 @@ import java.util.List;
  * <h2>Generated Command Structure</h2>
  *
  * <pre>
- * [compiler] [linker-flags] [opt-flags] [includes] -shared/-dynamiclib [input] -o [output]
+ * [compiler] [linker-flags] [opt-flags] [frontend-flags] [includes] -shared/-dynamiclib [input] -o [output]
  *
  * Example (macOS):
  * clang -O3 -I/Library/Java/.../include -I/Library/Java/.../include/darwin
@@ -120,13 +122,13 @@ import java.util.List;
  *
  * <h2>Subclass Customization</h2>
  *
- * <p>Subclasses can override {@link #addLinker(List)} to inject linker flags:</p>
+ * <p>Subclasses can override {@link #appendLinkerOptions(List)} to inject linker flags:</p>
  * <pre>{@code
  * public class Clang extends LlvmCommandProvider {
  *     private String linker;
  *
  *     @Override
- *     protected void addLinker(List<String> command) {
+ *     protected void appendLinkerOptions(List<String> command) {
  *         if (linker != null) {
  *             command.add("-fuse-ld=" + linker);
  *         }
@@ -231,7 +233,37 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 	 *
 	 * @param command The command list to add linker flags to
 	 */
-	protected void addLinker(List<String> command) { }
+	protected void appendLinkerOptions(List<String> command) { }
+
+	/**
+	 * Hook for subclasses to add compiler front-end flags (parsing limits and similar
+	 * options that depend on which compiler the configured path names) to the command.
+	 *
+	 * @param command The command list to add front-end flags to
+	 */
+	protected void appendFrontendOptions(List<String> command) { }
+
+	/**
+	 * Runs the compiler with {@code --version} and returns what it prints, which identifies
+	 * the toolchain the configured compiler path actually resolves to (on macOS, for example,
+	 * {@code gcc} is Apple's clang).
+	 *
+	 * @return the version output, or an empty string if the compiler cannot be run
+	 */
+	public String getVersion() {
+		try {
+			Process process = new ProcessBuilder(path, "--version").redirectErrorStream(true).start();
+			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+			process.waitFor();
+			return output;
+		} catch (IOException e) {
+			warn("Unable to run " + path + " --version: " + e.getMessage());
+			return "";
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			return "";
+		}
+	}
 
 	/**
 	 * Returns the configured math optimization level.
@@ -259,7 +291,7 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 
 		List<String> command = new ArrayList<>();
 		command.add(path);
-		addLinker(command);
+		appendLinkerOptions(command);
 
 		if (!localToolchain) command.add("-w");
 
@@ -269,6 +301,7 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider, Co
 		}
 
 		command.addAll(getMathOptLevel().getFlags());
+		appendFrontendOptions(command);
 		command.addAll(includes);
 
 		command.add("-" + cmd);
