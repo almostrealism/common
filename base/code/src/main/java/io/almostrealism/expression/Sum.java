@@ -230,6 +230,17 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		return Sum.of(children.toArray(new Expression[0]));
 	}
 
+	/**
+	 * Addition is associative and commutative, so terms may be grouped whenever they are
+	 * all added in the arithmetic of the sum itself.
+	 *
+	 * @return {@code true} if every term has the type of this sum
+	 */
+	@Override
+	public boolean isOperandGroupable() {
+		return hasUniformOperandType();
+	}
+
 	@Override
 	public CollectionExpression<?> delta(CollectionExpression<?> target) {
 		CollectionExpression delta = sum(target.getShape(),
@@ -511,6 +522,13 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	 * zero-pruning, arithmetic-generator combination, opposite-term cancellation,
 	 * constant collection, coefficient extraction, and mod-pattern detection.
 	 *
+	 * <p>A term that is itself a sum is merged into the sum being created (see
+	 * {@link NAryExpression#createMerged(Class, List, java.util.function.Function)}), so a
+	 * sum never has a sum of the same arithmetic and width as a term, and like terms and
+	 * constants are combined across what would otherwise be separate levels. The merge
+	 * follows the rewrites that recognize a two-term form, so those still see the terms as
+	 * they were given.</p>
+	 *
 	 * @param values the operand expressions to add together
 	 * @param <T>    the numeric result type
 	 * @return the simplified expression or a new {@link Sum}
@@ -620,6 +638,9 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 				return (Expression) Index.child((Index) args.get(index[0]), idx);
 			}
 		}
+
+		Expression<?> merged = createMerged(Sum.class, operands, Sum::create);
+		if (merged != null) return (Expression) merged;
 
 		if (operands.size() > 1) {
 			// Combine any like terms
