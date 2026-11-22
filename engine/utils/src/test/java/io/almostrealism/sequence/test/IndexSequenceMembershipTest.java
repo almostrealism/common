@@ -23,6 +23,8 @@ import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -517,6 +519,61 @@ public class IndexSequenceMembershipTest extends TestSuiteBase {
 		Assert.assertTrue(union.contains(1));
 		Assert.assertFalse(union.contains(Long.MAX_VALUE));
 		Assert.assertEquals(twoTo63, union.doubleValues().max().orElseThrow(), 0.0);
+	}
+
+	/**
+	 * A progression with a non-zero offset streams only its first cycle, so a union with
+	 * an array of values it does not contain is bounded by the cycle rather than by a
+	 * length near {@link Long#MAX_VALUE}.
+	 */
+	@Test(timeout = 30000)
+	public void offsetProgressionValuesAreOneCycle() {
+		ArithmeticIndexSequence seq = new ArithmeticIndexSequence(5, 1, 1, 10, Long.MAX_VALUE);
+		Assert.assertEquals(LongStream.range(5, 15).boxed().collect(Collectors.toList()),
+				seq.values().map(Number::longValue).collect(Collectors.toList()));
+
+		IndexSequence union = seq.union(ArrayIndexSequence.of(new int[] { 100 }));
+		Assert.assertEquals(11, union.distinctCount());
+		Assert.assertEquals(5, union.min());
+		Assert.assertEquals(100, union.max());
+		Assert.assertTrue(union.contains(14));
+		Assert.assertTrue(union.contains(100));
+		Assert.assertFalse(union.contains(15));
+		Assert.assertFalse(union.contains(4));
+
+		ArithmeticIndexSequence granular = new ArithmeticIndexSequence(-3, 2, 2, 6, 20);
+		Assert.assertEquals(List.of(-3L, -3L, -1L, -1L, 1L, 1L),
+				granular.values().map(Number::longValue).collect(Collectors.toList()));
+	}
+
+	/**
+	 * Arbitrary-precision values are judged on their exact digits: a fractional
+	 * {@link BigDecimal} whose {@code double} rounds to an integer is not a long, and an
+	 * out-of-range {@link BigInteger} or {@link BigDecimal} is not either.
+	 */
+	@Test(timeout = 30000)
+	public void arbitraryPrecisionValuesAreJudgedExactly() {
+		BigDecimal fractional = new BigDecimal("9007199254740993.5");
+		Assert.assertEquals(fractional.doubleValue(), Math.rint(fractional.doubleValue()), 0.0);
+		Assert.assertFalse(IndexSequence.isLongValue(fractional));
+		Assert.assertFalse(IndexSequence.isLongValue(new BigDecimal("0.5")));
+		Assert.assertTrue(IndexSequence.isLongValue(new BigDecimal("12.000")));
+		Assert.assertTrue(IndexSequence.isLongValue(new BigDecimal("1.2E+3")));
+		Assert.assertTrue(IndexSequence.isLongValue(BigDecimal.ZERO.setScale(5)));
+		Assert.assertTrue(IndexSequence.isLongValue(BigDecimal.valueOf(Long.MAX_VALUE)));
+		Assert.assertTrue(IndexSequence.isLongValue(BigDecimal.valueOf(Long.MIN_VALUE)));
+		Assert.assertFalse(IndexSequence.isLongValue(BigDecimal.valueOf(Long.MAX_VALUE).add(BigDecimal.ONE)));
+		Assert.assertFalse(IndexSequence.isLongValue(new BigDecimal("1E+1000000000")));
+
+		BigInteger max = BigInteger.valueOf(Long.MAX_VALUE);
+		Assert.assertTrue(IndexSequence.isLongValue(max));
+		Assert.assertTrue(IndexSequence.isLongValue(BigInteger.valueOf(Long.MIN_VALUE)));
+		Assert.assertFalse(IndexSequence.isLongValue(max.add(BigInteger.ONE)));
+		Assert.assertFalse(IndexSequence.isLongValue(BigInteger.valueOf(Long.MIN_VALUE).subtract(BigInteger.ONE)));
+
+		IndexSequence seq = ArrayIndexSequence.of(Double.class, new Number[] { fractional });
+		Assert.assertFalse(seq.contains(9007199254740993L));
+		Assert.assertFalse(seq.contains(9007199254740994L));
 	}
 
 	/**

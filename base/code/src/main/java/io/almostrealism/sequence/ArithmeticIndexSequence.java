@@ -676,8 +676,9 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * range streams each of its {@link #distinctCount()} values once, one per step
 	 * within a period, so that operations built on the values ({@link #min()},
 	 * {@link #max()}, {@link #union(IndexSequence)}, {@link #containsAll(IndexSequence)})
-	 * are bounded by the number of distinct values rather than by the length. Otherwise,
-	 * if the offset is non-zero, falls back to the default implementation.</p>
+	 * are bounded by the number of distinct values rather than by the length. Every other
+	 * progression streams the positions of its first cycle, which take every value the
+	 * sequence takes whatever its offset.</p>
 	 */
 	@Override
 	public Stream<Number> values() {
@@ -686,8 +687,6 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 		if (wraps()) {
 			return LongStream.range(0, distinctCount()).mapToObj(step -> offset + scale * step);
 		}
-
-		if (offset != 0) return IndexSequence.super.values();
 
 		return LongStream.range(0, mod).mapToObj(this::valueAt);
 	}

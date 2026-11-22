@@ -330,14 +330,27 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	/**
 	 * Returns whether the given value is an integer that a {@code long} represents
 	 * exactly, so that {@link Number#longValue()} neither truncates nor saturates it.
-	 * Integer types always are; a floating-point value is when it is integral and lies
-	 * in {@code [-2^63, 2^63)}.
+	 * Integer types always are; a {@link BigInteger} is when it fits in 64 bits; a
+	 * {@link BigDecimal} is when it is exactly integral and within the {@code long} range,
+	 * judged on its own digits rather than its rounded {@code double}; a floating-point
+	 * value is when it is integral and lies in {@code [-2^63, 2^63)}.
 	 *
 	 * @param value the value to test
 	 * @return {@code true} if {@code value.longValue()} is exactly {@code value}
 	 */
 	static boolean isLongValue(Number value) {
 		if (isExactLong(value)) return true;
+
+		if (value instanceof BigInteger) {
+			return ((BigInteger) value).bitLength() < 64;
+		}
+
+		if (value instanceof BigDecimal) {
+			BigDecimal decimal = (BigDecimal) value;
+			if (decimal.compareTo(BigDecimal.valueOf(Long.MAX_VALUE)) > 0) return false;
+			if (decimal.compareTo(BigDecimal.valueOf(Long.MIN_VALUE)) < 0) return false;
+			return decimal.signum() == 0 || decimal.stripTrailingZeros().scale() <= 0;
+		}
 
 		double d = value.doubleValue();
 		return d == Math.rint(d) && d >= -0x1p63 && d < 0x1p63;
