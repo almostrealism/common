@@ -95,8 +95,13 @@ changed". Expected trouble, in the order it is likely to appear:
   question in Phase 2 once the target is raised. The coverage agent and the
   static-analysis plugins are the usual first failures here: an old plugin can
   fail to load or instrument on a JVM newer than it supports.
-- **Groovy** in `extern/ml-script` is several years old and predates Java 25
-  bytecode.
+- **Groovy** in `extern/ml-script` is pinned to an early release of its line
+  from 2022 (`extern/ml-script/pom.xml`, both the `groovy-all` dependency and
+  the `groovy` runtime dependency of the script plugin). In this phase the
+  question is only whether that Groovy *runs* on a Java 25 runtime: its
+  bundled bytecode library and its reflective access into the JDK are the
+  usual failure points. Whether it reads or emits Java 25 class files is a
+  Phase 2 question, once the compiler target is raised.
 - **Native access.** The JNI backends load native libraries: `System.load` is
   called from `NativeCompiler`, `CU` and `MTL` (the other matches in the tree
   are Javadoc). Java 25 warns on native access that has not been enabled and is
@@ -123,6 +128,10 @@ the owner.
   overrides (`base/hardware`, `studio/compose`, `studio/music`) so there is one
   setting. The `base/hardware` override at 16 has no reason to survive.
 - Raise the compiler, test and coverage plugins to releases that support 25.
+  This is the point at which class-file support matters: once the target is
+  raised, the coverage agent, the static-analysis plugins and Groovy in
+  `extern/ml-script` must each understand Java 25 class files, which Phase 1
+  could not test.
 - Raise the dependencies that Phase 1 shows failing, and the ones that are old
   enough to carry known vulnerabilities regardless of Java (next section).
 
@@ -146,12 +155,50 @@ not match the expected major, and the runner images bake exactly one JDK
 (`temurin-${JDK_MAJOR}-jdk`), so flipping `JDK_MAJOR` to 25 *replaces* 17 in the
 image rather than adding to it. A single flip strands one side either way —
 rebuilding the images first breaks open pull requests still expecting 17;
-merging the workflow change first breaks the new lanes. Bridge the gap: build
-and register Java 25 runner images **alongside** the existing 17 images (and, on
-any host-provisioned runner, install 25 next to 17) before the workflow change
-merges, keep both expected majors runnable through the transition, and retire
-the 17 images only after. Open pull requests whose head predates the change will
-still need a rebase onto the new expected major.
+merging the workflow change first breaks the new lanes.
+
+Running both images at once is not enough on its own, because nothing routes a
+job to the image that matches it. The self-hosted jobs ask only for capability
+labels (`[self-hosted, linux, ar-ci]`, `[self-hosted, linux, ar-ci-cl]`,
+`[self-hosted, linux, ar-ci-cuda]`, `[self-hosted, macos, ar-ci]`), and the
+`select-jdk` action checks the major only after GitHub has assigned a runner. A
+Java 17 job can therefore land on a Java 25 runner, or the reverse, and fail
+fast. How much this matters differs by kind of runner:
+
+- **Linux runner images** (`tools/ci/docker`, `tools/ci/rocm`, and the CUDA
+  fleet, which reuses the first). Each image sets `JAVA_HOME` to its single
+  `temurin-${JDK_MAJOR}-jdk`, and `select-jdk` looks only at `JAVA_HOME` and the
+  `java` on `PATH`, so a runner from such an image can satisfy exactly one
+  major. These need deterministic routing.
+- **macOS runners.** `select-jdk` asks `/usr/libexec/java_home -v <major>`
+  first, so a host with both JDKs installed satisfies either major. Installing
+  25 next to 17 is enough there.
+
+Two ways to make the Linux side deterministic, both of them `ci/...` changes and
+both to be decided before the workflow change is written:
+
+1. **Major-specific labels.** Register the new runners with an extra label that
+   names the JDK major (for example `jdk-25`; the existing runners would gain
+   `jdk-17`), and change the self-hosted `runs-on` lists to include the label
+   built from `EXPECTED_JDK_MAJOR`, so each workflow version asks for the pool
+   that can run it. This needs the label passed through `RUNNER_LABELS` where
+   each fleet sets it (`tools/ci/docker/docker-compose.yml`,
+   `tools/ci/cuda/docker-compose.yml`, the ROCm fleet's
+   `tools/ci/rocm/ar-ci-cl-runner@.container` unit, and the macOS runners'
+   `.env`), and it
+   splits each fleet in two for the length of the overlap, which halves the
+   capacity each side sees.
+2. **Dual-JDK images.** Install both majors in the transition image and teach
+   `select-jdk` to look for the expected major under `/usr/lib/jvm` as well as
+   at `JAVA_HOME`, the way it already asks `java_home` on macOS. Every runner
+   then serves both workflow versions and no fleet is split, at the cost of a
+   larger image and an edit to the shared action.
+
+Whichever is chosen: bring the Java 25 capacity up before the workflow change
+merges, keep both majors runnable through the transition, and retire the 17
+images (or the 17 JDK in the dual image) only after no open pull request
+expects it. Open pull requests whose head predates the change will still need a
+rebase onto the new expected major.
 
 ## Phase 4 — Hosts
 
@@ -220,6 +267,17 @@ inspected.
 3. Phase 1, to turn the Java 25 unknowns into a list.
 4. Phases 2 to 4.
 5. The remaining image, action and host items, in any order.
+
+## Open questions
+
+- **How the Linux runners route by JDK major during the overlap** (Phase 3):
+  major-specific labels or dual-JDK images. Labels keep `select-jdk` unchanged
+  but split every fleet for the overlap; dual-JDK images keep the fleets whole
+  but change the shared action. The choice decides what the `ci/...` branch
+  contains, so it is the owner's to make before that branch is started.
+- **How long the overlap lasts.** It ends when no open pull request still
+  expects 17. With a long-lived open pull request the cost of either option
+  above grows, so a cut-off (rebase or close) may be needed.
 
 ## Not verified
 
