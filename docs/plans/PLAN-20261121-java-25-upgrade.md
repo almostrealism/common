@@ -146,9 +146,36 @@ the owner.
   injected value and silently drop coverage on every module, so the option must
   be appended to the property jacoco fills rather than replace it — the late-
   replacement form `<argLine>@{argLine} --enable-native-access=ALL-UNNAMED</argLine>`.
+  That form has its own trap: `@{argLine}` is substituted only when the
+  `argLine` property exists, and the property exists only because
+  `prepare-agent` wrote it. A run with jacoco skipped leaves the literal text
+  `@{argLine}` on the forked JVM's command line and the fork fails to start.
+  The tree has such a run: `studio/experiments/run-onnx-discovery.sh` runs
+  `mvn test` with `-Djacoco.skip=true`. The usual fix is to declare an empty
+  `<argLine></argLine>` in the root `pom.xml`'s `<properties>` so the reference
+  always resolves; `prepare-agent` still prepends the agent to it when it runs.
+  <!-- TODO(review): jacoco 0.8.11 prepare-agent sets argLine to "" when skipped (-Djacoco.skip=true), so run-onnx-discovery.sh is not an instance of this trap; restate it as the case where prepare-agent never executes (e.g. invoking surefire:test directly). -->
   Without the option at all, the native backends that `System.load` drives
   (`NativeCompiler`, `CU`, `MTL`) move from warning to refusal as Java 25
   tightens, and the failure is on the macOS lanes as much as the Linux ones.
+
+Not all of this phase can merge at once, and the order matters, because the
+phases share one build:
+
+- **Raising the compiler level comes last of everything in Phases 2–4.**
+  The root `pom.xml` is built by every CI lane, every agent image and every
+  macOS host. A Java 17 `javac` refuses a release of 25, so once the raised
+  level merges, any builder still on 17 fails, and so does every pull request
+  whose lanes still expect 17. It can merge only after Phase 3 has moved CI and
+  the agent image to 25, after Phase 4 has installed 25 on the macOS agent
+  hosts, and after the overlap described in Phase 3 has ended. Until then,
+  only the runtime is on 25 and the class files stay at 17, which is the
+  combination Phase 1 tested.
+- **The plugin and dependency raises and the native-access option can merge
+  earlier**, ahead of Phase 3, if they still work on Java 17, because Java 17
+  lanes build them until the flip. Check each one on 17 before merging it
+  early. That includes the enable-native-access option: confirm that a Java 17
+  launcher accepts it, or hold it back until Phase 3.
 
 ## Phase 3 — CI and images (one `ci/...` branch)
 
@@ -230,7 +257,8 @@ both to be decided before the workflow change is written:
    larger image and an edit to the shared action.
 
 Whichever is chosen: bring the Java 25 capacity up before the workflow change
-merges, keep both majors runnable through the transition, and retire the 17
+merges (on the macOS runners this is Phase 4's install, which therefore has to
+happen before the `EXPECTED_JDK_MAJOR` flip, not after it), keep both majors runnable through the transition, and retire the 17
 images (or the 17 JDK in the dual image) only after no open pull request
 expects it. Open pull requests whose head predates the change will still need a
 rebase onto the new expected major.
@@ -304,7 +332,11 @@ inspected.
 2. Netty and the other network-facing dependencies in `flowtree`, because they
    are exposed regardless of the Java version.
 3. Phase 1, to turn the Java 25 unknowns into a list.
-4. Phases 2 to 4.
+4. Phases 2 to 4, interleaved rather than in number order. First, the Phase 2
+   items that also work on Java 17. Second, the Java 25 runner capacity and
+   the macOS installs from Phase 4. Third, the Phase 3 workflow and image
+   change. Fourth, the controller redeploy. Last, once the overlap has ended,
+   the Phase 2 compiler-level raise.
 5. The remaining image, action and host items, in any order.
 
 ## Open questions
