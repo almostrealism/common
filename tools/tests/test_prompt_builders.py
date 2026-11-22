@@ -577,6 +577,30 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertLess(text.index("NodeWorkerWakeTest"), fallback)
         self.assertNotRegex(text, r"PR #\d+")
 
+    def test_failure_rounds_look_for_earlier_attempts_before_fixing(self):
+        """A failure stays on a round's list until a fix merges, so each round
+        is handed it again. The rounds sent after a failing test must read the
+        open pull requests and their review comments first, treat an approach
+        the owner rejected as unavailable, and fix what produced the failure
+        rather than the limit or the output that reported it. Both carry the
+        one shared fragment, placed ahead of the instructions for the fix.
+        """
+        for name, fix_section in (("master-fix.txt", "## How to work"),
+                                  ("flaky-hunt.txt", "## When you find")):
+            with self.subTest(template=name):
+                include = "@include earlier-attempts.txt"
+                template = _read(os.path.join(_PROMPT_DIR, name))
+                self.assertIn(include, template)
+                text = template.replace(
+                    include, _read(os.path.join(_PROMPT_DIR, "earlier-attempts.txt")))
+                for tool in ("github_list_open_prs", "github_pr_review_comments",
+                             "github_pr_conversation", "tracker_search_tasks"):
+                    self.assertIn(tool, text)
+                self.assertIn("rejected is rejected for you too", text)
+                self.assertIn("Fix the cause, not the place the failure surfaced", text)
+                self.assertLess(text.index("github_list_open_prs"),
+                                text.index(fix_section))
+
     def test_concept_alignment_renders_through_the_qa_round_builder(self):
         """The concept-alignment round passes its template by path to the
         generic qa-round builder, so it is not among the fixed-shape builders

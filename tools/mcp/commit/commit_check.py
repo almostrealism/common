@@ -33,6 +33,13 @@ checks are the commit-message rules of the root ``CLAUDE.md``:
                     compared case-insensitively) naturally names itself, so the
                     check is skipped there while every other check still runs.
 
+  inline comment    a comment the change wrote into may not be a long inline
+                    comment, as decided by
+                    ``.claude/hooks/lib/inline_comment_check.py``: the staged
+                    file is judged as it will be committed, so a comment built
+                    up over several edits, or written by a script, is refused
+                    here whichever way it reached the index.
+
 Besides the content checks, a commit needs a branch other than the default
 branch, a staged change, and a message whose first line is not blank; and
 ``commit.txt`` must not be part of the change.
@@ -47,6 +54,7 @@ from typing import Callable, Iterable, NamedTuple, Optional
 REPOSITORY = Path(__file__).resolve().parents[3]
 
 sys.path.insert(0, str(REPOSITORY / ".claude" / "hooks" / "lib"))
+import inline_comment_check  # noqa: E402
 import private_url_check  # noqa: E402
 
 
@@ -249,6 +257,34 @@ def change_problems(diff: str, root: Path, staged: Iterable[str], tracked: Itera
     for violation in identifier_check.scan_added(root, diff, staged, read_ledger):
         problems.append(Problem("temporary id", f"{violation.path}:{violation.line}",
                                 f"'{violation.text}' is {violation.source}"))
+    problems.extend(comment_problems(diff, root, staged, read_ledger))
+    return problems
+
+
+def comment_problems(diff: str, root: Path, staged: Iterable[str],
+                     read_staged: Optional[Callable[[str], str]] = None) -> list[Problem]:
+    """Returns the long inline comments a staged change wrote into.
+
+    Each staged source file is read from the staged snapshot (``read_staged``)
+    when one is supplied, otherwise from the working tree, and judged whole;
+    a finding is a problem when the change added any line of the comment it
+    sits in. A file that cannot be read is a problem too, since a change that
+    cannot be judged is not allowed through.
+    """
+    problems = []
+    added = inline_comment_check.diff_added(diff)
+    for path in staged:
+        if not inline_comment_check.governs(path) or not added.get(path):
+            continue
+        try:
+            text = (read_staged(path) if read_staged is not None
+                    else (root / path).read_text(encoding="utf-8", errors="replace"))
+        except Exception as failure:
+            problems.append(Problem("inline comment", path, f"could not be read ({failure})"))
+            continue
+        for line, reason in inline_comment_check.violations(path, text, added[path]):
+            problems.append(Problem("inline comment", f"{path}:{line}",
+                                    f"{reason}; move the text to the javadoc or delete it"))
     return problems
 
 
