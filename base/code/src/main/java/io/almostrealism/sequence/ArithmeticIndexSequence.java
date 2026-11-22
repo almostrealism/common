@@ -499,8 +499,10 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * modulo the operand, or {@code null} if that is not an arithmetic sequence.
 	 *
 	 * <p>A term that is a multiple of the modulus at every position cannot affect the
-	 * remainder, provided the remaining terms are never negative, so that truncating and
-	 * flooring remainders agree. Such terms are dropped, and the remaining terms are added
+	 * remainder, provided no term is ever negative, so that truncating and flooring
+	 * remainders agree. A dropped negative multiple would matter: {@code (-4 + (i % 2)) % 2}
+	 * is {@code 0, -1} while {@code (i % 2) % 2} is {@code 0, 1}. Multiples are therefore
+	 * dropped only when every term is non-negative, and the remaining terms are added
 	 * under {@link #sumOf(List)} and reduced under {@link #modExactly(long)}. When every
 	 * term is a multiple of the modulus, the remainder is zero at every position.</p>
 	 *
@@ -521,7 +523,9 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 		if (remaining.isEmpty()) {
 			long length = terms.get(0).lengthLong();
 			return new ArithmeticIndexSequence(0, 0, 1, length, length);
-		} else if (remaining.size() < terms.size() && remaining.stream().anyMatch(t -> t.min() < 0)) {
+		} else if (remaining.size() < terms.size() && terms.stream().anyMatch(t -> t.min() < 0)) {
+			// TODO(review): a non-negative rest whose full sum is never negative could still drop multiples
+
 			return null;
 		}
 

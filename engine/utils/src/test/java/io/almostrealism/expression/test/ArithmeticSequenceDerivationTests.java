@@ -434,6 +434,34 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 	}
 
 	/**
+	 * {@link ArithmeticIndexSequence#remainderOf(List, long)} must not drop a negative
+	 * multiple of the modulus beside a non-negative rest. Under truncating remainders
+	 * {@code (-4 + (i % 2)) % 2} is {@code 0, -1}, but dropping {@code -4} would derive
+	 * {@code i % 2}, which is {@code 0, 1}. When every term is a multiple, the remainder is
+	 * zero whatever their signs.
+	 */
+	@Test(timeout = 30000)
+	public void remainderOfKeepsNegativeMultiples() {
+		long len = 240;
+		ArithmeticIndexSequence negativeMultiple = new ArithmeticIndexSequence(-4, 0, 1, len, len);
+		ArithmeticIndexSequence rest = new ArithmeticIndexSequence(0, 1, 1, 2, len);
+
+		ArithmeticIndexSequence remainder = ArithmeticIndexSequence.remainderOf(List.of(negativeMultiple, rest), 2);
+		if (remainder != null) {
+			for (long pos = 0; pos < len; pos++) {
+				long expected = (negativeMultiple.valueAt(pos).longValue() + rest.valueAt(pos).longValue()) % 2;
+				Assert.assertEquals("mismatch at position " + pos, expected, remainder.valueAt(pos).longValue());
+			}
+		}
+
+		Assert.assertNull("dropping a negative multiple changes a truncating remainder", remainder);
+
+		ArithmeticIndexSequence otherMultiple = new ArithmeticIndexSequence(0, 6, 1, 3, len);
+		Assert.assertEquals(new ArithmeticIndexSequence(0, 0, 1, len, len),
+				ArithmeticIndexSequence.remainderOf(List.of(negativeMultiple, otherMultiple), 2));
+	}
+
+	/**
 	 * {@link ArithmeticIndexSequence#scaled(long)} multiplies both the offset and the
 	 * scale by the operand. When that multiplication overflows, the result must be
 	 * reported as not representable rather than silently wrapping into an arithmetic
