@@ -148,13 +148,17 @@ the owner.
   replacement form `<argLine>@{argLine} --enable-native-access=ALL-UNNAMED</argLine>`.
   That form has its own trap: `@{argLine}` is substituted only when the
   `argLine` property exists, and the property exists only because
-  `prepare-agent` wrote it. A run with jacoco skipped leaves the literal text
-  `@{argLine}` on the forked JVM's command line and the fork fails to start.
-  The tree has such a run: `studio/experiments/run-onnx-discovery.sh` runs
-  `mvn test` with `-Djacoco.skip=true`. The usual fix is to declare an empty
-  `<argLine></argLine>` in the root `pom.xml`'s `<properties>` so the reference
-  always resolves; `prepare-agent` still prepends the agent to it when it runs.
-  <!-- TODO(review): jacoco 0.8.11 prepare-agent sets argLine to "" when skipped (-Djacoco.skip=true), so run-onnx-discovery.sh is not an instance of this trap; restate it as the case where prepare-agent never executes (e.g. invoking surefire:test directly). -->
+  `prepare-agent` wrote it. A run that *skips* jacoco is not the hazard — the
+  pinned jacoco (0.8.11) binds `prepare-agent` in the root `pom.xml`'s build,
+  and that goal sets `argLine` to an empty value even under `-Djacoco.skip=true`
+  (as `studio/experiments/run-onnx-discovery.sh` does), so `@{argLine}` still
+  resolves. The trap is a run where `prepare-agent` *never executes* at all:
+  invoking `surefire:test` directly outside the lifecycle, or a module that does
+  not inherit the plugin, leaves the literal text `@{argLine}` on the forked
+  JVM's command line and the fork fails to start. The belt-and-braces fix is to
+  declare an empty `<argLine></argLine>` in the root `pom.xml`'s `<properties>`
+  so the reference always resolves; `prepare-agent` still prepends the agent to
+  it when it runs.
   Without the option at all, the native backends that `System.load` drives
   (`NativeCompiler`, `CU`, `MTL`) move from warning to refusal as Java 25
   tightens, and the failure is on the macOS lanes as much as the Linux ones.
