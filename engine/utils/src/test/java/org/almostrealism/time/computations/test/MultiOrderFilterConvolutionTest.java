@@ -118,6 +118,40 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 	}
 
 	/**
+	 * Verifies that a cutoff supplied per sample — a {@code [samples, taps]} coefficient
+	 * bank with one row per sample — filters each output sample with its own row across
+	 * the full window, rather than being read as a bank of one-sample channels.
+	 */
+	@Test(timeout = 30000)
+	public void convolutionWithPerSampleCutoff() {
+		int signalSize = 256;
+		int filterOrder = 20;
+		int sampleRate = 44100;
+
+		PackedCollection signal = new PackedCollection(signalSize);
+		sin(integers(0, signalSize).multiply(2.0 * Math.PI / 16.0))
+				.add(sin(integers(0, signalSize).multiply(2.0 * Math.PI / 4.0)).multiply(0.5))
+				.into(signal.traverseEach()).evaluate();
+		PackedCollection cutoffs = integers(0, signalSize).multiply(40.0).add(200.0).evaluate();
+
+		PackedCollection result = lowPass(
+				traverseEach(cp(signal)), cp(cutoffs), sampleRate, filterOrder).get().evaluate();
+
+		double[] in = signal.toArray();
+		double[] cut = cutoffs.toArray();
+		double[] out = result.toArray();
+		for (int n = 0; n < signalSize; n++) {
+			double[] taps = referenceLowPassTaps(cut[n], sampleRate, filterOrder);
+			double expected = 0.0;
+			for (int k = 0; k <= filterOrder; k++) {
+				int idx = n + k - filterOrder / 2;
+				if (idx >= 0 && idx < signalSize) expected += in[idx] * taps[k];
+			}
+			assertEquals(expected, out[n]);
+		}
+	}
+
+	/**
 	 * Verifies that the filter choice mechanism (selecting between
 	 * low-pass and high-pass based on a runtime decision variable)
 	 * produces correct results when coefficients are pre-computed

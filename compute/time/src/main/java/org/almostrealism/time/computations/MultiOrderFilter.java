@@ -391,6 +391,18 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 	 * PackedCollection filtered = filter.get().evaluate();
 	 * }</pre>
 	 *
+	 * <p>The coefficients take one of three forms, told apart by the bank's leading
+	 * dimension:</p>
+	 * <ul>
+	 *   <li>a flat {@code [taps]} vector — one filter for the whole series;</li>
+	 *   <li>a {@code [samples, taps]} bank with one row per sample of the series — a
+	 *       time-varying filter, output sample {@code s} convolved with row {@code s}
+	 *       (a per-sample cutoff envelope, as {@code lowPassCoefficients} produces for a
+	 *       cutoff curve);</li>
+	 *   <li>a {@code [channels, taps]} bank with fewer rows than samples — the series is
+	 *       that many contiguous rows, each convolved independently with its own row.</li>
+	 * </ul>
+	 *
 	 * @param series Producer providing the input signal
 	 * @param coefficients Producer providing the filter coefficients (length = order + 1)
 	 * @return A new MultiOrderFilter instance ready for evaluation
@@ -401,11 +413,10 @@ public class MultiOrderFilter extends CollectionProducerComputationBase {
 			series = CollectionFeatures.getInstance().traverse(shape.getDimensions() - 1, series);
 		}
 
-		// The channel count is the coefficient bank's leading dimension: a flat [taps]
-		// coefficient vector is single-channel, while a [channels, taps] bank convolves
-		// each of that many contiguous rows of the series independently in one kernel.
 		TraversalPolicy coeffShape = CollectionFeatures.getInstance().shape(coefficients);
-		int channels = coeffShape.getDimensions() <= 1 ? 1 : coeffShape.length(0);
+		boolean perSample = coeffShape.getDimensions() > 1
+				&& coeffShape.lengthLong(0) == shape.getTotalSizeLong();
+		int channels = coeffShape.getDimensions() <= 1 || perSample ? 1 : coeffShape.length(0);
 
 		return new MultiOrderFilter(shape.traverseEach(), series, coefficients, channels);
 	}
