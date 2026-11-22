@@ -207,14 +207,22 @@ both to be decided before the workflow change is written:
 1. **Major-specific labels.** Register the new runners with an extra label that
    names the JDK major (for example `jdk-25`; the existing runners would gain
    `jdk-17`), and change the self-hosted `runs-on` lists to include the label
-   built from `EXPECTED_JDK_MAJOR`, so each workflow version asks for the pool
-   that can run it. This needs the label passed through `RUNNER_LABELS` where
-   each fleet sets it (`tools/ci/docker/docker-compose.yml`,
-   `tools/ci/cuda/docker-compose.yml`, the ROCm fleet's
-   `tools/ci/rocm/ar-ci-cl-runner@.container` unit, and the macOS runners'
-   `.env`), and it
-   splits each fleet in two for the length of the overlap, which halves the
-   capacity each side sees.
+   for the expected major, so each workflow version asks for the pool that can
+   run it. One constraint shapes how that label is formed: the expected major
+   lives in `EXPECTED_JDK_MAJOR`, a workflow-level `env:` value, and GitHub
+   Actions does not make the `env` context available in `runs-on` — a `runs-on`
+   entry that interpolates `${{ env.EXPECTED_JDK_MAJOR }}` resolves to empty and
+   produces an invalid label list. Driving the label from the major therefore
+   means first moving the major into a context `runs-on` can read: a repository
+   or environment `vars` value, a `workflow_dispatch`/reusable-workflow input, or
+   an earlier job's output consumed through `needs`. The simplest form that
+   avoids the problem is to hard-code the two label lists against the two
+   workflow versions rather than derive either from the major. This also needs
+   the label passed through `RUNNER_LABELS` where each fleet sets it
+   (`tools/ci/docker/docker-compose.yml`, `tools/ci/cuda/docker-compose.yml`, the
+   ROCm fleet's `tools/ci/rocm/ar-ci-cl-runner@.container` unit, and the macOS
+   runners' `.env`), and it splits each fleet in two for the length of the
+   overlap, which halves the capacity each side sees.
 2. **Dual-JDK images.** Install both majors in the transition image and teach
    `select-jdk` to look for the expected major under `/usr/lib/jvm` as well as
    at `JAVA_HOME`, the way it already asks `java_home` on macOS. Every runner
@@ -303,9 +311,12 @@ inspected.
 
 - **How the Linux runners route by JDK major during the overlap** (Phase 3):
   major-specific labels or dual-JDK images. Labels keep `select-jdk` unchanged
-  but split every fleet for the overlap; dual-JDK images keep the fleets whole
-  but change the shared action. The choice decides what the `ci/...` branch
-  contains, so it is the owner's to make before that branch is started.
+  but split every fleet for the overlap, and the label cannot be derived from
+  `EXPECTED_JDK_MAJOR` in `runs-on` (the `env` context is unavailable there; see
+  Phase 3 option 1), so the routing is wired either from a `runs-on`-visible
+  source for the major or as two hard-coded label lists. Dual-JDK images keep the
+  fleets whole but change the shared action. The choice decides what the `ci/...`
+  branch contains, so it is the owner's to make before that branch is started.
 - **How long the overlap lasts.** It ends when no open pull request still
   expects 17. With a long-lived open pull request the cost of either option
   above grows, so a cut-off (rebase or close) may be needed.
