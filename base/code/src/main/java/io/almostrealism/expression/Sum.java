@@ -523,10 +523,11 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	 * constant collection, coefficient extraction, and mod-pattern detection.
 	 *
 	 * <p>A term that is itself a sum is merged into the sum being created (see
-	 * {@link NAryExpression#mergeOperands(Class, List)}), so a sum never has a sum of the
-	 * same arithmetic as a term, and like terms and constants are combined across what would
-	 * otherwise be separate levels. The merge follows the rewrites that recognize a two-term
-	 * form, so those still see the terms as they were given.</p>
+	 * {@link NAryExpression#createMerged(Class, List, java.util.function.Function)}), so a
+	 * sum never has a sum of the same arithmetic and width as a term, and like terms and
+	 * constants are combined across what would otherwise be separate levels. The merge
+	 * follows the rewrites that recognize a two-term form, so those still see the terms as
+	 * they were given.</p>
 	 *
 	 * @param values the operand expressions to add together
 	 * @param <T>    the numeric result type
@@ -638,8 +639,8 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
-		List<Expression<?>> merged = mergeOperands(Sum.class, operands);
-		if (merged != operands) return create(merged.toArray(new Expression[0]));
+		Expression<?> merged = createMerged(Sum.class, operands, Sum::create);
+		if (merged != null) return (Expression) merged;
 
 		if (operands.size() > 1) {
 			// Combine any like terms

@@ -22,6 +22,7 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
@@ -180,6 +181,36 @@ public class NAryExpression<T> extends Expression<T> {
 		}
 
 		return altered ? merged : operands;
+	}
+
+	/**
+	 * Returns the expression {@code factory} creates from the given operands after the nested
+	 * expressions of {@code kind} among them are merged (see {@link #mergeOperands(Class, List)}),
+	 * or {@code null} when there is nothing to merge or the merged expression would be wider.
+	 *
+	 * <p>Merging lets constants from separate levels fold into one, and a folded integer
+	 * constant that no longer fits in an {@code int} is a {@code long}. Without the merge every
+	 * level is evaluated, and wraps on overflow, in {@code int} arithmetic; with it the whole
+	 * expression would become {@code long} and stop wrapping, which is a different value. Such
+	 * a merge is therefore refused, and the caller creates the expression from the operands as
+	 * they were given. Within one width, integer arithmetic wraps modulo the same power of two
+	 * at every level, so a merge that keeps the width keeps the value.</p>
+	 *
+	 * @param kind     the exact class of nested expression to merge
+	 * @param operands the operands of the expression being created
+	 * @param factory  the factory of {@code kind}, applied to the merged operands
+	 * @return the merged expression, or {@code null} if the operands should not be merged
+	 */
+	protected static Expression<?> createMerged(Class<? extends NAryExpression> kind,
+												List<Expression<?>> operands,
+												Function<Expression<?>[], Expression<?>> factory) {
+		List<Expression<?>> merged = mergeOperands(kind, operands);
+		if (merged == operands) return null;
+
+		Expression<?> result = factory.apply(merged.toArray(new Expression[0]));
+		boolean widened = Objects.equals(result.getType(), Long.class) &&
+				operands.stream().noneMatch(e -> Objects.equals(e.getType(), Long.class));
+		return widened ? null : result;
 	}
 
 	/**
