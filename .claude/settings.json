@@ -73,6 +73,26 @@
         ]
       },
       {
+        "matcher": "mcp__.*ar-manager__github_create_pr",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pr-gate.sh gate",
+            "description": "Deny a new pull request until the repository's open pull requests were just listed, and make a second open pull request a deliberate, logged confirmation \u2014 every pull request costs a whole CI run"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pr-gate.sh bash",
+            "description": "Deny gh pr create, which would bypass the pull request gate on github_create_pr"
+          }
+        ]
+      },
+      {
         "matcher": "*",
         "hooks": [
           {
@@ -177,8 +197,13 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-scratch-deliverable.sh",
+            "description": "Block files written to the session scratchpad or the temporary directory, which the person being worked for cannot read"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-excessive-comments.sh",
-            "description": "Block edits adding a run of 4+ consecutive inline // comment lines - CLAUDE.md forbids excessive inline comments"
+            "description": "Block edits that leave a long inline comment in the resulting file - design belongs in javadoc"
           },
           {
             "type": "command",
@@ -232,8 +257,13 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-scratch-deliverable.sh",
+            "description": "Block files written to the session scratchpad or the temporary directory, which the person being worked for cannot read"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-excessive-comments.sh",
-            "description": "Block edits adding a run of 4+ consecutive inline // comment lines - CLAUDE.md forbids excessive inline comments"
+            "description": "Block edits that leave a long inline comment in the resulting file - design belongs in javadoc"
           },
           {
             "type": "command",
@@ -262,8 +292,13 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-scratch-deliverable.sh",
+            "description": "Block files written to the session scratchpad or the temporary directory, which the person being worked for cannot read"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-excessive-comments.sh",
-            "description": "Block edits adding a run of 4+ consecutive inline // comment lines - CLAUDE.md forbids excessive inline comments"
+            "description": "Block edits that leave a long inline comment in the resulting file - design belongs in javadoc"
           },
           {
             "type": "command",
@@ -287,8 +322,13 @@
         "hooks": [
           {
             "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-scratch-deliverable.sh",
+            "description": "Block files written to the session scratchpad or the temporary directory, which the person being worked for cannot read"
+          },
+          {
+            "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/block-excessive-comments.sh",
-            "description": "Block writes adding a run of 4+ consecutive inline // comment lines - CLAUDE.md forbids excessive inline comments"
+            "description": "Block writes that leave a long inline comment in the resulting file - design belongs in javadoc"
           },
           {
             "type": "command",
@@ -358,7 +398,7 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/warn-new-type-placement.py\"",
-            "description": "Placement reminder for every new top-level Java type; BLOCK a new type whose declared name ends in a suffix CLAUDE.md forbids (Util/Helper/Exporter/Converter...); escalate the wording when no discovery (Grep/Glob/Agent/consult) is on record"
+            "description": "Placement reminder for every new top-level Java type; BLOCK a new main-source type with likely existing equivalents (lib/type_equivalence.py) unless it extends/implements/delegates to one or .claude/new-type-ledger.json justifies it against every candidate; BLOCK a name CLAUDE.md forbids (Util/Helper/Exporter/Converter...); escalate the wording when no discovery (Grep/Glob/Agent/consult) is on record"
           },
           {
             "type": "command",
@@ -481,6 +521,16 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/track-consultant-call.sh",
             "description": "Record timestamp of consultant call for enforce-consultant-first.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*ar-manager__github_list_open_prs",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/pr-gate.sh record",
+            "description": "Record a repository's open pull requests for the pull request gate on github_create_pr"
           }
         ]
       },

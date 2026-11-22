@@ -29,11 +29,17 @@ import java.util.List;
  *
  * <p>A batch is <em>open</em> while the runner encodes dispatches into it, and is
  * {@link #close closed} by a signal of the runner's timeline encoded as its last command. Once
- * closed, it is {@link #commit() committed} to the GPU as soon as every host-signaled bridge
+ * closed, it is {@link #commit(Runnable) committed} to the GPU as soon as every host-signaled bridge
  * encoded into it has been signaled ({@link #isReady()}), and once it has finished it is
  * {@link #drain() drained}: its released-memory callbacks run and its command buffer is released,
  * unless a thread waiting for it off the runner's executor thread still needs the buffer (see
  * {@link #addWaiter()}).</p>
+ *
+ * <p>A batch is drained as soon as it has finished, whether or not any thread waits for it. Its
+ * {@link #commit(Runnable) commit} registers a Metal completed handler, which hands a drain of the
+ * finished batches to the runner's executor thread. A batch with a registered waiter is left to
+ * that waiter, whose wait drains it as it always has, so a released-memory callback's failure
+ * still reaches the wait.</p>
  *
  * <p>Encoding into the buffer and committing it, the dispatch and bridge counts and the callbacks
  * are confined to the runner's executor thread, like every other command-buffer operation. Any
@@ -60,6 +66,11 @@ final class CommandBatch {
 	private int waiters;
 	/** Whether the batch has been drained (its callbacks have run). */
 	private boolean drained;
+	/**
+	 * Whether Metal has reported, through the completed handler registered when the batch was
+	 * committed, that the batch has finished. Written on a Metal thread.
+	 */
+	private volatile boolean completionReported;
 
 	/**
 	 * Opens a batch in a fresh command buffer.
@@ -171,10 +182,28 @@ final class CommandBatch {
 		buffer.encodeSignalEvent(timeline, value);
 	}
 
-	/** Commits the batch to the GPU and releases any thread awaiting that. Executor-thread only. */
-	void commit() {
-		buffer.commit();
-		committed.countDown();
+	/**
+	 * Commits the batch to the GPU and releases any thread awaiting that. Before committing,
+	 * registers a completed handler on the buffer (see {@link MTLCommandBuffer#addCompletedHandler})
+	 * that records the batch as finished and then runs {@code onFinished} on the Metal thread that
+	 * reports the completion. {@code onFinished} must only hand work off, since the runner's state
+	 * is confined to its executor thread. On a host where completed handlers are unavailable
+	 * nothing is registered, and the batch is seen to have finished only through the buffer's
+	 * status ({@link #isFinished()}). The batch is committed even if registering the handler
+	 * fails, so a thread awaiting the commit is never left waiting. Executor-thread only.
+	 *
+	 * @param onFinished run on a Metal thread once the batch has finished, by executing or failing
+	 */
+	void commit(Runnable onFinished) {
+		try {
+			buffer.addCompletedHandler(() -> {
+				completionReported = true;
+				onFinished.run();
+			});
+		} finally {
+			buffer.commit();
+			committed.countDown();
+		}
 	}
 
 	/**
@@ -188,11 +217,13 @@ final class CommandBatch {
 
 	/**
 	 * Returns whether the batch has finished on the GPU, by executing or by failing, without
-	 * waiting for it (see {@link MTLCommandBuffer#isFinished()}).
+	 * waiting for it: Metal has reported it through the batch's completed handler (see
+	 * {@link #commit(Runnable)}), or the buffer's status shows it (see
+	 * {@link MTLCommandBuffer#isFinished()}).
 	 *
 	 * @return true once the batch has finished
 	 */
-	boolean isFinished() { return buffer.isFinished(); }
+	boolean isFinished() { return completionReported || buffer.isFinished(); }
 
 	/**
 	 * Blocks until the batch has been committed, which is what makes waiting for its completion
@@ -255,6 +286,16 @@ final class CommandBatch {
 	/** Registers one waiter, keeping the batch's buffer retained until it is withdrawn. */
 	synchronized void addWaiter() {
 		waiters++;
+	}
+
+	/**
+	 * Returns whether a thread waiting for the batch off the executor thread is registered on it,
+	 * in which case that thread's wait drains it (see {@link MetalCommandRunner#complete}).
+	 *
+	 * @return true while at least one waiter is registered
+	 */
+	synchronized boolean hasWaiters() {
+		return waiters > 0;
 	}
 
 	/** Withdraws one waiter, releasing the buffer if it was the last and the batch is drained. */

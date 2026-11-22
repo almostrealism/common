@@ -16,13 +16,27 @@
 
 package io.flowtree.jobs;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Enforcement rule that detects new Java methods introduced since the base
- * branch and runs a deduplication session to remove any that duplicate
- * existing functionality. Active when {@link CodingAgentJob#getDeduplicationMode()}
- * is {@link CodingAgentJob#DEDUP_LOCAL}.
+ * Enforcement rule that runs a deduplication session over the new code on a
+ * branch: the new top-level types that resemble existing types, always, and the
+ * new Java methods introduced since the base branch when
+ * {@link CodingAgentJob#getDeduplicationMode()} is
+ * {@link CodingAgentJob#DEDUP_LOCAL}.
+ *
+ * <p>The type audit runs for every job, whatever its deduplication mode:
+ * {@link EnforcementRunner} adds this rule to every job, with the method audit
+ * switched on only for {@link CodingAgentJob#DEDUP_LOCAL}. The types come from
+ * {@link NewTypeAudit#unaudited}: those the type-equivalence search found to
+ * duplicate an existing type and that do not genuinely build on it. The session examines each against its candidates, the documentation and
+ * memory search, and the session's own justification in
+ * {@value NewTypeAudit#LEDGER_PATH}, and folds the type into the existing
+ * abstraction unless the justification actually holds. Once the session has
+ * run, {@link NewTypeAudit#markAudited} records the outcome for each type it
+ * was given, which is what lets {@link FileStager} stage a type the session
+ * kept.</p>
  *
  * <p>Uses set-snapshot comparison (inherited from {@link SetComparisonRule}) to
  * determine when to stop looping: after a correction session that produces no
@@ -43,8 +57,17 @@ import java.util.List;
  */
 class DeduplicationRule extends SetComparisonRule {
 
+    /** Prefix distinguishing a new-type item from a method item in the tracked set. */
+    static final String TYPE_ITEM_PREFIX = "type ";
+
     /** Maximum number of correction sessions allowed per job. */
     private final int maxPasses;
+
+    /** Whether new methods are audited as well as new types. */
+    private final boolean auditMethods;
+
+    /** The types given to the session in progress; recorded as audited when it ends. */
+    private List<NewTypeAssessment> pendingTypes = List.of();
 
     /** Creates a rule with the default pass cap ({@link CodingAgentJob#DEFAULT_MAX_DEDUP_PASSES}). */
     DeduplicationRule() {
@@ -52,19 +75,37 @@ class DeduplicationRule extends SetComparisonRule {
     }
 
     /**
-     * Creates a rule with an explicit pass cap.
+     * Creates a rule with an explicit pass cap that audits both new methods
+     * and new types.
      *
      * @param maxPasses maximum deduplication sessions before the enforcement
      *                  framework moves on; must be positive
      * @throws IllegalArgumentException if {@code maxPasses} is not positive
      */
     DeduplicationRule(int maxPasses) {
+        this(maxPasses, true);
+    }
+
+    /**
+     * Creates a rule with an explicit pass cap.
+     *
+     * @param maxPasses    maximum deduplication sessions before the enforcement
+     *                     framework moves on; must be positive
+     * @param auditMethods {@code true} to audit new methods as well as new
+     *                     types; new types are always audited
+     * @throws IllegalArgumentException if {@code maxPasses} is not positive
+     */
+    DeduplicationRule(int maxPasses, boolean auditMethods) {
         if (maxPasses <= 0) {
             throw new IllegalArgumentException(
                     "maxPasses must be positive, got: " + maxPasses);
         }
         this.maxPasses = maxPasses;
+        this.auditMethods = auditMethods;
     }
+
+    /** Returns whether this rule audits new methods as well as new types. */
+    boolean isAuditingMethods() { return auditMethods; }
 
     @Override
     public String getName() { return "deduplication"; }
@@ -76,20 +117,51 @@ class DeduplicationRule extends SetComparisonRule {
     @Override
     public int getMaxRetries() { return maxPasses; }
 
+    /**
+     * Returns the new methods (when the method audit is on) and, prefixed with
+     * {@link #TYPE_ITEM_PREFIX}, the new types the type audit has still to
+     * examine.
+     */
     @Override
     protected List<String> extractItems(CodingAgentJob job) {
-        return job.extractNewMethodNames();
+        List<String> items = new ArrayList<>(auditMethods ? job.extractNewMethodNames() : List.of());
+        for (NewTypeAssessment type : job.getNewTypeAudit().unaudited()) {
+            items.add(TYPE_ITEM_PREFIX + type.getFqn());
+        }
+        return items;
     }
 
     @Override
     public String buildCorrectionPrompt(CodingAgentJob job) {
-        List<String> newMethods = job.extractNewMethodNames();
+        pendingTypes = job.getNewTypeAudit().unaudited();
+        List<String> newMethods = auditMethods ? job.extractNewMethodNames() : List.of();
+        String typePrompt = pendingTypes.isEmpty() ? null
+                : buildTypeAuditPrompt(pendingTypes, job.getBaseBranch());
+        if (newMethods.isEmpty()) {
+            return typePrompt != null ? typePrompt
+                    : "DEDUPLICATION AUDIT\n\nNothing remains to audit: no new methods or new "
+                    + "types resembling existing ones. Make no changes.";
+        }
         List<String> capped = newMethods.size() > DeduplicationSpawner.MAX_DEDUP_METHODS
                 ? newMethods.subList(0, DeduplicationSpawner.MAX_DEDUP_METHODS) : newMethods;
-        return buildDeduplicationPrompt(capped,
+        String methodPrompt = buildDeduplicationPrompt(capped,
                 newMethods.size() > DeduplicationSpawner.MAX_DEDUP_METHODS,
                 newMethods.size(),
                 job.getBaseBranch());
+        return typePrompt == null ? methodPrompt : typePrompt + "\n\n" + methodPrompt;
+    }
+
+    /**
+     * Applies the set comparison, then records the outcome for each type the
+     * session was given, as the session left it, so that
+     * {@link NewTypeAudit#refusals} can release the ones it kept and
+     * {@link #extractItems} does not hand them out again.
+     */
+    @Override
+    public void onCorrectionAttempted(CodingAgentJob job) {
+        super.onCorrectionAttempted(job);
+        job.getNewTypeAudit().markAudited(pendingTypes.stream().map(NewTypeAssessment::getFqn).toList());
+        pendingTypes = List.of();
     }
 
     /**
@@ -110,8 +182,7 @@ class DeduplicationRule extends SetComparisonRule {
                                            boolean truncated,
                                            int totalCount,
                                            String baseBranch) {
-        String baseRef = "origin/"
-                + (baseBranch == null || baseBranch.isBlank() ? "master" : baseBranch);
+        String baseRef = baseRef(baseBranch);
         StringBuilder sb = new StringBuilder();
         sb.append("DEDUPLICATION AUDIT — MANDATORY PRE-COMMIT REVIEW\n\n");
         sb.append("This branch has new commits relative to its base branch. Those ");
@@ -282,6 +353,118 @@ class DeduplicationRule extends SetComparisonRule {
         sb.append("of this prompt — but do not skip real ones by appealing to ");
         sb.append("\"pre-existing,\" \"below the threshold,\" or \"net change is zero.\" ");
         sb.append("Those rationales are explicitly rejected.");
+        return sb.toString();
+    }
+
+    /**
+     * Returns the remote ref of the base branch that the prompts cite.
+     *
+     * @param baseBranch the configured base branch; {@code null} or blank
+     *                   falls back to {@code "master"}
+     * @return {@code origin/<baseBranch>}
+     */
+    private static String baseRef(String baseBranch) {
+        return "origin/" + (baseBranch == null || baseBranch.isBlank() ? "master" : baseBranch);
+    }
+
+    /**
+     * Builds the type-audit prompt: for each new type that resembles existing
+     * types, the session decides whether it should exist at all, treating the
+     * ledger justification as a claim to verify, and folds the type into the
+     * existing abstraction unless the justification holds.
+     *
+     * @param types      the new types to audit, each with its candidates
+     * @param baseBranch the configured base branch; {@code null} or blank
+     *                   falls back to {@code "master"}
+     * @return the full prompt string
+     */
+    static String buildTypeAuditPrompt(List<NewTypeAssessment> types, String baseBranch) {
+        String baseRef = baseRef(baseBranch);
+        StringBuilder sb = new StringBuilder();
+        sb.append("NEW TYPE AUDIT -- SHOULD EACH OF THESE TYPES EXIST?\n\n");
+        sb.append("This branch adds new top-level Java types that resemble types the ");
+        sb.append("repository already has. You did not write them, and you are not here ");
+        sb.append("to check whether they are correct. You are here to decide whether each ");
+        sb.append("one should exist at all.\n\n");
+
+        sb.append("THE RULE\n");
+        sb.append("An agent must not add a type that re-implements a concept the codebase ");
+        sb.append("already has. The problem is solved with the existing abstraction, ");
+        sb.append("improving it if necessary. A second implementation of an existing ");
+        sb.append("concept is a defect however correct it is.\n\n");
+
+        sb.append("THE TYPES AND THEIR CANDIDATES\n");
+        for (NewTypeAssessment type : types) {
+            sb.append(type.describeWithJustification());
+        }
+        sb.append('\n');
+
+        sb.append("SEARCH BEYOND THE CANDIDATE LIST\n");
+        sb.append("The candidates come from a lexical search: shared public method signatures, ");
+        sb.append("javadoc describing the same thing, names for the same concept. It misses ");
+        sb.append("equivalents that use different words. For each new type, also:\n");
+        sb.append("  - call mcp__ar-manager__consult with the concept the type represents ");
+        sb.append("(what it IS, in plain words), not its name;\n");
+        sb.append("  - call mcp__ar-docs__search_ar_docs and mcp__ar-manager__memory_recall ");
+        sb.append("with the same concept;\n");
+        sb.append("  - Grep for the behaviour the type implements, not just for its name.\n");
+        sb.append("Any equivalent you find this way is a candidate too.\n\n");
+
+        sb.append("THE REMEDIES, IN ORDER -- take the first that works\n");
+        sb.append("  1. Use the candidate as it is.\n");
+        sb.append("  2. Change the signature or caller that made a new type seem necessary. ");
+        sb.append("Find every caller (Grep); when the only callers are code on this branch, ");
+        sb.append("the signature can change to the existing type.\n");
+        sb.append("  3. Extend or improve the candidate -- add the method, constructor or ");
+        sb.append("capability it lacks -- or introduce an interface the candidate implements ");
+        sb.append("and code against that interface.\n");
+        sb.append("  4. Only then, keep the new type.\n\n");
+
+        sb.append("THESE ARE NOT REASONS TO KEEP A TYPE\n");
+        sb.append("Signatures and hierarchies can be changed, so none of these hold:\n");
+        sb.append("  - \"the existing type does not implement interface X\" -- make it implement ");
+        sb.append("X, or introduce an interface both satisfy;\n");
+        sb.append("  - \"the method signature requires Y\" -- change the signature;\n");
+        sb.append("  - \"the existing type cannot be used as-is, so nothing can be done\" -- ");
+        sb.append("improving the existing type is the expected remedy, and reverting the whole ");
+        sb.append("change is not one;\n");
+        sb.append("  - a renamed copy -- renaming a type does not make it a new concept.\n\n");
+
+        sb.append("VERIFY THE JUSTIFICATION\n");
+        sb.append("Treat each ledger reason as a claim. Read the candidate's source and ");
+        sb.append("check it: can the candidate be extended, or the capability added to it? ");
+        sb.append("Who calls the signature that seemed to need the new type -- can it change? ");
+        sb.append("Would an interface the candidate implements serve? Does the named test ");
+        sb.append("exist, and does it actually demonstrate a behavioural distinction the ");
+        sb.append("candidate cannot provide? A reason you cannot confirm from the code does ");
+        sb.append("not hold.\n\n");
+
+        sb.append("WHAT TO DO\n");
+        sb.append("For each type, either:\n");
+        sb.append("  (a) FOLD IT IN: move whatever the new type adds onto the existing ");
+        sb.append("abstraction (remedies 1-3), update every caller, delete the new type and ");
+        sb.append("its entry in ").append(NewTypeAudit.LEDGER_PATH).append(", and run the ");
+        sb.append("tests that exercise the callers; or\n");
+        sb.append("  (b) KEEP IT, only when the justification holds for EVERY candidate after ");
+        sb.append("you verified it. Then record your verdict in the type's ledger entry: ");
+        sb.append("\"audit\": {\"verdict\": \"").append(NewTypeAssessment.VERDICT_KEPT);
+        sb.append("\", \"reason\": \"<what you verified>\"}.\n");
+        sb.append("The harness refuses to commit a type this audit listed until it is folded ");
+        sb.append("in or carries that verdict. A verdict written before this audit ran does ");
+        sb.append("not count.\n\n");
+
+        sb.append("To see what the branch changed: git diff ").append(baseRef);
+        sb.append("...HEAD --name-only, and git status for uncommitted work.\n\n");
+
+        sb.append("EDITING RULES\n");
+        sb.append("- Use the Edit tool. Preserve every other change in every file.\n");
+        sb.append("- NEVER use git restore, git checkout --, git reset or any command that ");
+        sb.append("reverts a file; folding a type in is an edit, not a revert of the branch.\n");
+        sb.append("- Do not create a new Maven module.\n\n");
+
+        sb.append("OUTPUT\n");
+        sb.append("For each type: folded in (where its behaviour went, which callers changed) ");
+        sb.append("or kept (each candidate, and the evidence that each justification holds).");
         return sb.toString();
     }
 }

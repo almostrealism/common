@@ -24,7 +24,6 @@ import org.almostrealism.ml.TransformerBlockFeatures;
 import org.almostrealism.ml.DiffusionFeatures;
 import org.almostrealism.ml.LearnedTokenFeatures;
 import org.almostrealism.model.Block;
-import org.almostrealism.model.SequentialBlock;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -49,6 +48,15 @@ public interface DiffusionTransformerFeatures extends TransformerBlockFeatures, 
 
 	/** Classpath location of the Fourier feature projection asset. */
 	String FOURIER_FEATURES_ASSET = "/pdsl/fourier_features.pdsl";
+
+	/**
+	 * Classpath location of the timestep-embedding composition asset. Its {@code timestep_embedding}
+	 * layer is the single definition of the {@code features -> silu_mlp} composition that
+	 * {@link #timestepEmbedding(int, int, Block, PackedCollection, PackedCollection, PackedCollection,
+	 * PackedCollection)} builds: the injected Fourier feature block followed by the two-layer SiLU MLP
+	 * (imported from {@link DiffusionFeatures#SILU_MLP_ASSET}).
+	 */
+	String TIMESTEP_EMBEDDING_ASSET = "/pdsl/timestep_embedding.pdsl";
 
 	/**
 	 * Builds a Fourier feature projection layer from the {@link #FOURIER_FEATURES_ASSET} asset, bound
@@ -166,15 +174,19 @@ public interface DiffusionTransformerFeatures extends TransformerBlockFeatures, 
 	}
 
 	/**
-	 * Builds the timestep-embedding MLP {@code linear . silu . linear} over an arbitrary Fourier
-	 * feature block, mapping a {@code [batch, 1]} timestep to a {@code [batch, embedDim]} embedding.
+	 * Builds the timestep embedding — an injected Fourier feature block followed by the two-layer SiLU
+	 * MLP — as a {@link Block} from the {@link #TIMESTEP_EMBEDDING_ASSET} asset, mapping a
+	 * {@code [batch, 1]} timestep to a {@code [batch, embedDim]} embedding.
 	 *
-	 * <p>The {@code linear -> SiLU -> linear} projection is the {@code silu_mlp} asset (see
-	 * {@link DiffusionFeatures#siluMlp}); this method only prepends the {@code features} block and
-	 * loads it. {@code concat_blocks} is now differentiable (its backward pass slices the output
-	 * gradient back to each part), so the {@code [cos, sin]} Fourier concatenation could move into
-	 * the asset; that move is tracked separately and has not been made yet, so the Fourier features
-	 * still stay in {@code features} and feed this MLP as the layer's input.</p>
+	 * <p>The composition is not assembled here: the asset places the {@code features} block, then the
+	 * {@code silu_mlp} layer of {@link DiffusionFeatures#SILU_MLP_ASSET} ({@code dense -> silu -> dense})
+	 * over its output. This method only binds the two MLP projections, injects the Fourier feature
+	 * block and loads the asset. The Fourier features arrive as the {@code features} block rather than
+	 * being written out in the asset because the diffusion transformer builds them two ways — the
+	 * learned {@link #fourierFeatures(int, int, int, PackedCollection)} (a trainable frequency matrix)
+	 * and the deterministic {@link #expoFourierFeatures} (a weightless fixed ladder) — and injects
+	 * whichever it needs; the choice of frequency source belongs to the caller, not to this
+	 * composition.</p>
 	 *
 	 * @param batchSize batch size
 	 * @param embedDim  embedding dimension
@@ -188,11 +200,16 @@ public interface DiffusionTransformerFeatures extends TransformerBlockFeatures, 
 	default Block timestepEmbedding(int batchSize, int embedDim, Block features,
 									PackedCollection weight0, PackedCollection bias0,
 									PackedCollection weight2, PackedCollection bias2) {
-		SequentialBlock embedding = new SequentialBlock(shape(batchSize, 1));
-		embedding.add(features);
-		// linear -> SiLU -> linear projection over the Fourier features
-		embedding.add(siluMlp(features.getOutputShape(), weight0, bias0, weight2, bias2));
-		return embedding;
+		Map<String, Object> args = new HashMap<>();
+		args.put("features", features);
+		args.put("w_in", weight0);
+		args.put("b_in", bias0);
+		args.put("w_out", weight2);
+		args.put("b_out", bias2);
+
+		PdslLoader loader = new PdslLoader();
+		return loader.buildLayer(loader.parseResource(TIMESTEP_EMBEDDING_ASSET), "timestep_embedding",
+				shape(batchSize, 1), args);
 	}
 
 	/**

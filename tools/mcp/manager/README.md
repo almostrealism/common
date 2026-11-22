@@ -104,6 +104,8 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | `github_list_open_prs` | github | List open PRs for a repo |
 | `github_create_pr` | github | Create a pull request |
 | `github_update_pr` | github | Change an existing PR's title and/or description |
+| `github_set_pr_state` | github | Close a pull request, or reopen one that was closed without merging (state only; a merged PR cannot be reopened) |
+| `github_start_test_run` | github | Start a branch's CI test run by deploying it to the `test` environment through the controller's own GitHub credential; refuses a raw SHA, a pull ref, or a fork, and resolves the branch against `refs/heads` first |
 | `github_request_copilot_review` | github | Request a Copilot automated review on a PR |
 | `github_read_file` | github | Read a file from a GitHub repo at a branch/ref |
 | `project_read_plan` | github | Read the planning document for a workstream |
@@ -129,6 +131,7 @@ always has the full history.
 | `workstream_context` | memory-read | Get memories, commits, PR, and jobs for a branch (a workstream is optional — `repo_url` + `branch` is enough; only the jobs stream needs one) |
 | `memory_store` | memory-write | Store a memory, optionally reformulated |
 | `consult` | consult | Documentation-grounded Q&A: retrieves the project docs and the relevant memories, then synthesises an answer (or returns retrieval-only when no model is reachable, marked `degraded: true`). Replaces the retired `ar-consultant` `consult` tool |
+| `inference_health` | read | Diagnose the inference backend behind `consult`/`memory_recall` on demand: the selected backend and why, a classified availability probe, and when synthesis last succeeded |
 
 Memory tools resolve `repo_url` and `branch` from a `workstream_id` when not
 provided directly. LLM synthesis (via llama.cpp) is attempted for `memory_recall`
@@ -262,6 +265,38 @@ that can contain documentation and prunes everything that is not `*.md` or
 Both the corpus and the inference backend are optional. Without a corpus the
 summary is memory-only and `doc_references` is omitted; without a model the
 memories are returned unsummarized. Neither ever costs you the memories.
+
+### Diagnosing a degraded result
+
+When synthesis is lost, `consult` and `memory_recall` set `degraded: true` and
+carry a structured `cause` so the failure is actionable rather than a bare
+`<urlopen error ...>` string. The `cause` names:
+
+- `backend` and `backend_selection` — the selected backend and *why* it is the
+  one in use: an explicit `AR_CONSULTANT_BACKEND` value, or which candidate
+  auto-detection settled on and which it skipped.
+- `endpoint` — the `scheme://host` it contacted. Never a path (which for some
+  providers bears a token) and never a credential.
+- `classification` — one of `not_configured`, `credential_missing`,
+  `credential_rejected`, `quota_exhausted`, `connection_refused`, `dns_failure`,
+  `timeout`, `malformed_response`, `unreachable`. A refused TCP connection
+  (`connection_refused`) is a down local server, **not** a rejected key — a key
+  problem shows as `credential_rejected`/`quota_exhausted` with an HTTP status.
+- `http_status` and `detail` — the provider's status and message when there was
+  one (e.g. HTTP 402 "Insufficient credits").
+- `operator_hint` — one sentence naming the environment variable or secret file
+  that governs the fix (never a secret's value).
+
+The degraded result also carries `agent_action_required`: an explicit
+instruction to tell the person you are working for that synthesis is
+unavailable, quoting the classified reason, rather than proceeding as though an
+answer were produced.
+
+`inference_health` reports the same diagnosis on demand without issuing a
+synthesis request — the configured backend, a freshly classified availability
+probe (with a per-candidate breakdown under `auto`), and
+`last_synthesis_success` (when a synthesis last succeeded in this process). It
+is the read-only sibling of `controller_health` for the inference dependency.
 
 When running from a source checkout, `AR_DOCS_DIR` can be left unset —
 `DocsRetriever` falls back to the repository layout relative to its own location.

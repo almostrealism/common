@@ -1,0 +1,4 @@
+{
+  "about": "Justifications for new Java types that the new-type hook (.claude/hooks/warn-new-type-placement.py) found to duplicate existing types. Each entry covers every blocking candidate the hook listed: why the candidate cannot be extended, why the signature that seemed to need a new type cannot change, why an interface the candidate implements would not work, and a test, in the repository's test sources and referring to the new type, that demonstrates the distinction. The harness's type audit (DeduplicationRule) treats each entry as a claim to verify and records its own verdict under \"audit\". Schema: .claude/hooks/lib/type_equivalence.py.",
+  "types": []
+}

@@ -81,9 +81,6 @@ class ObjectOrientedDesignRule implements EnforcementRule {
     /** Repository-relative file each review session appends its verdict to; scratch space, never committed. */
     static final String VERDICT_PATH = ".flowtree/oop-review.md";
 
-    /** Directory, under the workspace parent beside the workspace lock, that holds the per-branch ledgers. */
-    static final String LEDGER_DIR = ".flowtree-locks/oop-verdicts";
-
     /** Maximum number of classes reviewed per job, bounding the cost of the review session. */
     static final int MAX_CLASSES = 12;
 
@@ -312,32 +309,8 @@ class ObjectOrientedDesignRule implements EnforcementRule {
      */
     ObjectOrientedReviewLedger ledger(CodingAgentJob job) {
         if (ledger != null) return ledger;
-        Path file = ledgerFile(job);
-        ledger = new ObjectOrientedReviewLedger(file);
+        ledger = ObjectOrientedReviewLedger.forBranch(job, ".tsv", ObjectOrientedReviewLedger.REVIEW_VERDICTS);
         return ledger;
-    }
-
-    /**
-     * @param job the job whose branch the ledger is for
-     * @return the ledger file under the workspace parent, or {@code null} when it cannot be resolved
-     */
-    private Path ledgerFile(CodingAgentJob job) {
-        String workingDirectory = job.getWorkingDirectory();
-        String branch = job.getTargetBranch() != null ? job.getTargetBranch() : job.getBaseBranch();
-        if (workingDirectory == null || branch == null || branch.isEmpty()) return null;
-        Path repoRoot = Path.of(workingDirectory);
-        Path parent = repoRoot.getParent();
-        if (parent == null) return null;
-        String repoName = repoRoot.getFileName() != null ? repoRoot.getFileName().toString() : "repo";
-        return parent.resolve(LEDGER_DIR).resolve(repoName).resolve(sanitize(branch) + ".tsv");
-    }
-
-    /**
-     * @param branch a branch name, which may contain path separators
-     * @return the name with characters unsafe for a filename replaced by {@code -}
-     */
-    private static String sanitize(String branch) {
-        return branch.replaceAll("[^A-Za-z0-9._-]", "-");
     }
 
     /**

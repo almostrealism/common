@@ -119,10 +119,12 @@ public class TextTokenizationExamplesTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Page section "The family tree": {@link Qwen3Tokenizer} tokenizes through its own
-	 * {@code encode(String, boolean, boolean)} / {@code decode(int[])} API rather than the
-	 * {@link org.almostrealism.ml.Tokenizer} interface. {@code addBos}/{@code addEos} bracket the
-	 * same content with the public BOS/EOS constants, and the control tokens are skipped on decode.
+	 * Page section "The family tree": {@link Qwen3Tokenizer} is a {@link org.almostrealism.ml.Tokenizer}
+	 * (inherited through {@link ByteLevelBPETokenizer}), whose {@code encodeAsLong}/{@code decodeAsLong}
+	 * contract view carries no special tokens. For BOS/EOS control it exposes the concrete
+	 * {@code encode(String, boolean, boolean)} / {@code decode(int[])} overloads exercised here:
+	 * {@code addBos}/{@code addEos} bracket the same content with the public BOS/EOS constants, and the
+	 * control tokens are skipped on decode.
 	 */
 	@Test(timeout = 10000)
 	public void qwen3SpecialTokenControl() {
