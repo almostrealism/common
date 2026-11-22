@@ -145,6 +145,22 @@
 #                       is a warning. A commit nobody's pass produced resets the
 #                       controller's count and has no such status, so the label
 #                       clears by itself.
+#   SENSITIVE_FILE_PROTECTION_ENABLED - operator grant, "true"/"false". Sent as
+#                       sensitiveFileProtectionEnabled only when "false", which
+#                       asks the controller to turn off the harness's
+#                       sensitive-file staging locks (CI and test files) for this
+#                       job and sign the Sensitive-File-Bypass commit trailer.
+#                       Omitted → the controller keeps its default (protection
+#                       on). Only a trusted caller sets it (see
+#                       tools/ci/detect-protected-file-changes.sh); a staged
+#                       request cannot, so never forward it from one.
+#   BYPASS_AGENT_PERMISSION_PROMPTS - operator grant, "true"/"false". Sent as
+#                       bypassAgentPermissionPrompts only when "true", which
+#                       launches this job's agent with its runtime permission
+#                       prompts bypassed so it can write under .claude/ (hooks,
+#                       settings.json) that the runtime otherwise refuses.
+#                       Omitted → the controller keeps its default (prompts
+#                       enforced). Trusted callers only, as above.
 #
 # Exit codes:
 #   0 - submission succeeded, OR the controller skipped/rejected it (both leave
@@ -348,6 +364,36 @@ if [ -n "${MAX_ENFORCE_CHANGES_RETRIES:-}" ]; then
     esac
     PAYLOAD=$(echo "$PAYLOAD" | jq --argjson m "$MAX_ENFORCE_CHANGES_RETRIES" \
         '. + {maxEnforceChangesRetries: $m}')
+fi
+
+# Operator grants that let this job edit protected files, sent only in the
+# direction that lifts a protection so the default (fully protected) applies
+# whenever the knob is unset. The controller signs the Sensitive-File-Bypass
+# trailer itself; this script never sends a signature.
+if [ -n "${SENSITIVE_FILE_PROTECTION_ENABLED:-}" ]; then
+    case "$SENSITIVE_FILE_PROTECTION_ENABLED" in
+        true|false) ;;
+        *)
+            echo "ERROR: SENSITIVE_FILE_PROTECTION_ENABLED must be true or false (got: $SENSITIVE_FILE_PROTECTION_ENABLED)" >&2
+            exit 1
+            ;;
+    esac
+    if [ "$SENSITIVE_FILE_PROTECTION_ENABLED" = "false" ]; then
+        PAYLOAD=$(echo "$PAYLOAD" | jq '. + {sensitiveFileProtectionEnabled: false}')
+    fi
+fi
+
+if [ -n "${BYPASS_AGENT_PERMISSION_PROMPTS:-}" ]; then
+    case "$BYPASS_AGENT_PERMISSION_PROMPTS" in
+        true|false) ;;
+        *)
+            echo "ERROR: BYPASS_AGENT_PERMISSION_PROMPTS must be true or false (got: $BYPASS_AGENT_PERMISSION_PROMPTS)" >&2
+            exit 1
+            ;;
+    esac
+    if [ "$BYPASS_AGENT_PERMISSION_PROMPTS" = "true" ]; then
+        PAYLOAD=$(echo "$PAYLOAD" | jq '. + {bypassAgentPermissionPrompts: true}')
+    fi
 fi
 
 if [ -n "${STARTED_AFTER:-}" ]; then

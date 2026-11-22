@@ -152,6 +152,23 @@ run_case "a skipped checkstyle job reports no identifier failure" "false" \
     "" "temporary-identifiers" \
     CHECKSTYLE_PASSED= TEMPORARY_IDENTIFIERS_PASSED=
 
+# ── Inline comments ─────────────────────────────────────────────────
+#
+# The comment check is a step of the checkstyle job with its own output, so
+# it is reported under its own name and a skipped job reports nothing.
+
+run_case "a long inline comment is reported with its own message" "true" \
+    "inline-comments: This branch wrote a long inline comment" "checkstyle:" \
+    CHECKSTYLE_PASSED=true INLINE_COMMENTS_PASSED=false
+
+run_case "the inline-comment recipe names the change's own base branch" "true" \
+    "git diff --merge-base origin/develop -M --unified=0" "origin/master" \
+    INLINE_COMMENTS_PASSED=false BASE_BRANCH=develop
+
+run_case "a skipped checkstyle job reports no inline-comment failure" "false" \
+    "" "inline-comments" \
+    CHECKSTYLE_PASSED= INLINE_COMMENTS_PASSED=
+
 # ── Deception audit: a merge-base failure is not a clean result ─────
 #
 # deception-audit.sh sets audit_error=true (and leaves has_findings/

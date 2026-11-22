@@ -24,6 +24,8 @@ on more than one lane usually has one cause in shared code. A test that failed
 on one lane may be that lane's backend, or a flake that a master run, never
 retried, has no chance to shake off.
 
+@include earlier-attempts.txt
+
 ## How to work
 
 1. **Check the failure still happens.** Master may have moved since that run.
