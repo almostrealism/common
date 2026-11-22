@@ -488,10 +488,17 @@ How the §6 open questions were settled:
 
 1. **Size-1-axis broadcast** is kept (Rule B), so the `(b, k, 1) → (b, k, N)` normalization and
    softmax reductions survive unchanged.
-2. **Leading-axis / batch broadcast** is not implicit: a coincidental leading-axis match such as
-   `(2, 3)` against a bare `(2)` is rejected. A square `(n, n)` against `(n)` resolves to the
-   trailing axis. Callers wanting a per-row or per-batch value write `reshape(n, 1)` or an explicit
-   `repeat`. Rule C's named batch API was not added.
+2. **Leading-axis / batch broadcast** was first made non-implicit, but that broke established
+   callers and master tests that combine a `(r)` operand per row with an `(r, c)` one (bias
+   addition in convolutions, per-head scaling in attention, `CollectionMathTests.repeatProduct`).
+   The trailing placement is therefore preferred, and an operand that does not broadcast from the
+   trailing end is placed at the leading end instead (optionally after the result's leading
+   length-1 axes), so `(2, 3)` against a bare `(2)` broadcasts per row. A square `(n, n)` against
+   `(n)` still resolves to the trailing axis. Rule C's named batch API was not added.
+   The result shape is the first operand of largest total size, as before the change; another
+   operand of that total size combines positionally. `TemporalFeaturesTest.chooseCoefficients`
+   depends on this: `lowPassCoefficients` combines `(21), (1), (1, 21), (1, 21)` and must keep
+   the 1-axis `(21)` result.
 3. **Variable (unknown) counts** are validated from the declared `TraversalPolicy` at creation, not
    deferred to evaluation. A scalar (total size 1) broadcasts against a variable-count operand as it
    always did; a variable-count operand whose declared per-item width is not broadcast compatible is

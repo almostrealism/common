@@ -146,8 +146,10 @@ the definition on several evaluations.
 
 Binary element-wise operations reconcile operands of different sizes by trailing-axis
 broadcasting (`TraversalAxisAlignment.align`): comparing the two shapes axis by axis from the
-trailing end, each length must be equal or 1, and a pair that is not compatible this way is
-rejected when the computation is created. An earlier mechanism instead paired operands by their
+trailing end, each length must be equal or 1. A smaller operand that is not compatible this way
+may still broadcast from the leading end (a `(rows)` operand applied per row of a
+`(rows, cols)` one); a pair compatible from neither end is rejected when the computation is
+created. An earlier mechanism instead paired operands by their
 traversal count, which silently misread inputs whose sizes happened to coincide:
 
 - `matmul`'s multiply-and-sum lowering multiplied the `(m, n)` matrix with the `(rows, m, n)`

@@ -1517,16 +1517,25 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable,
 	 * @return {@code true} if this shape broadcasts into {@code target}
 	 */
 	public boolean broadcastsInto(TraversalPolicy target) {
-		if (getDimensions() > target.getDimensions()) {
-			return false;
-		}
+		return broadcastsInto(target, target.getDimensions() - getDimensions());
+	}
 
-		int off = target.getDimensions() - getDimensions();
+	/**
+	 * Returns whether a collection of this shape broadcasts into {@code target} with its first
+	 * axis placed at axis {@code offset} of {@code target}: the shape fits within {@code target}
+	 * from that axis, and each of its axes equals the corresponding axis of {@code target} or has
+	 * length 1. The axes of {@code target} outside the placement are broadcast.
+	 *
+	 * @param target the broadcast result shape this shape is combined into
+	 * @param offset the axis of {@code target} aligned with the first axis of this shape
+	 * @return {@code true} if this shape broadcasts into {@code target} at {@code offset}
+	 */
+	public boolean broadcastsInto(TraversalPolicy target, int offset) {
+		if (offset < 0 || offset + getDimensions() > target.getDimensions()) return false;
+
 		for (int i = 0; i < getDimensions(); i++) {
 			long a = lengthLong(i);
-			if (a != target.lengthLong(i + off) && a != 1) {
-				return false;
-			}
+			if (a != 1 && a != target.lengthLong(i + offset)) return false;
 		}
 
 		return true;

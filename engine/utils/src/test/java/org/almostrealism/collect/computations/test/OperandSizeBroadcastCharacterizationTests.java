@@ -40,6 +40,11 @@ import java.nio.file.Path;
  * combined element by element even when they are not trailing-axis compatible, so a {@code (2, 3)}
  * matrix combines with a {@code (6)} vector positionally rather than being rejected.
  *
+ * <p>An operand that is not compatible from the trailing end may still broadcast from the leading
+ * end (after any leading length-1 axes of the other operand), so a bare {@code (r)} vector applies
+ * per row to an {@code (r, c)} matrix (see {@link #bareVectorAgainstMatrixBroadcastsPerRow}). Only a
+ * pair compatible from neither end is rejected.</p>
+ *
  * <p>Each accepted case asserts both the result shape and the per-element values, using operands
  * whose elements differ so that a wrong broadcast axis would change the result. Each rejected
  * case asserts that building the computation throws.</p>
@@ -205,13 +210,38 @@ public class OperandSizeBroadcastCharacterizationTests extends TestSuiteBase {
 	}
 
 	/**
-	 * A bare (2) vector against a (2, 3) matrix is rejected: its trailing length 2 does not match
-	 * the matrix's trailing length 3 and is not 1. The caller writes {@code reshape(2, 1)} to say
-	 * the value is per-row.
+	 * A bare (2) vector against a (2, 3) matrix does not broadcast from the trailing end (2 is
+	 * neither 3 nor 1), so it is placed at the leading end and broadcasts per row: each of its
+	 * values is added to every element of the corresponding matrix row, exactly as if the caller
+	 * had written {@code reshape(2, 1)}.
 	 */
 	@Test(timeout = 60000)
-	public void bareVectorAgainstMatrixRejected() {
-		assertRejected(() -> cp(m23()).add(cp(col())));
+	public void bareVectorAgainstMatrixBroadcastsPerRow() {
+		PackedCollection out = cp(m23()).add(cp(col())).evaluate();
+
+		Assert.assertEquals(6, out.getShape().getTotalSize());
+		double[] expected = {101, 102, 103, 204, 205, 206};
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals(expected[i], out.toDouble(i));
+		}
+	}
+
+	/**
+	 * A bare (2) vector against a (1, 2, 3) tensor is placed after the tensor's leading length-1
+	 * axis and broadcasts per row, exactly as against a (2, 3) matrix; the result keeps the
+	 * three-axis shape of the tensor.
+	 */
+	@Test(timeout = 60000)
+	public void bareVectorSkipsLeadingUnitAxis() {
+		PackedCollection tensor = pack(1.0, 2.0, 3.0, 4.0, 5.0, 6.0).reshape(shape(1, 2, 3));
+		PackedCollection out = cp(tensor).add(cp(col())).evaluate();
+
+		Assert.assertEquals(3, out.getShape().getDimensions());
+		Assert.assertEquals(6, out.getShape().getTotalSize());
+		double[] expected = {101, 102, 103, 204, 205, 206};
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals(expected[i], out.toDouble(i));
+		}
 	}
 
 	/**
