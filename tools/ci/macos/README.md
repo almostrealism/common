@@ -2,8 +2,10 @@
 
 Self-hosted GitHub Actions runner for macOS. Runs natively (no Docker)
 as a simple shell script loop, picking up jobs whose labels it covers —
-`[self-hosted, macos, ar-ci]` by default, configurable via `RUNNER_LABELS`
-(see "Dedicating a Runner to One Job").
+`[self-hosted, macos, ar-ci, ar-build]` by default (`ar-ci` for the Metal test
+lane, `ar-build` so the controller can send the bounded `build` job here when the
+runner is idle), configurable via `RUNNER_LABELS` (see "Dedicating a Runner to
+One Job").
 
 ## Architecture
 
@@ -269,7 +271,7 @@ All configuration is via the `.env` file (see `.env.example`).
 | `RUNNER_NAME` | `$(hostname)-macos` | Runner display name in GitHub |
 | `RUNNER_GROUP` | `Default` | Runner group |
 | `RUNNER_WORKDIR` | `${RUNNER_DIR}/_work` | Job working directory. Must be absolute; `fleet macos install` refuses one under a directory any account but root and the runner's could change, one that already exists as a non-directory, or one the runner account cannot create (`runner.sh` makes it with `mkdir -p`). The `~/actions-runner/_work` in `.env.example` is this default for the default `RUNNER_DIR` |
-| `RUNNER_LABELS` | `self-hosted,macos,ar-ci` | Labels advertised to GitHub — decides which jobs this runner may take |
+| `RUNNER_LABELS` | `self-hosted,macos,ar-ci,ar-build` | Labels advertised to GitHub — decides which jobs this runner may take. `ar-build` lets the FlowTree controller send the bounded `build` job here when this runner is idle (see "Controller-driven build-runner selection" in [`../../../.github/CLAUDE.md`](../../../.github/CLAUDE.md)); a deploy runner overrides this to drop `ar-ci`/`ar-build` |
 | `RUNNER_CPU_LIMIT` | *(unset — no limit)* | Max CPUs for jobs (requires `cpulimit`) |
 | `RUNNER_DIR` | `~<user>/actions-runner` | Where the runner agent is installed; must be absolute. `fleet macos install` resolves `~` to the runner account's home |
 | `RUNNER_PATH` | Homebrew, `openjdk@17`, `~/.local/bin`, system dirs | PATH the LaunchDaemon gives `runner.sh` and its jobs; set it if the runner account's JDK or Maven lives elsewhere. Every entry must be absolute and writable — by mode bits or by an ACL — only by root, the runner account and the `admin` group (install refuses e.g. `/tmp/bin`, and an empty or trailing `:` entry). The same holds for each required program found on it, and for every symlink on the way to it. Set this, never `PATH` itself: `runner.sh` sources the env file after launchd sets the screened PATH, so install refuses an env file that assigns `PATH` |

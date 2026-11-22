@@ -1255,6 +1255,101 @@ public class GitHubProxyHandler implements ConsoleFeatures {
     }
 
     /**
+     * Issues a {@code GET} against the GitHub API and returns the status and
+     * body of whatever completed. Unlike {@link #apiGet}, this keeps the HTTP
+     * status, which the runner listing needs to tell a permission refusal
+     * ({@code 403}/{@code 404}) from a transport failure.
+     *
+     * @param url   the fully-built request URL
+     * @param token the GitHub API bearer token
+     * @return the response, or {@code null} on a transport failure
+     */
+    private ApiResponse apiGetResponse(String url, String token) {
+        try {
+            HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            conn.setRequestProperty("Accept", "application/vnd.github+json");
+            conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(15000);
+
+            int status = conn.getResponseCode();
+            InputStream is = status >= 400 ? conn.getErrorStream() : conn.getInputStream();
+            String responseBody = is != null
+                    ? new String(is.readAllBytes(), StandardCharsets.UTF_8) : "";
+            if (is != null) is.close();
+            return new ApiResponse(status, responseBody);
+        } catch (IOException e) {
+            log("GitHub GET " + url + " failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Lists an organization's self-hosted GitHub Actions runners through
+     * {@code GET /orgs/{org}/actions/runners}, following pagination.
+     *
+     * <p>Uses the same credentials and HTTP path as every other GitHub
+     * operation here — the per-organization token is resolved from this
+     * handler's own configuration through {@link #resolveGithubToken(String)}.
+     * A {@code 403} or {@code 404} (the token lacks the organization's
+     * "Self-hosted runners" read permission, or {@code admin:org}) is reported
+     * as a failed listing with a reason rather than an empty list, so a caller
+     * never mistakes "cannot see the runners" for "there are no idle runners".</p>
+     *
+     * @param org the organization login
+     * @return the runners, or a failed listing with the reason
+     */
+    public RunnerListing listOrganizationRunners(String org) {
+        if (org == null || org.isBlank()) {
+            return RunnerListing.failed("no organization specified");
+        }
+        String token = resolveGithubToken(org);
+        if (token == null || token.isBlank()) {
+            return RunnerListing.failed("no GitHub token configured for organization " + org);
+        }
+        List<GitHubRunner> runners = new ArrayList<>();
+        int total = -1;
+        for (int page = 1; page <= MAX_RUNNER_PAGES; page++) {
+            String url = apiRoot + "/orgs/" + URLEncoder.encode(org, StandardCharsets.UTF_8)
+                    + "/actions/runners?per_page=100&page=" + page;
+            ApiResponse response = apiGetResponse(url, token);
+            if (response == null) {
+                return RunnerListing.failed("GitHub was unreachable while listing runners for " + org);
+            }
+            if (response.status() == HttpURLConnection.HTTP_FORBIDDEN
+                    || response.status() == HttpURLConnection.HTTP_NOT_FOUND) {
+                return RunnerListing.failed("GitHub returned HTTP " + response.status()
+                        + " listing runners for " + org + " — the token lacks the organization's"
+                        + " \"Self-hosted runners\" read permission (or admin:org)");
+            }
+            if (response.status() != 200) {
+                return RunnerListing.failed("GitHub returned HTTP " + response.status()
+                        + " listing runners for " + org + ": " + response.excerpt());
+            }
+            JsonNode root;
+            try {
+                root = GITHUB_MAPPER.readTree(response.body());
+            } catch (IOException e) {
+                return RunnerListing.failed("GitHub returned an unparseable runner listing for "
+                        + org + ": " + e.getMessage());
+            }
+            if (total < 0) total = root.path("total_count").asInt(0);
+            JsonNode runnerArray = root.path("runners");
+            if (!runnerArray.isArray() || runnerArray.isEmpty()) break;
+            for (JsonNode runner : runnerArray) {
+                runners.add(GitHubRunner.from(runner));
+            }
+            if (runners.size() >= total) break;
+        }
+        return RunnerListing.of(runners);
+    }
+
+    /** Hard cap on runner listing pages, a safety net against an endless paginator. */
+    private static final int MAX_RUNNER_PAGES = 50;
+
+    /**
      * Derives a pull request title from a commit message.
      *
      * <p>The subject line of a commit message is written to be read on its own,

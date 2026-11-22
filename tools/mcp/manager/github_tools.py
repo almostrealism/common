@@ -1447,3 +1447,31 @@ def github_job_logs(
 
     return github_api.get_job_logs(owner, repo, job_id,
                                    tail_lines=tail_lines, grep=grep)
+
+
+@mcp.tool()
+def github_list_runners(org: str = "") -> dict:
+    """List the organization's self-hosted GitHub Actions runners (read-only).
+
+    Asks the FlowTree controller's ``GET /api/runners``, which reads the
+    organization's runners through the controller's own GitHub credentials and
+    reports each runner's name, status (online/offline), whether it is busy, and
+    its labels. This is a diagnostic view of what the controller sees when it
+    decides which runner the CI ``build`` job should use (``/api/runners/select``,
+    the ``ar-build`` label) — use it to confirm a fleet is online, idle, and
+    carrying ``ar-build`` after bringing it up.
+
+    Args:
+        org: GitHub organization to list runners for. Defaults to the
+            controller's configured organization when empty.
+
+    Returns:
+        dict from the controller: ok=True with ``listed`` and a ``runners`` list
+        (each with name/status/busy/idle/labels); or ok=False with ``error``
+        (for example, the controller's token lacks the "Self-hosted runners"
+        read permission).
+    """
+    server._require_scope("github")
+    server._audit("github_list_runners", org=org)
+    path = "/api/runners" + (f"?org={quote(org)}" if org else "")
+    return server._controller_get(path)

@@ -165,6 +165,15 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	/** The current population of genomes being evolved. */
 	private Population<G, O> population;
 
+	/**
+	 * Number of top-ranked genomes carried unchanged into the next generation
+	 * (elitism). Defaults to {@code 0}, which disables elitism and reproduces the
+	 * purely generational behavior. This is a property of the optimizer instance,
+	 * not a static global: each optimizer is configured independently by whoever
+	 * builds it.
+	 */
+	private int eliteCount = 0;
+
 	/** Function that constructs a new population from a list of genomes. */
 	private Function<List<Genome<G>>, Population> children;
 
@@ -245,6 +254,53 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	 * @return the population of genomes
 	 */
 	public Population<G, O> getPopulation() { return this.population; }
+
+	/**
+	 * Returns the number of top-ranked genomes carried unchanged into the next
+	 * generation.
+	 *
+	 * @return the elite count; {@code 0} disables elitism
+	 */
+	public int getEliteCount() { return eliteCount; }
+
+	/**
+	 * Sets the number of top-ranked genomes to carry unchanged into the next
+	 * generation (elitism).
+	 * <p>
+	 * The elites are the leading genomes of the population as breeding begins. After
+	 * any prior {@link #iterate()} - and for a population loaded already in health
+	 * order - the population is in descending health order at that point, so those
+	 * leading {@code eliteCount} genomes are the best scoring. A freshly initialized
+	 * population that has never been evaluated is instead in its initial order; its
+	 * leading genomes are then carried as they stand, which sidelines nothing because
+	 * no genome has a score yet. Those genome objects are carried into the next
+	 * generation unchanged - keeping their identity, so a consumer tracking a genome
+	 * (and the record and score it holds) across generations can recognize them - and
+	 * the remaining slots are filled with children and fresh genomes exactly as
+	 * without elitism. This guarantees the best genomes, once evaluated, are never
+	 * discarded by a generation.
+	 * </p>
+	 * <p>
+	 * The count is clamped at use to what the generation can actually carry: no
+	 * more than the population holds and no more than {@link #popSize}. A count that
+	 * exceeds the population leaves no room for children or fresh genomes, so the
+	 * whole next generation is the carried elites. A count of {@code 0} disables
+	 * elitism. Elitism does not skip fitness evaluation: {@link #iterate()} still
+	 * evaluates the whole next generation, so a carried genome is re-scored (to the
+	 * same value for a deterministic health computation) - the guarantee is genome
+	 * survival, not avoided computation.
+	 * </p>
+	 *
+	 * @param eliteCount the number of elites to carry; must not be negative
+	 * @throws IllegalArgumentException if {@code eliteCount} is negative
+	 */
+	public void setEliteCount(int eliteCount) {
+		if (eliteCount < 0) {
+			throw new IllegalArgumentException("eliteCount must not be negative (was " + eliteCount + ")");
+		}
+
+		this.eliteCount = eliteCount;
+	}
 
 	/**
 	 * Resets the health computation, releasing any associated resources.
@@ -382,7 +438,8 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	 * This method executes the complete evolutionary cycle:
 	 * </p>
 	 * <ol>
-	 *   <li>If breeding is enabled, creates offspring from current population</li>
+	 *   <li>If breeding is enabled, carries the top {@link #getEliteCount() elite}
+	 *       genomes unchanged, then creates offspring from the current population</li>
 	 *   <li>Fills remaining population slots with fresh random genomes</li>
 	 *   <li>Evaluates fitness of all genomes</li>
 	 *   <li>Sorts population by fitness score</li>
@@ -390,6 +447,33 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 	 * <p>
 	 * After iteration completes, statistics are available via {@link #getAverageScore()}
 	 * and {@link #getMaxScore()}.
+	 * </p>
+	 * <h3>Elitism</h3>
+	 * <p>
+	 * When {@link #getEliteCount()} is positive, the first that-many genomes of the
+	 * current population are carried into the next generation unchanged, keeping their
+	 * genome identity. Whenever the population has already been evaluated - after any
+	 * prior call to this method, or when loaded already in health order - it is in
+	 * descending health order at this point, so those leading genomes are the best
+	 * scoring; on a freshly initialized population that has never been evaluated they
+	 * are simply its leading members by initial order, carried as they stand (no
+	 * genome has a score yet, so none is sidelined). Children then fill the slots
+	 * after the elites (rather than, as without elitism, replacing the whole
+	 * population) and fresh genomes fill any remainder up to {@link #popSize}. This
+	 * guarantees the best genomes, once evaluated, are never discarded by a
+	 * generation. A bred child whose signature matches a carried elite is a clone and
+	 * is dropped by {@link #breed}, so an elite is never duplicated by a child (which
+	 * would otherwise be evaluated twice); any freed slot is taken by a fresh genome.
+	 * With an elite count of {@code 0} the behavior is purely generational: the
+	 * population is replaced entirely by children and fresh genomes.
+	 * </p>
+	 * <p>
+	 * Elitism preserves genomes, not evaluations: step 3 re-evaluates the whole next
+	 * generation, including the carried elites. A carried genome is therefore
+	 * re-scored each generation (to the same value for a deterministic health
+	 * computation). This is inherent to the design - fitness scores are held in the
+	 * per-generation evaluation, not on the genomes - so the health computation is
+	 * the authority on every member's current score every generation.
 	 * </p>
 	 */
 	public void iterate() {
@@ -399,8 +483,12 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 		List<Genome<G>> sorted = population.getGenomes();
 
 		if (enableBreeding) {
-			// Fresh genetic material
-			List<Genome<G>> genomes = new ArrayList<>();
+			int eliteN = Math.max(0, Math.min(eliteCount, Math.min(sorted.size(), popSize)));
+
+			// Seed the breeding list with the elites so breed() dedups children against
+			// them too (see iterate() javadoc); breedLimit then bounds the whole list.
+			List<Genome<G>> genomes = new ArrayList<>(sorted.subList(0, eliteN));
+			int breedLimit = eliteN > 0 ? Math.min(eliteN + maxChildren, popSize) : maxChildren;
 
 			// Mate in order of health
 			Iterator<Genome<G>> itr = sorted.iterator();
@@ -412,26 +500,26 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 			while (itr.hasNext()) {
 				g1 = g2;
 				g2 = itr.next();
-				if (genomes.size() >= maxChildren) break;
+				if (genomes.size() >= breedLimit) break;
 
 				// Combine chromosomes to produce new offspring
 				breed(genomes, g1, g2);
 
-				if (StrictMath.random() < secondaryOffspringPotential && genomes.size() < maxChildren) {
+				if (StrictMath.random() < secondaryOffspringPotential && genomes.size() < breedLimit) {
 					// Combine chromosomes to produce a second offspring
 					breed(genomes, g1, g2);
 				} else {
 					continue w;
 				}
 
-				if (StrictMath.random() < tertiaryOffspringPotential && genomes.size() < maxChildren) {
+				if (StrictMath.random() < tertiaryOffspringPotential && genomes.size() < breedLimit) {
 					// Combine chromosomes to produce a third offspring
 					breed(genomes, g1, g2);
 				} else {
 					continue w;
 				}
 
-				if (StrictMath.random() < quaternaryOffspringPotential && genomes.size() < maxChildren) {
+				if (StrictMath.random() < quaternaryOffspringPotential && genomes.size() < breedLimit) {
 					// Combine chromosomes to produce a fourth offspring
 					breed(genomes, g1, g2);
 				} else {
@@ -439,12 +527,15 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 				}
 			}
 
-			int add = popSize - genomes.size();
-
-			console().println("Generating new population with " + genomes.size() + " children");
+			console().println("Generating new population with " + eliteN
+					+ " elites and " + (genomes.size() - eliteN) + " children");
 
 			this.population.getGenomes().clear();
+
+			// Elites lead the list, children follow; breeding was bounded to the free slots.
 			this.population.getGenomes().addAll(genomes);
+
+			int add = popSize - this.population.getGenomes().size();
 
 			if (generator != null && add > 0) {
 				log("Adding an additional " + add + " members");
