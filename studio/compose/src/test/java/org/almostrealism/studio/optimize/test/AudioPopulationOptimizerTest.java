@@ -123,7 +123,9 @@ public class AudioPopulationOptimizerTest extends TestSuiteBase {
 		List<Genome<PackedCollection>> saved = new ArrayList<>();
 		saved.add(new ProjectedGenome(PackedCollection.of(0.1, 0.2, 0.3)));
 		saved.add(new ProjectedGenome(PackedCollection.of(0.9, -0.5)));
-		AudioScenePopulation.store(saved, new FileOutputStream(file));
+		try (FileOutputStream out = new FileOutputStream(file)) {
+			AudioScenePopulation.store(saved, out);
+		}
 
 		Function<List<Genome<PackedCollection>>, Population> children =
 				loaded -> new AudioScenePopulation(scene, new ArrayList<>(loaded));

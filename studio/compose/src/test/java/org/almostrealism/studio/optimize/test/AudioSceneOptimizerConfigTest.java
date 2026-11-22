@@ -18,7 +18,13 @@ package org.almostrealism.studio.optimize.test;
 
 import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
+import org.almostrealism.audio.WaveOutput;
+import org.almostrealism.audio.notes.NoteAudioProvider;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.jni.NativeComputeContext;
 import org.almostrealism.music.pattern.PatternElementFactory;
+import org.almostrealism.music.pattern.PatternSystemManager;
 import org.almostrealism.optimize.PopulationOptimizer;
 import org.almostrealism.studio.arrange.EfxManager;
 import org.almostrealism.studio.arrange.MixdownManager;
@@ -80,7 +86,29 @@ public class AudioSceneOptimizerConfigTest extends TestSuiteBase {
 	private boolean breeding;
 	/** Saved {@code PopulationOptimizer.enableVerbose}. */
 	private boolean optimizerVerbose;
-	/** Saved {@code StableDurationHealthComputation.profile}. */
+	/** Saved {@code NoteAudioProvider.enableVerbose}. */
+	private boolean noteVerbose;
+	/** Saved {@code AudioSceneOptimizer.enableVerbose}. */
+	private boolean sceneOptimizerVerbose;
+	/** Saved {@code SilenceDurationHealthComputation.enableVerbose}. */
+	private boolean silenceVerbose;
+	/** Saved {@code StableDurationHealthComputation.enableProfileAutosave}. */
+	private boolean profileAutosave;
+	/** Saved {@code PatternSystemManager.enableVerbose}. */
+	private boolean patternVerbose;
+	/** Saved {@code PopulationOptimizer.enableDisplayGenomes}. */
+	private boolean displayGenomes;
+	/** Saved {@code Hardware.enableVerbose}. */
+	private boolean hardwareVerbose;
+	/** Saved {@code HardwareOperator.enableLog}. */
+	private boolean hardwareLog;
+	/** Saved {@code HardwareOperator.enableVerboseLog}. */
+	private boolean hardwareVerboseLog;
+	/** Saved {@code WaveOutput.enableVerbose}. */
+	private boolean waveOutputVerbose;
+	/** Saved {@code NativeComputeContext.enableVerbose}. */
+	private boolean nativeContextVerbose;
+	/** Saved {@code StableDurationHealthComputation.profile}, also the profile assigned to the hardware. */
 	private OperationProfile healthProfile;
 
 	/** Captures all global flags the methods under test mutate. */
@@ -104,10 +132,20 @@ public class AudioSceneOptimizerConfigTest extends TestSuiteBase {
 		stemOutput = AudioPopulationOptimizer.enableStemOutput;
 		breeding = PopulationOptimizer.enableBreeding;
 		optimizerVerbose = PopulationOptimizer.enableVerbose;
+		noteVerbose = NoteAudioProvider.enableVerbose;
+		sceneOptimizerVerbose = AudioSceneOptimizer.enableVerbose;
+		silenceVerbose = SilenceDurationHealthComputation.enableVerbose;
+		profileAutosave = StableDurationHealthComputation.enableProfileAutosave;
+		patternVerbose = PatternSystemManager.enableVerbose;
+		displayGenomes = PopulationOptimizer.enableDisplayGenomes;
+		hardwareVerbose = Hardware.enableVerbose;
+		hardwareLog = HardwareOperator.enableLog;
+		hardwareVerboseLog = HardwareOperator.enableVerboseLog;
+		waveOutputVerbose = WaveOutput.enableVerbose;
+		nativeContextVerbose = NativeComputeContext.enableVerbose;
 		healthProfile = StableDurationHealthComputation.profile;
 	}
 
-	// TODO(review): setVerbosity also mutates ~10 other global verbose flags and a Hardware profile not captured/restored here, so they leak to later tests in the JVM.
 	/** Restores all captured global flags. */
 	@After
 	public void restoreFlags() {
@@ -129,7 +167,19 @@ public class AudioSceneOptimizerConfigTest extends TestSuiteBase {
 		AudioPopulationOptimizer.enableStemOutput = stemOutput;
 		PopulationOptimizer.enableBreeding = breeding;
 		PopulationOptimizer.enableVerbose = optimizerVerbose;
+		NoteAudioProvider.enableVerbose = noteVerbose;
+		AudioSceneOptimizer.enableVerbose = sceneOptimizerVerbose;
+		SilenceDurationHealthComputation.enableVerbose = silenceVerbose;
+		StableDurationHealthComputation.enableProfileAutosave = profileAutosave;
+		PatternSystemManager.enableVerbose = patternVerbose;
+		PopulationOptimizer.enableDisplayGenomes = displayGenomes;
+		Hardware.enableVerbose = hardwareVerbose;
+		HardwareOperator.enableLog = hardwareLog;
+		HardwareOperator.enableVerboseLog = hardwareVerboseLog;
+		WaveOutput.enableVerbose = waveOutputVerbose;
+		NativeComputeContext.enableVerbose = nativeContextVerbose;
 		StableDurationHealthComputation.profile = healthProfile;
+		Hardware.getLocalHardware().assignProfile(healthProfile);
 	}
 
 	/** The full feature level (7) enables every processing stage, up to and including reverb. */
