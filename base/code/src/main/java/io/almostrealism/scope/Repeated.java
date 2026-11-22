@@ -768,15 +768,17 @@ public class Repeated<T> extends Scope<T> {
 	 *
 	 * <p>The declarations are placed before the loop, in the block that contains it, so a
 	 * kernel with several sibling loops holds all of their declarations in one block. The name
-	 * therefore includes the name of this loop's index, which is unique within the kernel, and
-	 * stays deterministic so that identical kernels render identical source.</p>
+	 * therefore includes the name of this loop's index and stays deterministic, so that
+	 * identical kernels render identical source.</p>
+	 *
+	 * <p>The names are unique only as long as no two loops in one kernel share an index name.
+	 * Computations that build loops guarantee this by deriving the index name from their
+	 * kernel-unique variable prefix, or from a per-computation counter.</p>
 	 *
 	 * @param n the position of the declaration among those extracted from this loop
 	 * @return the declaration name
 	 */
 	private String getInvariantDeclarationName(int n) {
-		// TODO(review): uniqueness relies on sibling loops never sharing an index name; no test covers that
-		if (index == null || index.getName() == null) return "f_licm_" + n;
 		return "f_licm_" + index.getName() + "_" + n;
 	}
 

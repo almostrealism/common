@@ -824,6 +824,50 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests the sibling-loop case as a kernel presents it: both loops are children of one
+	 * enclosing scope, the enclosing scope is simplified as a whole, and every declaration in
+	 * the resulting tree (which is rendered into a single block) is checked for a repeated
+	 * name. Each loop hoists the same invariant {@code x * x * x}, and each hoisted name must
+	 * carry the index of the loop it was extracted from.
+	 */
+	@Test(timeout = 10000)
+	public void siblingLoopsInOneScopeHoistDistinctNames() {
+		List<String> indices = List.of("_test_p", "_test_q", "_test_r");
+		Scope<Void> kernel = new Scope<>("kernel");
+
+		for (String index : indices) {
+			Variable<Integer, ?> idx = Variable.integer(index);
+			Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+			Scope<Void> body = new Scope<>("body");
+
+			Expression<Double> x = new StaticReference<>(Double.class, "genome_val");
+			Expression<Double> i = new StaticReference<>(Double.class, index);
+			body.getStatements().add(new ExpressionAssignment(true,
+					new StaticReference<>(Double.class, "f_result" + index),
+					x.multiply(x).multiply(x).multiply(i)));
+			loop.getChildren().add(body);
+			kernel.getChildren().add(loop);
+		}
+
+		Scope<Void> simplified = kernel.simplify(new NoOpKernelStructureContext(), 0);
+		Assert.assertEquals(indices.size(), simplified.getChildren().size());
+
+		Set<String> names = new HashSet<>();
+		for (ExpressionAssignment<?> declaration : simplified.collectDeclarations()) {
+			Assert.assertTrue("Declaration " + declaration.getDeclaredName() + " appears twice in the kernel",
+					names.add(declaration.getDeclaredName()));
+		}
+
+		for (int n = 0; n < indices.size(); n++) {
+			List<Statement<?>> statements = simplified.getChildren().get(n).getStatements();
+			List<ExpressionAssignment<?>> hoisted = licmDeclarations(statements);
+			Assert.assertEquals("Loop " + indices.get(n) + " should hoist one grouped declaration",
+					1, hoisted.size());
+			Assert.assertEquals("f_licm_" + indices.get(n) + "_0", hoisted.get(0).getDeclaredName());
+		}
+	}
+
+	/**
 	 * Tests that a LoopedWeightedSum computation produces correct results
 	 * with LICM enabled. This computation internally creates a {@link Repeated}
 	 * scope with both loop-invariant (weight loading) and loop-variant
