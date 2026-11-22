@@ -739,24 +739,45 @@ public class Repeated<T> extends Scope<T> {
 	 * expression, adding a new {@code f_licm_*} declaration for it unless a structurally
 	 * equal expression has already been extracted.
 	 *
+	 * <p>The declaration is named by {@link #getInvariantDeclarationName(int)}, so the
+	 * declarations hoisted out of sibling loops in the same block never share a name.</p>
+	 *
 	 * @param invariant the loop-invariant expression to extract
 	 * @param extracted map of already-extracted sub-expressions to their references (for dedup)
 	 * @param extractIdx counter for generating unique declaration names
 	 * @param declarations list to receive the new declaration, if one is created
 	 * @return the reference that replaces {@code invariant} in the loop body
 	 */
-	private static StaticReference<?> extractInvariant(Expression<?> invariant,
-													   Map<Expression<?>, StaticReference<?>> extracted,
-													   int[] extractIdx,
-													   List<Statement<?>> declarations) {
+	private StaticReference<?> extractInvariant(Expression<?> invariant,
+												Map<Expression<?>, StaticReference<?>> extracted,
+												int[] extractIdx,
+												List<Statement<?>> declarations) {
 		StaticReference<?> ref = extracted.get(invariant);
 		if (ref == null) {
-			ref = new StaticReference<>(invariant.getDeclarationType(), "f_licm_" + extractIdx[0]++);
+			ref = new StaticReference<>(invariant.getDeclarationType(),
+					getInvariantDeclarationName(extractIdx[0]++));
 			extracted.put(invariant, ref);
 			declarations.add(new ExpressionAssignment(true, ref, invariant));
 		}
 
 		return ref;
+	}
+
+	/**
+	 * Returns the name of the {@code n}th loop-invariant declaration extracted from this loop.
+	 *
+	 * <p>The declarations are placed before the loop, in the block that contains it, so a
+	 * kernel with several sibling loops holds all of their declarations in one block. The name
+	 * therefore includes the name of this loop's index, which is unique within the kernel, and
+	 * stays deterministic so that identical kernels render identical source.</p>
+	 *
+	 * @param n the position of the declaration among those extracted from this loop
+	 * @return the declaration name
+	 */
+	private String getInvariantDeclarationName(int n) {
+		// TODO(review): uniqueness relies on sibling loops never sharing an index name; no test covers that
+		if (index == null || index.getName() == null) return "f_licm_" + n;
+		return "f_licm_" + index.getName() + "_" + n;
 	}
 
 	/**

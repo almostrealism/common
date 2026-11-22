@@ -791,6 +791,39 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 	}
 
 	/**
+	 * Tests that sibling loops, whose hoisted declarations all land in the block that contains
+	 * them, never give two of those declarations the same name. Each loop extracts the grouped
+	 * invariant factors of {@code x * x * x * i}, and a kernel with both loops must still declare each
+	 * name only once.
+	 */
+	@Test(timeout = 10000)
+	public void siblingLoopsHoistDistinctNames() {
+		Set<String> names = new HashSet<>();
+
+		for (String index : List.of("_test_a", "_test_b")) {
+			Variable<Integer, ?> idx = Variable.integer(index);
+			Repeated<Void> loop = new Repeated<>(idx, idx.ref().lessThan(100));
+			Scope<Void> child = new Scope<>("body");
+
+			Expression<Double> x = new StaticReference<>(Double.class, "genome_val");
+			Expression<Double> i = new StaticReference<>(Double.class, index);
+			child.getStatements().add(new ExpressionAssignment(true,
+					new StaticReference<>(Double.class, "f_result" + index),
+					x.multiply(x).multiply(x).multiply(i)));
+			loop.getChildren().add(child);
+
+			Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
+			List<ExpressionAssignment<?>> licm = licmDeclarations(simplified.getStatements());
+			Assert.assertFalse("Each loop should hoist its invariant factors", licm.isEmpty());
+
+			for (ExpressionAssignment<?> declaration : licm) {
+				Assert.assertTrue("Hoisted name " + declaration.getDeclaredName() + " is declared twice",
+						names.add(declaration.getDeclaredName()));
+			}
+		}
+	}
+
+	/**
 	 * Tests that a LoopedWeightedSum computation produces correct results
 	 * with LICM enabled. This computation internally creates a {@link Repeated}
 	 * scope with both loop-invariant (weight loading) and loop-variant
