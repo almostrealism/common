@@ -1196,6 +1196,29 @@ works because the address is on disk, not merely exported inside
 `fleet-db` too — the data directory persists, and the collectors on every
 host reconnect on their own — so nothing in the deploy needs to drain for it.
 
+**Operator settings survive a deploy only in a file outside the checkout.**
+The compose `.env` is gitignored, and a deploy's `actions/checkout` clean step
+(`git clean -ffdx`) deletes it, then `rebuild.sh` regenerates it — so any
+operator setting (`AR_CONSULTANT_BACKEND` and the rest of the consultant family,
+image pins, port overrides) kept only there resets to its compose default on
+every deploy. That is the `AR_CONSULTANT_BACKEND` reset this file once caused.
+The durable home is the **operator settings file**, located through
+`FLOWTREE_CONTROLLER_ENV` (the repository variable; default
+`/Users/Shared/flowtree/secrets/controller.env`, beside the deploy secrets,
+exactly as `FLOWTREE_AGENT_ENV` locates the agent env). `rebuild.sh` reads it
+and carries every line into the compose `.env`; one file holds every setting
+rather than a repository variable per setting. For a value `rebuild.sh` computes
+(`FLEET_BIND_ADDR`) an operator value wins: an exported variable, then the file,
+then detection. After the stack is up the workflow's `Report effective operator
+settings` step prints the running services' non-secret settings (the backend
+name, for one) to the job summary — names and non-secret values only,
+credential-named settings redacted — so a reset is visible on the deploy that
+causes it. To switch the consultant to OpenRouter durably, put
+`AR_CONSULTANT_BACKEND=openrouter` in that file, not in the compose `.env`.
+`test-rebuild.sh` (through `tools/tests/test_rebuild_sh.py`) covers the carry
+and the precedence, and `tools/tests/test_deploy_operator_settings.py` pins the
+workflow wiring.
+
 The agent `.env` is gitignored, so it is never present in the runner's checkout.
 `rebuild.sh` reads `FLOWTREE_AGENT_ENV` to find the host's copy; the workflow
 falls back to `/Users/Shared/flowtree/secrets/agent.env`, and the repository
