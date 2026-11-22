@@ -155,13 +155,25 @@ the owner.
 - Set `EXPECTED_JDK_MAJOR` to 25. Every hosted and self-hosted lane follows.
 - Change the `JDK_MAJOR` default in both runner Dockerfiles, and make the agent
   and controller Dockerfiles take the major as a build argument as the runner
-  images do, so the next upgrade is one value. The agent Dockerfile has **two**
-  Java 17 pins — the `eclipse-temurin:17-jdk-jammy` base and the
-  `maven:3-eclipse-temurin-17` stage it copies Maven from — and both must move
-  together, or the image pairs a Java 25 runtime with a Java 17 Maven. The
-  controller Dockerfile has one (`eclipse-temurin:17-jre-jammy`).
-- Replace the literal major in the macOS tool-path defaults and install hint
-  with the variable.
+  images do, so the next upgrade is one value. The agent Dockerfile's Java
+  runtime comes from a single pin, the `eclipse-temurin:17-jdk-jammy` base, and
+  moving that to 25 is what changes the runtime. A second line
+  (`COPY --from=maven:3-eclipse-temurin-17 /usr/share/maven`) copies only
+  Maven's own files out of that image; nothing else from it enters the final
+  layer, those files are JDK-independent, and Maven runs on the base image's
+  JDK — so the stage's `-17` suffix selects the JDK of a build context that is
+  discarded, not the final image's Maven runtime, and leaving it does **not**
+  put a Java 17 Maven in a Java 25 image. Bump that suffix together with the
+  base for consistency, so the Dockerfile does not read as pinning two majors,
+  but understand the base is the pin that governs the runtime. The controller
+  Dockerfile has one pin (`eclipse-temurin:17-jre-jammy`).
+- In the macOS CI runner scripts, flip the `EXPECTED_JDK_MAJOR` fallback from
+  `17` to `25` in `tools/ci/macos/runner.sh` and `fleet.sh` (both already read
+  the variable and name `17` only as the default), and update the
+  `brew install --cask temurin@17` install hint in `runner.sh`. The agent macOS
+  launcher's tool path is a separate, host-side concern carried by Phase 4: its
+  `/opt/homebrew/opt/openjdk@17/bin` entry is a literal Homebrew path with no
+  major variable to substitute.
 - Update `tools/tests/test_self_hosted_jdk.py` expectations where they name the
   major.
 
@@ -218,7 +230,11 @@ rebase onto the new expected major.
 ## Phase 4 — Hosts
 
 - Install the current Java 25 build on each macOS runner and agent host, and
-  point the tool path at it.
+  point the tool path at it. For the native agent launcher that means editing
+  the literal `/opt/homebrew/opt/openjdk@17/bin` entry in
+  `flowtree/runtime/agent/macos/run.sh`'s `DEFAULT_TOOL_PATH` and the matching
+  comment in `agent.env.example` by hand — these are fixed Homebrew paths, not
+  values derived from `EXPECTED_JDK_MAJOR`.
 - Remove JDKs that are past support. On the host inspected, that is every
   installed JDK except the one in use; several are x86-64 builds on an Apple
   Silicon machine.
