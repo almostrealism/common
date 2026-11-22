@@ -808,7 +808,7 @@ cmd_install() {
     echo "  Service:      ${LABEL}, runs as ${RUNNER_USER}"
     echo "  Config:       ${ENV_FILE}"
     echo "  Runner name:  ${ENV_RUNNER_NAME}"
-    echo "  Labels:       ${ENV_RUNNER_LABELS:-self-hosted,macos,ar-ci}"
+    echo "  Labels:       ${ENV_RUNNER_LABELS:-self-hosted,macos,ar-ci,ar-build}"
     echo "  Runner dir:   ${RUNNER_DIR}"
     echo "  Stage dir:    ${STAGE_DIR}"
 
