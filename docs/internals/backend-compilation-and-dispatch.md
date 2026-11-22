@@ -358,6 +358,13 @@ Scope
 - `AR_HARDWARE_LIBS` — Output directory for compiled libraries (auto-detected; do not set manually)
 - `AR_HARDWARE_NATIVE_COMPILER` — Compiler path (default: clang)
 - `AR_HARDWARE_NATIVE_LINKER` — Linker path (Clang only)
+- `AR_HARDWARE_NATIVE_BRACKET_DEPTH` — Value for clang's `-fbracket-depth` (clang only;
+  never passed to GCC, which rejects the flag). Unset by default, in which case no flag is
+  passed and clang's own nesting limit applies. This is an escape hatch, not a tuning knob:
+  generated source nested deeply enough to hit the limit is a symptom of a defect in how an
+  expression tree was built (for example, nested products that were never merged into one
+  product), and raising the limit hides that defect. When clang reports
+  `bracket nesting level exceeded maximum`, find out why the expression is that deep.
 
 ### OpenCL Backend (CLOperator)
 

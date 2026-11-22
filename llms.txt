@@ -141,6 +141,7 @@
 - [Profiling Examples](docs/internals/profiling-examples.md): Timing analysis patterns
 - [Optimization Feasibility Gate](docs/internals/optimization-feasibility-gate.md): Before optimizing toward a quantitative target, show the current structure can reach it — decompose the cost, compute the ceiling, and treat small local gains against a large gap as a stop signal
 - [Static Analysis](docs/internals/static-analysis.md): Active and deliberately deferred Error Prone checks, with rationale and fix patterns
+- [Agent Host Setup](docs/internals/agent-host-setup.md): What an account needs on a machine before an agent session can finish work unattended (SSH key, Git and date versions, commit-tool configuration, per-branch Maven artifacts), what a single host cannot prove, and how to read generated kernel source
 - [Agent Hooks](docs/internals/agent-hooks.md): Shared-core hook architecture for the Claude Code and opencode harnesses, choosing a force level, the memory reminder and test-execution hooks
 
 ## Key Patterns

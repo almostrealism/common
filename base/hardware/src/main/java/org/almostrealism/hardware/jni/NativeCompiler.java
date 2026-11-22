@@ -120,6 +120,13 @@ import java.util.function.Consumer;
  *     <td>Default linker</td>
  *   </tr>
  *   <tr>
+ *     <td>AR_HARDWARE_NATIVE_BRACKET_DEPTH</td>
+ *     <td>Value for clang's {@code -fbracket-depth} (clang only). An escape hatch: raising it
+ *     hides expression-construction defects; when nesting fails, find out why the expression
+ *     is that deep instead</td>
+ *     <td>unset (no flag; clang's own limit applies)</td>
+ *   </tr>
+ *   <tr>
  *     <td>AR_HARDWARE_COMPILER_LOGGING</td>
  *     <td>Enable verbose logging</td>
  *     <td>false</td>
