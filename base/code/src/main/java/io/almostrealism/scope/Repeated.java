@@ -21,7 +21,6 @@ import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
-import io.almostrealism.expression.NAryExpression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.sequence.Index;
@@ -651,7 +650,7 @@ public class Repeated<T> extends Scope<T> {
 	 * </ul>
 	 *
 	 * <p>When the expression is an associative and commutative operation (see
-	 * {@link NAryExpression#isOperandGroupable()}), its trivial invariant operands are also
+	 * {@link Expression#isOperandGroupable()}), its trivial invariant operands are also
 	 * grouped: their combination, such as the {@code x * x * x} of {@code x * x * x * i}, is
 	 * extracted as one declaration when it is substantial. Without this, invariant factors
 	 * merged into a variant product would never be hoisted.</p>
@@ -710,9 +709,11 @@ public class Repeated<T> extends Scope<T> {
 		}
 
 		if (trivialInvariants.size() > 1 && trivialInvariants.size() < children.size()
-				&& expr instanceof NAryExpression && ((NAryExpression<?>) expr).isOperandGroupable()) {
+				&& expr.isOperandGroupable()) {
 			List<Expression<?>> group = new ArrayList<>();
-			trivialInvariants.forEach(i -> group.add(children.get(i)));
+			for (int i : trivialInvariants) {
+				group.add(children.get(i));
+			}
 
 			Expression<?> combined = expr.generate(group);
 			if (isSubstantialForExtraction(combined, minDepth)) {

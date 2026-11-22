@@ -119,20 +119,56 @@ public class DeferredSemaphore implements Semaphore {
 	 */
 	@Override
 	public void waitFor() {
-		Semaphore completion;
+		Semaphore completion = awaitStart(true);
+		if (completion != null) completion.waitFor();
+	}
+
+	/**
+	 * Waits for the work to start and then for its completion, through any interrupt, restoring
+	 * the interrupt status afterwards.
+	 *
+	 * <p>The completion of the started work is awaited with its own
+	 * {@link Semaphore#waitForUninterruptibly()} rather than by repeating {@link #waitFor()}:
+	 * a completion whose interrupted {@link Semaphore#waitFor()} throws, rather than returning
+	 * early, would otherwise end this wait with that exception before the work has finished.</p>
+	 *
+	 * @throws RuntimeException if the dependency or the work failed
+	 */
+	@Override
+	public void waitForUninterruptibly() {
+		Semaphore completion = awaitStart(false);
+		if (completion != null) completion.waitForUninterruptibly();
+	}
+
+	/**
+	 * Waits for the work to start and returns the completion of what it started.
+	 *
+	 * @param interruptible whether an interrupt ends the wait; if so, the wait returns
+	 *                      {@code null} with the interrupt status set, and otherwise it continues
+	 *                      and the interrupt status is restored once the work has started
+	 * @return the completion of the started work, or {@code null} if the work finished
+	 *         synchronously or an interruptible wait was interrupted
+	 * @throws RuntimeException if the dependency or the work failed
+	 */
+	private Semaphore awaitStart(boolean interruptible) {
+		boolean interrupted = false;
 
 		try {
-			completion = started.get();
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			return;
-		} catch (ExecutionException e) {
-			Throwable cause = e.getCause();
-			if (cause instanceof RuntimeException) throw (RuntimeException) cause;
-			if (cause instanceof Error) throw (Error) cause;
-			throw new RuntimeException(cause);
+			while (true) {
+				try {
+					return started.get();
+				} catch (InterruptedException e) {
+					interrupted = true;
+					if (interruptible) return null;
+				} catch (ExecutionException e) {
+					Throwable cause = e.getCause();
+					if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+					if (cause instanceof Error) throw (Error) cause;
+					throw new RuntimeException(cause);
+				}
+			}
+		} finally {
+			if (interrupted) Thread.currentThread().interrupt();
 		}
-
-		if (completion != null) completion.waitFor();
 	}
 }

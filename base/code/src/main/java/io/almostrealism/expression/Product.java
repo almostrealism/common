@@ -419,10 +419,11 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	 * Mask-promotion before returning the result.
 	 *
 	 * <p>A factor that is itself a product is merged into the product being created (see
-	 * {@link NAryExpression#mergeOperands(Class, List)}), so a product never has a product
-	 * of the same arithmetic as a factor and the constants of both are folded together. The
-	 * merge follows the rewrites that recognize a two-factor form, such as a negation, so
-	 * those still see the factors as they were given.</p>
+	 * {@link NAryExpression#createMerged(Class, List, java.util.function.Function)}), so a
+	 * product never has a product of the same arithmetic and width as a factor and the
+	 * constants of both are folded together. The merge follows the rewrites that recognize
+	 * a two-factor form, such as a negation, so those still see the factors as they were
+	 * given.</p>
 	 *
 	 * @param values the operand expressions to multiply together
 	 * @return the simplified expression or a new {@link Product}
@@ -505,9 +506,8 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			}
 		}
 
-		List<Expression<?>> factors = (List) operands;
-		List<Expression<?>> merged = mergeOperands(Product.class, factors);
-		if (merged != factors) return create(merged.toArray(new Expression[0]));
+		Expression<?> merged = createMerged(Product.class, (List) operands, Product::create);
+		if (merged != null) return merged;
 
 		if (enableSort)
 			operands = operands.stream().sorted(depthOrder()).collect(Collectors.toList());

@@ -167,7 +167,6 @@ public class MetalMemoryProvider extends HardwareMemoryProvider<MetalMemory> {
 	 *
 	 * @return The {@link MetalDataContext} providing device access
 	 */
-	@Override
 	public MetalDataContext getContext() { return context; }
 
 	/**

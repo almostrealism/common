@@ -587,12 +587,7 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 
 		Repeated<Void> simplified = (Repeated<Void>) loop.simplify(new NoOpKernelStructureContext(), 0);
 
-		List<Class<?>> types = simplified.getStatements().stream()
-				.filter(s -> s instanceof ExpressionAssignment)
-				.map(s -> (ExpressionAssignment<?>) s)
-				.filter(ExpressionAssignment::isDeclaration)
-				.filter(a -> a.getDestination() instanceof StaticReference
-						&& ((StaticReference<?>) a.getDestination()).getName().startsWith("f_licm_"))
+		List<Class<?>> types = licmDeclarations(simplified.getStatements()).stream()
 				.<Class<?>>map(a -> a.getDestination().getType())
 				.collect(Collectors.toList());
 		Assert.assertEquals("one invariant sub-expression should be extracted from " + name, 1, types.size());
@@ -748,7 +743,7 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 	 * grouped into a single hoisted declaration. Merging nested products at creation turns
 	 * {@code x * x * x * i} into one product whose three {@code x} factors are each too
 	 * shallow to hoist on their own, so only grouping the invariant operands of a
-	 * {@link io.almostrealism.expression.NAryExpression#isOperandGroupable() groupable}
+	 * {@link io.almostrealism.expression.Expression#isOperandGroupable() groupable}
 	 * expression extracts the invariant {@code x * x * x}.
 	 *
 	 * <p>Asserts that exactly one {@code f_licm_*} declaration is created (the three
@@ -783,7 +778,7 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 				1, licm.size());
 
 		Set<String> hoistedNames = new HashSet<>();
-		collectReferenceNames(licm.get(0).getExpression(), hoistedNames);
+		appendReferenceNames(licm.get(0).getExpression(), hoistedNames);
 		Assert.assertTrue("Hoisted declaration should depend on the invariant factor",
 				hoistedNames.contains("genome_val"));
 		Assert.assertFalse("Hoisted declaration should not depend on the loop index",
@@ -1318,16 +1313,16 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 	}
 
 	/**
-	 * Collects the names of every {@link StaticReference} appearing anywhere in the given
-	 * expression tree into the supplied set.
+	 * Adds the names of every {@link StaticReference} appearing anywhere in the given
+	 * expression tree to the supplied set.
 	 */
-	private static void collectReferenceNames(Expression<?> expr, Set<String> names) {
+	private static void appendReferenceNames(Expression<?> expr, Set<String> names) {
 		if (expr instanceof StaticReference) {
 			names.add(((StaticReference<?>) expr).getName());
 		}
 
 		for (Expression<?> child : expr.getChildren()) {
-			collectReferenceNames(child, names);
+			appendReferenceNames(child, names);
 		}
 	}
 

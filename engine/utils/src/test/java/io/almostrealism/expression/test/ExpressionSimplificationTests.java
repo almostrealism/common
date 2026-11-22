@@ -1065,6 +1065,68 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	}
 
 	/**
+	 * An integer product whose constants, folded across levels, would no longer fit in an
+	 * {@code int} is not merged. Folded, the constant would be a {@code long} and the whole
+	 * product would become a {@code long} product that does not wrap, where the nested
+	 * {@code int} products wrap at every level.
+	 */
+	@Test(timeout = 30000)
+	public void integerProductIsNotMergedWhenFoldedConstantWouldWiden() {
+		DefaultIndex a = new DefaultIndex("a", 100000);
+
+		Expression<?> inner = Product.of(a, e(50000));
+		Expression<?> product = Product.of(inner, e(50000));
+		Assert.assertEquals(Integer.class, product.getType());
+		Assert.assertEquals(2, product.getChildren().size());
+		Assert.assertTrue(product.getChildren().contains(inner));
+		Assert.assertTrue(product.getExpression(lang).contains("(a * 50000)"));
+	}
+
+	/**
+	 * An integer sum whose constants, folded across levels, would no longer fit in an
+	 * {@code int} is not merged, for the same reason as a product. Three terms are used
+	 * because a two-term sum with a constant is flattened earlier, by the repeated-sum rule.
+	 */
+	@Test(timeout = 30000)
+	public void integerSumIsNotMergedWhenFoldedConstantWouldWiden() {
+		DefaultIndex a = new DefaultIndex("a", 100000);
+		DefaultIndex b = new DefaultIndex("b", 100000);
+
+		Expression<?> inner = Sum.of(a, e(1500000000));
+		Expression<?> sum = Sum.of(inner, b, e(1500000000));
+		Assert.assertEquals(Integer.class, sum.getType());
+		Assert.assertEquals(3, sum.getChildren().size());
+		Assert.assertTrue(sum.getChildren().contains(inner));
+
+		Expression<?> kept = Sum.of(Sum.of(a, e(1000000000)), b, e(1000000000));
+		Assert.assertEquals(Integer.class, kept.getType());
+		Assert.assertEquals(3, kept.getChildren().size());
+		Assert.assertTrue(kept.getChildren().stream().noneMatch(c -> c instanceof Sum));
+	}
+
+	/**
+	 * Integer products whose folded constant still fits in an {@code int} are merged, and
+	 * {@code long} products are merged even when their folded constant wraps, since wrapping
+	 * at one width is the same at every level.
+	 */
+	@Test(timeout = 30000)
+	public void integerProductIsMergedWhenWidthIsKept() {
+		DefaultIndex a = new DefaultIndex("a", 100000);
+
+		Expression<?> product = Product.of(Product.of(a, e(40000)), e(50000));
+		Assert.assertEquals(Integer.class, product.getType());
+		Assert.assertEquals("a * 2000000000", product.getExpression(lang));
+
+		Expression<?> wide = Product.of(Product.of(a, e(3000000000L)), e(3000000000L));
+		Assert.assertEquals(Long.class, wide.getType());
+		Assert.assertEquals(2, wide.getChildren().size());
+		Assert.assertTrue(wide.getChildren().stream().noneMatch(c -> c instanceof Product));
+		Assert.assertEquals(OptionalLong.of(3000000000L * 3000000000L),
+				wide.getChildren().stream().filter(c -> c.longValue().isPresent())
+						.findFirst().orElseThrow().longValue());
+	}
+
+	/**
 	 * Subtraction and division are not associative, so a difference of a difference and a
 	 * quotient of a quotient are not merged and keep their brackets on either side.
 	 */
