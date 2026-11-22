@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -79,6 +80,16 @@ class TestMethodProtection implements ConsoleFeatures {
 
     /** Validates that resolved merge-base output looks like a git object id. */
     private static final Pattern SHA_PATTERN = Pattern.compile("^[0-9a-fA-F]{7,40}$");
+
+    /**
+     * Matches a {@code @Test} annotation marker, mirroring the awk extractor's
+     * {@code @Test([ \t(]|$)} test: the {@code @Test} token must not be followed
+     * by an identifier character, so {@code @TestDepth} and the like do not match.
+     */
+    private static final Pattern TEST_ANNOTATION = Pattern.compile("@Test(?![A-Za-z0-9_$])");
+
+    /** Matches an identifier immediately followed by an opening parenthesis — a method or annotation call. */
+    private static final Pattern IDENTIFIER_CALL = Pattern.compile("([A-Za-z_$][A-Za-z0-9_$]*)[ \t]*\\(");
 
     /**
      * The outcome of evaluating one file's change against its merge-base
@@ -285,6 +296,14 @@ class TestMethodProtection implements ConsoleFeatures {
             return Verdict.blocked("exists on base branch; test-method analysis failed: " + e.getMessage());
         }
 
+        Set<String> unaccounted = annotatedTestMethodNames(baseContent);
+        unaccounted.removeAll(recordNames(baseMethods));
+        if (!unaccounted.isEmpty()) {
+            return Verdict.blocked("exists on base branch; the merge-base file has @Test method(s) the shared"
+                    + " extractor did not report, so an edit to them cannot be verified: "
+                    + String.join(", ", unaccounted));
+        }
+
         Set<String> modifiedOrRemoved = new LinkedHashSet<>(baseMethods);
         modifiedOrRemoved.removeAll(currentMethods);
         if (!modifiedOrRemoved.isEmpty()) {
@@ -349,20 +368,142 @@ class TestMethodProtection implements ConsoleFeatures {
 
     /**
      * Extracts the method-name prefix (before the first tab) from each
+     * {@code "name\tbody"} record.
+     *
+     * @param records the {@code "name\tbody"} records
+     * @return the method names, in iteration order
+     */
+    private static Set<String> recordNames(Set<String> records) {
+        Set<String> names = new LinkedHashSet<>();
+        for (String record : records) {
+            int tab = record.indexOf('\t');
+            names.add(tab >= 0 ? record.substring(0, tab) : record);
+        }
+        return names;
+    }
+
+    /**
+     * Extracts the method-name prefix (before the first tab) from each
      * record for use in a human-readable skip/allow reason.
      *
      * @param records the {@code "name\tbody"} records
      * @return the method names, comma-separated
      */
     private static String methodNames(Set<String> records) {
-        StringBuilder names = new StringBuilder();
-        for (String record : records) {
-            int tab = record.indexOf('\t');
-            String name = tab >= 0 ? record.substring(0, tab) : record;
-            if (names.length() > 0) names.append(", ");
-            names.append(name);
+        return String.join(", ", recordNames(records));
+    }
+
+    /**
+     * Independently scans {@code content} for the names of its
+     * {@code @Test}-annotated methods, without delegating to the shared awk
+     * extractor.
+     *
+     * <p>This is a defense-in-depth cross-check for {@link #evaluate}: the
+     * shared extractor can silently under-report methods (for example, a
+     * one-line javadoc containing {@code //} eats its own closing
+     * {@code *}{@code /} and swallows the method that follows). When that
+     * happens the extractor's view of a protected file is incomplete, and a
+     * comparison built on it fails <em>open</em> — exactly what this class
+     * promises never to do. Comparing the extractor's reported method names
+     * against this scan lets {@link #evaluate} detect the gap and fail
+     * closed instead.</p>
+     *
+     * <p>Unlike the awk extractor, this scan removes comments and string and
+     * character literals in source order, so a {@code //} inside a block
+     * comment or a string does not terminate anything. It is deliberately
+     * conservative: a name it reports that the extractor did not is treated
+     * as cause to protect the whole file, which is the safe direction.</p>
+     *
+     * @param content the Java source to scan
+     * @return the names of the {@code @Test}-annotated methods found
+     */
+    private static Set<String> annotatedTestMethodNames(String content) {
+        String code = stripCommentsAndLiterals(content);
+        Set<String> names = new LinkedHashSet<>();
+        Matcher annotation = TEST_ANNOTATION.matcher(code);
+        while (annotation.find()) {
+            String name = methodNameAfter(code, annotation.end());
+            if (name != null) names.add(name);
         }
-        return names.toString();
+        return names;
+    }
+
+    /**
+     * Returns the name of the method whose signature begins after
+     * {@code from} in already-stripped {@code code}: the last identifier that
+     * is immediately followed by {@code (} in the text up to the method
+     * body's opening brace. Parentheses are tracked so a brace inside an
+     * annotation argument (such as {@code @ValueSource(ints = {1, 2})}) is
+     * not mistaken for the body, and a {@code ;} at top level (an abstract
+     * method or a field) yields no name.
+     *
+     * @param code the comment- and literal-stripped source
+     * @param from the index just past a {@code @Test} marker
+     * @return the method name, or {@code null} if no method body follows
+     */
+    private static String methodNameAfter(String code, int from) {
+        int depth = 0;
+        int end = -1;
+        for (int i = from; i < code.length(); i++) {
+            char c = code.charAt(i);
+            if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                if (depth > 0) depth--;
+            } else if (depth == 0 && c == ';') {
+                return null;
+            } else if (depth == 0 && c == '{') {
+                end = i;
+                break;
+            }
+        }
+        if (end < 0) return null;
+
+        Matcher call = IDENTIFIER_CALL.matcher(code.substring(from, end));
+        String last = null;
+        while (call.find()) last = call.group(1);
+        return last;
+    }
+
+    /**
+     * Returns {@code content} with Java comments and string and character
+     * literals replaced by a single space, processing {@code //}, {@code /*},
+     * {@code "} and {@code '} in the order they appear so that a delimiter
+     * inside a comment or a literal is inert. A backslash escapes the next
+     * character inside a literal.
+     *
+     * @param content the Java source
+     * @return the source with comments and literals removed
+     */
+    private static String stripCommentsAndLiterals(String content) {
+        StringBuilder out = new StringBuilder(content.length());
+        int n = content.length();
+        int i = 0;
+        while (i < n) {
+            char c = content.charAt(i);
+            char next = i + 1 < n ? content.charAt(i + 1) : '\0';
+            if (c == '/' && next == '/') {
+                while (i < n && content.charAt(i) != '\n') i++;
+            } else if (c == '/' && next == '*') {
+                i += 2;
+                while (i < n && !(content.charAt(i) == '*' && i + 1 < n && content.charAt(i + 1) == '/')) i++;
+                i = Math.min(i + 2, n);
+                out.append(' ');
+            } else if (c == '"' || c == '\'') {
+                char quote = c;
+                i++;
+                while (i < n && content.charAt(i) != quote) {
+                    if (content.charAt(i) == '\\') i++;
+                    i++;
+                }
+                i++;
+                out.append(' ');
+            } else {
+                out.append(c);
+                i++;
+            }
+        }
+        return out.toString();
     }
 
     /**
