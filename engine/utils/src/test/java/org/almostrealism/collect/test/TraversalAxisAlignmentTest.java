@@ -159,6 +159,28 @@ public class TraversalAxisAlignmentTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A value whose length-1 broadcast axes are separated by a longer axis cannot be reconciled
+	 * by a single contiguous repeat: {@code (1, 3, 1)} broadcasts into {@code (2, 3, 4)} by the
+	 * trailing-axis rule (every axis is equal or 1), but its broadcast axes are the non-adjacent
+	 * leading and trailing ones, so the alignment fails loud and asks for an explicit repeat
+	 * rather than guessing a repetition order. Pins the current fail-loud behaviour of this gap.
+	 */
+	@Test(timeout = 10000)
+	public void rejectsNonAdjacentBroadcastAxes() {
+		ShapeAlignment alignment = new ShapeAlignment(shape(2, 3, 4), shape(1, 3, 1));
+
+		try {
+			alignment.align((shape, values) -> shape);
+			Assert.fail("Non-adjacent broadcast axes should be rejected");
+		} catch (IllegalArgumentException expected) {
+			assertTrue("Expected a non-adjacent-axes rejection, got: " + expected.getMessage(),
+					expected.getMessage().contains("non-adjacent axes"));
+		}
+
+		assertTrue("No value should be repeated", alignment.expansions.isEmpty());
+	}
+
+	/**
 	 * When several values share the largest total size, the one with the most axes is the
 	 * result, so a value that differs from it only by a leading length-1 axis broadcasts into
 	 * it and is not rejected for having fewer axes.
