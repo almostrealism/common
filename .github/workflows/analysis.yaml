@@ -4325,6 +4325,23 @@ jobs:
           name: auto-resolve-python-request
           path: staged-request
 
+      # Grant the agent the right to edit the protected files the branch
+      # already changes (see tools/ci/detect-protected-file-changes.sh). Read
+      # from the trusted compare API, never the staged request. Writes the
+      # grants to $GITHUB_ENV for the submit step below.
+      - name: Grant edits to protected files the branch changes
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          HEAD_SHA: ${{ needs.changes.outputs.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -f ./tools/ci/detect-protected-file-changes.sh ]; then
+            echo "::warning::The default branch has no tools/ci/detect-protected-file-changes.sh yet — the branch's protected-file changes are not granted"
+            exit 0
+          fi
+          bash ./tools/ci/detect-protected-file-changes.sh
+
       - name: Submit agent job
         env:
           # The target comes from this run's event, never from the staged
@@ -4751,6 +4768,23 @@ jobs:
         with:
           name: auto-review-request
           path: staged-request
+
+      # Grant the agent the right to edit the protected files the branch
+      # already changes (see tools/ci/detect-protected-file-changes.sh). Read
+      # from the trusted compare API, never the staged request. Writes the
+      # grants to $GITHUB_ENV for the submit step below.
+      - name: Grant edits to protected files the branch changes
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          HEAD_SHA: ${{ needs.changes.outputs.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -f ./tools/ci/detect-protected-file-changes.sh ]; then
+            echo "::warning::The default branch has no tools/ci/detect-protected-file-changes.sh yet — the branch's protected-file changes are not granted"
+            exit 0
+          fi
+          bash ./tools/ci/detect-protected-file-changes.sh
 
       - name: Submit agent job
         env:
