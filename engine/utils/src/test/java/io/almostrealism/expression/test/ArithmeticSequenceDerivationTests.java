@@ -462,6 +462,39 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 	}
 
 	/**
+	 * {@link ArithmeticIndexSequence#remainderOf(List, long)} may drop a negative multiple
+	 * of the modulus when the rest is non-negative and the full sum is never negative:
+	 * {@code (x - 8) % 4} with {@code x = 8 + i} is {@code x % 4}. Once the full sum can be
+	 * negative ({@code x = 7 + i}), nothing is derived, and a sum of minimums that would
+	 * overflow is treated as possibly negative.
+	 */
+	@Test(timeout = 30000)
+	public void remainderOfDropsNegativeMultipleBesideLargerRest() {
+		long len = 240;
+		ArithmeticIndexSequence negativeMultiple = new ArithmeticIndexSequence(-8, 0, 1, len, len);
+		ArithmeticIndexSequence x = new ArithmeticIndexSequence(8, 1, 1, len, len);
+
+		ArithmeticIndexSequence remainder = ArithmeticIndexSequence.remainderOf(List.of(negativeMultiple, x), 4);
+		Assert.assertNotNull("(x - 8) % 4 with x >= 8 is a progression", remainder);
+		Assert.assertEquals(new ArithmeticIndexSequence(0, 1, 1, 4, len), remainder);
+
+		for (long pos = 0; pos < len; pos++) {
+			long expected = (negativeMultiple.valueAt(pos).longValue() + x.valueAt(pos).longValue()) % 4;
+			Assert.assertEquals("mismatch at position " + pos, expected, remainder.valueAt(pos).longValue());
+		}
+
+		ArithmeticIndexSequence belowMultiple = new ArithmeticIndexSequence(7, 1, 1, len, len);
+		Assert.assertNull("the full sum reaches -1, so truncating and flooring disagree",
+				ArithmeticIndexSequence.remainderOf(List.of(negativeMultiple, belowMultiple), 4));
+
+		ArithmeticIndexSequence hugeMultiple = new ArithmeticIndexSequence(Long.MAX_VALUE - 3, 0, 1, len, len);
+		ArithmeticIndexSequence large = new ArithmeticIndexSequence(4, 0, 1, len, len);
+		ArithmeticIndexSequence rest = new ArithmeticIndexSequence(0, 1, 1, 4, len);
+		Assert.assertNull("an overflowing sum of minimums is treated as possibly negative",
+				ArithmeticIndexSequence.remainderOf(List.of(hugeMultiple, large, rest), 4));
+	}
+
+	/**
 	 * {@link ArithmeticIndexSequence#scaled(long)} multiplies both the offset and the
 	 * scale by the operand. When that multiplication overflows, the result must be
 	 * reported as not representable rather than silently wrapping into an arithmetic

@@ -499,12 +499,15 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * modulo the operand, or {@code null} if that is not an arithmetic sequence.
 	 *
 	 * <p>A term that is a multiple of the modulus at every position cannot affect the
-	 * remainder, provided no term is ever negative, so that truncating and flooring
-	 * remainders agree. A dropped negative multiple would matter: {@code (-4 + (i % 2)) % 2}
-	 * is {@code 0, -1} while {@code (i % 2) % 2} is {@code 0, 1}. Multiples are therefore
-	 * dropped only when every term is non-negative, and the remaining terms are added
-	 * under {@link #sumOf(List)} and reduced under {@link #modExactly(long)}. When every
-	 * term is a multiple of the modulus, the remainder is zero at every position.</p>
+	 * remainder, provided truncating and flooring remainders agree for both the full sum
+	 * and the sum of the rest. A dropped negative multiple can matter:
+	 * {@code (-4 + (i % 2)) % 2} is {@code 0, -1} while {@code (i % 2) % 2} is {@code 0, 1}.
+	 * Multiples are therefore dropped only when every remaining term is non-negative and
+	 * the sum of the minimums of all terms is non-negative, so the full sum is never
+	 * negative either: {@code (x - 8) % 4} is {@code x % 4} when {@code x >= 8}. The
+	 * remaining terms are added under {@link #sumOf(List)} and reduced under
+	 * {@link #modExactly(long)}. When every term is a multiple of the modulus, the
+	 * remainder is zero at every position.</p>
 	 *
 	 * @param terms the sequences whose sum is reduced; must not be empty, and must all have the same length
 	 * @param operand the modulus; must be positive
@@ -523,14 +526,38 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 		if (remaining.isEmpty()) {
 			long length = terms.get(0).lengthLong();
 			return new ArithmeticIndexSequence(0, 0, 1, length, length);
-		} else if (remaining.size() < terms.size() && terms.stream().anyMatch(t -> t.min() < 0)) {
-			// TODO(review): a non-negative rest whose full sum is never negative could still drop multiples
-
+		} else if (remaining.size() < terms.size() && !isNeverNegative(remaining, terms)) {
 			return null;
 		}
 
 		ArithmeticIndexSequence dividend = sumOf(remaining);
 		return dividend == null ? null : dividend.modExactly(operand);
+	}
+
+	/**
+	 * Returns whether every remaining term is non-negative and the sum of all terms is
+	 * never negative, judged by the sum of their minimums. A sum of minimums that cannot
+	 * be computed without overflow is treated as possibly negative.
+	 *
+	 * @param remaining the terms kept after dropping multiples of the modulus
+	 * @param terms all terms of the sum
+	 * @return {@code true} if both the rest and the full sum are never negative
+	 */
+	private static boolean isNeverNegative(List<ArithmeticIndexSequence> remaining,
+										   List<ArithmeticIndexSequence> terms) {
+		if (remaining.stream().anyMatch(t -> t.min() < 0)) return false;
+
+		long minimum = 0;
+
+		try {
+			for (ArithmeticIndexSequence t : terms) {
+				minimum = Math.addExact(minimum, t.min());
+			}
+		} catch (ArithmeticException e) {
+			return false;
+		}
+
+		return minimum >= 0;
 	}
 
 	/**
