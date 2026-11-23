@@ -21,6 +21,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.sequence.ArithmeticIndexSequence;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexRange;
+import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -32,9 +33,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /**
  * A modulo expression ({@code a % b}) for both integer and floating-point operands.
@@ -288,14 +287,14 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	}
 
 	@Override
-	public Optional<Set<Integer>> getIndexOptions(Index index) {
+	public Optional<IndexSequence> getIndexOptions(Index index) {
 		int m = (int) getRight().longValue().orElse(Integer.MAX_VALUE);
 
 		if (m > ScopeSettings.indexOptionLimit || !getLeft().equals(index)) {
 			return super.getIndexOptions(index);
 		}
 
-		return Optional.of(IntStream.range(0, m).boxed().collect(Collectors.toSet()));
+		return Optional.of(ArithmeticIndexSequence.range(Math.max(m, 0)));
 	}
 
 	/**
