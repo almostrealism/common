@@ -226,12 +226,40 @@ the existing `DEGRADED` reasons.
   inactivity kill. Extend that to a signal kill so a primary that died before
   emitting a cost is recorded as incomplete (`withCostIncomplete(true)`), and
   carry whatever partial cost the runner did emit.
+- The wire contract for `costIncomplete` currently describes it as inactivity
+  only: `flowtree/runtime/docs/events.md` says it is `true` "when an agent
+  session was killed for inactivity", and the javadoc of
+  `JobCompletionEvent.setCostIncomplete` and `JobQueryHandler.jobEventToJson`
+  says the same. Those descriptions must be widened in the same change, or
+  consumers will read the flag as meaning only an inactivity kill.
+  <!-- TODO(review): also list SlackNotifier (cost line prints "agent killed for inactivity" when costIncomplete) and the JobCostTracker javadoc as inactivity-only consumers to widen. -->
 
 ### Kill cause on the record (fix item 2)
 
 The kill cause classified in step 2 is written onto the completion event (and so
 into the job record the controller persists and `workstream_get_job` returns)
-and logged. The honest limit — that an external SIGTERM/137 can be *named as
+and logged. A completion event goes through several hops, and a new field is
+lost at any hop that does not carry it:
+
+1. worker side: `JobCompletionEvent.toJson()`, which `GitManagedJob` calls to
+   build the body it posts (`CodingAgentJobEvent` does not override it);
+2. controller side: `FlowTreeApiEndpoint.handleStatusEvent` rebuilds the event
+   field by field from that body (`JsonFieldExtractor.extract*` calls in the
+   `CodingAgentJobEvent` block), so it needs one more extraction;
+3. persistence: `JobStatsStore` writes the `job_timing` table, which has an
+   `error_message VARCHAR(2000)` column but no kill-cause column. A separate
+   field needs a new entry in its `ALTER TABLE` migration list;
+4. read side: `JobQueryHandler.jobEventToJson`, which produces the JSON that
+   `workstream_get_job` returns, emits each field one by one.
+
+The smallest version puts the kill cause and measured duration in the
+`DEGRADED` reason text, which `error_message` already carries through every hop.
+A structured `killCause` field is easier for consumers to query, but it needs
+all four hops plus the `events.md` table. See open question 4. Whichever is
+chosen, step 2 makes `FlowTreeApiEndpoint` (1597 lines) longer again, so the
+status-handler extraction in §5 has to happen first.
+
+The honest limit — that an external SIGTERM/137 can be *named as
 external* but not always attributed to the specific external agent (OOM vs node
 restart vs CLI timeout) from inside the JVM — is stated in the message rather
 than guessed. See open questions.
@@ -309,6 +337,14 @@ flags through its `RollupTestJob`; plus a controller-level test for the PR gate)
    `FlowTreeApiEndpoint` status-handler extraction are proposed to create room;
    the exact seams are an implementation detail the object-oriented-design review
    will scrutinise. If a cleaner existing seam is found, prefer it.
+4. **Kill cause as reason text or as a structured field.** The "Kill cause on
+   the record" section lists the four hops a structured `killCause` field must
+   cross, including a `job_timing` schema migration in `JobStatsStore`. Putting
+   it in the `DEGRADED`/`FAILED` reason text needs none of that, but consumers
+   would have to parse prose to filter on it. Since `costIncomplete` is
+   not stored in `job_timing` either, choosing the reason text matches how the
+   existing kill-related signal is handled. **Decision needed from the
+   approver.**
 
 ## Estimated complexity
 
