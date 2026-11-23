@@ -10,6 +10,9 @@ tracker: []
 Status: **investigation and options only.** Nothing here has been implemented, and
 the owner has asked that nothing change until an option is chosen.
 
+Source is referenced by file and symbol name, not line number, so the references
+survive edits (see `docs/CLAUDE.md`).
+
 ## Problem
 
 `ci: ready for review` is applied to pull requests that are not ready. On PR #993
@@ -24,74 +27,101 @@ issues, and the label stayed until the next push, about an hour later.
 There is exactly **one writer**: `tools/ci/pr-status-labels.py`, run by
 `.github/workflows/pr-status-labels.yaml`. Nothing in the FlowTree controller
 (`flowtree/runtime`) or in ar-manager (`tools/mcp/manager`) adds or removes a
-`ci:` label. A grep over `flowtree/runtime/src/main`, `tools/mcp/manager` and
-`tools/ci` finds no other `ci: ` label strings and no label endpoints.
+`ci:` label.
 
-| Label | Set when (`derive`, `pr-status-labels.py:156-212`) |
-|-------|-----------------------------------------------------|
-| `ci: validating` | the head commit's validate run (`pull_request`) is still running, or no run exists yet (`:198-201`, `:212`) |
-| `ci: auto-review` | the validate run finished and `auto-review-submit` or `auto-resolve-python-submit` succeeded (`:203-207`) |
-| `ci: full tests` | the test run (`deployment`) is running, or failed less than 15 min ago on an attempt before the last (`:169-171`, `:192-195`) |
-| `ci: auto-fix` | the test run failed and an agent was sent (`:185-191`) |
-| **`ci: ready for review`** | **the test run succeeded, the newest `Test Checks` and `All Checks` passed, and `mergeable_state != dirty` (`:175-182`)** |
+There is one other **reader**. ar-manager's `github_pr_labels` tool
+(`tools/mcp/manager/github_tools.py`) returns a PR's labels together with its
+`draft` flag. It is strictly read-only, and its docstring already states the rule
+this plan is about: "`ci: ready for review` is only meaningful once `draft` is
+False". So today the agent-facing tool, not the label, carries the draft
+qualification. Any option below that changes the label set (a new `ci: draft`
+or `ci: awaiting review` state) should update that docstring too.
+
+The stage label comes from `derive` in `pr-status-labels.py`:
+
+| Label | Set when (`derive`) |
+|-------|---------------------|
+| `ci: validating` | the head commit's validate run (`pull_request`) is still running, or no run exists yet |
+| `ci: auto-review` | the validate run finished and `auto-review-submit` or `auto-resolve-python-submit` succeeded |
+| `ci: full tests` | the test run (`deployment`) is running, or failed less than `RETRY_DECISION_MINUTES` (15) ago on an attempt before `MAX_ATTEMPTS` |
+| `ci: auto-fix` | the test run failed and an agent was sent (submit job succeeded, or an `auto-resolve-request` artifact was staged in the latest attempt) |
+| **`ci: ready for review`** | **the test run succeeded, the newest `Test Checks` and `All Checks` check runs passed, and `mergeable_state != "dirty"`** |
 | `ci: needs attention` | CI stopped with no agent (several branches of `derive`) |
-| `ci: review limit` | the `remediation-cap` commit status is `failure` (`:187-189`, `:204-206`) |
-| `ci: stalled` | added beside any state that has lasted too long (`is_stalled`, `:215-221`) |
+| `ci: review limit` | an agent was due but the `remediation-cap` commit status is `failure` (`capped_at`) |
 
-Triggers (`pr-status-labels.yaml:30-36`): `workflow_run` of `Build and Test` and
+Two markers can sit beside the stage label (`label_changes`):
+
+| Marker | Set when |
+|--------|----------|
+| `ci: stalled` | the stage has lasted longer than its `LABELS` hour limit (`is_stalled`) |
+| `ci: ready to launch` | the PR is a draft plan PR and an approver marking it ready now would launch an implementation agent (`ready_to_launch`, see below) |
+
+Triggers (`pr-status-labels.yaml`, `on:`): `workflow_run` of `Build and Test` and
 `Auto-Resolve Submit` (requested and completed), a 30-minute cron, and manual
 dispatch. **No `pull_request`, `pull_request_target` or `pull_request_review`
 event triggers it.**
 
-What `derive` does **not** read:
-- `pr["draft"]`. It fetches the full PR (`gather`, `:303`) but only reads
-  `mergeable_state`.
-- reviews, review threads, or requested reviewers. `gather` (`:299-334`) reads
-  only workflow runs, jobs, check runs, artifacts and commit statuses.
+What the labeler already does with draft, and what it doesn't do:
+- **Draft is read, but only for the `ci: ready to launch` marker.** `gather`
+  fetches the full PR (`pulls/{n}`), and `draft_plan_pr` reads `pr["draft"]` to
+  decide whether to fetch the PR's changed files. `ready_to_launch` then requires
+  the draft flag, an own-repo head, a default-branch base, a docs-only change set
+  and a newly added `docs/plans/*.md`. That marker came from the
+  `ci/ready-to-launch-label` branch, merged after this investigation began.
+- **The stage derivation (`derive`) ignores draft.** Its only read of the PR
+  detail is `mergeable_state` (plus `updated_at` when no run exists). So a draft
+  PR whose test run passed gets `ci: ready for review`. A draft plan PR can carry
+  `ci: ready for review` **and** `ci: ready to launch` at the same time.
+- **Reviews are not read.** `gather` doesn't fetch reviews, review threads or
+  requested reviewers. Beyond the PR detail (and files for draft plan PRs) it
+  reads only workflow runs, run jobs, check runs, the `auto-resolve-request`
+  artifact and commit statuses.
 
 ### 2. How draft status flows
 
-- **Created as a draft**: planning jobs set `PR_DRAFT=true`, namely
-  `task-planning.yaml:307-309`, `master-agent-dispatch.yaml:327-329` and the
+- **Created as a draft**: planning jobs set `PR_DRAFT: "true"`, namely
+  `task-planning.yaml` and `master-agent-dispatch.yaml`, along with the
   `workstream_register` plan job. That becomes `createPrAsDraft`
-  (`submit-agent-job.sh:113,251,262`; `workstream_submit_tools.py:782-783`;
-  `CodingAgentJobFactory.java:1279-1296`). The controller sends `"draft": true`
-  when it opens the auto-created PR (`AutoPullRequestPublisher.java:184,242` →
-  `GitHubProxyHandler.java:342-381`). QA rounds never draft (`qa-round.yaml:107`).
+  (`submit-agent-job.sh`; `workstream_submit_tools.py`;
+  `CodingAgentJobFactory`, `SubmissionConfigResolver`). The controller passes the
+  draft flag when it opens the auto-created PR (`AutoPullRequestPublisher` →
+  `GitHubProxyHandler.createGitHubPullRequest`, whose `pullRequestPayload` emits
+  `"draft": true` only for drafts). QA rounds never draft (`qa-round.yaml`).
 - **Marked ready**: only by a person. No code calls GraphQL
   `markPullRequestReadyForReview` or `convertPullRequestToDraft`.
-- **Reacting to the transition**: only `ready-plan.yaml:16-19`
-  (`pull_request_target: ready_for_review`), which calls `plan-ready.yaml`. It
-  dispatches `verify-completion.yaml` only when the sender is in `PLAN_APPROVERS`
-  **and** every changed file is still under `docs/` (`.github/CLAUDE.md`, "What
-  the `Plan Ready` workflow does"). `analysis.yaml:25-27` uses the default
-  `pull_request` types, so it does not run on `ready_for_review`, and that is
-  intentional. Nothing reacts to `converted_to_draft`.
-- **Reading the draft flag before labeling**: nothing does. The settled-CI
-  trigger doesn't read it either (below).
+- **Reacting to the transition**: only `ready-plan.yaml`
+  (`pull_request_target: types: [ready_for_review]`, `branches: [master]`), which
+  calls `plan-ready.yaml`. That dispatches `verify-completion.yaml` only when the
+  sender is in `PLAN_APPROVERS` **and** every changed file is still under `docs/`
+  (`.github/CLAUDE.md`, "What the `Plan Ready` workflow does"). `analysis.yaml`'s
+  `pull_request` trigger uses the default types, so it does not run on
+  `ready_for_review`, and that is intentional. Nothing reacts to
+  `converted_to_draft`.
+- **Reading the draft flag before the stage label**: nothing does (see §1). The
+  settled-CI trigger doesn't read it either (below).
 
 ### 3. Timeline of a normal PR, and where Copilot fits
 
 - **Settled** means any job on the workstream ends `SUCCESS` with nothing
-  committed or pushed (`JobCompletionEvent.isSuccessWithoutChanges`,
-  `JobCompletionEvent.java:469-476`). `FlowTreeApiEndpoint.java:1349-1351` then
-  calls `Workstream.startSettledCi` → `RepositoryBinding.startSettledCi`
-  (`RepositoryBinding.java:170-189`) → `CiTrigger.start`
-  (`CiTrigger.java:144-170`), which creates a `deployment:test` for the head.
-  None of these looks at draft state, reviews, or open threads.
-- **Copilot wait**: `auto-review-submit` holds the agent job for
-  `DELAY_SECONDS=300` so it "starts with" Copilot's review
-  (`analysis.yaml:4524-4531`). It drops the hold only when Copilot's latest
-  review is a quota notice (`analysis.yaml:4565-4571`,
-  `copilot-review-status.py:42-55`). With **no** Copilot review at all, the
-  script reports `copilot_available=true` and the job waits 300 s for a review
-  that may never come.
+  committed or pushed (`JobCompletionEvent.isSuccessWithoutChanges`). The job
+  completion handler in `FlowTreeApiEndpoint` then calls
+  `Workstream.startSettledCi` → `RepositoryBinding.startSettledCi` →
+  `CiTrigger.start`, which creates a `deployment:test` for the head. None of these
+  looks at draft state, reviews, or open threads.
+- **Copilot wait**: the `auto-review-submit` job in `analysis.yaml` sets
+  `DELAY_SECONDS: "300"` so the agent job "starts with" Copilot's review. It
+  drops the delay to 0 only when `copilot-review-status.py` reports
+  `copilot_available=false`, i.e. Copilot's latest review is a quota notice
+  (`copilot_available`, `github_api.is_copilot_quota_notice`). With **no**
+  Copilot review at all, the script reports `copilot_available=true`, and the job
+  waits 300 s for a review that may never come (on a draft, it never does).
 - **Copilot reviews that arrive later**: nothing notices them. No workflow or
-  controller path triggers on `pull_request_review`. The label is re-derived
-  only on the next `Build and Test` run or cron tick, and even then `derive`
-  ignores reviews. A late Copilot review is picked up only when a later push
-  starts a new validate run, whose auto-review agent then reads it (the
-  `general-review.txt:39` scope rule).
+  controller path triggers on `pull_request_review` (the event name shows up in
+  `analysis.yaml` and `.github/CLAUDE.md` only in comments). The label is
+  re-derived only on the next `Build and Test` run or cron tick, and even then
+  `derive` ignores reviews. A late Copilot review is picked up only when a later
+  push starts a new validate run, whose auto-review agent then reads it (the
+  scope rule in `tools/ci/prompts/general-review.txt`).
 - **Open threads before labeling**: not checked anywhere.
 
 ```
@@ -130,13 +160,14 @@ isn't visible in GitHub data.
 
 ## Is draft status the root cause?
 
-**Partly, and more directly than it first appears.** The evidence shows two
+**Partly, and more directly than it first appears.** The evidence shows three
 separate defects:
 
-1. **The labeler ignores draft.** The label went on at 04:11 while the PR was a
-   draft (it looked like 04:25 only because that's when the owner looked). A
-   draft PR should never read "ready for review"; the two meanings collide
-   literally.
+1. **The stage derivation ignores draft.** The label went on at 04:11 while the
+   PR was a draft (it looked like 04:25 only because that's when the owner
+   looked). A draft PR should never read "ready for review"; the two meanings
+   collide literally. (The labeler does read draft, but only for the separate
+   `ci: ready to launch` marker; see §1.)
 2. **Draft suppresses Copilot, and the loop doesn't know it.** No Copilot run
    happened during 2.5 hours of draft pushes, and one started 10 s after the
    PR left draft. That fits Copilot's automatic review skipping drafts (the
@@ -157,17 +188,27 @@ So fixing draft alone would have kept the label off until 04:25. It would
 All options touch `.github/workflows/` and/or `tools/ci/`, so they must land on
 a `ci/...` branch (CI-file lock). Option C also touches `flowtree/runtime`.
 
-### Option A: draft-aware labeler
+### Option A: draft-aware stage label
 
 **What changes**
-- `derive`: when `pr["draft"]` is true, never return READY. Return a new
-  `ci: draft` state, or keep the CI-stage label and add a sibling marker such as
-  `ci: draft` the way `ci: stalled` works.
-- `pr-status-labels.yaml`: add `pull_request_target: [ready_for_review,
+- `derive`: when `pr["draft"]` is true, never return READY. Either return a new
+  `ci: draft` stage, or keep the CI-stage label and add a sibling marker
+  `ci: draft` the way `ci: stalled` and `ci: ready to launch` work (a new
+  parameter on `label_changes` and a new `LABELS` entry). The "green CI on a draft"
+  case then needs a decided label (see open question 1).
+- `pr-status-labels.yaml`: add `pull_request_target: types: [ready_for_review,
   converted_to_draft]`. This is safe because the job already checks out the
   default branch only and runs no PR code. It must stay in this file and never
-  gain a PR checkout.
-- New unit cases in `tools/tests/test_pr_status_labels.py`.
+  gain a PR checkout. Today, without this trigger, a ready transition is picked up
+  only at the next cron tick (up to 30 min), so the A-only fix would also show a
+  stale `ci: draft` for that long.
+- Update the label list in the `pr-status-labels.yaml` header comment, the
+  `pr-status-labels.py` module docstring, and the `github_pr_labels` docstring.
+
+**Interaction with `ci: ready to launch`**: on a draft plan PR the two markers
+would usually appear together (`ci: draft` + `ci: ready to launch`). That is
+consistent, but it is redundant: `ready to launch` implies draft. Decide whether
+`ci: draft` is suppressed when `ready to launch` is set (open question 1).
 
 **Drafts / plan approval**: doesn't touch the draft flag, so Plan Ready is
 unaffected.
@@ -185,8 +226,11 @@ immediately shows READY, then Copilot lands minutes later, which is the #993
 ### Option B: review-aware READY gate (new `ci: awaiting review` state)
 
 **What changes**
-- `gather` additionally reads `requested_reviewers`, `pulls/{n}/reviews` and the
-  GraphQL `reviewThreads { isResolved }` for the PR.
+- `gather` additionally reads `requested_reviewers` (already in the `pulls/{n}`
+  detail it fetches), `pulls/{n}/reviews`, and the GraphQL
+  `reviewThreads { isResolved }` for the PR. The reviews and threads calls
+  should be made only for PRs whose CI is otherwise green, the way `gather`
+  fetches files only for draft plan PRs, to keep the per-tick call count flat.
 - `derive`: CI-green becomes READY only when all of these hold:
   - no unresolved review threads;
   - no pending Copilot review request;
@@ -195,13 +239,15 @@ immediately shows READY, then Copilot lands minutes later, which is the #993
     already does), or Copilot was never requested.
 
   Otherwise it returns `ci: awaiting review`, plus `ci: stalled` after N hours so
-  a dark Copilot can't hold it silently.
+  a dark Copilot can't hold it silently. N must be chosen; the other waiting
+  states use 1–10 h in `LABELS`.
 - `pr-status-labels.yaml`: add `pull_request_review: [submitted, dismissed]`,
   `pull_request_review_thread: [resolved, unresolved]` and
   `pull_request_target: [review_requested]`, so a late review flips the label
   within seconds. Fork PRs give read-only tokens on `pull_request_review`, so
   route through `workflow_run` or `pull_request_target`, or accept the 30-min
-  cron for forks.
+  cron for forks. (Fork PRs are already excluded by `open_pulls`, which keeps
+  only own-repo heads, so in practice the cron path is enough.)
 - Combine with Option A's draft check.
 
 **Drafts / plan approval**: read-only with respect to the draft flag. While the
@@ -213,10 +259,14 @@ first, or it would report READY ("never requested").
   measured, not correctness).
 - Copilot quota pages vary in wording, and a misdetected notice holds the PR in
   `awaiting review` until stalled.
-- More API calls per PR per tick; GraphQL with `GITHUB_TOKEN` is fine but needs
-  `pull-requests: read`.
+- More API calls per PR per tick. GraphQL with `GITHUB_TOKEN` is fine, and the
+  job already has `pull-requests: write`, which covers the read.
 - Human reviewers who are requested but never respond: decide whether only the
   Copilot request counts.
+- A Copilot review on an older SHA: "has reviewed the head SHA" means its
+  `commit_id` equals the head. Since Copilot re-reviews every push to a non-draft
+  PR, each push re-opens the gate until the new review lands. That is the intended
+  behavior, but it lengthens every PR's time out of READY by Copilot's latency.
 
 **Effort**: medium (about 100–150 lines plus tests, plus a workflow trigger
 review).
@@ -228,9 +278,9 @@ still waits for a push or a person.
 ### Option C: make "settled" review-aware in the loop (controller + CI)
 
 **What changes**
-- `startSettledCi` (or the call at `FlowTreeApiEndpoint.java:1349-1351`)
-  declines while the PR is a draft or a Copilot review is pending on the head
-  SHA. It records the deferral, and a later event resumes it.
+- `Workstream.startSettledCi` (or its caller in `FlowTreeApiEndpoint`'s job
+  completion handling) declines while the PR is a draft or a Copilot review is
+  pending on the head SHA. It records the deferral, and a later event resumes it.
 - A new trigger (a review-event workflow posting to the controller, or the
   labeler's `ci: awaiting review` → submit) dispatches an auto-review pass with
   the `pr-feedback` prompt when a review with open issues lands after settle,
@@ -271,7 +321,8 @@ redefining the plan-approval convention.
 
 **Failure modes**: Copilot starts only when the PR leaves draft, so READY would
 still precede Copilot by minutes unless combined with B. Every PR is invisible
-to reviewers until settled.
+to reviewers until settled. It would also fire `ci: ready to launch`'s chain on
+every docs-only PR the controller flips.
 
 **Effort**: medium, plus a convention change.
 
@@ -283,25 +334,59 @@ Listed for completeness; **not recommended**.
 > **Recommendation:** do **A + B together** on one `ci/...` branch, as a
 > labeler-only change: no controller change and no change to the draft or
 > plan-approval convention. It makes the label truthful in all three observed
-> failure windows, is fully unit-testable in `test_pr_status_labels.py`, and is
-> derived from scratch each run, as the labeler already is. Treat **C** as a
+> failure windows, is fully unit-testable in `tools/tests/test_pr_status_labels.py`,
+> and is derived from scratch each run, as the labeler already is. Treat **C** as a
 > follow-up once B's `ci: awaiting review` state shows how often late reviews
 > actually leave work behind. Reject **D** unless the plan-approval signal is
 > moved off the draft flag.
 
+If A + B is too much for one change, A alone (with the `pull_request_target`
+trigger) is a safe first step: it shares no code path with B beyond `derive` and
+`LABELS`.
+
+## Success criteria (for A + B)
+
+The work is done when each of these is shown by a unit case in
+`tools/tests/test_pr_status_labels.py`, plus the trigger check:
+
+1. A draft PR whose test run, `Test Checks` and `All Checks` all passed never
+   gets `ci: ready for review` (the #993 04:11–04:25 window).
+2. A non-draft, CI-green PR with a pending Copilot review request, or no Copilot
+   review on the head SHA while Copilot was requested, gets
+   `ci: awaiting review` (the 04:25–04:28 window).
+3. A non-draft, CI-green PR with an unresolved review thread gets
+   `ci: awaiting review` (the 04:28–05:33 window).
+4. A non-draft, CI-green PR whose latest Copilot review is a quota notice, or on
+   which Copilot was never requested, with no unresolved threads, gets
+   `ci: ready for review`.
+5. `ci: awaiting review` gains `ci: stalled` after its `LABELS` hour limit.
+6. The existing `ReadyToLaunchTest`, `LabelChangesTest` and `SummaryRowTest`
+   cases still pass, so `ci: ready to launch` is unchanged.
+7. `pr-status-labels.yaml` runs on `ready_for_review`, `converted_to_draft` and
+   the review events, still checks out only the default branch, and runs no PR
+   code. `WorkflowTest` already asserts the triggers, the default-branch
+   checkout and the job permissions, so its `test_triggers` case is extended
+   to the new events and the other two cases still pass.
+
 ## Open questions for the owner
 
 1. Should a draft PR show its CI stage plus a `ci: draft` marker, or a single
-   `ci: draft` label that hides the stage?
+   `ci: draft` label that hides the stage? And should `ci: draft` be left off
+   when `ci: ready to launch` already marks the PR (which implies draft)?
 2. Is the label meant to say "CI is green" or "a person should look now"? B
    assumes the latter. If the former, perhaps rename it (e.g. `ci: passed`) and
-   put the review gate in a separate label.
+   put the review gate in a separate label. Note that the `READY` entry's
+   `LABELS` description today reads "Validate and full test runs passed on the
+   head commit", which is the former meaning.
 3. Should requested **human** reviewers also hold READY, or only Copilot?
 4. Should an unresolved thread from the owner hold READY even when CI and
    Copilot are clean? (B as written says yes.)
 5. Is it intended that implementation commits land on a plan PR while it is
    still a draft (as on #993)? If not, that is a separate dispatch question and
    affects how much Option A's `ci: draft` will show up.
-6. Is "review draft pull requests" deliberately off in the Copilot ruleset? Turning it on
-   would remove defect 2 at the source, at the cost of Copilot quota spent on plan
-   drafts.
+6. Is "review draft pull requests" deliberately off in the Copilot ruleset? Turning
+   it on would remove defect 2 at the source, at the cost of Copilot quota spent
+   on plan drafts.
+7. Is the agent-facing rule in `github_pr_labels` ("ready for review is only
+   meaningful once draft is False") enough for agents in the meantime? If the
+   label becomes draft-aware, that caveat can be dropped from the docstring.
