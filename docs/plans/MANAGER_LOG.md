@@ -28,6 +28,96 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-11-23 — Fix the exit-ray selection's expression-size blow-up so a refractive sphere renders the floor
+
+**Category:** Code Quality (correctness), with a general compilation-scaling payoff
+**Branch:** `project/plan-20261123-185641`
+**Plan:** [`PLAN-20261123-refraction-expression-size-blowup.md`](PLAN-20261123-refraction-expression-size-blowup.md)
+**Tracker:** `80b892da-f079-456c-b7e3-059bbed7db65` (the follow-up PR #1001 filed for this exact wall)
+
+#### What changed since last cycle
+
+The refraction compile-DAG memoization merged (PR #1001 into `master`): `ScopeLifecycle` gained
+the visited-set reset overloads and the refraction graph no longer burns its compile budget
+revisiting shared nodes once per path. Around it the expression-simplification machinery moved
+heavily — `NAryExpression.mergeOperands`/`createMerged` with the int→long width guard
+(PR #1028), "Refuse nested sum/product merges that widen int arithmetic to long" (#1022), the
+unoptimized-path guard (#935) — plus CI/infra work (Java 25 upgrade, controller-driven build
+runner selection, population-optimizer elitism, Metal interrupted-wait) and the standing QA
+rounds (coverage, master-fix, per-sample FIR / `MultiOrderFilter`). None of these touched the
+render path's remaining known issue.
+
+#### Category assessment (priority order)
+
+- **Documentation — current, checked not assumed.** The last several cycles filled the flagship
+  gaps (tokenization, vector index, connectome, neural-population, latent-audio composition); no
+  newly-merged subsystem this window is a new flagship needing an internals page — the merges
+  were incremental fixes, CI, and the expression-merge machinery, all carried in Javadoc and
+  module READMEs. The one still-unreachable platform gap (the evolutionary arrangement pipeline,
+  gated on the curated sample library) is unchanged. No reachable flagship prose gap. Moved on.
+- **Code quality (correctness) — a test-pinned defect, and it decided the cycle.**
+  `ReflectionRefractionRenderTest#refractiveSphereShowsFloor` is still
+  `@TestProperties(knownIssue = true)`, so the engine ships no asserting refraction render test.
+  PR #1001 removed the first wall (the reset traversal); the prior session measured that the
+  refraction render now **fails fast (~9s)** at a second, independent wall —
+  `ExpressionException: Large expression not improved by simplification` while
+  `ComputationScopeCompiler.compile` builds the `LightingEngineAggregator` exit-ray selection.
+  Verified by inspection: `Expression.process()` throws exactly when `countNodes()` exceeds
+  `ScopeSettings.maxNodeCount` and `simplify()` cannot reduce it — the selection (one
+  `IntersectionalLightingEngine` per surface-light pair, composed into one nested ranked choice)
+  is inlined into a single over-budget, irreducible expression. Chosen.
+- **Performance — this fix is a compilation-scaling lever, surfaced through a correctness test.**
+  An irreducible, over-budget expression for a modestly-sized scene is a latent scaling wall for
+  every heavily-shared graph (render workloads and the self-hosted LM both). As with the
+  reflected-ray and reset-traversal cycles, it enters through a correctness gate, so it is
+  classified code quality.
+- **Proof of value — the category this serves, gated on exactly this fix.** The ferrofluid
+  glossy render (Phase 2) needs a working, CI-guarded refraction path.
+
+#### Why this task
+
+It is the disciplined pick under the priority order and the explicit next step in a live
+sequence: documentation has no reachable flagship gap, and the first reachable code-quality item
+is the follow-up the previous cycle filed, measured, and handed off by name. The throw site and
+the construction site are both already identified; the implementation session's real work is a
+profiled diagnosis (Rule 3b, `ar-profile-analyzer` — the profile now exists because the graph
+compiles far enough to throw) to decide between the two root-cause families (a shared
+sub-expression over-expanded per consumer → fix at the construction source; or a selection that
+genuinely belongs behind a kernel boundary → declared via `isIsolationTarget`, never a manual
+`isolate()`), then the minimal fix at that source. It keeps every project discipline: no raised
+`maxNodeCount`, no renderer change, no hand-split, and — because `Expression.java` is already at
+1593 of its 1600-line limit — the fix deliberately does not land there. Backend-independent
+(synthetic 32×32 host render), so it runs on any node with no workstream settings file.
+
+#### Balance across categories
+
+The last cycle was code quality (reset traversal); this is its named sibling, not drift — it
+attacks the second wall that cycle measured and deferred, on the same proof-of-value critical
+path. The honest risk, carried forward from the prior plan, is that un-flagging cleanly may
+depend on the per-pixel kernelization that is out of scope; the success criteria treat a
+well-diagnosed, well-reported "not yet un-flaggable" outcome as complete rather than as a license
+to weaken the test — the same stance the prior cycle took for its own second wall. Medium–large
+task touching the expression/computation construction layer and one test flag plus one structural
+regression test.
+
+#### What comes next
+
+1. This plan: the profiled diagnosis of the exit-ray selection blow-up, the construction-source
+   (or `isIsolationTarget`) fix, the cleared `knownIssue` on `refractiveSphereShowsFloor`, and
+   the node-count-bounded regression test.
+2. **Code quality / performance, sibling:** the non-identity-transform reflection blow-up and the
+   `renderTwoSpheres` compile timeout — report whether this fix incidentally resolves them.
+3. **Proof of value, ferrofluid Phase 0/2:** the end-to-end vertical slice and the glossy look,
+   once the owner settles the fluid-method choices (§6.1/§6.2) and with the refraction path CI-guarded.
+4. **Performance:** kernelize the per-pixel surface selection and supersampling (ferrofluid Phase 4).
+5. **Documentation, when reachable:** the evolutionary generative arrangement pipeline, once a
+   synthetic (non-curated-library) path through it exists to drift-guard a worked example.
+6. **Code quality (standing, proposed):** `jni-native-precision-symbols`,
+   `manual-isolation-prevention`, `ordering-bypass-guards`.
+7. Still open from prior cycles: the reduced `matmul`/convolution-gradient forms;
+   `TransformerResamplingFeatures`' buffered K/V; the `io.almostrealism.collect` split; letting a
+   trained model read the platform's own source.
+
 ### 2026-11-19 (later) — Render the floor through a refractive sphere by memoizing the argument-reset DAG traversal
 
 **Category:** Code Quality (correctness), with a general compilation-performance payoff
@@ -282,99 +372,24 @@ present); correctness runs on any backend.
    buffered K/V; the `io.almostrealism.collect` split; letting a trained model read the platform's
    own *source*.
 
-### 2026-11-10 — Fix the reflected-ray shading path so a mirror surface renders the scene
+### 2026-11-10 — Fix the reflected-ray shading path so a mirror surface renders the scene (condensed)
 
-**Category:** Code Quality (correctness)
-**Branch:** `project/plan-20261110-032517`
-**Plan:** [`PLAN-20261110-reflected-ray-shape.md`](PLAN-20261110-reflected-ray-shape.md)
-**Tracker:** `ec549648-4d2f-4515-b65e-cbb875098d3f`
+**Category:** Code Quality (correctness) · **Branch:** `project/plan-20261110-032517` ·
+**Plan:** `PLAN-20261110-reflected-ray-shape.md` · **Tracker:** `ec549648-4d2f-4515-b65e-cbb875098d3f`
 
-#### What changed since last cycle
-
-A whole new proof-of-value track opened and a large migration landed. The rings `raytracer`
-(`ar-raytracer`) and `photonfield` (`ar-photonfield`) **libraries** were moved into `common` over
-the past week (PRs #869, #875 and the commits around them: photon-absorber volumes, BRDFs,
-`SpecularAbsorber`, `RayTracedAnimation`/`PhotonFieldAnimation` into `engine/render`; correctness
-fixes for detach-identity, parallel-ray `Plane.MISS`, fps rounding, and a seeded instruction-cache
-benchmark PR #874). Around them a **ferrofluid simulation** roadmap was written
-([`PLAN-20261106-ferrofluid-simulation.md`](PLAN-20261106-ferrofluid-simulation.md), proposed) that
-inventories exactly what an end-to-end ferrofluid (sim → mesh → glossy ray-trace → frame sequence)
-needs and where the gaps are, and a `feature/simulation-frame-driver` branch added
-`SimulationRunner.runFrames`, `RGBFeatures.heatmap`/`saveHeatmap`, and `RayTracedFrameSequence`.
-QA rounds (`qa/pdsl`, `qa/coverage`) kept the foundation current.
-
-#### Category assessment (priority order)
-
-- **Documentation — adequately covered, checked not assumed.** The migration landed *library*
-  code into the already-documented `engine/render` module; `consult` confirms `engine/render/README.md`
-  covers `RayTracedScene`, material shading, `ReflectionShader`/`RefractionShader`, and `llms.txt`
-  lists the render module. No brand-new subsystem arrived needing a flagship internals page, and the
-  reflection render path is *broken* (below), so documenting it as a worked example would be
-  premature. No fresh reachable prose gap. Moved on.
-- **Code quality — a concrete, test-pinned correctness defect, and it decided the cycle.** The
-  migration's only two end-to-end render tests (`ReflectionRefractionRenderTest`, `engine/render`)
-  are both `@TestProperties(knownIssue = true)`, so the engine ships with **no asserting render test
-  in CI**. The reflection case fails in `RayTracedScene.realize` — before any pixel — for two
-  verified reasons: (a) `ReflectedRay` (`compute/geometry`) is a host-Java `ProducerComputation<Ray>`
-  whose output carries no `TraversalPolicy`, so `RayFeatures.origin == subset(shape(3), r, 0)` throws
-  "Subset cannot be performed without a TraversalPolicy"; (b) the `shadeFront` branch of
-  `ReflectionShader` then calls `LightingEngineAggregator.getAccelerated()`, which reaches
-  `RankedChoiceEvaluableForMemoryData.getAccelerated()` and throws `UnsupportedOperationException` —
-  while the `shadeBack` branch and the primary ray already render through the aggregator's working
-  host selection path. A real, measured, reachable defect on the critical path of a proof-of-value
-  track. Chosen.
-- **Performance — no PM-level blocker this cycle.** The copy-in/copy-back aggregate levers from the
-  prior cycles are landed or standing; kernelizing the ray-tracer's per-pixel selection is itself a
-  named follow-up (ferrofluid §5 item 2 / Phase 4), explicitly *after* correctness. Moved on.
-- **Proof of value — the category this serves, but gated on exactly this fix and on owner choices.**
-  The ferrofluid glossy look (Phase 2) is blocked on the reflection path; Phase 0/1 depend on
-  `[OWNER]` fluid-method decisions (§6.1/§6.2) not yet made. Removing a correctness gate that is
-  owner-independent outranks starting a phase that waits on an owner call.
-
-#### Why this task
-
-It is the disciplined pick under the priority order: documentation is covered, and the first
-reachable code-quality item is a correctness defect pinned by an existing test. The fix is clean and
-evidence-based: rebuild `ReflectedRay` as a shape-carrying Producer graph —
-`ray(point, reflect(incident, normal))` = `concat(shape(6), origin, direction)` — which both fixes
-gap (a) and removes a `FUNDAMENTAL RULE` violation (host-Java per-element `evaluate`, throwing
-`getScope`); then route the `shadeFront` reflected-ray aggregation through the same working selection
-path the `shadeBack` branch and the primary ray already use, resolving gap (b) without implementing
-or weakening anything. Clearing the `knownIssue` on `reflectiveSphereShowsFloor` restores a CI render
-assertion — additive, since the assertion already exists. Refraction (a separate `ClassCastException`)
-and kernelizing the selection (performance) are explicitly scoped out. Backend-independent — a
-graph-construction error rendered on the host — so it is verifiable on any node with no workstream
-settings file.
-
-#### Balance across categories
-
-The last several cycles were performance (copy-in/copy-back) and documentation. Returning to code
-quality now is not drift: a large migration landed library code whose flagship render path cannot
-build its graph, and the proof-of-value track that migration was *for* is blocked precisely here. It
-is a medium task touching two files plus one `knownIssue` flag, runs on any node.
-
-#### What comes next
-
-1. This plan: the `ReflectedRay` Producer-graph rewrite, the `shadeFront` selection-path switch, and
-   the cleared `knownIssue` on `reflectiveSphereShowsFloor`. **Shipped via PR #886
-   (`feature/glossy-reflection`), merged into `master` on 2026-11-18, which also landed the
-   `RefractionShader` graph rewrite from item 2 below (but not the `refractiveSphereShowsFloor` render
-   assertion, which stays `knownIssue` — so that part of item 2 remains open)** — so this plan is
-   closed as completed rather than dispatched fresh (see the plan's *Relationship to existing work*
-   section).
-2. **Code quality, sibling:** fix refraction (`RefractionShader` / `GeneratedColorProducer.getShape`
-   `ClassCastException`) and clear `refractiveSphereShowsFloor` (ferrofluid §5 item 3). PR #886
-   rewrote `RefractionShader` as a graph too, but left `refractiveSphereShowsFloor` pinned
-   `knownIssue` (the render assertion is not yet enabled), so clearing it remains open.
-3. **Proof of value, ferrofluid Phase 0:** the end-to-end vertical slice (height field → mesh →
-   static render), once the owner settles the fluid-method / surface-representation choices
-   (§6.1/§6.2). The plan recommends height-field + tessellation.
-4. **Performance:** kernelize the ray-tracer's per-pixel selection and supersampling, and add a
-   triangle acceleration structure (ferrofluid §5 item 2 / Phase 4), plus the standing
-   aggregate-copy follow-ups.
-5. Still open from prior cycles: the reduced `matmul`/convolution-gradient forms;
-   `TransformerResamplingFeatures`' buffered K/V; the `io.almostrealism.collect` split; letting a
-   trained model read the platform's own source.
+The rings `raytracer`/`photonfield` libraries migrated into `engine/render` (PRs #869, #875) and the
+ferrofluid roadmap (`PLAN-20261106`) opened, but the migration's only two end-to-end render tests were
+both `@TestProperties(knownIssue = true)` — no asserting render test in CI. The reflection case failed
+in `RayTracedScene.realize` for two verified reasons: `ReflectedRay` was a host-Java computation whose
+output carried no `TraversalPolicy` (so `subset` threw), and the `shadeFront` branch called
+`LightingEngineAggregator.getAccelerated()` → `RankedChoiceEvaluableForMemoryData.getAccelerated()`,
+which threw `UnsupportedOperationException`, while `shadeBack` and the primary ray already used the
+working host selection path. The cycle rebuilt `ReflectedRay` as a shape-carrying Producer graph
+(`ray(point, reflect(incident, normal))`, also removing a FUNDAMENTAL RULE violation) and routed
+`shadeFront` through the working selection path, clearing the `knownIssue` on
+`reflectiveSphereShowsFloor`. Shipped via PR #886 (`feature/glossy-reflection`), merged 2026-11-18,
+which also landed the `RefractionShader` graph rewrite but left `refractiveSphereShowsFloor` pinned
+`knownIssue` — setting up the 2026-11-19 reset-traversal cycle and this 2026-11-23 cycle. Ran on any node.
 
 ### 2026-11-04 (later) — Skip the per-dispatch copy-in of an unread folded aggregate slice (condensed)
 
