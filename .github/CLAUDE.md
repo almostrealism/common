@@ -1529,9 +1529,14 @@ different, and both limits are defined once, as the workflow-level `env` of
 - **A QA round is scheduled, and bounded by the open pull requests.** It starts
   when the time since the last round of its kind says another is due
   (`MIN_INTERVAL_DAYS`), unless more than `MAX_OPEN_PRS` pull requests of any
-  kind are open against master (14: a round may start with fourteen open, so
-  with its own the repository holds at most fifteen). A QA round is work nobody
-  asked for, so it yields to the reviewer's queue. The QA gates turn on
+  kind are open against master (14: a round may start with fourteen open). A
+  QA round is work nobody asked for, so it yields to the reviewer's queue. The
+  limit is an admission check, not a hard ceiling. Each QA job has its own
+  concurrency group, so the rounds one run evaluates all read the same count,
+  and a round's pull request opens only when its agent finishes, so several
+  rounds can pass it together and the open count can go past fifteen. They
+  cannot share one group to serialize the count: GitHub keeps only one pending
+  job per concurrency group and would drop every other round of that run. The QA gates turn on
   `qa-cadence.sh`'s backlog condition with `CHECK_BACKLOG: "true"`, which runs
   `tools/ci/open-pr-backlog.sh` after the round and interval checks and reports
   `backlog-full` (or `backlog-query-failed`, read as full). A caller of

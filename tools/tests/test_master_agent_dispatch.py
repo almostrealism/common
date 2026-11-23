@@ -887,6 +887,31 @@ class MasterAgentDispatchTests(unittest.TestCase):
             with self.subTest(job=name):
                 self.assertIn("github.event_name != 'workflow_dispatch'", job["if"])
 
+    def test_a_scheduled_run_still_resolves_the_default_branch(self):
+        """A ``schedule`` event's payload carries no ``repository``, so
+        ``github.event.repository.default_branch`` is empty on an hourly run.
+        Every workflow this one calls reads the default branch (BASE_BRANCH,
+        DEFAULT_BRANCH, the checkout ref) from it, and an empty BASE_BRANCH
+        stops the round only after its branch is pushed, leaving an orphan
+        that holds off the next round. Each read must therefore fall back to
+        ``github.ref_name``, which on a scheduled run is the default branch."""
+        bare = re.compile(r"github\.event\.repository\.default_branch(?!\s*\|\|\s*github\.ref_name)")
+        called = sorted({job["uses"] for job in self.jobs.values()
+                         if job.get("uses", "").startswith("./.github/workflows/")})
+        self.assertIn("./.github/workflows/qa-round.yaml", called)
+        self.assertIn("./.github/workflows/task-planning.yaml", called)
+        for uses in called:
+            with self.subTest(workflow=uses):
+                with open(os.path.join(_REPO_ROOT, uses[2:])) as f:
+                    text = f.read()
+                self.assertIn("github.event.repository.default_branch || github.ref_name", text)
+                self.assertEqual([], [line.strip() for line in text.splitlines()
+                                      if "${{" in line and bare.search(line)])
+        with open(_WORKFLOW) as f:
+            own = f.read()
+        self.assertEqual([], [line.strip() for line in own.splitlines()
+                              if "${{" in line and bare.search(line)])
+
     def test_every_qa_round_applies_the_shared_backlog_limit(self):
         """A QA round starts on a schedule, not because someone asked, so no
         QA round starts while the repository already has too many open pull

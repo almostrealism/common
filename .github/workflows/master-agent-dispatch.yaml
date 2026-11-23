@@ -58,7 +58,8 @@ on:
       - master
   # Hourly, off the top of the hour. Every job's gate decides whether its
   # round starts, so an hour with nothing due creates nothing.
-  # TODO(review): verify github.event.repository.default_branch is set on schedule runs; called workflows pass it as BASE_BRANCH.
+  # A scheduled run has no repository payload, so the called workflows fall
+  # back from it to github.ref_name for the default branch.
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
@@ -142,8 +143,12 @@ on:
 # The two admission limits; see the policies at the top of this file.
 #
 # MAX_OPEN_PRS is the QA rounds' limit. No QA round starts while more than
-# this many pull requests of any kind are open against master, so with the
-# round's own the repository holds at most one more (15). The QA gates apply
+# this many pull requests of any kind are open against master. It is an
+# admission check, not a ceiling: each QA job has its own concurrency group,
+# so the rounds of one run all read the same count, and a round's PR opens
+# only when its agent finishes. Several rounds may pass it at once. A shared
+# group would not help, since GitHub keeps one pending job per group and
+# would drop the rest of the run's rounds. The QA gates apply
 # it through their cadence gate (CHECK_BACKLOG) and tools/ci/open-pr-backlog.sh.
 # A called workflow cannot read this environment, so each caller of
 # qa-round.yaml passes the same number as max-open-prs.
