@@ -183,7 +183,7 @@ public class IndexChild extends Sum<Integer> implements Index {
 	 * rather than combining the options of the parent and child indices it is composed of.</p>
 	 */
 	@Override
-	public Optional<Set<Integer>> getIndexOptions(Index index) {
+	public Optional<IndexSequence> getIndexOptions(Index index) {
 		return Index.super.getIndexOptions(index);
 	}
 

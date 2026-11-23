@@ -35,6 +35,7 @@ import java.lang.ref.WeakReference;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -210,11 +211,32 @@ public abstract class ComputationBase<I, O, T>
 	/**
 	 * Resets the arguments for this computation and all input producers.
 	 * This clears the compiled state, allowing the computation to be recompiled.
+	 *
+	 * <p>This is the entry point of a reset pass: it seeds an identity-based visited set,
+	 * marks this node, and delegates to {@link #resetArguments(Set)}. Seeding the set here
+	 * means a deeply shared (diamond-shaped) input graph is walked once per node instead of
+	 * once per path to it, which the un-memoized descent made exponential in the number of
+	 * shared sub-graphs.</p>
 	 */
 	@Override
 	public void resetArguments() {
+		ScopeLifecycle.resetArguments(this);
+	}
+
+	/**
+	 * Resets this computation's cached arguments and descends into its input producers,
+	 * skipping any node already in {@code visited}.
+	 *
+	 * <p>The single-node clear is performed by {@code super.resetArguments()}; the descent
+	 * threads {@code visited} through {@link ScopeLifecycle#resetArguments(java.util.stream.Stream, Set)}
+	 * so each shared input is reset at most once per pass.</p>
+	 *
+	 * @param visited the nodes already reset on this pass
+	 */
+	@Override
+	public void resetArguments(Set<ScopeLifecycle> visited) {
 		super.resetArguments();
-		ScopeLifecycle.resetArguments(getInputs().stream());
+		ScopeLifecycle.resetArguments(getInputs().stream(), visited);
 	}
 
 	/**

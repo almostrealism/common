@@ -169,7 +169,7 @@ public class DefaultIndex extends StaticReference<Integer> implements Index {
 	 * <p>An index answers for itself, as described by {@link Index#getIndexOptions(Index)}.</p>
 	 */
 	@Override
-	public Optional<Set<Integer>> getIndexOptions(Index index) {
+	public Optional<IndexSequence> getIndexOptions(Index index) {
 		return Index.super.getIndexOptions(index);
 	}
 

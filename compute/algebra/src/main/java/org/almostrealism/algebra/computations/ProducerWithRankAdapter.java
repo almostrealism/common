@@ -26,6 +26,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -142,8 +143,13 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, PackedCol
 	 */
 	@Override
 	public void resetArguments() {
-		ScopeLifecycle.resetArguments(Stream.of(getProducer()));
-		ScopeLifecycle.resetArguments(Stream.of(getRank()));
+		ScopeLifecycle.resetArguments(this);
+	}
+
+	@Override
+	public void resetArguments(Set<ScopeLifecycle> visited) {
+		ScopeLifecycle.resetArguments(Stream.of(getProducer()), visited);
+		ScopeLifecycle.resetArguments(Stream.of(getRank()), visited);
 	}
 
 	/**

@@ -178,11 +178,8 @@ public abstract class PrefixAccumulationComputation extends TraversableRepeatedP
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionVariable output = (CollectionVariable) args[0];
-
-		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
-		Expression currentValue = output.reference(k.multiply(output.length()));
-		return combine(currentValue, factor(args[1], k, localIndex));
+		Expression<?> currentValue = getCurrentOutputValue((CollectionVariable) args[0], globalIndex);
+		return combine(currentValue, factor(args[1], kernelIndex(globalIndex), localIndex));
 	}
 
 	/**
