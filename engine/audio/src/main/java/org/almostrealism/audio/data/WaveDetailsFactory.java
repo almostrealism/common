@@ -17,6 +17,7 @@
 package org.almostrealism.audio.data;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
@@ -453,7 +454,8 @@ public class WaveDetailsFactory implements CodeFeatures {
 	/**
 	 * Returns a cached evaluable that computes per-frame cosine similarity
 	 * between two feature tensors of shape (frames, bins, 1). The evaluable
-	 * is compiled once and reused for all comparisons with matching dimensions.
+	 * is optimized and compiled once, then reused for all comparisons with
+	 * matching dimensions, so it agrees with an {@code evaluate()} of the same graph.
 	 *
 	 * <p>Each frame's norm is its magnitude over the bins of that frame
 	 * ({@code magnitude(1)}, shape (frames, 1)), matching the per-frame dot
@@ -462,9 +464,9 @@ public class WaveDetailsFactory implements CodeFeatures {
 	private static Evaluable<PackedCollection> cosineSimilarityEvaluable(int frames, int bins) {
 		TraversalPolicy shape = new TraversalPolicy(frames, bins, 1);
 		return cosineCalc.computeIfAbsent(shapeKey(frames, bins), k ->
-				Ops.op(o -> o.multiply(o.cv(shape, 0), o.cv(shape, 1)).sum(1)
+				(Evaluable<PackedCollection>) Process.optimized(Ops.op(o -> o.multiply(o.cv(shape, 0), o.cv(shape, 1)).sum(1)
 						.divide(o.multiply(o.cv(shape, 0).magnitude(1),
-								o.cv(shape, 1).magnitude(1)))).get());
+								o.cv(shape, 1).magnitude(1))))).get());
 	}
 
 	/**

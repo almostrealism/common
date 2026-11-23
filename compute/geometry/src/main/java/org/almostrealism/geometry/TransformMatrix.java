@@ -18,7 +18,6 @@ package org.almostrealism.geometry;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -420,7 +419,7 @@ public class TransformMatrix extends PackedCollection implements TransformMatrix
 	 * returning the result as a {@link TransformMatrix}.
 	 */
 	public TransformMatrix adjoint() {
-		return (TransformMatrix) new TransformMatrixAdjoint(() -> new Provider<>(this)).evaluate();
+		return (TransformMatrix) new TransformMatrixAdjoint((Producer) cp(this)).evaluate();
 	}
 
 	@Override

@@ -22,7 +22,9 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -84,7 +86,8 @@ class TestMethodProtection implements ConsoleFeatures {
     /**
      * Matches a {@code @Test} annotation marker, mirroring the awk extractor's
      * {@code @Test([ \t(]|$)} test: the {@code @Test} token must not be followed
-     * by an identifier character, so {@code @TestDepth} and the like do not match.
+     * by an identifier character, so a longer annotation name that merely begins
+     * with {@code @Test} does not match.
      */
     private static final Pattern TEST_ANNOTATION = Pattern.compile("@Test(?![A-Za-z0-9_$])");
 
@@ -296,8 +299,14 @@ class TestMethodProtection implements ConsoleFeatures {
             return Verdict.blocked("exists on base branch; test-method analysis failed: " + e.getMessage());
         }
 
-        Set<String> unaccounted = annotatedTestMethodNames(baseContent);
-        unaccounted.removeAll(recordNames(baseMethods));
+        Map<String, Integer> scanned = annotatedTestMethodCounts(baseContent);
+        Map<String, Integer> reported = recordNameCounts(baseMethods);
+        Set<String> unaccounted = new LinkedHashSet<>();
+        for (Map.Entry<String, Integer> entry : scanned.entrySet()) {
+            if (entry.getValue() > reported.getOrDefault(entry.getKey(), 0)) {
+                unaccounted.add(entry.getKey());
+            }
+        }
         if (!unaccounted.isEmpty()) {
             return Verdict.blocked("exists on base branch; the merge-base file has @Test method(s) the shared"
                     + " extractor did not report, so an edit to them cannot be verified: "
@@ -367,6 +376,52 @@ class TestMethodProtection implements ConsoleFeatures {
     }
 
     /**
+     * Returns the method-name prefix (before the first tab) of one
+     * {@code "name\tbody"} record, or the whole record when it has no tab.
+     *
+     * @param record a {@code "name\tbody"} record
+     * @return the method name
+     */
+    private static String recordName(String record) {
+        int tab = record.indexOf('\t');
+        return tab >= 0 ? record.substring(0, tab) : record;
+    }
+
+    /**
+     * Extracts the method-name prefix (before the first tab) from each
+     * {@code "name\tbody"} record.
+     *
+     * @param records the {@code "name\tbody"} records
+     * @return the method names, in iteration order
+     */
+    private static Set<String> recordNames(Set<String> records) {
+        Set<String> names = new LinkedHashSet<>();
+        for (String record : records) {
+            names.add(recordName(record));
+        }
+        return names;
+    }
+
+    /**
+     * Counts, per method name, how many {@code "name\tbody"} records the
+     * shared extractor reported. The extractor keeps two overloads of the
+     * same name as two records, so a name appears more than once here; the
+     * cross-check in {@link #evaluate} needs that multiplicity to notice when
+     * the extractor dropped one overload but reported another of the same
+     * name.
+     *
+     * @param records the {@code "name\tbody"} records
+     * @return a map from method name to the number of records with that name
+     */
+    private static Map<String, Integer> recordNameCounts(Set<String> records) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (String record : records) {
+            counts.merge(recordName(record), 1, Integer::sum);
+        }
+        return counts;
+    }
+
+    /**
      * Extracts the method-name prefix (before the first tab) from each
      * {@code "name\tbody"} record.
      *
@@ -411,21 +466,45 @@ class TestMethodProtection implements ConsoleFeatures {
      * <p>Unlike the awk extractor, this scan removes comments and string and
      * character literals in source order, so a {@code //} inside a block
      * comment or a string does not terminate anything. It is deliberately
-     * conservative: a name it reports that the extractor did not is treated
-     * as cause to protect the whole file, which is the safe direction.</p>
+     * conservative: a name it counts more often than the extractor reported
+     * it is treated as cause to protect the whole file, which is the safe
+     * direction.</p>
+     *
+     * <p>To stay aligned with the extractor, which only recognizes
+     * {@code @Test} at class level (brace depth {@code <= 1}) and ignores
+     * methods of nested classes, this scan tracks brace depth and counts a
+     * {@code @Test} marker only where the extractor would. It also preserves
+     * multiplicity — two overloads of the same name count as two — so that a
+     * name the extractor reported once but that occurs twice here is still
+     * detected as under-reported.</p>
      *
      * @param content the Java source to scan
-     * @return the names of the {@code @Test}-annotated methods found
+     * @return a map from {@code @Test}-annotated method name to the number of
+     *         such methods found at class level
      */
-    private static Set<String> annotatedTestMethodNames(String content) {
+    private static Map<String, Integer> annotatedTestMethodCounts(String content) {
         String code = stripCommentsAndLiterals(content);
-        Set<String> names = new LinkedHashSet<>();
+        Map<String, Integer> counts = new LinkedHashMap<>();
         Matcher annotation = TEST_ANNOTATION.matcher(code);
-        while (annotation.find()) {
-            String name = methodNameAfter(code, annotation.end());
-            if (name != null) names.add(name);
+        int depth = 0;
+        int i = 0;
+        while (i < code.length()) {
+            char c = code.charAt(i);
+            if (c == '{') {
+                depth++;
+                i++;
+            } else if (c == '}') {
+                if (depth > 0) depth--;
+                i++;
+            } else if (c == '@' && depth <= 1 && annotation.region(i, code.length()).lookingAt()) {
+                String name = methodNameAfter(code, annotation.end());
+                if (name != null) counts.merge(name, 1, Integer::sum);
+                i = annotation.end();
+            } else {
+                i++;
+            }
         }
-        return names;
+        return counts;
     }
 
     /**
@@ -436,6 +515,15 @@ class TestMethodProtection implements ConsoleFeatures {
      * annotation argument (such as {@code @ValueSource(ints = {1, 2})}) is
      * not mistaken for the body, and a {@code ;} at top level (an abstract
      * method or a field) yields no name.
+     *
+     * <p>The naming rule is the shared extractor's rule, not the Java
+     * grammar's, and must stay so: the result is compared name-for-name with
+     * what the extractor reported. For a signature such as
+     * {@code void testFoo(@Size(1) String s)} both report {@code Size}, so the
+     * counts agree and the file is not blocked; reporting {@code testFoo} here
+     * alone would make every such method look unaccounted and block every
+     * edit to its file. The extractor still keys that method's record by
+     * {@code Size}, so an edit to its body is still detected.</p>
      *
      * @param code the comment- and literal-stripped source
      * @param from the index just past a {@code @Test} marker
@@ -466,11 +554,16 @@ class TestMethodProtection implements ConsoleFeatures {
     }
 
     /**
-     * Returns {@code content} with Java comments and string and character
-     * literals replaced by a single space, processing {@code //}, {@code /*},
-     * {@code "} and {@code '} in the order they appear so that a delimiter
-     * inside a comment or a literal is inert. A backslash escapes the next
-     * character inside a literal.
+     * Returns {@code content} with Java comments and string, character and
+     * text-block literals replaced by a single space, processing {@code //},
+     * {@code /*}, {@code """}, {@code "} and {@code '} in the order they appear
+     * so that a delimiter inside a comment or a literal is inert. A backslash
+     * escapes the next character inside a literal.
+     *
+     * <p>Text blocks ({@code """ ... """}) are recognized before ordinary
+     * string literals: an unescaped quote or an opening brace inside a text
+     * block would otherwise be misread as code and let a later {@code @Test}
+     * method go uncounted.</p>
      *
      * @param content the Java source
      * @return the source with comments and literals removed
@@ -488,6 +581,15 @@ class TestMethodProtection implements ConsoleFeatures {
                 i += 2;
                 while (i < n && !(content.charAt(i) == '*' && i + 1 < n && content.charAt(i + 1) == '/')) i++;
                 i = Math.min(i + 2, n);
+                out.append(' ');
+            } else if (c == '"' && next == '"' && i + 2 < n && content.charAt(i + 2) == '"') {
+                i += 3;
+                while (i < n && !(content.charAt(i) == '"' && i + 2 < n
+                        && content.charAt(i + 1) == '"' && content.charAt(i + 2) == '"')) {
+                    if (content.charAt(i) == '\\') i++;
+                    i++;
+                }
+                i = Math.min(i + 3, n);
                 out.append(' ');
             } else if (c == '"' || c == '\'') {
                 char quote = c;

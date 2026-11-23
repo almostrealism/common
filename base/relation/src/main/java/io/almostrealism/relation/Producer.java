@@ -111,32 +111,71 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Computabl
 	/**
 	 * Optimizes this {@link Producer} and evaluates the result in a single step.
 	 *
-	 * <p>This method applies optimization transformations to the computation
-	 * graph before evaluation. It is useful for one-shot evaluations where
-	 * the overhead of optimization is acceptable.</p>
+	 * <p>This is the default evaluation path: kernel boundaries are decided only
+	 * during {@link Process#optimize(io.almostrealism.compute.ProcessContext) optimization}, so evaluating
+	 * a composite graph that contains a reduction without optimizing it first
+	 * embeds that reduction in each of its readers and builds an exponentially
+	 * large expression. Routing through {@link Process#optimized(Supplier)} lets
+	 * the optimizer isolate such reductions into their own kernels. When this
+	 * producer is not a {@link Process}, {@link Process#optimized(Supplier)} passes
+	 * it through unchanged and the result matches {@link #evaluateExplicit(Object...)};
+	 * when it is a {@link Process}, optimization may still restructure or regenerate
+	 * the graph even if no isolation target is present, so the result is not
+	 * guaranteed to be identical to the unoptimized path.</p>
+	 *
+	 * <p>For repeated evaluations, consider caching the {@link Evaluable} returned
+	 * by {@code Process.optimized(this).get()} rather than optimizing on each call.</p>
 	 *
 	 * @param args arguments to pass to the evaluation
 	 * @return the computed result
 	 *
 	 * @see Process#optimized(Supplier)
+	 * @see #evaluateExplicit(Object...)
 	 */
-	default T evaluateOptimized(Object... args) {
+	default T evaluate(Object... args) {
 		return Process.optimized(this).get().evaluate(args);
 	}
 
 	/**
-	 * Evaluates this computation with the specified arguments.
+	 * Evaluates this computation without optimizing it first, combining
+	 * {@link #get()} and {@link Evaluable#evaluate(Object...)} into a single call.
 	 *
-	 * <p>This is a convenience method that combines {@link #get()} and
-	 * {@link Evaluable#evaluate(Object...)} into a single call. For repeated
-	 * evaluations, consider caching the {@link Evaluable} returned by
-	 * {@link #get()}.</p>
+	 * <p>This is the deliberate unoptimized path. Because nothing on it calls
+	 * {@link Process#optimize(io.almostrealism.compute.ProcessContext)}, no kernel boundaries are decided:
+	 * use it only when the caller knows the graph needs no isolation (for example
+	 * a single element-wise expression). A composite graph containing a reduction
+	 * read by several consumers must be evaluated through {@link #evaluate(Object...)}
+	 * instead, or it will build an exponentially large expression.</p>
+	 *
+	 * <p>Note that this method does not itself optimize, but it does not force an
+	 * unoptimized compile either: {@link #get()} returns a cached optimized
+	 * {@link Evaluable} when this producer has already been optimized (for example
+	 * by a prior {@link #evaluate(Object...)} call, which populates that cache). A
+	 * guaranteed-unoptimized evaluation therefore requires a producer that has not
+	 * yet been optimized.</p>
 	 *
 	 * @param args arguments to pass to the evaluation
 	 * @return the computed result
+	 *
+	 * @see #evaluate(Object...)
 	 */
-	default T evaluate(Object... args) {
+	default T evaluateExplicit(Object... args) {
 		return get().evaluate(args);
+	}
+
+	/**
+	 * Optimizes this {@link Producer} and evaluates the result in a single step.
+	 *
+	 * @param args arguments to pass to the evaluation
+	 * @return the computed result
+	 *
+	 * @deprecated optimization is now the default behavior of
+	 *             {@link #evaluate(Object...)}; call that instead. Retained as an
+	 *             alias while remaining call sites migrate.
+	 */
+	@Deprecated
+	default T evaluateOptimized(Object... args) {
+		return evaluate(args);
 	}
 
 	/**

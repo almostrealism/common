@@ -63,6 +63,21 @@ public interface FirFilterTestFeatures extends TestFeatures {
 	 * @return the computed FIR coefficients
 	 */
 	default PackedCollection referenceLowPassCoefficients(double cutoff, int sampleRate, int filterOrder) {
+		double[] coefficients = referenceLowPassTaps(cutoff, sampleRate, filterOrder);
+		return PackedCollection.of(coefficients);
+	}
+
+	/**
+	 * The taps of {@link #referenceLowPassCoefficients} as a host array, in double
+	 * precision, for oracles that assemble a whole reference signal on the host and
+	 * need a fresh coefficient set per sample (a time-varying cutoff).
+	 *
+	 * @param cutoff the cutoff frequency in Hz
+	 * @param sampleRate the sample rate in Hz
+	 * @param filterOrder the filter order (number of taps minus one)
+	 * @return the computed FIR coefficients
+	 */
+	default double[] referenceLowPassTaps(double cutoff, int sampleRate, int filterOrder) {
 		double[] coefficients = new double[filterOrder + 1];
 		double normalizedCutoff = 2.0 * cutoff / sampleRate;
 
@@ -76,7 +91,7 @@ public interface FirFilterTestFeatures extends TestFeatures {
 			coefficients[i] *= 0.54 - 0.46 * Math.cos(2.0 * Math.PI * i / filterOrder);
 		}
 
-		return PackedCollection.of(coefficients);
+		return coefficients;
 	}
 
 	/**

@@ -30,6 +30,7 @@ import io.almostrealism.profile.OperationProfile;
 import io.almostrealism.profile.OperationProfileNode;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ScopeSettings;
+import io.almostrealism.sequence.IndexSequence;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -149,8 +150,9 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @return a string containing the expression and its index options
 	 */
 	default String describeOptions(Expression<?> e) {
-		Set<Integer> options = e.getIndexOptions(kernel()).orElseThrow();
-		return e.getExpression(Expression.defaultLanguage()) + " | " + options;
+		IndexSequence options = e.getIndexOptions(kernel()).orElseThrow();
+		return e.getExpression(Expression.defaultLanguage()) + " | " +
+				Arrays.toString(options.longValues().distinct().sorted().toArray());
 	}
 
 	/**

@@ -46,4 +46,19 @@ public class ChoiceTest extends TestSuiteBase {
 			assertEquals(1.0, result.toDouble(1));
 		});
 	}
+
+	/**
+	 * Evaluates a {@link Choice} through the optimizing {@code evaluate()}, which rebuilds the
+	 * computation from its optimized children via {@link Choice#generate}. With three options
+	 * and a decision of 0.7 the third option is selected, so the result depends on the rebuilt
+	 * computation keeping both the choice count and the order of the decision and choices.
+	 */
+	@Test(timeout = 10000)
+	public void oneOfThreeOptimized() {
+		try (PackedCollection bank = pack(1.0, 1.0, 2.0, 1.0, 3.0, 4.0).reshape(shape(3, 2)).traverse(1);
+			 PackedCollection result = new Choice(shape(2), 3, c(0.35).multiply(2.0), cp(bank)).evaluate()) {
+			assertEquals(3.0, result.toDouble(0));
+			assertEquals(4.0, result.toDouble(1));
+		}
+	}
 }
