@@ -76,7 +76,20 @@ it is external (container stop, cgroup OOM, node restart, or a supervising CLI
 timeout). (The only plain `Process.destroy()`/SIGTERM calls in the harness, in
 `TmuxSession`, target short tmux/bash helper subprocesses on an
 `InterruptedException`, not the agent session, so they do not produce a 143 on
-the session being graded.) Separately, `AgentProcessRunner.Result`
+the session being graded.)
+
+That holds for the **direct-process** launch only. `AgentProcessRunner.runAttempt`
+also has a **tmux** launch path (`useTmux`, which `ClaudeCodeRunner` selects when
+tmux is requested and `TmuxSession.isAvailable()`). On that path the harness's
+kill action is `TmuxSession.close()` — `tmux kill-session`, which sends
+**`SIGHUP`**, not `SIGKILL` — and the exit code comes from a file the bash
+wrapper writes after the agent command returns (`TmuxSession.readExitCode`). An
+agent killed by a signal while the wrapper survives is recorded as `128+n` (143
+for SIGTERM); a wrapper killed along with it (an inactivity kill, a container
+stop that takes the whole pane) writes no file and is recorded as **`-1`** —
+the same exit code `AgentRunResult.launchFailed()` uses. So on the tmux path
+"the harness only ever SIGKILLs" is false, and exit `-1` alone does not mean
+"could not start". Separately, `AgentProcessRunner.Result`
 carries a `killedForLooping` flag that `OpencodeRunner` propagates but
 `ClaudeCodeRunner` silently drops, so a loop-detector kill under Claude is today
 indistinguishable from an external one.
@@ -135,7 +148,10 @@ the existing `DEGRADED` reasons.
 - Add a small, named classification of how a session ended, derived from
   `(exitCode, killedForInactivity, killedForLooping, wall-clock)`:
   - *could-not-start* — launch failure (`AgentRunResult.launchFailed()`, exit
-    `-1`, no output, ~0 ms);
+    `-1`, no output, ~0 ms). This must be decided by the *absence of runtime and
+    output*, not by exit `-1`: under tmux a session killed after real work also
+    reports `-1` (see Root cause), and keying on the exit code would grade it
+    as if it never started;
   - *killed-by-signal* — exit `143`/`137` (or `>128`) not already attributed to
     inactivity/loop, with measurable runtime;
   - *inactivity* / *loop* — the existing watchdog flags;
@@ -143,8 +159,9 @@ the existing `DEGRADED` reasons.
   Express it as a method/enum on `AgentRunResult` (the type that owns the exit
   code and flags), not as a helper on the job. A SIGTERM (143) the harness did
   not initiate is labelled external; a 137 that no harness flag claims is a
-  force-kill/OOM candidate. The classification drives both the kill-cause string
-  and the predicate below.
+  force-kill/OOM candidate; a `-1` or `129` (SIGHUP) with measurable runtime
+  that no harness flag claims is a tmux-path kill of unknown origin. The
+  classification drives both the kill-cause string and the predicate below.
 
 ### 3. Redefine the predicate and own it in a collaborator (`flowtree/runtime`)
 
@@ -153,6 +170,16 @@ the existing `DEGRADED` reasons.
   work** — i.e. the *could-not-start* classification, or clean-zero-runtime with
   no output — using the **final attempt's** duration, not the accumulated sum
   (addressing the known fragility across inactivity restarts).
+- **The flag has two consumers besides grading, and redefining it changes both.**
+  `CodingAgentJob.doWork` skips the falsification phase when
+  `primaryPhaseHardFailed` is set, and
+  `EnforcementRunner.applyExhaustionFallback` refuses to write the
+  commit-message rule's synthesized fallback `commit.txt` when it is set. Today a
+  killed-but-productive primary is (wrongly) flagged, so its tree gets no
+  falsification pass and no fallback commit message. After the change it will
+  get both. That is the intended consequence — the tree holds real work — but it
+  is a behaviour change for those two paths, and it needs its own tests (see
+  Success criteria).
 - Extract the primary-phase outcome state
   (`primaryPhaseHardFailed`, the predicate, the final-attempt duration, and the
   kill-cause classification) out of `CodingAgentJob` into a focused collaborator
@@ -184,6 +211,14 @@ the existing `DEGRADED` reasons.
   already no-ops without a PR context/target branch, so the condition to add is
   precisely "has a commit to open a PR for." This is the handler region to
   extract if `FlowTreeApiEndpoint` needs the room (it is at 1597 lines).
+- Caveat on the gate: `publish` does more than open the primary PR. It also
+  opens companion PRs for `event.getDependentRepoPushes()`, and it already
+  handles an event with no primary commit hash (it falls back to the branch
+  head, for a job whose only commit went to a dependent repo). A gate on
+  `getCommitHash() != null` alone would skip a `DEGRADED` job whose only
+  delivery was a dependent-repo push. The gate should be "delivered something
+  to open a PR for": a primary commit **or** a dependent-repo push. See open
+  question 2.
 
 ### 6. Cost of the killed session (`flowtree/runtime`)
 
@@ -222,7 +257,13 @@ flags through its `RollupTestJob`; plus a controller-level test for the PR gate)
 - **Predicate near-misses preserved.** The existing
   `hardFailurePredicateRejectsNearMisses` cases still hold (a true instant crash
   is still hard; an inactivity kill is still not), extended with the new case: a
-  signal kill with measurable runtime is **not** a hard failure.
+  signal kill with measurable runtime is **not** a hard failure, and neither is
+  a tmux-path `-1` with measurable runtime and output.
+- **Downstream consumers of the flag.** A signal-killed primary with measurable
+  runtime is followed by the falsification phase (when enabled), and the
+  commit-message exhaustion fallback writes its `commit.txt` for it; a
+  could-not-start primary still skips both (the existing behaviour of
+  `EnforcementRunner.applyExhaustionFallback` is pinned for that case).
 - **No regression on the SUCCESS path** (`primarySuccessRollsUpToSuccess`,
   `normalPrimaryFailureWithRecoveryRollsUpToSuccess`) and on the existing
   `DEGRADED` reasons (`GitManagedJobDegradedStatusTest`).
@@ -241,9 +282,10 @@ flags through its `RollupTestJob`; plus a controller-level test for the PR gate)
 ## Open questions
 
 1. **How far to attribute an external kill.** From inside the worker JVM we can
-   say a 143 was *not harness-initiated* (the harness uses SIGKILL) and label it
-   external, but distinguishing cgroup-OOM from node-restart from a CLI timeout
-   may need host/cgroup inspection that is out of scope here. Proposal: name what
+   say a 143 was *not harness-initiated* (on the direct-process path the harness
+   uses SIGKILL; on the tmux path it uses SIGHUP, and its own kills set
+   `killedForInactivity`/`killedForLooping`) and label it external, but
+   distinguishing cgroup-OOM from node-restart from a CLI timeout may need host/cgroup inspection that is out of scope here. Proposal: name what
    we can prove and label the rest "external SIGTERM (not harness-initiated)";
    if richer attribution is wanted, file it as a follow-up. **Decision needed
    from the approver.**
@@ -252,7 +294,10 @@ flags through its `RollupTestJob`; plus a controller-level test for the PR gate)
    approver wants, e.g., the `postCompletionCapHit` DEGRADED to also publish when
    a commit exists, the gate generalises cleanly to "`DEGRADED` with a commit",
    but that broadens behaviour for existing reasons and should be an explicit
-   decision rather than a silent side effect.
+   decision rather than a silent side effect. Relatedly, the approver should
+   confirm whether a killed-but-productive job whose only delivery was a
+   dependent-repo push opens its companion PRs (the Approach §5 caveat proposes
+   it does).
 3. **Collaborator boundaries.** The `PrimaryPhaseOutcome` extraction and the
    `FlowTreeApiEndpoint` status-handler extraction are proposed to create room;
    the exact seams are an implementation detail the object-oriented-design review
