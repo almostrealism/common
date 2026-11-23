@@ -179,6 +179,12 @@ All production changes are in `flowtree/runtime/src/main/java/io/flowtree/jobs/`
   - Rewrite STEP 3 of `buildReviewPrompt(...)` (bullet 4) and adjust the
     surrounding javadoc that currently advertises "fix what it finds … even when
     the fix is a refactor that touches other files".
+- **`EnforcementRunner`**: the inline comment where the rule is added reads
+  "One session per changed class", which is already stale (the rule reviews all
+  flagged classes together in one session, up to `MAX_CLASSES`, not one session
+  per class) and becomes more so once the frozen snapshot makes one-session-per-job
+  the common case. Correct it to describe the frozen-snapshot, one-session-per-job
+  behaviour this change establishes.
 - **`JobCostTracker`**: add a `total()` accessor that sums the per-model costs, so
   the rule can read a single job-wide cost figure before and after a session. The
   method belongs here because this class owns the cost maps (it already exposes
