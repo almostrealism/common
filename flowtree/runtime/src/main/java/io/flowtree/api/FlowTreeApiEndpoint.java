@@ -49,6 +49,7 @@ import java.util.regex.Pattern;
 import io.flowtree.controller.FlowTreeController;
 import io.flowtree.controller.JobLifecycleRecorder;
 import io.flowtree.github.GitHubProxyHandler;
+import io.flowtree.github.RunnerMonitor;
 import io.flowtree.tracker.TaskCloseOutReconciler;
 import io.flowtree.tracker.TrackerService;
 import io.flowtree.controller.JobStatsStore;
@@ -94,6 +95,8 @@ import io.flowtree.submission.PhaseConfigResolver;
  *   <tr><td>POST</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a POST request to the GitHub API</td></tr>
  *   <tr><td>PUT</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a PUT request to the GitHub API</td></tr>
  *   <tr><td>PATCH</td><td>/api/github/proxy?url=...</td><td><i>raw JSON payload</i></td><td>Proxy a PATCH request to the GitHub API</td></tr>
+ *   <tr><td>GET</td><td>/api/runners/select?required=&amp;fleets=&amp;org=</td><td>--</td><td>Which {@code runs-on} a job should use — see {@link RunnerQueryHandler}</td></tr>
+ *   <tr><td>GET</td><td>/api/runners?org=</td><td>--</td><td>List the organization's self-hosted runners (diagnostics)</td></tr>
  *   <tr><td>GET</td><td>/api/workstreams</td><td>--</td><td>List registered workstreams. Filters: {@code workspaceId},
  *       {@code repoUrl} (matched on repository identity, so SSH and HTTPS spellings of one repository are equivalent),
  *       {@code dispatchCapable} ({@code true}/{@code false}), {@code archived} ({@code true}/{@code false}; supersedes
@@ -185,6 +188,9 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
     /** Handles all {@code /api/github/proxy} requests and GitHub PR creation. */
     private final GitHubProxyHandler githubProxyHandler;
+
+    /** Answers {@code GET /api/runners/select} and {@code GET /api/runners} for CI. */
+    private final RunnerQueryHandler runnerQueryHandler;
 
     /** Handles all {@code /api/secrets/*} endpoint requests and token generation. */
     private final SecretsRequestHandler secretsHandler;
@@ -329,6 +335,7 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
         super(port);
         this.notifiers = new NotifierRegistry(primaryNotifier, notifiersByWorkspace);
         this.githubProxyHandler = new GitHubProxyHandler(githubOrgTokens);
+        this.runnerQueryHandler = new RunnerQueryHandler(new RunnerMonitor(githubProxyHandler));
         this.autoPrPublisher = new AutoPullRequestPublisher(githubProxyHandler);
         this.secretsHandler = new SecretsRequestHandler(notifiers);
         this.jobQueryHandler = new JobQueryHandler(this.notifiers, () -> statsQueryHandler);
@@ -765,6 +772,10 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
                 && (Method.GET.equals(method) || Method.POST.equals(method)
                     || Method.PUT.equals(method) || Method.PATCH.equals(method))) {
             return handleGitHubProxy(session, method);
+        }
+
+        if (Method.GET.equals(method) && uri.startsWith("/api/runners")) {
+            return runnerQueryHandler.handle(session, method, uri, this::errorResponse);
         }
 
         if (Method.POST.equals(method)) {

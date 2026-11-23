@@ -31,7 +31,13 @@ services:
       - GITHUB_OWNER=${GITHUB_OWNER:-almostrealism}
       - GITHUB_REPO=${GITHUB_REPO:-common}
       - RUNNER_PREFIX=${RUNNER_PREFIX:-ar-runner}
-      - RUNNER_LABELS=ar-ci
+      # ar-ci is the CPU test lane's label; ar-build lets the controller send the
+      # `build` job here when this fleet has an idle runner, so a machine already
+      # up for tests also takes bounded jar builds instead of sitting idle. The
+      # runners are ephemeral and re-register on every job, so a label added
+      # through the GitHub UI would not persist — this committed value is the
+      # only durable place for it.
+      - RUNNER_LABELS=ar-ci,ar-build
     volumes:
       # Persistent, shared Maven dependency cache. Every replica on this host
       # mounts it and uses its own <runner> subdirectory (the select-maven-repo

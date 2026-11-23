@@ -83,9 +83,14 @@ Volume=ar-ci-cl-m2:/opt/ar-maven-cache
 # install-runner.sh. Kept out of this file so it stays committable.
 EnvironmentFile=%h/.config/ar-ci-cl/runner.env
 
-# Not configurable: this fleet exists to serve the CL lane. Carrying ar-ci as
-# well would pull general CPU test jobs onto a machine dedicated to it.
-Environment=RUNNER_LABELS=ar-ci-cl
+# This fleet exists to serve the CL lane, so it does not carry ar-ci (that would
+# pull general CPU test jobs onto a machine dedicated to it). It does carry
+# ar-build: the controller sends the bounded `build` job here only when this
+# fleet has an idle runner, which keeps the ROCm host busy between CL jobs
+# without queueing build behind the tens-of-minutes test lanes. Runners are
+# ephemeral and re-register on every job, so this committed value is the only
+# durable place for the labels.
+Environment=RUNNER_LABELS=ar-ci-cl,ar-build
 
 [Service]
 # Runners register as ephemeral and exit after a single job; systemd brings the

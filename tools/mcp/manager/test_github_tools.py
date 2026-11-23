@@ -1474,3 +1474,32 @@ class TestGithubCreatePrArchived(unittest.TestCase):
             title="T", body="B", workstream_id="ws-live", head="feature/live")
         self.assertTrue(result["ok"], msg=result.get("error"))
         mock_by_branch.assert_not_called()
+
+
+class TestGithubListRunners(unittest.TestCase):
+    """``github_list_runners`` proxies the controller's read-only runner list."""
+
+    def setUp(self):
+        _grant_all_scopes()
+
+    def tearDown(self):
+        _clear_scopes()
+
+    @patch.object(server, "_controller_get")
+    def test_lists_runners_from_the_controller(self, mock_get):
+        mock_get.return_value = {
+            "ok": True, "listed": True,
+            "runners": [{"name": "cuda-1", "status": "online", "busy": False,
+                         "idle": True, "labels": ["self-hosted", "linux",
+                                                   "ar-ci-cuda", "ar-build"]}],
+        }
+        result = server.github_list_runners()
+        self.assertTrue(result["ok"])
+        self.assertEqual("cuda-1", result["runners"][0]["name"])
+        self.assertEqual("/api/runners", mock_get.call_args.args[0])
+
+    @patch.object(server, "_controller_get")
+    def test_passes_an_explicit_org(self, mock_get):
+        mock_get.return_value = {"ok": True, "listed": True, "runners": []}
+        server.github_list_runners(org="almostrealism")
+        self.assertEqual("/api/runners?org=almostrealism", mock_get.call_args.args[0])
