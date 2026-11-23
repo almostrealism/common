@@ -175,8 +175,8 @@ by the 17 lanes passing on the PR, as the plan notes under Success criteria.
 |---|---|---|
 | Surefire (every module) | root `pom.xml` | Add `<argLine>@{argLine} --enable-native-access=ALL-UNNAMED</argLine>` to the root `maven-surefire-plugin` configuration, and an empty `<argLine></argLine>` in the root `<properties>` |
 | Failsafe | — | No module configures `maven-failsafe-plugin`; nothing to change. If one is added later it takes the same `argLine` |
-| Agent container | `flowtree/runtime/agent/entrypoint.sh` | Add the flag to the fixed part of the `exec java` line (not to `JAVA_OPTS`, which an operator overrides through `MAVEN_OPTS`/`AGENT_JVM_OPTS` and would drop it) |
-| Agent on macOS | `flowtree/runtime/agent/macos/run.sh` | Same, on its `exec java` line |
+| Agent container | `flowtree/runtime/agent/entrypoint.sh` | Add the flag to the fixed part of the `exec java` line (not to `JAVA_OPTS`, which is seeded from the operator-overridable `MAVEN_OPTS` here and would drop it) |
+| Agent on macOS | `flowtree/runtime/agent/macos/run.sh` | Same, on its `exec java` line (here `JAVA_OPTS` is seeded from `AGENT_JVM_OPTS`) |
 | Controller container | `flowtree/runtime/controller/Dockerfile` | Add it to the `ENTRYPOINT` array |
 | Agent and controller from source | `flowtree/runtime/bin/start-agent.sh`, `start-controller.sh` | These run `mvn exec:java`, which executes in Maven's own JVM; prepend the flag to `MAVEN_OPTS` in the script |
 | Moonbeam inference | `engine/ml/scripts/run_moonbeam_inference.sh` | Add to its `java` line |
