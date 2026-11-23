@@ -19,6 +19,7 @@ package io.flowtree.api;
 import fi.iki.elonen.NanoHTTPD.Response;
 import io.flowtree.controller.ActiveJob;
 import io.flowtree.controller.JobStatsStore;
+import io.flowtree.controller.PendingJob;
 import io.flowtree.jobs.JobCompletionEvent;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -99,6 +100,41 @@ public class StatsQueryHandlerHeartbeatTest extends TestSuiteBase {
             Assert.assertTrue("the pending job is listed", body.contains("\"jobId\":\"job-1\""));
             Assert.assertTrue("a job older than the lost threshold is labelled LOST",
                     body.contains("\"state\":\"LOST\""));
+        } finally {
+            store.close();
+        }
+    }
+
+    /**
+     * With no threshold configured the listing defaults to
+     * {@link PendingJob#DEFAULT_LOST_THRESHOLD} (three hours), the same default
+     * the scanner uses, so the two never drift: a job that has waited just under
+     * three hours is still {@code SUBMITTED}, one that has waited just past it is
+     * {@code LOST}.
+     */
+    @Test(timeout = 30000)
+    public void pendingListingDefaultsToThreeHourLostThreshold() throws Exception {
+        JobStatsStore store = newStore();
+        try {
+            Assert.assertEquals("the handler shares the scanner's default lost threshold",
+                    Duration.ofHours(3), PendingJob.DEFAULT_LOST_THRESHOLD);
+
+            store.recordJobSubmitted("job-waiting", "ws-1", "job", "submitter", null,
+                    Instant.now().minus(Duration.ofMinutes(179)));
+            store.recordJobSubmitted("job-dropped", "ws-2", "job", "submitter", null,
+                    Instant.now().minus(Duration.ofMinutes(181)));
+
+            StatsQueryHandler handler = new StatsQueryHandler(store);
+
+            String waiting = body(handler.handlePendingJobs("ws-1"));
+            Assert.assertTrue("a job under three hours old is SUBMITTED by default",
+                    waiting.contains("\"state\":\"SUBMITTED\""));
+            Assert.assertFalse("a job under three hours old is not yet LOST",
+                    waiting.contains("\"state\":\"LOST\""));
+
+            String dropped = body(handler.handlePendingJobs("ws-2"));
+            Assert.assertTrue("a job past three hours is LOST under the default threshold",
+                    dropped.contains("\"state\":\"LOST\""));
         } finally {
             store.close();
         }
