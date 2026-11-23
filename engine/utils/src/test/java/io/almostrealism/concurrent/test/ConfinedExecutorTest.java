@@ -18,6 +18,7 @@ package io.almostrealism.concurrent.test;
 
 import io.almostrealism.concurrent.ConfinedExecutor;
 import io.almostrealism.concurrent.HandOffWindow;
+import org.almostrealism.io.Console;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -29,6 +30,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * Tests {@link ConfinedExecutor#runOrElse(Runnable, Runnable)}: work runs on the confined
@@ -780,6 +782,60 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 	}
 
 	/**
+	 * {@link ConfinedExecutor#runLater} queues work on the confined thread without waiting for it,
+	 * inside the task scope, and may be called from the confined thread itself. A failure of such
+	 * work is logged and does not stop later work.
+	 */
+	@Test(timeout = 10000)
+	public void runLaterQueuesWithoutWaiting() throws InterruptedException {
+		AtomicReference<Thread> scoped = new AtomicReference<>();
+		ConfinedExecutor executor = new ConfinedExecutor(task -> {
+			scoped.set(Thread.currentThread());
+			task.run();
+		});
+
+		try {
+			CountDownLatch release = new CountDownLatch(1);
+			CountDownLatch ran = new CountDownLatch(2);
+			AtomicReference<Thread> taskThread = new AtomicReference<>();
+
+			Assert.assertTrue(executor.runLater(() -> awaitLatch(release)));
+			Assert.assertTrue(executor.runLater(() -> {
+				throw new IllegalStateException("queued work failed");
+			}));
+			Assert.assertTrue(executor.runLater(() -> {
+				taskThread.set(Thread.currentThread());
+				Assert.assertTrue("The confined thread may queue more work",
+						executor.runLater(ran::countDown));
+				ran.countDown();
+			}));
+
+			Assert.assertEquals("runLater must not wait for queued work", 2, ran.getCount());
+			release.countDown();
+
+			Assert.assertTrue(ran.await(5, TimeUnit.SECONDS));
+			Assert.assertNotSame(Thread.currentThread(), taskThread.get());
+			Assert.assertSame(taskThread.get(), scoped.get());
+		} finally {
+			executor.destroy();
+		}
+	}
+
+	/**
+	 * Once the executor has been destroyed, {@link ConfinedExecutor#runLater} drops the work and
+	 * reports that it did.
+	 */
+	@Test(timeout = 10000)
+	public void runLaterDropsWorkAfterDestroy() {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		executor.destroy();
+
+		AtomicBoolean ran = new AtomicBoolean();
+		Assert.assertFalse(executor.runLater(() -> ran.set(true)));
+		Assert.assertFalse(ran.get());
+	}
+
+	/**
 	 * Runs one task on a new executor with the given window, lets the confined thread sit idle,
 	 * and returns the state it settles in. Before returning, checks that the idle thread still
 	 * picks up a second task.
@@ -840,6 +896,93 @@ public class ConfinedExecutorTest extends TestSuiteBase {
 			return state;
 		} finally {
 			releaseTask.countDown();
+			executor.destroy();
+		}
+	}
+
+	/**
+	 * {@link ConfinedExecutor#runInterruptibly} runs the task and rethrows its failure, and an
+	 * interrupt while the task is still queued ends the wait by throwing
+	 * {@link InterruptedException}, without any warning, rather than returning normally. The
+	 * abandoned task still runs afterwards.
+	 *
+	 * @throws InterruptedException if the test thread is interrupted
+	 */
+	@Test(timeout = 10000)
+	public void runInterruptiblyThrowsOnInterrupt() throws InterruptedException {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		CountDownLatch releaseBlocker = new CountDownLatch(1);
+		CountDownLatch abandonedRan = new CountDownLatch(1);
+		List<String> warnings = Collections.synchronizedList(new ArrayList<>());
+		Consumer<String> listener = line -> {
+			if (line.contains("WARN")) warnings.add(line);
+		};
+
+		try {
+			AtomicBoolean ran = new AtomicBoolean();
+			executor.runInterruptibly(() -> ran.set(true));
+			assertTrue(ran.get());
+
+			try {
+				executor.runInterruptibly(() -> { throw new IllegalArgumentException("task failure"); });
+				Assert.fail("A failure of the task must be rethrown");
+			} catch (IllegalArgumentException expected) {
+				assertEquals("task failure", expected.getMessage());
+			}
+
+			executor.runLater(() -> awaitLatch(releaseBlocker));
+			Console.root().addListener(listener);
+			Thread.currentThread().interrupt();
+
+			boolean interrupted = false;
+			try {
+				executor.runInterruptibly(abandonedRan::countDown);
+			} catch (InterruptedException e) {
+				interrupted = true;
+			} finally {
+				Console.root().removeListener(listener);
+			}
+
+			assertTrue("An interrupt while the task is queued must throw", interrupted);
+			assertEquals("The thrown interrupt is the only report: " + warnings, 0, warnings.size());
+			releaseBlocker.countDown();
+			assertTrue("The abandoned task still runs", abandonedRan.await(5, TimeUnit.SECONDS));
+		} finally {
+			releaseBlocker.countDown();
+			executor.destroy();
+		}
+	}
+
+	/**
+	 * {@link ConfinedExecutor#runLaterOrElse} queues the task without waiting while the executor
+	 * is active, and once it has been destroyed runs the fallback on the calling thread, after the
+	 * work queued before destruction has run.
+	 *
+	 * @throws InterruptedException if the test thread is interrupted
+	 */
+	@Test(timeout = 10000)
+	public void runLaterOrElseQueuesOrFallsBack() throws InterruptedException {
+		ConfinedExecutor executor = new ConfinedExecutor();
+		CountDownLatch releaseBlocker = new CountDownLatch(1);
+		CountDownLatch queuedRan = new CountDownLatch(1);
+		AtomicBoolean fallbackRan = new AtomicBoolean();
+
+		try {
+			executor.runLater(() -> awaitLatch(releaseBlocker));
+			executor.runLaterOrElse(queuedRan::countDown, () -> fallbackRan.set(true));
+			assertEquals("The task must be queued without waiting", 1, queuedRan.getCount());
+
+			releaseBlocker.countDown();
+			assertTrue(queuedRan.await(5, TimeUnit.SECONDS));
+			assertFalse(fallbackRan.get());
+
+			executor.destroy();
+			AtomicReference<Thread> fallbackThread = new AtomicReference<>();
+			executor.runLaterOrElse(() -> Assert.fail("A destroyed executor must not run the task"),
+					() -> fallbackThread.set(Thread.currentThread()));
+			Assert.assertSame("The fallback runs on the calling thread", Thread.currentThread(), fallbackThread.get());
+		} finally {
+			releaseBlocker.countDown();
 			executor.destroy();
 		}
 	}

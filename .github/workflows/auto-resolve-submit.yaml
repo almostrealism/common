@@ -152,6 +152,25 @@ jobs:
           RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: bash ./tools/ci/remediation-required-labels.sh
 
+      # Grant the agent the right to edit the protected files the branch already
+      # changes (see tools/ci/detect-protected-file-changes.sh). Read from the
+      # trusted compare API, never the staged request. Writes the grants to
+      # $GITHUB_ENV for the submit step below. Runs only when a request was
+      # staged, like the label step above.
+      - name: Grant edits to protected files the branch changes
+        if: hashFiles('auto-resolve-request/submit.env') != ''
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          BASE_BRANCH: ${{ github.event.workflow_run.pull_requests[0].base.ref || 'master' }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -f ./tools/ci/detect-protected-file-changes.sh ]; then
+            echo "::warning::The default branch has no tools/ci/detect-protected-file-changes.sh yet — the branch's protected-file changes are not granted"
+            exit 0
+          fi
+          bash ./tools/ci/detect-protected-file-changes.sh
+
       # The artifact was written by a job that ran the pull request's code, so
       # its submit.env is untrusted: submit-staged-request.sh exports only the
       # documented keys rather than appending the file to $GITHUB_ENV, and is a

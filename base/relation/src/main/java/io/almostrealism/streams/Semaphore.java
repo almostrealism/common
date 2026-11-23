@@ -18,8 +18,8 @@ package io.almostrealism.streams;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
@@ -41,15 +41,26 @@ import java.util.function.Supplier;
  */
 public interface Semaphore {
 	/**
-	 * Shared executor for {@link #onComplete(Runnable)} callbacks. Each callback occupies
-	 * a thread only while it waits for its semaphore and runs, and idle threads are
-	 * reclaimed, so registering many callbacks does not accumulate threads the way a
-	 * thread-per-callback approach would. Callbacks must not block on work that can only
-	 * progress on this same pool's caller (the pool is unbounded, so ordinary waits on
-	 * device completions are safe).
+	 * Shared executor that {@link #onSettled(Runnable)} callbacks (and everything built on it)
+	 * run on. An implementation that is told when its work settles hands each callback here only
+	 * once it has settled, so the callback holds a thread only while it runs. The default
+	 * {@link #onSettled(Runnable)}, for an implementation that cannot be told, also waits here,
+	 * and so holds a thread for as long as its work is pending.
+	 *
+	 * <p>Completions often settle together (every dispatch of a command buffer that has just
+	 * finished), so their callbacks arrive in bursts. This is an {@link ElasticExecutor}: a burst
+	 * queues and is run by however few threads keep up with it, rather than starting a thread per
+	 * callback that then idles for the keep-alive period, as a cached pool would.</p>
+	 *
+	 * <p>The executor is deliberately unbounded. A callback may wait on a device completion, and the
+	 * completion it waits for may itself only settle through another callback queued here (a
+	 * {@link DeferredSemaphore} whose work is started by its dependency's callback, for example), so
+	 * a bound could leave every thread waiting for a callback that never gets one. A callback that
+	 * waits for a thread longer than the starvation interval is given a new one, so no such
+	 * dependency can stall it.</p>
 	 */
-	ExecutorService CALLBACK_EXECUTOR = Executors.newCachedThreadPool(r ->
-			new Thread(r, "Semaphore onComplete"));
+	Executor CALLBACK_EXECUTOR = new ElasticExecutor("Semaphore onComplete",
+			TimeUnit.MILLISECONDS.toNanos(1), TimeUnit.SECONDS.toMillis(60));
 
 	/**
 	 * Blocks the calling thread until the guarded operation has completed.
@@ -61,9 +72,12 @@ public interface Semaphore {
 	 * thread is interrupted meanwhile; an interrupt received before or during the wait is
 	 * restored once it has completed.
 	 *
-	 * <p>{@link #waitFor()} returns early, with the interrupt status set, when the waiting
+	 * <p>{@link #waitFor()} may end early, with the interrupt status set, when the waiting
 	 * thread is interrupted, so a caller cannot tell from its return alone that the
-	 * operation completed. This is for a caller whose next step relies on that completion
+	 * operation completed. This default assumes such a {@link #waitFor()} returns; an
+	 * implementation whose {@link #waitFor()} throws when interrupted before the operation
+	 * has completed must override this method, as must a wrapper that delegates its wait to
+	 * such a completion. This is for a caller whose next step relies on that completion
 	 * (encoding a dispatch that must be ordered after it, or publishing a completion that
 	 * is only valid once it has fired): the wait is repeated with the interrupt status
 	 * cleared until it returns without being interrupted. A failure is rethrown exactly as
@@ -191,11 +205,12 @@ public interface Semaphore {
 	 * <p>The default waits for the operation on a {@link #CALLBACK_EXECUTOR} thread, which
 	 * both drives it (a {@link #waitFor()} that commits a command buffer, for example) and
 	 * observes it, at the cost of one thread for as long as the operation is pending. An
-	 * implementation that is told when its operation settles &mdash; a latch counted down by
-	 * the work itself, a completion that is itself started by another's settlement &mdash;
-	 * overrides this to register the callback instead, holding no thread while the work runs.
-	 * That is what lets a caller chain any number of submissions before it waits: a chain is
-	 * then a list of registered callbacks, not a list of parked threads.</p>
+	 * implementation that is told when its operation settles &mdash; a latch counted down by the
+	 * work itself, a completion that is itself started by another's settlement, a device that
+	 * reports a finished command buffer &mdash; overrides this to register the callback instead,
+	 * holding no thread while the work runs. That is what lets a caller chain any number of
+	 * submissions before it waits: a chain is then a list of registered callbacks, not a list of
+	 * parked threads.</p>
 	 *
 	 * <p>The failure itself is not handled here: it is reported to whoever waits on this
 	 * semaphore, and a callback that needs it calls {@link #waitFor()}, which returns or

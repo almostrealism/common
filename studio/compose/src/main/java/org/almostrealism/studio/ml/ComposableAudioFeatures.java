@@ -26,8 +26,8 @@ import org.almostrealism.collect.PackedCollection;
 
 /**
  * A {@link Factor} that scales audio feature data by decision weights derived from
- * a conditioning value vector. Used in attention-conditioned audio generation to
- * modulate feature contributions based on an external control signal.
+ * a position vector. Each instance is one encoded source of an {@link AudioComposer},
+ * which blends its sources in latent space according to the scales computed here.
  */
 public class ComposableAudioFeatures implements Factor<PackedCollection>, Destroyable, CodeFeatures {
 	/** The audio feature data to be scaled, shaped {@code (T, B)}. */
@@ -117,7 +117,10 @@ public class ComposableAudioFeatures implements Factor<PackedCollection>, Destro
 	/**
 	 * Sets the scalar multiplier applied to the resultant, so that a sum of several
 	 * resultants weights this one by {@code contribution} independently of the value
-	 * vector. The default of {@code 1.0} leaves the resultant unscaled.
+	 * vector. The default of {@code 1.0} leaves the resultant unscaled. In a normalized
+	 * blend the contribution multiplies the source's share instead
+	 * ({@link #contributed(CollectionProducer)}), and a contribution of zero or
+	 * below excludes the source ({@link #isBlended()}).
 	 *
 	 * @param contribution  the multiplier for the resultant
 	 */
@@ -133,10 +136,19 @@ public class ComposableAudioFeatures implements Factor<PackedCollection>, Destro
 	public TraversalPolicy getFeatureShape() { return shape(features); }
 
 	/**
-	 * Returns the factor by which {@link #getResultant(Producer)} scales each cell of the
-	 * feature data: the dot product of the cell's weight vector with the provided value
-	 * vector, clamped to be non-negative and multiplied by the
-	 * {@link #getContribution() contribution}.
+	 * Returns whether this source takes part in a normalized blend
+	 * ({@link AudioComposer#setNormalizedBlend(boolean)}): only a positive
+	 * {@link #getContribution() contribution} can be a share of a weighted mean, so a
+	 * contribution of zero or below excludes the source.
+	 *
+	 * @return {@code true} if the contribution is positive
+	 */
+	public boolean isBlended() { return contribution > 0; }
+
+	/**
+	 * Returns the score of each feature cell for the provided value vector: the dot
+	 * product of the cell's weight vector with the value vector, unclamped and
+	 * independent of the contribution.
 	 *
 	 * <p>
 	 * The value vector is tiled explicitly to the {@code (T, B, L)} shape of the weights
@@ -145,19 +157,44 @@ public class ComposableAudioFeatures implements Factor<PackedCollection>, Destro
 	 * against the weight tensor pairs it with a leading axis instead.
 	 * </p>
 	 *
-	 * @param value  the vector of length {@code L} used to determine the scaling factors
-	 * @return  the per-cell scaling factors, in the shape of the feature data
+	 * @param value  the vector of length {@code L} the weights are scored against
+	 * @return  the per-cell scores, in the shape of the feature data
 	 */
-	public CollectionProducer getScale(Producer<PackedCollection> value) {
+	public CollectionProducer getScore(Producer<PackedCollection> value) {
 		TraversalPolicy weightShape = shape(weights);
 		int length = weightShape.length(2);
 		CollectionProducer tiled = c(value).reshape(shape(length))
 				.repeat(weightShape.getTotalSize() / length)
 				.reshape(weightShape);
 
-		CollectionProducer scale = c(weights).multiply(tiled).traverse(2).sum();
-		scale = max(scale.reshape(scale.getShape().trim()), c(0));
-		return contribution == 1.0 ? scale : scale.multiply(c(contribution));
+		CollectionProducer score = c(weights).multiply(tiled).traverse(2).sum();
+		return score.reshape(score.getShape().trim());
+	}
+
+	/**
+	 * Returns the factor by which {@link #getResultant(Producer)} scales each cell of the
+	 * feature data: the {@link #getScore(Producer) score} of the cell, clamped to be
+	 * non-negative and multiplied by the {@link #getContribution() contribution}.
+	 *
+	 * @param value  the vector of length {@code L} used to determine the scaling factors
+	 * @return  the per-cell scaling factors, in the shape of the feature data
+	 */
+	public CollectionProducer getScale(Producer<PackedCollection> value) {
+		return contributed(max(getScore(value), c(0)));
+	}
+
+	/**
+	 * Returns the given per-cell factor multiplied by this source's
+	 * {@link #getContribution() contribution}. The {@link #getScale(Producer) scale} of a
+	 * weighted sum is the contributed clamped score; in a normalized blend
+	 * ({@link AudioComposer#setNormalizedBlend(boolean)}) the composer passes each source's
+	 * softmax term, so that the shares are weighted by the contributions.
+	 *
+	 * @param factor  the per-cell factor, in the shape of the feature data
+	 * @return  the factor weighted by the contribution
+	 */
+	public CollectionProducer contributed(CollectionProducer factor) {
+		return contribution == 1.0 ? factor : factor.multiply(c(contribution));
 	}
 
 	/**

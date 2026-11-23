@@ -36,6 +36,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.List;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -282,8 +283,8 @@ public class TraversableDeltaComputation
 	 * references between kernel invocations.</p>
 	 */
 	@Override
-	public void resetArguments() {
-		super.resetArguments();
+	public void resetArguments(Set<ScopeLifecycle> visited) {
+		super.resetArguments(visited);
 		targetVariable = null;
 	}
 

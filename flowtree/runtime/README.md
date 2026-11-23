@@ -144,6 +144,39 @@ With no terminal attached, a missing `FLOWTREE_ROOT_HOST` or
 `CLAUDE_CODE_OAUTH_TOKEN` fails with the name of the missing key instead of
 waiting on a prompt.
 
+### Controller operator settings
+
+Operator settings for the controller stack — the consultant backend
+(`AR_CONSULTANT_BACKEND`), its endpoint and model variables, image pins, port
+overrides — reach the services through the compose project's env file
+(`flowtree/runtime/controller/.env`), which compose interpolates on every
+invocation. That file is **gitignored and derived**: a deploy runs from a fresh
+checkout whose `actions/checkout` clean step (`git clean -ffdx`) deletes it, and
+`rebuild.sh` regenerates it each run. A setting left only in it therefore resets
+to its compose default on the next deploy — this is how `AR_CONSULTANT_BACKEND`
+silently fell back to `llamacpp`.
+
+Put operator settings in the **operator settings file** instead, which lives
+outside the working tree so no checkout clean touches it:
+
+```bash
+# /Users/Shared/flowtree/secrets/controller.env
+AR_CONSULTANT_BACKEND=openrouter
+```
+
+`rebuild.sh` reads it on every run and carries every line into the compose
+`.env`. Its location defaults to `${SECRETS_DIR}/controller.env` (beside the
+other deploy secrets) and is overridable with `FLOWTREE_CONTROLLER_ENV` — the
+deploy workflow passes the `FLOWTREE_CONTROLLER_ENV` repository variable, exactly
+as `FLOWTREE_AGENT_ENV` locates the agent pool's env file. One file carries every
+setting, rather than a repository variable per setting.
+
+For a value `rebuild.sh` computes itself (`FLEET_BIND_ADDR`), an operator value
+wins over the computed default: an exported environment variable first, then the
+operator settings file, then detection. After the stack is up the deploy
+workflow prints the effective non-secret settings (the backend name, for
+instance) in its job summary, so a reset is visible on the deploy that causes it.
+
 ### Manual compose commands
 
 ```bash
@@ -253,6 +286,44 @@ Servers discover each other through explicit connection (host + port) or through
 - **[Node Relay and Job Routing](docs/node-relay.md)** — How jobs move through the network: server vs. peer connections, the relay loop, label-based routing, and the controller's relay Node. **Read this before modifying Node, NodeGroup, or Connection.**
 - **[Agent Pool](docs/agent-pool.md)** — Self-contained Docker setup for running a scalable pool of agent nodes, plus a native macOS agent (launchd) for jobs that require `platform=macos`.
 - **[MCP Tools for Agent Jobs](../tools/mcp/README.md)** — Which MCP tools are available to coding agents, how they are delivered, and how to configure `workstreams.yaml`.
+
+---
+
+## Runner Monitoring and Build-Runner Selection
+
+The controller monitors the organization's self-hosted GitHub Actions runners
+and answers "which runner should a job use?" for CI. It uses the controller's
+existing GitHub credentials and GitHub client (`GitHubProxyHandler`) — there is
+no second HTTP client and no second token path.
+
+- **`RunnerMonitor`** (`io.flowtree.github`) reads the runners from
+  `GET /orgs/{org}/actions/runners` (paginated) through
+  `GitHubProxyHandler.listOrganizationRunners` and caches the list for a few
+  seconds, so a burst of pipeline runs does not hit GitHub's rate limit. Each
+  `GitHubRunner` carries its name, status (online/offline), busy flag, and
+  labels.
+- **`GET /api/runners/select?required=<label>&fleets=<csv>&org=<org>`** answers
+  which runner a job should use. It returns the `runs-on` label list of the
+  first fleet, in preference order, that has an online, idle runner carrying the
+  required label (e.g. `ar-build`) and the fleet's own labels — or
+  `["ubuntu-latest"]` when none does. The response carries `fleet`, `hosted`,
+  `listed` and a `reason`; when the controller's token cannot list the runners
+  (it lacks the organization "Self-hosted runners" read permission), `listed` is
+  `false` and the reason says so, so the caller is never silently answered
+  hosted with no explanation.
+- **`GET /api/runners?org=<org>`** returns the runner list itself, read-only, for
+  diagnostics. The ar-manager MCP tool `github_list_runners` surfaces it.
+- The default fleet preference is the CUDA fleet (`ar-ci-cuda`), then the
+  OpenCL/ROCm fleet (`ar-ci-cl`), then the Linux CPU fleet (`ar-ci`), then macOS
+  last (its runners are the scarcest). The owner reorders it with no commit by
+  setting `AR_CI_RUNNER_FLEET_PREFERENCE` (a comma-separated list of fleet
+  labels) on the controller; `AR_CI_RUNNER_ORG` changes the monitored
+  organization.
+
+Both endpoints are under the same auth as the other `/api/...` routes CI calls.
+The `build` job's `select-build-runner` job in `.github/workflows/analysis.yaml`
+is the consumer; see "Controller-driven build-runner selection" in
+[`../../.github/CLAUDE.md`](../../.github/CLAUDE.md).
 
 ---
 

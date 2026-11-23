@@ -28,6 +28,183 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 
 ## Planning History
 
+### 2026-11-19 (later) — Render the floor through a refractive sphere by memoizing the argument-reset DAG traversal
+
+**Category:** Code Quality (correctness), with a general compilation-performance payoff
+**Branch:** `project/plan-20261119-180104`
+**Plan:** [`PLAN-20261119-refraction-compile-dag-memoization.md`](PLAN-20261119-refraction-compile-dag-memoization.md)
+
+#### What changed since last cycle
+
+The audio-latent-composition documentation cycle merged (PR #990 into `master`), filling the
+last cleanly-drift-guardable flagship documentation gap. Around it the agent-infrastructure and
+CI track kept moving heavily — `github_update_pr`, the commit-subject-not-prompt work, the
+dependent-repo auto-review, the ready-to-launch label, and the `fix/arrangement-records-rebuilt-
+each-cycle` fix (#999: sync arrangement records once per cycle, not on first unmatched signature).
+None of these touched the platform's render or compilation core.
+
+#### Category assessment (priority order)
+
+- **Documentation — genuinely excellent, and the one remaining platform gap is not reachable.**
+  The corpus is current (60+ internals pages); the prior cycle had to hunt to find the
+  audio-latent-composition gap and filled it. The one platform subsystem still lacking an
+  internals page is the **evolutionary generative arrangement pipeline** (`ProjectedGenome` →
+  `GenomicNetwork` → `AudioScenePopulation` → `ArrangementGenerationProcess`, spanning
+  `domain/heredity`, `studio/spatial`, `studio/compose`). But its only end-to-end test,
+  `ArrangementGenerationProcessTest`, is gated on the curated sample library
+  (`requireCuratedScene` → `AR_RINGS_LIBRARY`/`AR_RINGS_PATTERNS`), so a worked example cannot be
+  drift-guarded on an arbitrary node — exactly the portability the documentation discipline
+  requires. Documenting it as a tested example is premature. No reachable flagship gap this
+  cycle. Moved on.
+- **Code quality (correctness) — a concrete, test-pinned defect, and it decided the cycle.**
+  `ReflectionRefractionRenderTest#refractiveSphereShowsFloor` is still
+  `@TestProperties(knownIssue = true)`, so the engine ships no asserting refraction render test
+  in CI. The cause is identified by code inspection and documented in the test's own Javadoc and
+  the glossy-reflection notes (runtime confirmation was pending at planning time):
+  `RefractionShader.shade` builds a correct, diamond-shaped `Producer` graph, but
+  `ComputationBase.resetArguments()` recurses into `getInputs()` through
+  `ScopeLifecycle.resetArguments(Stream)` with **no visited set**, so every shared node is reset
+  once *per path* that reaches it — exponential compile cost on a heavily-shared graph. The
+  sibling `prepareScope` does not blow up because it carries a guard that stops re-descent into
+  an already-prepared node; `resetArguments` is missing exactly that guard. Chosen.
+- **Performance — this fix *is* the performance lever, surfaced through a correctness test.**
+  Memoizing the reset traversal is a general compile-cost win for every deeply-shared graph (also
+  the likely-related non-identity-transform reflection and `renderTwoSpheres` compile costs),
+  but it enters through a correctness gate (a disabled CI assertion), so it is classified as code
+  quality, matching the reflected-ray precedent.
+- **Proof of value — the category this serves, gated on exactly this fix.** The ferrofluid glossy
+  render track (Phase 2) needs a working, CI-guarded refraction path; the self-hosted-LM and
+  render workloads both depend on fast compilation of shared graphs.
+
+#### Why this task
+
+It is the disciplined pick under the priority order: documentation has no reachable flagship gap,
+and the first reachable code-quality item is a correctness defect pinned by an existing
+known-issue test whose root cause is already diagnosed to a single missing memoization guard. The
+fix is small and surgical — thread an identity visited set through the recursive
+`resetArguments` descent so each node is reset once per pass — and it keeps every project
+discipline: it is a deduplication of a cleanup walk, not a kernel-boundary decision, so it adds no
+manual `isolate()`/`Process.isolated` and leaves the optimizer in charge. Clearing the
+`knownIssue` flag restores a CI render assertion additively. Backend-independent — a synthetic
+32×32 host render, no curated library, no Metal — so it runs on any node with no workstream
+settings file.
+
+#### Balance across categories
+
+The last cycle was documentation; the two before were documentation and code quality (reflected
+ray). Returning to code quality is not drift: it is the named open sibling of the reflected-ray
+cycle, it attacks a foundational compilation-cost defect (not a symptom), and it unblocks the
+proof-of-value render track. Medium task touching `base/code` (two files) plus one test flag and
+one new structural test.
+
+#### What comes next
+
+1. This plan: the visited-set memoization in `ScopeLifecycle`/`ComputationBase`, the cleared
+   `knownIssue` on `refractiveSphereShowsFloor`, and the structural once-per-node test.
+2. **Code quality / performance, sibling:** the non-identity-transform reflection expression
+   blow-up ("Large expression not improved by simplification") and the `renderTwoSpheres` compile
+   timeout — an expression-*size* problem in simplification, distinct from the reset traversal;
+   report whether this fix incidentally helps.
+3. **Proof of value, ferrofluid Phase 0/2:** the end-to-end vertical slice and the glossy look,
+   once the owner settles the fluid-method choices (§6.1/§6.2) and with the refraction path now
+   CI-guarded.
+4. **Documentation, when reachable:** the evolutionary generative arrangement pipeline, once a
+   synthetic (non-curated-library) path through it exists to drift-guard a worked example.
+5. **Code quality (standing, proposed):** `jni-native-precision-symbols`,
+   `manual-isolation-prevention`, `ordering-bypass-guards`.
+6. Still open from prior cycles: the reduced `matmul`/convolution-gradient forms;
+   `TransformerResamplingFeatures`' buffered K/V; the `io.almostrealism.collect` split; letting a
+   trained model read the platform's own source.
+
+### 2026-11-19 — Document composing audio in latent space (the AutoEncoder blend pipeline)
+
+**Category:** Documentation
+**Branch:** `project/plan-20261119-010237`
+**Plan:** [`PLAN-20261119-audio-latent-composition-docs.md`](PLAN-20261119-audio-latent-composition-docs.md)
+**Tracker:** `232983ee-121b-4df8-8a28-b2c1acdc95ef` (optimization through the decoder, a follow-up to the docs work)
+
+#### What changed since last cycle
+
+The reflected-ray fix merged (PR #886 into `master` on 2026-11-18, carried through the
+`project/plan-20261110-032517` merge), restoring a CI render assertion and landing the
+`RefractionShader` graph rewrite alongside it. The agent-infrastructure track advanced
+heavily: a new `ar-commit` MCP server that commits only a checked change and message (staged-
+snapshot checks, plan-ledger and private-URL guards, structured timeout handling), the
+master-failure-log fix round reader, and `feature/inference-memory-savings` (BranchBlock
+allocates its gradient buffer only when a backward pass is built, with inference-only
+coverage). The audio-composition subsystem had its own run of merges — `feature/composer-
+normalized-blend` (#980: normalized weighted-mean blend with negative-contribution clamping),
+`feature/batched-vector-selection` (#972) and the `HighestRank` loop-bound fixes, and
+`feature/similarity-failure-trace` (#988). The standing QA rounds (consolidate, coverage,
+performance, pdsl, concept, docs, defect) kept the foundation current.
+
+#### Category assessment (priority order)
+
+- **Documentation — a reachable flagship gap, and it decided the cycle.** The corpus is
+  genuinely excellent and current: 60+ internals pages, and the render track's prior gaps are
+  now filled (`ray-traced-reflection-and-refraction.md`, `per-pixel-rendering.md`,
+  `grid-field-calculus.md`). But a check of the *actively-developed* subsystems surfaced one
+  real gap: the latent-space **audio-composition** subsystem — `AudioComposer`,
+  `ComposableAudioFeatures` (`studio/compose`), over the `AutoEncoder` abstraction
+  (`engine/ml`, `org.almostrealism.ml.audio`) — took four pull requests in a month (#715,
+  #972, #980, #988) and carries a subtle numerical contract (L2-normalized weights,
+  negative-contribution clamping against a `NaN` divisor, weighted-mean-vs-sum, near-origin
+  behaviour), yet is named in **no internals page** and is absent from `llms.txt`'s internals
+  index. Its only prose is a few class-description sections in `studio/compose/README.md` plus
+  Javadoc. Chosen.
+- **Code quality — covered by continuous QA and three standing proposed plans.** The QA rounds
+  are in flight, and the first reachable code-quality items are already written up as proposed
+  plans (`jni-native-precision-symbols`, `manual-isolation-prevention`). Proposing a fourth
+  would duplicate. Moved on.
+- **Performance — no PM-level blocker this cycle.** The aggregate copy-in/copy-back arc is
+  landed or standing; the `HighestRank` loop bounds just merged. Moved on.
+- **Proof of value — the category this ultimately serves, gated here.** The generative-audio
+  track's on-platform slice is exactly this latent-composition path; the fuller text→diffusion→
+  audio path is ONNX/download-gated. Documenting the on-platform, tested slice first is the
+  disciplined step before building further on it.
+
+#### Why this task
+
+It is the disciplined pick under the priority order: documentation first, and the first
+reachable flagship gap is an actively-used subsystem whose behaviour lives only in code and
+review notes. The page is a clean, **tested** worked example — encoded sources → latent blend →
+decoded waveform — drift-guarded by `LatentAudioCompositionExamplesTest` over a synthetic
+autoencoder (the `StubAutoEncoder` path `AudioComposerTest` already proves), so it runs on any
+backend with no download. It is also a crisp non-training exemplar of THE FUNDAMENTAL RULE: the
+whole blend is one `CollectionProducer` graph evaluated through `evaluateOptimized()` (the exact
+lesson the #980 review had to teach); the autoencoder decode that follows it is a host-side model
+call, not part of that graph (the plan's "Accuracy notes" record this and the other corrections
+review made). That is precisely what a model studying the platform
+should be able to read in one page.
+
+#### Balance across categories
+
+The last cycle was code quality (reflected-ray); the two before it were performance and
+documentation. Returning to documentation now is not drift toward an easier category — it
+targets a specific, verified gap in an actively-developed subsystem, touches no production code
+beyond a package Javadoc correction, and runs on any node (no workstream settings file). It continues the documentation arc
+(tokenizer → vector index → simulation pipelines) and plants the anchor page the generative-
+audio proof-of-value track grows from.
+
+#### What comes next
+
+1. This plan: `docs/internals/latent-audio-composition.md`, the
+   `LatentAudioCompositionExamplesTest` drift-guard, and the `llms.txt` /
+   `studio/compose/README.md` / `sampling-loop-examples.md` cross-links.
+2. **Code quality (proposed, awaiting pickup):** `jni-native-precision-symbols` (cross-precision
+   JNI rebinding hazard) and `manual-isolation-prevention` (keep kernel-boundary decisions in
+   the optimizer).
+3. **Proof of value, generative audio:** build on this anchor toward a tested on-platform
+   diffusion-audio generation demonstration, once an on-platform (non-ONNX) conditioner/decoder
+   path is reachable.
+4. **Proof of value, rendering:** the ferrofluid roadmap (`PLAN-20261106`), pending owner
+   fluid-method decisions.
+5. **Proof of value, self-hosted LM:** attention sinks if long rolling-cache generations
+   degrade; long-form self-description at speed once the decode is no longer copy-bound.
+6. Still open: the reduced `matmul`/convolution-gradient forms; `TransformerResamplingFeatures`'
+   buffered K/V; the `io.almostrealism.collect` split; letting a trained model read the
+   platform's own source.
+
 ### 2026-11-05 — Fold kernel arguments into the aggregate only when the kernel would exceed its argument limit
 
 **Category:** Performance
@@ -202,7 +379,7 @@ is a medium task touching two files plus one `knownIssue` flag, runs on any node
 ### 2026-11-04 (later) — Skip the per-dispatch copy-in of an unread folded aggregate slice (condensed)
 
 **Category:** Performance · **Branch:** `project/plan-20261104-182220` ·
-**Plan:** [`PLAN-20261104-aggregate-copy-in-skip-unread.md`](PLAN-20261104-aggregate-copy-in-skip-unread.md)
+**Plan:** `PLAN-20261104-aggregate-copy-in-skip-unread.md`
 
 Applied the copy-back arc symmetrically to the copy-in: the rolling KV cache (PR #818) landed
 correct but dispatch-bound, issuing a device copy-in before every dispatch even for a folded slice
@@ -217,7 +394,7 @@ measurement; correctness on any backend.
 ### 2026-11-04 — Document text tokenization, from a string to the token ids a model consumes (condensed)
 
 **Category:** Documentation · **Branch:** `project/plan-20261104-133539` ·
-**Plan:** [`PLAN-20261104-text-tokenization-docs.md`](PLAN-20261104-text-tokenization-docs.md)
+**Plan:** `PLAN-20261104-text-tokenization-docs.md`
 
 The input layer of every language model was undocumented: no internals page on tokenization,
 `llms.txt`'s only tokenizer line pointed at the wrong class (the `extern/ml-djl` wrapper, not
@@ -231,7 +408,7 @@ Ran on any node. Merged (PR #838).
 ### 2026-11-03 (later) — Document the vector-index subsystem (HNSW + disk store + model-keyed rebuild) (condensed)
 
 **Category:** Documentation · **Branch:** `project/plan-20261103-172701` ·
-**Plan:** [`PLAN-20261103-vector-index-docs.md`](PLAN-20261103-vector-index-docs.md)
+**Plan:** `PLAN-20261103-vector-index-docs.md`
 
 A whole vector similarity-search subsystem reached `master` (PR #827 and surrounding commits) —
 `engine/ml`'s `org.almostrealism.persist.index` (`HnswIndex`, `ProtobufDiskStore`, `SimilarityMetric`)
@@ -296,7 +473,7 @@ it missed its throughput criterion, which opened the aggregate-copy arc that fol
 ### 2026-11-02 — Document the neuron-level connectome simulation pipeline (condensed)
 
 **Category:** Documentation · **Branch:** `project/plan-20261102-014251` ·
-**Plan:** [`PLAN-20261102-neuron-level-connectome-simulation-docs.md`](PLAN-20261102-neuron-level-connectome-simulation-docs.md)
+**Plan:** `PLAN-20261102-neuron-level-connectome-simulation-docs.md`
 
 The neuron-level connectome subsystem had merged (PRs #806, #809) — `NeuronConnectome` (CSR
 synapse counts through `StateDictionary`, synaptic input as one sparse `matmul`), `ConnectomeNetwork`
@@ -329,7 +506,7 @@ window. Needed a Metal node for the measurement.
 ### 2026-10-28 (later) — Give the attention key/value caches an owner the caller can clear and release (condensed)
 
 **Category:** Code Quality (correctness) · **Branch:** `project/plan-20261028-165007` ·
-**Plan:** [`PLAN-20261028-attention-cache-ownership.md`](PLAN-20261028-attention-cache-ownership.md)
+**Plan:** `PLAN-20261028-attention-cache-ownership.md`
 
 The decode-throughput measurement (PR #768) had cashed the KV-cache arc with an unexpected result
 and exposed a correctness defect beneath the flagship LM generation path: `CausalLanguageModel.decodeModel`
@@ -359,7 +536,7 @@ which set up the 10-28 (later) and 10-29 cycles. Needed a Metal node.
 ### 2026-10-27 — Document simulating a spiking neural population, from state to recorded spikes (condensed)
 
 **Category:** Documentation · **Branch:** `project/plan-20261027-081706` ·
-**Plan:** [`PLAN-20261027-neural-population-simulation-docs.md`](PLAN-20261027-neural-population-simulation-docs.md)
+**Plan:** `PLAN-20261027-neural-population-simulation-docs.md`
 
 A whole simulation substrate had arrived through the connectome Phase-1 tracker tasks with only
 Javadoc — `CounterRandom`/`AR_RANDOM`, `SimulationRunner`, `LeakyIntegrateAndFirePopulation`, the
@@ -388,7 +565,7 @@ depending on none of the unbuilt `PDSL_FOR_RESEARCH_AND_EDUCATION.md` features. 
 ### 2026-10-26 — Decode the self-hosted LM one token at a time with a key/value cache (condensed)
 
 **Category:** Proof of Value (self-hosted LM generation) · **Branch:** `project/plan-20261026-022005` ·
-**Plan:** [`PLAN-20261026-kv-cache-single-position-decode.md`](PLAN-20261026-kv-cache-single-position-decode.md)
+**Plan:** `PLAN-20261026-kv-cache-single-position-decode.md`
 
 With sampling unified, the remaining ceiling on generation was the full-forward-per-byte decode. The
 cached single-position `attention(...)` family and `causalMask(shape, position)` already existed; what

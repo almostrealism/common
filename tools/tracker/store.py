@@ -46,6 +46,24 @@ _RELEASE_COLUMNS = (
     "WHERE projects.id = releases.project_id) AS workspace_id"
 )
 
+# Artifact columns, in the order every query returns them. An artifact's
+# workspace is the one that owns the project of the task it is attached to —
+# resolved the same way a task's is — so a caller deciding what it may see reads
+# it off the row rather than resolving the task and then its project.
+_ARTIFACT_COLUMNS = (
+    "task_artifacts.id, task_artifacts.task_id, task_artifacts.artifact_type, "
+    "task_artifacts.content, task_artifacts.author, task_artifacts.created_at, "
+    "(SELECT projects.workspace_id FROM tasks "
+    "JOIN projects ON projects.id = tasks.project_id "
+    "WHERE tasks.id = task_artifacts.task_id) AS workspace_id"
+)
+
+# The artifact types an artifact may carry. Mirrors the database CHECK in
+# migrate._SCHEMA_V6; a direct store caller that passes any other value is
+# refused by the database rather than silently stored.
+ARTIFACT_TYPES = ("comment", "reference", "memory")
+
+
 # The one definition of a task an agent may claim: open, marked ready, not yet
 # linked to a workstream, and not waiting on any task that is still open. Both
 # counting and claiming use it, so the question "is there work?" and the act of
@@ -819,9 +837,88 @@ class TrackerStore:
         return ids
 
     def delete_task(self, task_id: str) -> bool:
-        """Delete a task. Returns True if a row was deleted."""
+        """Delete a task. Returns True if a row was deleted.
+
+        A task's artifacts are removed with it: the ``task_artifacts`` foreign
+        key is ``ON DELETE CASCADE`` and foreign keys are enabled for the
+        connection (see :func:`migrate.run_migrations`).
+        """
         with self._write():
             cursor = self._conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        return cursor.rowcount > 0
+
+    # ------------------------------------------------------------------
+    # Task artifacts
+    # ------------------------------------------------------------------
+
+    def create_artifact(
+        self,
+        task_id: str,
+        artifact_type: str,
+        content: str,
+        author: str,
+        artifact_id: Optional[str] = None,
+        created_at: Optional[str] = None,
+    ) -> Optional[dict]:
+        """Attach an artifact to a task and return it.
+
+        An artifact is additive: it records a comment, a reference to something
+        else, or a memory id against the task without changing any of the
+        task's own fields. ``author`` is who added it, recorded by the caller
+        from its token rather than from input.
+
+        Returns:
+            The created artifact, or None when no task has ``task_id`` (so the
+            caller can report that the task was not found rather than surfacing
+            a foreign-key error).
+        """
+        with self._write():
+            task = self._conn.execute(
+                "SELECT id FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            if not task:
+                return None
+            artifact_id = artifact_id or str(uuid.uuid4())
+            now = created_at or _now()
+            self._conn.execute(
+                "INSERT INTO task_artifacts "
+                "(id, task_id, artifact_type, content, author, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (artifact_id, task_id, artifact_type, content, author, now),
+            )
+        return self.get_artifact(artifact_id)
+
+    def get_artifact(self, artifact_id: str) -> Optional[dict]:
+        """Return an artifact by ID, or None if not found."""
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT {_ARTIFACT_COLUMNS} FROM task_artifacts "
+                "WHERE task_artifacts.id = ?",
+                (artifact_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_artifacts(self, task_id: str) -> list:
+        """Return a task's artifacts, oldest first (ties broken by id).
+
+        The order is chronological so the artifacts read as the thread they
+        are: a comment left after another comes after it.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT {_ARTIFACT_COLUMNS} FROM task_artifacts "
+                "WHERE task_artifacts.task_id = ? "
+                "ORDER BY task_artifacts.created_at ASC, task_artifacts.id ASC",
+                (task_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_artifact(self, artifact_id: str) -> bool:
+        """Delete an artifact. Returns True if a row was deleted."""
+        with self._write():
+            cursor = self._conn.execute(
+                "DELETE FROM task_artifacts WHERE id = ?", (artifact_id,)
+            )
         return cursor.rowcount > 0
 
     # ------------------------------------------------------------------

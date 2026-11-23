@@ -41,7 +41,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 /**
  * Compiler infrastructure for converting generated C code into native shared libraries loaded via JNI.
@@ -118,6 +122,13 @@ import java.util.function.Consumer;
  *     <td>AR_HARDWARE_NATIVE_LINKER</td>
  *     <td>Path to linker (Clang only)</td>
  *     <td>Default linker</td>
+ *   </tr>
+ *   <tr>
+ *     <td>AR_HARDWARE_NATIVE_BRACKET_DEPTH</td>
+ *     <td>Value for clang's {@code -fbracket-depth} (clang only). An escape hatch: raising it
+ *     hides expression-construction defects; when nesting fails, find out why the expression
+ *     is that deep instead</td>
+ *     <td>unset (no flag; clang's own limit applies)</td>
  *   </tr>
  *   <tr>
  *     <td>AR_HARDWARE_COMPILER_LOGGING</td>
@@ -304,6 +315,9 @@ public class NativeCompiler implements Destroyable, ConsoleFeatures {
 	 * that runtime performance remains acceptable for numerical kernels.
 	 */
 	private static final int REDUCED_OPT_THRESHOLD = 50000;
+
+	/** Seconds to wait for a forcibly destroyed compiler process to exit. */
+	private static final long DESTROY_WAIT_SECONDS = 10;
 
 	/** GCC pragma directive prepended to large generated source files to use {@code -O1} instead of {@code -O3}. */
 private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pragma GCC optimize(\"O1\")\n#endif\n";
@@ -578,26 +592,83 @@ private static final String REDUCED_OPT_PRAGMA = "#if defined(__OPTIMIZE__)\n#pr
 	 * <p>The consumer starts the process using {@link ProcessBuilder}, inherits its I/O, waits for
 	 * completion, and throws a {@link HardwareException} if the exit value is non-zero.</p>
 	 *
+	 * <p>An interrupt while waiting ends the compilation: the compiler process is destroyed
+	 * rather than left running unattended, where it would keep competing for the CPU with every
+	 * compilation that follows, and a {@link HardwareException} is thrown with the interrupt
+	 * status left set.</p>
+	 *
 	 * @param name Name of the compilation target, included in error messages
 	 * @return Consumer that accepts a compiler command line and runs it
 	 */
 	protected Consumer<List<String>> runner(String name) {
 		return command -> {
+			Process process;
+
 			try {
-				Process process = new ProcessBuilder(command).inheritIO().start();
-				process.waitFor();
-
-				if (process.exitValue() != 0) {
-					if (enableVerbose) {
-						log(Arrays.toString(command.toArray()));
-					}
-
-					throw new HardwareException("Native compiler failure (" + process.exitValue() + ") on " + name);
-				}
-			} catch (IOException | InterruptedException e) {
+				process = new ProcessBuilder(command).inheritIO().start();
+			} catch (IOException e) {
 				throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
 			}
+
+			try {
+				process.waitFor();
+			} catch (InterruptedException e) {
+				awaitDestroyed(process, name);
+				Thread.currentThread().interrupt();
+				throw new HardwareException("Interrupted while compiling native code for " + name,
+						new UnsupportedOperationException(e));
+			}
+
+			if (process.exitValue() != 0) {
+				if (enableVerbose) {
+					log(Arrays.toString(command.toArray()));
+				}
+
+				throw new HardwareException("Native compiler failure (" + process.exitValue() + ") on " + name);
+			}
 		};
+	}
+
+	/**
+	 * Forcibly destroys a compiler process whose wait was interrupted, together with its
+	 * descendants, and waits, for at most {@link #DESTROY_WAIT_SECONDS} seconds each, for them to exit.
+	 *
+	 * <p>A compiler driver such as gcc or clang runs its work in child processes (cc1, as, ld),
+	 * which a kill of the driver alone leaves running. The descendants are captured before the
+	 * driver is destroyed, because once it exits they are reparented and no longer reachable
+	 * through {@link Process#descendants()}.</p>
+	 *
+	 * <p>{@link Process#destroyForcibly()} only requests termination, so returning straight after
+	 * it would let the compiler keep running while the next compilation starts. The caller's
+	 * interrupt status must already be clear (as it is after an {@link InterruptedException}),
+	 * otherwise the wait for exit would end at once; a further interrupt during this wait ends
+	 * it early, and the caller restores the interrupt status afterwards in either case.</p>
+	 *
+	 * @param process the compiler process to destroy
+	 * @param name    name of the compilation target, included in the warning if it outlives the wait
+	 */
+	private void awaitDestroyed(Process process, String name) {
+		List<ProcessHandle> descendants = process.descendants().collect(Collectors.toList());
+		descendants.forEach(ProcessHandle::destroyForcibly);
+
+		boolean exited;
+
+		try {
+			exited = process.destroyForcibly().waitFor(DESTROY_WAIT_SECONDS, TimeUnit.SECONDS);
+			for (ProcessHandle descendant : descendants) {
+				descendant.onExit().get(DESTROY_WAIT_SECONDS, TimeUnit.SECONDS);
+			}
+		} catch (InterruptedException e) {
+			exited = !process.isAlive();
+		} catch (ExecutionException | TimeoutException e) {
+			exited = false;
+		}
+
+		exited = exited && descendants.stream().noneMatch(ProcessHandle::isAlive);
+
+		if (!exited) {
+			warn("Compiler process for " + name + " was still running after it was destroyed");
+		}
 	}
 
 	@Override

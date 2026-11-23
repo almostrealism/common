@@ -149,8 +149,15 @@ concurrency:
 # Hosted (ubuntu-latest) jobs keep actions/setup-java, which serves the JDK from
 # the hosted image's tool cache; they pin its java-version to this same value, so
 # an upgrade stays a single edit across hosted and self-hosted lanes alike.
+# ─── Hosted Maven dependency cache ────────────────────────
+# GitHub-hosted (ubuntu-latest) jobs restore a deliberately-built Maven
+# repository the `maven-cache` job produces, instead of setup-java's
+# `cache: maven`. See "What the `maven-cache` job does" below and "Maven
+# dependency caching" in tools/ci/README.md. Bump this version prefix to
+# invalidate that cache deliberately, without waiting for a pom change.
 env:
   EXPECTED_JDK_MAJOR: "17"
+  HOSTED_MAVEN_CACHE_VERSION: "v2"
 
 jobs:
   # ─── Change Detection ─────────────────────────────────────────────
@@ -303,9 +310,21 @@ jobs:
           # left false, which skips build/test-integrity-check entirely —
           # including the guard verification and enforcement-tampering steps
           # that would otherwise catch a weakened registration or allowlist.
+          #
+          # .mvn/ holds Maven build inputs with no code extension — maven.config
+          # (the transport retry/backoff every CI Maven invocation reads) and
+          # the wrapper pins. A change there alters how every Maven job resolves
+          # and must therefore run build, maven-cache and the Maven validation
+          # jobs rather than being classified docs-only.
+          #
+          # Every source extension the inline-comment check governs is listed
+          # too, so a change to only those files still runs that checkstyle step.
           CODE_FILES=$(git diff --name-only "$BASE" HEAD -- \
             '*.java' '*.xml' '*.yaml' '*.yml' '*.sh' '*.py' '*.groovy' '*.properties' \
-            '*/Dockerfile' 'Dockerfile' '.claude/settings.json' '.claude/hooks/' \
+            '*.pdsl' '*.proto' '*.kt' '*.kts' '*.c' '*.h' '*.hpp' '*.cpp' '*.cc' '*.cl' \
+            '*.metal' '*.m' '*.mm' '*.glsl' '*.js' '*.cjs' '*.mjs' '*.jsx' '*.ts' '*.cts' \
+            '*.mts' '*.tsx' '*.gradle' '*.scala' '*.swift' '*.go' '*.rs' '*.cs' \
+            '*/Dockerfile' 'Dockerfile' '.claude/settings.json' '.claude/hooks/' '.mvn/' \
             | grep -v '^docs/' | grep -v '\.md$' || true)
           if [ -z "$CODE_FILES" ]; then
             echo "code=false" >> "$GITHUB_OUTPUT"
@@ -526,7 +545,190 @@ jobs:
             done
           done
 
+  # Asks the FlowTree controller which runner build should use, so build lands
+  # on whichever self-hosted fleet has an idle runner carrying ar-build (keeping
+  # the fleets busy) and falls back to GitHub-hosted otherwise. It runs only
+  # inline shell over one API call, checks out no pull-request code, and never
+  # fails build: any problem emits ["ubuntu-latest"]. See "Controller-driven
+  # build-runner selection" in .github/CLAUDE.md.
+  select-build-runner:
+    needs: changes
+    if: needs.changes.outputs.code_changed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      runs_on: ${{ steps.select.outputs.runs_on }}
+    steps:
+      - name: Select the build runner
+        id: select
+        env:
+          CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          # Emergency override: set the repository variable BUILD_FORCE_HOSTED to
+          # any value to force build back onto ubuntu-latest with no commit.
+          FORCE_HOSTED: ${{ vars.BUILD_FORCE_HOSTED }}
+          # A fork PR never builds on a self-hosted runner (which holds a PAT and
+          # a persistent Maven volume); forks get no secrets anyway, so the call
+          # below would fail open regardless — this just makes it explicit.
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+          REQUIRED_LABEL: ar-build
+        run: |
+          # No `set -e`: every failure path below falls open to the hosted
+          # runner. A selector problem must never block or fail build.
+          set -uo pipefail
+          HOSTED='["ubuntu-latest"]'
+          emit() {
+            echo "runs_on=$1" >> "$GITHUB_OUTPUT"
+            echo "::notice::build runs-on $1 — $2"
+          }
+          if [ -n "${FORCE_HOSTED:-}" ]; then
+            emit "$HOSTED" "forced hosted by the BUILD_FORCE_HOSTED variable"; exit 0
+          fi
+          if [ "${IS_FORK}" = "true" ]; then
+            emit "$HOSTED" "fork pull request builds on a hosted runner"; exit 0
+          fi
+          if [ -z "${CONTROLLER_URL:-}" ]; then
+            emit "$HOSTED" "no controller URL configured"; exit 0
+          fi
+          CURL_ARGS=(-sS -f -G --connect-timeout 5 --max-time 15 -H "Accept: application/json")
+          if [ -n "${CF_ACCESS_CLIENT_ID:-}" ] && [ -n "${CF_ACCESS_CLIENT_SECRET:-}" ]; then
+            CURL_ARGS+=(-H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}")
+            CURL_ARGS+=(-H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}")
+          fi
+          BODY=$(curl "${CURL_ARGS[@]}" \
+              --data-urlencode "required=${REQUIRED_LABEL}" \
+              "${CONTROLLER_URL%/}/api/runners/select") || {
+            emit "$HOSTED" "controller unreachable; failing open to hosted"; exit 0
+          }
+          RUNS_ON=$(echo "$BODY" | jq -c \
+              'if (.ok == true and (.runs_on | type) == "array" and (.runs_on | length) > 0) then .runs_on else empty end' \
+              2>/dev/null) || RUNS_ON=""
+          if [ -z "$RUNS_ON" ]; then
+            emit "$HOSTED" "unexpected controller answer (${BODY}); failing open to hosted"; exit 0
+          fi
+          REASON=$(echo "$BODY" | jq -r '.reason // ""' 2>/dev/null || echo "")
+          emit "$RUNS_ON" "controller selection — ${REASON}"
+
   build:
+    needs: [changes, select-build-runner]
+    if: needs.changes.outputs.code_changed == 'true'
+    # The runner is chosen by the select-build-runner job, which asks the
+    # FlowTree controller for the first idle self-hosted fleet carrying ar-build
+    # and falls back to ["ubuntu-latest"] on any problem. build therefore reads
+    # an opaque JSON label list here; its JDK and Maven steps are keyed on
+    # runner.environment so both runners work. See "Controller-driven
+    # build-runner selection" in .github/CLAUDE.md.
+    runs-on: ${{ fromJSON(needs.select-build-runner.outputs.runs_on) }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      # JDK, keyed on the runner's environment. A GitHub-hosted runner downloads
+      # the JDK with actions/setup-java (its tool cache makes that fast); a
+      # self-hosted runner already ships the JDK and selects it with the shared
+      # select-jdk action exactly as the self-hosted test lanes do (no download).
+      - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
+        if: runner.environment == 'github-hosted'
+        uses: actions/setup-java@v5
+        with:
+          java-version: ${{ env.EXPECTED_JDK_MAJOR }}
+          distribution: 'temurin'
+
+      - name: Select and verify JDK
+        if: runner.environment == 'self-hosted'
+        uses: ./.github/actions/select-jdk
+        with:
+          expected-major: ${{ env.EXPECTED_JDK_MAJOR }}
+
+      # Maven repository, keyed on the runner's environment. A GitHub-hosted
+      # runner restores the deliberately-built repository the `maven-cache` job
+      # produces, rather than setup-java's `cache: maven` (which saved a partial
+      # repository on a miss from whichever hosted job finished first — one that
+      # did not need jacoco — so jacoco was re-downloaded from Central every run).
+      # A self-hosted runner has no such GitHub-backed cache; it prefers its
+      # host's persistent shared cache and otherwise isolates per runner (the
+      # shared select-maven-repo action, which exports MAVEN_REPO).
+      - name: Restore Maven dependencies
+        if: runner.environment == 'github-hosted'
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
+
+      - name: Select Maven repository
+        if: runner.environment == 'self-hosted'
+        uses: ./.github/actions/select-maven-repo
+
+      # Every job that needs the project's artifacts restores them from this
+      # job rather than running its own `mvn install` (see "Sharing the build"
+      # in .github/CLAUDE.md). The repository Maven uses may carry artifacts
+      # installed by an earlier commit — the restored hosted cache, or a
+      # self-hosted runner's persistent per-runner repository — so clear them
+      # first; the upload then holds this commit's artifacts and nothing else.
+      # The target is the repository Maven actually reads: MAVEN_REPO where the
+      # self-hosted step set it (a per-runner subdirectory, never the shared
+      # root, so another runner's repository is never touched), otherwise
+      # ~/.m2/repository. Resolved once, by the shell, where both are plain env
+      # vars, and published as the step's `path` output for the upload below —
+      # the same rule the restore steps follow: an action input never relies on
+      # an expression reading a value an earlier step wrote to GITHUB_ENV.
+      - name: Clear previously installed project artifacts
+        id: project-artifacts
+        run: |
+          path="${MAVEN_REPO:-$HOME/.m2/repository}/org/almostrealism"
+          rm -rf "${path}"
+          echo "path=${path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build
+        run: mvn install -DskipTests -Dcheckstyle.skip=true
+
+      # From the same repository Maven installed into: the path the clear step
+      # resolved, so the upload can never disagree with what Maven read.
+      - name: Upload installed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          overwrite: true
+          name: maven-installed-artifacts
+          path: ${{ steps.project-artifacts.outputs.path }}
+          # Long enough for the flaky-test retries and a manual re-run.
+          retention-days: 3
+          if-no-files-found: error
+
+  # ─── Hosted Maven dependency cache ─────────────────────────────────
+  # Produces the Maven repository every GitHub-hosted job restores, on
+  # purpose rather than as a side effect of whichever job misses first.
+  #
+  # The problem this fixes: setup-java's `cache: maven` saved the local
+  # repository only on a cache miss, from whichever hosted job finished
+  # first, and never re-saved it on a hit. The job that won that race
+  # (checkstyle, say) did not run jacoco, so `org.jacoco:jacoco-maven-plugin`
+  # was absent from the saved cache — and every hosted job that runs `mvn test`
+  # (and so jacoco:prepare-agent) re-downloaded it from Maven Central on every
+  # run, failing on 429s and transient "not found" errors.
+  #
+  # This job resolves the FULL set any hosted job uses — declared dependencies
+  # and plugins across the reactor (go-offline, resolve-plugins), the compiler
+  # and error-prone processor path, and surefire and jacoco (package -DskipTests
+  # compiles main and test sources and reaches the test phase that binds
+  # surefire and jacoco:prepare-agent, with execution skipped, so it resolves
+  # those), the checkstyle plugin's pinned Checkstyle library
+  # (only the checkstyle job exercises it), and the jacoco-cli distribution the analysis
+  # job unzips — then saves it with an explicit actions/cache under a key built
+  # from the pom hashes and the manual HOSTED_MAVEN_CACHE_VERSION prefix, with a
+  # restore-keys fallback so a pom change starts from the previous cache instead
+  # of from empty. Consumers restore it read-only via the restore-maven-cache
+  # action, so none of them can re-save a partial repository.
+  #
+  # Nothing waits on this job: it runs in parallel with `build` and maintains
+  # the cache for SUBSEQUENT runs. A run whose poms just changed restores the
+  # previous (near-complete) cache and fetches only the delta from Central, with
+  # the retry/backoff in .mvn/maven.config. GitHub scopes caches by branch with
+  # master's readable by every PR, so master runs keep a complete cache saved
+  # for every PR to restore. tools/tests/test_hosted_maven_cache.py pins the
+  # wiring and that this job's save key matches the restore action's.
+  maven-cache:
     needs: changes
     if: needs.changes.outputs.code_changed == 'true'
     runs-on: ubuntu-latest
@@ -542,28 +744,91 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
 
-      # Every job that needs the project's artifacts restores them from this
-      # job rather than running its own `mvn install` (see "Sharing the build"
-      # in .github/CLAUDE.md). The Maven cache restored above may carry
-      # artifacts installed by an earlier commit; clearing them first means the
-      # upload holds this commit's artifacts and nothing else.
-      - name: Clear previously installed project artifacts
-        run: rm -rf ~/.m2/repository/org/almostrealism
-
-      - name: Build
-        run: mvn install -DskipTests -Dcheckstyle.skip=true
-
-      - name: Upload installed artifacts
-        uses: actions/upload-artifact@v4
+      # Start from whatever cache already exists, through the SAME action every
+      # consumer restores with, so the key and path cannot drift. An exact hit
+      # means the repository is already complete for these poms; a restore-keys
+      # hit gives the previous cache as a base so only the delta is fetched.
+      - name: Restore Maven dependencies
+        id: restore
+        uses: ./.github/actions/restore-maven-cache
         with:
-          overwrite: true
-          name: maven-installed-artifacts
-          path: ~/.m2/repository/org/almostrealism
-          # Long enough for the flaky-test retries and a manual re-run.
-          retention-days: 3
-          if-no-files-found: error
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
+
+      # Resolve the full plugin and dependency set into ~/.m2. Best-effort: a
+      # transient resolution failure must not fail this maintenance job (nothing
+      # depends on it). A failed warm is NOT saved (see the save step), so the
+      # next run restores the previous cache through restore-keys and warms again.
+      - name: Warm the Maven repository
+        id: warm
+        if: steps.restore.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: |
+          # package -DskipTests runs the full reactor lifecycle through the
+          # package phase: it resolves the compiler and the error-prone
+          # annotation-processor path (which go-offline/resolve-plugins cannot,
+          # since it is neither a plugin nor a declared dependency), compiles main
+          # AND test sources so the tools module's test dependencies — CPD among
+          # them — and surefire and jacoco (bound to the test phase, which package
+          # reaches with execution skipped) are resolved. It must reach `package`,
+          # not stop at test-compile: studio/compose unpacks engine/ml's
+          # `proto`-classified artifact in generate-sources, and that artifact is
+          # attached by maven-assembly-plugin at ml's package phase — so under
+          # test-compile the reactor dependency is never packaged and the unpack
+          # fails deterministically (MDEP-98), which left the warm failing on
+          # every run and the success-gated save never saving. package does NOT
+          # install: `build` is the only job that installs and uploads the shared
+          # artifacts. -Dcheckstyle.skip=true keeps the validate-phase checkstyle
+          # from failing it on a real violation while warming.
+          mvn -B -ntp package -DskipTests -Dcheckstyle.skip=true
+
+          # go-offline / resolve-plugins across the reactor catch the rest of the
+          # declared dependency and plugin set, including plugins bound to phases
+          # package does not reach.
+          mvn -B -ntp dependency:go-offline dependency:resolve-plugins -Dcheckstyle.skip=true
+
+          # The checkstyle job runs `checkstyle:check`, which loads the plugin's
+          # pinned Checkstyle library (com.puppycrawl.tools:checkstyle, version in
+          # the root pom). Resolve the plugin so that library is cached too.
+          mvn -B -ntp org.apache.maven.plugins:maven-checkstyle-plugin:check -Dcheckstyle.skip=true
+
+          # The analysis job merges coverage with the standalone jacoco-cli
+          # distribution zip. Prefetch it into ~/.m2 so analysis unzips it from
+          # the cache instead of fetching it from Central.
+          JACOCO_VERSION=$(sed -n 's|.*<jacoco.version>\(.*\)</jacoco.version>.*|\1|p' pom.xml | head -n1)
+          mvn -B -ntp dependency:get -Dartifact="org.jacoco:jacoco:${JACOCO_VERSION}:zip"
+
+      # Even a successful warm can leave `*.lastUpdated` resolver markers in
+      # ~/.m2 (an artifact probed in a repository that did not hold it, or one
+      # restored from an older cache). Maven's update policy reads those markers
+      # and skips re-fetching the artifact until the policy window elapses, so a
+      # consumer restoring this cache could be told an artifact was "recently
+      # tried" and fail instead of following the documented network fallback.
+      # Delete the markers before saving, so the cache only ever holds artifacts
+      # it actually resolved — never a record of one it failed to. Runs whenever
+      # the save does.
+      - name: Remove failed-transfer markers
+        if: steps.warm.outcome == 'success'
+        run: find ~/.m2/repository -name '*.lastUpdated' -type f -delete
+
+      # Save the warmed repository for subsequent runs — only when the warm
+      # completed. A cache key is immutable: a partial repository saved under
+      # the exact primary key would make every later run see cache-hit == 'true',
+      # skip warming, and leave the consumers (read-only) re-downloading the
+      # missing artifacts on every job until the poms or the version prefix
+      # change. Not saving a failed warm leaves the exact key unclaimed, so the
+      # next run restores the previous cache through restore-keys and warms
+      # again. The warm step is skipped on an exact hit, so the save is too.
+      - name: Save Maven dependencies
+        if: steps.warm.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.m2/repository
+            !~/.m2/repository/org/almostrealism
+          # The exact key the restore action used, so save and restore can never
+          # drift apart.
+          key: ${{ steps.restore.outputs.cache-primary-key }}
 
   # ─── Code Policy Enforcement ───────────────────────────────────────
   code-policy-check:
@@ -588,7 +853,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -731,6 +1004,7 @@ jobs:
             ".claude/hooks/lib/test_exfiltration_guard_transport.py"
             ".claude/hooks/lib/test_exfiltration_guard_interpreter.py"
             ".claude/hooks/lib/test_exfiltration_guard_worktree.py"
+            ".claude/hooks/lib/test_exfiltration_guard_pinning.py"
             ".claude/hooks/exfil-allowlist.txt"
           )
 
@@ -1393,7 +1667,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -1461,7 +1743,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -1698,6 +1988,7 @@ jobs:
     outputs:
       passed: ${{ steps.check.outcome == 'success' }}
       identifiers_passed: ${{ steps.identifiers.outcome == 'success' }}
+      inline_comments_passed: ${{ steps.comments.outcome == 'success' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -1710,7 +2001,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       - name: Check exempt file lengths
         run: bash scripts/check-exempt-file-lengths.sh
@@ -1764,6 +2063,43 @@ jobs:
           git ls-files -z | python3 scripts/check-temporary-identifiers.py --diff "${RUNNER_TEMP}/change.diff" 2>&1 | tee "${RUNNER_TEMP}/identifier-output.txt"
           exit ${PIPESTATUS[1]}
 
+      # Design and rationale belong in javadoc; an inline comment is a line or
+      # two of nuance. The hooks that say so run only inside an agent session
+      # and only on the tools they are registered for, so this step is the one
+      # place the rule holds whatever wrote the change: an edit tool, a shell
+      # command, another agent runtime, a merge or a person. The check reads
+      # each changed file as it stands on this head and charges the change for
+      # every comment it wrote a line of, so a comment built up a few lines at
+      # a time is judged whole and a pre-existing one that the change left
+      # alone is not judged at all. It is the same module the hooks and the
+      # commit tool call, and it runs no commands itself.
+      - name: Check for long inline comments
+        id: comments
+        if: ${{ !cancelled() }}
+        env:
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+        run: |
+          # The checkout is the pull request's head, which may predate the
+          # diff mode of this module. This is an enforcement check, so a head
+          # without it is judged by the base branch's copy instead of being
+          # let through; only when neither has it is there nothing to run.
+          CHECKER=.claude/hooks/lib/inline_comment_check.py
+          if ! grep -q 'def decide_diff' "$CHECKER" 2>/dev/null; then
+            CHECKER="${RUNNER_TEMP}/inline_comment_check.py"
+            if ! git show "origin/${BASE_BRANCH}:.claude/hooks/lib/inline_comment_check.py" > "$CHECKER" \
+                || ! grep -q 'def decide_diff' "$CHECKER"; then
+              echo "::error::Neither this head nor origin/${BASE_BRANCH} carries an inline-comment check with a diff mode; the check could not run."
+              exit 1
+            fi
+            echo "::notice::This head predates the inline-comment diff check; using origin/${BASE_BRANCH}'s copy."
+          fi
+          if ! git diff --merge-base "origin/${BASE_BRANCH}" -M --unified=0 --no-color --no-ext-diff > "${RUNNER_TEMP}/comment-change.diff"; then
+            echo "::error::Could not diff this head against its merge base with origin/${BASE_BRANCH}; the inline-comment check could not run."
+            exit 1
+          fi
+          python3 "$CHECKER" --diff "${RUNNER_TEMP}/comment-change.diff" 2>&1 | tee "${RUNNER_TEMP}/comment-output.txt"
+          exit ${PIPESTATUS[0]}
+
       - name: Summary
         if: ${{ !cancelled() }}
         run: |
@@ -1786,6 +2122,14 @@ jobs:
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
             cat "${RUNNER_TEMP}/identifier-output.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no output captured)" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "${{ steps.comments.outcome }}" = "failure" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Long inline comments in this change.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat "${RUNNER_TEMP}/comment-output.txt" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || echo "(no output captured)" >> "$GITHUB_STEP_SUMMARY"
             echo '```' >> "$GITHUB_STEP_SUMMARY"
           fi
 
@@ -1867,6 +2211,21 @@ jobs:
       # drive the --stdin adapter contract, so they need git and a HOME.
       - name: Run exfiltration guard hook tests
         run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_exfiltration_guard_*.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # The inline-comment policy is one module asked the same question by the
+      # edit hook, the shell-write check, the commit tool and the checkstyle
+      # job. Its suite is the list of ways round it, each one refused; the
+      # other two cover the routes that call it.
+      - name: Run inline comment policy tests
+        run: |
+          python3 -m unittest discover -v -s .claude/hooks/lib -p "test_inline_comment_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s .claude/hooks/lib -p "test_source_write_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+          python3 -m unittest discover -v -s tools/mcp/commit -p "test_commit_server.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
+
+      # A file written with the edit tools to the session scratchpad or the
+      # temporary directory is one the person being worked for cannot read.
+      - name: Run scratch write hook tests
+        run: python3 -m unittest discover -v -s .claude/hooks/lib -p "test_scratch_write_check.py" 2>&1 | tee -a "${RUNNER_TEMP}/python-tests.log"
 
       # The interface-bypass hook decides whether an edit is refused outright,
       # so its tests drive the same --stdin contract end to end, and need git to
@@ -2132,7 +2491,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -2242,7 +2609,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -2568,14 +2943,23 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      # A hosted runner starts clean, so the JDK and the Maven dependency cache
-      # come from actions/setup-java, as in test-flowtree.
+      # A hosted runner starts clean: the JDK comes from actions/setup-java and
+      # the Maven dependency cache from the restore-maven-cache step below, as in
+      # test-flowtree.
       - name: Set up JDK ${{ env.EXPECTED_JDK_MAJOR }}
         uses: actions/setup-java@v5
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # `build`'s installed artifacts, not a rebuild — see "Sharing the build"
       # in .github/CLAUDE.md.
@@ -3793,7 +4177,15 @@ jobs:
         with:
           java-version: ${{ env.EXPECTED_JDK_MAJOR }}
           distribution: 'temurin'
-          cache: 'maven'
+
+      # Restore the deliberately-built Maven repository the `maven-cache` job
+      # produces, read-only (see "What the `maven-cache` job does" and the
+      # restore-maven-cache action). A miss falls back to the network with the
+      # retry/backoff in .mvn/maven.config; it is never an error.
+      - name: Restore Maven dependencies
+        uses: ./.github/actions/restore-maven-cache
+        with:
+          cache-version: ${{ env.HOSTED_MAVEN_CACHE_VERSION }}
 
       # JaCoCo reads the class files from `build`'s installed jars, so nothing
       # is rebuilt here. Without a successful build no test job ran, so there
@@ -3842,11 +4234,30 @@ jobs:
 
           # Use JaCoCo CLI to merge all exec files
           if [ -s exec-files.txt ]; then
-            # Download JaCoCo CLI
-            JACOCO_VERSION=0.8.11
-            curl -sL -o jacoco-cli.zip \
-              "https://repo1.maven.org/maven2/org/jacoco/jacoco/$JACOCO_VERSION/jacoco-$JACOCO_VERSION.zip"
-            unzip -q jacoco-cli.zip -d jacoco-cli
+            # The jacoco-cli distribution zip. Version read from <jacoco.version>
+            # in the root pom — the SAME source the `maven-cache` job uses to
+            # prefetch it, so the prefetched and the looked-for versions cannot
+            # drift on a jacoco upgrade. Prefer the copy that job prefetched into
+            # ~/.m2 (restored above), so a warm run makes no Central request.
+            # Fall back to Central with curl that FAILS on an HTTP error (-f) and
+            # retries transient ones with backoff, so a 429 or a rate-limit page
+            # can never be mistaken for the zip — the earlier `-sL` without `-f`
+            # left the HTTP error body in the file and then tried to unzip it.
+            JACOCO_VERSION=$(sed -n 's|.*<jacoco.version>\(.*\)</jacoco.version>.*|\1|p' pom.xml | head -n1)
+            JACOCO_ZIP="${HOME}/.m2/repository/org/jacoco/jacoco/${JACOCO_VERSION}/jacoco-${JACOCO_VERSION}.zip"
+            if [ ! -f "$JACOCO_ZIP" ]; then
+              echo "jacoco-cli ${JACOCO_VERSION} not in the Maven cache; downloading from Maven Central"
+              mkdir -p "$(dirname "$JACOCO_ZIP")"
+              curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors --retry-max-time 120 \
+                -o "$JACOCO_ZIP" \
+                "https://repo1.maven.org/maven2/org/jacoco/jacoco/${JACOCO_VERSION}/jacoco-${JACOCO_VERSION}.zip"
+            else
+              echo "Using jacoco-cli ${JACOCO_VERSION} from the Maven cache"
+            fi
+            # Refuse to proceed unless the file is a valid zip (guards against a
+            # truncated download or a cached non-zip).
+            unzip -tq "$JACOCO_ZIP"
+            unzip -q "$JACOCO_ZIP" -d jacoco-cli
 
             # Merge all exec files
             java -jar jacoco-cli/lib/jacococli.jar merge \
@@ -4085,6 +4496,23 @@ jobs:
           name: auto-resolve-python-request
           path: staged-request
 
+      # Grant the agent the right to edit the protected files the branch
+      # already changes (see tools/ci/detect-protected-file-changes.sh). Read
+      # from the trusted compare API, never the staged request. Writes the
+      # grants to $GITHUB_ENV for the submit step below.
+      - name: Grant edits to protected files the branch changes
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          HEAD_SHA: ${{ needs.changes.outputs.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -f ./tools/ci/detect-protected-file-changes.sh ]; then
+            echo "::warning::The default branch has no tools/ci/detect-protected-file-changes.sh yet — the branch's protected-file changes are not granted"
+            exit 0
+          fi
+          bash ./tools/ci/detect-protected-file-changes.sh
+
       - name: Submit agent job
         env:
           # The target comes from this run's event, never from the staged
@@ -4190,6 +4618,7 @@ jobs:
           DECEPTION_FINDING_COUNT: ${{ needs.deception-audit.outputs.finding_count }}
           CHECKSTYLE_PASSED: ${{ needs.checkstyle.outputs.passed }}
           TEMPORARY_IDENTIFIERS_PASSED: ${{ needs.checkstyle.outputs.identifiers_passed }}
+          INLINE_COMMENTS_PASSED: ${{ needs.checkstyle.outputs.inline_comments_passed }}
           BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
         run: |
           ./tools/ci/agent-protection/check-quality-gates.sh "${{ runner.temp }}/quality-gate-failures.txt"
@@ -4511,6 +4940,23 @@ jobs:
         with:
           name: auto-review-request
           path: staged-request
+
+      # Grant the agent the right to edit the protected files the branch
+      # already changes (see tools/ci/detect-protected-file-changes.sh). Read
+      # from the trusted compare API, never the staged request. Writes the
+      # grants to $GITHUB_ENV for the submit step below.
+      - name: Grant edits to protected files the branch changes
+        env:
+          BRANCH: ${{ needs.changes.outputs.branch }}
+          BASE_BRANCH: ${{ needs.changes.outputs.base_branch }}
+          HEAD_SHA: ${{ needs.changes.outputs.head_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -f ./tools/ci/detect-protected-file-changes.sh ]; then
+            echo "::warning::The default branch has no tools/ci/detect-protected-file-changes.sh yet — the branch's protected-file changes are not granted"
+            exit 0
+          fi
+          bash ./tools/ci/detect-protected-file-changes.sh
 
       - name: Submit agent job
         env:

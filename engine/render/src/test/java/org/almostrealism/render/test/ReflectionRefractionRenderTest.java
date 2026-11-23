@@ -42,10 +42,16 @@ import org.junit.Test;
  * above a lit diffuse floor and against a black background. Either shader should show the floor
  * somewhere in the sphere's disc, so the disc must not be entirely black.
  *
- * <p>Known issue: the refraction case does not finish within its timeout. The refracted ray
- * is traced into the sphere, out through its far side and on to the floor, and compiling that
- * graph spends its time in {@code ScopeLifecycle.resetArguments}, which revisits every shared
- * node of the graph once per path that reaches it.</p>
+ * <p>Known issue: the refraction case still does not finish. The refracted ray is traced into
+ * the sphere, out through its far side and on to the floor. Memoizing the argument-reset
+ * traversal removed the compile's former bottleneck — it no longer spends its budget in
+ * {@code ScopeLifecycle.resetArguments} revisiting shared nodes once per path — but the
+ * refraction graph then reaches a second, independent wall in expression simplification:
+ * compiling the aggregated exit-ray selection throws {@code ExpressionException: Large
+ * expression not improved by simplification}. That expression-size blow-up is a distinct
+ * mechanism from the reset traversal (it also afflicts the non-identity-transform reflection
+ * and multi-sphere cases) and is tracked separately; until it is addressed the refraction
+ * render cannot be un-flagged.</p>
  */
 public class ReflectionRefractionRenderTest extends TestSuiteBase implements RGBFeatures {
 	/** The width and height of the image, in pixels. */

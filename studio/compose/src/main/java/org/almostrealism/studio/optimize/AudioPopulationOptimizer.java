@@ -85,6 +85,9 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 	/** Optional callback invoked at the start of each optimization cycle. */
 	private Runnable cycleListener;
 
+	/** Optional callback invoked once the population a cycle will evaluate is final. */
+	private Runnable populationReadyListener;
+
 	/** Optional callback invoked after each optimization cycle completes. */
 	private Runnable completionListener;
 
@@ -164,6 +167,26 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 	}
 
 	/**
+	 * Registers a callback that is invoked once per {@link #iterate()}, when the population
+	 * the iteration will evaluate is final and before its first genome is evaluated.
+	 *
+	 * <p>This is the point at which a consumer tracking the population per genome (for
+	 * example, maintaining a record for each) must bring itself into step with it: the
+	 * health evaluation that follows delivers one result per genome of this population.
+	 * With {@link PopulationOptimizer#enableBreeding} set it fires from
+	 * {@link #breedingComplete()}, after breeding has replaced the genomes; without it, it
+	 * fires at the start of {@link #iterate()}, where the population is the one
+	 * {@link #readPopulation()} loaded. Unlike {@link #setCycleListener}, which fires before
+	 * the population for the cycle has been read or bred, this fires when
+	 * {@link #getPopulation()} already holds the genomes that will be scored.</p>
+	 *
+	 * @param r the population-ready listener runnable
+	 */
+	public void setPopulationReadyListener(Runnable r) {
+		this.populationReadyListener = r;
+	}
+
+	/**
 	 * Registers a callback that is invoked after each optimization cycle completes.
 	 *
 	 * @param r the completion listener runnable
@@ -235,11 +258,28 @@ public class AudioPopulationOptimizer<O extends Temporal> extends
 		}
 	}
 
+	/**
+	 * Runs one iteration. Without breeding the population evaluated is the one already
+	 * loaded, and {@link #breedingComplete()} is never reached, so the population-ready
+	 * listener is notified here before evaluation begins.
+	 */
+	@Override
+	public void iterate() {
+		if (!enableBreeding) populationReady();
+		super.iterate();
+	}
+
 	@Override
 	public void breedingComplete() {
 		storePopulation();
 		count.set(0);
 		outputPrefix = generatePrefix();
+		populationReady();
+	}
+
+	/** Notifies the population-ready listener, if one is registered. */
+	private void populationReady() {
+		if (populationReadyListener != null) populationReadyListener.run();
 	}
 
 	/**

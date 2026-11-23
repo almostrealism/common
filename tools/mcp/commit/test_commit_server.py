@@ -90,8 +90,14 @@ class BranchTest(unittest.TestCase):
         self.assertEqual([], commit_check.branch_problems("develop"))
 
 
-class CommitToolTest(unittest.TestCase):
-    """The commit tool against a scratch repository."""
+class GitRepositoryTestCase(unittest.TestCase):
+    """A scratch repository on a feature branch, with staging helpers.
+
+    Holds the fixture shared by the commit-tool tests and the
+    repository-scoping tests. It defines no test methods of its own, so a
+    subclass reuses the setup without inheriting — and re-running — another
+    test class's cases.
+    """
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -122,6 +128,10 @@ class CommitToolTest(unittest.TestCase):
         """Changes the tracked file and stages it."""
         (self.root / "a.txt").write_text(text)
         self.git("add", "a.txt")
+
+
+class CommitToolTest(GitRepositoryTestCase):
+    """The commit tool against a scratch repository."""
 
     def test_commit_uses_the_message_and_removes_it(self):
         self.stage("two\n")
@@ -154,6 +164,55 @@ class CommitToolTest(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertTrue(any(p.startswith("private product: a.txt:1") for p in result["problems"]), result)
+
+    def test_long_inline_comment_in_added_lines_is_refused(self):
+        wall = "".join("\t\t// narrating what was done here %d\n" % i for i in range(6))
+        (self.root / "A.java").write_text("class A {\n\tvoid m() {\n" + wall + "\t\tint x;\n\t}\n}\n")
+        self.git("add", "A.java")
+        (self.root / "commit.txt").write_text("Add A\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("inline comment: A.java:3") for p in result["problems"]), result)
+
+    def test_line_added_to_a_committed_comment_is_refused(self):
+        body = "class A {\n\tvoid m() {\n\t\t// one\n\t\t// two\n\t\t// three\n%s\t\tint x;\n\t}\n}\n"
+        (self.root / "A.java").write_text(body % "")
+        self.git("add", "A.java")
+        self.git("commit", "-q", "-m", "Three lines")
+        (self.root / "A.java").write_text(body % "\t\t// four\n")
+        self.git("add", "A.java")
+        (self.root / "commit.txt").write_text("Grow the comment\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertTrue(any("4 consecutive" in p for p in result["problems"]), result)
+
+    def test_committed_comment_left_alone_is_accepted(self):
+        wall = "".join("\t\t// narrating what was done here %d\n" % i for i in range(6))
+        body = "class A {\n\tvoid m() {\n" + wall + "\t\tint x;\n\t}\n\tint y%s;\n}\n"
+        (self.root / "A.java").write_text(body % "")
+        self.git("add", "A.java")
+        self.git("commit", "-q", "-m", "Old wall")
+        (self.root / "A.java").write_text(body % " = 2")
+        self.git("add", "A.java")
+        (self.root / "commit.txt").write_text("Set y\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(any(p.startswith("inline comment") for p in result["problems"]), result)
+
+    def test_staged_snapshot_is_judged_not_the_working_tree(self):
+        wall = "".join("\t\t// narrating what was done here %d\n" % i for i in range(6))
+        (self.root / "A.java").write_text("class A {\n\tvoid m() {\n" + wall + "\t\tint x;\n\t}\n}\n")
+        self.git("add", "A.java")
+        (self.root / "A.java").write_text("class A {\n\tvoid m() {\n\t\tint x;\n\t}\n}\n")
+        (self.root / "commit.txt").write_text("Add A\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertTrue(any(p.startswith("inline comment") for p in result["problems"]), result)
 
     def test_missing_message_and_empty_change_are_refused(self):
         result = server.check_commit(str(self.root))
@@ -322,6 +381,123 @@ class CommitToolTest(unittest.TestCase):
         result = server.check_commit(str(self.root))
 
         self.assertTrue(any("must not be part of the commit" in p for p in result["problems"]), result)
+
+
+class RepositoryNameTest(unittest.TestCase):
+    """The repository name is read from either origin URL form."""
+
+    def test_scp_form(self):
+        self.assertEqual("acme-private",
+                         commit_check.repository_name("git@github.com:acme/acme-private.git"))
+
+    def test_https_form_with_suffix(self):
+        self.assertEqual("acme-private",
+                         commit_check.repository_name("https://github.com/acme/acme-private.git"))
+
+    def test_https_form_without_suffix(self):
+        self.assertEqual("acme-private",
+                         commit_check.repository_name("https://github.com/acme/acme-private"))
+
+    def test_trailing_slash_after_suffix(self):
+        self.assertEqual("acme-private",
+                         commit_check.repository_name("https://github.com/acme/acme-private.git/"))
+
+    def test_trailing_slash_without_suffix(self):
+        self.assertEqual("acme-private",
+                         commit_check.repository_name("https://github.com/acme/acme-private/"))
+
+    def test_empty_url_has_no_name(self):
+        self.assertIsNone(commit_check.repository_name(""))
+
+    def test_matching_is_case_insensitive(self):
+        self.assertTrue(commit_check.names_own_repository("acmestudio", ["AcmeStudio"]))
+        self.assertTrue(commit_check.names_own_repository("AcmeStudio", ["acmestudio"]))
+        self.assertFalse(commit_check.names_own_repository("some-other-repo", ["acme-private"]))
+        self.assertFalse(commit_check.names_own_repository(None, ["acme-private"]))
+
+
+class RepositoryScopingTest(GitRepositoryTestCase):
+    """The product-name check is skipped only in a private product's own repository."""
+
+    def configure(self, names: str, origin: str = None):
+        """Sets the configured product names, and adds an ``origin`` remote when given."""
+        os.environ[commit_check.PRIVATE_NAMES_VARIABLE] = names
+        if origin is not None:
+            self.git("remote", "add", "origin", origin)
+
+    def test_matching_repository_skips_product_check(self):
+        self.configure("acme-private,AcmeStudio", "git@github.com:acme/acme-private.git")
+        self.stage("made for acme-private\n")
+        (self.root / "commit.txt").write_text("Support acme-private\n\nThe acme-private renderer.\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(any("acme-private" in w for w in result["warnings"]), result)
+
+    def test_matching_repository_still_enforces_other_checks(self):
+        self.configure("acme-private", "https://github.com/acme/acme-private.git")
+        self.stage("made for acme-private\n")
+        (self.root / "commit.txt").write_text("Support it\n\nCo-Authored-By: Someone <a@b.c>\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("attribution") for p in result["problems"]), result)
+        self.assertFalse(any(p.startswith("private product") for p in result["problems"]), result)
+
+    def test_non_matching_repository_enforces_product_check(self):
+        self.configure("acme-private", "git@github.com:acme/some-other-repo.git")
+        self.stage("made for acme-private\n")
+        (self.root / "commit.txt").write_text("Change a\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("private product: a.txt:1") for p in result["problems"]), result)
+
+    def test_no_origin_remote_enforces_product_check(self):
+        self.configure("acme-private")
+        self.stage("made for acme-private\n")
+        (self.root / "commit.txt").write_text("Change a\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("private product: a.txt:1") for p in result["problems"]), result)
+
+    def test_global_origin_does_not_bypass_product_check(self):
+        # The origin lookup is scoped to the repository-local config, so a
+        # global (or system) remote.origin.url inherited from the invoking
+        # environment cannot stand in for a missing local origin and silently
+        # disable the guard: a repository with no local origin stays fail-closed.
+        self.configure("acme-private")
+        global_config = self.root / "global.gitconfig"
+        global_config.write_text('[remote "origin"]\n\turl = git@github.com:acme/acme-private.git\n')
+        self.stage("made for acme-private\n")
+        (self.root / "commit.txt").write_text("Change a\n")
+        saved = os.environ.get("GIT_CONFIG_GLOBAL")
+        os.environ["GIT_CONFIG_GLOBAL"] = str(global_config)
+        try:
+            result = server.check_commit(str(self.root))
+        finally:
+            if saved is None:
+                os.environ.pop("GIT_CONFIG_GLOBAL", None)
+            else:
+                os.environ["GIT_CONFIG_GLOBAL"] = saved
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(p.startswith("private product: a.txt:1") for p in result["problems"]), result)
+
+    def test_case_insensitive_repository_match_skips_product_check(self):
+        self.configure("AcmeStudio", "https://github.com/acme/acmestudio.git")
+        self.stage("made for AcmeStudio\n")
+        (self.root / "commit.txt").write_text("Support AcmeStudio\n")
+
+        result = server.check_commit(str(self.root))
+
+        self.assertTrue(result["ok"], result)
+        self.assertTrue(any("acmestudio" in w.lower() for w in result["warnings"]), result)
 
 
 if __name__ == "__main__":

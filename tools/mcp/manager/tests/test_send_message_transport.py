@@ -104,10 +104,29 @@ def _free_port():
 # code invited a misleading future wiring-up.
 
 
-async def _start_uvicorn(app, port, ready_event):
+def _loaded_uvicorn_config(app, port):
+    """Build and load the uvicorn configuration on the calling thread.
+
+    ``Config.load()`` imports the HTTP, websocket and lifespan protocol
+    modules on first use. Loading it here, on the test thread, means the
+    server thread finds every one of them already in ``sys.modules`` and
+    never takes an import lock. Importing them from the server thread
+    instead exposes a defect of CPython before 3.12 in
+    ``importlib._bootstrap._ModuleLock.acquire``: a garbage-collection
+    finalizer that imports while the lock is held (for instance a
+    ``ResourceWarning`` raised for an event loop an earlier test left
+    behind) removes the thread's ``_blocking_on`` entry, the outer acquire
+    then fails with ``KeyError: <thread id>``, and the server never
+    starts. ``Server.serve()`` skips ``load()`` for a loaded config."""
     import uvicorn
     config = uvicorn.Config(
         app, host="127.0.0.1", port=port, log_level="warning", lifespan="on")
+    config.load()
+    return config
+
+
+async def _start_uvicorn(config, ready_event):
+    import uvicorn
     srv = uvicorn.Server(config)
     task = asyncio.create_task(srv.serve())
     deadline = asyncio.get_event_loop().time() + 10
@@ -140,6 +159,7 @@ def _running_server(app, *, port=None):
     returns, so port reuse between tests is safe."""
     if port is None:
         port = _free_port()
+    config = _loaded_uvicorn_config(app, port)
 
     ready_holder = {}
     error_holder = {}
@@ -152,7 +172,7 @@ def _running_server(app, *, port=None):
 
         async def run():
             try:
-                await _start_uvicorn(app, port, ready)
+                await _start_uvicorn(config, ready)
             except Exception as e:  # pragma: no cover
                 error_holder["error"] = e
         try:

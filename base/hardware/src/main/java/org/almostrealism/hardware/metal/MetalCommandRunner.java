@@ -34,9 +34,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * Owns the Metal command-buffer lifecycle for a {@link MetalComputeContext}.
@@ -58,7 +58,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>A buffer stops accepting dispatches when it is <em>closed</em> (a host wait, the
  * {@link #MAX_OPEN} bound, the GPU running out of work once the buffer holds
- * {@link SubmissionStream#minIdleCommit} dispatches, or a bridged dispatch that must start a fresh buffer), and is
+ * {@link SubmissionStream#minIdleCommit} dispatches, the buffer going {@link SubmissionStream#quietCommitMicros quiet}, or a bridged
+ * dispatch that must start a fresh buffer), and is
  * <em>committed</em> to the GPU only once every host-signaled bridge encoded into it has been
  * signaled, in the order the buffers were closed. The GPU therefore never holds a buffer that waits
  * for the host: a caller may submit dispatches ahead of the foreign work they depend on, and the
@@ -109,10 +110,34 @@ import java.util.concurrent.atomic.AtomicReference;
  * <h2>Memory lifetime</h2>
  *
  * <p>Memory referenced by an encoded kernel must stay alive until the GPU has finished its command
- * buffer. Callers pass an {@code onCommit} callback to {@link #submit} that releases that memory;
+ * buffer. Callers pass an {@code onComplete} callback to {@link #submit} that releases that memory;
  * the runner runs it only after the buffer the dispatch was encoded into has finished: its
  * completion has been reported, or a wait has observed its timeline signal, which the GPU executes
  * after all of the buffer's work (see {@link #complete}).</p>
+ *
+ * <p>These callbacks run when the GPU finishes the buffer, whether or not any thread ever waits for
+ * it, so a caller that submits work and then fails before its wait still has that work run and its
+ * memory released:</p>
+ * <ul>
+ *   <li><b>Completion is pushed.</b> Every buffer is committed with a Metal completed handler (see
+ *       {@link CommandBatch#commit(Runnable)}). The handler runs on a Metal thread and only hands a
+ *       drain of the finished buffers to {@link #executor} ({@link ConfinedExecutor#runLater}),
+ *       which drains them oldest first, each task in its own autorelease pool. A buffer a waiting
+ *       thread is registered on is left to that thread's wait, which drains it as before; a buffer
+ *       already drained is not drained again, and a wait that arrives afterwards returns at once.
+ *       A buffer that failed is recorded in the {@link FailureRecord} by that drain, as by any
+ *       other. Once the runner is destroyed the hand-off is refused and the handler does nothing:
+ *       {@link #destroy()} has drained every buffer itself. The handler is registered by a JNI
+ *       operation compiled at runtime (see {@link MTLCommandBuffer#addCompletedHandler}); a host
+ *       that cannot compile it has a finished buffer drained by the runner's next drain instead.</li>
+ *   <li><b>A quiet open batch is committed.</b> An open batch holding dispatches is committed once
+ *       no dispatch has been encoded into it for {@link SubmissionStream#quietCommitMicros}, the
+ *       quiet-commit policy every batching stream shares (see
+ *       {@link SubmissionStream#closeWhenQuiet()}), measured from the last dispatch, so
+ *       back-to-back dispatches still share a buffer. The runner supplies only what is native to
+ *       Metal: the check runs on {@link #executor} ({@link #runOnStreamThread}), and a buffer that
+ *       waits for a host-signaled bridge is not yet committable ({@link #canCommitOpenBatch()}).</li>
+ * </ul>
  *
  * <p>Objective-C memory: every executor task runs inside its own autorelease pool (see
  * {@link MTLAutoreleasePool#run}) so transient autoreleased Metal objects (encoders, the command
@@ -237,6 +262,8 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	private volatile long maxOpenCommits;
 	/** Commits performed while destroying the runner. Executor-thread written; volatile reads. */
 	private volatile long destroyCommits;
+	/** Buffers drained after their completed handler fired, with no wait. Executor-thread written. */
+	private volatile long completionDrains;
 	/** Commits forced so a bridged dispatch starts a fresh buffer. Executor-thread written. */
 	private volatile long bridgeCommits;
 	/** GPU waits encoded to order a dispatch after an earlier one of this runner. Executor-thread written. */
@@ -249,6 +276,12 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * {@link #complete}). Written by waiting threads.
 	 */
 	private final AtomicLong signalCompletions = new AtomicLong();
+
+	/**
+	 * Host waits that found their dispatch's buffer already drained, by its completed handler or an
+	 * earlier wait, and so waited for nothing (see {@link #complete}). Written by waiting threads.
+	 */
+	private final AtomicLong drainedWaits = new AtomicLong();
 
 	/**
 	 * The batch closed most recently, or {@code null} before the first. Written on the executor
@@ -290,6 +323,12 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * when it is committed. Executor-thread only.
 	 */
 	private final ArrayDeque<CommandBatch> held = new ArrayDeque<>();
+
+	/**
+	 * Run by the Metal thread that reports a committed buffer finished: hands a drain of the
+	 * finished buffers to the executor, and does nothing once the runner has been destroyed.
+	 */
+	private final Runnable onBufferFinished = () -> executor.runLater(this::drainFinished);
 
 	/**
 	 * Creates a Metal command runner.
@@ -537,8 +576,8 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 			int dispatches = batch.getDispatchCount();
 			if (dispatches >= MAX_OPEN && closeOpenBatch()) {
 				maxOpenCommits++;
-			} else {
-				closeEarlyIfIdle(dispatches);
+			} else if (!closeEarlyIfIdle(dispatches)) {
+				closeWhenQuiet();
 			}
 		});
 
@@ -571,17 +610,14 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * already-finished buffer (after it) run on the executor's thread, so it is never occupied
 	 * while the GPU is still working.</p>
 	 *
-	 * <p>An interrupted caller abandons the wait, as {@link ConfinedExecutor#run} does. The
-	 * waiter registration may still be queued at that point, so its withdrawal is queued behind
-	 * it rather than skipped, and the buffer is released once some later wait drains it. If the
-	 * runner is destroyed before the withdrawal can be queued, the withdrawal runs on the calling
-	 * thread only after the executor has run every queued task, so the registration it withdraws
-	 * has been made by then.</p>
-	 *
-	 * <p>A buffer that is closed but still waits for a host-signaled bridge is not on the GPU yet,
-	 * so the caller first waits, on its own thread, until the bridge has been signaled and the
-	 * buffer committed (see the class documentation); an interrupt during that wait abandons it
-	 * as well.</p>
+	 * <p><b>Interrupts.</b> An interrupted wait never returns as though the work had finished.
+	 * The bounded steps are uninterruptible: the wait for the GPU and every drain and withdrawal
+	 * after it, a drain being what records a failure. When {@code interruptible}, an interrupt
+	 * ends the two unbounded waits, for the executor to register the waiter and for a buffer held
+	 * for a host-signaled bridge to be committed; the waiter is then withdrawn (queued behind a
+	 * registration still pending, or on the calling thread once the executor has terminated), a
+	 * recorded failure is thrown in preference, and otherwise one warning is logged and a
+	 * {@link HardwareException} thrown, with the interrupt status left set.</p>
 	 *
 	 * <p>{@link #destroy()} may run while a caller is still waiting here. Its final task drains
 	 * every committed buffer, including the one being waited for, but leaves it retained for the
@@ -594,36 +630,47 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * otherwise once the buffers have been drained, which is what records one. The caller waits
 	 * for every committed buffer up to its own in queue order and stops at the first that
 	 * failed: a buffer that encoded a GPU wait for a failed buffer's value would otherwise stall
-	 * until the watchdog killed it too, and only then would the earlier failure be seen. An
-	 * interrupted caller returns without throwing; the failure stays recorded for the next
-	 * waiter.</p>
+	 * until the watchdog killed it too, and only then would the earlier failure be seen.</p>
 	 *
-	 * @param dispatch the completion of a dispatch this runner encoded (see {@link #submit})
-	 * @throws HardwareException if the dispatch, or one it may depend on, did not execute
+	 * @param dispatch      the completion of a dispatch this runner encoded (see {@link #submit})
+	 * @param interruptible whether an interrupt ends the unbounded waits by throwing; otherwise
+	 *                      they are waited out and the interrupt status restored afterwards
+	 * @throws HardwareException if the dispatch, or one it may depend on, did not execute, or if
+	 *                           an interrupt ended the wait before the work was known to be done
 	 */
-	public void complete(MetalSemaphore dispatch) {
+	public void complete(MetalSemaphore dispatch, boolean interruptible) {
 		long value = dispatch.getValue();
 		OperationMetadata requester = dispatch.getRequester();
 		getFailures().require(value);
 
-		AtomicReference<Waiter> registered = new AtomicReference<>();
-		executor.run(() -> registered.set(commitForWait(dispatch.getCommandBuffer(), requester)));
+		AtomicReference<CommandBatchWaiter> registered = new AtomicReference<>();
+		Runnable registration = () -> registered.set(commitForWait(dispatch.getCommandBuffer(), requester));
+		boolean finished;
 
-		if (Thread.currentThread().isInterrupted()) {
-			Runnable withdrawal = () -> {
-				Waiter abandoned = registered.get();
-				if (abandoned != null) abandoned.withdraw();
-			};
-			executor.runOrElse(withdrawal, withdrawal);
-			return;
-		}
+		try {
+			if (interruptible) {
+				executor.runInterruptibly(registration);
+			} else {
+				executor.runUninterruptibly(registration);
+			}
 
-		Waiter pending = registered.get();
-		if (pending != null && !awaitSignal(pending, value, requester) && !awaitInOrder(pending, requester)) {
-			return;
+			CommandBatchWaiter pending = registered.get();
+			if (pending == null) drainedWaits.incrementAndGet();
+			finished = pending == null || awaitSignal(pending, value, requester)
+					|| awaitInOrder(pending, requester, interruptible);
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+			executor.runLaterOrElse(withdrawal(registered::get), withdrawal(registered::get));
+			finished = false;
 		}
 
 		getFailures().require(value);
+
+		if (!finished) {
+			warn("Interrupted while waiting for Metal dispatch value=" + value
+					+ " before its work was known to be done");
+			throw new HardwareException("Interrupted while waiting for Metal dispatch value=" + value);
+		}
 	}
 
 	/**
@@ -647,19 +694,20 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * @return true if the signal ended the wait and the buffers have been drained, false if the
 	 *         caller must wait for the buffers' completion instead
 	 */
-	private boolean awaitSignal(Waiter waiter, long value, OperationMetadata requester) {
+	private boolean awaitSignal(CommandBatchWaiter waiter, long value, OperationMetadata requester) {
 		boolean settled;
 
 		try {
 			settled = isSettledBySignal(waiter, value);
 		} catch (RuntimeException | Error e) {
-			executor.runOrElse(waiter::withdraw, waiter::withdraw);
+			withdrawOnExecutor(waiter);
 			throw e;
 		}
 
 		if (!settled) return false;
 
-		executor.runOrElse(() -> drainThrough(waiter.getTarget(), requester, waiter, true), waiter::withdraw);
+		executor.runOrElseUninterruptibly(() -> drainThrough(waiter.getTarget(), requester, waiter, true),
+				waiter::withdraw);
 		signalCompletions.incrementAndGet();
 		return true;
 	}
@@ -695,7 +743,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * @return true if the buffers have executed as the signal shows, false if the caller must wait
 	 *         for their completion instead
 	 */
-	private boolean isSettledBySignal(Waiter waiter, long value) {
+	private boolean isSettledBySignal(CommandBatchWaiter waiter, long value) {
 		CommandBatch target = waiter.getTarget();
 		if (!target.isCommitted()) return false;
 
@@ -718,16 +766,19 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 *
 	 * @param waiter    the caller's registration on the oldest committed buffers, up to the
 	 *                  buffer being waited for
-	 * @param requester metadata of the operation waiting for completion, or {@code null}
+	 * @param requester     metadata of the operation waiting for completion, or {@code null}
+	 * @param interruptible whether an interrupt ends the wait for a buffer to be committed
 	 * @return true if the wait ended normally, false if it was abandoned by an interrupt
 	 */
-	private boolean awaitInOrder(Waiter waiter, OperationMetadata requester) {
+	private boolean awaitInOrder(CommandBatchWaiter waiter, OperationMetadata requester, boolean interruptible) {
 		CommandBatch completed = null;
 		boolean interrupted = false;
 
 		try {
 			for (CommandBatch c : waiter.getBatches()) {
-				if (!c.awaitCompletion()) {
+				if (!interruptible) {
+					c.awaitCompletionUninterruptibly();
+				} else if (!c.awaitCompletion()) {
 					interrupted = true;
 					break;
 				}
@@ -738,9 +789,10 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 		} finally {
 			CommandBatch through = completed;
 			if (through == null) {
-				executor.runOrElse(waiter::withdraw, waiter::withdraw);
+				withdrawOnExecutor(waiter);
 			} else {
-				executor.runOrElse(() -> drainThrough(through, requester, waiter, false), waiter::withdraw);
+				executor.runOrElseUninterruptibly(() -> drainThrough(through, requester, waiter, false),
+						waiter::withdraw);
 			}
 		}
 
@@ -788,35 +840,104 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * released-memory callbacks — the same list a dispatch's own {@code onComplete}
 	 * argument joins (see {@link #submit}) — so it runs when the buffer is drained, after it
 	 * has been committed on its own schedule ({@link #MAX_OPEN} cadence, an early commit to an
-	 * idle GPU, see {@link SubmissionStream#minIdleCommit}, or a genuine host wait) and has
-	 * finished. A buffer that has already been drained runs the callback immediately. Invoked by
+	 * idle GPU, see {@link SubmissionStream#minIdleCommit}, the {@link SubmissionStream#quietCommitMicros quiet
+	 * delay}, or a genuine host wait) and has finished, without any wait for it. A buffer that
+	 * has already been drained runs the callback immediately. Invoked by
 	 * {@link MetalSemaphore#whenComplete(Runnable)}.
 	 *
 	 * @param dispatch the completion of a dispatch this runner encoded (see {@link #submit})
 	 * @param callback the callback to run after the dispatch's buffer completes
 	 */
 	public void whenComplete(MetalSemaphore dispatch, Runnable callback) {
-		MTLCommandBuffer commandBuffer = dispatch.getCommandBuffer();
-		executor.run(() -> {
-			if (isOpen(commandBuffer)) {
-				openBatch.whenComplete(callback);
-				return;
-			}
+		executor.run(() -> addBatchCallback(dispatch.getCommandBuffer(), callback));
+	}
 
-			for (CommandBatch c : committed) {
-				if (c.isFor(commandBuffer)) {
-					c.whenComplete(callback);
-					return;
-				}
+	/**
+	 * Registers a callback to run promptly, on {@link Semaphore#CALLBACK_EXECUTOR}, once the given
+	 * dispatch's command buffer has finished, whether it executed or failed, without any thread
+	 * waiting for it meanwhile. Invoked by {@link MetalSemaphore#onSettled(Runnable)}.
+	 *
+	 * <p>The buffer is committed now if it is still open, exactly as a {@link #complete wait} for
+	 * the dispatch would commit it (and attributed to the dispatch's requester in the same way),
+	 * since a callback registered here must run without anyone waiting. The callback is then
+	 * handed to the callback pool as soon as the buffer's completed handler reports it finished
+	 * (see {@link CommandBatch#whenFinished}), so it holds a thread only while it runs. That is
+	 * before the buffer is drained, which a thread registered to wait for it may be doing only
+	 * once work this callback starts has completed (the native dispatch of an alternating chain,
+	 * waited for once at its end). The callback learns of a failure from {@link Semaphore#waitFor()},
+	 * which drains the finished buffer and so records it. It is never run on the executor's thread,
+	 * because a callback may wait for this runner. A buffer that has already finished or been
+	 * drained, or a runner that has been destroyed (whose final task drained every buffer), hands
+	 * the callback over at once.</p>
+	 *
+	 * <p>Registering is a bounded step on the executor's thread, so an interrupt never abandons
+	 * it (see {@link #complete}): the caller returns only once the callback is registered, and a
+	 * failure to register it is rethrown rather than lost.</p>
+	 *
+	 * <p>This requires a host that can register completed handlers
+	 * ({@link MTLCompletedHandler#isAvailable()}); without one a finished buffer is drained only
+	 * when something waits, so {@link MetalSemaphore#onSettled(Runnable)} does not come here.</p>
+	 *
+	 * @param dispatch the completion of a dispatch this runner encoded (see {@link #submit})
+	 * @param callback the callback to run once the dispatch's buffer has settled
+	 */
+	public void onSettled(MetalSemaphore dispatch, Runnable callback) {
+		Runnable deliver = () -> Semaphore.CALLBACK_EXECUTOR.execute(callback);
+		Runnable register = () -> {
+			commitIfOpen(dispatch.getCommandBuffer(), dispatch.getRequester());
+			CommandBatch batch = batchOf(dispatch.getCommandBuffer());
+			if (batch == null) {
+				deliver.run();
+			} else {
+				batch.whenFinished(deliver);
 			}
+		};
 
+		if (isStreamThread()) {
+			register.run();
+		} else {
+			executor.runOrElseUninterruptibly(register, deliver);
+		}
+	}
+
+	/**
+	 * Adds a callback to the released-memory callbacks of the batch encoded into the given
+	 * command buffer, or runs it at once when that batch has already been drained. Must run on
+	 * the executor thread.
+	 *
+	 * @param commandBuffer the command buffer a dispatch was encoded into
+	 * @param callback      the callback to run when the buffer is drained
+	 */
+	private void addBatchCallback(MTLCommandBuffer commandBuffer, Runnable callback) {
+		CommandBatch batch = batchOf(commandBuffer);
+		if (batch == null) {
 			callback.run();
-		});
+		} else {
+			batch.whenComplete(callback);
+		}
+	}
+
+	/**
+	 * Returns the open or committed batch encoded into the given command buffer, or {@code null}
+	 * once that batch has been drained. Must run on the executor thread.
+	 *
+	 * @param commandBuffer the command buffer a dispatch was encoded into
+	 * @return the batch, or {@code null} if it has been drained
+	 */
+	private CommandBatch batchOf(MTLCommandBuffer commandBuffer) {
+		if (isOpen(commandBuffer)) return openBatch;
+
+		for (CommandBatch c : committed) {
+			if (c.isFor(commandBuffer)) return c;
+		}
+
+		return null;
 	}
 
 	/**
 	 * Returns whether the dispatch with the given timeline value has finished: its buffer has been
-	 * drained, which happens only once a host wait has seen the buffer complete. Buffers are drained
+	 * drained, which happens only once a host wait or the buffer's completed handler has seen the
+	 * buffer complete. Buffers are drained
 	 * in the order they were closed, so a dispatch whose value is below the first value of the
 	 * oldest buffer still {@link #committed} (or, when none is, of the open buffer) is in a drained
 	 * buffer. A dependent of a finished dispatch needs no GPU wait. If the dispatch executed, the
@@ -872,7 +993,8 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	/**
 	 * Returns the number of commits forced by a host-side completion wait ({@link #complete}).
 	 * Together with {@link #getMaxOpenCommitCount()}, {@link #getIdleCommitCount()},
-	 * {@link #getBridgeCommitCount()} and {@link #getDestroyCommitCount()} this partitions
+	 * {@link #getQuietCommitCount()}, {@link #getBridgeCommitCount()} and
+	 * {@link #getDestroyCommitCount()} this partitions
 	 * {@link #getCommitCount()} by cause: host waits are the commits that break batching on
 	 * demand, while {@link #MAX_OPEN} commits are the expected steady-state cadence while the GPU
 	 * is busy, and idle commits the cadence while it keeps up. The causes are counted when a buffer is
@@ -931,6 +1053,15 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * @return the number of waits settled by a timeline signal
 	 */
 	public long getSignalCompletionCount() { return signalCompletions.get(); }
+
+	/**
+	 * Returns the number of host waits that found their dispatch's buffer already drained when
+	 * they began, by the buffer's completed handler or by an earlier wait, and so neither polled
+	 * the timeline nor waited for the buffer's completion.
+	 *
+	 * @return the number of waits for an already-drained buffer
+	 */
+	public long getDrainedWaitCount() { return drainedWaits.get(); }
 
 	/**
 	 * Returns the number of foreign-completion signals that arrived after their bridge
@@ -1013,6 +1144,42 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	}
 
 	/**
+	 * Queues {@code task} on the executor without waiting, unless the runner has been destroyed
+	 * ({@link ConfinedExecutor#runLater}), so the quiet-commit check of
+	 * {@link SubmissionStream#closeWhenQuiet()} runs where every command-buffer operation does.
+	 *
+	 * @param task the work to run on the executor thread
+	 * @return true if the task was queued, false once the runner has been destroyed
+	 */
+	@Override
+	protected boolean runOnStreamThread(Runnable task) {
+		return executor.runLater(task);
+	}
+
+	/**
+	 * Returns the number of dispatches encoded into the open buffer, or zero when none is open.
+	 * Must run on the executor thread.
+	 *
+	 * @return the open buffer's dispatch count
+	 */
+	@Override
+	protected int getOpenBatchSize() {
+		return openBatch == null ? 0 : openBatch.getDispatchCount();
+	}
+
+	/**
+	 * Returns whether the open buffer would be committed at once if it were closed now: every
+	 * host-signaled bridge encoded into it has been signaled, and no buffer closed before it is
+	 * still held for one (see {@link #commitReadyOnExecutor()}). Must run on the executor thread.
+	 *
+	 * @return true if closing the open buffer now would commit it to the GPU
+	 */
+	@Override
+	protected boolean canCommitOpenBatch() {
+		return openBatch != null && openBatch.isReady() && held.isEmpty();
+	}
+
+	/**
 	 * Commits, in the order they were closed, every closed buffer whose host-signaled bridges have
 	 * all been signaled, stopping at the first that still waits for one: a buffer committed ahead
 	 * of one closed before it would run ahead of it on the queue. Must run on the executor thread.
@@ -1031,7 +1198,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 */
 	private void commitOldestHeld() {
 		try {
-			held.removeFirst().commit();
+			held.removeFirst().commit(onBufferFinished);
 		} finally {
 			release();
 		}
@@ -1048,20 +1215,32 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 *         target, or {@code null} if the target has already completed and been drained by an
 	 *         earlier wait
 	 */
-	private Waiter commitForWait(MTLCommandBuffer target, OperationMetadata requester) {
+	private CommandBatchWaiter commitForWait(MTLCommandBuffer target, OperationMetadata requester) {
+		commitIfOpen(target, requester);
+
+		for (int i = 0; i < committed.size(); i++) {
+			if (committed.get(i).isFor(target)) {
+				return new CommandBatchWaiter(committed.subList(0, i + 1));
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Closes the target buffer if it is still open, so that it is committed as soon as its
+	 * bridges allow, and attributes that host-forced commit to the requester in
+	 * {@link #hostCompleteRequesters}. Must run on the executor thread.
+	 *
+	 * @param target    the buffer whose completion the host requires
+	 * @param requester metadata of the operation requiring it, or {@code null}
+	 */
+	private void commitIfOpen(MTLCommandBuffer target, OperationMetadata requester) {
 		if (isOpen(target) && closeOpenBatch()) {
 			hostCompleteCommits++;
 			hostCompleteRequesters.addEntry(
 					requester == null ? "unknown" : requester.getDisplayName(), 1);
 		}
-
-		for (int i = 0; i < committed.size(); i++) {
-			if (committed.get(i).isFor(target)) {
-				return new Waiter(committed.subList(0, i + 1));
-			}
-		}
-
-		return null;
 	}
 
 	/**
@@ -1085,7 +1264,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * @param signaled  whether {@code through} is known to have executed from its timeline signal
 	 *                  rather than from its completion
 	 */
-	private void drainThrough(CommandBatch through, OperationMetadata requester, Waiter waiter,
+	private void drainThrough(CommandBatch through, OperationMetadata requester, CommandBatchWaiter waiter,
 							  boolean signaled) {
 		int count = committed.indexOf(through) + 1;
 		List<Runnable> drains = new ArrayList<>(count);
@@ -1093,7 +1272,81 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 			boolean executed = signaled && i == count - 1;
 			drains.add(() -> drainOldestCommitted(requester, executed));
 		}
-		Destroyable.releaseAll(drains, waiter::withdraw);
+
+		try {
+			Destroyable.releaseAll(drains, waiter::withdraw);
+		} finally {
+			drainFinished();
+		}
+	}
+
+	/**
+	 * Withdraws a waiter that ends its wait without draining, waiting (uninterruptibly, see
+	 * {@link #complete}) for {@link #withdrawal} to run on the executor's thread, or on the calling
+	 * thread once the executor is gone.
+	 *
+	 * @param waiter the waiter to withdraw
+	 */
+	private void withdrawOnExecutor(CommandBatchWaiter waiter) {
+		executor.runOrElseUninterruptibly(withdrawal(() -> waiter), waiter::withdraw);
+	}
+
+	/**
+	 * Returns a task that withdraws a waiter and, on the executor's thread, then drains whatever
+	 * the withdrawal leaves finished and unwaited (see {@link #drainFinished()}). The waiter is
+	 * obtained only when the task runs, so a task queued behind a registration that is still
+	 * queued (an interrupted {@link #complete}) withdraws the waiter that registration makes; on
+	 * the refused path the executor has terminated, so every queued registration has run. A
+	 * {@code null} waiter means the registration found the buffer already drained.
+	 *
+	 * @param waiter supplies the waiter to withdraw, or {@code null} when there is none
+	 * @return the withdrawal task
+	 */
+	private Runnable withdrawal(Supplier<CommandBatchWaiter> waiter) {
+		return () -> {
+			try {
+				CommandBatchWaiter w = waiter.get();
+				if (w != null) w.withdraw();
+			} finally {
+				if (executor.isConfinedThread()) drainFinished();
+			}
+		};
+	}
+
+	/**
+	 * Drains, oldest first, every committed buffer that has finished on the GPU and that no thread
+	 * is waiting for, stopping at the first that has not finished, has not been committed yet, or
+	 * has a waiter, whose wait drains it (see {@link #complete}). This is the drain the completed
+	 * handler of every committed buffer hands to the executor (see the class documentation), so
+	 * memory is released when the GPU finishes, whether or not anything waits; waits and
+	 * withdrawals run it as well, for buffers finished behind the one they handled. Buffers are
+	 * drained in queue order, so a buffer drained here has been removed from {@link #committed}
+	 * and no later drain sees it again. Every finished buffer's {@link CommandBatch#whenFinished
+	 * finish listeners} are notified first, including those of a buffer a waiter keeps from being
+	 * drained here. A failure of a buffer's finish listeners or released-memory callbacks has no
+	 * waiter to reach, so it is logged and the later buffers are still notified and drained. Must
+	 * run on the executor thread.
+	 */
+	private void drainFinished() {
+		for (CommandBatch c : committed) {
+			try {
+				if (!c.notifyIfFinished()) break;
+			} catch (RuntimeException | Error e) {
+				warn("finishNotificationFailed firstValue=" + c.getFirstValue(), e);
+			}
+		}
+
+		while (!committed.isEmpty()) {
+			CommandBatch oldest = committed.get(0);
+			if (!oldest.isCommitted() || !oldest.isFinished() || oldest.hasWaiters()) return;
+
+			try {
+				completionDrains++;
+				drainOldestCommitted(null, false);
+			} catch (RuntimeException | Error e) {
+				warn("completionDrainFailed firstValue=" + oldest.getFirstValue(), e);
+			}
+		}
 	}
 
 	/**
@@ -1147,6 +1400,14 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	}
 
 	/**
+	 * Returns the number of committed buffers drained after their completed handler reported them
+	 * finished, with no wait for them (see {@link #drainFinished()}).
+	 *
+	 * @return the number of buffers drained on completion
+	 */
+	public long getCompletionDrainCount() { return completionDrains; }
+
+	/**
 	 * Returns the number of committed buffers that finished with the Metal error status.
 	 *
 	 * @return the error-completion count
@@ -1192,15 +1453,15 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 		requireOffStreamThread();
 
 		boolean interrupted = Thread.interrupted();
-		AtomicReference<Waiter> last = new AtomicReference<>();
+		AtomicReference<CommandBatchWaiter> last = new AtomicReference<>();
 		Runnable withdrawal = () -> {
-			Waiter registered = last.get();
+			CommandBatchWaiter registered = last.get();
 			if (registered != null) registered.withdraw();
 		};
 
 		try {
 			while (awaitLastCommittedOrDestroy(last)) {
-				Waiter pending = last.get();
+				CommandBatchWaiter pending = last.get();
 				executor.runOrElseUninterruptibly(() -> drainThrough(pending.getTarget(), null,
 						pending, false), pending::withdraw);
 			}
@@ -1232,13 +1493,13 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 * @return true if a buffer was waited for and must now be drained, false once the executor
 	 *         has been destroyed
 	 */
-	private boolean awaitLastCommittedOrDestroy(AtomicReference<Waiter> last) {
+	private boolean awaitLastCommittedOrDestroy(AtomicReference<CommandBatchWaiter> last) {
 		boolean closed = closeIf(() -> {
 			last.set(null);
 			executor.runOrElseUninterruptibly(() -> {
 				if (closeOpenBatch()) destroyCommits++;
 				if (!committed.isEmpty()) {
-					last.set(new Waiter(List.of(committed.get(committed.size() - 1))));
+					last.set(new CommandBatchWaiter(List.of(committed.get(committed.size() - 1))));
 				}
 			}, () -> { });
 
@@ -1255,8 +1516,9 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	}
 
 	/**
-	 * Destroys the executor with a final task that commits anything still open, drains every
-	 * committed buffer running its callbacks, and releases the timeline event. Destroying an
+	 * Destroys the executor with a final task that cancels the quiet deadline, commits anything
+	 * still open, drains every committed buffer running its callbacks, and releases the timeline
+	 * event. Destroying an
 	 * executor that is already destroyed does nothing.
 	 *
 	 * <p>A closed buffer whose bridge was never signaled is committed by the final task as well:
@@ -1265,6 +1527,7 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	 */
 	private void destroyExecutor() {
 		executor.destroy(() -> {
+			cancelQuietCommit();
 			if (closeOpenBatch()) destroyCommits++;
 
 			while (!held.isEmpty()) commitOldestHeld();
@@ -1280,52 +1543,4 @@ public class MetalCommandRunner extends SubmissionStream<MetalSemaphore> impleme
 	/** Returns the console for logging. */
 	@Override
 	public Console console() { return Hardware.console; }
-
-	/**
-	 * One thread's registration as a waiter on the closed {@link CommandBatch}es it waits for off
-	 * the executor thread, in queue order, the last of them its {@link #getTarget() target}: the
-	 * batch of the dispatch being waited for. The command buffer of every one of them stays
-	 * retained until the registration is withdrawn, which happens exactly once and from all of
-	 * them together.
-	 *
-	 * <p>Withdrawal can be requested from more than one path — the drain after the wait, the
-	 * queued withdrawal of an interrupted caller, or the calling thread itself once the executor
-	 * has been destroyed — so it is guarded to take effect only the first time.</p>
-	 */
-	private static final class Waiter {
-		/** The closed batches this waiter is registered on, in queue order. */
-		private final List<CommandBatch> batches;
-		/** Whether this registration has already been withdrawn. */
-		private final AtomicBoolean withdrawn = new AtomicBoolean();
-
-		/**
-		 * Registers a waiter on each of the given closed batches. Executor-thread only, like the
-		 * list of closed batches they are taken from.
-		 *
-		 * @param batches the closed batches to wait on, in queue order, the last the target
-		 */
-		private Waiter(List<CommandBatch> batches) {
-			this.batches = List.copyOf(batches);
-			this.batches.forEach(CommandBatch::addWaiter);
-		}
-
-		/**
-		 * Returns the closed batches this waiter is registered on.
-		 *
-		 * @return the batches being waited on, in queue order
-		 */
-		private List<CommandBatch> getBatches() { return batches; }
-
-		/**
-		 * Returns the batch this waiter waits for: the last it is registered on.
-		 *
-		 * @return the batch being waited for
-		 */
-		private CommandBatch getTarget() { return batches.get(batches.size() - 1); }
-
-		/** Withdraws this registration from every batch, unless it has already been withdrawn. */
-		private void withdraw() {
-			if (withdrawn.compareAndSet(false, true)) batches.forEach(CommandBatch::removeWaiter);
-		}
-	}
 }

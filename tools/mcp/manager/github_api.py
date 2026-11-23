@@ -75,7 +75,7 @@ def _github_request(method: str, path: str, payload: dict = None,
     through the controller.
 
     Args:
-        method: HTTP method (GET, POST, PUT).
+        method: HTTP method (GET, POST, PUT, PATCH).
         path: GitHub API path (e.g., ``/repos/owner/repo/...``).
         payload: Optional dict to JSON-encode as the request body.
         timeout: Request timeout in seconds.

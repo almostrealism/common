@@ -1501,7 +1501,7 @@ public class SemaphoreChainBatchingTest extends TestSuiteBase {
 	 * Returns the shared {@link MetalComputeContext}, or null when the current hardware
 	 * configuration exposes no Metal backend (in which case these tests are skipped).
 	 */
-	static MetalComputeContext metalContext() {
+	public static MetalComputeContext metalContext() {
 		try {
 			return Hardware.getLocalHardware()
 					.getComputeContexts(false, true, ComputeRequirement.MTL).stream()

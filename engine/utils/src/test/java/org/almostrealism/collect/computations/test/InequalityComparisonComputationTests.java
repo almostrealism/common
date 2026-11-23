@@ -16,13 +16,18 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.computations.ScalarMatrixComputation;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.GreaterThanCollection;
 import org.almostrealism.collect.computations.LessThanCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.Optional;
 
 /**
  * Tests that pin the behavior shared by {@link GreaterThanCollection} and
@@ -189,6 +194,82 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 			Assert.assertEquals("7 <= 5 selects false", 20.0, lte.toDouble(0), 0.001);
 			Assert.assertEquals("5 <= 5 selects true", 11.0, lte.toDouble(1), 0.001);
 			Assert.assertEquals("2 <= 5 selects true", 12.0, lte.toDouble(2), 0.001);
+		}
+	}
+
+	/**
+	 * Verifies that optimizing a comparison keeps its output shape. The optimizer
+	 * regenerates each comparison from its optimized children, and the regenerated
+	 * computation must have the same traversal axis as the original. If it did not,
+	 * a reduction over the result would reduce each element on its own instead of
+	 * reducing the whole collection.
+	 */
+	@Test(timeout = 60000)
+	public void optimizedComparisonPreservesTraversalAxis() {
+		try (PackedCollection data = pack(0.0, -0.25, 0.8, -0.5, 0.1)) {
+			PackedCollection optimized = lessThan(abs(cp(data)), c(Double.MAX_VALUE), cp(data), c(0.0)).evaluate();
+			PackedCollection explicit = lessThan(abs(cp(data)), c(Double.MAX_VALUE), cp(data), c(0.0)).evaluateExplicit();
+			PackedCollection gt = greaterThan(abs(cp(data)), c(-1.0), cp(data), c(0.0)).evaluate();
+			PackedCollection eq = equals(cp(data), cp(data), cp(data), c(0.0)).evaluate();
+			PackedCollection and = and(cp(data), c(1.0), cp(data), c(0.0)).evaluate();
+
+			Assert.assertEquals(explicit.getShape().getTraversalAxis(), optimized.getShape().getTraversalAxis());
+			Assert.assertEquals(explicit.getShape().getTraversalAxis(), gt.getShape().getTraversalAxis());
+			Assert.assertEquals(explicit.getShape().getTraversalAxis(), eq.getShape().getTraversalAxis());
+			Assert.assertEquals(explicit.getShape().getTraversalAxis(), and.getShape().getTraversalAxis());
+
+			Assert.assertEquals(0.8, max(cp(optimized).abs()).evaluate().toDouble(0), 1e-6);
+			Assert.assertEquals(0.8, max(cp(gt).abs()).evaluate().toDouble(0), 1e-6);
+			Assert.assertEquals(0.8, max(cp(eq).abs()).evaluate().toDouble(0), 1e-6);
+		}
+	}
+
+	/**
+	 * Verifies that the derivative of a comparison has the derivative's shape. The delta of a
+	 * comparison regenerates the comparison over the derivatives of its branches, which are
+	 * larger than the comparison's own output because they carry the target's dimensions as
+	 * well, so the regenerated computation must not keep the comparison's output shape.
+	 */
+	@Test(timeout = 60000)
+	public void comparisonDeltaHasJacobianShape() {
+		try (PackedCollection data = pack(1.0, -2.0, 3.0, -4.0)) {
+			CollectionProducer x = cp(data);
+			PackedCollection jacobian = greaterThan(x, c(0.0), x.multiply(2.0), x).delta(x).evaluate();
+
+			Assert.assertEquals(16, jacobian.getShape().getTotalSize());
+			for (int i = 0; i < 4; i++) {
+				for (int j = 0; j < 4; j++) {
+					double expected = i != j ? 0.0 : (data.toDouble(i) > 0 ? 2.0 : 1.0);
+					Assert.assertEquals(expected, jacobian.toDouble(i * 4 + j), 1e-6);
+				}
+			}
+		}
+	}
+
+	/**
+	 * The diagonal scalar of a comparison between scalar matrices is a comparison of their
+	 * scalars, and it has the scalars' shape rather than the matrix shape of the comparison it
+	 * was extracted from. A matrix multiplication by a diagonal matrix multiplies by this scalar,
+	 * so a matrix-shaped scalar would change the shape of the product.
+	 */
+	@Test(timeout = 30000)
+	public void comparisonDiagonalScalarHasScalarShape() {
+		int n = 4;
+		GreaterThanCollection comparison = new GreaterThanCollection(shape(n, n),
+				new ScalarMatrixComputation(shape(n, n), c(3.0)),
+				new ScalarMatrixComputation(shape(n, n), c(2.0)),
+				new ScalarMatrixComputation(shape(n, n), c(5.0)),
+				new ScalarMatrixComputation(shape(n, n), c(7.0)), false);
+
+		Optional<Computable> scalar = comparison.getDiagonalScalar(n);
+		Assert.assertTrue(scalar.isPresent());
+
+		CollectionProducer scalarProducer = (CollectionProducer) scalar.get();
+		Assert.assertEquals(1, scalarProducer.getShape().getTotalSize());
+
+		try (PackedCollection result = scalarProducer.evaluate()) {
+			Assert.assertEquals(1, result.getMemLength());
+			Assert.assertEquals(5.0, result.toDouble(0), 1e-6);
 		}
 	}
 

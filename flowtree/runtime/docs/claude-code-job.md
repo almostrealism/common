@@ -290,7 +290,7 @@ After `doWork()` returns, `GitManagedJob.run()` handles:
 
 1. **Change validation** -- `validateChanges()` is called. `ClaudeCodeJob` overrides this with two independent sub-steps: (a) when `protectTestFiles` is enabled, runs `detect-test-hiding.sh`; exit code 2 aborts the commit. (b) when `deduplicationMode` is set, scans new Java method declarations in the working-tree diff and either runs an inline deduplication session (`DEDUP_LOCAL`) or posts a follow-up job (`DEDUP_SPAWN`). See [Deduplication Check](#deduplication-check).
 
-2. **File discovery and staging** -- `git status --porcelain` lists all changed files. The output is parsed line by line: lines starting with `?? ` indicate untracked files, and lines starting with ` M `, `M `, `A `, `D `, etc. indicate modified, added, or deleted tracked files. Each file passes through a multi-layer guardrail pipeline: excluded pattern check (glob matching against a comprehensive exclusion list), protected test file check (files on the base branch cannot be modified when `protectTestFiles` is true), file size check (default 1MB max, configurable via `maxFileSizeBytes`), and binary detection (scanning the first 8000 bytes for null content, with a 10% threshold). Files that pass all guardrails are staged with `git add <file>`. Files that fail any guardrail are added to the `skippedFiles` list with a parenthetical reason suffix for inclusion in the completion event.
+2. **File discovery and staging** -- `git status --porcelain -z -uall` lists all changed files. The NUL-delimited output is parsed into records: untracked files (`??`) and modified, added, or deleted tracked files are read by their status codes. The `-z` form never quotes a path and never uses the `->` rename separator, so for a rename or copy the destination path is read directly as its own field. Each file passes through a multi-layer guardrail pipeline: excluded pattern check (glob matching against a comprehensive exclusion list), protected test file check (files on the base branch cannot be modified when `protectTestFiles` is true), file size check (default 1MB max, configurable via `maxFileSizeBytes`), and binary detection (scanning the first 8000 bytes for null content, with a 10% threshold). Files that pass all guardrails are staged with `git add <file>`. Files that fail any guardrail are added to the `skippedFiles` list with a parenthetical reason suffix for inclusion in the completion event.
 
 3. **Commit** -- The commit message is determined by `getCommitMessage()` (see below). The commit command uses explicit git identity flags (`-c user.name=...` and `-c user.email=...`) to override any global git config on the agent machine. This ensures consistent attribution across all agents. If `git commit` returns a non-zero exit code (e.g., "nothing to commit"), the error is logged but does not throw an exception -- the job continues to event firing with no commit hash. If the session nevertheless left work behind (uncommitted changes to non-excluded files, or an authored `commit.txt`), `JobWorkOutcome.describeUnpublishedWork()` reports it and the completion event is `FAILED` rather than `SUCCESS`.
 
@@ -304,16 +304,18 @@ After `doWork()` returns, `GitManagedJob.run()` handles:
 
 The commit message is determined by `getCommitMessage()`, which implements a two-tier strategy:
 
-1. **Agent-written message**: If the agent wrote a `commit.txt` file in the working directory root, its contents (trimmed) are used as the commit message. This allows the agent to craft a meaningful description of its changes. After the commit succeeds, `commit.txt` is deleted to prevent reuse by subsequent runs.
+1. **Agent-written message**: If the agent wrote a `commit.txt` file in the working directory root, its contents (trimmed) are used as the commit message. This allows the agent to craft a meaningful description of its changes. `commit.txt` is itself an excluded path, so it never reaches the commit; any stale `commit.txt` from a previous run is removed when the next run starts.
 
-2. **Auto-generated message**: If no `commit.txt` exists or it is empty, a commit message is generated from the prompt:
+2. **Auto-generated message**: If no `commit.txt` exists or it is empty, a commit message is generated from the files the job is committing (the staged index, which holds only what the staging guardrails approved; or `git status` when nothing is staged yet; harness scratch paths are removed either way) — never from the prompt, which describes what was asked for rather than what was done:
    ```
-   Claude Code: <prompt truncated to 72 chars>
+   Update <File> | Update <A> and <B> | Update <A> and <N> other files
+                                      (or "Job <taskId> commit" when no changes can be determined)
 
-   Prompt: <full prompt>
+   The harness generated this message because the agent did not provide a usable commit.txt.
    Session: <session ID>
    Exit code: <exit code>
    ```
+   The subject uses file base names (no directory or extension), has control characters replaced by spaces, and is clipped to 72 characters. Because a pull request opened from the commit takes its title from this subject, the title also describes the change rather than the task. When the commit's message cannot be read, the pull request falls back to the job's submitted description, or to `Job <taskId>` when it has none; it never falls back to the prompt.
 
 The agent's instruction prompt tells it about the `commit.txt` mechanism (in the "Git Commit Instructions" section), so agents that are configured with a target branch know they can control the commit message.
 
@@ -426,7 +428,7 @@ All setters support chaining. The `build()` method assembles sections in this fi
 
 5. **Justifying No Code Changes** -- Present only when `workstreamUrl` is set. If the agent finishes without modifying any git-tracked files, it must send a Slack message explaining why. This does not apply if the agent already fully addressed the request through earlier messages.
 
-6. **GitHub PR Instructions** -- Present when `gitHubMcpEnabled` is true (in the builder) or always present (in `ClaudeCodeJob`'s inline version, since the ar-manager allowlist always grants the GitHub tools). Lists the available GitHub MCP tools: `github_pr_find`, `github_pr_review_comments`, `github_pr_conversation`, `github_pr_reply`, plus the ar-manager additions (`github_list_open_prs`, `github_create_pr`, `github_request_copilot_review`, `github_read_file`, `github_pr_check_status`).
+6. **GitHub PR Instructions** -- Present when `gitHubMcpEnabled` is true (in the builder) or always present (in `ClaudeCodeJob`'s inline version, since the ar-manager allowlist always grants the GitHub tools). Lists the available GitHub MCP tools: `github_pr_find`, `github_pr_review_comments`, `github_pr_conversation`, `github_pr_reply`, plus the ar-manager additions (`github_list_open_prs`, `github_create_pr`, `github_update_pr`, `github_request_copilot_review`, `github_read_file`, `github_pr_check_status`, `github_pr_labels`).
 
 7. **Test Integrity Policy** -- Present only when `protectTestFiles` is true. Tells the agent not to modify a test method that exists on the base branch and to fix production code instead, and that the commit harness will reject such a change even when the diff only adds lines (an inserted early return, a new `@Ignore`/`@TestDepth`-style annotation). Notes that new test methods, tests introduced on the current branch, and fixtures/helpers/fields may be modified freely.
 

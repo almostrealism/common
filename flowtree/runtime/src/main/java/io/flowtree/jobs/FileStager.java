@@ -42,6 +42,9 @@ import java.util.regex.Pattern;
  *       are skipped.</li>
  *   <li><b>Test file protection</b> -- if enabled, files matching protected
  *       path patterns that exist on the base branch are blocked.</li>
+ *   <li><b>Unresolved new types</b> -- a file declaring a new type that
+ *       resembles an existing one, and that the job's type audit has not
+ *       settled, is skipped with the reason (see {@link NewTypeAudit}).</li>
  *   <li><b>File size</b> -- files exceeding the maximum size threshold are
  *       skipped (deleted files are exempt).</li>
  *   <li><b>Binary detection</b> -- files with more than 10% null bytes in
@@ -173,6 +176,22 @@ public class FileStager implements ConsoleFeatures {
         }
 
         /**
+         * Runs a git command and returns its standard output only if the
+         * command succeeded (exit code {@code 0}), or {@code null} otherwise:
+         * {@link #executeOrNull} for a caller that must keep standard error
+         * out of the result, such as one reading a file's content with
+         * {@code git show <rev>:<path>}.
+         *
+         * @param args the git subcommand and its arguments
+         * @return the command's standard output, or {@code null} if it exited non-zero
+         * @throws IOException if either process cannot be started
+         * @throws InterruptedException if the calling thread is interrupted while waiting
+         */
+        default String executeForStdoutOrNull(String... args) throws IOException, InterruptedException {
+            return execute(args) == 0 ? executeForStdout(args) : null;
+        }
+
+        /**
          * Runs a NUL-delimited git command that prints one path per field (such
          * as {@code diff --name-only -z}) and returns those paths, or
          * {@code null} if the command failed; see {@link #executeOrNull}.
@@ -244,6 +263,18 @@ public class FileStager implements ConsoleFeatures {
             } catch (IOException e) {
                 return null;
             }
+        }
+
+        /**
+         * Lists the paths staged in the index — the content the next commit will
+         * record — with {@code git diff --cached --name-only -z}, so no path is
+         * quoted. Answers {@code null} when git cannot list them, as
+         * {@link #pathsOrNull} does.
+         *
+         * @return the staged paths in output order, or {@code null} if git could not answer
+         */
+        default Set<String> stagedPaths() {
+            return pathsOrNull("diff", "--cached", "--name-only", "-z");
         }
     }
 
@@ -360,6 +391,14 @@ public class FileStager implements ConsoleFeatures {
                         log("Allowed (" + verdict.getReason() + "): " + file);
                     }
                 }
+            }
+
+            // Guardrail 2b: a new type resembling an existing one, unsettled by the type audit
+            String newTypeRefusal = isDeleted ? null : config.getNewTypeRefusal(file);
+            if (newTypeRefusal != null) {
+                log("Blocked (unresolved new type): " + file);
+                skippedFiles.add(file + " (" + newTypeRefusal + ")");
+                continue;
             }
 
             // Guardrail 3: File size (skip deleted files)

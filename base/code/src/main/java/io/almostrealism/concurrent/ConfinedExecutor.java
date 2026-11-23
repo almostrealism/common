@@ -160,6 +160,26 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 	}
 
 	/**
+	 * Behaves as {@link #run(Runnable)}, except that an interrupt ends the wait by throwing
+	 * instead of logging and returning: the task may still be queued or running, and the caller,
+	 * which has been told so, decides what an abandoned task means for it. As with any method
+	 * that throws {@link InterruptedException}, the caller's interrupt status is cleared.
+	 *
+	 * <p>This is for a caller that must not proceed as though the task had finished, and owes
+	 * its own caller an account of the interrupt.</p>
+	 *
+	 * @param task the work to run
+	 * @throws InterruptedException  if the calling thread is interrupted before the task finishes
+	 * @throws IllegalStateException if this executor has been destroyed, or if called from a
+	 *                               task already running on the confined thread
+	 */
+	public void runInterruptibly(Runnable task) throws InterruptedException {
+		Future<?> future = submit(task);
+		handOff.pollUntil(future::isDone);
+		collect(future);
+	}
+
+	/**
 	 * Runs a task on the confined thread and waits for it to finish, or, if this executor is
 	 * destroyed before the task can be submitted, runs {@code refused} on the calling thread
 	 * instead, inside the same task scope.
@@ -213,8 +233,64 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 			return;
 		}
 
+		runRefused(refused);
+	}
+
+	/**
+	 * Queues a task on the confined thread without waiting for it, as {@link #runLater} does, or,
+	 * if this executor has been destroyed, runs {@code refused} on the calling thread instead, as
+	 * {@link #runOrElse(Runnable, Runnable)} does once every task queued before destruction has
+	 * run.
+	 *
+	 * <p>This is for cleanup a caller owes the confined state that must not be skipped, but that
+	 * the caller cannot wait for, such as withdrawing a registration that is itself still queued
+	 * behind work the caller has stopped waiting for.</p>
+	 *
+	 * @param task    the work to run later on the confined thread
+	 * @param refused the work to run on the calling thread if this executor refuses {@code task}
+	 */
+	public void runLaterOrElse(Runnable task, Runnable refused) {
+		if (!runLater(task)) runRefused(refused);
+	}
+
+	/**
+	 * Runs the alternative of a task this executor refused, on the calling thread inside the task
+	 * scope, once the confined thread has finished every task queued before destruction (unless
+	 * called on the confined thread itself, which cannot wait for its own termination).
+	 *
+	 * @param refused the work to run in place of the refused task
+	 */
+	private void runRefused(Runnable refused) {
 		if (Thread.currentThread() != confinedThread) awaitTermination();
 		taskScope.accept(refused);
+	}
+
+	/**
+	 * Queues a task on the confined thread without waiting for it, unless this executor has been
+	 * destroyed, in which case the task is dropped. Unlike {@link #run(Runnable)} this may be
+	 * called from any thread, the confined thread and threads the caller does not own (such as a
+	 * native completion callback) included, since nothing waits for the task.
+	 *
+	 * <p>This is for work the confined state owes itself when something outside it happens, and
+	 * that is unnecessary once the executor is gone because its final task did the same work. No
+	 * caller is left to receive a failure of the task, so a failure is logged.</p>
+	 *
+	 * @param task the work to run later on the confined thread
+	 * @return true if the task was queued, false if this executor has been destroyed
+	 */
+	public boolean runLater(Runnable task) {
+		synchronized (submission) {
+			if (destroyed) return false;
+
+			executor.submit(() -> taskScope.accept(() -> {
+				try {
+					task.run();
+				} catch (RuntimeException | Error e) {
+					warn("A task queued to run later on the confined thread failed", e);
+				}
+			}));
+			return true;
+		}
 	}
 
 	/**
@@ -379,7 +455,7 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 		try {
 			while (true) {
 				try {
-					future.get();
+					collect(future);
 					return;
 				} catch (InterruptedException e) {
 					interrupted = true;
@@ -388,15 +464,27 @@ public class ConfinedExecutor implements Destroyable, ConsoleFeatures {
 						warn("Interrupted while awaiting a confined task; the work it performs may not have completed");
 						return;
 					}
-				} catch (ExecutionException e) {
-					Throwable cause = e.getCause();
-					if (cause instanceof RuntimeException) throw (RuntimeException) cause;
-					if (cause instanceof Error) throw (Error) cause;
-					throw new RuntimeException(cause);
 				}
 			}
 		} finally {
 			if (interrupted) Thread.currentThread().interrupt();
+		}
+	}
+
+	/**
+	 * Waits for a submitted task, rethrowing its failure unwrapped.
+	 *
+	 * @param future the submitted task
+	 * @throws InterruptedException if the calling thread is interrupted before the task finishes
+	 */
+	private static void collect(Future<?> future) throws InterruptedException {
+		try {
+			future.get();
+		} catch (ExecutionException e) {
+			Throwable cause = e.getCause();
+			if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+			if (cause instanceof Error) throw (Error) cause;
+			throw new RuntimeException(cause);
 		}
 	}
 

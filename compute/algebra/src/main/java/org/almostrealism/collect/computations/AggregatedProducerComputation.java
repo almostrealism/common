@@ -465,10 +465,7 @@ public abstract class AggregatedProducerComputation extends TraversableRepeatedP
 
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		CollectionVariable var = (CollectionVariable) args[0];
-
-		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
-		Expression currentValue = var.reference(k.multiply(var.length()));
+		Expression<?> currentValue = getCurrentOutputValue((CollectionVariable) args[0], globalIndex);
 		return combine(currentValue, args[1].getValueAt(globalIndex.multiply(count).add(localIndex)));
 	}
 

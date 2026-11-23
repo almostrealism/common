@@ -86,6 +86,14 @@ Two receiver defects of this kind, both found by chaining plainly and both fixed
   bounded number of buffers (`MAX_HELD`) wait that way before any further dispatch that would open
   a new buffer, bridged or not, waits on its submitting thread.
 
+- **A thread per pending callback on Metal.** `MetalSemaphore` kept the default `onSettled`, so
+  every `onComplete` registered on Metal work parked a callback thread in `waitFor()` until the
+  GPU finished, and a burst of N callbacks raised the thread count by N. The fix was in the
+  receiver: `MetalSemaphore.onSettled` commits the buffer if it is open and is told by the
+  buffer's completed handler when it has finished (`CommandBatch.whenFinished`), and
+  `CALLBACK_EXECUTOR` became an `ElasticExecutor`, so a burst of settled callbacks shares a few
+  threads instead of starting one each (`MetalSemaphoreSettlementTest`).
+
 The second fix shows what a legitimate bound looks like: it lives in the receiver, it is sized by
 the resource that runs out (a command queue allows a bounded number of uncompleted command
 buffers), and it costs nothing when nothing is waiting for the host. The bound is now part of the
@@ -127,6 +135,12 @@ A `Submittable` or backend dispatch that receives `dependsOn`:
   a dependency it cannot express natively settles;
 - returns its own completion, which must settle only once the work has finished (or failed), and
   must rethrow from `waitFor()` when the work failed or did not run because `dependsOn` failed;
+- decides itself, wait by wait, what an interrupt of `waitFor()` does: a bounded step whose
+  result the wait depends on (such as a drain that records a failure) waits through the interrupt,
+  and an unbounded wait either does the same or throws. A completion whose `waitFor()` throws on an
+  interrupt overrides `waitForUninterruptibly()` to wait instead. It never returns normally while
+  the work is still pending, and a caller never checks the interrupt flag to make up for that.
+  `MetalSemaphore` throws a `HardwareException` and logs one warning;
 - applies any bound it needs itself, at the resource that runs out;
 - when it executes its work in order on a device queue, extends `SubmissionStream`, which
   supplies the submission ordinal, same-stream ordering and merging, admission versus

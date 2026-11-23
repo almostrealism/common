@@ -19,10 +19,12 @@ package io.almostrealism.expression.test;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Constant;
+import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.Mod;
+import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.sequence.DefaultIndex;
@@ -42,7 +44,6 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.OptionalLong;
-import java.util.Set;
 import java.util.stream.IntStream;
 
 /**
@@ -86,7 +87,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	 */
 	@Test(timeout = 30000)
 	public void kernelIndexOptions() {
-		Assert.assertEquals(20, kernel().withLimit(20).getIndexOptions(kernel()).orElseThrow().size());
+		Assert.assertEquals(20, kernel().withLimit(20).getIndexOptions(kernel()).orElseThrow().distinctCount());
 	}
 
 	/**
@@ -96,10 +97,10 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void modIndexOptions() {
 		KernelIndex k = kernel();
 		Expression<?> r = k.imod(20);
-		Assert.assertEquals(20, r.getIndexOptions(k).orElseThrow().size());
-		Assert.assertEquals(20, r.divide(5).getIndexOptions(k).orElseThrow().size());
-		Assert.assertEquals(20, r.divide(5).imod(2).getIndexOptions(k).orElseThrow().size());
-		Assert.assertEquals(20, r.divide(5).imod(2).add(r).getIndexOptions(k).orElseThrow().size());
+		Assert.assertEquals(20, r.getIndexOptions(k).orElseThrow().distinctCount());
+		Assert.assertEquals(20, r.divide(5).getIndexOptions(k).orElseThrow().distinctCount());
+		Assert.assertEquals(20, r.divide(5).imod(2).getIndexOptions(k).orElseThrow().distinctCount());
+		Assert.assertEquals(20, r.divide(5).imod(2).add(r).getIndexOptions(k).orElseThrow().distinctCount());
 	}
 
 	/**
@@ -109,8 +110,8 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 	public void divideIndexOptions1() {
 		KernelIndex k = kernel().withLimit(100);
 		Expression<?> r = k.divide(20);
-		Assert.assertEquals(r.sequence().distinct().length, r.getIndexOptions(k).orElseThrow().size());
-		Assert.assertEquals(5, r.multiply(25).getIndexOptions(k).orElseThrow().size());
+		Assert.assertEquals(r.sequence().distinct().length, r.getIndexOptions(k).orElseThrow().distinctCount());
+		Assert.assertEquals(5, r.multiply(25).getIndexOptions(k).orElseThrow().distinctCount());
 		Assert.assertTrue(r.getIndexOptions(k).orElseThrow().contains(20));
 	}
 
@@ -122,8 +123,8 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		KernelIndex k = kernel().withLimit(6);
 		Expression<?> r = k.divide(4);
 
-		Set<Integer> options = r.getIndexOptions(k).orElseThrow();
-		Assert.assertEquals(r.sequence().distinct().length, options.size());
+		IndexSequence options = r.getIndexOptions(k).orElseThrow();
+		Assert.assertEquals(r.sequence().distinct().length, options.distinctCount());
 		Assert.assertTrue(options.contains(4));
 	}
 
@@ -863,7 +864,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 								.add(kernel.imod(2));
 		log(e.getExpression(lang));
 
-		Optional<Set<Integer>> options = e.getIndexOptions(kernel);
+		Optional<IndexSequence> options = e.getIndexOptions(kernel);
 
 		// Ideally it would identify 5, but if it cannot
 		// - it should at least be explicitly uncertain
@@ -882,7 +883,7 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 				.add(kernel.imod(2));
 		log(e.getExpression(lang));
 
-		Optional<Set<Integer>> options = e.getIndexOptions(kernel);
+		Optional<IndexSequence> options = e.getIndexOptions(kernel);
 
 		// Ideally it would identify 7, but if it cannot
 		// - it should at least be explicitly uncertain
@@ -969,6 +970,179 @@ public class ExpressionSimplificationTests extends TestSuiteBase implements Expr
 		}
 
 		Assert.assertEquals("((kernel0 % " + (4 * m * n) + ") / " + n + ") * " + n, e.getExpression(lang));
+	}
+
+	/**
+	 * A product built by repeatedly multiplying the previous product is one product of all
+	 * the factors, not a product nested once per multiplication, so the generated code has no
+	 * bracket per multiplication and stays within the nesting limit native compilers impose.
+	 */
+	@Test(timeout = 30000)
+	public void repeatedMultiplicationIsOneProduct() {
+		Expression<?> x = new DefaultIndex("x", 1000);
+		Expression<?> e = x;
+
+		for (int i = 0; i < 500; i++) {
+			e = e.multiply(x);
+		}
+
+		Assert.assertTrue(e instanceof Product);
+		Assert.assertEquals(501, e.getChildren().size());
+		Assert.assertTrue(e.getChildren().stream().noneMatch(c -> c instanceof Product));
+		Assert.assertEquals(-1, e.getExpression(lang).indexOf('('));
+	}
+
+	/**
+	 * A product is merged into the product it is a factor of wherever it appears among the
+	 * factors, and the constants of the two are folded into one.
+	 */
+	@Test(timeout = 30000)
+	public void nestedProductIsMergedAndItsConstantsFolded() {
+		DefaultIndex a = new DefaultIndex("a", 10);
+		DefaultIndex b = new DefaultIndex("b", 10);
+		DefaultIndex c = new DefaultIndex("c", 10);
+
+		Expression<?> rightNested = Product.of(a, Product.of(b, c));
+		Assert.assertEquals(3, rightNested.getChildren().size());
+		Assert.assertEquals("a * b * c", rightNested.getExpression(lang));
+
+		Expression<?> constants = Product.of(Product.of(a, e(2)), b, e(3));
+		Assert.assertEquals("a * b * 6", constants.getExpression(lang));
+	}
+
+	/**
+	 * A sum built by adding to a previous sum is one sum of all the terms.
+	 */
+	@Test(timeout = 30000)
+	public void nestedSumIsMerged() {
+		Expression<?> a = new DefaultIndex("a", 10);
+		Expression<?> b = new DefaultIndex("b", 10);
+		Expression<?> c = new DefaultIndex("c", 10);
+
+		Expression<?> sum = a.add(b).add(c);
+		Assert.assertEquals(3, sum.getChildren().size());
+		Assert.assertEquals("a + b + c", sum.getExpression(lang));
+
+		Expression<?> rightNested = Sum.of(a, Sum.of(b, c));
+		Assert.assertEquals(3, rightNested.getChildren().size());
+	}
+
+	/**
+	 * An integer product that is a factor of a floating-point product is not merged into it.
+	 * The integer product wraps on overflow before its result is widened; merged, its factors
+	 * could be multiplied by the floating-point factor first and would not wrap, which is a
+	 * different value. The nested product therefore stays an operand of its own, and keeps
+	 * the brackets that say so.
+	 */
+	@Test(timeout = 30000)
+	public void integerProductIsNotMergedIntoFloatingPointProduct() {
+		DefaultIndex a = new DefaultIndex("a", 100000);
+		DefaultIndex b = new DefaultIndex("b", 100000);
+
+		Expression<?> product = Product.of(Product.of(a, b), e(0.5));
+		Assert.assertEquals(2, product.getChildren().size());
+		Assert.assertTrue(product.getChildren().stream().anyMatch(c -> c instanceof Product));
+		Assert.assertTrue(product.getExpression(lang).contains("(a * b)"));
+	}
+
+	/**
+	 * An integer product that is a factor of a wider integer product is not merged into it.
+	 * The narrower product wraps on overflow at its own width before its result is widened to
+	 * join the wider factor; merged, its factors could be combined with the wider factor first
+	 * and would not wrap, which is a different value. The nested product therefore stays an
+	 * operand of its own.
+	 */
+	@Test(timeout = 30000)
+	public void integerProductIsNotMergedIntoWiderIntegerProduct() {
+		DefaultIndex a = new DefaultIndex("a", 100000);
+		DefaultIndex b = new DefaultIndex("b", 100000);
+
+		Expression<?> product = Product.of(Product.of(a, b), e(3000000000L));
+		Assert.assertEquals(2, product.getChildren().size());
+		Assert.assertTrue(product.getChildren().stream().anyMatch(c -> c instanceof Product));
+		Assert.assertTrue(product.getExpression(lang).contains("(a * b)"));
+	}
+
+	/**
+	 * An integer product whose constants, folded across levels, would no longer fit in an
+	 * {@code int} is not merged. Folded, the constant would be a {@code long} and the whole
+	 * product would become a {@code long} product that does not wrap, where the nested
+	 * {@code int} products wrap at every level.
+	 */
+	@Test(timeout = 30000)
+	public void integerProductIsNotMergedWhenFoldedConstantWouldWiden() {
+		DefaultIndex a = new DefaultIndex("a", 100000);
+
+		Expression<?> inner = Product.of(a, e(50000));
+		Expression<?> product = Product.of(inner, e(50000));
+		Assert.assertEquals(Integer.class, product.getType());
+		Assert.assertEquals(2, product.getChildren().size());
+		Assert.assertTrue(product.getChildren().contains(inner));
+		Assert.assertTrue(product.getExpression(lang).contains("(a * 50000)"));
+	}
+
+	/**
+	 * An integer sum whose constants, folded across levels, would no longer fit in an
+	 * {@code int} is not merged, for the same reason as a product. Three terms are used
+	 * because a two-term sum with a constant is flattened earlier, by the repeated-sum rule.
+	 */
+	@Test(timeout = 30000)
+	public void integerSumIsNotMergedWhenFoldedConstantWouldWiden() {
+		DefaultIndex a = new DefaultIndex("a", 100000);
+		DefaultIndex b = new DefaultIndex("b", 100000);
+
+		Expression<?> inner = Sum.of(a, e(1500000000));
+		Expression<?> sum = Sum.of(inner, b, e(1500000000));
+		Assert.assertEquals(Integer.class, sum.getType());
+		Assert.assertEquals(3, sum.getChildren().size());
+		Assert.assertTrue(sum.getChildren().contains(inner));
+
+		Expression<?> kept = Sum.of(Sum.of(a, e(1000000000)), b, e(1000000000));
+		Assert.assertEquals(Integer.class, kept.getType());
+		Assert.assertEquals(3, kept.getChildren().size());
+		Assert.assertTrue(kept.getChildren().stream().noneMatch(c -> c instanceof Sum));
+	}
+
+	/**
+	 * Integer products whose folded constant still fits in an {@code int} are merged, and
+	 * {@code long} products are merged even when their folded constant wraps, since wrapping
+	 * at one width is the same at every level.
+	 */
+	@Test(timeout = 30000)
+	public void integerProductIsMergedWhenWidthIsKept() {
+		DefaultIndex a = new DefaultIndex("a", 100000);
+
+		Expression<?> product = Product.of(Product.of(a, e(40000)), e(50000));
+		Assert.assertEquals(Integer.class, product.getType());
+		Assert.assertEquals("a * 2000000000", product.getExpression(lang));
+
+		Expression<?> wide = Product.of(Product.of(a, e(3000000000L)), e(3000000000L));
+		Assert.assertEquals(Long.class, wide.getType());
+		Assert.assertEquals(2, wide.getChildren().size());
+		Assert.assertTrue(wide.getChildren().stream().noneMatch(c -> c instanceof Product));
+		Assert.assertEquals(OptionalLong.of(3000000000L * 3000000000L),
+				wide.getChildren().stream().filter(c -> c.longValue().isPresent())
+						.findFirst().orElseThrow().longValue());
+	}
+
+	/**
+	 * Subtraction and division are not associative, so a difference of a difference and a
+	 * quotient of a quotient are not merged and keep their brackets on either side.
+	 */
+	@Test(timeout = 30000)
+	public void nonAssociativeOperationsAreNotMerged() {
+		DefaultIndex a = new DefaultIndex("a", 10);
+		DefaultIndex b = new DefaultIndex("b", 10);
+		DefaultIndex c = new DefaultIndex("c", 10);
+
+		Assert.assertEquals("(a - b) - c",
+				new Difference<>(new Difference<>(a, b), c).getExpression(lang));
+		Assert.assertEquals("a - (b - c)",
+				new Difference<>(a, new Difference<>(b, c)).getExpression(lang));
+		Assert.assertEquals("a / (b / c)",
+				Quotient.of(a, Quotient.of(b, c)).getExpression(lang));
+		Assert.assertEquals("(a - b) + c",
+				Sum.of(new Difference<>(a, b), c).getExpression(lang));
 	}
 
 	/**

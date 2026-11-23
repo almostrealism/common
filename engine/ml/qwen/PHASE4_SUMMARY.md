@@ -24,8 +24,8 @@ Location: `/workspace/project/common/ml/src/main/java/org/almostrealism/ml/qwen3
 // Load from binary file
 Qwen3Tokenizer tokenizer = new Qwen3Tokenizer("tokenizer.bin");
 
-// Encode text to token IDs
-int[] tokens = tokenizer.encode("Hello world!");
+// Encode text to token IDs, adding BOS/EOS
+int[] tokens = tokenizer.encode("Hello world!", true);
 
 // Encode with control over special tokens
 int[] tokens = tokenizer.encode(text, addBos=true, addEos=true);
@@ -211,7 +211,7 @@ Qwen3Tokenizer tokenizer = Qwen3Tokenizer.createTestTokenizer();
 
 // Test encoding
 String text = "Hello World!";
-int[] tokens = tokenizer.encode(text);
+int[] tokens = tokenizer.encode(text, true);
 System.out.println("Tokens: " + Arrays.toString(tokens));
 
 // Test decoding

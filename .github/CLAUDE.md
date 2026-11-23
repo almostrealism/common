@@ -94,16 +94,28 @@ event that started it. The `changes` job publishes the mode as `run_tests`.
 | | Validate run | Test run |
 |-|--------------|----------|
 | Started by | `pull_request` (every push to a PR branch) | `deployment` of the branch to the `test` environment; `push` to master; `workflow_dispatch` |
-| Runs | `changes`, `build`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test-mac`, `test-media-mac`, `test-flowtree` and `analysis`; and, when `full_matrix` is `true` (master, `workflow_dispatch`), also `test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda` and `test-media-cuda` (see below) |
+| Runs | `changes`, `build`, `maven-cache`, every static and integrity check, `checkstyle`, `python-tests`, `python-evals`, `agent-e2e-faults`, `agent-volume-isolation`, `docker-build`, `register-workstream` | all of that, plus `test-mac`, `test-media-mac`, `test-flowtree` and `analysis`; and, when `full_matrix` is `true` (master, `workflow_dispatch`), also `test`, `test-media`, `test-cl`, `test-media-cl`, `test-cuda` and `test-media-cuda` (see below) |
 | Remediation | `auto-review`, `auto-resolve-python` | `auto-resolve-python`, and `auto-resolve` after the flaky-test retries |
 | Gate check | **All Checks** | **Test Checks** |
 | `run_tests` | `false` | `true` |
 
 Why: an agent's review loop pushes many commits before it reaches a stopping
 point, and each push used to start the full suite on the self-hosted fleet,
-only to have the next push cancel it. Validate runs use hosted runners only
-and finish in minutes. The long-running lanes run once, after the loop has
-settled.
+only to have the next push cancel it. Validate runs finish in minutes. The
+long-running lanes run once, after the loop has settled.
+
+Most validate-run jobs are hosted. The one that can move is `build`, whose
+runner the `select-build-runner` job chooses per run (see "Controller-driven
+build-runner selection" below): it asks the FlowTree controller for the first
+self-hosted fleet with an idle runner carrying `ar-build`, and falls back to
+`ubuntu-latest` when none does or the controller cannot answer. The trade-off is
+deliberate — `build` took 12–13 minutes on `ubuntu-latest` and sits on the
+critical path of every test lane, the three tools policy checks, `test-flowtree`
+and `analysis`, so running it on a fast self-hosted runner shortens every run —
+and it is bounded: `build` holds no GPU and runs no tests (it produces only
+jars), so it lands on whichever fleet is idle rather than dedicating a machine to
+it, and it reverts to hosted on its own whenever no fleet is free. Every other
+validate-run job stays hosted.
 
 **A pull request's test run covers one backend.** A `deployment` test run
 runs the Metal lanes (`test-mac`, `test-media-mac`), which cover every module
@@ -614,6 +626,49 @@ under the exfiltration guard. The `checkstyle` gating above matters more for
 this rule: a docs-only pull request's added lines are never part of a later
 change's diff, so they are not judged at all.
 
+**A long inline comment is refused whatever wrote it.** Design and rationale
+belong in javadoc; an inline comment is a line or two of nuance. One module,
+`.claude/hooks/lib/inline_comment_check.py`, decides this, and every gate asks
+it the same question about the same thing — the file as it will exist, and
+which of its lines the change wrote:
+
+| Gate | Where | What it can do |
+|------|-------|----------------|
+| Edit hook (`block-excessive-comments.sh`) | Claude Code `Write`/`Edit`/`MultiEdit` | refuses the edit |
+| opencode plugin (`block-excessive-comments.ts`) | opencode `write`/`edit`/`apply_patch` | refuses the edit |
+| Shell-write check (`check-source-writes.sh`) | after a Claude Code `Bash` call | reports; the file is already written |
+| Commit tool (`ar-commit`) | the staged snapshot | refuses the commit |
+| `Check for long inline comments` | a step of the `checkstyle` job | fails the job |
+
+Only the last one holds for every route — a shell command, another agent
+runtime, a merge, a person — so it is the gate; the others exist to say so
+earlier. The step diffs the head against its merge base (`--unified=0`) and
+runs `--diff`, publishes `inline_comments_passed`, and `check-quality-gates.sh`
+reports a finding to `auto-review` as `inline-comments`. Every extension the
+module governs is in the `changes` job's `CODE_FILES` pathspec, so a change to
+only (say) TypeScript sources still runs `checkstyle`;
+`test_inline_comment_check.py` pins that. Because a pull
+request's checkout is its head, a head that predates the module's diff mode is
+judged with `origin/<base>`'s copy rather than skipped: this is an enforcement
+check, so "the branch predates it" is not a pass.
+
+The module lexes the file rather than matching line starts, so `//` comments,
+`/* */` blocks and a `/** */` block that documents nothing (inside a method
+body, after code, before a closing brace) are all inline commentary, while
+strings and text blocks are not. Four limits apply: comment-only lines in one
+group (3), characters in one comment (180), characters in one group (300), and
+comment lines and characters in any 15 lines of code (7 and 450), which is what
+catches commentary alternated with one-line statements. A finding is charged to
+a change when the change wrote any line of the group, so adding to or rewording
+an old comment answers for the whole of it; a pre-existing comment the change
+left alone is not judged. Javadoc on a declaration and the header before a
+file's first line of code are exempt. PDSL and Protocol Buffers have no
+documentation comment, so there the comment directly above a declaration (a
+top-level PDSL item; any Protocol Buffers line that is not a closing brace) is
+its documentation and may be any length, and every other comment is held to the
+limits. There is no suppression marker. `test_inline_comment_check.py` is the
+list of ways round the policy, each one refused; add the next one found there.
+
 **The `ci/...` carve-out covers `.claude/hooks/` too, and covers comparisons
 only.** Both the enforcement-tampering check and the exfiltration guard's
 integrity comparison treat a `ci/` branch as out of scope, for the reason the
@@ -674,6 +729,131 @@ blocker for every job that compiles, tests or analyses the project, so it MUST
 stay as short as possible; jobs that need only git do not wait for it (see
 "Branch checks that need no build" below). It runs `mvn install -DskipTests`
 and nothing else: it does not run tests and does not upload coverage.
+
+**Its runner is chosen by the `select-build-runner` job**, which asks the
+FlowTree controller for an idle self-hosted fleet carrying `ar-build` and falls
+back to GitHub-hosted `ubuntu-latest` (see "Controller-driven build-runner
+selection" below). Because it can run on either a hosted or a self-hosted
+runner, its JDK and Maven-repository steps are keyed on `runner.environment`:
+
+- **JDK.** `github-hosted` keeps `actions/setup-java`; `self-hosted` uses the
+  shared `./.github/actions/select-jdk` action (no download), exactly as the
+  self-hosted test lanes do.
+- **Maven repository.** `github-hosted` restores the deliberately-built cache
+  the `maven-cache` job produces, through `restore-maven-cache`; `self-hosted`
+  uses `./.github/actions/select-maven-repo` (its host's persistent shared cache,
+  else a per-runner subdirectory) and exports `MAVEN_REPO`.
+- **Clear and upload.** The "Clear previously installed project artifacts" step
+  and the artifact upload both use the repository Maven actually reads —
+  `$MAVEN_REPO` when the self-hosted step set it, otherwise `~/.m2/repository`.
+  On a self-hosted runner `MAVEN_REPO` is a per-runner subdirectory of the shared
+  cache, never the shared root, so clearing `org/almostrealism` never touches a
+  repository another runner shares. The clear step resolves the path once, in
+  the shell, and publishes it as its `path` output; the upload's `path` input is
+  `${{ steps.project-artifacts.outputs.path }}`. It never reads `env.MAVEN_REPO`
+  in an action input, for the same reason the restore steps copy in the shell
+  (see "Sharing the build").
+
+`build` is **not** given `-T` (parallel reactor). `studio/compose` unpacks
+`engine/ml`'s `proto`-classified artifact, which is attached at `ml`'s package
+phase (the MDEP-98 ordering the `maven-cache` warm works around); a parallel
+reactor is error-prone around that cross-module package-phase attachment, and a
+clean `-T` build could not be verified here, so the conservative single-threaded
+`mvn install -DskipTests` stands. The serial build is already short enough that
+the runner choice, not `-T`, is where the time is won.
+
+### Controller-driven build-runner selection
+
+The `build` job's runner is chosen at run time by a small `select-build-runner`
+job, so `build` lands on whichever self-hosted fleet is idle rather than on a
+machine dedicated to it. The two jobs are wired like this:
+
+```yaml
+  select-build-runner:
+    runs-on: ubuntu-latest
+    outputs:
+      runs_on: ${{ steps.select.outputs.runs_on }}
+    # one inline-shell step: curl GET /api/runners/select?required=ar-build
+
+  build:
+    needs: [changes, select-build-runner]
+    runs-on: ${{ fromJSON(needs.select-build-runner.outputs.runs_on) }}
+```
+
+**What the selector asks.** It calls the FlowTree controller's
+`GET /api/runners/select?required=ar-build` through the Cloudflare Access tunnel
+(`FLOWTREE_CONTROLLER_URL` plus the `FLOWTREE_CF_ACCESS_CLIENT_ID` /
+`FLOWTREE_CF_ACCESS_CLIENT_SECRET` service token, the same credential the QA and
+remediation submitters hold). The controller monitors the organization's
+self-hosted runners through its existing GitHub token (`RunnerMonitor` /
+`GitHubProxyHandler.listOrganizationRunners`, cached a few seconds) and returns
+the `runs-on` label list of the first fleet, in a configured preference order,
+that has an online, idle runner carrying `ar-build` — or `["ubuntu-latest"]`
+when none does. The default preference is the CUDA fleet (`ar-ci-cuda`), then the
+OpenCL/ROCm fleet (`ar-ci-cl`), then the Linux CPU fleet (`ar-ci`), then macOS
+last (its runners are the scarcest). The owner reorders it with no commit by
+setting `AR_CI_RUNNER_FLEET_PREFERENCE` on the controller.
+
+**It never blocks or fails `build`.** The selector runs only inline shell over
+that one API call, checks out no pull-request code (it holds the controller
+credential, so the trust rule "No job that runs pull request code holds
+controller credentials" applies — it is written like `register-workstream` and
+`cancel-superseded-test-runs`), and **falls open to `["ubuntu-latest"]` on any
+problem** (controller unreachable, timeout, bad JSON), with a notice in the step
+summary. A fork pull request always builds hosted (it gets no secrets anyway,
+and must never reach a self-hosted runner holding a PAT and a persistent Maven
+volume). The repository variable `BUILD_FORCE_HOSTED`, set to any value, is the
+emergency override that forces `ubuntu-latest` with no commit.
+
+**The race is accepted, not engineered away.** A runner the controller reported
+idle can become busy between selection and assignment; GitHub then queues
+`build` until a runner matching the chosen labels is free. This is a brief wait,
+not a failure, and trying to prevent it (reservations, retries) would add far
+more complexity than it saves.
+
+**Why a self-hosted fleet carries `ar-build` is a correctness point, not a
+convenience.** The selection only ever lands `build` on a runner that is online,
+idle and carrying `ar-build`; `build` produces only jars, so it needs no GPU and
+no particular architecture, and it is bounded, so sharing a fleet with its test
+lane costs at most a short queue, never correctness. If the controller's token
+loses the organization "Self-hosted runners" read permission, the `/api/runners`
+endpoint says so in its response and the selector falls open to hosted — it is
+never silently stuck hosted with no explanation. The `select-build-runner` job is
+scoped to `build` today, but the endpoint takes the required label and fleet
+preference as inputs, so another job could reuse it.
+
+### What the `maven-cache` job does
+
+Produces the Maven dependency repository every GitHub-hosted job restores, so
+the hosted jobs no longer rely on `actions/setup-java`'s `cache: maven` — which
+saved the local repository only on a miss, from whichever hosted job finished
+first (one that did not run jacoco), and so left `jacoco-maven-plugin` out of the
+cache and re-downloaded it from Maven Central on every run. The job resolves the
+full plugin and dependency set on purpose (`mvn package -DskipTests`, then
+`dependency:go-offline`/`resolve-plugins`, the checkstyle plugin, and the
+jacoco-cli distribution the `analysis` job unzips) and saves it with an explicit
+`actions/cache` under a key of the pom hashes plus the manual
+`HOSTED_MAVEN_CACHE_VERSION` prefix, with a `restore-keys` fallback. It warms
+through `package`, not `test-compile`, because `studio/compose` unpacks
+`engine/ml`'s `proto`-classified artifact in `generate-sources` and that artifact
+is attached at `ml`'s package phase — so `test-compile` leaves the reactor
+dependency unpackaged and the unpack fails deterministically (MDEP-98), which is
+why the warm failed on every run until this was fixed. `package` does not
+`install` (`build` remains the only job that installs), so the separation from
+`build` holds. It saves
+only when the warm step succeeded: cache keys are immutable, so a partial
+repository saved under the exact key would stop every later run from re-warming;
+a failed warm leaves the key unclaimed for the next run to fill. Gated on
+`code_changed` like `build`; depends only on `changes`. **Nothing depends on it**
+— it maintains the cache for subsequent runs (master's cache is readable by every
+PR) rather than sitting on the critical path, so a warm-cache failure never
+blocks a build or test lane. Every hosted Maven job restores it read-only through
+the shared `restore-maven-cache` composite action (so no consumer re-saves a
+partial repository), and a miss falls back to the network with the retry/backoff
+in `.mvn/maven.config`. See "Hosted (`ubuntu-latest`) jobs" under "Maven
+dependency caching" in `tools/ci/README.md`;
+`tools/tests/test_hosted_maven_cache.py` pins the wiring, including that the save
+and restore keys cannot drift.
 
 ### Re-run jobs and artifacts
 
@@ -1162,6 +1342,29 @@ works because the address is on disk, not merely exported inside
 `rebuild.sh`. A full rebuild recreates
 `fleet-db` too — the data directory persists, and the collectors on every
 host reconnect on their own — so nothing in the deploy needs to drain for it.
+
+**Operator settings survive a deploy only in a file outside the checkout.**
+The compose `.env` is gitignored, and a deploy's `actions/checkout` clean step
+(`git clean -ffdx`) deletes it, then `rebuild.sh` regenerates it — so any
+operator setting (`AR_CONSULTANT_BACKEND` and the rest of the consultant family,
+image pins, port overrides) kept only there resets to its compose default on
+every deploy. That is the `AR_CONSULTANT_BACKEND` reset this file once caused.
+The durable home is the **operator settings file**, located through
+`FLOWTREE_CONTROLLER_ENV` (the repository variable; default
+`/Users/Shared/flowtree/secrets/controller.env`, beside the deploy secrets,
+exactly as `FLOWTREE_AGENT_ENV` locates the agent env). `rebuild.sh` reads it
+and carries every line into the compose `.env`; one file holds every setting
+rather than a repository variable per setting. For a value `rebuild.sh` computes
+(`FLEET_BIND_ADDR`) an operator value wins: an exported variable, then the file,
+then detection. After the stack is up the workflow's `Report effective operator
+settings` step prints the running services' non-secret settings (the backend
+name, for one) to the job summary — names and non-secret values only,
+credential-named settings redacted — so a reset is visible on the deploy that
+causes it. To switch the consultant to OpenRouter durably, put
+`AR_CONSULTANT_BACKEND=openrouter` in that file, not in the compose `.env`.
+`test-rebuild.sh` (through `tools/tests/test_rebuild_sh.py`) covers the carry
+and the precedence, and `tools/tests/test_deploy_operator_settings.py` pins the
+workflow wiring.
 
 The agent `.env` is gitignored, so it is never present in the runner's checkout.
 `rebuild.sh` reads `FLOWTREE_AGENT_ENV` to find the host's copy; the workflow

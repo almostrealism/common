@@ -113,12 +113,29 @@ public class MetalSemaphore extends StreamSemaphore<MetalCommandRunner> {
 	 * the runner observes by the buffer's timeline signal or by its completion (see
 	 * {@link MetalCommandRunner#complete}).
 	 *
+	 * <p>An interrupt never makes this return before the work has finished: a wait that an
+	 * interrupt ends throws instead, with the interrupt status left set.</p>
+	 *
 	 * @throws org.almostrealism.hardware.HardwareException if the dispatch, or one recorded as
-	 *         failed before it on the same runner, did not execute (see {@link MetalCommandRunner})
+	 *         failed before it on the same runner, did not execute (see {@link MetalCommandRunner}),
+	 *         or if an interrupt ended the wait before the work was known to be done
 	 */
 	@Override
 	public void waitFor() {
-		getStream().complete(this);
+		getStream().complete(this, true);
+	}
+
+	/**
+	 * Blocks until the dispatch's command buffer has finished, as {@link #waitFor()} does, but
+	 * waits through any interrupt instead of throwing, restoring the interrupt status afterwards
+	 * (see {@link MetalCommandRunner#complete}).
+	 *
+	 * @throws org.almostrealism.hardware.HardwareException if the dispatch, or one recorded as
+	 *         failed before it on the same runner, did not execute
+	 */
+	@Override
+	public void waitForUninterruptibly() {
+		getStream().complete(this, false);
 	}
 
 	/**
@@ -147,6 +164,29 @@ public class MetalSemaphore extends StreamSemaphore<MetalCommandRunner> {
 	@Override
 	public void whenSettled(Runnable r) {
 		getStream().whenComplete(this, r);
+	}
+
+	/**
+	 * Runs the callback once the dispatch's command buffer has settled, delivered from the
+	 * buffer's completion rather than from a thread parked in {@link #waitFor()}. The buffer is
+	 * committed if it is still open, as a wait would commit it, so the callback runs promptly,
+	 * and it then runs on a {@link Semaphore#CALLBACK_EXECUTOR} thread once the buffer's completed
+	 * handler has reported it finished, executed or failed (see
+	 * {@link MetalCommandRunner#onSettled}). Pending callbacks therefore hold no thread, however
+	 * many there are. On a host that cannot register completed handlers a finished buffer is
+	 * observed only by a wait, so this falls back to the default
+	 * {@link Semaphore#onSettled(Runnable)}, whose wait on a callback thread both commits and
+	 * observes the buffer.
+	 *
+	 * @param r the callback to invoke once the buffer has settled
+	 */
+	@Override
+	public void onSettled(Runnable r) {
+		if (MTLCompletedHandler.isAvailable()) {
+			getStream().onSettled(this, r);
+		} else {
+			super.onSettled(r);
+		}
 	}
 
 	/**
