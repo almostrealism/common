@@ -299,9 +299,10 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 
 	/**
 	 * A wait that is interrupted while the registration of its waiter is still queued behind
-	 * other work on the runner's thread still has its dispatch's buffer released once the GPU
-	 * finishes it. The registration runs after the wait has returned, and the withdrawal the wait
-	 * queued behind it must withdraw the waiter that registration makes; a waiter left registered
+	 * other work on the runner's thread throws rather than returning as though the dispatch had
+	 * finished, and still has its dispatch's buffer released once the GPU finishes it. The
+	 * registration runs after the wait has ended, and the withdrawal the wait queued behind it
+	 * must withdraw the waiter that registration makes; a waiter left registered
 	 * would leave the buffer to a wait that never comes, and its memory would stay held until the
 	 * runner is destroyed.
 	 */
@@ -345,9 +346,9 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 
 			Thread.currentThread().interrupt();
 			try {
-				waited.waitFor();
+				assertWaitThrows("An interrupted wait for pending work must throw", waited);
 			} finally {
-				Assert.assertTrue("The wait must return with the interrupt still set", Thread.interrupted());
+				Assert.assertTrue("The wait must end with the interrupt still set", Thread.interrupted());
 				gate.countDown();
 			}
 
@@ -363,6 +364,23 @@ public class MetalCommandRunnerAbandonedWorkTest extends TestSuiteBase {
 			SubmissionStream.quietCommitMicros = quiet;
 			MetalCommandRunner.enableHostSignaledBridges = bridges;
 		}
+	}
+
+	/**
+	 * Fails unless waiting for {@code waited} throws a {@link HardwareException}, the way a wait
+	 * that an interrupt ends before the work is known to be done must report it.
+	 *
+	 * @param message the failure message if the wait returns normally
+	 * @param waited  the completion to wait for
+	 */
+	private static void assertWaitThrows(String message, MetalSemaphore waited) {
+		try {
+			waited.waitFor();
+		} catch (HardwareException expected) {
+			return;
+		}
+
+		Assert.fail(message);
 	}
 
 	/**

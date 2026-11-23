@@ -49,13 +49,18 @@ services:
       - RUNNER_PREFIX=${RUNNER_PREFIX:-dgx-spark}
       - RUNNER_GROUP=${RUNNER_GROUP:-Default}
       # ar-ci-cuda is the capability label: the CUDA jobs require it, and only
-      # this fleet (which proves the GPU in its preflight) carries it.
-      # RUNNER_EXTRA_LABELS lets a GPU host also serve other lanes; set to ar-ci,
-      # these runners also take the self-hosted CPU-lane stage (test). It runs
-      # with AR_HARDWARE_DRIVER=native, but the CUDA bridge tests in base/hardware
-      # use the GPU directly whenever one is present, so this container must be
-      # a complete CUDA environment for every job it takes, not only CUDA jobs.
-      - RUNNER_LABELS=ar-ci-cuda${RUNNER_EXTRA_LABELS:+,${RUNNER_EXTRA_LABELS}}
+      # this fleet (which proves the GPU in its preflight) carries it. ar-build
+      # lets the controller send the bounded `build` job here when this fleet has
+      # an idle runner, keeping the GPU host busy between CUDA jobs rather than
+      # dedicating a separate machine to builds. The runners are ephemeral and
+      # re-register on every job, so these committed labels are the only durable
+      # place for them. RUNNER_EXTRA_LABELS lets a GPU host also serve other
+      # lanes; set to ar-ci, these runners also take the self-hosted CPU-lane
+      # stage (test). It runs with AR_HARDWARE_DRIVER=native, but the CUDA bridge
+      # tests in base/hardware use the GPU directly whenever one is present, so
+      # this container must be a complete CUDA environment for every job it
+      # takes, not only CUDA jobs.
+      - RUNNER_LABELS=ar-ci-cuda,ar-build${RUNNER_EXTRA_LABELS:+,${RUNNER_EXTRA_LABELS}}
       - RUNNER_DISABLE_UPDATE=true
       - RUNNER_SLOT_DIR=/var/lock/ar-ci-slots
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility

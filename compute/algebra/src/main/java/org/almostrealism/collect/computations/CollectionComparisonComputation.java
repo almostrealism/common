@@ -268,12 +268,11 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	}
 
 	/**
-	 * Generates a new comparison computation with the specified child processes.
-	 * This default implementation creates an equality comparison using the
-	 * {@code equals} factory method from {@link org.almostrealism.collect.CollectionFeatures}.
-	 *
-	 * <p>Subclasses override this method to delegate to their specific comparison
-	 * factory methods (e.g., {@code greaterThan}, {@code lessThan}).</p>
+	 * Generates a new comparison computation of the same kind over optimized versions of this
+	 * computation's inputs, keeping this computation's shape. That shape is not recomputed by
+	 * aligning the children's traversal axes, because the alignment can choose a different output
+	 * traversal axis than the one this computation has. Operands derived from the inputs (their
+	 * derivatives, tangents or diagonal scalars) are handled by {@link #generateDerived(List)}.
 	 *
 	 * @param children List of child {@link Process} instances where:
 	 *                 <ul>
@@ -286,8 +285,50 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return (CollectionProducerParallelProcess)
-				equals((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
-						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4));
+		return generate(getShape(),
+				(Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
+				(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4));
+	}
+
+	/**
+	 * Generates a new comparison computation of the same kind over operands derived from this
+	 * computation's inputs. The transitive delta supplies derivatives of the branch values, which
+	 * also carry the target's dimensions, and diagonal scalar extraction supplies the scalar of
+	 * each input; in both cases the output shape is derived from the operands by aligning their
+	 * traversal axes, as the comparison factories in
+	 * {@link org.almostrealism.collect.ComparisonFeatures} do.
+	 *
+	 * @param operands the operands, where index 0 is the destination placeholder followed by the
+	 *                 left, right, positive and negative operands
+	 * @return the new comparison computation
+	 */
+	@Override
+	protected CollectionProducerParallelProcess generateDerived(List<Process<?, ?>> operands) {
+		return (CollectionProducerParallelProcess) compute((shape, args) ->
+						generate(shape, args.get(0), args.get(1), args.get(2), args.get(3)),
+				null,
+				(Producer<PackedCollection>) operands.get(1), (Producer<PackedCollection>) operands.get(2),
+				(Producer<PackedCollection>) operands.get(3), (Producer<PackedCollection>) operands.get(4));
+	}
+
+	/**
+	 * Creates a comparison computation of the same kind as this one, with the given output
+	 * shape and operands. This default implementation creates an equality comparison with
+	 * the same name as this computation; subclasses override it to construct their own
+	 * comparison type.
+	 *
+	 * @param shape    the output shape of the new computation
+	 * @param left     the left-hand side comparison values
+	 * @param right    the right-hand side comparison values
+	 * @param positive the values to use where the comparison is true
+	 * @param negative the values to use where the comparison is false
+	 * @return the new comparison computation
+	 */
+	protected CollectionProducerParallelProcess generate(TraversalPolicy shape,
+														 Producer<PackedCollection> left,
+														 Producer<PackedCollection> right,
+														 Producer<PackedCollection> positive,
+														 Producer<PackedCollection> negative) {
+		return new CollectionComparisonComputation(getName(), shape, left, right, positive, negative);
 	}
 }
