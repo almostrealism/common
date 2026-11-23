@@ -153,8 +153,10 @@ available; it is listed under open questions.
 
 **Agents.** Rebuild the agent and controller images (`--pull`) with the new
 default and redeploy, controller last. On the mac-studio agent host, install
-JDK 25 and point `DEFAULT_TOOL_PATH` (or the host's `AGENT_TOOL_PATH` override in
-its env file) at it; the committed default changes from
+JDK 25 and point `DEFAULT_TOOL_PATH` (or, if the host sets the
+`FLOWTREE_AGENT_PATH` override in its env file, that value — it *replaces* the
+built-in list rather than extending it, so the JDK 25 bin directory has to be
+named in it) at it; the committed default changes from
 `/opt/homebrew/opt/openjdk@17/bin` to `/opt/homebrew/opt/openjdk@25/bin`. The
 host's current JDK (21) is Oracle's, not Homebrew's, so the person installing 25
 should confirm which path the running agent actually resolves `java` from
