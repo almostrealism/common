@@ -92,6 +92,10 @@ class Invocation:
         also_make: True when `-am` rebuilds the selection's dependencies.
         also_make_dependents: True when `-amd` rebuilds the selection's dependents.
         out_of_band: Name of an MCP tool running Maven, or None for a command line.
+        full_install: True when an out-of-band tool installs the whole reactor
+            before its work (the ar-build-validator's default `mvn install
+            -DskipTests`), so it refreshes every module rather than leaving the
+            install directory as it found it.
         inline_env: The leading `NAME=value` assignments of Maven environment
             variables that applied to this run only, in order. A refresh
             command must re-emit them, or it resolves a different repository
@@ -102,14 +106,15 @@ class Invocation:
     """
 
     def __init__(self, location, goals=(), projects=None, also_make=False,
-                 also_make_dependents=False, out_of_band=None, inline_env=(),
-                 location_flags=()):
+                 also_make_dependents=False, out_of_band=None, full_install=False,
+                 inline_env=(), location_flags=()):
         self.location = location
         self.goals = set(goals)
         self.projects = projects
         self.also_make = also_make
         self.also_make_dependents = also_make_dependents
         self.out_of_band = out_of_band
+        self.full_install = full_install
         self.inline_env = list(inline_env)
         self.location_flags = list(location_flags)
 
@@ -153,17 +158,25 @@ class Invocation:
 
     def partial(self):
         """True when the run leaves its selection's dependencies unrebuilt."""
-        return self.out_of_band is not None or (self.projects is not None
-                                                and not self.also_make)
+        if self.out_of_band is not None:
+            return not self.full_install
+        return self.projects is not None and not self.also_make
 
     def refreshes_all(self):
         """True when this run reinstalls every module of the reactor."""
-        return self.out_of_band is None and self.projects is None and self.installs()
+        if self.out_of_band is not None:
+            return self.full_install
+        return self.projects is None and self.installs()
 
     def scope_statement(self):
         """Say what this run rebuilds, and what keeps resolving the install directory."""
         root = self.location.root
         if self.out_of_band is not None:
+            if self.full_install:
+                return (f"{self.out_of_band} runs `mvn install -DskipTests` across the full "
+                        "reactor in its own process before its checks, which reinstalls every "
+                        f"module in {root} — but any result gathered BEFORE that install "
+                        "finished is suspect.")
             return (f"{self.out_of_band} runs Maven in its own process with this environment. "
                     "It does not rebuild modules outside the one it runs; they resolve "
                     f"whatever is installed in {root}.")
@@ -460,20 +473,41 @@ def build_report(project_dir, invocation):
 
 
 # MCP tools that invoke Maven in their own subprocess, outside any Bash command.
-# They inherit this environment and add no repository flag, and never refresh
-# the whole reactor, so a stale install directory must be fixed before trusting them.
+# They inherit this environment and add no repository flag of their own. The
+# test runner builds only its selection, so a stale install directory misleads
+# it; the build validator's default run first installs the whole reactor (see
+# VALIDATOR_BUILD_CHECKS), which refreshes every module instead.
 MCP_MAVEN_TOOLS = {
     "mcp__ar-test-runner__start_test_run": "The ar-test-runner",
     "mcp__ar-build-validator__start_validation": "The ar-build-validator",
 }
+
+VALIDATOR_TOOL = "mcp__ar-build-validator__start_validation"
+
+# tools/mcp/build-validator/server.py runs a full `mvn install -DskipTests`
+# before its checks whenever a selected check needs compiled artifacts, unless
+# skip_build is set. These mirror that server's BUILD_REQUIRED_CHECKS and
+# DEFAULT_CHECKS so the hook can tell a full-reactor install from a scan.
+VALIDATOR_BUILD_CHECKS = {"code_policy", "test_timeouts", "duplicate_code"}
+VALIDATOR_DEFAULT_CHECKS = ("checkstyle", "code_policy", "test_timeouts", "duplicate_code")
+
+
+def _validator_full_install(tool_input):
+    """True when a start_validation call installs the whole reactor before its checks."""
+    if tool_input.get("skip_build"):
+        return False
+    checks = tool_input.get("checks") or VALIDATOR_DEFAULT_CHECKS
+    return any(check in VALIDATOR_BUILD_CHECKS for check in checks)
 
 
 def invocations_for(payload, environ):
     """Return the Invocations the tool call in payload will run."""
     tool = payload.get("tool_name")
     if tool in MCP_MAVEN_TOOLS:
+        tool_input = payload.get("tool_input") or {}
+        full_install = tool == VALIDATOR_TOOL and _validator_full_install(tool_input)
         return [Invocation(maven_repository.install_location((), environ),
-                           out_of_band=MCP_MAVEN_TOOLS[tool])]
+                           out_of_band=MCP_MAVEN_TOOLS[tool], full_install=full_install)]
     if tool == "Bash":
         command = (payload.get("tool_input") or {}).get("command", "")
         return mvn_invocations(command, environ) if command else []

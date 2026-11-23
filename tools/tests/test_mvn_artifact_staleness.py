@@ -93,14 +93,16 @@ class StalenessHookTest(unittest.TestCase):
                     f.write("x")
                 os.utime(path, (when, when))
 
-    def run_hook(self, command=None, tool="Bash", **maven_env):
+    def run_hook(self, command=None, tool="Bash", tool_input=None, **maven_env):
         """Runs the hook and returns (additionalContext, systemMessage), or None if silent."""
         env = {k: v for k, v in os.environ.items()
                if k not in ("MAVEN_ARGS", "MAVEN_OPTS", "FLOWTREE_MAVEN_LOCAL_REPOSITORY")}
         env.update(maven_env)
         env["HOME"] = self.home
         env["CLAUDE_PROJECT_DIR"] = self.project
-        payload = {"tool_name": tool, "tool_input": {"command": command} if command else {}}
+        if tool_input is None:
+            tool_input = {"command": command} if command else {}
+        payload = {"tool_name": tool, "tool_input": tool_input}
         result = subprocess.run([sys.executable, _HOOK], input=json.dumps(payload),
                                 capture_output=True, text=True, env=env, timeout=60)
         self.assertEqual(0, result.returncode, result.stderr)
@@ -157,6 +159,40 @@ class StalenessHookTest(unittest.TestCase):
                                    MAVEN_ARGS=SPLIT_ARGS)
         self.assertIn(f"Looked in {job_root}", context)
         self.assertIn("The ar-test-runner runs Maven in its own process", context)
+
+    def test_build_validator_default_run_refreshes_the_whole_reactor(self):
+        """start_validation's default checks install the full reactor, so stale is not fatal."""
+        self.install(self.default_repository(), stale=True)
+        context, _ = self.run_hook(tool="mcp__ar-build-validator__start_validation",
+                                   tool_input={})
+        self.assertIn("The ar-build-validator runs `mvn install -DskipTests` across the full "
+                      "reactor", context)
+        self.assertIn("reinstalls every module", context)
+        self.assertNotIn("It does not rebuild modules outside the one it runs", context)
+        self.assertNotIn("mvn clean install -DskipTests`", context)
+
+    def test_build_validator_default_run_on_fresh_space_says_it_installs_everything(self):
+        job_root = os.path.join(self.default_repository(), "flowtree-jobs", "job-a")
+        self.install(self.default_repository(), stale=True)
+        context, _ = self.run_hook(tool="mcp__ar-build-validator__start_validation",
+                                   tool_input={}, MAVEN_ARGS=SPLIT_ARGS)
+        self.assertIn(f"nothing is installed yet in {job_root}", context)
+        self.assertIn("This command installs every module there.", context)
+        self.assertNotIn("To install everything:", context)
+
+    def test_build_validator_skip_build_does_not_refresh(self):
+        self.install(self.default_repository(), stale=True)
+        context, _ = self.run_hook(tool="mcp__ar-build-validator__start_validation",
+                                   tool_input={"skip_build": True})
+        self.assertIn("It does not rebuild modules outside the one it runs", context)
+        self.assertNotIn("reinstalls every module", context)
+
+    def test_build_validator_checkstyle_only_does_not_refresh(self):
+        self.install(self.default_repository(), stale=True)
+        context, _ = self.run_hook(tool="mcp__ar-build-validator__start_validation",
+                                   tool_input={"checks": ["checkstyle"]})
+        self.assertIn("It does not rebuild modules outside the one it runs", context)
+        self.assertNotIn("reinstalls every module", context)
 
     def test_repo_local_from_maven_opts(self):
         relocated = os.path.join(self.tmp, "ci-repo")

@@ -56,6 +56,35 @@ class SplitRootsTest(unittest.TestCase):
         self.assertEqual(self.repository / "installed",
                          maven_repository.installed_root(self.repository, args))
 
+    def test_split_from_maven_opts_reaches_the_split_roots(self):
+        """A split enabled on MAVEN_OPTS must move the roots just as MAVEN_ARGS does.
+
+        install_location() layers MAVEN_OPTS, so installed_root/downloaded_root
+        — the readers test-runner preflight and the JMX heap analyzer use — must
+        agree with it, or the shared resolver disagrees about where Maven writes.
+        """
+        opts = ("-Daether.enhancedLocalRepository.split=true "
+                "-Daether.enhancedLocalRepository.localPrefix=flowtree-jobs/task-1")
+        with mock.patch.dict(os.environ, {"MAVEN_OPTS": opts}, clear=False):
+            os.environ.pop("MAVEN_ARGS", None)
+            self.assertEqual(self.repository / "flowtree-jobs" / "task-1",
+                             maven_repository.installed_root(self.repository))
+            self.assertEqual(self.repository / "cached",
+                             maven_repository.downloaded_root(self.repository))
+
+    def test_command_line_overrides_maven_opts_prefix_is_not_read_by_split_roots(self):
+        """With no explicit maven_args the split roots read the environment, not a command line.
+
+        install_location() takes command-line -D flags; installed_root/
+        downloaded_root resolve from the ambient environment alone, so a split
+        set only on MAVEN_OPTS is honoured and an unset environment stays unsplit.
+        """
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MAVEN_OPTS", None)
+            os.environ.pop("MAVEN_ARGS", None)
+            self.assertEqual(self.repository,
+                             maven_repository.installed_root(self.repository))
+
     def test_default_repository_is_user_m2(self):
         with mock.patch.dict(os.environ, {"MAVEN_ARGS": JOB_ARGS},
                              clear=False):

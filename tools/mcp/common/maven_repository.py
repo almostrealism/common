@@ -133,6 +133,30 @@ def command_properties(tokens: Sequence[str]) -> dict:
     return properties
 
 
+def _layered_properties(environ: Mapping[str, str],
+                        command_args: Sequence[str] = ()) -> tuple:
+    """Merge the ``-D`` properties as Maven layers them for one invocation.
+
+    ``MAVEN_OPTS``, then ``MAVEN_ARGS``, then the command line, each
+    overriding the one before. Both this resolution and the split-prefix
+    helpers read through here, so every tool that asks where Maven installs
+    gets the same answer whichever layer the split was configured on.
+
+    Returns:
+        A ``(merged, sources)`` pair: the winning value of each property, and
+        the layer name its winning definition came from.
+    """
+    merged = {}
+    sources = {}
+    for name, properties in (
+            ("MAVEN_OPTS", maven_properties(environ.get("MAVEN_OPTS", ""))),
+            ("MAVEN_ARGS", maven_properties(environ.get("MAVEN_ARGS", ""))),
+            ("the command line", command_properties(command_args))):
+        merged.update(properties)
+        sources.update(dict.fromkeys(properties, name))
+    return merged, sources
+
+
 def install_location(command_args: Sequence[str] = (),
                      environ: Optional[Mapping[str, str]] = None) -> InstallLocation:
     """Resolve where a Maven invocation installs project artifacts.
@@ -151,14 +175,7 @@ def install_location(command_args: Sequence[str] = (),
     """
     if environ is None:
         environ = os.environ
-    layers = (("MAVEN_OPTS", maven_properties(environ.get("MAVEN_OPTS", ""))),
-              ("MAVEN_ARGS", maven_properties(environ.get("MAVEN_ARGS", ""))),
-              ("the command line", command_properties(command_args)))
-    merged = {}
-    sources = {}
-    for name, properties in layers:
-        merged.update(properties)
-        sources.update(dict.fromkeys(properties, name))
+    merged, sources = _layered_properties(environ, command_args)
 
     if merged.get(REPO_LOCAL_PROPERTY):
         repository = Path(os.path.expanduser(merged[REPO_LOCAL_PROPERTY]))
@@ -183,7 +200,9 @@ def installed_root(repository: Optional[Path] = None,
     Args:
         repository: The local repository. ``None`` means
             :func:`default_repository`.
-        maven_args: As for :func:`maven_properties`.
+        maven_args: ``None`` resolves the split through the layered Maven
+            environment, as :func:`install_location` does; an explicit string
+            reads only that string, as for :func:`maven_properties`.
 
     Returns:
         ``repository`` itself, or ``repository/<localPrefix>`` when the
@@ -200,7 +219,9 @@ def downloaded_root(repository: Optional[Path] = None,
     Args:
         repository: The local repository. ``None`` means
             :func:`default_repository`.
-        maven_args: As for :func:`maven_properties`.
+        maven_args: ``None`` resolves the split through the layered Maven
+            environment, as :func:`install_location` does; an explicit string
+            reads only that string, as for :func:`maven_properties`.
 
     Returns:
         ``repository`` itself, or ``repository/<remotePrefix>`` when the
@@ -212,10 +233,20 @@ def downloaded_root(repository: Optional[Path] = None,
 
 def _split_root(repository: Optional[Path], maven_args: Optional[str],
                 prefix_property: str, default_prefix: str) -> Path:
-    """Return ``repository``, or its ``prefix_property`` subdirectory when split."""
+    """Return ``repository``, or its ``prefix_property`` subdirectory when split.
+
+    With ``maven_args`` ``None`` the split properties are resolved through the
+    same layered environment (``MAVEN_OPTS``, ``MAVEN_ARGS``, in that order) as
+    :func:`install_location`, so a split enabled on ``MAVEN_OPTS`` is honoured
+    here too and the shared resolver does not disagree with itself about where
+    Maven installs. An explicit ``maven_args`` string reads only that string.
+    """
     repository = default_repository() if repository is None else Path(repository)
-    return _prefixed(repository, maven_properties(maven_args),
-                     prefix_property, default_prefix)
+    if maven_args is None:
+        properties, _ = _layered_properties(os.environ)
+    else:
+        properties = maven_properties(maven_args)
+    return _prefixed(repository, properties, prefix_property, default_prefix)
 
 
 def _prefixed(repository: Path, properties: Mapping[str, str],
