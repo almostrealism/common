@@ -29,7 +29,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.RepeatedProducerComputation;
@@ -245,8 +244,7 @@ public class SegmentedWeightedSumComputation extends RepeatedProducerComputation
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		ArrayVariable<?> out = getOutputVariable();
-		Expression currentValue = out.reference(globalIndex.multiply(out.length()));
+		Expression<?> currentValue = getCurrentOutputValue(getOutputVariable(), globalIndex);
 
 		Expression<?> position = segments.start(rowOf(globalIndex)).add(localIndex);
 		Expression<?> column = segments.offset(position);
