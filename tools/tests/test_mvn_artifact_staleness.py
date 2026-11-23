@@ -224,8 +224,45 @@ class StalenessHookTest(unittest.TestCase):
         context, _ = self.run_hook("mvn clean install -DskipTests")
         self.assertIn("builds and installs every module in the reactor", context)
 
+    def test_inline_env_assignment_preserved_in_refresh_command(self):
+        """A `MAVEN_OPTS=... mvn ...` prefix selects the repository for that run only.
+
+        The refresh command the warning prints must re-emit that inline
+        assignment, or pasting it into a plain shell would reinstall into the
+        ambient default repository instead of the stale directory judged here.
+        """
+        relocated = os.path.join(self.tmp, "inline-repo")
+        self.install(relocated, stale=True)
+        context, _ = self.run_hook(f"MAVEN_OPTS=-Dmaven.repo.local={relocated} mvn compile")
+        self.assertIn(f"Looked in {relocated}", context)
+        self.assertIn(f"MAVEN_OPTS=-Dmaven.repo.local={relocated} mvn clean install -DskipTests",
+                      context)
+
     def test_non_maven_command_is_silent(self):
         self.assertIsNone(self.run_hook("ls -la"))
+
+    def test_missing_maven_repository_helper_degrades_quietly(self):
+        """A checkout without tools/mcp/common must not crash the Bash command.
+
+        The hook resolves its helper relative to its own file. Running a copy
+        placed where ``../../tools/mcp/common/maven_repository`` does not exist
+        reproduces the ImportError, and the hook must exit 0 with no output
+        rather than printing a traceback on every Bash call.
+        """
+        isolated_dir = os.path.join(self.tmp, "isolated_hooks")
+        os.makedirs(isolated_dir)
+        isolated_hook = os.path.join(isolated_dir, "mvn-artifact-staleness.py")
+        shutil.copyfile(_HOOK, isolated_hook)
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("MAVEN_ARGS", "MAVEN_OPTS", "FLOWTREE_MAVEN_LOCAL_REPOSITORY")}
+        env["HOME"] = self.home
+        env["CLAUDE_PROJECT_DIR"] = self.project
+        payload = {"tool_name": "Bash", "tool_input": {"command": "mvn install"}}
+        result = subprocess.run([sys.executable, isolated_hook], input=json.dumps(payload),
+                                capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("", result.stdout.strip())
+        self.assertNotIn("Traceback", result.stderr)
 
 
 if __name__ == "__main__":

@@ -53,8 +53,12 @@ _COMMON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "..", "..", "tools", "mcp", "common")
 if _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
-# TODO(review): an ImportError here exits with a traceback on every Bash call; the hook should degrade quietly.
-import maven_repository  # noqa: E402
+try:
+    import maven_repository  # noqa: E402
+except ImportError:
+    # Running from a checkout without tools/mcp/common. The hook only injects
+    # context and must never break the Bash command, so degrade quietly.
+    sys.exit(0)
 
 # Maven lifecycle goals that compile sources and/or write/install artifacts.
 ARTIFACT_GOALS = {
@@ -88,16 +92,21 @@ class Invocation:
         also_make: True when `-am` rebuilds the selection's dependencies.
         also_make_dependents: True when `-amd` rebuilds the selection's dependents.
         out_of_band: Name of an MCP tool running Maven, or None for a command line.
+        inline_env: The leading `NAME=value` assignments of Maven environment
+            variables that applied to this run only, in order. A refresh
+            command must re-emit them, or it resolves a different repository
+            than the one judged.
     """
 
     def __init__(self, location, goals=(), projects=None, also_make=False,
-                 also_make_dependents=False, out_of_band=None):
+                 also_make_dependents=False, out_of_band=None, inline_env=()):
         self.location = location
         self.goals = set(goals)
         self.projects = projects
         self.also_make = also_make
         self.also_make_dependents = also_make_dependents
         self.out_of_band = out_of_band
+        self.inline_env = list(inline_env)
 
     @classmethod
     def from_tokens(cls, tokens, environ):
@@ -112,10 +121,12 @@ class Invocation:
         if index is None:
             return None
         env = dict(environ)
+        inline_env = []
         for token in tokens[:index]:
             match = _ASSIGNMENT.match(token)
             if match and match.group(1) in MAVEN_ENV_VARS:
                 env[match.group(1)] = match.group(2)
+                inline_env.append((match.group(1), match.group(2)))
         args = tokens[index + 1:]
         goals = {t for t in args if t in ARTIFACT_GOALS}
         if not goals:
@@ -124,7 +135,8 @@ class Invocation:
                    projects=_projects(args),
                    also_make=any(t in ("-am", "--also-make") for t in args),
                    also_make_dependents=any(t in ("-amd", "--also-make-dependents")
-                                            for t in args))
+                                            for t in args),
+                   inline_env=inline_env)
 
     def installs(self):
         """True when this run writes its modules into the install directory."""
@@ -171,8 +183,16 @@ class Invocation:
         return text
 
     def refresh_command(self):
-        """The command that reinstalls every module into this run's install directory."""
-        command = "mvn clean install -DskipTests"
+        """The command that reinstalls every module into this run's install directory.
+
+        Any per-invocation inline assignment that selected the repository
+        (`MAVEN_OPTS=... mvn ...`) is re-emitted, and a command-line
+        `-Dmaven.repo.local` is re-added, so the remediation targets the
+        directory the warning is about rather than the ambient default.
+        """
+        prefix = "".join(f"{name}={shlex.quote(value)} "
+                         for name, value in self.inline_env)
+        command = f"{prefix}mvn clean install -DskipTests"
         if self.location.origin.startswith(
                 f"{maven_repository.REPO_LOCAL_PROPERTY} from the command line"):
             command += f" -D{maven_repository.REPO_LOCAL_PROPERTY}={self.location.repository}"
