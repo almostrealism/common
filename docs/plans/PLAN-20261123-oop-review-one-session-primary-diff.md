@@ -53,8 +53,9 @@ Either way, `unreviewed(job)` is non-empty, `isViolated(...)` returns `true`, an
 until `reviewed.size()` reaches `MAX_CLASSES` or the tree stops changing.
 
 The single fact behind the blowup: **the gate is re-run against a tree the review
-has been mutating.** Freezing the candidate set to the primary-phase-end diff
-removes the feedback loop entirely.
+has been mutating.** Freezing the candidate set to the diff as it stood
+before the first review session removes the feedback loop within a job (Scope
+bullets 1 and 3 describe what that snapshot contains and what it does not stop).
 
 ## Scope
 
@@ -62,12 +63,20 @@ Contained to `flowtree/runtime`. No new job property travels over the wire, no
 new Maven module, and no change to the `objectOrientedReviewEnabled` flag or its
 submission path. Concretely:
 
-1. **Freeze the gated candidate set at primary-phase end.**
+1. **Freeze the gated candidate set on first evaluation.**
    `ObjectOrientedDesignRule.selection` is computed once — on the rule's first
-   evaluation, which `EnforcementRunner` reaches only after the primary phase and
-   the content-protection rules — and never recomputed. The gate therefore sees
-   only the classes the branch changed and the lines it added **as of that
-   moment**; classes the review creates or edits afterward are never re-gated.
+   evaluation — and never recomputed. The gate therefore sees only the classes
+   the branch changed and the lines it added **as of that moment**; classes the
+   review creates or edits afterward are never re-gated.
+
+   That moment is **not** strictly primary-phase end. `EnforcementRunner.buildActiveRules()`
+   adds the rule after `enforce-changes`, `ReviewRule` (the second-pass review),
+   `DeduplicationRule`, `OrganizationalPlacementRule`, `PostCompletionCommandRule`,
+   `MavenDependencyProtectionRule` and the custom rules, so the frozen snapshot
+   also contains whatever those correction sessions changed. Freezing on first
+   evaluation is enough to break the self-feeding loop, which is the cause of the
+   incident; matching the task's literal "primary phase's diff" would need the
+   changed paths captured when the primary phase ends. See open question 5.
 
 2. **One session per job, in the common case by construction.** With the
    selection frozen to `N ≤ MAX_CLASSES` flagged classes, a single session covers
@@ -85,6 +94,15 @@ submission path. Concretely:
    skips the now-settled content instead of re-reviewing the edit. This records
    the review's edits (task bullet "record the review's own edits") while the
    freeze guarantees they are not re-gated in this job.
+
+   This covers only the classes that were reviewed. `CodingAgentJob.extractChangedFilePaths()`
+   lists every file that differs from `origin/<base>`, so the *next* job on the
+   same branch sees all of the branch's changes again. A class the review
+   *created*, or a class outside the candidate set that the review *edited* (the
+   incident's five rewritten subclasses), has no ledger entry and will be gated
+   in that next job: the freeze stops the cascade within a job but not across
+   jobs. The STEP 3 scope rule (bullet 4) is what keeps such edits from
+   happening in the first place. See open question 6.
 
 4. **Scope rule in the review prompt.** Rewrite `buildReviewPrompt(...)` STEP 3.
    Today it tells the agent to "Fix every violation NOW, even when the fix is a
@@ -107,6 +125,16 @@ submission path. Concretely:
    review is visible even if the agent ignored the prompt. This is a signal, not
    a hard stop.
 
+   The review session's own line count is not available today: the changes are
+   uncommitted, and the rule's existing diff helper reads the added lines of a
+   class against `origin/<base>`, which includes the primary phase's lines. The
+   implementation therefore takes a line-count baseline in
+   `buildCorrectionPrompt(...)` (for example the summed `git diff --numstat
+   origin/<base>` of the working tree) and subtracts it from the same figure in
+   `onCorrectionAttempted(...)`. This is an approximation (a rewritten line
+   counts once, and deletions are not counted); the plan accepts that, since
+   the figure is only a warning.
+
 6. **Visibility.** Each review session already logs its class list in
    `buildCorrectionPrompt(...)`; promote this to a job phase/status message so it
    is visible in the job record (the task notes this is "already partly done").
@@ -115,6 +143,12 @@ submission path. Concretely:
    `onCorrectionAttempted(...)` (end) and reads the cost delta from
    `CodingAgentJob.getCostTracker()`, accumulating both across sessions, and emits
    a cumulative figure (e.g. "object-oriented review: K classes, Mm Ss, $X.XX").
+   The ordering supports this: `EnforcementRunner` calls `buildCorrectionPrompt(...)`,
+   then `CodingAgentJob.runCorrectionSession(...)` (whose agent run records its
+   cost with `JobCostTracker.record(...)`), then `onCorrectionAttempted(...)`.
+   When `JobCostTracker.isIncomplete()` is `true` (a session was killed for
+   inactivity before reporting its cost), the reported figure is a lower bound
+   and the message should say so.
 
 ### Out of scope
 
@@ -130,7 +164,7 @@ All production changes are in `flowtree/runtime/src/main/java/io/flowtree/jobs/`
 
 - **`ObjectOrientedDesignRule`** (primary change):
   - Remove the `selection = null` reset from `onCorrectionAttempted(...)` so the
-    memoized `selection` becomes the frozen primary-phase-end snapshot; keep the
+    memoized `selection` becomes the frozen first-evaluation snapshot; keep the
     `pending = null` reset. Update the javadoc on `selection(...)` /
     `onCorrectionAttempted(...)` to state the snapshot semantics (the current
     javadoc's "clears the memoized selection so the next check re-scans" is
@@ -150,9 +184,14 @@ All production changes are in `flowtree/runtime/src/main/java/io/flowtree/jobs/`
   method belongs here because this class owns the cost maps (it already exposes
   `costForModel`, used the same way by `RetrospectivePhase`).
 - **`flowtree/runtime/docs/coding-agent.md`** (Object-Oriented Design Review
-  section): update to describe one session over the frozen primary-phase-end
+  section): update to describe one session over the frozen pre-review
   diff, the scope rule (fix primary-diff code, file follow-ups otherwise), and the
-  cumulative time/cost reporting. Do not reference this plan document from the
+  cumulative time/cost reporting. The `objectOrientedReviewEnabled` row of the
+  same file's job-property table ("a single design-review session over the
+  changed production classes a deterministic risk gate flags") and the matching
+  `object_oriented_review_enabled` row in `tools/mcp/manager/README.md` (Optional
+  Enforcement Phases) state the same one-session behaviour; check both still
+  read correctly after the change. Do not reference this plan document from the
   durable doc.
 
 The job's wire/record path (`CodingAgentJobFactory`, `CodingAgentJobCodec`,
@@ -194,9 +233,9 @@ A reviewer confirms the task is done when:
 
 Tests to run (bounded selection): `ObjectOrientedDesignRuleTest`,
 `ObjectOrientedRiskGateTest`, `ObjectOrientedReviewLedgerTest`, and (for the
-cost-tracker accessor) any existing `JobCostTracker`/`CodingAgentJobEvent` test
-that exercises cost. The Python `test_oop_review_follow_up_disabled.py` is
-unaffected (no wire change) but can be run to confirm.
+cost-tracker accessor) `JobCostTrackerTest`, extended with a case for `total()`.
+The Python `test_oop_review_follow_up_disabled.py` is unaffected (no wire change)
+but can be run to confirm.
 
 ## Dependencies
 
@@ -227,6 +266,22 @@ unaffected (no wire change) but can be run to confirm.
    compute-requirement findings from the triggering job are still live and should
    be filed as separate bug tasks is for a person to decide; they are out of this
    task's scope.
+5. **Snapshot point: first evaluation or primary-phase end.** The freeze takes
+   its snapshot when the rule is first evaluated, which is after the second-pass
+   review, deduplication and placement sessions have also edited the tree (see
+   Scope bullet 1). Their edits are therefore gated and offered for review too,
+   and they count toward the "primary diff" baseline of the proportionality
+   signal. If the approver wants the literal primary-phase diff, the changed
+   paths must be captured when the primary phase ends (for example by
+   `EnforcementRunner` before its first rule, or by the job) and handed to the
+   rule, which is a larger change than removing the reset.
+6. **Cross-job re-gating.** The freeze is per job. A later job on the same
+   branch recomputes the changed set against `origin/<base>` and will gate any
+   class the review created or edited that was not itself a reviewed candidate
+   (Scope bullet 3). Options: rely on the STEP 3 scope rule to keep review edits
+   inside the candidate classes; also record in the ledger every file whose blob
+   changed during the review session; or accept a one-time review of those
+   classes in the next job. The plan currently takes the first option.
 
 ## Estimated complexity
 
