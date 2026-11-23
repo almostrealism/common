@@ -43,8 +43,10 @@ This connects to the larger vision in the same way the prior cycle did: a compil
 large, heavily-shared computation graphs is the precondition for both the generative-art render
 workloads and the self-hosted language-model work, where graph sharing is pervasive. A compile
 step that produces an irreducible, over-budget expression for a modestly-sized scene is a latent
-scaling wall; fixing it at its source is foundation work, and the fix is expected to help the
-sibling non-identity-transform reflection and `renderTwoSpheres` cases that hit the same wall.
+scaling wall; fixing it at its source is foundation work. The fix may also help the sibling
+non-identity-transform reflection case and `SimpleRenderTest#renderTwoSpheres`, which the prior
+plan reported hitting the same kind of wall. That is not established; Scope item 5 asks for it to
+be measured.
 
 ## Root cause (symptom verified; construction source to be pinned by the implementation session)
 
@@ -74,26 +76,70 @@ facts follow, and together they point at the fix:
 1. The expression is genuinely large — larger than the size `process()` is willing to render.
 2. It is *irreducible* by the existing simplification (n-ary merging, constant folding,
    dedup). An expression that simplification cannot improve is not redundant arithmetic that
-   `NAryExpression.mergeOperands` would collapse; it is a large tree of genuinely distinct
-   operations that is being **inlined into a single expression** instead of being shared or
-   placed behind a kernel boundary.
+   `NAryExpression.mergeOperands` would collapse. It is a large tree being **inlined into a
+   single expression** instead of being shared or placed behind a kernel boundary. Note that
+   repeated copies of the *same* sub-tree also count as "irreducible" here: `simplify()` does
+   not make a repeated sub-tree count once. `countNodes()` sums each child's count, so a
+   sub-tree referenced from *k* places counts *k* times. Irreducibility therefore does not
+   distinguish re-expansion (family a or c below) from genuine size (family b).
 
-**The construction site is verified.** The stack recorded by the prior session runs
-`Product.of` → `UniformCollectionExpression.getValueAt` → deep recursion through
+**The construction site is identified; how it grows is not.** The prior session recorded the
+throw as `Product.of` → `UniformCollectionExpression.getValueAt` → deep recursion through
 `ReshapeProducer` / `TraversableExpressionComputation` / `AggregatedProducerComputation` /
-`CollectionConcatenateComputation` / `InequalityComparisonComputation`, compiling the
-`LightingEngineAggregator` exit-ray selection. Reading `LightingEngineAggregator` (a
-`RankedChoiceEvaluableForRGB`) explains the shape: `init(...)` adds one
-`IntersectionalLightingEngine` per **surface-light pair**, and the host selection path composes
-every engine's rank comparison and RGB contribution into one nested ranked-choice expression.
-`RefractionShader.shade` builds such an aggregator for the exit ray *in addition to* the primary
-ray, over a graph that already re-intersects the surface and refracts twice — so the selection's
-operands each embed the (shared) exit-ray geometry, and inlining them all into one expression
-produces the over-budget, irreducible tree.
+`CollectionConcatenateComputation` / `InequalityComparisonComputation`, while compiling the
+`LightingEngineAggregator` exit-ray selection. (Only that summary survives, in the closing
+notes of `PLAN-20261119-refraction-compile-dag-memoization.md`. The full stack was not kept, so
+step 1 below has to capture it again.) Reading the code gives the shape of the graph. It does
+**not** support the explanation that "many candidates are inlined into one expression":
 
-What the implementation session must still establish with evidence — not assume — is **which of
-two root-cause families** applies, because the correct fix differs:
+- **The exit-ray selection has one candidate in this scene.** `RefractionShader.shade` builds
+  `new LightingEngineAggregator(refractedRay, getOtherSurfaces(), List.of(p.getLight()), p)`.
+  `LightingEngineAggregator.init(...)` adds one `IntersectionalLightingEngine` per
+  (surface, light) pair, but here the lights are only the current light and the surfaces are
+  only the *other* surfaces. In `ReflectionRefractionRenderTest` that is the floor and one
+  `PointLight`, so the selection chooses among exactly **one** engine.
+- **The selection is a device graph, built by
+  `RankedChoiceEvaluableForMemoryData.getClosestChoice(int)`** (reached through
+  `RankedChoiceEvaluableForRGB.getClosestColor()`). Each candidate adds a `greaterThan` that
+  reads its rank twice (once in the comparison and once as `rank.minus()`), a second
+  `greaterThan` that reads the key and the running best key, and a `max` that reads both keys
+  again. Every operand is therefore read more than once.
+- **The operands are themselves chains of multiply-read stages.** The floor engine's rank and
+  colour take the exit ray as input. The exit ray is `ray(origin(exit.get(0)), outside, ...)`,
+  where `exit` is the sphere's `intersectAt` of the inner ray, and `outside` is a second
+  `refract` that reads `inside` and the exit normal. `inside` is a `refract` of `viewer` and
+  `normal`. Each stage reads its inputs several times.
+- **The primary-ray aggregator is a different object.** `RayIntersectionEngine.trace` builds a
+  `LightingEngineAggregator` over *every* surface-light pair, with `kernel = true`.
+  `enableAcceleratedAggregator` defaults to `false`, so it is wrapped in a `DimensionAwareKernel`
+  and selected **on the host** in `LightingEngineAggregator.evaluate(Object[])`. That host path
+  compiles each engine's rank with `rankProducer.get()` in `initRankCache()`, and the chosen
+  engine's colour (which contains the whole refraction graph above) with
+  `best.get().evaluate(args)`.
 
+*Inference to be confirmed, not a verified fact:* `ScopeSettings.maxNodeCount` is `1 << 23`
+(about 8.4 million nodes). With a single candidate, an expression that size is far bigger than
+the computation DAG, so the tree is almost certainly re-expanding shared stages per reader,
+multiplicatively along the refract → intersect → refract → intersect → select chain. That is
+evidence for family (a) or (c) below and against (b).
+
+What the implementation session must still establish with evidence, not assume, is **which of
+three root-cause families** applies, because the correct fix differs. Family (c) is listed first
+because it is the first question the project's compile discipline asks (CLAUDE.md Rule 3b, *"is
+this graph being optimized?"*). It is also the cheapest to rule out.
+
+- **(c) The failing graph never goes through `Process.optimize`.** `Producer.get()` does not
+  optimize. The two compile entry points on the primary host path named above,
+  `rankProducer.get()` and `best.get()`, are both plain `get()` calls. The outer
+  `RealizableImage.get()` does call `Process.optimized(source)`, but its source reaches the
+  per-engine producers only through the `DimensionAwareKernel`/`LightingEngineAggregator`
+  `Evaluable`, which the optimizer cannot see into. If the throw happens under one of these
+  `get()` calls, no isolation is ever decided for the refraction graph, and a marked reduction
+  is embedded into every reader. The test is to evaluate the same engine producer once through
+  `evaluate()` / `Process.optimized(producer).get()` and see whether it compiles. If it does,
+  the fix is to compile through the optimizing entry point at these call sites in
+  `LightingEngineAggregator` (and, where needed, to make the relevant computations declare
+  `isIsolationTarget`). It is not a change to the expression layer.
 - **(a) A tree-construction defect.** Some structurally-shared sub-expression (the exit-ray
   origin/direction, a per-engine intersection, a repeated `InequalityComparison`) is being
   re-expanded per consumer instead of referenced once, so the tree is larger than the DAG. The
@@ -119,32 +165,50 @@ post-process the generated source, and do not split the graph by hand with a man
 
 Concrete, actionable items:
 
-1. **Reproduce and profile first (Rule 3b).** Temporarily remove the `knownIssue` flag and run
-   `refractiveSphereShowsFloor` under an `OperationProfile`; load the profile with
-   `ar-profile-analyzer` and read the generated source / argument bindings for the
-   `LightingEngineAggregator` exit-ray selection. Establish *which* sub-expression is expanded
-   past `maxNodeCount` and whether it is a shared node re-expanded per consumer (family a) or a
-   single large computation (family b). Record the node count and tree depth reported by the
-   throw so the "after" is measurable.
-2. **Fix at the construction source.** Based on the profile:
+1. **Reproduce, capture the full stack, and profile first (Rule 3b).** The flag does not need to
+   be edited to reproduce. `TestDepthRule` skips a `knownIssue` test only when
+   `TestUtils.getSkipKnownIssues()` is true, which happens under the `pipeline` test profile,
+   when long tests are skipped, or when `AR_KNOWN_ISSUES` is disabled. A targeted local run of
+   `refractiveSphereShowsFloor` therefore executes it by default. Capture the **complete** stack
+   of the `ExpressionException` and record which entry point is compiling when it is thrown:
+   `LightingEngineAggregator.initRankCache()` (`rankProducer.get()`), `evaluate(Object[])`
+   (`best.get()`), or a path through `RealizableImage.get()`'s `Process.optimized(source)`.
+   That alone settles whether family (c) applies. Then run the failing graph under an
+   `OperationProfile` and read its operation tree and generated source with
+   `ar-profile-analyzer`. Because the compile throws before a kernel is produced, the failing
+   operation may have no generated source. In that case, profile a small reproduction of the
+   same producer (the floor engine's rank and colour over the refracted exit ray), as Rule 3b
+   describes. Establish *which* sub-expression grows past `maxNodeCount`, and whether it is a
+   shared node re-expanded per consumer (family a) or a single large computation (family b).
+   Record the node count and tree depth reported by the throw so the "after" is measurable.
+2. **Fix at the source the evidence points to.**
+   - family (c): compile the engine producers through the optimizing entry point
+     (`Process.optimized(...)`, or `evaluate()`) at the `LightingEngineAggregator` call sites
+     the stack names. Re-measure before deciding whether (a) or (b) is still needed.
    - family (a): correct the computation/expression builder that over-expands the shared
      sub-expression so the DAG is not flattened into a larger tree (e.g. a missed n-ary merge, a
      shared reference that should be reused, a `concat`/comparison that need not be rebuilt per
      engine);
    - family (b): have the selection computation declare `isIsolationTarget` so the optimizer
      places it behind a kernel boundary — no graph-building `isolate()`/`Process.isolated`.
-   Confirm the render still evaluates through `evaluate()` (optimized by default); do not switch
-   it to the lower-level `get()`/`evaluateExplicit()` entry points, which skip optimization.
+   Do not add new lower-level `get()`/`evaluateExplicit()` compile paths, which skip
+   optimization. (The test itself calls `r.realize(params).get().evaluate()`. That is
+   `RealizableImage.get()`, which already optimizes its source internally, so the test's entry
+   point is not the problem.)
 3. **Clear the known-issue flag.** Remove `@TestProperties(knownIssue = true)` from
    `refractiveSphereShowsFloor` so the existing `assertDiscShowsScene` assertion runs in CI, and
    drop the "second wall" paragraph from the test's class Javadoc. Keep `@Test(timeout = 120000)`
    as-is; if the compile is now fast but the render is close to the bound, record the margin and
    let the approver decide — do **not** inflate the timeout.
 4. **Pin the fix with a backend-independent regression test.** Add a test that builds the exit-ray
-   selection shape (a ranked choice over a handful of surface-light engines, or the minimal
-   construction the profile fingers) and asserts the compiled expression stays within
-   `ScopeSettings.maxNodeCount` — i.e. the structural property, not a wall-clock threshold — so
-   the fix is guarded on any node.
+   selection shape (a `getClosestChoice` over a refracted-and-re-intersected ray, or the
+   minimal construction the profile points to) and asserts a structural property, not a
+   wall-clock threshold, so the fix is guarded on any node. "Stays within
+   `ScopeSettings.maxNodeCount`" (about 8.4 million nodes) is too loose to serve as that
+   assertion: a regression could grow the tree a thousandfold and still pass. Assert instead
+   that the node count grows at most linearly as stages or candidates are added (for example,
+   compare the count for one and for two refraction stages, or for one and for three
+   candidates). Alternatively, assert a concrete bound measured from the fixed tree.
 5. **Report the incidental effect** on the sibling cases the prior plan named: the
    non-identity-transform reflection expression blow-up and the `renderTwoSpheres` compile
    timeout. State whether this fix resolves them; if it does, note it (a welcome bonus), if not,
@@ -161,14 +225,16 @@ Out of scope (name as follow-ups, do not expand the branch to cover them):
 Follow the "slow/too-deep/failing compile" discipline (base/relation README, Rule 3b): evidence
 before theory, and fix the tree, never the renderer or the limit.
 
-1. Profile the failing compile with `ar-profile-analyzer` before changing any code; the profile
-   now exists because the graph compiles far enough to throw (it no longer hangs in
-   `resetArguments`). Read the generated source and the operation tree to locate the expansion.
-2. Decide family (a) vs (b) from that evidence, then apply the minimal construction-site or
-   `isIsolationTarget` fix. Keep the change in the computation/expression layer that produces the
-   tree; **do not** add code to `Expression.java`, which is already at 1593 of its 1600-line
-   checkstyle limit — another reason the fix belongs at the construction source, not the
-   simplifier or renderer.
+1. First answer "is this graph being optimized?" from the full stack (family c). Then profile
+   the failing compile with `ar-profile-analyzer` before changing any code. The graph now gets
+   far enough to throw (it no longer hangs in `resetArguments`), but it throws before a kernel
+   exists, so a profiled reproduction of the failing producer may be needed to see generated
+   source. Read the operation tree and the source to locate the expansion.
+2. Decide among families (c), (a) and (b) from that evidence, then apply the minimal fix:
+   optimizing entry point, construction site, or `isIsolationTarget`. **Do not** add code to
+   `Expression.java`, which is already at 1597 of its 1600-line checkstyle limit. That is
+   another reason the fix belongs at the construction source or the compile call site, not the
+   simplifier or the renderer.
 3. Verify correctness is unchanged: `reflectiveSphereShowsFloor` stays green, and the broader
    expression-simplification and render tests (`ExpressionSimplificationTests`,
    `ExpressionStructureTests`, the reflection render) still pass.
@@ -183,11 +249,14 @@ before theory, and fix the tree, never the renderer or the limit.
   well within its 120s timeout, compiling without throwing "Large expression not improved by
   simplification".
 - `reflectiveSphereShowsFloor` still passes (no regression to the reflection path).
-- A new backend-independent regression test demonstrates the exit-ray selection compiles to an
-  expression within `ScopeSettings.maxNodeCount`.
-- The fix lives at the expression/computation construction source — not a raised
-  `maxNodeCount`, not a renderer change, not a hand-split or manual `isolate()`. The before/after
-  node count and tree depth are recorded in the plan's closing notes.
+- A new backend-independent regression test pins the structural property of the fixed exit-ray
+  selection: bounded, at most linear, node-count growth, or a measured concrete bound (see Scope
+  item 4). Being under `ScopeSettings.maxNodeCount` is not enough on its own.
+- The fix lives at the source the evidence names: the optimizing compile entry point, the
+  expression/computation construction site, or an `isIsolationTarget` declaration. It is not a
+  raised `maxNodeCount`, a renderer change, a hand-split or a manual `isolate()`. The
+  before/after node count and tree depth, and the entry point that was compiling when the throw
+  happened, are recorded in the plan's closing notes.
 - `ar-build-validator` is clean; no existing test is weakened, disabled, skip-gated, or has its
   timeout inflated.
 - **If un-flagging is not achievable in a focused session** (for example the compile needs the
@@ -228,3 +297,34 @@ scope; the success criteria account for that by treating a well-diagnosed, well-
 - Shares its machinery with the recent expression-merging work merged on `master`
   (`NAryExpression.mergeOperands` / `createMerged`, PR #1028): if the fix is family (a), it is a
   construction-time merge or sharing correction in the same spirit.
+
+## Open questions
+
+Raised by the documentation review, for the person deciding whether this plan goes ahead.
+
+1. **Is family (c) the real cause?** The code shows that the primary host selection in
+   `LightingEngineAggregator` compiles its engines with plain `Producer.get()`, which does not
+   optimize. The aggregator is an opaque `Evaluable`, so `RealizableImage.get()`'s
+   `Process.optimized(source)` cannot reach inside it. What the code does not show is whether
+   the throw happens under one of those `get()` calls, because only a summary of the stack was
+   recorded. If it does, the fix is mostly in `engine/render` at the compile call sites, not in
+   the expression layer the plan originally pointed at. The estimated complexity may drop, and
+   Scope item 4's regression test should then guard "the selection is compiled optimized"
+   rather than an expression-construction property. Should the plan be narrowed to that once
+   the stack is captured?
+2. **A many-candidates explanation does not fit this scene.** The exit-ray selection has exactly
+   one candidate here (the floor, under the current light). So the size has to come from the
+   chain of multiply-read stages feeding it, not from the number of engines. Any fix that
+   targets "fewer candidates" (for example the sum-lights-per-surface redesign in the
+   `LightingEngineAggregator` TODO) would not resolve this render, and is rightly out of scope.
+3. **The primary path is per-pixel host selection.** In kernel mode,
+   `LightingEngineAggregator.evaluate(Object[])` runs once per pixel on the host and calls
+   `best.get().evaluate(args)` on the chosen engine. If making the graph compile requires moving
+   that selection onto the device, that is the out-of-scope ferrofluid Phase 4 kernelization.
+   The success criteria already treat "diagnosed, reported, still flagged" as a complete
+   outcome. The approver should expect that outcome to be a real possibility.
+4. **Regression-test placement.** A test of `getClosestChoice` over a refracted ray needs
+   `RefractionShader`/`LightingEngineAggregator` (`engine/render`). A test of the optimizing
+   compile entry point would sit beside `ReflectionRefractionRenderTest`. A construction-layer
+   fix (family a) would instead want an `engine/utils` expression test next to
+   `ExpressionStructureTests`. Decide the placement once the family is known, not before.

@@ -63,9 +63,12 @@ render path's remaining known issue.
   `ExpressionException: Large expression not improved by simplification` while
   `ComputationScopeCompiler.compile` builds the `LightingEngineAggregator` exit-ray selection.
   Verified by inspection: `Expression.process()` throws exactly when `countNodes()` exceeds
-  `ScopeSettings.maxNodeCount` and `simplify()` cannot reduce it — the selection (one
-  `IntersectionalLightingEngine` per surface-light pair, composed into one nested ranked choice)
-  is inlined into a single over-budget, irreducible expression. Chosen.
+  `ScopeSettings.maxNodeCount` and `simplify()` cannot reduce it. (Corrected in review: the
+  exit-ray selection `RefractionShader` builds has only one candidate in this scene, the floor
+  under the current light. The size therefore comes from the multiply-read
+  refract/intersect stages feeding it, or from compiling through the unoptimized
+  `Producer.get()` calls in `LightingEngineAggregator`'s host path. It does not come from many
+  surface-light pairs.) Chosen.
 - **Performance — this fix is a compilation-scaling lever, surfaced through a correctness test.**
   An irreducible, over-budget expression for a modestly-sized scene is a latent scaling wall for
   every heavily-shared graph (render workloads and the self-hosted LM both). As with the
@@ -81,12 +84,14 @@ sequence: documentation has no reachable flagship gap, and the first reachable c
 is the follow-up the previous cycle filed, measured, and handed off by name. The throw site and
 the construction site are both already identified; the implementation session's real work is a
 profiled diagnosis (Rule 3b, `ar-profile-analyzer` — the profile now exists because the graph
-compiles far enough to throw) to decide between the two root-cause families (a shared
-sub-expression over-expanded per consumer → fix at the construction source; or a selection that
-genuinely belongs behind a kernel boundary → declared via `isIsolationTarget`, never a manual
-`isolate()`), then the minimal fix at that source. It keeps every project discipline: no raised
+compiles far enough to throw) to decide among three root-cause families. They are: the graph is
+compiled through a non-optimizing `get()` and never reaches `Process.optimize`, so the fix is
+the compile entry point; a shared sub-expression is over-expanded per consumer, so the fix is
+at the construction source; or a selection genuinely belongs behind a kernel boundary, declared
+via `isIsolationTarget` and never a manual `isolate()`. Then apply the minimal fix at that
+source. It keeps every project discipline: no raised
 `maxNodeCount`, no renderer change, no hand-split, and — because `Expression.java` is already at
-1593 of its 1600-line limit — the fix deliberately does not land there. Backend-independent
+1597 of its 1600-line limit — the fix deliberately does not land there. Backend-independent
 (synthetic 32×32 host render), so it runs on any node with no workstream settings file.
 
 #### Balance across categories
