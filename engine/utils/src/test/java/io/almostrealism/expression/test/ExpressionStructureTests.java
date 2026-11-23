@@ -68,6 +68,7 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * Verifies the structural primitives every {@link Expression} node relies on: the tree
@@ -584,7 +585,8 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		Assert.assertEquals(Set.of(cell), Product.of(cell, ref("x")).getIndices());
 		Assert.assertTrue(ref("x").getIndices().isEmpty());
 
-		Assert.assertEquals(Set.of(0, 1, 2, 3), row.getIndexOptions(new DefaultIndex("row", 4)).orElseThrow());
+		Assert.assertEquals(Set.of(0, 1, 2, 3), row.getIndexOptions(new DefaultIndex("row", 4)).orElseThrow()
+				.intValues().boxed().collect(Collectors.toSet()));
 		Assert.assertTrue(row.getIndexOptions(col).orElseThrow().isEmpty());
 		Assert.assertTrue(new DefaultIndex("free").getIndexOptions(new DefaultIndex("free")).isEmpty());
 	}
@@ -604,8 +606,10 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		Set<Integer> positions = new HashSet<>();
 		for (int i = 0; i < 12; i++) positions.add(i);
 
-		Assert.assertEquals(positions, cell.getIndexOptions(cell).orElseThrow());
-		Assert.assertEquals(positions, Product.of(cell, ref("x")).getIndexOptions(cell).orElseThrow());
+		Assert.assertEquals(positions, cell.getIndexOptions(cell).orElseThrow()
+				.intValues().boxed().collect(Collectors.toSet()));
+		Assert.assertEquals(positions, Product.of(cell, ref("x")).getIndexOptions(cell).orElseThrow()
+				.intValues().boxed().collect(Collectors.toSet()));
 		Assert.assertTrue(cell.getIndexOptions(row).orElseThrow().isEmpty());
 		Assert.assertTrue(cell.getIndexOptions(col).orElseThrow().isEmpty());
 		Assert.assertTrue(cell.getIndexOptions(new DefaultIndex("other", 5)).orElseThrow().isEmpty());

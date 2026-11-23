@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.sequence.IndexRange;
+import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.scope.ScopeSettings;
@@ -26,10 +27,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
-import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 /**
  * Abstract base class for binary comparison expressions that evaluate to boolean results.
@@ -232,22 +231,27 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 		if (ld.isPresent() && rd.isPresent())
 			return new BooleanConstant(compare(ld.getAsDouble(), rd.getAsDouble()));
 
-		Optional<Set<Integer>> options = enableIndexOptionSimplification ?
-				flat.getIndexOptions(kernel(context)) : Optional.empty();
-		if (options.isPresent() && flat.countNodes() > 3) {
-			if (options.get().isEmpty() || options.get().size() > indexOptionLimit ||
-					!flat.isValue(new IndexValues(0))) {
-				return flat;
-			}
+		if (enableIndexOptionSimplification && flat.countNodes() > 3) {
+			if (!flat.isValue(new IndexValues(0))) {
+				// A comparison that cannot be evaluated from the kernel index alone is
+				// left as it is when its domain is known, and otherwise offered to the
+				// series provider below
+				if (flat.getIndexOptions(kernel(context)).isPresent()) return flat;
+			} else {
+				Optional<IndexSequence> options = flat.getIndexOptions(kernel(context));
 
-			List<Integer> inputs = options.get().stream().sorted().collect(Collectors.toList());
-			List<Boolean> values = inputs.stream()
-					.map(i -> flat.value(new IndexValues(i)).longValue() != 0)
-					.collect(Collectors.toList());
+				if (options.isPresent()) {
+					if (options.get().isEmpty() || options.get().distinctCount() > indexOptionLimit) {
+						return flat;
+					}
 
-			List<Boolean> distinct = values.stream().distinct().collect(Collectors.toList());
-			if (distinct.size() == 1) {
-				return new BooleanConstant(distinct.get(0));
+					List<Boolean> distinct = options.get().intValues().distinct().sorted()
+							.mapToObj(i -> flat.value(new IndexValues(i)).longValue() != 0)
+							.distinct().collect(Collectors.toList());
+					if (distinct.size() == 1) {
+						return new BooleanConstant(distinct.get(0));
+					}
+				}
 			}
 		}
 

@@ -64,6 +64,42 @@ public class TestMethodProtectionTest extends TestSuiteBase {
             "}\n";
 
     /**
+     * Fixture: a base-branch test file whose first {@code @Test} method takes a
+     * parameter carrying an argument-bearing annotation. The shared extractor
+     * names that method after the parameter annotation ({@code Size}).
+     */
+    private static final String BASE_PARAMETER_ANNOTATION =
+            "package com.example;\n\n" +
+            "import org.junit.Test;\n\n" +
+            "public class FooTest {\n" +
+            "    @Test(timeout = 1000)\n" +
+            "    public void testFoo(@Size(1) String s) {\n" +
+            "        assertEquals(1, 1);\n" +
+            "    }\n\n" +
+            "    private void helper() {\n" +
+            "        int value = 1;\n" +
+            "    }\n" +
+            "}\n";
+
+    /**
+     * Fixture: a base-branch test file whose first {@code @Test} method is
+     * declared, annotated and closed on a single line, which the shared
+     * extractor reports under its own name just as the cross-check does.
+     */
+    private static final String BASE_SAME_LINE_METHOD =
+            "package com.example;\n\n" +
+            "import org.junit.Test;\n\n" +
+            "public class FooTest {\n" +
+            "    @Test public void testFoo() { assertEquals(1, 1); }\n\n" +
+            "    @Test(timeout = 5) public void testBar() {\n" +
+            "        assertEquals(2, 2);\n" +
+            "    }\n\n" +
+            "    private void helper() {\n" +
+            "        int value = 1;\n" +
+            "    }\n" +
+            "}\n";
+
+    /**
      * Creates a plain temp working directory for a test's current (post-edit)
      * file content, with no awk script installed in it — the fix under test
      * is that {@link TestMethodProtection} no longer reads the extractor
@@ -518,5 +554,289 @@ public class TestMethodProtectionTest extends TestSuiteBase {
         };
         Set<String> result = new TestMethodProtection().resolveMergeBaseFiles(FAKE_MERGE_BASE, throwing);
         assertNull(result);
+    }
+
+    /**
+     * A pre-existing test method documented by a one-line javadoc that contains
+     * {@code //} (a URI such as {@code resource://localhost/...}) must still be
+     * protected: inserting an early return into it is blocked.
+     *
+     * <p>The extractor strips {@code //} line comments before it recognizes block
+     * comments, so on such a line it deletes the javadoc's own closing
+     * {@code *}{@code /} and treats every following line as comment until the next
+     * one. The method between the two javadocs is never reported, on either side of
+     * the comparison, so any edit to it reads as "no test method changes". The
+     * repository's {@code ServerTest#parseResourceUriLocalhostResolvesToNull} has
+     * exactly this shape.</p>
+     */
+    @Test(timeout = 30000)
+    public void methodAfterOneLineJavadocWithDoubleSlashIsProtected() throws IOException {
+        String base =
+                "package com.example;\n\n" +
+                "import org.junit.Test;\n\n" +
+                "public class FooTest {\n" +
+                "    /** Parsing a {@code resource://localhost/...} URI resolves to null. */\n" +
+                "    @Test\n" +
+                "    public void testFoo() {\n" +
+                "        assertEquals(1, 1);\n" +
+                "    }\n\n" +
+                "    /** A second documented test. */\n" +
+                "    @Test\n" +
+                "    public void testBar() {\n" +
+                "        assertEquals(2, 2);\n" +
+                "    }\n" +
+                "}\n";
+
+        Path tempDir = tempWorkingDirectory();
+        try {
+            String current = base.replace(
+                    "    public void testFoo() {\n        assertEquals(1, 1);",
+                    "    public void testFoo() {\n        if (true) return;\n        assertEquals(1, 1);");
+            writeCurrent(tempDir, current);
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(base, realAwkScriptContent()));
+            assertFalse("Edit to testFoo was allowed: " + verdict.getReason(), verdict.isAllowed());
+            assertTrue(verdict.getReason().contains("testFoo"));
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    /**
+     * A {@code @Test} method inside a nested class is intentionally not
+     * reported by the extractor (it only recognizes {@code @Test} at class
+     * level), and the independent cross-check must track brace depth the same
+     * way: a nested test method must not be read as one the extractor dropped,
+     * or an otherwise-allowed edit to a fixture in such a file would be
+     * wrongly blocked.
+     */
+    @Test(timeout = 30000)
+    public void nestedTestClassMethodIsNotFalselyUnaccounted() throws IOException {
+        String base =
+                "package com.example;\n\n" +
+                "import org.junit.Test;\n\n" +
+                "public class FooTest {\n" +
+                "    @Test\n" +
+                "    public void testFoo() {\n" +
+                "        assertEquals(1, 1);\n" +
+                "    }\n\n" +
+                "    public static class Inner {\n" +
+                "        @Test\n" +
+                "        public void testNested() {\n" +
+                "            assertEquals(2, 2);\n" +
+                "        }\n" +
+                "    }\n\n" +
+                "    private void helper() {\n" +
+                "        int value = 1;\n" +
+                "    }\n" +
+                "}\n";
+
+        Path tempDir = tempWorkingDirectory();
+        try {
+            String current = base.replace("int value = 1;", "int value = 2;");
+            writeCurrent(tempDir, current);
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(base, realAwkScriptContent()));
+            assertTrue("Editing a helper in a file with a nested @Test class was wrongly blocked: "
+                    + verdict.getReason(), verdict.isAllowed());
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    /**
+     * When the extractor's one-line-javadoc bug drops one of two same-named
+     * overloads, the cross-check must still fail closed: the independent scan
+     * counts the name twice while the extractor reports it once, and that
+     * difference in multiplicity must be detected even though the name itself
+     * is present on both sides.
+     */
+    @Test(timeout = 30000)
+    public void overloadDroppedByExtractorIsProtected() throws IOException {
+        String base =
+                "package com.example;\n\n" +
+                "import org.junit.Test;\n\n" +
+                "public class FooTest {\n" +
+                "    /** Parses a {@code resource://localhost} URI. */\n" +
+                "    @Test\n" +
+                "    public void testFoo() {\n" +
+                "        assertEquals(1, 1);\n" +
+                "    }\n\n" +
+                "    /** A second, overloaded form documented normally. */\n" +
+                "    @Test\n" +
+                "    public void testFoo(int value) {\n" +
+                "        assertEquals(value, value);\n" +
+                "    }\n" +
+                "}\n";
+
+        Path tempDir = tempWorkingDirectory();
+        try {
+            String current = base.replace(
+                    "    public void testFoo() {\n        assertEquals(1, 1);",
+                    "    public void testFoo() {\n        if (true) return;\n        assertEquals(1, 1);");
+            writeCurrent(tempDir, current);
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(base, realAwkScriptContent()));
+            assertFalse("Edit to a dropped overload was allowed: " + verdict.getReason(), verdict.isAllowed());
+            assertTrue(verdict.getReason().contains("testFoo"));
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    /**
+     * A text block whose content contains a quote and an unbalanced opening
+     * brace must not corrupt the scan: the extractor miscounts the
+     * brace and so drops the {@code @Test} method that follows, while the
+     * independent scan strips the whole text block and still sees that
+     * method — the difference must fail closed.
+     */
+    @Test(timeout = 30000)
+    public void textBlockBeforeTestMethodIsProtected() throws IOException {
+        String base =
+                "package com.example;\n\n" +
+                "import org.junit.Test;\n\n" +
+                "public class FooTest {\n" +
+                "    @Test\n" +
+                "    public void testFoo() {\n" +
+                "        String json = \"\"\"\n" +
+                "            { \"unbalanced brace\n" +
+                "            \"\"\";\n" +
+                "        assertEquals(1, 1);\n" +
+                "    }\n\n" +
+                "    @Test\n" +
+                "    public void testBar() {\n" +
+                "        assertEquals(2, 2);\n" +
+                "    }\n" +
+                "}\n";
+
+        Path tempDir = tempWorkingDirectory();
+        try {
+            String current = base.replace(
+                    "    public void testBar() {\n        assertEquals(2, 2);",
+                    "    public void testBar() {\n        if (true) return;\n        assertEquals(2, 2);");
+            writeCurrent(tempDir, current);
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(base, realAwkScriptContent()));
+            assertFalse("Edit to testBar after a text block was allowed: " + verdict.getReason(),
+                    verdict.isAllowed());
+            assertTrue(verdict.getReason().contains("testBar"));
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    /**
+     * The cross-check must name a {@code @Test} method exactly as the
+     * extractor does, even where the extractor's name is the parameter
+     * annotation rather than the method: otherwise the method reads as
+     * unaccounted and an unrelated helper edit in the file is wrongly blocked.
+     */
+    @Test(timeout = 30000)
+    public void parameterAnnotationMethodDoesNotBlockHelperEdit() throws IOException {
+        Path tempDir = tempWorkingDirectory();
+        try {
+            writeCurrent(tempDir, BASE_PARAMETER_ANNOTATION.replace("int value = 1;", "int value = 2;"));
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_PARAMETER_ANNOTATION, realAwkScriptContent()));
+            assertTrue("Helper edit beside a parameter-annotated @Test method was wrongly blocked: "
+                    + verdict.getReason(), verdict.isAllowed());
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    /**
+     * An edit to the body of a {@code @Test} method whose parameter carries an
+     * argument-bearing annotation is still detected and blocked, although the
+     * extractor keys the method by the annotation's name.
+     */
+    @Test(timeout = 30000)
+    public void parameterAnnotationMethodBodyEditIsProtected() throws IOException {
+        Path tempDir = tempWorkingDirectory();
+        try {
+            writeCurrent(tempDir, BASE_PARAMETER_ANNOTATION.replace(
+                    "        assertEquals(1, 1);\n", "        if (true) return;\n        assertEquals(1, 1);\n"));
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_PARAMETER_ANNOTATION, realAwkScriptContent()));
+            assertFalse("Edit to a parameter-annotated @Test method was allowed: " + verdict.getReason(),
+                    verdict.isAllowed());
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    /**
+     * A {@code @Test} method written entirely on one line is reported by both
+     * the extractor and the cross-check, so a helper edit beside it is not
+     * wrongly blocked as unaccounted.
+     */
+    @Test(timeout = 30000)
+    public void sameLineTestMethodDoesNotBlockHelperEdit() throws IOException {
+        Path tempDir = tempWorkingDirectory();
+        try {
+            writeCurrent(tempDir, BASE_SAME_LINE_METHOD.replace("int value = 1;", "int value = 2;"));
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_SAME_LINE_METHOD, realAwkScriptContent()));
+            assertTrue("Helper edit beside a same-line @Test method was wrongly blocked: "
+                    + verdict.getReason(), verdict.isAllowed());
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    /**
+     * An edit to a {@code @Test} method written entirely on one line is
+     * detected and blocked, and the reason names that method.
+     */
+    @Test(timeout = 30000)
+    public void sameLineTestMethodEditIsProtected() throws IOException {
+        Path tempDir = tempWorkingDirectory();
+        try {
+            writeCurrent(tempDir, BASE_SAME_LINE_METHOD.replace(
+                    "{ assertEquals(1, 1); }", "{ if (true) return; assertEquals(1, 1); }"));
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_SAME_LINE_METHOD, realAwkScriptContent()));
+            assertFalse("Edit to a same-line @Test method was allowed: " + verdict.getReason(),
+                    verdict.isAllowed());
+            assertTrue("Reason should name testFoo: " + verdict.getReason(),
+                    verdict.getReason().contains("testFoo"));
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    /**
+     * Two {@code @Test} methods declared on one line are reported by the
+     * extractor as a single record named after the second, so the first goes
+     * unreported; the cross-check names it and fails closed even for an edit
+     * that touches only a helper.
+     */
+    @Test(timeout = 30000)
+    public void twoTestMethodsOnOneLineFailClosed() throws IOException {
+        String base = BASE_ONE_METHOD.replace(
+                "    @Test\n    public void testFoo() {\n        assertEquals(1, 1);\n    }\n",
+                "    @Test public void testA() { } @Test public void testB() { }\n");
+        Path tempDir = tempWorkingDirectory();
+        try {
+            writeCurrent(tempDir, base.replace("int value = 1;", "int value = 2;"));
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(base, realAwkScriptContent()));
+            assertFalse("A file whose @Test method the extractor dropped was editable: "
+                    + verdict.getReason(), verdict.isAllowed());
+            assertTrue("Reason should name the unreported testA: " + verdict.getReason(),
+                    verdict.getReason().contains("testA"));
+        } finally {
+            deleteRecursively(tempDir);
+        }
     }
 }

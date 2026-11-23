@@ -18,7 +18,6 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.compute.ProcessContext;
@@ -28,7 +27,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Mask;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -257,9 +255,7 @@ public class LoopedWeightedSumComputation extends AggregatedProducerComputation 
 	 */
 	@Override
 	protected Expression<?> getExpression(TraversableExpression[] args, Expression globalIndex, Expression localIndex) {
-		ArrayVariable<?> out = getOutputVariable();
-		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
-		Expression currentValue = out.reference(k.multiply(out.length()));
+		Expression<?> currentValue = getCurrentOutputValue(getOutputVariable(), globalIndex);
 		return combine(currentValue, computeInnerSum(args, globalIndex, localIndex));
 	}
 

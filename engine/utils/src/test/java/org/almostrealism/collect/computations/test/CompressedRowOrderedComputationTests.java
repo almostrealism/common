@@ -262,6 +262,28 @@ public class CompressedRowOrderedComputationTests extends TestSuiteBase implemen
 		assertMatchesDense(m -> matmul(m, cp(pack(1.0, 2.0, 3.0, 4.0, 5.0))));
 	}
 
+	/**
+	 * The product with a vector, checked against explicitly computed values rather than against
+	 * the dense result. This pins the exact output of the accumulation loop — the running total
+	 * read back through the shared accumulator reference on each iteration — for both the sparse
+	 * ({@link SegmentedWeightedSumComputation}) and the dense product, so a regression in that
+	 * read is caught independently of the sparse-matches-dense comparison.
+	 */
+	@Test(timeout = 60000)
+	public void matmulVectorExplicitValues() {
+		double[] expected = { 7.0, 0.0, -1.0, 24.0 };
+		for (ComputeRequirement backend : backends()) {
+			double[] sparseResult = evaluate(matmul(cp(sparse()), cp(pack(1.0, 2.0, 3.0, 4.0, 5.0))), backend)
+					.toArray(0, expected.length);
+			double[] denseResult = evaluate(matmul(cp(dense()), cp(pack(1.0, 2.0, 3.0, 4.0, 5.0))), backend)
+					.toArray(0, expected.length);
+			for (int i = 0; i < expected.length; i++) {
+				assertEquals("sparse element " + i + " on " + backend, expected[i], sparseResult[i]);
+				assertEquals("dense element " + i + " on " + backend, expected[i], denseResult[i]);
+			}
+		}
+	}
+
 	/** The product with a matrix. */
 	@Test(timeout = 60000)
 	public void matmulMatrix() {
