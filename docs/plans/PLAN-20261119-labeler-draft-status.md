@@ -246,13 +246,21 @@ immediately shows READY, then Copilot lands minutes later, which is the #993
   Otherwise it returns `ci: awaiting review`, plus `ci: stalled` after N hours so
   a dark Copilot can't hold it silently. N must be chosen; the other waiting
   states use 1–10 h in `LABELS`.
-- `pr-status-labels.yaml`: add `pull_request_review: [submitted, dismissed]`,
-  `pull_request_review_thread: [resolved, unresolved]` and
-  `pull_request_target: [review_requested]`, so a late review flips the label
-  within seconds. Fork PRs give read-only tokens on `pull_request_review`, so
-  route through `workflow_run` or `pull_request_target`, or accept the 30-min
-  cron for forks. (Fork PRs are already excluded by `open_pulls`, which keeps
-  only own-repo heads, so in practice the cron path is enough.)
+- `pr-status-labels.yaml`: add `pull_request_review: [submitted, dismissed]` and
+  `pull_request_target: [review_requested]`, so a submitted review or a new
+  review request flips the label within seconds. **A thread being resolved or
+  unresolved has no workflow trigger.** `pull_request_review_thread` is a webhook
+  event but not one GitHub Actions can start a workflow on — the Actions event
+  reference lists `pull_request_review` and `pull_request_review_comment`, not it
+  — so a thread resolve/unresolve is reflected only on the next cron tick (up to
+  30 min), unless a webhook-to-`repository_dispatch` bridge is added to carry
+  that event in. Criterion 3's `ci: awaiting review` is still derived correctly
+  whenever the labeler next runs; only its latency for the thread-only case is
+  the cron interval rather than seconds. Fork PRs give read-only tokens on
+  `pull_request_review`, so route through `workflow_run` or `pull_request_target`,
+  or accept the 30-min cron for forks. (Fork PRs are already excluded by
+  `open_pulls`, which keeps only own-repo heads, so in practice the cron path is
+  enough.)
 - Combine with Option A's draft check.
 
 **Drafts / plan approval**: read-only with respect to the draft flag. While the
@@ -379,11 +387,13 @@ The work is done when each of these is shown by a unit case in
 5. `ci: awaiting review` gains `ci: stalled` after its `LABELS` hour limit.
 6. The existing `ReadyToLaunchTest`, `LabelChangesTest` and `SummaryRowTest`
    cases still pass, so `ci: ready to launch` is unchanged.
-7. `pr-status-labels.yaml` runs on `ready_for_review`, `converted_to_draft` and
-   the review events, still checks out only the default branch, and runs no PR
-   code. `WorkflowTest` already asserts the triggers, the default-branch
-   checkout and the job permissions, so its `test_triggers` case is extended
-   to the new events and the other two cases still pass.
+7. `pr-status-labels.yaml` runs on `ready_for_review`, `converted_to_draft`,
+   `pull_request_review` (submitted/dismissed) and `review_requested`, still
+   checks out only the default branch, and runs no PR code. (Thread
+   resolve/unresolve has no Actions trigger, so that case is left to the cron;
+   see Option B.) `WorkflowTest` already asserts the triggers, the
+   default-branch checkout and the job permissions, so its `test_triggers` case
+   is extended to the new events and the other two cases still pass.
 
 ## Open questions for the owner
 
