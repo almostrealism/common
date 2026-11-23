@@ -72,18 +72,20 @@ class SplitRootsTest(unittest.TestCase):
             self.assertEqual(self.repository / "cached",
                              maven_repository.downloaded_root(self.repository))
 
-    def test_command_line_overrides_maven_opts_prefix_is_not_read_by_split_roots(self):
-        """With no explicit maven_args the split roots read the environment, not a command line.
+    def test_unset_split_environment_leaves_roots_unsplit(self):
+        """With no split set in the environment, the roots stay at the repository.
 
-        install_location() takes command-line -D flags; installed_root/
-        downloaded_root resolve from the ambient environment alone, so a split
-        set only on MAVEN_OPTS is honoured and an unset environment stays unsplit.
+        installed_root/downloaded_root with no explicit maven_args resolve the
+        split from the ambient environment alone (MAVEN_OPTS, MAVEN_ARGS). When
+        neither carries a split, both roots remain the repository itself.
         """
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("MAVEN_OPTS", None)
             os.environ.pop("MAVEN_ARGS", None)
             self.assertEqual(self.repository,
                              maven_repository.installed_root(self.repository))
+            self.assertEqual(self.repository,
+                             maven_repository.downloaded_root(self.repository))
 
     def test_default_repository_is_user_m2(self):
         with mock.patch.dict(os.environ, {"MAVEN_ARGS": JOB_ARGS},
