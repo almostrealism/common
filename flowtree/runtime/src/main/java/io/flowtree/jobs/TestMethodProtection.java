@@ -490,6 +490,15 @@ class TestMethodProtection implements ConsoleFeatures {
      * not mistaken for the body, and a {@code ;} at top level (an abstract
      * method or a field) yields no name.
      *
+     * <p>The naming rule is the shared extractor's rule, not the Java
+     * grammar's, and must stay so: the result is compared name-for-name with
+     * what the extractor reported. For a signature such as
+     * {@code void testFoo(@Size(1) String s)} both report {@code Size}, so the
+     * counts agree and the file is not blocked; reporting {@code testFoo} here
+     * alone would make every such method look unaccounted and block every
+     * edit to its file. The extractor still keys that method's record by
+     * {@code Size}, so an edit to its body is still detected.</p>
+     *
      * @param code the comment- and literal-stripped source
      * @param from the index just past a {@code @Test} marker
      * @return the method name, or {@code null} if no method body follows
@@ -512,7 +521,6 @@ class TestMethodProtection implements ConsoleFeatures {
         }
         if (end < 0) return null;
 
-        // TODO(review): a parameter annotation taking arguments is misread as the method name here, over-blocking the file (safe direction).
         Matcher call = IDENTIFIER_CALL.matcher(code.substring(from, end));
         String last = null;
         while (call.find()) last = call.group(1);

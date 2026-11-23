@@ -64,6 +64,24 @@ public class TestMethodProtectionTest extends TestSuiteBase {
             "}\n";
 
     /**
+     * Fixture: a base-branch test file whose first {@code @Test} method takes a
+     * parameter carrying an argument-bearing annotation. The shared extractor
+     * names that method after the parameter annotation ({@code Size}).
+     */
+    private static final String BASE_PARAMETER_ANNOTATION =
+            "package com.example;\n\n" +
+            "import org.junit.Test;\n\n" +
+            "public class FooTest {\n" +
+            "    @Test(timeout = 1000)\n" +
+            "    public void testFoo(@Size(1) String s) {\n" +
+            "        assertEquals(1, 1);\n" +
+            "    }\n\n" +
+            "    private void helper() {\n" +
+            "        int value = 1;\n" +
+            "    }\n" +
+            "}\n";
+
+    /**
      * Creates a plain temp working directory for a test's current (post-edit)
      * file content, with no awk script installed in it — the fix under test
      * is that {@link TestMethodProtection} no longer reads the extractor
@@ -689,6 +707,48 @@ public class TestMethodProtectionTest extends TestSuiteBase {
             assertFalse("Edit to testBar after a text block was allowed: " + verdict.getReason(),
                     verdict.isAllowed());
             assertTrue(verdict.getReason().contains("testBar"));
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    /**
+     * The cross-check must name a {@code @Test} method exactly as the
+     * extractor does, even where the extractor's name is the parameter
+     * annotation rather than the method: otherwise the method reads as
+     * unaccounted and an unrelated helper edit in the file is wrongly blocked.
+     */
+    @Test(timeout = 30000)
+    public void parameterAnnotationMethodDoesNotBlockHelperEdit() throws IOException {
+        Path tempDir = tempWorkingDirectory();
+        try {
+            writeCurrent(tempDir, BASE_PARAMETER_ANNOTATION.replace("int value = 1;", "int value = 2;"));
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_PARAMETER_ANNOTATION, realAwkScriptContent()));
+            assertTrue("Helper edit beside a parameter-annotated @Test method was wrongly blocked: "
+                    + verdict.getReason(), verdict.isAllowed());
+        } finally {
+            deleteRecursively(tempDir);
+        }
+    }
+
+    /**
+     * An edit to the body of a {@code @Test} method whose parameter carries an
+     * argument-bearing annotation is still detected and blocked, although the
+     * extractor keys the method by the annotation's name.
+     */
+    @Test(timeout = 30000)
+    public void parameterAnnotationMethodBodyEditIsProtected() throws IOException {
+        Path tempDir = tempWorkingDirectory();
+        try {
+            writeCurrent(tempDir, BASE_PARAMETER_ANNOTATION.replace(
+                    "        assertEquals(1, 1);\n", "        if (true) return;\n        assertEquals(1, 1);\n"));
+            TestMethodProtection.Verdict verdict = new TestMethodProtection().evaluate(
+                    FILE, FAKE_MERGE_BASE, Set.of(FILE, AWK_SCRIPT_PATH), tempDir.toFile(),
+                    gitOps(BASE_PARAMETER_ANNOTATION, realAwkScriptContent()));
+            assertFalse("Edit to a parameter-annotated @Test method was allowed: " + verdict.getReason(),
+                    verdict.isAllowed());
         } finally {
             deleteRecursively(tempDir);
         }
