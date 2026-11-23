@@ -154,6 +154,38 @@ hook blocks a run with no path, with a directory, or above 5 test files or 40 no
 They parse command text and are backstops; the enforced surfaces are job submission, the
 controller's submit endpoint and the MCP test runner.
 
+## Installed-artifact staleness hook
+
+`mvn-artifact-staleness.py` runs before a Bash command with an artifact-producing Maven
+goal and before the ar-test-runner and ar-build-validator tools. It compares the install
+time of every module artifact against the last branch switch in the reflog, and warns when
+an installed artifact was built before it: a module the run does not rebuild would resolve
+the previous branch's code.
+
+It judges the directory that run will install into and resolve from, read through
+`tools/mcp/common/maven_repository.py` (`install_location`), the same reading the
+ar-test-runner preflight uses:
+
+| Setting | Effect |
+|---|---|
+| `-Dmaven.repo.local=<dir>` on the command line, then in `MAVEN_ARGS`, then in `MAVEN_OPTS` | repository base (CI's `select-maven-repo` action sets it in `MAVEN_OPTS`) |
+| `FLOWTREE_MAVEN_LOCAL_REPOSITORY` | repository base a FlowTree job exports when none of the above is set |
+| none of them | `~/.m2/repository` |
+| `aether.enhancedLocalRepository.split` and `localPrefix` (a FlowTree job's `MAVEN_ARGS`) | installs go to `<base>/<localPrefix>`, the job's own space |
+
+A leading `MAVEN_OPTS=... mvn ...` assignment counts for that command. The MCP tools'
+Maven processes inherit the session environment and add no repository flag, so for them
+the environment alone decides. A repository relocated only by a `settings.xml` other than
+the one the job exports is not followed.
+
+Every message names the directory and the setting that chose it. A directory with no
+project artifacts in it yet is reported in one line as a fresh install space, not as
+staleness; a module the run does not build then fails to resolve instead of resolving old
+code. The scope sentence follows the command: only a full-reactor `install` refreshes
+everything; `-pl <module> -am` rebuilds that module and its dependencies, and every other
+module still resolves from the install directory. Tests:
+`tools/tests/test_mvn_artifact_staleness.py`.
+
 ## New-type equivalence gate
 
 An agent must not add a type that re-implements a concept the codebase already has; the
