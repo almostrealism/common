@@ -25,7 +25,7 @@ name: "Task Planning"
 #         contents: write
 #         pull-requests: write
 #       concurrency:
-#         group: task-planning
+#         group: project-branches
 #         cancel-in-progress: false
 #       with:
 #         project: "<tracker project>"
@@ -51,7 +51,9 @@ name: "Task Planning"
 # that many, one at a time, each repeating the checks for itself. The caller
 # must give its job a concurrency group (cancel-in-progress: false), as in
 # the example above: that is what keeps two runs from counting the same free
-# places.
+# places. Every other job of the caller that creates branches under the same
+# prefix must share that group, or it and this workflow can each count the
+# same free place and both take it.
 #
 # Once the branch and workstream exist, CI claims the task for the round
 # (POST /api/tracker/claim, tools/ci/tracker-claim.sh), which links it to the
@@ -93,7 +95,7 @@ on:
         default: 5
         type: number
       force:
-        description: "\"true\" starts a round even when one is in progress or the backlog is full; a claimable task is still required"
+        description: "\"true\" starts one round even when max-rounds project/ branches are in progress; a claimable task is still required"
         required: false
         default: "false"
         type: string

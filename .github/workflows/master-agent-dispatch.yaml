@@ -25,7 +25,9 @@ name: "Master Agent Dispatch"
 # here for the same reason.
 #
 # Each job keeps its own concurrency group, so they still serialize
-# independently rather than queueing behind each other. Cadence and cleanup for
+# independently rather than queueing behind each other. The two planning jobs
+# are the exception: they share one group because they share one limit
+# (MAX_PROJECT_BRANCHES). Cadence and cleanup for
 # the QA-style jobs stay in tools/ci/qa-cadence.sh and
 # tools/ci/archive-stale-workstreams.sh, which they all share.
 #
@@ -56,6 +58,7 @@ on:
       - master
   # Hourly, off the top of the hour. Every job's gate decides whether its
   # round starts, so an hour with nothing due creates nothing.
+  # TODO(review): verify github.event.repository.default_branch is set on schedule runs; called workflows pass it as BASE_BRANCH.
   schedule:
     - cron: "17 * * * *"
   workflow_dispatch:
@@ -179,9 +182,12 @@ jobs:
       contents: write
       pull-requests: write
 
-    # Serialize so two merges landing together cannot both pass the gate.
+    # Shared with plan-release-task: both count the same project/ branches
+    # against MAX_PROJECT_BRANCHES, so neither may count while the other
+    # is creating a branch. A separate group per job would let each see
+    # the same free place and both take it.
     concurrency:
-      group: project-manager
+      group: project-branches
       cancel-in-progress: false
 
     steps:
@@ -407,7 +413,7 @@ jobs:
             if [ "${{ steps.intake.outputs.open }}" != "true" ]; then
               echo "No new branch — the controller is not accepting automated jobs, or could not be asked." >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "No new branch — a planning round is already in progress, or the open PR backlog is over the limit." >> "$GITHUB_STEP_SUMMARY"
+              echo "No new branch — a planning round is already in progress, or the project/ branches in progress have reached the limit." >> "$GITHUB_STEP_SUMMARY"
             fi
           fi
 
@@ -433,9 +439,11 @@ jobs:
       contents: write
       pull-requests: write
 
-    # Serialize so two merges landing together cannot both pass the gate.
+    # The Project Manager's group: see plan-next-task. One group covers
+    # every job that counts project/ branches, and it holds the whole
+    # called workflow, so its matrix rounds also run inside it.
     concurrency:
-      group: task-planning
+      group: project-branches
       cancel-in-progress: false
 
     uses: ./.github/workflows/task-planning.yaml

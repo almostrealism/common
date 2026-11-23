@@ -1604,8 +1604,13 @@ each round repeats the checks for itself, so it sees the branch the round
 before it created and the limit holds however many rounds a run starts. `plan`
 carries no concurrency group of its own, because a group on a matrix job would
 cancel its own waiting rounds; the **caller's** job carries it
-(`plan-release-task` uses `task-planning`), and that is what keeps two runs from
-counting the same places. A consuming repository's caller must do the same. The
+(`plan-release-task` uses `project-branches`), and that is what keeps two runs from
+counting the same places. `plan-next-task` counts the same `project/` branches,
+so it carries the same group: with a group each, both jobs of one run could see
+the same free place and both take it. Sharing it costs only ordering — while one
+job runs the other waits, and GitHub drops a waiting job when a later run's job
+queues behind it, which is harmless because that later run evaluates its gates
+afresh. A consuming repository's caller must do the same. The
 round's workstream is registered with no tracker role;
 CI then claims the task for it (`tools/ci/tracker-claim.sh`, the controller's
 `POST /api/tracker/claim`, which links the task to the workstream and fails
@@ -1765,8 +1770,9 @@ judgment; and it carries no `ENFORCE_CHANGES` (a round that rejects every
 candidate with reasons is a valid result) and no `REQUIRED_LABELS` (it needs no
 Metal). Its template is this repository's own, passed by path.
 
-Each job carries its **own** `concurrency` group (`project-manager`,
-`task-planning`, `quality-assurance`, `defect-hunt`, `flaky-qa`, `coverage-qa`, `consolidation-qa`,
+Each job carries its **own** `concurrency` group — except the two planning
+jobs, which share `project-branches` because they share one limit (see above) —
+(`project-branches`, `quality-assurance`, `defect-hunt`, `flaky-qa`, `coverage-qa`, `consolidation-qa`,
 `concept-qa`, `performance-qa`, `pdsl-qa`, `qa-retrospective`, none cancelling in progress), so they serialize
 independently rather than queueing behind one another. Workflow-level
 concurrency would couple them — do not add one.

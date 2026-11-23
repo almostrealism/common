@@ -45,6 +45,10 @@ _QA_SCRIPTS = [
 # removing it here.
 _PILOTS = ("flaky-qa", "concept-qa")
 
+# The jobs that start planning rounds, which share the MAX_PROJECT_BRANCHES
+# limit and so must share one concurrency group.
+_PLANNING_JOBS = ("plan-next-task", "plan-release-task")
+
 _SELECTOR = re.compile(r"github\.event\.inputs\.agent == '([a-z-]+)'")
 
 
@@ -458,14 +462,31 @@ class MasterAgentDispatchTests(unittest.TestCase):
                                   env.get("CF_ACCESS_CLIENT_SECRET", ""))
 
     def test_every_job_serializes_under_its_own_concurrency_group(self):
-        """Two rounds of one job racing is what the cadence gate cannot see."""
+        """Two rounds of one job racing is what the cadence gate cannot see.
+        The planning jobs share one group, since they share one limit (see
+        test_the_planning_jobs_share_one_concurrency_group); every other job
+        has a group of its own."""
         groups = []
         for name, job in self.jobs.items():
             with self.subTest(job=name):
                 self.assertIn("concurrency", job)
                 self.assertFalse(job["concurrency"]["cancel-in-progress"])
-                groups.append(job["concurrency"]["group"])
+                if name not in _PLANNING_JOBS:
+                    groups.append(job["concurrency"]["group"])
+        groups.append(self.jobs[_PLANNING_JOBS[0]]["concurrency"]["group"])
         self.assertEqual(len(groups), len(set(groups)))
+
+    def test_the_planning_jobs_share_one_concurrency_group(self):
+        """Both planning jobs count the same project/ branches against
+        MAX_PROJECT_BRANCHES. With a group each, the two jobs of one run could
+        both see the same free place and both take it, leaving more branches
+        in progress than the limit allows. One shared group serializes the
+        count and the branch it leads to across both jobs."""
+        groups = {self.jobs[name]["concurrency"]["group"] for name in _PLANNING_JOBS}
+        self.assertEqual({"project-branches"}, groups)
+        for name in _PLANNING_JOBS:
+            with self.subTest(job=name):
+                self.assertFalse(self.jobs[name]["concurrency"]["cancel-in-progress"])
 
     def test_every_job_can_be_dispatched_on_its_own(self):
         options = self.workflow[_ON]["workflow_dispatch"]["inputs"]["agent"]["options"]
