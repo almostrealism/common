@@ -176,9 +176,12 @@ All production changes are in `flowtree/runtime/src/main/java/io/flowtree/jobs/`
     existing `blobId(job, path)` already does this.
   - Add session timing and cost-delta accumulation fields and a cumulative report
     (bullet 6); add the proportionality comparison and warning (bullet 5).
-  - Rewrite STEP 3 of `buildReviewPrompt(...)` (bullet 4) and adjust the
-    surrounding javadoc that currently advertises "fix what it finds … even when
-    the fix is a refactor that touches other files".
+  - Rewrite STEP 3 of `buildReviewPrompt(...)` (bullet 4). The "even when the fix
+    is a refactor that touches other files" / "Do not defer to a memory, a TODO or
+    a follow-up" text is in that STEP 3 string literal, not the javadoc — it is the
+    behaviour this task reverses. Separately adjust the class javadoc, which
+    advertises the same stance in prose (the review's "mandate is to fix what it
+    finds"), so it describes the new primary-diff-scoped, follow-up-filing behaviour.
 - **`EnforcementRunner`**: the inline comment where the rule is added reads
   "One session per changed class", which is already stale (the rule reviews all
   flagged classes together in one session, up to `MAX_CLASSES`, not one session
