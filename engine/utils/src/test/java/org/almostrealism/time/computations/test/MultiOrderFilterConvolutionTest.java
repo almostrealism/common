@@ -160,6 +160,25 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 	}
 
 	/**
+	 * Verifies that a {@code [channels, 1]} series — the one shape whose row count equals
+	 * its total size, so a {@code [channels, taps]} bank would also match the per-sample
+	 * form — is refused rather than filtered: {@code create} traverses the series to its
+	 * trailing axis, leaving one-sample rows, and the filter rejects a series of size one.
+	 */
+	@Test(timeout = 30000, expected = UnsupportedOperationException.class)
+	public void oneSampleChannelsAreRejected() {
+		int channels = 6;
+		int taps = 5;
+
+		PackedCollection series = integers(0, channels).add(1.0).evaluate()
+				.reshape(shape(channels, 1));
+		PackedCollection bank = integers(0, channels * taps).multiply(0.1).add(0.3).evaluate()
+				.reshape(shape(channels, taps));
+
+		MultiOrderFilter.create(cp(series), cp(bank));
+	}
+
+	/**
 	 * A test signal mixing a period-16 sine with a half-amplitude period-4 sine, so a
 	 * low-pass with a moving cutoff visibly changes how much of the upper tone survives.
 	 *
