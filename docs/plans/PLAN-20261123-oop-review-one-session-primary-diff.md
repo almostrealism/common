@@ -168,7 +168,9 @@ All production changes are in `flowtree/runtime/src/main/java/io/flowtree/jobs/`
     `pending = null` reset. Update the javadoc on `selection(...)` /
     `onCorrectionAttempted(...)` to state the snapshot semantics (the current
     javadoc's "clears the memoized selection so the next check re-scans" is
-    exactly the behaviour being removed).
+    exactly the behaviour being removed), and the `selection` field comment,
+    which today reads "Memoized selection for the current working-tree state;
+    cleared after each session" — the freeze makes both halves of that stale.
   - In `onCorrectionAttempted(...)`, in addition to recording the snapshot
     candidate under its settled verdict, re-hash each reviewed class and record
     its post-session blob id under the same verdict (bullet 3). Factor blob
