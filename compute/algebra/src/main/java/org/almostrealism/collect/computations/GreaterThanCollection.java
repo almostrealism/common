@@ -18,13 +18,10 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
-
-import java.util.List;
 
 /**
  * A computation that performs element-wise greater-than comparison between two {@link PackedCollection}s,
@@ -169,27 +166,22 @@ public class GreaterThanCollection extends InequalityComparisonComputation {
 	}
 
 	/**
-	 * Generates a new greater-than comparison computation with the specified child processes.
-	 * This method creates a new instance with the same configuration (including the
-	 * {@link #includeEqual} flag) but using the provided child processes as operands.
+	 * Creates a greater-than comparison with the given output shape and operands and the same
+	 * {@link #includeEqual} flag as this computation.
 	 *
-	 * <p>The method delegates to the {@code greaterThan} factory method from
-	 * {@link org.almostrealism.collect.CollectionFeatures} to ensure consistent
-	 * construction and configuration of the comparison operation.</p>
-	 *
-	 * @param children List of child {@link Process} instances where:
-	 *                 <ul>
-	 *                   <li>children.get(1) - left operand producer</li>
-	 *                   <li>children.get(2) - right operand producer</li>
-	 *                   <li>children.get(3) - true value producer</li>
-	 *                   <li>children.get(4) - false value producer</li>
-	 *                 </ul>
-	 * @return A new {@link CollectionProducerParallelProcess} for parallel execution
+	 * @param shape    the output shape of the new computation
+	 * @param left     the left-hand side comparison values
+	 * @param right    the right-hand side comparison values
+	 * @param positive the values to use where the comparison is true
+	 * @param negative the values to use where the comparison is false
+	 * @return the new {@link GreaterThanCollection}
 	 */
 	@Override
-	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return (CollectionProducerParallelProcess)
-				greaterThan((Producer<PackedCollection>) children.get(1), (Producer<PackedCollection>) children.get(2),
-						(Producer<PackedCollection>) children.get(3), (Producer<PackedCollection>) children.get(4), includeEqual);
+	protected CollectionProducerParallelProcess generate(TraversalPolicy shape,
+														 Producer<PackedCollection> left,
+														 Producer<PackedCollection> right,
+														 Producer<PackedCollection> positive,
+														 Producer<PackedCollection> negative) {
+		return new GreaterThanCollection(shape, left, right, positive, negative, includeEqual);
 	}
 }

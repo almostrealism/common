@@ -29,6 +29,7 @@ import org.almostrealism.io.TimingMetric;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
+import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.DoubleUnaryOperator;
@@ -38,6 +39,7 @@ import java.util.function.UnaryOperator;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
+import java.util.stream.Stream;
 
 /**
  * A {@link Sequence} of {@link Number}s which represent index values used in kernel computations.
@@ -293,6 +295,186 @@ public interface IndexSequence extends Sequence<Number>, IndexSet, ConsoleFeatur
 	default Expression<Boolean> containsIndex(Expression<Integer> index) {
 		// TODO
 		throw new UnsupportedOperationException();
+	}
+
+	/**
+	 * Returns whether this sequence has no positions, and therefore no values.
+	 *
+	 * @return {@code true} if the length of this sequence is zero
+	 */
+	default boolean isEmpty() {
+		return lengthLong() == 0;
+	}
+
+	/**
+	 * Returns the number of distinct values this sequence takes, as counted by
+	 * {@link #distinct()}.
+	 *
+	 * @return the number of distinct values
+	 */
+	default long distinctCount() {
+		return isEmpty() ? 0 : distinct().length;
+	}
+
+	/**
+	 * Returns whether the given integer is one of the values of this sequence, at any
+	 * position. Only an integral value can match.
+	 *
+	 * @param value the candidate value
+	 * @return {@code true} if some position of this sequence takes {@code value}
+	 */
+	default boolean contains(long value) {
+		return values().anyMatch(v -> isLongValue(v) && v.longValue() == value);
+	}
+
+	/**
+	 * Returns whether the given value is an integer that a {@code long} represents
+	 * exactly, so that {@link Number#longValue()} neither truncates nor saturates it.
+	 * Integer types always are; a {@link BigInteger} is when it fits in 64 bits; a
+	 * {@link BigDecimal} is when it is exactly integral and within the {@code long} range,
+	 * judged on its own digits rather than its rounded {@code double}; a floating-point
+	 * value is when it is integral and lies in {@code [-2^63, 2^63)}.
+	 *
+	 * @param value the value to test
+	 * @return {@code true} if {@code value.longValue()} is exactly {@code value}
+	 */
+	static boolean isLongValue(Number value) {
+		if (isExactLong(value)) return true;
+
+		if (value instanceof BigInteger) {
+			return ((BigInteger) value).bitLength() < 64;
+		}
+
+		if (value instanceof BigDecimal) {
+			BigDecimal decimal = (BigDecimal) value;
+			if (decimal.compareTo(BigDecimal.valueOf(Long.MAX_VALUE)) > 0) return false;
+			if (decimal.compareTo(BigDecimal.valueOf(Long.MIN_VALUE)) < 0) return false;
+			return decimal.signum() == 0 || decimal.stripTrailingZeros().scale() <= 0;
+		}
+
+		double d = value.doubleValue();
+		return d == Math.rint(d) && d >= -0x1p63 && d < 0x1p63;
+	}
+
+	/**
+	 * Returns whether every value of the other sequence is also a value of this one,
+	 * regardless of the positions at which either takes it. A non-integral value of the
+	 * other sequence is never contained.
+	 *
+	 * @param other the sequence whose values are tested
+	 * @return {@code true} if the values of {@code other} are a subset of the values of this sequence
+	 */
+	default boolean containsAll(IndexSequence other) {
+		return other.values().allMatch(v -> isLongValue(v) && contains(v.longValue()));
+	}
+
+	/**
+	 * Returns a sequence whose values are the values of this sequence together with the
+	 * values of the other, each value once. When either sequence already contains every
+	 * value of the other, that sequence is returned as it is, so nested domains are shared
+	 * rather than copied. A sequence is never tested as the container of one with more
+	 * {@link #distinctCount() distinct values}, which it cannot contain, so that a small
+	 * sequence never enumerates a large one to find that out.
+	 *
+	 * <p>Otherwise the values of both are enumerated, in ascending order, each value that
+	 * is {@link #isLongValue(Number) exactly a long} as a {@link Long}, a
+	 * {@link BigDecimal} or {@link BigInteger} as it is, and any other value as a
+	 * {@link Double}, so that no value is truncated or saturated into the {@code long}
+	 * range, no arbitrary-precision value is rounded, and distinct large integers are not
+	 * merged through {@code double}. A union holding any non-integral value has the type
+	 * {@link Double}.</p>
+	 *
+	 * @param other the sequence whose values are added
+	 * @return a sequence taking exactly the values of both sequences
+	 * @throws UnsupportedOperationException if neither sequence contains the other and
+	 *         together they have more distinct values than an array can hold
+	 */
+	default IndexSequence union(IndexSequence other) {
+		long count = distinctCount();
+		long otherCount = other.distinctCount();
+		if (count >= otherCount && containsAll(other)) return this;
+		if (otherCount >= count && other.containsAll(this)) return other;
+
+		long capacity = Integer.MAX_VALUE - 8;
+		if (count > capacity - otherCount) {
+			throw new UnsupportedOperationException("Union of " + count + " and "
+					+ otherCount + " distinct values is too large to enumerate");
+		}
+
+		boolean integral = Stream.concat(values(), other.values())
+				.allMatch(IndexSequence::isLongValue);
+
+		if (integral) {
+			return ArrayIndexSequence.of(Long.class,
+					LongStream.concat(longValues(), other.longValues())
+							.distinct().sorted().boxed().toArray(Number[]::new));
+		}
+
+		TreeSet<Number> exact = new TreeSet<>(IndexSequence::compareExact);
+		Stream.concat(values(), other.values())
+				.map(v -> isLongValue(v) ? (Number) v.longValue()
+						: isArbitraryPrecision(v) ? v : (Number) v.doubleValue())
+				.forEach(exact::add);
+		return ArrayIndexSequence.of(Double.class, exact.toArray(new Number[0]));
+	}
+
+	/**
+	 * Compares two values exactly, so that distinct integers beyond the range in which a
+	 * {@code double} represents every integer are never treated as equal. Two values that
+	 * are both {@link #isLongValue(Number) exactly a long} are compared as {@code long}s;
+	 * two floating-point values are compared as {@code double}s; a non-finite
+	 * floating-point value is ordered as a {@code double} against every finite one; any
+	 * other pair, including any {@link BigDecimal} or {@link BigInteger}, is compared as
+	 * exact decimal values.
+	 *
+	 * @param a the first value
+	 * @param b the second value
+	 * @return a negative number, zero or a positive number as {@code a} is less than,
+	 *         equal to or greater than {@code b}
+	 */
+	static int compareExact(Number a, Number b) {
+		if (isLongValue(a) && isLongValue(b)) {
+			return Long.compare(a.longValue(), b.longValue());
+		}
+
+		boolean exactA = isExactLong(a) || isArbitraryPrecision(a);
+		boolean exactB = isExactLong(b) || isArbitraryPrecision(b);
+		if (!exactA && !exactB) {
+			return Double.compare(a.doubleValue(), b.doubleValue());
+		}
+
+		BigDecimal x = toExactDecimal(a);
+		BigDecimal y = toExactDecimal(b);
+		if (x == null) return Double.compare(a.doubleValue(), 0.0);
+		if (y == null) return Double.compare(0.0, b.doubleValue());
+		return x.compareTo(y);
+	}
+
+	/**
+	 * Returns whether the value is a {@link BigDecimal} or {@link BigInteger}, whose
+	 * value a {@code double} may not represent exactly.
+	 *
+	 * @param value the value to test
+	 * @return {@code true} if {@code value} has arbitrary precision
+	 */
+	private static boolean isArbitraryPrecision(Number value) {
+		return value instanceof BigDecimal || value instanceof BigInteger;
+	}
+
+	/**
+	 * Returns the exact decimal value of a number, or {@code null} for a non-finite
+	 * floating-point value, which has none.
+	 *
+	 * @param value the value
+	 * @return {@code value} as a {@link BigDecimal} without rounding, or {@code null}
+	 */
+	private static BigDecimal toExactDecimal(Number value) {
+		if (value instanceof BigDecimal) return (BigDecimal) value;
+		if (value instanceof BigInteger) return new BigDecimal((BigInteger) value);
+		if (isLongValue(value)) return BigDecimal.valueOf(value.longValue());
+
+		double d = value.doubleValue();
+		return Double.isFinite(d) ? new BigDecimal(d) : null;
 	}
 
 	/**

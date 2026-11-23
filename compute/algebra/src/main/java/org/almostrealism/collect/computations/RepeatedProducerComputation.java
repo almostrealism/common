@@ -308,9 +308,42 @@ public abstract class RepeatedProducerComputation extends CollectionProducerComp
 	 * @return An {@link Expression} representing the destination memory location
 	 */
 	protected Expression<?> getDestination(Expression<?> globalIndex, Expression<?> localIndex, Expression<?> offset)	{
-		Expression k = globalIndex instanceof KernelIndex ? globalIndex : new KernelIndex();
 		ArrayVariable<?> out = getOutputVariable();
-		return out.reference(k.multiply(out.length()).add(offset));
+		return out.reference(kernelIndex(globalIndex).multiply(out.length()).add(offset));
+	}
+
+	/**
+	 * Resolves {@code globalIndex} to the {@link KernelIndex} that identifies the output element
+	 * owned by the executing kernel thread. When {@code globalIndex} already is a
+	 * {@link KernelIndex} it is returned unchanged; otherwise (including when {@code globalIndex}
+	 * is {@code null}, as it is while compiling a delta) a fresh {@link KernelIndex} is
+	 * substituted, so that reads and writes of the output always address the thread's own element
+	 * rather than an arbitrary index that happened to be supplied.
+	 *
+	 * @param globalIndex The index supplied to the loop body, possibly {@code null}
+	 * @return {@code globalIndex} when it is a {@link KernelIndex}, otherwise a new {@link KernelIndex}
+	 */
+	protected Expression<?> kernelIndex(Expression<?> globalIndex) {
+		return globalIndex != null && globalIndex.isKernelIndex() ? globalIndex : new KernelIndex();
+	}
+
+	/**
+	 * References the current value of the {@code output} accumulator element for {@code globalIndex} —
+	 * the same element {@link #getDestination(Expression, Expression, Expression)} writes to with a
+	 * zero offset. Accumulating loop bodies read this to combine the running total with the next term.
+	 *
+	 * <p>The accumulator is supplied explicitly rather than taken from {@link #getOutputVariable()}
+	 * because the loop body is also evaluated while differentiating: there the output argument belongs
+	 * to the delta kernel being compiled, not to this computation's own (possibly uncompiled)
+	 * destination. Callers on the forward path pass {@link #getOutputVariable()}; callers reached
+	 * through a delta pass the output argument they were handed.
+	 *
+	 * @param output      The output accumulator variable addressing this thread's element
+	 * @param globalIndex The global index of the output element, possibly {@code null}
+	 * @return An {@link Expression} referencing the current value of the output element
+	 */
+	protected Expression<?> getCurrentOutputValue(ArrayVariable<?> output, Expression<?> globalIndex) {
+		return output.reference(kernelIndex(globalIndex).multiply(output.length()));
 	}
 
 	/**
