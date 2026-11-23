@@ -481,14 +481,19 @@ public abstract class Expression<T> implements
 	 * for the provided index that would be required to generate all possible results
 	 * (the range) for this expression.
 	 *
+	 * <p>The domain is the set of distinct values of the returned {@link IndexSequence};
+	 * the positions at which it takes them carry no meaning. An expression that needs no
+	 * value of the index answers with an {@link IndexSequence#isEmpty() empty} sequence.</p>
+	 *
 	 * <p>This method may return an empty {@link Optional} even when it is theoretically
 	 * possible to determine the domain, if either:</p>
 	 * <ul>
-	 *   <li>The resulting set would contain more than {@link ScopeSettings#indexOptionLimit} elements</li>
-	 *   <li>Some members of the set would exceed {@link Integer#MAX_VALUE}</li>
+	 *   <li>The domain would contain more than {@link ScopeSettings#indexOptionLimit} values</li>
+	 *   <li>Some members of the domain would exceed {@link Integer#MAX_VALUE}</li>
 	 * </ul>
 	 *
-	 * <p>This base implementation combines the options required by each child. The index
+	 * <p>This base implementation combines the domains required by each child, sharing a
+	 * child's domain when it already contains the others. The index
 	 * expressions ({@link io.almostrealism.sequence.DefaultIndex},
 	 * {@link io.almostrealism.sequence.IndexChild}) override it to answer for themselves
 	 * ({@link Index#getIndexOptions(Index)}), and
@@ -496,23 +501,22 @@ public abstract class Expression<T> implements
 	 * {@link Quotient}) override it to account for that structure.</p>
 	 *
 	 * @param index the index to analyze
-	 * @return an {@link Optional} containing the set of required index values,
+	 * @return an {@link Optional} containing the required index values,
 	 *         or empty if the domain cannot be determined or would be too large
 	 */
-	public Optional<Set<Integer>> getIndexOptions(Index index) {
-		Set<Integer> options = new HashSet<>();
+	public Optional<IndexSequence> getIndexOptions(Index index) {
+		IndexSequence options = ArithmeticIndexSequence.range(0);
 
 		for (Expression<?> e : getChildren()) {
-			Optional<Set<Integer>> o = e.getIndexOptions(index);
+			Optional<IndexSequence> o = e.getIndexOptions(index);
+			if (o.isEmpty()) return Optional.empty();
+			if (o.get().distinctCount() >= ScopeSettings.indexOptionLimit) return Optional.empty();
 
-			if (o.isPresent() && options.size() < ScopeSettings.indexOptionLimit) {
-				options.addAll(o.get());
-			} else {
-				return Optional.empty();
-			}
+			options = options.union(o.get());
+			if (options.distinctCount() >= ScopeSettings.indexOptionLimit) return Optional.empty();
 		}
 
-		return options.size() < ScopeSettings.indexOptionLimit ? Optional.of(options) : Optional.empty();
+		return Optional.of(options);
 	}
 
 	/**
