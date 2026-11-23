@@ -191,7 +191,9 @@ All production changes are in `flowtree/runtime/src/main/java/io/flowtree/jobs/`
 - **`JobCostTracker`**: add a `total()` accessor that sums the per-model costs, so
   the rule can read a single job-wide cost figure before and after a session. The
   method belongs here because this class owns the cost maps (it already exposes
-  `costForModel`, used the same way by `RetrospectivePhase`).
+  `costForModel`, which the job wraps as `CodingAgentJob.getCostForModel(modelKey)`
+  for `RetrospectivePhase` to read — not called on the tracker directly). How the
+  rule reaches the new figure is open question 7.
 - **`flowtree/runtime/docs/coding-agent.md`** (Object-Oriented Design Review
   section): update to describe one session over the frozen pre-review
   diff, the scope rule (fix primary-diff code, file follow-ups otherwise), and the
@@ -291,6 +293,16 @@ but can be run to confirm.
    inside the candidate classes; also record in the ledger every file whose blob
    changed during the review session; or accept a one-time review of those
    classes in the next job. The plan currently takes the first option.
+7. **How the rule reads the job-wide cost.** Bullet 6 has the rule read the cost
+   delta through `CodingAgentJob.getCostTracker().total()`. That reaches through the
+   job to call one method on the tracker, which is the shape this very review flags
+   in other code. The established pattern is a job-level wrapper: `RetrospectivePhase`
+   reads `CodingAgentJob.getCostForModel(modelKey)`, not `getCostTracker().costForModel(...)`,
+   and `getCostTracker()` itself is used only by `CodingAgentJobEvent` at the
+   serialization boundary. A parallel `CodingAgentJob.getTotalCost()` wrapping
+   `JobCostTracker.total()` would keep the rule from reaching through the accessor and
+   match how cost is read elsewhere. Decide whether to add that wrapper or let the rule
+   call `getCostTracker().total()` directly.
 
 ## Estimated complexity
 
