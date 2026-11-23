@@ -278,6 +278,13 @@ flags through its `RollupTestJob`; plus a controller-level test for the PR gate)
   dependency; all work is in `flowtree/agents` and `flowtree/runtime`, which
   build and test on the default Linux Docker node. **No special machine
   required** (no `-workstream.yaml`).
+- Related existing plan, not a blocker: `AGENT_VERIFICATION_REMAINING_WORK`
+  already catalogues the missing coverage this task would close — it records
+  that nothing tests that a killed session's work is reported rather than
+  dropped. That plan is about end-to-end *test coverage* of the publish path,
+  not the grading logic; it does not implement any of the scope above. The
+  "Killed-but-productive primary → DEGRADED + PR" success criterion here is the
+  behaviour-level test that gap asks for, so the two should land consistently.
 
 ## Open questions
 
