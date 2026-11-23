@@ -61,9 +61,12 @@ public interface Semaphore {
 	 * thread is interrupted meanwhile; an interrupt received before or during the wait is
 	 * restored once it has completed.
 	 *
-	 * <p>{@link #waitFor()} returns early, with the interrupt status set, when the waiting
+	 * <p>{@link #waitFor()} may end early, with the interrupt status set, when the waiting
 	 * thread is interrupted, so a caller cannot tell from its return alone that the
-	 * operation completed. This is for a caller whose next step relies on that completion
+	 * operation completed. This default assumes such a {@link #waitFor()} returns; an
+	 * implementation whose {@link #waitFor()} throws when interrupted before the operation
+	 * has completed must override this method, as must a wrapper that delegates its wait to
+	 * such a completion. This is for a caller whose next step relies on that completion
 	 * (encoding a dispatch that must be ordered after it, or publishing a completion that
 	 * is only valid once it has fired): the wait is repeated with the interrupt status
 	 * cleared until it returns without being interrupted. A failure is rethrown exactly as
