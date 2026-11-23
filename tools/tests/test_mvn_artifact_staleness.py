@@ -160,6 +160,30 @@ class StalenessHookTest(unittest.TestCase):
         self.assertIn(f"Looked in {job_root}", context)
         self.assertIn("The ar-test-runner runs Maven in its own process", context)
 
+    def test_test_runner_on_stale_space_says_its_preflight_does_not_refresh(self):
+        """The preflight seeds only missing dependencies, so present stale ones still mislead."""
+        self.install(self.default_repository(), stale=True)
+        context, _ = self.run_hook(tool="mcp__ar-test-runner__start_test_run",
+                                   tool_input={"module": "mod-a"})
+        self.assertIn("*** STALE INSTALLED ARTIFACTS (3 of 3", context)
+        self.assertIn("only when a direct dependency is missing", context)
+        self.assertIn("artifacts already installed there are not refreshed", context)
+        self.assertIn("Refresh before trusting any build or test result", context)
+
+    def test_test_runner_on_fresh_space_says_its_preflight_seeds_the_upstream_chain(self):
+        """A fresh space does not make the test runner fail: its preflight installs `-am` first."""
+        job_root = os.path.join(self.default_repository(), "flowtree-jobs", "job-a")
+        self.install(self.default_repository(), stale=True)
+        context, summary = self.run_hook(tool="mcp__ar-test-runner__start_test_run",
+                                         tool_input={"module": "mod-a"},
+                                         MAVEN_ARGS=SPLIT_ARGS)
+        self.assertIn(f"nothing is installed yet in {job_root}", context)
+        self.assertIn("The ar-test-runner's preflight", context)
+        self.assertIn("-am install -DskipTests", context)
+        self.assertNotIn("fails to resolve", context)
+        self.assertNotIn("To install everything:", context)
+        self.assertNotIn("STALE", context + summary)
+
     def test_build_validator_default_run_refreshes_the_whole_reactor(self):
         """start_validation's default checks install the full reactor, so stale is not fatal."""
         self.install(self.default_repository(), stale=True)

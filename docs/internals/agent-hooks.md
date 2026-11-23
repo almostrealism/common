@@ -188,8 +188,10 @@ module still resolves from the install directory; a selection of only exclusions
 so it is not a full refresh either. The ar-build-validator is modelled by
 what its arguments make it do: its default checks run a full `mvn install -DskipTests`
 first, so it refreshes the whole reactor, while `skip_build` or a scan-only check set
-(e.g. `checkstyle`) only resolves what is installed — unlike the ar-test-runner, which
-builds just its selection. Tests: `tools/tests/test_mvn_artifact_staleness.py`.
+(e.g. `checkstyle`) only resolves what is installed. The ar-test-runner's preflight runs
+`mvn -pl <module> -am install -DskipTests` only when a direct dependency of its module is
+missing, so a fresh install space is seeded from the working tree, but artifacts already
+installed are not refreshed and a stale one still misleads it. Tests: `tools/tests/test_mvn_artifact_staleness.py`.
 
 ## New-type equivalence gate
 

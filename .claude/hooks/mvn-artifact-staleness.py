@@ -99,6 +99,11 @@ class Invocation:
             before its work (the ar-build-validator's default `mvn install
             -DskipTests`), so it refreshes every module rather than leaving the
             install directory as it found it.
+        seeds_missing: True when an out-of-band tool installs its module's
+            upstream chain (`mvn -pl <module> -am install -DskipTests`) before
+            running whenever a direct dependency is not installed (the
+            ar-test-runner preflight), so a fresh install space does not make
+            it fail to resolve; artifacts already present are not refreshed.
         inline_env: The leading `NAME=value` assignments of Maven environment
             variables that applied to this run only, in order. A refresh
             command must re-emit them, or it resolves a different repository
@@ -110,7 +115,7 @@ class Invocation:
 
     def __init__(self, location, goals=(), projects=None, also_make=False,
                  also_make_dependents=False, out_of_band=None, full_install=False,
-                 inline_env=(), location_flags=(), excluded=()):
+                 seeds_missing=False, inline_env=(), location_flags=(), excluded=()):
         self.location = location
         self.goals = set(goals)
         self.projects = projects
@@ -119,6 +124,7 @@ class Invocation:
         self.also_make_dependents = also_make_dependents
         self.out_of_band = out_of_band
         self.full_install = full_install
+        self.seeds_missing = seeds_missing
         self.inline_env = list(inline_env)
         self.location_flags = list(location_flags)
 
@@ -184,6 +190,12 @@ class Invocation:
                         "reactor in its own process before its checks, which reinstalls every "
                         f"module in {root} — but any result gathered BEFORE that install "
                         "finished is suspect.")
+            if self.seeds_missing:
+                return (f"{self.out_of_band} runs Maven in its own process with this "
+                        "environment. Its preflight installs the module's upstream chain "
+                        "(`mvn -pl <module> -am install -DskipTests`) only when a direct "
+                        f"dependency is missing from {root}; artifacts already installed there "
+                        "are not refreshed, so a stale one still misleads it.")
             return (f"{self.out_of_band} runs Maven in its own process with this environment. "
                     f"It does not refresh artifacts already installed in {root}, so a stale "
                     "one there still misleads it.")
@@ -455,12 +467,18 @@ def build_report(project_dir, invocation):
 
     if rows and not installed:
         message = (f"Maven artifact check: nothing is installed yet in {looked_in(location)} "
-                   "— a fresh install space, not stale artifacts. A module this run does "
-                   "not build fails to resolve rather than resolving old code.")
-        if invocation.refreshes_all():
-            message += " This command installs every module there."
+                   "— a fresh install space, not stale artifacts.")
+        if invocation.seeds_missing:
+            message += (f" {invocation.out_of_band}'s preflight finds the module's dependencies "
+                        "missing and installs its upstream chain first (`mvn -pl <module> -am "
+                        "install -DskipTests`), so this run builds them from the working tree.")
         else:
-            message += f" To install everything: `{invocation.refresh_command()}`."
+            message += (" A module this run does not build fails to resolve rather than "
+                        "resolving old code.")
+            if invocation.refreshes_all():
+                message += " This command installs every module there."
+            else:
+                message += f" To install everything: `{invocation.refresh_command()}`."
         return message, f"Maven build detected; nothing installed yet in {root}."
 
     if switch is None:
@@ -497,15 +515,20 @@ def build_report(project_dir, invocation):
 
 # MCP tools that invoke Maven in their own subprocess, outside any Bash command.
 # They inherit this environment and add no repository flag of their own. The
-# test runner builds only its selection, so a stale install directory misleads
-# it; the build validator's default run first installs the whole reactor (see
-# VALIDATOR_BUILD_CHECKS), which refreshes every module instead.
+# test runner seeds only missing upstream artifacts (see TEST_RUNNER_TOOL), so a
+# stale install directory misleads it; the build validator's default run first
+# installs the whole reactor (see VALIDATOR_BUILD_CHECKS), which refreshes
+# every module instead.
 MCP_MAVEN_TOOLS = {
     "mcp__ar-test-runner__start_test_run": "The ar-test-runner",
     "mcp__ar-build-validator__start_validation": "The ar-build-validator",
 }
 
 VALIDATOR_TOOL = "mcp__ar-build-validator__start_validation"
+
+# tools/mcp/test-runner/preflight.py runs `mvn -pl <module> -am install
+# -DskipTests` before the tests whenever a direct dependency is not installed.
+TEST_RUNNER_TOOL = "mcp__ar-test-runner__start_test_run"
 
 # tools/mcp/build-validator/server.py runs a full `mvn install -DskipTests`
 # before its checks whenever a selected check needs compiled artifacts, unless
@@ -532,7 +555,8 @@ def invocations_for(payload, environ):
         tool_input = payload.get("tool_input") or {}
         full_install = tool == VALIDATOR_TOOL and _validator_full_install(tool_input)
         return [Invocation(maven_repository.install_location((), environ),
-                           out_of_band=MCP_MAVEN_TOOLS[tool], full_install=full_install)]
+                           out_of_band=MCP_MAVEN_TOOLS[tool], full_install=full_install,
+                           seeds_missing=tool == TEST_RUNNER_TOOL)]
     if tool == "Bash":
         command = (payload.get("tool_input") or {}).get("command", "")
         return mvn_invocations(command, environ) if command else []
