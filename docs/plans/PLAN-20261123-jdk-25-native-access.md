@@ -113,10 +113,9 @@ The three per-module overrides must go the same way, or they defeat the point:
 What stays valid under `--release`: the `-J--add-exports`/`-J--add-opens` flags
 are options to the JVM running the forked `javac` (for Error Prone), not
 compiler options, so `--release`'s refusal of `--add-exports` does not apply to
-them. `-h target/headers` is unaffected. The only JDK-internal-looking imports
-in source are `com.sun.net.httpserver` and `com.sun.management`, both exported
-by their modules and present in `ct.sym`. No source imports `sun.*` or
-`jdk.internal.*`.
+them. `-h target/headers` is unaffected. The only JDK-internal-looking import
+in source is `com.sun.net.httpserver`, exported by its module and present in
+`ct.sym`. No source imports `sun.*` or `jdk.internal.*`.
 
 `engine/ml`'s Kotlin plugin has its own `<jvmTarget>1.8</jvmTarget>`; it is not
 `maven-compiler-plugin` and is not part of this task.
