@@ -21,10 +21,13 @@ import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
+
+import java.util.List;
 
 /**
  * A computation that selects from multiple pre-computed options based on a decision value.
@@ -104,6 +107,20 @@ public class Choice extends TraversableExpressionComputation {
 			Expression pos = choice.toInt().multiply(getShape().getSize());
 			return args[2].getValueAt(pos.add(idx));
 		});
+	}
+
+	/**
+	 * Creates a new {@link Choice} over the given children, which the optimizer
+	 * supplies in the same order as this computation's inputs.
+	 *
+	 * @param children the output placeholder followed by the decision and choices
+	 * @return a {@link Choice} with the same shape and choice count over the new children
+	 */
+	@Override
+	public Choice generate(List<Process<?, ?>> children) {
+		return new Choice(getShape(), choiceCount,
+				(Producer<PackedCollection>) children.get(1),
+				(Producer<PackedCollection>) children.get(2));
 	}
 
 	/**

@@ -20,6 +20,7 @@ import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
+import java.util.Set;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -73,8 +74,13 @@ public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
 
 	@Override
 	public void resetArguments() {
-		ScopeLifecycle.resetArguments(Stream.of(p));
-		ScopeLifecycle.resetArguments(Stream.of(args));
+		ScopeLifecycle.resetArguments(this);
+	}
+
+	@Override
+	public void resetArguments(Set<ScopeLifecycle> visited) {
+		ScopeLifecycle.resetArguments(Stream.of(p), visited);
+		ScopeLifecycle.resetArguments(Stream.of(args), visited);
 	}
 
 	@Override

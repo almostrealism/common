@@ -18,6 +18,7 @@ package org.almostrealism.audio.computations;
 
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Min;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -28,6 +29,8 @@ import io.almostrealism.scope.Scope;
 import org.almostrealism.audio.filter.ADSREnvelopeData;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
+
+import java.util.List;
 
 /**
  * Advances an ADSR envelope by one sample, computing the next
@@ -157,6 +160,30 @@ public class ADSREnvelopeComputation extends CollectionProducerComputationBase
 	private Expression advance(Expression<Double> position, Expression<Double> time, double dt) {
 		return conditional(time.greaterThan(e(0.0)),
 				position.add(e(dt).divide(time)), e(1.0));
+	}
+
+	/**
+	 * Rebuilds this update from its optimized children, preserving the sample rate. The children
+	 * follow the usual ordering for a {@link CollectionProducerComputationBase}: index 0 is the
+	 * destination and the eight input slots begin at index 1, matching the constructor argument
+	 * order ({@code phase, position, level, attackTime, decayTime, sustainLevel, releaseTime,
+	 * releaseLevel}).
+	 *
+	 * <p>Without this override the optimizing
+	 * {@link io.almostrealism.relation.Producer#evaluate(Object...)} default, which regenerates the
+	 * process tree from optimized children, would reach the throwing
+	 * {@code CollectionProducerComputation} default and fail before any kernel runs.</p>
+	 *
+	 * @param children the optimized children, in constructor-argument order after the destination
+	 * @return an equivalent {@link ADSREnvelopeComputation} over the regenerated inputs
+	 */
+	@Override
+	public ADSREnvelopeComputation generate(List<Process<?, ?>> children) {
+		return new ADSREnvelopeComputation(sampleRate,
+				(Producer) children.get(1), (Producer) children.get(2),
+				(Producer) children.get(3), (Producer) children.get(4),
+				(Producer) children.get(5), (Producer) children.get(6),
+				(Producer) children.get(7), (Producer) children.get(8));
 	}
 
 }

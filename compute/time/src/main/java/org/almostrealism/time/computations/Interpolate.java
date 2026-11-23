@@ -19,6 +19,7 @@ package org.almostrealism.time.computations;
 import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
@@ -32,6 +33,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 
+import java.util.List;
 import java.util.function.Function;
 
 /**
@@ -427,6 +429,27 @@ public class Interpolate extends CollectionProducerComputationBase {
 
 		// TODO
 		return null;
+	}
+
+	/**
+	 * Rebuilds this interpolation from its optimized children, preserving the time/index
+	 * mapping functions and whether a rate was supplied. The children follow the usual
+	 * ordering for a {@link CollectionProducerComputationBase}: index 0 is the destination
+	 * and the inputs begin at index 1, matching the argument array assembled by the
+	 * constructor ({@code series, position} and, when a rate was supplied, {@code rate}).
+	 *
+	 * <p>This override is what lets {@link Interpolate} participate in the optimizing
+	 * {@link io.almostrealism.relation.Producer#evaluate(Object...)} path, which regenerates
+	 * the process tree from optimized children rather than reusing the original producers.</p>
+	 *
+	 * @param children the optimized children, in constructor-argument order after the destination
+	 * @return an equivalent {@link Interpolate} over the regenerated inputs
+	 */
+	@Override
+	public Interpolate generate(List<Process<?, ?>> children) {
+		return new Interpolate((Producer) children.get(1), (Producer) children.get(2),
+				applyRate ? (Producer) children.get(3) : null,
+				timeForIndex, indexForTime);
 	}
 
 	/**

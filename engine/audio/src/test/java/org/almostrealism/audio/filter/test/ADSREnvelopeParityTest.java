@@ -16,8 +16,10 @@
 
 package org.almostrealism.audio.filter.test;
 
+import org.almostrealism.audio.computations.ADSREnvelopeComputation;
 import org.almostrealism.audio.filter.ADSREnvelope;
 import org.almostrealism.audio.filter.ADSREnvelopeData;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
 import org.junit.Test;
@@ -170,6 +172,35 @@ public class ADSREnvelopeParityTest extends TestSuiteBase {
 	@Test(timeout = 120000)
 	public void percussive() {
 		assertParity(0.021, 0.063, 0.0, 0.031, 11, 2, 5);
+	}
+
+	/**
+	 * Advances a single attack-phase ADSR step through the optimizing
+	 * {@link io.almostrealism.relation.Producer#evaluate(Object...)} entry point. Because
+	 * {@code evaluate()} routes through {@code Process.optimized(this).get()}, this exercises the
+	 * regeneration path of the eight-input {@link ADSREnvelopeComputation}: without a
+	 * {@code generate(List)} override it would fail during optimization with
+	 * {@code UnsupportedOperationException} before any kernel runs.
+	 */
+	@Test(timeout = 120000)
+	public void singleStepOptimizedEvaluate() {
+		ADSREnvelopeComputation update = new ADSREnvelopeComputation(SR,
+				cp(pack((double) ADSREnvelopeData.PHASE_ATTACK)),
+				cp(pack(0.0)),
+				cp(pack(0.0)),
+				cp(pack(0.05)),
+				cp(pack(0.03)),
+				cp(pack(0.6)),
+				cp(pack(0.04)),
+				cp(pack(0.0)));
+
+		PackedCollection result = update.evaluate();
+
+		// One attack sample advances position by dt/attack = (1/100)/0.05 = 0.2, the level tracks the
+		// position, and the phase stays in attack until the position reaches 1.
+		Assert.assertEquals(ADSREnvelopeData.PHASE_ATTACK, result.toDouble(0), 1e-4);
+		Assert.assertEquals(0.2, result.toDouble(1), 1e-4);
+		Assert.assertEquals(0.2, result.toDouble(2), 1e-4);
 	}
 
 	/**

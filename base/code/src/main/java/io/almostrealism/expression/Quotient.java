@@ -20,8 +20,10 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.ConstantCollectionExpression;
 import io.almostrealism.sequence.ArithmeticIndexSequence;
+import io.almostrealism.sequence.ArrayIndexSequence;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexRange;
+import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.sequence.IndexValues;
 import io.almostrealism.sequence.KernelSeries;
 import io.almostrealism.kernel.KernelStructureContext;
@@ -32,7 +34,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -116,7 +117,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Optional<Set<Integer>> getIndexOptions(Index index) {
+	public Optional<IndexSequence> getIndexOptions(Index index) {
 		OptionalLong n = getNumerator().getLimit();
 		OptionalLong d = getDenominator().longValue();
 
@@ -132,10 +133,16 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		int di = Math.toIntExact(d.getAsLong());
 		int limit = Math.toIntExact(n.getAsLong() / di) +
 						(n.getAsLong() % di == 0 ? 0 : 1);
-		return Optional.of(IntStream.range(0, limit)
-				.map(i -> i * di)
-				.boxed()
-				.collect(Collectors.toSet()));
+		if (limit <= 0) return Optional.of(ArithmeticIndexSequence.range(0));
+
+		if ((limit - 1) * (long) di > Integer.MAX_VALUE) {
+			// The multiples are computed in int arithmetic, so beyond the
+			// int range they wrap and no longer form a progression
+			return Optional.of(ArrayIndexSequence.of(
+					IntStream.range(0, limit).map(i -> i * di).toArray()));
+		}
+
+		return Optional.of(new ArithmeticIndexSequence(0, di, 1, limit, limit));
 	}
 
 	@Override

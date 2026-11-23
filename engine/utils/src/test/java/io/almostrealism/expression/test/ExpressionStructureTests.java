@@ -51,6 +51,7 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexChild;
+import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.sequence.IndexValues;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -68,6 +69,7 @@ import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * Verifies the structural primitives every {@link Expression} node relies on: the tree
@@ -584,7 +586,8 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		Assert.assertEquals(Set.of(cell), Product.of(cell, ref("x")).getIndices());
 		Assert.assertTrue(ref("x").getIndices().isEmpty());
 
-		Assert.assertEquals(Set.of(0, 1, 2, 3), row.getIndexOptions(new DefaultIndex("row", 4)).orElseThrow());
+		Assert.assertEquals(Set.of(0, 1, 2, 3), row.getIndexOptions(new DefaultIndex("row", 4)).orElseThrow()
+				.intValues().boxed().collect(Collectors.toSet()));
 		Assert.assertTrue(row.getIndexOptions(col).orElseThrow().isEmpty());
 		Assert.assertTrue(new DefaultIndex("free").getIndexOptions(new DefaultIndex("free")).isEmpty());
 	}
@@ -604,8 +607,10 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		Set<Integer> positions = new HashSet<>();
 		for (int i = 0; i < 12; i++) positions.add(i);
 
-		Assert.assertEquals(positions, cell.getIndexOptions(cell).orElseThrow());
-		Assert.assertEquals(positions, Product.of(cell, ref("x")).getIndexOptions(cell).orElseThrow());
+		Assert.assertEquals(positions, cell.getIndexOptions(cell).orElseThrow()
+				.intValues().boxed().collect(Collectors.toSet()));
+		Assert.assertEquals(positions, Product.of(cell, ref("x")).getIndexOptions(cell).orElseThrow()
+				.intValues().boxed().collect(Collectors.toSet()));
 		Assert.assertTrue(cell.getIndexOptions(row).orElseThrow().isEmpty());
 		Assert.assertTrue(cell.getIndexOptions(col).orElseThrow().isEmpty());
 		Assert.assertTrue(cell.getIndexOptions(new DefaultIndex("other", 5)).orElseThrow().isEmpty());
@@ -626,21 +631,31 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 		DefaultIndex row = new DefaultIndex("row", 4);
 		Expression<?> residues = row.imod(2);
 		Expression<?> halves = row.divide(2);
-		Assert.assertEquals(Set.of(0, 1), residues.getIndexOptions(row).orElseThrow());
-		Assert.assertEquals(Set.of(0, 2), halves.getIndexOptions(row).orElseThrow());
+		Assert.assertEquals(Set.of(0, 1), distinctValues(residues.getIndexOptions(row).orElseThrow()));
+		Assert.assertEquals(Set.of(0, 2), distinctValues(halves.getIndexOptions(row).orElseThrow()));
 
-		Assert.assertEquals(Set.of(0, 1, 2, 3), Product.of(row, e(3)).getIndexOptions(row).orElseThrow());
-		Assert.assertEquals(Set.of(0, 1, 2, 3), Product.of(row, residues).getIndexOptions(row).orElseThrow());
-		Assert.assertEquals(Set.of(0, 1, 2), Product.of(residues, halves).getIndexOptions(row).orElseThrow());
-		Assert.assertEquals(Set.of(0, 1, 2), Product.of(halves, e(5), residues).getIndexOptions(row).orElseThrow());
+		Assert.assertEquals(Set.of(0, 1, 2, 3), distinctValues(Product.of(row, e(3)).getIndexOptions(row).orElseThrow()));
+		Assert.assertEquals(Set.of(0, 1, 2, 3), distinctValues(Product.of(row, residues).getIndexOptions(row).orElseThrow()));
+		Assert.assertEquals(Set.of(0, 1, 2), distinctValues(Product.of(residues, halves).getIndexOptions(row).orElseThrow()));
+		Assert.assertEquals(Set.of(0, 1, 2), distinctValues(Product.of(halves, e(5), residues).getIndexOptions(row).orElseThrow()));
 		Assert.assertTrue(Product.of(e(3), ref("x")).getIndexOptions(row).orElseThrow().isEmpty());
 
 		DefaultIndex free = new DefaultIndex("free");
 		Assert.assertTrue(Product.of(free, e(3)).getIndexOptions(free).isEmpty());
 
 		DefaultIndex wide = new DefaultIndex("wide", ScopeSettings.indexOptionLimit);
-		Assert.assertEquals(ScopeSettings.indexOptionLimit, wide.getIndexOptions(wide).orElseThrow().size());
+		Assert.assertEquals((long) ScopeSettings.indexOptionLimit, wide.getIndexOptions(wide).orElseThrow().distinctCount());
 		Assert.assertTrue(Product.of(wide, e(3)).getIndexOptions(wide).isEmpty());
+	}
+
+	/**
+	 * Returns the distinct values of an index domain, whose positions carry no meaning.
+	 *
+	 * @param options the domain returned by {@link Expression#getIndexOptions}
+	 * @return the set of values the domain takes
+	 */
+	private static Set<Integer> distinctValues(IndexSequence options) {
+		return options.values().map(Number::intValue).collect(Collectors.toSet());
 	}
 
 	/**

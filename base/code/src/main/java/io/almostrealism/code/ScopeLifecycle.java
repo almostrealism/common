@@ -18,8 +18,11 @@ package io.almostrealism.code;
 
 import io.almostrealism.kernel.KernelStructureContext;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Stream;
 
 /**
@@ -85,6 +88,41 @@ public interface ScopeLifecycle {
 	 * to be reused with different arguments.</p>
 	 */
 	default void resetArguments() { }
+
+	/**
+	 * Resets argument state after scope execution, descending through a shared computation
+	 * graph while visiting each node at most once.
+	 *
+	 * <p>A deeply shared (diamond-shaped) graph reaches the same node along many distinct
+	 * paths. Resetting clears cached state, so revisiting a node that has already been reset
+	 * is pure waste; for a graph with repeated sharing it is also exponential in the number of
+	 * shared sub-graphs. The {@code visited} set — identity-based, so distinct nodes that
+	 * compare {@link Object#equals(Object) equal} are still reset independently — records which
+	 * nodes have already been reset on this pass, and
+	 * {@link #resetArguments(Stream, Set)} skips any node already in it before descending.</p>
+	 *
+	 * <p>The default implementation performs only the single-node
+	 * {@link #resetArguments() reset}; an implementation that recurses into a shared graph
+	 * overrides this method to thread {@code visited} through its descent.</p>
+	 *
+	 * @param visited the nodes already reset on this pass; an implementation that recurses
+	 *                passes it to {@link #resetArguments(Stream, Set)}
+	 */
+	default void resetArguments(Set<ScopeLifecycle> visited) { resetArguments(); }
+
+	/**
+	 * Seeds a fresh identity-based visited set, marks {@code root}, and resets it through
+	 * {@link #resetArguments(Set)}. This is the entry point of a reset pass for a component
+	 * that drives the descent itself (one implementing {@link ScopeLifecycle} directly rather
+	 * than through a shared base), so the seed is created in exactly one place.
+	 *
+	 * @param root the component whose shared graph is reset, visited at most once per pass
+	 */
+	static void resetArguments(ScopeLifecycle root) {
+		Set<ScopeLifecycle> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+		visited.add(root);
+		root.resetArguments(visited);
+	}
 
 	/**
 	 * Calls {@link #prepareScope(ArgumentProvider, KernelStructureContext)} on every element
@@ -158,5 +196,26 @@ public interface ScopeLifecycle {
 				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
 				.filter(Objects::nonNull)
 				.forEach(sl -> sl.resetArguments());
+	}
+
+	/**
+	 * Calls {@link #resetArguments(Set)} on every element in the stream that implements
+	 * {@link ScopeLifecycle} and is not already in {@code visited}, ignoring non-lifecycle
+	 * objects.
+	 *
+	 * <p>Each lifecycle is added to {@code visited} before it is reset, so a node reachable
+	 * along several paths of a shared graph is reset once per pass rather than once per path.
+	 * {@code visited} is compared by identity, so distinct nodes that compare
+	 * {@link Object#equals(Object) equal} are still reset independently.</p>
+	 *
+	 * @param potentialLifecycles a stream of objects that may implement ScopeLifecycle
+	 * @param visited             the nodes already reset on this pass; updated in place
+	 */
+	static void resetArguments(Stream<?> potentialLifecycles, Set<ScopeLifecycle> visited) {
+		potentialLifecycles
+				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
+				.filter(Objects::nonNull)
+				.filter(visited::add)
+				.forEach(sl -> sl.resetArguments(visited));
 	}
 }
