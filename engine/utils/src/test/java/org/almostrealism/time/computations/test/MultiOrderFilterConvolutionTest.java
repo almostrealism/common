@@ -118,6 +118,119 @@ public class MultiOrderFilterConvolutionTest extends TestSuiteBase implements Fi
 	}
 
 	/**
+	 * Verifies that a cutoff supplied per sample — a {@code [samples, taps]} coefficient
+	 * bank with one row per sample — filters each output sample with its own row across
+	 * the full window, rather than being read as a bank of one-sample channels.
+	 */
+	@Test(timeout = 30000)
+	public void convolutionWithPerSampleCutoff() {
+		int signalSize = 256;
+		int filterOrder = 20;
+		int sampleRate = 44100;
+
+		PackedCollection signal = twoToneSignal(signalSize);
+		PackedCollection cutoffs = rampCutoffs(signalSize);
+
+		PackedCollection result = lowPass(
+				traverseEach(cp(signal)), cp(cutoffs), sampleRate, filterOrder).get().evaluate();
+
+		assertPerSampleLowPass(signal, cutoffs, result, sampleRate, filterOrder);
+	}
+
+	/**
+	 * Verifies that a materialized {@code [samples, taps]} coefficient bank, which carries
+	 * the default traversal axis 0 rather than the axis an expression produces, is still
+	 * read as one tap row per sample with the tap count taken from the trailing dimension.
+	 */
+	@Test(timeout = 30000)
+	public void convolutionWithMaterializedPerSampleBank() {
+		int signalSize = 256;
+		int filterOrder = 20;
+		int sampleRate = 44100;
+
+		PackedCollection signal = twoToneSignal(signalSize);
+		PackedCollection cutoffs = rampCutoffs(signalSize);
+
+		PackedCollection bank = lowPassCoefficients(cp(cutoffs), sampleRate, filterOrder)
+				.evaluate().reshape(shape(signalSize, filterOrder + 1));
+		MultiOrderFilter filter = MultiOrderFilter.create(traverseEach(cp(signal)), cp(bank));
+		PackedCollection result = filter.get().evaluate();
+
+		assertPerSampleLowPass(signal, cutoffs, result, sampleRate, filterOrder);
+	}
+
+	/**
+	 * Verifies that a {@code [channels, 1]} series — the one shape whose row count equals
+	 * its total size, so a {@code [channels, taps]} bank would also match the per-sample
+	 * form — is refused rather than filtered: {@code create} traverses the series to its
+	 * trailing axis, leaving one-sample rows, and the filter rejects a series of size one.
+	 */
+	@Test(timeout = 30000, expected = UnsupportedOperationException.class)
+	public void oneSampleChannelsAreRejected() {
+		int channels = 6;
+		int taps = 5;
+
+		PackedCollection series = integers(0, channels).add(1.0).evaluate()
+				.reshape(shape(channels, 1));
+		PackedCollection bank = integers(0, channels * taps).multiply(0.1).add(0.3).evaluate()
+				.reshape(shape(channels, taps));
+
+		MultiOrderFilter.create(cp(series), cp(bank));
+	}
+
+	/**
+	 * A test signal mixing a period-16 sine with a half-amplitude period-4 sine, so a
+	 * low-pass with a moving cutoff visibly changes how much of the upper tone survives.
+	 *
+	 * @param signalSize number of samples
+	 * @return the signal, shape {@code [signalSize]}
+	 */
+	private PackedCollection twoToneSignal(int signalSize) {
+		PackedCollection signal = new PackedCollection(signalSize);
+		sin(integers(0, signalSize).multiply(2.0 * Math.PI / 16.0))
+				.add(sin(integers(0, signalSize).multiply(2.0 * Math.PI / 4.0)).multiply(0.5))
+				.into(signal.traverseEach()).evaluate();
+		return signal;
+	}
+
+	/**
+	 * A per-sample cutoff curve rising linearly from 200 Hz by 40 Hz per sample.
+	 *
+	 * @param signalSize number of samples
+	 * @return the cutoffs in Hz, shape {@code [signalSize]}
+	 */
+	private PackedCollection rampCutoffs(int signalSize) {
+		return integers(0, signalSize).multiply(40.0).add(200.0).evaluate();
+	}
+
+	/**
+	 * Asserts that every output sample equals the input convolved with the reference
+	 * low-pass taps for that sample's own cutoff, reading zeros beyond the signal.
+	 *
+	 * @param signal      the filtered input
+	 * @param cutoffs     the per-sample cutoff frequencies in Hz
+	 * @param result      the filter output
+	 * @param sampleRate  the sample rate in Hz
+	 * @param filterOrder the filter order (number of taps minus one)
+	 */
+	private void assertPerSampleLowPass(PackedCollection signal, PackedCollection cutoffs,
+										PackedCollection result, int sampleRate, int filterOrder) {
+		int signalSize = signal.getMemLength();
+		double[] in = signal.toArray();
+		double[] cut = cutoffs.toArray();
+		double[] out = result.toArray();
+		for (int n = 0; n < signalSize; n++) {
+			double[] taps = referenceLowPassTaps(cut[n], sampleRate, filterOrder);
+			double expected = 0.0;
+			for (int k = 0; k <= filterOrder; k++) {
+				int idx = n + k - filterOrder / 2;
+				if (idx >= 0 && idx < signalSize) expected += in[idx] * taps[k];
+			}
+			assertEquals(expected, out[n]);
+		}
+	}
+
+	/**
 	 * Verifies that the filter choice mechanism (selecting between
 	 * low-pass and high-pass based on a runtime decision variable)
 	 * produces correct results when coefficients are pre-computed
