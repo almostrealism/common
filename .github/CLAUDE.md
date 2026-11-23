@@ -1414,7 +1414,9 @@ so that check is made from the agent's side with `lsof`.
 ### What the `Master Agent Dispatch` workflow does
 
 Lives in `.github/workflows/master-agent-dispatch.yaml` and holds the agent jobs
-that fire on a merge to master: `plan-next-task` (Project Manager),
+that start work nobody asked for by hand. It runs on every merge to master and
+once an hour (`schedule`), so a round that is due, or a tracker task marked
+ready, does not wait for the next merge. The jobs are `plan-next-task` (Project Manager),
 `plan-release-task` (Task Planning), `doc-qa`
 (Quality Assurance), `defect-hunt`, `flaky-qa`, `coverage-qa`, `consolidation-qa`,
 `concept-qa`, `performance-qa`, `pdsl-qa` and `qa-retrospective`. The `plan-next-task`, `doc-qa` and `defect-hunt`
@@ -1520,35 +1522,44 @@ it starts. A new QA job gets its own `ignore_interval_*` input, sets
 `PR_GRACE_HOURS`, and guards its archive step against the forced reason;
 `tools/tests/test_master_agent_dispatch.py` checks all three.
 
-**One open-PR limit for every round.** Each round, QA or planning, ends in a
-pull request for the same reviewer, so none starts while more than
-`MAX_OPEN_PRS` PRs of any kind are open against master. That limit is defined
-once, as the workflow-level `env` of `master-agent-dispatch.yaml` (7: a round
-may start with seven open, so with its own PR the repository holds at most
-eight). The planning jobs check it with `tools/ci/open-pr-backlog.sh`; the QA
-gates turn on `qa-cadence.sh`'s backlog condition with `CHECK_BACKLOG: "true"`,
-which runs the same script after the round and interval checks and reports
-`backlog-full` (or `backlog-query-failed`, read as full). `plan-release-task`
-passes the same number as its `max-open-prs` input, since a called workflow
-cannot read the caller's `env`. No job sets a limit of its own;
-`tools/tests/test_master_agent_dispatch.py` checks that. The count covers open
-PRs only: a round whose agent has not opened its PR yet is not in it.
+**Two admission policies, one per kind of round.** They are deliberately
+different, and both limits are defined once, as the workflow-level `env` of
+`master-agent-dispatch.yaml`.
 
-`MAX_OPEN_PRS` is sized to the **full-cadence** QA rounds — one open PR each,
-seven of them (`doc-qa`, `defect-hunt`, `coverage-qa`, `consolidation-qa`,
-`performance-qa`, `pdsl-qa`, `qa-retrospective`) — so the value tracks that
-count and rose from 6 to 7 when `qa-retrospective` was added. `flaky-qa` and
-`concept-qa` are **pilots**: each still participates in the backlog gate like
-every round (it will not start while the backlog is full, and its own PR counts
-toward the next round's check), but adding them deliberately did **not** raise
-`MAX_OPEN_PRS` — the nine QA jobs share the budget of seven until a pilot
-proves its yield and a person decides to promote it. Promoting a pilot to a
-full round, or adding an eighth full-cadence round, is what raises the limit;
-`test_the_flaky_pilot_does_not_raise_the_open_pr_limit` and
-`test_the_concept_pilot_does_not_raise_the_open_pr_limit` in
-`tools/tests/test_master_agent_dispatch.py` (which reads the pilots from its
-`_PILOTS` list) pin this so the decision is made on purpose rather than by
-surprise.
+- **A QA round is scheduled, and bounded by the open pull requests.** It starts
+  when the time since the last round of its kind says another is due
+  (`MIN_INTERVAL_DAYS`), unless more than `MAX_OPEN_PRS` pull requests of any
+  kind are open against master (14: a round may start with fourteen open, so
+  with its own the repository holds at most fifteen). A QA round is work nobody
+  asked for, so it yields to the reviewer's queue. The QA gates turn on
+  `qa-cadence.sh`'s backlog condition with `CHECK_BACKLOG: "true"`, which runs
+  `tools/ci/open-pr-backlog.sh` after the round and interval checks and reports
+  `backlog-full` (or `backlog-query-failed`, read as full). A caller of
+  `qa-round.yaml` passes the same number as `max-open-prs`, since a called
+  workflow cannot read the caller's `env`. The count covers open pull requests
+  only: a round whose agent has not opened its own yet is not in it.
+- **A planning round is always on, and bounded by the `project/` branches in
+  progress.** It starts whenever there is something to plan, and one run starts
+  as many rounds as the limit leaves room for. The limit is
+  `MAX_PROJECT_BRANCHES` (5) branches under `project/` in progress, counted by
+  `qa-cadence.sh` on the family prefix `project/`: a branch counts while it is
+  younger than `PR_GRACE_HOURS` (24), and after that only while its pull
+  request is open, so an older branch with no open pull request is abandoned
+  and frees its place. That one count covers the task rounds (`project/task-`)
+  and the planning round (`project/plan-`), since both are work picked up
+  automatically. The open pull requests of other kinds do not hold a planning
+  round off: a task someone marked ready should not wait behind QA rounds and
+  hand-opened work. `plan-release-task` passes the limit as `max-rounds`.
+
+No job sets a limit of its own; `tools/tests/test_master_agent_dispatch.py`
+checks that, and that neither planning job runs `open-pr-backlog.sh`.
+
+`MAX_OPEN_PRS` is the reviewer's capacity, set by the owner. It is **not** a
+count of QA rounds, so adding a round does not raise it. `flaky-qa` and
+`concept-qa` are **pilots**: each is gated by the shared value like every QA
+round. `test_the_flaky_pilot_does_not_raise_the_open_pr_limit` and
+`test_the_concept_pilot_does_not_raise_the_open_pr_limit` (which read the pilots
+from the test file's `_PILOTS` list) pin the value, so it changes on purpose.
 
 `plan-next-task` keeps **exactly one** planning round open, because every round
 rewrites the single `docs/plans/MANAGER_LOG.md` and two open at once cannot both
@@ -1559,8 +1570,10 @@ younger than 24 hours that has never had a PR, means a round is in progress.
 The grace window is load-bearing: the agent opens its PR only when it finishes,
 so without it a merge landing mid-round started a second round beside the first
 (this is how `project/plan-20260926-172935` and `project/plan-20260926-174202`
-came to coexist). Only when no round is in progress does the job check the
-backlog against the shared `MAX_OPEN_PRS`. `force` bypasses both checks.
+came to coexist). Only when no round is in progress does the job run the gate a
+second time, on the family prefix `project/` with `MAX_PROJECT_BRANCHES`, so a
+planning round takes one of the same places the task rounds do. `force`
+bypasses both checks.
 
 Like the QA rounds, both planning jobs retire earlier rounds with
 `tools/ci/archive-stale-workstreams.sh` (their own prefix only) once the gate
@@ -1575,16 +1588,25 @@ still be being implemented on its workstream.
 building (`Common <root pom.xml version>`), beside the free-form round rather
 than instead of it. It has no steps of its own: it calls the reusable
 `task-planning.yaml` (see below), the same workflow other repositories call for
-their own tracker projects, so what is described here is that workflow's job. It is gated three ways, in order: fewer
-than four `project/task-*` rounds in progress (`qa-cadence.sh`, same settings as
-above plus `MAX_ROUNDS`, the workflow's `max-rounds` input; a round lasts from
-its plan until its PR is merged or closed, so an approved plan being
-implemented holds a slot), room in the backlog (`tools/ci/open-pr-backlog.sh`, which `plan-next-task` uses
-too, with the same `MAX_OPEN_PRS`), and a claimable task
-(`tools/ci/tracker-claimable.sh`, which asks the controller's
-`GET /api/tracker/claimable` and fails closed). With nothing claimable no
-branch, workstream or agent job is created. `force` skips the first two gates,
-never the third. The round's workstream is registered with no tracker role;
+their own tracker projects, so what is described here is that workflow's job. It is gated two ways, in order: fewer
+than `max-rounds` `project/` branches in progress (`qa-cadence.sh` on the family
+prefix, same settings as above plus `MAX_ROUNDS`; a round lasts from its plan
+until its PR is merged or closed, so an approved plan being implemented holds a
+place), and a claimable task (`tools/ci/tracker-claimable.sh`, which asks the
+controller's `GET /api/tracker/claimable` and fails closed). With nothing
+claimable no branch, workstream or agent job is created. `force` skips the first
+gate, for one round, never the second.
+
+The workflow has two jobs. `gate` creates nothing: it counts the free places
+and the claimable tasks and publishes the smaller as the number of rounds to
+start. `plan` then runs once per round, as a matrix with `max-parallel: 1`, and
+each round repeats the checks for itself, so it sees the branch the round
+before it created and the limit holds however many rounds a run starts. `plan`
+carries no concurrency group of its own, because a group on a matrix job would
+cancel its own waiting rounds; the **caller's** job carries it
+(`plan-release-task` uses `task-planning`), and that is what keeps two runs from
+counting the same places. A consuming repository's caller must do the same. The
+round's workstream is registered with no tracker role;
 CI then claims the task for it (`tools/ci/tracker-claim.sh`, the controller's
 `POST /api/tracker/claim`, which links the task to the workstream and fails
 closed). That link is what lets the agent update its own task; anything else
@@ -1695,8 +1717,8 @@ production or test-helper code, or — when the cause is out of scope — files 
 follow-up with `tracker_create_task` carrying the evidence, the same routing the
 general review uses. It never ends with a bare "could not reproduce". Several
 things set it apart. Its `MIN_INTERVAL_DAYS` is 7, tied with `qa-retrospective`
-for the longest of any round, because it is a pilot rather than a full cadence job — and for the same
-reason it does **not** raise `MAX_OPEN_PRS` (see "One open-PR limit" above). Its
+for the longest of any round, because it is a pilot rather than a full cadence job. It is gated by the shared
+`MAX_OPEN_PRS` like every QA round (see "Two admission policies" above). Its
 prompt keeps it inside the repository's test-execution limits: named, bounded
 selections through the MCP test runner only, each with an explicit timeout,
 repeating a small selection rather than widening it, never a module or full
@@ -1734,7 +1756,7 @@ orphaned types onto existing contracts: renaming a member of a long-established
 interface is filed as a task for a person to approve. `instanceof` bridges
 between the hierarchies and adapter/converter classes are prohibited, as are
 new modules, `pom.xml` edits and weakened tests. Like `flaky-qa` it is a
-**pilot** and does **not** raise `MAX_OPEN_PRS` (see "One open-PR limit"
+**pilot**, gated by the shared `MAX_OPEN_PRS` (see "Two admission policies"
 above). Its `MIN_INTERVAL_DAYS` is 5, because an alignment is slower to review
 than a defect fix. `PROTECT_TEST_FILES` is `"true"`, since a realignment must not
 change what existing tests assert; it pins the primary phase to `claude/opus`

@@ -29,7 +29,7 @@ name: "QA Round"
 #         branch-prefix: "qa/defect-"
 #         min-interval-days: 2
 #         # The caller's own open-PR limit; a called workflow cannot read it.
-#         max-open-prs: 7
+#         max-open-prs: 14
 #         # Empty on a push event, where the dispatch inputs do not exist.
 #         force: ${{ github.event.inputs.force || 'false' }}
 #         ignore-interval: ${{ github.event.inputs.ignore_interval_defect_hunt || 'false' }}
@@ -66,7 +66,7 @@ name: "QA Round"
 #         round-name: "qa-retrospective"
 #         branch-prefix: "qa/retro-"
 #         min-interval-days: 7
-#         max-open-prs: 7
+#         max-open-prs: 14
 #         prompt: retrospective
 #         # REVIEW_SINCE: the survey window. QA_PREFIXES: this repository's QA
 #         # branch prefixes. REPORT_DIR: where the report and ledger live
@@ -139,7 +139,7 @@ on:
       max-open-prs:
         description: "Above this many open pull requests against the default branch, no round starts"
         required: false
-        default: 7
+        default: 14
         type: number
       force:
         description: "\"true\" starts a round even when one is in progress, the backlog is full, or the interval has not passed"

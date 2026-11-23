@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # ─── Decide whether the open-PR backlog leaves room for a new round ───
 #
-# Shared by every round in master-agent-dispatch.yaml: the planning jobs
-# run it directly, and the QA rounds through qa-cadence.sh (CHECK_BACKLOG).
-# Every round ends in a pull request someone has to review, so no new
-# round starts while more than MAX_OPEN_PRS pull requests of any kind are
-# already open against master.
+# Used by the QA rounds, through qa-cadence.sh (CHECK_BACKLOG). A QA round
+# is started on a schedule, not because someone asked for it, so none
+# starts while more than MAX_OPEN_PRS pull requests of any kind are already
+# open against master. The planning jobs do not use it: they are bounded by
+# the number of project/ branches in progress instead, so that work someone
+# marked ready is not held up by pull requests of other kinds.
 #
 # Usage:
 #   open-pr-backlog.sh
@@ -47,7 +48,7 @@ if [ "${FORCE:-false}" = "true" ]; then
     emit "open_prs=not-checked"
     emit "max_open_prs=$MAX_OPEN_PRS"
     emit "needs_new_branch=true"
-    echo "::notice::Force mode — starting a planning round regardless of the backlog"
+    echo "::notice::Force mode — starting a round regardless of the backlog"
     exit 0
 fi
 
@@ -58,8 +59,8 @@ emit "max_open_prs=$MAX_OPEN_PRS"
 
 if [ "$OPEN_PR_COUNT" -le "$MAX_OPEN_PRS" ]; then
     emit "needs_new_branch=true"
-    echo "::notice::$OPEN_PR_COUNT open PRs (limit $MAX_OPEN_PRS) — room for a planning round"
+    echo "::notice::$OPEN_PR_COUNT open PRs (limit $MAX_OPEN_PRS) — room for a round"
 else
     emit "needs_new_branch=false"
-    echo "::notice::$OPEN_PR_COUNT open PRs exceeds the limit of $MAX_OPEN_PRS — not starting a planning round"
+    echo "::notice::$OPEN_PR_COUNT open PRs exceeds the limit of $MAX_OPEN_PRS — not starting a round"
 fi
