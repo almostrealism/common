@@ -376,6 +376,18 @@ class TestMethodProtection implements ConsoleFeatures {
     }
 
     /**
+     * Returns the method-name prefix (before the first tab) of one
+     * {@code "name\tbody"} record, or the whole record when it has no tab.
+     *
+     * @param record a {@code "name\tbody"} record
+     * @return the method name
+     */
+    private static String recordName(String record) {
+        int tab = record.indexOf('\t');
+        return tab >= 0 ? record.substring(0, tab) : record;
+    }
+
+    /**
      * Extracts the method-name prefix (before the first tab) from each
      * {@code "name\tbody"} record.
      *
@@ -385,8 +397,7 @@ class TestMethodProtection implements ConsoleFeatures {
     private static Set<String> recordNames(Set<String> records) {
         Set<String> names = new LinkedHashSet<>();
         for (String record : records) {
-            int tab = record.indexOf('\t');
-            names.add(tab >= 0 ? record.substring(0, tab) : record);
+            names.add(recordName(record));
         }
         return names;
     }
@@ -405,8 +416,7 @@ class TestMethodProtection implements ConsoleFeatures {
     private static Map<String, Integer> recordNameCounts(Set<String> records) {
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (String record : records) {
-            int tab = record.indexOf('\t');
-            counts.merge(tab >= 0 ? record.substring(0, tab) : record, 1, Integer::sum);
+            counts.merge(recordName(record), 1, Integer::sum);
         }
         return counts;
     }
