@@ -238,6 +238,32 @@ class StalenessHookTest(unittest.TestCase):
         self.assertIn(f"MAVEN_OPTS=-Dmaven.repo.local={relocated} mvn clean install -DskipTests",
                       context)
 
+    def test_repo_local_with_spaces_is_quoted_in_refresh_command(self):
+        """A repository path with spaces must stay one argument in the remediation."""
+        on_line = os.path.join(self.tmp, "repo with spaces")
+        self.install(on_line, stale=True)
+        context, _ = self.run_hook(f"mvn compile '-Dmaven.repo.local={on_line}'")
+        self.assertIn(f"Looked in {on_line} (maven.repo.local from the command line)", context)
+        self.assertIn(f"mvn clean install -DskipTests '-Dmaven.repo.local={on_line}'`", context)
+
+    def test_command_line_split_flags_preserved_in_refresh_command(self):
+        """Split settings given with `-D` must reach the remediation, or it refreshes the unsplit repo."""
+        job_root = os.path.join(self.default_repository(), "job-a")
+        self.install(self.default_repository(), stale=False)
+        self.install(job_root, stale=True)
+        context, _ = self.run_hook("mvn compile -Daether.enhancedLocalRepository.split=true "
+                                   "-D aether.enhancedLocalRepository.localPrefix=job-a")
+        self.assertIn(f"Looked in {job_root}", context)
+        self.assertIn("split local repository from the command line", context)
+        self.assertIn("`mvn clean install -DskipTests -Daether.enhancedLocalRepository.split=true "
+                      "-Daether.enhancedLocalRepository.localPrefix=job-a`", context)
+
+    def test_unrelated_command_line_properties_not_copied_to_refresh_command(self):
+        self.install(self.default_repository(), stale=True)
+        context, _ = self.run_hook("mvn test -pl mod-b -Dtest=FooTest -DskipTests=false")
+        self.assertIn("`mvn clean install -DskipTests`", context)
+        self.assertNotIn("FooTest`", context)
+
     def test_non_maven_command_is_silent(self):
         self.assertIsNone(self.run_hook("ls -la"))
 

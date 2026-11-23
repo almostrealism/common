@@ -96,10 +96,14 @@ class Invocation:
             variables that applied to this run only, in order. A refresh
             command must re-emit them, or it resolves a different repository
             than the one judged.
+        location_flags: The `(name, value)` command-line `-D` definitions of
+            maven_repository.LOCATION_PROPERTIES, which a refresh command must
+            also re-emit for the same reason.
     """
 
     def __init__(self, location, goals=(), projects=None, also_make=False,
-                 also_make_dependents=False, out_of_band=None, inline_env=()):
+                 also_make_dependents=False, out_of_band=None, inline_env=(),
+                 location_flags=()):
         self.location = location
         self.goals = set(goals)
         self.projects = projects
@@ -107,6 +111,7 @@ class Invocation:
         self.also_make_dependents = also_make_dependents
         self.out_of_band = out_of_band
         self.inline_env = list(inline_env)
+        self.location_flags = list(location_flags)
 
     @classmethod
     def from_tokens(cls, tokens, environ):
@@ -131,12 +136,16 @@ class Invocation:
         goals = {t for t in args if t in ARTIFACT_GOALS}
         if not goals:
             return None
+        properties = maven_repository.command_properties(args)
+        location_flags = [(name, properties[name])
+                          for name in maven_repository.LOCATION_PROPERTIES
+                          if name in properties]
         return cls(maven_repository.install_location(args, env), goals,
                    projects=_projects(args),
                    also_make=any(t in ("-am", "--also-make") for t in args),
                    also_make_dependents=any(t in ("-amd", "--also-make-dependents")
                                             for t in args),
-                   inline_env=inline_env)
+                   inline_env=inline_env, location_flags=location_flags)
 
     def installs(self):
         """True when this run writes its modules into the install directory."""
@@ -186,17 +195,17 @@ class Invocation:
         """The command that reinstalls every module into this run's install directory.
 
         Any per-invocation inline assignment that selected the repository
-        (`MAVEN_OPTS=... mvn ...`) is re-emitted, and a command-line
-        `-Dmaven.repo.local` is re-added, so the remediation targets the
-        directory the warning is about rather than the ambient default.
+        (`MAVEN_OPTS=... mvn ...`) is re-emitted, and so is every command-line
+        `-D` definition of a location property (`maven.repo.local` and the
+        split-repository settings), each shell-quoted as one argument, so the
+        remediation targets the directory the warning is about rather than
+        the ambient default.
         """
         prefix = "".join(f"{name}={shlex.quote(value)} "
                          for name, value in self.inline_env)
-        command = f"{prefix}mvn clean install -DskipTests"
-        if self.location.origin.startswith(
-                f"{maven_repository.REPO_LOCAL_PROPERTY} from the command line"):
-            command += f" -D{maven_repository.REPO_LOCAL_PROPERTY}={self.location.repository}"
-        return command
+        flags = "".join(" " + shlex.quote(f"-D{name}={value}")
+                        for name, value in self.location_flags)
+        return f"{prefix}mvn clean install -DskipTests{flags}"
 
 
 def _projects(args):

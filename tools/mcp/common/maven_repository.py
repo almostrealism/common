@@ -49,6 +49,11 @@ LOCAL_PREFIX_PROPERTY = "aether.enhancedLocalRepository.localPrefix"
 REMOTE_PREFIX_PROPERTY = "aether.enhancedLocalRepository.remotePrefix"
 REPO_LOCAL_PROPERTY = "maven.repo.local"
 
+# Every property that decides where install_location() resolves, in the order
+# a command re-emitting them should write them.
+LOCATION_PROPERTIES = (REPO_LOCAL_PROPERTY, SPLIT_PROPERTY,
+                       LOCAL_PREFIX_PROPERTY, REMOTE_PREFIX_PROPERTY)
+
 # Environment variable a FlowTree job exports with the resolved local
 # repository base (MavenInstallSpace.LOCAL_REPOSITORY_ENV). Unset outside a
 # job, where the base is the user's default ``~/.m2/repository``.
