@@ -53,6 +53,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -710,14 +711,16 @@ public abstract class CollectionProducerComputationBase
 	 * that subsequent evaluations use the updated arguments.
 	 * 
 	 * <p>This method also resets all dependent lifecycles and marks the
-	 * cached evaluable as outdated, forcing recompilation if needed.</p>
+	 * cached evaluable as outdated, forcing recompilation if needed. The
+	 * {@code visited} set is threaded through the descent so a shared graph node
+	 * is reset once per pass; see {@link ScopeLifecycle#resetArguments(java.util.Set)}.</p>
 	 */
 	@Override
-	public void resetArguments() {
-		super.resetArguments();
+	public void resetArguments(Set<ScopeLifecycle> visited) {
+		super.resetArguments(visited);
 
 		if (dependentLifecycles != null)
-			ScopeLifecycle.resetArguments(dependentLifecycles.stream());
+			ScopeLifecycle.resetArguments(dependentLifecycles.stream(), visited);
 
 		// this.evaluable = null;
 	}
