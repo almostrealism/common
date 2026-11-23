@@ -227,12 +227,24 @@ the existing `DEGRADED` reasons.
   emitting a cost is recorded as incomplete (`withCostIncomplete(true)`), and
   carry whatever partial cost the runner did emit.
 - The wire contract for `costIncomplete` currently describes it as inactivity
-  only: `flowtree/runtime/docs/events.md` says it is `true` "when an agent
-  session was killed for inactivity", and the javadoc of
-  `JobCompletionEvent.setCostIncomplete` and `JobQueryHandler.jobEventToJson`
-  says the same. Those descriptions must be widened in the same change, or
-  consumers will read the flag as meaning only an inactivity kill.
-  <!-- TODO(review): also list SlackNotifier (cost line prints "agent killed for inactivity" when costIncomplete) and the JobCostTracker javadoc as inactivity-only consumers to widen. -->
+  only, in five places that must all be widened in the same change, or consumers
+  will read the flag as meaning only an inactivity kill:
+  - `flowtree/runtime/docs/events.md` says it is `true` "when an agent session
+    was killed for inactivity";
+  - the javadoc of `JobCompletionEvent.setCostIncomplete` and of
+    `JobQueryHandler.jobEventToJson` says the same;
+  - the javadoc of `CodingAgentJobEvent.withCostIncomplete` and of
+    `JobCostTracker` (its `incomplete` field, `markIncomplete()` and
+    `isIncomplete()`) also say "killed for inactivity".
+- One of those consumers is **user-visible, not just documentation**:
+  `SlackNotifier` appends `" (incomplete -- agent killed for inactivity; true
+  cost unknown)"` to the cost line whenever `event.isCostIncomplete()` is true.
+  Once a signal kill also sets `costIncomplete`, that Slack message would state a
+  **false cause** — it would tell the owner the session was killed for inactivity
+  when it was killed by a signal. Fixing it is a behaviour change, not a doc
+  edit: the text must name the actual cause (or drop the cause and say only that
+  the cost is a lower bound). If the kill cause is carried structurally (open
+  question 4), the Slack text can name it directly.
 
 ### Kill cause on the record (fix item 2)
 
