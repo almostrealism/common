@@ -495,6 +495,92 @@ public class ArithmeticSequenceDerivationTests extends TestSuiteBase implements 
 	}
 
 	/**
+	 * {@link ArithmeticIndexSequence#quotientOf(List, long)} must not drop a bounded
+	 * remainder when adding it to the coarse terms can overflow: with divisor 3, coarse
+	 * values {@code 3, Long.MAX_VALUE - 1} repeating and remainder values
+	 * {@code 0, 0, 2, 2}, which do not add up to a progression, the last full sum wraps
+	 * to {@link Long#MIN_VALUE}, whose quotient is negative.
+	 */
+	@Test(timeout = 30000)
+	public void quotientOfRejectsOverflowingSum() {
+		ArithmeticIndexSequence coarse = new ArithmeticIndexSequence(3, Long.MAX_VALUE - 4, 1, 2, 4);
+		ArithmeticIndexSequence remainder = new ArithmeticIndexSequence(0, 2, 2, 4, 4);
+		Assert.assertNull(ArithmeticIndexSequence.sumOf(List.of(coarse, remainder)));
+		Assert.assertEquals(Long.MAX_VALUE - 1, coarse.valueAt(3).longValue());
+
+		long wrapped = coarse.valueAt(3).longValue() + remainder.valueAt(3).longValue();
+		Assert.assertEquals(Long.MIN_VALUE, wrapped);
+
+		ArithmeticIndexSequence quotient = ArithmeticIndexSequence.quotientOf(List.of(coarse, remainder), 3);
+		if (quotient != null) {
+			Assert.assertEquals(wrapped / 3, quotient.valueAt(3).longValue());
+		}
+
+		Assert.assertNull("a sum that can wrap has no derivable quotient", quotient);
+	}
+
+	/**
+	 * {@link ArithmeticIndexSequence#remainderOf(List, long)} must not treat a term as a
+	 * multiple of the modulus because its offset and scale are, when its own values wrap:
+	 * offset {@code Long.MAX_VALUE - 1} and scale {@code 3} are multiples of {@code 3}, but
+	 * the second value wraps to {@code Long.MIN_VALUE + 1}, which is not.
+	 */
+	@Test(timeout = 30000)
+	public void remainderOfRejectsWrappingTerm() {
+		ArithmeticIndexSequence wrapping = new ArithmeticIndexSequence(Long.MAX_VALUE - 1, 3, 1, 2, 2);
+		Assert.assertTrue(wrapping.isMultipleOf(3));
+		Assert.assertEquals(Long.MIN_VALUE + 1, wrapping.valueAt(1).longValue());
+		Assert.assertNotEquals(0, wrapping.valueAt(1).longValue() % 3);
+
+		Assert.assertNull("a wrapping term has no derivable remainder",
+				ArithmeticIndexSequence.remainderOf(List.of(wrapping), 3));
+	}
+
+	/**
+	 * {@link ArithmeticIndexSequence#remainderOf(List, long)} must not drop multiples of
+	 * the modulus when the full sum can wrap negative even though the sum of minimums is
+	 * not negative: terms {@code -3}, {@code 3, Long.MAX_VALUE - 1} and {@code 0, 6} with
+	 * modulus 3 sum to {@code Long.MIN_VALUE + 1} at the second position, whose remainder
+	 * is not zero.
+	 */
+	@Test(timeout = 30000)
+	public void remainderOfRejectsOverflowingSum() {
+		ArithmeticIndexSequence negative = new ArithmeticIndexSequence(-3, 0, 1, 2, 2);
+		ArithmeticIndexSequence large = new ArithmeticIndexSequence(3, Long.MAX_VALUE - 4, 1, 2, 2);
+		ArithmeticIndexSequence small = new ArithmeticIndexSequence(0, 6, 1, 2, 2);
+
+		long wrapped = negative.valueAt(1).longValue() + large.valueAt(1).longValue() + small.valueAt(1).longValue();
+		Assert.assertNotEquals(0, wrapped % 3);
+
+		ArithmeticIndexSequence remainder = ArithmeticIndexSequence.remainderOf(List.of(negative, large, small), 3);
+		if (remainder != null) {
+			Assert.assertEquals(wrapped % 3, remainder.valueAt(1).longValue());
+		}
+
+		Assert.assertNull("a sum that can wrap has no derivable remainder", remainder);
+	}
+
+	/**
+	 * Terms with no positions have the empty quotient and the empty remainder, including
+	 * when every term is a multiple of the modulus, rather than failing to construct a
+	 * progression with a zero modulus.
+	 */
+	@Test(timeout = 30000)
+	public void emptyTermsHaveEmptyQuotientAndRemainder() {
+		ArithmeticIndexSequence multiple = new ArithmeticIndexSequence(0, 4, 1, 1, 0);
+		ArithmeticIndexSequence other = new ArithmeticIndexSequence(8, 0, 1, 1, 0);
+
+		ArithmeticIndexSequence remainder = ArithmeticIndexSequence.remainderOf(List.of(multiple, other), 4);
+		Assert.assertNotNull(remainder);
+		Assert.assertEquals(0, remainder.lengthLong());
+		Assert.assertTrue(remainder.isEmpty());
+
+		ArithmeticIndexSequence quotient = ArithmeticIndexSequence.quotientOf(List.of(multiple, other), 4);
+		Assert.assertNotNull(quotient);
+		Assert.assertEquals(0, quotient.lengthLong());
+	}
+
+	/**
 	 * {@link ArithmeticIndexSequence#scaled(long)} multiplies both the offset and the
 	 * scale by the operand. When that multiplication overflows, the result must be
 	 * reported as not representable rather than silently wrapping into an arithmetic

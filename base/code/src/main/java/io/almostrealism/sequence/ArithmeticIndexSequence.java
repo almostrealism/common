@@ -596,6 +596,10 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * term all leave the remainder in place. A divisor of {@link Long#MIN_VALUE} has no
 	 * representable quotient, as under {@link #dividedExactly(long)}.</p>
 	 *
+	 * <p>The rules hold for the exact integer sum, so nothing is derived when the sum
+	 * evaluated in wrapping {@code long} arithmetic may differ from it; see
+	 * {@link #isSumExact(List)}. Empty terms have the empty quotient.</p>
+	 *
 	 * @param terms the sequences whose sum is divided; must not be empty, and must all have the same length
 	 * @param divisor the divisor; must not be zero
 	 * @return the quotient, or {@code null} if it cannot be represented
@@ -609,6 +613,9 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 			// value would overflow back to a negative divisor
 			return null;
 		}
+
+		if (terms.get(0).lengthLong() == 0) return range(0);
+		if (!isSumExact(terms)) return null;
 
 		ArithmeticIndexSequence numerator = sumOf(terms);
 
@@ -665,6 +672,11 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	 * {@link #modExactly(long)}. When every term is a multiple of the modulus, the
 	 * remainder is zero at every position.</p>
 	 *
+	 * <p>A term whose own values wrap around the {@code long} range is not a multiple of
+	 * the modulus merely because its offset and scale are, and a wrapping sum has a
+	 * different remainder from the exact one, so nothing is derived unless the sum is
+	 * exact under {@link #isSumExact(List)}. Empty terms have the empty remainder.</p>
+	 *
 	 * @param terms the sequences whose sum is reduced; must not be empty, and must all have the same length
 	 * @param operand the modulus; must be positive
 	 * @return the remainder sequence, or {@code null} if it cannot be represented
@@ -674,6 +686,9 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 		if (operand <= 0) {
 			throw new IllegalArgumentException("Modulus must be positive");
 		}
+
+		if (terms.get(0).lengthLong() == 0) return range(0);
+		if (!isSumExact(terms)) return null;
 
 		List<ArithmeticIndexSequence> remaining = terms.stream()
 				.filter(t -> !t.isMultipleOf(operand))
@@ -692,8 +707,8 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 
 	/**
 	 * Returns whether every remaining term is non-negative and the sum of all terms is
-	 * never negative, judged by the sum of their minimums. A sum of minimums that cannot
-	 * be computed without overflow is treated as possibly negative.
+	 * never negative, judged by the sum of their minimums. The terms must already satisfy
+	 * {@link #isSumExact(List)}, so that sum cannot overflow.
 	 *
 	 * @param remaining the terms kept after dropping multiples of the modulus
 	 * @param terms all terms of the sum
@@ -702,18 +717,35 @@ public class ArithmeticIndexSequence implements IndexSequence, ExpressionFeature
 	private static boolean isNeverNegative(List<ArithmeticIndexSequence> remaining,
 										   List<ArithmeticIndexSequence> terms) {
 		if (remaining.stream().anyMatch(t -> t.min() < 0)) return false;
+		return terms.stream().mapToLong(ArithmeticIndexSequence::min).sum() >= 0;
+	}
 
+	/**
+	 * Returns whether the sum of the given non-empty sequences, evaluated position by
+	 * position in wrapping {@code long} arithmetic, equals the exact integer sum at every
+	 * position. That holds when no term's own values wrap and both the sum of the minimums
+	 * and the sum of the maximums fit in a {@code long}: the exact sum then lies between
+	 * them, and wrapping addition agrees with exact addition whenever the exact result is
+	 * representable, whatever the order of the partial sums.
+	 *
+	 * @param terms the sequences being added; must not be empty sequences
+	 * @return {@code true} if the sum never wraps
+	 */
+	private static boolean isSumExact(List<ArithmeticIndexSequence> terms) {
 		long minimum = 0;
+		long maximum = 0;
 
 		try {
 			for (ArithmeticIndexSequence t : terms) {
+				if (t.wraps()) return false;
 				minimum = Math.addExact(minimum, t.min());
+				maximum = Math.addExact(maximum, t.max());
 			}
 		} catch (ArithmeticException e) {
 			return false;
 		}
 
-		return minimum >= 0;
+		return true;
 	}
 
 	/**
