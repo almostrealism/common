@@ -183,7 +183,9 @@ project artifacts in it yet is reported in one line as a fresh install space, no
 staleness; a module the run does not build then fails to resolve instead of resolving old
 code. The scope sentence follows the command: only a full-reactor `install` refreshes
 everything; `-pl <module> -am` rebuilds that module and its dependencies, and every other
-module still resolves from the install directory. The ar-build-validator is modelled by
+module still resolves from the install directory; a selection of only exclusions
+(`-pl '!<module>'`) builds every other module and leaves the excluded ones as installed,
+so it is not a full refresh either. The ar-build-validator is modelled by
 what its arguments make it do: its default checks run a full `mvn install -DskipTests`
 first, so it refreshes the whole reactor, while `skip_build` or a scan-only check set
 (e.g. `checkstyle`) only resolves what is installed — unlike the ar-test-runner, which

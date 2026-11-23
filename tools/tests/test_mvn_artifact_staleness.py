@@ -269,6 +269,29 @@ class StalenessHookTest(unittest.TestCase):
         self.assertIn("This command rebuilds only `mod-b`.", context)
         self.assertIn("Their dependencies are NOT rebuilt (no `-am`)", context)
 
+    def test_exclusion_only_selection_builds_the_rest_of_the_reactor(self):
+        """`-pl !mod` builds every other module; it is neither "only `!mod`" nor a full refresh."""
+        root = self.default_repository()
+        self.install(root, stale=True)
+        context, _ = self.run_hook("mvn install -DskipTests -pl '!mod-a'")
+        self.assertIn("This command builds and installs every module in the reactor except "
+                      f"`mod-a`. The excluded modules are NOT rebuilt and resolve from {root}.",
+                      context)
+        self.assertNotIn("rebuilds only", context)
+        self.assertIn("Refresh before trusting any build or test result", context)
+
+    def test_dash_exclusion_on_current_space_still_states_scope(self):
+        self.install(self.default_repository(), stale=False)
+        context, _ = self.run_hook("mvn compile -pl -mod-b")
+        self.assertIn("This command builds every module in the reactor except `mod-b`.",
+                      context)
+
+    def test_mixed_selection_names_only_included_modules(self):
+        self.install(self.default_repository(), stale=True)
+        context, _ = self.run_hook("mvn test -pl 'mod-b,!mod-a,?mod-c'")
+        self.assertIn("This command rebuilds only `mod-b`, `mod-c`.", context)
+        self.assertNotIn("`!mod-a`", context)
+
     def test_full_reactor_install_says_it_refreshes(self):
         self.install(self.default_repository(), stale=True)
         context, _ = self.run_hook("mvn clean install -DskipTests")

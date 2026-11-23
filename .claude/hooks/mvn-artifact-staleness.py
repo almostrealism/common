@@ -88,7 +88,10 @@ class Invocation:
     Attributes:
         location: maven_repository.InstallLocation for the run.
         goals: The artifact-producing goals named on the command line.
-        projects: The `-pl` selection, or None when the full reactor builds.
+        projects: The modules the `-pl` selection includes, or None when the full
+            reactor builds (also when `-pl` names only exclusions).
+        excluded: The modules the `-pl` selection excludes (`!mod` or `-mod`),
+            which this run does not rebuild.
         also_make: True when `-am` rebuilds the selection's dependencies.
         also_make_dependents: True when `-amd` rebuilds the selection's dependents.
         out_of_band: Name of an MCP tool running Maven, or None for a command line.
@@ -107,10 +110,11 @@ class Invocation:
 
     def __init__(self, location, goals=(), projects=None, also_make=False,
                  also_make_dependents=False, out_of_band=None, full_install=False,
-                 inline_env=(), location_flags=()):
+                 inline_env=(), location_flags=(), excluded=()):
         self.location = location
         self.goals = set(goals)
         self.projects = projects
+        self.excluded = list(excluded)
         self.also_make = also_make
         self.also_make_dependents = also_make_dependents
         self.out_of_band = out_of_band
@@ -145,8 +149,9 @@ class Invocation:
         location_flags = [(name, properties[name])
                           for name in maven_repository.LOCATION_PROPERTIES
                           if name in properties]
+        projects, excluded = _projects(args)
         return cls(maven_repository.install_location(args, env), goals,
-                   projects=_projects(args),
+                   projects=projects, excluded=excluded,
                    also_make=any(t in ("-am", "--also-make") for t in args),
                    also_make_dependents=any(t in ("-amd", "--also-make-dependents")
                                             for t in args),
@@ -160,13 +165,15 @@ class Invocation:
         """True when the run leaves its selection's dependencies unrebuilt."""
         if self.out_of_band is not None:
             return not self.full_install
-        return self.projects is not None and not self.also_make
+        if self.projects is None:
+            return bool(self.excluded)
+        return not self.also_make
 
     def refreshes_all(self):
         """True when this run reinstalls every module of the reactor."""
         if self.out_of_band is not None:
             return self.full_install
-        return self.projects is None and self.installs()
+        return self.projects is None and not self.excluded and self.installs()
 
     def scope_statement(self):
         """Say what this run rebuilds, and what keeps resolving the install directory."""
@@ -180,6 +187,11 @@ class Invocation:
             return (f"{self.out_of_band} runs Maven in its own process with this environment. "
                     f"It does not refresh artifacts already installed in {root}, so a stale "
                     "one there still misleads it.")
+        if self.projects is None and self.excluded:
+            names = ", ".join(f"`{p}`" for p in self.excluded)
+            verb = "builds and installs" if self.installs() else "builds"
+            return (f"This command {verb} every module in the reactor except {names}. "
+                    f"The excluded modules are NOT rebuilt and resolve from {root}.")
         if self.projects is None:
             if self.installs():
                 return ("This command builds and installs every module in the reactor, "
@@ -222,7 +234,12 @@ class Invocation:
 
 
 def _projects(args):
-    """Return the modules selected with `-pl`/`--projects`, or None for the full reactor."""
+    """Return (included, excluded) for the `-pl`/`--projects` selection.
+
+    `included` is None when the full reactor builds: no `-pl` at all, or a
+    selection that names only exclusions (`!mod` or `-mod`), which Maven reads
+    as every other module. An optional entry (`?mod`) counts as included.
+    """
     selected = None
     for i, token in enumerate(args):
         value = None
@@ -234,7 +251,13 @@ def _projects(args):
             value = token[3:].lstrip("=")
         if value is not None:
             selected = (selected or []) + [p for p in value.split(",") if p]
-    return selected
+    if selected is None:
+        return None, []
+    included = [p.lstrip("?") for p in selected if not p.startswith(("!", "-"))]
+    excluded = [p[1:] for p in selected if p.startswith(("!", "-"))]
+    if excluded and not included:
+        return None, excluded
+    return included, excluded
 
 
 def read_payload():
