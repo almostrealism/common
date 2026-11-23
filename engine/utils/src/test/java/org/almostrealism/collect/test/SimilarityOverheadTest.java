@@ -676,9 +676,10 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		long key = ((long) frames << 32) | bins;
 		TraversalPolicy shape = new TraversalPolicy(frames, bins, 1);
 		return cosineCache.computeIfAbsent(key, k ->
-				Process.optimized(Ops.op(o -> o.multiply(o.cv(shape, 0), o.cv(shape, 1)).sum(1).reshape(frames, 1, 1)
-						.divide(o.multiply(o.length(1, o.cv(shape, 0)),
-								o.length(1, o.cv(shape, 1)))))).get());
+				(Evaluable<PackedCollection>) Process.optimized(
+						Ops.op(o -> o.multiply(o.cv(shape, 0), o.cv(shape, 1)).sum(1).reshape(frames, 1, 1)
+								.divide(o.multiply(o.length(1, o.cv(shape, 0)),
+										o.length(1, o.cv(shape, 1)))))).get());
 	}
 
 	/**
