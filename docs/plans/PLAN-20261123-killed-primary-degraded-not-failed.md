@@ -63,15 +63,20 @@ The failure is a chain of three defects, each independently load-bearing:
    `failed("Primary phase hard-failed (non-zero exit, 0s duration, no work
    performed)")` whenever `isPrimaryPhaseHardFailed()` is set and the final exit
    code is 0 (the review phase's clean exit). Then
-   `FlowTreeApiEndpoint.handleStatus` runs `autoPrPublisher.publish(event)`
+   `FlowTreeApiEndpoint.handleStatusEvent` runs `autoPrPublisher.publish(event)`
    **only when the status is `SUCCESS`**; every other status calls `discard`.
    So even if the status were corrected to `DEGRADED`, no PR would open today.
 
 A further observation constrains the "who killed it" work (fix item 2 in the
-task): the harness's *own* kill paths use `Process.destroyForcibly()`, which
-sends `SIGKILL` (exit 137). An exit of **143 (SIGTERM)** is therefore not a
-harness-initiated kill — it is external (container stop, cgroup OOM, node
-restart, or a supervising CLI timeout). Separately, `AgentProcessRunner.Result`
+task): the paths that terminate the **agent session process** —
+`AgentProcessRunner.runAttempt` and `OpencodeRunner` — use
+`Process.destroyForcibly()`, which sends `SIGKILL` (exit 137). An exit of
+**143 (SIGTERM)** on that process is therefore not a harness-initiated kill —
+it is external (container stop, cgroup OOM, node restart, or a supervising CLI
+timeout). (The only plain `Process.destroy()`/SIGTERM calls in the harness, in
+`TmuxSession`, target short tmux/bash helper subprocesses on an
+`InterruptedException`, not the agent session, so they do not produce a 143 on
+the session being graded.) Separately, `AgentProcessRunner.Result`
 carries a `killedForLooping` flag that `OpencodeRunner` propagates but
 `ClaudeCodeRunner` silently drops, so a loop-detector kill under Claude is today
 indistinguishable from an external one.
@@ -165,12 +170,13 @@ the existing `DEGRADED` reasons.
   cause and the measured primary duration. `FAILED` remains for the genuine
   *could-not-start* / nothing-delivered case ("no work performed").
 - `JobWorkOutcome` already answers "was work delivered" (`publishedNothing()`,
-  `allChangesDropped()`, `hasPublishedCommit()`); reuse it rather than
-  re-deriving.
+  `allChangesDropped()`), built on the job's own `hasPublishedCommit()` /
+  `hasAgentCommitted()` (both defined on `GitManagedJob`); reuse these rather
+  than re-deriving.
 
 ### 5. PR path for DEGRADED-with-commit (`flowtree/runtime`)
 
-- `FlowTreeApiEndpoint.handleStatus` currently publishes only on `SUCCESS`.
+- `FlowTreeApiEndpoint.handleStatusEvent` currently publishes only on `SUCCESS`.
   Widen the gate so a `DEGRADED` event that carries a commit
   (`event.getCommitHash() != null`) and requested `autoCreatePr` also calls
   `autoPrPublisher.publish(event)`; a `DEGRADED` event with no commit (e.g.
