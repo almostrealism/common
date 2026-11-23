@@ -231,8 +231,9 @@ regardless of its accuracy.
 - Prototype Java under `engine/ml/src/main/java/org/almostrealism/ml/` (a new
   sub-package if warranted, e.g. `org.almostrealism.ml.tagging`; the existing
   `org.almostrealism.ml.audio` package already holds `StableAudio3` and
-  `SAMEAutoEncoder` and is the alternative), with weight extraction added to `engine/ml/scripts/` following
-  the `safetensors_extractor.py` / `extract_sa3_weights.py` pattern.
+  `SAMEAutoEncoder` and is the alternative), with weight extraction added to
+  `engine/ml/scripts/` following the `safetensors_extractor.py` /
+  `extract_sa3_weights.py` pattern.
 - A synthetic-weight test under `engine/ml/src/test/java/...` extending
   `TestSuiteBase` proves the tower compiles and produces finite scores in CI;
   any real-weight accuracy/cost/memory run looks for its weights through a
