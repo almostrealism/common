@@ -118,10 +118,13 @@ What the labeler already does with draft, and what it doesn't do:
 - **Copilot reviews that arrive later**: nothing notices them. No workflow or
   controller path triggers on `pull_request_review` (the event name shows up in
   `analysis.yaml` and `.github/CLAUDE.md` only in comments). The label is
-  re-derived only on the next `Build and Test` run or cron tick, and even then
-  `derive` ignores reviews. A late Copilot review is picked up only when a later
-  push starts a new validate run, whose auto-review agent then reads it (the
-  scope rule in `tools/ci/prompts/general-review.txt`).
+  re-derived on the labeler's next run — a `Build and Test` run on the PR's own
+  branch, a completed `Auto-Resolve Submit` run or the cron tick (both of which
+  re-label every open PR, so a completion on another branch can re-derive this
+  one), or a manual dispatch — and even then `derive` ignores reviews, so the
+  label does not change on any of them. A late Copilot review is reflected only
+  when a later push starts a new validate run, whose auto-review agent then reads
+  it (the scope rule in `tools/ci/prompts/general-review.txt`).
 - **Open threads before labeling**: not checked anywhere.
 
 ```
@@ -234,9 +237,11 @@ immediately shows READY, then Copilot lands minutes later, which is the #993
 - `derive`: CI-green becomes READY only when all of these hold:
   - no unresolved review threads;
   - no pending Copilot review request;
-  - Copilot has reviewed the head SHA, or its latest review is a quota notice
-    (reuse `github_api.is_copilot_quota_notice`, as `copilot-review-status.py`
-    already does), or Copilot was never requested.
+  - Copilot has reviewed the head SHA (a review in `pulls/{n}/reviews` whose
+    `commit_id` is the head), or its latest review is a quota notice (reuse
+    `github_api.is_copilot_quota_notice`, as `copilot-review-status.py` already
+    does), or Copilot was never requested — but `requested_reviewers` cannot
+    decide that last disjunct; see the failure mode below and open question 8.
 
   Otherwise it returns `ci: awaiting review`, plus `ci: stalled` after N hours so
   a dark Copilot can't hold it silently. N must be chosen; the other waiting
@@ -263,6 +268,18 @@ first, or it would report READY ("never requested").
   job already has `pull-requests: write`, which covers the read.
 - Human reviewers who are requested but never respond: decide whether only the
   Copilot request counts.
+- **`requested_reviewers` lists only pending requests, so "Copilot was never
+  requested" is not decidable from it.** Once Copilot's request is fulfilled or
+  removed it drops off that list, so a non-draft, CI-green PR with no head-SHA
+  review and no pending request looks identical whether Copilot was never asked
+  or was asked and the request vanished without producing a review (a review on
+  an older SHA is still visible in `pulls/{n}/reviews`, so only the
+  no-review-at-all case is ambiguous). Deciding between them needs a durable
+  request-history signal — the issue-timeline `review_requested` /
+  `review_request_removed` events, which `gather` does not fetch today — or an
+  explicit rule that this case holds at `ci: awaiting review` rather than READY.
+  Until that is chosen, success criterion 4's "Copilot was never requested →
+  READY" path is not implementable from the listed data. See open question 8.
 - A Copilot review on an older SHA: "has reviewed the head SHA" means its
   `commit_id` equals the head. Since Copilot re-reviews every push to a non-draft
   PR, each push re-opens the gate until the new review lands. That is the intended
@@ -390,3 +407,11 @@ The work is done when each of these is shown by a unit case in
 7. Is the agent-facing rule in `github_pr_labels` ("ready for review is only
    meaningful once draft is False") enough for agents in the meantime? If the
    label becomes draft-aware, that caveat can be dropped from the docstring.
+8. When a non-draft, CI-green PR has no Copilot review on the head SHA and no
+   pending Copilot request, should it read READY or `ci: awaiting review`?
+   `requested_reviewers` cannot tell "never requested" from "requested, then the
+   request disappeared with no review" (see Option B's failure modes). Resolving
+   this either adds a durable request-history source to `gather` (the
+   issue-timeline review-request events) or fixes an explicit rule for the
+   ambiguous case; success criterion 4 is written assuming the latter is
+   answered.
