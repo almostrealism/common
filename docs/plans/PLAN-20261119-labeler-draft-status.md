@@ -205,8 +205,14 @@ a `ci/...` branch (CI-file lock). Option C also touches `flowtree/runtime`.
   gain a PR checkout. Today, without this trigger, a ready transition is picked up
   only at the next cron tick (up to 30 min), so the A-only fix would also show a
   stale `ci: draft` for that long.
+  Extend the `concurrency.group` and `BRANCH` expressions to this event's
+  `pull_request.head.ref` as well (see Option B), or each transition re-labels
+  every open PR.
 - Update the label list in the `pr-status-labels.yaml` header comment, the
-  `pr-status-labels.py` module docstring, and the `github_pr_labels` docstring.
+  `pr-status-labels.py` module docstring, the `github_pr_labels` docstring, and
+  the label table under "What the `PR Status Labels` workflow does" in
+  `.github/CLAUDE.md`. (The workflow header comment does not list
+  `ci: ready to launch` today either; the same edit can add it.)
 
 **Interaction with `ci: ready to launch`**: on a draft plan PR the two markers
 would usually appear together (`ci: draft` + `ci: ready to launch`). That is
@@ -239,9 +245,22 @@ immediately shows READY, then Copilot lands minutes later, which is the #993
   - no pending Copilot review request;
   - Copilot has reviewed the head SHA (a review in `pulls/{n}/reviews` whose
     `commit_id` is the head), or its latest review is a quota notice (reuse
-    `github_api.is_copilot_quota_notice`, as `copilot-review-status.py` already
-    does), or Copilot was never requested — but `requested_reviewers` cannot
-    decide that last disjunct; see the failure mode below and open question 8.
+    `github_api.latest_copilot_quota_notice`, as `copilot-review-status.py`
+    already does, with that script's `_is_copilot_login` test), or Copilot was
+    never requested — but `requested_reviewers` cannot decide that last
+    disjunct; see the failure mode below and open question 8.
+
+  Read the reviews with `StatusClient.get_all` (the endpoint is paginated) and
+  page `reviewThreads` too. A Copilot review whose `state` is `DISMISSED`
+  should not count as having reviewed the head; decide that explicitly.
+
+  `github_api` lives in `tools/mcp/manager`, which `copilot-review-status.py`
+  reaches through a `sys.path` insert. The labeler job's checkout is
+  `sparse-checkout: tools/ci` only, so reusing it means widening that sparse
+  checkout to `tools/mcp/manager` (still default-branch code) or copying the
+  quota test into `tools/ci`. Either is a deliberate choice for the
+  implementer; a duplicate copy would also need the duplicate-code check to
+  pass.
 
   Otherwise it returns `ci: awaiting review`, plus `ci: stalled` after N hours so
   a dark Copilot can't hold it silently. N must be chosen; the other waiting
@@ -261,6 +280,27 @@ immediately shows READY, then Copilot lands minutes later, which is the #993
   or accept the 30-min cron for forks. (Fork PRs are already excluded by
   `open_pulls`, which keeps only own-repo heads, so in practice the cron path is
   enough.)
+- **`pull_request_review` is not a `_target` event, and that matters for
+  same-repo PRs too.** Unlike `pull_request_target` (Option A's trigger, which
+  always runs the base branch's workflow file), a `pull_request_review` run uses
+  the workflow definition from the PR's merge ref. A branch that edits
+  `pr-status-labels.yaml` therefore runs its own edited job, with
+  `issues: write` and `pull-requests: write`, when a review is submitted. The
+  `ref: default_branch` checkout keeps the *scripts* trusted, but not the
+  workflow file itself. The CI-file lock limits who can make such an edit, so
+  the exposure is small, yet it breaks criterion 7's "runs no PR code" as
+  literally stated. The safer shape is the standard bridge: a minimal
+  `pull_request_review` workflow with no permissions and no steps of
+  consequence, and the labeler listening for its completion through
+  `workflow_run` (which, like `pull_request_target`, runs the default branch's
+  definition). See open question 9.
+- **Scope the new events to their PR.** The `concurrency.group` and the `BRANCH`
+  env of the `Update status labels` step resolve a branch only for a `Build and
+  Test` `workflow_run`; every other event falls to the `all` group and an empty
+  `BRANCH`, i.e. it re-labels every open PR. Each new trigger (A's and B's)
+  should extend both expressions to the PR's `head.ref` (for the bridge, the
+  `workflow_run.head_branch` of the bridge run), or every review on any PR costs
+  a full sweep and queues behind the cron in the `all` group.
 - Combine with Option A's draft check.
 
 **Drafts / plan approval**: read-only with respect to the draft flag. While the
@@ -376,9 +416,10 @@ The work is done when each of these is shown by a unit case in
 
 1. A draft PR whose test run, `Test Checks` and `All Checks` all passed never
    gets `ci: ready for review` (the #993 04:11–04:25 window).
-2. A non-draft, CI-green PR with a pending Copilot review request, or no Copilot
-   review on the head SHA while Copilot was requested, gets
-   `ci: awaiting review` (the 04:25–04:28 window).
+2. A non-draft, CI-green PR with a pending Copilot review request, or with an
+   earlier Copilot review but none on the head SHA, gets `ci: awaiting review`
+   (the 04:25–04:28 window). (The case with no Copilot review at all and no
+   pending request is criterion 4's ambiguous case, held by open question 8.)
 3. A non-draft, CI-green PR with an unresolved review thread gets
    `ci: awaiting review` (the 04:28–05:33 window).
 4. A non-draft, CI-green PR whose latest Copilot review is a quota notice, or on
@@ -393,7 +434,10 @@ The work is done when each of these is shown by a unit case in
    cases still pass, so `ci: ready to launch` is unchanged.
 7. `pr-status-labels.yaml` runs on `ready_for_review`, `converted_to_draft`,
    `pull_request_review` (submitted/dismissed) and `review_requested`, still
-   checks out only the default branch, and runs no PR code. (Thread
+   checks out only the default branch, runs no PR code — including no
+   PR-branch copy of its own workflow file, which a direct `pull_request_review`
+   trigger would run (open question 9) — and labels only the PR the event
+   belongs to. (Thread
    resolve/unresolve has no Actions trigger, so that case is left to the cron;
    see Option B.) `WorkflowTest` already asserts the triggers, the
    default-branch checkout and the job permissions, so its `test_triggers` case
@@ -427,5 +471,17 @@ The work is done when each of these is shown by a unit case in
    request disappeared with no review" (see Option B's failure modes). Resolving
    this either adds a durable request-history source to `gather` (the
    issue-timeline review-request events) or fixes an explicit rule for the
-   ambiguous case; success criterion 4 is written assuming the latter is
-   answered.
+   ambiguous case. Success criterion 4's "never requested" half stays
+   provisional until this is answered.
+9. Should the review trigger be a direct `pull_request_review` on
+   `pr-status-labels.yaml`, or a `pull_request_review` bridge workflow that the
+   labeler follows through `workflow_run`? The direct trigger runs the PR
+   branch's copy of the workflow file (Option B's failure modes); the bridge
+   keeps the labeler on default-branch code at the cost of one more workflow
+   file and a few seconds of latency.
+10. Unverified assumption: Option B's "within seconds" relies on Copilot's
+    review (posted by the Copilot reviewer app, not by `GITHUB_TOKEN`) starting a
+    `pull_request_review` workflow run. GitHub suppresses workflow runs for
+    events made with `GITHUB_TOKEN`, not for app-authored ones, so it should,
+    but no workflow in `.github/workflows/` triggers on that event today. Confirm it on one PR
+    before relying on it; the cron remains the fallback either way.
