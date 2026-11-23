@@ -232,6 +232,31 @@ class StalenessHookTest(unittest.TestCase):
         self.assertIn("It does not refresh artifacts already installed", context)
         self.assertNotIn("reinstalls every module", context)
 
+    def test_summary_names_the_setting_that_selected_the_repository(self):
+        """The one-line systemMessage, not only the context, names the origin.
+
+        The documented contract is that every message names the directory and
+        the setting that chose it, so a wrong repository lookup is diagnosable
+        from the prominent verdict without expanding the context. This covers
+        the stale, fresh-space and current-branch summaries.
+        """
+        relocated = os.path.join(self.tmp, "ci-repo")
+        opts = f"-Dmaven.repo.local={relocated}"
+        self.install(relocated, stale=True)
+        _, stale_summary = self.run_hook("mvn package", MAVEN_OPTS=opts)
+        self.assertIn(f"{relocated} (maven.repo.local from MAVEN_OPTS)", stale_summary)
+
+        fresh = os.path.join(self.tmp, "fresh-repo")
+        _, fresh_summary = self.run_hook("mvn package",
+                                         MAVEN_OPTS=f"-Dmaven.repo.local={fresh}")
+        self.assertIn(f"{fresh} (maven.repo.local from MAVEN_OPTS)", fresh_summary)
+
+        current = os.path.join(self.tmp, "current-repo")
+        self.install(current, stale=False)
+        _, current_summary = self.run_hook("mvn package",
+                                           MAVEN_OPTS=f"-Dmaven.repo.local={current}")
+        self.assertIn(f"{current} (maven.repo.local from MAVEN_OPTS)", current_summary)
+
     def test_repo_local_from_maven_opts(self):
         relocated = os.path.join(self.tmp, "ci-repo")
         self.install(self.default_repository(), stale=True)

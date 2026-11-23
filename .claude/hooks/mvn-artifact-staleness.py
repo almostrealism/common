@@ -479,7 +479,7 @@ def build_report(project_dir, invocation):
                 message += " This command installs every module there."
             else:
                 message += f" To install everything: `{invocation.refresh_command()}`."
-        return message, f"Maven build detected; nothing installed yet in {root}."
+        return message, f"Maven build detected; nothing installed yet in {looked_in(location)}."
 
     if switch is None:
         lines = ["No branch-switch history available to judge staleness in "
@@ -488,16 +488,16 @@ def build_report(project_dir, invocation):
         if invocation.partial():
             lines.append("")
             lines.append(invocation.scope_statement())
-        return "\n".join(lines), f"Maven build detected; could not judge staleness in {root}."
+        return "\n".join(lines), f"Maven build detected; could not judge staleness in {looked_in(location)}."
 
     switch_time = switch[0]
     stale = [r for r in installed if r[2] < switch_time]
 
     if stale:
         report = stale_warning(invocation, stale, missing, len(rows), switch)
-        summary = (f"STALE INSTALLED ARTIFACTS in {root}: {len(stale)} of {len(rows)} predate "
-                   "the current checkout — build/test results will reflect the previous "
-                   "branch. See context.")
+        summary = (f"STALE INSTALLED ARTIFACTS in {looked_in(location)}: {len(stale)} of "
+                   f"{len(rows)} predate the current checkout — build/test results will "
+                   "reflect the previous branch. See context.")
         return report, summary
 
     message = (f"Maven artifact check in {looked_in(location)}: all {len(installed)} "
@@ -510,7 +510,8 @@ def build_report(project_dir, invocation):
         message += f" Not installed there: {names}."
     if invocation.partial():
         message += "\n\n" + invocation.scope_statement()
-    return message, f"Maven build detected; installed artifacts in {root} are current for this branch."
+    return message, (f"Maven build detected; installed artifacts in {looked_in(location)} "
+                     "are current for this branch.")
 
 
 # MCP tools that invoke Maven in their own subprocess, outside any Bash command.
