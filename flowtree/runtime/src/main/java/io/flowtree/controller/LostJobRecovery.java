@@ -78,19 +78,16 @@ public class LostJobRecovery implements ConsoleFeatures {
 	 */
 	public static final Duration DEFAULT_SCAN_INTERVAL = Duration.ofMinutes(5);
 
-	/**
-	 * Default wait a {@code SUBMITTED} job may accumulate before it is treated as
-	 * lost and escalated. Mirrors the pending-view {@code LOST} label threshold
-	 * (the operator's {@code T_lost}); a healthy job is picked up in seconds, so
-	 * thirty minutes of silence is unambiguously a loss.
-	 */
-	public static final Duration DEFAULT_LOST_THRESHOLD = Duration.ofMinutes(30);
-
 	/** The store queried for pending jobs; {@code null} disables scanning. */
 	private final JobStatsStore statsStore;
 
-	/** The wait a submitted job may accumulate before it counts as lost. */
-	private Duration lostThreshold = DEFAULT_LOST_THRESHOLD;
+	/**
+	 * The wait a submitted job may accumulate before it counts as lost. Defaults
+	 * to {@link PendingJob#DEFAULT_LOST_THRESHOLD}, the same {@code T_lost} the
+	 * pending-view {@code LOST} label uses, so the listing and this escalation
+	 * agree on when a job is lost.
+	 */
+	private Duration lostThreshold = PendingJob.DEFAULT_LOST_THRESHOLD;
 
 	/**
 	 * Receives the workstream notice (workstream id, message) for each lost job.
@@ -162,13 +159,14 @@ public class LostJobRecovery implements ConsoleFeatures {
 
 	/**
 	 * Sets the wait a submitted job may accumulate before it counts as lost. A
-	 * {@code null} or non-positive value restores {@link #DEFAULT_LOST_THRESHOLD}.
+	 * {@code null} or non-positive value restores
+	 * {@link PendingJob#DEFAULT_LOST_THRESHOLD}.
 	 *
 	 * @param lostThreshold the operator's {@code T_lost}
 	 */
 	public void setLostThreshold(Duration lostThreshold) {
 		this.lostThreshold = (lostThreshold != null && !lostThreshold.isNegative()
-				&& !lostThreshold.isZero()) ? lostThreshold : DEFAULT_LOST_THRESHOLD;
+				&& !lostThreshold.isZero()) ? lostThreshold : PendingJob.DEFAULT_LOST_THRESHOLD;
 	}
 
 	/**
