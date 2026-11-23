@@ -168,7 +168,7 @@ class StalenessHookTest(unittest.TestCase):
         self.assertIn("The ar-build-validator runs `mvn install -DskipTests` across the full "
                       "reactor", context)
         self.assertIn("reinstalls every module", context)
-        self.assertNotIn("It does not rebuild modules outside the one it runs", context)
+        self.assertNotIn("It does not refresh artifacts already installed", context)
         self.assertNotIn("mvn clean install -DskipTests`", context)
 
     def test_build_validator_default_run_on_fresh_space_says_it_installs_everything(self):
@@ -184,14 +184,28 @@ class StalenessHookTest(unittest.TestCase):
         self.install(self.default_repository(), stale=True)
         context, _ = self.run_hook(tool="mcp__ar-build-validator__start_validation",
                                    tool_input={"skip_build": True})
-        self.assertIn("It does not rebuild modules outside the one it runs", context)
+        self.assertIn("It does not refresh artifacts already installed", context)
         self.assertNotIn("reinstalls every module", context)
 
     def test_build_validator_checkstyle_only_does_not_refresh(self):
         self.install(self.default_repository(), stale=True)
         context, _ = self.run_hook(tool="mcp__ar-build-validator__start_validation",
                                    tool_input={"checks": ["checkstyle"]})
-        self.assertIn("It does not rebuild modules outside the one it runs", context)
+        self.assertIn("It does not refresh artifacts already installed", context)
+        self.assertNotIn("reinstalls every module", context)
+
+    def test_build_validator_empty_checks_does_not_refresh(self):
+        """An explicit empty checks list runs no Maven build, so it refreshes nothing.
+
+        The validator passes ``checks=[]`` through unchanged (server.py's
+        ``arguments.get("checks", DEFAULT_CHECKS)`` only defaults an omitted
+        field), and no check then requires a build, so the hook must not claim
+        a full-reactor reinstall for it.
+        """
+        self.install(self.default_repository(), stale=True)
+        context, _ = self.run_hook(tool="mcp__ar-build-validator__start_validation",
+                                   tool_input={"checks": []})
+        self.assertIn("It does not refresh artifacts already installed", context)
         self.assertNotIn("reinstalls every module", context)
 
     def test_repo_local_from_maven_opts(self):

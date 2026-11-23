@@ -178,8 +178,8 @@ class Invocation:
                         f"module in {root} — but any result gathered BEFORE that install "
                         "finished is suspect.")
             return (f"{self.out_of_band} runs Maven in its own process with this environment. "
-                    "It does not rebuild modules outside the one it runs; they resolve "
-                    f"whatever is installed in {root}.")
+                    f"It does not refresh artifacts already installed in {root}, so a stale "
+                    "one there still misleads it.")
         if self.projects is None:
             if self.installs():
                 return ("This command builds and installs every module in the reactor, "
@@ -496,7 +496,9 @@ def _validator_full_install(tool_input):
     """True when a start_validation call installs the whole reactor before its checks."""
     if tool_input.get("skip_build"):
         return False
-    checks = tool_input.get("checks") or VALIDATOR_DEFAULT_CHECKS
+    checks = tool_input.get("checks")
+    if checks is None:
+        checks = VALIDATOR_DEFAULT_CHECKS
     return any(check in VALIDATOR_BUILD_CHECKS for check in checks)
 
 
