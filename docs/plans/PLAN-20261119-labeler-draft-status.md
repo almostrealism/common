@@ -383,7 +383,11 @@ The work is done when each of these is shown by a unit case in
    `ci: awaiting review` (the 04:28–05:33 window).
 4. A non-draft, CI-green PR whose latest Copilot review is a quota notice, or on
    which Copilot was never requested, with no unresolved threads, gets
-   `ci: ready for review`.
+   `ci: ready for review`. The "never requested" half of this is **not yet
+   implementable** from the listed data and is held by open question 8: until
+   that question is decided, `requested_reviewers` cannot distinguish "never
+   requested" from "requested, then the request vanished with no review", so
+   this criterion's "never requested → READY" path is provisional.
 5. `ci: awaiting review` gains `ci: stalled` after its `LABELS` hour limit.
 6. The existing `ReadyToLaunchTest`, `LabelChangesTest` and `SummaryRowTest`
    cases still pass, so `ci: ready to launch` is unchanged.
