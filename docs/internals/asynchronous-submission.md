@@ -135,6 +135,12 @@ A `Submittable` or backend dispatch that receives `dependsOn`:
   a dependency it cannot express natively settles;
 - returns its own completion, which must settle only once the work has finished (or failed), and
   must rethrow from `waitFor()` when the work failed or did not run because `dependsOn` failed;
+- decides itself, wait by wait, what an interrupt of `waitFor()` does: a bounded step whose
+  result the wait depends on (such as a drain that records a failure) waits through the interrupt,
+  and an unbounded wait either does the same or throws. A completion whose `waitFor()` throws on an
+  interrupt overrides `waitForUninterruptibly()` to wait instead. It never returns normally while
+  the work is still pending, and a caller never checks the interrupt flag to make up for that.
+  `MetalSemaphore` throws a `HardwareException` and logs one warning;
 - applies any bound it needs itself, at the resource that runs out;
 - when it executes its work in order on a device queue, extends `SubmissionStream`, which
   supplies the submission ordinal, same-stream ordering and merging, admission versus

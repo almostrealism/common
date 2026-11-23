@@ -328,6 +328,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"memory_recall",
 			"memory_namespaces",
 			"consult",
+			"inference_health",
 			"workstream_context",
 			"memory_store",
 			"send_message",
@@ -339,12 +340,15 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"github_list_open_prs",
 			"github_create_pr",
 			"github_update_pr",
+			"github_set_pr_state",
+			"github_start_test_run",
 			"github_request_copilot_review",
 			"github_read_file",
 			"github_pr_check_status",
 			"github_pr_labels",
 			"github_list_workflow_runs",
 			"github_workflow_run_status",
+			"github_list_runners",
 			"tracker_list_projects",
 			"tracker_create_project",
 			"tracker_update_project",
@@ -429,6 +433,22 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			updatePrParams.contains("workstream_id"));
 		assertTrue("github_update_pr must declare branch in signature",
 			updatePrParams.contains("branch"));
+
+		List<String> setStateParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_set_pr_state");
+		assertTrue("github_set_pr_state must declare state in signature",
+			setStateParams.contains("state"));
+		assertTrue("github_set_pr_state must declare pr_number in signature",
+			setStateParams.contains("pr_number"));
+		assertTrue("github_set_pr_state must declare branch in signature",
+			setStateParams.contains("branch"));
+
+		List<String> startTestRunParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_start_test_run");
+		assertTrue("github_start_test_run must declare branch in signature",
+			startTestRunParams.contains("branch"));
+		assertTrue("github_start_test_run must declare workstream_id in signature",
+			startTestRunParams.contains("workstream_id"));
 
 		List<String> submitParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_submit_task");

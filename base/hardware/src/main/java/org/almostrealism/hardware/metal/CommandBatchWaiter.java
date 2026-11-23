@@ -20,16 +20,15 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * One thread's registration as a waiter on the closed {@link CommandBatch}es it waits for off
- * the executor thread of a {@link MetalCommandRunner}, in queue order, the last of them its
- * {@link #getTarget() target}: the batch of the dispatch being waited for (see
- * {@link MetalCommandRunner#complete}). The command buffer of every one of them stays
- * retained until the registration is withdrawn, which happens exactly once and from all of
- * them together.
+ * One thread's registration as a waiter on the closed {@link CommandBatch}es it waits for off a
+ * {@link MetalCommandRunner}'s executor thread, in queue order, the last of them its
+ * {@link #getTarget() target}: the batch of the dispatch being waited for. The command buffer of
+ * every one of them stays retained until the registration is withdrawn, which happens exactly once
+ * and from all of them together (see {@link CommandBatch#addWaiter()}).
  *
- * <p>Withdrawal can be requested from more than one path — the drain after the wait, the
- * queued withdrawal of an interrupted caller, or the calling thread itself once the executor
- * has been destroyed — so it is guarded to take effect only the first time.</p>
+ * <p>Withdrawal can be requested from more than one path — the drain after the wait, the queued
+ * withdrawal of an interrupted caller, or the calling thread itself once the executor has been
+ * destroyed — so it is guarded to take effect only the first time.</p>
  */
 final class CommandBatchWaiter {
 	/** The closed batches this waiter is registered on, in queue order. */
@@ -38,8 +37,8 @@ final class CommandBatchWaiter {
 	private final AtomicBoolean withdrawn = new AtomicBoolean();
 
 	/**
-	 * Registers a waiter on each of the given closed batches. Executor-thread only, like the
-	 * list of closed batches they are taken from.
+	 * Registers a waiter on each of the given closed batches. Executor-thread only, like the list
+	 * of closed batches they are taken from.
 	 *
 	 * @param batches the closed batches to wait on, in queue order, the last the target
 	 */

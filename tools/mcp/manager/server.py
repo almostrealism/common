@@ -1441,6 +1441,7 @@ from memory_tools import (  # noqa: E402
     memory_recall,
     memory_store,
     memory_namespaces,
+    inference_health,
     consult,
 )
 from workspace_tools import (  # noqa: E402
@@ -1488,6 +1489,11 @@ from github_tools import (  # noqa: E402
     github_list_workflow_runs,
     github_workflow_run_status,
     github_job_logs,
+    github_list_runners,
+)
+from github_lifecycle_tools import (  # noqa: E402
+    github_set_pr_state,
+    github_start_test_run,
 )
 from tracker_tools import (  # noqa: E402
     tracker_list_projects,
