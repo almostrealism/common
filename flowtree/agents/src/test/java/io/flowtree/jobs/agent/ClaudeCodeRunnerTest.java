@@ -438,6 +438,23 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
     }
 
     /**
+     * A clean exit (code 0) that genuinely reports {@code duration_ms: 0} keeps
+     * that self-report: the measured wall-clock is NOT substituted for a clean
+     * exit even when it is larger, because a clean exit always wrote its result
+     * line and its self-reported duration is authoritative. The fallback is for
+     * a killed session whose result line never arrived.
+     */
+    @Test(timeout = 5000)
+    public void parseClaudeNdjsonKeepsZeroDurationForACleanExit() {
+        String sample = "{\"type\":\"result\",\"subtype\":\"success\",\"num_turns\":1,"
+                + "\"duration_ms\":0}";
+        AgentRunResult result = new ClaudeCodeRunner().parseClaudeNdjson(
+                sample, 0, false, false, 5_000L, SILENT, Collections.emptySet());
+        assertEquals(0L, result.durationMs());
+        assertEquals(AgentRunResult.EndState.CLEAN, result.endState());
+    }
+
+    /**
      * A loop-detector kill is carried on the result as the
      * {@link AgentRunResult#STOP_LOOP_DETECTED} stop reason with the session
      * flagged as an error, matching {@code OpencodeOutputParser}, so the loop

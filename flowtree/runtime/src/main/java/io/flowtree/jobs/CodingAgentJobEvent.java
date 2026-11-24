@@ -653,9 +653,13 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
      * and this branch is reached before the blanket non-zero-exit and
      * hard-failure branches so that outcome is graded by what it delivered. The
      * reason names the signal cause and the primary's measured duration so the
-     * record states what happened rather than a self-reported {@code 0s}. When
-     * nothing was committed the job falls through to the ordinary
-     * nothing-delivered handling and is still {@link Status#FAILED}.</p>
+     * record states what happened rather than a self-reported {@code 0s}, and
+     * the event is marked {@link #withAutoPublishWhenDegraded(boolean) auto-publishable}
+     * so the controller opens its pull request. When a signal kill committed
+     * nothing the outcome stays {@link Status#FAILED}, but the reason still
+     * names the signal cause and measured duration rather than the generic
+     * {@code exited with code N}, so a killed launch is not mistaken for an
+     * ordinary non-zero exit.</p>
      *
      * <p>A job with {@link CodingAgentJob#isEnforceChanges()} on that exited
      * cleanly with nothing committed is reported {@link Status#DEGRADED}. It
@@ -678,8 +682,15 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
             return failed(job.getTaskId(), job.getTaskString(), error.getMessage(), error);
         }
         PrimaryPhaseOutcome primary = job.primaryOutcome();
-        if (primary.killedBySignal() && (job.hasPublishedCommit() || job.hasAgentCommitted())) {
-            return degraded(job.getTaskId(), job.getTaskString(), primary.describeSignalKill());
+        if (primary.killedBySignal()) {
+            if (job.hasPublishedCommit() || job.hasAgentCommitted()) {
+                CodingAgentJobEvent event = degraded(job.getTaskId(), job.getTaskString(),
+                        primary.describeSignalKill());
+                event.withAutoPublishWhenDegraded(true);
+                return event;
+            }
+            return failed(job.getTaskId(), job.getTaskString(),
+                    primary.describeSignalKillWithoutDelivery(), null);
         }
         if (job.isPrimaryPhaseHardFailed() && acc.getExitCode() == 0) {
             return failed(job.getTaskId(), job.getTaskString(),

@@ -11,7 +11,7 @@ tracker: [d4c94654-16d7-41a0-acf4-9019d996bfd9]
 killed after doing its work is reported as '0s, no work performed' and fails a
 job that then committed verified work"*
 
-**Release:** Common 0.78
+**Release:** the version under development in the root `pom.xml`
 
 ## Motivation
 

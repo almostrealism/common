@@ -1294,11 +1294,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);
 
-        // DEGRADED publishes only when it still delivered work to open a PR for;
-        // publish() no-ops when no PR was requested. See the method javadoc.
+        // DEGRADED publishes only for the auto-publishable, delivered outcome;
+        // see JobCompletionEvent.shouldAutoPublishDegraded().
         boolean shouldPublish = eventStatus == JobCompletionEvent.Status.SUCCESS
                 || (eventStatus == JobCompletionEvent.Status.DEGRADED
-                        && event.deliveredForPullRequest());
+                        && event.shouldAutoPublishDegraded());
         if (jobId != null && shouldPublish) {
             autoPrPublisher.publish(event);
         } else if (jobId != null) {

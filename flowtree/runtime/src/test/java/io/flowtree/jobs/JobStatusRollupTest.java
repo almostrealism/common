@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -310,6 +311,41 @@ public class JobStatusRollupTest extends TestSuiteBase {
 				msg.contains("killed by") && msg.contains("SIGTERM"));
 		assertTrue("reason must report the measured non-zero duration, got: " + msg,
 				msg.contains("1m 30s"));
+		assertTrue("a killed-but-productive DEGRADED event must be marked auto-publishable "
+						+ "so the controller opens its pull request",
+				event.isAutoPublishWhenDegraded());
+	}
+
+	/**
+	 * A primary killed by a signal (143) after measurable runtime whose work was
+	 * NOT committed by any later phase rolls up to {@code FAILED} — nothing was
+	 * delivered to grade as degraded. The reason must still name the signal cause
+	 * and measured duration rather than the generic {@code exited with code 143},
+	 * so a killed launch is distinguishable from an ordinary non-zero exit, and
+	 * the event must NOT be marked auto-publishable.
+	 */
+	@Test(timeout = 30000)
+	public void killedBySignalWithoutCommitRollsUpToFailedWithCause() throws Exception {
+		RollupTestJob job = new RollupTestJob("killed-nothing", "do the work",
+				List.of(signalKilled(143, 90_000L)),
+				List.of(false));   // nothing committed
+		job.setWorkingDirectory(workDir.toString());
+
+		job.executeSingleRun();
+		job.capturePrimaryOutcome();
+
+		JobCompletionEvent event = job.createEventNow(null);
+		assertEquals(JobCompletionEvent.Status.FAILED, event.getStatus());
+		String msg = event.getErrorMessage();
+		assertNotNull("FAILED rollup must carry a reason", msg);
+		assertTrue("reason must name the signal cause, got: " + msg,
+				msg.contains("SIGTERM"));
+		assertTrue("reason must report the measured duration, got: " + msg,
+				msg.contains("1m 30s"));
+		assertTrue("reason must state nothing was committed, got: " + msg,
+				msg.contains("nothing was committed"));
+		assertFalse("a FAILED signal kill must not be marked auto-publishable",
+				event.isAutoPublishWhenDegraded());
 	}
 
 	/**

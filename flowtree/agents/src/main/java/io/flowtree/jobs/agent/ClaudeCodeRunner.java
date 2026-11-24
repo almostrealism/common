@@ -545,10 +545,10 @@ public class ClaudeCodeRunner implements AgentRunner {
             }
         }
 
-        // A signal-killed session never emits the final result line that carries
-        // duration_ms, so the self-report stays 0 after a long run. Fall back to
-        // the lifetime the runner actually observed; a clean exit keeps its own.
-        if (durationMs == 0L && measuredWallClockMs > 0L) {
+        // Fall back to the measured lifetime only for a non-clean exit; a clean
+        // exit's self-reported duration is authoritative even when it is 0 (see
+        // the method javadoc).
+        if (exitCode != 0 && durationMs == 0L && measuredWallClockMs > 0L) {
             durationMs = measuredWallClockMs;
         }
 

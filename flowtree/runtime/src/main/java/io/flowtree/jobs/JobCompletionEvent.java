@@ -194,6 +194,18 @@ public class JobCompletionEvent {
     protected boolean costIncomplete;
 
     /**
+     * Whether a {@link Status#DEGRADED} completion should still follow the
+     * auto-pull-request path a {@link Status#SUCCESS} does. Set by the grader
+     * only for a degradation whose work is reviewable and meant to open a pull
+     * request — a signal-killed-but-productive primary — so that the controller
+     * does not also open pull requests for the other degraded reasons (an
+     * abandoned test run, an exhausted post-completion gate) that happen to
+     * carry a commit, which it discarded before killed-primary grading existed.
+     * Travels over the wire so the reconstructed controller-side event keeps it.
+     */
+    private boolean autoPublishWhenDegraded;
+
+    /**
      * Creates a new job completion event.
      *
      * @param jobId       the job identifier
@@ -258,8 +270,7 @@ public class JobCompletionEvent {
         String prompt = JsonFieldExtractor.extractString(body, "prompt");
         String sessionId = JsonFieldExtractor.extractString(body, "sessionId");
         boolean isClaudeCodeEvent = prompt != null || sessionId != null;
-        String errorMessage = status == Status.FAILED
-                ? JsonFieldExtractor.extractString(body, "errorMessage") : null;
+        String errorMessage = JsonFieldExtractor.extractString(body, "errorMessage");
 
         JobCompletionEvent event;
         if (isClaudeCodeEvent) {
@@ -270,6 +281,12 @@ public class JobCompletionEvent {
             event = status == Status.FAILED
                     ? failed(jobId, description, errorMessage, null)
                     : new JobCompletionEvent(jobId, status, description);
+        }
+        // A DEGRADED or CANCELLED event carries its reason in errorMessage too;
+        // only the FAILED factories set it from the constructor, so restore it
+        // for the other statuses rather than dropping the reason the grader wrote.
+        if (status != Status.FAILED && errorMessage != null) {
+            event.setErrorMessage(errorMessage);
         }
         event.populateFromBody(body);
         return event;
@@ -295,6 +312,7 @@ public class JobCompletionEvent {
         // The instructions already travel in errorMessage; only the location is restored.
         withRescue(JsonFieldExtractor.extractString(body, "rescueRef"), null);
         withDependentRepoPushes(DependentRepoPush.listFromJson(body));
+        withAutoPublishWhenDegraded(JsonFieldExtractor.extractBoolean(body, "autoPublishWhenDegraded"));
     }
 
     /**
@@ -509,6 +527,43 @@ public class JobCompletionEvent {
      */
     public boolean deliveredForPullRequest() {
         return commitHash != null || !getDependentRepoPushes().isEmpty();
+    }
+
+    /**
+     * Marks this {@link Status#DEGRADED} completion as one that should still
+     * follow the auto-pull-request path a {@link Status#SUCCESS} does. Set by
+     * the grader only for a signal-killed-but-productive primary; see
+     * {@link #shouldAutoPublishDegraded()}.
+     *
+     * @param autoPublishWhenDegraded {@code true} to opt this degraded event into auto-PR publication
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withAutoPublishWhenDegraded(boolean autoPublishWhenDegraded) {
+        this.autoPublishWhenDegraded = autoPublishWhenDegraded;
+        return this;
+    }
+
+    /**
+     * Returns whether the grader marked this degraded completion for auto-PR
+     * publication; see {@link #withAutoPublishWhenDegraded(boolean)}.
+     *
+     * @return {@code true} when the degraded outcome opted into auto-PR publication
+     */
+    public boolean isAutoPublishWhenDegraded() { return autoPublishWhenDegraded; }
+
+    /**
+     * Returns whether this {@link Status#DEGRADED} completion should open its
+     * pull request exactly as a {@link Status#SUCCESS} would: the grader opted
+     * it in ({@link #isAutoPublishWhenDegraded()}) and it actually delivered
+     * something a pull request can be opened for ({@link #deliveredForPullRequest()}).
+     * Other degraded reasons return {@code false} here even when a commit
+     * exists, so the controller keeps discarding them as it did before
+     * killed-primary grading.
+     *
+     * @return {@code true} when a degraded event should follow the auto-PR path
+     */
+    public boolean shouldAutoPublishDegraded() {
+        return autoPublishWhenDegraded && deliveredForPullRequest();
     }
 
     /**
@@ -901,6 +956,7 @@ public class JobCompletionEvent {
         putDoubleMap(root, "costByRunner", getCostByRunner());
         putDoubleMap(root, "costByModel", getCostByModel());
         root.put("costIncomplete", isCostIncomplete());
+        root.put("autoPublishWhenDegraded", autoPublishWhenDegraded);
 
         try {
             return EVENT_MAPPER.writeValueAsString(root);

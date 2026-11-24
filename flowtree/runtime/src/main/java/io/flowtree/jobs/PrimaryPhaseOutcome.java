@@ -125,9 +125,32 @@ class PrimaryPhaseOutcome {
      * @return the human-readable degraded-completion reason
      */
     String describeSignalKill() {
+        return signalKillSummary()
+                + ", but its work was verified and committed by the later phase(s)";
+    }
+
+    /**
+     * Builds the completion reason for a signal-killed primary that delivered
+     * nothing a later phase could commit, naming the signal cause and the
+     * measured duration so a {@code FAILED} record states what happened rather
+     * than a bare {@code exited with code 143}. Distinct from
+     * {@link #describeSignalKill()}, which claims committed work.
+     *
+     * @return the human-readable failed-completion reason
+     */
+    String describeSignalKillWithoutDelivery() {
+        return signalKillSummary() + ", and nothing was committed";
+    }
+
+    /**
+     * The shared prefix naming the signal cause and the measured duration of a
+     * killed primary, without any claim about what was delivered.
+     *
+     * @return the "killed by X after running Ys" summary
+     */
+    private String signalKillSummary() {
         String cause = killCause.isEmpty() ? "a signal" : killCause;
         return "Primary session was killed by " + cause + " after running "
-                + HarnessStatusReporter.formatDuration(durationMs)
-                + ", but its work was verified and committed by the later phase(s)";
+                + HarnessStatusReporter.formatDuration(durationMs);
     }
 }

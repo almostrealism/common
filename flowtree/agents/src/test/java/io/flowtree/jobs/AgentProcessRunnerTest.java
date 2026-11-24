@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Verifies the environment {@link AgentProcessRunner#applyRequestToProcessBuilder}
@@ -51,5 +52,26 @@ public class AgentProcessRunnerTest extends TestSuiteBase {
         AgentProcessRunner.applyRequestToProcessBuilder(overridden,
                 AgentRunRequest.builder().prompt("x").environment(env).build());
         assertEquals("1", overridden.environment().get(AgentRunRequest.ENV_FLOWTREE_JOB));
+    }
+
+    /**
+     * A launch that never starts a process — an unresolvable command whose
+     * {@link ProcessBuilder#start()} throws — reports no runtime and no output,
+     * so {@code AgentRunResult.endState()} can tell it from a session that ran
+     * and was killed. The wall-clock timer is armed only after a successful
+     * launch, so a measurable elapsed time on the failing {@code start()} call
+     * does not leak into the result as a positive duration.
+     */
+    @Test(timeout = 5000)
+    public void launchFailureReportsNoRuntime() {
+        ProcessBuilder pb = new ProcessBuilder(
+                "/nonexistent/definitely-no-such-agent-binary");
+        AgentProcessRunner.Result result =
+                AgentProcessRunner.runAttempt(pb, 1_000L, "launch-fail-test", SILENT);
+
+        assertEquals("a launch failure exits -1", -1, result.exitCode());
+        assertEquals("a process that never started has no measured runtime",
+                0L, result.wallClockMs());
+        assertTrue("a launch failure produced no output", result.output().isBlank());
     }
 }

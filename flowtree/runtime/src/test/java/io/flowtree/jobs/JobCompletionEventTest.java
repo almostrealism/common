@@ -62,6 +62,79 @@ public class JobCompletionEventTest extends TestSuiteBase {
 				nothing.deliveredForPullRequest());
 	}
 
+	/**
+	 * A DEGRADED event's reason travels in {@code errorMessage} exactly as a
+	 * FAILED event's does, and {@link JobCompletionEvent#fromStatusBody} must
+	 * restore it on the controller side. Before the fix the reconstruction read
+	 * {@code errorMessage} only for FAILED, so a signal-killed-but-productive
+	 * primary's degraded reason — the very thing this change reports — was lost.
+	 */
+	@Test(timeout = 30000)
+	public void fromStatusBodyRestoresErrorMessageForDegraded() {
+		JobCompletionEvent original = JobCompletionEvent.degraded(
+				"job-deg", "killed but productive",
+				"Primary session was killed by external SIGTERM after running 1m 30s");
+		original.withGitInfo("feature/z", "mainline-ref", List.of("A.java"), List.of(), true);
+
+		JobCompletionEvent rebuilt = JobCompletionEvent.fromStatusBody(
+				"job-deg", JobCompletionEvent.Status.DEGRADED, "killed but productive",
+				original.toJson());
+
+		assertEquals(JobCompletionEvent.Status.DEGRADED, rebuilt.getStatus());
+		assertEquals(original.getErrorMessage(), rebuilt.getErrorMessage());
+	}
+
+	/**
+	 * The auto-publish-when-degraded marker survives a {@code toJson()} ->
+	 * {@link JobCompletionEvent#fromStatusBody} round trip, so the controller's
+	 * reconstructed event knows the grader opted this degraded outcome into the
+	 * auto-pull-request path.
+	 */
+	@Test(timeout = 30000)
+	public void autoPublishWhenDegradedSurvivesRoundTrip() {
+		JobCompletionEvent original = JobCompletionEvent.degraded(
+				"job-ap", "killed but productive", "killed after 1m")
+				.withAutoPublishWhenDegraded(true);
+		original.withGitInfo("feature/z", "mainline-ref", List.of("A.java"), List.of(), true);
+
+		JobCompletionEvent rebuilt = JobCompletionEvent.fromStatusBody(
+				"job-ap", JobCompletionEvent.Status.DEGRADED, "killed but productive",
+				original.toJson());
+
+		assertTrue("the auto-publish marker must survive reconstruction",
+				rebuilt.isAutoPublishWhenDegraded());
+	}
+
+	/**
+	 * {@link JobCompletionEvent#shouldAutoPublishDegraded()} — the gate the
+	 * controller uses for a DEGRADED event — is true only when the grader marked
+	 * the outcome auto-publishable AND it delivered something to open a PR for.
+	 * An unmarked degraded event with a commit (an abandoned test run, an
+	 * exhausted post-completion gate) is NOT published, and a marked event with
+	 * no delivery is not either.
+	 */
+	@Test(timeout = 30000)
+	public void shouldAutoPublishDegradedRequiresMarkAndDelivery() {
+		JobCompletionEvent marked = new JobCompletionEvent(
+				"job-k", JobCompletionEvent.Status.DEGRADED, "killed but productive")
+				.withAutoPublishWhenDegraded(true);
+		marked.withGitInfo("feature/z", "mainline-ref", List.of("A.java"), List.of(), true);
+		assertTrue("marked and delivered must publish", marked.shouldAutoPublishDegraded());
+
+		JobCompletionEvent unmarkedWithCommit = new JobCompletionEvent(
+				"job-u", JobCompletionEvent.Status.DEGRADED, "abandoned test run");
+		unmarkedWithCommit.withGitInfo("feature/z", "mainline-ref", List.of("A.java"), List.of(), true);
+		assertFalse("an unmarked degraded reason must not publish even with a commit",
+				unmarkedWithCommit.shouldAutoPublishDegraded());
+
+		JobCompletionEvent markedNoDelivery = new JobCompletionEvent(
+				"job-n", JobCompletionEvent.Status.DEGRADED, "killed, nothing committed")
+				.withAutoPublishWhenDegraded(true);
+		markedNoDelivery.withGitInfo("feature/z", null, List.of(), List.of(), false);
+		assertFalse("a marked event with nothing delivered must not publish",
+				markedNoDelivery.shouldAutoPublishDegraded());
+	}
+
 	/** Verifies that a failed event captures the error message and exception. */
 	@Test(timeout = 30000)
 	public void failedEventCapturesError() {

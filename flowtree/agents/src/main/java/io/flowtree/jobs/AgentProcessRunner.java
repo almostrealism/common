@@ -58,13 +58,18 @@ public final class AgentProcessRunner {
      * that was killed by a signal before it could report its own duration. A
      * runner uses it as the authoritative duration when the subprocess never
      * emitted a self-reported one (see
-     * {@code ClaudeCodeRunner.parseClaudeNdjson}).</p>
+     * {@code ClaudeCodeRunner.parseClaudeNdjson}). It is {@code 0} when the
+     * process never started — the timer is armed only after a successful
+     * launch — so a launch failure (an {@code exitCode} of {@code -1} with no
+     * runtime and no output) stays distinguishable from a session that ran and
+     * was then killed, which {@code AgentRunResult.endState()} relies on.</p>
      *
      * @param exitCode             process exit code; {@code -1} on I/O failure
      * @param output               captured stdout (possibly partial after a kill)
      * @param killedForInactivity  {@code true} when the inactivity watchdog fired
      * @param killedForLooping      {@code true} when the loop detector fired on repeated actions
-     * @param wallClockMs          elapsed real time from launch to exit, in milliseconds
+     * @param wallClockMs          elapsed real time from launch to exit, in
+     *                             milliseconds; {@code 0} when the process never started
      */
     public record Result(int exitCode, String output,
                          boolean killedForInactivity, boolean killedForLooping,
@@ -192,9 +197,12 @@ public final class AgentProcessRunner {
         AtomicBoolean loopKilled = new AtomicBoolean(false);
         int exitCode = -1;
         Thread monitor = null;
-        long startNanos = System.nanoTime();
+        long startNanos = 0L;
+        boolean started = false;
         try {
             Process process = pb.start();
+            startNanos = System.nanoTime();
+            started = true;
             long pid = process.pid();
             logger.log("Process started (PID: " + pid + ")");
 
@@ -233,7 +241,7 @@ public final class AgentProcessRunner {
                 monitor.interrupt();
             }
         }
-        long wallClockMs = (System.nanoTime() - startNanos) / 1_000_000L;
+        long wallClockMs = started ? (System.nanoTime() - startNanos) / 1_000_000L : 0L;
         return new Result(exitCode, out.toString(), killed.get(), loopKilled.get(), wallClockMs);
     }
 
@@ -250,7 +258,8 @@ public final class AgentProcessRunner {
         int exitCode = -1;
         Thread monitor = null;
         String sessionName = "agent-" + sanitizeSessionName(taskId);
-        long startNanos = System.nanoTime();
+        long startNanos = 0L;
+        boolean started = false;
         try (TmuxSession session = TmuxSession.create(sessionName)) {
             Map<String, String> env = pb.environment();
             // Defensive defaults: the child sees a real tty under tmux. Many CLIs
@@ -261,6 +270,8 @@ public final class AgentProcessRunner {
             env.putIfAbsent("NO_COLOR", "1");
             session.workingDirectory(pb.directory()).environment(env);
             session.start(pb.command());
+            startNanos = System.nanoTime();
+            started = true;
             long pid = session.getPid();
             logger.log("Process started (PID: " + pid + ") in tmux session " + session.getName());
 
@@ -299,7 +310,7 @@ public final class AgentProcessRunner {
                 monitor.interrupt();
             }
         }
-        long wallClockMs = (System.nanoTime() - startNanos) / 1_000_000L;
+        long wallClockMs = started ? (System.nanoTime() - startNanos) / 1_000_000L : 0L;
         return new Result(exitCode, out.toString(), killed.get(), loopKilled.get(), wallClockMs);
     }
 
