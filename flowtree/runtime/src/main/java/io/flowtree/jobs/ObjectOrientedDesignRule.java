@@ -188,7 +188,7 @@ class ObjectOrientedDesignRule implements EnforcementRule {
                     + "; signals=" + candidate.signalNames());
             classes.add(simpleName(candidate.path));
         }
-        job.harnessStatus().notice("Object-oriented design review session over "
+        job.harnessStatus().notice("Object-oriented design review session covering "
                 + pending.size() + " class(es): " + classes);
         sessionStartMillis = System.currentTimeMillis();
         sessionStartCost = job.getTotalCost();
@@ -205,6 +205,11 @@ class ObjectOrientedDesignRule implements EnforcementRule {
      * is deliberately kept: it is the snapshot taken on first evaluation, so nothing the session
      * created or edited becomes a new candidate.
      *
+     * <p>The verdict files are deleted once read, so each session is settled only by the lines that
+     * session wrote. {@link #VERDICT_PATH} is git-ignored scratch that {@code git clean -fd} does not
+     * remove, so a verdict left by an earlier session or an earlier job on the same working tree would
+     * otherwise be reused to settle a class this session edited but wrote no new verdict for.</p>
+     *
      * @param job the job after the review session
      */
     @Override
@@ -213,7 +218,8 @@ class ObjectOrientedDesignRule implements EnforcementRule {
         savedCommitMessage = null;
         if (pending == null) return;
 
-        Set<String> verdicts = verdictLines(job, pending);
+        Set<String> files = verdictFiles(pending);
+        Set<String> verdicts = verdictLines(job, files);
         for (Candidate candidate : pending) {
             String settled = settledVerdict(verdicts, candidate.path);
             if (settled == null) continue;
@@ -224,6 +230,7 @@ class ObjectOrientedDesignRule implements EnforcementRule {
                 ledger(job).record(candidate.path, after, settled);
             }
         }
+        discardVerdictFiles(job, files);
         reportSession(job, pending);
         pending = null;
     }
@@ -469,22 +476,32 @@ class ObjectOrientedDesignRule implements EnforcementRule {
     }
 
     /**
-     * Reads every verdict line a review session may have written. A session is told to write the
-     * repository-root {@link #VERDICT_PATH}, but an agent that worked from a module directory writes
-     * {@code <module>/.flowtree/oop-review.md} instead; both are read so a verdict is never missed
-     * because of where it landed.
+     * Returns the repository-relative verdict files a review session may have written. A session is
+     * told to write the repository-root {@link #VERDICT_PATH}, but an agent that worked from a module
+     * directory writes {@code <module>/.flowtree/oop-review.md} instead; both are checked so a verdict
+     * is never missed because of where it landed.
      *
-     * @param job        the job whose working tree holds the verdict files
      * @param candidates the classes under review, whose module roots give the files to check
-     * @return the trimmed verdict lines found, unioned across every verdict file
+     * @return the repository-relative verdict files to read and, once read, discard
      */
-    private Set<String> verdictLines(CodingAgentJob job, List<Candidate> candidates) {
+    private Set<String> verdictFiles(List<Candidate> candidates) {
         Set<String> files = new LinkedHashSet<>();
         files.add(VERDICT_PATH);
         for (Candidate candidate : candidates) {
             String module = moduleRoot(candidate.path);
             if (!module.isEmpty()) files.add(module + "/" + VERDICT_PATH);
         }
+        return files;
+    }
+
+    /**
+     * Reads every verdict line in the given files, trimmed and unioned across them.
+     *
+     * @param job   the job whose working tree holds the verdict files
+     * @param files the repository-relative verdict files to read
+     * @return the trimmed verdict lines found, unioned across every verdict file
+     */
+    private Set<String> verdictLines(CodingAgentJob job, Set<String> files) {
         Set<String> lines = new LinkedHashSet<>();
         for (String relative : files) {
             Path verdicts = Path.of(job.getWorkingDirectory(), relative);
@@ -497,6 +514,24 @@ class ObjectOrientedDesignRule implements EnforcementRule {
             }
         }
         return lines;
+    }
+
+    /**
+     * Deletes the given verdict files after a session's lines have been read, so a verdict never
+     * outlives the session that wrote it. The files are git-ignored scratch; a leftover line would
+     * otherwise be read by a later session or job and settle a class it never reviewed.
+     *
+     * @param job   the job whose working tree holds the verdict files
+     * @param files the repository-relative verdict files to delete
+     */
+    private void discardVerdictFiles(CodingAgentJob job, Set<String> files) {
+        for (String relative : files) {
+            try {
+                Files.deleteIfExists(Path.of(job.getWorkingDirectory(), relative));
+            } catch (IOException e) {
+                job.warn("Object-oriented design review: failed to clear " + relative + ": " + e.getMessage());
+            }
+        }
     }
 
     /**

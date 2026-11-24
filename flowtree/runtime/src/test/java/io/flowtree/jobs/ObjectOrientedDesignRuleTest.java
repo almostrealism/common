@@ -409,6 +409,43 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 	}
 
 	/**
+	 * A verdict file is deleted once its verdicts are read, so a verdict left on the git-ignored
+	 * scratch path by one job is not reused to settle an edited class a later job's session never
+	 * wrote a verdict for.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void staleVerdictFileIsNotReusedInALaterJob() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String target = "engine/ml/src/main/java/org/example/Window.java";
+			Files.createDirectories(root.resolve(target).getParent());
+			Files.writeString(root.resolve(target), "class Window {}");
+			Path ledger = root.resolve("ledger.tsv");
+
+			StubJob firstJob = new StubJob(root, new ArrayList<>(List.of(target)));
+			FakeRule firstRule = new FakeRule(ledger).with(target, "v1", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+			firstRule.buildCorrectionPrompt(firstJob);
+			appendVerdict(root, VERDICT_FILE, target + ": CLEAN");
+			firstRule.onCorrectionAttempted(firstJob);
+			assertTrue(firstRule.getReviewed().contains(target));
+			assertFalse("the verdict file must be cleared once its verdicts are read",
+					Files.exists(root.resolve(VERDICT_FILE)));
+
+			StubJob laterJob = new StubJob(root, new ArrayList<>(List.of(target)));
+			FakeRule laterRule = new FakeRule(ledger).with(target, "v2", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+			assertTrue("an edited class must be reviewed again", laterRule.isViolated(laterJob));
+			laterRule.buildCorrectionPrompt(laterJob);
+			laterRule.onCorrectionAttempted(laterJob);
+			assertTrue("a stale verdict must not settle a class the session did not review",
+					laterRule.getReviewed().isEmpty());
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
 	 * Appends a line to a verdict file of a working tree, as a review session does.
 	 *
 	 * @param root     the working tree
