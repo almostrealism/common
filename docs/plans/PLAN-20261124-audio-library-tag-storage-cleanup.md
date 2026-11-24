@@ -14,7 +14,7 @@ per-vocabulary tag storage and cleanup API in the audio library"* — in release
 ## Motivation
 
 The audio library already stores **similarity features** with model provenance:
-each `WaveDetails` holds a `WaveFeatures` per tagging model, keyed by model
+each `WaveDetails` holds a `WaveFeatures` per feature model, keyed by model
 identifier, and the library reports and deletes feature data belonging to models
 it no longer uses (`AudioLibrary.otherModelFeatures()` →
 `WaveFeatureCleanup.remove()`). That discipline exists so that when the feature
