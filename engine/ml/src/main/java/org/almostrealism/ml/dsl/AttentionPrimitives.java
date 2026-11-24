@@ -232,15 +232,25 @@ public class AttentionPrimitives implements PdslExtension, AttentionFeatures {
 	 * plain {@code [batch, heads, seq_len, head_dim]} shape whatever traversal the previous stage
 	 * reports.</p>
 	 *
-	 * @param args one argument: the inverse frequencies, one per rotated feature pair
+	 * <p>The argument may instead be a two-dimensional {@code [seq_len, n]} angle table, whose row
+	 * {@code p} holds the angle of each of the {@code n} rotated pairs of position {@code p}. This
+	 * expresses positions that are not the row index: a two-dimensional (axial) rotary embedding,
+	 * whose angles mix a row and a column coordinate, or prefix tokens left unrotated by an
+	 * all-zero row.</p>
+	 *
+	 * @param args one argument: the inverse frequencies, one per rotated feature pair, or the
+	 *             {@code [seq_len, n]} angle table
 	 * @param ctx  the call context
 	 * @return a factory that creates the rotation for a {@code [batch, heads, seq_len, head_dim]} input
 	 * @see RotationFeatures#applyRotaryPositionEmbedding(TraversalPolicy, PackedCollection)
+	 * @see RotationFeatures#applyRotaryPositionEmbedding(TraversalPolicy, CollectionProducer)
 	 */
 	private Function<TraversalPolicy, Block> sequenceRope(List<Object> args, PdslPrimitiveContext ctx) {
 		requireArguments("sequence_rope", args, 1, "inv_freq");
-		PackedCollection invFreq = (PackedCollection) args.get(0);
-		int rotated = 2 * invFreq.getShape().getTotalSize();
+		CollectionProducer frequencies = ctx.toProducer(args.get(0), null, "sequence_rope() inv_freq");
+		TraversalPolicy frequencyShape = frequencies.getShape();
+		boolean table = frequencyShape.getDimensions() == 2;
+		int rotated = 2 * (table ? frequencyShape.length(1) : frequencyShape.getTotalSize());
 		return inputShape -> {
 			if (inputShape.getDimensions() != 4) {
 				throw new PdslParseException("sequence_rope() expects a [batch, heads, seq_len, head_dim]"
@@ -250,7 +260,14 @@ public class AttentionPrimitives implements PdslExtension, AttentionFeatures {
 				throw new PdslParseException("sequence_rope() rotates " + rotated
 						+ " features per row but the rows of " + inputShape + " hold " + inputShape.length(3));
 			}
-			return applyRotaryPositionEmbedding(shape(inputShape.extent()), invFreq);
+			if (table && frequencyShape.length(0) != inputShape.length(2)) {
+				throw new PdslParseException("sequence_rope() angle table " + frequencyShape
+						+ " does not hold one row per position of " + inputShape);
+			}
+
+			TraversalPolicy plain = shape(inputShape.extent());
+			return applyRotaryPositionEmbedding(plain,
+					table ? frequencies : rotaryAngles(plain.length(2), frequencies));
 		};
 	}
 

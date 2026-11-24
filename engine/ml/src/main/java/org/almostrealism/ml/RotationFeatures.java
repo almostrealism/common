@@ -352,12 +352,39 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	 * @return Frequency tensor of shape (seqLen, dimHead/2) ready for cos/sin computation
 	 */
 	default CollectionProducer computeRotaryFreqs(int seqLen, PackedCollection invFreq) {
-		int freqDim = invFreq.getShape().getTotalSize(); // (dimHead / 4)
+		CollectionProducer angles = rotaryAngles(seqLen, invFreq);
+		// Duplicate along axis 1: (seqLen, freqDim) -> (seqLen, 2*freqDim)
+		return concat(1, angles, angles);
+	}
+
+	/**
+	 * The rotation angle of every rotated feature pair at every position of a sequence whose
+	 * position is its index: {@code angles[p, i] = p * invFreq[i]}, the outer product of the
+	 * positions {@code [0, seqLen)} with the inverse frequencies. This is the angle table
+	 * {@link #applyRotaryPositionEmbedding(CollectionProducer, CollectionProducer)} rotates by.
+	 *
+	 * @param seqLen  the number of positions
+	 * @param invFreq the inverse frequencies, one per rotated feature pair
+	 * @return the angles, shape {@code (seqLen, invFreq.length)}
+	 */
+	default CollectionProducer rotaryAngles(int seqLen, PackedCollection invFreq) {
+		return rotaryAngles(seqLen, cp(invFreq));
+	}
+
+	/**
+	 * The rotation angle of every rotated feature pair at every position, from a producer of the
+	 * inverse frequencies (such as {@link #computeInvFreq(int, double)}): the producer form of
+	 * {@link #rotaryAngles(int, PackedCollection)}, which delegates here.
+	 *
+	 * @param seqLen  the number of positions
+	 * @param invFreq the inverse frequencies, one per rotated feature pair
+	 * @return the angles, shape {@code (seqLen, invFreq.length)}
+	 */
+	default CollectionProducer rotaryAngles(int seqLen, CollectionProducer invFreq) {
+		int freqDim = invFreq.getShape().getTotalSize();
 		// Outer product: positions (seqLen,1) x invFreq (1,freqDim) -> (seqLen, freqDim)
 		CollectionProducer positions = integers(0, seqLen).reshape(shape(seqLen, 1));
-		CollectionProducer product = matmul(positions, cp(invFreq).reshape(shape(1, freqDim)));
-		// Duplicate along axis 1: (seqLen, freqDim) -> (seqLen, 2*freqDim)
-		return concat(1, product, product);
+		return matmul(positions, invFreq.reshape(shape(1, freqDim)));
 	}
 
 	/**
@@ -400,6 +427,26 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 	}
 
 	/**
+	 * Applies rotary positional embedding to a full sequence by an explicit angle table, as a
+	 * layer: the {@link CellularLayer} form of
+	 * {@link #applyRotaryPositionEmbedding(CollectionProducer, CollectionProducer)}.
+	 *
+	 * @param inputShape shape {@code (batchSize, heads, seqLen, dimHead)}
+	 * @param angles     the angle of every rotated pair at every position, shape
+	 *                   {@code (seqLen, rotatedPairs)}
+	 * @return the layer applying the rotation
+	 * @throws IllegalArgumentException if {@code inputShape} is not 4-dimensional
+	 */
+	default CellularLayer applyRotaryPositionEmbedding(TraversalPolicy inputShape, CollectionProducer angles) {
+		if (inputShape.getDimensions() != 4) {
+			throw new IllegalArgumentException("Expected 4D input for sequence rotary embedding");
+		}
+
+		return layer("sequenceRotaryEmbedding", inputShape, inputShape,
+				input -> applyRotaryPositionEmbedding(c(input), angles), List.of());
+	}
+
+	/**
 	 * Applies rotary positional embedding to a full sequence, returning a {@link CollectionProducer}
 	 * rather than a {@link CellularLayer}.
 	 *
@@ -423,17 +470,48 @@ public interface RotationFeatures extends PairFeatures, LayerRoutingFeatures {
 			throw new IllegalArgumentException("Expected 4D input for sequence rotary embedding");
 		}
 
+		return applyRotaryPositionEmbedding(input, rotaryAngles(inputShape.length(2), invFreq));
+	}
+
+	/**
+	 * Applies rotary positional embedding to a full sequence, rotating each position by its own
+	 * row of an explicit angle table rather than by its index times a set of inverse frequencies.
+	 * Row {@code p} of {@code angles} holds the angle of every rotated feature pair of position
+	 * {@code p}: feature {@code i} is rotated with feature {@code i + n} (the split-half pairing)
+	 * by {@code angles[p, i]}, for the {@code n} columns of the table, and the features beyond
+	 * {@code 2n} pass through unchanged.
+	 *
+	 * <p>The index-position rotation of {@link #applyRotaryPositionEmbedding(CollectionProducer,
+	 * PackedCollection)} is the special case {@code angles = }{@link #rotaryAngles}, and delegates
+	 * here. An explicit table expresses the other position schemes: a two-dimensional (axial)
+	 * rotary embedding, whose angles mix a row and a column coordinate, or a sequence whose
+	 * leading prefix tokens are not rotated (an all-zero row rotates by nothing).</p>
+	 *
+	 * @param input  input of shape {@code (batchSize, heads, seqLen, dimHead)}
+	 * @param angles the angles, shape {@code (seqLen, n)} with {@code 2n <= dimHead}
+	 * @return the rotated sequence, with the same shape as {@code input}
+	 * @throws IllegalArgumentException if {@code input} is not 4-dimensional, the table does not
+	 *                                  have one row per position, or it rotates more features
+	 *                                  than a head holds
+	 */
+	default CollectionProducer applyRotaryPositionEmbedding(CollectionProducer input, CollectionProducer angles) {
+		TraversalPolicy inputShape = input.getShape();
+		if (inputShape.getDimensions() != 4) {
+			throw new IllegalArgumentException("Expected 4D input for sequence rotary embedding");
+		}
+
 		int batchSize = inputShape.length(0);
 		int heads = inputShape.length(1);
 		int seqLen = inputShape.length(2);
 		int dimHead = inputShape.length(3);
 
-		CollectionProducer freqs = computeRotaryFreqs(seqLen, invFreq);
-		int rotaryDim = freqs.getShape().length(1);
-		if (freqs.getShape().length(0) != seqLen) {
-			throw new IllegalArgumentException("computeRotaryFreqs returned "
-					+ freqs.getShape().length(0) + " time steps but expected " + seqLen);
+		if (angles.getShape().getDimensions() != 2 || angles.getShape().length(0) != seqLen) {
+			throw new IllegalArgumentException("Rotary angle table " + angles.getShape()
+					+ " does not hold one row for each of the " + seqLen + " positions");
 		}
+
+		CollectionProducer freqs = concat(1, angles, angles);
+		int rotaryDim = freqs.getShape().length(1);
 		if (rotaryDim > dimHead) {
 			throw new IllegalArgumentException("rotaryDim " + rotaryDim + " exceeds dimHead " + dimHead);
 		}
