@@ -46,6 +46,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -213,16 +214,15 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 	}
 
 	/**
-	 * The device memory currently allocated by every accelerator memory provider, in bytes.
+	 * The device memory currently allocated by every accelerator memory provider, in bytes, or
+	 * empty when the current backend cannot measure it.
 	 *
 	 * <p>Only the Metal and OpenCL providers account for their allocations, so on any other
-	 * backend the measurement cannot be taken and this fails with that reason rather than reporting
-	 * zero bytes and a misleading assertion failure.</p>
+	 * backend there is no reading. Empty is distinct from zero bytes, which would be a reading.</p>
 	 *
-	 * @return the allocated bytes
-	 * @throws AssertionError if no memory provider of the current backend accounts for its allocations
+	 * @return the allocated bytes, or empty if no memory provider of the backend accounts for its allocations
 	 */
-	private long allocatedDeviceBytes() {
+	private OptionalLong measuredDeviceBytes() {
 		long total = 0;
 		boolean accounted = false;
 		for (MemoryProvider<? extends Memory> provider :
@@ -235,10 +235,34 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 				accounted = true;
 			}
 		}
-		if (!accounted) {
-			throw new AssertionError("Device memory can only be measured on the Metal or OpenCL backend");
-		}
-		return total;
+		return accounted ? OptionalLong.of(total) : OptionalLong.empty();
+	}
+
+	/**
+	 * The device memory currently allocated by every accelerator memory provider, in bytes, for a
+	 * measurement that cannot be made without it. On a backend whose providers do not account for
+	 * their allocations this fails with that reason rather than reporting zero bytes and a
+	 * misleading assertion failure.
+	 *
+	 * @return the allocated bytes
+	 * @throws AssertionError if no memory provider of the current backend accounts for its allocations
+	 */
+	private long allocatedDeviceBytes() {
+		return measuredDeviceBytes().orElseThrow(() ->
+				new AssertionError("Device memory can only be measured on the Metal or OpenCL backend"));
+	}
+
+	/**
+	 * The device memory allocated since an earlier reading of {@link #measuredDeviceBytes()}, for a
+	 * log line: the byte count, or {@code "unmeasured"} on a backend that cannot measure it.
+	 *
+	 * @param before the earlier reading
+	 * @return the difference in bytes, or {@code "unmeasured"}
+	 */
+	private String deviceBytesSince(OptionalLong before) {
+		OptionalLong now = measuredDeviceBytes();
+		return before.isPresent() && now.isPresent()
+				? String.valueOf(now.getAsLong() - before.getAsLong()) : "unmeasured";
 	}
 
 	/**
@@ -376,8 +400,7 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 				PackedCollection waveform = cp(loop).repeat(repeats).reshape(shape(repeats * loopSamples))
 						.subset(shape(samples), 0).evaluate();
 
-				// TODO(review): this now fails the timing measurement on backends without memory accounting; read memory only where measurable
-				long before = allocatedDeviceBytes();
+				OptionalLong before = measuredDeviceBytes();
 				try (Clap2 model = new Clap2(WEIGHTS, TEXT_LENGTH)) {
 					long compileStart = System.nanoTime();
 					PackedCollection first = model.getAudioEncoder().encode(waveform);
@@ -390,7 +413,7 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 					double millis = (System.nanoTime() - start) / 1e6 / TIMED_RUNS;
 					log("seconds=" + seconds + " patches=" + (1 + Clap2Config.FREQUENCY_PATCHES
 							* Clap2Config.timePatches(samples)) + " firstCallMillis=" + firstMillis
-							+ " warmMillis=" + millis + " audioTowerBytes=" + (allocatedDeviceBytes() - before));
+							+ " warmMillis=" + millis + " audioTowerBytes=" + deviceBytesSince(before));
 					assertTrue("embedding must be finite", Double.isFinite(first.toDouble(0)));
 				} finally {
 					waveform.destroy();

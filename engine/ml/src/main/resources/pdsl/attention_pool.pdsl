@@ -45,6 +45,9 @@ import "/pdsl/sequence_attention.pdsl"
  *   reshape, permute                 one row per head                   [batch, heads, 1, head_dim]
  *   sdpa_scores, sdpa_context        the masked attention over the sequence
  *   merge_heads                      the heads joined                   [batch, 1, dim]
+ *
+ * batch must be 1: the latent is a single [dim] row and is not broadcast, so for a larger batch
+ * the reshape after cache_read has more elements than its input and the layer fails to build.
  */
 layer attention_pool(batch: int, seq_len: int, heads: int, head_dim: int,
                      latent: weight, q_projection: projection, kv_projection: projection,
@@ -75,6 +78,8 @@ layer attention_pool(batch: int, seq_len: int, heads: int, head_dim: int,
  *
  *   rmsnorm(norm weight, null, 1e-6)   each head_dim row divided by its root mean square and scaled;
  *                                      applied after the rows are laid out per head
+ *
+ * batch must be 1, as for attention_pool.
  */
 layer attention_pool_qk_rmsnorm(batch: int, seq_len: int, heads: int, head_dim: int,
                                 latent: weight, q_projection: projection, kv_projection: projection,

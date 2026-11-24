@@ -61,10 +61,11 @@ natively, there is no remaining reason to pursue it.
 
 27 clips scored against 20 tags. Every clip is one of:
 
-- **One-shots (22):** two notes of each NSynth instrument family (bass, brass, flute, guitar,
-  keyboard, mallet, organ, reed, string, vocal) from the NSynth test split (CC BY 4.0), chosen by
-  sorted file name between MIDI pitch 48 and 72; plus a kick, a snare and a closed hi-hat
-  synthesized by the script.
+- **One-shots (22):** 19 NSynth notes from the NSynth test split (CC BY 4.0), chosen by sorted
+  file name between MIDI pitch 48 and 72: two notes of different instruments for each of bass,
+  brass, guitar, keyboard, mallet, organ, reed, string and vocal, and one flute note (the script
+  takes up to two notes per family, each of a distinct source or instrument, and finds only one
+  flute note that qualifies); plus a kick, a snare and a closed hi-hat synthesized by the script.
 - **Loops (3):** a two-bar drum loop at 120 BPM (synthesized), a keyboard arpeggio and a bass line
   sequenced from NSynth notes of one instrument.
 - **Stems (2):** a string chord and a guitar line sequenced from NSynth notes. (A vocal stem is in

@@ -23,7 +23,7 @@ describe them) and the tags (caption, label) in order.
 
 The probe set is musical: one-shots, loops and stems.
 
-  one-shots   two notes of each of the ten NSynth instrument families (NSynth test split,
+  one-shots   up to two notes of each of the ten NSynth instrument families (NSynth test split,
               CC BY 4.0, read from a local parquet file of the DynamicSuperb NSynth instrument
               classification set), plus a kick, a snare and a closed hi-hat synthesized here
   loops       a drum loop synthesized here, and a keyboard arpeggio and a bass line sequenced
@@ -225,8 +225,8 @@ def instrument_of(name):
 
 
 def one_shots(notes):
-    """Two mid-range notes per family: of different sources where the family has them, otherwise
-    of different instruments."""
+    """Up to two mid-range notes per family: of different sources where the family has them,
+    otherwise of different instruments."""
     shots = []
     for family in sorted(FAMILY_TAGS):
         candidates = sorted(n for n, (label, _) in notes.items() if label == family and 48 <= pitch_of(n) <= 72)
