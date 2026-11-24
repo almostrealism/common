@@ -44,8 +44,10 @@ import java.util.Map;
  * table and masks, binds the checkpoint and compiles it.</p>
  *
  * <p>The tower attends over every patch of a clip at once, so its sequence length is a function of
- * the clip's duration (50 patches per second). One compiled tower is kept per patch count, built on
- * the first clip of that length.</p>
+ * the clip's duration (50 patches per second). The front end reads the waveform at its exact length,
+ * so one compiled tower is kept per sample count, built on the first clip of that length and
+ * released by {@link #destroy()}; a caller encoding clips of many durations should bring them to a
+ * small set of lengths first.</p>
  *
  * @see Clap2Config
  */
@@ -63,7 +65,7 @@ public class Clap2AudioEncoder implements AttentionFeatures, TemporalFeatures, D
 	/** The weights, keyed as the extraction script writes them. */
 	private final StateDictionary weights;
 
-	/** One compiled tower per number of time patches. */
+	/** One compiled tower per clip length, in samples. */
 	private final Map<Integer, CompiledModel> compiled;
 
 	/**

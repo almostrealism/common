@@ -35,6 +35,7 @@ import org.almostrealism.ml.audio.SAMEAutoEncoder;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.After;
 import org.junit.Test;
 
 import java.io.File;
@@ -46,6 +47,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * The real-weight measurements of the native CLAP2 port: parity of the log-mel front end and of
@@ -75,11 +77,14 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 	/** The token positions the text tower is compiled for (every probe caption is shorter). */
 	private static final int TEXT_LENGTH = 32;
 
-	/** Required cosine similarity of a native audio embedding with the reference. */
-	private static final double AUDIO_PARITY = 0.99;
+	/**
+	 * Required cosine similarity of a native audio embedding with the reference: the parity
+	 * {@code engine/ml/docs/audio-tagging-feasibility.md} reports for every checkpoint.
+	 */
+	private static final double AUDIO_PARITY = 0.99999;
 
 	/** Required cosine similarity of a native text embedding with the reference. */
-	private static final double TEXT_PARITY = 0.999;
+	private static final double TEXT_PARITY = 0.999999;
 
 	/**
 	 * Permitted largest difference of the native log-mel spectrogram, in decibels. Both front
@@ -123,8 +128,12 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 		}
 	}
 
+	/** The results-file listener {@link #prepare} added for the current test, or null. */
+	private Consumer<String> results;
+
 	/**
-	 * Requires the CLAP2 weights and reference dump and directs the log to a results file.
+	 * Requires the CLAP2 weights and reference dump and directs the log to a results file. The
+	 * listener stays attached only for the current test; {@link #detachResults} removes it.
 	 *
 	 * @param name the results file's name
 	 */
@@ -133,7 +142,17 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 		requireLocalResource("CLAP2 reference dump", "AR_CLAP2_REFERENCES",
 				REFERENCES != null && new File(REFERENCES, "manifest.json").isFile());
 		new File("results").mkdirs();
-		Console.root().addListener(OutputFeatures.fileOutput("results/clap2_" + name + ".out"));
+		results = OutputFeatures.fileOutput("results/clap2_" + name + ".out");
+		Console.root().addListener(results);
+	}
+
+	/** Detaches the results-file listener of the test that just ran, so later tests do not write to it. */
+	@After
+	public void detachResults() {
+		if (results != null) {
+			Console.root().removeListener(results);
+			results = null;
+		}
 	}
 
 	/**
@@ -180,26 +199,6 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 			labels.add(tag.getAsJsonObject().get("label").getAsString());
 		}
 		return labels;
-	}
-
-	// TODO(review): same cosine helper as Clap2SyntheticTest; share it (e.g. on Clap2WeightFixture).
-	/**
-	 * The cosine similarity of two vectors.
-	 *
-	 * @param a the first vector
-	 * @param b the second vector
-	 * @return the cosine similarity
-	 */
-	private double cosine(PackedCollection a, PackedCollection b) {
-		double dot = 0;
-		double na = 0;
-		double nb = 0;
-		for (int i = 0; i < a.getShape().getTotalSize(); i++) {
-			dot += a.toDouble(i) * b.toDouble(i);
-			na += a.toDouble(i) * a.toDouble(i);
-			nb += b.toDouble(i) * b.toDouble(i);
-		}
-		return dot / Math.sqrt(na * nb);
 	}
 
 	/**
@@ -305,7 +304,7 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 		double worstText = 1.0;
 		for (int t = 0; t < labels.size(); t++) {
 			PackedCollection embedding = model.getTextEncoder().encode(tokens(references, t)).clone();
-			double parity = cosine(embedding, references.require("text." + t));
+			double parity = Clap2WeightFixture.cosine(embedding, references.require("text." + t));
 			worstText = Math.min(worstText, parity);
 			tagRows[t] = cp(embedding).reshape(shape(1, width));
 			log("tag=" + labels.get(t) + " textParity=" + parity);
@@ -325,7 +324,7 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 			}
 			double millis = (System.nanoTime() - start) / 1e6 / TIMED_RUNS;
 
-			double parity = cosine(embedding, references.require("audio." + clip.name));
+			double parity = Clap2WeightFixture.cosine(embedding, references.require("audio." + clip.name));
 			worstAudio = Math.min(worstAudio, parity);
 			PackedCollection logits = model.logits(cp(embedding), cp(tagEmbeddings)).evaluate();
 			scores[c] = logits.toArray(0, labels.size());

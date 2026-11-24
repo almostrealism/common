@@ -208,7 +208,7 @@ twenty tag captions and a `manifest.json` naming the tags that describe each cli
 
 ```bash
 python3 -m venv /tmp/clap-venv
-/tmp/clap-venv/bin/pip install "open_clip_torch>=4.2.1" soundfile safetensors numpy tiktoken pyarrow protobuf
+/tmp/clap-venv/bin/pip install open_clip_torch soundfile safetensors numpy tiktoken pyarrow protobuf
 /tmp/clap-venv/bin/python engine/ml/scripts/dump_clap2_reference.py reference laion/clap2-xxs-audioxl-s1B \
     --nsynth /data/nsynth/test-00000-of-00001.parquet --out /data/clap2-xxs
 /tmp/clap-venv/bin/python engine/ml/scripts/score_clap2_reference.py /data/clap2-xxs/references

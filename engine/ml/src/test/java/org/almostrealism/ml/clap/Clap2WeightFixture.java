@@ -131,6 +131,26 @@ public class Clap2WeightFixture implements CodeFeatures {
 	}
 
 	/**
+	 * The cosine similarity of two embeddings, computed on the host; the CLAP2 tests compare
+	 * native embeddings with each other and with reference embeddings through it.
+	 *
+	 * @param a the first embedding
+	 * @param b the second embedding, of the same size
+	 * @return their cosine similarity
+	 */
+	public static double cosine(PackedCollection a, PackedCollection b) {
+		double dot = 0;
+		double na = 0;
+		double nb = 0;
+		for (int i = 0; i < a.getShape().getTotalSize(); i++) {
+			dot += a.toDouble(i) * b.toDouble(i);
+			na += a.toDouble(i) * a.toDouble(i);
+			nb += b.toDouble(i) * b.toDouble(i);
+		}
+		return dot / Math.sqrt(na * nb);
+	}
+
+	/**
 	 * A normally distributed tensor scaled by {@link #WEIGHT_SCALE}.
 	 *
 	 * @param random the random source

@@ -24,6 +24,7 @@ import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.HashMap;
@@ -72,25 +73,6 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 		assertTrue(label + " is all zero", sum > 0);
 	}
 
-	/**
-	 * The cosine similarity of two embeddings.
-	 *
-	 * @param a the first embedding
-	 * @param b the second embedding
-	 * @return their cosine similarity
-	 */
-	private double cosine(PackedCollection a, PackedCollection b) {
-		double dot = 0;
-		double na = 0;
-		double nb = 0;
-		for (int i = 0; i < a.getShape().getTotalSize(); i++) {
-			dot += a.toDouble(i) * b.toDouble(i);
-			na += a.toDouble(i) * a.toDouble(i);
-			nb += b.toDouble(i) * b.toDouble(i);
-		}
-		return dot / Math.sqrt(na * nb);
-	}
-
 	/** The audio tower embeds a clip into a finite vector that depends on the clip's content. */
 	@Test(timeout = 600000)
 	public void audioTowerProducesContentDependentEmbeddings() {
@@ -104,7 +86,7 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 		assertEquals(Clap2WeightFixture.EMBED, low.getShape().getTotalSize());
 		assertFiniteAndNonZero("low", low);
 		assertFiniteAndNonZero("high", high);
-		assertTrue("Different clips must embed differently", cosine(low, high) < 0.9999);
+		assertTrue("Different clips must embed differently", Clap2WeightFixture.cosine(low, high) < 0.9999);
 		model.destroy();
 	}
 
@@ -126,7 +108,7 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 		for (int i = 0; i < a.getShape().getTotalSize(); i++) {
 			assertEquals("embedding[" + i + "]", a.toDouble(i), b.toDouble(i), 1e-4);
 		}
-		assertTrue("Different captions must embed differently", cosine(a, c) < 0.9999);
+		assertTrue("Different captions must embed differently", Clap2WeightFixture.cosine(a, c) < 0.9999);
 
 		shorter.destroy();
 		longer.destroy();
@@ -224,7 +206,7 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 		assertEquals(1.0, similarity.toDouble(0), 1e-4);
 		for (int k = 0; k < 3; k++) {
 			PackedCollection row = captions.range(shape(width), k * width);
-			assertEquals("similarity[" + k + "]", cosine(clipEmbedding, row), similarity.toDouble(k), 1e-4);
+			assertEquals("similarity[" + k + "]", Clap2WeightFixture.cosine(clipEmbedding, row), similarity.toDouble(k), 1e-4);
 			assertEquals("logit[" + k + "]", 100.0 * similarity.toDouble(k), logits.toDouble(k), 1e-2);
 		}
 	}
@@ -305,5 +287,40 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 				assertEquals("angle[" + p + ", " + i + "]", expected, angles.toDouble(p * pairs + i), 1e-5);
 			}
 		}
+	}
+
+	/** A caption longer than the compiled length is rejected before any kernel reads it. */
+	@Test(timeout = 60000)
+	public void overlongCaptionIsRejected() {
+		StateDictionary weights = new Clap2WeightFixture().weights(13);
+		Clap2TextEncoder text = new Clap2TextEncoder(Clap2Config.of(weights, TEXT_LENGTH), weights);
+		try {
+			text.encode(new PackedCollection(shape(TEXT_LENGTH + 1)).fill(32));
+			Assert.fail("A caption of " + (TEXT_LENGTH + 1) + " tokens must be rejected");
+		} catch (IllegalArgumentException e) {
+			assertTrue(e.getMessage(), e.getMessage().contains("exceeds the compiled length " + TEXT_LENGTH));
+		} finally {
+			text.destroy();
+		}
+	}
+
+	/**
+	 * The extreme caption lengths the encoder accepts, one token and exactly the compiled length, both
+	 * embed to finite vectors, and the one-token caption embeds differently from the full one.
+	 */
+	@Test(timeout = 600000)
+	public void captionLengthBoundariesEncode() {
+		StateDictionary weights = new Clap2WeightFixture().weights(13);
+		Clap2TextEncoder text = new Clap2TextEncoder(Clap2Config.of(weights, TEXT_LENGTH), weights);
+
+		PackedCollection single = text.encode(pack(50259)).clone();
+		PackedCollection full = text.encode(pack(50259, 32, 4829, 13026, 9000, 1500, 13, 50257)).clone();
+
+		assertEquals(Clap2WeightFixture.EMBED, single.getShape().getTotalSize());
+		assertFiniteAndNonZero("single", single);
+		assertFiniteAndNonZero("full", full);
+		assertTrue("A one-token caption must embed differently from a full one",
+				Clap2WeightFixture.cosine(single, full) < 0.9999);
+		text.destroy();
 	}
 }

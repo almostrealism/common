@@ -135,7 +135,8 @@ public class Clap2TextEncoder implements AttentionFeatures, Destroyable {
 	 * Loads a caption into the tower's inputs: the token ids, padded to the compiled length with
 	 * {@link Clap2Config#PAD_TOKEN} by a kernel that reads the caption, and the prompt mask every
 	 * attention and the pool read. The padding kernel depends on the caption's length, so one is
-	 * compiled per length and reused.
+	 * compiled per length and reused. A caption always holds at least one token, since a
+	 * {@link PackedCollection} cannot have zero size, so the gather's last index is never negative.
 	 *
 	 * @param tokens the caption's token ids
 	 * @return the token id input, shape {@code [batch, maxTextLength]}
@@ -143,7 +144,6 @@ public class Clap2TextEncoder implements AttentionFeatures, Destroyable {
 	private PackedCollection loadCaption(PackedCollection tokens) {
 		int length = config.getMaxTextLength();
 		int count = tokens.getShape().getTotalSize();
-		// TODO(review): an empty caption (count 0) is not rejected; the gather then reads index -1.
 		if (count > length) {
 			throw new IllegalArgumentException("Caption of " + count
 					+ " tokens exceeds the compiled length " + length);

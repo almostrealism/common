@@ -9,7 +9,7 @@ tracker: [036acf9b-c40f-4dbc-a7ad-71e34f564ef2]
 
 **Tracker task:** `036acf9b-c40f-4dbc-a7ad-71e34f564ef2` — *Tagging-model
 feasibility, memory and licence spike for native zero-shot audio tagging*
-**Release:** Common 0.78
+**Release:** the Common release under development (the version in the root `pom.xml`)
 
 ## Motivation
 
