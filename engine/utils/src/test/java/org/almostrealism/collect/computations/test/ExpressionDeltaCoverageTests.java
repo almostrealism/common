@@ -197,4 +197,61 @@ public class ExpressionDeltaCoverageTests extends TestSuiteBase {
 				x -> greaterThanConditional(x, cp(threshold), x.multiply(2.0), x.multiply(3.0)),
 				pack(0.2, 0.7, 1.5, 2.5));
 	}
+
+	/**
+	 * Tests d/dx[(2x) mod 3] with a composite dividend: the operand of the modulo is itself a
+	 * computation, so the chain rule must carry the factor two through the sub-computation. The
+	 * analytic derivative is a diagonal of twos with zeros off the diagonal; the evaluation points
+	 * keep {@code 2x} inside one multiple-of-three block so the remainder does not step between the
+	 * perturbed samples. A multi-element input exercises the off-diagonal entries that a reference
+	 * operand would wrongly fill in.
+	 */
+	@Test(timeout = 120000)
+	public void moduloCompositeDividendDelta() {
+		assertDeltaMatchesCentralDifference("(2x) mod 3",
+				x -> x.multiply(2.0).mod(3.0),
+				pack(0.3, 0.7, 1.1, 1.3));
+	}
+
+	/**
+	 * Tests d/dx[min(2x, w)] with a composite first operand: where {@code 2x} is the smaller the
+	 * derivative is two (carried through the sub-computation) and where {@code w} is the smaller it
+	 * is zero. The off-diagonal entries must be zero; a reference operand fills them in. Evaluation
+	 * points and bounds are chosen so both branches are taken and no element sits on a tie.
+	 */
+	@Test(timeout = 120000)
+	public void minimumCompositeDelta() {
+		PackedCollection w = pack(2.0, 5.0, 0.5, 10.0);
+		assertDeltaMatchesCentralDifference("min(2x, w)",
+				x -> min(x.multiply(2.0), cp(w)),
+				pack(0.5, 1.5, 2.0, 3.0));
+	}
+
+	/**
+	 * Tests d/dx[max(2x, w)] with a composite first operand: where {@code 2x} is the larger the
+	 * derivative is two and where {@code w} is the larger it is zero. The off-diagonal entries must
+	 * be zero; a reference operand fills them in. Evaluation points and bounds are chosen so both
+	 * branches are taken and no element sits on a tie.
+	 */
+	@Test(timeout = 120000)
+	public void maximumCompositeDelta() {
+		PackedCollection w = pack(2.0, 1.0, 10.0, 1.0);
+		assertDeltaMatchesCentralDifference("max(2x, w)",
+				x -> max(x.multiply(2.0), cp(w)),
+				pack(0.5, 1.5, 2.0, 3.0));
+	}
+
+	/**
+	 * Tests d/dx[atan2(2x, w)] with a composite first operand: the derivative is
+	 * {@code 2 w / ((2x)^2 + w^2)} on the diagonal and zero off it. A reference operand would fill
+	 * the off-diagonal entries. The denominator is kept away from the origin so the derivative is
+	 * smooth, and a multi-element input exercises the off-diagonal entries.
+	 */
+	@Test(timeout = 120000)
+	public void atan2CompositeDelta() {
+		PackedCollection w = pack(2.0, 1.0, 3.0, 2.0);
+		assertDeltaMatchesCentralDifference("atan2(2x, w)",
+				x -> atan2(x.multiply(2.0), cp(w)),
+				pack(-1.0, 0.5, 1.0, 2.0));
+	}
 }

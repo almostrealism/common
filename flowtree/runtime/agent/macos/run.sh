@@ -103,8 +103,9 @@ echo "  Install:    ${AGENT_HOME}"
 echo "  Java:       $(command -v java || echo 'NOT FOUND on PATH')"
 echo "  Claude:     $(command -v claude || echo 'NOT FOUND on PATH')"
 
+# The grant sits outside JAVA_OPTS so an AGENT_JVM_OPTS override cannot drop it.
 # shellcheck disable=SC2086
-exec java ${JAVA_OPTS} \
+exec java --enable-native-access=ALL-UNNAMED ${JAVA_OPTS} \
     -cp "${AGENT_HOME}/lib/*" \
     io.flowtree.Server \
     "${AGENT_HOME}/conf/agent.properties"

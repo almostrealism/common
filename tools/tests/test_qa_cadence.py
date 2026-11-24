@@ -404,6 +404,59 @@ class MaxRoundsTests(_GateTestBase):
         self.assertEqual(("0", ""), (self.outputs["rounds"], self.outputs["live"]))
 
 
+class BranchFamilyTests(_GateTestBase):
+    """One limit over a family of branches, as the planning jobs apply it.
+
+    The planning jobs bound every ``project/`` branch in progress together,
+    whichever job created it: a task round on ``project/task-`` and a planning
+    round on ``project/plan-`` each take one place. The prefix is then the
+    family's, and the time stamp follows the job's own part of the name.
+    """
+
+    def _family(self, api, limit="5"):
+        self.addCleanup(api.close)
+        return self._decide(prefix="project/", interval="0", grace="24", api=api,
+                            extra={"MAX_ROUNDS": limit})
+
+    def _named(self, *names):
+        for name in names:
+            self._branch(name)
+        return list(names)
+
+    def test_open_prs_of_every_kind_in_the_family_count(self):
+        tasks = self._named(*["project/task-" + _full_stamp(48 + i) for i in range(3)])
+        plans = self._named("project/plan-" + _full_stamp(60),
+                            "project/plan-" + _full_stamp(70) + "-fleet-monitoring")
+        self.assertEqual(("false", "pr-open"),
+                         self._family(_PullsStub(open_heads=tasks + plans)))
+
+    def test_a_young_branch_of_either_kind_counts_before_its_pr_exists(self):
+        open_prs = self._named(*["project/task-" + _full_stamp(48 + i) for i in range(3)])
+        young = self._named("project/task-" + _full_stamp(1),
+                            "project/plan-" + _full_stamp(2) + "-fleet-monitoring")
+        self.assertEqual(("false", "awaiting-pr"),
+                         self._family(_PullsStub(open_heads=open_prs)))
+        self.assertEqual("5", self.outputs["rounds"])
+        self.assertEqual(sorted(open_prs + young), sorted(self.outputs["live"].split()))
+
+    def test_an_old_branch_without_an_open_pr_is_abandoned_and_frees_its_place(self):
+        open_prs = self._named(*["project/task-" + _full_stamp(48 + i) for i in range(4)])
+        self._named("project/task-" + _full_stamp(30), "project/plan-" + _full_stamp(200))
+        self.assertEqual(("true", "due"), self._family(_PullsStub(open_heads=open_prs)))
+        self.assertEqual("4", self.outputs["rounds"])
+
+    def test_branches_outside_the_family_take_no_place(self):
+        others = self._named("qa/docs-" + _full_stamp(1), "feature/project-" + _full_stamp(1))
+        self.assertEqual(("true", "first-run"),
+                         self._family(_PullsStub(open_heads=others), limit="1"))
+        self.assertEqual("0", self.outputs["rounds"])
+
+    def test_a_family_with_dated_branches_is_not_reported_as_undated(self):
+        self._named("project/task-" + _full_stamp(300))
+        decision = self._family(_PullsStub())
+        self.assertEqual(("true", "due"), decision)
+
+
 class BacklogConditionTests(_GateTestBase):
     """Condition 4: with CHECK_BACKLOG on, a full open-PR backlog holds the job off.
 
