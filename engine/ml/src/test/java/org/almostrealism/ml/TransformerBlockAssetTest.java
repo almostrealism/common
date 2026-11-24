@@ -120,14 +120,16 @@ public class TransformerBlockAssetTest extends TestSuiteBase implements Transfor
 				cross ? affine("cross", 1.0, 1.0) : null,
 				local ? affine("local", 1.0, 2.0) : null,
 				affine("ff", 3.0, 0.0));
-		double[] assetOut = run(asset, input, 1).toArray();
 
 		SequentialBlock sequential = new SequentialBlock(blockShape);
 		sequential.add(affine("self", 2.0, 0.0));
 		if (cross) sequential.add(affine("cross", 1.0, 1.0));
 		if (local) sequential.add(affine("local", 1.0, 2.0));
 		sequential.add(affine("ff", 3.0, 0.0));
-		double[] sequentialOut = run(sequential, input, 1).toArray();
+
+		PackedCollection[] outputs = run(input, 1, asset, sequential);
+		double[] assetOut = outputs[0].toArray();
+		double[] sequentialOut = outputs[1].toArray();
 
 		double[] in = input.toArray();
 		double maxExpectedDiff = 0.0;
@@ -201,7 +203,6 @@ public class TransformerBlockAssetTest extends TestSuiteBase implements Transfor
 				null, null,
 				feedForwardResidualSublayer(blockShape, NormalizationType.RMS,
 						w.ffnNormWeight, w.ffnNormBias, null, null, null, w.feedForward()));
-		double[] assetOut = run(asset, input, 2).toArray();
 
 		// Reference: the exact SequentialBlock the migration replaced, over the same weights.
 		SequentialBlock reference = new SequentialBlock(blockShape);
@@ -209,7 +210,10 @@ public class TransformerBlockAssetTest extends TestSuiteBase implements Transfor
 				w.preNormWeight, w.preNormBias, null, null, null, w.attention()));
 		reference.add(feedForwardResidualSublayer(blockShape, NormalizationType.RMS,
 				w.ffnNormWeight, w.ffnNormBias, null, null, null, w.feedForward()));
-		double[] referenceOut = run(reference, input, 2).toArray();
+
+		PackedCollection[] outputs = run(input, 2, asset, reference);
+		double[] assetOut = outputs[0].toArray();
+		double[] referenceOut = outputs[1].toArray();
 
 		double maxDiff = 0.0;
 		for (int i = 0; i < assetOut.length; i++) {
@@ -221,28 +225,42 @@ public class TransformerBlockAssetTest extends TestSuiteBase implements Transfor
 	}
 
 	/**
-	 * Compiles a single block into a model and runs {@code passes} forward passes over a
-	 * {@code [batch, seq_len, dim]} input, returning the last pass's output cloned into host-owned
-	 * memory before the compiled model is destroyed.
+	 * Compiles each block into its own model and runs {@code passes} forward passes of every model over
+	 * a {@code [batch, seq_len, dim]} input, returning each model's last output cloned into host-owned
+	 * memory.
 	 *
-	 * @param block  the block under test
+	 * <p>Every model is compiled and run before any is destroyed. Destroying a model destroys the weight
+	 * collections of its layers, and the blocks compared here are built over the same weight instances,
+	 * so destroying one model before the next is compiled would leave the next reading released
+	 * memory.</p>
+	 *
 	 * @param input  the model input
 	 * @param passes the number of forward passes to run (at least one)
-	 * @return the final forward-pass output
+	 * @param blocks the blocks under test
+	 * @return the final forward-pass output of each block, in the order given
 	 */
-	private PackedCollection run(Block block, PackedCollection input, int passes) {
-		Model model = new Model(shape(BATCH, SEQ_LEN, DIM));
-		model.sequential().add(block);
-		CompiledModel compiled = model.compile(false);
+	private PackedCollection[] run(PackedCollection input, int passes, Block... blocks) {
+		Model[] models = new Model[blocks.length];
+		CompiledModel[] compiled = new CompiledModel[blocks.length];
 		try {
-			PackedCollection out = null;
-			for (int pass = 0; pass < passes; pass++) {
-				out = compiled.forward(input).clone();
+			for (int b = 0; b < blocks.length; b++) {
+				models[b] = new Model(shape(BATCH, SEQ_LEN, DIM));
+				models[b].sequential().add(blocks[b]);
+				compiled[b] = models[b].compile(false);
 			}
-			return out;
+
+			PackedCollection[] outputs = new PackedCollection[blocks.length];
+			for (int b = 0; b < blocks.length; b++) {
+				for (int pass = 0; pass < passes; pass++) {
+					outputs[b] = compiled[b].forward(input).clone();
+				}
+			}
+			return outputs;
 		} finally {
-			compiled.destroy();
-			model.destroy();
+			for (int b = 0; b < blocks.length; b++) {
+				if (compiled[b] != null) compiled[b].destroy();
+				if (models[b] != null) models[b].destroy();
+			}
 		}
 	}
 
@@ -254,7 +272,7 @@ public class TransformerBlockAssetTest extends TestSuiteBase implements Transfor
 	private final class Weights {
 		/** Self-attention pre-normalization scale. */
 		private final PackedCollection preNormWeight = new PackedCollection(shape(DIM)).fill(1.0);
-		/** Self-attention pre-normalization bias ({@code null}-friendly RMS layout uses a zero bias here). */
+		/** Self-attention pre-normalization bias. */
 		private final PackedCollection preNormBias = new PackedCollection(shape(DIM)).randnFill();
 		/** Fused {@code [3*dim, dim]} self-attention QKV projection. */
 		private final PackedCollection qkv = new PackedCollection(shape(3 * DIM, DIM)).randnFill();
