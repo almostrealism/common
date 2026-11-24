@@ -265,7 +265,8 @@ public class ClaudeCodeRunner implements AgentRunner {
         }
 
         return parseClaudeNdjson(
-                rawOutput, processResult.exitCode(), processResult.killedForInactivity(), logger,
+                rawOutput, processResult.exitCode(), processResult.killedForInactivity(),
+                processResult.killedForLooping(), processResult.wallClockMs(), logger,
                 request.getRequiredMcpServers());
     }
 
@@ -446,6 +447,49 @@ public class ClaudeCodeRunner implements AgentRunner {
                                             boolean killedForInactivity,
                                             ConsoleFeatures logger,
                                             Set<String> requiredMcpServers) {
+        return parseClaudeNdjson(jsonOutput, exitCode, killedForInactivity, false, 0L,
+                logger, requiredMcpServers);
+    }
+
+    /**
+     * Parses Claude Code NDJSON output into an {@link AgentRunResult}, carrying
+     * a loop-detector kill and a measured wall-clock duration through from the
+     * {@link AgentProcessRunner.Result}.
+     *
+     * <p>The Claude CLI writes its {@code duration_ms} only on the <em>final</em>
+     * result line, which a signal-killed subprocess never emits, leaving the
+     * self-reported duration at {@code 0} after a long run. When that happens
+     * {@code measuredWallClockMs} — the real lifetime {@link AgentProcessRunner}
+     * observed — is used instead, so a killed-but-productive session reports an
+     * honest duration rather than {@code 0s}. The fallback applies only to a
+     * {@linkplain AgentRunResult#isSignalLikeExit(int) signal-like} exit: a
+     * clean exit keeps its self-reported duration, which is authoritative, and
+     * an ordinary non-zero exit that never reported one is an instant crash
+     * whose {@code 0} keeps it classified
+     * {@link AgentRunResult.EndState#COULD_NOT_START}.</p>
+     *
+     * <p>A loop kill is recorded as the {@link AgentRunResult#STOP_LOOP_DETECTED}
+     * stop reason with the session flagged as an error, matching how
+     * {@code OpencodeOutputParser} conveys the same kill, so the loop flag the
+     * {@code AgentProcessRunner} reported is not silently dropped.</p>
+     *
+     * @param jsonOutput           the captured stdout (may be NDJSON or a single object)
+     * @param exitCode             the process exit code
+     * @param killedForInactivity  whether the inactivity watchdog fired
+     * @param killedForLooping     whether the loop detector killed the session
+     * @param measuredWallClockMs  the process lifetime measured by the runner,
+     *                             used when the parsed {@code duration_ms} is absent
+     * @param logger               target for diagnostics on parse failure
+     * @param requiredMcpServers   servers the session could not do its job without
+     * @return the parsed result
+     */
+    public AgentRunResult parseClaudeNdjson(String jsonOutput,
+                                            int exitCode,
+                                            boolean killedForInactivity,
+                                            boolean killedForLooping,
+                                            long measuredWallClockMs,
+                                            ConsoleFeatures logger,
+                                            Set<String> requiredMcpServers) {
         List<String> unavailableRequired = new ArrayList<>();
         for (Map.Entry<String, String> failed : failedMcpServersAtInit(jsonOutput).entrySet()) {
             logger.warn("mcpServerFailed=" + failed.getKey() + " status=" + failed.getValue()
@@ -503,6 +547,20 @@ public class ClaudeCodeRunner implements AgentRunner {
             } catch (Exception e) {
                 logger.warn("Failed to parse output metrics: " + e.getMessage());
             }
+        }
+
+        // Fall back to the measured lifetime only for a signal-like exit; any other
+        // exit's self-report stands, so an instant crash stays a could-not-start (as
+        // does, for now, a long non-signal crash that never wrote its result line).
+        if (AgentRunResult.isSignalLikeExit(exitCode) && durationMs == 0L && measuredWallClockMs > 0L) {
+            durationMs = measuredWallClockMs;
+        }
+
+        // A loop kill overrides the parsed stop reason so the run is never
+        // reported as a success, matching OpencodeOutputParser.
+        if (killedForLooping) {
+            subtype = AgentRunResult.STOP_LOOP_DETECTED;
+            sessionIsError = true;
         }
 
         return new AgentRunResult(

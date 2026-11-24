@@ -254,6 +254,29 @@ in `.flowtree/oop-review.md` — scratch space that is never committed. The
 primary session's `commit.txt` is preserved across the review, so the commit
 message describes the job's work, not the review verdict.
 
+**One session per job, over a frozen snapshot.** The set of classes to review is
+computed when the rule is first evaluated and is never recomputed in that job.
+A class the review session creates or edits is therefore never gated again in
+the same job, so the review cannot keep re-reviewing its own output. A flagged
+class whose session wrote no verdict is offered again, but the set never grows.
+After the session, each reviewed class's ledger verdict is recorded both for the
+content that was reviewed and for the content the session left, so a later job
+does not review the review's own edit.
+
+**Scope.** The review fixes violations in the code the branch added or changed
+in the listed classes. For a violation in surrounding code the branch did not
+write (a superclass, sibling classes, callers), or one whose fix would need
+such code changed, it files a follow-up task with `tracker_create_task` instead
+of editing it, and it keeps its edits proportionate to the change under review.
+
+**Reporting.** Each session announces the classes it covers as a harness status
+notice. After each session the rule posts the review's cumulative wall-clock
+time and USD cost (read from the job's cost tracker, and marked as a lower bound
+when a session was killed before reporting its cost). When a session adds more
+than `ObjectOrientedDesignRule.MAX_GROWTH_RATIO` times the reviewed classes' own
+added lines, it also posts a warning: a signal that the review outgrew the
+change, not a hard stop.
+
 The rule is assembled only when **both** review is enabled (`reviewEnabled`, on by
 default) **and** `objectOrientedReviewEnabled` is `true` (also on by default). It
 keeps its place in the rule order: after the content-protection rules and custom

@@ -260,9 +260,9 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	/**
 	 * {@inheritDoc}
 	 *
-	 * <p>An integer quotient by a constant follows a progression when the dividend
-	 * does and the division is exact under
-	 * {@link ArithmeticIndexSequence#dividedExactly(long)}.</p>
+	 * <p>An integer quotient by a constant follows a progression when the terms of the
+	 * dividend do and their sum divides exactly under
+	 * {@link ArithmeticIndexSequence#quotientOf(List, long)}.</p>
 	 */
 	@Override
 	public ArithmeticIndexSequence arithmeticSequence(Index index, long len) {
@@ -272,62 +272,12 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (d.isEmpty() || d.getAsLong() == 0) return null;
 
 		List<ArithmeticIndexSequence> terms = getChildren().get(0).arithmeticTerms(index, len);
-		if (terms == null) return null;
-
-		ArithmeticIndexSequence numerator = Sum.combine(terms);
-		if (numerator == null && terms.size() > 1) {
-			numerator = Sum.combine(withoutBoundedRemainder(terms, Math.abs(d.getAsLong())));
-		}
-
-		return numerator == null ? null : numerator.dividedExactly(d.getAsLong());
+		return terms == null ? null : ArithmeticIndexSequence.quotientOf(terms, d.getAsLong());
 	}
 
 	/**
-	 * Drops the terms of a sum that cannot affect its quotient by the given divisor.
-	 *
-	 * <p>Writing the sum as {@code T + R}, where every term of {@code T} is a non-negative
-	 * multiple of some {@code c} that divides the divisor and {@code R} is never negative
-	 * and always below {@code c}, the quotient of the sum equals the quotient of {@code T}
-	 * alone: {@code T} lands on a multiple of {@code c}, and adding less than {@code c}
-	 * cannot carry it past the next multiple of the divisor. Both parts must be
-	 * non-negative because division truncates toward zero: {@code (-4 + 3) / 4} is
-	 * {@code 0} while {@code -4 / 4} is {@code -1}. The terms sharing a factor with the
-	 * divisor form {@code T}, and {@code c} is the largest factor of the divisor dividing
-	 * all of them.</p>
-	 *
-	 * <p>Negative terms, a remainder whose bound cannot be added without overflow, and
-	 * a divisor that shares no factor with any term all leave the terms unchanged; a
-	 * zero divisor never reaches this method.</p>
-	 *
-	 * @param terms the progressions of the sum's terms
-	 * @param divisor the positive divisor
-	 * @return the terms of {@code T}, or {@code terms} unchanged if no remainder can be dropped
-	 */
-	private static List<ArithmeticIndexSequence> withoutBoundedRemainder(List<ArithmeticIndexSequence> terms, long divisor) {
-		List<ArithmeticIndexSequence> coarse = terms.stream()
-				.filter(t -> ExpressionFeatures.gcd(t.commonFactor(), divisor) > 1).collect(Collectors.toList());
-		if (coarse.isEmpty() || coarse.size() == terms.size()) return terms;
-		if (coarse.stream().anyMatch(t -> t.min() < 0)) return terms;
-
-		long c = coarse.stream().mapToLong(t -> ExpressionFeatures.gcd(t.commonFactor(), divisor)).reduce(divisor, ExpressionFeatures::gcd);
-		long remainder = 0;
-
-		try {
-			for (ArithmeticIndexSequence t : terms) {
-				if (coarse.contains(t)) continue;
-				if (t.min() < 0) return terms;
-				remainder = Math.addExact(remainder, t.max());
-			}
-		} catch (ArithmeticException e) {
-			return terms;
-		}
-
-		return remainder < c ? coarse : terms;
-	}
-
-	/**
-	 * Applies the bounded-remainder rule of {@link #withoutBoundedRemainder} to the
-	 * terms of a sum expression: non-negative terms that are structurally multiples of a
+	 * Applies the bounded-remainder rule of {@link ArithmeticIndexSequence#quotientOf(List, long)}
+	 * to the terms of a sum expression: non-negative terms that are structurally multiples of a
 	 * factor {@code c} of the divisor form {@code T}; the remaining terms form {@code R}
 	 * and must be non-negative with known upper bounds summing to less than {@code c}.
 	 * Any term that may be negative disqualifies the rule.

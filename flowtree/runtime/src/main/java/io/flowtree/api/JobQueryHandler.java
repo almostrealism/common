@@ -146,9 +146,9 @@ public final class JobQueryHandler {
      *       {@link JobCompletionEvent#toJson()} and the documented wire shape,
      *       so a consumer never has to read its absence as {@code false}.</li>
      *   <li>The cost block is emitted when the total is positive <em>or</em>
-     *       the cost is incomplete. An inactivity-killed session can leave the
-     *       total at zero despite real, uncosted work, and the total and
-     *       breakdowns are still worth reporting as a lower bound.</li>
+     *       the cost is incomplete. A killed session (inactivity, looping, or a
+     *       signal) can leave the total at zero despite real, uncosted work, and
+     *       the total and breakdowns are still worth reporting as a lower bound.</li>
      * </ul>
      *
      * @param event         the event to serialise

@@ -51,6 +51,7 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.sequence.DefaultIndex;
 import io.almostrealism.sequence.Index;
 import io.almostrealism.sequence.IndexChild;
+import io.almostrealism.sequence.IndexSequence;
 import io.almostrealism.sequence.IndexValues;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -616,6 +617,45 @@ public class ExpressionStructureTests extends TestSuiteBase implements Expressio
 
 		IndexChild unbounded = Index.child(new DefaultIndex("free"), col);
 		Assert.assertTrue(unbounded.getIndexOptions(unbounded).isEmpty());
+	}
+
+	/**
+	 * An expression without a domain analysis of its own needs every value of an index that
+	 * any of its operands needs: the same values whether one operand already needs all of
+	 * them (a constant needs none) or only the operands together do. An operand without an
+	 * enumerable domain, or a union of {@link ScopeSettings#indexOptionLimit} values, leaves
+	 * the expression without one.
+	 */
+	@Test(timeout = 30000)
+	public void operandsCombineIndexOptionsIntoTheirUnion() {
+		DefaultIndex row = new DefaultIndex("row", 4);
+		Expression<?> residues = row.imod(2);
+		Expression<?> halves = row.divide(2);
+		Assert.assertEquals(Set.of(0, 1), distinctValues(residues.getIndexOptions(row).orElseThrow()));
+		Assert.assertEquals(Set.of(0, 2), distinctValues(halves.getIndexOptions(row).orElseThrow()));
+
+		Assert.assertEquals(Set.of(0, 1, 2, 3), distinctValues(Product.of(row, e(3)).getIndexOptions(row).orElseThrow()));
+		Assert.assertEquals(Set.of(0, 1, 2, 3), distinctValues(Product.of(row, residues).getIndexOptions(row).orElseThrow()));
+		Assert.assertEquals(Set.of(0, 1, 2), distinctValues(Product.of(residues, halves).getIndexOptions(row).orElseThrow()));
+		Assert.assertEquals(Set.of(0, 1, 2), distinctValues(Product.of(halves, e(5), residues).getIndexOptions(row).orElseThrow()));
+		Assert.assertTrue(Product.of(e(3), ref("x")).getIndexOptions(row).orElseThrow().isEmpty());
+
+		DefaultIndex free = new DefaultIndex("free");
+		Assert.assertTrue(Product.of(free, e(3)).getIndexOptions(free).isEmpty());
+
+		DefaultIndex wide = new DefaultIndex("wide", ScopeSettings.indexOptionLimit);
+		Assert.assertEquals((long) ScopeSettings.indexOptionLimit, wide.getIndexOptions(wide).orElseThrow().distinctCount());
+		Assert.assertTrue(Product.of(wide, e(3)).getIndexOptions(wide).isEmpty());
+	}
+
+	/**
+	 * Returns the distinct values of an index domain, whose positions carry no meaning.
+	 *
+	 * @param options the domain returned by {@link Expression#getIndexOptions}
+	 * @return the set of values the domain takes
+	 */
+	private static Set<Integer> distinctValues(IndexSequence options) {
+		return options.values().map(Number::intValue).collect(Collectors.toSet());
 	}
 
 	/**

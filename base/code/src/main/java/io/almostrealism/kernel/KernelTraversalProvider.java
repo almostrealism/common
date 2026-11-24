@@ -40,6 +40,7 @@ public interface KernelTraversalProvider {
 	 *
 	 * @param expression the expression whose index access order should be rewritten
 	 * @return a new expression with reordered index accesses
+	 * @see KernelStructureContext#isReorderingWithinBudget(long)
 	 */
 	Expression<?> generateReordering(Expression<?> expression);
 

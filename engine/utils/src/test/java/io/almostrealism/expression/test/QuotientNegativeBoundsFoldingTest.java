@@ -35,7 +35,7 @@ import org.junit.Test;
  * {@link Quotient#computeValue}.
  *
  * <p>Integer division in this framework truncates toward zero (the
- * javadoc of {@code withoutBoundedRemainder} states {@code -4 / 4 is -1}),
+ * javadoc of {@code ArithmeticIndexSequence.quotientOf} states {@code -4 / 4 is -1}),
  * so the bounds-folding branch of {@code Quotient.create} must collapse a
  * bounded numerator with truncating division rather than
  * {@code floor(bound / divisor)}. For a negative numerator {@code floor}

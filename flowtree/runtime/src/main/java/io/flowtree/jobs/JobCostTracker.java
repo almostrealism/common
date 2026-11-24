@@ -46,10 +46,11 @@ final class JobCostTracker {
 
     /**
      * Whether the accumulated cost is a lower bound rather than the true total.
-     * Set once any agent session is killed for inactivity before it emits its
-     * terminal cost JSON: Claude reports {@code 0.0} in that case and opencode
-     * recovers only the steps written before the kill, so the lost cost cannot
-     * be accounted for. Sticky for the lifetime of the job.
+     * Set once any agent session is killed — for inactivity, for looping, or by
+     * a signal — before it emits its terminal cost JSON: Claude reports
+     * {@code 0.0} in that case and opencode recovers only the steps written
+     * before the kill, so the lost cost cannot be accounted for. Sticky for the
+     * lifetime of the job.
      */
     private boolean incomplete;
 
@@ -81,8 +82,19 @@ final class JobCostTracker {
     }
 
     /**
+     * Returns the cumulative cost so far across every model, so a caller can
+     * measure what a span of sessions cost by reading it before and after.
+     *
+     * @return the job-wide cost in USD, or {@code 0.0} before anything is billed
+     */
+    double total() {
+        return costByModel.values().stream().mapToDouble(Double::doubleValue).sum();
+    }
+
+    /**
      * Marks the accumulated cost as incomplete (a lower bound), because an
-     * agent session was killed for inactivity before reporting its cost.
+     * agent session was killed — for inactivity, looping, or by a signal —
+     * before reporting its cost.
      */
     void markIncomplete() {
         incomplete = true;
@@ -92,7 +104,7 @@ final class JobCostTracker {
      * Returns whether the accumulated cost is a lower bound rather than the
      * true total.
      *
-     * @return {@code true} when an inactivity kill lost cost data
+     * @return {@code true} when a kill (inactivity, looping, or signal) lost cost data
      */
     boolean isIncomplete() {
         return incomplete;

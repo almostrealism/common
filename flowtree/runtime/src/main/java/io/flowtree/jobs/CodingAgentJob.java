@@ -224,15 +224,8 @@ public class CodingAgentJob extends GitManagedJob {
     /** {@code true} when the pass cap was exhausted without a zero exit. */
     private boolean postCompletionCapHit;
 
-    /**
-     * Set to {@code true} when the primary phase ended in a hard failure:
-     * non-zero exit, 0s wall-clock duration, not killed for inactivity.
-     * Captured in {@link #doWork()} after the first {@link #executeSingleRun()}
-     * and never reset, so it survives any subsequent retry that absorbs a new,
-     * successful result into the accumulator. The rollup in
-     * {@link #createEvent(Exception)} treats this as terminal.
-     */
-    private boolean primaryPhaseHardFailed;
+    /** How the primary phase ended; captured in {@link #doWork()} and read by the rollup to grade the job by delivery. */
+    private final PrimaryPhaseOutcome primaryOutcome = new PrimaryPhaseOutcome();
 
     /** Additional enforcement rules from {@link #addEnforcementRule}; built-ins are created by {@link EnforcementRunner}. */
     private final List<EnforcementRule> customEnforcementRules = new ArrayList<>();
@@ -743,18 +736,17 @@ public class CodingAgentJob extends GitManagedJob {
     /** Marks that the post-completion command rule hit its retry cap. */
     void setPostCompletionCapHit(boolean postCompletionCapHit) { this.postCompletionCapHit = postCompletionCapHit; }
 
-    /**
-     * Records whether the primary phase ended in a hard failure (non-zero
-     * exit, 0s duration, not killed for inactivity). Package-private; set by
-     * {@link #doWork()} and by tests that drive {@link #createEvent(Exception)}
-     * directly.
-     */
-    void setPrimaryPhaseHardFailed(boolean primaryPhaseHardFailed) {
-        this.primaryPhaseHardFailed = primaryPhaseHardFailed;
-    }
+    /** Records the hard-failure flag directly, for tests that drive {@link #createEvent(Exception)} without a captured outcome. */
+    void setPrimaryPhaseHardFailed(boolean primaryPhaseHardFailed) { primaryOutcome.setHardFailure(primaryPhaseHardFailed); }
 
     /** Returns whether the primary phase ended in a hard failure. */
-    public boolean isPrimaryPhaseHardFailed() { return primaryPhaseHardFailed; }
+    public boolean isPrimaryPhaseHardFailed() { return primaryOutcome.isHardFailure(); }
+
+    /** Returns this job's primary-phase outcome; read by {@link CodingAgentJobEvent#statusFor} to grade by delivery. */
+    PrimaryPhaseOutcome primaryOutcome() { return primaryOutcome; }
+
+    /** Captures the primary phase's outcome from the accumulator before a later phase can overwrite it. */
+    void capturePrimaryOutcome() { primaryOutcome.capture(accumulator); }
 
     /** Returns whether the post-completion command hit its retry cap. Package-private for event population. */
     boolean isPostCompletionCapHit() { return postCompletionCapHit; }
@@ -1027,12 +1019,12 @@ public class CodingAgentJob extends GitManagedJob {
 
         // Capture the primary phase outcome before any enforce_changes retry
         // overwrites exitCode with a successful result.
-        primaryPhaseHardFailed = isHardPrimaryFailure();
+        capturePrimaryOutcome();
 
         // Falsification runs after primary and before enforcement so review/dedup
         // see the redone tree; skipped when primary hard-failed (nothing sound to falsify).
         falsification.reset();
-        if (falsificationEnabled && !primaryPhaseHardFailed) {
+        if (falsificationEnabled && !primaryOutcome.isHardFailure()) {
             runFalsificationPhase();
         }
 
@@ -1094,6 +1086,12 @@ public class CodingAgentJob extends GitManagedJob {
     double getCostForModel(String modelKey) {
         return costTracker.costForModel(modelKey);
     }
+
+    /** Returns the cumulative cost across every model; used by {@link ObjectOrientedDesignRule} to cost its sessions. */
+    double getTotalCost() { return costTracker.total(); }
+
+    /** Returns whether a session's cost was lost to an inactivity kill, making {@link #getTotalCost()} a lower bound. */
+    boolean isCostIncomplete() { return costTracker.isIncomplete(); }
 
     /**
      * Runs a correction session via {@link CorrectionSession}.
@@ -1265,6 +1263,7 @@ public class CodingAgentJob extends GitManagedJob {
         if (finalResult != null) {
             absorbResult(finalResult);
             costTracker.record(runner.getName(), modelKey, finalResult.costUsd());
+            if (finalResult.lostCostBeforeReporting()) costTracker.markIncomplete();
         }
         harnessStatus().phaseExit(currentPhase, finalResult);
         log("Output saved to: " + outputFile);
@@ -1388,17 +1387,14 @@ public class CodingAgentJob extends GitManagedJob {
     }
 
     /**
-     * Returns whether the most recent {@link #executeSingleRun()} call ended
-     * in a hard failure: non-zero exit, 0s wall-clock duration, not killed by
-     * the inactivity watchdog. This is the "failed (exit N) in 0s" signature
-     * the per-phase {@code harness_status} messages report.
-     *
-     * <p>Called by {@link #doWork()} to capture the primary phase outcome
-     * before any enforcement retry can absorb a new, successful result.</p>
+     * Returns whether the most recent {@link #executeSingleRun()} call produced
+     * no usable work — the final attempt's
+     * {@link io.flowtree.jobs.agent.AgentRunResult.EndState#COULD_NOT_START}
+     * classification. A session that ran and was then killed by a signal is not
+     * a hard failure; it is graded by what it delivered.
      */
     boolean isHardPrimaryFailure() {
-        return accumulator.getExitCode() != 0 && accumulator.getDurationMs() == 0L
-                && !restartGovernor.wasKilledForInactivity();
+        return accumulator.getLastEndState() == AgentRunResult.EndState.COULD_NOT_START;
     }
 
     /**

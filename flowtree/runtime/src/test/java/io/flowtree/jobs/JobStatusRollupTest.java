@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -153,6 +154,20 @@ public class JobStatusRollupTest extends TestSuiteBase {
 				Collections.emptyMap());
 	}
 
+	/**
+	 * Signal-killed result: a non-zero exit above 128 with measurable runtime
+	 * and partial output — a session that ran and was killed, not one that
+	 * could not start.
+	 */
+	private static AgentRunResult signalKilled(int exitCode, long durationMs) {
+		return new AgentRunResult(
+				exitCode, false, "partial work output", "sess-killed",
+				durationMs, 0L, 2, 0.0,
+				"error", true,
+				Collections.emptyList(),
+				Collections.emptyMap());
+	}
+
 	// ── The reported bug ──────────────────────────────────────────────────
 
 	/**
@@ -268,12 +283,105 @@ public class JobStatusRollupTest extends TestSuiteBase {
 		assertEquals(JobCompletionEvent.Status.FAILED, event.getStatus());
 	}
 
+	// ── Killed-but-productive primary ─────────────────────────────────────
+
+	/**
+	 * A primary killed by a signal (143) after measurable runtime, whose work
+	 * was then committed, must roll up to {@code DEGRADED} — not {@code FAILED}
+	 * and not {@code SUCCESS}. The reason must name the kill cause and the
+	 * measured (non-zero) duration, the honest record the self-reported
+	 * {@code 0s} could not give. This is the reported incident: a 44-minute
+	 * session killed by SIGTERM whose committed work was being discarded.
+	 */
+	@Test(timeout = 30000)
+	public void killedBySignalWithCommitRollsUpToDegraded() throws Exception {
+		RollupTestJob job = new RollupTestJob("killed-productive", "do the work",
+				List.of(signalKilled(143, 90_000L)),
+				List.of(true));   // the later phase committed the primary's work
+		job.setWorkingDirectory(workDir.toString());
+
+		job.executeSingleRun();
+		job.capturePrimaryOutcome();
+
+		JobCompletionEvent event = job.createEventNow(null);
+		assertEquals(JobCompletionEvent.Status.DEGRADED, event.getStatus());
+		String msg = event.getErrorMessage();
+		assertNotNull("DEGRADED rollup must carry a reason", msg);
+		assertTrue("reason must name the kill cause, got: " + msg,
+				msg.contains("killed by") && msg.contains("SIGTERM"));
+		assertTrue("reason must report the measured non-zero duration, got: " + msg,
+				msg.contains("1m 30s"));
+		assertTrue("a killed-but-productive DEGRADED event must be marked auto-publishable "
+						+ "so the controller opens its pull request",
+				event.isAutoPublishWhenDegraded());
+	}
+
+	/**
+	 * A primary killed by a signal (143) after measurable runtime whose work was
+	 * NOT committed by any later phase rolls up to {@code FAILED} — nothing was
+	 * delivered to grade as degraded. The reason must still name the signal cause
+	 * and measured duration rather than the generic {@code exited with code 143},
+	 * so a killed launch is distinguishable from an ordinary non-zero exit, and
+	 * the event must NOT be marked auto-publishable.
+	 */
+	@Test(timeout = 30000)
+	public void killedBySignalWithoutCommitRollsUpToFailedWithCause() throws Exception {
+		RollupTestJob job = new RollupTestJob("killed-nothing", "do the work",
+				List.of(signalKilled(143, 90_000L)),
+				List.of(false));   // nothing committed
+		job.setWorkingDirectory(workDir.toString());
+
+		job.executeSingleRun();
+		job.capturePrimaryOutcome();
+
+		JobCompletionEvent event = job.createEventNow(null);
+		assertEquals(JobCompletionEvent.Status.FAILED, event.getStatus());
+		String msg = event.getErrorMessage();
+		assertNotNull("FAILED rollup must carry a reason", msg);
+		assertTrue("reason must name the signal cause, got: " + msg,
+				msg.contains("SIGTERM"));
+		assertTrue("reason must report the measured duration, got: " + msg,
+				msg.contains("1m 30s"));
+		assertTrue("reason must state nothing was committed, got: " + msg,
+				msg.contains("nothing was committed"));
+		assertFalse("a FAILED signal kill must not be marked auto-publishable",
+				event.isAutoPublishWhenDegraded());
+	}
+
+	/**
+	 * A launch failure — {@link AgentRunResult#launchFailed} (exit −1, no
+	 * runtime, no output) — with nothing committed is the genuine
+	 * nothing-delivered case and must roll up to {@code FAILED}. It is a hard
+	 * failure (the could-not-start classification), distinct from a signal kill
+	 * that ran and left work. The no-work-performed wording is pinned by
+	 * {@link #hardPrimaryFailureThenRecoveryRetryRollsUpToFailed()}.
+	 */
+	@Test(timeout = 30000)
+	public void couldNotStartRollsUpToFailed() throws Exception {
+		RollupTestJob job = new RollupTestJob("could-not-start", "do the work",
+				List.of(AgentRunResult.launchFailed("binary not found")),
+				List.of(false));
+		job.setWorkingDirectory(workDir.toString());
+
+		job.executeSingleRun();
+		assertTrue("launch failure must be a hard primary failure",
+				job.isHardPrimaryFailure());
+		job.capturePrimaryOutcome();
+
+		JobCompletionEvent event = job.createEventNow(null);
+		assertEquals(JobCompletionEvent.Status.FAILED, event.getStatus());
+	}
+
 	// ── isHardPrimaryFailure() predicate ──────────────────────────────────
 
 	/**
-	 * The hard-failure predicate must reject three near-miss cases that
-	 * should NOT be treated as terminal at the rollup level: a zero exit,
-	 * any non-zero duration, and an inactivity-killed process.
+	 * The hard-failure predicate must reject the near-miss cases that should
+	 * NOT be treated as terminal at the rollup level: a zero exit, any non-zero
+	 * duration, and an inactivity-killed process. It must also reject a signal
+	 * kill (143) with measurable runtime and a tmux-path {@code -1} with
+	 * measurable runtime — both ran and may have left work, so they are graded
+	 * by delivery rather than flagged could-not-start — while still accepting
+	 * the genuine hard failure (non-zero exit, zero duration, not killed).
 	 */
 	@Test(timeout = 30000)
 	public void hardFailurePredicateRejectsNearMisses() throws Exception {
@@ -288,21 +396,41 @@ public class JobStatusRollupTest extends TestSuiteBase {
 		assertHardFailurePredicate(false, 137, 0L, true);
 		// The actual hard failure: non-zero exit, zero duration, not killed.
 		assertHardFailurePredicate(true, 1, 0L, false);
+		assertHardFailurePredicate(false, 143, 5000L, false);
+		assertHardFailurePredicate(false, -1, 5000L, false);
 	}
 
-	/** Drives one scenario through the predicate and asserts the result. */
-	private void assertHardFailurePredicate(boolean expected, int exitCode,
-			long durationMs, boolean killedForInactivity) {
+	/**
+	 * A primary that started, printed an error line, and exited 1 without ever
+	 * reporting a duration is an instant crash and stays a hard failure; the
+	 * printed line is not evidence of work. A signal-like exit with the same
+	 * output is a kill instead, and is not a hard failure.
+	 */
+	@Test(timeout = 30000)
+	public void instantCrashWithErrorLineIsStillHardFailure() throws Exception {
+		assertTrue(runPredicate(1, 0L, false, "Error: invalid API key"));
+		assertFalse(runPredicate(143, 0L, false, "Error: invalid API key"));
+	}
+
+	/** Runs one primary with the given end conditions and returns the hard-failure predicate. */
+	private boolean runPredicate(int exitCode, long durationMs,
+			boolean killedForInactivity, String output) {
 		RollupTestJob job = new RollupTestJob("predicate", "x",
 				List.of(new AgentRunResult(
-						exitCode, killedForInactivity, "", null,
+						exitCode, killedForInactivity, output, null,
 						durationMs, 0L, 0, 0.0,
 						"x", exitCode != 0,
 						Collections.emptyList(),
 						Collections.emptyMap())),
 				List.of(false));
 		job.executeSingleRun();
-		boolean actual = job.isHardPrimaryFailure();
+		return job.isHardPrimaryFailure();
+	}
+
+	/** Drives one scenario through the predicate and asserts the result. */
+	private void assertHardFailurePredicate(boolean expected, int exitCode,
+			long durationMs, boolean killedForInactivity) {
+		boolean actual = runPredicate(exitCode, durationMs, killedForInactivity, "");
 		assertEquals("predicate for exit=" + exitCode
 						+ " durationMs=" + durationMs + " killed=" + killedForInactivity,
 				expected, actual);

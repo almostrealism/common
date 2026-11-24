@@ -144,19 +144,25 @@ the definition on several evaluations.
 
 ## Pairing axes by size
 
-Two operations in the dense layer relied on an implicit broadcast that pairs operands by their
-traversal count (`TraversalAxisAlignment.align`) and so misread inputs whose sizes happen to
-coincide:
+Binary element-wise operations reconcile operands of different sizes by trailing-axis
+broadcasting (`TraversalAxisAlignment.align`): comparing the two shapes axis by axis from the
+trailing end, each length must be equal or 1. A smaller operand that is not compatible this way
+may still broadcast from the leading end (a `(rows)` operand applied per row of a
+`(rows, cols)` one); a pair compatible from neither end is rejected when the computation is
+created. An earlier mechanism instead paired operands by their
+traversal count, which silently misread inputs whose sizes happened to coincide:
 
 - `matmul`'s multiply-and-sum lowering multiplied the `(m, n)` matrix with the `(rows, m, n)`
-  repeated vectors. When `rows == m`, the counts match and each matrix row was paired with one
+  repeated vectors. When `rows == m`, the counts matched and each matrix row was paired with one
   vector, giving `y[r][i] = W[r] · x_r` for every `i`. The model below has 64 positions and a 64-wide
   embedding, so its attention output projection (64 by 64) and its feed-forward down projection
   (64 by 128) computed one value per position, copied across the channels.
 - The dense bias `(nodes)` was added to the `(rows, nodes)` product the same way, adding bias entry
   `r` to every entry of row `r` when `rows == nodes`.
 
-Both now repeat the smaller operand explicitly. `MatmulPathTest.batchAsLongAsMatrixRows`,
+Both now repeat the smaller operand explicitly, so the broadcast is stated in the source rather
+than inferred from a size coincidence (which trailing-axis broadcasting would now reject).
+`MatmulPathTest.batchAsLongAsMatrixRows`,
 `DenseVectorJacobianProductTest.denseWithBiasRowsMatchingNodes` and
 `CausalLanguageModelTest.outputsDoNotDependOnContextLength` (a causal model's rows must not depend on
 the context length, compared at 64 and 63 positions) cover them. The finite-difference check

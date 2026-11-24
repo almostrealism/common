@@ -157,6 +157,25 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 	}
 
 	/**
+	 * Pins that {@code greaterThanConditional} produces a per-element result when its comparison
+	 * operands have different per-item sizes. The left operand is a (3) vector and the right a
+	 * scalar threshold, so the two are broadcast together onto the (3) output and each element is
+	 * compared independently, rather than the result collapsing to a single element.
+	 */
+	@Test(timeout = 30000)
+	public void greaterThanConditionalBroadcastsPerElement() {
+		try (PackedCollection a = pack(7.0, 5.0, 2.0);
+			 PackedCollection t = pack(10.0, 11.0, 12.0);
+			 PackedCollection f = pack(20.0, 21.0, 22.0);
+			 PackedCollection result = greaterThanConditional(cp(a), c(5.0), cp(t), cp(f)).get().evaluate()) {
+			Assert.assertEquals(3, result.getShape().getTotalSize());
+			Assert.assertEquals("7 > 5 selects the true value", 10.0, result.toDouble(0), 0.001);
+			Assert.assertEquals("5 > 5 selects the false value", 21.0, result.toDouble(1), 0.001);
+			Assert.assertEquals("2 > 5 selects the false value", 22.0, result.toDouble(2), 0.001);
+		}
+	}
+
+	/**
 	 * Pins the shared conditional-selection scaffold for less-than: when the strict
 	 * relation holds the true value is selected, and otherwise the false value is. The
 	 * operator direction is supplied by {@link LessThanCollection}; the surrounding
@@ -380,13 +399,14 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that a comparison operand narrower than the output item is rejected even when its
-	 * width divides the output item evenly, because divisibility alone does not determine a unique
-	 * broadcast. A two-value-per-row condition over a six-element branch could map its values to an
-	 * outer axis (channels 0&ndash;2 then 3&ndash;5) or to an inner axis, and the projection cannot
-	 * tell those apart from the operand's total width. Only a single per-row value is an unambiguous
-	 * broadcast; anything wider is refused with a fail-loud {@link IllegalArgumentException} rather
-	 * than guessing an axis mapping.
+	 * Verifies that a comparison operand wider than a per-row scalar but narrower than the output
+	 * item is rejected when the computation is created, even when its width divides the output item
+	 * evenly, because divisibility alone does not determine a unique broadcast. A two-value-per-row
+	 * condition against a six-element branch is not trailing-axis broadcast compatible (2 is neither
+	 * 6 nor 1), so it is refused with a fail-loud {@link IllegalArgumentException} at creation rather
+	 * than being tiled or read modulo its own length. A single per-row value (a scalar) remains the
+	 * only unambiguous broadcast, as {@link #greaterThanBroadcastsPerRowConditionOverVectorBranches}
+	 * shows.
 	 */
 	@Test(timeout = 30000)
 	public void greaterThanRejectsSubItemConditionWiderThanScalar() {
@@ -420,11 +440,11 @@ public class InequalityComparisonComputationTests extends TestSuiteBase {
 	}
 
 	/**
-	 * Verifies that a comparison operand narrower than the output item is rejected with a fail-loud
-	 * {@link IllegalArgumentException} rather than silently repeating and dropping condition values.
-	 * The condition is two values per row while the branches are a three-element vector per row;
-	 * two is neither a single per-row value nor a divisor of three, so there is no unambiguous
-	 * broadcast and the projection refuses the shape mismatch.
+	 * Verifies that a comparison operand narrower than the output item is rejected when the
+	 * computation is created rather than silently repeating and dropping condition values. The
+	 * condition is two values per row while the branches are a three-element vector per row; two is
+	 * neither three nor one, so the pair is not trailing-axis broadcast compatible and the alignment
+	 * refuses the shape mismatch.
 	 */
 	@Test(timeout = 30000)
 	public void narrowerConditionNotDividingOutputItemIsRejected() {
