@@ -376,6 +376,7 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 				PackedCollection waveform = cp(loop).repeat(repeats).reshape(shape(repeats * loopSamples))
 						.subset(shape(samples), 0).evaluate();
 
+				// TODO(review): this now fails the timing measurement on backends without memory accounting; read memory only where measurable
 				long before = allocatedDeviceBytes();
 				try (Clap2 model = new Clap2(WEIGHTS, TEXT_LENGTH)) {
 					long compileStart = System.nanoTime();
