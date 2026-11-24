@@ -18,7 +18,7 @@
 # variables: the build fails with "variable expansion is not supported for
 # --from". A FROM line does expand them, so the stage carries the variable and
 # the COPY below refers to the stage by name.
-ARG JDK_MAJOR=25
+ARG JDK_MAJOR=17
 FROM maven:3-eclipse-temurin-${JDK_MAJOR} AS maven
 
 FROM eclipse-temurin:${JDK_MAJOR}-jdk-jammy

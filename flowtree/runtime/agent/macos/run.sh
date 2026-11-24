@@ -51,7 +51,7 @@ set +a
 # Homebrew, mvn, java) must be put on PATH here. The default covers a
 # Homebrew install on Apple Silicon plus a per-user npm prefix; an operator
 # whose tools live elsewhere sets FLOWTREE_AGENT_PATH in the env file.
-DEFAULT_TOOL_PATH="/opt/homebrew/bin:/opt/homebrew/opt/openjdk@25/bin:/usr/local/bin:${HOME}/.npm-global/bin"
+DEFAULT_TOOL_PATH="/opt/homebrew/bin:/opt/homebrew/opt/openjdk@17/bin:/usr/local/bin:${HOME}/.npm-global/bin"
 export PATH="${FLOWTREE_AGENT_PATH:-${DEFAULT_TOOL_PATH}}:${PATH}"
 
 # ── Defaults ────────────────────────────────────────────────────────

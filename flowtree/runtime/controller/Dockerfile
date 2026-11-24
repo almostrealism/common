@@ -2,7 +2,7 @@
 # image, mirroring the ARG JDK_MAJOR in the CI runner image (tools/ci/docker) and
 # the agent image, so a JDK upgrade is this one build arg plus a rebuild. It is
 # declared before FROM because it is used in the base-image reference.
-ARG JDK_MAJOR=25
+ARG JDK_MAJOR=17
 FROM eclipse-temurin:${JDK_MAJOR}-jre-jammy
 
 WORKDIR /app

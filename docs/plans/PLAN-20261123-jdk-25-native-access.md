@@ -2,7 +2,7 @@
 status: in-progress
 created: 2026-11-23
 closed:
-tracker: [3668ee9a-51d3-42d3-9895-b10d6bdd9351]
+tracker: [3668ee9a-51d3-42d3-9895-b10d6bdd9351, d41723ab-d295-4b5c-b831-b84b947bd432, 07735d1e-a97f-4526-afb3-79bc868d78a1]
 ---
 
 # Plan: Move CI Runners and Agents to JDK 25, Granting Native Access Explicitly
@@ -275,8 +275,14 @@ Done on this branch (the non-CI half, §6):
   `studio/compose`/`studio/music` compiler blocks deleted. `mvn install -DskipTests`
   of the full reactor passes on JDK 24.0.1 (the newest JDK on the agent host),
   including Error Prone, jacoco and the `engine/ml` Kotlin compile.
-- §2 Agents: `ARG JDK_MAJOR=25` in the agent and controller Dockerfiles;
-  `openjdk@25` in `DEFAULT_TOOL_PATH` (`run.sh`) and `agent.env.example`.
+- §2 Agents: deferred. The agent and controller Dockerfile defaults and the
+  `openjdk@17` entry of `DEFAULT_TOOL_PATH` (`run.sh`, `agent.env.example`) stay
+  at 17. Agents compile this repository on the image's JDK, and the reactor does
+  not build on 25 yet (task `28b12451`), so a rebuilt agent image or host would
+  fail its first build. `test_flowtree_image_jdk.py` requires the two images to
+  share one major, so the controller waits too. Moving them all to 25 is tracker
+  task `07735d1e-a97f-4526-afb3-79bc868d78a1`, blocked by `28b12451`. The
+  native-access grant is already on every agent and controller launcher.
 - §3: every launcher in the table carries the grant; the surefire form is the
   separate-property one above.
 - §4: "Native access (JDK 24 and later)" in `base/hardware/README.md`, pointers in
@@ -339,8 +345,9 @@ Not done here:
 - After it merges: rebuild and restart the docker, ROCm and CUDA runner fleets
   with `JDK_MAJOR=25` (and remove any `JDK_MAJOR=17` override from each host's
   `.env`).
-- Rebuild and redeploy the agent image, then the controller image — only after the
-  JDK 25 reactor build passes (task `28b12451`), since agents compile this
+- The agent and controller images (and the mac-studio host's `DEFAULT_TOOL_PATH`)
+  move to 25 only after the JDK 25 reactor build passes (task `28b12451`), through
+  task `07735d1e-a97f-4526-afb3-79bc868d78a1`, since agents compile this
   repository on the image's JDK.
 - Once no queued run expects 17, remove JDK 17 from the macOS hosts if wanted.
 
