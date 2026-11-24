@@ -370,7 +370,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 */
 	private CollectionProducer buildSimilarityComputation(
 			CollectionProducer a, CollectionProducer b) {
-		return multiply(a, b).sum(1)
+		return multiply(a, b).sum(1).reshape(shape(a).length(0), 1, 1)
 				.divide(multiply(length(1, a), length(1, b)));
 	}
 
@@ -380,7 +380,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 	 */
 	private double productSimilarity(
 			CollectionProducer a, CollectionProducer b, int limit) {
-		double[] values = multiply(a, b).sum(1)
+		double[] values = multiply(a, b).sum(1).reshape(shape(a).length(0), 1, 1)
 				.divide(multiply(length(1, a), length(1, b)))
 				.evaluate().doubleStream().limit(limit).toArray();
 		if (values.length == 0) return -1.0;
@@ -677,7 +677,7 @@ public class SimilarityOverheadTest extends TestSuiteBase {
 		TraversalPolicy shape = new TraversalPolicy(frames, bins, 1);
 		return cosineCache.computeIfAbsent(key, k ->
 				(Evaluable<PackedCollection>) Process.optimized(
-						Ops.op(o -> o.multiply(o.cv(shape, 0), o.cv(shape, 1)).sum(1)
+						Ops.op(o -> o.multiply(o.cv(shape, 0), o.cv(shape, 1)).sum(1).reshape(frames, 1, 1)
 								.divide(o.multiply(o.length(1, o.cv(shape, 0)),
 										o.length(1, o.cv(shape, 1)))))).get());
 	}

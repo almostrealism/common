@@ -775,11 +775,12 @@ weighted_values(value_cache)     // sum_s(weights[h][s] * V[s][h][i]) → (1, di
 ```
 
 `attention_scores` (`AttentionFeatures.attentionScores`) tiles the query across the
-cache rows explicitly (`repeat(seqLength, ...)`) rather than relying on the broadcast
-of `multiply(cache, query)`: that broadcast matches leading dimensions, so when the
-head count equals the sequence length the `(heads, headSize)` query is a prefix of
-the `(seqLength, heads, headSize)` cache and each query element would be spread over a
-run of cache elements instead of the query being tiled across rows.
+cache rows explicitly (`repeat(seqLength, ...)`) rather than leaving the tiling implicit
+in `multiply(cache, query)`, so the intent is stated in the source. Element-wise
+operations broadcast by trailing axis: the `(heads, headSize)` query aligns with the
+trailing two axes of the `(seqLength, heads, headSize)` cache and would broadcast across
+its leading `(seqLength)` axis, which is the tiling the explicit `repeat` makes visible
+and independent of how the head count and sequence length relate.
 `AttentionAssetTest` pins the four-head, four-row case against a host reference.
 
 ### 6. Output Projection

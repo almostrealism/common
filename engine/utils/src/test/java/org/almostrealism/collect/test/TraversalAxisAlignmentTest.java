@@ -23,6 +23,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionTraversalAxisAlignment;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestSuiteBase;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
@@ -120,13 +121,31 @@ public class TraversalAxisAlignmentTest extends TestSuiteBase {
 	}
 
 	/**
-	 * A smaller shape whose total size does not divide that of the largest one is not
-	 * repeated, since {@link TraversalPolicy#repetitionsToFill} yields zero for it; the
-	 * combination receives it at its original size to reconcile.
+	 * Two shapes of differing total size that are not trailing-axis broadcast compatible —
+	 * neither a length-1 broadcast of the other — are rejected when the alignment is built,
+	 * rather than reconciled by reading the smaller one modulo its own length.
 	 */
 	@Test(timeout = 10000)
-	public void doesNotRepeatIndivisibleValue() {
+	public void rejectsIncompatibleValue() {
 		ShapeAlignment alignment = new ShapeAlignment(shape(6), shape(4));
+
+		try {
+			alignment.align((shape, values) -> shape);
+			Assert.fail("Incompatible shapes should be rejected");
+		} catch (IllegalArgumentException expected) {
+			// (6) and (4) are not broadcast compatible
+		}
+
+		assertTrue("No value should be repeated", alignment.expansions.isEmpty());
+	}
+
+	/**
+	 * A single-element value broadcasts into a shape that has a length-1 axis between its
+	 * longer axes: that axis holds no repetition, so it does not split the broadcast.
+	 */
+	@Test(timeout = 10000)
+	public void scalarBroadcastsAcrossUnitAxis() {
+		ShapeAlignment alignment = new ShapeAlignment(shape(6, 1, 3, 3), shape(1));
 		List<TraversalPolicy> aligned = new ArrayList<>();
 
 		TraversalPolicy result = alignment.align((shape, values) -> {
@@ -134,61 +153,94 @@ public class TraversalAxisAlignmentTest extends TestSuiteBase {
 			return shape;
 		});
 
-		assertEquals(6, result.getTotalSizeLong());
-		assertTrue("An indivisible value should not be repeated", alignment.expansions.isEmpty());
-		assertEquals(6, aligned.get(0).getTotalSizeLong());
-		assertEquals(4, aligned.get(1).getTotalSizeLong());
+		assertEquals(54, result.getTotalSizeLong());
+		assertEquals(List.of(54), alignment.expansions);
+		assertEquals(54, aligned.get(1).getTotalSizeLong());
 	}
 
 	/**
-	 * Without strict sizes, shapes whose items have the same size but whose total sizes
-	 * differ are both kept as candidate targets, and the larger one is chosen so that the
-	 * alignment covers every element of the larger value, in whichever order they are given.
+	 * A value whose length-1 broadcast axes are separated by a longer axis cannot be reconciled
+	 * by a single contiguous repeat: {@code (1, 3, 1)} broadcasts into {@code (2, 3, 4)} by the
+	 * trailing-axis rule (every axis is equal or 1), but its broadcast axes are the non-adjacent
+	 * leading and trailing ones, so the alignment fails loud and asks for an explicit repeat
+	 * rather than guessing a repetition order. Pins the current fail-loud behaviour of this gap.
 	 */
 	@Test(timeout = 10000)
-	public void prefersLargestTotalAmongEqualSizes() {
-		boolean strict = TraversalPolicy.enableStrictSizes;
-		TraversalPolicy.enableStrictSizes = false;
+	public void rejectsNonAdjacentBroadcastAxes() {
+		ShapeAlignment alignment = new ShapeAlignment(shape(2, 3, 4), shape(1, 3, 1));
 
 		try {
-			TraversalPolicy small = shape(2, 3).traverse(1);
-			TraversalPolicy large = shape(4, 3).traverse(1);
+			alignment.align((shape, values) -> shape);
+			Assert.fail("Non-adjacent broadcast axes should be rejected");
+		} catch (IllegalArgumentException expected) {
+			assertTrue("Expected a non-adjacent-axes rejection, got: " + expected.getMessage(),
+					expected.getMessage().contains("non-adjacent axes"));
+		}
 
-			for (TraversalPolicy[] order : new TraversalPolicy[][] { { small, large }, { large, small } }) {
-				ShapeAlignment alignment = new ShapeAlignment(order);
-				List<TraversalPolicy> aligned = new ArrayList<>();
+		assertTrue("No value should be repeated", alignment.expansions.isEmpty());
+	}
 
-				TraversalPolicy result = alignment.align((shape, values) -> {
-					aligned.addAll(values);
-					return shape;
-				});
+	/**
+	 * When several values share the largest total size, the first of them in input order is the
+	 * result, whatever its axis count, matching the result shape that master produced. Here the
+	 * leading {@code (41)} is kept over the later {@code (1, 41)} values of the same total size,
+	 * so the result is one-dimensional, each equal-total value is combined with it positionally,
+	 * and only the single-element value is repeated up to it.
+	 */
+	@Test(timeout = 10000)
+	public void firstLargestShapeIsTheResult() {
+		ShapeAlignment alignment = new ShapeAlignment(shape(41), shape(1), shape(1, 41), shape(1, 41));
+		List<TraversalPolicy> aligned = new ArrayList<>();
 
-				assertEquals(large, result);
-				assertEquals(2, aligned.size());
-				for (TraversalPolicy value : aligned) {
-					assertEquals(1, value.getTraversalAxis());
-					assertEquals(large.getSizeLong(), value.getSizeLong());
-				}
-				assertTrue("No value should be repeated", alignment.expansions.isEmpty());
-			}
-		} finally {
-			TraversalPolicy.enableStrictSizes = strict;
+		TraversalPolicy result = alignment.align((shape, values) -> {
+			aligned.addAll(values);
+			return shape;
+		});
+
+		assertEquals(1, result.getDimensions());
+		assertEquals(41, result.getTotalSizeLong());
+		assertEquals(List.of(41), alignment.expansions);
+		for (TraversalPolicy value : aligned) {
+			assertEquals(41, value.getTotalSizeLong());
 		}
 	}
 
 	/**
-	 * With strict sizes, the same shapes have no common target by traversal, so the larger
-	 * one is chosen and the smaller one is repeated up to it.
+	 * A vector aligns with the trailing axis of a square matrix: broadcasting a {@code (2)}
+	 * against a {@code (2, 2)} resolves to the trailing axis (the whole vector repeated for
+	 * every row), not the coincidentally equal leading axis. The vector is repeated once up to
+	 * the matrix, and the matrix is traversed past its last axis without being repeated.
 	 */
 	@Test(timeout = 10000)
-	public void strictSizesRepeatSmallerOfEqualSizes() {
-		TraversalPolicy large = shape(4, 3).traverse(1);
-		ShapeAlignment alignment = new ShapeAlignment(shape(2, 3).traverse(1), large);
+	public void vectorAlignsWithTrailingAxisOfSquare() {
+		ShapeAlignment alignment = new ShapeAlignment(shape(2, 2), shape(2));
+		List<TraversalPolicy> aligned = new ArrayList<>();
 
-		TraversalPolicy result = alignment.align((shape, values) -> shape);
+		TraversalPolicy result = alignment.align((shape, values) -> {
+			aligned.addAll(values);
+			return shape;
+		});
 
-		assertEquals(large, result);
+		assertEquals(4, result.getTotalSizeLong());
 		assertEquals(List.of(2), alignment.expansions);
+		assertEquals(4, aligned.get(0).getTotalSizeLong());
+		assertEquals(4, aligned.get(1).getTotalSizeLong());
+	}
+
+	/**
+	 * Shapes whose items share a size but whose leading axes differ in length (neither being 1)
+	 * are not trailing-axis broadcast compatible, and are rejected when the alignment is built.
+	 */
+	@Test(timeout = 10000)
+	public void rejectsNonBroadcastableLeadingAxes() {
+		ShapeAlignment alignment = new ShapeAlignment(shape(2, 3), shape(4, 3));
+
+		try {
+			alignment.align((shape, values) -> shape);
+			Assert.fail("Incompatible leading axes should be rejected");
+		} catch (IllegalArgumentException expected) {
+			// (2, 3) and (4, 3) differ at the leading axis and neither is 1
+		}
 	}
 
 	/**
