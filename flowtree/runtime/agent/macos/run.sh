@@ -51,7 +51,7 @@ set +a
 # Homebrew, mvn, java) must be put on PATH here. The default covers a
 # Homebrew install on Apple Silicon plus a per-user npm prefix; an operator
 # whose tools live elsewhere sets FLOWTREE_AGENT_PATH in the env file.
-DEFAULT_TOOL_PATH="/opt/homebrew/bin:/opt/homebrew/opt/openjdk@17/bin:/usr/local/bin:${HOME}/.npm-global/bin"
+DEFAULT_TOOL_PATH="/opt/homebrew/bin:/opt/homebrew/opt/openjdk@25/bin:/usr/local/bin:${HOME}/.npm-global/bin"
 export PATH="${FLOWTREE_AGENT_PATH:-${DEFAULT_TOOL_PATH}}:${PATH}"
 
 # ── Defaults ────────────────────────────────────────────────────────
@@ -103,8 +103,9 @@ echo "  Install:    ${AGENT_HOME}"
 echo "  Java:       $(command -v java || echo 'NOT FOUND on PATH')"
 echo "  Claude:     $(command -v claude || echo 'NOT FOUND on PATH')"
 
+# The grant sits outside JAVA_OPTS so an AGENT_JVM_OPTS override cannot drop it.
 # shellcheck disable=SC2086
-exec java ${JAVA_OPTS} \
+exec java --enable-native-access=ALL-UNNAMED ${JAVA_OPTS} \
     -cp "${AGENT_HOME}/lib/*" \
     io.flowtree.Server \
     "${AGENT_HOME}/conf/agent.properties"

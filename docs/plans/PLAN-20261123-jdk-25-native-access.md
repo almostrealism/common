@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-11-23
 closed:
 tracker: [3668ee9a-51d3-42d3-9895-b10d6bdd9351]
@@ -174,7 +174,7 @@ by the 17 lanes passing on the PR, as the plan notes under Success criteria.
 
 | Launcher | File | Change |
 |---|---|---|
-| Surefire (every module) | root `pom.xml` | Add `<argLine>@{argLine} --enable-native-access=ALL-UNNAMED</argLine>` to the root `maven-surefire-plugin` configuration, and an empty `<argLine></argLine>` in the root `<properties>` |
+| Surefire (every module) | root `pom.xml` | Point jacoco `prepare-agent` at its own property (`<propertyName>jacocoArgLine</propertyName>`), set the root `maven-surefire-plugin` `<argLine>@{jacocoArgLine} ${argLine} --enable-native-access=ALL-UNNAMED</argLine>`, and add empty `<argLine></argLine>` and `<jacocoArgLine></jacocoArgLine>` to the root `<properties>` |
 | Failsafe | — | No module configures `maven-failsafe-plugin`; nothing to change. If one is added later it takes the same `argLine` |
 | Agent container | `flowtree/runtime/agent/entrypoint.sh` | Add the flag to the fixed part of the `exec java` line (not to `JAVA_OPTS`, which is seeded from the operator-overridable `MAVEN_OPTS` here and would drop it) |
 | Agent on macOS | `flowtree/runtime/agent/macos/run.sh` | Same, on its `exec java` line (here `JAVA_OPTS` is seeded from `AGENT_JVM_OPTS`) |
@@ -182,23 +182,29 @@ by the 17 lanes passing on the PR, as the plan notes under Success criteria.
 | Agent and controller from source | `flowtree/runtime/bin/start-agent.sh`, `start-controller.sh` | These run `mvn exec:java`, which executes in Maven's own JVM; prepend the flag to `MAVEN_OPTS` in the script |
 | Moonbeam inference | `engine/ml/scripts/run_moonbeam_inference.sh` | Add to its `java` line |
 | Optimizer scripts | `studio/compose/scripts/run-optimizer.sh`, `run-optimizer-benchmark.sh` | Add to their `exec java` lines |
-| Render comparison | `studio/compose/scripts/render-single-vs-multi.sh` | Passes `-DargLine=...` to Maven; this composes with the pom's `@{argLine}` form and needs no change |
-| ar-test-runner | `tools/mcp/test-runner/server.py` | Passes `-DargLine=<jvm_args>`; composes the same way, no change |
+| Render comparison | `studio/compose/scripts/render-single-vs-multi.sh` | Passes `-DargLine=...` to Maven; it reaches the fork through `${argLine}` and needs no change |
+| ar-test-runner | `tools/mcp/test-runner/server.py` | Passes `-DargLine=<jvm_args>`; same, no change |
 | OpenCL probe | `tools/ci/rocm/diagnose-opencl.sh` | Its `JoclProbe` `java` lines load JOCL; add the flag so the diagnostic output is not polluted by the warning |
 
-Why the `@{argLine}` form and the empty property, together: the root `pom.xml`
-binds `jacoco-maven-plugin`'s `prepare-agent`, which writes the coverage agent
-into the `argLine` property. A plain `<argLine>--enable-native-access=...</argLine>`
-would replace that and silently drop coverage in every module. `@{argLine}` is
-substituted late, after `prepare-agent` runs, so the agent and the flag both
-reach the fork, and a caller's `-DargLine=...` (the test runner, the render
-script) is kept as well, because `prepare-agent` prepends to whatever the
-property already holds. The empty `<argLine>` property covers the one case where
-`prepare-agent` never runs (invoking `surefire:test` outside the lifecycle), in
-which the literal text `@{argLine}` would otherwise reach the command line and
-the fork would fail to start. `flowtree/runtime/pom.xml` and
-`studio/experiments/pom.xml` configure surefire without an `argLine`, so they
-inherit the root's.
+Why a separate jacoco property (verified during implementation): the root
+`pom.xml` binds `jacoco-maven-plugin`'s `prepare-agent`, which by default writes
+the coverage agent into the **project** property `argLine` and ignores a
+`-DargLine` user property. The first proposal here, `@{argLine} --enable-native-access=...`,
+kept the agent and the grant but silently dropped a caller's `-DargLine` (the
+test runner's `jvm_args`, the render script): a run with `-DargLine=-Xmx2g` forked
+with only `[-javaagent:..., --enable-native-access=ALL-UNNAMED]`. On master the
+opposite loss happens: surefire's unconfigured `argLine` takes the user property,
+so `-DargLine=-Xmx2g` forks with `[-Xmx2g]` and coverage is dropped. Giving the
+agent its own property removes the collision: `@{jacocoArgLine}` is substituted
+late, after `prepare-agent`; `${argLine}` is the caller's value (or the empty
+default); the grant is literal. An explicit `<argLine>` in the plugin configuration
+is not overridden by `-DargLine`, so no caller can drop the grant. Verified fork
+arguments with `-DargLine=-Xmx2g`: `[-javaagent:...jacoco..., -Xmx2g,
+--enable-native-access=ALL-UNNAMED]`. The empty defaults cover the case where
+`prepare-agent` never runs (`surefire:test` outside the lifecycle), in which an
+unset `@{jacocoArgLine}` would otherwise reach the command line literally.
+`flowtree/runtime/pom.xml` and `studio/experiments/pom.xml` configure surefire
+without an `argLine`, so they inherit the root's.
 
 Maven's own JVM: the flag is not needed for compilation (no native code loads in
 `javac`). Whether Maven 3.9.x itself prints JDK 25 warnings (its bundled Jansi
@@ -261,6 +267,48 @@ This branch merges first. It changes nothing a JDK 17 lane cannot run, and it
 puts the flag in place before any lane runs 25, so the first JDK 25 run is
 already clean.
 
+## Implementation status
+
+Done on this branch (the non-CI half, §6):
+
+- §1: root `<release>17</release>`; the `base/hardware` 16 override and the
+  `studio/compose`/`studio/music` compiler blocks deleted. `mvn install -DskipTests`
+  of the full reactor passes on JDK 24.0.1 (the newest JDK on the agent host),
+  including Error Prone, jacoco and the `engine/ml` Kotlin compile.
+- §2 Agents: `ARG JDK_MAJOR=25` in the agent and controller Dockerfiles;
+  `openjdk@25` in `DEFAULT_TOOL_PATH` (`run.sh`) and `agent.env.example`.
+- §3: every launcher in the table carries the grant; the surefire form is the
+  separate-property one above.
+- §4: "Native access (JDK 24 and later)" in `base/hardware/README.md`, pointers in
+  `docs/QUICK_REFERENCE.md` (and its copy in `llms-full.txt`) and tutorial 03.
+- Tests: `NativeAccessGrantTest` (`engine/utils`) asserts the forked JVM received
+  the grant, and fails when it is removed from the pom (verified).
+  `tools/tests/test_native_access_launchers.py` guards every launcher, the
+  surefire/jacoco composition, `<release>17</release>` and the deleted overrides
+  (fails 8 of its checks against master).
+- Restricted-method evidence on JDK 24.0.1: without the grant, the
+  `NativeMemoryCopyTest` fork prints `java.lang.System::loadLibrary has been called
+  by org.jocl.LibUtils in an unnamed module`; with it, no restricted-method line
+  appears in the forks of `NativeAccessGrantTest`, `NativeMemoryCopyTest`,
+  `OnnxFeaturesTests` (`extern/ml-onnx`) or `ServerTest` (`flowtree/runtime`).
+- §5 audit result: in those forks on JDK 24.0.1, no "terminally deprecated method
+  in sun.misc.Unsafe" warning is printed. The only one in the logs comes from
+  Maven's own JVM: `sun.misc.Unsafe::staticFieldBase` called by
+  `com.google.inject.internal.aop.HiddenClassDefiner` (Maven's bundled Guice), which
+  is build-log noise, not test output. Netty, Guava and protobuf did not reach their
+  `Unsafe` paths in the selected tests; the lane-wide check stays with the first
+  JDK 25 CI run.
+
+Not done here:
+
+- The `ci/jdk-25` half (§6): filed as tracker task `d41723ab-d295-4b5c-b831-b84b947bd432`.
+- Open question 1 on JDK 25 itself: tracker task `28b12451` already records
+  that on JDK 25.0.2 `kotlin-maven-plugin` 1.8.20 fails to parse the version string
+  and Error Prone crashes compiling `ar-hardware`. The plugin raises could not be
+  verified here: no JDK 25 is installed on the agent host, and fetching one is
+  blocked by the exfiltration guard. Do this before the workflow flip, and before
+  rebuilding the agent image, because agents build the repository on the image's JDK.
+
 ## Success criteria
 
 - The `ci/jdk-25` branch's run shows `select-jdk` reporting major 25 on every
@@ -291,7 +339,9 @@ already clean.
 - After it merges: rebuild and restart the docker, ROCm and CUDA runner fleets
   with `JDK_MAJOR=25` (and remove any `JDK_MAJOR=17` override from each host's
   `.env`).
-- Rebuild and redeploy the agent image, then the controller image.
+- Rebuild and redeploy the agent image, then the controller image — only after the
+  JDK 25 reactor build passes (task `28b12451`), since agents compile this
+  repository on the image's JDK.
 - Once no queued run expects 17, remove JDK 17 from the macOS hosts if wanted.
 
 ## Dependencies

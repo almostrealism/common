@@ -38,6 +38,25 @@ Before using any Almost Realism functionality, set the **required** environment 
 - `AR_HARDWARE_LIBS`: Directory for generated native libraries. **Auto-detected — do not set manually.** Setting this (especially to `/tmp/ar_libs/`) causes permission errors on shared or sandboxed systems.
 - `AR_HARDWARE_DRIVER`: Execution backend (optional; best left unset to auto-detect the best available backend). A named token requests a backend that must initialize or the request fails: `native`, `cl`, `mtl`, and `cuda` each name a specific concrete backend, while `cpu` and `gpu` are abstract selectors that resolve to whichever concrete backend the platform provides (`cpu` → JNI on aarch64, OpenCL elsewhere; `gpu` → Metal on macOS, OpenCL elsewhere). `*` (the default when unset) instead performs best-effort auto-detection of the best available backend; outside macOS it tries CUDA first, which is used whenever the CUDA bridge loads and a device is present. The CUDA bridge is built per architecture as `libARCUDA-linux-<arch>.so` by `src/main/cpp/compile-cuda.sh`; only `libARCUDA-linux-aarch64.so` is currently bundled, so on Linux/x86_64 the bridge must be built before CUDA can load.
 
+#### Native access (JDK 24 and later)
+
+The hardware backends load native libraries: the JNI, CUDA and Metal bindings call `System.load`,
+and the OpenCL backend (JOCL), ONNX Runtime and SentencePiece load their own. On JDK 24 and later
+(JEP 472) a native load from code that was not granted native access prints a "restricted method"
+warning, and a future JDK refuses it by default. Granting native access is the job of the
+application launcher, not of a library, so an application that embeds this framework passes the
+grant to `java` itself:
+
+- **Classpath** (the usual case — the framework ships no `module-info`): pass
+  `--enable-native-access=ALL-UNNAMED`.
+- **Module path**: name the modules that load native code instead, e.g.
+  `--enable-native-access=<module containing the hardware classes>,<JOCL's module>`.
+- **`mvn exec:java`**: the program runs inside Maven's own JVM, so put the flag in `MAVEN_OPTS`.
+
+The flag is accepted by every JDK since 17, so it can be added before moving to a newer JDK. The
+build's own launchers already pass it: surefire forks (root `pom.xml`), the FlowTree agent and
+controller launchers, and the scripts under `engine/ml/scripts` and `studio/compose/scripts`.
+
 ### 2. Basic Usage
 
 ```java

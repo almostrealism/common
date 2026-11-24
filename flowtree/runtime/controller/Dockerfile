@@ -2,7 +2,7 @@
 # image, mirroring the ARG JDK_MAJOR in the CI runner image (tools/ci/docker) and
 # the agent image, so a JDK upgrade is this one build arg plus a rebuild. It is
 # declared before FROM because it is used in the base-image reference.
-ARG JDK_MAJOR=17
+ARG JDK_MAJOR=25
 FROM eclipse-temurin:${JDK_MAJOR}-jre-jammy
 
 WORKDIR /app
@@ -42,5 +42,5 @@ EXPOSE 7766
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -sf http://localhost:7780/api/health || exit 1
 
-ENTRYPOINT ["java", "-cp", "/app/lib/*", "io.flowtree.controller.FlowTreeController", \
+ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-cp", "/app/lib/*", "io.flowtree.controller.FlowTreeController", \
     "--config", "/config/workstreams.yaml"]
