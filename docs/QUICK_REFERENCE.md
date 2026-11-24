@@ -158,6 +158,8 @@ producer.get(CPU);      // Force CPU
 | Π | `a.product()` | Product all |
 | max | `a.max()` | Maximum |
 | min | `a.min()` | Minimum |
+| argmax | `a.indexOfMax()` | Index of the maximum |
+| argmin | `indexOfMin(a)` | Index of the minimum (feature method) |
 | mean | `a.sum().divide(c(count))` | Average |
 
 ### Matrix

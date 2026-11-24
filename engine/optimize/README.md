@@ -203,6 +203,10 @@ public class PopulationOptimizer<G, T extends Temporal, O, S extends HealthScore
     public static double lowestHealth = 0.0;
     public static boolean enableBreeding = true;
 
+    // Elitism: carry the top-scoring genomes unchanged into the next generation
+    public int getEliteCount();
+    public void setEliteCount(int eliteCount);  // must not be negative; 0 disables
+
     // Main methods
     public void setPopulation(Population<G, O> population);
     public void iterate();  // One evolutionary cycle

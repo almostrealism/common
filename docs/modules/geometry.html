@@ -334,7 +334,7 @@ Producer&lt;Vector&gt; normal = direction(hitNormal);</code></pre>
                 <pre><code class="language-java">// Perfect mirror reflection (blur = 0.0)
 ReflectedRay reflection = reflectedRay(
     hitPoint,
-    incidentDirection,
+    viewerDirection,  // toward the viewer: negation of the incident direction
     surfaceNormal,
     0.0  // blur: 0.0 = mirror, >0 = glossy
 );
@@ -475,7 +475,7 @@ Producer&lt;Vector&gt; normal = direction(hitNormal);
 // 5. Compute reflection for recursive tracing
 ReflectedRay reflection = reflectedRay(
     hitPoint,
-    direction(ray),
+    minus(direction(ray)),  // viewer direction: negation of incident ray direction
     normal,
     0.0  // Perfect mirror reflection
 );

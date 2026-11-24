@@ -146,7 +146,7 @@ import org.almostrealism.geometry.ReflectedRay;
 // Compute reflected ray
 ReflectedRay reflection = reflectedRay(
     intersectionPoint,
-    incidentDirection,
+    viewerDirection,  // toward the viewer: the negation of the incident direction
     surfaceNormal,
     blurAmount  // 0.0 = perfect mirror, >0 = glossy
 );
@@ -290,7 +290,7 @@ Producer<Vector> normal = direction(hitNormal);
 // 4. Compute reflection for recursive tracing
 ReflectedRay reflection = reflectedRay(
     hitPoint,
-    direction(ray),
+    minus(direction(ray)),  // viewer direction: negation of the incident ray direction
     normal,
     0.0  // Perfect reflection
 );
