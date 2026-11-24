@@ -38,7 +38,7 @@ CP="$COMPOSE_DIR/target/classes:$(cat "$CLASSPATH_CACHE")"
 
 mkdir -p "$AR_BENCHMARK_PROFILE_DIR" "$AR_BENCHMARK_TIMELINE_DIR"
 
-exec java -cp "$CP" "-Xmx${AR_BENCHMARK_HEAP}" \
+exec java --enable-native-access=ALL-UNNAMED -cp "$CP" "-Xmx${AR_BENCHMARK_HEAP}" \
     -DAR_HARDWARE_MEMORY_SCALE=6 \
     -DAR_PROFILE_MULTIPLE_SOURCES=enabled \
     -DAR_HARDWARE_METADATA=disabled \

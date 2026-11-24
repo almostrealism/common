@@ -16,16 +16,19 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Abstract base class for element-wise comparison operations on {@link PackedCollection}s
@@ -219,13 +222,20 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 *
 	 * <p>The projection applies only to an operand with a variable count &mdash; a batched input
 	 * whose rows are indexed by the kernel without being wrapped to the operand's size. Fixedness is
-	 * read from the operand's {@link TraversalPolicy} as the computation sees it, which already
-	 * carries the operand producer's count contract: the batched inputs that need the projection are
-	 * reported here as variable-count, so testing the shape is equivalent to consulting
-	 * {@link io.almostrealism.relation.Countable#isFixedCount(Object)} on the producer. An operand
-	 * with a fixed count is read at the output element index exactly as any other element-wise
-	 * operand is, so a smaller fixed-count operand keeps the framework's ordinary (repeating)
-	 * element-wise semantics.</p>
+	 * read from the operand producer's own count contract,
+	 * {@link Countable#isFixedCount(Object)}, which is also what decides whether the operand's
+	 * kernel argument is wrapped to its size when it is read. The fixed flag of the operand's
+	 * {@link TraversalPolicy} is not a substitute: a producer whose shape describes one fixed-size
+	 * item but whose count varies with the kernel (a host-function producer created with a variable
+	 * count) has a fixed shape and a variable count, and it supplies one item per row exactly as a
+	 * variable-shape input does. A fixed-shape computation is different: its expression is embedded
+	 * in this one and maps the index it is given onto its own inputs, so it is read element-wise
+	 * (see {@link #isBatchedOperand(Supplier)}). An operand with a
+	 * fixed count is read at the output element index exactly as any other element-wise operand is,
+	 * so a smaller fixed-count operand keeps the framework's ordinary (repeating) element-wise
+	 * semantics. Neither is every variable count a batch of rows: an intrinsically variable
+	 * computation such as the kernel-index sequence {@code integers()} computes a value at every
+	 * kernel position and is read element-wise too (see {@link #isBatchedOperand(Supplier)}).</p>
 	 *
 	 * <p>Only a per-row scalar &mdash; a single operand value governing a whole output item &mdash;
 	 * is projected. That is the one broadcast this computation can perform unambiguously from the
@@ -246,13 +256,13 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 *                                  not a single per-row value
 	 */
 	protected Expression<?> conditionIndex(Expression<?> index, int inputPosition) {
-		TraversalPolicy operandShape = shape(getInputs().get(inputPosition));
+		Supplier<?> operand = getInputs().get(inputPosition);
 		long outputSize = getShape().getSizeLong();
-		long operandSize = operandShape.getSizeLong();
+		long operandSize = shape(operand).getSizeLong();
 
-		// A fixed-count operand keeps the ordinary element-wise read; only a variable-count
-		// operand is projected per row (see the count-contract note in this method's javadoc).
-		if (operandShape.isFixedCount() || operandSize >= outputSize) {
+		// Only an operand whose variable count is a batch of rows is projected per row
+		// (see the count-contract note in this method's javadoc).
+		if (!isBatchedOperand(operand) || operandSize >= outputSize) {
 			return index;
 		}
 
@@ -265,6 +275,37 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 
 		// Per-row scalar: every output element of an item reads the one condition value for it.
 		return index.toInt().divide(outputSize);
+	}
+
+	/**
+	 * Returns whether the given comparison operand supplies a batch of rows &mdash; one item per
+	 * row of a variable-count kernel &mdash; and is therefore eligible for the per-row projection of
+	 * {@link #conditionIndex(Expression, int)}.
+	 *
+	 * <p>An operand with a fixed count is not batched. An operand with a variable count is batched
+	 * when every source of that variable count (see
+	 * {@link Countable#isCountFrom(Object, java.util.function.Predicate)}) supplies rows: a producer
+	 * with a variable shape, such as a variable-count pass-through input, or a producer that is not a
+	 * {@link Computation}, such as a host-function producer created with a variable count, whose
+	 * memory holds one item per row. A computation that is itself a source of variable count, such
+	 * as the kernel-index sequence {@code integers()}, is intrinsically variable: it computes a value
+	 * at every kernel position, so it is read element-wise like any other element-wise operand.</p>
+	 *
+	 * <p>A {@link Computation} operand with a fixed shape is never batched, whatever its count. Its
+	 * expression is embedded in this computation and already maps each output element index onto
+	 * the rows of its own variable-count inputs; the component {@code x(v)} of a batch of vectors
+	 * {@code v}, for example, has the fixed shape {@code (1)} and a variable count, and projecting
+	 * the index before it is read would apply the per-row division twice.</p>
+	 *
+	 * @param operand the comparison operand
+	 * @return {@code true} if the operand's variable count is a batch of rows
+	 */
+	protected boolean isBatchedOperand(Supplier<?> operand) {
+		if (operand instanceof Computation && shape(operand).isFixedCount()) return false;
+
+		return !Countable.isFixedCount(operand) && Countable.isCountFrom(operand, source ->
+				!(source instanceof Computation) ||
+						(source instanceof Supplier && !shape((Supplier<?>) source).isFixedCount()));
 	}
 
 	/**
