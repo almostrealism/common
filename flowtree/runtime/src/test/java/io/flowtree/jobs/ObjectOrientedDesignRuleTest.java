@@ -322,13 +322,13 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 			assertTrue("a session without a verdict counted as a review", rule.getReviewed().isEmpty());
 			assertTrue(rule.isViolated(job));
 
-			appendVerdict(root, VERDICT_FILE, other + ": CLEAN");
 			rule.buildCorrectionPrompt(job);
+			appendVerdict(root, VERDICT_FILE, other + ": CLEAN");
 			rule.onCorrectionAttempted(job);
 			assertTrue("a verdict for another class counted as a review", rule.getReviewed().isEmpty());
 
-			appendVerdict(root, VERDICT_FILE, target + ": CLEAN");
 			rule.buildCorrectionPrompt(job);
+			appendVerdict(root, VERDICT_FILE, target + ": CLEAN");
 			rule.onCorrectionAttempted(job);
 			assertEquals(Set.of(target), rule.getReviewed());
 			assertFalse(rule.isViolated(job));
@@ -440,6 +440,45 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 			laterRule.onCorrectionAttempted(laterJob);
 			assertTrue("a stale verdict must not settle a class the session did not review",
 					laterRule.getReviewed().isEmpty());
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
+	 * A verdict file left on the git-ignored scratch path by a session that was killed before it
+	 * reached {@link ObjectOrientedDesignRule#onCorrectionAttempted} — so the file was never deleted
+	 * and survives {@code git clean -fd} into the next job — is cleared before the next session is
+	 * dispatched. A class that session edits but writes no verdict for is therefore left unsettled
+	 * rather than settled by the leftover verdict.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void staleVerdictFileFromAKilledSessionIsClearedBeforeDispatch() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String target = "engine/ml/src/main/java/org/example/Window.java";
+			Files.createDirectories(root.resolve(target).getParent());
+			Files.writeString(root.resolve(target), "class Window {}");
+			Path ledger = root.resolve("ledger.tsv");
+
+			// An earlier session wrote a CLEAN verdict but was killed before onCorrectionAttempted,
+			// so the git-ignored scratch file survived into this job's working tree.
+			appendVerdict(root, VERDICT_FILE, target + ": CLEAN");
+
+			StubJob job = new StubJob(root, new ArrayList<>(List.of(target)));
+			FakeRule rule = new FakeRule(ledger).with(target, "v2", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+			assertTrue(rule.isViolated(job));
+
+			rule.buildCorrectionPrompt(job);
+			assertFalse("the stale verdict file must be cleared before the session runs",
+					Files.exists(root.resolve(VERDICT_FILE)));
+
+			// The session edits the class but writes no verdict line for it.
+			rule.onCorrectionAttempted(job);
+			assertTrue("a leftover verdict must not settle a class this session did not review",
+					rule.getReviewed().isEmpty());
 		} finally {
 			delete(root);
 		}
@@ -571,6 +610,10 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 		assertTrue(prompt.contains("proportionate"));
 		assertTrue("a follow-up-only finding must still get a settled verdict",
 				prompt.contains("`<class>: CLEAN - follow-up <task id> filed for <surrounding class>`"));
+		assertTrue("the verdict word is always CLEAN or FIXED, with the follow-up as a suffix",
+				prompt.contains("The verdict word is always CLEAN or FIXED"));
+		assertFalse("the prompt must not contradict the follow-up suffix by allowing only two forms",
+				prompt.contains("Use only these two forms"));
 		assertFalse("the prompt must not demand refactors across other files",
 				prompt.contains("even when the fix is a refactor that touches other files"));
 	}

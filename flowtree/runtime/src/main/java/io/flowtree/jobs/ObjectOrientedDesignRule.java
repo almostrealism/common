@@ -169,9 +169,16 @@ class ObjectOrientedDesignRule implements EnforcementRule {
     }
 
     /**
-     * Captures the primary commit message, announces the classes the session covers, records the
+     * Captures the primary commit message, clears any stale verdict scratch left on the working
+     * tree before this session writes its own, announces the classes the session covers, records the
      * session's starting time, cost and changed-line count, and returns a review prompt covering
      * every flagged class not yet reviewed, up to {@link #MAX_CLASSES}.
+     *
+     * <p>Clearing the verdict files here, before dispatch, is what guarantees the session is settled
+     * only by the lines it writes: {@link #VERDICT_PATH} is git-ignored scratch that survives
+     * {@code git clean -fd}, so a verdict left by an earlier job whose session was killed before it
+     * reached {@link #onCorrectionAttempted(CodingAgentJob)} would otherwise still be on the tree and
+     * read back as if this session had written it.</p>
      *
      * @param job the job whose working tree is inspected
      * @return the review prompt for the pending classes
@@ -182,6 +189,7 @@ class ObjectOrientedDesignRule implements EnforcementRule {
         List<Candidate> remaining = unreviewed(job);
         int room = Math.max(0, MAX_CLASSES - reviewed.size());
         pending = remaining.subList(0, Math.min(room, remaining.size()));
+        discardVerdictFiles(job, verdictFiles(pending));
         StringJoiner classes = new StringJoiner(", ");
         for (Candidate candidate : pending) {
             job.log("Object-oriented design review selected " + candidate.path
@@ -205,10 +213,10 @@ class ObjectOrientedDesignRule implements EnforcementRule {
      * is deliberately kept: it is the snapshot taken on first evaluation, so nothing the session
      * created or edited becomes a new candidate.
      *
-     * <p>The verdict files are deleted once read, so each session is settled only by the lines that
-     * session wrote. {@link #VERDICT_PATH} is git-ignored scratch that {@code git clean -fd} does not
-     * remove, so a verdict left by an earlier session or an earlier job on the same working tree would
-     * otherwise be reused to settle a class this session edited but wrote no new verdict for.</p>
+     * <p>The verdict files, cleared before the session in {@link #buildCorrectionPrompt(CodingAgentJob)},
+     * carry only this session's lines; they are deleted again once read so the git-ignored scratch does
+     * not outlive the session on the working tree. A class this session edited but wrote no verdict for
+     * is therefore left unsettled rather than settled by a verdict some earlier session wrote.</p>
      *
      * @param job the job after the review session
      */
@@ -638,9 +646,10 @@ class ObjectOrientedDesignRule implements EnforcementRule {
         sb.append("STEP 4 - Record. Append one line PER CLASS to the repository-root ").append(VERDICT_PATH);
         sb.append(" (create it if needed; write it at the working-directory root, NOT inside any module ");
         sb.append("directory): `<class>: CLEAN` if nothing needed fixing, or `<class>: FIXED - <what you ");
-        sb.append("changed>`. Use only these two forms. A follow-up filed under STEP 3b goes after the ");
-        sb.append("verdict for the class's own code, e.g. `<class>: CLEAN - follow-up <task id> filed for ");
-        sb.append("<surrounding class>`. Then store a memory describing any violation you fixed.\n\n");
+        sb.append("changed>`. The verdict word is always CLEAN or FIXED; when you filed a follow-up under ");
+        sb.append("STEP 3b, add it to that same line after the class's own verdict, e.g. `<class>: CLEAN - ");
+        sb.append("follow-up <task id> filed for <surrounding class>`. Then store a memory describing any ");
+        sb.append("violation you fixed.\n\n");
         sb.append("Do NOT write or edit commit.txt; the commit message describes the job's work, not this ");
         sb.append("review.\n");
         return sb.toString();
