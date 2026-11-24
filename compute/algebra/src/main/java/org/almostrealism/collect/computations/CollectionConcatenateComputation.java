@@ -23,6 +23,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Computable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -30,6 +31,7 @@ import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
@@ -178,6 +180,40 @@ public class CollectionConcatenateComputation extends TransitiveDeltaExpressionC
 
 			return result;
 		});
+	}
+
+	/**
+	 * Returns whether this concatenation is a diagonal matrix of the given width.
+	 *
+	 * <p>The element-wise rule inherited from {@link TransitiveDeltaExpressionComputation}
+	 * (diagonal when every input is diagonal) does not hold for a concatenation: joining
+	 * scalar cells into a {@code [n, n]} grid places each cell at its own position, so the
+	 * result is an arbitrary matrix even though every cell, being a single value, is
+	 * trivially diagonal. A concatenation is therefore diagonal only when it is a single
+	 * value or an identity.</p>
+	 *
+	 * @param width the width of the target diagonal matrix
+	 * @return {@code true} if this concatenation is a single value or an identity matrix
+	 */
+	@Override
+	public boolean isDiagonal(int width) {
+		return getShape().getTotalSizeLong() == 1 || isIdentity(width);
+	}
+
+	/**
+	 * Returns the uniform diagonal scalar of this concatenation, which exists only when the
+	 * concatenation is a single value. Combining the diagonal scalars of the inputs, as the
+	 * element-wise rule inherited from {@link TransitiveDeltaExpressionComputation} does,
+	 * would concatenate them into a collection the size of the whole matrix rather than
+	 * produce one scalar (see {@link #isDiagonal(int)}).
+	 *
+	 * @param width the width of the target diagonal matrix
+	 * @return this computation if it is a single value, otherwise empty
+	 */
+	@Override
+	public Optional<Computable> getDiagonalScalar(int width) {
+		if (getShape().getTotalSizeLong() == 1) return Optional.of(this);
+		return Optional.empty();
 	}
 
 	/**

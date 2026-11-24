@@ -145,7 +145,8 @@ public class ScopeSettings {
 	/**
 	 * Maximum {@code count * nodeCount} budget for invoking
 	 * {@link io.almostrealism.kernel.KernelTraversalProvider#generateReordering(Expression)}
-	 * from {@link io.almostrealism.expression.Sum#simplify(KernelStructureContext, int)}.
+	 * from {@link io.almostrealism.expression.Sum#simplify(KernelStructureContext, int)},
+	 * as checked by {@link KernelStructureContext#isReorderingWithinBudget(long)}.
 	 *
 	 * <p>The reordering rewrite simplifies the wide masked sum once per kernel index, so its
 	 * compile-time cost scales as {@code count * nodeCount} (empirically ~0.25 microseconds

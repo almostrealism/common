@@ -123,7 +123,7 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/mvn-artifact-staleness.py\"",
-            "description": "Warn when an artifact-producing mvn command (compile/install/etc.) is run, since it will not rebuild dependent modules; report ~/.m2 artifact staleness"
+            "description": "Warn when an artifact-producing mvn command (compile/install/etc.) is run, since it will not rebuild dependent modules; report installed-artifact staleness"
           },
           {
             "type": "command",
@@ -383,7 +383,7 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/mvn-artifact-staleness.py\"",
-            "description": "Verdict on ~/.m2 artifact staleness before the test runner or build validator invokes Maven out-of-band \u2014 these MCP tools bypass the Bash hook, which is exactly how stale artifacts from a previous branch produced false local test results"
+            "description": "Verdict on installed-artifact staleness before the test runner or build validator invokes Maven out-of-band \u2014 these MCP tools bypass the Bash hook, which is exactly how stale artifacts from a previous branch produced false local test results"
           }
         ]
       },

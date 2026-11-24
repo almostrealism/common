@@ -1095,6 +1095,12 @@ public class CodingAgentJob extends GitManagedJob {
         return costTracker.costForModel(modelKey);
     }
 
+    /** Returns the cumulative cost across every model; used by {@link ObjectOrientedDesignRule} to cost its sessions. */
+    double getTotalCost() { return costTracker.total(); }
+
+    /** Returns whether a session's cost was lost to an inactivity kill, making {@link #getTotalCost()} a lower bound. */
+    boolean isCostIncomplete() { return costTracker.isIncomplete(); }
+
     /**
      * Runs a correction session via {@link CorrectionSession}.
      * Overridable so test spies can suppress real dispatch.
