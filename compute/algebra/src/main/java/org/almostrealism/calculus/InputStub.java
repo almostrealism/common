@@ -166,9 +166,31 @@ public class InputStub<T extends PackedCollection> implements CollectionProducer
 		return Countable.isFixedCount(producer);
 	}
 
+	/**
+	 * Returns the shape of the wrapped producer with its traversal reset to axis zero, so the
+	 * stub presents a contiguous whole-collection layout rather than the element-wise traversal
+	 * the wrapped input may carry from its use inside the parent computation.
+	 *
+	 * <p>The stub stands in for an input as an independent leaf variable while the chain rule
+	 * computes a local partial (see
+	 * {@link org.almostrealism.collect.computations.CollectionProducerComputationBase#deltaPartial}).
+	 * When a reference-based operation (for example {@code mod}, built via
+	 * {@link org.almostrealism.collect.ArithmeticFeatures}) differentiates an operand that is a
+	 * composite sub-computation, that operand is stored traversed element-wise, so its per-element
+	 * size is one. A structural partial such as the identity of {@code d(u mod c)/du} is expressed
+	 * by matching the operand reference against itself, and that match indexes the operand by its
+	 * per-element size. A size of one collapses every row/column comparison to position zero,
+	 * turning the identity Jacobian into an all-ones matrix and producing off-diagonal gradient
+	 * entries equal to the diagonal. Resetting the stub to traversal axis zero indexes it by
+	 * absolute position, so the identity is correct for every operand traversal. The total size,
+	 * dimensions and ordering are unchanged, so operands that already index by absolute position
+	 * are unaffected.</p>
+	 *
+	 * @return the contiguous shape of this stub
+	 */
 	@Override
 	public TraversalPolicy getShape() {
-		return shape(producer);
+		return shape(producer).traverse(0);
 	}
 
 	@Override
