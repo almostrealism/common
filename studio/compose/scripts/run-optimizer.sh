@@ -18,7 +18,7 @@ fi
 
 CP="$COMPOSE_DIR/target/classes:$(cat "$CLASSPATH_CACHE")"
 
-exec java -cp "$CP" -Xmx2g \
+exec java --enable-native-access=ALL-UNNAMED -cp "$CP" -Xmx2g \
     -DAR_HARDWARE_MEMORY_SCALE=6 \
     -DAR_PROFILE_MULTIPLE_SOURCES=enabled \
     -DAR_HARDWARE_METADATA=disabled \

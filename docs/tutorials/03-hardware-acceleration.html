@@ -134,6 +134,18 @@ source ~/.bashrc  # or ~/.zshrc
 # AR_HARDWARE_LIBS is auto-detected — do not set manually.
 # AR_HARDWARE_DRIVER is best left unset to auto-detect.</code></pre>
 
+                <h3>Native Access (JDK 24 and Later)</h3>
+                <p>The hardware backends load native libraries. On JDK 24 and later, a JVM that was not
+                granted native access prints a "restricted method" warning on the first load, and a future
+                JDK refuses it. Tests run through Maven already receive the grant from the root
+                <code>pom.xml</code>. When you launch your own application, pass it to <code>java</code>:</p>
+
+                <pre><code class="language-bash">java --enable-native-access=ALL-UNNAMED -cp ... com.example.MyApp</code></pre>
+
+                <p>In an IDE, add the same option to the run configuration's VM options. An application on
+                the module path names the modules that load native code instead of <code>ALL-UNNAMED</code>.
+                See the "Native access" section of <code>base/hardware/README.md</code>.</p>
+
                 <h3>Alternative: Set in IDE</h3>
                 <p>In IntelliJ IDEA or Eclipse, add environment variables to run configurations:</p>
                 <ul>

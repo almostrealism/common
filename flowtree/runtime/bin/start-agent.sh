@@ -39,6 +39,8 @@ if [ ! -d "${MODULE_DIR}/target" ]; then
 fi
 
 # Run the agent
+# exec:java runs in Maven's own JVM, so the native-access grant goes in MAVEN_OPTS.
+export MAVEN_OPTS="--enable-native-access=ALL-UNNAMED ${MAVEN_OPTS:-}"
 exec mvn -f "${PROJECT_ROOT}/pom.xml" exec:java \
     -pl flowtree/runtime \
     -Dexec.mainClass="${MAIN_CLASS}" \
