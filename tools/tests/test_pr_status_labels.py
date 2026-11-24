@@ -249,13 +249,13 @@ class LabelChangesTest(unittest.TestCase):
                                            labels.FULL_TESTS, True)
         self.assertEqual((add, remove), ([labels.STALLED], []))
 
-    def test_ready_to_launch_is_added_beside_a_settled_state(self):
+    def test_ready_to_launch_is_added_beside_the_state(self):
         add, remove = labels.label_changes([labels.NEEDS_ATTENTION],
                                            labels.NEEDS_ATTENTION, False,
                                            ready=True)
         self.assertEqual((add, remove), ([labels.READY_TO_LAUNCH], []))
 
-    def test_both_markers_are_added_beside_a_settled_state(self):
+    def test_both_markers_are_added_beside_the_state(self):
         add, remove = labels.label_changes([labels.NEEDS_ATTENTION],
                                            labels.NEEDS_ATTENTION, True,
                                            ready=True)

@@ -496,10 +496,8 @@ def main(argv=None):
             facts = gather(client, pr)
             label, since, reason = derive(facts, now)
             stalled = is_stalled(label, since, now)
-            ready = ready_to_launch(facts, client.repo)
-            # TODO(review): summary/stdout report `ready` raw, so an in-progress
-            # stage still shows the (ready to launch) marker though the label is
-            # suppressed; report `ready and label not in IN_PROGRESS` instead.
+            ready = ready_to_launch(facts, client.repo) \
+                and label not in IN_PROGRESS
             add, remove = label_changes(
                 [item["name"] for item in pr.get("labels", [])], label, stalled,
                 ready)
