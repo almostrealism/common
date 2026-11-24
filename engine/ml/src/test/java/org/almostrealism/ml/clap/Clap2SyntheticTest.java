@@ -195,6 +195,7 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 		for (int i = 0; i < width; i++) {
 			assertEquals("pooled " + i, shortPool.toDouble(i), longPool.toDouble(i), 1e-4);
 		}
+		weights.destroy();
 	}
 
 	/** The similarity is the cosine of the clip embedding with each caption embedding. */
@@ -217,6 +218,7 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 			assertEquals("similarity[" + k + "]", Clap2WeightFixture.cosine(clipEmbedding, row), similarity.toDouble(k), 1e-4);
 			assertEquals("logit[" + k + "]", 100.0 * similarity.toDouble(k), logits.toDouble(k), 1e-2);
 		}
+		model.destroy();
 	}
 
 	/**
@@ -267,6 +269,8 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 				assertEquals(0.0, patches.toDouble(row * width + width - 1), 1e-6);
 			}
 		}
+		audio.destroy();
+		weights.destroy();
 	}
 
 	/**
@@ -295,6 +299,8 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 				assertEquals("angle[" + p + ", " + i + "]", expected, angles.toDouble(p * pairs + i), 1e-5);
 			}
 		}
+		audio.destroy();
+		weights.destroy();
 	}
 
 	/** A caption longer than the compiled length is rejected before any kernel reads it. */

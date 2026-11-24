@@ -255,31 +255,33 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 	@Test(timeout = 1200000)
 	public void frontEndMatchesReference() throws IOException {
 		prepare("front_end");
-		StateDictionary references = new StateDictionary(REFERENCES);
 		String name = clips(manifest()).get(0).name;
-		PackedCollection waveform = references.require("clip." + name);
-		PackedCollection expected = references.require("mel." + name);
+		try (StateDictionary references = new StateDictionary(REFERENCES)) {
+			PackedCollection waveform = references.require("clip." + name);
+			PackedCollection expected = references.require("mel." + name);
 
-		PackedCollection mel = logMelSpectrogram(Clap2Config.FFT_SIZE, Clap2Config.HOP_SIZE,
-				Clap2Config.SAMPLE_RATE, Clap2Config.MEL_BANDS, Clap2Config.MEL_MIN_HZ,
-				Clap2Config.MEL_MAX_HZ, cp(waveform)).evaluate();
-		assertEquals(expected.getShape().getTotalSize(), mel.getShape().getTotalSize());
+			PackedCollection mel = logMelSpectrogram(Clap2Config.FFT_SIZE, Clap2Config.HOP_SIZE,
+					Clap2Config.SAMPLE_RATE, Clap2Config.MEL_BANDS, Clap2Config.MEL_MIN_HZ,
+					Clap2Config.MEL_MAX_HZ, cp(waveform)).evaluate();
+			assertEquals(expected.getShape().getTotalSize(), mel.getShape().getTotalSize());
 
-		double largest = 0;
-		double sum = 0;
-		int compared = 0;
-		for (int i = 0; i < expected.getShape().getTotalSize(); i++) {
-			if (expected.toDouble(i) > MEL_FLOOR_DB) {
-				double difference = Math.abs(expected.toDouble(i) - mel.toDouble(i));
-				largest = Math.max(largest, difference);
-				sum += difference;
-				compared++;
+			double largest = 0;
+			double sum = 0;
+			int compared = 0;
+			for (int i = 0; i < expected.getShape().getTotalSize(); i++) {
+				if (expected.toDouble(i) > MEL_FLOOR_DB) {
+					double difference = Math.abs(expected.toDouble(i) - mel.toDouble(i));
+					largest = Math.max(largest, difference);
+					sum += difference;
+					compared++;
+				}
 			}
+			mel.destroy();
+			log("clip=" + name + " melBins=" + expected.getShape() + " compared=" + compared
+					+ " maxAbsDb=" + largest + " meanAbsDb=" + sum / Math.max(compared, 1));
+			assertTrue("log-mel differs by " + largest + " dB", largest < MEL_TOLERANCE_DB);
+			assertTrue("log-mel differs by " + sum / compared + " dB on average", sum / compared < MEL_MEAN_TOLERANCE_DB);
 		}
-		log("clip=" + name + " melBins=" + expected.getShape() + " compared=" + compared
-				+ " maxAbsDb=" + largest + " meanAbsDb=" + sum / Math.max(compared, 1));
-		assertTrue("log-mel differs by " + largest + " dB", largest < MEL_TOLERANCE_DB);
-		assertTrue("log-mel differs by " + sum / compared + " dB on average", sum / compared < MEL_MEAN_TOLERANCE_DB);
 	}
 
 	/**
@@ -294,53 +296,53 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 		JsonObject manifest = manifest();
 		List<Clip> clips = clips(manifest);
 		List<String> labels = labels(manifest);
-		StateDictionary references = new StateDictionary(REFERENCES);
-		Clap2 model = new Clap2(WEIGHTS, TEXT_LENGTH);
-		int width = model.getConfig().getEmbedDim();
-		log("checkpoint=" + manifest.get("repo").getAsString() + " audioWidth=" + model.getConfig().getAudioWidth()
-				+ " textWidth=" + model.getConfig().getTextWidth() + " embedDim=" + width);
+		try (StateDictionary references = new StateDictionary(REFERENCES);
+			 Clap2 model = new Clap2(WEIGHTS, TEXT_LENGTH)) {
+			int width = model.getConfig().getEmbedDim();
+			log("checkpoint=" + manifest.get("repo").getAsString() + " audioWidth=" + model.getConfig().getAudioWidth()
+					+ " textWidth=" + model.getConfig().getTextWidth() + " embedDim=" + width);
 
-		CollectionProducer[] tagRows = new CollectionProducer[labels.size()];
-		double worstText = 1.0;
-		for (int t = 0; t < labels.size(); t++) {
-			PackedCollection embedding = model.getTextEncoder().encode(tokens(references, t)).clone();
-			double parity = Clap2WeightFixture.cosine(embedding, references.require("text." + t));
-			worstText = Math.min(worstText, parity);
-			tagRows[t] = cp(embedding).reshape(shape(1, width));
-			log("tag=" + labels.get(t) + " textParity=" + parity);
-		}
-		PackedCollection tagEmbeddings = concat(0, tagRows).evaluate();
-
-		double[][] scores = new double[clips.size()][];
-		double worstAudio = 1.0;
-		for (int c = 0; c < clips.size(); c++) {
-			Clip clip = clips.get(c);
-			PackedCollection waveform = references.require("clip." + clip.name);
-			PackedCollection embedding = model.getAudioEncoder().encode(waveform).clone();
-
-			long start = System.nanoTime();
-			for (int r = 0; r < TIMED_RUNS; r++) {
-				model.getAudioEncoder().encode(waveform);
+			CollectionProducer[] tagRows = new CollectionProducer[labels.size()];
+			double worstText = 1.0;
+			for (int t = 0; t < labels.size(); t++) {
+				PackedCollection embedding = model.getTextEncoder().encode(tokens(references, t)).clone();
+				double parity = Clap2WeightFixture.cosine(embedding, references.require("text." + t));
+				worstText = Math.min(worstText, parity);
+				tagRows[t] = cp(embedding).reshape(shape(1, width));
+				log("tag=" + labels.get(t) + " textParity=" + parity);
 			}
-			double millis = (System.nanoTime() - start) / 1e6 / TIMED_RUNS;
+			PackedCollection tagEmbeddings = concat(0, tagRows).evaluate();
 
-			double parity = Clap2WeightFixture.cosine(embedding, references.require("audio." + clip.name));
-			worstAudio = Math.min(worstAudio, parity);
-			PackedCollection logits = model.logits(cp(embedding), cp(tagEmbeddings)).evaluate();
-			scores[c] = logits.toArray(0, labels.size());
-			log("clip=" + clip.name + " kind=" + clip.kind + " seconds="
-					+ waveform.getShape().getTotalSize() / (double) Clap2Config.SAMPLE_RATE
-					+ " audioParity=" + parity + " warmMillis=" + millis
-					+ " top=" + Arrays.toString(topTags(scores[c], labels)));
+			double[][] scores = new double[clips.size()][];
+			double worstAudio = 1.0;
+			for (int c = 0; c < clips.size(); c++) {
+				Clip clip = clips.get(c);
+				PackedCollection waveform = references.require("clip." + clip.name);
+				PackedCollection embedding = model.getAudioEncoder().encode(waveform).clone();
+
+				long start = System.nanoTime();
+				for (int r = 0; r < TIMED_RUNS; r++) {
+					model.getAudioEncoder().encode(waveform);
+				}
+				double millis = (System.nanoTime() - start) / 1e6 / TIMED_RUNS;
+
+				double parity = Clap2WeightFixture.cosine(embedding, references.require("audio." + clip.name));
+				worstAudio = Math.min(worstAudio, parity);
+				PackedCollection logits = model.logits(cp(embedding), cp(tagEmbeddings)).evaluate();
+				scores[c] = logits.toArray(0, labels.size());
+				log("clip=" + clip.name + " kind=" + clip.kind + " seconds="
+						+ waveform.getShape().getTotalSize() / (double) Clap2Config.SAMPLE_RATE
+						+ " audioParity=" + parity + " warmMillis=" + millis
+						+ " top=" + Arrays.toString(topTags(scores[c], labels)));
+			}
+
+			log("worstAudioParity=" + worstAudio + " worstTextParity=" + worstText);
+			reportAccuracy("raw", clips, labels, scores);
+			reportAccuracy("meanCentered", clips, labels, meanCentered(scores));
+
+			assertTrue("worst audio parity " + worstAudio, worstAudio >= AUDIO_PARITY);
+			assertTrue("worst text parity " + worstText, worstText >= TEXT_PARITY);
 		}
-
-		log("worstAudioParity=" + worstAudio + " worstTextParity=" + worstText);
-		reportAccuracy("raw", clips, labels, scores);
-		reportAccuracy("meanCentered", clips, labels, meanCentered(scores));
-
-		assertTrue("worst audio parity " + worstAudio, worstAudio >= AUDIO_PARITY);
-		assertTrue("worst text parity " + worstText, worstText >= TEXT_PARITY);
-		model.destroy();
 	}
 
 	/**
@@ -353,39 +355,44 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 	@Test(timeout = 2400000)
 	public void inferenceCostByClipLength() throws IOException {
 		prepare("inference_cost");
-		StateDictionary references = new StateDictionary(REFERENCES);
-		PackedCollection loop = references.require("clip.drum_loop");
-		int loopSamples = loop.getShape().getTotalSize();
+		try (StateDictionary references = new StateDictionary(REFERENCES)) {
+			PackedCollection loop = references.require("clip.drum_loop");
+			int loopSamples = loop.getShape().getTotalSize();
 
-		for (double seconds : new double[] {1, 4, 10, 30}) {
-			int samples = (int) (seconds * Clap2Config.SAMPLE_RATE);
-			int repeats = (samples + loopSamples - 1) / loopSamples;
-			PackedCollection waveform = cp(loop).repeat(repeats).reshape(shape(repeats * loopSamples))
-					.subset(shape(samples), 0).evaluate();
+			for (double seconds : new double[] {1, 4, 10, 30}) {
+				int samples = (int) (seconds * Clap2Config.SAMPLE_RATE);
+				int repeats = (samples + loopSamples - 1) / loopSamples;
+				PackedCollection waveform = cp(loop).repeat(repeats).reshape(shape(repeats * loopSamples))
+						.subset(shape(samples), 0).evaluate();
 
-			long before = allocatedDeviceBytes();
-			Clap2 model = new Clap2(WEIGHTS, TEXT_LENGTH);
-			long compileStart = System.nanoTime();
-			PackedCollection first = model.getAudioEncoder().encode(waveform);
-			double firstMillis = (System.nanoTime() - compileStart) / 1e6;
+				long before = allocatedDeviceBytes();
+				try (Clap2 model = new Clap2(WEIGHTS, TEXT_LENGTH)) {
+					long compileStart = System.nanoTime();
+					PackedCollection first = model.getAudioEncoder().encode(waveform);
+					double firstMillis = (System.nanoTime() - compileStart) / 1e6;
 
-			long start = System.nanoTime();
-			for (int r = 0; r < TIMED_RUNS; r++) {
-				model.getAudioEncoder().encode(waveform);
+					long start = System.nanoTime();
+					for (int r = 0; r < TIMED_RUNS; r++) {
+						model.getAudioEncoder().encode(waveform);
+					}
+					double millis = (System.nanoTime() - start) / 1e6 / TIMED_RUNS;
+					log("seconds=" + seconds + " patches=" + (1 + Clap2Config.FREQUENCY_PATCHES
+							* Clap2Config.timePatches(samples)) + " firstCallMillis=" + firstMillis
+							+ " warmMillis=" + millis + " audioTowerBytes=" + (allocatedDeviceBytes() - before));
+					assertTrue("embedding must be finite", Double.isFinite(first.toDouble(0)));
+				} finally {
+					waveform.destroy();
+				}
 			}
-			double millis = (System.nanoTime() - start) / 1e6 / TIMED_RUNS;
-			log("seconds=" + seconds + " patches=" + (1 + Clap2Config.FREQUENCY_PATCHES
-					* Clap2Config.timePatches(samples)) + " firstCallMillis=" + firstMillis
-					+ " warmMillis=" + millis + " audioTowerBytes=" + (allocatedDeviceBytes() - before));
-			assertTrue("embedding must be finite", Double.isFinite(first.toDouble(0)));
-			model.destroy();
 		}
 	}
 
 	/**
 	 * Device memory of the two CLAP2 towers beside a loaded, compiled and once-run SAME-S
 	 * encoder: the allocated bytes are logged after SAME-S, after the CLAP2 weights are bound
-	 * and compiled, and after one scoring pass.
+	 * and compiled, and after one scoring pass. The readings are differences of allocated bytes, so
+	 * the test is run in its own JVM: memory left behind by an earlier test in the same JVM (one
+	 * that ran out of memory partway through a compile, for example) distorts them.
 	 *
 	 * @throws IOException if a weight directory cannot be read
 	 */
@@ -395,44 +402,51 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 		requireLocalResource("SAME-S weights", "AR_SAME_WEIGHTS", SAME_WEIGHTS != null && new File(SAME_WEIGHTS).isDirectory());
 		JsonObject manifest = manifest();
 		StateDictionary references = new StateDictionary(REFERENCES);
-		PackedCollection waveform = null;
-		for (Clip clip : clips(manifest)) {
-			PackedCollection candidate = references.require("clip." + clip.name);
-			if (waveform == null || candidate.getShape().getTotalSize() > waveform.getShape().getTotalSize()) {
-				waveform = candidate;
+		StateDictionary sameWeights = null;
+		CompiledModel sameEncoder = null;
+		Clap2 model = null;
+		try {
+			PackedCollection waveform = null;
+			for (Clip clip : clips(manifest)) {
+				PackedCollection candidate = references.require("clip." + clip.name);
+				if (waveform == null || candidate.getShape().getTotalSize() > waveform.getShape().getTotalSize()) {
+					waveform = candidate;
+				}
 			}
+
+			long baseline = allocatedDeviceBytes();
+			sameWeights = new StateDictionary(SAME_WEIGHTS);
+			SAMEAutoEncoder same = SAMEAutoEncoder.small(sameWeights);
+			int sameSamples = 24576;
+			Model sameModel = new Model(shape(1, 2, sameSamples));
+			sameModel.add(same.encoder(1, sameSamples));
+			sameEncoder = sameModel.compile(false);
+			sameEncoder.forward(new PackedCollection(shape(1, 2, sameSamples)));
+			long afterSame = allocatedDeviceBytes();
+
+			StateDictionary clapWeights = new StateDictionary(WEIGHTS);
+			model = new Clap2(clapWeights, TEXT_LENGTH);
+			PackedCollection text = model.getTextEncoder().encode(tokens(references, 0)).clone();
+			long afterText = allocatedDeviceBytes();
+			PackedCollection audio = model.getAudioEncoder().encode(waveform).clone();
+			long afterAudio = allocatedDeviceBytes();
+			model.similarity(cp(audio), cp(text)).evaluate();
+			long afterScore = allocatedDeviceBytes();
+
+			log("checkpoint=" + manifest.get("repo").getAsString());
+			log("audioWeightBytes=" + weightBytes(clapWeights, "audio.") + " textWeightBytes=" + weightBytes(clapWeights, "text."));
+			log("baselineBytes=" + baseline + " sameBytes=" + (afterSame - baseline));
+			log("clapTextTowerBytes=" + (afterText - afterSame) + " clapAudioTowerBytes=" + (afterAudio - afterText)
+					+ " scoringBytes=" + (afterScore - afterAudio) + " clapTotalBytes=" + (afterScore - afterSame)
+					+ " clipSamples=" + waveform.getShape().getTotalSize());
+			assertTrue("SAME-S must occupy device memory", afterSame > baseline);
+			assertTrue("the CLAP2 towers must occupy device memory", afterScore > afterSame);
+		} finally {
+			if (model != null) model.destroy();
+			if (sameEncoder != null) sameEncoder.destroy();
+			if (sameWeights != null) sameWeights.destroy();
+			references.destroy();
 		}
-
-		long baseline = allocatedDeviceBytes();
-		StateDictionary sameWeights = new StateDictionary(SAME_WEIGHTS);
-		SAMEAutoEncoder same = SAMEAutoEncoder.small(sameWeights);
-		int sameSamples = 24576;
-		Model sameModel = new Model(shape(1, 2, sameSamples));
-		sameModel.add(same.encoder(1, sameSamples));
-		CompiledModel sameEncoder = sameModel.compile(false);
-		sameEncoder.forward(new PackedCollection(shape(1, 2, sameSamples)));
-		long afterSame = allocatedDeviceBytes();
-
-		Clap2 model = new Clap2(WEIGHTS, TEXT_LENGTH);
-		PackedCollection text = model.getTextEncoder().encode(tokens(references, 0)).clone();
-		long afterText = allocatedDeviceBytes();
-		PackedCollection audio = model.getAudioEncoder().encode(waveform).clone();
-		long afterAudio = allocatedDeviceBytes();
-		model.similarity(cp(audio), cp(text)).evaluate();
-		long afterScore = allocatedDeviceBytes();
-
-		StateDictionary clapWeights = new StateDictionary(WEIGHTS);
-		log("checkpoint=" + manifest.get("repo").getAsString());
-		log("audioWeightBytes=" + weightBytes(clapWeights, "audio.") + " textWeightBytes=" + weightBytes(clapWeights, "text."));
-		log("baselineBytes=" + baseline + " sameBytes=" + (afterSame - baseline));
-		log("clapTextTowerBytes=" + (afterText - afterSame) + " clapAudioTowerBytes=" + (afterAudio - afterText)
-				+ " scoringBytes=" + (afterScore - afterAudio) + " clapTotalBytes=" + (afterScore - afterSame)
-				+ " clipSamples=" + waveform.getShape().getTotalSize());
-		assertTrue("SAME-S must occupy device memory", afterSame > baseline);
-		assertTrue("the CLAP2 towers must occupy device memory", afterScore > afterSame);
-
-		model.destroy();
-		sameEncoder.destroy();
 	}
 
 	/**
