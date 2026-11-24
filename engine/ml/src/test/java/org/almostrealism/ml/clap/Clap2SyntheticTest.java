@@ -340,4 +340,40 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 		text.destroy();
 		weights.destroy();
 	}
+
+	/**
+	 * A configuration whose head counts are not positive, or whose widths do not split into heads
+	 * the rotary embeddings can use, is rejected with an {@link IllegalArgumentException} that
+	 * names the problem, while a consistent configuration is accepted.
+	 */
+	@Test(timeout = 60000)
+	public void inconsistentConfigurationIsRejected() {
+		Clap2Config valid = new Clap2Config(64, 2, 4, 128, 32, 2, 2, 64, 100, 16, 8);
+		assertEquals(4, valid.getAudioHeads());
+		assertEquals(2, valid.getTextHeads());
+
+		assertRejected("positive", () -> new Clap2Config(64, 2, 0, 128, 32, 2, 2, 64, 100, 16, 8));
+		assertRejected("positive", () -> new Clap2Config(64, 2, 4, 128, 32, 2, 0, 64, 100, 16, 8));
+		assertRejected("positive", () -> new Clap2Config(64, 2, -4, 128, 32, 2, 2, 64, 100, 16, 8));
+		assertRejected("Audio width 64", () -> new Clap2Config(64, 2, 3, 128, 32, 2, 2, 64, 100, 16, 8));
+		assertRejected("Audio width 48", () -> new Clap2Config(48, 2, 8, 128, 32, 2, 2, 64, 100, 16, 8));
+		assertRejected("Text width 32", () -> new Clap2Config(64, 2, 4, 128, 32, 2, 3, 64, 100, 16, 8));
+		assertRejected("Text width 30", () -> new Clap2Config(64, 2, 4, 128, 30, 2, 6, 64, 100, 16, 8));
+	}
+
+	/**
+	 * Asserts that constructing a configuration throws an {@link IllegalArgumentException} whose
+	 * message contains {@code expected}.
+	 *
+	 * @param expected text the exception's message must contain
+	 * @param create   the construction to attempt
+	 */
+	private void assertRejected(String expected, Runnable create) {
+		try {
+			create.run();
+			Assert.fail("Expected an IllegalArgumentException mentioning \"" + expected + "\"");
+		} catch (IllegalArgumentException e) {
+			assertTrue(e.getMessage(), e.getMessage().contains(expected));
+		}
+	}
 }

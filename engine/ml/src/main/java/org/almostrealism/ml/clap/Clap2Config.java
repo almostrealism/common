@@ -137,13 +137,19 @@ public final class Clap2Config {
 	 * @param vocabularySize number of tokens in the vocabulary
 	 * @param embedDim       width of the shared embedding space
 	 * @param maxTextLength  number of token positions the text tower is compiled for
-	 * @throws IllegalArgumentException if a width does not divide into its heads, or a head width
-	 *                                  is not a multiple of four (the axial rotary embedding gives
-	 *                                  each of its two axes a quarter of the head's features in pairs)
+	 * @throws IllegalArgumentException if a head count is not positive, a width does not divide
+	 *                                  into its heads, an audio head width is not a multiple of
+	 *                                  four (the axial rotary embedding gives each of its two axes a
+	 *                                  quarter of the head's features in pairs), or a text head width
+	 *                                  is odd (its rotary embedding rotates features in pairs)
 	 */
 	public Clap2Config(int audioWidth, int audioLayers, int audioHeads, int audioInnerSize,
 					   int textWidth, int textLayers, int textHeads, int textInnerSize,
 					   int vocabularySize, int embedDim, int maxTextLength) {
+		if (audioHeads <= 0 || textHeads <= 0) {
+			throw new IllegalArgumentException("Head counts must be positive, but the audio tower has "
+					+ audioHeads + " and the text tower " + textHeads);
+		}
 		if (audioWidth % audioHeads != 0 || (audioWidth / audioHeads) % 4 != 0) {
 			throw new IllegalArgumentException("Audio width " + audioWidth + " must divide into "
 					+ audioHeads + " heads whose width is a multiple of 4");
