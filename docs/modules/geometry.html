@@ -331,14 +331,12 @@ Producer&lt;Vector&gt; normal = direction(hitNormal);</code></pre>
 
                 <h3>Reflection Calculation</h3>
                 <p>ReflectedRay computes specular reflections for recursive ray tracing:</p>
-                <pre><code class="language-java">// The viewer vector points from the surface toward the viewer:
-// the negation of the incident ray direction.
-Producer&lt;Vector&gt; viewerDirection = minus(direction(incidentRay));
-
-// Perfect mirror reflection (blur = 0.0)
+                <pre><code class="language-java">// Perfect mirror reflection (blur = 0.0). The second argument is the
+// viewer vector: the direction from the surface toward the viewer,
+// i.e. the negation of the incident ray direction.
 ReflectedRay reflection = reflectedRay(
     hitPoint,
-    viewerDirection,
+    minus(direction(incidentRay)),
     surfaceNormal,
     0.0  // blur: 0.0 = mirror, >0 = glossy
 );
