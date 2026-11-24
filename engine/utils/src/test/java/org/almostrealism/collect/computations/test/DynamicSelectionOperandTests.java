@@ -118,9 +118,8 @@ public class DynamicSelectionOperandTests extends TestSuiteBase {
 	 * A fixed-count condition as wide as the whole output is read element-wise: every channel
 	 * selects by its own value rather than being broadcast per row. This is the counterpart to the
 	 * variable-count cases above &mdash; a fixed count keeps the ordinary element-wise read, which
-	 * is what {@code conditionIndex} short-circuits on through
-	 * {@link io.almostrealism.relation.Countable#isFixedCount(Object)}, whereas a variable count is
-	 * projected to one value per row.
+	 * is what {@code conditionIndex} short-circuits on, whereas a variable count that is a batch of
+	 * rows is projected to one value per row.
 	 */
 	@Test(timeout = 60000)
 	public void fixedCountConditionSelectsElementWise() {
@@ -129,16 +128,29 @@ public class DynamicSelectionOperandTests extends TestSuiteBase {
 	}
 
 	/**
+	 * An intrinsically variable condition, the kernel-index sequence {@code integers()}, is read
+	 * element-wise: its variable count does not describe a batch of rows but a value computed at
+	 * every kernel position, so each channel compares its own sequence value. Every output element
+	 * but the first exceeds {@code 0}; a per-row projection would instead read the sequence value
+	 * {@code 0} for the whole first row.
+	 */
+	@Test(timeout = 60000)
+	public void intrinsicallyVariableConditionSelectsElementWise() {
+		assertSelected(new double[] { 20, 11, 12, 13, 14, 15, 16, 17, 18 }, select(integers()));
+	}
+
+	/**
 	 * A variable-count condition whose item is wider than a single value but narrower than the
 	 * output item has no unambiguous per-row projection, so the selection is rejected rather than
 	 * reading the operand past the end of its buffer. The item shape {@code (2)} supplies two
-	 * values per row against a three-element output item. The rejection surfaces as an
+	 * values per row against a three-element output item, and its function honours the
+	 * variable-count contract by returning two values for each of the three rows. The rejection surfaces as an
 	 * {@link IllegalArgumentException} raised while the kernel is compiled.
 	 */
 	@Test(timeout = 60000)
 	public void narrowerItemConditionRejected() {
 		try {
-			select(condition(shape(2), false, pack(1.0, -1.0).reshape(2, 1)));
+			select(condition(shape(2), false, pack(1.0, -1.0, 1.0, -1.0, 1.0, -1.0).reshape(3, 2)));
 			Assert.fail("Expected the narrower variable-count operand to be rejected");
 		} catch (RuntimeException e) {
 			Throwable cause = e;

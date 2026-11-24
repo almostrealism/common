@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -230,7 +231,9 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 * and it supplies one item per row exactly as a variable-shape input does. An operand with a
 	 * fixed count is read at the output element index exactly as any other element-wise operand is,
 	 * so a smaller fixed-count operand keeps the framework's ordinary (repeating) element-wise
-	 * semantics.</p>
+	 * semantics. Neither is every variable count a batch of rows: an intrinsically variable
+	 * computation such as the kernel-index sequence {@code integers()} computes a value at every
+	 * kernel position and is read element-wise too (see {@link #isBatchedOperand(Supplier)}).</p>
 	 *
 	 * <p>Only a per-row scalar &mdash; a single operand value governing a whole output item &mdash;
 	 * is projected. That is the one broadcast this computation can perform unambiguously from the
@@ -255,9 +258,9 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 		long outputSize = getShape().getSizeLong();
 		long operandSize = shape(operand).getSizeLong();
 
-		// A fixed-count operand keeps the ordinary element-wise read; only a variable-count
-		// operand is projected per row (see the count-contract note in this method's javadoc).
-		if (Countable.isFixedCount(operand) || operandSize >= outputSize) {
+		// Only an operand whose variable count is a batch of rows is projected per row
+		// (see the count-contract note in this method's javadoc).
+		if (!isBatchedOperand(operand) || operandSize >= outputSize) {
 			return index;
 		}
 
@@ -270,6 +273,29 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 
 		// Per-row scalar: every output element of an item reads the one condition value for it.
 		return index.toInt().divide(outputSize);
+	}
+
+	/**
+	 * Returns whether the given comparison operand supplies a batch of rows &mdash; one item per
+	 * row of a variable-count kernel &mdash; and is therefore eligible for the per-row projection of
+	 * {@link #conditionIndex(Expression, int)}.
+	 *
+	 * <p>An operand with a fixed count is not batched. An operand with a variable count is batched
+	 * when every source of that variable count (see
+	 * {@link Countable#isCountFrom(Object, java.util.function.Predicate)}) supplies rows: a producer
+	 * with a variable shape, such as a variable-count pass-through input, or a producer that is not a
+	 * {@link Computation}, such as a host-function producer created with a variable count, whose
+	 * memory holds one item per row. A computation that is itself a source of variable count, such
+	 * as the kernel-index sequence {@code integers()}, is intrinsically variable: it computes a value
+	 * at every kernel position, so it is read element-wise like any other element-wise operand.</p>
+	 *
+	 * @param operand the comparison operand
+	 * @return {@code true} if the operand's variable count is a batch of rows
+	 */
+	protected boolean isBatchedOperand(Supplier<?> operand) {
+		return !Countable.isFixedCount(operand) && Countable.isCountFrom(operand, source ->
+				!(source instanceof Computation) ||
+						(source instanceof Supplier && !shape((Supplier<?>) source).isFixedCount()));
 	}
 
 	/**
