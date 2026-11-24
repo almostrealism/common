@@ -608,6 +608,12 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * Asserts that two double values are equal within hardware precision tolerance.
 	 * The tolerance is determined by the local hardware's precision epsilon.
 	 *
+	 * <p>A non-finite value is compared for exact equality rather than within the epsilon
+	 * tolerance, so a {@code NaN} actual fails against any finite expected (and a finite actual
+	 * fails against a {@code NaN} expected), while two identical non-finite values — such as
+	 * {@code NaN} against {@code NaN} — are equal. See
+	 * {@link #requireExactWhenNonFinite(String, double, double)}.</p>
+	 *
 	 * @param a the expected value
 	 * @param b the actual value
 	 * @throws AssertionError if the values differ beyond tolerance
@@ -644,6 +650,16 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	/**
 	 * Asserts that two double values are equal within a specified delta, with a custom error message.
 	 *
+	 * <p>A non-finite value is never within any finite delta of a different value, because
+	 * {@code Math.abs(expected - actual)} is {@code NaN} whenever either operand is {@code NaN}
+	 * and {@code NaN > delta} is false — so a difference-against-delta test alone would silently
+	 * pass a {@code NaN} result. Non-finite values are therefore compared for exact equality
+	 * instead: the assertion passes only when {@code expected} and {@code actual} are the same
+	 * double (both {@code NaN}, or the same signed infinity), and fails for any other pairing
+	 * (a {@code NaN} against a finite value either way, {@code +Infinity} against
+	 * {@code -Infinity}, an infinity against a finite value). See
+	 * {@link #requireExactWhenNonFinite(String, double, double)}.</p>
+	 *
 	 * @param msg      the message to display if the assertion fails
 	 * @param expected the expected value
 	 * @param actual   the actual value
@@ -651,6 +667,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @throws AssertionError if the values differ by more than delta
 	 */
 	default void assertEquals(String msg, double expected, double actual, double delta) {
+		if (requireExactWhenNonFinite(msg, expected, actual)) {
+			return;
+		}
+
 		if (Math.abs(expected - actual) > delta) {
 			if (msg == null) {
 				throw new AssertionError(actual + " != " + expected);
@@ -723,12 +743,62 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	/**
 	 * Asserts that two double values are not equal within hardware precision tolerance.
 	 *
+	 * <p>Non-finite values are judged equal by exact equality, the same way
+	 * {@link #assertEquals(double, double)} judges them: two identical non-finite values (such as
+	 * {@code NaN} against {@code NaN}, or {@code +Infinity} against {@code +Infinity}) count as
+	 * equal and so fail this assertion, while a non-finite value against a different value (finite
+	 * or not) counts as unequal and passes.</p>
+	 *
 	 * @param a the first value
 	 * @param b the second value that should differ
 	 * @throws AssertionError if the values are equal within tolerance
 	 */
 	default void assertNotEquals(double a, double b) {
 		assertEquals(a, b, false);
+	}
+
+	/**
+	 * Decides a comparison between an expected and an actual value whenever either is not finite,
+	 * where a tolerance comparison would be meaningless.
+	 *
+	 * <p>Every tolerance-based comparison helper in this interface expresses the test as
+	 * {@code Math.abs(expected - actual)} against a threshold. That subtraction is {@code NaN}
+	 * whenever either operand is {@code NaN}, and every ordering comparison against {@code NaN}
+	 * is false, so the threshold test alone silently passes any {@code NaN} result — a
+	 * computation that produced {@code NaN} would assert as correct. Two equal infinities also
+	 * subtract to {@code NaN}, and an infinity against a finite value subtracts to an infinity
+	 * that no finite threshold bounds, so infinities cannot be handled by the threshold test
+	 * either.</p>
+	 *
+	 * <p>The rule applied here, consistently across the helpers that call it, is that a
+	 * non-finite value must match exactly: the comparison passes only when {@code expected} and
+	 * {@code actual} are the same double — both {@code NaN}, or the same signed infinity — and
+	 * fails otherwise. This makes a {@code NaN} actual fail against any finite expected, a finite
+	 * actual fail against a {@code NaN} expected, {@code +Infinity} fail against {@code -Infinity},
+	 * and an infinity fail against a finite value, while leaving a genuinely identical non-finite
+	 * pair (such as {@code NaN} compared with {@code NaN}) passing.</p>
+	 *
+	 * @param msg      context to report when the assertion fails, or {@code null}
+	 * @param expected the expected value
+	 * @param actual   the actual value
+	 * @return {@code true} if at least one value is non-finite and the comparison has been fully
+	 *         decided here (passing on an exact match, throwing on any mismatch); {@code false} if
+	 *         both values are finite and the caller must apply its own tolerance comparison
+	 * @throws AssertionError if exactly one value is non-finite, or both are but they are not the
+	 *                        same double
+	 */
+	private static boolean requireExactWhenNonFinite(String msg, double expected, double actual) {
+		if (Double.isFinite(expected) && Double.isFinite(actual)) {
+			return false;
+		}
+
+		if (Double.compare(expected, actual) != 0) {
+			String detail = actual + " != " + expected;
+			Console.root().warn(msg == null ? detail : detail + " " + msg, null);
+			throw new AssertionError(msg == null ? detail : detail + " " + msg);
+		}
+
+		return true;
 	}
 
 	/**
@@ -752,6 +822,16 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @param positive {@code true} to assert equality, {@code false} to assert inequality
 	 */
 	private static void assertEquals(String msg, double a, double b, boolean positive) {
+		if (!Double.isFinite(a) || !Double.isFinite(b)) {
+			boolean same = Double.compare(a, b) == 0;
+			if (same != positive) {
+				String rel = positive ? " != " : " == ";
+				Console.root().warn(b + rel + a, null);
+				throw new AssertionError(msg == null ? b + rel + a : msg);
+			}
+			return;
+		}
+
 		double gap = Math.pow(10, 3) * Hardware.getLocalHardware().getPrecision().epsilon(true);
 		double fallbackGap = 10 * gap;
 
@@ -847,6 +927,15 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * {@code magnitude} of 1 or less leaves the comparison exactly as
 	 * {@link #assertSimilar(String, double, double, double)} makes it.</p>
 	 *
+	 * <p>A non-finite value has no tolerance comparison: {@code Math.abs(a - b)} is {@code NaN}
+	 * whenever either value is {@code NaN}, and any comparison against {@code NaN} is false, so
+	 * this test alone would silently pass a {@code NaN} result — the defect this method's
+	 * tightening exists to close. A non-finite value is therefore required to match exactly: the
+	 * assertion passes only when {@code a} and {@code b} are the same double (both {@code NaN},
+	 * or the same signed infinity), and fails for any other pairing (a {@code NaN} against a
+	 * finite value either way, {@code +Infinity} against {@code -Infinity}, an infinity against a
+	 * finite value). See {@link #requireExactWhenNonFinite(String, double, double)}.</p>
+	 *
 	 * @param msg       context to report when the assertion fails, or {@code null}
 	 * @param a         the expected value
 	 * @param b         the actual value
@@ -856,6 +945,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @throws AssertionError if the values differ by more than the tolerance
 	 */
 	default void assertSimilar(String msg, double a, double b, double r, double magnitude) {
+		if (requireExactWhenNonFinite(msg, a, b)) {
+			return;
+		}
+
 		double gap = Math.max(Math.abs(a), Math.abs(b));
 		double eps = Hardware.getLocalHardware().epsilon() * Math.max(1.0, magnitude);
 		double comp = Math.max(eps, r * gap);
