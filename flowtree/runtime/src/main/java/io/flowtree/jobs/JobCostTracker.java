@@ -81,6 +81,16 @@ final class JobCostTracker {
     }
 
     /**
+     * Returns the cumulative cost so far across every model, so a caller can
+     * measure what a span of sessions cost by reading it before and after.
+     *
+     * @return the job-wide cost in USD, or {@code 0.0} before anything is billed
+     */
+    double total() {
+        return costByModel.values().stream().mapToDouble(Double::doubleValue).sum();
+    }
+
+    /**
      * Marks the accumulated cost as incomplete (a lower bound), because an
      * agent session was killed for inactivity before reporting its cost.
      */

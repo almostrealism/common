@@ -169,6 +169,21 @@ public class HarnessStatusReporterTest extends TestSuiteBase {
         assertTrue(body.contains("Git tampering"));
     }
 
+    /** notice posts carry the gear prefix and the information emoji, never the warning emoji. */
+    @Test(timeout = 30000)
+    public void noticeMessageCarriesInformationEmoji() {
+        List<Posted> posts = new ArrayList<>();
+        reporter(posts).notice("Object-oriented design review: 2 classes");
+
+        assertEquals(1, posts.size());
+        String body = posts.get(0).body;
+        assertTrue(body.contains(HarnessStatusReporter.SYSTEM_PREFIX));
+        assertTrue(body.contains(HarnessStatusReporter.NOTICE_EMOJI));
+        assertFalse(body.contains(HarnessStatusReporter.UNUSUAL_EMOJI));
+        assertTrue(body.contains("2 classes"));
+        assertTrue(body.contains(HarnessStatusReporter.ACTIVITY));
+    }
+
     /** null or empty URL disables the reporter; no posts are made when disabled. */
     @Test(timeout = 30000)
     public void disabledReporterIsSilentNoOp() {

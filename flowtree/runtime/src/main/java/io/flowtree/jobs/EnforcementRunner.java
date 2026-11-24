@@ -137,8 +137,8 @@ class EnforcementRunner implements ConsoleFeatures {
         }
         rules.addAll(job.getCustomEnforcementRules());
         if (reviewRule != null && job.isObjectOrientedReviewEnabled()) {
-            // One session per changed class: after the content-protection rules, so that a
-            // branch touching many classes cannot spend the total attempt cap before they run.
+            // One session per job over a frozen snapshot of the flagged classes, run after the
+            // content-protection rules so its session cannot spend the attempt cap before they run.
             rules.add(new ObjectOrientedDesignRule());
         }
         if (job.getTargetBranch() != null && !job.getTargetBranch().isEmpty()) {

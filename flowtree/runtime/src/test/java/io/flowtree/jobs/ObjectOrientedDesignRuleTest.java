@@ -51,6 +51,11 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 	private static final class StubJob extends CodingAgentJob {
 		/** The changed paths returned by {@link #extractChangedFilePaths()}. */
 		private final List<String> changed;
+		/** The JSON bodies of every harness status message the job posted. */
+		private final List<String> posts = new ArrayList<>();
+		/** A status reporter that records into {@link #posts} instead of reaching a controller. */
+		private final HarnessStatusReporter reporter =
+				new HarnessStatusReporter("http://controller/api/workstreams/ws-1", (url, body) -> posts.add(body));
 
 		/**
 		 * Creates a job over a working directory with the given changed paths.
@@ -66,6 +71,17 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 
 		@Override
 		List<String> extractChangedFilePaths() { return changed; }
+
+		@Override
+		HarnessStatusReporter harnessStatus() { return reporter; }
+
+		/**
+		 * Returns whether any posted status message contains the given text.
+		 *
+		 * @param text the text to look for
+		 * @return whether a posted message contains it
+		 */
+		boolean posted(String text) { return posts.stream().anyMatch(body -> body.contains(text)); }
 	}
 
 	/**
@@ -77,8 +93,12 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 		private final Map<String, EnumSet<ObjectOrientedRiskGate.Signal>> signals;
 		/** The git blob id each path's inspection reports. */
 		private final Map<String, String> blobs;
+		/** The lines the branch added to each path, as its inspection reports. */
+		private final Map<String, Integer> added;
 		/** The ledger every inspection and recording uses. */
 		private final ObjectOrientedReviewLedger ledger;
+		/** The working tree's changed-line counts to report, consumed one per call; the last repeats. */
+		private final List<Integer> lineCounts;
 
 		/**
 		 * @param ledgerFile the backing file for the shared ledger
@@ -86,7 +106,49 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 		FakeRule(Path ledgerFile) {
 			this.signals = new HashMap<>();
 			this.blobs = new HashMap<>();
+			this.added = new HashMap<>();
 			this.ledger = new ObjectOrientedReviewLedger(ledgerFile);
+			this.lineCounts = new ArrayList<>(List.of(0));
+		}
+
+		/**
+		 * Declares how many lines the branch added to a path.
+		 *
+		 * @param path  the class path
+		 * @param lines the added-line count
+		 * @return this rule, for chaining
+		 */
+		FakeRule addedLines(String path, int lines) {
+			added.put(path, lines);
+			return this;
+		}
+
+		/**
+		 * Declares the working tree's changed-line counts, one per measurement.
+		 *
+		 * @param counts the counts in measurement order
+		 * @return this rule, for chaining
+		 */
+		FakeRule lineCounts(Integer... counts) {
+			lineCounts.clear();
+			lineCounts.addAll(List.of(counts));
+			return this;
+		}
+
+		/**
+		 * Simulates a review session editing a class: its content now hashes to another blob id.
+		 *
+		 * @param path the class path
+		 * @param blob the blob id of the edited content
+		 */
+		void edit(String path, String blob) { blobs.put(path, blob); }
+
+		@Override
+		String blobId(CodingAgentJob job, String path) { return blobs.getOrDefault(path, "blob-" + path); }
+
+		@Override
+		int changedLineCount(CodingAgentJob job) {
+			return lineCounts.size() > 1 ? lineCounts.remove(0) : lineCounts.get(0);
 		}
 
 		/**
@@ -107,10 +169,9 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 
 		@Override
 		Candidate inspect(CodingAgentJob job, String path, String base) {
-			String blob = blobs.getOrDefault(path, "blob-" + path);
 			EnumSet<ObjectOrientedRiskGate.Signal> fired =
 					signals.getOrDefault(path, EnumSet.noneOf(ObjectOrientedRiskGate.Signal.class));
-			return new Candidate(path, blob, fired);
+			return new Candidate(path, blobId(job, path), fired, added.getOrDefault(path, 0));
 		}
 
 		@Override
@@ -405,9 +466,9 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 		String window = "engine/ml/src/main/java/org/example/Window.java";
 		String config = "engine/ml/src/main/java/org/example/LayerConfig.java";
 		ObjectOrientedDesignRule.Candidate a = new ObjectOrientedDesignRule.Candidate(
-				window, "w1", EnumSet.of(ObjectOrientedRiskGate.Signal.LAMBDA_ARGUMENT));
+				window, "w1", EnumSet.of(ObjectOrientedRiskGate.Signal.LAMBDA_ARGUMENT), 40);
 		ObjectOrientedDesignRule.Candidate b = new ObjectOrientedDesignRule.Candidate(
-				config, "c1", EnumSet.of(ObjectOrientedRiskGate.Signal.SUSPICIOUS_NAME));
+				config, "c1", EnumSet.of(ObjectOrientedRiskGate.Signal.SUSPICIOUS_NAME), 12);
 		String prompt = new ObjectOrientedDesignRule().buildReviewPrompt(List.of(a, b), "develop");
 
 		assertTrue(prompt.contains(window));
@@ -422,6 +483,156 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 		assertTrue(prompt.contains("Do not defer"));
 		assertTrue(prompt.contains(ObjectOrientedDesignRule.VERDICT_PATH));
 		assertTrue(prompt.contains("Do NOT write or edit commit.txt"));
+	}
+
+	/**
+	 * STEP 3 scopes the review to the code the branch wrote: it fixes violations there, files a
+	 * follow-up task (rather than an edit) for surrounding code, and keeps its edits proportionate.
+	 * It no longer demands cross-file refactors.
+	 */
+	@Test(timeout = 30000)
+	public void promptScopesFixesToTheBranchAndFilesFollowUps() {
+		ObjectOrientedDesignRule.Candidate a = new ObjectOrientedDesignRule.Candidate(
+				"engine/ml/src/main/java/org/example/Window.java", "w1",
+				EnumSet.of(ObjectOrientedRiskGate.Signal.NEW_CLASS), 40);
+		String prompt = new ObjectOrientedDesignRule().buildReviewPrompt(List.of(a), "master");
+
+		assertTrue(prompt.contains("Fix what this branch wrote; file a follow-up for the rest"));
+		assertTrue(prompt.contains("code this branch added or changed"));
+		assertTrue(prompt.contains("surrounding code this branch did not write"));
+		assertTrue(prompt.contains("do NOT edit that code in this job"));
+		assertTrue(prompt.contains("tracker_create_task"));
+		assertTrue(prompt.contains("proportionate"));
+		assertTrue("a follow-up-only finding must still get a settled verdict",
+				prompt.contains("`<class>: CLEAN - follow-up <task id> filed for <surrounding class>`"));
+		assertFalse("the prompt must not demand refactors across other files",
+				prompt.contains("even when the fix is a refactor that touches other files"));
+	}
+
+	/**
+	 * The selection is frozen on first evaluation: after one session settles the flagged class, a
+	 * class that only the review's own edits produced, and the reviewed class's edited content, are
+	 * never gated again in the job, so no second session starts.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void reviewIntroducedChangesDoNotStartASecondSession() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String primary = "engine/ml/src/main/java/org/example/Window.java";
+			String introduced = "engine/ml/src/main/java/org/example/WindowScope.java";
+			for (String path : List.of(primary, introduced)) {
+				Files.createDirectories(root.resolve(path).getParent());
+				Files.writeString(root.resolve(path), "class X {}");
+			}
+			List<String> changed = new ArrayList<>(List.of(primary));
+			StubJob job = new StubJob(root, changed);
+			FakeRule rule = new FakeRule(root.resolve("ledger.tsv"))
+					.with(primary, "w1", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.with(introduced, "s1", ObjectOrientedRiskGate.Signal.NEW_CLASS, ObjectOrientedRiskGate.Signal.NEW_STATIC);
+
+			assertTrue(rule.isViolated(job));
+			String prompt = rule.buildCorrectionPrompt(job);
+			assertFalse(prompt.contains(introduced));
+
+			changed.add(introduced);
+			rule.edit(primary, "w2");
+			appendVerdict(root, VERDICT_FILE, primary + ": FIXED - moved the scope builder onto the window");
+			rule.onCorrectionAttempted(job);
+
+			assertEquals(Set.of(primary), rule.getReviewed());
+			assertFalse("a class the review introduced must not start another session", rule.isViolated(job));
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
+	 * The content a review session leaves behind is recorded under the class's verdict, so a later
+	 * job does not review the review's own edit again; content edited after that is reviewed again.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void reviewEditIsRecordedForLaterJobs() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String target = "engine/ml/src/main/java/org/example/Window.java";
+			Files.createDirectories(root.resolve(target).getParent());
+			Files.writeString(root.resolve(target), "class Window {}");
+			Path ledger = root.resolve("ledger.tsv");
+
+			StubJob firstJob = new StubJob(root, new ArrayList<>(List.of(target)));
+			FakeRule firstRule = new FakeRule(ledger).with(target, "before", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+			firstRule.buildCorrectionPrompt(firstJob);
+			firstRule.edit(target, "after");
+			appendVerdict(root, VERDICT_FILE, target + ": FIXED - extended the framework type");
+			firstRule.onCorrectionAttempted(firstJob);
+
+			assertTrue(new ObjectOrientedReviewLedger(ledger).isReviewed(target, "before"));
+			assertTrue(new ObjectOrientedReviewLedger(ledger).isReviewed(target, "after"));
+			FakeRule laterRule = new FakeRule(ledger).with(target, "after", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+			assertFalse("the review's own edit must not be reviewed again in a later job",
+					laterRule.isViolated(new StubJob(root, new ArrayList<>(List.of(target)))));
+			FakeRule editedRule = new FakeRule(ledger).with(target, "later", ObjectOrientedRiskGate.Signal.NEW_CLASS);
+			assertTrue(editedRule.isViolated(new StubJob(root, new ArrayList<>(List.of(target)))));
+		} finally {
+			delete(root);
+		}
+	}
+
+	/**
+	 * Each session announces its classes, and afterwards the rule posts the cumulative review time
+	 * and cost; a session whose added lines exceed {@link ObjectOrientedDesignRule#MAX_GROWTH_RATIO}
+	 * times the reviewed classes' added lines raises a warning, and a proportionate one does not.
+	 *
+	 * @throws IOException if the temporary tree cannot be written
+	 */
+	@Test(timeout = 30000)
+	public void reportsCumulativeCostAndWarnsOnDisproportionateReview() throws IOException {
+		Path root = Files.createTempDirectory("oop-rule");
+		try {
+			String window = "engine/ml/src/main/java/org/example/Window.java";
+			String holder = "engine/ml/src/main/java/org/example/ModelHolder.java";
+			for (String path : List.of(window, holder)) {
+				Files.createDirectories(root.resolve(path).getParent());
+				Files.writeString(root.resolve(path), "class X {}");
+			}
+
+			StubJob job = new StubJob(root, new ArrayList<>(List.of(window, holder)));
+			FakeRule rule = new FakeRule(root.resolve("ledger.tsv"))
+					.with(window, "w1", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.with(holder, "h1", ObjectOrientedRiskGate.Signal.SUSPICIOUS_NAME)
+					.addedLines(window, 10).addedLines(holder, 5)
+					.lineCounts(100, 200);
+			job.getCostTracker().record("claude", "anthropic/primary", 4.00);
+			rule.buildCorrectionPrompt(job);
+			assertTrue("the session's classes are announced", job.posted("2 class(es): Window, ModelHolder"));
+			job.getCostTracker().record("claude", "anthropic/review", 1.25);
+			appendVerdict(root, VERDICT_FILE, window + ": CLEAN");
+			appendVerdict(root, VERDICT_FILE, holder + ": CLEAN");
+			rule.onCorrectionAttempted(job);
+
+			assertTrue("the cumulative figure counts only the review's cost",
+					job.posted("2 class(es) reviewed") && job.posted("$1.25"));
+			assertFalse(job.posted("lower bound"));
+			assertTrue("100 lines added over 15 reviewed lines must warn",
+					job.posted(HarnessStatusReporter.UNUSUAL_EMOJI) && job.posted("added 100 lines"));
+
+			StubJob proportionate = new StubJob(root, new ArrayList<>(List.of(window)));
+			FakeRule small = new FakeRule(root.resolve("ledger2.tsv"))
+					.with(window, "w1", ObjectOrientedRiskGate.Signal.NEW_CLASS)
+					.addedLines(window, 10).lineCounts(100, 130);
+			small.buildCorrectionPrompt(proportionate);
+			proportionate.getCostTracker().markIncomplete();
+			small.onCorrectionAttempted(proportionate);
+			assertFalse("30 lines over 10 reviewed lines is within the ratio",
+					proportionate.posted(HarnessStatusReporter.UNUSUAL_EMOJI));
+			assertTrue("a lost session cost makes the figure a lower bound", proportionate.posted("lower bound"));
+		} finally {
+			delete(root);
+		}
 	}
 
 	/**
