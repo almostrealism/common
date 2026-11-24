@@ -153,6 +153,20 @@ public class JobStatusRollupTest extends TestSuiteBase {
 				Collections.emptyMap());
 	}
 
+	/**
+	 * Signal-killed result: a non-zero exit above 128 with measurable runtime
+	 * and partial output — a session that ran and was killed, not one that
+	 * could not start.
+	 */
+	private static AgentRunResult signalKilled(int exitCode, long durationMs) {
+		return new AgentRunResult(
+				exitCode, false, "partial work output", "sess-killed",
+				durationMs, 0L, 2, 0.0,
+				"error", true,
+				Collections.emptyList(),
+				Collections.emptyMap());
+	}
+
 	// ── The reported bug ──────────────────────────────────────────────────
 
 	/**
@@ -268,12 +282,70 @@ public class JobStatusRollupTest extends TestSuiteBase {
 		assertEquals(JobCompletionEvent.Status.FAILED, event.getStatus());
 	}
 
+	// ── Killed-but-productive primary ─────────────────────────────────────
+
+	/**
+	 * A primary killed by a signal (143) after measurable runtime, whose work
+	 * was then committed, must roll up to {@code DEGRADED} — not {@code FAILED}
+	 * and not {@code SUCCESS}. The reason must name the kill cause and the
+	 * measured (non-zero) duration, the honest record the self-reported
+	 * {@code 0s} could not give. This is the reported incident: a 44-minute
+	 * session killed by SIGTERM whose committed work was being discarded.
+	 */
+	@Test(timeout = 30000)
+	public void killedBySignalWithCommitRollsUpToDegraded() throws Exception {
+		RollupTestJob job = new RollupTestJob("killed-productive", "do the work",
+				List.of(signalKilled(143, 90_000L)),
+				List.of(true));   // the later phase committed the primary's work
+		job.setWorkingDirectory(workDir.toString());
+
+		job.executeSingleRun();
+		job.capturePrimaryOutcome();
+
+		JobCompletionEvent event = job.createEventNow(null);
+		assertEquals(JobCompletionEvent.Status.DEGRADED, event.getStatus());
+		String msg = event.getErrorMessage();
+		assertNotNull("DEGRADED rollup must carry a reason", msg);
+		assertTrue("reason must name the kill cause, got: " + msg,
+				msg.contains("killed by") && msg.contains("SIGTERM"));
+		assertTrue("reason must report the measured non-zero duration, got: " + msg,
+				msg.contains("1m 30s"));
+	}
+
+	/**
+	 * A launch failure — {@link AgentRunResult#launchFailed} (exit −1, no
+	 * runtime, no output) — with nothing committed is the genuine
+	 * nothing-delivered case and must roll up to {@code FAILED}. It is a hard
+	 * failure (the could-not-start classification), distinct from a signal kill
+	 * that ran and left work. The no-work-performed wording is pinned by
+	 * {@link #hardPrimaryFailureThenRecoveryRetryRollsUpToFailed()}.
+	 */
+	@Test(timeout = 30000)
+	public void couldNotStartRollsUpToFailed() throws Exception {
+		RollupTestJob job = new RollupTestJob("could-not-start", "do the work",
+				List.of(AgentRunResult.launchFailed("binary not found")),
+				List.of(false));
+		job.setWorkingDirectory(workDir.toString());
+
+		job.executeSingleRun();
+		assertTrue("launch failure must be a hard primary failure",
+				job.isHardPrimaryFailure());
+		job.capturePrimaryOutcome();
+
+		JobCompletionEvent event = job.createEventNow(null);
+		assertEquals(JobCompletionEvent.Status.FAILED, event.getStatus());
+	}
+
 	// ── isHardPrimaryFailure() predicate ──────────────────────────────────
 
 	/**
-	 * The hard-failure predicate must reject three near-miss cases that
-	 * should NOT be treated as terminal at the rollup level: a zero exit,
-	 * any non-zero duration, and an inactivity-killed process.
+	 * The hard-failure predicate must reject the near-miss cases that should
+	 * NOT be treated as terminal at the rollup level: a zero exit, any non-zero
+	 * duration, and an inactivity-killed process. It must also reject a signal
+	 * kill (143) with measurable runtime and a tmux-path {@code -1} with
+	 * measurable runtime — both ran and may have left work, so they are graded
+	 * by delivery rather than flagged could-not-start — while still accepting
+	 * the genuine hard failure (non-zero exit, zero duration, not killed).
 	 */
 	@Test(timeout = 30000)
 	public void hardFailurePredicateRejectsNearMisses() throws Exception {
@@ -288,6 +360,8 @@ public class JobStatusRollupTest extends TestSuiteBase {
 		assertHardFailurePredicate(false, 137, 0L, true);
 		// The actual hard failure: non-zero exit, zero duration, not killed.
 		assertHardFailurePredicate(true, 1, 0L, false);
+		assertHardFailurePredicate(false, 143, 5000L, false);
+		assertHardFailurePredicate(false, -1, 5000L, false);
 	}
 
 	/** Drives one scenario through the predicate and asserts the result. */

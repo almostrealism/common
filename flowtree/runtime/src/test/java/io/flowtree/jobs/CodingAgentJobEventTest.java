@@ -44,6 +44,56 @@ public class CodingAgentJobEventTest extends TestSuiteBase {
 		assertTrue(event instanceof JobCompletionEvent);
 	}
 
+	/**
+	 * {@link JobCompletionEvent#fromStatusBody} must reconstruct a coding-agent
+	 * event from a {@link JobCompletionEvent#toJson()} body as the inverse of
+	 * that serialization — choosing the {@link CodingAgentJobEvent} type and
+	 * restoring the git, timing, and session fields. The commit hash in
+	 * particular is what the controller's auto-pull-request gate reads to decide
+	 * whether a DEGRADED job still delivered something to open a PR for.
+	 */
+	@Test(timeout = 30000)
+	public void fromStatusBodyRoundTripsCodingAgentEvent() {
+		CodingAgentJobEvent original =
+				new CodingAgentJobEvent("cc-rt", JobCompletionEvent.Status.DEGRADED, "round trip")
+						.withClaudeCodeInfo("the prompt", "sess-9", 143)
+						.withTimingInfo(90_000L, 1_000L, 0.0, 2)
+						.withSessionDetails("error", true, 0, List.of());
+		original.withGitInfo("feature/x", "mainline-ref", List.of("A.java"), List.of(), true);
+
+		String json = original.toJson();
+		JobCompletionEvent rebuilt = JobCompletionEvent.fromStatusBody(
+				"cc-rt", JobCompletionEvent.Status.DEGRADED, "round trip", json);
+
+		assertTrue("prompt/sessionId in the body must yield a CodingAgentJobEvent",
+				rebuilt instanceof CodingAgentJobEvent);
+		assertEquals(JobCompletionEvent.Status.DEGRADED, rebuilt.getStatus());
+		assertEquals("the prompt", rebuilt.getPrompt());
+		assertEquals("sess-9", rebuilt.getSessionId());
+		assertEquals(143, rebuilt.getExitCode());
+		assertEquals(90_000L, rebuilt.getDurationMs());
+		assertEquals("feature/x", rebuilt.getTargetBranch());
+		assertEquals("mainline-ref", rebuilt.getCommitHash());
+	}
+
+	/**
+	 * A body carrying neither prompt nor sessionId reconstructs as the base
+	 * {@link JobCompletionEvent} type, not a coding-agent one.
+	 */
+	@Test(timeout = 30000)
+	public void fromStatusBodyWithoutClaudeFieldsYieldsBaseEvent() {
+		JobCompletionEvent original =
+				new JobCompletionEvent("gen-rt", JobCompletionEvent.Status.SUCCESS, "generic");
+		original.withGitInfo("feature/y", "mainline-ref", List.of(), List.of(), true);
+
+		JobCompletionEvent rebuilt = JobCompletionEvent.fromStatusBody(
+				"gen-rt", JobCompletionEvent.Status.SUCCESS, "generic", original.toJson());
+
+		assertFalse("no prompt/sessionId must stay the base type",
+				rebuilt instanceof CodingAgentJobEvent);
+		assertEquals("mainline-ref", rebuilt.getCommitHash());
+	}
+
 	/** Verifies that {@code withClaudeCodeInfo} sets the prompt, session ID, and exit code fields. */
 	@Test(timeout = 30000)
 	public void withClaudeCodeInfoSetsFields() {

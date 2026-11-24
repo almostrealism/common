@@ -52,13 +52,23 @@ public final class AgentProcessRunner {
      * Result of one attempt: exit code, captured stdout (possibly partial), and
      * the reason a watchdog killed the process, if any.
      *
+     * <p>{@code wallClockMs} is the elapsed real time this runner observed
+     * between launching the process and collecting its exit, measured here
+     * because it is the one place that sees the true lifetime of a process
+     * that was killed by a signal before it could report its own duration. A
+     * runner uses it as the authoritative duration when the subprocess never
+     * emitted a self-reported one (see
+     * {@code ClaudeCodeRunner.parseClaudeNdjson}).</p>
+     *
      * @param exitCode             process exit code; {@code -1} on I/O failure
      * @param output               captured stdout (possibly partial after a kill)
      * @param killedForInactivity  {@code true} when the inactivity watchdog fired
      * @param killedForLooping      {@code true} when the loop detector fired on repeated actions
+     * @param wallClockMs          elapsed real time from launch to exit, in milliseconds
      */
     public record Result(int exitCode, String output,
-                         boolean killedForInactivity, boolean killedForLooping) {}
+                         boolean killedForInactivity, boolean killedForLooping,
+                         long wallClockMs) {}
 
     /**
      * Starts the configured {@link ProcessBuilder} and reads its merged stdout
@@ -182,6 +192,7 @@ public final class AgentProcessRunner {
         AtomicBoolean loopKilled = new AtomicBoolean(false);
         int exitCode = -1;
         Thread monitor = null;
+        long startNanos = System.nanoTime();
         try {
             Process process = pb.start();
             long pid = process.pid();
@@ -222,7 +233,8 @@ public final class AgentProcessRunner {
                 monitor.interrupt();
             }
         }
-        return new Result(exitCode, out.toString(), killed.get(), loopKilled.get());
+        long wallClockMs = (System.nanoTime() - startNanos) / 1_000_000L;
+        return new Result(exitCode, out.toString(), killed.get(), loopKilled.get(), wallClockMs);
     }
 
     /** Runs the command inside a {@link TmuxSession} so the child has a real tty. */
@@ -238,6 +250,7 @@ public final class AgentProcessRunner {
         int exitCode = -1;
         Thread monitor = null;
         String sessionName = "agent-" + sanitizeSessionName(taskId);
+        long startNanos = System.nanoTime();
         try (TmuxSession session = TmuxSession.create(sessionName)) {
             Map<String, String> env = pb.environment();
             // Defensive defaults: the child sees a real tty under tmux. Many CLIs
@@ -286,7 +299,8 @@ public final class AgentProcessRunner {
                 monitor.interrupt();
             }
         }
-        return new Result(exitCode, out.toString(), killed.get(), loopKilled.get());
+        long wallClockMs = (System.nanoTime() - startNanos) / 1_000_000L;
+        return new Result(exitCode, out.toString(), killed.get(), loopKilled.get(), wallClockMs);
     }
 
     /**

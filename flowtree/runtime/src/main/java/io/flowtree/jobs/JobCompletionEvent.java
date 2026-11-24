@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.JsonFieldExtractor;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -236,6 +238,66 @@ public class JobCompletionEvent {
     }
 
     /**
+     * Reconstructs an event from the JSON {@code body} of a status post, the
+     * inverse of {@link #toJson()}. Chooses the concrete type —
+     * {@link CodingAgentJobEvent} when the body carries a {@code prompt} or
+     * {@code sessionId}, otherwise this base type — then lets the event
+     * populate itself from the body via {@link #populateFromBody(String)},
+     * which a coding-agent event overrides to add its Claude-specific fields.
+     * The caller supplies {@code status} and {@code description} already parsed,
+     * and applies any receiver-side state (such as self-notify) afterwards.
+     *
+     * @param jobId       the job identifier
+     * @param status      the already-parsed completion status
+     * @param description the job description
+     * @param body        the raw JSON body of the status post
+     * @return the reconstructed event
+     */
+    public static JobCompletionEvent fromStatusBody(String jobId, Status status,
+                                                    String description, String body) {
+        String prompt = JsonFieldExtractor.extractString(body, "prompt");
+        String sessionId = JsonFieldExtractor.extractString(body, "sessionId");
+        boolean isClaudeCodeEvent = prompt != null || sessionId != null;
+        String errorMessage = status == Status.FAILED
+                ? JsonFieldExtractor.extractString(body, "errorMessage") : null;
+
+        JobCompletionEvent event;
+        if (isClaudeCodeEvent) {
+            event = status == Status.FAILED
+                    ? CodingAgentJobEvent.failed(jobId, description, errorMessage, null)
+                    : new CodingAgentJobEvent(jobId, status, description);
+        } else {
+            event = status == Status.FAILED
+                    ? failed(jobId, description, errorMessage, null)
+                    : new JobCompletionEvent(jobId, status, description);
+        }
+        event.populateFromBody(body);
+        return event;
+    }
+
+    /**
+     * Populates the common git, pull-request, rescue, and dependent-repo-push
+     * fields from the JSON {@code body} of a status post. {@link #fromStatusBody}
+     * calls this on the event it constructed; a subclass overrides it to add its
+     * own fields, calling {@code super.populateFromBody(body)} first.
+     *
+     * @param body the raw JSON body of the status post
+     */
+    protected void populateFromBody(String body) {
+        withGitInfo(
+                JsonFieldExtractor.extractString(body, "targetBranch"),
+                JsonFieldExtractor.extractString(body, "commitHash"),
+                JsonFieldExtractor.extractStringArray(body, "stagedFiles"),
+                JsonFieldExtractor.extractStringArray(body, "skippedFiles"),
+                JsonFieldExtractor.extractBoolean(body, "pushed"));
+        String pullRequestUrl = JsonFieldExtractor.extractString(body, "pullRequestUrl");
+        if (pullRequestUrl != null) withPullRequestUrl(pullRequestUrl);
+        // The instructions already travel in errorMessage; only the location is restored.
+        withRescue(JsonFieldExtractor.extractString(body, "rescueRef"), null);
+        withDependentRepoPushes(DependentRepoPush.listFromJson(body));
+    }
+
+    /**
      * Creates a {@link Status#CANCELLED} event for a job whose run was
      * superseded before it completed — for example, when a terminal pull
      * request event (merge or close) cancels the in-flight work still running
@@ -436,6 +498,20 @@ public class JobCompletionEvent {
     public String getCommitHash() { return commitHash; }
 
     /**
+     * Returns whether this job delivered something a pull request can be opened
+     * for: a primary commit, or a push to a dependent repository. The
+     * controller's auto-pull-request gate uses this to decide whether a
+     * {@link Status#DEGRADED} completion — a signal-killed-but-productive
+     * primary — should still open its pull request, where only {@link Status#SUCCESS}
+     * did before.
+     *
+     * @return {@code true} when a commit or dependent-repo push exists
+     */
+    public boolean deliveredForPullRequest() {
+        return commitHash != null || !getDependentRepoPushes().isEmpty();
+    }
+
+    /**
      * Returns the list of files staged for commit during this job.
      *
      * @return the staged file list, never {@code null}
@@ -629,7 +705,8 @@ public class JobCompletionEvent {
 
     /**
      * Returns whether the recorded cost is incomplete (a lower bound) because
-     * an agent session was killed for inactivity before reporting its cost.
+     * an agent session was killed — for inactivity, looping, or by a signal —
+     * before reporting its cost.
      *
      * @return {@code true} when the true cost is unknown and exceeds the
      *         reported total; {@code false} when the cost is fully accounted for
@@ -641,7 +718,7 @@ public class JobCompletionEvent {
     /**
      * Sets whether the recorded cost is incomplete (a lower bound).
      *
-     * @param costIncomplete {@code true} when an inactivity kill lost cost data
+     * @param costIncomplete {@code true} when a kill (inactivity, looping, or signal) lost cost data
      */
     public void setCostIncomplete(boolean costIncomplete) { this.costIncomplete = costIncomplete; }
 

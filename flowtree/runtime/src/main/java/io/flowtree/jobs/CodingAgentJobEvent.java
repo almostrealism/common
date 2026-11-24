@@ -16,6 +16,7 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.git.TransientGitException;
 
 import java.time.Instant;
@@ -412,7 +413,8 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
 
     /**
      * Marks whether the recorded cost is incomplete (a lower bound) because an
-     * agent session was killed for inactivity before reporting its cost.
+     * agent session was killed — for inactivity, looping, or by a signal —
+     * before reporting its cost.
      *
      * @param costIncomplete {@code true} when the true cost is unknown and
      *                       exceeds the reported total
@@ -589,6 +591,42 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
     }
 
     /**
+     * Populates the common fields and then the Claude-specific fields from the
+     * JSON {@code body} of a status post, the inverse of what {@link #toJson()}
+     * wrote for them. Overrides {@link JobCompletionEvent#populateFromBody(String)}
+     * so {@link JobCompletionEvent#fromStatusBody(String, Status, String, String)}
+     * reconstructs a coding-agent event polymorphically, without inspecting its
+     * runtime type.
+     *
+     * @param body the raw JSON body of the status post
+     */
+    @Override
+    protected void populateFromBody(String body) {
+        super.populateFromBody(body);
+        withClaudeCodeInfo(
+                JsonFieldExtractor.extractString(body, "prompt"),
+                JsonFieldExtractor.extractString(body, "sessionId"),
+                JsonFieldExtractor.extractInt(body, "exitCode"));
+        withTimingInfo(
+                JsonFieldExtractor.extractLong(body, "durationMs"),
+                JsonFieldExtractor.extractLong(body, "durationApiMs"),
+                JsonFieldExtractor.extractDouble(body, "costUsd"),
+                JsonFieldExtractor.extractInt(body, "numTurns"));
+        withSessionDetails(
+                JsonFieldExtractor.extractString(body, "subtype"),
+                JsonFieldExtractor.extractBoolean(body, "sessionIsError"),
+                JsonFieldExtractor.extractInt(body, "permissionDenials"),
+                JsonFieldExtractor.extractStringArray(body, "deniedToolNames"));
+        String commitMessageSource = JsonFieldExtractor.extractString(body, "commitMessageSource");
+        if (commitMessageSource != null) {
+            withCommitMessageSource(commitMessageSource);
+        }
+        withCostByRunner(JsonFieldExtractor.extractDoubleObject(body, "costByRunner"));
+        withCostByModel(JsonFieldExtractor.extractDoubleObject(body, "costByModel"));
+        withCostIncomplete(JsonFieldExtractor.extractBoolean(body, "costIncomplete"));
+    }
+
+    /**
      * Creates the event carrying the terminal status of {@code job}, before
      * its execution state is populated.
      *
@@ -606,6 +644,18 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
      * failure that refused nothing — the working tree held no changed Java file
      * for the audit to examine — withheld no work and does not degrade the
      * outcome.</p>
+     *
+     * <p>A job whose primary session ran and was then killed by a signal —
+     * {@link PrimaryPhaseOutcome#killedBySignal()} — but whose work the later
+     * phases verified and committed is reported {@link Status#DEGRADED} rather
+     * than {@link Status#FAILED}. The kill was external (the harness's own kills
+     * are SIGKILL or set a watchdog flag), the tree holds real reviewed work,
+     * and this branch is reached before the blanket non-zero-exit and
+     * hard-failure branches so that outcome is graded by what it delivered. The
+     * reason names the signal cause and the primary's measured duration so the
+     * record states what happened rather than a self-reported {@code 0s}. When
+     * nothing was committed the job falls through to the ordinary
+     * nothing-delivered handling and is still {@link Status#FAILED}.</p>
      *
      * <p>A job with {@link CodingAgentJob#isEnforceChanges()} on that exited
      * cleanly with nothing committed is reported {@link Status#DEGRADED}. It
@@ -626,6 +676,10 @@ public class CodingAgentJobEvent extends JobCompletionEvent {
                         TransientGitException.describe(error));
             }
             return failed(job.getTaskId(), job.getTaskString(), error.getMessage(), error);
+        }
+        PrimaryPhaseOutcome primary = job.primaryOutcome();
+        if (primary.killedBySignal() && (job.hasPublishedCommit() || job.hasAgentCommitted())) {
+            return degraded(job.getTaskId(), job.getTaskString(), primary.describeSignalKill());
         }
         if (job.isPrimaryPhaseHardFailed() && acc.getExitCode() == 0) {
             return failed(job.getTaskId(), job.getTaskString(),

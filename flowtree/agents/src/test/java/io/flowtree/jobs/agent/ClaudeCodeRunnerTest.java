@@ -22,6 +22,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -401,6 +402,55 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
         AgentRunResult result = new ClaudeCodeRunner().parseClaudeNdjson(sample, 0, false, SILENT);
         assertEquals(0.10, result.costUsd(), 0.0001);
         assertEquals(1, result.numTurns());
+    }
+
+    /**
+     * A signal-killed session never emits the final result line that carries
+     * {@code duration_ms}, so the parsed self-report is {@code 0}. The measured
+     * wall-clock the runner observed must then stand in, so a session that ran
+     * for 44 minutes and was killed reports that duration rather than {@code 0s}
+     * — the bug this change fixes. The exit code (143) with real runtime also
+     * classifies as a signal kill, not a could-not-start.
+     */
+    @Test(timeout = 5000)
+    public void parseClaudeNdjsonUsesMeasuredWallClockWhenDurationAbsent() {
+        long measured = 44L * 60L * 1000L;
+        AgentRunResult result = new ClaudeCodeRunner().parseClaudeNdjson(
+                "", 143, false, false, measured, SILENT, Collections.emptySet());
+        assertEquals(measured, result.durationMs());
+        assertTrue("a 143 after real runtime is a signal kill", result.isKilledBySignal());
+        assertEquals(AgentRunResult.EndState.KILLED_SIGNAL, result.endState());
+    }
+
+    /**
+     * On a clean exit the CLI's self-reported {@code duration_ms} is
+     * authoritative and the measured wall-clock is NOT substituted, even when
+     * the two differ.
+     */
+    @Test(timeout = 5000)
+    public void parseClaudeNdjsonKeepsSelfReportedDurationOverMeasured() {
+        String sample = "{\"type\":\"result\",\"subtype\":\"success\",\"num_turns\":1,"
+                + "\"duration_ms\":1234}";
+        AgentRunResult result = new ClaudeCodeRunner().parseClaudeNdjson(
+                sample, 0, false, false, 999_999L, SILENT, Collections.emptySet());
+        assertEquals(1234L, result.durationMs());
+        assertEquals(AgentRunResult.EndState.CLEAN, result.endState());
+    }
+
+    /**
+     * A loop-detector kill is carried on the result as the
+     * {@link AgentRunResult#STOP_LOOP_DETECTED} stop reason with the session
+     * flagged as an error, matching {@code OpencodeOutputParser}, so the loop
+     * flag the process runner reported is not dropped under Claude.
+     */
+    @Test(timeout = 5000)
+    public void parseClaudeNdjsonMarksLoopKill() {
+        AgentRunResult result = new ClaudeCodeRunner().parseClaudeNdjson(
+                "partial output", 137, false, true, 60_000L, SILENT, Collections.emptySet());
+        assertEquals(AgentRunResult.STOP_LOOP_DETECTED, result.stopReason());
+        assertTrue(result.sessionIsError());
+        assertTrue(result.wasKilledForLooping());
+        assertEquals(AgentRunResult.EndState.KILLED_LOOP, result.endState());
     }
 
     /** A pre-built runner returned by the registry must be configured and usable. */

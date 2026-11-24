@@ -63,6 +63,55 @@ public record AgentRunResult(
         List<String> unavailableRequiredMcpServers) {
 
     /**
+     * {@code stopReason} value a runner sets when the loop detector killed the
+     * session for repeated non-progressing actions. Shared across runners so a
+     * loop kill has one canonical shape on the result regardless of which CLI
+     * produced it; see {@link #wasKilledForLooping()}.
+     */
+    public static final String STOP_LOOP_DETECTED = "error_loop_detected";
+
+    /**
+     * How an agent session ended, classified from the exit code, the watchdog
+     * flags, and whether the process did measurable work.
+     *
+     * <p>This distinguishes a session that <em>crashed instantly</em> from one
+     * that <em>ran and was killed</em> — both of which a self-reported duration
+     * of {@code 0} would conflate — so a killed-but-productive session can be
+     * graded by what it delivered rather than by a self-report it never got to
+     * write. The exit code alone is not enough: under the tmux launch path a
+     * session killed after real work also reports {@code -1}, so
+     * {@link #COULD_NOT_START} is decided by the absence of runtime and output,
+     * never by the exit code.</p>
+     */
+    public enum EndState {
+        /** Exited with code {@code 0}. */
+        CLEAN,
+        /**
+         * Launch failed: a non-zero exit with no measurable runtime and no
+         * output, so no work was performed. This is the genuine
+         * nothing-delivered case that a job grades as a hard failure.
+         */
+        COULD_NOT_START,
+        /** The inactivity watchdog killed the process tree. */
+        KILLED_INACTIVITY,
+        /** The loop detector killed the process tree for repeated actions. */
+        KILLED_LOOP,
+        /**
+         * Killed by an external signal after doing measurable work — a SIGTERM
+         * (143) the harness did not initiate, a SIGKILL/OOM (137), or a
+         * tmux-path kill of unknown origin ({@code -1}/{@code 129}) — none of
+         * them attributed to the inactivity or loop watchdogs.
+         */
+        KILLED_SIGNAL,
+        /**
+         * Ran, then exited non-zero of its own accord. A normal failure the
+         * recovery path may still rescue, not a signal kill and not a
+         * could-not-start.
+         */
+        FAILED
+    }
+
+    /**
      * Canonical compact constructor that defensively normalises the collections
      * so consumers can iterate them without null checks.
      */
@@ -127,6 +176,92 @@ public record AgentRunResult(
         return "Required MCP server(s) unavailable when the agent session started: "
                 + String.join(", ", unavailableRequiredMcpServers)
                 + " — the agent ran without them, so its output is not trusted";
+    }
+
+    /**
+     * Whether the loop detector killed this session for repeated
+     * non-progressing actions, carried on the result as the
+     * {@link #STOP_LOOP_DETECTED} stop reason.
+     *
+     * @return {@code true} when the session was killed for looping
+     */
+    public boolean wasKilledForLooping() {
+        return STOP_LOOP_DETECTED.equals(stopReason);
+    }
+
+    /**
+     * Whether the session was killed by a signal after doing measurable work.
+     *
+     * @return {@code true} when {@link #endState()} is {@link EndState#KILLED_SIGNAL}
+     */
+    public boolean isKilledBySignal() {
+        return endState() == EndState.KILLED_SIGNAL;
+    }
+
+    /**
+     * Whether a kill ended the session before it could emit its terminal cost,
+     * so the reported cost is a lower bound. True for an inactivity, loop, or
+     * signal kill; a job marks its cost incomplete on any of these.
+     *
+     * @return {@code true} when the kill lost cost data
+     */
+    public boolean lostCostBeforeReporting() {
+        EndState state = endState();
+        return state == EndState.KILLED_INACTIVITY
+                || state == EndState.KILLED_LOOP
+                || state == EndState.KILLED_SIGNAL;
+    }
+
+    /**
+     * Classifies how this session ended; see {@link EndState}.
+     *
+     * <p>The watchdog flags are consulted first so a kill the harness itself
+     * triggered is never mistaken for an external one. A session that did no
+     * measurable work — no runtime and no output — is {@link EndState#COULD_NOT_START}
+     * whatever its exit code, which is what separates an instant launch failure
+     * from a tmux-path kill that also reports {@code -1}.</p>
+     *
+     * @return the end-state classification
+     */
+    public EndState endState() {
+        if (killedForInactivity) return EndState.KILLED_INACTIVITY;
+        if (wasKilledForLooping()) return EndState.KILLED_LOOP;
+        if (exitCode == 0) return EndState.CLEAN;
+        boolean didWork = durationMs > 0 || !rawOutput.isBlank();
+        if (!didWork) return EndState.COULD_NOT_START;
+        if (exitCode > 128 || exitCode == -1) return EndState.KILLED_SIGNAL;
+        return EndState.FAILED;
+    }
+
+    /**
+     * A short human description of how a {@link EndState#KILLED_SIGNAL} session
+     * ended, naming only what can be proven from inside the worker JVM.
+     *
+     * <p>On the direct-process launch path the harness's own kills use
+     * {@code SIGKILL} and set {@link #killedForInactivity()}/looping, so a plain
+     * {@code SIGTERM} (143) here is external and not harness-initiated; a 137
+     * that no watchdog flag claims is a force-kill or OOM candidate; a
+     * {@code -1} or {@code 129} ({@code SIGHUP}) with runtime is a tmux-path
+     * kill of unknown origin. The specific external agent (cgroup OOM vs node
+     * restart vs CLI timeout) cannot be told apart from here and is not
+     * guessed.</p>
+     *
+     * @return the description; an empty string when the session was not
+     *         killed by a signal
+     */
+    public String killCauseDescription() {
+        if (!isKilledBySignal()) return "";
+        switch (exitCode) {
+            case 143:
+                return "external SIGTERM (not harness-initiated)";
+            case 137:
+                return "SIGKILL (force-kill or out-of-memory)";
+            case -1:
+            case 129:
+                return "signal kill of unknown origin (tmux launch path)";
+            default:
+                return "signal " + (exitCode - 128);
+        }
     }
 
     /**

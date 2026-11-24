@@ -42,6 +42,26 @@ public class JobCompletionEventTest extends TestSuiteBase {
 		assertEquals(JobCompletionEvent.Status.SUCCESS, event.getStatus());
 	}
 
+	/**
+	 * {@link JobCompletionEvent#deliveredForPullRequest()} — the predicate the
+	 * controller's auto-PR gate uses to decide whether a DEGRADED job still
+	 * opens its pull request — is true exactly when a primary commit exists,
+	 * and false when neither a commit nor a dependent-repo push does.
+	 */
+	@Test(timeout = 30000)
+	public void deliveredForPullRequestFollowsCommitPresence() {
+		JobCompletionEvent withCommit = new JobCompletionEvent(
+				"job-d", JobCompletionEvent.Status.DEGRADED, "killed but productive");
+		withCommit.withGitInfo("feature/z", "mainline-ref", List.of("A.java"), List.of(), true);
+		assertTrue("a commit must count as delivered", withCommit.deliveredForPullRequest());
+
+		JobCompletionEvent nothing = new JobCompletionEvent(
+				"job-e", JobCompletionEvent.Status.DEGRADED, "nothing committed");
+		nothing.withGitInfo("feature/z", null, List.of(), List.of("A.java"), false);
+		assertFalse("no commit and no dependent push is not delivered",
+				nothing.deliveredForPullRequest());
+	}
+
 	/** Verifies that a failed event captures the error message and exception. */
 	@Test(timeout = 30000)
 	public void failedEventCapturesError() {

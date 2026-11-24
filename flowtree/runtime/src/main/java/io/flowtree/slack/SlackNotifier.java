@@ -1293,8 +1293,8 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
      * Appends the exact time and cost figures kept in the completion details:
      * the wall and API time, and the total cost with the amount spent by each
      * runner. The cost is rendered when there is a positive total or when the
-     * cost is incomplete, because an inactivity kill can leave the total at
-     * $0.00 even though real, uncosted work happened.
+     * cost is incomplete, because a kill (inactivity or a signal) can leave the
+     * total at $0.00 even though real, uncosted work happened.
      */
     private void appendTimeAndCostDetails(StringBuilder sb, JobCompletionEvent event) {
         if (event.getDurationMs() > 0) {
@@ -1319,7 +1319,7 @@ public class SlackNotifier implements JobCompletionListener, ConsoleFeatures {
                 sb.append(" [").append(runners).append("]");
             }
             if (event.isCostIncomplete()) {
-                sb.append(" (incomplete -- agent killed for inactivity; true cost unknown)");
+                sb.append(" (incomplete -- agent killed before reporting cost; true cost unknown)");
             }
             sb.append("\n");
         }

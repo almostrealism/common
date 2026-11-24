@@ -52,8 +52,13 @@ final class OpencodeOutputParser {
     /** Stop reason recorded on non-zero exit when the runner reports nothing better. */
     static final String STOP_ERROR_UNKNOWN = "error_unknown";
 
-    /** Stop reason recorded when the loop detector killed the session for repeated, non-progressing actions. */
-    static final String STOP_LOOP_DETECTED = "error_loop_detected";
+    /**
+     * Stop reason recorded when the loop detector killed the session for
+     * repeated, non-progressing actions. Aliases
+     * {@link AgentRunResult#STOP_LOOP_DETECTED} so every runner carries a loop
+     * kill on the result in the one canonical shape.
+     */
+    static final String STOP_LOOP_DETECTED = AgentRunResult.STOP_LOOP_DETECTED;
 
     /** Hidden constructor; static-only utility. */
     private OpencodeOutputParser() {}
