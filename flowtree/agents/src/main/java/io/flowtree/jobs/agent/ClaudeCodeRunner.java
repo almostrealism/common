@@ -550,8 +550,8 @@ public class ClaudeCodeRunner implements AgentRunner {
         }
 
         // Fall back to the measured lifetime only for a signal-like exit; any other
-        // exit's self-report stands, so an instant crash stays a could-not-start.
-        // TODO(review): an exit-1 crash after long runtime with no result line is also graded COULD_NOT_START.
+        // exit's self-report stands, so an instant crash stays a could-not-start (as
+        // does, for now, a long non-signal crash that never wrote its result line).
         if (AgentRunResult.isSignalLikeExit(exitCode) && durationMs == 0L && measuredWallClockMs > 0L) {
             durationMs = measuredWallClockMs;
         }
