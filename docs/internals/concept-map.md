@@ -484,8 +484,9 @@ Notes on the declarations:
   declared relationship.
 - The two adapters are genuine `AutoEncoder`s: they hold a compiled model (a Metal/OpenCL kernel
   or an ONNX graph) and expose producer-valued `encode`/`decode` plus the sampling accessors over
-  it. The two builders instead return `Block`s from `int`-argument factory methods; they describe
-  *how to assemble* an autoencoder rather than *being* one that can encode a producer.
+  it. The two builders instead return `Block`s from factory methods — `OobleckAutoEncoder`'s
+  no-argument `getAutoencoder()`, `SAMEAutoEncoder`'s `encoder(int, int)` / `decoder(int, int)`;
+  they describe *how to assemble* an autoencoder rather than *being* one that can encode a producer.
 - `PatchedPretransform` (`engine/ml`, same package) also exposes `encode(int, int) : Block` /
   `decode(int, int) : Block`, but it is a parameter-free patch fold with no sample-rate or latent
   notion, so it is not an `AutoEncoder` — coincidental method names, recorded so a later round
