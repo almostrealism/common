@@ -113,6 +113,7 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 
 		shorter.destroy();
 		longer.destroy();
+		weights.destroy();
 	}
 
 	/**
@@ -315,6 +316,7 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 			assertTrue(e.getMessage(), e.getMessage().contains("exceeds the compiled length " + TEXT_LENGTH));
 		} finally {
 			text.destroy();
+			weights.destroy();
 		}
 	}
 
@@ -336,5 +338,6 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 		assertTrue("A one-token caption must embed differently from a full one",
 				Clap2WeightFixture.cosine(single, full) < 0.9999);
 		text.destroy();
+		weights.destroy();
 	}
 }

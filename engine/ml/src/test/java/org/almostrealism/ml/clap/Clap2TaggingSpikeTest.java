@@ -421,7 +421,9 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 			Model sameModel = new Model(shape(1, 2, sameSamples));
 			sameModel.add(same.encoder(1, sameSamples));
 			sameEncoder = sameModel.compile(false);
-			sameEncoder.forward(new PackedCollection(shape(1, 2, sameSamples)));
+			try (PackedCollection sameInput = new PackedCollection(shape(1, 2, sameSamples))) {
+				sameEncoder.forward(sameInput);
+			}
 			long afterSame = allocatedDeviceBytes();
 
 			StateDictionary clapWeights = new StateDictionary(WEIGHTS);
