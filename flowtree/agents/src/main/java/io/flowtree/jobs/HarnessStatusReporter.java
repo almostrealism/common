@@ -70,6 +70,9 @@ public final class HarnessStatusReporter {
     /** Unicode warning sign emoji for an unusual or unexpected termination. */
     public static final String UNUSUAL_EMOJI = "⚠️";
 
+    /** Unicode information emoji for a harness-side progress notice, such as an enforcement review's scope or cost. */
+    public static final String NOTICE_EMOJI = "ℹ️";
+
     /** Activity tag applied to harness status messages for later filtering. */
     public static final String ACTIVITY = "harness_status";
 
@@ -204,6 +207,17 @@ public final class HarnessStatusReporter {
      */
     public void unusual(String description) {
         post(SYSTEM_PREFIX + UNUSUAL_EMOJI + " " + description);
+    }
+
+    /**
+     * Publishes an informational notice about work the harness itself is doing, such as which
+     * classes an enforcement review covers or what it has cost so far. Unlike
+     * {@link #unusual(String)}, a notice reports expected progress, not an anomaly.
+     *
+     * @param description human-readable description of the progress
+     */
+    public void notice(String description) {
+        post(SYSTEM_PREFIX + NOTICE_EMOJI + " " + description);
     }
 
     /**

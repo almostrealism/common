@@ -56,6 +56,17 @@ public class JobCostTrackerTest extends TestSuiteBase {
         assertEquals(0.10, tracker.snapshotByModel().get("openrouter/qwen3-coder"), 1.0e-9);
     }
 
+    /** {@link JobCostTracker#total} sums every model's cost, and is zero before anything is billed. */
+    @Test(timeout = 30000)
+    public void totalSumsEveryModel() {
+        JobCostTracker tracker = new JobCostTracker();
+        assertEquals(0.0, tracker.total(), 0.0);
+        tracker.record("claude", "anthropic/claude-sonnet", 0.50);
+        tracker.record("claude", "anthropic/claude-opus", 1.25);
+        tracker.record("opencode", "openrouter/qwen3-coder", 0.10);
+        assertEquals(1.85, tracker.total(), 1.0e-9);
+    }
+
     /** {@link JobCostTracker#costForModel} returns the running total or zero when absent. */
     @Test(timeout = 30000)
     public void costForModelReturnsRunningTotalOrZero() {
