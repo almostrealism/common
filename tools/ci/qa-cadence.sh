@@ -10,7 +10,10 @@
 #
 # A round is "in progress" while its PR is open, or while its branch is
 # younger than PR_GRACE_HOURS and has not opened one yet. A job allows
-# MAX_ROUNDS of them at once (default 1). Four conditions, in order:
+# MAX_ROUNDS of them at once (default 1). BRANCH_PREFIX may name one job's
+# branches ("qa/docs-") or a family of them ("project/", every branch that
+# came from a tracker task or a planning round), in which case MAX_ROUNDS
+# bounds the family as a whole. Four conditions, in order:
 #
 #   1. MAX_ROUNDS PRs from previous runs of this job are still open.
 #      Then there is nothing to start — those rounds have not been dealt
@@ -216,7 +219,9 @@ ALL_BRANCHES=$(git ls-remote --heads "$REMOTE" "${BRANCH_PREFIX}*" 2>/dev/null \
 # ─── Condition 2: recent branches have not opened their PRs yet ──────
 #
 # Only names carrying a full "YYYYMMDD-HHMMSS" stamp can be aged to the
-# hour; a name without one is left to condition 3's handling.
+# hour; a name without one is left to condition 3's handling. The stamp is
+# read wherever it sits after the prefix, so a family prefix such as
+# "project/" ages "project/task-<stamp>" and "project/plan-<stamp>" alike.
 #
 # As in condition 1, a failed query is read as "a round is open".
 if [ "$PR_GRACE_HOURS" -gt 0 ]; then
@@ -224,7 +229,7 @@ if [ "$PR_GRACE_HOURS" -gt 0 ]; then
         NOW_EPOCH=$(date -u "+%s")
         OWNER="${GITHUB_REPOSITORY%%/*}"
         for BRANCH in $ALL_BRANCHES; do
-            FULL_STAMP=$(echo "${BRANCH#"$BRANCH_PREFIX"}" | grep -oE '^[0-9]{8}-[0-9]{6}' || true)
+            FULL_STAMP=$(echo "${BRANCH#"$BRANCH_PREFIX"}" | grep -oE '[0-9]{8}-[0-9]{6}' | head -1 || true)
             [ -z "$FULL_STAMP" ] && continue
 
             BRANCH_EPOCH=$(stamp_epoch "${FULL_STAMP:0:8}" "${FULL_STAMP:9:6}")
@@ -289,7 +294,10 @@ if [ -z "$ALL_BRANCHES" ]; then
 fi
 
 # "<prefix>YYYYMMDD-HHMMSS" -> "YYYYMMDD-HHMMSS", keeping only dated names.
-STAMP=$(echo "$ALL_BRANCHES" | sed "s|^${BRANCH_PREFIX}||" \
+# Under a family prefix the date follows the job's own part of the name
+# ("project/" + "task-YYYYMMDD-HHMMSS"), so anything before the first digit
+# is dropped as well.
+STAMP=$(echo "$ALL_BRANCHES" | sed -e "s|^${BRANCH_PREFIX}||" -e 's|^[^0-9]*||' \
     | grep -E '^[0-9]{8}-' | sort | tail -1 || true)
 
 if [ -z "$STAMP" ]; then

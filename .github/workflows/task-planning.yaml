@@ -24,6 +24,9 @@ name: "Task Planning"
 #       permissions:
 #         contents: write
 #         pull-requests: write
+#       concurrency:
+#         group: project-branches
+#         cancel-in-progress: false
 #       with:
 #         project: "<tracker project>"
 #         version-file: version.txt
@@ -31,16 +34,26 @@ name: "Task Planning"
 #       secrets:
 #         FLOWTREE_CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
 #
-# The round is gated three ways, in order: fewer than max-rounds
-# task-planning rounds in progress (the shared cadence gate on project/task-
-# branches; a round lasts from its plan until its pull request is merged or
-# closed), room in the open-PR backlog (max-open-prs, since every plan
-# competes for one reviewer),
-# and a claimable task in the release (GET /api/tracker/claimable on the
-# controller, which CI can reach and the tracker cannot be reached from).
-# With no claimable task nothing is created: no branch, no workstream, no
-# agent job. `force` bypasses the first two gates but never the third, since
-# without a task there is nothing to plan.
+# Planning is always on: a run starts a round for every claimable task, up to
+# the places left among the project/ branches in progress. Two gates, in
+# order: fewer than max-rounds project/ branches in progress (the shared
+# cadence gate on the project/ prefix: a branch counts while it is younger
+# than a day, and after that while its pull request is open, so a round lasts
+# from its plan until its pull request is merged or closed), and a claimable
+# task in the release (GET /api/tracker/claimable on the controller, which CI
+# can reach and the tracker cannot be reached from). The open pull requests of
+# other kinds do not hold a round off. With no claimable task nothing is
+# created: no branch, no workstream, no agent job. `force` bypasses the first
+# gate, for one round, but never the second, since without a task there is
+# nothing to plan.
+#
+# The `gate` job works out how many rounds to start and the `plan` job runs
+# that many, one at a time, each repeating the checks for itself. The caller
+# must give its job a concurrency group (cancel-in-progress: false), as in
+# the example above: that is what keeps two runs from counting the same free
+# places. Every other job of the caller that creates branches under the same
+# prefix must share that group, or it and this workflow can each count the
+# same free place and both take it.
 #
 # Once the branch and workstream exist, CI claims the task for the round
 # (POST /api/tracker/claim, tools/ci/tracker-claim.sh), which links it to the
@@ -58,6 +71,11 @@ name: "Task Planning"
 # the framework repository at framework-ref, never from the caller's tree. The
 # caller's repository is checked out at its default branch only to resolve the
 # release and to create the round's branch.
+#
+# The default branch is read as `github.event.repository.default_branch ||
+# github.ref_name`. A `schedule` event's payload carries no `repository`, so
+# the first term is empty on a scheduled run; such a run always runs on the
+# default branch, which is then its ref.
 
 on:
   workflow_call:
@@ -72,17 +90,17 @@ on:
         default: "pom.xml"
         type: string
       max-open-prs:
-        description: "Above this many open pull requests against the default branch, no round starts"
+        description: "Ignored: planning is no longer held off by open pull requests. Accepted so existing callers keep working"
         required: false
-        default: 7
+        default: 0
         type: number
       max-rounds:
-        description: "Task-planning rounds that may be in progress at once, each on its own project/task- branch"
+        description: "project/ branches that may be in progress at once; one run starts rounds until this many are"
         required: false
-        default: 4
+        default: 5
         type: number
       force:
-        description: "\"true\" starts a round even when one is in progress or the backlog is full; a claimable task is still required"
+        description: "\"true\" starts one round even when max-rounds project/ branches are in progress; a claimable task is still required"
         required: false
         default: "false"
         type: string
@@ -112,29 +130,148 @@ on:
         required: false
 
 jobs:
-  plan:
+  # Decides how many rounds this run starts: the places max-rounds leaves
+  # free among the project/ branches in progress, or the number of claimable
+  # tasks if that is smaller. It creates nothing. Each round then repeats the
+  # same checks for itself, so this count is only what keeps a run with
+  # nothing to do from starting a job per place.
+  gate:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
-
-    # Serialize so two merges landing together cannot both pass the gate.
-    concurrency:
-      group: task-planning-${{ github.repository }}
-      cancel-in-progress: false
+      contents: read
+      pull-requests: read
+    outputs:
+      count: ${{ steps.count.outputs.count }}
+      slots: ${{ steps.count.outputs.slots }}
 
     env:
-      # The tracker project this repository's tasks belong to.
       TRACKER_PROJECT: ${{ inputs.project }}
-      MAX_OPEN_PRS: ${{ inputs.max-open-prs }}
       FRAMEWORK: ${{ github.workspace }}/.task-planning/framework
-      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: ${{ github.event.repository.default_branch || github.ref_name }}
+
+      - name: Checkout the framework
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.framework-repository }}
+          ref: ${{ inputs.framework-ref }}
+          path: .task-planning/framework
+          persist-credentials: false
+
+      - name: Resolve the release
+        id: release
+        env:
+          VERSION_FILE: ${{ inputs.version-file }}
+          FRAMEWORK_PROJECT: ${{ inputs.project }}
+        run: bash "$FRAMEWORK/tools/ci/resolve-release-scope.sh" > /dev/null
+
+      - name: Check that the controller accepts automated jobs
+        id: intake
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+        run: bash "$FRAMEWORK/tools/ci/automated-intake.sh"
+
+      - name: Count the project branches in progress
+        id: decide
+        if: steps.intake.outputs.open == 'true'
+        env:
+          BRANCH_PREFIX: "project/"
+          MIN_INTERVAL_DAYS: "0"
+          PR_GRACE_HOURS: "24"
+          MAX_ROUNDS: ${{ inputs.max-rounds }}
+          FORCE: ${{ inputs.force }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash "$FRAMEWORK/tools/ci/qa-cadence.sh"
+
+      - name: Count the claimable tasks
+        id: claimable
+        if: steps.decide.outputs.run == 'true'
+        env:
+          CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
+          CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
+          TRACKER_RELEASE: ${{ steps.release.outputs.release }}
+        run: bash "$FRAMEWORK/tools/ci/tracker-claimable.sh"
+
+      # A forced run skipped the count of branches in progress, so it starts
+      # one round, as a forced run always has.
+      - name: Decide how many rounds to start
+        id: count
+        if: always()
+        env:
+          INTAKE: ${{ steps.intake.outputs.open }}
+          REASON: ${{ steps.decide.outputs.reason }}
+          ROUNDS: ${{ steps.decide.outputs.rounds }}
+          MAX_ROUNDS: ${{ inputs.max-rounds }}
+          HAS_TASK: ${{ steps.claimable.outputs.run }}
+          CLAIMABLE: ${{ steps.claimable.outputs.claimable }}
+          RELEASE: ${{ steps.release.outputs.release }}
+        run: |
+          COUNT=0
+          if [ "$HAS_TASK" = "true" ] && [[ "$CLAIMABLE" =~ ^[0-9]+$ ]]; then
+            if [ "$REASON" = "forced" ]; then
+              FREE=1
+            else
+              FREE=$(( MAX_ROUNDS - ${ROUNDS:-0} ))
+            fi
+            COUNT=$(( FREE < CLAIMABLE ? FREE : CLAIMABLE ))
+            [ "$COUNT" -lt 0 ] && COUNT=0
+          fi
+
+          SLOTS=""
+          SLOT=1
+          while [ "$SLOT" -le "$COUNT" ]; do
+            SLOTS="${SLOTS:+$SLOTS,}$SLOT"
+            SLOT=$((SLOT + 1))
+          done
+
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "slots=[$SLOTS]" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Task Planning"
+            echo ""
+            echo "**Release:** ${RELEASE:-unknown}"
+            echo "**Automated intake open:** ${INTAKE:-not checked}"
+            echo "**Project branches in progress:** ${ROUNDS:-not counted} (limit ${MAX_ROUNDS}; ${REASON:-not run})"
+            echo "**Claimable tasks:** ${CLAIMABLE:-not checked}"
+            echo ""
+            echo "Starting ${COUNT} task-planning round(s)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # One round per place the gate found. They run one at a time, so each
+  # round's own checks see the branch the round before it created, and the
+  # limit holds however many rounds a run starts.
+  plan:
+    needs: gate
+    if: needs.gate.outputs.count != '0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        slot: ${{ fromJSON(needs.gate.outputs.slots) }}
+
+    env:
+      # The tracker project this repository's tasks belong to.
+      TRACKER_PROJECT: ${{ inputs.project }}
+      FRAMEWORK: ${{ github.workspace }}/.task-planning/framework
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch || github.ref_name }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -175,13 +312,15 @@ jobs:
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
         run: bash "$FRAMEWORK/tools/ci/automated-intake.sh"
 
+      # The limit is on every project/ branch in progress, not only the task
+      # rounds: a planning round on project/plan- takes a place too.
       # BRANCH_PREFIX is set on this step rather than the job so the QA-job
       # checks in tools/tests/test_master_agent_dispatch.py do not claim it.
-      - name: Check for a task-planning round in progress
+      - name: Check the project branches in progress
         id: decide
         if: steps.intake.outputs.open == 'true'
         env:
-          BRANCH_PREFIX: "project/task-"
+          BRANCH_PREFIX: "project/"
           MIN_INTERVAL_DAYS: "0"
           PR_GRACE_HOURS: "24"
           MAX_ROUNDS: ${{ inputs.max-rounds }}
@@ -206,18 +345,9 @@ jobs:
           REPO_URL: git@github.com:${{ github.repository }}.git
         run: bash "$FRAMEWORK/tools/ci/archive-stale-workstreams.sh"
 
-      - name: Check the open PR backlog
-        id: backlog
-        if: steps.decide.outputs.run == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FORCE: ${{ inputs.force }}
-          BASE_BRANCH: ${{ github.event.repository.default_branch }}
-        run: bash "$FRAMEWORK/tools/ci/open-pr-backlog.sh"
-
       - name: Check for a claimable task
         id: claimable
-        if: steps.backlog.outputs.needs_new_branch == 'true'
+        if: steps.decide.outputs.run == 'true'
         env:
           CONTROLLER_URL: ${{ inputs.controller-url || 'https://flowtree.almostrealism.ai' }}
           CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
@@ -244,7 +374,7 @@ jobs:
           CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.new_branch.outputs.branch }}
-          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
           REPO_URL: git@github.com:${{ github.repository }}.git
         run: bash "$FRAMEWORK/tools/ci/register-workstream.sh"
 
@@ -280,7 +410,7 @@ jobs:
         if: steps.claimable.outputs.run == 'true' && steps.claim.outputs.claimed == 'true'
         env:
           BRANCH: ${{ steps.new_branch.outputs.branch }}
-          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
           TRACKER_RELEASE: ${{ steps.release.outputs.release }}
           TASK_ID: ${{ steps.claim.outputs.task_id }}
           TASK_FILE: ${{ steps.claim.outputs.task_file }}
@@ -300,7 +430,7 @@ jobs:
           CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLOWTREE_CF_ACCESS_CLIENT_SECRET }}
           BRANCH: ${{ steps.new_branch.outputs.branch }}
-          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
           REPO_URL: git@github.com:${{ github.repository }}.git
           DESCRIPTION: "Plan the next release task"
           AUTO_CREATE_PR: "true"
@@ -318,19 +448,18 @@ jobs:
           DECIDE: ${{ steps.decide.outputs.reason }}
           ROUNDS: ${{ steps.decide.outputs.rounds }}
           MAX_ROUNDS: ${{ inputs.max-rounds }}
-          OPEN_PRS: ${{ steps.backlog.outputs.open_prs }}
+          SLOT: ${{ matrix.slot }}
           CLAIMABLE: ${{ steps.claimable.outputs.claimable }}
           CLAIMED: ${{ steps.claim.outputs.claimed }}
           TASK_ID: ${{ steps.claim.outputs.task_id }}
           BRANCH: ${{ steps.new_branch.outputs.branch }}
         run: |
           {
-            echo "## Task Planning"
+            echo "## Task Planning — round ${SLOT}"
             echo ""
             echo "**Release:** ${RELEASE:-unknown}"
             echo "**Automated intake open:** ${INTAKE:-not checked}"
-            echo "**Rounds in progress check:** ${DECIDE:-not run} (${ROUNDS:-0} found, limit ${MAX_ROUNDS})"
-            echo "**Open PRs:** ${OPEN_PRS:-not checked} (limit ${MAX_OPEN_PRS})"
+            echo "**Project branches in progress:** ${ROUNDS:-0} (limit ${MAX_ROUNDS}; ${DECIDE:-not run})"
             echo "**Claimable tasks:** ${CLAIMABLE:-not checked}"
             echo "**Claimed task:** ${TASK_ID:-none}"
             echo ""

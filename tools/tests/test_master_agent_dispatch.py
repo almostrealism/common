@@ -41,9 +41,13 @@ _QA_SCRIPTS = [
 ]
 
 # The QA rounds running as pilots. A pilot participates in the shared backlog
-# gate like every round but is not counted when MAX_OPEN_PRS is sized; promoting
-# one to a full-cadence round means removing it here and raising that limit.
+# gate like every QA round; promoting one to a full-cadence round means
+# removing it here.
 _PILOTS = ("flaky-qa", "concept-qa")
+
+# The jobs that start planning rounds, which share the MAX_PROJECT_BRANCHES
+# limit and so must share one concurrency group.
+_PLANNING_JOBS = ("plan-next-task", "plan-release-task")
 
 _SELECTOR = re.compile(r"github\.event\.inputs\.agent == '([a-z-]+)'")
 
@@ -54,8 +58,13 @@ def _workflow():
 
 
 def called_job(job):
-    """Returns the job that runs for ``job``: the only job of the reusable
-    workflow it calls from this repository, or ``job`` itself.
+    """Returns the job that runs for ``job``: the job of the reusable workflow
+    it calls from this repository that does the round's work, or ``job``
+    itself.
+
+    A reusable workflow may put a job that only decides in front of the one
+    that does the work (task planning counts the rounds to start before it
+    starts them). The round is then the one job nothing else waits for.
 
     The called job is returned with its ``${{ inputs.X }}`` references intact,
     the way ``controller_url`` and the task-planning checks read them against
@@ -65,9 +74,14 @@ def called_job(job):
         return job
     with open(os.path.join(_REPO_ROOT, uses[2:])) as f:
         jobs = yaml.safe_load(f)["jobs"]
-    if len(jobs) != 1:
-        raise AssertionError("%s should hold exactly one job" % uses)
-    return next(iter(jobs.values()))
+    needed = set()
+    for other in jobs.values():
+        needs = other.get("needs", [])
+        needed.update([needs] if isinstance(needs, str) else needs)
+    final = [other for name, other in jobs.items() if name not in needed]
+    if len(final) != 1:
+        raise AssertionError("%s should end in exactly one job" % uses)
+    return final[0]
 
 
 # A whole-token input reference, e.g. ``${{ inputs.branch-prefix }}``. A
@@ -448,14 +462,31 @@ class MasterAgentDispatchTests(unittest.TestCase):
                                   env.get("CF_ACCESS_CLIENT_SECRET", ""))
 
     def test_every_job_serializes_under_its_own_concurrency_group(self):
-        """Two rounds of one job racing is what the cadence gate cannot see."""
+        """Two rounds of one job racing is what the cadence gate cannot see.
+        The planning jobs share one group, since they share one limit (see
+        test_the_planning_jobs_share_one_concurrency_group); every other job
+        has a group of its own."""
         groups = []
         for name, job in self.jobs.items():
             with self.subTest(job=name):
                 self.assertIn("concurrency", job)
                 self.assertFalse(job["concurrency"]["cancel-in-progress"])
-                groups.append(job["concurrency"]["group"])
+                if name not in _PLANNING_JOBS:
+                    groups.append(job["concurrency"]["group"])
+        groups.append(self.jobs[_PLANNING_JOBS[0]]["concurrency"]["group"])
         self.assertEqual(len(groups), len(set(groups)))
+
+    def test_the_planning_jobs_share_one_concurrency_group(self):
+        """Both planning jobs count the same project/ branches against
+        MAX_PROJECT_BRANCHES. With a group each, the two jobs of one run could
+        both see the same free place and both take it, leaving more branches
+        in progress than the limit allows. One shared group serializes the
+        count and the branch it leads to across both jobs."""
+        groups = {self.jobs[name]["concurrency"]["group"] for name in _PLANNING_JOBS}
+        self.assertEqual({"project-branches"}, groups)
+        for name in _PLANNING_JOBS:
+            with self.subTest(job=name):
+                self.assertFalse(self.jobs[name]["concurrency"]["cancel-in-progress"])
 
     def test_every_job_can_be_dispatched_on_its_own(self):
         options = self.workflow[_ON]["workflow_dispatch"]["inputs"]["agent"]["options"]
@@ -558,31 +589,37 @@ class MasterAgentDispatchTests(unittest.TestCase):
         self.assertEqual("0", env["MIN_INTERVAL_DAYS"])
         self.assertGreater(int(env["PR_GRACE_HOURS"]), 0)
         self.assertEqual("1", env.get("MAX_ROUNDS", "1"))
-        self.assertEqual("7", self.workflow["env"]["MAX_OPEN_PRS"])
+        self.assertEqual("5", self.workflow["env"]["MAX_PROJECT_BRANCHES"])
         self.assertNotIn("MAX_OPEN_PRS", job.get("env", {}),
-                         "the job must apply the workflow's shared limit")
+                         "open pull requests do not hold a planning round off")
+        self.assertNotIn("open-pr-backlog.sh", "\n".join(_run_steps(job)))
 
-        # The backlog limit is applied by the script both planning jobs share.
+        # The limit on project/ branches is the second run of the shared gate,
+        # on the family prefix, with the workflow's limit.
         backlog = next(i for i, s in enumerate(steps)
-                       if "open-pr-backlog.sh" in s.get("run", ""))
+                       if i > gate and "qa-cadence.sh" in s.get("run", ""))
         self.assertEqual("branches", steps[backlog]["id"])
         self.assertGreater(backlog, gate)
+        self.assertEqual("project/", steps[backlog]["env"]["BRANCH_PREFIX"])
+        self.assertEqual("${{ env.MAX_PROJECT_BRANCHES }}", steps[backlog]["env"]["MAX_ROUNDS"])
+        self.assertGreater(int(steps[backlog]["env"]["PR_GRACE_HOURS"]), 0)
+        self.assertNotIn("CHECK_BACKLOG", steps[backlog]["env"])
         self.assertIn("steps.decide.outputs.run == 'true'", steps[backlog]["if"])
         for step in steps[backlog + 1:]:
             with self.subTest(step=step["name"]):
                 condition = step.get("if", "")
                 self.assertTrue(
-                    "steps.branches.outputs.needs_new_branch == 'true'" in condition
+                    "steps.branches.outputs.run == 'true'" in condition
                     or condition == "always()",
                     "ungated: " + step["name"])
 
     def test_the_task_planning_round_is_gated_in_order(self):
-        """A task-planning round starts only when no round is in progress,
-        the open-PR backlog has room, and the release has a claimable task —
-        checked in that order, each gating the next, so that with nothing to
-        plan no branch, workstream or agent job is created. `force` may skip
-        the first two checks but never the third: without a task there is
-        nothing to plan."""
+        """A task-planning round starts only when the project/ branches in
+        progress leave a place and the release has a claimable task — checked
+        in that order, the first gating the second, so that with nothing to
+        plan no branch, workstream or agent job is created. The open pull
+        requests of other kinds are not consulted. `force` may skip the first
+        check but never the second: without a task there is nothing to plan."""
         job = self.task_planning
         self.assertNotIn("BRANCH_PREFIX", job.get("env", {}),
                          "a job-level prefix would enrol this job in the QA checks")
@@ -591,17 +628,17 @@ class MasterAgentDispatchTests(unittest.TestCase):
         def index(script):
             return next(i for i, s in enumerate(steps) if script in s.get("run", ""))
 
-        gate, backlog, claimable = (index("qa-cadence.sh"), index("open-pr-backlog.sh"),
-                                    index("tracker-claimable.sh"))
-        self.assertLess(gate, backlog)
-        self.assertLess(backlog, claimable)
+        gate, claimable = index("qa-cadence.sh"), index("tracker-claimable.sh")
+        self.assertLess(gate, claimable)
+        self.assertNotIn("open-pr-backlog.sh", "\n".join(_run_steps(job)))
+        self.assertNotIn("MAX_OPEN_PRS", job.get("env", {}))
 
         env = steps[gate]["env"]
-        self.assertEqual("project/task-", env["BRANCH_PREFIX"])
+        self.assertEqual("project/", env["BRANCH_PREFIX"])
         self.assertEqual("0", env["MIN_INTERVAL_DAYS"])
         self.assertGreater(int(env["PR_GRACE_HOURS"]), 0)
-        self.assertIn("steps.decide.outputs.run == 'true'", steps[backlog]["if"])
-        self.assertIn("steps.backlog.outputs.needs_new_branch == 'true'", steps[claimable]["if"])
+        self.assertNotIn("CHECK_BACKLOG", env)
+        self.assertIn("steps.decide.outputs.run == 'true'", steps[claimable]["if"])
         self.assertNotIn("FORCE", steps[claimable].get("env", {}))
         self.assertIn("steps.release.outputs.release", steps[claimable]["env"]["TRACKER_RELEASE"])
 
@@ -716,12 +753,13 @@ class MasterAgentDispatchTests(unittest.TestCase):
         """Each planning round registers a workstream, and a finished round's
         workstream otherwise stays live forever; for the free-form round every
         one of them also edits the Manager Log. Each job archives its own
-        prefix only, only once the gate has found no round of that prefix in
-        progress, never on a forced run (which skips that check and could
-        archive a plan still being implemented), and before it creates the
-        next round's branch."""
-        for name, prefix in (("plan-next-task", "project/plan-"),
-                             ("plan-release-task", "project/task-")):
+        prefix only, only once its gate has let the round through, never on a
+        forced run (which skips that check and could archive a plan still
+        being implemented), and before it creates the next round's branch.
+        The task round's gate counts the whole project/ family, and its
+        archive step keeps every branch that gate found in progress."""
+        for name, prefix, gated in (("plan-next-task", "project/plan-", "project/plan-"),
+                                    ("plan-release-task", "project/task-", "project/")):
             steps = called_job(self.jobs[name])["steps"]
             with self.subTest(job=name):
                 gate = next(i for i, s in enumerate(steps)
@@ -732,7 +770,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
                               if "git checkout -b" in s.get("run", ""))
                 self.assertLess(gate, archive)
                 self.assertLess(archive, branch)
-                self.assertEqual(prefix, steps[gate]["env"]["BRANCH_PREFIX"])
+                self.assertEqual(gated, steps[gate]["env"]["BRANCH_PREFIX"])
                 self.assertEqual(prefix, steps[archive]["env"]["BRANCH_PREFIX"])
                 condition = steps[archive]["if"]
                 self.assertIn("steps.decide.outputs.run == 'true'", condition)
@@ -740,32 +778,150 @@ class MasterAgentDispatchTests(unittest.TestCase):
                 self.assertIn("github.repository", steps[archive]["env"]["REPO_URL"])
 
     def test_both_planning_rounds_share_one_backlog_limit(self):
-        """Free-form plans and task plans compete for the same reviewer, so
-        both rounds apply the same open-PR limit through the same script:
-        the workflow's, which a called workflow receives as an input."""
+        """Free-form plans and task plans are both work picked up without
+        anyone asking, so the backlog they are held to is their own: the
+        project/ branches in progress, counted by the shared gate on the
+        family prefix against one limit — the workflow's, which a called
+        workflow receives as an input. Neither consults the open pull
+        requests of other kinds."""
         limits = set()
         for name in ("plan-next-task", "plan-release-task"):
             caller = self.jobs[name]
             job = called_job(caller)
             with self.subTest(job=name):
-                self.assertIn("open-pr-backlog.sh", "\n".join(_run_steps(job)))
-                limit = job.get("env", {}).get("MAX_OPEN_PRS",
-                                               self.workflow["env"]["MAX_OPEN_PRS"])
+                self.assertNotIn("open-pr-backlog.sh", "\n".join(_run_steps(job)))
+                family = [s for s in job["steps"] if "qa-cadence.sh" in s.get("run", "")
+                          and s["env"]["BRANCH_PREFIX"] == "project/"]
+                self.assertEqual(1, len(family))
+                limit = family[0]["env"]["MAX_ROUNDS"]
                 if job is not caller:
-                    self.assertEqual("${{ inputs.max-open-prs }}", limit)
-                    limit = str(caller["with"]["max-open-prs"])
+                    self.assertEqual("${{ inputs.max-rounds }}", limit)
+                    limit = str(caller["with"]["max-rounds"])
+                    self.assertNotIn("max-open-prs", caller["with"])
+                else:
+                    self.assertEqual("${{ env.MAX_PROJECT_BRANCHES }}", limit)
+                    limit = self.workflow["env"]["MAX_PROJECT_BRANCHES"]
                 limits.add(limit)
-        self.assertEqual({self.workflow["env"]["MAX_OPEN_PRS"]}, limits)
+        self.assertEqual({self.workflow["env"]["MAX_PROJECT_BRANCHES"]}, limits)
+
+    def test_one_run_starts_every_round_the_limit_leaves_room_for(self):
+        """Planning is always on: a run starts a round for each claimable
+        task, up to the free places, instead of one round per run. A first
+        job counts them and creates nothing; the round job then runs once per
+        place, one at a time, so each round's own gate sees the branch the
+        round before it created. The caller's concurrency group is what keeps
+        two runs from counting the same places."""
+        with open(os.path.join(_REPO_ROOT, ".github/workflows/task-planning.yaml")) as f:
+            jobs = yaml.safe_load(f)["jobs"]
+        gate, plan = jobs["gate"], jobs["plan"]
+        scripts = "\n".join(_run_steps(gate))
+        for script in ("automated-intake.sh", "qa-cadence.sh", "tracker-claimable.sh"):
+            self.assertIn(script, scripts)
+        for creating in ("git push", "register-workstream.sh", "tracker-claim.sh",
+                         "submit-agent-job.sh", "archive-stale-workstreams.sh"):
+            self.assertNotIn(creating, scripts, "the counting job must create nothing")
+        self.assertEqual("read", gate["permissions"]["contents"])
+        self.assertEqual("gate", plan["needs"])
+        self.assertEqual("needs.gate.outputs.count != '0'", plan["if"])
+        self.assertEqual(1, plan["strategy"]["max-parallel"])
+        self.assertFalse(plan["strategy"]["fail-fast"])
+        self.assertEqual("${{ fromJSON(needs.gate.outputs.slots) }}",
+                         plan["strategy"]["matrix"]["slot"])
+        self.assertNotIn("concurrency", plan,
+                         "a group on the matrix job would cancel its own waiting rounds")
+        self.assertFalse(self.jobs["plan-release-task"]["concurrency"]["cancel-in-progress"])
+
+    def test_the_round_count_is_the_free_places_or_the_claimable_tasks(self):
+        """Runs the counting step's own script. The rounds to start are the
+        smaller of the places the limit leaves free and the claimable tasks;
+        none when there is no task, when the limit is reached or when the
+        checks before it did not run; and one on a forced run, which skipped
+        the count of branches in progress."""
+        with open(os.path.join(_REPO_ROOT, ".github/workflows/task-planning.yaml")) as f:
+            gate = yaml.safe_load(f)["jobs"]["gate"]
+        step = next(s for s in gate["steps"] if s.get("id") == "count")
+        self.assertEqual("always()", step["if"])
+
+        def count(reason, rounds, has_task, claimable, limit="5"):
+            tmp = tempfile.mkdtemp(prefix="task-planning-count-")
+            output = os.path.join(tmp, "output")
+            env = dict(os.environ)
+            env.update({"INTAKE": "true", "REASON": reason, "ROUNDS": rounds,
+                        "MAX_ROUNDS": limit, "HAS_TASK": has_task, "CLAIMABLE": claimable,
+                        "RELEASE": "Common 1.2", "GITHUB_OUTPUT": output,
+                        "GITHUB_STEP_SUMMARY": os.path.join(tmp, "summary")})
+            result = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=_REPO_ROOT,
+                                    env=env, capture_output=True, text=True, timeout=60)
+            self.assertEqual(0, result.returncode, result.stderr)
+            with open(output) as f:
+                return dict(line.rstrip("\n").split("=", 1) for line in f)
+
+        cases = (
+            (("due", "0", "true", "8"), ("5", "[1,2,3,4,5]")),
+            (("due", "3", "true", "8"), ("2", "[1,2]")),
+            (("due", "1", "true", "2"), ("2", "[1,2]")),
+            (("first-run", "0", "true", "1"), ("1", "[1]")),
+            (("due", "5", "true", "3"), ("0", "[]")),
+            (("due", "0", "false", "0"), ("0", "[]")),
+            (("pr-open", "5", "", ""), ("0", "[]")),
+            (("", "", "", ""), ("0", "[]")),
+            (("due", "0", "true", "unknown"), ("0", "[]")),
+            (("forced", "0", "true", "8"), ("1", "[1]")),
+        )
+        for arguments, expected in cases:
+            with self.subTest(arguments=arguments):
+                outputs = count(*arguments)
+                self.assertEqual(expected, (outputs["count"], outputs["slots"]))
+
+    def test_the_dispatch_is_evaluated_on_a_schedule_as_well_as_on_a_merge(self):
+        """A QA round is due by the clock and a ready task should not wait
+        for the next merge, so the workflow runs hourly too. Every job's
+        condition must let a scheduled run through."""
+        triggers = self.workflow[True]
+        self.assertIn("push", triggers)
+        self.assertEqual(1, len(triggers["schedule"]))
+        minute, hour = triggers["schedule"][0]["cron"].split()[:2]
+        self.assertEqual("*", hour)
+        self.assertNotIn(minute, ("0", "*"))
+        for name, job in self.jobs.items():
+            with self.subTest(job=name):
+                self.assertIn("github.event_name != 'workflow_dispatch'", job["if"])
+
+    def test_a_scheduled_run_still_resolves_the_default_branch(self):
+        """A ``schedule`` event's payload carries no ``repository``, so
+        ``github.event.repository.default_branch`` is empty on an hourly run.
+        Every workflow this one calls reads the default branch (BASE_BRANCH,
+        DEFAULT_BRANCH, the checkout ref) from it, and an empty BASE_BRANCH
+        stops the round only after its branch is pushed, leaving an orphan
+        that holds off the next round. Each read must therefore fall back to
+        ``github.ref_name``, which on a scheduled run is the default branch."""
+        bare = re.compile(r"github\.event\.repository\.default_branch(?!\s*\|\|\s*github\.ref_name)")
+        called = sorted({job["uses"] for job in self.jobs.values()
+                         if job.get("uses", "").startswith("./.github/workflows/")})
+        self.assertIn("./.github/workflows/qa-round.yaml", called)
+        self.assertIn("./.github/workflows/task-planning.yaml", called)
+        for uses in called:
+            with self.subTest(workflow=uses):
+                with open(os.path.join(_REPO_ROOT, uses[2:])) as f:
+                    text = f.read()
+                self.assertIn("github.event.repository.default_branch || github.ref_name", text)
+                self.assertEqual([], [line.strip() for line in text.splitlines()
+                                      if "${{" in line and bare.search(line)])
+        with open(_WORKFLOW) as f:
+            own = f.read()
+        self.assertEqual([], [line.strip() for line in own.splitlines()
+                              if "${{" in line and bare.search(line)])
 
     def test_every_qa_round_applies_the_shared_backlog_limit(self):
-        """Every round ends in a pull request for the same reviewer, so the
-        QA rounds stop at the same open-PR limit as the planning rounds. Their
-        cadence gate checks it (CHECK_BACKLOG). An inline round reads the
-        workflow's shared MAX_OPEN_PRS and overrides it nowhere; a caller of
-        qa-round.yaml cannot read that env, so it passes the same value as the
-        gate's limit — never a limit of its own."""
+        """A QA round starts on a schedule, not because someone asked, so no
+        QA round starts while the repository already has too many open pull
+        requests of any kind: fourteen, so with the round's own it holds at
+        most fifteen. Their cadence gate checks it (CHECK_BACKLOG). An inline
+        round reads the workflow's shared MAX_OPEN_PRS and overrides it
+        nowhere; a caller of qa-round.yaml cannot read that env, so it passes
+        the same value as the gate's limit — never a limit of its own."""
         shared = self.workflow["env"]["MAX_OPEN_PRS"]
-        self.assertEqual("7", shared)
+        self.assertEqual("14", shared)
         for name, caller in self.jobs.items():
             if name not in self.qa_jobs:
                 continue
@@ -789,19 +945,20 @@ class MasterAgentDispatchTests(unittest.TestCase):
 
     def test_several_task_rounds_may_be_open_at_once(self):
         """Each task round plans a different task on its own branch and
-        writes no shared file, so up to max-rounds of them run at once; the
-        Project Manager keeps one. With several open, "a round may start"
-        no longer means "every earlier round is over": the archive step
-        must keep the rounds the gate counted as in progress."""
+        writes no shared file, so they run side by side until max-rounds
+        project/ branches are in progress; the Project Manager keeps one.
+        With several open, "a round may start" no longer means "every earlier
+        round is over": the archive step must keep the rounds the gate
+        counted as in progress."""
         caller = self.jobs["plan-release-task"]
         steps = self.task_planning["steps"]
         gate = next(s for s in steps if "qa-cadence.sh" in s.get("run", ""))
         archive = next(s for s in steps if "archive-stale-workstreams.sh" in s.get("run", ""))
         self.assertEqual("${{ inputs.max-rounds }}", gate["env"]["MAX_ROUNDS"])
-        self.assertEqual(4, caller["with"]["max-rounds"])
+        self.assertEqual(5, caller["with"]["max-rounds"])
         self.assertEqual("${{ steps.decide.outputs.live }}", archive["env"]["KEEP_BRANCHES"])
         self.assertNotIn("CHECK_BACKLOG", gate["env"],
-                         "the round checks the backlog in its own step")
+                         "open pull requests do not hold a planning round off")
 
     def test_the_planning_dispatch_the_mcp_tool_uses_still_exists(self):
         """project_tools.py dispatches this file by name with this selector."""
@@ -905,26 +1062,25 @@ class MasterAgentDispatchTests(unittest.TestCase):
                         steps.index("Build the round's prompt"))
 
     def test_the_flaky_pilot_does_not_raise_the_open_pr_limit(self):
-        """MAX_OPEN_PRS is sized to the full-cadence QA rounds, one open PR per
-        round for the same reviewer. The flaky hunt is a pilot, not a full
-        cadence job, so it deliberately does NOT raise that
-        limit until it proves its yield — the QA jobs, pilots included, share a
-        budget of seven. This pins that decision: a later session that promotes
-        a pilot to a full round, or adds an eighth full-cadence round, must raise
-        MAX_OPEN_PRS and update this test on purpose rather than by surprise."""
+        """MAX_OPEN_PRS is how many open pull requests the reviewer will carry
+        before QA rounds stop adding to them. It is the owner's number, not a
+        count of QA rounds, so adding a round — the flaky hunt, a pilot, among
+        them — does not raise it: the pilot is gated by the shared value like
+        every QA round. A later session changes the limit on purpose, here."""
         self.assertIn("flaky-qa", self.qa_jobs, "the flaky pilot must be a QA round")
-        self.assertEqual("7", self.workflow["env"]["MAX_OPEN_PRS"])
+        self.assertEqual("14", self.workflow["env"]["MAX_OPEN_PRS"])
+        self.assertEqual(self.workflow["env"]["MAX_OPEN_PRS"],
+                         str(self.jobs["flaky-qa"]["with"]["max-open-prs"]))
         full_cadence = [name for name in self.qa_jobs if name not in _PILOTS]
-        self.assertEqual(7, len(full_cadence),
-                         "MAX_OPEN_PRS tracks the full-cadence QA rounds, pilot excluded")
+        self.assertNotIn("flaky-qa", full_cadence)
 
     def test_the_concept_pilot_does_not_raise_the_open_pr_limit(self):
         """The concept-alignment round is a pilot like the flaky hunt: it is
-        gated by the shared backlog limit like every round and passes the
-        shared value, but adding it did not raise MAX_OPEN_PRS, which still
-        counts the seven full-cadence rounds only."""
+        gated by the shared backlog limit like every QA round and passes the
+        shared value, and adding it did not raise MAX_OPEN_PRS, which is the
+        reviewer's capacity and not a count of rounds."""
         self.assertIn("concept-qa", self.qa_jobs, "the concept pilot must be a QA round")
-        self.assertEqual("7", self.workflow["env"]["MAX_OPEN_PRS"])
+        self.assertEqual("14", self.workflow["env"]["MAX_OPEN_PRS"])
         self.assertEqual(self.workflow["env"]["MAX_OPEN_PRS"],
                          str(self.jobs["concept-qa"]["with"]["max-open-prs"]))
         gate = next(s for s in self.qa_jobs["concept-qa"]["steps"]
@@ -933,7 +1089,7 @@ class MasterAgentDispatchTests(unittest.TestCase):
         full_cadence = [name for name in self.qa_jobs if name not in _PILOTS]
         self.assertNotIn("concept-qa", full_cadence)
         self.assertEqual(7, len(full_cadence),
-                         "MAX_OPEN_PRS tracks the full-cadence QA rounds, pilots excluded")
+                         "the pilots are the only QA rounds outside the full cadence")
 
     def test_the_concept_round_is_wired_like_every_qa_round(self):
         """The shared per-round checks above iterate over the discovered QA

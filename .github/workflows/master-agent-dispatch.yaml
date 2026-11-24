@@ -1,6 +1,20 @@
 name: "Master Agent Dispatch"
 
-# The agent jobs that fire on a merge to master.
+# The agent jobs that start work nobody asked for by hand: the QA rounds and
+# the planning rounds. They are evaluated on every merge to master and once an
+# hour, so a round that is due, or a tracker task that was marked ready, does
+# not wait for the next merge.
+#
+# Two admission policies apply, and they are deliberately different:
+#
+#   - A QA round is *scheduled*. It starts when the time since the last round
+#     of its kind says another is due, unless the repository already has too
+#     many open pull requests of any kind (MAX_OPEN_PRS).
+#   - A planning round is *always on*. It starts whenever there is something
+#     to plan — a ready tracker task, or no planning round in progress — and
+#     is bounded only by how many project/ branches are in progress
+#     (MAX_PROJECT_BRANCHES). Pull requests of other kinds do not hold it
+#     off, and one run starts as many rounds as that limit leaves room for.
 #
 # These began as three separate workflows (Project Manager, Quality Assurance,
 # Defect Hunt) with byte-identical triggers. They are one workflow because a
@@ -11,7 +25,9 @@ name: "Master Agent Dispatch"
 # here for the same reason.
 #
 # Each job keeps its own concurrency group, so they still serialize
-# independently rather than queueing behind each other. Cadence and cleanup for
+# independently rather than queueing behind each other. The two planning jobs
+# are the exception: they share one group because they share one limit
+# (MAX_PROJECT_BRANCHES). Cadence and cleanup for
 # the QA-style jobs stay in tools/ci/qa-cadence.sh and
 # tools/ci/archive-stale-workstreams.sh, which they all share.
 #
@@ -40,6 +56,12 @@ on:
   push:
     branches:
       - master
+  # Hourly, off the top of the hour. Every job's gate decides whether its
+  # round starts, so an hour with nothing due creates nothing.
+  # A scheduled run has no repository payload, so the called workflows fall
+  # back from it to github.ref_name for the default branch.
+  schedule:
+    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       agent:
@@ -118,21 +140,35 @@ on:
         required: false
         default: ""
 
-# The open-PR limit every round in this workflow applies. Each one ends in a
-# pull request for the same reviewer, so no round of any kind starts while
-# more than this many PRs are open against master: with the round's own PR,
-# the repository then holds at most one more. The planning jobs check it with
-# tools/ci/open-pr-backlog.sh, and the QA rounds through their cadence gate
-# (CHECK_BACKLOG). plan-release-task passes the same number to the workflow it
-# calls, which cannot read this environment.
+# The two admission limits; see the policies at the top of this file.
+#
+# MAX_OPEN_PRS is the QA rounds' limit. No QA round starts while more than
+# this many pull requests of any kind are open against master. It is an
+# admission check, not a ceiling: each QA job has its own concurrency group,
+# so the rounds of one run all read the same count, and a round's PR opens
+# only when its agent finishes. Several rounds may pass it at once. A shared
+# group would not help, since GitHub keeps one pending job per group and
+# would drop the rest of the run's rounds. The QA gates apply
+# it through their cadence gate (CHECK_BACKLOG) and tools/ci/open-pr-backlog.sh.
+# A called workflow cannot read this environment, so each caller of
+# qa-round.yaml passes the same number as max-open-prs.
+#
+# MAX_PROJECT_BRANCHES is the planning rounds' limit: how many project/
+# branches may be in progress at once, counting every branch younger than a
+# day and every older one with an open pull request. It covers the task rounds
+# (project/task-) and the planning round (project/plan-) together, since both
+# are work picked up automatically. plan-release-task passes the same number
+# as max-rounds.
 env:
-  MAX_OPEN_PRS: "7"
+  MAX_OPEN_PRS: "14"
+  MAX_PROJECT_BRANCHES: "5"
 
 jobs:
   # ── Project Manager ──────────────────────────────────────────────────
-  # Keeps exactly one planning branch open: a merge to master starts a new
-  # planning round whenever none is in progress, unless the open-PR backlog
-  # is already more than anyone can review alongside it.
+  # Keeps exactly one planning branch open: a new planning round starts
+  # whenever none is in progress, unless MAX_PROJECT_BRANCHES project/
+  # branches are in progress already. The open-PR backlog does not hold it
+  # off.
   #
   # There is one docs/plans/MANAGER_LOG.md, and every planning round
   # rewrites it, so two rounds open at once cannot both merge. The gate
@@ -151,9 +187,12 @@ jobs:
       contents: write
       pull-requests: write
 
-    # Serialize so two merges landing together cannot both pass the gate.
+    # Shared with plan-release-task: both count the same project/ branches
+    # against MAX_PROJECT_BRANCHES, so neither may count while the other
+    # is creating a branch. A separate group per job would let each see
+    # the same free place and both take it.
     concurrency:
-      group: project-manager
+      group: project-branches
       cancel-in-progress: false
 
     steps:
@@ -215,15 +254,19 @@ jobs:
           chmod +x ./tools/ci/archive-stale-workstreams.sh
           ./tools/ci/archive-stale-workstreams.sh
 
-      - name: Check the open PR backlog
+      # The planning round shares its limit with the task rounds: every
+      # project/ branch in progress, of either kind, takes one place.
+      - name: Check the project branches in progress
         id: branches
         if: steps.decide.outputs.run == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH_PREFIX: "project/"
+          MIN_INTERVAL_DAYS: "0"
+          PR_GRACE_HOURS: "24"
+          MAX_ROUNDS: ${{ env.MAX_PROJECT_BRANCHES }}
           FORCE: ${{ github.event.inputs.force }}
-        run: |
-          chmod +x ./tools/ci/open-pr-backlog.sh
-          ./tools/ci/open-pr-backlog.sh
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./tools/ci/qa-cadence.sh
 
       # The timestamp stays in the name even when a title is given: two
       # dispatches of the same title on the same day would otherwise collide on
@@ -235,7 +278,7 @@ jobs:
       # substitutions are POSIX (no GNU \+) so the step behaves the same under
       # BSD and GNU sed, whichever runner picks it up.
       - name: Create planning branch
-        if: steps.branches.outputs.needs_new_branch == 'true'
+        if: steps.branches.outputs.run == 'true'
         id: new_branch
         env:
           PLAN_TITLE: ${{ github.event.inputs.plan_title }}
@@ -265,7 +308,7 @@ jobs:
       # which is what Verify Completion detects.
       - name: Seed plan document
         if: >-
-          steps.branches.outputs.needs_new_branch == 'true' &&
+          steps.branches.outputs.run == 'true' &&
           github.event.inputs.plan_content != ''
         id: seed
         env:
@@ -287,7 +330,7 @@ jobs:
           echo "::notice::Seeded $PLAN_FILE"
 
       - name: Build planning prompt
-        if: steps.branches.outputs.needs_new_branch == 'true'
+        if: steps.branches.outputs.run == 'true'
         env:
           BRANCH: ${{ steps.new_branch.outputs.branch }}
           BASE_BRANCH: master
@@ -299,7 +342,7 @@ jobs:
       # the round has succeeded; see the retire step after the submission.
       - name: Register workstream
         id: register
-        if: steps.branches.outputs.needs_new_branch == 'true'
+        if: steps.branches.outputs.run == 'true'
         env:
           SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
@@ -314,7 +357,7 @@ jobs:
 
       - name: Submit planning agent job
         id: submit
-        if: steps.branches.outputs.needs_new_branch == 'true'
+        if: steps.branches.outputs.run == 'true'
         env:
           SETTLED_CI_TRIGGER: ${{ vars.SETTLED_CI_TRIGGER || 'deployment:test' }}
           CONTROLLER_URL: ${{ vars.FLOWTREE_CONTROLLER_URL || 'https://flowtree.almostrealism.ai' }}
@@ -339,7 +382,7 @@ jobs:
       - name: Retire the workstream of a round that did not start
         if: >-
           !cancelled()
-          && steps.branches.outputs.needs_new_branch == 'true'
+          && steps.branches.outputs.run == 'true'
           && steps.register.outcome == 'success'
           && steps.submit.outputs.submitted != 'true'
         env:
@@ -359,9 +402,9 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "**Automated intake open:** \`${{ steps.intake.outputs.open }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "**Round in progress check:** \`${{ steps.decide.outputs.run }}\` (${{ steps.decide.outputs.reason }})" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Open PRs:** ${{ steps.branches.outputs.open_prs }} (limit ${{ steps.branches.outputs.max_open_prs }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Project branches in progress:** ${{ steps.branches.outputs.rounds || 'not checked' }} (limit ${{ env.MAX_PROJECT_BRANCHES }}; ${{ steps.branches.outputs.reason || 'not run' }})" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ steps.branches.outputs.needs_new_branch }}" = "true" ]; then
+          if [ "${{ steps.branches.outputs.run }}" = "true" ]; then
             echo "Created new planning branch: \`${{ steps.new_branch.outputs.branch }}\`" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             if [ -n "${{ steps.seed.outputs.plan_file }}" ]; then
@@ -375,7 +418,7 @@ jobs:
             if [ "${{ steps.intake.outputs.open }}" != "true" ]; then
               echo "No new branch — the controller is not accepting automated jobs, or could not be asked." >> "$GITHUB_STEP_SUMMARY"
             else
-              echo "No new branch — a planning round is already in progress, or the open PR backlog is over the limit." >> "$GITHUB_STEP_SUMMARY"
+              echo "No new branch — a planning round is already in progress, or the project/ branches in progress have reached the limit." >> "$GITHUB_STEP_SUMMARY"
             fi
           fi
 
@@ -401,9 +444,11 @@ jobs:
       contents: write
       pull-requests: write
 
-    # Serialize so two merges landing together cannot both pass the gate.
+    # The Project Manager's group: see plan-next-task. One group covers
+    # every job that counts project/ branches, and it holds the whole
+    # called workflow, so its matrix rounds also run inside it.
     concurrency:
-      group: task-planning
+      group: project-branches
       cancel-in-progress: false
 
     uses: ./.github/workflows/task-planning.yaml
@@ -411,12 +456,12 @@ jobs:
       # The release is "Common <root pom.xml version>".
       project: "Common"
       version-file: pom.xml
-      # The workflow's MAX_OPEN_PRS; see the note above the jobs.
-      max-open-prs: 7
+      # The workflow's MAX_PROJECT_BRANCHES; see the note above the jobs.
       # Unlike the Project Manager's one round, several task rounds may be
-      # open at once: each plans a different task on its own branch and
-      # writes no shared file.
-      max-rounds: 4
+      # open at once, and one run starts as many as the limit leaves room
+      # for: each plans a different task on its own branch and writes no
+      # shared file.
+      max-rounds: 5
       force: ${{ github.event.inputs.force || 'false' }}
       controller-url: ${{ vars.FLOWTREE_CONTROLLER_URL }}
       cf-access-client-id: ${{ vars.FLOWTREE_CF_ACCESS_CLIENT_ID }}
@@ -449,7 +494,7 @@ jobs:
       branch-prefix: "qa/docs-"
       min-interval-days: 5
       # The workflow's MAX_OPEN_PRS; see the note above the jobs.
-      max-open-prs: 7
+      max-open-prs: 14
       force: ${{ github.event.inputs.force || 'false' }}
       ignore-interval: ${{ github.event.inputs.ignore_interval_docs || 'false' }}
       prompt: doc-qa
@@ -486,7 +531,7 @@ jobs:
       branch-prefix: "qa/defect-"
       min-interval-days: 2
       # The workflow's MAX_OPEN_PRS; see the note above the jobs.
-      max-open-prs: 7
+      max-open-prs: 14
       force: ${{ github.event.inputs.force || 'false' }}
       ignore-interval: ${{ github.event.inputs.ignore_interval_defect_hunt || 'false' }}
       prompt: defect-hunt
@@ -503,7 +548,7 @@ jobs:
   # commit, which rerun-flaky-tests.sh surfaces — collected by
   # tools/ci/collect-observed-flakes.py (the leads-script) into the prompt's
   # leads section, then reproduces or diagnoses one. A PILOT: its
-  # interval is 7 days and it deliberately does NOT raise the shared MAX_OPEN_PRS
+  # interval is 7 days and it takes the shared MAX_OPEN_PRS like every QA round
   # (the note above the jobs). PROTECT_TEST_FILES stays on — the test that reveals
   # the flake is the specification — and it pins claude/opus, as telling a real
   # flake from a deterministic failure is judgment. Like the performance round it
@@ -535,7 +580,7 @@ jobs:
       branch-prefix: "qa/flaky-"
       min-interval-days: 7
       # The workflow's MAX_OPEN_PRS; see the note above the jobs.
-      max-open-prs: 7
+      max-open-prs: 14
       force: ${{ github.event.inputs.force || 'false' }}
       ignore-interval: ${{ github.event.inputs.ignore_interval_flaky || 'false' }}
       prompt: flaky-hunt
@@ -932,7 +977,7 @@ jobs:
       branch-prefix: "qa/consolidate-"
       min-interval-days: 2
       # The workflow's MAX_OPEN_PRS; see the note above the jobs.
-      max-open-prs: 7
+      max-open-prs: 14
       force: ${{ github.event.inputs.force || 'false' }}
       ignore-interval: ${{ github.event.inputs.ignore_interval_consolidation || 'false' }}
       prompt: consolidation
@@ -952,8 +997,8 @@ jobs:
   # docs/internals/concept-map.md. It only aligns new or orphaned types onto
   # existing contracts; renaming a member of an established interface is filed
   # as a tracker task for a person to approve. A PILOT: its interval is 5 days
-  # (an alignment is slower to review than a defect fix) and it deliberately
-  # does NOT raise the shared MAX_OPEN_PRS (the note above the jobs). Pins
+  # (an alignment is slower to review than a defect fix) and it takes the
+  # shared MAX_OPEN_PRS like every QA round (the note above the jobs). Pins
   # claude/opus, like consolidation-qa — the "is-a" judgment is the work — and
   # keeps the test lock on, since a realignment must not change what existing
   # tests assert. Its template is this repository's own (concept-alignment.txt),
@@ -978,7 +1023,7 @@ jobs:
       branch-prefix: "qa/concept-"
       min-interval-days: 5
       # The workflow's MAX_OPEN_PRS; see the note above the jobs.
-      max-open-prs: 7
+      max-open-prs: 14
       force: ${{ github.event.inputs.force || 'false' }}
       ignore-interval: ${{ github.event.inputs.ignore_interval_concept || 'false' }}
       prompt: tools/ci/prompts/concept-alignment.txt
@@ -1018,7 +1063,7 @@ jobs:
       branch-prefix: "qa/performance-"
       min-interval-days: 2
       # The workflow's MAX_OPEN_PRS; see the note above the jobs.
-      max-open-prs: 7
+      max-open-prs: 14
       force: ${{ github.event.inputs.force || 'false' }}
       ignore-interval: ${{ github.event.inputs.ignore_interval_performance || 'false' }}
       prompt: tools/ci/prompts/performance.txt
@@ -1058,7 +1103,7 @@ jobs:
       branch-prefix: "qa/pdsl-"
       min-interval-days: 5
       # The workflow's MAX_OPEN_PRS; see the note above the jobs.
-      max-open-prs: 7
+      max-open-prs: 14
       force: ${{ github.event.inputs.force || 'false' }}
       ignore-interval: ${{ github.event.inputs.ignore_interval_pdsl || 'false' }}
       prompt: tools/ci/prompts/pdsl-migration.txt
@@ -1101,7 +1146,7 @@ jobs:
       branch-prefix: "qa/retro-"
       min-interval-days: 7
       # The workflow's MAX_OPEN_PRS; see the note above the jobs.
-      max-open-prs: 7
+      max-open-prs: 14
       force: ${{ github.event.inputs.force || 'false' }}
       ignore-interval: ${{ github.event.inputs.ignore_interval_retrospective || 'false' }}
       prompt: retrospective
