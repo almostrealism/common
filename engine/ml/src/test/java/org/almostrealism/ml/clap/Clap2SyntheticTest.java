@@ -22,6 +22,7 @@ import org.almostrealism.dsl.PdslLoader;
 import org.almostrealism.ml.AttentionFeatures;
 import org.almostrealism.ml.StateDictionary;
 import org.almostrealism.model.Block;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -124,7 +125,7 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 	 * @param promptRows the prompt rows, {@code prompt * WIDTH} values
 	 * @param prompt     the number of prompt rows
 	 * @param length     the padded length
-	 * @return the layer output
+	 * @return a copy of the layer output; the compiled model and its buffers are destroyed
 	 */
 	private PackedCollection runMasked(String layer, Map<String, Object> arguments, PackedCollection promptRows,
 									   int prompt, int length) {
@@ -149,7 +150,14 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 		Block block = loader.buildLayer(loader.parseResource("/pdsl/clap2.pdsl"), layer, shape(1, length, width), args);
 		Model model = new Model(shape(1, length, width));
 		model.add(block);
-		return model.compile(false).forward(input);
+		CompiledModel compiled = model.compile(false);
+		try {
+			return compiled.forward(input).clone();
+		} finally {
+			compiled.destroy();
+			input.destroy();
+			padding.destroy();
+		}
 	}
 
 	/**
