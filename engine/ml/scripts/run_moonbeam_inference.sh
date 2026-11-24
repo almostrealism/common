@@ -175,7 +175,7 @@ echo ""
 
 export AR_HARDWARE_MEMORY_SCALE="$MEMORY_SCALE"
 
-java -Xmx8g \
+java --enable-native-access=ALL-UNNAMED -Xmx8g \
     -cp "$CLASSPATH" \
     org.almostrealism.ml.midi.test.MoonbeamInferenceRunner \
     "${JAVA_ARGS[@]}"
