@@ -156,7 +156,8 @@ echo "  Controller: ${FLOWTREE_ROOT_HOST}:${FLOWTREE_ROOT_PORT}"
 echo "  Node ID:    ${FLOWTREE_NODE_ID:-<auto>}"
 echo "  Workspace:  ${FLOWTREE_WORKING_DIR:-<default>}"
 
-exec java ${JAVA_OPTS} \
+# The grant sits outside JAVA_OPTS so an operator MAVEN_OPTS cannot drop it.
+exec java --enable-native-access=ALL-UNNAMED ${JAVA_OPTS} \
     -cp "/app/lib/*" \
     io.flowtree.Server \
     "${AGENT_PROPS}"
