@@ -38,6 +38,14 @@ public class PdslLexerCommentTest extends TestSuiteBase {
 				.collect(Collectors.toList());
 	}
 
+	/** Returns the trailing {@link PdslToken.Type#EOF} token the lexer produces for {@code source}. */
+	private PdslToken eofToken(String source) {
+		List<PdslToken> tokens = new PdslLexer(source).tokenize();
+		PdslToken last = tokens.get(tokens.size() - 1);
+		Assert.assertEquals(PdslToken.Type.EOF, last.getType());
+		return last;
+	}
+
 	/**
 	 * A block comment that is never closed must swallow all of its content. The lexer
 	 * previously stopped one character before the end of the source, leaking that final
@@ -80,5 +88,25 @@ public class PdslLexerCommentTest extends TestSuiteBase {
 		List<PdslToken> tokens = contentTokens("/*abc*/weight");
 		Assert.assertEquals(1, tokens.size());
 		Assert.assertEquals(PdslToken.Type.WEIGHT, tokens.get(0).getType());
+	}
+
+	/**
+	 * When an unterminated block comment spans newlines, the final EOF token must report
+	 * the line reached by consuming those newlines, exactly as the comment's main scan does.
+	 * The fix that consumes an unterminated comment to end-of-source must keep line bookkeeping
+	 * consistent, so a parser error reported at EOF points at the correct source location.
+	 */
+	@Test(timeout = 5000)
+	public void unterminatedBlockCommentUpdatesLineForEof() {
+		Assert.assertEquals(2, eofToken("/*ab\n").getLine());
+	}
+
+	/**
+	 * A single trailing newline inside an unterminated block comment must advance the EOF
+	 * token to the next line, matching how the main comment scan accounts for newlines.
+	 */
+	@Test(timeout = 5000)
+	public void unterminatedBlockCommentTrailingNewlineUpdatesLine() {
+		Assert.assertEquals(2, eofToken("/*\n").getLine());
 	}
 }

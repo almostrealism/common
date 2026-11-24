@@ -116,7 +116,13 @@ public class PdslLexer {
 					advance();
 					advance();
 				} else {
-					while (pos < source.length()) advance();
+					while (pos < source.length()) {
+						if (source.charAt(pos) == '\n') {
+							line++;
+							column = 0;
+						}
+						advance();
+					}
 				}
 			} else {
 				break;
