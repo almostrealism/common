@@ -143,10 +143,14 @@ Producer<Ray> closestHit = closest.get(0);
 ```java
 import org.almostrealism.geometry.ReflectedRay;
 
+// The viewer vector points from the surface toward the viewer:
+// the negation of the incident ray direction.
+Producer<Vector> viewerDirection = minus(direction(incidentRay));
+
 // Compute reflected ray
 ReflectedRay reflection = reflectedRay(
     intersectionPoint,
-    viewerDirection,  // toward the viewer: the negation of the incident direction
+    viewerDirection,
     surfaceNormal,
     blurAmount  // 0.0 = perfect mirror, >0 = glossy
 );
