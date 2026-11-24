@@ -1,15 +1,15 @@
 ---
-status: proposed
+status: completed
 created: 2026-11-24
-closed:
+closed: 2026-11-24
 tracker: [0a4a20e3-a804-4753-86be-fa4cb4d063db]
 ---
 
 # Per-model, per-vocabulary tag storage and cleanup API in the audio library
 
 Plans tracker task **0a4a20e3-a804-4753-86be-fa4cb4d063db** — *"Per-model,
-per-vocabulary tag storage and cleanup API in the audio library"* — in release
-**Common 0.78** (the release this repository's `master` is building).
+per-vocabulary tag storage and cleanup API in the audio library"* — in the
+release this repository's `master` is building (see the root `pom.xml`).
 
 ## Motivation
 
@@ -48,9 +48,10 @@ All within Common. Three conceptual phases (one commit at implementation time).
 3. Tag storage and queries on `WaveDetails`: write a tag set, read the tags for
    a given (model, vocabulary-version), enumerate the keys present, test for /
    count / remove tag sets from any other (model, vocabulary-version).
-4. A new `WaveTagCleanup` type (package `org.almostrealism.audio`, beside
-   `WaveFeatureCleanup`) that reports the items carrying stale tags and deletes
-   exactly those, re-persisting the kept data.
+4. A tag variant of the existing `WaveFeatureCleanup` (package
+   `org.almostrealism.audio`) that reports the items carrying stale tags and
+   deletes exactly those, re-persisting the kept data. No new cleanup type is
+   introduced; a parallel `WaveTagCleanup` would duplicate the existing one.
 
 **Phase 2 — persistence round-trip (`studio/compose`):**
 
@@ -110,33 +111,34 @@ active-model fallback, so these are simpler than their feature counterparts:
 
 - `putTags(WaveTags)` — store/replace a tag set under its (model, version) key
   (mirrors `putFeatures`).
-- `getTags(String modelIdentifier, String vocabularyVersion)` — the **read-current**
+- `getTags(TagModelVersion key)` — the **read-current**
   query: the tag set for the given key, or `null` (mirrors `getFeatures`). The
   caller passes the model/vocabulary it currently uses.
 - `getTagModelVersions()` — the keys present (mirrors
   `getFeatureModelIdentifiers`).
-- `hasOtherModelTags(keepModel, keepVersion)` / `otherModelTagCount(keepModel,
-  keepVersion)` — the **enumerate-stale** predicate and count, over every key
+- `hasOtherModelTags(TagModelVersion keep)` / `otherModelTagCount(TagModelVersion
+  keep)` — the **enumerate-stale** predicate and count, over every key
   that is not the kept one (mirrors `hasOtherModelFeatures` /
   `otherModelByteLength`, reporting a count rather than bytes because tags are
   not native memory).
-- `removeOtherModelTags(keepModel, keepVersion)` — drop every tag set whose key
+- `removeOtherModelTags(TagModelVersion keep)` — drop every tag set whose key
   is not the kept one (mirrors `removeOtherModelFeatures`, without the
   `destroy()`/legacy-slot handling).
 
-### `WaveTagCleanup` (new, `engine/audio` package, beside `WaveFeatureCleanup`)
+### Tag cleanup through `WaveFeatureCleanup` (extended, `engine/audio`)
 
-A record `WaveTagCleanup(AudioLibrary library, String keepModelIdentifier,
-String keepVocabularyVersion, int itemCount, int staleTagSetCount)` with a
-static `report(library, keepModel, keepVersion)` that scans
-`library.allDetails()` and a `remove()` that, for each affected item, calls
-`details.removeOtherModelTags(...)` then `library.persist(details)` — exactly
-the shape of `WaveFeatureCleanup`. Because it drives everything through the
-existing `AudioLibrary.allDetails()` and `AudioLibrary.persist(WaveDetails)`,
-**no new method on `AudioLibrary` is required**, which matters given that class
-is at the file-length hard limit (see open questions). The "current" (model,
-vocabulary-version) to keep is passed in explicitly, mirroring
-`WaveFeatureCleanup.report(library, keepModelIdentifier)`.
+`WaveFeatureCleanup` is generalized from a feature-only record into a final
+class that reports and removes stale per-model analysis data of either kind. It
+has a private per-item predicate and remover, and two `report` factories:
+`report(library, String keepModelIdentifier)` for feature data (unchanged
+behavior) and `report(library, TagModelVersion keep)` for tag data. The
+accessors are `itemCount()`, `totalBytes()` (stale feature bytes, zero for a tag
+report) and `staleTagSetCount()` (zero for a feature report). `remove()` calls
+the per-item remover, then `library.persist(details)`, for each affected item.
+Because it drives everything through the existing `AudioLibrary.allDetails()`
+and `AudioLibrary.persist(WaveDetails)`, **no new method on `AudioLibrary` is
+required**, which matters given that class is at the file-length hard limit
+(see open questions).
 
 ### Persistence (`studio/compose`)
 
@@ -166,8 +168,8 @@ round-trips tags without further change.
 ### Module boundaries
 
 `engine/audio` keeps no protobuf dependency: `WaveTags`, the key record,
-`WaveDetails` and `WaveTagCleanup` are plain Java, exactly as `WaveFeatures`
-and `WaveFeatureCleanup` are. The proto message and its encode/decode live in
+`WaveDetails` and `WaveFeatureCleanup` are plain Java, exactly as
+`WaveFeatures` already is. The proto message and its encode/decode live in
 `studio/compose`, matching where `FeatureSet` and `AudioLibraryPersistence`
 already live.
 
@@ -179,9 +181,9 @@ A reviewer can confirm the task is done when:
    vocabulary-version) keys survives `AudioLibraryPersistence.encode` →
    `decode` with every key and tag map intact (and, through
    `ProtobufWaveDetailsStore`, a store put/get round-trip).
-2. **Read-current.** `getTags(model, version)` returns exactly the tag set
+2. **Read-current.** `getTags(key)` returns exactly the tag set
    written under that key and `null` for a key never written.
-3. **Enumerate-stale.** `WaveTagCleanup.report(library, keepModel, keepVersion)`
+3. **Enumerate-stale.** `WaveFeatureCleanup.report(library, keep)` (tag variant)
    counts exactly the items (and tag sets) whose keys differ from the kept one
    — differing by model, by vocabulary version, or both — and nothing under the
    kept key.
@@ -205,7 +207,7 @@ build validator (checkstyle/code_policy).
 - **`AudioLibrary.java` is at the file-length hard limit (1599/1600 lines).**
   Adding an `otherModelTags()` convenience accessor to mirror
   `otherModelFeatures()` would cross the checkstyle `FileLength` hard limit and
-  fail the build. This plan therefore makes `WaveTagCleanup.report(...)` the
+  fail the build. This plan therefore makes `WaveFeatureCleanup.report(library, TagModelVersion)` the
   entry point and adds no `AudioLibrary` method. **Decision needed:** accept the
   static entry point as the public surface, or schedule a separate extraction
   refactor of `AudioLibrary` (splitting a cohesive collaborator out to bring the
