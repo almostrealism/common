@@ -227,8 +227,10 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 * kernel argument is wrapped to its size when it is read. The fixed flag of the operand's
 	 * {@link TraversalPolicy} is not a substitute: a producer whose shape describes one fixed-size
 	 * item but whose count varies with the kernel (a host-function producer created with a variable
-	 * count, or a computation over a variable-count input) has a fixed shape and a variable count,
-	 * and it supplies one item per row exactly as a variable-shape input does. An operand with a
+	 * count) has a fixed shape and a variable count, and it supplies one item per row exactly as a
+	 * variable-shape input does. A fixed-shape computation is different: its expression is embedded
+	 * in this one and maps the index it is given onto its own inputs, so it is read element-wise
+	 * (see {@link #isBatchedOperand(Supplier)}). An operand with a
 	 * fixed count is read at the output element index exactly as any other element-wise operand is,
 	 * so a smaller fixed-count operand keeps the framework's ordinary (repeating) element-wise
 	 * semantics. Neither is every variable count a batch of rows: an intrinsically variable
@@ -289,10 +291,18 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 * as the kernel-index sequence {@code integers()}, is intrinsically variable: it computes a value
 	 * at every kernel position, so it is read element-wise like any other element-wise operand.</p>
 	 *
+	 * <p>A {@link Computation} operand with a fixed shape is never batched, whatever its count. Its
+	 * expression is embedded in this computation and already maps each output element index onto
+	 * the rows of its own variable-count inputs; the component {@code x(v)} of a batch of vectors
+	 * {@code v}, for example, has the fixed shape {@code (1)} and a variable count, and projecting
+	 * the index before it is read would apply the per-row division twice.</p>
+	 *
 	 * @param operand the comparison operand
 	 * @return {@code true} if the operand's variable count is a batch of rows
 	 */
 	protected boolean isBatchedOperand(Supplier<?> operand) {
+		if (operand instanceof Computation && shape(operand).isFixedCount()) return false;
+
 		return !Countable.isFixedCount(operand) && Countable.isCountFrom(operand, source ->
 				!(source instanceof Computation) ||
 						(source instanceof Supplier && !shape((Supplier<?>) source).isFixedCount()));
