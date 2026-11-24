@@ -16,6 +16,8 @@
 
 package io.flowtree.jobs;
 
+import io.flowtree.JsonFieldExtractor;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -192,6 +194,18 @@ public class JobCompletionEvent {
     protected boolean costIncomplete;
 
     /**
+     * Whether a {@link Status#DEGRADED} completion should still follow the
+     * auto-pull-request path a {@link Status#SUCCESS} does. Set by the grader
+     * only for a degradation whose work is reviewable and meant to open a pull
+     * request — a signal-killed-but-productive primary — so that the controller
+     * does not also open pull requests for the other degraded reasons (an
+     * abandoned test run, an exhausted post-completion gate) that happen to
+     * carry a commit, which it discarded before killed-primary grading existed.
+     * Travels over the wire so the reconstructed controller-side event keeps it.
+     */
+    private boolean autoPublishWhenDegraded;
+
+    /**
      * Creates a new job completion event.
      *
      * @param jobId       the job identifier
@@ -233,6 +247,72 @@ public class JobCompletionEvent {
         event.errorMessage = errorMessage;
         event.exception = exception;
         return event;
+    }
+
+    /**
+     * Reconstructs an event from the JSON {@code body} of a status post, the
+     * inverse of {@link #toJson()}. Chooses the concrete type —
+     * {@link CodingAgentJobEvent} when the body carries a {@code prompt} or
+     * {@code sessionId}, otherwise this base type — then lets the event
+     * populate itself from the body via {@link #populateFromBody(String)},
+     * which a coding-agent event overrides to add its Claude-specific fields.
+     * The caller supplies {@code status} and {@code description} already parsed,
+     * and applies any receiver-side state (such as self-notify) afterwards.
+     *
+     * @param jobId       the job identifier
+     * @param status      the already-parsed completion status
+     * @param description the job description
+     * @param body        the raw JSON body of the status post
+     * @return the reconstructed event
+     */
+    public static JobCompletionEvent fromStatusBody(String jobId, Status status,
+                                                    String description, String body) {
+        String prompt = JsonFieldExtractor.extractString(body, "prompt");
+        String sessionId = JsonFieldExtractor.extractString(body, "sessionId");
+        boolean isClaudeCodeEvent = prompt != null || sessionId != null;
+        String errorMessage = JsonFieldExtractor.extractString(body, "errorMessage");
+
+        JobCompletionEvent event;
+        if (isClaudeCodeEvent) {
+            event = status == Status.FAILED
+                    ? CodingAgentJobEvent.failed(jobId, description, errorMessage, null)
+                    : new CodingAgentJobEvent(jobId, status, description);
+        } else {
+            event = status == Status.FAILED
+                    ? failed(jobId, description, errorMessage, null)
+                    : new JobCompletionEvent(jobId, status, description);
+        }
+        // A DEGRADED or CANCELLED event carries its reason in errorMessage too;
+        // only the FAILED factories set it from the constructor, so restore it
+        // for the other statuses rather than dropping the reason the grader wrote.
+        if (status != Status.FAILED && errorMessage != null) {
+            event.setErrorMessage(errorMessage);
+        }
+        event.populateFromBody(body);
+        return event;
+    }
+
+    /**
+     * Populates the common git, pull-request, rescue, and dependent-repo-push
+     * fields from the JSON {@code body} of a status post. {@link #fromStatusBody}
+     * calls this on the event it constructed; a subclass overrides it to add its
+     * own fields, calling {@code super.populateFromBody(body)} first.
+     *
+     * @param body the raw JSON body of the status post
+     */
+    protected void populateFromBody(String body) {
+        withGitInfo(
+                JsonFieldExtractor.extractString(body, "targetBranch"),
+                JsonFieldExtractor.extractString(body, "commitHash"),
+                JsonFieldExtractor.extractStringArray(body, "stagedFiles"),
+                JsonFieldExtractor.extractStringArray(body, "skippedFiles"),
+                JsonFieldExtractor.extractBoolean(body, "pushed"));
+        String pullRequestUrl = JsonFieldExtractor.extractString(body, "pullRequestUrl");
+        if (pullRequestUrl != null) withPullRequestUrl(pullRequestUrl);
+        // The instructions already travel in errorMessage; only the location is restored.
+        withRescue(JsonFieldExtractor.extractString(body, "rescueRef"), null);
+        withDependentRepoPushes(DependentRepoPush.listFromJson(body));
+        withAutoPublishWhenDegraded(JsonFieldExtractor.extractBoolean(body, "autoPublishWhenDegraded"));
     }
 
     /**
@@ -436,6 +516,57 @@ public class JobCompletionEvent {
     public String getCommitHash() { return commitHash; }
 
     /**
+     * Returns whether this job delivered something a pull request can be opened
+     * for: a primary commit, or a push to a dependent repository. The
+     * controller's auto-pull-request gate uses this to decide whether a
+     * {@link Status#DEGRADED} completion — a signal-killed-but-productive
+     * primary — should still open its pull request, where only {@link Status#SUCCESS}
+     * did before.
+     *
+     * @return {@code true} when a commit or dependent-repo push exists
+     */
+    public boolean deliveredForPullRequest() {
+        return commitHash != null || !getDependentRepoPushes().isEmpty();
+    }
+
+    /**
+     * Marks this {@link Status#DEGRADED} completion as one that should still
+     * follow the auto-pull-request path a {@link Status#SUCCESS} does. Set by
+     * the grader only for a signal-killed-but-productive primary; see
+     * {@link #shouldAutoPublishDegraded()}.
+     *
+     * @param autoPublishWhenDegraded {@code true} to opt this degraded event into auto-PR publication
+     * @return this event for chaining
+     */
+    public JobCompletionEvent withAutoPublishWhenDegraded(boolean autoPublishWhenDegraded) {
+        this.autoPublishWhenDegraded = autoPublishWhenDegraded;
+        return this;
+    }
+
+    /**
+     * Returns whether the grader marked this degraded completion for auto-PR
+     * publication; see {@link #withAutoPublishWhenDegraded(boolean)}.
+     *
+     * @return {@code true} when the degraded outcome opted into auto-PR publication
+     */
+    public boolean isAutoPublishWhenDegraded() { return autoPublishWhenDegraded; }
+
+    /**
+     * Returns whether this {@link Status#DEGRADED} completion should open its
+     * pull request exactly as a {@link Status#SUCCESS} would: the grader opted
+     * it in ({@link #isAutoPublishWhenDegraded()}) and it actually delivered
+     * something a pull request can be opened for ({@link #deliveredForPullRequest()}).
+     * Other degraded reasons return {@code false} here even when a commit
+     * exists, so the controller keeps discarding them as it did before
+     * killed-primary grading.
+     *
+     * @return {@code true} when a degraded event should follow the auto-PR path
+     */
+    public boolean shouldAutoPublishDegraded() {
+        return autoPublishWhenDegraded && deliveredForPullRequest();
+    }
+
+    /**
      * Returns the list of files staged for commit during this job.
      *
      * @return the staged file list, never {@code null}
@@ -629,7 +760,8 @@ public class JobCompletionEvent {
 
     /**
      * Returns whether the recorded cost is incomplete (a lower bound) because
-     * an agent session was killed for inactivity before reporting its cost.
+     * an agent session was killed — for inactivity, looping, or by a signal —
+     * before reporting its cost.
      *
      * @return {@code true} when the true cost is unknown and exceeds the
      *         reported total; {@code false} when the cost is fully accounted for
@@ -641,7 +773,7 @@ public class JobCompletionEvent {
     /**
      * Sets whether the recorded cost is incomplete (a lower bound).
      *
-     * @param costIncomplete {@code true} when an inactivity kill lost cost data
+     * @param costIncomplete {@code true} when a kill (inactivity, looping, or signal) lost cost data
      */
     public void setCostIncomplete(boolean costIncomplete) { this.costIncomplete = costIncomplete; }
 
@@ -824,6 +956,7 @@ public class JobCompletionEvent {
         putDoubleMap(root, "costByRunner", getCostByRunner());
         putDoubleMap(root, "costByModel", getCostByModel());
         root.put("costIncomplete", isCostIncomplete());
+        root.put("autoPublishWhenDegraded", autoPublishWhenDegraded);
 
         try {
             return EVENT_MAPPER.writeValueAsString(root);

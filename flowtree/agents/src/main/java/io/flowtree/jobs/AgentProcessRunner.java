@@ -52,13 +52,28 @@ public final class AgentProcessRunner {
      * Result of one attempt: exit code, captured stdout (possibly partial), and
      * the reason a watchdog killed the process, if any.
      *
+     * <p>{@code wallClockMs} is the elapsed real time this runner observed
+     * between launching the process and collecting its exit, measured here
+     * because it is the one place that sees the true lifetime of a process
+     * that was killed by a signal before it could report its own duration. A
+     * runner uses it as the authoritative duration when the subprocess never
+     * emitted a self-reported one (see
+     * {@code ClaudeCodeRunner.parseClaudeNdjson}). It is {@code 0} when the
+     * process never started — the timer is armed only after a successful
+     * launch — so a launch failure (an {@code exitCode} of {@code -1} with no
+     * runtime and no output) stays distinguishable from a session that ran and
+     * was then killed, which {@code AgentRunResult.endState()} relies on.</p>
+     *
      * @param exitCode             process exit code; {@code -1} on I/O failure
      * @param output               captured stdout (possibly partial after a kill)
      * @param killedForInactivity  {@code true} when the inactivity watchdog fired
      * @param killedForLooping      {@code true} when the loop detector fired on repeated actions
+     * @param wallClockMs          elapsed real time from launch to exit, in
+     *                             milliseconds; {@code 0} when the process never started
      */
     public record Result(int exitCode, String output,
-                         boolean killedForInactivity, boolean killedForLooping) {}
+                         boolean killedForInactivity, boolean killedForLooping,
+                         long wallClockMs) {}
 
     /**
      * Starts the configured {@link ProcessBuilder} and reads its merged stdout
@@ -182,8 +197,12 @@ public final class AgentProcessRunner {
         AtomicBoolean loopKilled = new AtomicBoolean(false);
         int exitCode = -1;
         Thread monitor = null;
+        long startNanos = 0L;
+        boolean started = false;
         try {
             Process process = pb.start();
+            startNanos = System.nanoTime();
+            started = true;
             long pid = process.pid();
             logger.log("Process started (PID: " + pid + ")");
 
@@ -222,7 +241,8 @@ public final class AgentProcessRunner {
                 monitor.interrupt();
             }
         }
-        return new Result(exitCode, out.toString(), killed.get(), loopKilled.get());
+        long wallClockMs = started ? (System.nanoTime() - startNanos) / 1_000_000L : 0L;
+        return new Result(exitCode, out.toString(), killed.get(), loopKilled.get(), wallClockMs);
     }
 
     /** Runs the command inside a {@link TmuxSession} so the child has a real tty. */
@@ -238,6 +258,8 @@ public final class AgentProcessRunner {
         int exitCode = -1;
         Thread monitor = null;
         String sessionName = "agent-" + sanitizeSessionName(taskId);
+        long startNanos = 0L;
+        boolean started = false;
         try (TmuxSession session = TmuxSession.create(sessionName)) {
             Map<String, String> env = pb.environment();
             // Defensive defaults: the child sees a real tty under tmux. Many CLIs
@@ -248,6 +270,8 @@ public final class AgentProcessRunner {
             env.putIfAbsent("NO_COLOR", "1");
             session.workingDirectory(pb.directory()).environment(env);
             session.start(pb.command());
+            startNanos = System.nanoTime();
+            started = true;
             long pid = session.getPid();
             logger.log("Process started (PID: " + pid + ") in tmux session " + session.getName());
 
@@ -286,7 +310,8 @@ public final class AgentProcessRunner {
                 monitor.interrupt();
             }
         }
-        return new Result(exitCode, out.toString(), killed.get(), loopKilled.get());
+        long wallClockMs = started ? (System.nanoTime() - startNanos) / 1_000_000L : 0L;
+        return new Result(exitCode, out.toString(), killed.get(), loopKilled.get(), wallClockMs);
     }
 
     /**

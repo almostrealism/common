@@ -20,10 +20,8 @@ import fi.iki.elonen.NanoHTTPD;
 import io.flowtree.JsonFieldExtractor;
 import io.flowtree.Server;
 import io.flowtree.jobs.CodingAgentJob;
-import io.flowtree.jobs.CodingAgentJobEvent;
 import io.flowtree.jobs.CodingAgentJobFactory;
 import io.flowtree.jobs.CompletionListenerFanout;
-import io.flowtree.jobs.DependentRepoPush;
 import io.flowtree.jobs.JobCompletionEvent;
 import io.flowtree.jobs.McpConfigBuilder;
 import io.flowtree.jobs.PostCompletionCommandValidator;
@@ -1256,6 +1254,17 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * Handles POST to {@code /api/workstreams/{id}} or
      * {@code /api/workstreams/{id}/jobs/{jobId}} -- receives a status event
      * from an agent and delegates to the {@link SlackNotifier}.
+     *
+     * <p>The event is rebuilt from the posted body by
+     * {@link JobCompletionEvent#fromStatusBody}. A {@link JobCompletionEvent.Status#SUCCESS}
+     * completion always attempts the auto-pull-request path; a
+     * {@link JobCompletionEvent.Status#DEGRADED} one attempts it only when
+     * {@link JobCompletionEvent#shouldAutoPublishDegraded()} holds: the grader
+     * marked the outcome auto-publishable (today only a signal-killed but
+     * productive primary) and the job delivered something to open a pull request
+     * for. Every other {@code DEGRADED} reason is discarded. {@code publish} itself no-ops
+     * when no pull request was requested, so the gate only decides whether to
+     * attempt one; every other completion discards the pending context.</p>
      */
     private Response handleStatusEvent(IHTTPSession session, String workstreamId) {
         String body = readBody(session);
@@ -1278,80 +1287,19 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
             return errorResponse("Invalid status: " + status);
         }
 
-        // Populate Claude Code info
-        String prompt = JsonFieldExtractor.extractString(body, "prompt");
-        String sessionId = JsonFieldExtractor.extractString(body, "sessionId");
-        int exitCode = JsonFieldExtractor.extractInt(body, "exitCode");
-
-        // Create the appropriate event type based on whether Claude-specific fields are present
-        boolean isClaudeCodeEvent = prompt != null || sessionId != null;
-
-        JobCompletionEvent event;
-        if (isClaudeCodeEvent) {
-            if (eventStatus == JobCompletionEvent.Status.FAILED) {
-                String errorMessage = JsonFieldExtractor.extractString(body, "errorMessage");
-                event = CodingAgentJobEvent.failed(jobId, description, errorMessage, null);
-            } else {
-                event = new CodingAgentJobEvent(jobId, eventStatus, description);
-            }
-        } else {
-            if (eventStatus == JobCompletionEvent.Status.FAILED) {
-                String errorMessage = JsonFieldExtractor.extractString(body, "errorMessage");
-                event = JobCompletionEvent.failed(jobId, description, errorMessage, null);
-            } else {
-                event = new JobCompletionEvent(jobId, eventStatus, description);
-            }
-        }
-
-        // Populate git info
-        String targetBranch = JsonFieldExtractor.extractString(body, "targetBranch");
-        String commitHash = JsonFieldExtractor.extractString(body, "commitHash");
-        boolean pushed = JsonFieldExtractor.extractBoolean(body, "pushed");
-        List<String> stagedFiles = JsonFieldExtractor.extractStringArray(body, "stagedFiles");
-        List<String> skippedFiles = JsonFieldExtractor.extractStringArray(body, "skippedFiles");
-        event.withGitInfo(targetBranch, commitHash, stagedFiles, skippedFiles, pushed);
-
-        // Populate PR URL
-        String pullRequestUrl = JsonFieldExtractor.extractString(body, "pullRequestUrl");
-        if (pullRequestUrl != null) {
-            event.withPullRequestUrl(pullRequestUrl);
-        }
-        // The instructions already travel in errorMessage; only the location is restored.
-        event.withRescue(JsonFieldExtractor.extractString(body, "rescueRef"), null);
-        // Commits the job pushed to dependent repos, for companion-PR handling.
-        event.withDependentRepoPushes(DependentRepoPush.listFromJson(body));
-        // Resolved from the server-side registry populated at submission time,
-        // NOT from the posted body -- see the selfNotifyJobs javadoc.
+        // Rebuild the event from the posted body (inverse of toJson); self-notify
+        // is resolved from the server-side registry, not the body.
+        JobCompletionEvent event = JobCompletionEvent.fromStatusBody(jobId, eventStatus, description, body);
         event.withSelfNotify(jobId != null && selfNotifyJobs.remove(jobId));
-
-        if (event instanceof CodingAgentJobEvent) {
-            CodingAgentJobEvent ccEvent = (CodingAgentJobEvent) event;
-            ccEvent.withClaudeCodeInfo(prompt, sessionId, exitCode);
-            long durationMs = JsonFieldExtractor.extractLong(body, "durationMs");
-            long durationApiMs = JsonFieldExtractor.extractLong(body, "durationApiMs");
-            double costUsd = JsonFieldExtractor.extractDouble(body, "costUsd");
-            int numTurns = JsonFieldExtractor.extractInt(body, "numTurns");
-            ccEvent.withTimingInfo(durationMs, durationApiMs, costUsd, numTurns);
-            String subtype = JsonFieldExtractor.extractString(body, "subtype");
-            boolean sessionIsError = JsonFieldExtractor.extractBoolean(body, "sessionIsError");
-            int permissionDenials = JsonFieldExtractor.extractInt(body, "permissionDenials");
-            List<String> deniedToolNames = JsonFieldExtractor.extractStringArray(body, "deniedToolNames");
-            ccEvent.withSessionDetails(subtype, sessionIsError, permissionDenials, deniedToolNames);
-
-            String commitMessageSource = JsonFieldExtractor.extractString(body, "commitMessageSource");
-            if (commitMessageSource != null) {
-                ccEvent.withCommitMessageSource(commitMessageSource);
-            }
-            ccEvent.withCostByRunner(JsonFieldExtractor.extractDoubleObject(body, "costByRunner"));
-            ccEvent.withCostByModel(JsonFieldExtractor.extractDoubleObject(body, "costByModel"));
-            ccEvent.withCostIncomplete(JsonFieldExtractor.extractBoolean(body, "costIncomplete"));
-        }
 
         log("Status event: " + eventStatus + " for job " + jobId + " in workstream " + workstreamId);
 
-        // Open the primary and any companion pull requests for a job that asked
-        // for them; a non-success completion just discards the pending context.
-        if (eventStatus == JobCompletionEvent.Status.SUCCESS && jobId != null) {
+        // DEGRADED publishes only for the auto-publishable, delivered outcome;
+        // see JobCompletionEvent.shouldAutoPublishDegraded().
+        boolean shouldPublish = eventStatus == JobCompletionEvent.Status.SUCCESS
+                || (eventStatus == JobCompletionEvent.Status.DEGRADED
+                        && event.shouldAutoPublishDegraded());
+        if (jobId != null && shouldPublish) {
             autoPrPublisher.publish(event);
         } else if (jobId != null) {
             autoPrPublisher.discard(jobId);

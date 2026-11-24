@@ -62,6 +62,15 @@ class JobSessionAccumulator {
     /** Total wall-clock duration accumulated across all phase runs, in milliseconds. */
     private long durationMs;
 
+    /** Wall-clock duration of the most recent session run alone, in milliseconds (latest only). */
+    private long lastDurationMs;
+
+    /** How the most recent session run ended; see {@link AgentRunResult#endState()}. */
+    private AgentRunResult.EndState lastEndState = AgentRunResult.EndState.CLEAN;
+
+    /** Signal-kill cause of the most recent run, or {@code ""} when it was not a signal kill. */
+    private String lastKillCause = "";
+
     /** Total API-call duration accumulated across all phase runs, in milliseconds. */
     private long durationApiMs;
 
@@ -93,6 +102,9 @@ class JobSessionAccumulator {
         subtype = result.stopReason();
         isError = result.sessionIsError();
         durationMs += result.durationMs();
+        lastDurationMs = result.durationMs();
+        lastEndState = result.endState();
+        lastKillCause = result.killCauseDescription();
         durationApiMs += result.durationApiMs();
         numTurns += result.numTurns();
         costUsd += result.costUsd();
@@ -125,6 +137,15 @@ class JobSessionAccumulator {
 
     /** Returns the cumulative wall-clock duration in milliseconds. */
     long getDurationMs() { return durationMs; }
+
+    /** Returns the wall-clock duration of the most recent session run alone, in milliseconds. */
+    long getLastDurationMs() { return lastDurationMs; }
+
+    /** Returns how the most recent session run ended. */
+    AgentRunResult.EndState getLastEndState() { return lastEndState; }
+
+    /** Returns the signal-kill cause of the most recent run, or {@code ""} when it was not a signal kill. */
+    String getLastKillCause() { return lastKillCause; }
 
     /** Returns the cumulative API-call duration in milliseconds. */
     long getDurationApiMs() { return durationApiMs; }

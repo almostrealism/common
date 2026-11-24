@@ -427,6 +427,64 @@ public class OpencodeRunnerTest extends TestSuiteBase {
         }
     }
 
+    /**
+     * A launch that never starts a process — the agent command cannot be spawned
+     * because its working directory does not exist — is classified
+     * {@link AgentRunResult.EndState#COULD_NOT_START}, not
+     * {@link AgentRunResult.EndState#KILLED_SIGNAL}. The runner feeds the
+     * process-level wall-clock the launcher measured ({@code 0} when the process
+     * never started) into the result as its duration, rather than its own span
+     * around the launch attempt. Without that, the few milliseconds spent on the
+     * failing {@code start()} call would leak into the result as a positive
+     * duration and make the {@code -1} launch-failure exit look like a
+     * productive signal kill.
+     */
+    @Test(timeout = 10000)
+    public void launchFailureClassifiesAsCouldNotStart() throws Exception {
+        Path dir = Files.createTempDirectory("opencode-launch-fail-");
+        Path binary = dir.resolve("opencode");
+        Files.writeString(binary, "#!/bin/sh\n"
+                + "if [ \"$1\" = \"--version\" ]; then echo test; exit 0; fi\n"
+                + "echo ran\n");
+        assertTrue(binary.toFile().setExecutable(true));
+
+        Path missingWorkDir = dir.resolve("no-such-working-directory");
+
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.start();
+        try {
+            Map<String, String> env = new HashMap<>();
+            env.put(OpencodeConfigBuilder.ENV_PROVIDER_URL,
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1");
+            OpencodeRunner runner = new OpencodeRunner(
+                    () -> new OpencodeBinaryLocator(
+                            name -> "OPENCODE_BIN".equals(name) ? binary.toString() : null,
+                            name -> dir.toString(),
+                            p -> p.equals(binary)),
+                    () -> new OpencodeConfigBuilder(env::get));
+
+            AgentRunRequest req = AgentRunRequest.builder()
+                    .prompt("p")
+                    .allowedTools("Read")
+                    .mcpConfigJson("{\"mcpServers\":{}}")
+                    .workingDirectory(missingWorkDir)
+                    .build();
+
+            AgentRunResult result = runner.run(req, SILENT);
+
+            Assert.assertEquals("a launch that never started exits -1", -1, result.exitCode());
+            Assert.assertEquals("the failed launch must leak no runtime",
+                    0L, result.durationMs());
+            Assert.assertEquals("a launch failure is a could-not-start, not a signal kill",
+                    AgentRunResult.EndState.COULD_NOT_START, result.endState());
+        } finally {
+            server.stop(0);
+            try (Stream<Path> paths = Files.walk(dir)) {
+                paths.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+            }
+        }
+    }
+
     // --- Workspace-secret resolution via controller HTTP --------------------
 
     /**

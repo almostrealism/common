@@ -365,7 +365,6 @@ public class OpencodeRunner implements AgentRunner {
                 OpencodeOutputParser::toActionSignature,
                 logger);
         long endMs = System.currentTimeMillis();
-        long durationMs = endMs - start;
 
         String rawOutput = processResult.output();
         if (request.getOutputCapturePath() != null) {
@@ -390,7 +389,7 @@ public class OpencodeRunner implements AgentRunner {
                 rawOutput,
                 processResult.exitCode(),
                 processResult.killedForInactivity(),
-                durationMs,
+                processResult.wallClockMs(),
                 metadata,
                 logger,
                 providerConfig.reportsCost(),
