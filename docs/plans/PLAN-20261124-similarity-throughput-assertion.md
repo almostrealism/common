@@ -14,8 +14,9 @@ a throughput assertion instead of relying on its timeout*
 ## Motivation
 
 `SimilarityOverheadTest` (in `engine/utils`) exercises the per-call
-`productSimilarity` code path — the expression-tree-per-comparison pattern that
-`WaveDetailsFactory.productSimilarity` uses — to measure the Java overhead of
+`productSimilarity` test helper — the expression-tree-per-comparison pattern that
+`WaveDetailsFactory`'s similarity path (`similarity()` → `cachedProductSimilarity()`)
+used before it was optimized — to measure the Java overhead of
 building `CollectionProducer` graphs versus native kernel execution.
 
 Its `pairwiseSimilarityAtScale` method runs 1000 tensors → ~499,500 comparisons
@@ -29,7 +30,7 @@ opaque timeout. That reads as a flake — there is no measured number saying "th
 path got slower," only "the test did not finish."
 
 The task asks for a real, measured guard: assert a floor on comparisons per
-second on the production `productSimilarity` path, sized so a healthy run
+second on the per-call `productSimilarity` path the test exercises, sized so a healthy run
 finishes well inside its timeout, so that a genuine slowdown fails with a
 reported throughput number instead of a timeout. The assertion is additive: no
 existing test is loosened or removed.
@@ -46,7 +47,8 @@ In `engine/utils/src/test/java/org/almostrealism/collect/test/SimilarityOverhead
     matters;
   - drives the **same** `productSimilarity(cp(a), cp(b), FRAMES)` helper the
     existing `pairwiseSimilarityAtScale` uses, so it measures the identical
-    production code path;
+    per-call expression-tree pattern (see the note under "Dependencies and open
+    questions" on how that relates to the current production path);
   - uses a **right-sized** workload (a fresh, smaller `count`) chosen so that a
     healthy CI run completes in a small fraction of the method's timeout, leaving
     enough headroom that normal variance never approaches it;
@@ -134,14 +136,32 @@ because they depend on the CI hardware.
 
 ### Where the baseline must be measured
 
-The timed path only runs where `ComputeRequirement.GPU` is available. On the CI
-fleet the GPU lane that runs `engine` tests is the self-hosted **macOS / Metal**
-runner (`runs-on: [self-hosted, macos, ar-ci]` in
-`.github/workflows/analysis.yaml`); the Linux lanes run `AR_HARDWARE_DRIVER=native`
-(CPU). So the representative baseline — the one the floor must be derived from —
-is the Metal lane's. The implementation session therefore needs a macOS node to
-measure it; this is recorded in the accompanying
-`task-20261124-213950-workstream.yaml` (`requiredLabels: platform: macos`).
+The timed path only runs where `ComputeRequirement.GPU` is available, and the
+class's `@Before requireReclaimingGpuProvider` additionally skips the whole suite
+when OpenCL is the only GPU backend. In `.github/workflows/analysis.yaml` that
+leaves **two** self-hosted lanes on which the new method actually executes:
+
+- the **macOS / Metal** lane `test-mac` (`runs-on: [self-hosted, macos, ar-ci]`,
+  `AR_HARDWARE_DRIVER=*`), and
+- the **Linux / CUDA** lane `test-cuda` (`runs-on: [self-hosted, linux, ar-ci-cuda]`,
+  `AR_HARDWARE_DRIVER=native,cuda`) — the `@Before` guard does not fire there
+  because no OpenCL context is present.
+
+The OpenCL lane `test-cl` (`native,cl`) is skipped by the `@Before` guard, and the
+`test` / `test-media` lanes run `AR_HARDWARE_DRIVER=native` (CPU) and skip via the
+GPU assumption. The key consequence for sizing the floor: a **pull request** runs
+only the Metal lane (plus flowtree), while CUDA (and OpenCL) run **after merge to
+master** — see the `analysis.yaml` note "the Metal and flowtree lanes only; master
+runs every backend after the merge". So the floor is verified on the PR against
+Metal alone, but once merged it must also hold on the CUDA lane; a Metal-only
+measurement is not by itself evidence that the floor is safe there. The
+implementation session is given a macOS node to measure the Metal baseline
+(`task-20261124-213950-workstream.yaml`, `requiredLabels: platform: macos`) and
+has no CUDA node, so the CUDA throughput is unmeasured during implementation. That
+is what makes a generous margin (below) load-bearing rather than cosmetic: it is
+the only thing standing between the floor and a fresh flake on the CUDA lane after
+merge. See the open questions on the floor margin and on whether the floor should
+be scoped to a single backend.
 
 ## Success criteria
 
@@ -173,19 +193,38 @@ on the Metal lane. CI's macOS lane is the authoritative confirmation.
   measured where the GPU path actually runs. Captured in
   `docs/plans/task-20261124-213950-workstream.yaml`.
 - **Open question — floor margin.** How much safety margin below the measured
-  healthy rate? Proposed: set the floor low enough that only a clear regression
-  (well beyond normal host variance, e.g. ≥2x slowdown) trips it, so the gate is
-  not itself a new flake. The approver may prefer a specific multiplier; the
-  implementer sets the concrete number from the measurement and documents it.
+  healthy rate? The margin has to absorb two sources of variance at once: ordinary
+  self-hosted-host contention on the Metal lane, and the *unmeasured* throughput of
+  the CUDA lane, where the test also runs after merge (see "Where the baseline must
+  be measured"). A floor set at a bare ~2x below the Metal healthy rate risks
+  simply relocating the timeout-flake to a throughput-floor-flake on either lane.
+  Recommended: derive the rate from a warm, steady-state region (exclude first-call
+  warmup) and set the floor **several-fold** below it rather than ~2x. The approver
+  may prefer a specific multiplier; the implementer sets the concrete number from
+  the Metal measurement and documents it.
+- **Open question — should the floor be backend-scoped?** Because the new method
+  runs on both Metal and CUDA but the baseline can only be measured on Metal, one
+  option is to restrict the throughput assertion to the Metal backend (an added
+  assumption on the Metal context) so the floor is a gate on the one hardware whose
+  healthy rate is known, and leave CUDA covered only by `pairwiseSimilarityAtScale`'s
+  timeout as today. The alternative — the plan's current default — is to run the
+  floor on every GPU backend and make the margin wide enough to cover CUDA sight
+  unseen. This is a genuine design trade-off (a narrower, better-characterised gate
+  vs. broader coverage with a looser threshold); the approver decides. Note a
+  backend scope here is a design choice for a *new* assertion, not a weakening of an
+  existing test — but it should be written so a reviewer can see that plainly.
 - **Open question — `blocked_by`.** The task record lists no blockers; nothing
   else needs to land first.
-- **Not a blocker, noted for context:** the production path
-  `WaveDetailsFactory.productSimilarity` now routes through the cached/optimized
-  `cosineSimilarityEvaluable`; the test's per-call `productSimilarity` helper
-  deliberately replicates the *unoptimized* expression-tree-per-call pattern to
-  isolate Java-side graph-building overhead. This plan keeps measuring that same
-  per-call path (what `pairwiseSimilarityAtScale` measures today); it does not
-  switch to the cached evaluable.
+- **Not a blocker, noted for context:** the production similarity path
+  `WaveDetailsFactory.similarity()` (via its private `cachedProductSimilarity()`)
+  now routes through the cached/optimized `cosineSimilarityEvaluable`. There is no
+  production method literally named `productSimilarity` — that name survives only on
+  the test's private helper and in some of the test's javadoc. The test's per-call
+  `productSimilarity` helper deliberately replicates the *unoptimized*
+  expression-tree-per-call pattern to isolate Java-side graph-building overhead, so
+  the floor guards framework graph-building cost (what `pairwiseSimilarityAtScale`
+  measures today), not the current shipping similarity path. This plan keeps
+  measuring that same per-call pattern; it does not switch to the cached evaluable.
 
 ## Estimated complexity
 
