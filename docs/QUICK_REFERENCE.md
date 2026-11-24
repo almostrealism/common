@@ -12,8 +12,8 @@
 
 On JDK 24+, launch any application that embeds the framework with
 `java --enable-native-access=ALL-UNNAMED ...` (the hardware backends load native libraries).
-Surefire forks already receive it from the root `pom.xml`. See
-[base/hardware/README.md](../base/hardware/README.md#native-access-jdk-24-and-later).
+Surefire forks already receive it from the root `pom.xml`. See the "Native access" section of
+`base/hardware/README.md`.
 
 ---
 
