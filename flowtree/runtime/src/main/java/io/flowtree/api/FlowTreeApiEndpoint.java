@@ -1258,11 +1258,11 @@ public class FlowTreeApiEndpoint extends NanoHTTPD implements ConsoleFeatures {
      * <p>The event is rebuilt from the posted body by
      * {@link JobCompletionEvent#fromStatusBody}. A {@link JobCompletionEvent.Status#SUCCESS}
      * completion always attempts the auto-pull-request path; a
-     * {@link JobCompletionEvent.Status#DEGRADED} one attempts it only when the
-     * job still delivered something to open a pull request for — a primary
-     * commit or a dependent-repo push. This is what lets a signal-killed but
-     * productive primary, graded {@code DEGRADED}, still open its pull request,
-     * where previously only {@code SUCCESS} could. {@code publish} itself no-ops
+     * {@link JobCompletionEvent.Status#DEGRADED} one attempts it only when
+     * {@link JobCompletionEvent#shouldAutoPublishDegraded()} holds: the grader
+     * marked the outcome auto-publishable (today only a signal-killed but
+     * productive primary) and the job delivered something to open a pull request
+     * for. Every other {@code DEGRADED} reason is discarded. {@code publish} itself no-ops
      * when no pull request was requested, so the gate only decides whether to
      * attempt one; every other completion discards the pending context.</p>
      */

@@ -53,8 +53,8 @@ class PrimaryPhaseOutcome {
     private String killCause = "";
 
     /**
-     * {@code true} when the primary produced no usable work: a non-zero exit
-     * with no measurable runtime and no output. Tracked separately from
+     * {@code true} when the primary produced no usable work: a launch failure
+     * or an instant crash ({@link AgentRunResult.EndState#COULD_NOT_START}). Tracked separately from
      * {@link #endState} so a test can pin it directly.
      */
     private boolean hardFailure;

@@ -79,17 +79,19 @@ public record AgentRunResult(
      * of {@code 0} would conflate — so a killed-but-productive session can be
      * graded by what it delivered rather than by a self-report it never got to
      * write. The exit code alone is not enough: under the tmux launch path a
-     * session killed after real work also reports {@code -1}, so
-     * {@link #COULD_NOT_START} is decided by the absence of runtime and output,
-     * never by the exit code.</p>
+     * session killed after real work also reports {@code -1}, so a
+     * {@linkplain #isSignalLikeExit(int) signal-like} exit is
+     * {@link #COULD_NOT_START} only when it shows neither runtime nor output.</p>
      */
     public enum EndState {
         /** Exited with code {@code 0}. */
         CLEAN,
         /**
-         * Launch failed: a non-zero exit with no measurable runtime and no
-         * output, so no work was performed. This is the genuine
-         * nothing-delivered case that a job grades as a hard failure.
+         * No work was performed, the genuine nothing-delivered case that a job
+         * grades as a hard failure: either a launch failure (a signal-like exit
+         * with no runtime and no output), or an instant crash — an ordinary
+         * non-zero exit that never reported a duration, which a session that
+         * actually worked always does before exiting of its own accord.
          */
         COULD_NOT_START,
         /** The inactivity watchdog killed the process tree. */
@@ -216,10 +218,12 @@ public record AgentRunResult(
      * Classifies how this session ended; see {@link EndState}.
      *
      * <p>The watchdog flags are consulted first so a kill the harness itself
-     * triggered is never mistaken for an external one. A session that did no
-     * measurable work — no runtime and no output — is {@link EndState#COULD_NOT_START}
-     * whatever its exit code, which is what separates an instant launch failure
-     * from a tmux-path kill that also reports {@code -1}.</p>
+     * triggered is never mistaken for an external one. A
+     * {@linkplain #isSignalLikeExit(int) signal-like} exit with runtime or
+     * output is {@link EndState#KILLED_SIGNAL}, which is what separates a
+     * tmux-path kill from an instant launch failure that also reports
+     * {@code -1}. Any other non-zero exit that never reported a duration is
+     * {@link EndState#COULD_NOT_START}, even when it printed output.</p>
      *
      * @return the end-state classification
      */
@@ -227,10 +231,25 @@ public record AgentRunResult(
         if (killedForInactivity) return EndState.KILLED_INACTIVITY;
         if (wasKilledForLooping()) return EndState.KILLED_LOOP;
         if (exitCode == 0) return EndState.CLEAN;
-        boolean didWork = durationMs > 0 || !rawOutput.isBlank();
-        if (!didWork) return EndState.COULD_NOT_START;
-        if (exitCode > 128 || exitCode == -1) return EndState.KILLED_SIGNAL;
+        if (isSignalLikeExit(exitCode) && (durationMs > 0 || !rawOutput.isBlank())) {
+            return EndState.KILLED_SIGNAL;
+        }
+        if (durationMs == 0L) return EndState.COULD_NOT_START;
         return EndState.FAILED;
+    }
+
+    /**
+     * Whether {@code exitCode} has the shape of a signal termination: above
+     * {@code 128} (the shell's {@code 128 + signal} convention) or {@code -1}
+     * (a tmux-path kill, or a launch failure when nothing ran). Runners use it
+     * to decide when a missing self-reported duration means the session was cut
+     * short rather than that it crashed before doing anything.
+     *
+     * @param exitCode the process exit code
+     * @return {@code true} for a signal-like exit code
+     */
+    public static boolean isSignalLikeExit(int exitCode) {
+        return exitCode > 128 || exitCode == -1;
     }
 
     /**

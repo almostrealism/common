@@ -400,19 +400,37 @@ public class JobStatusRollupTest extends TestSuiteBase {
 		assertHardFailurePredicate(false, -1, 5000L, false);
 	}
 
-	/** Drives one scenario through the predicate and asserts the result. */
-	private void assertHardFailurePredicate(boolean expected, int exitCode,
-			long durationMs, boolean killedForInactivity) {
+	/**
+	 * A primary that started, printed an error line, and exited 1 without ever
+	 * reporting a duration is an instant crash and stays a hard failure; the
+	 * printed line is not evidence of work. A signal-like exit with the same
+	 * output is a kill instead, and is not a hard failure.
+	 */
+	@Test(timeout = 30000)
+	public void instantCrashWithErrorLineIsStillHardFailure() throws Exception {
+		assertTrue(runPredicate(1, 0L, false, "Error: invalid API key"));
+		assertFalse(runPredicate(143, 0L, false, "Error: invalid API key"));
+	}
+
+	/** Runs one primary with the given end conditions and returns the hard-failure predicate. */
+	private boolean runPredicate(int exitCode, long durationMs,
+			boolean killedForInactivity, String output) {
 		RollupTestJob job = new RollupTestJob("predicate", "x",
 				List.of(new AgentRunResult(
-						exitCode, killedForInactivity, "", null,
+						exitCode, killedForInactivity, output, null,
 						durationMs, 0L, 0, 0.0,
 						"x", exitCode != 0,
 						Collections.emptyList(),
 						Collections.emptyMap())),
 				List.of(false));
 		job.executeSingleRun();
-		boolean actual = job.isHardPrimaryFailure();
+		return job.isHardPrimaryFailure();
+	}
+
+	/** Drives one scenario through the predicate and asserts the result. */
+	private void assertHardFailurePredicate(boolean expected, int exitCode,
+			long durationMs, boolean killedForInactivity) {
+		boolean actual = runPredicate(exitCode, durationMs, killedForInactivity, "");
 		assertEquals("predicate for exit=" + exitCode
 						+ " durationMs=" + durationMs + " killed=" + killedForInactivity,
 				expected, actual);

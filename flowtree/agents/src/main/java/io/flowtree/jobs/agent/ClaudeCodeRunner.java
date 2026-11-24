@@ -461,8 +461,12 @@ public class ClaudeCodeRunner implements AgentRunner {
      * self-reported duration at {@code 0} after a long run. When that happens
      * {@code measuredWallClockMs} — the real lifetime {@link AgentProcessRunner}
      * observed — is used instead, so a killed-but-productive session reports an
-     * honest duration rather than {@code 0s}. A clean exit keeps its
-     * self-reported duration, which is authoritative.</p>
+     * honest duration rather than {@code 0s}. The fallback applies only to a
+     * {@linkplain AgentRunResult#isSignalLikeExit(int) signal-like} exit: a
+     * clean exit keeps its self-reported duration, which is authoritative, and
+     * an ordinary non-zero exit that never reported one is an instant crash
+     * whose {@code 0} keeps it classified
+     * {@link AgentRunResult.EndState#COULD_NOT_START}.</p>
      *
      * <p>A loop kill is recorded as the {@link AgentRunResult#STOP_LOOP_DETECTED}
      * stop reason with the session flagged as an error, matching how
@@ -545,10 +549,10 @@ public class ClaudeCodeRunner implements AgentRunner {
             }
         }
 
-        // Fall back to the measured lifetime only for a non-clean exit; a clean
-        // exit's self-reported duration is authoritative even when it is 0 (see
-        // the method javadoc).
-        if (exitCode != 0 && durationMs == 0L && measuredWallClockMs > 0L) {
+        // Fall back to the measured lifetime only for a signal-like exit; any other
+        // exit's self-report stands, so an instant crash stays a could-not-start.
+        // TODO(review): an exit-1 crash after long runtime with no result line is also graded COULD_NOT_START.
+        if (AgentRunResult.isSignalLikeExit(exitCode) && durationMs == 0L && measuredWallClockMs > 0L) {
             durationMs = measuredWallClockMs;
         }
 

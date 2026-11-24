@@ -455,6 +455,42 @@ public class ClaudeCodeRunnerTest extends TestSuiteBase {
     }
 
     /**
+     * An ordinary non-zero exit (not signal-like) that never wrote a result
+     * line is an instant crash: the measured wall-clock is NOT substituted, so
+     * the duration stays {@code 0} and the session classifies as
+     * {@link AgentRunResult.EndState#COULD_NOT_START} even though it printed an
+     * error line and the process lived for a moment.
+     */
+    @Test(timeout = 5000)
+    public void parseClaudeNdjsonKeepsInstantCrashAsCouldNotStart() {
+        AgentRunResult result = new ClaudeCodeRunner().parseClaudeNdjson(
+                "Error: invalid API key", 1, false, false, 350L, SILENT, Collections.emptySet());
+        assertEquals(0L, result.durationMs());
+        assertFalse(result.isKilledBySignal());
+        assertEquals(AgentRunResult.EndState.COULD_NOT_START, result.endState());
+    }
+
+    /**
+     * A signal-like exit with neither runtime nor output is a launch failure,
+     * not a signal kill; with output but no runtime (a tmux-path kill) it is a
+     * signal kill. Pins both sides of the signal-like branch.
+     */
+    @Test(timeout = 5000)
+    public void signalLikeExitNeedsRuntimeOrOutputToCountAsKill() {
+        assertEquals(AgentRunResult.EndState.COULD_NOT_START,
+                AgentRunResult.launchFailed("no process").endState());
+        AgentRunResult tmuxKill = new ClaudeCodeRunner().parseClaudeNdjson(
+                "{\"type\":\"system\"}", -1, false, false, 0L, SILENT, Collections.emptySet());
+        assertEquals(AgentRunResult.EndState.KILLED_SIGNAL, tmuxKill.endState());
+        assertTrue(AgentRunResult.isSignalLikeExit(143));
+        assertTrue(AgentRunResult.isSignalLikeExit(129));
+        assertTrue(AgentRunResult.isSignalLikeExit(-1));
+        assertFalse(AgentRunResult.isSignalLikeExit(128));
+        assertFalse(AgentRunResult.isSignalLikeExit(1));
+        assertFalse(AgentRunResult.isSignalLikeExit(0));
+    }
+
+    /**
      * A loop-detector kill is carried on the result as the
      * {@link AgentRunResult#STOP_LOOP_DETECTED} stop reason with the session
      * flagged as an error, matching {@code OpencodeOutputParser}, so the loop
