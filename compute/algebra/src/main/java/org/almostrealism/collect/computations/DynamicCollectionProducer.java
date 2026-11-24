@@ -64,9 +64,24 @@ import java.util.stream.Stream;
  * DynamicCollectionProducer dynamicProducer =
  *     new DynamicCollectionProducer<>(shape, inputFunction, false, true, input1, input2);
  * }</pre>
- * 
+ *
+ * <h3>Shape and Count Contract</h3>
+ *
+ * <p>With a fixed count, the shape describes the whole collection the function returns. With a
+ * variable count ({@code fixedCount == false}) the shape describes <em>one item</em> of a batch
+ * whose number of items is decided by the kernel that reads this producer, as the destination
+ * factory ({@code shape.prependDimension(count)}) records; the function must then return
+ * {@code count} items of that shape. A kernel argument with a variable count is not wrapped to
+ * the size the function happened to return, so a function that returns fewer items than the
+ * kernel reads leaves the remaining positions reading memory past the end of its result.</p>
+ *
+ * <p>For example, a per-row condition for a batch of rows is one value per item: it is declared
+ * with the item shape {@code shape(1)} (or the variable shape {@code shape(-1, 1)}) and its
+ * function returns one value per row. Declaring it as {@code shape(rows, 1)} with a variable count
+ * instead asks for {@code rows} values in every item.</p>
+ *
  * @see CollectionProducer
- * @see DynamicProducerForMemoryData  
+ * @see DynamicProducerForMemoryData
  * @see PackedCollection
  * @see TraversalPolicy
  * 
@@ -116,7 +131,8 @@ public class DynamicCollectionProducer extends DynamicProducerForMemoryData<Pack
 	 * @param shape The {@link TraversalPolicy} defining the output collection's dimensions
 	 * @param function The function that generates the output collection from input arguments
 	 * @param kernel Whether to use kernel execution (single function call) vs element-wise execution (multiple calls)
-	 * @param fixedCount Whether this producer has a deterministic output size
+	 * @param fixedCount Whether this producer has a deterministic output size; when it does not,
+	 *                   {@code shape} is the shape of one item (see the class documentation)
 	 */
 	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], PackedCollection> function,
 									 boolean kernel, boolean fixedCount) {

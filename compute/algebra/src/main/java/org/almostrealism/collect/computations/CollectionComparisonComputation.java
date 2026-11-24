@@ -21,11 +21,13 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.compute.Process;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Abstract base class for element-wise comparison operations on {@link PackedCollection}s
@@ -219,13 +221,16 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 *
 	 * <p>The projection applies only to an operand with a variable count &mdash; a batched input
 	 * whose rows are indexed by the kernel without being wrapped to the operand's size. Fixedness is
-	 * read from the operand's {@link TraversalPolicy} as the computation sees it, which already
-	 * carries the operand producer's count contract: the batched inputs that need the projection are
-	 * reported here as variable-count, so testing the shape is equivalent to consulting
-	 * {@link io.almostrealism.relation.Countable#isFixedCount(Object)} on the producer. An operand
-	 * with a fixed count is read at the output element index exactly as any other element-wise
-	 * operand is, so a smaller fixed-count operand keeps the framework's ordinary (repeating)
-	 * element-wise semantics.</p>
+	 * read from the operand producer's own count contract,
+	 * {@link Countable#isFixedCount(Object)}, which is also what decides whether the operand's
+	 * kernel argument is wrapped to its size when it is read. The fixed flag of the operand's
+	 * {@link TraversalPolicy} is not a substitute: a producer whose shape describes one fixed-size
+	 * item but whose count varies with the kernel (a host-function producer created with a variable
+	 * count, or a computation over a variable-count input) has a fixed shape and a variable count,
+	 * and it supplies one item per row exactly as a variable-shape input does. An operand with a
+	 * fixed count is read at the output element index exactly as any other element-wise operand is,
+	 * so a smaller fixed-count operand keeps the framework's ordinary (repeating) element-wise
+	 * semantics.</p>
 	 *
 	 * <p>Only a per-row scalar &mdash; a single operand value governing a whole output item &mdash;
 	 * is projected. That is the one broadcast this computation can perform unambiguously from the
@@ -246,13 +251,14 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 	 *                                  not a single per-row value
 	 */
 	protected Expression<?> conditionIndex(Expression<?> index, int inputPosition) {
-		TraversalPolicy operandShape = shape(getInputs().get(inputPosition));
+		Supplier<?> operand = getInputs().get(inputPosition);
 		long outputSize = getShape().getSizeLong();
-		long operandSize = operandShape.getSizeLong();
+		long operandSize = shape(operand).getSizeLong();
 
 		// A fixed-count operand keeps the ordinary element-wise read; only a variable-count
 		// operand is projected per row (see the count-contract note in this method's javadoc).
-		if (operandShape.isFixedCount() || operandSize >= outputSize) {
+		// TODO(review): fixed-shape variable-count operands of width 2..item-1 now throw below; confirm no caller hits that.
+		if (Countable.isFixedCount(operand) || operandSize >= outputSize) {
 			return index;
 		}
 
