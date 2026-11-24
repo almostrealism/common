@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in-progress
 created: 2026-11-23
 closed:
 tracker: [80b892da-f079-456c-b7e3-059bbed7db65]
@@ -165,11 +165,15 @@ post-process the generated source, and do not split the graph by hand with a man
 
 Concrete, actionable items:
 
-1. **Reproduce, capture the full stack, and profile first (Rule 3b).** The flag does not need to
-   be edited to reproduce. `TestDepthRule` skips a `knownIssue` test only when
-   `TestUtils.getSkipKnownIssues()` is true, which happens under the `pipeline` test profile,
-   when long tests are skipped, or when `AR_KNOWN_ISSUES` is disabled. A targeted local run of
-   `refractiveSphereShowsFloor` therefore executes it by default. Capture the **complete** stack
+1. **Reproduce, capture the full stack, and profile first (Rule 3b).** `TestDepthRule` skips a
+   `knownIssue` test whenever `TestUtils.getSkipKnownIssues()` is true, and that is true not only
+   under the `pipeline` test profile or when `AR_KNOWN_ISSUES` is disabled, but also whenever long
+   tests are skipped (`getSkipKnownIssues()` returns true when `getSkipLongTests()` does). The
+   default depth leaves long tests skipped, so a targeted local run — including the standard MCP
+   test runner — **skips** this test rather than executing it (verified: a default run reports it
+   skipped). To reproduce, explicitly enable known-issue/long-test execution and avoid the
+   `pipeline` profile, or temporarily remove the flag for the reproduction run only (restoring it
+   if the fix is not achieved). Capture the **complete** stack
    of the `ExpressionException` and record which entry point is compiling when it is thrown:
    `LightingEngineAggregator.initRankCache()` (`rankProducer.get()`), `evaluate(Object[])`
    (`best.get()`), or a path through `RealizableImage.get()`'s `Process.optimized(source)`.
@@ -328,3 +332,37 @@ Raised by the documentation review, for the person deciding whether this plan go
    compile entry point would sit beside `ReflectionRefractionRenderTest`. A construction-layer
    fix (family a) would instead want an `engine/utils` expression test next to
    `ExpressionStructureTests`. Decide the placement once the family is known, not before.
+
+## Session findings (implementation attempt)
+
+An implementation session reproduced the failure, captured the full stack, and diagnosed the
+cause. The outcome is the plan's blessed "diagnosed, reported, still flagged" result: the render
+is **not yet un-flaggable in a focused session**, so the flag was restored net-unchanged and a
+follow-up filed.
+
+- **Root cause is family (c), confirmed.** With the flag temporarily removed, the compile throws
+  `ExpressionException: Large expression not improved by simplification` at `Expression.process`
+  (node count over `ScopeSettings.maxNodeCount`, `1 << 23`). The entry point compiling when it
+  throws is `LightingEngineAggregator.evaluate(Object[])`'s kernel-mode host selection
+  (`best.get().evaluate(args)`) — a plain, **unoptimized** `Producer.get()`. The shared refraction
+  sub-graph (the exit ray feeds the ranked-choice rank twice and the colour once) is therefore
+  inlined per reader instead of folded behind kernel boundaries. The node count / tree depth the
+  throw carries were not captured as numbers (the runner surfaced only the message); the entry
+  point and throw site above are the recorded "before".
+- **The minimal family-(c) fix is correct but exposes broader optimizer work.** Routing that call
+  site through the optimizing `Producer.evaluate(args)` removes the expression-size throw, but
+  optimizing *this* graph then crashes **before scope generation** — so it is not even confirmed
+  that optimizing resolves the blow-up. The crash is a cascade of optimizer-isolation gaps in the
+  rendering graph node types: (1) `ProducerWithRankAdapter` is a `Producer` but not a `Process`,
+  so it is wrapped in a non-`Producer` `Process.of` shell and a later `generate` cast fails;
+  (2) `GeneratedColorProducer.generate` throws the unsupported default; (3) the selection's zero
+  default branch (`getClosestChoice` seeds `best` with `zeros(...)`) is bulk-isolated, but
+  `CollectionZerosComputation.isolate()` forbids it by design (re-enabling it is prohibited — it
+  reintroduces a known compile timeout). Fixing these without re-enabling zeros isolation or
+  raising `maxNodeCount`, and without regressing `reflectiveSphereShowsFloor` (which shares the
+  same primary-aggregator call site), is a focused base/relation optimizer hardening — the
+  "broader foundational work" this plan flagged as a real possibility. It is tracked as a
+  follow-up task refining the original tracker item.
+- **No test was weakened.** `refractiveSphereShowsFloor` keeps `@TestProperties(knownIssue = true)`
+  (net-unchanged); its class Javadoc was updated to describe the current cause.
+  `reflectiveSphereShowsFloor` still passes.

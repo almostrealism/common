@@ -33,7 +33,7 @@ entries are condensed or pruned to keep it under roughly 50,000 characters.
 **Category:** Code Quality (correctness), with a general compilation-scaling payoff
 **Branch:** `project/plan-20261123-185641`
 **Plan:** [`PLAN-20261123-refraction-expression-size-blowup.md`](PLAN-20261123-refraction-expression-size-blowup.md)
-**Tracker:** `80b892da-f079-456c-b7e3-059bbed7db65` (the follow-up PR #1001 filed for this exact wall)
+**Tracker:** the follow-up task filed from the reset-traversal memoization work (PR #1001) for this exact expression-size wall
 
 #### What changed since last cycle
 
