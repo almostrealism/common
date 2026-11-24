@@ -256,9 +256,10 @@ Files under `.github/workflows/` and `tools/ci/` change only on a `ci/...`
 branch (`check-ci-file-lock.sh`). This branch is not one, so the work splits:
 
 - **This branch:** the pom changes (§1, §3 surefire), the flowtree, engine and
-  studio launchers (§3), the agent and controller Dockerfile defaults and the
-  macOS agent tool path (§2 Agents), the documentation (§4), and the audit
-  report (§5).
+  studio launchers (§3), the documentation (§4), and the audit report (§5). The
+  agent and controller Dockerfile defaults and the macOS agent tool path (§2
+  Agents) are deferred to tracker task `07735d1e-a97f-4526-afb3-79bc868d78a1`;
+  see the implementation status below for why they stay on JDK 17.
 - **A `ci/jdk-25` branch:** `analysis.yaml`, everything under `tools/ci/`
   (including `diagnose-opencl.sh`), and the `tools/tests/test_self_hosted_jdk.py`
   expectation that follows it.
