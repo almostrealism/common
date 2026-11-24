@@ -106,22 +106,14 @@ public class PdslLexer {
 				advance();
 				while (pos + 1 < source.length()
 						&& !(source.charAt(pos) == '*' && source.charAt(pos + 1) == '/')) {
-					if (source.charAt(pos) == '\n') {
-						line++;
-						column = 0;
-					}
-					advance();
+					advanceTrackingNewline();
 				}
 				if (pos + 1 < source.length()) {
 					advance();
 					advance();
 				} else {
 					while (pos < source.length()) {
-						if (source.charAt(pos) == '\n') {
-							line++;
-							column = 0;
-						}
-						advance();
+						advanceTrackingNewline();
 					}
 				}
 			} else {
@@ -301,5 +293,21 @@ public class PdslLexer {
 	private void advance() {
 		pos++;
 		column++;
+	}
+
+	/**
+	 * Advances past the current character while keeping {@link #line} and
+	 * {@link #column} consistent, incrementing {@link #line} and resetting
+	 * {@link #column} when that character is a newline. Used by the
+	 * block-comment scans, including the fallback that consumes an
+	 * unterminated comment to the end of the source, so that a token
+	 * reported after the comment carries the correct source location.
+	 */
+	private void advanceTrackingNewline() {
+		if (source.charAt(pos) == '\n') {
+			line++;
+			column = 0;
+		}
+		advance();
 	}
 }
