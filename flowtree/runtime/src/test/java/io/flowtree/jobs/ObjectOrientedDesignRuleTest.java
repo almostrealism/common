@@ -446,6 +446,35 @@ public class ObjectOrientedDesignRuleTest extends TestSuiteBase {
 	}
 
 	/**
+	 * The real {@link ObjectOrientedDesignRule#changedLineCount} counts the lines tracked files add
+	 * relative to {@code origin/<base>} plus every line of an untracked file, ignores deletions, and
+	 * skips untracked harness scratch such as {@code .flowtree/}.
+	 *
+	 * @throws Exception if the temporary repository cannot be built
+	 */
+	@Test(timeout = 60000)
+	public void changedLineCountMeasuresAddedLinesAgainstTheBase() throws Exception {
+		try (GitTestRepository repo = GitTestRepository.create("oop-rule-git", false)) {
+			repo.write("Kept.java", "a\nb\nc\n");
+			repo.write("Shrunk.java", "x\ny\nz\n");
+			repo.commitAll("initial");
+			repo.git("update-ref", "refs/remotes/origin/master", "HEAD");
+
+			ObjectOrientedDesignRule rule = new ObjectOrientedDesignRule();
+			StubJob job = new StubJob(repo.dir(), new ArrayList<>());
+			assertEquals("a clean tree adds nothing", 0, rule.changedLineCount(job));
+
+			repo.write("Kept.java", "a\nb\nc\nd\ne\n");
+			repo.write("Shrunk.java", "x\n");
+			repo.write("New.java", "1\n2\n3\n4\n");
+			repo.write(".flowtree/oop-review.md", "v1\nv2\nv3\n");
+
+			assertEquals("two lines added to a tracked file plus four in an untracked one",
+					6, rule.changedLineCount(job));
+		}
+	}
+
+	/**
 	 * Appends a line to a verdict file of a working tree, as a review session does.
 	 *
 	 * @param root     the working tree
