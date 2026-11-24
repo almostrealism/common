@@ -195,7 +195,7 @@ HealthScore combined = composite.computeHealth();
 ### PopulationOptimizer
 
 ```java
-public class PopulationOptimizer<G, T extends Temporal, O, S extends HealthScore> {
+public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore> {
     // Configuration
     public static int THREADS = 1;
     public static int popSize = 100;
