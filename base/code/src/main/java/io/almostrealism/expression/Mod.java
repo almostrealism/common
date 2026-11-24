@@ -407,11 +407,6 @@ public class Mod<T extends Number> extends BinaryExpression<T> {
 	 * semantics: truncation toward zero for the floating-point {@code fmod}, and flooring for
 	 * {@link LanguageOperations#floorMod}. When the modulus does not depend on the target its
 	 * derivative is zero and this reduces to {@code du/dx}.</p>
-	 *
-	 * <p>Like {@link Max#delta(CollectionExpression)}, this differentiates the operands
-	 * directly, so it is only correct when they are raw inputs rather than references to
-	 * composite sub-computations (for example {@code (2x) mod 3}); that limitation is tracked
-	 * as a follow-up for the chain rule across computation references.</p>
 	 */
 	@Override
 	public CollectionExpression<?> delta(CollectionExpression<?> target) {
