@@ -70,23 +70,14 @@ class StatsQueryHandler {
      */
     public static final Duration DEFAULT_SILENT_THRESHOLD = Duration.ofMinutes(15);
 
-    /**
-     * Default wait a {@code SUBMITTED} job may accumulate before the
-     * pending-job listing labels it {@code LOST} (the operator's
-     * {@code T_lost}) — a job the controller accepted but no worker ever
-     * picked up. Advisory only; a lost job never ran, so there is nothing to
-     * fail.
-     */
-    public static final Duration DEFAULT_LOST_THRESHOLD = Duration.ofMinutes(30);
-
     /** The backing stats store; may be {@code null} when stats are not configured. */
     private final JobStatsStore statsStore;
 
     /** Silence threshold for the {@code UNRESPONSIVE} label; see {@link #DEFAULT_SILENT_THRESHOLD}. */
     private Duration silentThreshold = DEFAULT_SILENT_THRESHOLD;
 
-    /** Wait threshold for the {@code LOST} label; see {@link #DEFAULT_LOST_THRESHOLD}. */
-    private Duration lostThreshold = DEFAULT_LOST_THRESHOLD;
+    /** Wait threshold for the {@code LOST} label; see {@link PendingJob#DEFAULT_LOST_THRESHOLD}. */
+    private Duration lostThreshold = PendingJob.DEFAULT_LOST_THRESHOLD;
 
     /**
      * Constructs a new handler backed by the given stats store.
@@ -112,13 +103,13 @@ class StatsQueryHandler {
     /**
      * Sets the wait threshold used to label a pending job {@code LOST}. A
      * {@code null} or non-positive value restores the
-     * {@link #DEFAULT_LOST_THRESHOLD default}.
+     * {@link PendingJob#DEFAULT_LOST_THRESHOLD default}.
      *
      * @param lostThreshold the operator's {@code T_lost}
      */
     void setLostThreshold(Duration lostThreshold) {
         this.lostThreshold = (lostThreshold != null && !lostThreshold.isNegative()
-                && !lostThreshold.isZero()) ? lostThreshold : DEFAULT_LOST_THRESHOLD;
+                && !lostThreshold.isZero()) ? lostThreshold : PendingJob.DEFAULT_LOST_THRESHOLD;
     }
 
     /**

@@ -78,7 +78,7 @@ public class LostJobRecoveryTest extends TestSuiteBase {
 		JobStatsStore store = newStore();
 		Instant now = Instant.parse("2026-11-05T12:00:00Z");
 		store.recordJobSubmitted("job-lost", "ws-1", "implement the thing",
-				"alice", null, now.minus(Duration.ofMinutes(45)));
+				"alice", null, now.minus(Duration.ofMinutes(240)));
 
 		LostJobRecovery scanner = newScanner(store, false);
 
@@ -115,7 +115,7 @@ public class LostJobRecoveryTest extends TestSuiteBase {
 		JobStatsStore queuedStore = newStore();
 		Instant now = Instant.parse("2026-11-05T12:00:00Z");
 		queuedStore.recordJobSubmitted("job-queued", "ws-1", "waiting for a worker",
-				"alice", null, now.minus(Duration.ofMinutes(45)));
+				"alice", null, now.minus(Duration.ofMinutes(240)));
 		newScanner(queuedStore, true).scanOnce(now);
 		Assert.assertTrue("queued-locally message explains the missing worker",
 				alerts.get(0).contains("still queued on the controller"));
@@ -123,7 +123,7 @@ public class LostJobRecoveryTest extends TestSuiteBase {
 		alerts.clear();
 		JobStatsStore relayedStore = newStore();
 		relayedStore.recordJobSubmitted("job-relayed", "ws-1", "handed to a peer",
-				"alice", null, now.minus(Duration.ofMinutes(45)));
+				"alice", null, now.minus(Duration.ofMinutes(240)));
 		newScanner(relayedStore, false).scanOnce(now);
 		Assert.assertTrue("relayed message warns against a duplicate run",
 				alerts.get(0).contains("handed to a peer"));
@@ -138,7 +138,7 @@ public class LostJobRecoveryTest extends TestSuiteBase {
 		JobStatsStore store = newStore();
 		Instant now = Instant.parse("2026-11-05T12:00:00Z");
 		store.recordJobSubmitted("job-retry", "ws-1", "alert sink down",
-				"alice", null, now.minus(Duration.ofMinutes(45)));
+				"alice", null, now.minus(Duration.ofMinutes(240)));
 
 		boolean[] sinkUp = {false};
 		LostJobRecovery scanner = new LostJobRecovery(store, null,
@@ -169,9 +169,9 @@ public class LostJobRecoveryTest extends TestSuiteBase {
 		JobStatsStore store = newStore();
 		Instant now = Instant.parse("2026-11-05T12:00:00Z");
 		store.recordJobSubmitted("job-bad", "ws-1", "probe throws",
-				"alice", null, now.minus(Duration.ofMinutes(50)));
+				"alice", null, now.minus(Duration.ofMinutes(300)));
 		store.recordJobSubmitted("job-good", "ws-2", "probe fine",
-				"alice", null, now.minus(Duration.ofMinutes(45)));
+				"alice", null, now.minus(Duration.ofMinutes(240)));
 
 		LostJobRecovery scanner = new LostJobRecovery(store,
 				(ws, msg) -> { noticeWorkstreams.add(ws); notices.add(msg); },
@@ -197,7 +197,7 @@ public class LostJobRecoveryTest extends TestSuiteBase {
 		JobStatsStore store = newStore();
 		Instant now = Instant.parse("2026-11-05T12:00:00Z");
 		store.recordJobSubmitted("job-delayed", "ws-1", "delaySeconds=7200",
-				"alice", null, now.minus(Duration.ofMinutes(90)));
+				"alice", null, now.minus(Duration.ofMinutes(240)));
 
 		boolean[] deferred = {true};
 		LostJobRecovery scanner = new LostJobRecovery(store,
@@ -214,5 +214,32 @@ public class LostJobRecoveryTest extends TestSuiteBase {
 		Assert.assertEquals(List.of("job-delayed"),
 				scanner.scanOnce(now.plus(Duration.ofMinutes(5))));
 		Assert.assertEquals(1, alerts.size());
+	}
+
+	/**
+	 * Pins the default lost threshold at three hours: a scanner left at its
+	 * default leaves a job that has waited just under three hours alone (a busy
+	 * pool can legitimately keep a healthy job queued that long) and escalates
+	 * one that has waited past three hours.
+	 */
+	@Test(timeout = 60000)
+	public void defaultLostThresholdIsThreeHours() throws Exception {
+		Assert.assertEquals(Duration.ofHours(3), PendingJob.DEFAULT_LOST_THRESHOLD);
+
+		JobStatsStore store = newStore();
+		Instant now = Instant.parse("2026-11-05T12:00:00Z");
+		store.recordJobSubmitted("job-waiting", "ws-1", "pool still busy",
+				"alice", null, now.minus(Duration.ofHours(3).minusMinutes(1)));
+
+		LostJobRecovery scanner = newScanner(store, true);
+		Assert.assertEquals("the default threshold is three hours",
+				Duration.ofHours(3), scanner.lostThreshold());
+		Assert.assertTrue("a job under three hours old is not yet lost",
+				scanner.scanOnce(now).isEmpty());
+
+		store.recordJobSubmitted("job-dropped", "ws-2", "no worker ever came",
+				"alice", null, now.minus(Duration.ofHours(3).plusMinutes(1)));
+		Assert.assertEquals("a job past three hours is escalated",
+				List.of("job-dropped"), scanner.scanOnce(now));
 	}
 }

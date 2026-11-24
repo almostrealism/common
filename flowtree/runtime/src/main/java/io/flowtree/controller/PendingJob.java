@@ -50,6 +50,22 @@ public record PendingJob(String jobId, String workstreamId, Instant submittedAt,
     public static final String LOST = "LOST";
 
     /**
+     * Default wait a {@code SUBMITTED} job may accumulate before it counts as
+     * {@link #LOST} — the operator's {@code T_lost}. This is the single source
+     * of truth for that threshold: the pending-job listing that labels a job
+     * {@code LOST} and the scanner that escalates it both default to this value,
+     * so the listing and the escalation always agree.
+     *
+     * <p>Three hours is deliberately generous. When every worker is busy a
+     * healthy job can legitimately wait hours in the queue for a free worker
+     * whose labels match; a shorter threshold flags such merely-delayed jobs as
+     * lost and fires a false escalation. The value is set high enough that a
+     * job still waiting past it is far more likely to have been dropped than
+     * merely delayed.</p>
+     */
+    public static final Duration DEFAULT_LOST_THRESHOLD = Duration.ofHours(3);
+
+    /**
      * Returns how long the job has waited since it was submitted.
      *
      * @param now the reference instant
