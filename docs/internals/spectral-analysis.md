@@ -178,8 +178,9 @@ the grid puts its power in exact cells, and the estimate is then exact to roundi
   deciding kernel boundaries belongs to the optimizer, not to the code that builds the graph.
 - **`indexOfMax` of a `[B]` vector** treats each element as its own group. Reshape to
   `shape(1, B).traverse(1)` to get one group.
-- **`TestFeatures.assertSimilar` accepts NaN.** Use `Assert.assertEquals(msg, expected, actual,
-  delta)` when a computation could produce NaN.
+- **`TestFeatures` comparisons treat non-finite values as exact.** `assertSimilar` and
+  `assertEquals` fail when a `NaN` or infinite actual is compared against any other value, and
+  pass only when both values are the same `NaN` or the same signed infinity.
 - **Host-generated noise.** `randn(shape, mean, std, new Random(seed))` feeding a large FFT graph
   failed to compile on Metal. Evaluate it first, or build noise on the device (see
   `SpectralFeaturesTest.noise`).

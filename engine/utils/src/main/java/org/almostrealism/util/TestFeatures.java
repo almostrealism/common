@@ -612,7 +612,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * tolerance, so a {@code NaN} actual fails against any finite expected (and a finite actual
 	 * fails against a {@code NaN} expected), while two identical non-finite values — such as
 	 * {@code NaN} against {@code NaN} — are equal. See
-	 * {@link #requireExactWhenNonFinite(String, double, double)}.</p>
+	 * {@link #decideNonFinite(String, double, double, boolean)}.</p>
 	 *
 	 * @param a the expected value
 	 * @param b the actual value
@@ -658,7 +658,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * double (both {@code NaN}, or the same signed infinity), and fails for any other pairing
 	 * (a {@code NaN} against a finite value either way, {@code +Infinity} against
 	 * {@code -Infinity}, an infinity against a finite value). See
-	 * {@link #requireExactWhenNonFinite(String, double, double)}.</p>
+	 * {@link #decideNonFinite(String, double, double, boolean)}.</p>
 	 *
 	 * @param msg      the message to display if the assertion fails
 	 * @param expected the expected value
@@ -667,7 +667,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @throws AssertionError if the values differ by more than delta
 	 */
 	default void assertEquals(String msg, double expected, double actual, double delta) {
-		if (requireExactWhenNonFinite(msg, expected, actual)) {
+		if (decideNonFinite(msg, expected, actual, true)) {
 			return;
 		}
 
@@ -770,30 +770,33 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * that no finite threshold bounds, so infinities cannot be handled by the threshold test
 	 * either.</p>
 	 *
-	 * <p>The rule applied here, consistently across the helpers that call it, is that a
-	 * non-finite value must match exactly: the comparison passes only when {@code expected} and
-	 * {@code actual} are the same double — both {@code NaN}, or the same signed infinity — and
-	 * fails otherwise. This makes a {@code NaN} actual fail against any finite expected, a finite
-	 * actual fail against a {@code NaN} expected, {@code +Infinity} fail against {@code -Infinity},
-	 * and an infinity fail against a finite value, while leaving a genuinely identical non-finite
-	 * pair (such as {@code NaN} compared with {@code NaN}) passing.</p>
+	 * <p>The rule applied here, consistently across the helpers that call it, is that two values
+	 * are equal when either is non-finite only if they are the same double — both {@code NaN}, or
+	 * the same signed infinity. An equality assertion ({@code positive}) therefore fails for a
+	 * {@code NaN} actual against any finite expected, a finite actual against a {@code NaN}
+	 * expected, {@code +Infinity} against {@code -Infinity}, and an infinity against a finite
+	 * value, while a genuinely identical non-finite pair (such as {@code NaN} compared with
+	 * {@code NaN}) passes. An inequality assertion applies the same notion of equality and so
+	 * fails exactly for the identical pairs.</p>
 	 *
 	 * @param msg      context to report when the assertion fails, or {@code null}
 	 * @param expected the expected value
 	 * @param actual   the actual value
+	 * @param positive {@code true} to assert equality, {@code false} to assert inequality
 	 * @return {@code true} if at least one value is non-finite and the comparison has been fully
-	 *         decided here (passing on an exact match, throwing on any mismatch); {@code false} if
+	 *         decided here (returning normally when it holds, throwing otherwise); {@code false} if
 	 *         both values are finite and the caller must apply its own tolerance comparison
-	 * @throws AssertionError if exactly one value is non-finite, or both are but they are not the
-	 *                        same double
+	 * @throws AssertionError if at least one value is non-finite and the asserted equality or
+	 *                        inequality does not hold under exact comparison
 	 */
-	private static boolean requireExactWhenNonFinite(String msg, double expected, double actual) {
+	private static boolean decideNonFinite(String msg, double expected, double actual, boolean positive) {
 		if (Double.isFinite(expected) && Double.isFinite(actual)) {
 			return false;
 		}
 
-		if (Double.compare(expected, actual) != 0) {
-			String detail = actual + " != " + expected;
+		boolean same = Double.compare(expected, actual) == 0;
+		if (same != positive) {
+			String detail = actual + (positive ? " != " : " == ") + expected;
 			Console.root().warn(msg == null ? detail : detail + " " + msg, null);
 			throw new AssertionError(msg == null ? detail : detail + " " + msg);
 		}
@@ -822,13 +825,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @param positive {@code true} to assert equality, {@code false} to assert inequality
 	 */
 	private static void assertEquals(String msg, double a, double b, boolean positive) {
-		if (!Double.isFinite(a) || !Double.isFinite(b)) {
-			boolean same = Double.compare(a, b) == 0;
-			if (same != positive) {
-				String rel = positive ? " != " : " == ";
-				Console.root().warn(b + rel + a, null);
-				throw new AssertionError(msg == null ? b + rel + a : msg);
-			}
+		if (decideNonFinite(msg, a, b, positive)) {
 			return;
 		}
 
@@ -934,7 +931,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * assertion passes only when {@code a} and {@code b} are the same double (both {@code NaN},
 	 * or the same signed infinity), and fails for any other pairing (a {@code NaN} against a
 	 * finite value either way, {@code +Infinity} against {@code -Infinity}, an infinity against a
-	 * finite value). See {@link #requireExactWhenNonFinite(String, double, double)}.</p>
+	 * finite value). See {@link #decideNonFinite(String, double, double, boolean)}.</p>
 	 *
 	 * @param msg       context to report when the assertion fails, or {@code null}
 	 * @param a         the expected value
@@ -945,7 +942,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	 * @throws AssertionError if the values differ by more than the tolerance
 	 */
 	default void assertSimilar(String msg, double a, double b, double r, double magnitude) {
-		if (requireExactWhenNonFinite(msg, a, b)) {
+		if (decideNonFinite(msg, a, b, true)) {
 			return;
 		}
 
