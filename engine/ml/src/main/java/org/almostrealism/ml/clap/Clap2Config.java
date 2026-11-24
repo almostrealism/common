@@ -137,7 +137,9 @@ public final class Clap2Config {
 	 * @param vocabularySize number of tokens in the vocabulary
 	 * @param embedDim       width of the shared embedding space
 	 * @param maxTextLength  number of token positions the text tower is compiled for
-	 * @throws IllegalArgumentException if a head count is not positive, a width does not divide
+	 * @throws IllegalArgumentException if a head count, width, layer count, inner size, vocabulary
+	 *                                  size, embedding width or text length is not positive, a
+	 *                                  width does not divide
 	 *                                  into its heads, an audio head width is not a multiple of
 	 *                                  four (the axial rotary embedding gives each of its two axes a
 	 *                                  quarter of the head's features in pairs), or a text head width
@@ -150,6 +152,15 @@ public final class Clap2Config {
 			throw new IllegalArgumentException("Head counts must be positive, but the audio tower has "
 					+ audioHeads + " and the text tower " + textHeads);
 		}
+		requirePositive("audioWidth", audioWidth);
+		requirePositive("audioLayers", audioLayers);
+		requirePositive("audioInnerSize", audioInnerSize);
+		requirePositive("textWidth", textWidth);
+		requirePositive("textLayers", textLayers);
+		requirePositive("textInnerSize", textInnerSize);
+		requirePositive("vocabularySize", vocabularySize);
+		requirePositive("embedDim", embedDim);
+		requirePositive("maxTextLength", maxTextLength);
 		if (audioWidth % audioHeads != 0 || (audioWidth / audioHeads) % 4 != 0) {
 			throw new IllegalArgumentException("Audio width " + audioWidth + " must divide into "
 					+ audioHeads + " heads whose width is a multiple of 4");
@@ -170,6 +181,19 @@ public final class Clap2Config {
 		this.vocabularySize = vocabularySize;
 		this.embedDim = embedDim;
 		this.maxTextLength = maxTextLength;
+	}
+
+	/**
+	 * Rejects a size of the architecture that is not positive.
+	 *
+	 * @param name  the name of the size, for the exception's message
+	 * @param value the size
+	 * @throws IllegalArgumentException if {@code value} is zero or negative
+	 */
+	private static void requirePositive(String name, int value) {
+		if (value <= 0) {
+			throw new IllegalArgumentException(name + " must be positive, but is " + value);
+		}
 	}
 
 	/**

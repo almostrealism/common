@@ -342,7 +342,7 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 	}
 
 	/**
-	 * A configuration whose head counts are not positive, or whose widths do not split into heads
+	 * A configuration whose head counts or other sizes are not positive, or whose widths do not split into heads
 	 * the rotary embeddings can use, is rejected with an {@link IllegalArgumentException} that
 	 * names the problem, while a consistent configuration is accepted.
 	 */
@@ -359,6 +359,21 @@ public class Clap2SyntheticTest extends TestSuiteBase implements AttentionFeatur
 		assertRejected("Audio width 48", () -> new Clap2Config(48, 2, 8, 128, 32, 2, 2, 64, 100, 16, 8));
 		assertRejected("Text width 32", () -> new Clap2Config(64, 2, 4, 128, 32, 2, 3, 64, 100, 16, 8));
 		assertRejected("Text width 30", () -> new Clap2Config(64, 2, 4, 128, 30, 2, 6, 64, 100, 16, 8));
+
+		assertRejected("audioWidth must be positive", () -> new Clap2Config(0, 2, 4, 128, 32, 2, 2, 64, 100, 16, 8));
+		assertRejected("audioLayers must be positive", () -> new Clap2Config(64, 0, 4, 128, 32, 2, 2, 64, 100, 16, 8));
+		assertRejected("audioInnerSize must be positive", () -> new Clap2Config(64, 2, 4, -1, 32, 2, 2, 64, 100, 16, 8));
+		assertRejected("textWidth must be positive", () -> new Clap2Config(64, 2, 4, 128, 0, 2, 2, 64, 100, 16, 8));
+		assertRejected("textLayers must be positive", () -> new Clap2Config(64, 2, 4, 128, 32, -2, 2, 64, 100, 16, 8));
+		assertRejected("textInnerSize must be positive", () -> new Clap2Config(64, 2, 4, 128, 32, 2, 2, 0, 100, 16, 8));
+		assertRejected("vocabularySize must be positive", () -> new Clap2Config(64, 2, 4, 128, 32, 2, 2, 64, 0, 16, 8));
+		assertRejected("embedDim must be positive", () -> new Clap2Config(64, 2, 4, 128, 32, 2, 2, 64, 100, 0, 8));
+		assertRejected("maxTextLength must be positive", () -> new Clap2Config(64, 2, 4, 128, 32, 2, 2, 64, 100, 16, 0));
+
+		Clap2Config minimal = new Clap2Config(4, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1);
+		assertEquals(4, minimal.getAudioHeadDim());
+		assertEquals(2, minimal.getTextHeadDim());
+		assertEquals(1, minimal.getMaxTextLength());
 	}
 
 	/**

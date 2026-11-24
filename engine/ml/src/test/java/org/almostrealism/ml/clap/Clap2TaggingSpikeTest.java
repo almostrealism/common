@@ -215,17 +215,28 @@ public class Clap2TaggingSpikeTest extends TestSuiteBase implements AttentionFea
 	/**
 	 * The device memory currently allocated by every accelerator memory provider, in bytes.
 	 *
+	 * <p>Only the Metal and OpenCL providers account for their allocations, so on any other
+	 * backend the measurement cannot be taken and this fails with that reason rather than reporting
+	 * zero bytes and a misleading assertion failure.</p>
+	 *
 	 * @return the allocated bytes
+	 * @throws AssertionError if no memory provider of the current backend accounts for its allocations
 	 */
 	private long allocatedDeviceBytes() {
 		long total = 0;
+		boolean accounted = false;
 		for (MemoryProvider<? extends Memory> provider :
 				Hardware.getLocalHardware().getDataContext().getMemoryProviders()) {
 			if (provider instanceof MetalMemoryProvider) {
 				total += ((MetalMemoryProvider) provider).getAllocatedMemory();
+				accounted = true;
 			} else if (provider instanceof CLMemoryProvider) {
 				total += ((CLMemoryProvider) provider).getAllocatedMemory();
+				accounted = true;
 			}
+		}
+		if (!accounted) {
+			throw new AssertionError("Device memory can only be measured on the Metal or OpenCL backend");
 		}
 		return total;
 	}
