@@ -222,12 +222,8 @@ public class ConcatProjectionComputation extends TraversableExpressionComputatio
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new ConcatProjectionComputation(getShape(), outputShape, targetShape,
-				axis, segmentBoundaries, segmentOffsets, segmentScales)
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+		return copyConfigurationTo(new ConcatProjectionComputation(getShape(), outputShape, targetShape,
+				axis, segmentBoundaries, segmentOffsets, segmentScales));
 	}
 
 	@Override

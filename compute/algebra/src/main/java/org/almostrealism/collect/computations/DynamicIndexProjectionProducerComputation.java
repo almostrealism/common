@@ -203,11 +203,10 @@ public class DynamicIndexProjectionProducerComputation
 
 	@Override
 	public DynamicIndexProjectionProducerComputation generate(List<Process<?, ?>> children) {
-		return (DynamicIndexProjectionProducerComputation)
+		return copyConfigurationTo(
 				new DynamicIndexProjectionProducerComputation(getName(), getShape(), indexExpression, relative,
 							(Producer<?>) children.get(1),
-							children.stream().skip(2).toArray(Producer[]::new))
-						.addAllDependentLifecycles(getDependentLifecycles());
+							children.stream().skip(2).toArray(Producer[]::new)));
 	}
 
 	@Override

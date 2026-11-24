@@ -419,12 +419,8 @@ public class TraversableDeltaComputation
 	 */
 	@Override
 	public TraversableDeltaComputation generate(List<Process<?, ?>> children) {
-		TraversableDeltaComputation result =
-				(TraversableDeltaComputation) new TraversableDeltaComputation(getName(), getShape(), expression, target,
-					children.stream().skip(1).toArray(Producer[]::new))
-					.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
-		getDependentLifecycles().forEach(result::addDependentLifecycle);
-		return result;
+		return copyConfigurationTo(new TraversableDeltaComputation(getName(), getShape(), expression, target,
+				children.stream().skip(1).toArray(Producer[]::new)));
 	}
 
 	/**

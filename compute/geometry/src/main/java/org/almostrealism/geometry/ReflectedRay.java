@@ -107,11 +107,7 @@ public class ReflectedRay extends TraversableExpressionComputation {
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new ReflectedRay((Producer<PackedCollection>) children.get(1),
-				(Producer<PackedCollection>) children.get(2))
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+		return copyConfigurationTo(new ReflectedRay((Producer<PackedCollection>) children.get(1),
+				(Producer<PackedCollection>) children.get(2)));
 	}
 }

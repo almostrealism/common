@@ -171,13 +171,9 @@ public class DefaultTraversableExpressionComputation
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new DefaultTraversableExpressionComputation(getName(), getShape(),
+		return copyConfigurationTo(new DefaultTraversableExpressionComputation(getName(), getShape(),
 						generateSignature, expression,
-					children.stream().skip(1).toArray(Producer[]::new))
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+					children.stream().skip(1).toArray(Producer[]::new)));
 	}
 
 	/**
