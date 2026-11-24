@@ -12,7 +12,8 @@ the MaleCNS connectome against a Brian2 reference (connectome Phase 1 gate)*.
 **Release:** Common 0.78 (the release this repository's master is building).
 
 This is Phase 1 task 11, the **gate**, of the connectome model organism design
-(`docs/plans/CONNECTOME_MODEL_ORGANISM.md`): *"the connectome runs on AR"*.
+(`docs/plans/CONNECTOME_MODEL_ORGANISM.md`): *"the neuron-level MaleCNS model runs
+on the AR framework, and it reproduces the Shiu et al. result"*.
 
 ## Motivation
 
@@ -39,21 +40,21 @@ the entire pipeline this gate exercises. This task does **not** build that pipel
 drives it on the real MaleCNS dataset, confirms the match, and records the result. The
 relevant, already-merged pieces:
 
-- **Sparse connectivity** — `66b57639` landed the segmented-reduction sparse product
+- **Sparse connectivity** — the segmented-reduction sparse product
   (`CompressedRowTraversalOrdering` + `SegmentedWeightedSumComputation`, `compute/algebra`).
-- **Spiking dynamics** — `04470395` landed the leaky integrate-and-fire population. The model
+- **Spiking dynamics** — the leaky integrate-and-fire population. The model
   used by the connectome is `ExponentialSynapseNeurons` (with `PoissonInput`) in `ar-biology`
   (`org.almostrealism.biology.neuron`).
-- **Simulation loop owner** — `6d8bbb62` landed `SimulationRunner` (`compute/time`,
+- **Simulation loop owner** — `SimulationRunner` (`compute/time`,
   `org.almostrealism.time`), which owns the step loop; recording goes through it, not host
   reads per step.
-- **Connectome ingest** — `2218ffdf` landed the neuron-level CSR ingest:
+- **Connectome ingest** — the neuron-level CSR ingest:
   `studio/bioscience/scripts/connectome_csr.py --dataset male-cns` (with `male_cns.py` for the
   MaleCNS tables and sign rule) converts the Feather release to integer safetensors CSR, and
   `NeuronConnectome` (`studio/bioscience`, `org.almostrealism.bioscience.connectome`) loads it
   with per-neuron body id, type, class, transmitter and side, plus `indexOf`, `indicesOf`,
   `getNeuronClass`, `getBodyId` and `mask`.
-- **FlyWire narrower gate** — `d72c5ca4` landed the simulation driver and the comparison
+- **FlyWire narrower gate** — the simulation driver and the comparison
   harness: `ConnectomeNetwork` (`studio/bioscience`) runs the Shiu et al. model with the
   model's constants, Poisson drive, replicas (trials run at once) and `meanRates`; the Brian2
   reference generator `brian2_reference.py` gained `experiment --name male-cns_<rate>Hz`, which
@@ -197,10 +198,11 @@ references in place:
 2. **Are `MALE_CNS_MN9 = {10331, 16949}` the correct MN9 body ids in MaleCNS v1.0**, and is
    `"gustatory"` the class string the negative control should filter on? Both are currently
    hardcoded placeholders unverified against real data.
-3. **Has the FlyWire full gate (`d72c5ca4`) itself been confirmed on real data?** It closed on the
-   harness and the synthetic/sugar-circuit CI guard; the full FlyWire reference run is in the same
-   gated test class and appears not to have been confirmed either. Running it is the de-risking
-   step for this gate and should happen first.
+3. **Has the FlyWire full gate itself been confirmed on real data?** The FlyWire simulation driver
+   and comparison harness closed on the harness and the synthetic/sugar-circuit CI guard; the full
+   FlyWire reference run (the `sugar100/150/200Hz` methods in `ConnectomeNetworkDatasetTest`) is in
+   the same gated test class and appears not to have been confirmed either. Running it is the
+   de-risking step for this gate and should happen first.
 
 If the first real MaleCNS run surfaces a defect that is clearly outside this gate (for example a
 deficiency in the sparse product or the ingest that also affects FlyWire), file it as a follow-up
