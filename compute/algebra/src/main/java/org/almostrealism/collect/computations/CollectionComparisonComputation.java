@@ -257,7 +257,6 @@ public class CollectionComparisonComputation extends TransitiveDeltaExpressionCo
 
 		// A fixed-count operand keeps the ordinary element-wise read; only a variable-count
 		// operand is projected per row (see the count-contract note in this method's javadoc).
-		// TODO(review): fixed-shape variable-count operands of width 2..item-1 now throw below; confirm no caller hits that.
 		if (Countable.isFixedCount(operand) || operandSize >= outputSize) {
 			return index;
 		}

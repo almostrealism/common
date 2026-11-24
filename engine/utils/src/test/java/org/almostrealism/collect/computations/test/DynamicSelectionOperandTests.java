@@ -115,13 +115,37 @@ public class DynamicSelectionOperandTests extends TestSuiteBase {
 	}
 
 	/**
-	 * A condition declared with the item shape {@code (3, 1)} and a variable count supplies three
-	 * values for every row, and each channel selects by its own value.
+	 * A fixed-count condition as wide as the whole output is read element-wise: every channel
+	 * selects by its own value rather than being broadcast per row. This is the counterpart to the
+	 * variable-count cases above &mdash; a fixed count keeps the ordinary element-wise read, which
+	 * is what {@code conditionIndex} short-circuits on through
+	 * {@link io.almostrealism.relation.Countable#isFixedCount(Object)}, whereas a variable count is
+	 * projected to one value per row.
 	 */
 	@Test(timeout = 60000)
-	public void itemShapedConditionSelectsElementWise() {
+	public void fixedCountConditionSelectsElementWise() {
 		assertSelected(new double[] { 10, 21, 12, 23, 24, 25, 16, 17, 28 },
-				select(condition(shape(3, 1).traverse(1), false,
-						pack(1.0, -1.0, 1.0, -1.0, -1.0, -1.0, 1.0, 1.0, -1.0).reshape(9, 1))));
+				select(cp(pack(1.0, -1.0, 1.0, -1.0, -1.0, -1.0, 1.0, 1.0, -1.0).reshape(3, 3)).traverse(1)));
+	}
+
+	/**
+	 * A variable-count condition whose item is wider than a single value but narrower than the
+	 * output item has no unambiguous per-row projection, so the selection is rejected rather than
+	 * reading the operand past the end of its buffer. The item shape {@code (2)} supplies two
+	 * values per row against a three-element output item. The rejection surfaces as an
+	 * {@link IllegalArgumentException} raised while the kernel is compiled.
+	 */
+	@Test(timeout = 60000)
+	public void narrowerItemConditionRejected() {
+		try {
+			select(condition(shape(2), false, pack(1.0, -1.0).reshape(2, 1)));
+			Assert.fail("Expected the narrower variable-count operand to be rejected");
+		} catch (RuntimeException e) {
+			Throwable cause = e;
+			while (cause != null && !(cause instanceof IllegalArgumentException)) {
+				cause = cause.getCause();
+			}
+			Assert.assertNotNull("Expected an IllegalArgumentException in the cause chain", cause);
+		}
 	}
 }
