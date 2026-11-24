@@ -23,6 +23,8 @@ import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Test;
 
+import static org.junit.Assert.fail;
+
 /**
  * Tests for the centered log-mel front end of {@link TemporalFeatures}:
  * {@link TemporalFeatures#reflectPad}, the {@link WindowComputation.Type#HANN_PERIODIC periodic Hann}
@@ -39,6 +41,31 @@ public class LogMelSpectrogramTest extends TestSuiteBase implements TemporalFeat
 		PackedCollection signal = pack(1, 2, 3, 4, 5);
 		PackedCollection padded = reflectPad(cp(signal), 3).evaluate();
 		double[] expected = {4, 3, 2, 1, 2, 3, 4, 5, 4, 3, 2};
+		assertEquals(expected.length, padded.getShape().getTotalSize());
+		for (int i = 0; i < expected.length; i++) {
+			assertEquals(expected[i], padded.toDouble(i), 1e-9);
+		}
+	}
+
+	/**
+	 * Reflect padding is exact only while one reflection reaches every padded sample, so a padding
+	 * as long as the signal, or a negative one, is rejected; the longest padding it accepts, one
+	 * sample shorter than the signal, still mirrors exactly.
+	 */
+	@Test(timeout = 60000)
+	public void reflectPadRejectsAPaddingThatIsNotShorterThanTheSignal() {
+		PackedCollection signal = pack(1, 2, 3, 4);
+		for (int padding : new int[] {4, 9, -1}) {
+			try {
+				reflectPad(cp(signal), padding);
+				fail("reflectPad should reject a padding of " + padding + " for four samples");
+			} catch (IllegalArgumentException expected) {
+				// expected
+			}
+		}
+
+		PackedCollection padded = reflectPad(cp(signal), 3).evaluate();
+		double[] expected = {4, 3, 2, 1, 2, 3, 4, 3, 2, 1};
 		assertEquals(expected.length, padded.getShape().getTotalSize());
 		for (int i = 0; i < expected.length; i++) {
 			assertEquals(expected[i], padded.toDouble(i), 1e-9);
