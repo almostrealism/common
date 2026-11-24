@@ -493,8 +493,11 @@ Notes on the declarations:
 
 ### Gaps
 
-- **`OobleckAutoEncoder` and `SAMEAutoEncoder` are audio autoencoders but implement only
-  `LayerFeatures`.** Conceptually each *is an* `AutoEncoder`, and all of `AutoEncoder`,
+- **`OobleckAutoEncoder` and `SAMEAutoEncoder` are audio autoencoders but neither implements
+  the `AutoEncoder` interface.** They carry only `Features` mixins — `OobleckAutoEncoder`
+  implements `LayerFeatures`, and `SAMEAutoEncoder` implements `TransformerResamplingFeatures`
+  and `LayerFeatures` (as the table above shows) — not the concept interface.
+  Conceptually each *is an* `AutoEncoder`, and all of `AutoEncoder`,
   `OobleckAutoEncoder` and `SAMEAutoEncoder` live in `engine/ml`, so the link would need **no new
   dependency**. The blocker is **contract, not module**: the interface is producer-valued
   (`encode`/`decode` over `Producer<PackedCollection>`, plus `getSampleRate`/`getLatentSampleRate`/
