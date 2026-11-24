@@ -18,6 +18,7 @@ package org.almostrealism.collect;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.calculus.ReduceAxis;
+import org.almostrealism.collect.computations.CollectionStopGradientComputation;
 
 /**
  * Factory interface for gradient and differentiation operations on collections.
@@ -46,6 +47,27 @@ public interface GradientFeatures extends ComparisonFeatures {
 	 */
 	default CollectionProducer delta(Producer<PackedCollection> producer, Producer<?> target) {
 		return CollectionFeatures.getInstance().c(producer).delta(target);
+	}
+
+	/**
+	 * Returns the values of {@code producer}, held constant with respect to differentiation:
+	 * the result evaluates exactly as {@code producer} does, and embeds into a kernel as
+	 * {@code producer} would, but its {@link CollectionProducer#delta(Producer) delta} with
+	 * respect to any target other than itself is zero, and the derivative of a computation that
+	 * consumes it is taken as though it were a constant (see
+	 * {@link CollectionStopGradientComputation} for the extent of that guarantee).
+	 *
+	 * <p>Use it only where the dependence of the value on the variables being differentiated is
+	 * known not to contribute to the derivative, such as the shift a numerically stable softmax
+	 * subtracts from its logits; anywhere else it changes the derivative.</p>
+	 *
+	 * @param producer the producer whose values to hold constant
+	 * @return a producer of the same values, with the same shape, through which nothing is
+	 *         differentiated
+	 * @throws IllegalArgumentException if {@code producer} does not have a shape
+	 */
+	default CollectionProducer stopGradient(Producer<PackedCollection> producer) {
+		return new CollectionStopGradientComputation(producer);
 	}
 
 	/**
