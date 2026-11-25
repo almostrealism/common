@@ -13,6 +13,7 @@ import os
 import sys
 import unittest
 import zipfile
+import zlib
 from unittest.mock import MagicMock, patch
 
 _MANAGER_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -70,9 +71,27 @@ class TestGithubRunArtifacts(unittest.TestCase):
         self.assertEqual(["crash-reports-cpu", "surefire-render"],
                          [a["name"] for a in result["artifacts"]])
         self.assertEqual(900, result["artifacts"][0]["size_in_bytes"])
-        self.assertEqual("/repos/owner/repo/actions/runs/55/artifacts?per_page=100",
+        self.assertEqual("/repos/owner/repo/actions/runs/55/artifacts?per_page=100&page=1",
                          mock_gh.call_args[0][1])
         mock_gh.assert_called_once()
+
+    @patch.object(server, "_resolve_github_repo", return_value=_REPO)
+    @patch.object(server.github_api, "_github_request")
+    def test_follows_pagination_to_list_all_artifacts(self, mock_gh, mock_repo):
+        # A run with more artifacts than a page holds: the later pages must be
+        # fetched, or a matching artifact on page 2 would be invisible.
+        page_one = _listing((1, "crash-reports-cpu", 10), (2, "surefire-a", 10))
+        page_one["total_count"] = 3
+        page_two = _listing((3, "surefire-b", 10))
+        page_two["total_count"] = 3
+        mock_gh.side_effect = [page_one, page_two]
+        result = server.github_run_artifacts(run_id=55)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(["crash-reports-cpu", "surefire-a", "surefire-b"],
+                         [a["name"] for a in result["artifacts"]])
+        self.assertEqual(3, result["total_count"])
+        self.assertEqual(2, mock_gh.call_count)
+        self.assertIn("page=2", mock_gh.call_args_list[1][0][1])
 
     @patch.object(server, "_resolve_github_repo", return_value=_REPO)
     @patch.object(server.github_api, "_github_request")
@@ -166,6 +185,30 @@ class TestGithubRunArtifacts(unittest.TestCase):
                                               file="*.dumpstream")
         self.assertFalse(result["ok"])
         self.assertEqual(["crash-summary.txt"], result["members"])
+
+    @patch.object(server, "_resolve_github_repo", return_value=_REPO)
+    @patch.object(server.github_api, "_github_request")
+    def test_unreadable_member_is_reported_not_raised(self, mock_gh, mock_repo):
+        # An encrypted, unsupported or corrupt member raises on open/read; the
+        # whole read must not abort, so the entry carries an error instead.
+        mock_gh.side_effect = [_listing((11, "crash-reports-cpu", 900)),
+                               _download({"good.log": "ok\n", "bad.log": "x\n"})]
+        real_open = zipfile.ZipFile.open
+
+        def fake_open(self, name, *args, **kwargs):
+            member = name.filename if isinstance(name, zipfile.ZipInfo) else name
+            if member == "bad.log":
+                raise zlib.error("Error -3 while decompressing data")
+            return real_open(self, name, *args, **kwargs)
+
+        with patch.object(zipfile.ZipFile, "open", fake_open):
+            result = server.github_run_artifacts(run_id=55, artifact="crash-reports-cpu")
+        self.assertTrue(result["ok"], result)
+        by_path = {f["path"]: f for f in result["files"]}
+        self.assertEqual("ok\n", by_path["good.log"]["content"])
+        self.assertIn("decompressing", by_path["bad.log"]["error"])
+        self.assertNotIn("content", by_path["bad.log"])
+        self.assertTrue(result["truncated"])
 
     def test_requires_run_id(self):
         result = server.github_run_artifacts(run_id=0)

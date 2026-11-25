@@ -23,6 +23,7 @@ import re
 import sys
 import time
 import zipfile
+import zlib
 from typing import Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -580,6 +581,41 @@ def get_job_logs(owner: str, repo: str, job_id: int,
 # Member names listed for an artifact archive; a larger archive reports the count.
 _ARTIFACT_MEMBER_LIST_LIMIT = 200
 
+# GitHub paginates the run-artifacts listing at 100 per page. Pages are
+# requested until the run's reported total is collected, bounded so a
+# surprising total cannot loop without end.
+_ARTIFACT_LISTING_PAGE_SIZE = 100
+_ARTIFACT_LISTING_MAX_PAGES = 50
+
+
+def _list_run_artifacts(owner: str, repo: str, run_id: int) -> dict:
+    """Collect every artifact of a run, following the listing's pagination.
+
+    The artifacts endpoint returns at most ``_ARTIFACT_LISTING_PAGE_SIZE``
+    records per page, so a single request silently omits a run's later
+    artifacts; pages are fetched until the reported ``total_count`` is reached.
+
+    Returns:
+        dict with ok=True and ``artifacts`` (raw records) and ``total_count``;
+        or an ok=False error dict when a page request fails.
+    """
+    collected = []
+    total_count = 0
+    for page in range(1, _ARTIFACT_LISTING_MAX_PAGES + 1):
+        listing = _github_request(
+            "GET", f"/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts"
+                   f"?per_page={_ARTIFACT_LISTING_PAGE_SIZE}&page={page}")
+        if isinstance(listing, dict) and listing.get("ok") is False:
+            return listing
+        if not isinstance(listing, dict):
+            return {"ok": False, "error": "Unexpected response listing run artifacts"}
+        total_count = listing.get("total_count", total_count)
+        page_artifacts = listing.get("artifacts", [])
+        collected.extend(page_artifacts)
+        if not page_artifacts or len(collected) >= total_count:
+            break
+    return {"ok": True, "artifacts": collected, "total_count": total_count}
+
 
 def _shape_artifact(artifact: dict) -> dict:
     """Reduce a GitHub artifact record to the fields a caller chooses by."""
@@ -612,11 +648,14 @@ def _read_members(archive: zipfile.ZipFile, members: list, budget: int) -> tuple
     Each member is decompressed as a stream and read no further than the bytes
     left in the budget, so the cap bounds what is decompressed, not only what is
     returned: an archive whose members expand to gigabytes costs ``budget``.
-    A member holding a NUL byte is reported as binary, without content.
+    A member holding a NUL byte is reported as binary, without content. A member
+    that cannot be decompressed — encrypted, an unsupported compression method,
+    or corrupt data — is reported with an ``error`` rather than aborting the read
+    of the remaining members.
 
     Returns:
         (files, truncated) — one dict per member, and whether any member was cut
-        short or left out because the budget ran out.
+        short, left out because the budget ran out, or failed to decompress.
     """
     files = []
     truncated = False
@@ -628,9 +667,15 @@ def _read_members(archive: zipfile.ZipFile, members: list, budget: int) -> tuple
             truncated = True
             files.append(entry)
             continue
-        # TODO(review): an encrypted/unsupported/corrupt member raises here; report it per entry.
-        with archive.open(info) as stream:
-            data = stream.read(remaining)
+        try:
+            with archive.open(info) as stream:
+                data = stream.read(remaining)
+        except (RuntimeError, NotImplementedError, zlib.error,
+                zipfile.BadZipFile, EOFError) as e:
+            entry["error"] = str(e) or e.__class__.__name__
+            truncated = True
+            files.append(entry)
+            continue
         remaining -= len(data)
         entry["returned_bytes"] = len(data)
         entry["truncated"] = len(data) < info.file_size
@@ -675,17 +720,15 @@ def get_run_artifacts(owner: str, repo: str, run_id: int, artifact: str = "",
         return {"ok": False, "error": f"max_bytes must be positive (got {max_bytes})"}
     budget = min(max_bytes, extract_limit)
 
-    listing = _github_request(
-        "GET", f"/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts?per_page=100")
-    if isinstance(listing, dict) and listing.get("ok") is False:
+    listing = _list_run_artifacts(owner, repo, run_id)
+    if listing.get("ok") is False:
         return listing
-    if not isinstance(listing, dict):
-        return {"ok": False, "error": "Unexpected response listing run artifacts"}
-    artifacts = [_shape_artifact(a) for a in listing.get("artifacts", [])]
+    artifacts = [_shape_artifact(a) for a in listing["artifacts"]]
+    total_count = listing.get("total_count", len(artifacts))
 
     if not artifact:
         return {"ok": True, "run_id": run_id,
-                "total_count": listing.get("total_count", len(artifacts)),
+                "total_count": total_count,
                 "artifacts": artifacts}
 
     by_name = {a["name"]: a for a in artifacts}

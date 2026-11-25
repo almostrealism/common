@@ -19,7 +19,13 @@
 # Environment:
 #   CRASH_REPORT_DIR        - output directory (default: unique temp directory)
 #   CRASH_LOG_MAX_FILES     - files excerpted into the job log (default 5)
-#   CRASH_LOG_MAX_LINES     - lines printed per excerpt (default 40)
+#   CRASH_LOG_MAX_LINES     - lines kept from an excerpt's leading section: a
+#                             dumpstream's cause lines, or an hs_err summary
+#                             header (default 40). An hs_err's Current-thread and
+#                             siginfo lines (one each) and its native frames are
+#                             bounded separately, the frames by
+#                             CRASH_LOG_NATIVE_FRAMES, so an hs_err excerpt can
+#                             run to a few lines beyond the sum of these bounds.
 #   CRASH_LOG_NATIVE_FRAMES - native frames printed per hs_err log (default 15)
 #   CRASH_LOG_LINE_WIDTH    - characters kept per printed line (default 300)
 #
@@ -191,10 +197,12 @@ collect_hs_err() {
     cp "$file" "$dest"
     hs_err_count=$((hs_err_count + 1))
 }
-# TODO(review): find prints ./-relative paths, so this OUTPUT_DIR exclusion never matches.
+# No OUTPUT_DIR exclusion: find emits ./-relative paths an absolute OUTPUT_DIR
+# cannot match, and collect_hs_err already dedupes by destination basename, so a
+# file this run copied into HS_ERR_DIR is skipped if the search re-reaches it.
 while IFS= read -r errfile; do
     collect_hs_err "$errfile"
-done < <(find . -name 'hs_err_pid*.log' -type f -not -path "${OUTPUT_DIR}/*" 2>/dev/null || true)
+done < <(find . -name 'hs_err_pid*.log' -type f 2>/dev/null || true)
 while IFS= read -r errfile; do
     collect_hs_err "$errfile"
 done < <(cat "$@" "${DUMPSTREAM_DIR}"/* 2>/dev/null \
