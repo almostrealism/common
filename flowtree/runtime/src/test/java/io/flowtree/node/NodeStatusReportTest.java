@@ -228,6 +228,29 @@ public class NodeStatusReportTest extends TestSuiteBase {
 	}
 
 	/**
+	 * An unknown busy state omits the busy field rather than emitting {@code busy:false}, so the
+	 * encode/parse round trip preserves the unknown state instead of collapsing it into idle. An
+	 * all-unknown report encodes to the empty string, which parses back to "nothing reported"
+	 * ({@code null}), leaving a peer's existing status untouched.
+	 */
+	@Test(timeout = 10000)
+	public void encodeOmitsBusyFieldWhenUnknown() {
+		Map<String, String> labels = new LinkedHashMap<>();
+		labels.put("platform", "linux");
+
+		String labelsOnly = new NodeStatusReport(null, labels).encode();
+		Assert.assertEquals("labels:platform=linux", labelsOnly);
+
+		NodeStatusReport parsed = NodeStatusReport.parse(labelsOnly);
+		Assert.assertNull("an omitted busy field decodes as unknown, not idle", parsed.busy());
+		Assert.assertEquals(labels, parsed.labels());
+
+		Assert.assertEquals("", NodeStatusReport.unknown().encode());
+		Assert.assertNull("an all-unknown report reports nothing",
+				NodeStatusReport.parse(NodeStatusReport.unknown().encode()));
+	}
+
+	/**
 	 * A dangling label separator leaves an empty trailing pair, which is malformed; the whole
 	 * labels field decodes to unknown instead of the pairs that preceded it.
 	 */

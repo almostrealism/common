@@ -122,26 +122,37 @@ public final class NodeStatusReport {
 	/**
 	 * Encodes this report's busy and label fields for appending to a
 	 * {@link io.flowtree.msg.Message#ServerStatus} payload. The returned text is the busy field,
-	 * followed by the labels field when it can be written (see below), joined by
-	 * {@value #FIELD_SEPARATOR}, with no leading separator,
-	 * so the caller joins it to the rest of the payload with one. A node builds a report of its
-	 * own state ({@code new NodeStatusReport(group.isWorking(), group.getLabels())}) to report
-	 * it; the busy field is written as {@code false} when {@link #busy()} is {@code null},
-	 * because a node reporting its own state always knows it.
+	 * followed by the labels field, each written only when it can be represented (see below),
+	 * joined by {@value #FIELD_SEPARATOR}, with no leading separator, so the caller joins it to the
+	 * rest of the payload with one. A node builds a report of its own state
+	 * ({@code new NodeStatusReport(group.isWorking(), group.getLabels())}) to report it, and a node
+	 * reporting its own state always knows whether it is busy, so for such a report the busy field
+	 * is always present.
 	 *
-	 * <p>The labels field is written only when the complete label set can be represented (see
-	 * {@link #encodeLabels}). When {@link #labels()} is {@code null}, or any label carries a
-	 * {@link #RESERVED structural delimiter} or an empty key, the field is left out entirely, so the
-	 * receiver reads the labels as unknown rather than as an authoritative empty or partial set.</p>
+	 * <p>Each field is written only when its value is known and representable, so the field is left
+	 * out — leaving the receiver to read it as unknown — rather than emitted as an authoritative
+	 * value that would collapse the unknown state into {@code false} ("idle") or an empty label set.
+	 * The busy field is omitted when {@link #busy()} is {@code null}; the labels field is omitted
+	 * when {@link #labels()} is {@code null}, or any label carries a {@link #RESERVED structural
+	 * delimiter} or an empty key (see {@link #encodeLabels}). An all-unknown report encodes to the
+	 * empty string, which {@link #parse} reads back as "nothing reported".</p>
 	 *
 	 * @return  the encoded fields, e.g. {@code "busy:false;labels:platform=linux,hostname=halo"},
-	 *          or just {@code "busy:false"} when the labels cannot be reported faithfully.
+	 *          {@code "busy:false"} when the labels cannot be reported faithfully, or the empty
+	 *          string when neither field is known.
 	 */
 	public String encode() {
-		String fields = BUSY_KEY + VALUE_SEPARATOR + Boolean.TRUE.equals(busy);
+		StringBuilder out = new StringBuilder();
+		if (busy != null) {
+			out.append(BUSY_KEY).append(VALUE_SEPARATOR).append(busy.booleanValue());
+		}
+
 		String encodedLabels = encodeLabels(labels);
-		if (encodedLabels == null) return fields;
-		return fields + FIELD_SEPARATOR + LABELS_KEY + VALUE_SEPARATOR + encodedLabels;
+		if (encodedLabels != null) {
+			if (out.length() > 0) out.append(FIELD_SEPARATOR);
+			out.append(LABELS_KEY).append(VALUE_SEPARATOR).append(encodedLabels);
+		}
+		return out.toString();
 	}
 
 	/**
