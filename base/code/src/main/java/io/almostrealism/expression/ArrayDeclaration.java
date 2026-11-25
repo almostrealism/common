@@ -41,7 +41,7 @@ import java.util.Set;
  *
  * <h2>Usage Example</h2>
  * <pre>{@code
- * Expression<?> sizeExpr = new IntegerConstant(100);
+ * Expression<Integer> sizeExpr = new IntegerConstant(100);
  * ArrayDeclaration<Double> decl = new ArrayDeclaration<>(Double.class, "buffer", sizeExpr);
  * String code = decl.getStatement(lang);
  * // Generates something like: double buffer[100];
@@ -57,7 +57,7 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 	/** The name of the array variable. */
 	private String name;
 	/** The expression representing the size of the array. */
-	private Expression<?> size;
+	private Expression<Integer> size;
 
 	/**
 	 * Constructs a new array declaration.
@@ -66,7 +66,7 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 	 * @param name the name for the array variable
 	 * @param size the expression representing the array size
 	 */
-	public ArrayDeclaration(Class<T> type, String name, Expression<?> size) {
+	public ArrayDeclaration(Class<T> type, String name, Expression<Integer> size) {
 		this.type = type;
 		this.name = name;
 		this.size = size;
@@ -95,8 +95,22 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 	 *
 	 * @return the expression representing the array size
 	 */
-	public Expression<?> getSize() {
+	public Expression<Integer> getSize() {
 		return size;
+	}
+
+	/**
+	 * Returns the {@link ArrayVariable} this statement declares: a local array of this
+	 * declaration's type, name and size, which is addressed without an offset. Variables match on
+	 * {@link Variable#hasSameRoot(Variable) shared storage}, so the result identifies the declared
+	 * array to any analysis of the code that reads or writes it.
+	 *
+	 * @return a new variable for the declared array
+	 */
+	public ArrayVariable<T> getVariable() {
+		ArrayVariable<T> variable = new ArrayVariable<>(type, name, size);
+		variable.setDisableOffset(true);
+		return variable;
 	}
 
 	/**
@@ -137,6 +151,16 @@ public class ArrayDeclaration<T> implements Statement<ArrayDeclaration<T>> {
 	@Override
 	public boolean containsAssignment(ArrayVariable<?> array, long start, long end) {
 		return false;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 *
+	 * <p>Adds the {@link #getVariable() variable} of the array this statement declares.</p>
+	 */
+	@Override
+	public void appendDeclaredArrays(List<ArrayVariable<?>> arrays) {
+		arrays.add(getVariable());
 	}
 
 	/**
