@@ -93,7 +93,7 @@ the centre boost of a constant-power law). The choice of law is open question 1.
 
 ### Layer structure: sides as rows, not duplicated text
 
-`mixdown_master_wet` is about 250 lines of DSP with named ring-buffer state. Copying it once
+`mixdown_master_wet` is about 190 lines of DSP with named ring-buffer state. Copying it once
 per side would duplicate all of that, and calling a shared side sub-layer twice runs into
 the documented limit that a user-layer call infers its input shape from its `-> [shape]`
 annotation (`PdslInterpreter.declaredInputShape`). Instead, the stereo layer processes
@@ -136,7 +136,10 @@ annotation (`PdslInterpreter.declaredInputShape`). Instead, the stereo layer pro
   its own complete mixdown graph, without cross-side leakage. The adapter builds the
   block-diagonal matrices from the existing per-side ones (`householderMatrix`,
   `reverbTapDelays`, etc.), and the ring state (`fb_*`, `main_fb_*`, `bus_*`, `reverb_*`)
-  doubles in size.
+  doubles in size. The bus rings dominate that cost: `mixdown_bus_state` sizes each of the
+  `delay_layers` lines to the largest 4–20 s `delay` gene plus slow-down headroom, so
+  doubling them adds tens of seconds of audio per line. The adapter's allocation should be
+  checked against the default memory budget (see open question 6).
 - **The efx-off layer is a different shape.** `mixdown_master` is not a cut-down
   `mixdown_master_wet`. It computes its high-pass in the graph
   (`highpass(hp_cutoff[channel], …)`, not `fir(hp_coeffs[channel])`), applies volume with
@@ -269,6 +272,14 @@ well as Metal, so no specific machine is needed.
    per arm. Under this plan's balance law the pan gain is a plain per-side gain, so moving
    it ahead of the (linear) send and network stages gives the same signal as the
    `route` form.
+6. **State memory.** Doubling the ring state is the largest resource change in this plan,
+   and it is driven by the bus-line rings, which each hold many seconds of audio. An
+   alternative is to keep the bus-line network and the reverb shared across sides (mono
+   send, stereo dry). That would avoid the doubling, but the sends would then not be
+   panned, and it would no longer match the legacy per-side graph. The plan chooses full
+   per-side copies. The reviewer should confirm that the doubled allocation fits the
+   default `AR_HARDWARE_MEMORY_SCALE`, or ask for that measurement as part of the first
+   step.
 
 ## Estimated complexity
 
