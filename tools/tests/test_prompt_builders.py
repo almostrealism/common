@@ -638,7 +638,7 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("@include earlier-attempts.txt", template)
         env = dict(os.environ)
         env.update({
-            "BRANCH": "qa/defect-20261125-000000",
+            "BRANCH": "qa/defect-hunt-test",
             "BASE_BRANCH": "master",
             "REPO_URL": "git@github.com:example/common.git",
             "PROMPT": "defect-hunt",
