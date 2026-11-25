@@ -354,16 +354,19 @@ def controller_health() -> dict:
 
 @mcp.tool()
 def agent_options() -> dict:
-    """Return available agent runners, phases, model names, and the default runner.
+    """Return available agent runners, phases, models, the default runner, and connected nodes.
 
     Queries the controller's ``/api/agents`` endpoint and returns the
     complete set of options needed to configure per-workstream or per-job
-    runner selection.
+    runner selection, plus the connected nodes and the labels and busy
+    state each last reported.
 
     Use this tool before calling ``workstream_register``,
     ``workstream_update_config``, or ``workstream_submit_task`` with
     ``runners`` or ``default_runner`` parameters to discover valid runner
-    names and phase wire names.
+    names and phase wire names. Use the ``nodes`` list to see where a job
+    with given ``requiredLabels`` would land, and whether a node that
+    matches is currently busy (which is why a matching job may be waiting).
 
     Returns:
         Dictionary with:
@@ -377,6 +380,13 @@ def agent_options() -> dict:
         - ``models``: list of accepted model identifiers (aliases and full
           IDs) that may be passed as the ``model`` parameter.
         - ``defaultRunner``: the built-in fallback runner name (``"claude"``).
+        - ``nodes``: list of connected-node objects, each with ``address``,
+          ``busy`` (``true``/``false``, or ``null`` when the node runs a
+          build that does not report it — unknown, not idle), and
+          ``labels`` (an object of label key/value pairs such as
+          ``{"platform": "linux", "hostname": "halo"}``, or ``null`` when
+          unknown). An empty ``labels`` object means the node reported no
+          labels, distinct from ``null``.
     """
     _require_scope("read")
     _audit("agent_options")

@@ -16,10 +16,13 @@
 
 package io.flowtree.msg;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.almostrealism.db.Query;
+import io.flowtree.JsonFieldExtractor;
 import io.flowtree.Server;
 import io.flowtree.node.Client;
 import io.flowtree.node.NodeGroup;
+import io.flowtree.node.NodeStatusReport;
 import io.flowtree.node.Proxy;
 import org.almostrealism.io.ConsoleFeatures;
 
@@ -334,7 +337,14 @@ public class NodeProxy implements Proxy, Runnable, ConsoleFeatures {
 	 * server-status message. Higher values indicate heavier load.
 	 */
 	private double activity;
-	
+
+	/**
+	 * The remote peer's last-reported routing status — its labels and busy state. Starts as
+	 * {@link NodeStatusReport#unknown()} and is replaced when the peer reports; a peer running
+	 * an older build that reports neither leaves it unknown rather than making it appear idle.
+	 */
+	private volatile NodeStatusReport status = NodeStatusReport.unknown();
+
 	/**
 	 * Constructs a new {@code NodeProxy} for the given socket without encryption.
 	 * Equivalent to {@code NodeProxy(s, null, null, false)}.
@@ -942,6 +952,37 @@ public class NodeProxy implements Proxy, Runnable, ConsoleFeatures {
 	 * @see Connection#getActivityRating()
 	 */
 	public double getActivityRating() { return this.activity; }
+
+	/**
+	 * Records the routing status most recently reported by the remote peer.
+	 *
+	 * @param status  the peer's reported labels and busy state; never {@code null}.
+	 * @see NodeStatusReport#parse(String)
+	 */
+	public void setStatus(NodeStatusReport status) { this.status = status; }
+
+	/**
+	 * Returns the routing status most recently reported by the remote peer.
+	 *
+	 * @return  the reported status, or {@link NodeStatusReport#unknown()} if the peer has not
+	 *          reported one (for example a peer running a build that predates the field).
+	 */
+	public NodeStatusReport getStatus() { return this.status; }
+
+	/**
+	 * Renders this peer as the per-node object served by {@code GET /api/agents}: its network
+	 * {@code address} together with the {@code busy} and {@code labels} fields it last reported.
+	 * The node describes itself here — it owns its address and delegates its routing state to the
+	 * {@link #getStatus() status report}, which renders only the fields it owns.
+	 *
+	 * @return  an object with {@code address}, {@code busy}, and {@code labels}.
+	 */
+	public ObjectNode toJson() {
+		ObjectNode json = JsonFieldExtractor.MAPPER.createObjectNode();
+		json.put("address", toString());
+		json.setAll(getStatus().toJson());
+		return json;
+	}
 
 	/**
 	 * Enables the outbound queue so that subsequent {@link #writeObject} calls

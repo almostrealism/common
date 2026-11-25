@@ -43,6 +43,7 @@ is a thin orchestration facade that:
 |------|-------|-------------|
 | `controller_health` | read | Check controller liveness |
 | `controller_update_config` | write | Update controller-wide config |
+| `agent_options` | read | List agent runners, phases, models, the default runner, and connected `nodes` with the labels and busy state each reported |
 | `workstream_list` | read | List all workstreams with capabilities |
 | `workstream_get_status` | read | Job stats for a workstream |
 | `workstream_get_job` | read | Fetch a specific job by id |
