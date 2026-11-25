@@ -483,6 +483,43 @@ class TestGithubRerunFailedJobs(unittest.TestCase):
         self.assertEqual("https://run/99", result["html_url"])
 
     @patch.object(server, "_github_request")
+    def test_attempt_unknown_when_refresh_reports_stale_attempt(
+            self, mock_gh, mock_repo):
+        # The rerun POST succeeded, but the immediate re-read is briefly stale
+        # and still reports the pre-rerun attempt (1). A rerun advances the
+        # attempt, so an unadvanced number cannot confirm the new attempt:
+        # run_attempt stays None rather than reporting the stale 1, while the
+        # unchanged html_url is still carried through.
+        mock_gh.side_effect = [
+            self._run(attempt=1),            # GET run
+            self._jobs("failure"),           # GET jobs
+            {"ok": True, "status": 201},     # POST rerun-failed-jobs
+            self._run(attempt=1),            # GET run (refreshed, still stale)
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertIsNone(result["run_attempt"])
+        self.assertEqual("https://run/99", result["html_url"])
+
+    @patch.object(server, "_github_request")
+    def test_workstream_follow_up_names_workstream_id(self, mock_gh, mock_repo):
+        # A call resolved from an explicit workstream_id (no org/repo) must
+        # carry that id into the status follow-up, or the follow-up falls back
+        # to token context and can resolve a different repo.
+        mock_gh.side_effect = [
+            self._run(attempt=1),
+            self._jobs("failure"),
+            {"ok": True, "status": 201},
+            self._run(attempt=2),
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99, workstream_id="ws-7")
+        self.assertTrue(result["ok"], msg=result.get("error"))
+        self.assertEqual(
+            ["Follow the new attempt with github_workflow_run_status("
+             "run_id=99, workstream_id='ws-7')"],
+            result["next_steps"])
+
+    @patch.object(server, "_github_request")
     @patch.object(server, "_require_org_in_scope")
     def test_direct_addressed_follow_up_names_org_and_repo(
             self, mock_gate, mock_gh, mock_repo):

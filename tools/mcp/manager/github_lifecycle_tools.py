@@ -532,24 +532,39 @@ def github_rerun_failed_jobs(
         return {"ok": False, "error": error}
 
     # The rerun endpoint answers 201 with no body, so the attempt number the
-    # rerun produced comes from re-reading the run. The pre-rerun read's
-    # run_attempt is the old attempt, so it is not a usable fallback: when the
-    # re-read cannot confirm the new attempt, run_attempt stays None rather than
-    # reporting a stale value the caller might act on. The run's identity and
-    # URL do not change, so the pre-rerun read still supplies html_url.
+    # rerun produced comes from re-reading the run. A rerun advances the
+    # attempt, so only a refreshed attempt greater than the pre-rerun one
+    # confirms the new attempt; the pre-rerun value — and a GET that is briefly
+    # stale and still reports it — is not usable. When the re-read cannot
+    # confirm an advanced attempt, run_attempt stays None rather than reporting
+    # a stale number the caller might act on, and next_steps sends the caller to
+    # status polling. The run's identity and URL do not change, so the pre-rerun
+    # read still supplies html_url.
+    pre_attempt = run.get("run_attempt")
     refreshed = server._github_request(
         "GET", f"/repos/{owner}/{repo_name}/actions/runs/{run_id}")
     attempt = None
     html_url = run.get("html_url")
     if isinstance(refreshed, dict) and refreshed.get("ok") is not False:
-        attempt = refreshed.get("run_attempt")
+        refreshed_attempt = refreshed.get("run_attempt")
         html_url = refreshed.get("html_url", html_url)
+        if isinstance(refreshed_attempt, int) \
+                and not isinstance(refreshed_attempt, bool) \
+                and (not isinstance(pre_attempt, int)
+                     or isinstance(pre_attempt, bool)
+                     or refreshed_attempt > pre_attempt):
+            attempt = refreshed_attempt
 
-    # A direct-addressed call may carry no workstream or token context, so the
-    # follow-up must name org/repo itself or its resolver has nothing to go on.
+    # A direct-addressed call may carry no workstream or token context, so its
+    # follow-up names org/repo; an explicit workstream_id must likewise be
+    # carried, or the status lookup falls back to token context and can resolve
+    # a different repo (or none). A purely contextual call keeps the short form.
     if direct_addressing:
         follow_up = (f"github_workflow_run_status(run_id={run_id}, "
                      f"org='{owner}', repo='{repo_name}')")
+    elif workstream_id:
+        follow_up = (f"github_workflow_run_status(run_id={run_id}, "
+                     f"workstream_id='{workstream_id}')")
     else:
         follow_up = f"github_workflow_run_status(run_id={run_id})"
 
