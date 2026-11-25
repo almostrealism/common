@@ -22,6 +22,7 @@ import org.almostrealism.music.arrange.AudioSceneContext;
 import org.almostrealism.music.notes.NoteAudioContext;
 import org.almostrealism.music.pattern.PatternElement;
 import org.almostrealism.music.pattern.PatternFeatures;
+import org.almostrealism.music.pattern.PatternRenderCancellation;
 import org.almostrealism.music.pattern.RenderedNoteAudio;
 import org.almostrealism.util.TestSuiteBase;
 import org.junit.Assert;
@@ -159,9 +160,9 @@ public class PatternFeaturesFastFailTest extends TestSuiteBase implements Patter
 	}
 
 	/**
-	 * A render whose thread is interrupted evaluates no note, fails with a
-	 * {@link CancellationException} rather than the consecutive-failure abort, and leaves the
-	 * interrupt status set for whoever requested the cancellation.
+	 * A render whose thread-bound {@link PatternRenderCancellation} is cancelled evaluates no note,
+	 * fails with a {@link CancellationException} rather than the consecutive-failure abort, and
+	 * leaves the cancellation request set so whoever requested it still observes it.
 	 */
 	@Test(timeout = 30_000)
 	public void interruptedRenderEvaluatesNoNote() {
@@ -173,23 +174,25 @@ public class PatternFeaturesFastFailTest extends TestSuiteBase implements Patter
 			elements.add(observedElement(i * 8, requested::incrementAndGet));
 		}
 
-		Thread.currentThread().interrupt();
+		PatternRenderCancellation cancellation = new PatternRenderCancellation();
+		cancellation.bind();
+		cancellation.cancel();
 
 		try {
 			renderPerNote(ctx, null, elements, false, 0.0, 0, 1024, null);
 			Assert.fail("renderPerNote should have been cancelled");
 		} catch (CancellationException e) {
-			Assert.assertTrue("the cancelling interrupt must remain set",
-					Thread.currentThread().isInterrupted());
+			Assert.assertTrue("the cancellation request must remain set",
+					cancellation.isCancelled());
 		} finally {
-			Thread.interrupted();
+			cancellation.unbind();
 		}
 
-		Assert.assertEquals("no note may be evaluated on an interrupted thread", 0, requested.get());
+		Assert.assertEquals("no note may be evaluated on a cancelled render", 0, requested.get());
 	}
 
 	/**
-	 * A render interrupted part way through (a timed-out caller, a stopped render-ahead
+	 * A render cancelled part way through (a timed-out caller, a stopped render-ahead
 	 * thread) stops at the next note instead of evaluating the rest of the pattern, which
 	 * would otherwise keep dispatching work until the consecutive-failure bound, or never
 	 * when abandoned evaluations do not fail.
@@ -199,13 +202,16 @@ public class PatternFeaturesFastFailTest extends TestSuiteBase implements Patter
 		AudioSceneContext ctx = minimalContext();
 		AtomicInteger requested = new AtomicInteger();
 
+		PatternRenderCancellation cancellation = new PatternRenderCancellation();
+
 		List<PatternElement> elements = new ArrayList<>();
 		for (int i = 0; i < 100; i++) {
 			elements.add(observedElement(i * 8, () -> {
-				if (requested.incrementAndGet() == 2) Thread.currentThread().interrupt();
+				if (requested.incrementAndGet() == 2) cancellation.cancel();
 			}));
 		}
 
+		cancellation.bind();
 		try {
 			renderPerNote(ctx, null, elements, false, 0.0, 0, 1024, null);
 			Assert.fail("renderPerNote should have been cancelled");
@@ -213,9 +219,9 @@ public class PatternFeaturesFastFailTest extends TestSuiteBase implements Patter
 			Assert.assertTrue("message should name the frame the render stopped at: " + e.getMessage(),
 					e.getMessage().contains("frame 16"));
 		} finally {
-			Thread.interrupted();
+			cancellation.unbind();
 		}
 
-		Assert.assertEquals("only the notes before the interrupt may be evaluated", 2, requested.get());
+		Assert.assertEquals("only the notes before the cancellation may be evaluated", 2, requested.get());
 	}
 }

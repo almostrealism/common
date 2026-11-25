@@ -261,12 +261,13 @@ public interface PatternFeatures extends CodeFeatures {
 	 * per-note without falling the whole window back. The per-note body below is unchanged from
 	 * the original {@code renderPerNote} loop.
 	 *
-	 * <p>An interrupt of the rendering thread cancels the render: no further note is
-	 * evaluated once it is observed, and the interrupt status is left set. An interrupted
-	 * evaluation does not reliably fail &mdash; a wait it abandons can return without the
-	 * work having completed &mdash; so neither the per-note failure handling nor the
-	 * consecutive-failure bound would stop the loop, and a cancelled render (a timed-out
-	 * caller, a stopped render-ahead thread) would keep dispatching every remaining note
+	 * <p>A {@link PatternRenderCancellation} bound to the rendering thread cancels the render: no
+	 * further note is evaluated once the cancellation is observed, and the request stays set so the
+	 * canceller still observes it. Polling the signal (rather than letting an evaluation fail) is
+	 * what reliably stops the loop &mdash; an evaluation does not reliably fail when cancelled, since
+	 * a wait it abandons can return without the work having completed, so neither the per-note
+	 * failure handling nor the consecutive-failure bound would stop the loop, and a cancelled render
+	 * (a timed-out caller, a stopped render-ahead thread) would keep dispatching every remaining note
 	 * against the work that follows it.</p>
 	 *
 	 * @param sceneContext scene context containing the destination buffer
@@ -274,7 +275,7 @@ public interface PatternFeatures extends CodeFeatures {
 	 * @param startFrame   starting frame of the target range (absolute position)
 	 * @param frameCount   number of frames in the target range
 	 * @param cache        optional cache for evaluated note audio (may be null)
-	 * @throws CancellationException if the rendering thread is interrupted
+	 * @throws CancellationException if the rendering thread's bound cancellation signal is cancelled
 	 */
 	default void renderNotes(AudioSceneContext sceneContext, List<RenderedNoteAudio> notes,
 							 int startFrame, int frameCount, NoteAudioCache cache) {
@@ -289,9 +290,9 @@ public interface PatternFeatures extends CodeFeatures {
 		notes.forEach(note -> {
 					int noteStart = note.getOffset();
 
-					// The interrupt status is only read, so the canceller still observes it
-					if (Thread.currentThread().isInterrupted()) {
-						throw new CancellationException("Pattern rendering interrupted at frame " + noteStart);
+					// The signal is only read, so the canceller still observes its request
+					if (PatternRenderCancellation.currentlyCancelled()) {
+						throw new CancellationException("Pattern rendering cancelled at frame " + noteStart);
 					}
 
 					// Pre-filter: skip notes that cannot overlap the frame range
