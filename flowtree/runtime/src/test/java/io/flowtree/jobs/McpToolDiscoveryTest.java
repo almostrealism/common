@@ -348,6 +348,7 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"github_pr_labels",
 			"github_list_workflow_runs",
 			"github_workflow_run_status",
+			"github_run_artifacts",
 			"github_list_runners",
 			"tracker_list_projects",
 			"tracker_create_project",
@@ -741,6 +742,17 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(managerSources, "github_workflow_run_status");
 		assertTrue("github_workflow_run_status must declare run_id in signature",
 			runStatusParams.contains("run_id"));
+
+		List<String> artifactParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_run_artifacts");
+		assertTrue("github_run_artifacts must declare run_id in signature",
+			artifactParams.contains("run_id"));
+		assertTrue("github_run_artifacts must declare artifact in signature",
+			artifactParams.contains("artifact"));
+		assertTrue("github_run_artifacts must declare file in signature",
+			artifactParams.contains("file"));
+		assertTrue("github_run_artifacts must declare max_bytes in signature",
+			artifactParams.contains("max_bytes"));
 
 		List<String> trackerCreateParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_create_task");

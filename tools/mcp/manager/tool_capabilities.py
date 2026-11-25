@@ -64,6 +64,7 @@ GRANTED_TOOLS = (
     "github_list_workflow_runs",
     "github_workflow_run_status",
     "github_job_logs",
+    "github_run_artifacts",
     "github_list_runners",
     "project_read_plan",
     "tracker_get_task",

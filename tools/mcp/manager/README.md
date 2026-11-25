@@ -101,6 +101,8 @@ resolved issues). Requires `security_events: write` permission on the PAT.
 | `github_pr_labels` | github | Read a PR's labels and draft status (read-only) |
 | `github_list_workflow_runs` | github | Search GitHub Actions workflow runs (by workflow/branch/event/status) |
 | `github_workflow_run_status` | github | Get a workflow run's jobs and failed steps by run id |
+| `github_job_logs` | github | Read a workflow job's log (tail, optionally filtered by `grep`) |
+| `github_run_artifacts` | github | List a workflow run's artifacts, or read files inside one (e.g. the `crash-reports-*` dumpstreams and `hs_err_pid*.log`); read-only, archives over 1 MB are refused and at most `max_bytes` (capped at 1 MB) of member content is decompressed |
 | `github_list_open_prs` | github | List open PRs for a repo |
 | `github_create_pr` | github | Create a pull request |
 | `github_update_pr` | github | Change an existing PR's title and/or description |
