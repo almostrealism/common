@@ -60,6 +60,25 @@ reproduce the failure it describes, or find the line that refutes it.
 Say it in the thread when replying is safe, and in your final summary when it
 is not; the rules above decide which.
 
+## Generated code is a symptom — a fix anywhere but the expression is a defect
+
+Whatever route brought you here, check one concealment class before you approve
+the branch. When a change makes a failing test, a rejected compile or an
+exceeded limit pass by changing how generated source is written out, by
+post-processing that source, or by raising a compiler-limit, timeout or
+tolerance flag, it has hidden the defect rather than fixed it. **Flag any such
+change as a defect.** The root `CLAUDE.md` rule is the standard: generated code
+is a symptom; fix the expression that produced it, and never change how the tree
+is rendered to a string, post-process the source, or raise a compiler limit to
+make the symptom go away. Deeply nested or over-bracketed generated source, for
+example, means operations that should have merged into one n-ary expression did
+not (`NAryExpression.mergeOperands` and the creation-time merges of nested
+`Product`/`Sum`); the fix belongs in that `Expression` tree, not in the renderer
+and not in the compiler's settings. A fix of that concealing kind is worse than
+no fix, because it removes the only signal that the defect exists — so the
+outcome is to find the expression and fix it there, not to let the workaround
+stand.
+
 ## New TODOs are findings
 
 A review comment — human or Copilot — very often does no more than point at a
