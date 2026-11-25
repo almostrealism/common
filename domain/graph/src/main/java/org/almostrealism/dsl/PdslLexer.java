@@ -82,6 +82,11 @@ public class PdslLexer {
 	/**
 	 * Advances past whitespace characters and both line ({@code //}) and
 	 * block ({@code /* ... *\/}) comments, updating {@link #line} and {@link #column}.
+	 *
+	 * <p>A block comment that is never closed extends to the end of the source: its
+	 * content is consumed in full so that no part of a comment escapes into the token
+	 * stream (the trailing character of an unterminated comment, in particular, is not
+	 * emitted as a stray identifier or operator).</p>
 	 */
 	private void skipWhitespaceAndComments() {
 		while (pos < source.length()) {
@@ -101,15 +106,15 @@ public class PdslLexer {
 				advance();
 				while (pos + 1 < source.length()
 						&& !(source.charAt(pos) == '*' && source.charAt(pos + 1) == '/')) {
-					if (source.charAt(pos) == '\n') {
-						line++;
-						column = 0;
-					}
-					advance();
+					advanceTrackingNewline();
 				}
 				if (pos + 1 < source.length()) {
 					advance();
 					advance();
+				} else {
+					while (pos < source.length()) {
+						advanceTrackingNewline();
+					}
 				}
 			} else {
 				break;
@@ -288,5 +293,21 @@ public class PdslLexer {
 	private void advance() {
 		pos++;
 		column++;
+	}
+
+	/**
+	 * Advances past the current character while keeping {@link #line} and
+	 * {@link #column} consistent, incrementing {@link #line} and resetting
+	 * {@link #column} when that character is a newline. Used by the
+	 * block-comment scans, including the fallback that consumes an
+	 * unterminated comment to the end of the source, so that a token
+	 * reported after the comment carries the correct source location.
+	 */
+	private void advanceTrackingNewline() {
+		if (source.charAt(pos) == '\n') {
+			line++;
+			column = 0;
+		}
+		advance();
 	}
 }
