@@ -2105,7 +2105,7 @@ gives every open pull request from this repository one label for its stage:
 | `ci: auto-fix` | The test run failed and an agent was sent: `auto-resolve` staged a request in the latest attempt, or `auto-resolve-python-submit` succeeded |
 | `ci: ready for review` | The head commit's newest test run succeeded, the newest `Test Checks` and `All Checks` check runs (by id, so a queued one counts) both passed, and the pull request has no merge conflict |
 | `ci: needs attention` | CI stopped with no agent working on it: a run failed or was cancelled without a submission, a test run passed while `All Checks` did not, or a merge conflict |
-| `ci: review limit` | Shown in place of `ci: auto-review` or `ci: auto-fix` when the controller refused the pass because the pull request reached the per-PR remediation cap (`RemediationBudgetGuard`, 8 passes by default). Auto-dispatch is paused until a commit no pass produced lands; a person needs to look. Never stalls |
+| `ci: review limit` | Shown in place of `ci: auto-review` or `ci: auto-fix` when the controller refused the pass because the pull request reached the per-PR remediation cap (`RemediationBudgetGuard`, 10 passes by default). Auto-dispatch is paused until a commit no pass produced lands; a person needs to look. Never stalls |
 | `ci: stalled` | Added beside the stage label when the stage has lasted longer than `LABELS` in the script allows (1 h validating, 4 h auto-review or auto-fix, 10 h full tests) |
 
 `tools/ci/pr-status-labels.py` derives the stage from the API on every run:
