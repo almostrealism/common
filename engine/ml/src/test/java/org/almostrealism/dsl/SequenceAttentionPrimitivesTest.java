@@ -44,6 +44,9 @@ public class SequenceAttentionPrimitivesTest extends TestSuiteBase implements At
 	/** Classpath location of the primitive fixtures. */
 	private static final String FIXTURE = "/pdsl/test_sequence_attention_primitives.pdsl";
 
+	/** Number of positions of the rotation fixture's input. */
+	private static final int ROPE_POSITIONS = 5;
+
 	/** Epsilon the normalization fixtures pass. */
 	private static final double EPSILON = 1e-6;
 
@@ -362,15 +365,35 @@ public class SequenceAttentionPrimitivesTest extends TestSuiteBase implements At
 	 * @param invFreq the inverse frequencies
 	 */
 	private void assertRotates(PackedCollection invFreq) {
+		double[] freq = invFreq.doubleStream().toArray();
+		double[][] angles = new double[ROPE_POSITIONS][freq.length];
+		for (int p = 0; p < ROPE_POSITIONS; p++) {
+			for (int i = 0; i < freq.length; i++) {
+				angles[p][i] = p * freq[i];
+			}
+		}
+
+		assertRotatesBy(invFreq, angles);
+	}
+
+	/**
+	 * Runs the rotation fixture over a {@code [1, 2, 5, 8]} input with {@code frequencies} as its
+	 * argument and checks that feature {@code i} of position {@code p} is rotated with feature
+	 * {@code i + n} by {@code angles[p][i]}, for the {@code n} columns of {@code angles}, and that the
+	 * remaining features pass through.
+	 *
+	 * @param frequencies the {@code inv_freq} argument: inverse frequencies or an angle table
+	 * @param angles      the expected angle of every rotated pair at every position
+	 */
+	private void assertRotatesBy(PackedCollection frequencies, double[][] angles) {
 		int heads = 2;
-		int seqLen = 5;
+		int seqLen = ROPE_POSITIONS;
 		int headDim = 8;
 		PackedCollection input = new PackedCollection(shape(1, heads, seqLen, headDim)).randnFill();
 		double[] in = input.doubleStream().toArray();
-		double[] freq = invFreq.doubleStream().toArray();
-		int half = freq.length;
+		int half = angles[0].length;
 
-		double[] actual = run("rotate", shape(1, heads, seqLen, headDim), args("inv_freq", invFreq), input);
+		double[] actual = run("rotate", shape(1, heads, seqLen, headDim), args("inv_freq", frequencies), input);
 		assertEquals(in.length, actual.length);
 		for (int h = 0; h < heads; h++) {
 			for (int p = 0; p < seqLen; p++) {
@@ -378,7 +401,7 @@ public class SequenceAttentionPrimitivesTest extends TestSuiteBase implements At
 				for (int j = 0; j < headDim; j++) {
 					double expected = in[row + j];
 					if (j < 2 * half) {
-						double angle = p * freq[j % half];
+						double angle = angles[p][j % half];
 						double partner = j < half ? -in[row + j + half] : in[row + j - half];
 						expected = in[row + j] * Math.cos(angle) + partner * Math.sin(angle);
 					}
@@ -400,5 +423,79 @@ public class SequenceAttentionPrimitivesTest extends TestSuiteBase implements At
 				"sequence_rope() should reject five frequencies for an eight-feature row");
 		assertRejected("rotate", shape(2, 5, 8), args("inv_freq", PackedCollection.of(1.0, 0.5)),
 				"sequence_rope() should reject an input without a head axis");
+	}
+
+	/**
+	 * {@code sequence_rope(angles)} with a two-dimensional {@code [seq_len, n]} table rotates each
+	 * position by its own row instead of by its index: pair {@code (i, i + n)} of position
+	 * {@code p} turns by {@code angles[p, i]}, the features beyond {@code 2n} pass through, and the
+	 * all-zero first row leaves its position unrotated, as a prefix token is in an axial embedding.
+	 */
+	@Test(timeout = 120000)
+	public void sequenceRopeRotatesEveryPositionByItsAngleTableRow() {
+		int pairs = 3;
+		PackedCollection table = PackedCollection.of(
+				0.0, 0.0, 0.0,
+				0.7, -1.3, 2.1,
+				3.0, 0.25, -0.5,
+				-2.4, 1.1, 0.05,
+				1.9, -0.8, 2.9).reshape(shape(ROPE_POSITIONS, pairs));
+
+		double[] flat = table.doubleStream().toArray();
+		double[][] angles = new double[ROPE_POSITIONS][pairs];
+		for (int p = 0; p < ROPE_POSITIONS; p++) {
+			for (int i = 0; i < pairs; i++) {
+				angles[p][i] = flat[p * pairs + i];
+			}
+		}
+
+		assertRotatesBy(table, angles);
+	}
+
+	/**
+	 * {@code sequence_rope} rejects an angle table that does not hold one row per position of its
+	 * input, and an angle table whose pairs do not fit in a row.
+	 */
+	@Test(timeout = 60000)
+	public void sequenceRopeRejectsAnAngleTableThatDoesNotFitTheInput() {
+		assertRejected("rotate", shape(1, 2, ROPE_POSITIONS, 8),
+				args("inv_freq", new PackedCollection(shape(ROPE_POSITIONS - 1, 4))),
+				"sequence_rope() should reject a four-row angle table for five positions");
+		assertRejected("rotate", shape(1, 2, ROPE_POSITIONS, 8),
+				args("inv_freq", new PackedCollection(shape(ROPE_POSITIONS, 5))),
+				"sequence_rope() should reject five rotated pairs for an eight-feature row");
+	}
+
+	/**
+	 * {@code sequence_rope} rejects an argument that is neither one-dimensional inverse frequencies
+	 * nor a two-dimensional angle table, even when its element count would fit a row: a
+	 * {@code [1, 2, 2]} argument is not read as four inverse frequencies.
+	 */
+	@Test(timeout = 60000)
+	public void sequenceRopeRejectsAnArgumentOfMoreThanTwoDimensions() {
+		assertRejected("rotate", shape(1, 2, ROPE_POSITIONS, 8),
+				args("inv_freq", new PackedCollection(shape(1, 2, 2))),
+				"sequence_rope() should reject a three-dimensional argument");
+		assertRejected("rotate", shape(1, 2, ROPE_POSITIONS, 8),
+				args("inv_freq", new PackedCollection(shape(ROPE_POSITIONS, 1, 2))),
+				"sequence_rope() should reject a three-dimensional angle table");
+	}
+
+	/**
+	 * {@code RotationFeatures.applyRotaryPositionEmbedding(input, angles)} rejects an angle table
+	 * that does not hold one row per position, and one that is not two-dimensional.
+	 */
+	@Test(timeout = 60000)
+	public void rotaryAngleTableMustHoldOneRowPerPosition() {
+		PackedCollection input = new PackedCollection(shape(1, 2, ROPE_POSITIONS, 8));
+		TraversalPolicy[] tables = {shape(ROPE_POSITIONS + 1, 4), shape(ROPE_POSITIONS * 4)};
+		for (TraversalPolicy table : tables) {
+			try {
+				applyRotaryPositionEmbedding(cp(input), cp(new PackedCollection(table)));
+				Assert.fail("applyRotaryPositionEmbedding should reject a " + table + " angle table");
+			} catch (IllegalArgumentException expected) {
+				// expected
+			}
+		}
 	}
 }

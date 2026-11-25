@@ -342,12 +342,14 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			"github_update_pr",
 			"github_set_pr_state",
 			"github_start_test_run",
+			"github_rerun_failed_jobs",
 			"github_request_copilot_review",
 			"github_read_file",
 			"github_pr_check_status",
 			"github_pr_labels",
 			"github_list_workflow_runs",
 			"github_workflow_run_status",
+			"github_run_artifacts",
 			"github_list_runners",
 			"tracker_list_projects",
 			"tracker_create_project",
@@ -450,6 +452,13 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("github_start_test_run must declare workstream_id in signature",
 			startTestRunParams.contains("workstream_id"));
 
+		List<String> rerunFailedJobsParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_rerun_failed_jobs");
+		assertTrue("github_rerun_failed_jobs must declare run_id in signature",
+			rerunFailedJobsParams.contains("run_id"));
+		assertTrue("github_rerun_failed_jobs must declare workstream_id in signature",
+			rerunFailedJobsParams.contains("workstream_id"));
+
 		List<String> submitParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "workstream_submit_task");
 		assertTrue("workstream_submit_task must declare prompt in signature",
@@ -492,6 +501,13 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 		assertTrue("workstream_submit_task must declare phase_configs in signature"
 			+ " so per-phase (runner, model, effort) overrides can be passed in",
 			submitParams.contains("phase_configs"));
+		assertTrue("workstream_submit_task must declare fallback_default_phase_config in"
+			+ " signature so a submission can carry a fallback applied only to phases"
+			+ " the workstream leaves unset",
+			submitParams.contains("fallback_default_phase_config"));
+		assertTrue("workstream_submit_task must declare fallback_phase_configs in signature"
+			+ " so per-phase fallback overrides can be passed in",
+			submitParams.contains("fallback_phase_configs"));
 		assertTrue("workstream_submit_task must declare allow_commit_language in signature"
 			+ " so callers can opt out of the commit-language linter when needed",
 			submitParams.contains("allow_commit_language"));
@@ -741,6 +757,17 @@ public class McpToolDiscoveryTest extends TestSuiteBase {
 			McpToolDiscovery.discoverToolParameters(managerSources, "github_workflow_run_status");
 		assertTrue("github_workflow_run_status must declare run_id in signature",
 			runStatusParams.contains("run_id"));
+
+		List<String> artifactParams =
+			McpToolDiscovery.discoverToolParameters(managerSources, "github_run_artifacts");
+		assertTrue("github_run_artifacts must declare run_id in signature",
+			artifactParams.contains("run_id"));
+		assertTrue("github_run_artifacts must declare artifact in signature",
+			artifactParams.contains("artifact"));
+		assertTrue("github_run_artifacts must declare file in signature",
+			artifactParams.contains("file"));
+		assertTrue("github_run_artifacts must declare max_bytes in signature",
+			artifactParams.contains("max_bytes"));
 
 		List<String> trackerCreateParams =
 			McpToolDiscovery.discoverToolParameters(managerSources, "tracker_create_task");

@@ -39,13 +39,15 @@ import io.flowtree.workstream.WorkstreamConfig;
 
 /**
  * Resolves per-phase agent configuration ({@link PhaseConfig}) by walking
- * the unified seven-level precedence ladder:
+ * the unified precedence ladder:
  *
  * <ol>
  *   <li>Per-job per-phase override</li>
  *   <li>Per-job default ({@code defaultPhaseConfig})</li>
  *   <li>Workstream per-phase override</li>
  *   <li>Workstream default</li>
+ *   <li>Per-job fallback ({@code fallbackPhaseConfig} / {@code fallbackPhaseConfigs})
+ *       — applied only to phases the workstream leaves unset</li>
  *   <li>Workspace per-phase override</li>
  *   <li>Workspace default</li>
  *   <li>Controller default ({@code runner=claude}, {@code model=null}, {@code effort=null})</li>
@@ -55,6 +57,23 @@ import io.flowtree.workstream.WorkstreamConfig;
  * independently: a workstream that sets only its default {@code runner}
  * does not prevent {@code model} or {@code effort} from falling through
  * to workspace per-phase entries.</p>
+ *
+ * <p>The fallback level is the one exception to field-by-field resolution:
+ * it applies <em>as a whole entry</em>, and only to phases the workstream
+ * leaves entirely unset. A phase "counts as set by the workstream" when its
+ * workstream-level {@code phaseConfigs[phase]} has any field, or the
+ * workstream carries a {@code defaultPhaseConfig} — in either case the
+ * fallback is ignored for that phase and resolution proceeds as it did
+ * before the fallback existed. This gate keeps a fallback {@code model} from
+ * being mixed with a workstream {@code runner} into an invalid combination:
+ * when the workstream sets the phase, the fallback contributes nothing. A
+ * fallback entry that applies still overlays field-by-field onto the lower
+ * (workspace / controller) levels, and the resulting runner / provider /
+ * model combination is validated at submission exactly as any other.</p>
+ *
+ * <p>When no fallback is supplied (the common case), resolution is identical
+ * to the request / workstream / workspace / controller ladder that preceded
+ * it — a submission without a fallback resolves exactly as it did before.</p>
  *
  * <p>This is a behavioural change relative to the legacy
  * {@code SubmissionRunnerResolver}, which let a workstream {@code defaultRunner}
@@ -80,18 +99,26 @@ public final class PhaseConfigResolver {
     private final PhaseConfigBundle requestBundle;
     /** Workstream-level bundle; preserved for {@link #forPhase(Phase)}. */
     private final PhaseConfigBundle workstreamBundle;
+    /**
+     * Per-job fallback bundle; applied only to phases the workstream leaves
+     * unset (see {@link PhaseConfigBundle#setsPhase(Phase)}).
+     * Preserved for {@link #forPhase(Phase)} and the fallback-resolution echo.
+     */
+    private final PhaseConfigBundle fallbackBundle;
     /** Workspace-level bundle; preserved for {@link #forPhase(Phase)}. */
     private final PhaseConfigBundle workspaceBundle;
 
-    /** Private constructor; use {@link #resolve(PhaseConfigBundle, PhaseConfigBundle, PhaseConfigBundle)}. */
+    /** Private constructor; use {@link #resolve(PhaseConfigBundle, PhaseConfigBundle, PhaseConfigBundle, PhaseConfigBundle)}. */
     private PhaseConfigResolver(String error, PhaseConfigBundle resolved,
                                 PhaseConfigBundle requestBundle,
                                 PhaseConfigBundle workstreamBundle,
+                                PhaseConfigBundle fallbackBundle,
                                 PhaseConfigBundle workspaceBundle) {
         this.error = error;
         this.resolved = resolved;
         this.requestBundle = requestBundle != null ? requestBundle : PhaseConfigBundle.EMPTY;
         this.workstreamBundle = workstreamBundle != null ? workstreamBundle : PhaseConfigBundle.EMPTY;
+        this.fallbackBundle = fallbackBundle != null ? fallbackBundle : PhaseConfigBundle.EMPTY;
         this.workspaceBundle = workspaceBundle != null ? workspaceBundle : PhaseConfigBundle.EMPTY;
     }
 
@@ -124,6 +151,104 @@ public final class PhaseConfigResolver {
     }
 
     /**
+     * Returns the per-job fallback bundle as submitted, before the gate that
+     * applies it only to phases the workstream leaves unset. Never
+     * {@code null}; returns {@link PhaseConfigBundle#EMPTY} when the request
+     * specified no fallback.
+     */
+    public PhaseConfigBundle fallbackBundle() {
+        return fallbackBundle;
+    }
+
+    /**
+     * Appends a {@code ,"fallbackResolution":{...}} fragment to {@code json}
+     * reporting, per phase, the resolved {@code runner} / {@code model} /
+     * {@code effort} / {@code provider} and whether the per-job fallback was
+     * used or ignored and why. Nothing is appended when no fallback was
+     * supplied, so a submission without a fallback produces exactly the
+     * response it did before. The fragment leads with a comma, so the caller
+     * must have written at least one prior field.
+     *
+     * @param json the target string builder; must not be {@code null}
+     */
+    public void appendFallbackResolutionJson(StringBuilder json) {
+        if (fallbackBundle.isEmpty()) return;
+        json.append(",\"fallbackResolution\":{");
+        boolean first = true;
+        for (Phase phase : Phase.values()) {
+            if (!first) json.append(",");
+            first = false;
+            json.append("\"")
+                    .append(JsonFieldExtractor.escapeJson(phase.wireName()))
+                    .append("\":");
+            appendPhaseFallbackStatusJson(json, phase);
+        }
+        json.append("}");
+    }
+
+    /**
+     * Appends a single phase's resolved config plus its fallback status
+     * ({@code fallbackUsed} and a human-readable {@code reason}) as a JSON
+     * object. The fallback is reported used for a phase only when it actually
+     * affects the effective config: the workstream leaves the phase unset, the
+     * fallback has a non-empty entry for it, and the config it resolves to
+     * differs from the config the phase would resolve to without the fallback.
+     *
+     * <p>When a non-empty fallback has no net effect, the {@code reason}
+     * distinguishes <em>why</em>: {@code "request overrides <phase>"} when a
+     * higher-precedence per-job request supplies every field the fallback would
+     * have contributed (so the request, not the fallback, decides the config),
+     * and {@code "fallback matches resolved <phase> config"} when the request
+     * does not cover the fallback yet the workspace / controller levels already
+     * resolve to the same values the fallback carries. Reporting the request as
+     * the cause in the latter case would be misleading, since the request
+     * contributed nothing.</p>
+     */
+    private void appendPhaseFallbackStatusJson(StringBuilder json, Phase phase) {
+        PhaseConfig resolved = forPhase(phase);
+        boolean workstreamSets = workstreamBundle.setsPhase(phase);
+        boolean fallbackContributes = !fallbackBundle.forPhase(phase).isEmpty();
+        boolean noNetEffect = fallbackContributes && !workstreamSets
+                && resolved.equals(resolveWithoutFallback(phase));
+        boolean used = fallbackContributes && !workstreamSets && !noNetEffect;
+        String reason;
+        if (workstreamSets) {
+            reason = "workstream sets " + phase.wireName();
+        } else if (!fallbackContributes) {
+            reason = "fallback has no entry for this phase";
+        } else if (used) {
+            reason = "fallback applied";
+        } else if (requestBundle.forPhase(phase).covers(fallbackBundle.forPhase(phase))) {
+            reason = "request overrides " + phase.wireName();
+        } else {
+            reason = "fallback matches resolved " + phase.wireName() + " config";
+        }
+        json.append("{");
+        appendResolvedField(json, true, "runner", resolved.runner());
+        appendResolvedField(json, false, "model", resolved.model());
+        appendResolvedField(json, false, "effort", resolved.effort());
+        appendResolvedField(json, false, "provider", resolved.provider());
+        json.append(",\"fallbackUsed\":").append(used);
+        json.append(",\"reason\":\"").append(JsonFieldExtractor.escapeJson(reason)).append("\"");
+        json.append("}");
+    }
+
+    /**
+     * Appends a {@code "name":"value"} (or {@code "name":null}) member. When
+     * {@code firstMember} is false the member is preceded by a comma.
+     */
+    private static void appendResolvedField(StringBuilder json, boolean firstMember,
+                                            String name, String value) {
+        if (!firstMember) json.append(",");
+        json.append("\"").append(name).append("\":");
+        if (value == null) {
+            json.append("null");
+        } else {
+            json.append("\"").append(JsonFieldExtractor.escapeJson(value)).append("\"");
+        }
+    }
+
+    /**
      * Returns the fully-resolved {@link PhaseConfig} for {@code phase}: the
      * job-level per-phase override (if any) overlaid on the job-level
      * default, then layered through workstream and workspace levels, then
@@ -134,17 +259,46 @@ public final class PhaseConfigResolver {
      * @return the resolved per-phase config, never {@code null}
      */
     public PhaseConfig forPhase(Phase phase) {
+        PhaseConfig middle = workstreamBundle.setsPhase(phase)
+                ? workstreamBundle.forPhase(phase)
+                : fallbackBundle.forPhase(phase);
         return requestBundle.forPhase(phase)
-                .overlayOnClearingInheritedProvider(workstreamBundle.forPhase(phase))
+                .overlayOnClearingInheritedProvider(middle)
                 .overlayOnClearingInheritedProvider(workspaceBundle.forPhase(phase))
                 .overlayOn(CONTROLLER_DEFAULT);
     }
 
     /**
-     * Resolves the per-phase configuration from the three precedence
-     * levels. Validates every non-null runner name and every per-phase
-     * effort value; returns a resolver carrying an {@link #error()}
-     * message on validation failure.
+     * Resolves {@code phase} as if no per-job fallback were supplied: the
+     * fallback is dropped from the middle layer, so a phase the workstream
+     * leaves unset falls straight through to the workspace / controller levels.
+     * Used only by {@link #appendPhaseFallbackStatusJson(StringBuilder, Phase)}
+     * to decide whether the fallback actually affected the effective config —
+     * when the result equals {@link #forPhase(Phase)} the fallback had no net
+     * effect and is reported unused (the {@code reason} then names whether a
+     * request override or a coincident workspace / controller default is the
+     * cause).
+     *
+     * @param phase the phase to resolve; never {@code null} in callers
+     * @return the config this phase would resolve to without the fallback
+     */
+    private PhaseConfig resolveWithoutFallback(Phase phase) {
+        PhaseConfig middle = workstreamBundle.setsPhase(phase)
+                ? workstreamBundle.forPhase(phase)
+                : PhaseConfig.EMPTY;
+        return requestBundle.forPhase(phase)
+                .overlayOnClearingInheritedProvider(middle)
+                .overlayOnClearingInheritedProvider(workspaceBundle.forPhase(phase))
+                .overlayOn(CONTROLLER_DEFAULT);
+    }
+
+    /**
+     * Resolves the per-phase configuration from the request, workstream and
+     * workspace levels, with no per-job fallback. Equivalent to
+     * {@link #resolve(PhaseConfigBundle, PhaseConfigBundle, PhaseConfigBundle,
+     * PhaseConfigBundle)} with an {@linkplain PhaseConfigBundle#EMPTY empty}
+     * fallback, so a submission that supplies no fallback resolves exactly as
+     * it did before the fallback level existed.
      *
      * @param requestBundle    per-job bundle (request body); may be {@code null}
      * @param workstreamBundle workstream-level bundle; may be {@code null}
@@ -154,14 +308,61 @@ public final class PhaseConfigResolver {
     public static PhaseConfigResolver resolve(PhaseConfigBundle requestBundle,
                                               PhaseConfigBundle workstreamBundle,
                                               PhaseConfigBundle workspaceBundle) {
+        return resolve(requestBundle, workstreamBundle, PhaseConfigBundle.EMPTY, workspaceBundle);
+    }
+
+    /**
+     * Resolves the per-phase configuration across the request, workstream,
+     * per-job fallback and workspace levels. Validates every non-null runner
+     * name and every per-phase effort value; returns a resolver carrying an
+     * {@link #error()} message on validation failure.
+     *
+     * <p>The fallback sits between the workstream and the workspace, but
+     * unlike the other levels it applies as a whole entry and only to phases
+     * the workstream leaves unset (see {@link PhaseConfigBundle#setsPhase(Phase)}).
+     * A phase the workstream sets ignores the fallback entirely; a phase the
+     * workstream leaves unset takes the fallback, which then overlays
+     * field-by-field onto the workspace / controller levels. The resulting
+     * runner / provider / model combination is validated below like any other,
+     * so a fallback that completes into an invalid combination (for example a
+     * fallback {@code provider} pairing with an inherited {@code runner=claude})
+     * is rejected at submission. Runner-aware overlay keeps a provider
+     * configured for one runner at a lower level from leaking into a phase that
+     * resolves to a different runner.</p>
+     *
+     * <p>The resolved bundle's {@link PhaseConfigBundle#defaultPhaseConfig()
+     * default} is built <em>without</em> the fallback — the fallback is applied
+     * per phase and every phase that takes it is stored as an explicit entry.
+     * This is deliberate: {@link PhaseConfigBundle#forPhase(Phase)} re-overlays a
+     * stored entry on the bundle default, so baking the fallback's
+     * {@code model} / {@code effort} into that default would leak those fields
+     * into a workstream-set phase whose entry leaves them {@code null} (a phase
+     * the resolver correctly excluded the fallback from). Keeping the fallback
+     * out of the default makes the resolved bundle's own {@code forPhase}
+     * reproduce {@link #forPhase(Phase)} here exactly, which is what the worker
+     * and {@code AgentRunRequestFactory} ultimately read.</p>
+     *
+     * @param requestBundle    per-job bundle (request body); may be {@code null}
+     * @param workstreamBundle workstream-level bundle; may be {@code null}
+     * @param fallbackBundle   per-job fallback bundle; may be {@code null}
+     * @param workspaceBundle  workspace-level bundle; may be {@code null}
+     * @return a fresh resolver
+     */
+    public static PhaseConfigResolver resolve(PhaseConfigBundle requestBundle,
+                                              PhaseConfigBundle workstreamBundle,
+                                              PhaseConfigBundle fallbackBundle,
+                                              PhaseConfigBundle workspaceBundle) {
         PhaseConfigBundle req = requestBundle != null ? requestBundle : PhaseConfigBundle.EMPTY;
         PhaseConfigBundle ws = workstreamBundle != null ? workstreamBundle : PhaseConfigBundle.EMPTY;
+        PhaseConfigBundle fb = fallbackBundle != null ? fallbackBundle : PhaseConfigBundle.EMPTY;
         PhaseConfigBundle wsp = workspaceBundle != null ? workspaceBundle : PhaseConfigBundle.EMPTY;
 
         // Validate runner names referenced anywhere.
         String runnerErr = validateRunners(req);
         if (runnerErr != null) return fail(runnerErr);
         runnerErr = validateRunners(ws);
+        if (runnerErr != null) return fail(runnerErr);
+        runnerErr = validateRunners(fb);
         if (runnerErr != null) return fail(runnerErr);
         runnerErr = validateRunners(wsp);
         if (runnerErr != null) return fail(runnerErr);
@@ -171,30 +372,28 @@ public final class PhaseConfigResolver {
         if (effortErr != null) return fail(effortErr);
         effortErr = validateEffort(ws);
         if (effortErr != null) return fail(effortErr);
+        effortErr = validateEffort(fb);
+        if (effortErr != null) return fail(effortErr);
         effortErr = validateEffort(wsp);
         if (effortErr != null) return fail(effortErr);
 
-        // Build the "applied to factory" bundle: each phase fully resolved
-        // through the ladder. The default is the resolved default at the
-        // request level overlaid on workstream/workspace/controller.
-        // Use runner-aware overlay so a provider configured for one runner
-        // at a lower level does not leak into a phase that resolves to a
-        // different runner.
+        // Resolved default EXCLUDES the fallback (applied per phase below).
         PhaseConfig resolvedDefault = req.defaultPhaseConfig()
                 .overlayOnClearingInheritedProvider(ws.defaultPhaseConfig())
                 .overlayOnClearingInheritedProvider(wsp.defaultPhaseConfig())
                 .overlayOn(CONTROLLER_DEFAULT);
 
-        // Collect every phase that has any override at any level.
+        // Middle layer is the workstream when it sets the phase, else the fallback.
         Map<Phase, PhaseConfig> phases = new EnumMap<>(Phase.class);
         for (Phase phase : Phase.values()) {
+            PhaseConfig middle = ws.setsPhase(phase)
+                    ? ws.forPhase(phase)
+                    : fb.forPhase(phase);
             PhaseConfig perPhase = req.forPhase(phase)
-                    .overlayOnClearingInheritedProvider(ws.forPhase(phase))
+                    .overlayOnClearingInheritedProvider(middle)
                     .overlayOnClearingInheritedProvider(wsp.forPhase(phase))
                     .overlayOn(CONTROLLER_DEFAULT);
-            // Only record an entry when the resolved per-phase config
-            // differs from the resolved default; this keeps applyTo()
-            // compact for the common case.
+            // Record an entry only when it differs from the resolved default.
             if (!perPhase.equals(resolvedDefault)) {
                 phases.put(phase, perPhase);
             }
@@ -218,7 +417,7 @@ public final class PhaseConfigResolver {
         }
 
         PhaseConfigBundle resolved = new PhaseConfigBundle(resolvedDefault, phases);
-        return new PhaseConfigResolver(null, resolved, req, ws, wsp);
+        return new PhaseConfigResolver(null, resolved, req, ws, fb, wsp);
     }
 
     /**
@@ -261,15 +460,46 @@ public final class PhaseConfigResolver {
     public static PhaseConfigBundle bundleFromRequest(String body) {
         JsonNode root = parseBodyRoot(body);
         if (root == null) return PhaseConfigBundle.EMPTY;
+        return bundleFromNodes(root.get("defaultPhaseConfig"), root.get("phaseConfigs"));
+    }
+
+    /**
+     * Builds a {@link PhaseConfigBundle} from a request body's per-job
+     * fallback fields ({@code fallbackPhaseConfig} and
+     * {@code fallbackPhaseConfigs}). These mirror
+     * {@code defaultPhaseConfig} / {@code phaseConfigs} but feed the fallback
+     * level of the ladder (applied only to phases the workstream leaves unset)
+     * rather than the per-job override level.
+     *
+     * @param body the full request body JSON; may be {@code null}
+     * @return a fresh bundle; {@link PhaseConfigBundle#EMPTY} when the body
+     *         carries no fallback configuration
+     */
+    public static PhaseConfigBundle fallbackBundleFromRequest(String body) {
+        JsonNode root = parseBodyRoot(body);
+        if (root == null) return PhaseConfigBundle.EMPTY;
+        return bundleFromNodes(root.get("fallbackPhaseConfig"), root.get("fallbackPhaseConfigs"));
+    }
+
+    /**
+     * Shared implementation of {@link #bundleFromRequest(String)} and
+     * {@link #fallbackBundleFromRequest(String)}, building a bundle from an
+     * already-extracted default node and per-phase map node.
+     *
+     * @param defaultNode      the bundle-default JSON node, or {@code null}
+     * @param phaseConfigsNode the per-phase map JSON node, or {@code null}
+     * @return a fresh bundle; {@link PhaseConfigBundle#EMPTY} when both nodes
+     *         are absent or empty
+     */
+    private static PhaseConfigBundle bundleFromNodes(JsonNode defaultNode,
+                                                     JsonNode phaseConfigsNode) {
         PhaseConfigBundle result = PhaseConfigBundle.EMPTY;
-        JsonNode defaultNode = root.get("defaultPhaseConfig");
         if (defaultNode != null && defaultNode.isObject()) {
             PhaseConfig parsed = phaseConfigFromNode(defaultNode);
             if (!parsed.isEmpty()) {
                 result = result.withDefault(parsed);
             }
         }
-        JsonNode phaseConfigsNode = root.get("phaseConfigs");
         if (phaseConfigsNode != null && phaseConfigsNode.isObject()) {
             Iterator<Map.Entry<String, JsonNode>> it = phaseConfigsNode.fields();
             while (it.hasNext()) {
@@ -474,7 +704,7 @@ public final class PhaseConfigResolver {
 
     /** Wraps an error message in a failed resolver. */
     private static PhaseConfigResolver fail(String message) {
-        return new PhaseConfigResolver(message, null, null, null, null);
+        return new PhaseConfigResolver(message, null, null, null, null, null);
     }
 
     /**

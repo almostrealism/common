@@ -657,11 +657,9 @@ public class Scope<T> extends ArrayList<Scope<T>>
 			throw new IllegalArgumentException("Array size cannot be less than 1");
 		}
 
-		getStatements().add(new ArrayDeclaration(Double.class, name, size));
-
-		ArrayVariable v = new ArrayVariable<>(Double.class, name, size);
-		v.setDisableOffset(true);
-		return v;
+		ArrayDeclaration<Double> declaration = new ArrayDeclaration<>(Double.class, name, size);
+		getStatements().add(declaration);
+		return declaration.getVariable();
 	}
 
 	/**
@@ -708,10 +706,10 @@ public class Scope<T> extends ArrayList<Scope<T>>
 					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
 			Argument.sort(args);
 
-			List<String> declaredArrays = getStatements().stream()
-					.map(s -> s instanceof ArrayDeclaration ? (ArrayDeclaration) s : null)
-					.filter(Objects::nonNull)
-					.map(ArrayDeclaration::getName)
+			List<ArrayVariable<?>> ownArrays = new ArrayList<>();
+			getStatements().forEach(statement -> statement.appendDeclaredArrays(ownArrays));
+			List<String> declaredArrays = ownArrays.stream()
+					.map(Variable::getName)
 					.collect(Collectors.toList());
 
 			List<String> declaredParameters = getParameters().stream()
@@ -1228,6 +1226,62 @@ public class Scope<T> extends ArrayList<Scope<T>>
 
 		for (Scope<?> child : getChildren()) {
 			child.appendAssignedNames(names, included);
+		}
+	}
+
+	/**
+	 * Returns every {@link ArrayVariable} this scope {@link #getDependencies() depends on} that
+	 * it may also write any element of, by {@link #containsAssignment(ArrayVariable, long, long)}.
+	 *
+	 * <p>The answer is as conservative as {@link #containsAssignment(ArrayVariable, long, long)}
+	 * itself: code whose writes cannot be enumerated (a {@link Method} call, explicit code, a
+	 * required scope) may write anything, so every array the scope refers to is returned for it,
+	 * and a write through a wrapped destination (such as a {@link io.almostrealism.expression.Mask}
+	 * of an element reference) counts as a write of every array the destination refers to. An
+	 * analysis that must know which memory a body of code may change, such as the loop-variance
+	 * analysis of {@link Repeated}, therefore cannot miss a write the scope can make to an array it
+	 * refers to.</p>
+	 *
+	 * <p>An array declared within this scope or a descendant ({@link #declareArray(String, Expression)})
+	 * is local storage, which {@link #getDependencies()} omits, so the arrays those
+	 * {@link ArrayDeclaration}s declare are considered as well, after the dependencies.</p>
+	 *
+	 * @return a new list of the arrays this scope may write, dependencies first and then declared
+	 *         arrays in traversal order
+	 */
+	public List<ArrayVariable<?>> collectWrittenArrays() {
+		List<ArrayVariable<?>> candidates = new ArrayList<>();
+
+		for (Argument<?> dependency : getDependencies()) {
+			if (dependency.getVariable() instanceof ArrayVariable) {
+				candidates.add((ArrayVariable<?>) dependency.getVariable());
+			}
+		}
+
+		appendDeclaredArrays(candidates);
+
+		List<ArrayVariable<?>> written = new ArrayList<>();
+
+		for (ArrayVariable<?> array : candidates) {
+			if (!written.contains(array) && containsAssignment(array, Long.MIN_VALUE, Long.MAX_VALUE)) {
+				written.add(array);
+			}
+		}
+
+		return written;
+	}
+
+	/**
+	 * Adds to {@code arrays} every array {@link Statement#appendDeclaredArrays(List) declared} by
+	 * the statements of this scope and its descendants, in traversal order.
+	 *
+	 * @param arrays the list to add the declared arrays to
+	 */
+	public void appendDeclaredArrays(List<ArrayVariable<?>> arrays) {
+		getStatements().forEach(statement -> statement.appendDeclaredArrays(arrays));
+
+		for (Scope<?> child : getChildren()) {
+			child.appendDeclaredArrays(arrays);
 		}
 	}
 

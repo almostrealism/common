@@ -163,6 +163,14 @@ public class WindowComputation extends CollectionProducerComputationBase {
 		HANN,
 
 		/**
+		 * Periodic Hann window: w[n] = 0.5 * (1 - cos(2*PI * n / N)), the first N samples of
+		 * the symmetric Hann window of length N + 1. This is the window spectral front ends
+		 * conventionally use for STFT analysis ({@code torch.hann_window} with its default
+		 * {@code periodic=True}).
+		 */
+		HANN_PERIODIC,
+
+		/**
 		 * Hamming window: w[n] = 0.54 - 0.46 * cos(2*PI * n / (N-1))
 		 */
 		HAMMING,
@@ -235,6 +243,12 @@ public class WindowComputation extends CollectionProducerComputationBase {
 			case HANN:
 				// w[n] = 0.5 * (1 - cos(2*PI * n / (N-1)))
 				windowValue = e(0.5).multiply(e(1.0).subtract(angle.cos()));
+				break;
+
+			case HANN_PERIODIC:
+				// w[n] = 0.5 * (1 - cos(2*PI * n / N))
+				Expression<?> periodicAngle = e(2.0).multiply(pi()).multiply(n).divide(e((double) windowSize));
+				windowValue = e(0.5).multiply(e(1.0).subtract(periodicAngle.cos()));
 				break;
 
 			case HAMMING:

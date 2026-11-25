@@ -352,12 +352,8 @@ public class CounterRandom extends TraversableExpressionComputation implements R
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new CounterRandom(getShape(), normal, seed, counter, false,
+		return copyConfigurationTo(new CounterRandom(getShape(), normal, seed, counter, false,
 				(Producer<PackedCollection>) children.get(1),
-				(Producer<PackedCollection>) children.get(2))
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+				(Producer<PackedCollection>) children.get(2)));
 	}
 }

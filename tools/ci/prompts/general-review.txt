@@ -40,6 +40,29 @@ A review comment from a human or Copilot is always in scope even when it points
 beyond the branch — act on its substance per the policy below, which for an
 out-of-scope ask means filing the follow-up and saying so, not editing in place.
 
+## Before you fix a failure, find out whether it is already being handled
+
+When this branch is a fix for a failing test or build, you are probably not the
+first session sent after that failure, and an earlier round's fix may be sitting
+in an open pull request or may already have been turned down. Search for work
+under way on the same cause before you write your own fix:
+
+- List the open pull requests with `github_list_open_prs`, and for any whose
+  title or branch could concern the same failing `Class#method`, component or
+  error, read its comments with `github_pr_review_comments`
+  (`include_resolved=true`) and `github_pr_conversation`.
+- Search the tracker with `tracker_search_tasks`, and memories with
+  `memory_recall` (`scope="repo"`), for the failing test's name, the component in
+  the stack trace, and the words of the error.
+
+An approach the owner has already rejected is not available to you, however
+reasonable it looks when you arrive at it yourself; if the owner said where the
+real defect is, that is the defect to fix. An open pull request that already
+makes the right fix means the failure is being handled — do not open a second
+one or file a duplicate task. Report the pull request, and when an open task
+already tracks this failure, append your evidence to it with
+`tracker_add_artifact` rather than re-filing.
+
 ## How to fix what you find
 
 Nothing has been flagged against this branch. You are here because no quality
@@ -113,6 +136,24 @@ see all test file changes. For each modified test that existed on origin/${BASE_
 
 **If you find violations: REVERT the test modifications.** The test is the
 specification. Fix the production code to make the original test pass.
+
+**Generated-code concealment is a defect, not a style choice.** Flag as a defect
+any change that makes a failing test, a rejected compile or an exceeded limit
+pass by changing how generated source is rendered, by post-processing that
+source, or by raising a compiler-limit, timeout or tolerance flag, instead of
+fixing the `Expression` tree that produced it. Generated code is a symptom; the
+fix belongs in the tree, never in the renderer and never in the compiler's
+settings. Deeply nested or over-bracketed generated source means operations that
+should have merged into one n-ary expression did not
+(`NAryExpression.mergeOperands` and the creation-time merges of nested
+`Product`/`Sum`) — fix the tree there. Such a concealing fix is worse than no
+fix, because it removes the only signal that the defect exists. The one
+exception is a genuine rendering defect: when the `Expression` tree is
+demonstrably correct and `ExpressionRendering`/the `LanguageOperations`
+implementation still emits wrong or invalid source, the bug is in that rendering
+code and is fixed there — the prohibition is on rewriting the renderer to paper
+over a tree that is itself wrong, not on fixing a renderer that mis-renders a
+correct tree.
 
 **Cross-session deception patterns to flag (run deception-audit.sh):**
 - Same test file modified in 3+ commits on the branch (ping-pong pattern)

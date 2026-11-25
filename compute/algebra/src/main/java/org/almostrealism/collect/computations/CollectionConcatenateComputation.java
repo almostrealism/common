@@ -346,11 +346,7 @@ public class CollectionConcatenateComputation extends TransitiveDeltaExpressionC
 		}
 		TraversalPolicy outputShape = new TraversalPolicy(dims);
 
-		return new CollectionConcatenateComputation(outputShape, axis, inputs)
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+		return copyConfigurationTo(new CollectionConcatenateComputation(outputShape, axis, inputs));
 	}
 
 	/**

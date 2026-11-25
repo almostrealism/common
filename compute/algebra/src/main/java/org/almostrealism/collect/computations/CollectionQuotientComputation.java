@@ -82,13 +82,9 @@ public class CollectionQuotientComputation extends TraversableExpressionComputat
 	 */
 	@Override
 	public CollectionProducerParallelProcess generate(List<Process<?, ?>> children) {
-		return new CollectionQuotientComputation(getShape(),
+		return copyConfigurationTo(new CollectionQuotientComputation(getShape(),
 				(Producer<PackedCollection>) children.get(1),
-				(Producer<PackedCollection>) children.get(2))
-				.setPostprocessor(getPostprocessor())
-				.setDescription(getDescription())
-				.setShortCircuit(getShortCircuit())
-				.addAllDependentLifecycles(getDependentLifecycles());
+				(Producer<PackedCollection>) children.get(2)));
 	}
 
 	/**

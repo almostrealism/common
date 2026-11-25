@@ -1265,7 +1265,7 @@ public class LoopInvariantHoistingTest extends TestSuiteBase {
 	 * Counts how many declaration statements in the given list have a destination
 	 * name matching the specified name.
 	 */
-	private long countDeclarationsNamed(List<Statement<?>> statements, String name) {
+	static long countDeclarationsNamed(List<Statement<?>> statements, String name) {
 		return statements.stream()
 				.filter(s -> s instanceof ExpressionAssignment)
 				.map(s -> (ExpressionAssignment<?>) s)

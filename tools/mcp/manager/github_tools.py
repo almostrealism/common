@@ -1450,6 +1450,77 @@ def github_job_logs(
 
 
 @mcp.tool()
+def github_run_artifacts(
+    run_id: int = 0,
+    artifact: str = "",
+    file: str = "",
+    max_bytes: int = 262_144,
+    workstream_id: str = "",
+    org: str = "",
+    repo: str = "",
+) -> dict:
+    """List a workflow run's artifacts, or read files inside one (read-only).
+
+    A job log shows what a step printed; an artifact holds what it saved. A
+    forked test JVM that crashes natively leaves its cause in the
+    ``crash-reports-*`` artifact (surefire ``.dumpstream`` files and
+    ``hs_err_pid*.log`` fatal error logs), so this is how that cause is read
+    without reproducing the crash. With no ``artifact`` this lists the run's
+    artifacts; with one it downloads that artifact's zip archive through the
+    controller's GitHub proxy and returns the text of its members.
+
+    Limits match ``github_read_file``: an archive over 1 MB is not downloaded,
+    and at most ``max_bytes`` (never more than 1 MB) of member content is
+    decompressed and returned, so a large member comes back as its head with
+    ``truncated`` set.
+
+    Args:
+        run_id: The numeric workflow run id, from ``github_list_workflow_runs``
+            or ``github_workflow_run_status``.
+        artifact: Artifact name, or a glob matching exactly one artifact (e.g.
+            ``crash-reports-*``). Empty lists the run's artifacts.
+        file: Path, base name or glob of the member(s) to read (e.g.
+            ``*.dumpstream``). Empty reads every member, within ``max_bytes``.
+        max_bytes: Total bytes of member content to return (default 256 KB,
+            capped at 1 MB).
+        workstream_id: Workstream to resolve the repo from. Defaults to the
+            token context.
+        org: GitHub org (owner) to address directly. Must be passed together
+            with ``repo``; bypasses workstream resolution and is checked
+            against the workspace scope gate.
+        repo: GitHub repository name. Must be passed together with ``org``.
+
+    Returns:
+        dict with ok=True and ``artifacts`` when listing; or ``artifact``,
+        ``members``, ``files`` (each with ``path``, ``size``, ``content`` or
+        ``binary``, and ``truncated``) and ``truncated`` when fetching; or
+        ok=False with error details.
+    """
+    server._require_scope("github")
+    if org and repo:
+        server._require_org_in_scope(org)
+    if not run_id:
+        return {"ok": False, "error": "run_id is required"}
+    err = server._check_short_strings(artifact=artifact, file=file)
+    if err:
+        return err
+    owner, repo, _, err = server._resolve_github_repo(
+        workstream_id=workstream_id, owner=org, repo=repo,
+    )
+    if err:
+        return err
+
+    server._audit("github_run_artifacts", run_id=run_id, artifact=artifact,
+                  file=file, workstream_id=workstream_id)
+
+    return github_api.get_run_artifacts(
+        owner, repo, run_id, artifact=artifact, file=file, max_bytes=max_bytes,
+        archive_limit=server._GITHUB_READ_FILE_SIZE_LIMIT,
+        extract_limit=server._GITHUB_READ_FILE_SIZE_LIMIT,
+    )
+
+
+@mcp.tool()
 def github_list_runners(org: str = "") -> dict:
     """List the organization's self-hosted GitHub Actions runners (read-only).
 

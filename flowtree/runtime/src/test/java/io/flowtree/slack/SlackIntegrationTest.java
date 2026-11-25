@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.flowtree.api.FlowTreeApiEndpoint;
@@ -1284,6 +1285,122 @@ public class SlackIntegrationTest extends TestSuiteBase {
         assertFalse("an active job must block the archive", ws.isArchived());
         assertTrue(response.get().contains("Cannot archive"));
         assertTrue(response.get().contains("job-active"));
+    }
+
+    /**
+     * /flowtree archive acknowledges and replies before the channel is archived,
+     * and the archive runs only on the deferred executor after the configured
+     * delay. This is the ordering guarantee that keeps the Slack client from
+     * leaving "/flowtree archive" as an unsent draft in a channel that has
+     * already disappeared.
+     */
+    @Test(timeout = 10000)
+    public void testSlashCommandArchiveDefersChannelArchive() {
+        List<String> order = new ArrayList<>();
+        SlackNotifier notifier = new SlackNotifier(null) {
+            @Override
+            public String archiveChannel(String channelId) {
+                order.add("archive");
+                return null;
+            }
+        };
+        AtomicReference<Runnable> deferred = new AtomicReference<>();
+        AtomicLong delay = new AtomicLong(-1);
+        notifier.channelArchiveScheduler().setDeferredExecutor((delayMillis, task) -> {
+            delay.set(delayMillis);
+            deferred.set(task);
+        });
+
+        SlackListener listener = new SlackListener(notifier);
+        Workstream ws = new Workstream("C_ARCH_DEFER", "#archive-channel");
+        listener.registerWorkstream(ws);
+
+        AtomicReference<String> response = new AtomicReference<>();
+        listener.handleSlashCommand("archive", "C_ARCH_DEFER", "#archive-channel",
+                text -> { order.add("respond"); response.set(text); });
+
+        assertTrue("the reply must be sent before the channel is archived",
+                List.of("respond").equals(order));
+        assertTrue(response.get().contains("Archiving this channel"));
+        assertTrue("the archive must be deferred by the named delay",
+                delay.get() == ChannelArchiveScheduler.CHANNEL_ARCHIVE_DELAY_MILLIS);
+        assertNotNull("the archive must be deferred, not run inline", deferred.get());
+
+        deferred.get().run();
+        assertTrue("the archive must happen only after the deferred task runs",
+                List.of("respond", "archive").equals(order));
+    }
+
+    /**
+     * When the deferred channel archive fails, the error is reported back through
+     * the responder after the command has already returned. This covers the
+     * failure path that relies on the response URL to surface an archive error
+     * once the acknowledgement has been delivered.
+     */
+    @Test(timeout = 10000)
+    public void testSlashCommandArchiveReportsDeferredFailure() {
+        SlackNotifier notifier = new SlackNotifier(null) {
+            @Override
+            public String archiveChannel(String channelId) {
+                return "channel_not_found";
+            }
+        };
+        AtomicReference<Runnable> deferred = new AtomicReference<>();
+        notifier.channelArchiveScheduler().setDeferredExecutor((delayMillis, task) -> deferred.set(task));
+
+        SlackListener listener = new SlackListener(notifier);
+        Workstream ws = new Workstream("C_ARCH_FAIL", "#archive-channel");
+        listener.registerWorkstream(ws);
+
+        List<String> responses = new ArrayList<>();
+        listener.handleSlashCommand("archive", "C_ARCH_FAIL", "#archive-channel",
+                responses::add);
+
+        assertEquals("only the acknowledgement is sent before the deferred task runs",
+                1, responses.size());
+        assertTrue(responses.get(0).contains("Archiving this channel"));
+        assertNotNull("the archive must be deferred, not run inline", deferred.get());
+
+        deferred.get().run();
+        assertEquals("the failure must be reported after the deferred archive runs",
+                2, responses.size());
+        assertTrue("the failure report must name the warning and the Slack error",
+                responses.get(1).contains("could not be archived")
+                        && responses.get(1).contains("channel_not_found"));
+    }
+
+    /**
+     * When the deferred channel archive throws an unchecked exception rather than
+     * returning an error string, the failure is still reported through the
+     * responder. Without this, a Slack client fault would leave the user with the
+     * optimistic acknowledgement and no indication that the archive never happened.
+     */
+    @Test(timeout = 10000)
+    public void testSlashCommandArchiveReportsThrownDeferredFailure() {
+        SlackNotifier notifier = new SlackNotifier(null) {
+            @Override
+            public String archiveChannel(String channelId) {
+                throw new IllegalStateException("slack client exploded");
+            }
+        };
+        AtomicReference<Runnable> deferred = new AtomicReference<>();
+        notifier.channelArchiveScheduler().setDeferredExecutor((delayMillis, task) -> deferred.set(task));
+
+        SlackListener listener = new SlackListener(notifier);
+        Workstream ws = new Workstream("C_ARCH_THROW", "#archive-channel");
+        listener.registerWorkstream(ws);
+
+        List<String> responses = new ArrayList<>();
+        listener.handleSlashCommand("archive", "C_ARCH_THROW", "#archive-channel",
+                responses::add);
+
+        assertNotNull("the archive must be deferred, not run inline", deferred.get());
+        deferred.get().run();
+        assertEquals("the thrown failure must be reported after the deferred archive runs",
+                2, responses.size());
+        assertTrue("the failure report must name the warning and the thrown message",
+                responses.get(1).contains("could not be archived")
+                        && responses.get(1).contains("slack client exploded"));
     }
 
     /** The /flowtree help listing advertises the archive subcommand. */
