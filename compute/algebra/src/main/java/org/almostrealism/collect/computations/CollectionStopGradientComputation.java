@@ -50,7 +50,9 @@ import java.util.stream.Stream;
  * inputs to differentiate. A consumer whose Jacobian is instead obtained by differentiating its
  * own expression as a whole ({@link TraversableDeltaComputation}, the last resort when several
  * of its other inputs depend on the target) reads the expression of this computation's input as
- * it is embedded, and so differentiates through it.</p>
+ * it is embedded, and so differentiates through it. This is therefore safe only for a value
+ * whose true contribution to the derivative is zero, where both paths agree. It is not a
+ * general-purpose detach for a value whose dependence on the target does matter.</p>
  *
  * <p>Its shape is the shape of its input, which it takes from the input itself rather than
  * accepting one that would have to agree with it; an input with no shape is rejected.</p>

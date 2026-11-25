@@ -106,7 +106,9 @@ subtracts constant: the result is invariant to that shift, so the derivative thr
 exactly zero, and taking it anyway selects the largest element and builds terms that cancel (for a
 small classifier, about half of the kernels of each training step). The constancy holds for the
 producer graph; a consumer whose Jacobian falls through to differentiating its own expression as a
-whole (`TraversableDeltaComputation`) reads the stopped input's expression as embedded.
+whole (`TraversableDeltaComputation`) reads the stopped input's expression as embedded, and so
+differentiates through it. `stopGradient` is therefore not a strict detach. Use it only where the
+true derivative through the stopped value is zero, so that both paths give the same result.
 
 ---
 
