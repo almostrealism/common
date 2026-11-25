@@ -381,13 +381,19 @@ def _run_has_rerunnable_job(jobs: list) -> bool:
 
 
 def _list_run_jobs(owner: str, repo: str, run_id: int):
-    """List every job of a workflow run, following pagination.
+    """List the latest attempt's jobs of a workflow run, following pagination.
 
     GitHub's run-jobs endpoint returns at most 100 jobs per page, so a run with
     more than 100 jobs carries its later jobs — and any failure among them — on
     the pages after the first. Reading every page is what lets a caller reason
     about the run's full set of job conclusions; stopping at the first page can
     miss a failure that sits beyond it.
+
+    The request pins ``filter=latest`` so only the most recent attempt's jobs
+    are returned. That is already the endpoint's default, but a rerun decision
+    must never see a failure left behind by an earlier attempt that the latest
+    attempt has since passed, so the contract is made explicit rather than left
+    to the default.
 
     Args:
         owner: The repository owner.
@@ -404,7 +410,7 @@ def _list_run_jobs(owner: str, repo: str, run_id: int):
         result = server._github_request(
             "GET",
             f"/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
-            f"?per_page=100&page={page}")
+            f"?per_page=100&page={page}&filter=latest")
         if isinstance(result, dict) and result.get("ok") is False:
             return result
         jobs = result.get("jobs", []) if isinstance(result, dict) else []

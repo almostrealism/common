@@ -392,6 +392,22 @@ class TestGithubRerunFailedJobs(unittest.TestCase):
         self.assertEqual("POST", mock_gh.call_args_list[3].args[0])
 
     @patch.object(server, "_github_request")
+    def test_jobs_listing_pins_latest_attempt(self, mock_gh, mock_repo):
+        # The jobs listing must scope to the latest attempt so a failure left
+        # behind by an earlier attempt — that the latest attempt has since
+        # passed — cannot trigger an unnecessary rerun. The request carries
+        # filter=latest rather than relying on the endpoint's default.
+        mock_gh.side_effect = [
+            self._run(),
+            self._jobs("success", "success"),
+        ]
+        result = server.github_rerun_failed_jobs(run_id=99)
+        self.assertFalse(result["ok"])
+        self.assertIn("no failed", result["error"])
+        jobs_path = mock_gh.call_args_list[1].args[1]
+        self.assertIn("filter=latest", jobs_path)
+
+    @patch.object(server, "_github_request")
     def test_full_single_page_of_successes_is_refused(self, mock_gh, mock_repo):
         # Exactly 100 jobs that all passed: page 1 is full, page 2 is empty, and
         # with nothing failed on either page the run is refused rather than
